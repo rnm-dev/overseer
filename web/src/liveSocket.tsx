@@ -60,6 +60,10 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
   const sockRef = useRef<WebSocket | null>(null);
   const cursorsRef = useRef<Map<string, number>>(new Map()); // per-workspace resume cursor
   const tailHandlers = useRef<Map<string, { peonId: string; onFrame: (f: TailFrame) => void }>>(new Map());
+  // Per-session backoff for tail auto-resubscribe (tailEnd/tailError) — separate
+  // from the socket-level backoff so one flaky session tail can't affect others.
+  const tailBackoff = useRef<Map<string, number>>(new Map());
+  const tailRetryTimers = useRef<Map<string, number>>(new Map());
 
   // 1s tick so `online` (derived from lastSeen) decays without a server event.
   useEffect(() => {
@@ -91,6 +95,10 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
         ws.send(JSON.stringify({ type: "hello", workspaceId: wsId, cursor: cursorsRef.current.get(wsId) ?? 0 }));
         // Re-establish active session tails: covers a subscribe issued while the
         // socket was still CONNECTING, and re-attaches every tail after a reconnect.
+        // A fresh socket supersedes any pending per-session retry.
+        for (const timer of tailRetryTimers.current.values()) window.clearTimeout(timer);
+        tailRetryTimers.current.clear();
+        tailBackoff.current.clear();
         for (const [sessionId, h] of tailHandlers.current) {
           ws.send(JSON.stringify({ type: "subscribe", peonId: h.peonId, sessionId }));
         }
@@ -98,6 +106,7 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
       ws.onclose = () => {
         setConnected(false);
         if (closed) return;
+        if (retry) window.clearTimeout(retry);
         retry = window.setTimeout(connect, backoff);
         backoff = Math.min(backoff * 2, 10_000);
       };
@@ -154,24 +163,63 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
           bump(msg.cursor);
           break;
         }
-        case "tail":
+        case "tail": {
+          const sid = String(msg.sessionId ?? "");
+          tailBackoff.current.delete(sid); // live data flowing again — reset backoff
+          tailHandlers.current.get(sid)?.onFrame({ event: (msg as TailMsg).event ?? null, data: (msg as TailMsg).data ?? "" });
+          break;
+        }
         case "tailEnd":
         case "tailError": {
           const sid = String(msg.sessionId ?? "");
           const handler = tailHandlers.current.get(sid);
           if (handler) {
-            if (msg.type === "tail") handler.onFrame({ event: (msg as TailMsg).event ?? null, data: (msg as TailMsg).data ?? "" });
-            else handler.onFrame({ event: msg.type, data: String(msg.error ?? "") });
+            handler.onFrame({ event: msg.type, data: String(msg.error ?? "") });
+            // A session tail can drop (peon restart, transient network blip) while the
+            // session itself is still very much alive — auto-resubscribe with its own
+            // backoff so the operator's view self-heals without a full page reload or
+            // a full socket reconnect. Stops once the caller unsubscribes (handler removed).
+            const delay = tailBackoff.current.get(sid) ?? 1000;
+            tailBackoff.current.set(sid, Math.min(delay * 2, 10_000));
+            const timer = window.setTimeout(() => {
+              tailRetryTimers.current.delete(sid);
+              if (tailHandlers.current.get(sid) !== handler) return; // unsubscribed since
+              if (sockRef.current?.readyState === WebSocket.OPEN) sockRef.current.send(JSON.stringify({ type: "subscribe", peonId: handler.peonId, sessionId: sid }));
+            }, delay);
+            tailRetryTimers.current.set(sid, timer);
           }
           break;
         }
       }
     };
 
+    // Reconnect immediately (skipping the backoff wait) on real-world signals that
+    // connectivity is back: the OS reports the network up again, or the tab regains
+    // focus (a backgrounded/suspended tab is the single biggest cause of a stale
+    // socket on mobile Safari/Chrome — they freeze timers, so the connection can be
+    // dead long before onclose ever fires).
+    const kick = () => {
+      if (closed || sockRef.current?.readyState === WebSocket.OPEN) return;
+      if (retry) {
+        window.clearTimeout(retry);
+        retry = null;
+      }
+      backoff = 1000;
+      connect();
+    };
+    const onVisible = () => document.visibilityState === "visible" && kick();
+    window.addEventListener("online", kick);
+    document.addEventListener("visibilitychange", onVisible);
+
     connect();
     return () => {
       closed = true;
+      window.removeEventListener("online", kick);
+      document.removeEventListener("visibilitychange", onVisible);
       if (retry) window.clearTimeout(retry);
+      for (const timer of tailRetryTimers.current.values()) window.clearTimeout(timer);
+      tailRetryTimers.current.clear();
+      tailBackoff.current.clear();
       sockRef.current?.close();
       sockRef.current = null;
     };
@@ -185,6 +233,12 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
       if (sockRef.current?.readyState === WebSocket.OPEN) sockRef.current.send(JSON.stringify({ type: "subscribe", peonId, sessionId }));
       return () => {
         tailHandlers.current.delete(sessionId);
+        tailBackoff.current.delete(sessionId);
+        const timer = tailRetryTimers.current.get(sessionId);
+        if (timer) {
+          window.clearTimeout(timer);
+          tailRetryTimers.current.delete(sessionId);
+        }
         if (sockRef.current?.readyState === WebSocket.OPEN) sockRef.current.send(JSON.stringify({ type: "unsubscribe", sessionId }));
       };
     },

@@ -135,6 +135,7 @@ const en: Catalog = {
   "peon.dash.viewAll": "View all →",
   "peon.dash.noSessions": "No sessions yet.",
 
+  "session.menu": "More",
   "session.rename": "rename",
   "session.rename.save": "Save",
   "session.renamePlaceholder": "Session title",
@@ -386,6 +387,7 @@ const ru: Catalog = {
   "peon.dash.viewAll": "Все →",
   "peon.dash.noSessions": "Пока нет сессий.",
 
+  "session.menu": "Ещё",
   "session.rename": "переименовать",
   "session.rename.save": "Сохранить",
   "session.renamePlaceholder": "Название сессии",

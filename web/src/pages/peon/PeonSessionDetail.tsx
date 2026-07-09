@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { createPortal } from "react-dom";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, ApiError, isPeonNeedsUpdate, json } from "../../api";
-import { Badge, Button, Input } from "../../ui";
+import { Button, Input } from "../../ui";
 import { useT } from "../../i18n";
 import { useLiveSocket, type TailFrame } from "../../liveSocket";
 import { usePeon } from "./context";
@@ -342,6 +342,8 @@ export function PeonSessionDetail() {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteNote, setDeleteNote] = useState<string | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   // Whether a run is currently active — gates the Stop button. Seeded from the
   // session record, flipped on by sending a followup, off by a `result` frame.
@@ -361,9 +363,11 @@ export function PeonSessionDetail() {
   // Object URLs for image thumbnails; revoked when the file set changes/unmounts.
   const previews = useMemo(() => files.map((f) => (isImage(f) ? URL.createObjectURL(f) : null)), [files]);
   useEffect(() => () => previews.forEach((u) => u && URL.revokeObjectURL(u)), [previews]);
-  // Prompts we just sent + echoed optimistically — used to drop the SSE replay if
-  // the peon also emits them, so a sent message never shows twice.
-  const sentTextsRef = useRef<Set<string>>(new Set());
+  // Pending optimistic echoes: text → count. Armed in send() BEFORE the POST (the
+  // peon echoes the message back over the tail, and that frame can land while the
+  // request is still in flight — the guard must already be set or it doubles). A
+  // count, not a set, so the same text sent twice is dropped exactly twice.
+  const sentTextsRef = useRef<Map<string, number>>(new Map());
   // The initial /transcript snapshot and the live tail overlap: the tail attaches
   // just before the snapshot is taken, so events in that window arrive on both
   // channels. These drive a filter that skips the leading run of tail events that
@@ -433,26 +437,40 @@ export function PeonSessionDetail() {
   async function send() {
     const text = input.trim();
     if ((!text && files.length === 0) || sending) return;
+    const prompt = text || "(see attachments)";
+    const pending = files;
+    const wasRunning = running;
     setSending(true);
     setSendError(null);
+    // Optimistically echo + ARM the dedup guard BEFORE any await. The peon echoes the
+    // message back over the live tail, and that frame can arrive while the upload/POST
+    // is still in flight — if the guard isn't set yet it slips through and doubles.
+    const echo: Ev = { type: "user_message", text: prompt };
+    sentTextsRef.current.set(prompt, (sentTextsRef.current.get(prompt) ?? 0) + 1);
+    setLive((prev) => [...prev, echo]);
+    setRunning(true);
+    setStopNote(null);
+    setInput("");
+    setFiles([]);
+    if (textareaRef.current) textareaRef.current.style.height = "auto";
     try {
       // Upload each file to the sandbox, then send native attachments[] (peon
       // presents images as visual content to the agent via its Read tool).
       const attachments: { type: "file" | "image"; path: string }[] = [];
-      for (const f of files) attachments.push({ type: isImage(f) ? "image" : "file", path: await uploadFile(f) });
-      const prompt = text || "(see attachments)";
+      for (const f of pending) attachments.push({ type: isImage(f) ? "image" : "file", path: await uploadFile(f) });
       const body: { prompt: string; attachments?: typeof attachments; model?: string } = { prompt };
       if (attachments.length) body.attachments = attachments;
       if (overrideModel) body.model = overrideModel; // one-shot override for this turn
       await api(`${base}/sessions/${encodeURIComponent(sid)}/followup`, json(body));
-      sentTextsRef.current.add(prompt);
-      setLive((prev) => [...prev, { type: "user_message", text: prompt }]);
-      setRunning(true);
-      setStopNote(null);
-      setInput("");
-      setFiles([]);
-      if (textareaRef.current) textareaRef.current.style.height = "auto";
     } catch (err) {
+      // Send failed — roll back the optimistic echo, guard count, and composer.
+      setLive((prev) => prev.filter((e) => e !== echo));
+      const n = sentTextsRef.current.get(prompt) ?? 0;
+      if (n <= 1) sentTextsRef.current.delete(prompt);
+      else sentTextsRef.current.set(prompt, n - 1);
+      setRunning(wasRunning);
+      setInput(text);
+      setFiles(pending);
       const code = err instanceof ApiError ? err.code : "";
       if (err instanceof ApiError && (code === "RESUME_IN_PROGRESS" || err.status === 409)) setSendError(t("session.compose.busy"));
       else if (code === "FILES_DISABLED") setSendError(t("session.compose.filesDisabledHint"));
@@ -560,8 +578,12 @@ export function PeonSessionDetail() {
   // Live tail over the WebSocket — same event shape as the transcript.
   useEffect(() => {
     const onFrame = (f: TailFrame) => {
+      // tailEnd/tailError are transient — the socket layer auto-resubscribes with
+      // backoff (see liveSocket.tsx), so this just gates the "working" indicator
+      // while data isn't flowing; the next real frame flips it back to "open".
       if (f.event === "tailEnd") return setTail("ended");
       if (f.event === "tailError") return setTail("error");
+      setTail("open");
       let ev: Ev;
       try {
         ev = JSON.parse(f.data) as Ev;
@@ -574,13 +596,18 @@ export function PeonSessionDetail() {
         setRunning(false);
         setMetaTick((n) => n + 1);
       }
-      // Skip the SSE replay of a message we already echoed optimistically. Record
-      // the real frame's signature so a later replay (reconnect re-tail) is dropped
-      // by seenRef instead of slipping past the now-consumed one-shot text guard.
-      if (ev.type === "user_message" && typeof ev.text === "string" && sentTextsRef.current.has(ev.text)) {
-        sentTextsRef.current.delete(ev.text);
-        seenRef.current.add(sig(ev));
-        return;
+      // Drop the peon's echo of a message we already rendered optimistically. The
+      // guard is a pending-count map (armed in send() BEFORE the POST, since the echo
+      // can arrive mid-request); we also stamp the real frame's signature into seenRef
+      // so a later reconnect replay is dropped there too.
+      if (ev.type === "user_message" && typeof ev.text === "string") {
+        const n = sentTextsRef.current.get(ev.text) ?? 0;
+        if (n > 0) {
+          if (n === 1) sentTextsRef.current.delete(ev.text);
+          else sentTextsRef.current.set(ev.text, n - 1);
+          seenRef.current.add(sig(ev));
+          return;
+        }
       }
       // Tail frames can arrive before the transcript snapshot resolves; buffer them
       // so the overlap filter has a baseline to compare against.
@@ -594,6 +621,21 @@ export function PeonSessionDetail() {
     return unsub;
   }, [peon.peonId, sid, subscribe, pushLive]);
 
+  // Close the kebab menu on an outside click or Escape.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setMenuOpen(false);
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [menuOpen]);
+
   // Autoscroll to the newest output — always snap to the bottom on a new frame,
   // even if the operator scrolled up. rAF so freshly-laid-out content (code
   // blocks, tool output, images) is measured before we jump, or we'd land short.
@@ -602,29 +644,38 @@ export function PeonSessionDetail() {
     return () => cancelAnimationFrame(id);
   }, [history, live]);
 
-  const tailTone = tail === "open" ? "green" : tail === "ended" ? "neutral" : "red";
-  const tailLabel = tail === "open" ? t("session.tail.live") : tail === "ended" ? t("session.tail.ended") : t("session.tail.error");
-
   // What the agent is doing right now, from the freshest event (live wins over history).
   const lastEvent = live.length ? live[live.length - 1] : history?.length ? history[history.length - 1] : undefined;
   const working = workingActivity(lastEvent);
 
   return (
-    <div>
+    <div className="-mt-5">
       {/* header — pinned to the top; the chat scrolls beneath it */}
       <div className="sticky top-0 z-20 -mx-6 border-b border-iron-800 bg-void px-6 pb-2.5 pt-2">
-        <div className="relative space-y-1.5">
-          <div className="pointer-events-none absolute right-0 top-0 z-10">
-            <Badge tone={tailTone}>{tailLabel}</Badge>
-          </div>
-
-          <div className="flex items-center gap-4 pr-24">
-            <Link to=".." relative="path" className="font-mono text-xs text-bone-dim hover:text-fel-bright">
+        <div className="space-y-1.5">
+          <div className="flex items-center gap-3">
+            <Link to=".." relative="path" className="flex-none font-mono text-xs text-bone-dim hover:text-fel-bright">
               {t("session.back")}
             </Link>
+
+            <div className="flex min-w-0 flex-1 items-center gap-1.5">
+              {projectKey && (
+                <Link
+                  to={`/peons/${peon.peonId}/projects/${encodeURIComponent(projectKey)}`}
+                  className="flex-none rounded bg-iron-800 px-1.5 py-0.5 font-mono text-[0.7rem] text-bone-dim transition-colors hover:text-fel-bright"
+                  title={t("session.project")}
+                >
+                  {projectKey}
+                </Link>
+              )}
+              <span className="truncate font-display text-sm font-semibold text-bone" title={title ?? undefined}>
+                {title || t("session.untitled")}
+              </span>
+            </div>
+
             {running && (
               <button
-                className="flex items-center gap-1.5 font-mono text-xs text-ember transition-colors hover:text-blood disabled:opacity-40"
+                className="flex flex-none items-center gap-1.5 font-mono text-xs text-ember transition-colors hover:text-blood disabled:opacity-40"
                 onClick={stop}
                 disabled={stopping}
               >
@@ -632,24 +683,49 @@ export function PeonSessionDetail() {
                 {stopping ? t("session.stop.stopping") : t("session.stop")}
               </button>
             )}
-            {confirmDelete ? (
-              <div className="flex items-center gap-2">
-                <span className="font-mono text-xs text-blood">{t("session.delete.confirm")}</span>
-                <Button size="sm" variant="iron" onClick={() => setConfirmDelete(false)} disabled={deleting}>
-                  {t("action.cancel")}
-                </Button>
-                <button className="btn btn-sm !border-blood/50 !text-blood hover:!bg-blood/10" onClick={remove} disabled={deleting}>
-                  {deleting ? t("session.delete.deleting") : t("session.delete.confirmYes")}
-                </button>
-              </div>
-            ) : (
-              <button className="font-mono text-xs text-bone-dim transition-colors hover:text-blood" onClick={() => { setDeleteNote(null); setConfirmDelete(true); }}>
-                {t("session.delete")}
+
+            <div className="relative flex-none" ref={menuRef}>
+              <button
+                type="button"
+                title={t("session.menu")}
+                onClick={() => setMenuOpen((o) => !o)}
+                className="flex items-center rounded p-1 text-bone-dim transition-colors hover:bg-iron-800 hover:text-bone"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                  <circle cx="12" cy="5" r="1.75" />
+                  <circle cx="12" cy="12" r="1.75" />
+                  <circle cx="12" cy="19" r="1.75" />
+                </svg>
               </button>
-            )}
+              {menuOpen && (
+                <div className="absolute right-0 top-full z-30 mt-1 w-40 overflow-hidden rounded-lg border border-iron-800 bg-iron-950 py-1 shadow-lg">
+                  <button
+                    className="block w-full px-3 py-1.5 text-left font-mono text-xs text-bone-dim transition-colors hover:bg-iron-900 hover:text-fel-bright"
+                    onClick={() => {
+                      setDraft(title ?? "");
+                      setRenameNote(null);
+                      setEditing(true);
+                      setMenuOpen(false);
+                    }}
+                  >
+                    {t("session.rename")}
+                  </button>
+                  <button
+                    className="block w-full px-3 py-1.5 text-left font-mono text-xs text-blood transition-colors hover:bg-blood/10"
+                    onClick={() => {
+                      setDeleteNote(null);
+                      setConfirmDelete(true);
+                      setMenuOpen(false);
+                    }}
+                  >
+                    {t("session.delete")}
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
 
-          {editing ? (
+          {editing && (
             <div className="flex flex-wrap items-center gap-2">
               <Input
                 className="max-w-xs"
@@ -669,20 +745,28 @@ export function PeonSessionDetail() {
                 {t("action.cancel")}
               </Button>
             </div>
-          ) : (
+          )}
+
+          {confirmDelete && (
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-xs text-blood">{t("session.delete.confirm")}</span>
+              <Button size="sm" variant="iron" onClick={() => setConfirmDelete(false)} disabled={deleting}>
+                {t("action.cancel")}
+              </Button>
+              <button className="btn btn-sm !border-blood/50 !text-blood hover:!bg-blood/10" onClick={remove} disabled={deleting}>
+                {deleting ? t("session.delete.deleting") : t("session.delete.confirmYes")}
+              </button>
+            </div>
+          )}
+
+          {(eventCount !== undefined || sessionModel || Object.values(usageByModel).some(usageLabel)) && (
             <div className="flex flex-wrap items-center gap-x-1 font-mono text-xs text-bone-faint">
-              {sid}
-              {projectKey && (
-                <Link
-                  to={`/peons/${peon.peonId}/projects/${encodeURIComponent(projectKey)}`}
-                  className="ml-1 rounded bg-iron-800 px-1.5 py-0.5 text-[0.7rem] text-bone-dim transition-colors hover:text-fel-bright"
-                  title={t("session.project")}
-                >
-                  {projectKey}
-                </Link>
+              {eventCount !== undefined && <span>{t("session.events", { n: eventCount })}</span>}
+              {sessionModel && (
+                <span className="ml-1" title={t("session.model")}>
+                  · {modelLabel(catalog, sessionModel) ?? sessionModel}
+                </span>
               )}
-              {eventCount !== undefined && <span className="ml-1">· {t("session.events", { n: eventCount })}</span>}
-              {sessionModel && <span className="ml-1" title={t("session.model")}>· {modelLabel(catalog, sessionModel) ?? sessionModel}</span>}
               {Object.entries(usageByModel)
                 .filter(([, u]) => usageLabel(u))
                 .map(([id, u]) => (
@@ -690,9 +774,6 @@ export function PeonSessionDetail() {
                     · {modelLabel(catalog, id) ?? id} {usageLabel(u)}
                   </span>
                 ))}
-              <button className="ml-2 text-bone-dim transition-colors hover:text-fel-bright" onClick={() => { setDraft(title ?? ""); setRenameNote(null); setEditing(true); }}>
-                · {t("session.rename")}
-              </button>
             </div>
           )}
           {renameNote && <div className="font-mono text-xs text-blood">{renameNote}</div>}
