@@ -1,0 +1,226 @@
+# Overseer ↔ Peon protocol (`/agent/v1`)
+
+> **Vendored snapshot.** The canonical copy lives in the peon repo
+> (`peon/PROTOCOL.md`); paths like `src/daemon/*` below refer to that repo. The
+> peon side is frozen/stable, so this copy is safe to code the overseer against —
+> if the peon contract ever changes, re-copy it here. This is the full wire
+> contract for both directions between the overseer and its peons.
+
+The machine-facing API an **overseer** (fleet control plane) uses to drive many
+peons. It is separate from the human `/api/*` dashboard surface: its own auth,
+its own version handle, none of the human presence bookkeeping. Implemented in
+`src/daemon/agentApi.ts` (peon repo), mounted at `/agent/v1` ahead of the human cookie
+auth-gate in `controlServer.ts`.
+
+## Topology
+
+- **Transport:** HTTP/JSON over a **Tailscale** tailnet. NAT (office desktops
+  with no public IP) is solved by the overlay — every peon has a stable MagicDNS
+  name the overseer can reach; WireGuard provides the encryption. Plain HTTP on
+  the tailnet is acceptable.
+- **Direction:** the **overseer is the client** for all *control* — request /
+  response, the peon is a passive server. The one exception is discovery: the
+  peon *announces itself* outbound (see "North-bound" below), so a NAT'd box with
+  no inbound reachability is still discoverable.
+- **Addressing:** `http://<peon>.<tailnet>.ts.net:4570/agent/v1/...`
+
+## Envelope
+
+Every request:
+
+| Header | Meaning |
+|---|---|
+| `Authorization: Bearer <token>` | shared secret = `settings.overseerToken`. Empty on the peon ⇒ whole namespace is off (`503 AGENT_API_DISABLED`). |
+| `Peon-Protocol: 1` | optional; major-version check, `400 UNSUPPORTED_PROTOCOL` on mismatch. |
+| `Peon-Actor: <username>` | optional; the human on whose behalf the command is issued. Trusted (the token is trusted) and forwarded into a session's `author`, so one shared token doesn't collapse every operator into one identity. |
+| `Peon-Request-Id: <uuid>` | optional; correlation id, echoed back on the response. Doubles as the idempotency key for `POST /sessions`. |
+
+Errors are always `{ "error": "<human message>", "code": "<STABLE_CODE>" }` —
+**branch on `code`, never on the English string.** Codes: `AGENT_API_DISABLED`,
+`UNAUTHENTICATED`, `UNSUPPORTED_PROTOCOL`, `BAD_REQUEST`, `UNKNOWN_SESSION`,
+`SESSION_NOT_RUNNING`, `RESUME_IN_PROGRESS`, `DIR_MISSING`, `FILES_DISABLED`,
+`PATH_ESCAPE`, `NOT_FOUND`, `IS_DIRECTORY`, `CHECKSUM_MISMATCH`,
+`RANGE_NOT_SATISFIABLE`, `INTERNAL`.
+
+## Endpoints
+
+### Control / sessions (reuses the same stores as `/api/*`)
+
+```
+GET  /agent/v1/status                     identity + live load (activeSessionCount, paused, …)
+GET  /agent/v1/sessions                   list all sessions
+GET  /agent/v1/sessions/:id               one session
+GET  /agent/v1/sessions/:id/transcript    full event transcript
+POST /agent/v1/sessions                   start; body { prompt, dir?, projectKey?, permissionMode? }
+POST /agent/v1/sessions/:id/followup      continue; body { prompt, permissionMode? }
+POST /agent/v1/sessions/:id/cancel        cancel the active run
+POST /agent/v1/control/pause | /resume    toggle settings.paused
+GET  /agent/v1/sessions/:id/stream        SSE tail (events: `event`, `change`)
+GET  /agent/v1/projects                   list projects            ⚠ PEON-SIDE TODO
+GET  /agent/v1/settings                   read the safe settings   ⚠ PEON-SIDE TODO
+PATCH /agent/v1/settings                  update settings (partial) ⚠ PEON-SIDE TODO
+```
+
+### Projects & settings on the agent surface — PEON-SIDE CHANGES NEEDED
+
+> **Status:** the overseer proxies these (peon-detail page, `server.ts` `wp` block);
+> **not yet implemented on the peon.** Until they land the overseer returns the
+> peon's `404` and the UI shows a "not supported yet" notice. Auth = the existing
+> `overseerToken` bearer, same gate as the rest of `/agent/v1`.
+
+```
+GET  /agent/v1/projects
+  → 200 { projects: [ { key, path, sessionCount, activeCount, lastActivityMs } ] }
+     (peon already tracks projectKey per session + a project store — aggregate that)
+
+GET  /agent/v1/settings
+  → 200 { name, paused, fileTransferRoot, heartbeatIntervalMs }   // safe subset only
+
+PATCH /agent/v1/settings   { name?, fileTransferRoot?, heartbeatIntervalMs? }
+  → 200 { ...updated subset }
+     - partial body; persist atomically (reuse the local `PATCH /api/settings` logic)
+     - never expose/accept `overseerToken` here
+```
+
+**Idempotency:** `POST /sessions` uses the session id — supply it via
+`Peon-Request-Id` (or body `id`), and a replay of an id we already have returns
+the existing record with `200` instead of spawning a second run. A dropped
+response is therefore safe to retry.
+
+### Concurrency — the control plane owns admission
+
+The peon **runs sessions concurrently with no ceiling and no serialization**
+(`sessions.ts`). It does *not* protect you from:
+
+- **Same working directory:** two sessions on one `dir` edit the same files at
+  once (an accepted footgun). Guard this in the overseer if you care.
+- **Same session, two operators:** a followup to a running session
+  **interrupts the current turn** and resumes with the new prompt
+  (last-writer-interrupts). No corruption; the conversation keeps both prompts.
+  The narrow teardown race returns `409 RESUME_IN_PROGRESS` (retryable). Track
+  per-session presence / soft-locks in the overseer to avoid two operators
+  chopping each other's turns.
+- **Load:** unbounded concurrent starts. Read `activeSessionCount` from
+  `/status` and impose your own per-peon ceiling / queue.
+
+### File transfer
+
+Sandboxed to `settings.fileTransferRoot`; disabled (`503 FILES_DISABLED`) until
+an operator sets one. Every path is resolved against the root and rejected if it
+escapes (`400 PATH_ESCAPE`). Content-addressed by sha256 from day one.
+
+```
+PUT /agent/v1/files/<path>          upload; raw body streamed to disk
+    Peon-Content-Sha256: <hex>      optional; mismatch ⇒ 409 CHECKSUM_MISMATCH, nothing committed
+    → 201 { path, size, sha256 }    atomic rename into place on success
+GET /agent/v1/files/<path>          download; supports Range: (206 + Content-Range)
+GET /agent/v1/files/<path>?stat=1   metadata { size, mtimeMs, sha256 } or a directory listing
+```
+
+The sha256 header + Range support are what make a future **resumable / chunked**
+upload a pure extension rather than a protocol break.
+
+## North-bound (peon → overseer): discovery
+
+Implemented in `src/daemon/peonRegistrar.ts`. When `settings.overseerUrl` and
+`settings.overseerToken` are both set, the peon POSTs to the **overseer**
+(auth: the same shared `overseerToken` as its own bearer — symmetric secret):
+
+```
+POST {overseerUrl}/agent/v1/peons/register
+  { peonId, name, hostname, controlPort, protocol, capabilities, activeSessions, paused, uptimeSec }
+POST {overseerUrl}/agent/v1/peons/:peonId/heartbeat   (every heartbeatIntervalMs)
+  { activeSessions, paused, uptimeSec }
+```
+
+- `peonId` is stable across restarts (auto-generated + persisted in settings on
+  first use) so the overseer dedupes a peon across reconnects.
+- The overseer learns how to reach back by combining the request's tailnet
+  source address with the reported `controlPort` / `hostname`.
+- A `404` on heartbeat means the overseer lost its registry (restarted) — the
+  peon re-registers on the next tick. Connect failures are retried indefinitely
+  (logged once, not per-tick).
+- Registration/heartbeat is **discovery/liveness only** — it carries no session
+  results. The overseer drives work by *calling back* into the south-bound API,
+  and learns session state from the event push below.
+
+## North-bound (peon → overseer): session events
+
+Implemented in `src/daemon/peonEventPusher.ts`. So the overseer's aggregated
+session index stays live without polling, the peon streams every session-summary
+change (the same `SessionRecord` the south-bound `/sessions` returns):
+
+```
+POST {overseerUrl}/agent/v1/peons/:peonId/events
+  { peonId, epoch, events: [ { seq, session: <SessionRecord> }, ... ] }
+```
+
+Robustness — **push for liveness, reconcile for correctness:**
+
+- `seq` is a **per-peon monotonic** counter; `epoch` is a **boot nonce** (new
+  every process start).
+- The overseer upserts each `session` (idempotent) and tracks `(epoch, seq)`. A
+  `seq` **gap** (dropped/overflowed push) or an `epoch` **change** (peon
+  restarted) makes it **pull `/sessions` to reconcile** — so a lossy or
+  interrupted stream self-heals and never corrupts the index.
+- The peon's outbound queue is bounded; on overflow it drops oldest (creating a
+  gap the overseer heals) rather than growing without limit.
+- Best-effort: a failed POST is retried; duplicates are harmless (idempotent
+  upsert). The periodic overseer reconcile is the ultimate backstop.
+
+## Enabling it on a peon
+
+```
+PATCH /api/settings {
+  "overseerToken": "<shared secret>",         // inbound + outbound auth (empty => /agent surface off)
+  "fileTransferRoot": "/path/to/sandbox",         // empty => file transfer off
+  "overseerUrl": "http://overseer.ts.net:5000" // empty => this peon doesn't self-register
+}
+```
+
+Leave `overseerToken` empty on a standalone peon and the entire `/agent`
+surface stays off; leave `overseerUrl` empty and it never phones home.
+
+## Recruitment (overseer-driven enrollment) — PEON-SIDE CHANGES NEEDED
+
+> **Status:** implemented on the overseer; **not yet on the peon.** This section is
+> the spec for the peon side. Until it lands, recruitment works in *manual* mode
+> (an operator sets `overseerUrl` + the minted token by hand, per "Enabling it"
+> above). The two changes below unlock *zero-touch* recruitment.
+
+The overseer no longer uses one shared fleet secret. It mints a **per-peon,
+workspace-scoped token** and the peon presents that as its `overseerToken`. From
+the peon's side the register/heartbeat/events envelope is unchanged — it still
+sends `Authorization: Bearer <overseerToken>`. Two additions:
+
+### 1. `POST /agent/v1/enroll` (new endpoint)
+
+Lets the overseer point a peon at itself over the tailnet without an operator
+touching the box. Auth: the peon's **current** `overseerToken` (the bootstrap
+secret the agent surface is already gated on).
+
+```
+POST /agent/v1/enroll
+  Authorization: Bearer <current overseerToken>
+  { "overseerUrl": "http://overseer.ts.net:5000", "overseerToken": "pn_…" }
+  → 200 { "ok": true, "peonId": "<this peon's stable id>" }
+```
+
+Behavior:
+- Persist `overseerUrl` and `overseerToken` atomically (same as `PATCH /api/settings`).
+- Return `peonId` synchronously so the overseer can bind the peon before the first
+  register arrives.
+- Then trigger an **immediate re-register** with the new credentials (don't wait for
+  the next registrar tick).
+- **Idempotent** — re-enrolling overwrites, re-pointing a peon to a new
+  overseer/workspace.
+- Note the new `overseerToken` invalidates the bearer that authed *this* request;
+  the overseer switches to the new token for all subsequent calls.
+
+### 2. React to `401` on north-bound calls (de-recruit)
+
+Today only `404` (overseer forgot me → re-register) is defined. When a credential
+is **revoked**, register/heartbeat/events now return
+`401 UNAUTHENTICATED`. On a `401`, treat the peon as **de-recruited**: stop phoning
+home (or back off hard) and log once — do **not** hammer-retry. A later re-enroll
+(new token) resumes normal operation.

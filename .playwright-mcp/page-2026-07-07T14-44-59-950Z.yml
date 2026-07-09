@@ -1,0 +1,8 @@
+- generic [ref=e4]:
+  - generic [ref=e5]:
+    - heading "overseer" [level=1] [ref=e6]
+    - paragraph [ref=e7]: fleet control plane
+  - generic [ref=e8]:
+    - generic [ref=e9]: Email
+    - textbox "you@example.com" [active] [ref=e10]
+    - button "Send sign-in code" [ref=e11]

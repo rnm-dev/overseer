@@ -1,0 +1,30 @@
+{
+  "name": "overseer",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Fleet control plane for peons — registry + fan-out control over a Tailscale tailnet",
+  "bin": {
+    "overseer": "dist/index.js"
+  },
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "compile": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "pg": "^8.13.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.0.0",
+    "@types/pg": "^8.11.0",
+    "@types/ws": "^8.5.12",
+    "pg-mem": "^3.0.5",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}
