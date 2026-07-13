@@ -10,6 +10,7 @@ export interface ProjectFileEntry {
   name: string;
   type?: string;
   size?: number;
+  mtimeMs?: number;
 }
 
 interface DirectoryState {
@@ -49,6 +50,10 @@ const isDirectory = (entry: ProjectFileEntry) => entry.type === "dir" || entry.t
 const isImagePath = (path: string) => /\.(png|jpe?g|gif|webp|svg|bmp|ico)$/i.test(path);
 const isPdfPath = (path: string) => /\.pdf$/i.test(path);
 const sortEntries = (entries: ProjectFileEntry[]) => [...entries].sort((a, b) => isDirectory(a) === isDirectory(b) ? a.name.localeCompare(b.name) : isDirectory(a) ? -1 : 1);
+const sameEntries = (left: ProjectFileEntry[], right: ProjectFileEntry[]) => left.length === right.length && left.every((entry, index) => {
+  const other = right[index];
+  return !!other && entry.name === other.name && entry.type === other.type && entry.size === other.size && entry.mtimeMs === other.mtimeMs;
+});
 const hasDraggedFiles = (event: DragEvent) => Array.from(event.dataTransfer.types).includes("Files");
 const PROJECT_FILE_DRAG_TYPE = "application/x-overseer-project-file";
 const hasDraggedProjectFile = (event: DragEvent) => Array.from(event.dataTransfer.types).includes(PROJECT_FILE_DRAG_TYPE);
@@ -91,6 +96,24 @@ export function ProjectFileTree({ filesBase, activePath, onOpenFile, onFileMoved
     }
   }, [filesBase, t]);
 
+  // Project files can change underneath Overseer while an agent is working.
+  // Refresh only directories the operator has expanded, and do it silently so
+  // the tree never collapses or flashes its initial loading skeleton.
+  const refreshDirectory = useCallback(async (path: string) => {
+    try {
+      const result = await api<{ entries?: ProjectFileEntry[] }>(`${filesBase}/${encodeProjectPath(path)}?stat=1`);
+      const entries = sortEntries(result.entries ?? []);
+      setDirectories((current) => {
+        const directory = current[path];
+        if (!directory || directory.loading || sameEntries(directory.entries, entries)) return current;
+        return { ...current, [path]: { loading: false, entries } };
+      });
+    } catch {
+      // A transient refresh failure must not replace a usable tree with an
+      // error. Explicit folder loads still surface errors normally.
+    }
+  }, [filesBase]);
+
   useEffect(() => () => {
     if (uploadNoticeTimer.current !== null) window.clearTimeout(uploadNoticeTimer.current);
   }, []);
@@ -100,6 +123,26 @@ export function ProjectFileTree({ filesBase, activePath, onOpenFile, onFileMoved
     setExpanded(new Set([""]));
     load("");
   }, [filesBase, load]);
+
+  useEffect(() => {
+    let refreshing = false;
+    const refreshExpanded = async () => {
+      if (refreshing || document.visibilityState === "hidden") return;
+      refreshing = true;
+      try {
+        await Promise.all([...expanded].map(refreshDirectory));
+      } finally {
+        refreshing = false;
+      }
+    };
+    const timer = window.setInterval(() => void refreshExpanded(), 3_000);
+    const onVisibility = () => { if (document.visibilityState === "visible") void refreshExpanded(); };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [expanded, refreshDirectory]);
 
   const toggle = async (path: string) => {
     if (expanded.has(path)) {
