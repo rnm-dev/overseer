@@ -4,7 +4,9 @@ import { api, ApiError } from "../../api";
 import { Button, Card, Input, Label } from "../../ui";
 import { useT } from "../../i18n";
 import { usePeon } from "./context";
-import { ModelSelect, modelLabel, useModels } from "./models";
+import { AgentSelect, ModelSelect, providerForAgent, useModels } from "./models";
+import { PathInput } from "./PathInput";
+import { buildSettingsPayload, resolveDefaultModel } from "./settingsModel";
 
 // author: Viktor
 
@@ -13,6 +15,15 @@ interface Settings {
   fileTransferRoot?: string | null;
   heartbeatIntervalMs?: number | null;
   aiDefaultModel?: string | null;
+  defaultAgent?: string | null;
+}
+
+interface PeonStatus {
+  updateAvailable?: boolean;
+  updateLocalSha?: string | null;
+  updateRemoteSha?: string | null;
+  updateCheckedAt?: number | null;
+  updateCheckError?: string | null;
 }
 
 export function PeonSettings() {
@@ -28,6 +39,9 @@ export function PeonSettings() {
   const [saved, setSaved] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [status, setStatus] = useState<PeonStatus | null>(null);
+  const [updating, setUpdating] = useState(false);
+  const [updateError, setUpdateError] = useState<string | null>(null);
 
   // Connectivity — overseer-side registry data (how the overseer dials this peon).
   // Editable regardless of online state; that's exactly when a bad address is fixed.
@@ -67,6 +81,29 @@ export function PeonSettings() {
     };
   }, [base, peon.online]);
 
+  useEffect(() => {
+    if (!peon.online) return;
+    let alive = true;
+    api<PeonStatus>(`${base}/status`)
+      .then((next) => alive && setStatus(next))
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [base, peon.online]);
+
+  async function installUpdate() {
+    setUpdating(true);
+    setUpdateError(null);
+    try {
+      await api(`${base}/control/update`, { method: "POST" });
+      const next = await api<PeonStatus>(`${base}/status`);
+      setStatus(next);
+    } catch (err) {
+      setUpdateError(err instanceof Error ? err.message : t("error.generic"));
+    } finally {
+      setUpdating(false);
+    }
+  }
+
   function patch(key: keyof Settings, value: string) {
     setForm((f) => ({ ...(f ?? {}), [key]: key === "heartbeatIntervalMs" ? (value ? Number(value) : null) : value }) as Settings);
     setSaved(false);
@@ -77,7 +114,10 @@ export function PeonSettings() {
     setSaving(true);
     setSaved(false);
     try {
-      await api(`${base}/settings`, { method: "PATCH", body: JSON.stringify(form) });
+      const provider = providerForAgent(catalog, form.defaultAgent ?? catalog?.defaultAgent ?? catalog?.providers[0]?.agent);
+      const payload = buildSettingsPayload(form, provider, catalog !== null);
+      const savedSettings = await api<Settings>(`${base}/settings`, { method: "PATCH", body: JSON.stringify(payload) });
+      setForm(savedSettings);
       setSaved(true);
       reload();
     } catch {
@@ -98,9 +138,43 @@ export function PeonSettings() {
   }
 
   const portInvalid = !/^\d+$/.test(port) || Number(port) < 1 || Number(port) > 65535;
+  const defaultAgent = catalog
+    ? form?.defaultAgent ?? catalog.defaultAgent ?? catalog.providers[0]?.agent
+    : undefined;
+  const defaultAgentProvider = providerForAgent(catalog, defaultAgent);
+  const defaultModel = resolveDefaultModel(defaultAgentProvider, form?.aiDefaultModel) ?? "";
 
   return (
     <div className="space-y-8">
+      {peon.online && status && (
+        <Card className="space-y-4 px-5 py-5">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <h3 className="font-display text-sm font-bold text-bone">{t("peon.update.title")}</h3>
+              <p className="mt-1 font-mono text-xs text-bone-dim">
+                {status.updateAvailable ? t("peon.update.available") : t("peon.update.current")}
+              </p>
+            </div>
+            {status.updateAvailable && (
+              <Button onClick={installUpdate} disabled={updating}>
+                {updating ? t("peon.update.installing") : t("peon.update.install")}
+              </Button>
+            )}
+          </div>
+          {(status.updateLocalSha || status.updateRemoteSha || status.updateCheckedAt) && (
+            <div className="space-y-1 font-mono text-xs text-bone-faint">
+              {status.updateLocalSha && <p>{t("peon.update.local")}: {status.updateLocalSha}</p>}
+              {status.updateRemoteSha && <p>{t("peon.update.remote")}: {status.updateRemoteSha}</p>}
+              {status.updateCheckedAt && <p>{t("peon.update.checked")}: {new Date(status.updateCheckedAt).toLocaleString()}</p>}
+            </div>
+          )}
+          {(status.updateCheckError || updateError) && (
+            <p className="border-l-2 border-blood bg-blood/5 py-2 pl-3 font-mono text-xs text-blood">
+              ⚠ {updateError ?? status.updateCheckError}
+            </p>
+          )}
+        </Card>
+      )}
       <Card className="space-y-5 px-5 py-5">
         <div>
           <h3 className="font-display text-sm font-bold text-bone">{t("peon.conn.title")}</h3>
@@ -135,20 +209,40 @@ export function PeonSettings() {
           </div>
           <div className="space-y-1.5">
             <Label>{t("peon.settings.fileRoot")}</Label>
-            <Input value={form.fileTransferRoot ?? ""} onChange={(e) => patch("fileTransferRoot", e.target.value)} placeholder="/srv/peon/files" />
+            <PathInput base={base} value={form.fileTransferRoot ?? ""} onChange={(value) => patch("fileTransferRoot", value)} placeholder="/srv/peon/files" />
           </div>
           <div className="space-y-1.5">
             <Label>{t("peon.settings.heartbeat")}</Label>
             <Input type="number" value={form.heartbeatIntervalMs ?? ""} onChange={(e) => patch("heartbeatIntervalMs", e.target.value)} placeholder="5000" />
           </div>
+          {modelsSupported && catalog && catalog.providers.length > 1 && (
+            <div className="space-y-1.5">
+              <Label>{t("peon.settings.defaultAgent")}</Label>
+              <AgentSelect
+                catalog={catalog}
+                value={defaultAgent ?? ""}
+                onChange={(v) => {
+                  const provider = providerForAgent(catalog, v);
+                  setForm((f) => ({
+                    ...(f ?? {}),
+                    defaultAgent: v,
+                    aiDefaultModel: resolveDefaultModel(provider, f?.aiDefaultModel),
+                  }));
+                  setSaved(false);
+                }}
+                className="w-full"
+              />
+              <p className="font-mono text-xs text-bone-faint">{t("peon.settings.defaultAgentHint")}</p>
+            </div>
+          )}
           {modelsSupported && catalog && catalog.providers.length > 0 && (
             <div className="space-y-1.5">
               <Label>{t("peon.settings.aiDefaultModel")}</Label>
               <ModelSelect
-                catalog={catalog}
-                value={form.aiDefaultModel ?? ""}
+                provider={defaultAgentProvider}
+                value={defaultModel}
                 onChange={(v) => { setForm((f) => ({ ...(f ?? {}), aiDefaultModel: v || null })); setSaved(false); }}
-                defaultLabel={catalog.defaultModel ? t("model.peonDefault", { name: modelLabel(catalog, catalog.defaultModel) ?? catalog.defaultModel }) : t("model.default")}
+                allowClear={false}
                 className="w-full"
               />
               <p className="font-mono text-xs text-bone-faint">{t("peon.settings.aiDefaultModelHint")}</p>

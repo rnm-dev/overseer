@@ -1,344 +1,92 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, ApiError, isPeonNeedsUpdate, json } from "../../api";
-import { Button, Input } from "../../ui";
+import { useAuth } from "../../auth";
+import { Button, FixedPaneHeader, titleize } from "../../ui";
 import { useT } from "../../i18n";
 import { useLiveSocket, type TailFrame } from "../../liveSocket";
 import { usePeon } from "./context";
-import { ModelSelect, modelLabel, useModels, type SessionUsage } from "./models";
+import { Composer } from "./Composer";
+import { composerDraftKey, useComposerDraft } from "./drafts";
+import { ModelSelect, ReasoningEffortSelect, modelLabel, optionMatches, providerForAgent, providerForModel, useModels } from "./models";
+import {
+  compactNum,
+  flattenEvents,
+  gapClass,
+  latestRunSignal,
+  orcishThinkingLabel,
+  runSignalFromEvent,
+  sig,
+  usageBreakdown,
+  usageFromEvent,
+  workingActivity,
+  type Ev,
+  type MessageAttachment,
+} from "./session/parsing";
+import { ItemView, Working } from "./session/messageParts";
+import { AttachmentPreview } from "./session/AttachmentPreview";
+import { PreviewPanel, type PreviewTarget } from "./session/PreviewPanel";
 
 // author: Viktor
-
-type T = ReturnType<typeof useT>;
-
-// Claude Code stream-json transcript events (also what the live tail emits).
-interface Block {
-  type?: string;
-  text?: string;
-  thinking?: string;
-  name?: string;
-  input?: unknown;
-  content?: unknown;
-  is_error?: boolean;
-}
-interface Ev {
-  type?: string;
-  text?: string;
-  author?: string;
-  message?: { role?: string; content?: Block[] | string };
-  model?: string;
-  cwd?: string;
-  is_error?: boolean;
-  num_turns?: number;
-  duration_ms?: number;
-  total_cost_usd?: number;
-  content?: unknown;
-  [k: string]: unknown;
-}
-
-function textFromContent(content: unknown): string {
-  if (typeof content === "string") return content;
-  if (Array.isArray(content)) {
-    return content
-      .map((c) => (c && typeof c === "object" ? String((c as { text?: unknown }).text ?? "") : typeof c === "string" ? c : ""))
-      .filter(Boolean)
-      .join("\n");
-  }
-  return "";
-}
-function toolSummary(input: unknown): string {
-  if (!input || typeof input !== "object") return "";
-  const i = input as Record<string, unknown>;
-  const v = i.command ?? i.file_path ?? i.path ?? i.pattern ?? i.url ?? i.description ?? i.prompt ?? i.query;
-  return typeof v === "string" ? v : "";
-}
-// Structural signature for de-duping the snapshot/tail overlap (events carry no
-// stable id). The peon serializes the same event identically on both channels, so
-// stringify equality is a reliable match.
-const sig = (ev: Ev): string => JSON.stringify(ev);
-
-function UserBubble({ text }: { text: string }) {
-  return (
-    <div className="flex justify-end">
-      <div className="max-w-[80%] whitespace-pre-wrap break-words rounded-xl rounded-br-sm border border-fel/25 bg-fel/[0.12] px-3 py-1.5 text-sm leading-normal text-bone">{text}</div>
-    </div>
-  );
-}
-
-// Minimal, dependency-free Markdown → JSX for assistant messages. Covers the
-// GFM subset agents emit: fenced code, headings, lists, blockquotes, inline
-// code/bold/italic/links. (No `_italic_` — snake_case in code/paths is common.)
-function inline(text: string): ReactNode[] {
-  const re = /(`[^`]+`)|(\*\*[^*]+\*\*)|(\*[^*\n]+\*)|(\[[^\]]+\]\([^)]+\))/g;
-  const nodes: ReactNode[] = [];
-  let last = 0;
-  let key = 0;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(text))) {
-    if (m.index > last) nodes.push(text.slice(last, m.index));
-    const tok = m[0];
-    if (tok.startsWith("`")) nodes.push(<code key={key++} className="rounded bg-iron-900 px-1 py-0.5 font-mono text-[0.85em] text-forge">{tok.slice(1, -1)}</code>);
-    else if (tok.startsWith("**")) nodes.push(<strong key={key++} className="font-semibold text-bone">{tok.slice(2, -2)}</strong>);
-    else if (tok.startsWith("*")) nodes.push(<em key={key++}>{tok.slice(1, -1)}</em>);
-    else {
-      const mm = /\[([^\]]+)\]\(([^)]+)\)/.exec(tok)!;
-      nodes.push(<a key={key++} href={mm[2]} target="_blank" rel="noreferrer" className="text-fel-bright underline">{mm[1]}</a>);
-    }
-    last = m.index + tok.length;
-  }
-  if (last < text.length) nodes.push(text.slice(last));
-  return nodes;
-}
-
-function Markdown({ source }: { source: string }) {
-  const lines = source.replace(/\r\n/g, "\n").split("\n");
-  const out: ReactNode[] = [];
-  let i = 0;
-  let key = 0;
-  const isBlockStart = (l: string) => /^```/.test(l.trim()) || /^#{1,6}\s/.test(l) || /^>\s?/.test(l) || /^\s*[-*]\s+/.test(l) || /^\s*\d+\.\s+/.test(l);
-  while (i < lines.length) {
-    const line = lines[i];
-    if (/^```/.test(line.trim())) {
-      const buf: string[] = [];
-      i++;
-      while (i < lines.length && !/^```/.test(lines[i].trim())) buf.push(lines[i++]);
-      i++;
-      out.push(<pre key={key++} className="overflow-x-auto rounded bg-iron-900/70 p-2.5 font-mono text-xs leading-relaxed text-bone-dim"><code>{buf.join("\n")}</code></pre>);
-      continue;
-    }
-    if (!line.trim()) { i++; continue; }
-    const h = /^#{1,6}\s+(.*)$/.exec(line);
-    if (h) { out.push(<div key={key++} className="font-display text-sm font-bold text-bone">{inline(h[1])}</div>); i++; continue; }
-    if (/^>\s?/.test(line)) {
-      const buf: string[] = [];
-      while (i < lines.length && /^>\s?/.test(lines[i])) buf.push(lines[i++].replace(/^>\s?/, ""));
-      out.push(<blockquote key={key++} className="border-l-2 border-iron-700 pl-3 text-bone-dim">{inline(buf.join("\n"))}</blockquote>);
-      continue;
-    }
-    if (/^\s*[-*]\s+/.test(line)) {
-      const items: string[] = [];
-      while (i < lines.length && /^\s*[-*]\s+/.test(lines[i])) items.push(lines[i++].replace(/^\s*[-*]\s+/, ""));
-      out.push(<ul key={key++} className="list-disc space-y-0.5 pl-5">{items.map((it, k) => <li key={k}>{inline(it)}</li>)}</ul>);
-      continue;
-    }
-    if (/^\s*\d+\.\s+/.test(line)) {
-      const items: string[] = [];
-      while (i < lines.length && /^\s*\d+\.\s+/.test(lines[i])) items.push(lines[i++].replace(/^\s*\d+\.\s+/, ""));
-      out.push(<ol key={key++} className="list-decimal space-y-0.5 pl-5">{items.map((it, k) => <li key={k}>{inline(it)}</li>)}</ol>);
-      continue;
-    }
-    const buf: string[] = [];
-    while (i < lines.length && lines[i].trim() && !isBlockStart(lines[i])) buf.push(lines[i++]);
-    out.push(<p key={key++} className="whitespace-pre-wrap break-words">{inline(buf.join("\n"))}</p>);
-  }
-  return <div className="space-y-1.5">{out}</div>;
-}
-
-function Notice({ tone, children }: { tone?: "neutral" | "error"; children: ReactNode }) {
-  return (
-    <div className="flex items-center gap-3 py-1">
-      <div className="h-px flex-1 bg-iron-800" />
-      <span className={`font-mono text-[0.7rem] ${tone === "error" ? "text-blood" : "text-bone-faint"}`}>{children}</span>
-      <div className="h-px flex-1 bg-iron-800" />
-    </div>
-  );
-}
-
-function Action({ name, input }: { name?: string; input?: unknown }) {
-  const summary = toolSummary(input);
-  return (
-    <div className="flex justify-start">
-      <div className="max-w-[85%] rounded border border-iron-800 bg-iron-900/40 px-3 py-2 font-mono text-xs">
-        <span className="text-fel-bright">⚙ {name || "tool"}</span>
-        {summary && <div className="mt-1 whitespace-pre-wrap break-words text-bone-dim">{summary}</div>}
-      </div>
-    </div>
-  );
-}
-
-function ActionResult({ text, error, t }: { text: string; error?: boolean; t: T }) {
-  const [open, setOpen] = useState(false);
-  const long = text.length > 300;
-  const shown = open || !long ? text : text.slice(0, 300) + "…";
-  if (!text.trim()) return null;
-  return (
-    <div className="flex justify-start">
-      <div className={`max-w-[85%] border-l-2 pl-3 font-mono text-xs ${error ? "border-blood/60 text-blood" : "border-iron-700 text-bone-faint"}`}>
-        <pre className="whitespace-pre-wrap break-words">{shown}</pre>
-        {long && (
-          <button onClick={() => setOpen(!open)} className="mt-1 text-bone-dim transition-colors hover:text-fel-bright">
-            {open ? t("session.chat.less") : t("session.chat.more")}
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function Thinking({ text, t }: { text: string; t: T }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="flex justify-start">
-      <div className="max-w-[85%] text-xs">
-        <button onClick={() => setOpen(!open)} className="font-mono text-bone-faint transition-colors hover:text-bone-dim">
-          ✦ {t("session.chat.thinking")} {open ? "▾" : "▸"}
-        </button>
-        {open && <pre className="mt-1 whitespace-pre-wrap break-words border-l-2 border-iron-800 pl-3 italic text-bone-faint">{text}</pre>}
-      </div>
-    </div>
-  );
-}
-
-function AssistantBlock({ b, t }: { b: Block; t: T }) {
-  // Assistant prose is full-width markdown.
-  if (b.type === "text" && b.text?.trim()) return <div className="text-sm leading-relaxed text-bone"><Markdown source={b.text} /></div>;
-  if (b.type === "thinking" && b.thinking?.trim()) return <Thinking text={b.thinking} t={t} />;
-  if (b.type === "tool_use") return <Action name={b.name} input={b.input} />;
-  return null;
-}
-
-function ChatEvent({ ev, t }: { ev: Ev; t: T }) {
-  switch (ev.type) {
-    case "user_message":
-      return <UserBubble text={ev.text || ""} />;
-    case "assistant": {
-      const blocks = Array.isArray(ev.message?.content) ? (ev.message!.content as Block[]) : [];
-      return (
-        <>
-          {blocks.map((b, i) => (
-            <AssistantBlock key={i} b={b} t={t} />
-          ))}
-        </>
-      );
-    }
-    case "user": {
-      // Tool results are fed back as a user-role message per the Anthropic API.
-      const blocks = Array.isArray(ev.message?.content) ? (ev.message!.content as Block[]) : [];
-      return (
-        <>
-          {blocks.map((b, i) =>
-            b.type === "tool_result" ? <ActionResult key={i} text={textFromContent(b.content)} error={!!b.is_error} t={t} /> : b.type === "text" && b.text ? <ActionResult key={i} text={b.text} t={t} /> : null,
-          )}
-        </>
-      );
-    }
-    case "system":
-      // Auto-resume re-inits the agent, so these repeat constantly — too noisy.
-      return null;
-    case "result": {
-      const parts = [ev.is_error ? t("session.chat.failed") : t("session.chat.ended")];
-      if (typeof ev.num_turns === "number") parts.push(t("session.chat.turns", { n: ev.num_turns }));
-      if (typeof ev.duration_ms === "number") parts.push(`${Math.round(ev.duration_ms / 1000)}s`);
-      if (typeof ev.total_cost_usd === "number") parts.push(`$${ev.total_cost_usd.toFixed(2)}`);
-      return <Notice tone={ev.is_error ? "error" : "neutral"}>{parts.join(" · ")}</Notice>;
-    }
-    case "rate_limit_event":
-      return null;
-    case "_raw":
-      return <div className="whitespace-pre-wrap break-words font-mono text-xs text-bone-dim">{ev.text}</div>;
-    default: {
-      const text = ev.text ?? textFromContent(ev.content);
-      return text ? <div className="whitespace-pre-wrap break-words font-mono text-xs text-bone-faint">{text}</div> : null;
-    }
-  }
-}
-
-// Contextual "agent is working" label from the freshest transcript event — so the
-// operator sees *what* it's doing (running a command, reading a file…), not just a spinner.
-function toolActivity(name?: string): { key: string; name?: string } {
-  switch (name) {
-    case "Bash":
-      return { key: "session.working.bash" };
-    case "Read":
-      return { key: "session.working.read" };
-    case "Edit":
-    case "Write":
-    case "NotebookEdit":
-      return { key: "session.working.edit" };
-    case "Grep":
-    case "Glob":
-      return { key: "session.working.search" };
-    case "WebFetch":
-    case "WebSearch":
-      return { key: "session.working.web" };
-    case "Task":
-    case "Agent":
-      return { key: "session.working.subagent" };
-    default:
-      return { key: "session.working.tool", name: name || "tool" };
-  }
-}
-function workingActivity(last: Ev | undefined): { key: string; name?: string } {
-  if (last?.type === "assistant") {
-    const blocks = Array.isArray(last.message?.content) ? (last.message!.content as Block[]) : [];
-    const b = [...blocks].reverse().find((x) => x.type === "tool_use" || (x.type === "text" && !!x.text?.trim()));
-    if (b?.type === "tool_use") return toolActivity(b.name);
-    if (b?.type === "text") return { key: "session.working.typing" };
-  }
-  return { key: "session.working.thinking" };
-}
-
-function Working({ label }: { label: string }) {
-  return (
-    <div className="flex justify-start">
-      <div className="reveal flex items-center gap-2.5 rounded-xl border border-fel/20 bg-fel/[0.06] px-3 py-2 text-sm text-bone-dim">
-        <span className="thinking-dots" aria-hidden>
-          <span />
-          <span />
-          <span />
-        </span>
-        {label}
-      </div>
-    </div>
-  );
-}
+// The transcript parsing/render pieces live in ./session/*; this file owns the
+// page shell: data loading, the live tail, and the composer.
 
 // Types the peon presents as visual content via the agent's Read tool → sent as
 // { type: "image" }. Everything else is a { type: "file" } the agent Reads as text.
 const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
-const MAX_FILE_BYTES = 25 * 1024 * 1024;
-const MAX_FILES = 10;
 // Default upload sandbox — auto-set on a peon that has file transfer off, so
 // attaching works without a manual Settings step. Uploads land under here.
 const DEFAULT_FILE_ROOT = "/tmp/peon-files";
-const compactNum = new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 });
-// Compact spend for a model: prefer cost, fall back to token count.
-const usageLabel = (u: SessionUsage): string => (typeof u.totalCostUsd === "number" ? `$${u.totalCostUsd.toFixed(2)}` : typeof u.totalTokens === "number" ? compactNum.format(u.totalTokens) : "");
 const isImage = (f: File) => IMAGE_TYPES.has(f.type);
-// Friendly chip label — pasted screenshots have a machine name; show a short one.
-const chipName = (f: File) => (/^pasted-\d+/.test(f.name) ? "Pasted image" : f.name);
 
 export function PeonSessionDetail() {
   const t = useT();
-  const { peon, base } = usePeon();
+  const { user } = useAuth();
+  const { peon, base, wsId } = usePeon();
   const { sid = "" } = useParams();
   const { subscribe } = useLiveSocket();
   const navigate = useNavigate();
   const { catalog, supported: modelsSupported } = useModels(base);
+  const sessionKey = `${peon.peonId}:${sid}`;
 
   const [history, setHistory] = useState<Ev[] | null>(null);
   const [live, setLive] = useState<Ev[]>([]);
-  const [tail, setTail] = useState<"open" | "ended" | "error">("open");
+  // Only show the loading spinner once switching has taken a beat — a fast
+  // transcript fetch (the common case) should never flash it.
+  const [showHistorySpinner, setShowHistorySpinner] = useState(false);
+  useEffect(() => {
+    setShowHistorySpinner(false);
+    const id = setTimeout(() => setShowHistorySpinner(true), 1000);
+    return () => clearTimeout(id);
+  }, [sid]);
 
   // Session title + inline rename.
   const [title, setTitle] = useState<string | null>(null);
   const [projectKey, setProjectKey] = useState<string | null>(null);
+  const [turnCount, setTurnCount] = useState<number | null>(null);
+  const [sessionUsage, setSessionUsage] = useState<unknown>(null);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [savingName, setSavingName] = useState(false);
   const [renameNote, setRenameNote] = useState<string | null>(null);
 
-  // eventCount is optional (older peons omit it) — undefined ⇒ "unknown", not 0.
-  const [eventCount, setEventCount] = useState<number | undefined>(undefined);
 
-  // Session default model (null ⇒ follows the peon's global default) + spend per
-  // model. Both come from the session record; refetched when a run ends (metaTick).
+  // Session default model (null ⇒ follows the peon's global default). Comes
+  // from the session record; refetched when a run ends (metaTick).
   const [sessionModel, setSessionModel] = useState<string | null>(null);
-  const [usageByModel, setUsageByModel] = useState<Record<string, SessionUsage>>({});
+  const [sessionAgent, setSessionAgent] = useState<string | null>(null);
+  const [sessionReasoningEffort, setSessionReasoningEffort] = useState<string | null>(null);
   const [metaTick, setMetaTick] = useState(0);
   // Per-turn model override for the composer ("" ⇒ use the session/peon default).
   const [overrideModel, setOverrideModel] = useState("");
+  const [overrideReasoningEffort, setOverrideReasoningEffort] = useState("");
+  // React Router reuses this component when moving directly between sessions.
+  // Overrides belong to one composer/session and must never leak into the next.
+  useEffect(() => {
+    setOverrideModel("");
+    setOverrideReasoningEffort("");
+  }, [sessionKey]);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteNote, setDeleteNote] = useState<string | null>(null);
@@ -347,22 +95,65 @@ export function PeonSessionDetail() {
 
   // Whether a run is currently active — gates the Stop button. Seeded from the
   // session record, flipped on by sending a followup, off by a `result` frame.
-  const [running, setRunning] = useState(false);
+  // Key active-run state to the session so navigating between session routes can
+  // never flash the previous session's indicator before the new metadata lands.
+  const [activeRun, setActiveRun] = useState<{ sessionKey: string; running: boolean; model: string | null }>(() => ({
+    sessionKey,
+    running: false,
+    model: null,
+  }));
+  const running = activeRun.sessionKey === sessionKey && activeRun.running;
+  const runningModel = activeRun.sessionKey === sessionKey ? activeRun.model : null;
+  const runRevisionRef = useRef<Map<string, number>>(new Map());
+  const setRunning = useCallback((next: boolean) => {
+    runRevisionRef.current.set(sessionKey, (runRevisionRef.current.get(sessionKey) ?? 0) + 1);
+    setActiveRun((previous) => ({
+      sessionKey,
+      running: next,
+      model: next && previous.sessionKey === sessionKey ? previous.model : null,
+    }));
+  }, [sessionKey]);
+  const setRunningModel = useCallback((model: string | null) => {
+    setActiveRun((previous) => ({
+      sessionKey,
+      running: previous.sessionKey === sessionKey && previous.running,
+      model,
+    }));
+  }, [sessionKey]);
   const [stopping, setStopping] = useState(false);
   const [stopNote, setStopNote] = useState<string | null>(null);
 
   // Composer.
-  const [input, setInput] = useState("");
+  const [input, setInput] = useComposerDraft(composerDraftKey(wsId, peon.peonId, sid));
   const [files, setFiles] = useState<File[]>([]);
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const [filesEnabled, setFilesEnabled] = useState<boolean | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const [preview, setPreview] = useState<string | null>(null);
-  // Object URLs for image thumbnails; revoked when the file set changes/unmounts.
-  const previews = useMemo(() => files.map((f) => (isImage(f) ? URL.createObjectURL(f) : null)), [files]);
-  useEffect(() => () => previews.forEach((u) => u && URL.revokeObjectURL(u)), [previews]);
+  const [attachmentPreview, setAttachmentPreview] = useState<string | null>(null);
+  const [sentAttachmentPreview, setSentAttachmentPreview] = useState<MessageAttachment | null>(null);
+  const [artifactPreview, setArtifactPreview] = useState<PreviewTarget | null>(null);
+  const [previewPinned, setPreviewPinned] = useState(false);
+  const previewPinnedRef = useRef(false);
+  useEffect(() => { previewPinnedRef.current = previewPinned; }, [previewPinned]);
+  const [composerNode, setComposerNode] = useState<HTMLDivElement | null>(null);
+  const [composerHeight, setComposerHeight] = useState(112);
+  const sessionProvider = providerForAgent(catalog, sessionAgent) ?? (!sessionAgent ? (providerForAgent(catalog, catalog?.defaultAgent) ?? providerForModel(catalog, sessionModel ?? catalog?.defaultModel)) : null);
+  // Capabilities can change after a peon update or provider settings change.
+  // Never keep displaying (and later submit) a stale value that is no longer in
+  // the active provider's menu.
+  useEffect(() => {
+    if (!sessionProvider) return;
+    setOverrideModel((value) => value && !sessionProvider.models.some((option) => optionMatches(option, value)) ? "" : value);
+    setOverrideReasoningEffort((value) => value && !sessionProvider.reasoningEfforts.some((option) => optionMatches(option, value)) ? "" : value);
+  }, [sessionProvider]);
+  useEffect(() => {
+    if (!composerNode) return;
+    const measure = () => setComposerHeight(composerNode.getBoundingClientRect().height);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(composerNode);
+    return () => observer.disconnect();
+  }, [composerNode]);
   // Pending optimistic echoes: text → count. Armed in send() BEFORE the POST (the
   // peon echoes the message back over the tail, and that frame can land while the
   // request is still in flight — the guard must already be set or it doubles). A
@@ -381,16 +172,45 @@ export function PeonSessionDetail() {
   const seenRef = useRef<Set<string>>(new Set());
   const pendingLiveRef = useRef<Ev[]>([]);
 
+  // Match a committed user-message event to an optimistic bubble, regardless of
+  // whether it arrived through the tail, transcript polling, or the initial
+  // snapshot. Keeping this at the ingestion boundary avoids a race where the
+  // poll renders the echo before the tail-specific guard gets a chance to drop it.
+  const consumeOptimisticEcho = useCallback((ev: Ev): boolean => {
+    if (ev.type !== "user_message" || typeof ev.text !== "string") return false;
+    const n = sentTextsRef.current.get(ev.text) ?? 0;
+    if (n === 0) return false;
+    if (n === 1) sentTextsRef.current.delete(ev.text);
+    else sentTextsRef.current.set(ev.text, n - 1);
+    seenRef.current.add(sig(ev));
+    return true;
+  }, []);
+
   // Append a live tail event, dropping the leading run that just replays the
   // snapshot. Once a tail event isn't found in the snapshot the overlap is past and
   // everything after is appended verbatim — so a legitimately repeated message
   // later in the session is never dropped.
-  const pushLive = useCallback((ev: Ev) => {
+  const pushLive = useCallback((ev: Ev): boolean => {
     const s = sig(ev);
-    if (seenRef.current.has(s)) return; // already shown — snapshot/tail overlap or a reconnect replay
+    if (seenRef.current.has(s)) return false; // snapshot/tail overlap or a reconnect replay
     seenRef.current.add(s);
     setLive((prev) => [...prev, ev]);
+    return true;
   }, []);
+
+  // Run state follows accepted transcript events, never raw transport frames.
+  // This makes starts from another operator visible while preventing reconnect
+  // replays from applying an old turn's terminal result to the current turn.
+  const pushFreshEvent = useCallback((ev: Ev) => {
+    if (consumeOptimisticEcho(ev)) return;
+    if (!pushLive(ev)) return;
+    const signal = runSignalFromEvent(ev);
+    if (signal === "running") setRunning(true);
+    else if (signal === "idle") {
+      setRunning(false);
+      setMetaTick((n) => n + 1);
+    }
+  }, [consumeOptimisticEcho, pushLive, setRunning]);
 
   // Whether file transfer is enabled on the peon. If it's off, auto-enable a
   // default /tmp sandbox so attaching just works (no manual Settings step).
@@ -428,40 +248,52 @@ export function PeonSessionDetail() {
     return res.path || `uploads/${sid}/${safe}`;
   }
 
-  function addFiles(picked: File[]) {
-    const ok = picked.filter((f) => f.size <= MAX_FILE_BYTES);
-    setFiles((prev) => [...prev, ...ok].slice(0, MAX_FILES));
-    setSendError(ok.length < picked.length ? t("session.compose.tooLarge") : files.length + ok.length > MAX_FILES ? t("session.compose.tooMany") : null);
-  }
-
   async function send() {
     const text = input.trim();
     if ((!text && files.length === 0) || sending) return;
     const prompt = text || "(see attachments)";
     const pending = files;
     const wasRunning = running;
+    const prevModel = runningModel;
     setSending(true);
     setSendError(null);
     // Optimistically echo + ARM the dedup guard BEFORE any await. The peon echoes the
     // message back over the live tail, and that frame can arrive while the upload/POST
     // is still in flight — if the guard isn't set yet it slips through and doubles.
-    const echo: Ev = { type: "user_message", text: prompt };
+    const echo: Ev = {
+      type: "user_message",
+      text: prompt,
+      // The committed Peon echo is deliberately consumed below to prevent a
+      // duplicate bubble, so the optimistic event remains the rendered source
+      // of truth. Give it the same authorship metadata plus a client send time.
+      author: user?.email || user?.githubLogin || undefined,
+      createdAt: Date.now(),
+      attachments: pending.map((f) => ({ type: isImage(f) ? "image" : "file", name: f.name, size: f.size })),
+    };
     sentTextsRef.current.set(prompt, (sentTextsRef.current.get(prompt) ?? 0) + 1);
+    stickToBottomRef.current = true; // sending always jumps back to the bottom, even if scrolled up reading history
     setLive((prev) => [...prev, echo]);
     setRunning(true);
+    setRunningModel(overrideModel || sessionModel || (!sessionAgent ? catalog?.defaultModel : null) || null);
     setStopNote(null);
     setInput("");
     setFiles([]);
-    if (textareaRef.current) textareaRef.current.style.height = "auto";
     try {
       // Upload each file to the sandbox, then send native attachments[] (peon
       // presents images as visual content to the agent via its Read tool).
       const attachments: { type: "file" | "image"; path: string }[] = [];
       for (const f of pending) attachments.push({ type: isImage(f) ? "image" : "file", path: await uploadFile(f) });
-      const body: { prompt: string; attachments?: typeof attachments; model?: string } = { prompt };
+      setLive((prev) => prev.map((event) => event === echo ? {
+        ...event,
+        attachments: attachments.map((attachment, i) => ({ ...attachment, name: pending[i]?.name, size: pending[i]?.size })),
+      } : event));
+      const body: { prompt: string; attachments?: typeof attachments; model?: string; reasoningEffort?: string } = { prompt };
       if (attachments.length) body.attachments = attachments;
       if (overrideModel) body.model = overrideModel; // one-shot override for this turn
-      await api(`${base}/sessions/${encodeURIComponent(sid)}/followup`, json(body));
+      if (overrideReasoningEffort) body.reasoningEffort = overrideReasoningEffort;
+      const request = json(body);
+      request.headers = { "Peon-Request-Id": crypto.randomUUID() };
+      await api(`${base}/sessions/${encodeURIComponent(sid)}/followup`, request);
     } catch (err) {
       // Send failed — roll back the optimistic echo, guard count, and composer.
       setLive((prev) => prev.filter((e) => e !== echo));
@@ -469,6 +301,7 @@ export function PeonSessionDetail() {
       if (n <= 1) sentTextsRef.current.delete(prompt);
       else sentTextsRef.current.set(prompt, n - 1);
       setRunning(wasRunning);
+      setRunningModel(wasRunning ? prevModel : null);
       setInput(text);
       setFiles(pending);
       const code = err instanceof ApiError ? err.code : "";
@@ -486,23 +319,33 @@ export function PeonSessionDetail() {
 
   useEffect(() => {
     let alive = true;
-    api<{ title?: string | null; eventCount?: number; projectKey?: string | null; status?: string | null; model?: string | null; usageByModel?: Record<string, SessionUsage> }>(
+    const runRevision = runRevisionRef.current.get(sessionKey) ?? 0;
+    api<{ title?: string | null; projectKey?: string | null; status?: string | null; agent?: string | null; backendSessionId?: string | null; model?: string | null; reasoningEffort?: string | null; turnCount?: number | null; usage?: unknown }>(
       `${base}/sessions/${encodeURIComponent(sid)}`,
     )
       .then((s) => {
         if (!alive) return;
         setTitle(s.title ?? null);
+        setDraft(s.title ?? "");
+        setEditing(false);
         setProjectKey(s.projectKey ?? null);
-        setEventCount(typeof s.eventCount === "number" ? s.eventCount : undefined);
-        if (metaTick === 0) setRunning(s.status === "running"); // seed once; the tail owns it after
+        setTurnCount(typeof s.turnCount === "number" ? s.turnCount : null);
+        setSessionUsage(s.usage ?? null);
+        setSessionAgent(s.agent ?? null);
+        setSessionReasoningEffort(s.reasoningEffort ?? null);
+        // Do not let a metadata request that started before a local/live run
+        // transition overwrite that newer transition when its response arrives.
+        if ((runRevisionRef.current.get(sessionKey) ?? 0) === runRevision) {
+          setRunning(s.status === "running");
+          if (s.status === "running") setRunningModel(s.model ?? null);
+        }
         setSessionModel(s.model ?? null);
-        setUsageByModel(s.usageByModel ?? {});
       })
       .catch(() => {});
     return () => {
       alive = false;
     };
-  }, [base, sid, metaTick]);
+  }, [base, sid, sessionKey, metaTick, setRunning, setRunningModel]);
 
   async function remove() {
     setDeleting(true);
@@ -533,12 +376,14 @@ export function PeonSessionDetail() {
   }
 
   async function saveName() {
+    if (savingName) return;
     setSavingName(true);
     setRenameNote(null);
     const next = draft.trim() ? draft.trim() : null; // empty clears the title
     try {
       await api(`${base}/sessions/${encodeURIComponent(sid)}`, { method: "PATCH", body: JSON.stringify({ title: next }) });
       setTitle(next);
+      setDraft(next ?? "");
       setEditing(false);
     } catch (err) {
       // Older peons predate PATCH /sessions/:id → 404; surface "needs update".
@@ -558,14 +403,23 @@ export function PeonSessionDetail() {
     setHistory(null);
     setLive([]);
     const ready = (events: Ev[]) => {
-      setHistory(events);
+      // A send can happen while this request is in flight. If its committed echo
+      // is already in the snapshot, retain the optimistic bubble and omit only
+      // that matching snapshot event.
+      const visibleEvents = events.filter((ev) => !consumeOptimisticEcho(ev));
+      setHistory(visibleEvents);
       seenRef.current = new Set(events.map(sig));
       historyReadyRef.current = true;
+      // A turn started between the metadata request and this snapshot may already
+      // be present in history, making its buffered tail copy a duplicate. Preserve
+      // that positive activity signal; terminal state still comes from metadata or
+      // a fresh result frame, so an old completed snapshot cannot hide a newer run.
+      if (latestRunSignal(events) === "running") setRunning(true);
       // Replay any tail frames that landed before the snapshot, through the same
       // overlap filter now that the baseline exists.
       const pending = pendingLiveRef.current;
       pendingLiveRef.current = [];
-      for (const ev of pending) pushLive(ev);
+      for (const ev of pending) pushFreshEvent(ev);
     };
     api<{ events?: Ev[] } | Ev[]>(`${base}/sessions/${encodeURIComponent(sid)}/transcript`)
       .then((r) => alive && ready(Array.isArray(r) ? r : (r.events ?? [])))
@@ -573,41 +427,30 @@ export function PeonSessionDetail() {
     return () => {
       alive = false;
     };
-  }, [base, sid, pushLive]);
+  }, [base, sid, consumeOptimisticEcho, pushFreshEvent, setRunning]);
 
   // Live tail over the WebSocket — same event shape as the transcript.
   useEffect(() => {
     const onFrame = (f: TailFrame) => {
-      // tailEnd/tailError are transient — the socket layer auto-resubscribes with
-      // backoff (see liveSocket.tsx), so this just gates the "working" indicator
-      // while data isn't flowing; the next real frame flips it back to "open".
-      if (f.event === "tailEnd") return setTail("ended");
-      if (f.event === "tailError") return setTail("error");
-      setTail("open");
+      // Tail availability is transport state, not run state. The socket layer
+      // auto-resubscribes, and an active run must stay visibly active meanwhile.
+      if (f.event === "tailEnd" || f.event === "tailError") return;
       let ev: Ev;
       try {
         ev = JSON.parse(f.data) as Ev;
       } catch {
         ev = { type: "_raw", text: f.data };
       }
-      // A run just finished (completed, cancelled, or failed) — retire the Stop
-      // button and refetch session meta so model spend (usageByModel) catches up.
-      if (ev.type === "result") {
-        setRunning(false);
-        setMetaTick((n) => n + 1);
-      }
-      // Drop the peon's echo of a message we already rendered optimistically. The
-      // guard is a pending-count map (armed in send() BEFORE the POST, since the echo
-      // can arrive mid-request); we also stamp the real frame's signature into seenRef
-      // so a later reconnect replay is dropped there too.
-      if (ev.type === "user_message" && typeof ev.text === "string") {
-        const n = sentTextsRef.current.get(ev.text) ?? 0;
-        if (n > 0) {
-          if (n === 1) sentTextsRef.current.delete(ev.text);
-          else sentTextsRef.current.set(ev.text, n - 1);
-          seenRef.current.add(sig(ev));
-          return;
-        }
+      // Preview is a normalized Peon event, never inferred from assistant text.
+      // Only the live stream auto-opens it; transcript/history rendering below
+      // merely exposes an explicit Open preview action. A pinned artifact keeps
+      // its place when another live preview arrives.
+      if (ev.type === "preview" && typeof ev.path === "string" && ev.path) {
+        setArtifactPreview((current) => previewPinnedRef.current && current ? current : {
+          path: ev.path!,
+          author: typeof ev.author === "string" ? ev.author : undefined,
+          createdAt: typeof ev.createdAt === "number" ? ev.createdAt : undefined,
+        });
       }
       // Tail frames can arrive before the transcript snapshot resolves; buffer them
       // so the overlap filter has a baseline to compare against.
@@ -615,11 +458,44 @@ export function PeonSessionDetail() {
         pendingLiveRef.current.push(ev);
         return;
       }
-      pushLive(ev);
+      pushFreshEvent(ev);
     };
     const unsub = subscribe(peon.peonId, sid, onFrame);
     return unsub;
-  }, [peon.peonId, sid, subscribe, pushLive]);
+  }, [peon.peonId, sid, subscribe, pushFreshEvent]);
+
+  // The WebSocket tail is the fast path, but a Peon's long-lived SSE stream can
+  // occasionally stay open without delivering frames (proxy/network half-open).
+  // Reconcile the transcript while work is active so the page self-heals instead
+  // of showing "Thinking" forever until a manual refresh. pushFreshEvent uses the
+  // same signature set as the tail, so frames received through both paths render
+  // exactly once.
+  useEffect(() => {
+    if (!running) return;
+    let alive = true;
+    let inFlight = false;
+    const reconcileTranscript = async () => {
+      if (!alive || inFlight || !historyReadyRef.current) return;
+      inFlight = true;
+      try {
+        const result = await api<{ events?: Ev[] } | Ev[]>(`${base}/sessions/${encodeURIComponent(sid)}/transcript`);
+        if (!alive) return;
+        const events = Array.isArray(result) ? result : (result.events ?? []);
+        for (const ev of events) pushFreshEvent(ev);
+      } catch {
+        // The live tail may still be healthy; a transient poll failure should not
+        // disturb it or replace the transcript with an error state.
+      } finally {
+        inFlight = false;
+      }
+    };
+    const timer = window.setInterval(reconcileTranscript, 2_000);
+    void reconcileTranscript();
+    return () => {
+      alive = false;
+      window.clearInterval(timer);
+    };
+  }, [base, sid, running, pushFreshEvent]);
 
   // Close the kebab menu on an outside click or Escape.
   useEffect(() => {
@@ -636,52 +512,163 @@ export function PeonSessionDetail() {
     };
   }, [menuOpen]);
 
-  // Autoscroll to the newest output — always snap to the bottom on a new frame,
-  // even if the operator scrolled up. rAF so freshly-laid-out content (code
-  // blocks, tool output, images) is measured before we jump, or we'd land short.
+  // Whether the operator is (still) parked at the bottom of the page — only
+  // then does a new frame get to autoscroll. Scrolling up to read history
+  // clears this and it stays clear until they scroll back down themselves, so
+  // a live update never yanks them back to the bottom mid-read.
+  const stickToBottomRef = useRef(true);
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   useEffect(() => {
-    const id = requestAnimationFrame(() => window.scrollTo({ top: document.documentElement.scrollHeight }));
+    const NEAR_BOTTOM_PX = 80;
+    const onScroll = () => {
+      const { scrollY, innerHeight } = window;
+      const { scrollHeight } = document.documentElement;
+      const atBottom = scrollHeight - (scrollY + innerHeight) <= NEAR_BOTTOM_PX;
+      stickToBottomRef.current = atBottom;
+      setShowScrollToBottom(!atBottom);
+    };
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  const scrollToBottom = useCallback(() => {
+    stickToBottomRef.current = true;
+    setShowScrollToBottom(false);
+    window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "smooth" });
+  }, []);
+
+  // Autoscroll to the newest output, but only while the operator is parked at
+  // the bottom — see stickToBottomRef above. rAF so freshly-laid-out content
+  // (code blocks, tool output, images) is measured before we jump, or we'd
+  // land short.
+  useEffect(() => {
+    const id = requestAnimationFrame(() => {
+      if (stickToBottomRef.current) window.scrollTo({ top: document.documentElement.scrollHeight });
+    });
     return () => cancelAnimationFrame(id);
   }, [history, live]);
 
   // What the agent is doing right now, from the freshest event (live wins over history).
   const lastEvent = live.length ? live[live.length - 1] : history?.length ? history[history.length - 1] : undefined;
   const working = workingActivity(lastEvent);
+  // Flattened render list — pairs each tool_use with its later tool_result so it
+  // renders as a single row (see flattenEvents).
+  const items = useMemo(() => flattenEvents([...(history ?? []), ...live], t), [history, live, t]);
+  // Untitled session ⇒ fall back to the opening line of the first user message,
+  // so the header reads as something recognizable instead of a generic label.
+  const firstUserMessage = useMemo(() => {
+    const first = items.find((i) => i.kind === "user");
+    return first ? first.text.split("\n")[0].trim() || null : null;
+  }, [items]);
+  const transcriptTurns = useMemo(
+    () => [...(history ?? []), ...live].reduce((sum, ev) => sum + (ev.type === "result" && typeof ev.num_turns === "number" ? ev.num_turns : 0), 0),
+    [history, live],
+  );
+  const turnTotal = turnCount ?? transcriptTurns;
+  const usageSummary = useMemo(() => {
+    const fromSession = usageBreakdown(sessionUsage);
+    if (fromSession) return fromSession;
+    // No structured total yet (session still running, or peon hasn't reported
+    // one) — each turn's own usage already reflects the whole context resent up
+    // to that point, so summing across turns would multiply-count it. The
+    // freshest turn's usage is the best available snapshot.
+    const events = [...(history ?? []), ...live];
+    for (let i = events.length - 1; i >= 0; i--) {
+      const u = usageFromEvent(events[i]);
+      if (u) return u;
+    }
+    return null;
+  }, [history, live, sessionUsage]);
+  const showHeaderStats = turnTotal > 0 || !!usageSummary;
+  const cancelRename = () => {
+    setDraft(title ?? "");
+    setRenameNote(null);
+    setEditing(false);
+  };
 
   return (
-    <div className="-mt-5">
-      {/* header — pinned to the top; the chat scrolls beneath it */}
-      <div className="sticky top-0 z-20 -mx-6 border-b border-iron-800 bg-void px-6 pb-2.5 pt-2">
-        <div className="space-y-1.5">
+    <div className="min-w-0">
+      <FixedPaneHeader>
+        <div className="space-y-1.5 px-3 py-2.5 sm:px-6">
           <div className="flex items-center gap-3">
-            <Link to=".." relative="path" className="flex-none font-mono text-xs text-bone-dim hover:text-fel-bright">
-              {t("session.back")}
-            </Link>
-
             <div className="flex min-w-0 flex-1 items-center gap-1.5">
               {projectKey && (
                 <Link
                   to={`/peons/${peon.peonId}/projects/${encodeURIComponent(projectKey)}`}
-                  className="flex-none rounded bg-iron-800 px-1.5 py-0.5 font-mono text-[0.7rem] text-bone-dim transition-colors hover:text-fel-bright"
+                  className="flex-none whitespace-nowrap font-display text-sm font-semibold text-forge transition-colors hover:text-fel-bright"
                   title={t("session.project")}
                 >
-                  {projectKey}
+                  {titleize(projectKey)}
                 </Link>
               )}
-              <span className="truncate font-display text-sm font-semibold text-bone" title={title ?? undefined}>
-                {title || t("session.untitled")}
-              </span>
+              <div
+                className={`flex min-w-0 flex-1 items-center rounded transition-colors ${editing ? "bg-iron-800/70" : ""}`}
+                onBlur={(e) => {
+                  if (!e.currentTarget.contains(e.relatedTarget as Node | null) && !savingName) cancelRename();
+                }}
+              >
+                <input
+                  value={draft}
+                  placeholder={firstUserMessage || t("session.untitled")}
+                  aria-label={t("session.renamePlaceholder")}
+                  title={title ?? firstUserMessage ?? undefined}
+                  disabled={savingName}
+                  onFocus={(e) => {
+                    setRenameNote(null);
+                    setEditing(true);
+                    e.currentTarget.select();
+                  }}
+                  onChange={(e) => setDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") void saveName();
+                    if (e.key === "Escape") cancelRename();
+                  }}
+                  className="min-w-0 flex-1 truncate border-0 bg-transparent p-0 font-display text-sm font-semibold text-bone outline-none placeholder:text-bone placeholder:opacity-100 disabled:cursor-wait"
+                />
+                {editing && (
+                  <div className="ml-1 flex shrink-0 items-center gap-0.5 pr-0.5">
+                    <button
+                      type="button"
+                      className="grid size-5 place-items-center rounded text-xs text-fel-bright transition-colors hover:bg-fel/15 disabled:opacity-50"
+                      title={t("session.rename.save")}
+                      aria-label={t("session.rename.save")}
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => void saveName()}
+                      disabled={savingName}
+                    >
+                      ✓
+                    </button>
+                    <button
+                      type="button"
+                      className="grid size-5 place-items-center rounded text-sm text-bone-dim transition-colors hover:bg-iron-700 hover:text-bone disabled:opacity-50"
+                      title={t("action.cancel")}
+                      aria-label={t("action.cancel")}
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={cancelRename}
+                      disabled={savingName}
+                    >
+                      ×
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
 
-            {running && (
-              <button
-                className="flex flex-none items-center gap-1.5 font-mono text-xs text-ember transition-colors hover:text-blood disabled:opacity-40"
-                onClick={stop}
-                disabled={stopping}
-              >
-                <span className="text-[0.6rem] leading-none">■</span>
-                {stopping ? t("session.stop.stopping") : t("session.stop")}
-              </button>
+            {showHeaderStats && (
+              <div className="hidden flex-none items-center gap-1.5 whitespace-nowrap font-mono text-xs text-bone-faint sm:flex">
+                {turnTotal > 0 && <span>{t("session.chat.turns", { n: turnTotal })}</span>}
+                {turnTotal > 0 && usageSummary && <span>·</span>}
+                {usageSummary?.costUsd !== undefined && <span>${usageSummary.costUsd.toFixed(2)}</span>}
+                {usageSummary?.costUsd !== undefined && usageSummary.output > 0 && <span>·</span>}
+                {usageSummary && usageSummary.output > 0 && (
+                  <span
+                    title={`${t("peon.stats.inputTokens")} ${compactNum.format(usageSummary.input)} · ${t("peon.stats.cacheWrite")} ${compactNum.format(usageSummary.cacheCreate)} · ${t("peon.stats.cacheRead")} ${compactNum.format(usageSummary.cacheRead)}`}
+                  >
+                    {compactNum.format(usageSummary.output)} {t("peon.stats.outputTokens").toLowerCase()}
+                  </span>
+                )}
+              </div>
             )}
 
             <div className="relative flex-none" ref={menuRef}>
@@ -700,17 +687,6 @@ export function PeonSessionDetail() {
               {menuOpen && (
                 <div className="absolute right-0 top-full z-30 mt-1 w-40 overflow-hidden rounded-lg border border-iron-800 bg-iron-950 py-1 shadow-lg">
                   <button
-                    className="block w-full px-3 py-1.5 text-left font-mono text-xs text-bone-dim transition-colors hover:bg-iron-900 hover:text-fel-bright"
-                    onClick={() => {
-                      setDraft(title ?? "");
-                      setRenameNote(null);
-                      setEditing(true);
-                      setMenuOpen(false);
-                    }}
-                  >
-                    {t("session.rename")}
-                  </button>
-                  <button
                     className="block w-full px-3 py-1.5 text-left font-mono text-xs text-blood transition-colors hover:bg-blood/10"
                     onClick={() => {
                       setDeleteNote(null);
@@ -725,28 +701,6 @@ export function PeonSessionDetail() {
             </div>
           </div>
 
-          {editing && (
-            <div className="flex flex-wrap items-center gap-2">
-              <Input
-                className="max-w-xs"
-                value={draft}
-                autoFocus
-                placeholder={t("session.renamePlaceholder")}
-                onChange={(e) => setDraft(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") saveName();
-                  if (e.key === "Escape") setEditing(false);
-                }}
-              />
-              <Button size="sm" onClick={saveName} disabled={savingName}>
-                {savingName ? t("peon.settings.saving") : t("session.rename.save")}
-              </Button>
-              <Button size="sm" variant="iron" onClick={() => setEditing(false)} disabled={savingName}>
-                {t("action.cancel")}
-              </Button>
-            </div>
-          )}
-
           {confirmDelete && (
             <div className="flex items-center gap-2">
               <span className="font-mono text-xs text-blood">{t("session.delete.confirm")}</span>
@@ -758,175 +712,147 @@ export function PeonSessionDetail() {
               </button>
             </div>
           )}
-
-          {(eventCount !== undefined || sessionModel || Object.values(usageByModel).some(usageLabel)) && (
-            <div className="flex flex-wrap items-center gap-x-1 font-mono text-xs text-bone-faint">
-              {eventCount !== undefined && <span>{t("session.events", { n: eventCount })}</span>}
-              {sessionModel && (
-                <span className="ml-1" title={t("session.model")}>
-                  · {modelLabel(catalog, sessionModel) ?? sessionModel}
-                </span>
-              )}
-              {Object.entries(usageByModel)
-                .filter(([, u]) => usageLabel(u))
-                .map(([id, u]) => (
-                  <span key={id} className="ml-1 text-bone-dim" title={t("session.usage.by")}>
-                    · {modelLabel(catalog, id) ?? id} {usageLabel(u)}
-                  </span>
-                ))}
-            </div>
-          )}
           {renameNote && <div className="font-mono text-xs text-blood">{renameNote}</div>}
           {deleteNote && <div className="font-mono text-xs text-blood">⚠ {deleteNote}</div>}
           {stopNote && <div className="font-mono text-xs text-ember">⚠ {stopNote}</div>}
         </div>
-      </div>
+      </FixedPaneHeader>
 
       {/* transcript — flows into the page; the body scrolls it */}
-      <div className="pb-44 pt-4">
+      <div className="min-w-0 overflow-x-hidden pt-4" style={{ paddingBottom: composerHeight }}>
         {history === null ? (
-          <div className="forge-spin" />
+          showHistorySpinner && (
+            <div className="grid min-h-[40vh] place-items-center">
+              <div className="forge-spin" />
+            </div>
+          )
         ) : history.length === 0 && live.length === 0 && !running ? (
           <p className="text-center font-mono text-sm text-bone-faint">{t("session.empty")}</p>
         ) : (
-          <div className="space-y-2.5">
-            {history.map((ev, i) => (
-              <ChatEvent key={`h${i}`} ev={ev} t={t} />
+          <div>
+            {items.map((item, i) => (
+              <div key={item.key} className={i === 0 ? "" : gapClass(items[i - 1].kind === "user", item.kind === "user")}>
+                <ItemView item={item} t={t} onOpenPreview={(p) => setArtifactPreview({ path: p.path, author: p.author, createdAt: p.createdAt })} onOpenAttachment={setSentAttachmentPreview} />
+              </div>
             ))}
-            {live.map((ev, i) => (
-              <ChatEvent key={`l${i}`} ev={ev} t={t} />
-            ))}
-            {running && tail === "open" && <Working label={t(working.key, working.name ? { name: working.name } : undefined)} />}
+            {running && (
+              <div
+                data-session-running-row
+                className={items.length === 0 ? "" : gapClass(items[items.length - 1].kind === "user", false)}
+              >
+                <Working
+                  label={
+                    working.key === "session.working.thinking"
+                      ? orcishThinkingLabel(`working:${JSON.stringify(lastEvent ?? {})}`)
+                      : t(working.key, working.name ? { name: working.name } : undefined)
+                  }
+                  model={modelLabel(catalog, runningModel)}
+                  onStop={stop}
+                  stopping={stopping}
+                  stopLabel={t("session.stop")}
+                  stoppingLabel={t("session.stop.stopping")}
+                />
+              </div>
+            )}
           </div>
         )}
+        <div className="h-2 sm:h-5" aria-hidden="true" />
       </div>
+
+      {showScrollToBottom &&
+        createPortal(
+          <div
+            className="pointer-events-none fixed left-0 right-0 z-[41] flex justify-center md:left-[var(--peon-sidebar-width)]"
+            style={{ bottom: composerHeight + 12 }}
+          >
+            <button
+              type="button"
+              onClick={scrollToBottom}
+              className="pointer-events-auto grid size-10 place-items-center rounded-full border border-iron-700 bg-iron-950/95 text-bone shadow-lg backdrop-blur transition-colors hover:border-ember/60 hover:bg-iron-900 hover:text-ember focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ember/70"
+              title={t("session.scrollToBottom")}
+              aria-label={t("session.scrollToBottom")}
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="m6 9 6 6 6-6" />
+              </svg>
+            </button>
+          </div>,
+          document.body,
+        )}
 
       {/* composer — portaled to <body> so it's truly viewport-fixed (the .reveal
           transform would otherwise make `fixed` resolve against it), pinned to the
           bottom, boxed, and slightly wider than the chat column */}
       {createPortal(
-        <div className="fixed bottom-0 left-60 right-0 z-20 bg-gradient-to-t from-void via-void to-transparent pt-8">
-          <div className="mx-auto max-w-[76rem] px-6 pb-5">
-          <div className="rounded-2xl border border-iron-700 bg-iron-900/95 px-2 py-1.5 shadow-[0_-6px_28px_-14px_rgba(0,0,0,0.8)] backdrop-blur transition-colors focus-within:border-fel-deep">
-            {sendError && <div className="px-2 pb-1 pt-0.5 font-mono text-xs text-blood">⚠ {sendError}</div>}
-            {files.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 px-1 pb-1.5 pt-1">
-                {files.map((f, i) => (
-                  <span key={i} className="flex items-center gap-1.5 rounded-md border border-iron-700 bg-iron-950 py-1 pl-1.5 pr-2 font-mono text-xs text-bone-dim">
-                    {previews[i] ? (
-                      <button type="button" title={t("session.compose.preview")} onClick={() => setPreview(previews[i])} className="block h-4 w-4 shrink-0 overflow-hidden rounded-sm">
-                        <img src={previews[i]!} alt="" className="h-full w-full object-cover" />
-                      </button>
-                    ) : (
-                      <svg className="shrink-0 text-bone-faint" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" />
-                        <path d="M14 2v6h6" />
-                      </svg>
-                    )}
-                    <span className="max-w-[130px] truncate" title={f.name}>{chipName(f)}</span>
-                    <button className="shrink-0 text-bone-faint transition-colors hover:text-blood" onClick={() => setFiles(files.filter((_, j) => j !== i))} disabled={sending}>
-                      ×
-                    </button>
-                  </span>
-                ))}
-              </div>
-            )}
-            {modelsSupported && catalog && catalog.providers.length > 0 && (
-              <div className="flex justify-end px-1 pb-1.5 pt-0.5">
-                <ModelSelect
-                  catalog={catalog}
-                  value={overrideModel}
-                  onChange={setOverrideModel}
-                  defaultLabel={(() => {
-                    const eff = sessionModel ?? catalog.defaultModel;
-                    return eff ? `${t("model.default")} · ${modelLabel(catalog, eff)}` : t("model.default");
-                  })()}
-                />
-              </div>
-            )}
-            <div className="flex items-end gap-1">
-              <input
-                ref={fileInputRef}
-                type="file"
-                multiple
-                hidden
-                onChange={(e) => {
-                  addFiles(Array.from(e.target.files ?? []));
-                  e.target.value = "";
-                }}
-              />
-              <button
-                type="button"
-                title={filesEnabled ? t("session.compose.attach") : t("session.compose.filesDisabled")}
-                disabled={sending}
-                onClick={() => {
-                  if (!filesEnabled) return setSendError(t("session.compose.filesDisabledHint"));
-                  setSendError(null);
-                  fileInputRef.current?.click();
-                }}
-                className="mb-0.5 flex-none rounded-lg p-2 text-bone-faint transition-colors hover:bg-iron-800 hover:text-fel-bright disabled:opacity-30"
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                  <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 1 1-2.83-2.83l8.49-8.48" />
-                </svg>
-              </button>
-              <textarea
-                ref={textareaRef}
-                className="max-h-48 min-h-[2.4rem] flex-1 resize-none bg-transparent px-1.5 py-2 font-mono text-sm leading-relaxed text-bone placeholder:text-bone-faint focus:outline-none"
-                rows={1}
-                value={input}
-                placeholder={t("session.compose.placeholder")}
-                disabled={sending}
-                onChange={(e) => {
-                  setInput(e.target.value);
-                  e.target.style.height = "auto";
-                  e.target.style.height = `${Math.min(e.target.scrollHeight, 192)}px`;
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    send();
-                  }
-                }}
-                onPaste={(e) => {
-                  const dt = e.clipboardData;
-                  const pasted: File[] = [];
-                  if (dt.files.length) pasted.push(...Array.from(dt.files));
-                  else for (const it of Array.from(dt.items)) if (it.kind === "file") { const f = it.getAsFile(); if (f) pasted.push(f); }
-                  if (!pasted.length) return; // plain text → paste normally
-                  e.preventDefault();
-                  // Screenshots arrive as generic "image.png" — give them unique names so multiple don't collide on upload.
-                  addFiles(pasted.map((f, i) => (f.name && f.name !== "image.png" ? f : new File([f], `pasted-${Date.now()}-${i}.${(f.type.split("/")[1] || "bin").replace("jpeg", "jpg")}`, { type: f.type }))));
-                }}
-              />
-              <button
-                type="button"
-                onClick={send}
-                disabled={sending || (!input.trim() && files.length === 0)}
-                title={t("session.compose.send")}
-                className="mb-0.5 flex-none rounded-lg bg-fel p-2 text-fel-ink transition-colors hover:bg-fel-bright disabled:bg-iron-800 disabled:text-bone-faint"
-              >
-                {sending ? (
-                  <span className="block h-[18px] w-[18px] animate-spin rounded-full border-2 border-current border-t-transparent" />
-                ) : (
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                    <path d="M12 19V5M5 12l7-7 7 7" />
-                  </svg>
-                )}
-              </button>
-            </div>
+        <div ref={setComposerNode} className="session-composer fixed bottom-0 left-0 right-0 z-40 bg-gradient-to-t from-void via-void to-transparent pt-6 md:left-[var(--peon-sidebar-width)]">
+          <div className="mx-auto max-w-[76rem] px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:px-6 sm:pb-[max(1rem,env(safe-area-inset-bottom))]">
+            <Composer
+              value={input}
+              onChange={setInput}
+              onSubmit={send}
+              placeholder={t("session.compose.placeholder")}
+              submitTitle={t("session.compose.send")}
+              disabled={sending}
+              autoFocus
+              files={files}
+              onFilesChange={setFiles}
+              onPreviewFile={setAttachmentPreview}
+              filesEnabled={filesEnabled}
+              error={sendError}
+              onErrorChange={setSendError}
+              rightExtra={
+                modelsSupported && catalog && catalog.providers.length > 0 ? (
+                  <>
+                    <ModelSelect
+                      key={`model:${sessionKey}`}
+                      provider={sessionProvider}
+                      value={overrideModel || sessionModel || ""}
+                      onChange={setOverrideModel}
+                      label={t("session.compose.model")}
+                      className="model-select-compact"
+                      defaultLabel={sessionModel ? modelLabel(catalog, sessionModel) ?? sessionModel : t("model.default")}
+                      defaultId={sessionModel ?? undefined}
+                      allowClear={!sessionModel}
+                    />
+                    <ReasoningEffortSelect
+                      key={`effort:${sessionKey}`}
+                      provider={sessionProvider}
+                      value={overrideReasoningEffort}
+                      onChange={setOverrideReasoningEffort}
+                      label={t("session.compose.reasoningEffort")}
+                      className="model-select-compact"
+                      defaultLabel={sessionReasoningEffort ? sessionProvider?.reasoningEfforts.find((effort) => effort.id === sessionReasoningEffort)?.label ?? sessionReasoningEffort : t("model.default")}
+                    />
+                  </>
+                ) : undefined
+              }
+            />
           </div>
-        </div>
         </div>,
         document.body,
       )}
-      {preview &&
+      {attachmentPreview &&
         createPortal(
-          <div className="fixed inset-0 z-50 grid cursor-zoom-out place-items-center bg-black/85 p-8" onClick={() => setPreview(null)}>
-            <img src={preview} alt="" className="max-h-[90vh] max-w-[90vw] rounded-lg" />
+          <div className="fixed inset-0 z-50 grid cursor-zoom-out place-items-center bg-black/85 p-8" onClick={() => setAttachmentPreview(null)}>
+            <img src={attachmentPreview} alt="" className="max-h-[90vh] max-w-[90vw] rounded-lg" />
           </div>,
           document.body,
         )}
+      {sentAttachmentPreview && <AttachmentPreview base={base} attachment={sentAttachmentPreview} onClose={() => setSentAttachmentPreview(null)} />}
+      {artifactPreview && (
+        <PreviewPanel
+          base={base}
+          sessionId={sid}
+          target={artifactPreview}
+          pinned={previewPinned}
+          onPinnedChange={setPreviewPinned}
+          onClose={() => {
+            setArtifactPreview(null);
+            setPreviewPinned(false);
+          }}
+          t={t}
+        />
+      )}
     </div>
   );
 }

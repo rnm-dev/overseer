@@ -10,7 +10,7 @@ import { GithubCallback } from "./pages/GithubCallback";
 import { Join } from "./pages/Join";
 import { PeonDetail } from "./pages/PeonDetail";
 import { PeonDashboard } from "./pages/peon/PeonDashboard";
-import { PeonSessions } from "./pages/peon/PeonSessions";
+import { PeonNewSession } from "./pages/peon/PeonNewSession";
 import { PeonSessionDetail } from "./pages/peon/PeonSessionDetail";
 import { PeonProjects } from "./pages/peon/PeonProjects";
 import { PeonProjectDetail } from "./pages/peon/PeonProjectDetail";
@@ -56,7 +56,7 @@ export function App() {
         <Route index element={<Dashboard />} />
         <Route path="peons/:peonId" element={<PeonDetail />}>
           <Route index element={<PeonDashboard />} />
-          <Route path="sessions" element={<PeonSessions />} />
+          <Route path="sessions/new" element={<PeonNewSession />} />
           <Route path="sessions/:sid" element={<PeonSessionDetail />} />
           <Route path="projects" element={<PeonProjects />} />
           <Route path="projects/:key" element={<PeonProjectDetail />} />

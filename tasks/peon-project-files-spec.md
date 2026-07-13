@@ -7,20 +7,20 @@ folders, and view files. The project's working directory (`GET /projects/:key` �
 existing `/files/*` API only serves that sandbox — so it can't read project files.
 This was on the "deliberately not exposed" list; we'd like it exposed now, read-only.
 
-(Note: `GET /agent/v1/projects/:key/files` currently returns `401 "not authenticated"`
+(Note: `GET /api/v1/projects/:key/files` currently returns `401 "not authenticated"`
 — looks like the dashboard has browse logic under a different auth realm. We want it
-on `/agent/v1` behind the standard `Bearer <overseerToken>` gate.)
+on `/api/v1` behind the standard `Bearer <overseerToken>` gate.)
 
 ## Request — mirror the existing `/files` contract, rooted at the project dir
 Reuse your `/files` implementation but sandbox to the project's `dir` instead of
 `fileTransferRoot`:
 
 ```
-GET /agent/v1/projects/:key/files/<path>?stat=1
+GET /api/v1/projects/:key/files/<path>?stat=1
     → directory listing (when <path> is a dir) or file metadata
       dir:  { path, entries: [ { name, type: "dir"|"file", size?, mtimeMs? } ] }
       file: { path, type: "file", size, mtimeMs, sha256? }
-GET /agent/v1/projects/:key/files/<path>
+GET /api/v1/projects/:key/files/<path>
     → file content download; Content-Type by extension; Range: supported (206)
 ```
 

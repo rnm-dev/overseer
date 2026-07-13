@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { api, ApiError, json } from "../../api";
 import { Badge, Button, Dialog, Input, Label } from "../../ui";
 import { useT } from "../../i18n";
+import { PathInput } from "./PathInput";
 
 // author: Viktor
 
@@ -126,10 +127,11 @@ export function NewProjectDialog({ base, onClose }: { base: string; onClose: () 
           </div>
           <div className="space-y-1.5">
             <Label>{t("newProject.dir")}</Label>
-            <Input
+            <PathInput
+              base={base}
               value={dir}
-              onChange={(e) => {
-                setDir(e.target.value);
+              onChange={(next) => {
+                setDir(next);
                 setDirTouched(true);
               }}
               placeholder="/home/peon/Projects/…"
@@ -191,7 +193,7 @@ export function NewProjectDialog({ base, onClose }: { base: string; onClose: () 
               {pickedKey && (
                 <div className="space-y-1.5">
                   <Label>{t("newProject.dir")}</Label>
-                  <Input value={dir} onChange={(e) => setDir(e.target.value)} />
+                  <PathInput base={base} value={dir} onChange={setDir} />
                 </div>
               )}
             </>

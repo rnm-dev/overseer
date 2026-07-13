@@ -8,8 +8,8 @@
 
 ## Why
 The overseer now has a session composer that can send follow-ups (`POST
-/agent/v1/sessions/:id/followup { prompt }`) and multi-upload files
-(`PUT /agent/v1/files/<path>`). But the two are decoupled: a message is **plain
+/api/v1/sessions/:id/followup { prompt }`) and multi-upload files
+(`PUT /api/v1/files/<path>`). But the two are decoupled: a message is **plain
 text only**, so there's no first-class way to attach a file to a message, and
 **images-for-vision are impossible** — the operator can only upload a file to the
 sandbox and mention its path in the prompt, hoping the agent Reads it.
@@ -21,8 +21,8 @@ accepted.
 
 ## Request
 Add an optional `attachments` array to the bodies of:
-- `POST /agent/v1/sessions` (create)
-- `POST /agent/v1/sessions/:id/followup` (continue)
+- `POST /api/v1/sessions` (create)
+- `POST /api/v1/sessions/:id/followup` (continue)
 
 ```jsonc
 {

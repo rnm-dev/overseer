@@ -1,10 +1,22 @@
-import { useRef, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ButtonHTMLAttributes, type ReactNode, type InputHTMLAttributes } from "react";
+import { createPortal } from "react-dom";
+import { Link } from "react-router-dom";
 import { LOCALES, useI18n } from "./i18n";
 
 // UI primitives — styling lives in index.css (.warplate, .btn-*, .field, .badge-*).
 // author: Viktor
 
 type Variant = "fel" | "iron" | "ghost";
+
+// Humanizes a slug-style key ("my-project_key" → "My Project Key") for display —
+// project keys are stored as identifiers but read better title-cased.
+export function titleize(s: string): string {
+  return s
+    .split(/[-_\s]+/)
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
 
 export function Button({
   variant = "fel",
@@ -23,12 +35,16 @@ export function Card({ children, className = "" }: { children: ReactNode; classN
   return <div className={`warplate ${className}`}>{children}</div>;
 }
 
-export function Dialog({ title, children, onClose }: { title: string; children: ReactNode; onClose: () => void }) {
+export function Dialog({ title, children, onClose, size = "md" }: { title: string; children: ReactNode; onClose: () => void; size?: "md" | "lg" }) {
   const { t } = useI18n();
   // Only dismiss when a press starts AND ends on the backdrop — so selecting text
   // inside and releasing outside (or vice-versa) never closes the modal.
   const downOnBackdrop = useRef(false);
-  return (
+  // Portaled to <body>: a page-level `.reveal` entrance animation leaves a
+  // non-"none" computed transform behind after it finishes (animation-fill-mode:
+  // both resolves to an identity matrix, not the literal keyword), which makes
+  // `fixed` descendants resolve against that ancestor instead of the viewport.
+  return createPortal(
     <div
       className="fixed inset-0 z-50 grid place-items-center p-4"
       style={{ background: "rgba(0,0,0,0.72)", backdropFilter: "blur(4px)" }}
@@ -38,7 +54,7 @@ export function Dialog({ title, children, onClose }: { title: string; children: 
         downOnBackdrop.current = false;
       }}
     >
-      <Card className="reveal w-full max-w-md p-6">
+      <Card className={`reveal w-full p-6 ${size === "lg" ? "max-w-2xl" : "max-w-md"}`}>
         <div className="mb-1 flex items-center justify-between">
           <h3 className="rune fel-glow text-sm">{title}</h3>
           <button className="btn-ghost text-lg leading-none text-bone-faint hover:text-blood" onClick={onClose} aria-label={t("a11y.close")}>
@@ -48,7 +64,8 @@ export function Dialog({ title, children, onClose }: { title: string; children: 
         <hr className="hairline mb-5" />
         {children}
       </Card>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -113,6 +130,129 @@ export function LocaleSwitcher({ className = "" }: { className?: string }) {
       ))}
     </div>
   );
+}
+
+// Full-width header for pages inside PeonDetail's right pane. Portaling keeps
+// fixed positioning independent of the page reveal transform; the measured
+// spacer preserves normal document flow when the header grows (menus aside,
+// inline forms and error messages can make it taller).
+export function FixedPaneHeader({ children }: { children: ReactNode }) {
+  const [node, setNode] = useState<HTMLDivElement | null>(null);
+  const [height, setHeight] = useState(49);
+
+  useEffect(() => {
+    if (!node) return;
+    const measure = () => setHeight(node.getBoundingClientRect().height);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [node]);
+
+  return (
+    <>
+      {createPortal(
+        <div ref={setNode} className="fixed-pane-header fixed left-0 right-0 top-12 z-20 border-b border-iron-800 bg-void md:left-[var(--peon-sidebar-width)] md:top-0">
+          {children}
+        </div>,
+        document.body,
+      )}
+      <div aria-hidden className="-mt-4 sm:-mt-7" style={{ height }} />
+    </>
+  );
+}
+
+// Slim page header shared by peon sub-pages: optional back link + h1 + inline
+// meta (key/scope/badges), and a kebab menu for actions — so a page never
+// grows a row of loose buttons. Sits flush under the peon nav tabs (the `-mt-4`
+// cancels PeonDetail's nav `mb-4`, so the nav's bottom border stays visible with
+// the header directly beneath it) and has symmetric top/bottom padding.
+export function PageHeader({
+  title,
+  backTo,
+  backLabel,
+  meta,
+  actions,
+  menu,
+  menuLabel,
+}: {
+  title: ReactNode;
+  backTo?: string;
+  backLabel?: string;
+  meta?: ReactNode;
+  actions?: ReactNode;
+  menu?: (close: () => void) => ReactNode;
+  menuLabel?: string;
+}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setMenuOpen(false);
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [menuOpen]);
+
+  return (
+    <FixedPaneHeader>
+    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-3 py-2.5 sm:px-6">
+      <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
+        {backTo && (
+          <Link to={backTo} relative="path" className="flex-none font-mono text-xs text-bone-dim hover:text-fel-bright">
+            {backLabel}
+          </Link>
+        )}
+        <h1 className="truncate font-display text-sm font-semibold text-bone">{title}</h1>
+        {meta}
+      </div>
+      {(actions || menu) && (
+        <div className="flex flex-none items-center gap-2">
+          {actions}
+          {menu && <div className="relative" ref={menuRef}>
+          <button
+            type="button"
+            title={menuLabel}
+            onClick={() => setMenuOpen((o) => !o)}
+            className="flex items-center rounded p-1 text-bone-dim transition-colors hover:bg-iron-800 hover:text-bone"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+              <circle cx="12" cy="5" r="1.75" />
+              <circle cx="12" cy="12" r="1.75" />
+              <circle cx="12" cy="19" r="1.75" />
+            </svg>
+          </button>
+          {menuOpen && (
+            <div className="absolute right-0 top-full z-30 mt-1 w-44 overflow-hidden rounded-lg border border-iron-800 bg-iron-950 py-1 shadow-lg">
+              {menu(() => setMenuOpen(false))}
+            </div>
+          )}
+          </div>}
+        </div>
+      )}
+    </div>
+    </FixedPaneHeader>
+  );
+}
+
+// Shared look for a row inside a PageHeader kebab menu — exported as a class
+// string (not just a <MenuItem> button) so a navigation entry can use it on a
+// <Link> too.
+export function menuItemClass(tone: "default" | "danger" = "default"): string {
+  return `block w-full px-3 py-1.5 text-left font-mono text-xs transition-colors disabled:opacity-40 ${
+    tone === "danger" ? "text-blood hover:bg-blood/10" : "text-bone-dim hover:bg-iron-900 hover:text-fel-bright"
+  }`;
+}
+
+export function MenuItem({ tone = "default", className = "", ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { tone?: "default" | "danger" }) {
+  return <button type="button" className={`${menuItemClass(tone)} ${className}`} {...props} />;
 }
 
 export function SectionHead({ title, right }: { title: string; right?: ReactNode }) {

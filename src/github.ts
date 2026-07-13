@@ -23,7 +23,7 @@ export class GithubAuthError extends Error {
   }
 }
 
-async function ghToken(code: string): Promise<string> {
+async function ghToken(code: string, redirectUri: string): Promise<string> {
   const res = await fetch("https://github.com/login/oauth/access_token", {
     method: "POST",
     headers: { accept: "application/json", "content-type": "application/json" },
@@ -31,7 +31,7 @@ async function ghToken(code: string): Promise<string> {
       client_id: config.githubClientId,
       client_secret: config.githubClientSecret,
       code,
-      redirect_uri: config.githubRedirectUri,
+      redirect_uri: redirectUri,
     }),
   });
   if (!res.ok) throw new GithubAuthError("EXCHANGE_FAILED", `github token endpoint returned ${res.status}`);
@@ -64,8 +64,8 @@ async function resolveEmail(user: { id: number; login: string; email: string | n
 }
 
 // Exchange an OAuth code for the signed-in GitHub identity.
-export async function exchangeCodeForProfile(code: string): Promise<GithubProfile> {
-  const accessToken = await ghToken(code);
+export async function exchangeCodeForProfile(code: string, redirectUri = config.githubRedirectUri): Promise<GithubProfile> {
+  const accessToken = await ghToken(code, redirectUri);
   const user = await ghGet<{ id: number; login: string; email: string | null; name: string | null; avatar_url: string | null }>("/user", accessToken);
   const email = await resolveEmail(user, accessToken);
   return {

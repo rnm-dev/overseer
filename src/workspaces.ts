@@ -96,9 +96,16 @@ export async function listMembers(workspaceId: string): Promise<MemberRecord[]> 
   return rows.map((r) => ({ userId: r.user_id, email: r.email, role: r.role, addedAt: r.added_at }));
 }
 
-export async function removeMember(workspaceId: string, userId: string): Promise<boolean> {
-  const { rowCount } = await query(`DELETE FROM workspace_members WHERE workspace_id = $1 AND user_id = $2`, [workspaceId, userId]);
-  return (rowCount ?? 0) > 0;
+export type RemoveMemberResult = "removed" | "not_found" | "owner";
+
+export async function removeMember(workspaceId: string, userId: string): Promise<RemoveMemberResult> {
+  const role = await membership(workspaceId, userId);
+  if (!role) return "not_found";
+  // Ownership needs an explicit transfer/demotion workflow. Member removal must
+  // never strand a workspace or let one owner silently remove another owner.
+  if (role === "owner") return "owner";
+  const { rowCount } = await query(`DELETE FROM workspace_members WHERE workspace_id = $1 AND user_id = $2 AND role = 'member'`, [workspaceId, userId]);
+  return (rowCount ?? 0) > 0 ? "removed" : "not_found";
 }
 
 // Every user gets a personal workspace on first sign-in so the app is never empty.

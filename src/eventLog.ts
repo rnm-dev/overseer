@@ -1,5 +1,6 @@
 import { EventEmitter } from "node:events";
 import { query } from "./db.js";
+import { enqueuePushForEvent } from "./push.js";
 
 // The append-only event log — the single choke point that both persists a
 // resumable, ordered stream (global `cursor`) and fans out live to connected WS
@@ -48,6 +49,7 @@ export async function appendEvent(e: AppendInput): Promise<LiveEvent> {
     createdAt,
   };
   bus.emit("event", event);
+  await enqueuePushForEvent(event);
   return event;
 }
 
@@ -68,11 +70,13 @@ export function broadcast(e: AppendInput): void {
 }
 
 // Replay for a reconnecting client: events in this workspace newer than `cursor`.
-export async function readEventsSince(workspaceId: string, cursor: number, limit = 1000): Promise<LiveEvent[]> {
+// `throughCursor` freezes a replay window so a busy workspace cannot keep extending
+// the query forever while the caller paginates toward a moving high-water mark.
+export async function readEventsSince(workspaceId: string, cursor: number, limit = 1000, throughCursor = Number.MAX_SAFE_INTEGER): Promise<LiveEvent[]> {
   const { rows } = await query<{ cursor: string; peon_id: string; session_id: string | null; kind: EventKind; payload: unknown; created_at: string }>(
     `SELECT cursor, peon_id, session_id, kind, payload, created_at
-       FROM events WHERE workspace_id = $1 AND cursor > $2 ORDER BY cursor ASC LIMIT $3`,
-    [workspaceId, cursor, limit],
+       FROM events WHERE workspace_id = $1 AND cursor > $2 AND cursor <= $3 ORDER BY cursor ASC LIMIT $4`,
+    [workspaceId, cursor, throughCursor, limit],
   );
   return rows.map((r) => ({
     cursor: Number(r.cursor),
@@ -86,9 +90,18 @@ export async function readEventsSince(workspaceId: string, cursor: number, limit
 }
 
 // The snapshot's cursor — a client that resumes from here misses nothing.
-export async function latestCursor(): Promise<number> {
-  const { rows } = await query<{ max: string | null }>(`SELECT MAX(cursor) AS max FROM events`);
+export async function latestCursor(workspaceId?: string): Promise<number> {
+  const { rows } = workspaceId
+    ? await query<{ max: string | null }>(`SELECT MAX(cursor) AS max FROM events WHERE workspace_id = $1`, [workspaceId])
+    : await query<{ max: string | null }>(`SELECT MAX(cursor) AS max FROM events`);
   return rows[0]?.max ? Number(rows[0].max) : 0;
+}
+
+// Global lower bound of the retained log. A resume cursor older than this may
+// have crossed the pruning horizon and needs a fresh materialized snapshot.
+export async function oldestCursor(): Promise<number> {
+  const { rows } = await query<{ min: string | null }>(`SELECT MIN(cursor) AS min FROM events`);
+  return rows[0]?.min ? Number(rows[0].min) : 0;
 }
 
 // Keep the log bounded — retain only the newest `cap` cursors globally. A client

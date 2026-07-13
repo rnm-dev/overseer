@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api, ApiError } from "../../api";
-import { Badge, Card, StatPlate } from "../../ui";
+import { Badge, Button, Card, StatPlate } from "../../ui";
 import { useT } from "../../i18n";
 import { usePeon } from "./context";
 
@@ -9,7 +9,7 @@ import { usePeon } from "./context";
 type Period = "day" | "yesterday" | "week" | "month";
 const PERIODS: Period[] = ["day", "yesterday", "week", "month"];
 
-// Peon /agent/v1/stats — flat SessionStats (peon sessions.ts). Every total is a
+// Peon /api/v1/stats — flat SessionStats (peon sessions.ts). Every total is a
 // top-level total* key; there is no `totals` wrapper. Rendered defensively so a
 // missing field degrades to "—" rather than crashing.
 interface Stats {
@@ -32,11 +32,83 @@ interface Stats {
 // Per-model usage rollup — attributed to the model actually used per turn, sorted
 // by cost server-side. Rendered defensively (any field may be absent).
 interface ByModel {
+  agent?: Provider;
   model?: string;
   sessionCount?: number;
   totalTokens?: number;
+  totalInputTokens?: number;
+  totalOutputTokens?: number;
+  totalCacheCreationTokens?: number;
+  totalCacheReadTokens?: number;
+  totalDurationMs?: number;
   totalCostUsd?: number;
 }
+
+type Provider = "claude-code" | "codex";
+type QuotaStatus = "ok" | "unavailable" | "error";
+
+interface ProviderQuota {
+  provider: Provider;
+  status: QuotaStatus;
+  source: "oauth" | "cli-rpc" | null;
+  updatedAt: number;
+  accountEmail?: string;
+  windows: Array<{
+    id: string;
+    label: string;
+    usedPercent: number;
+    resetsAt: number | null;
+    modelIds?: string[];
+  }>;
+  credits?: {
+    balance?: number;
+    used?: number;
+    limit?: number;
+    currency?: string;
+  };
+  error?: string;
+}
+
+interface QuotaState {
+  data: ProviderQuota | null;
+  loading: boolean;
+  error: string | null;
+}
+
+interface CapabilityItem {
+  id: string;
+  name: string;
+  enabled: boolean;
+  source?: string;
+  version?: string;
+  transport?: string;
+}
+
+interface ProviderCapabilities {
+  provider: Provider;
+  status: "ok" | "error";
+  updatedAt: number;
+  plugins: CapabilityItem[];
+  skills: CapabilityItem[];
+  mcps: CapabilityItem[];
+  error?: string;
+}
+
+interface CapabilitiesState {
+  data: ProviderCapabilities | null;
+  loading: boolean;
+  error: string | null;
+}
+
+const PROVIDERS: Provider[] = ["claude-code", "codex"];
+const EMPTY_QUOTA: Record<Provider, QuotaState> = {
+  "claude-code": { data: null, loading: false, error: null },
+  codex: { data: null, loading: false, error: null },
+};
+const EMPTY_CAPABILITIES: Record<Provider, CapabilitiesState> = {
+  "claude-code": { data: null, loading: false, error: null },
+  codex: { data: null, loading: false, error: null },
+};
 
 const compact = new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 });
 
@@ -54,6 +126,33 @@ function fmtDuration(ms?: number): string {
   if (h) return `${h}h ${m}m`;
   if (m) return `${m}m ${s % 60}s`;
   return `${s}s`;
+}
+
+function sum(models: ByModel[], field: keyof ByModel): number | undefined {
+  const values = models.map((model) => model[field]).filter((value): value is number => typeof value === "number");
+  return values.length ? values.reduce((total, value) => total + value, 0) : undefined;
+}
+
+function fmtReset(resetsAt: number | null, now: number): string {
+  if (resetsAt === null) return "—";
+  const remaining = Math.max(0, resetsAt - now);
+  if (remaining === 0) return "now";
+  const minutes = Math.ceil(remaining / 60_000);
+  const days = Math.floor(minutes / 1440);
+  const hours = Math.floor((minutes % 1440) / 60);
+  const mins = minutes % 60;
+  if (days) return `${days}d ${hours}h`;
+  if (hours) return `${hours}h ${mins}m`;
+  return `${mins}m`;
+}
+
+function fmtCredit(value: number, currency?: string): string {
+  if (!currency) return compact.format(value);
+  try {
+    return new Intl.NumberFormat(undefined, { style: "currency", currency }).format(value);
+  } catch {
+    return `${compact.format(value)} ${currency}`;
+  }
 }
 
 function outcomeTone(outcome: string): "green" | "red" | "amber" | "neutral" {
@@ -78,6 +177,62 @@ export function PeonStats() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [unsupported, setUnsupported] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [quotas, setQuotas] = useState<Record<Provider, QuotaState>>(EMPTY_QUOTA);
+  const [capabilities, setCapabilities] = useState<Record<Provider, CapabilitiesState>>(EMPTY_CAPABILITIES);
+  const [now, setNow] = useState(Date.now());
+
+  const loadQuota = useCallback(
+    (provider: Provider, refresh = false) => {
+      setQuotas((current) => ({
+        ...current,
+        [provider]: { ...current[provider], loading: true, error: null },
+      }));
+      api<ProviderQuota>(`${base}/quota/${provider}${refresh ? "?refresh=1" : ""}`)
+        .then((data) => {
+          setQuotas((current) => ({ ...current, [provider]: { data, loading: false, error: null } }));
+        })
+        .catch((err) => {
+          const message = err instanceof Error ? err.message : t("error.loadFailed");
+          setQuotas((current) => ({ ...current, [provider]: { ...current[provider], loading: false, error: message } }));
+        });
+    },
+    [base, t],
+  );
+
+  const loadCapabilities = useCallback(
+    (provider: Provider, refresh = false) => {
+      setCapabilities((current) => ({
+        ...current,
+        [provider]: { ...current[provider], loading: true, error: null },
+      }));
+      api<ProviderCapabilities>(`${base}/capabilities/${provider}${refresh ? "?refresh=1" : ""}`)
+        .then((data) => {
+          setCapabilities((current) => ({ ...current, [provider]: { data, loading: false, error: null } }));
+        })
+        .catch((err) => {
+          const message = err instanceof Error ? err.message : t("error.loadFailed");
+          setCapabilities((current) => ({
+            ...current,
+            [provider]: { ...current[provider], loading: false, error: message },
+          }));
+        });
+    },
+    [base, t],
+  );
+
+  useEffect(() => {
+    if (!peon.online) return;
+    // Deliberately launch both probes without awaiting either one.
+    for (const provider of PROVIDERS) {
+      loadQuota(provider);
+      loadCapabilities(provider);
+    }
+  }, [loadCapabilities, loadQuota, peon.online]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     if (!peon.online) return;
@@ -102,13 +257,13 @@ export function PeonStats() {
 
   const outcomes = stats?.outcomeCounts ? Object.entries(stats.outcomeCounts) : [];
   const missingUsage = stats?.sessionsMissingUsage ?? 0;
-  // Show the four token components (never their sum — totalTokens already folds in
-  // the cache tokens, so summing would double-count).
+  // Output tokens + cost are the headline (below); input/cache are cheap and
+  // cache_read dominates any raw total (it's context reread every turn, not new
+  // work) — never headline a summed total, it reads as wildly inflated.
   const breakdown: [string, number | undefined][] = [
     ["peon.stats.inputTokens", stats?.totalInputTokens],
-    ["peon.stats.outputTokens", stats?.totalOutputTokens],
-    ["peon.stats.cacheRead", stats?.totalCacheReadTokens],
     ["peon.stats.cacheWrite", stats?.totalCacheCreationTokens],
+    ["peon.stats.cacheRead", stats?.totalCacheReadTokens],
   ];
   const hasBreakdown = breakdown.some(([, n]) => typeof n === "number");
   const byModel = stats?.byModel ?? [];
@@ -130,15 +285,14 @@ export function PeonStats() {
       </div>
 
       {error && <p className="border-l-2 border-blood bg-blood/5 py-2 pl-3 font-mono text-sm text-blood">⚠ {error}</p>}
-      {!stats && !error ? (
-        <div className="forge-spin" />
-      ) : (
+      {!stats && !error && <div className="forge-spin" />}
+      {stats && (
         <>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <StatPlate value={fmtCount(stats?.sessionCount)} label={t("peon.stats.sessions")} />
-            <StatPlate value={fmtCount(stats?.totalTokens)} label={t("peon.stats.tokens")} tone="forge" />
-            <StatPlate value={fmtCost(stats?.totalCostUsd)} label={t("peon.stats.cost")} tone="bone" />
-            <StatPlate value={fmtDuration(stats?.totalDurationMs)} label={t("peon.stats.duration")} tone="bone" />
+            <StatPlate value={fmtCount(stats.sessionCount)} label={t("peon.stats.sessions")} />
+            <StatPlate value={fmtCount(stats.totalOutputTokens)} label={t("peon.stats.outputTokens")} tone="forge" />
+            <StatPlate value={fmtCost(stats.totalCostUsd)} label={t("peon.stats.cost")} tone="bone" />
+            <StatPlate value={fmtDuration(stats.totalDurationMs)} label={t("peon.stats.duration")} tone="bone" />
           </div>
 
           {missingUsage > 0 && <p className="font-mono text-xs text-bone-faint">{t("peon.stats.missingUsage", { n: missingUsage })}</p>}
@@ -152,43 +306,230 @@ export function PeonStats() {
               ))}
             </div>
           )}
-
-          {byModel.length > 0 && (
-            <Card className="px-5 py-4">
-              <div className="mb-3 font-display text-[0.6rem] uppercase tracking-[0.16em] text-bone-dim">{t("peon.stats.byModel")}</div>
-              <ul className="space-y-2.5">
-                {byModel.map((m, i) => (
-                  <li key={m.model ?? i} className="flex items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="truncate font-mono text-sm text-bone">{m.model ?? "—"}</div>
-                      <div className="font-mono text-xs text-bone-faint">
-                        {t("peon.stats.byModel.sessions", { n: m.sessionCount ?? 0 })} · {fmtCount(m.totalTokens)} {t("peon.stats.tokens").toLowerCase()}
-                      </div>
-                    </div>
-                    <span className="shrink-0 font-mono text-sm text-fel-bright">{fmtCost(m.totalCostUsd)}</span>
-                  </li>
-                ))}
-              </ul>
-            </Card>
-          )}
-
-          <Card className="px-5 py-4">
-            <div className="mb-3 font-display text-[0.6rem] uppercase tracking-[0.16em] text-bone-dim">{t("peon.stats.outcomes")}</div>
-            {outcomes.length === 0 ? (
-              <p className="font-mono text-sm text-bone-faint">{t("peon.stats.empty")}</p>
-            ) : (
-              <ul className="space-y-2">
-                {outcomes.map(([outcome, n]) => (
-                  <li key={outcome} className="flex items-center justify-between gap-3">
-                    <Badge tone={outcomeTone(outcome)}>{outcome.replace(/_/g, " ")}</Badge>
-                    <span className="font-mono text-sm text-bone">{fmtCount(n)}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Card>
         </>
       )}
+
+      <div className="grid gap-4 xl:grid-cols-2">
+        {PROVIDERS.map((provider) => (
+          <ProviderUsage
+            key={provider}
+            provider={provider}
+            quota={quotas[provider]}
+            capabilities={capabilities[provider]}
+            models={byModel.filter((model) => model.agent === provider)}
+            now={now}
+            onRefresh={() => {
+              loadQuota(provider, true);
+              loadCapabilities(provider, true);
+            }}
+          />
+        ))}
+      </div>
+
+      {stats && (
+        <Card className="px-5 py-4">
+          <div className="mb-3 font-display text-[0.6rem] uppercase tracking-[0.16em] text-bone-dim">{t("peon.stats.outcomes")}</div>
+          {outcomes.length === 0 ? (
+            <p className="font-mono text-sm text-bone-faint">{t("peon.stats.empty")}</p>
+          ) : (
+            <ul className="space-y-2">
+              {outcomes.map(([outcome, n]) => (
+                <li key={outcome} className="flex items-center justify-between gap-3">
+                  <Badge tone={outcomeTone(outcome)}>{outcome.replace(/_/g, " ")}</Badge>
+                  <span className="font-mono text-sm text-bone">{fmtCount(n)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+      )}
     </div>
+  );
+}
+
+function ProviderUsage({
+  provider,
+  quota,
+  capabilities,
+  models,
+  now,
+  onRefresh,
+}: {
+  provider: Provider;
+  quota: QuotaState;
+  capabilities: CapabilitiesState;
+  models: ByModel[];
+  now: number;
+  onRefresh: () => void;
+}) {
+  const t = useT();
+  const effectiveStatus: QuotaStatus = quota.error ? "error" : quota.data?.status ?? "unavailable";
+  const statusTone = effectiveStatus === "ok" ? "green" : effectiveStatus === "error" ? "red" : "neutral";
+  const statusLabel = quota.loading && !quota.data ? t("peon.quota.status.checking") : t(`peon.quota.status.${effectiveStatus}`);
+  const providerName = t(`peon.quota.provider.${provider}`);
+  const recordedTokens = sum(models, "totalTokens");
+  const recordedCost = sum(models, "totalCostUsd");
+  const recordedDuration = sum(models, "totalDurationMs");
+  const quotaError = quota.error ?? (quota.data?.status === "error" ? quota.data.error : null);
+  const credits = quota.data?.credits;
+  const refreshing = quota.loading || capabilities.loading;
+
+  return (
+    <Card className="flex min-h-80 flex-col px-5 py-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="font-display text-sm font-bold uppercase tracking-[0.12em] text-bone">{providerName}</h3>
+            <Badge tone={statusTone}>{statusLabel}</Badge>
+          </div>
+          {quota.data?.accountEmail && (
+            <p className="mt-1 font-mono text-xs text-bone-dim">{t("peon.quota.signedIn", { email: quota.data.accountEmail })}</p>
+          )}
+        </div>
+        <Button variant="ghost" size="sm" disabled={refreshing} onClick={onRefresh}>
+          {refreshing ? t("peon.quota.refreshing") : t("peon.quota.refresh")}
+        </Button>
+      </div>
+
+      {quotaError && <p className="mt-3 border-l-2 border-blood pl-3 font-mono text-xs text-blood">{quotaError}</p>}
+
+      <section className="mt-5">
+        <div className="mb-2 font-display text-[0.6rem] uppercase tracking-[0.16em] text-bone-dim">{t("peon.quota.recorded")}</div>
+        <div className="grid grid-cols-3 gap-2">
+          <StatPlate value={fmtCount(recordedTokens)} label={t("peon.quota.tokens")} tone="forge" />
+          <StatPlate value={fmtCost(recordedCost)} label={t("peon.stats.cost")} tone="bone" />
+          <StatPlate value={fmtDuration(recordedDuration)} label={t("peon.stats.duration")} tone="bone" />
+        </div>
+        {models.length === 0 ? (
+          <p className="mt-3 font-mono text-xs text-bone-faint">{t("peon.quota.noRecorded")}</p>
+        ) : (
+          <ul className="mt-3 space-y-2">
+            {models.map((model, index) => (
+              <li key={`${model.model ?? "unknown"}-${index}`} className="flex items-center justify-between gap-3 font-mono text-xs">
+                <span className="min-w-0 truncate text-bone">{model.model ?? "—"}</span>
+                <span className="shrink-0 text-bone-faint">
+                  {fmtCount(model.totalTokens)} · {fmtCost(model.totalCostUsd)} · {fmtDuration(model.totalDurationMs)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="mt-5">
+        <div className="mb-2 font-display text-[0.6rem] uppercase tracking-[0.16em] text-bone-dim">{t("peon.quota.accountLimits")}</div>
+        {quota.loading && !quota.data ? (
+          <div className="forge-spin" />
+        ) : (quota.data?.windows.length ?? 0) === 0 ? (
+          <p className="font-mono text-xs text-bone-faint">{t("peon.quota.noLimits")}</p>
+        ) : (
+          <ul className="space-y-3">
+            {quota.data?.windows.map((window) => {
+              const percent = Math.max(0, Math.min(100, window.usedPercent));
+              return (
+                <li key={window.id}>
+                  <div className="mb-1 flex items-center justify-between gap-3 font-mono text-xs">
+                    <span className="text-bone">
+                      {window.label}
+                      {window.modelIds?.length ? <span className="ml-1 text-bone-faint">· {window.modelIds.join(", ")}</span> : null}
+                    </span>
+                    <span className="shrink-0 text-bone-dim">{window.usedPercent.toFixed(0)}%</span>
+                  </div>
+                  <div className="h-2 overflow-hidden rounded-sm bg-iron-900">
+                    <div className="h-full bg-fel transition-[width]" style={{ width: `${percent}%` }} />
+                  </div>
+                  <div className="mt-1 font-mono text-[0.68rem] text-bone-faint">
+                    {t("peon.quota.resets", { countdown: fmtReset(window.resetsAt, now) })}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
+
+      {credits && Object.values(credits).some((value) => value !== undefined) && (
+        <section className="mt-5 border-t border-iron-800 pt-3 font-mono text-xs text-bone-dim">
+          <div className="mb-2 font-display text-[0.6rem] uppercase tracking-[0.16em] text-bone-dim">{t("peon.quota.credits")}</div>
+          <div className="flex flex-wrap gap-x-4 gap-y-1">
+            {typeof credits.balance === "number" && <span>{t("peon.quota.balance")}: {fmtCredit(credits.balance, credits.currency)}</span>}
+            {typeof credits.used === "number" && <span>{t("peon.quota.used")}: {fmtCredit(credits.used, credits.currency)}</span>}
+            {typeof credits.limit === "number" && <span>{t("peon.quota.limit")}: {fmtCredit(credits.limit, credits.currency)}</span>}
+          </div>
+        </section>
+      )}
+
+      <CapabilitiesInventory state={capabilities} />
+    </Card>
+  );
+}
+
+function CapabilitiesInventory({ state }: { state: CapabilitiesState }) {
+  const t = useT();
+  const inventory = state.data;
+  const groups: Array<{ key: "plugins" | "skills" | "mcps"; items: CapabilityItem[] }> = [
+    { key: "plugins", items: inventory?.plugins ?? [] },
+    { key: "skills", items: inventory?.skills ?? [] },
+    { key: "mcps", items: inventory?.mcps ?? [] },
+  ];
+  const hasItems = groups.some((group) => group.items.length > 0);
+  const inventoryError = state.error ?? inventory?.error ?? null;
+  const partial = Boolean(inventoryError && hasItems);
+
+  return (
+    <section className="mt-5 border-t border-iron-800 pt-4">
+      <div className="mb-2 font-display text-[0.6rem] uppercase tracking-[0.16em] text-bone-dim">
+        {t("peon.capabilities.inventory")}
+      </div>
+      {state.loading && !inventory ? (
+        <div className="forge-spin" />
+      ) : (
+        <>
+          {inventoryError && (
+            <p className={`mb-3 border-l-2 pl-3 font-mono text-xs ${partial ? "border-forge text-forge" : "border-blood text-blood"}`}>
+              {partial ? `${t("peon.capabilities.partial")}: ` : ""}{inventoryError}
+            </p>
+          )}
+          {groups.map((group) => (
+            <CapabilityGroup key={group.key} label={t(`peon.capabilities.${group.key}`)} items={group.items} />
+          ))}
+        </>
+      )}
+    </section>
+  );
+}
+
+function CapabilityGroup({ label, items }: { label: string; items: CapabilityItem[] }) {
+  const t = useT();
+  return (
+    <details className="border-t border-iron-800 first:border-t-0">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 py-3 font-display text-xs font-medium text-bone marker:hidden">
+        <span>{label}</span>
+        <span className="rounded-sm bg-iron-900 px-2 py-0.5 font-mono text-[0.68rem] text-bone-dim">{items.length}</span>
+      </summary>
+      {items.length === 0 ? (
+        <p className="pb-3 font-mono text-xs text-bone-faint">{t("peon.capabilities.empty")}</p>
+      ) : (
+        <ul className="divide-y divide-iron-800 pb-2">
+          {items.map((item) => (
+            <li key={item.id} className="py-2.5">
+              <div className="flex items-start justify-between gap-3">
+                <span className="min-w-0 break-words font-mono text-xs text-bone">{item.name}</span>
+                <Badge tone={item.enabled ? "green" : "neutral"}>
+                  {t(item.enabled ? "peon.capabilities.enabled" : "peon.capabilities.disabled")}
+                </Badge>
+              </div>
+              {(item.version || item.source || item.transport) && (
+                <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 font-mono text-[0.68rem] text-bone-faint">
+                  {item.version && <span>{t("peon.capabilities.version")}: {item.version}</span>}
+                  {item.source && <span>{t("peon.capabilities.source")}: {item.source}</span>}
+                  {item.transport && <span>{t("peon.capabilities.transport")}: {item.transport}</span>}
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </details>
   );
 }

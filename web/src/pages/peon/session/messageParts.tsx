@@ -1,0 +1,300 @@
+import { useState, type ReactNode } from "react";
+import { Dialog } from "../../../ui";
+import { Markdown } from "../../../components/RichText";
+import { orcishThinkingLabel, toolSummary, type Item, type MessageAttachment, type T } from "./parsing";
+
+// The transcript render atoms: one component per Item kind, plus the Markdown
+// renderer and the "agent is working" indicator. Pure presentation — all parsing
+// lives in ./parsing. author: Viktor
+
+function AttachmentPill({ attachment, onOpen }: { attachment: MessageAttachment; onOpen?: () => void }) {
+  const label = attachment.name || attachment.path?.split(/[\\/]/).pop() || "attachment";
+  const className = "flex min-w-0 items-center gap-1.5 rounded-md border border-fel/25 bg-iron-950/30 px-2 py-1 font-mono text-[0.7rem] text-bone-dim";
+  const contents = <>
+      <span className="shrink-0 text-fel-bright" aria-hidden>{attachment.type === "image" ? "▧" : "▤"}</span>
+      <span className="truncate">{label}</span>
+    </>;
+  return onOpen ? <button type="button" className={`${className} text-left transition-colors hover:border-fel/50 hover:text-bone`} title={attachment.path || label} onClick={onOpen}>{contents}</button>
+    : <div className={className} title={attachment.path || label}>{contents}</div>;
+}
+
+function LocalMessageTime({ createdAt }: { createdAt?: number }) {
+  if (!createdAt) return null;
+  const date = new Date(createdAt);
+  if (Number.isNaN(date.getTime())) return null;
+  const local = date.toLocaleString();
+  return <time dateTime={date.toISOString()} title={`${local} (${Intl.DateTimeFormat().resolvedOptions().timeZone})`}>{local}</time>;
+}
+
+export function UserBubble({ text, author, attachments, createdAt, onOpenAttachment }: { text: string; author?: string; attachments?: MessageAttachment[]; createdAt?: number; onOpenAttachment?: (attachment: MessageAttachment) => void }) {
+  const avatarLabel = author?.trim().charAt(0).toUpperCase() || "?";
+  return (
+    <div className="flex items-end justify-end gap-2">
+      <div className="max-w-[80%] whitespace-pre-wrap break-words rounded-xl rounded-br-sm border border-fel/25 bg-fel/[0.12] px-3 py-1.5 text-sm leading-normal text-bone">
+        {author && <div className="mb-1 truncate font-mono text-[0.68rem] leading-tight text-fel-bright" title={author}>{author}</div>}
+        {text && <div>{text}</div>}
+        {!!attachments?.length && (
+          <div className={text ? "mt-2 grid gap-1" : "grid gap-1"}>
+            {attachments.map((attachment, i) => <AttachmentPill key={`${attachment.path || attachment.name || "attachment"}-${i}`} attachment={attachment} onOpen={attachment.path ? () => onOpenAttachment?.(attachment) : undefined} />)}
+          </div>
+        )}
+        {createdAt && <div className="mt-1 text-right font-mono text-[0.65rem] leading-tight text-bone-faint"><LocalMessageTime createdAt={createdAt} /></div>}
+      </div>
+      <div className="grid size-7 shrink-0 place-items-center rounded-full border border-fel/35 bg-fel/15 font-display text-[0.68rem] font-semibold text-fel-bright" aria-label={author ? `Message from ${author}` : "Unknown message author"} title={author}>
+        {avatarLabel}
+      </div>
+    </div>
+  );
+}
+
+// Session-summary strip — sits right under the assistant's last message, so it
+// pulls up against the preceding item's bottom (negating the list's space-y gap)
+// instead of floating in its own row.
+function Notice({ tone, children }: { tone?: "neutral" | "error"; children: ReactNode }) {
+  return (
+    <div className={`-mt-2.5 flex justify-start font-mono text-[0.7rem] ${tone === "error" ? "text-blood" : "text-bone-faint"}`}>{children}</div>
+  );
+}
+
+// A tool call collapsed to a single clipped line — icon, name, clipped command —
+// with a Details button that opens the full command + output in a modal. Command
+// output is never shown inline; it's noise unless the operator asks for it.
+function ToolRow({ name, input, result, t }: { name?: string; input?: unknown; result?: { text: string; error?: boolean }; t: T }) {
+  const [open, setOpen] = useState(false);
+  const command = toolSummary(input, name);
+  const failed = !!result?.error;
+  return (
+    <div className="flex justify-start">
+      <div className={`flex min-w-0 max-w-[85%] items-center gap-1.5 py-0.5 font-mono text-xs ${failed ? "text-blood" : ""}`}>
+        <span className={`shrink-0 ${failed ? "text-blood" : "text-fel-bright"}`}>⚙ {name || t("session.chat.tool")}</span>
+        <span className="min-w-0 flex-1 truncate text-bone-faint">{command}</span>
+        <button onClick={() => setOpen(true)} className="shrink-0 font-mono text-[0.7rem] text-bone-faint underline decoration-dotted underline-offset-2 transition-colors hover:text-fel-bright">
+          {t("session.chat.details")}
+        </button>
+      </div>
+      {open && <ToolDetailsModal name={name} input={input} command={command} result={result} t={t} onClose={() => setOpen(false)} />}
+    </div>
+  );
+}
+
+type DiffLine = { kind: "context" | "remove" | "add"; text: string };
+
+function editDiff(input: unknown): DiffLine[] | null {
+  if (!input || typeof input !== "object") return null;
+  const value = input as Record<string, unknown>;
+
+  // Codex emits exact per-invocation unified diffs on each changed file.
+  if (Array.isArray(value.changes)) {
+    const lines: DiffLine[] = [];
+    for (const rawChange of value.changes) {
+      if (!rawChange || typeof rawChange !== "object") continue;
+      const change = rawChange as Record<string, unknown>;
+      const path = typeof change.path === "string" ? change.path : "changed file";
+      if (typeof change.diff === "string") {
+        for (const text of change.diff.split("\n")) {
+          const isHeader = text.startsWith("+++") || text.startsWith("---");
+          const kind: DiffLine["kind"] = !isHeader && text.startsWith("+") ? "add" : !isHeader && text.startsWith("-") ? "remove" : "context";
+          lines.push({ kind, text: kind === "context" ? text : text.slice(1) });
+        }
+      }
+      if (change.diffTruncated === true) {
+        const originalBytes = typeof change.diffOriginalBytes === "number" ? ` (${change.diffOriginalBytes.toLocaleString()} bytes originally)` : "";
+        lines.push({ kind: "context", text: `… diff truncated for ${path}${originalBytes}` });
+      }
+      if (typeof change.diffUnavailable === "string") {
+        lines.push({ kind: "context", text: `Diff unavailable for ${path}: ${change.diffUnavailable}` });
+      }
+    }
+    if (lines.length) return lines;
+  }
+
+  const { old_string: oldText, new_string: newText } = value;
+  if (typeof oldText !== "string" || typeof newText !== "string") return null;
+
+  const before = oldText.split("\n");
+  const after = newText.split("\n");
+  const lengths = Array.from({ length: before.length + 1 }, () => new Uint32Array(after.length + 1));
+  for (let i = before.length - 1; i >= 0; i--) {
+    for (let j = after.length - 1; j >= 0; j--) {
+      lengths[i]![j] = before[i] === after[j] ? lengths[i + 1]![j + 1]! + 1 : Math.max(lengths[i + 1]![j]!, lengths[i]![j + 1]!);
+    }
+  }
+
+  const lines: DiffLine[] = [];
+  let i = 0;
+  let j = 0;
+  while (i < before.length || j < after.length) {
+    if (i < before.length && j < after.length && before[i] === after[j]) {
+      lines.push({ kind: "context", text: before[i++]! });
+      j++;
+    } else if (j < after.length && (i === before.length || lengths[i]![j + 1]! >= lengths[i + 1]![j]!)) {
+      lines.push({ kind: "add", text: after[j++]! });
+    } else {
+      lines.push({ kind: "remove", text: before[i++]! });
+    }
+  }
+  return lines;
+}
+
+function ToolDetailsModal({ name, input, command, result, t, onClose }: { name?: string; input?: unknown; command: string; result?: { text: string; error?: boolean }; t: T; onClose: () => void }) {
+  const diff = name === "Edit" ? editDiff(input) : null;
+  const inputText = (() => {
+    if (name !== "Edit") return command;
+    if (input && typeof input === "object") {
+      const value = input as Record<string, unknown>;
+      const patch = value.patch ?? value.diff;
+      if (typeof patch === "string" && patch.trim()) return patch;
+      try { return JSON.stringify(input, null, 2); } catch { /* fall through */ }
+    }
+    return command;
+  })();
+  return (
+    <Dialog title={`⚙ ${name || t("session.chat.tool")}`} onClose={onClose} size="lg">
+      <div className="space-y-4">
+        {diff ? (
+          <div>
+            <div className="mb-1 font-display text-[0.62rem] font-semibold uppercase tracking-[0.18em] text-bone-dim">{t("session.chat.changes")}</div>
+            <div className="max-h-96 overflow-auto rounded bg-iron-900/70 py-2 font-mono text-xs" aria-label={t("session.chat.changes")}>
+              {diff.map((line, index) => (
+                <div
+                  key={index}
+                  className={`grid grid-cols-[1.5rem_1fr] px-2.5 ${line.kind === "add" ? "bg-fel/15 text-fel-bright" : line.kind === "remove" ? "bg-blood/15 text-blood" : "text-bone-dim"}`}
+                >
+                  <span className="select-none text-center opacity-70">{line.kind === "add" ? "+" : line.kind === "remove" ? "−" : " "}</span>
+                  <span className="whitespace-pre-wrap break-words">{line.text || " "}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div>
+          <div className="mb-1 font-display text-[0.62rem] font-semibold uppercase tracking-[0.18em] text-bone-dim">{t("session.chat.command")}</div>
+          <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded bg-iron-900/70 p-2.5 font-mono text-xs text-bone-dim">{inputText || "—"}</pre>
+          </div>
+        )}
+        <div>
+          <div className="mb-1 font-display text-[0.62rem] font-semibold uppercase tracking-[0.18em] text-bone-dim">{t("session.chat.output")}</div>
+          <pre className={`max-h-64 overflow-auto whitespace-pre-wrap break-words rounded bg-iron-900/70 p-2.5 font-mono text-xs ${result?.error ? "text-blood" : "text-bone-dim"}`}>
+            {result?.text?.trim() ? result.text : t("session.chat.noOutput")}
+          </pre>
+        </div>
+      </div>
+    </Dialog>
+  );
+}
+
+function ActionResult({ text, error, t }: { text: string; error?: boolean; t: T }) {
+  const [open, setOpen] = useState(false);
+  const long = text.length > 300;
+  const shown = open || !long ? text : text.slice(0, 300) + "…";
+  if (!text.trim()) return null;
+  return (
+    <div className="flex justify-start">
+      <div className={`max-w-[85%] border-l-2 pl-3 font-mono text-xs ${error ? "border-blood/60 text-blood" : "border-iron-700 text-bone-faint"}`}>
+        <pre className="whitespace-pre-wrap break-words">{shown}</pre>
+        {long && (
+          <button onClick={() => setOpen(!open)} className="mt-1 text-bone-dim transition-colors hover:text-fel-bright">
+            {open ? t("session.chat.less") : t("session.chat.more")}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Thinking({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="flex justify-start">
+      <div className="max-w-[85%] text-xs">
+        <button onClick={() => setOpen(!open)} className="font-mono text-bone-faint transition-colors hover:text-bone-dim">
+          ✦ {orcishThinkingLabel(`chat-thinking:${text}`)} {open ? "▾" : "▸"}
+        </button>
+        {open && <pre className="mt-1 whitespace-pre-wrap break-words border-l-2 border-iron-800 pl-3 italic text-bone-faint">{text}</pre>}
+      </div>
+    </div>
+  );
+}
+
+interface PreviewRequest {
+  path: string;
+  author?: string;
+  createdAt?: number;
+}
+
+export function ItemView({ item, t, onOpenPreview, onOpenAttachment }: { item: Item; t: T; onOpenPreview?: (preview: PreviewRequest) => void; onOpenAttachment?: (attachment: MessageAttachment) => void }) {
+  switch (item.kind) {
+    case "user":
+      return <UserBubble text={item.text} author={item.author} attachments={item.attachments} createdAt={item.createdAt} onOpenAttachment={onOpenAttachment} />;
+    case "text":
+      return (
+        <div className="text-sm leading-relaxed text-bone">
+          <Markdown source={item.text} onOpenFile={(path) => onOpenPreview?.({ path })} />
+          {item.createdAt && <div className="mt-1 font-mono text-[0.65rem] leading-tight text-bone-faint"><LocalMessageTime createdAt={item.createdAt} /></div>}
+        </div>
+      );
+    case "thinking":
+      return <Thinking text={item.text} />;
+    case "tool":
+      return <ToolRow name={item.name} input={item.input} result={item.result} t={t} />;
+    case "loose":
+      return <ActionResult text={item.text} t={t} />;
+    case "notice":
+      return <Notice tone={item.tone}>{item.text}</Notice>;
+    case "preview":
+      return (
+        <div className="flex justify-start">
+          <div className="flex min-w-0 max-w-[85%] items-center gap-2 rounded-md border border-fel-deep/50 bg-fel/[0.07] px-3 py-2">
+            <span aria-hidden className="text-fel-bright">▣</span>
+            <div className="min-w-0 flex-1">
+              <div className="truncate font-mono text-xs text-bone" title={item.path}>{item.path.split(/[\\/]/).pop() || item.path}</div>
+              <div className="font-mono text-[0.68rem] text-bone-faint">{item.author ? `${item.author} · ` : ""}{item.createdAt ? new Date(item.createdAt).toLocaleString() : ""}</div>
+            </div>
+            <button type="button" className="shrink-0 font-mono text-xs text-fel-bright underline decoration-dotted underline-offset-2 hover:text-bone" onClick={() => onOpenPreview?.(item)}>
+              {t("session.preview.open")}
+            </button>
+          </div>
+        </div>
+      );
+    case "raw":
+      return item.text ? <div className="whitespace-pre-wrap break-words font-mono text-xs text-bone-faint">{item.text}</div> : null;
+  }
+}
+
+export function Working({
+  label,
+  model,
+  onStop,
+  stopping,
+  stopLabel,
+  stoppingLabel,
+}: {
+  label: string;
+  model?: string | null;
+  onStop: () => void;
+  stopping: boolean;
+  stopLabel: string;
+  stoppingLabel: string;
+}) {
+  return (
+    <div className="reveal flex items-center justify-start gap-2 font-mono text-xs text-bone-faint">
+      <span className="thinking-dots" aria-hidden>
+        <span />
+        <span />
+        <span />
+      </span>
+      <span>{label}</span>
+      {model && <span className="text-bone-dim">· {model}</span>}
+      <button
+        type="button"
+        data-session-stop-control
+        className="flex items-center gap-1 text-ember transition-colors hover:text-blood disabled:opacity-40"
+        onClick={onStop}
+        disabled={stopping}
+      >
+        <span className="text-[0.6rem] leading-none" aria-hidden>■</span>
+        {stopping ? stoppingLabel : stopLabel}
+      </button>
+    </div>
+  );
+}

@@ -1,0 +1,289 @@
+import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { api, ApiError, json } from "../../api";
+import { useT } from "../../i18n";
+import { Button, Label } from "../../ui";
+import { usePeon } from "./context";
+import { Composer } from "./Composer";
+import { composerDraftKey, useComposerDraft } from "./drafts";
+import { AgentSelect, defaultModelId, defaultReasoningEffortId, ModelSelect, Picker, ReasoningEffortSelect, providerForAgent, providerForModel, useModels } from "./models";
+import { buildNewSessionRequest, setupSessionFromNavigationState, type SetupSessionNavigationState } from "./setupSessionCommand";
+import { PathInput } from "./PathInput";
+
+// author: Viktor
+
+interface Project {
+  key: string;
+  path?: string | null;
+  dir?: string | null;
+}
+
+// Default upload sandbox — auto-set on a peon that has file transfer off, so
+// attaching works without a manual Settings step. Uploads land under here.
+const DEFAULT_FILE_ROOT = "/tmp/peon-files";
+const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
+const isImage = (f: File) => IMAGE_TYPES.has(f.type);
+const supportsDesktopAutofocus = () =>
+  typeof window !== "undefined" &&
+  (typeof window.matchMedia === "function"
+    ? window.matchMedia("(hover: hover) and (pointer: fine)").matches
+    : window.innerWidth >= 768);
+
+export function PeonNewSession() {
+  const t = useT();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+  // Preselect this project when opening from within a session (see PeonDetail).
+  const preselectProject = searchParams.get("project");
+  const { peon, base, wsId } = usePeon();
+  const { catalog, supported: modelsSupported } = useModels(base);
+  const setupSession = setupSessionFromNavigationState(location.state);
+
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [projectKey, setProjectKey] = useState(setupSession?.projectKey ?? "");
+  const [dir, setDir] = useState(setupSession?.dir ?? "");
+  const [expectsOutcome] = useState<boolean | undefined>(setupSession?.expectsOutcome);
+  const [agent, setAgent] = useState(setupSession?.agent ?? "");
+  const [model, setModel] = useState(setupSession?.model ?? "");
+  const [reasoningEffort, setReasoningEffort] = useState(setupSession?.reasoningEffort ?? "");
+  // A setup command is transient form state. Editing or cancelling it must not
+  // replace the operator's unrelated, saved new-session draft.
+  const [input, setInput] = useComposerDraft(composerDraftKey(wsId, peon.peonId, null), setupSession?.prompt, !setupSession);
+  const [files, setFiles] = useState<File[]>([]);
+  const [filesEnabled, setFilesEnabled] = useState<boolean | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [preview, setPreview] = useState<string | null>(null);
+  const selectedProvider = providerForAgent(catalog, agent) ?? (!agent ? (providerForAgent(catalog, catalog?.defaultAgent) ?? providerForModel(catalog, catalog?.defaultModel)) : null);
+  const selectedProject = projects.find((project) => project.key === projectKey);
+  const selectedProjectRoot = selectedProject?.path ?? selectedProject?.dir ?? (projectKey ? setupSession?.dir : undefined);
+  const projectBrowseLocations = useMemo(
+    () => projects.flatMap((project) => {
+      const root = project.path ?? project.dir;
+      return root ? [{ root, base: `${base}/projects/${encodeURIComponent(project.key)}/files` }] : [];
+    }),
+    [base, projects],
+  );
+
+  // Preselect the peon's own default agent/model/effort (each provider marks
+  // its pick with `default: true` — the top-level defaultModel is often absent)
+  // instead of leaving the pickers blank until the operator touches them.
+  // defaultAgent (settings.defaultAgent) is the authoritative pick; older
+  // peons that omit it fall back to guessing from defaultModel/providers[0].
+  useEffect(() => {
+    if (!catalog || catalog.providers.length === 0) return;
+    const provider =
+      providerForAgent(catalog, setupSession?.agent) ??
+      providerForModel(catalog, setupSession?.model) ??
+      providerForAgent(catalog, catalog.defaultAgent) ??
+      providerForModel(catalog, catalog.defaultModel) ??
+      catalog.providers[0];
+    setAgent(setupSession?.agent || provider.agent);
+    setModel(setupSession?.model || defaultModelId(provider) || "");
+    setReasoningEffort(setupSession?.reasoningEffort || defaultReasoningEffortId(provider) || "");
+  }, [catalog]);
+
+  useEffect(() => {
+    let alive = true;
+    api<{ projects: Project[] }>(`${base}/projects`)
+      .then((r) => {
+        if (!alive) return;
+        const list = r.projects ?? [];
+        setProjects(list);
+        // Prefer the project passed from the current session, if it's still
+        // one the peon offers; otherwise fall back to the first.
+        const preselect = setupSession?.projectKey ?? (preselectProject && list.some((p) => p.key === preselectProject) ? preselectProject : list[0]?.key);
+        setProjectKey(preselect ?? "");
+        if (!setupSession) {
+          const project = list.find((p) => p.key === preselect);
+          setDir(project?.path ?? project?.dir ?? "");
+        }
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [base, preselectProject, setupSession?.projectKey]);
+
+  // Whether file transfer is enabled on the peon. If it's off, auto-enable a
+  // default /tmp sandbox so attaching just works (no manual Settings step).
+  useEffect(() => {
+    let alive = true;
+    api<{ filesEnabled?: boolean }>(`${base}/status`)
+      .then(async (s) => {
+        if (!alive) return;
+        if (s.filesEnabled) return setFilesEnabled(true);
+        try {
+          await api(`${base}/settings`, { method: "PATCH", body: JSON.stringify({ fileTransferRoot: DEFAULT_FILE_ROOT }) });
+          if (alive) setFilesEnabled(true);
+        } catch {
+          if (alive) setFilesEnabled(false);
+        }
+      })
+      .catch(() => alive && setFilesEnabled(false));
+    return () => {
+      alive = false;
+    };
+  }, [base]);
+
+  // Upload one file into a draft sandbox folder (a client-generated id — the
+  // session doesn't exist yet) so its path can ride along in the same request
+  // that starts the session, exactly like a followup's attachments[].
+  async function uploadFile(draftId: string, f: File): Promise<string> {
+    const safe = f.name.replace(/[^\w.\-]+/g, "_") || "file";
+    const buf = await f.arrayBuffer();
+    const digest = await crypto.subtle.digest("SHA-256", buf);
+    const hex = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+    const res = await api<{ path?: string }>(`${base}/files/uploads/${encodeURIComponent(draftId)}/${encodeURIComponent(safe)}`, {
+      method: "PUT",
+      body: buf,
+      headers: { "content-type": "application/octet-stream", "peon-content-sha256": hex },
+    });
+    return res.path || `uploads/${draftId}/${safe}`;
+  }
+
+  async function start() {
+    if ((!input.trim() && files.length === 0) || submitting) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const draftId = crypto.randomUUID();
+      const attachments: { type: "file" | "image"; path: string }[] = [];
+      for (const f of files) attachments.push({ type: isImage(f) ? "image" : "file", path: await uploadFile(draftId, f) });
+      const body = buildNewSessionRequest({ prompt: input, projectKey, dir, expectsOutcome, agent, model, reasoningEffort, attachments });
+      const res = await api<{ id?: string; session?: { id?: string } }>(`${base}/sessions`, {
+        ...json(body),
+        headers: { "Peon-Request-Id": draftId },
+      });
+      const id = res.id ?? res.session?.id;
+      if (id) {
+        setInput("");
+        navigate(`/peons/${peon.peonId}/sessions/${id}`);
+      }
+      else setSubmitting(false);
+    } catch (err) {
+      setError(err instanceof ApiError && err.code === "AGENT_UNAVAILABLE" ? t("newSession.agentUnavailable") : err instanceof ApiError ? err.message : t("error.generic"));
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div>
+      <div className="flex min-h-[65vh] flex-col items-center justify-start gap-4 px-0 py-4 sm:justify-center sm:px-6 sm:py-10">
+        <h2 className="rune fel-glow text-sm">{t("newSession.title")}</h2>
+
+        <div className="w-full max-w-[76rem]">
+          <Composer
+            value={input}
+            onChange={setInput}
+            onSubmit={start}
+            placeholder={t("newSession.promptPlaceholder")}
+            submitTitle={t("newSession.start")}
+            disabled={submitting}
+            autoFocus={supportsDesktopAutofocus()}
+            files={files}
+            onFilesChange={setFiles}
+            onPreviewFile={setPreview}
+            filesEnabled={filesEnabled}
+            error={error}
+            onErrorChange={setError}
+            rightExtra={
+              modelsSupported && catalog && catalog.providers.length > 0 ? (
+                <>
+                  <AgentSelect
+                    catalog={catalog}
+                    value={agent}
+                    onChange={(next) => {
+                      if (next === agent) return;
+                      setAgent(next);
+                      const provider = providerForAgent(catalog, next);
+                      setModel(defaultModelId(provider) ?? "");
+                      setReasoningEffort(defaultReasoningEffortId(provider) ?? "");
+                    }}
+                    label={t("newSession.agent")}
+                    className="model-select-compact"
+                  />
+                  <ModelSelect
+                    provider={selectedProvider}
+                    value={model}
+                    onChange={setModel}
+                    label={t("newSession.model")}
+                    className="model-select-compact"
+                    defaultId={defaultModelId(selectedProvider)}
+                    allowClear={false}
+                  />
+                  <ReasoningEffortSelect
+                    provider={selectedProvider}
+                    value={reasoningEffort}
+                    onChange={setReasoningEffort}
+                    label={t("newSession.reasoningEffort")}
+                    className="model-select-compact"
+                    defaultId={defaultReasoningEffortId(selectedProvider)}
+                    allowClear={false}
+                  />
+                </>
+              ) : undefined
+            }
+          />
+          {(projects.length > 0 || setupSession) && (
+            <div className="mt-3 grid gap-3 md:grid-cols-2">
+              <div className="space-y-1">
+                <Label>{t("newSession.project")}</Label>
+                <Picker
+                  options={(setupSession && !projects.some((p) => p.key === setupSession.projectKey) ? [{ key: setupSession.projectKey }, ...projects] : projects).map((p) => ({ id: p.key, label: p.key }))}
+                  value={projectKey}
+                  onChange={(next) => {
+                    setProjectKey(next);
+                    const project = projects.find((p) => p.key === next);
+                    if (project) setDir(project.path ?? project.dir ?? "");
+                  }}
+                  label={t("newSession.project")}
+                  inlineLabel={false}
+                  allowClear={false}
+                  className="field-picker w-full"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label>{t("newProject.dir")}</Label>
+                <PathInput
+                  base={base}
+                  value={dir}
+                  onChange={setDir}
+                  browseRoot={selectedProjectRoot || undefined}
+                  browseBase={projectKey ? `${base}/projects/${encodeURIComponent(projectKey)}/files` : undefined}
+                  browseLocations={projectBrowseLocations}
+                  className="h-10"
+                />
+              </div>
+            </div>
+          )}
+          {setupSession && (
+            <div className="mt-3 flex justify-end">
+              <Button
+                variant="iron"
+                onClick={() => {
+                  const returnTo = (location.state as SetupSessionNavigationState | null)?.returnTo;
+                  if (returnTo) navigate(returnTo);
+                  else navigate(-1);
+                }}
+                disabled={submitting}
+              >
+                {t("action.cancel")}
+              </Button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {preview &&
+        createPortal(
+          <div className="fixed inset-0 z-50 grid cursor-zoom-out place-items-center bg-black/85 p-8" onClick={() => setPreview(null)}>
+            <img src={preview} alt="" className="max-h-[90vh] max-w-[90vw] rounded-lg" />
+          </div>,
+          document.body,
+        )}
+    </div>
+  );
+}

@@ -20,6 +20,10 @@ import { appendEvent } from "./eventLog.js";
 // sessions.ts (SessionRecord) — unknown/missing fields degrade to null.
 interface PeonSession {
   id: string;
+  agent?: string | null;
+  backendSessionId?: string | null;
+  model?: string | null;
+  reasoningEffort?: string | null;
   status?: string | null;
   projectKey?: string | null;
   title?: string | null;
@@ -52,6 +56,14 @@ export interface SessionIndexRow {
 // re-pulls unchanged sessions doesn't emit a fresh event for each one — only real
 // changes hit the event log / live stream.
 const fingerprints = new Map<string, string>();
+let lastSyncedAt = 0;
+
+function nextSyncedAt(): number {
+  // Date.now() can repeat for several updates in one millisecond. A strict local
+  // order gives clients an unambiguous last-writer-wins version.
+  lastSyncedAt = Math.max(Date.now(), lastSyncedAt + 1);
+  return lastSyncedAt;
+}
 
 export async function upsertSession(workspaceId: string, peonId: string, s: PeonSession): Promise<void> {
   const row: SessionIndexRow = {
@@ -66,10 +78,10 @@ export async function upsertSession(workspaceId: string, peonId: string, s: Peon
     startedAt: s.startedAt ?? null,
     endedAt: s.endedAt ?? null,
     lastActivityAt: s.lastActivityAt ?? null,
-    syncedAt: Date.now(),
+    syncedAt: nextSyncedAt(),
     raw: s,
   };
-  await query(
+  const stored = await query<{ synced_at: number }>(
     `INSERT INTO sessions
        (peon_id, session_id, status, project_key, title, preview, author, outcome, started_at, ended_at, last_activity_at, raw, synced_at)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
@@ -77,7 +89,20 @@ export async function upsertSession(workspaceId: string, peonId: string, s: Peon
        status = EXCLUDED.status, project_key = EXCLUDED.project_key, title = EXCLUDED.title,
        preview = EXCLUDED.preview, author = EXCLUDED.author, outcome = EXCLUDED.outcome,
        started_at = EXCLUDED.started_at, ended_at = EXCLUDED.ended_at,
-       last_activity_at = EXCLUDED.last_activity_at, raw = EXCLUDED.raw, synced_at = EXCLUDED.synced_at`,
+       last_activity_at = EXCLUDED.last_activity_at, raw = EXCLUDED.raw, synced_at = EXCLUDED.synced_at
+     WHERE
+       -- Reconcile and pushed events can race. Refuse a demonstrably older Peon
+       -- snapshot so a late reconcile cannot roll a completed/live session back.
+       GREATEST(COALESCE(EXCLUDED.last_activity_at, 0), COALESCE(EXCLUDED.ended_at, 0), COALESCE(EXCLUDED.started_at, 0)) = 0
+       OR GREATEST(COALESCE(sessions.last_activity_at, 0), COALESCE(sessions.ended_at, 0), COALESCE(sessions.started_at, 0)) = 0
+       OR GREATEST(COALESCE(EXCLUDED.last_activity_at, 0), COALESCE(EXCLUDED.ended_at, 0), COALESCE(EXCLUDED.started_at, 0))
+          > GREATEST(COALESCE(sessions.last_activity_at, 0), COALESCE(sessions.ended_at, 0), COALESCE(sessions.started_at, 0))
+       OR (
+         GREATEST(COALESCE(EXCLUDED.last_activity_at, 0), COALESCE(EXCLUDED.ended_at, 0), COALESCE(EXCLUDED.started_at, 0))
+           = GREATEST(COALESCE(sessions.last_activity_at, 0), COALESCE(sessions.ended_at, 0), COALESCE(sessions.started_at, 0))
+         AND NOT (sessions.ended_at IS NOT NULL AND EXCLUDED.ended_at IS NULL)
+       )
+     RETURNING synced_at`,
     [
       peonId,
       row.sessionId,
@@ -94,12 +119,21 @@ export async function upsertSession(workspaceId: string, peonId: string, s: Peon
       row.syncedAt,
     ],
   );
+  // rowCount differs between PostgreSQL and pg-mem for a rejected conflict, but
+  // both expose the winning RETURNING version. Only broadcast our accepted row.
+  if (Number(stored.rows[0]?.synced_at) !== row.syncedAt) return;
 
   const key = `${peonId}:${row.sessionId}`;
   const fp = `${row.status}|${row.lastActivityAt}|${row.endedAt}|${row.title}|${row.preview}`;
   if (fingerprints.get(key) !== fp) {
+    // `raw` is the complete Peon session snapshot and can include a large
+    // transcript. The live event only needs the indexed summary; persisting the
+    // raw snapshot on every change multiplies megabytes across the event log.
+    const { raw: _raw, ...eventRow } = row;
+    await appendEvent({ workspaceId, peonId, sessionId: row.sessionId, kind: "session", payload: eventRow });
+    // Only suppress a future identical reconcile after the durable event exists.
+    // If append fails, leaving the old fingerprint makes the next pass retry.
     fingerprints.set(key, fp);
-    await appendEvent({ workspaceId, peonId, sessionId: row.sessionId, kind: "session", payload: row });
   }
 }
 

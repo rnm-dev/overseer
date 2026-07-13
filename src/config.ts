@@ -29,8 +29,16 @@ export interface Config {
   // Where GitHub sends the browser back — a client-side route in the SPA that then
   // posts the code to /api/auth/github. Must match the OAuth app's registered URL.
   githubRedirectUri: string;
+  githubNativeRedirectUri: string;
+  githubNativeCallbacks: string[];
   // How long an issued device token lives.
   deviceTokenTtlMs: number;
+
+  // Isolated HTML artifact previews are served from a sibling wildcard domain.
+  // Each iframe gets an opaque, short-lived subdomain token; no Peon connection
+  // details or credentials are encoded in the public URL.
+  previewDomain: string;
+  previewTokenTtlMs: number;
 }
 
 function num(name: string, fallback: number): number {
@@ -56,7 +64,12 @@ export const config: Config = {
   githubClientSecret: process.env.OVERSEER_GITHUB_CLIENT_SECRET ?? "",
   githubScope: process.env.OVERSEER_GITHUB_SCOPE ?? "read:user user:email",
   githubRedirectUri: process.env.OVERSEER_GITHUB_REDIRECT_URI ?? `${publicUrl}/auth/github/callback`,
+  githubNativeRedirectUri: process.env.OVERSEER_GITHUB_NATIVE_REDIRECT_URI ?? `${publicUrl}/api/auth/github/native/callback`,
+  githubNativeCallbacks: (process.env.OVERSEER_GITHUB_NATIVE_CALLBACKS ?? "overseer://oauth/github")
+    .split(",").map((value) => value.trim()).filter(Boolean),
   deviceTokenTtlMs: num("OVERSEER_DEVICE_TOKEN_TTL_MS", 90 * 24 * 60 * 60_000),
+  previewDomain: (process.env.OVERSEER_PREVIEW_DOMAIN ?? "preview.overseer.rnm.dev").toLowerCase().replace(/^\.+|\.+$/g, ""),
+  previewTokenTtlMs: num("OVERSEER_PREVIEW_TOKEN_TTL_MS", 10 * 60_000),
 };
 
 // Surfaced at startup so a deploy with no secrets set fails loud rather than

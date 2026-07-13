@@ -92,6 +92,8 @@ still appears in the registry; proxied calls to an unreachable peon return
 | `OVERSEER_API_KEY` | — | operator secret (empty ⇒ `/fleet` 503s) |
 | `DATABASE_URL` | — | Postgres connection string (required) |
 | `OVERSEER_RECONCILE_INTERVAL_MS` | `30000` | how often the session index re-pulls each peon |
+| `OVERSEER_PREVIEW_DOMAIN` | `preview.overseer.rnm.dev` | wildcard domain used for isolated HTML preview tokens |
+| `OVERSEER_PREVIEW_TOKEN_TTL_MS` | `600000` | HTML preview token lifetime (clamped to 30s–1h) |
 | `OVERSEER_OFFLINE_AFTER_MS` | `45000` | offline threshold |
 
 ## Not yet built

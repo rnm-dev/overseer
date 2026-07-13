@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../../api";
-import { Badge, Card } from "../../ui";
+import { Badge, Card, titleize } from "../../ui";
 import { useT } from "../../i18n";
 import { usePeon } from "./context";
 
@@ -88,10 +88,10 @@ export function PeonDashboard() {
 
       {/* Recent sessions */}
       <div>
-        <div className="mb-3 flex items-center justify-between">
+        <div className="mb-3 flex items-center justify-between gap-3">
           <h3 className="font-display text-[0.6rem] uppercase tracking-[0.16em] text-bone-dim">{t("peon.dash.recentSessions")}</h3>
-          <Link to="sessions" className="font-mono text-xs text-bone-dim transition-colors hover:text-fel-bright">
-            {t("peon.dash.viewAll")}
+          <Link to="sessions/new" className="btn btn-sm">
+            {t("newSession.new")}
           </Link>
         </div>
         <Card>
@@ -105,9 +105,13 @@ export function PeonDashboard() {
                 <li key={s.id}>
                   <Link to={`sessions/${s.id}`} className="flex items-start justify-between gap-3 px-5 py-4 transition-colors hover:bg-fel/[0.03]">
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1.5">
+                        {s.projectKey && (
+                          <span className="flex-none font-display text-sm font-medium text-forge" title={t("session.project")}>
+                            {titleize(s.projectKey)}
+                          </span>
+                        )}
                         <div className="truncate font-display text-sm font-medium text-bone">{s.title || s.prompt || t("session.untitled")}</div>
-                        {s.projectKey && <span className="flex-none rounded bg-iron-800 px-1.5 py-0.5 font-mono text-[0.7rem] text-bone-dim" title={t("session.project")}>{s.projectKey}</span>}
                       </div>
                       <div className="mt-0.5 truncate font-mono text-xs text-bone-faint">{s.lastMessagePreview || s.dir || "—"}</div>
                     </div>
@@ -139,15 +143,18 @@ export function PeonDashboard() {
           ) : (
             <ul className="divide-y divide-iron-800">
               {topProjects.map((p) => (
-                <li key={p.key} className="flex items-center justify-between gap-3 px-5 py-4">
-                  <div className="min-w-0">
-                    <div className="truncate font-display text-sm font-medium text-bone">{p.key}</div>
-                    {p.path && <div className="mt-0.5 truncate font-mono text-xs text-bone-faint">{p.path}</div>}
-                  </div>
-                  <div className="flex flex-none items-center gap-3 font-mono text-[0.7rem] text-bone-dim">
-                    {(p.activeCount ?? 0) > 0 && <span className="text-forge">{t("peon.projects.active", { n: p.activeCount ?? 0 })}</span>}
-                    <span>{t("peon.projects.sessions", { n: p.sessionCount ?? 0 })}</span>
-                  </div>
+                <li key={p.key}>
+                  <Link to={`projects/${encodeURIComponent(p.key)}`} className="flex items-center justify-between gap-3 px-5 py-4 transition-colors hover:bg-fel/[0.03]">
+                    <div className="min-w-0">
+                      <div className="truncate font-display text-sm font-medium text-bone">{p.key}</div>
+                      {p.path && <div className="mt-0.5 truncate font-mono text-xs text-bone-faint">{p.path}</div>}
+                    </div>
+                    <div className="flex flex-none items-center gap-3 font-mono text-[0.7rem] text-bone-dim">
+                      {(p.activeCount ?? 0) > 0 && <span className="text-forge">{t("peon.projects.active", { n: p.activeCount ?? 0 })}</span>}
+                      <span>{t("peon.projects.sessions", { n: p.sessionCount ?? 0 })}</span>
+                      <span className="text-fel-bright" aria-hidden>›</span>
+                    </div>
+                  </Link>
                 </li>
               ))}
             </ul>

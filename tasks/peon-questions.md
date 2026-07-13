@@ -1,6 +1,6 @@
 # Questions for the peon devs — Projects/Integrations wire shapes
 
-Building the overseer Projects tab against `/agent/v1`. The backend proxies are
+Building the overseer Projects tab against `/api/v1`. The backend proxies are
 wired; the UI needs authoritative response/request shapes (our vendored
 PROTOCOL.md predates these endpoints). Please confirm exact field names + types —
 casing bugs are what bite us. Grouped by endpoint.

@@ -59,6 +59,11 @@ export async function getUserByEmail(email: string): Promise<UserRecord | null> 
   return rows[0] ? rowToUser(rows[0]) : null;
 }
 
+export async function getUserById(id: string): Promise<UserRecord | null> {
+  const { rows } = await query<UserRow>(`SELECT ${USER_COLS} FROM users WHERE id = $1`, [id]);
+  return rows[0] ? rowToUser(rows[0]) : null;
+}
+
 export async function getUserByGithubId(githubId: string): Promise<UserRecord | null> {
   const { rows } = await query<UserRow>(`SELECT ${USER_COLS} FROM users WHERE github_id = $1`, [githubId]);
   return rows[0] ? rowToUser(rows[0]) : null;
@@ -192,10 +197,16 @@ export async function listDevices(userId: string): Promise<DeviceView[]> {
 // Scoped to the owning user so one device can only ever revoke its siblings — a lost
 // phone is revoked without touching anyone else's access.
 export async function revokeDevice(userId: string, deviceId: string): Promise<boolean> {
+  const now = Date.now();
   const { rowCount } = await query(`UPDATE devices SET revoked_at = $3 WHERE id = $1 AND user_id = $2 AND revoked_at IS NULL`, [
     deviceId,
     userId,
-    Date.now(),
+    now,
   ]);
+  if ((rowCount ?? 0) > 0) {
+    // A logged-out or remotely revoked phone must stop receiving private event
+    // content even if its OS token remains technically valid.
+    await query(`UPDATE push_subscriptions SET disabled_at=$3 WHERE device_id=$1 AND user_id=$2 AND disabled_at IS NULL`, [deviceId, userId, now]);
+  }
   return (rowCount ?? 0) > 0;
 }

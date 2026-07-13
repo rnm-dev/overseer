@@ -15,9 +15,24 @@ import { config } from "./config.js";
 pg.types.setTypeParser(20, (v) => (v === null ? null : Number(v)));
 
 let pool: pg.Pool | null = null;
+const observedPools = new WeakSet<pg.Pool>();
+
+function observePool(p: pg.Pool): pg.Pool {
+  if (observedPools.has(p)) return p;
+  observedPools.add(p);
+  // pg-pool emits `error` when an idle connection dies. Without a listener,
+  // EventEmitter treats that as an uncaught exception and takes down the whole
+  // API (and every WebSocket) for a routine database/network blip. The pool has
+  // already evicted the broken client at this point; logging is sufficient and
+  // the next query obtains a fresh connection.
+  p.on("error", (err) => {
+    console.error("overseer: idle postgres connection lost; pool will reconnect:", err.message);
+  });
+  return p;
+}
 
 export function setPool(p: pg.Pool): void {
-  pool = p;
+  pool = observePool(p);
 }
 
 function requirePool(): pg.Pool {
@@ -191,6 +206,79 @@ const MIGRATIONS: { id: string; statements: string[] }[] = [
     id: "004_peon_connection_pin",
     statements: [`ALTER TABLE peons ADD COLUMN IF NOT EXISTS connection_pinned BOOLEAN NOT NULL DEFAULT FALSE`],
   },
+  {
+    id: "005_native_oauth_and_followup_idempotency",
+    statements: [
+      `CREATE TABLE IF NOT EXISTS native_oauth_attempts (
+         state_hash    TEXT PRIMARY KEY,
+         callback_url TEXT NOT NULL,
+         created_at   BIGINT NOT NULL,
+         expires_at   BIGINT NOT NULL,
+         app_code_hash TEXT,
+         user_id      TEXT,
+         code_expires_at BIGINT,
+         completed_at BIGINT
+       )`,
+      `CREATE INDEX IF NOT EXISTS native_oauth_expiry_idx ON native_oauth_attempts (expires_at)`,
+      `CREATE TABLE IF NOT EXISTS followup_commands (
+         peon_id       TEXT NOT NULL,
+         session_id    TEXT NOT NULL,
+         command_id    TEXT NOT NULL,
+         payload_hash  TEXT NOT NULL,
+         owner_id      TEXT NOT NULL,
+         lease_expires_at BIGINT NOT NULL,
+         response_status INTEGER,
+         response_body JSONB,
+         created_at    BIGINT NOT NULL,
+         completed_at  BIGINT,
+         PRIMARY KEY (peon_id, session_id, command_id)
+       )`,
+    ],
+  },
+  {
+    // Native push registrations are separate from login devices: one login can
+    // have multiple app installations, and OS push tokens rotate independently.
+    // The outbox makes event -> notification delivery restart-safe.
+    id: "006_push_notifications",
+    statements: [
+      `CREATE TABLE IF NOT EXISTS push_subscriptions (
+         id          TEXT PRIMARY KEY,
+         user_id     TEXT NOT NULL,
+         device_id   TEXT NOT NULL,
+         provider    TEXT NOT NULL,
+         platform    TEXT NOT NULL,
+         token       TEXT NOT NULL,
+         app_id      TEXT,
+         created_at  BIGINT NOT NULL,
+         updated_at  BIGINT NOT NULL,
+         disabled_at BIGINT
+       )`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS push_subscriptions_provider_token_idx ON push_subscriptions (provider, token)`,
+      `CREATE INDEX IF NOT EXISTS push_subscriptions_user_idx ON push_subscriptions (user_id)`,
+      `CREATE TABLE IF NOT EXISTS push_preferences (
+         user_id       TEXT NOT NULL,
+         workspace_id  TEXT NOT NULL,
+         enabled       BOOLEAN NOT NULL DEFAULT TRUE,
+         session_events BOOLEAN NOT NULL DEFAULT TRUE,
+         peon_events   BOOLEAN NOT NULL DEFAULT TRUE,
+         updated_at    BIGINT NOT NULL,
+         PRIMARY KEY (user_id, workspace_id)
+       )`,
+      `CREATE TABLE IF NOT EXISTS push_outbox (
+         id              TEXT PRIMARY KEY,
+         event_cursor    BIGINT NOT NULL,
+         subscription_id TEXT NOT NULL,
+         payload         JSONB NOT NULL,
+         attempts        INTEGER NOT NULL DEFAULT 0,
+         available_at    BIGINT NOT NULL,
+         delivered_at    BIGINT,
+         last_error      TEXT,
+         created_at      BIGINT NOT NULL
+       )`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS push_outbox_event_subscription_idx ON push_outbox (event_cursor, subscription_id)`,
+      `CREATE INDEX IF NOT EXISTS push_outbox_pending_idx ON push_outbox (delivered_at, available_at)`,
+    ],
+  },
 ];
 
 export async function migrate(): Promise<void> {
@@ -206,10 +294,15 @@ export async function migrate(): Promise<void> {
 // Connect (unless a pool was injected for tests) and bring the schema up to date.
 export async function initDb(injected?: pg.Pool): Promise<void> {
   if (injected) {
-    pool = injected;
+    pool = observePool(injected);
   } else {
     if (!config.databaseUrl) throw new Error("DATABASE_URL is not set — the overseer needs Postgres to boot");
-    pool = new pg.Pool({ connectionString: config.databaseUrl });
+    pool = observePool(new pg.Pool({
+      connectionString: config.databaseUrl,
+      connectionTimeoutMillis: 10_000,
+      keepAlive: true,
+      keepAliveInitialDelayMillis: 10_000,
+    }));
   }
   await migrate();
 }

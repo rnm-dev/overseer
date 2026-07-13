@@ -1,0 +1,183 @@
+import type { ReactNode } from "react";
+import { useEffect, useMemo, useRef } from "react";
+import { useT } from "../../i18n";
+
+// author: Viktor
+// The prompt box shared by PeonNewSession (starting a session) and
+// PeonSessionDetail (following up on one). Textarea, attachments, and the
+// bottom toolbar row live here; callers own the actual submit + model/agent
+// pickers via leftExtra/rightExtra so this stays agnostic of what it starts.
+
+// Types the peon presents as visual content via the agent's Read tool → sent as
+// { type: "image" }. Everything else is a { type: "file" } the agent Reads as text.
+const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
+const MAX_FILE_BYTES = 25 * 1024 * 1024;
+const MAX_FILES = 10;
+const isImage = (f: File) => IMAGE_TYPES.has(f.type);
+// Friendly chip label — pasted screenshots have a machine name; show a short one.
+const chipName = (f: File) => (/^pasted-\d+/.test(f.name) ? "Pasted image" : f.name);
+
+export interface ComposerProps {
+  value: string;
+  onChange: (v: string) => void;
+  onSubmit: () => void;
+  placeholder: string;
+  submitTitle: string;
+  // True while the current prompt is in flight — disables inputs and spins the send button.
+  disabled: boolean;
+  autoFocus?: boolean;
+  files: File[];
+  onFilesChange: (files: File[]) => void;
+  onPreviewFile: (url: string) => void;
+  filesEnabled: boolean | null;
+  // Surfaced above the toolbar — shared by submit failures and attach validation,
+  // exactly like the single error/sendError state each caller already keeps.
+  error: string | null;
+  onErrorChange: (msg: string | null) => void;
+  leftExtra?: ReactNode;
+  rightExtra?: ReactNode;
+}
+
+export function Composer({
+  value,
+  onChange,
+  onSubmit,
+  placeholder,
+  submitTitle,
+  disabled,
+  autoFocus,
+  files,
+  onFilesChange,
+  onPreviewFile,
+  filesEnabled,
+  error,
+  onErrorChange,
+  leftExtra,
+  rightExtra,
+}: ComposerProps) {
+  const t = useT();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  // Object URLs for image thumbnails; revoked when the file set changes/unmounts.
+  const previews = useMemo(() => files.map((f) => (isImage(f) ? URL.createObjectURL(f) : null)), [files]);
+  useEffect(() => () => previews.forEach((u) => u && URL.revokeObjectURL(u)), [previews]);
+  // Textarea height is grown imperatively as the user types (below); when a
+  // caller clears `value` programmatically after submit, collapse it back.
+  useEffect(() => {
+    if (!value && textareaRef.current) textareaRef.current.style.height = "auto";
+  }, [value]);
+
+  function addFiles(picked: File[]) {
+    const ok = picked.filter((f) => f.size <= MAX_FILE_BYTES);
+    onFilesChange([...files, ...ok].slice(0, MAX_FILES));
+    onErrorChange(ok.length < picked.length ? t("session.compose.tooLarge") : files.length + ok.length > MAX_FILES ? t("session.compose.tooMany") : null);
+  }
+
+  return (
+    <div className="composer-shell rounded-xl border border-iron-700 bg-iron-900/95 px-2 py-1 shadow-[0_-6px_28px_-14px_rgba(0,0,0,0.8)] backdrop-blur transition-colors focus-within:border-fel-deep">
+      {error && <div className="px-2 pb-1 pt-0.5 font-mono text-xs text-blood">⚠ {error}</div>}
+      {files.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 px-1 pb-1.5 pt-1">
+          {files.map((f, i) => (
+            <span key={i} className="flex items-center gap-1.5 rounded-md border border-iron-700 bg-iron-950 py-1 pl-1.5 pr-2 font-mono text-xs text-bone-dim">
+              {previews[i] ? (
+                <button type="button" title={t("session.compose.preview")} onClick={() => onPreviewFile(previews[i]!)} className="block h-4 w-4 shrink-0 overflow-hidden rounded-sm">
+                  <img src={previews[i]!} alt="" className="h-full w-full object-cover" />
+                </button>
+              ) : (
+                <svg className="shrink-0 text-bone-faint" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" />
+                  <path d="M14 2v6h6" />
+                </svg>
+              )}
+              <span className="max-w-[130px] truncate" title={f.name}>{chipName(f)}</span>
+              <button className="shrink-0 text-bone-faint transition-colors hover:text-blood" onClick={() => onFilesChange(files.filter((_, j) => j !== i))} disabled={disabled}>
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        hidden
+        onChange={(e) => {
+          addFiles(Array.from(e.target.files ?? []));
+          e.target.value = "";
+        }}
+      />
+      <textarea
+        ref={textareaRef}
+        className="composer-input max-h-40 min-h-[2.25rem] w-full resize-none bg-transparent px-1.5 py-1.5 font-mono text-sm leading-normal text-bone placeholder:text-bone-faint focus:outline-none"
+        rows={1}
+        autoFocus={autoFocus}
+        value={value}
+        placeholder={placeholder}
+        disabled={disabled}
+        onChange={(e) => {
+          onChange(e.target.value);
+          e.target.style.height = "auto";
+          e.target.style.height = `${Math.min(e.target.scrollHeight, 160)}px`;
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            onSubmit();
+          }
+        }}
+        onPaste={(e) => {
+          const dt = e.clipboardData;
+          const pasted: File[] = [];
+          if (dt.files.length) pasted.push(...Array.from(dt.files));
+          else for (const it of Array.from(dt.items)) if (it.kind === "file") { const f = it.getAsFile(); if (f) pasted.push(f); }
+          if (!pasted.length) return; // plain text → paste normally
+          e.preventDefault();
+          // Screenshots arrive as generic "image.png" — give them unique names so multiple don't collide on upload.
+          addFiles(pasted.map((f, i) => (f.name && f.name !== "image.png" ? f : new File([f], `pasted-${Date.now()}-${i}.${(f.type.split("/")[1] || "bin").replace("jpeg", "jpg")}`, { type: f.type }))));
+        }}
+      />
+      <div className="composer-toolbar flex flex-wrap items-center justify-between gap-1.5 px-1 pb-1 pt-1.5">
+        <div className="composer-toolbar-left flex min-w-0 flex-wrap items-center gap-1.5">
+          <button
+            type="button"
+            title={filesEnabled ? t("session.compose.attach") : t("session.compose.filesDisabled")}
+            disabled={disabled}
+            onClick={() => {
+              if (!filesEnabled) return onErrorChange(t("session.compose.filesDisabledHint"));
+              onErrorChange(null);
+              fileInputRef.current?.click();
+            }}
+            className="flex h-8 w-8 flex-none items-center justify-center rounded-md text-bone-faint transition-colors hover:bg-iron-800 hover:text-fel-bright disabled:opacity-30"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M5 12h14" />
+              <path d="M12 5v14" />
+            </svg>
+          </button>
+          {leftExtra}
+        </div>
+        <div className="composer-toolbar-right flex min-w-0 flex-wrap items-center justify-end gap-1.5">
+          {rightExtra}
+          <button
+            type="button"
+            onClick={onSubmit}
+            disabled={disabled || (!value.trim() && files.length === 0)}
+            title={submitTitle}
+            className="flex h-8 w-8 flex-none items-center justify-center rounded-full bg-fel text-fel-ink transition-colors hover:bg-fel-bright disabled:bg-iron-800 disabled:text-bone-faint"
+          >
+            {disabled ? (
+              <span className="block h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+            ) : (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M9 10 4 15l5 5" />
+                <path d="M20 4v7a4 4 0 0 1-4 4H4" />
+              </svg>
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

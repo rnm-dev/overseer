@@ -18,7 +18,7 @@
 
 ---
 
-# Wire up new peon /agent/v1 endpoints (handoff 2026-07-08)
+# Wire up new peon /api/v1 endpoints (handoff 2026-07-08)
 
 Peon added: GET /stats, PATCH /sessions/:id (rename), GET/PATCH safe settings,
 GET /projects, and agentAuth in /status. Overseer must proxy + surface them.

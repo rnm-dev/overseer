@@ -1,4 +1,4 @@
-# Overseer ↔ Peon protocol (`/agent/v1`)
+# Overseer ↔ Peon protocol (`/api/v1`)
 
 > **Vendored snapshot.** The canonical copy lives in the peon repo
 > (`peon/PROTOCOL.md`); paths like `src/daemon/*` below refer to that repo. The
@@ -9,7 +9,7 @@
 The machine-facing API an **overseer** (fleet control plane) uses to drive many
 peons. It is separate from the human `/api/*` dashboard surface: its own auth,
 its own version handle, none of the human presence bookkeeping. Implemented in
-`src/daemon/agentApi.ts` (peon repo), mounted at `/agent/v1` ahead of the human cookie
+`src/daemon/agentApi.ts` (peon repo), mounted at `/api/v1` ahead of the human cookie
 auth-gate in `controlServer.ts`.
 
 ## Topology
@@ -22,7 +22,7 @@ auth-gate in `controlServer.ts`.
   response, the peon is a passive server. The one exception is discovery: the
   peon *announces itself* outbound (see "North-bound" below), so a NAT'd box with
   no inbound reachability is still discoverable.
-- **Addressing:** `http://<peon>.<tailnet>.ts.net:4570/agent/v1/...`
+- **Addressing:** `http://<peon>.<tailnet>.ts.net:4570/api/v1/...`
 
 ## Envelope
 
@@ -47,36 +47,59 @@ Errors are always `{ "error": "<human message>", "code": "<STABLE_CODE>" }` —
 ### Control / sessions (reuses the same stores as `/api/*`)
 
 ```
-GET  /agent/v1/status                     identity + live load (activeSessionCount, paused, …)
-GET  /agent/v1/sessions                   list all sessions
-GET  /agent/v1/sessions/:id               one session
-GET  /agent/v1/sessions/:id/transcript    full event transcript
-POST /agent/v1/sessions                   start; body { prompt, dir?, projectKey?, permissionMode? }
-POST /agent/v1/sessions/:id/followup      continue; body { prompt, permissionMode? }
-POST /agent/v1/sessions/:id/cancel        cancel the active run
-POST /agent/v1/control/pause | /resume    toggle settings.paused
-GET  /agent/v1/sessions/:id/stream        SSE tail (events: `event`, `change`)
-GET  /agent/v1/projects                   list projects            ⚠ PEON-SIDE TODO
-GET  /agent/v1/settings                   read the safe settings   ⚠ PEON-SIDE TODO
-PATCH /agent/v1/settings                  update settings (partial) ⚠ PEON-SIDE TODO
+GET  /api/v1/status                     identity + live load and update availability
+GET  /api/v1/models                     provider model + reasoning-effort capabilities
+GET  /api/v1/sessions                   list all sessions
+GET  /api/v1/sessions/:id               one session
+GET  /api/v1/sessions/:id/transcript    full event transcript
+POST /api/v1/sessions                   start; body { prompt, dir?, projectKey?, permissionMode?, agent?, model?, reasoningEffort? }
+POST /api/v1/sessions/:id/followup      continue; body { prompt, permissionMode?, model?, reasoningEffort? }
+POST /api/v1/sessions/:id/cancel        cancel the active run
+POST /api/v1/control/pause | /resume    toggle settings.paused
+POST /api/v1/control/update             install the available update
+GET  /api/v1/sessions/:id/stream        SSE tail (events: `event`, `change`)
+GET  /api/v1/sessions/:id/file          preview text/metadata; query `path`
+GET  /api/v1/sessions/:id/file/raw      raw preview bytes; query `path`
+GET  /api/v1/sessions/:id/file/stream   preview file-change SSE; query `path`
+POST /api/v1/sessions/:id/preview       persist+broadcast preview; body { path }
+GET  /api/v1/projects                   list projects            ⚠ PEON-SIDE TODO
+GET  /api/v1/settings                   read the safe settings   ⚠ PEON-SIDE TODO
+PATCH /api/v1/settings                  update settings (partial) ⚠ PEON-SIDE TODO
 ```
+
+`GET /api/v1/status` includes the update check state:
+
+```json
+{
+  "updateAvailable": true,
+  "updateLocalSha": "0123456789abcdef",
+  "updateRemoteSha": "fedcba9876543210",
+  "updateCheckedAt": 1783843200000,
+  "updateCheckError": null
+}
+```
+
+The SHA and check timestamp fields may be null before the first completed check.
+`updateCheckError` is null after a successful check and otherwise contains the
+latest check failure. Overseer uses `updateAvailable` to offer the update action,
+which calls `POST /api/v1/control/update`.
 
 ### Projects & settings on the agent surface — PEON-SIDE CHANGES NEEDED
 
 > **Status:** the overseer proxies these (peon-detail page, `server.ts` `wp` block);
 > **not yet implemented on the peon.** Until they land the overseer returns the
 > peon's `404` and the UI shows a "not supported yet" notice. Auth = the existing
-> `overseerToken` bearer, same gate as the rest of `/agent/v1`.
+> `overseerToken` bearer, same gate as the rest of `/api/v1`.
 
 ```
-GET  /agent/v1/projects
+GET  /api/v1/projects
   → 200 { projects: [ { key, path, sessionCount, activeCount, lastActivityMs } ] }
      (peon already tracks projectKey per session + a project store — aggregate that)
 
-GET  /agent/v1/settings
+GET  /api/v1/settings
   → 200 { name, paused, fileTransferRoot, heartbeatIntervalMs }   // safe subset only
 
-PATCH /agent/v1/settings   { name?, fileTransferRoot?, heartbeatIntervalMs? }
+PATCH /api/v1/settings   { name?, fileTransferRoot?, heartbeatIntervalMs? }
   → 200 { ...updated subset }
      - partial body; persist atomically (reuse the local `PATCH /api/settings` logic)
      - never expose/accept `overseerToken` here
@@ -110,15 +133,42 @@ an operator sets one. Every path is resolved against the root and rejected if it
 escapes (`400 PATH_ESCAPE`). Content-addressed by sha256 from day one.
 
 ```
-PUT /agent/v1/files/<path>          upload; raw body streamed to disk
+PUT /api/v1/files/<path>          upload; raw body streamed to disk
     Peon-Content-Sha256: <hex>      optional; mismatch ⇒ 409 CHECKSUM_MISMATCH, nothing committed
     → 201 { path, size, sha256 }    atomic rename into place on success
-GET /agent/v1/files/<path>          download; supports Range: (206 + Content-Range)
-GET /agent/v1/files/<path>?stat=1   metadata { size, mtimeMs, sha256 } or a directory listing
+GET /api/v1/files/<path>          download; supports Range: (206 + Content-Range)
+GET /api/v1/files/<path>?stat=1   metadata { size, mtimeMs, sha256 } or a directory listing
 ```
 
 The sha256 header + Range support are what make a future **resumable / chunked**
 upload a pure extension rather than a protocol break.
+
+### Session artifact previews
+
+A preview is a transcript event, not an assistant-message convention:
+
+```json
+{ "type": "preview", "path": "/absolute/path/to/artifact.pdf", "author": "alice", "createdAt": 1783673383396 }
+```
+
+`POST /sessions/:id/preview` resolves an absolute or session-relative `path`,
+persists that event, and broadcasts it on the session stream. `Peon-Actor`
+supplies its `author`. `GET /sessions/:id/file` returns
+`{ path, size, mtimeMs, binary, truncated, content }`; text content is capped at
+2 MiB and binary content is null. Use `/file/raw` for images, PDFs, unsupported
+binaries, and downloads. An open preview watches `/file/stream`; `changed`
+causes a `/file` refetch and `failed` carries `{ "error": "..." }`.
+
+The transfer API above remains the upload/download transport. Uploading does
+not emit a preview; callers explicitly POST `/sessions/:id/preview` once the
+artifact is ready.
+
+Overseer consumes only these normalized `preview` events; it does not infer
+artifacts from assistant messages or textual directives. For an `.html` event,
+Overseer mints a short-lived opaque grant and serves the HTML plus all paths
+beneath its parent directory from `<token>.preview.overseer.rnm.dev`. Peon
+addresses and credentials remain server-side. Non-HTML artifacts continue to
+use the authenticated `/file` and `/file/raw` operator proxy.
 
 ## North-bound (peon → overseer): discovery
 
@@ -127,9 +177,9 @@ Implemented in `src/daemon/peonRegistrar.ts`. When `settings.overseerUrl` and
 (auth: the same shared `overseerToken` as its own bearer — symmetric secret):
 
 ```
-POST {overseerUrl}/agent/v1/peons/register
+POST {overseerUrl}/api/v1/peons/register
   { peonId, name, hostname, controlPort, protocol, capabilities, activeSessions, paused, uptimeSec }
-POST {overseerUrl}/agent/v1/peons/:peonId/heartbeat   (every heartbeatIntervalMs)
+POST {overseerUrl}/api/v1/peons/:peonId/heartbeat   (every heartbeatIntervalMs)
   { activeSessions, paused, uptimeSec }
 ```
 
@@ -151,7 +201,7 @@ session index stays live without polling, the peon streams every session-summary
 change (the same `SessionRecord` the south-bound `/sessions` returns):
 
 ```
-POST {overseerUrl}/agent/v1/peons/:peonId/events
+POST {overseerUrl}/api/v1/peons/:peonId/events
   { peonId, epoch, events: [ { seq, session: <SessionRecord> }, ... ] }
 ```
 
@@ -193,14 +243,14 @@ workspace-scoped token** and the peon presents that as its `overseerToken`. From
 the peon's side the register/heartbeat/events envelope is unchanged — it still
 sends `Authorization: Bearer <overseerToken>`. Two additions:
 
-### 1. `POST /agent/v1/enroll` (new endpoint)
+### 1. `POST /api/v1/enroll` (new endpoint)
 
 Lets the overseer point a peon at itself over the tailnet without an operator
 touching the box. Auth: the peon's **current** `overseerToken` (the bootstrap
 secret the agent surface is already gated on).
 
 ```
-POST /agent/v1/enroll
+POST /api/v1/enroll
   Authorization: Bearer <current overseerToken>
   { "overseerUrl": "http://overseer.ts.net:5000", "overseerToken": "pn_…" }
   → 200 { "ok": true, "peonId": "<this peon's stable id>" }

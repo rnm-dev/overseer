@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, ApiError } from "../../api";
-import { Button, Card } from "../../ui";
+import { Card, MenuItem, PageHeader } from "../../ui";
 import { useT } from "../../i18n";
 import { usePeon } from "./context";
 import { NewProjectDialog } from "./NewProjectDialog";
@@ -46,11 +46,20 @@ export function PeonProjects() {
 
   return (
     <div className="space-y-3">
-      <div className="flex justify-end">
-        <Button size="sm" onClick={() => setShowNew(true)}>
-          {t("newProject.new")}
-        </Button>
-      </div>
+      <PageHeader
+        title={t("peon.tab.projects")}
+        menuLabel={t("session.menu")}
+        menu={(close) => (
+          <MenuItem
+            onClick={() => {
+              close();
+              setShowNew(true);
+            }}
+          >
+            {t("newProject.new")}
+          </MenuItem>
+        )}
+      />
       <Card>
       {projects.length === 0 ? (
         <p className="p-8 text-center font-mono text-sm text-bone-faint">{t("peon.projects.empty")}</p>
@@ -66,6 +75,7 @@ export function PeonProjects() {
                 <div className="flex flex-none items-center gap-3 font-mono text-[0.7rem] text-bone-dim">
                   {(p.activeCount ?? 0) > 0 && <span className="text-forge">{t("peon.projects.active", { n: p.activeCount ?? 0 })}</span>}
                   <span>{t("peon.projects.sessions", { n: p.sessionCount ?? 0 })}</span>
+                  <span className="text-fel-bright" aria-hidden>›</span>
                 </div>
               </Link>
             </li>

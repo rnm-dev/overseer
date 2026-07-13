@@ -4,6 +4,7 @@ import { createServer } from "./server.js";
 import { startReconciler } from "./sessionIndex.js";
 import { attachLiveSocket } from "./liveSocket.js";
 import { pruneEvents } from "./eventLog.js";
+import { startPushWorker } from "./push.js";
 
 // Fail loud if Postgres is unreachable — the overseer has no meaningful degraded
 // mode without its system-of-record, so a bad DATABASE_URL should stop the boot
@@ -18,6 +19,7 @@ async function main(): Promise<void> {
     // fresh on an interval. The peon stays source of truth, so this reconciles
     // any drift a restart introduced.
     startReconciler();
+    startPushWorker();
     // Keep the resumable event log bounded (see eventLog.ts).
     setInterval(() => void pruneEvents().catch(() => null), 5 * 60_000);
   });
