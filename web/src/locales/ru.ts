@@ -259,7 +259,6 @@ export const ru: Record<string, string> = {
   "session.preview.watchFailed": "автообновление недоступно",
   "session.files.title": "Файлы проекта",
   "session.files.open": "Показать или скрыть файлы проекта",
-  "session.files.close": "Закрыть файлы проекта",
   "session.files.noProject": "Эта сессия не привязана к проекту.",
 
   "live.on": "В эфире",
