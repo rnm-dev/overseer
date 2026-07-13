@@ -172,11 +172,6 @@ export async function streamPeonTo(conn: PeonConn, pathname: string, onChunk: (t
 
 const FILE_TRANSFER_TIMEOUT_MS = 5 * 60_000;
 
-function filesUrl(conn: PeonConn, segments: string[], query: string): string {
-  const encoded = segments.map(encodeURIComponent).join("/");
-  return apiUrl(conn, `/files/${encoded}${query}`);
-}
-
 // Transparent streamed GET proxy to an arbitrary fleet path (API-relative, query
 // included). Forwards Range, copies transfer headers, streams the
 // body; JSON (stat/listing/error) passes through unchanged. Unreachable ⇒ 502.
@@ -224,11 +219,18 @@ export async function proxyFileDownload(conn: PeonConn, segments: string[], req:
 // peon (no buffering), forwarding the Peon-Content-Sha256 integrity header so the
 // peon can verify what it committed. Relays the peon's JSON result verbatim.
 export async function proxyFileUpload(conn: PeonConn, segments: string[], req: ExpressRequest, res: ExpressResponse, actor: string | null = null): Promise<void> {
+  const encoded = segments.map(encodeURIComponent).join("/");
+  return proxyUpload(conn, `/files/${encoded}`, req, res, actor);
+}
+
+// Stream a raw upload to any API-relative Peon path. Project uploads use this
+// same transport but let the Peon enforce the selected project's root sandbox.
+export async function proxyUpload(conn: PeonConn, pathname: string, req: ExpressRequest, res: ExpressResponse, actor: string | null = null): Promise<void> {
   const upstreamHeaders = headers(conn.token, actor, { "Content-Type": "application/octet-stream" });
   if (typeof req.headers["peon-content-sha256"] === "string") upstreamHeaders["Peon-Content-Sha256"] = req.headers["peon-content-sha256"];
 
   try {
-    const upstream = await fetch(filesUrl(conn, segments, ""), {
+    const upstream = await fetch(apiUrl(conn, pathname), {
       method: "PUT",
       headers: upstreamHeaders,
       // Node streams the request body; duplex:"half" is required to send a stream.

@@ -143,6 +143,18 @@ GET /api/v1/files/<path>?stat=1   metadata { size, mtimeMs, sha256 } or a direct
 The sha256 header + Range support are what make a future **resumable / chunked**
 upload a pure extension rather than a protocol break.
 
+Project worktrees expose the same raw upload semantics under the project's own
+root sandbox:
+
+```
+PUT /api/v1/projects/:key/files/<path>
+    → 201 { path, size, sha256 }
+```
+
+The path is relative to the configured project directory. The Peon must reject
+traversal and symlink escapes with `400 PATH_ESCAPE`, and unknown projects with
+`404 UNKNOWN_PROJECT`, exactly as it does for project-file reads.
+
 ### Session artifact previews
 
 A preview is a transcript event, not an assistant-message convention:

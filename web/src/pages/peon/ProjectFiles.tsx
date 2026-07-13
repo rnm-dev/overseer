@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type DragEvent } from "react";
 import { createPortal } from "react-dom";
 import { ChevronRight, File, Folder, FolderOpen, LoaderCircle, X } from "lucide-react";
 import { api, ApiError, getToken } from "../../api";
@@ -25,22 +25,35 @@ interface FilePreview {
   note?: string;
 }
 
+interface UploadState {
+  done: number;
+  total: number;
+  target: string;
+  error?: string;
+}
+
 const MAX_VIEW_BYTES = 1_000_000;
 const TEXT_CAP = 400_000;
 export const encodeProjectPath = (path: string) => path.split("/").filter(Boolean).map(encodeURIComponent).join("/");
 export const formatFileSize = (size?: number) => typeof size !== "number" ? "" : size < 1024 ? `${size} B` : size < 1024 ** 2 ? `${(size / 1024).toFixed(0)} KB` : `${(size / 1024 ** 2).toFixed(1)} MB`;
 const isDirectory = (entry: ProjectFileEntry) => entry.type === "dir" || entry.type === "directory";
 const isImagePath = (path: string) => /\.(png|jpe?g|gif|webp|svg|bmp|ico)$/i.test(path);
+const sortEntries = (entries: ProjectFileEntry[]) => [...entries].sort((a, b) => isDirectory(a) === isDirectory(b) ? a.name.localeCompare(b.name) : isDirectory(a) ? -1 : 1);
+const hasDraggedFiles = (event: DragEvent) => Array.from(event.dataTransfer.types).includes("Files");
 
-export function ProjectFileTree({ filesBase, activePath, onOpenFile, className = "" }: {
+export function ProjectFileTree({ filesBase, activePath, onOpenFile, allowUpload = false, className = "" }: {
   filesBase: string;
   activePath?: string | null;
   onOpenFile: (path: string, size?: number) => void;
+  allowUpload?: boolean;
   className?: string;
 }) {
   const t = useT();
   const [directories, setDirectories] = useState<Record<string, DirectoryState>>({});
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set([""]));
+  const [dropTarget, setDropTarget] = useState<string | null>(null);
+  const [upload, setUpload] = useState<UploadState | null>(null);
+  const uploadNoticeTimer = useRef<number | null>(null);
 
   const load = useCallback(async (path: string) => {
     setDirectories((current) => ({ ...current, [path]: { loading: true, entries: [] } }));
@@ -50,7 +63,7 @@ export function ProjectFileTree({ filesBase, activePath, onOpenFile, className =
         ...current,
         [path]: {
           loading: false,
-          entries: [...(result.entries ?? [])].sort((a, b) => isDirectory(a) === isDirectory(b) ? a.name.localeCompare(b.name) : isDirectory(a) ? -1 : 1),
+          entries: sortEntries(result.entries ?? []),
         },
       }));
     } catch (error) {
@@ -60,6 +73,10 @@ export function ProjectFileTree({ filesBase, activePath, onOpenFile, className =
       }));
     }
   }, [filesBase, t]);
+
+  useEffect(() => () => {
+    if (uploadNoticeTimer.current !== null) window.clearTimeout(uploadNoticeTimer.current);
+  }, []);
 
   useEffect(() => {
     setDirectories({});
@@ -80,6 +97,50 @@ export function ProjectFileTree({ filesBase, activePath, onOpenFile, className =
     setExpanded((current) => new Set(current).add(path));
   };
 
+  const uploadFiles = async (target: string, fileList: FileList) => {
+    const files = Array.from(fileList);
+    if (!allowUpload || files.length === 0 || (upload && upload.done < upload.total)) return;
+    if (uploadNoticeTimer.current !== null) window.clearTimeout(uploadNoticeTimer.current);
+    setDropTarget(null);
+    setUpload({ done: 0, total: files.length, target });
+    let error: string | undefined;
+    for (let index = 0; index < files.length; index++) {
+      const file = files[index]!;
+      const cleaned = file.name.replace(/[\\/\0]/g, "_");
+      const name = !cleaned || cleaned === "." || cleaned === ".." ? "file" : cleaned;
+      const destination = target ? `${target}/${name}` : name;
+      try {
+        await api(`${filesBase}/${encodeProjectPath(destination)}`, {
+          method: "PUT",
+          body: file,
+          headers: { "content-type": "application/octet-stream" },
+        });
+        setDirectories((current) => {
+          const directory = current[target];
+          if (!directory || directory.loading || directory.error) return current;
+          const entries = sortEntries([...directory.entries.filter((entry) => entry.name !== name), { name, type: "file", size: file.size }]);
+          return { ...current, [target]: { ...directory, entries } };
+        });
+      } catch (uploadError) {
+        const message = uploadError instanceof ApiError && (uploadError.status === 404 || uploadError.status === 405)
+          ? t("proj.files.uploadUnsupported")
+          : uploadError instanceof Error ? uploadError.message : t("proj.files.uploadFailed");
+        error = `${file.name}: ${message}`;
+      } finally {
+        setUpload({ done: index + 1, total: files.length, target, error });
+      }
+    }
+    if (!error) uploadNoticeTimer.current = window.setTimeout(() => setUpload(null), 1600);
+  };
+
+  const acceptDrag = (event: DragEvent, target: string) => {
+    if (!allowUpload || !hasDraggedFiles(event)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.dataTransfer.dropEffect = "copy";
+    setDropTarget(target);
+  };
+
   const renderDirectory = (path: string, depth: number) => {
     const state = directories[path];
     if (!state) return null;
@@ -97,7 +158,11 @@ export function ProjectFileTree({ filesBase, activePath, onOpenFile, className =
             type="button"
             onClick={() => directory ? void toggle(fullPath) : onOpenFile(fullPath, entry.size)}
             disabled={loading}
-            className={`flex w-full items-center gap-1.5 rounded px-2 py-1.5 text-left font-mono text-xs transition-colors hover:bg-black/10 ${activePath === fullPath ? "bg-black/15 text-fel-bright" : "text-bone-dim"}`}
+            onDragEnter={directory ? (event) => acceptDrag(event, fullPath) : undefined}
+            onDragOver={directory ? (event) => acceptDrag(event, fullPath) : undefined}
+            onDragLeave={directory ? (event) => { event.stopPropagation(); if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropTarget(null); } : undefined}
+            onDrop={directory ? (event) => { acceptDrag(event, fullPath); void uploadFiles(fullPath, event.dataTransfer.files); } : undefined}
+            className={`flex w-full items-center gap-1.5 rounded px-2 py-1.5 text-left font-mono text-xs transition-colors hover:bg-black/10 ${dropTarget === fullPath ? "bg-fel/15 text-fel-bright ring-1 ring-inset ring-fel-deep/70" : activePath === fullPath ? "bg-black/15 text-fel-bright" : "text-bone-dim"}`}
             style={{ paddingLeft: 8 + depth * 16 }}
             title={fullPath}
           >
@@ -112,7 +177,24 @@ export function ProjectFileTree({ filesBase, activePath, onOpenFile, className =
     });
   };
 
-  return <div className={`min-h-0 overflow-y-auto p-1.5 ${className}`}>{renderDirectory("", 0)}</div>;
+  return (
+    <div
+      className={`relative flex min-h-0 flex-col ${dropTarget === "" ? "bg-fel/[0.04] ring-1 ring-inset ring-fel-deep/60" : ""} ${className}`}
+      onDragEnter={(event) => acceptDrag(event, "")}
+      onDragOver={(event) => acceptDrag(event, "")}
+      onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropTarget(null); }}
+      onDrop={(event) => { acceptDrag(event, ""); void uploadFiles("", event.dataTransfer.files); }}
+    >
+      <div className="min-h-0 flex-1 overflow-y-auto p-1.5">{renderDirectory("", 0)}</div>
+      {dropTarget === "" && <div className="pointer-events-none absolute inset-x-3 bottom-3 rounded-lg bg-iron-950/95 px-3 py-2 text-center font-mono text-xs text-fel-bright shadow-lg">{t("proj.files.dropRoot")}</div>}
+      {upload && (
+        <div className={`flex flex-none items-center gap-2 bg-black/10 px-3 py-2 font-mono text-[0.68rem] ${upload.error ? "text-blood" : "text-bone-faint"}`} title={upload.error}>
+          {upload.done < upload.total && <LoaderCircle size={13} className="flex-none animate-spin text-fel-deep" aria-hidden />}
+          <span className="truncate">{upload.error || (upload.done < upload.total ? t("proj.files.uploading", { done: upload.done, total: upload.total }) : t("proj.files.uploaded", { n: upload.total }))}</span>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function FileTreeLoader({ depth, label }: { depth: number; label: string }) {

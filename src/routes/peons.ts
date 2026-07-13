@@ -1,7 +1,7 @@
 import express from "express";
 import { config } from "../config.js";
 import { registry, toView, type PeonRecord } from "../registry.js";
-import { callPeon, connOfRecord, normalizePeonUrl, proxyStream, proxyGet, proxyFileDownload, proxyFileUpload } from "../peonClient.js";
+import { callPeon, connOfRecord, normalizePeonUrl, proxyStream, proxyGet, proxyFileDownload, proxyFileUpload, proxyUpload } from "../peonClient.js";
 import { listSessions, reconcilePeon } from "../sessionIndex.js";
 import { bindPeon, mintCredential, revokeCredential, revokeCredentialForPeon } from "../credentials.js";
 import { relay, restSegments, withWorkspace, withWorkspacePeon } from "./helpers.js";
@@ -320,6 +320,10 @@ export function peonsRouter(): express.Router {
     const rest = restSegments(req).map(encodeURIComponent).join("/");
     const qs = req.originalUrl.includes("?") ? req.originalUrl.slice(req.originalUrl.indexOf("?")) : "";
     proxyGet(connOfRecord(c.record), `/projects/${encodeURIComponent(String(req.params.key))}/files/${rest}${qs}`, req, res, c.actor);
+  }));
+  router.put(`${wp}/projects/:key/files/{*rest}`, withWorkspacePeon((req, res, c) => {
+    const rest = restSegments(req).map(encodeURIComponent).join("/");
+    proxyUpload(connOfRecord(c.record), `/projects/${encodeURIComponent(String(req.params.key))}/files/${rest}`, req, res, c.actor);
   }));
 
   return router;

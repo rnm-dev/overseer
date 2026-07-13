@@ -812,6 +812,7 @@ export function PeonSessionDetail() {
               filesBase={`${base}/projects/${encodeURIComponent(projectKey)}/files`}
               activePath={projectFilePreview?.path}
               onOpenFile={(path, size) => setProjectFilePreview({ path, size })}
+              allowUpload
               className="flex-1"
             />
           ) : (
