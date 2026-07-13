@@ -23,6 +23,7 @@ interface FilePreview {
   loading?: boolean;
   text?: string;
   image?: string;
+  pdf?: string;
   note?: string;
 }
 
@@ -46,6 +47,7 @@ export const encodeProjectPath = (path: string) => path.split("/").filter(Boolea
 export const formatFileSize = (size?: number) => typeof size !== "number" ? "" : size < 1024 ? `${size} B` : size < 1024 ** 2 ? `${(size / 1024).toFixed(0)} KB` : `${(size / 1024 ** 2).toFixed(1)} MB`;
 const isDirectory = (entry: ProjectFileEntry) => entry.type === "dir" || entry.type === "directory";
 const isImagePath = (path: string) => /\.(png|jpe?g|gif|webp|svg|bmp|ico)$/i.test(path);
+const isPdfPath = (path: string) => /\.pdf$/i.test(path);
 const sortEntries = (entries: ProjectFileEntry[]) => [...entries].sort((a, b) => isDirectory(a) === isDirectory(b) ? a.name.localeCompare(b.name) : isDirectory(a) ? -1 : 1);
 const hasDraggedFiles = (event: DragEvent) => Array.from(event.dataTransfer.types).includes("Files");
 const PROJECT_FILE_DRAG_TYPE = "application/x-overseer-project-file";
@@ -309,7 +311,7 @@ export function ProjectFilePreviewModal({ filesBase, path, size, onClose }: { fi
 
   useEffect(() => {
     const ctrl = new AbortController();
-    if (!isImagePath(path) && typeof size === "number" && size > MAX_VIEW_BYTES) {
+    if (!isImagePath(path) && !isPdfPath(path) && typeof size === "number" && size > MAX_VIEW_BYTES) {
       setPreview({ path, note: t("proj.files.tooLarge", { size: formatFileSize(size) }) });
       return () => ctrl.abort();
     }
@@ -318,7 +320,11 @@ export function ProjectFilePreviewModal({ filesBase, path, size, onClose }: { fi
       .then(async (response) => {
         if (!response.ok) throw new Error(t("error.loadFailed"));
         const contentType = response.headers.get("content-type") || "";
-        if (contentType.startsWith("image/") || isImagePath(path)) {
+        if (contentType.includes("application/pdf") || isPdfPath(path)) {
+          const url = URL.createObjectURL(await response.blob());
+          imageUrl.current = url;
+          setPreview({ path, pdf: url });
+        } else if (contentType.startsWith("image/") || isImagePath(path)) {
           const url = URL.createObjectURL(await response.blob());
           imageUrl.current = url;
           setPreview({ path, image: url });
@@ -345,6 +351,7 @@ export function ProjectFilePreviewModal({ filesBase, path, size, onClose }: { fi
         <div className="min-h-0 flex-1 overflow-auto">
           {preview.loading ? <div className="grid h-full place-items-center"><div className="forge-spin" /></div>
             : preview.note ? <div className="grid h-full place-items-center p-6 font-mono text-xs text-bone-faint">{preview.note}</div>
+              : preview.pdf ? <iframe src={preview.pdf} title={path} className="h-full min-h-[32rem] w-full border-0 bg-white" />
               : preview.image ? <div className="grid min-h-full place-items-center p-5"><img src={preview.image} alt="" className="max-h-full max-w-full rounded" /></div>
                 : languageForPath(path) === "markdown" ? <article className="mx-auto max-w-4xl p-6 text-sm leading-relaxed text-bone"><Markdown source={preview.text ?? ""} /></article>
                   : <HighlightedCode source={preview.text ?? ""} language={languageForPath(path)} className="min-h-full rounded-none border-0" />}
