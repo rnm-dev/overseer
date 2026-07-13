@@ -80,7 +80,7 @@ export function ProjectFileTree({ filesBase, activePath, onOpenFile, className =
   const renderDirectory = (path: string, depth: number) => {
     const state = directories[path];
     if (!state) return null;
-    if (state.loading) return <div className="py-2" style={{ paddingLeft: 12 + depth * 16 }}><div className="forge-spin" /></div>;
+    if (state.loading) return <FileTreeLoader depth={depth} label={t("app.loading")} />;
     if (state.error) return <div className="px-3 py-2 font-mono text-[0.68rem] text-blood" style={{ paddingLeft: 12 + depth * 16 }}>⚠ {state.error}</div>;
     if (path === "" && state.entries.length === 0) return <p className="p-3 font-mono text-xs text-bone-faint">{t("proj.files.empty")}</p>;
     return state.entries.map((entry) => {
@@ -108,6 +108,25 @@ export function ProjectFileTree({ filesBase, activePath, onOpenFile, className =
   };
 
   return <div className={`min-h-0 overflow-y-auto p-1.5 ${className}`}>{renderDirectory("", 0)}</div>;
+}
+
+function FileTreeLoader({ depth, label }: { depth: number; label: string }) {
+  const rows = depth === 0 ? ["68%", "52%", "76%", "44%", "61%"] : ["58%", "72%", "46%"];
+  return (
+    <div role="status" aria-label={label} className="space-y-0.5 py-0.5">
+      {rows.map((width, index) => (
+        <div
+          key={`${width}-${index}`}
+          className="flex h-7 items-center gap-2 rounded px-2"
+          style={{ paddingLeft: 8 + depth * 16, animationDelay: `${index * 90}ms` }}
+        >
+          <span className="h-2.5 w-2.5 flex-none animate-pulse rounded-sm bg-iron-700/70" style={{ animationDelay: `${index * 90}ms` }} />
+          <span className="h-2.5 animate-pulse rounded-full bg-iron-700/70" style={{ width, animationDelay: `${index * 90}ms` }} />
+        </div>
+      ))}
+      <span className="sr-only">{label}</span>
+    </div>
+  );
 }
 
 export function ProjectFilePreviewModal({ filesBase, path, size, onClose }: { filesBase: string; path: string; size?: number; onClose: () => void }) {
