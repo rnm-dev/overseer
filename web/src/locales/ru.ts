@@ -257,6 +257,8 @@ export const ru: Record<string, string> = {
   "session.preview.unsupported": "Этот двоичный формат нельзя показать здесь.",
   "session.preview.truncated": "показаны первые 2 МиБ",
   "session.preview.watchFailed": "автообновление недоступно",
+  "session.files.title": "Файлы проекта",
+  "session.files.noProject": "Эта сессия не привязана к проекту.",
 
   "live.on": "В эфире",
   "live.reconnecting": "Переподключение…",

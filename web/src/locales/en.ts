@@ -257,6 +257,8 @@ export const en: Record<string, string> = {
   "session.preview.unsupported": "This binary format cannot be displayed here.",
   "session.preview.truncated": "showing first 2 MiB",
   "session.preview.watchFailed": "live refresh unavailable",
+  "session.files.title": "Project files",
+  "session.files.noProject": "This session is not attached to a project.",
 
   "live.on": "Live",
   "live.reconnecting": "Reconnecting…",

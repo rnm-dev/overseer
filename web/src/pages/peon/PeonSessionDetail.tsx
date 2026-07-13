@@ -27,6 +27,7 @@ import {
 import { ItemView, Working } from "./session/messageParts";
 import { AttachmentPreview } from "./session/AttachmentPreview";
 import { PreviewPanel, type PreviewTarget } from "./session/PreviewPanel";
+import { ProjectFilePreviewModal, ProjectFileTree } from "./ProjectFiles";
 
 // author: Viktor
 // The transcript parsing/render pieces live in ./session/*; this file owns the
@@ -133,6 +134,8 @@ export function PeonSessionDetail() {
   const [sentAttachmentPreview, setSentAttachmentPreview] = useState<MessageAttachment | null>(null);
   const [artifactPreview, setArtifactPreview] = useState<PreviewTarget | null>(null);
   const [previewPinned, setPreviewPinned] = useState(false);
+  const [projectFilePreview, setProjectFilePreview] = useState<{ path: string; size?: number } | null>(null);
+  useEffect(() => setProjectFilePreview(null), [sessionKey, projectKey]);
   const previewPinnedRef = useRef(false);
   useEffect(() => { previewPinnedRef.current = previewPinned; }, [previewPinned]);
   const [composerNode, setComposerNode] = useState<HTMLDivElement | null>(null);
@@ -718,6 +721,7 @@ export function PeonSessionDetail() {
         </div>
       </FixedPaneHeader>
 
+      <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
       {/* transcript — flows into the page; the body scrolls it */}
       <div className="min-w-0 overflow-x-hidden pt-4" style={{ paddingBottom: composerHeight }}>
         {history === null ? (
@@ -757,6 +761,21 @@ export function PeonSessionDetail() {
           </div>
         )}
         <div className="h-2 sm:h-5" aria-hidden="true" />
+      </div>
+
+      <aside className="sticky top-16 mt-4 hidden h-[calc(100vh-5rem)] min-h-0 flex-col overflow-hidden rounded-xl bg-iron-900/70 lg:flex" aria-label={t("session.files.title")}>
+        <div className="flex-none px-3 py-3 font-display text-xs font-semibold text-bone-dim">{t("session.files.title")}</div>
+        {projectKey ? (
+          <ProjectFileTree
+            filesBase={`${base}/projects/${encodeURIComponent(projectKey)}/files`}
+            activePath={projectFilePreview?.path}
+            onOpenFile={(path, size) => setProjectFilePreview({ path, size })}
+            className="flex-1"
+          />
+        ) : (
+          <p className="p-3 font-mono text-xs leading-relaxed text-bone-faint">{t("session.files.noProject")}</p>
+        )}
+      </aside>
       </div>
 
       {showScrollToBottom &&
@@ -851,6 +870,14 @@ export function PeonSessionDetail() {
             setPreviewPinned(false);
           }}
           t={t}
+        />
+      )}
+      {projectKey && projectFilePreview && (
+        <ProjectFilePreviewModal
+          filesBase={`${base}/projects/${encodeURIComponent(projectKey)}/files`}
+          path={projectFilePreview.path}
+          size={projectFilePreview.size}
+          onClose={() => setProjectFilePreview(null)}
         />
       )}
     </div>
