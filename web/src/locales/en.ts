@@ -258,6 +258,8 @@ export const en: Record<string, string> = {
   "session.preview.truncated": "showing first 2 MiB",
   "session.preview.watchFailed": "live refresh unavailable",
   "session.files.title": "Project files",
+  "session.files.open": "Toggle project files",
+  "session.files.close": "Close project files",
   "session.files.noProject": "This session is not attached to a project.",
 
   "live.on": "Live",

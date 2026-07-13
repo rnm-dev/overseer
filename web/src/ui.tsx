@@ -149,6 +149,12 @@ export function FixedPaneHeader({ children }: { children: ReactNode }) {
     return () => observer.disconnect();
   }, [node]);
 
+  useEffect(() => {
+    const root = document.documentElement;
+    root.style.setProperty("--fixed-pane-header-height", `${height}px`);
+    return () => { root.style.removeProperty("--fixed-pane-header-height"); };
+  }, [height]);
+
   return (
     <>
       {createPortal(

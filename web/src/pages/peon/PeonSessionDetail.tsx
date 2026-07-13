@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { FolderTree, X } from "lucide-react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, ApiError, isPeonNeedsUpdate, json } from "../../api";
 import { useAuth } from "../../auth";
@@ -135,7 +136,13 @@ export function PeonSessionDetail() {
   const [artifactPreview, setArtifactPreview] = useState<PreviewTarget | null>(null);
   const [previewPinned, setPreviewPinned] = useState(false);
   const [projectFilePreview, setProjectFilePreview] = useState<{ path: string; size?: number } | null>(null);
+  const [filesOpen, setFilesOpen] = useState(false);
   useEffect(() => setProjectFilePreview(null), [sessionKey, projectKey]);
+  useEffect(() => setFilesOpen(false), [sessionKey]);
+  useEffect(() => {
+    document.documentElement.classList.toggle("session-files-open", filesOpen);
+    return () => document.documentElement.classList.remove("session-files-open");
+  }, [filesOpen]);
   const previewPinnedRef = useRef(false);
   useEffect(() => { previewPinnedRef.current = previewPinned; }, [previewPinned]);
   const [composerNode, setComposerNode] = useState<HTMLDivElement | null>(null);
@@ -674,6 +681,17 @@ export function PeonSessionDetail() {
               </div>
             )}
 
+            <button
+              type="button"
+              title={t("session.files.open")}
+              aria-label={t("session.files.open")}
+              aria-expanded={filesOpen}
+              onClick={() => setFilesOpen((open) => !open)}
+              className={`hidden size-7 flex-none place-items-center rounded transition-colors lg:grid ${filesOpen ? "bg-iron-800 text-fel-bright" : "text-bone-dim hover:bg-iron-800 hover:text-bone"}`}
+            >
+              <FolderTree size={16} aria-hidden />
+            </button>
+
             <div className="relative flex-none" ref={menuRef}>
               <button
                 type="button"
@@ -721,7 +739,6 @@ export function PeonSessionDetail() {
         </div>
       </FixedPaneHeader>
 
-      <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
       {/* transcript — flows into the page; the body scrolls it */}
       <div className="min-w-0 overflow-x-hidden pt-4" style={{ paddingBottom: composerHeight }}>
         {history === null ? (
@@ -763,25 +780,33 @@ export function PeonSessionDetail() {
         <div className="h-2 sm:h-5" aria-hidden="true" />
       </div>
 
-      <aside className="sticky top-16 mt-4 hidden h-[calc(100vh-5rem)] min-h-0 flex-col overflow-hidden rounded-xl bg-iron-900/70 lg:flex" aria-label={t("session.files.title")}>
-        <div className="flex-none px-3 py-3 font-display text-xs font-semibold text-bone-dim">{t("session.files.title")}</div>
-        {projectKey ? (
-          <ProjectFileTree
-            filesBase={`${base}/projects/${encodeURIComponent(projectKey)}/files`}
-            activePath={projectFilePreview?.path}
-            onOpenFile={(path, size) => setProjectFilePreview({ path, size })}
-            className="flex-1"
-          />
-        ) : (
-          <p className="p-3 font-mono text-xs leading-relaxed text-bone-faint">{t("session.files.noProject")}</p>
-        )}
-      </aside>
-      </div>
+      {filesOpen && createPortal(
+        <aside className="session-files-pane fixed bottom-3 right-3 z-30 hidden w-80 min-h-0 flex-col overflow-hidden rounded-xl bg-iron-900 shadow-2xl lg:flex" style={{ top: "calc(var(--fixed-pane-header-height, 49px) + 0.75rem)" }} aria-label={t("session.files.title")}>
+          <div className="flex flex-none items-center gap-2 px-3 py-3">
+            <FolderTree size={16} className="flex-none text-fel-deep" aria-hidden />
+            <div className="min-w-0 flex-1 truncate font-display text-xs font-semibold text-bone-dim">{t("session.files.title")}</div>
+            <button type="button" onClick={() => setFilesOpen(false)} className="rounded p-1 text-bone-faint transition-colors hover:bg-iron-800 hover:text-bone" aria-label={t("session.files.close")}>
+              <X size={16} />
+            </button>
+          </div>
+          {projectKey ? (
+            <ProjectFileTree
+              filesBase={`${base}/projects/${encodeURIComponent(projectKey)}/files`}
+              activePath={projectFilePreview?.path}
+              onOpenFile={(path, size) => setProjectFilePreview({ path, size })}
+              className="flex-1"
+            />
+          ) : (
+            <p className="p-3 font-mono text-xs leading-relaxed text-bone-faint">{t("session.files.noProject")}</p>
+          )}
+        </aside>,
+        document.body,
+      )}
 
       {showScrollToBottom &&
         createPortal(
           <div
-            className="pointer-events-none fixed left-0 right-0 z-[41] flex justify-center md:left-[var(--peon-sidebar-width)]"
+            className="session-scroll-control pointer-events-none fixed left-0 right-0 z-[41] flex justify-center md:left-[var(--peon-sidebar-width)]"
             style={{ bottom: composerHeight + 12 }}
           >
             <button

@@ -352,7 +352,7 @@ export function PeonDetail() {
         />
       </aside>
 
-      <main className="min-w-0 flex-1">
+      <main className="peon-main-pane min-w-0 flex-1">
         <div className="sticky top-0 z-30 flex h-12 items-center gap-3 border-b border-iron-800 bg-void/95 px-3 backdrop-blur md:hidden">
           <button
             type="button"
