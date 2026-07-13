@@ -97,14 +97,12 @@ html.peon-sidebar-resizing * {
     margin-right: var(--session-files-pane-width);
   }
 
-  html.session-files-open .fixed-pane-header,
   html.session-files-open .session-composer,
   html.session-files-open .session-scroll-control {
     right: var(--session-files-pane-width);
   }
 
   .peon-main-pane,
-  .fixed-pane-header,
   .session-composer,
   .session-scroll-control {
     transition: margin-right 160ms ease, right 160ms ease;
