@@ -3,7 +3,7 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { after, test } from "node:test";
 import { createServer } from "./server.js";
-import { callPeon, normalizePeonUrl } from "./peonClient.js";
+import { callPeon, normalizePeonUrl, normalizeProxyError } from "./peonClient.js";
 
 const servers: http.Server[] = [];
 after(async () => Promise.all(servers.map((server) => new Promise<void>((resolve) => server.close(() => resolve())))));
@@ -67,6 +67,28 @@ test("recruitment URLs normalize a trailing unified API path", () => {
   assert.equal(normalizePeonUrl("peon.test:4570/api/v1/"), "http://peon.test:4570");
   assert.equal(normalizePeonUrl("https://peon.test/base/api/v1"), "https://peon.test/base");
   assert.equal(normalizePeonUrl("not a url"), null);
+});
+
+test("filesystem permission failures become a useful structured 403", () => {
+  const fromLegacyPeon = normalizeProxyError(500, "EACCES: permission denied, scandir '/postgres/data'");
+  assert.equal(fromLegacyPeon.status, 403);
+  assert.equal(fromLegacyPeon.contentType, "application/json");
+  assert.deepEqual(JSON.parse(fromLegacyPeon.body), {
+    error: "Permission denied — the Peon process cannot read or write this file or directory.",
+    code: "FILE_PERMISSION_DENIED",
+  });
+
+  const explicitForbidden = normalizeProxyError(403, "Forbidden", "text/plain");
+  assert.equal(explicitForbidden.status, 403);
+  assert.match(explicitForbidden.body, /Permission denied/);
+});
+
+test("unrelated upstream errors remain unchanged", () => {
+  assert.deepEqual(normalizeProxyError(500, "database unavailable", "text/plain"), {
+    status: 500,
+    contentType: "text/plain",
+    body: "database unavailable",
+  });
 });
 
 test("north-bound fleet registration is mounted on the unified API", async () => {

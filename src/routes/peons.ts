@@ -325,6 +325,10 @@ export function peonsRouter(): express.Router {
     const rest = restSegments(req).map(encodeURIComponent).join("/");
     proxyUpload(connOfRecord(c.record), `/projects/${encodeURIComponent(String(req.params.key))}/files/${rest}`, req, res, c.actor);
   }));
+  router.patch(`${wp}/projects/:key/files/{*rest}`, withWorkspacePeon(async (req, res, c) => {
+    const rest = restSegments(req).map(encodeURIComponent).join("/");
+    relay(await callPeon(connOfRecord(c.record), "PATCH", `/projects/${encodeURIComponent(String(req.params.key))}/files/${rest}`, { actor: c.actor, body: req.body }), res);
+  }));
 
   return router;
 }

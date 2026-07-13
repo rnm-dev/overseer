@@ -149,11 +149,16 @@ root sandbox:
 ```
 PUT /api/v1/projects/:key/files/<path>
     → 201 { path, size, sha256 }
+PATCH /api/v1/projects/:key/files/<path>
+    { "destination": "relative/new/path" }
+    → 200 { path, size, sha256? }
 ```
 
 The path is relative to the configured project directory. The Peon must reject
 traversal and symlink escapes with `400 PATH_ESCAPE`, and unknown projects with
-`404 UNKNOWN_PROJECT`, exactly as it does for project-file reads.
+`404 UNKNOWN_PROJECT`, exactly as it does for project-file reads. PATCH performs
+an atomic rename within the same project root and returns `409 DESTINATION_EXISTS`
+rather than replacing an existing destination.
 
 ### Session artifact previews
 

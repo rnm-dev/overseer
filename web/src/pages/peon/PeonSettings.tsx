@@ -40,7 +40,7 @@ export function PeonSettings() {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [status, setStatus] = useState<PeonStatus | null>(null);
-  const [updating, setUpdating] = useState(false);
+  const [updatePhase, setUpdatePhase] = useState<"idle" | "installing" | "restarting" | "complete">("idle");
   const [updateError, setUpdateError] = useState<string | null>(null);
 
   // Connectivity — overseer-side registry data (how the overseer dials this peon).
@@ -90,17 +90,46 @@ export function PeonSettings() {
     return () => { alive = false; };
   }, [base, peon.online]);
 
+  // Updating restarts the peon, so its ordinary online state can briefly drop.
+  // Keep checking until the new revision is serving instead of making the short
+  // POST request the only progress indication.
+  useEffect(() => {
+    if (updatePhase !== "restarting") return;
+    let alive = true;
+    let timer: number | undefined;
+
+    const check = async () => {
+      try {
+        const next = await api<PeonStatus>(`${base}/status`);
+        if (!alive) return;
+        setStatus(next);
+        if (!next.updateAvailable) {
+          setUpdatePhase("complete");
+          reload();
+          return;
+        }
+      } catch {
+        // A connection failure is expected while the peon restarts.
+      }
+      if (alive) timer = window.setTimeout(check, 2000);
+    };
+
+    timer = window.setTimeout(check, 1000);
+    return () => {
+      alive = false;
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
+  }, [base, reload, updatePhase]);
+
   async function installUpdate() {
-    setUpdating(true);
+    setUpdatePhase("installing");
     setUpdateError(null);
     try {
       await api(`${base}/control/update`, { method: "POST" });
-      const next = await api<PeonStatus>(`${base}/status`);
-      setStatus(next);
+      setUpdatePhase("restarting");
     } catch (err) {
       setUpdateError(err instanceof Error ? err.message : t("error.generic"));
-    } finally {
-      setUpdating(false);
+      setUpdatePhase("idle");
     }
   }
 
@@ -143,10 +172,11 @@ export function PeonSettings() {
     : undefined;
   const defaultAgentProvider = providerForAgent(catalog, defaultAgent);
   const defaultModel = resolveDefaultModel(defaultAgentProvider, form?.aiDefaultModel) ?? "";
+  const updating = updatePhase === "installing" || updatePhase === "restarting";
 
   return (
     <div className="space-y-8">
-      {peon.online && status && (
+      {(peon.online || updating) && status && (
         <Card className="space-y-4 px-5 py-5">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
@@ -157,10 +187,21 @@ export function PeonSettings() {
             </div>
             {status.updateAvailable && (
               <Button onClick={installUpdate} disabled={updating}>
-                {updating ? t("peon.update.installing") : t("peon.update.install")}
+                {updatePhase === "installing" ? t("peon.update.installing") : updatePhase === "restarting" ? t("peon.update.restarting") : t("peon.update.install")}
               </Button>
             )}
           </div>
+          {updating && (
+            <div role="status" aria-live="polite" className="flex items-center gap-3 border-l-2 border-fel bg-fel/5 px-3 py-3 font-mono text-xs text-fel-bright">
+              <span className="block h-4 w-4 flex-none animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden />
+              {updatePhase === "installing" ? t("peon.update.installingDetail") : t("peon.update.restartingDetail")}
+            </div>
+          )}
+          {updatePhase === "complete" && (
+            <p role="status" aria-live="polite" className="border-l-2 border-fel bg-fel/5 px-3 py-3 font-mono text-xs text-fel-bright">
+              ⚡ {t("peon.update.complete")}
+            </p>
+          )}
           {(status.updateLocalSha || status.updateRemoteSha || status.updateCheckedAt) && (
             <div className="space-y-1 font-mono text-xs text-bone-faint">
               {status.updateLocalSha && <p>{t("peon.update.local")}: {status.updateLocalSha}</p>}

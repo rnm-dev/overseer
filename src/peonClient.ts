@@ -56,6 +56,30 @@ export interface PeonCallResult {
   json: unknown;
 }
 
+interface ProxyErrorResponse {
+  status: number;
+  contentType: string;
+  body: string;
+}
+
+// Older Peons may surface Node filesystem errors as an unstructured 500. Keep
+// unrelated failures intact, but turn genuine access errors (and explicit 403s)
+// into a stable response the web client can explain to the operator.
+export function normalizeProxyError(status: number, text: string, contentType = "application/json"): ProxyErrorResponse {
+  const isPermissionFailure = status === 403 || (status >= 500 && /\b(?:EACCES|EPERM)\b|permission denied|operation not permitted/i.test(text));
+  if (isPermissionFailure) {
+    return {
+      status: 403,
+      contentType: "application/json",
+      body: JSON.stringify({
+        error: "Permission denied — the Peon process cannot read or write this file or directory.",
+        code: "FILE_PERMISSION_DENIED",
+      }),
+    };
+  }
+  return { status, contentType, body: text };
+}
+
 // A JSON request/response call to a peon. Network failures (peon offline,
 // unreachable over the tailnet) surface as a synthetic 502 rather than throwing,
 // so the operator API always answers with a structured error.
@@ -188,6 +212,12 @@ export async function proxyGet(conn: PeonConn, pathname: string, req: ExpressReq
     if (!res.headersSent) res.status(502).json({ error: `peon unreachable: ${msg(err)}`, code: "PEON_UNREACHABLE" });
     return;
   }
+  if (!upstream.ok) {
+    const text = await upstream.text().catch(() => "");
+    const error = normalizeProxyError(upstream.status, text, upstream.headers.get("content-type") ?? "application/json");
+    res.status(error.status).type(error.contentType).send(error.body);
+    return;
+  }
   res.status(upstream.status);
   for (const h of ["content-type", "content-length", "content-range", "accept-ranges", "peon-content-sha256"]) {
     const v = upstream.headers.get(h);
@@ -239,6 +269,11 @@ export async function proxyUpload(conn: PeonConn, pathname: string, req: Express
       signal: AbortSignal.timeout(FILE_TRANSFER_TIMEOUT_MS),
     } as RequestInit);
     const text = await upstream.text();
+    if (!upstream.ok) {
+      const error = normalizeProxyError(upstream.status, text, upstream.headers.get("content-type") ?? "application/json");
+      res.status(error.status).type(error.contentType).send(error.body);
+      return;
+    }
     res.status(upstream.status).type(upstream.headers.get("content-type") ?? "application/json").send(text);
   } catch (err) {
     if (!res.headersSent) res.status(502).json({ error: `peon unreachable: ${msg(err)}`, code: "PEON_UNREACHABLE" });

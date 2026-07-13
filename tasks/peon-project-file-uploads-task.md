@@ -10,6 +10,7 @@ write.
 
 Implement the project-scoped upload endpoint below. It must use the same machine
 Bearer authentication and `Peon-Actor` handling as existing project-file reads.
+The same file tree also supports moving an existing file between project folders.
 
 ## API contract
 
@@ -34,6 +35,20 @@ The path is relative to the configured project's `dir`. A repeated PUT to the
 same path replaces the existing regular file atomically. Parent directories must
 already exist; the upload endpoint must not create an arbitrary directory tree.
 
+### Move contract
+
+```http
+PATCH /api/v1/projects/:key/files/{*sourcePath}
+Content-Type: application/json
+
+{ "destination": "relative/destination/path.txt" }
+```
+
+Success returns `200 { "path", "size", "sha256"? }`. Move only regular files,
+remain inside the same project root, require the destination parent to exist,
+and use an atomic filesystem rename. Return `409 DESTINATION_EXISTS` rather than
+overwriting an existing destination.
+
 ## Required behavior
 
 - Authenticate with the standard `/api/v1` machine credential.
@@ -52,6 +67,8 @@ already exist; the upload endpoint must not create an arbitrary directory tree.
 - Clean up temporary files after aborts, disconnects, checksum failures, and all
   other errors.
 - Continue supporting spaces, Unicode, and URL-encoded path segments.
+- Validate both PATCH source and destination using the same canonical sandbox
+  rules. Reject cross-project moves and moves onto the same path.
 
 ## Security requirements
 
@@ -74,6 +91,7 @@ already exist; the upload endpoint must not create an arbitrary directory tree.
 - `400 INVALID_PATH` — empty filename, directory destination, or malformed path.
 - `403 FORBIDDEN` — policy intentionally excludes the destination.
 - `409 CHECKSUM_MISMATCH` — supplied digest differs from streamed content.
+- `409 DESTINATION_EXISTS` — PATCH destination already exists.
 - `413 FILE_TOO_LARGE` — configured upload limit exceeded.
 - `500 WRITE_FAILED` — safe write failed without committing a partial file.
 
@@ -87,6 +105,7 @@ Return JSON `{ "error": string, "code": string }` for every failure.
   without it must work; the response must still include the computed digest.
 - The endpoint should match the existing `/files/*` upload implementation where
   possible, with the sandbox root supplied by the selected project.
+- PATCH is a move, not a copy: after success the source must no longer exist.
 
 ## Acceptance tests
 
@@ -105,11 +124,17 @@ Return JSON `{ "error": string, "code": string }` for every failure.
 8. Prove one project cannot write into another project or `fileTransferRoot`.
 9. Verify the size limit without retaining a partial file.
 10. Run the existing project-file read and transfer-sandbox suites unchanged.
+11. Move a file from the root into a nested folder and back to the root.
+12. Reject a move onto an existing path without modifying either file.
+13. Reject traversal, symlink escape, directory sources, cross-project
+    destinations, missing parents, and same-path moves.
 
 ## Definition of done
 
 - All acceptance tests are automated in the Peon repository.
 - A real Overseer browser drop to the root and to a nested folder returns 201,
   appears immediately in the tree, and downloads with identical bytes.
+- Dragging an existing file onto a folder or the project-root drop zone moves it
+  atomically and the next project-file listing reflects the new location.
 - Failed and aborted uploads leave no partial destination or temporary files.
 - Peon's API documentation describes the endpoint and stable errors.
