@@ -162,12 +162,12 @@ export function ProjectFileTree({ filesBase, activePath, onOpenFile, allowUpload
             onDragOver={directory ? (event) => acceptDrag(event, fullPath) : undefined}
             onDragLeave={directory ? (event) => { event.stopPropagation(); if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropTarget(null); } : undefined}
             onDrop={directory ? (event) => { acceptDrag(event, fullPath); void uploadFiles(fullPath, event.dataTransfer.files); } : undefined}
-            className={`flex w-full items-center gap-1.5 rounded px-2 py-1.5 text-left font-mono text-xs transition-colors hover:bg-black/10 ${dropTarget === fullPath ? "bg-fel/15 text-fel-bright ring-1 ring-inset ring-fel-deep/70" : activePath === fullPath ? "bg-black/15 text-fel-bright" : "text-bone-dim"}`}
+            className={`group flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left font-mono text-xs transition-[background-color,color,box-shadow] duration-150 ${dropTarget === fullPath ? "bg-fel/20 text-bone shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--color-fel-deep)_85%,transparent),0_2px_10px_rgba(0,0,0,0.18)]" : activePath === fullPath ? "bg-iron-800 text-fel-bright" : "text-bone-dim hover:bg-iron-800/85 hover:text-bone"}`}
             style={{ paddingLeft: 8 + depth * 16 }}
             title={fullPath}
           >
-            {directory ? <ChevronRight size={13} className={`flex-none text-bone-faint transition-transform ${open ? "rotate-90" : ""}`} aria-hidden /> : <span className="w-[13px] flex-none" />}
-            {directory ? (loading ? <LoaderCircle size={15} className="flex-none animate-spin text-fel-deep" aria-hidden /> : open ? <FolderOpen size={15} className="flex-none text-fel-deep" aria-hidden /> : <Folder size={15} className="flex-none text-fel-deep" aria-hidden />) : <File size={14} className="flex-none text-bone-faint" aria-hidden />}
+            {directory ? <ChevronRight size={13} className={`flex-none text-bone-faint transition-[transform,color] group-hover:text-bone-dim ${open ? "rotate-90" : ""}`} aria-hidden /> : <span className="w-[13px] flex-none" />}
+            {directory ? (loading ? <LoaderCircle size={15} className="flex-none animate-spin text-fel-bright" aria-hidden /> : open ? <FolderOpen size={15} className="flex-none text-fel-deep transition-colors group-hover:text-fel-bright" aria-hidden /> : <Folder size={15} className="flex-none text-fel-deep transition-colors group-hover:text-fel-bright" aria-hidden />) : <File size={14} className="flex-none text-bone-faint transition-colors group-hover:text-bone-dim" aria-hidden />}
             <span className="min-w-0 flex-1 truncate">{entry.name}</span>
             {!directory && entry.size !== undefined && <span className="flex-none text-[0.62rem] text-bone-faint">{formatFileSize(entry.size)}</span>}
           </button>
@@ -179,7 +179,7 @@ export function ProjectFileTree({ filesBase, activePath, onOpenFile, allowUpload
 
   return (
     <div
-      className={`relative flex min-h-0 flex-col ${dropTarget === "" ? "bg-fel/[0.04] ring-1 ring-inset ring-fel-deep/60" : ""} ${className}`}
+      className={`relative flex min-h-0 flex-col rounded-xl transition-[background-color,box-shadow] duration-150 ${dropTarget === "" ? "bg-fel/[0.06] shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--color-fel-deep)_75%,transparent)]" : ""} ${className}`}
       onDragEnter={(event) => acceptDrag(event, "")}
       onDragOver={(event) => acceptDrag(event, "")}
       onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropTarget(null); }}
