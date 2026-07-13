@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { ChevronRight, File, Folder, FolderOpen, X } from "lucide-react";
+import { ChevronRight, File, Folder, FolderOpen, LoaderCircle, X } from "lucide-react";
 import { api, ApiError, getToken } from "../../api";
 import { HighlightedCode, Markdown, languageForPath } from "../../components/RichText";
 import { useT } from "../../i18n";
@@ -42,23 +42,23 @@ export function ProjectFileTree({ filesBase, activePath, onOpenFile, className =
   const [directories, setDirectories] = useState<Record<string, DirectoryState>>({});
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set([""]));
 
-  const load = useCallback((path: string) => {
-    setDirectories((current) => {
-      if (current[path]?.loading || current[path]?.entries) return current;
-      return { ...current, [path]: { loading: true, entries: [] } };
-    });
-    api<{ entries?: ProjectFileEntry[] }>(`${filesBase}/${encodeProjectPath(path)}?stat=1`)
-      .then((result) => setDirectories((current) => ({
+  const load = useCallback(async (path: string) => {
+    setDirectories((current) => ({ ...current, [path]: { loading: true, entries: [] } }));
+    try {
+      const result = await api<{ entries?: ProjectFileEntry[] }>(`${filesBase}/${encodeProjectPath(path)}?stat=1`);
+      setDirectories((current) => ({
         ...current,
         [path]: {
           loading: false,
           entries: [...(result.entries ?? [])].sort((a, b) => isDirectory(a) === isDirectory(b) ? a.name.localeCompare(b.name) : isDirectory(a) ? -1 : 1),
         },
-      })))
-      .catch((error) => setDirectories((current) => ({
+      }));
+    } catch (error) {
+      setDirectories((current) => ({
         ...current,
         [path]: { loading: false, entries: [], error: error instanceof ApiError ? error.message : t("error.loadFailed") },
-      })));
+      }));
+    }
   }, [filesBase, t]);
 
   useEffect(() => {
@@ -67,14 +67,17 @@ export function ProjectFileTree({ filesBase, activePath, onOpenFile, className =
     load("");
   }, [filesBase, load]);
 
-  const toggle = (path: string) => {
-    const opening = !expanded.has(path);
-    setExpanded((current) => {
-      const next = new Set(current);
-      if (opening) next.add(path); else next.delete(path);
-      return next;
-    });
-    if (opening) load(path);
+  const toggle = async (path: string) => {
+    if (expanded.has(path)) {
+      setExpanded((current) => {
+        const next = new Set(current);
+        next.delete(path);
+        return next;
+      });
+      return;
+    }
+    if (!directories[path]) await load(path);
+    setExpanded((current) => new Set(current).add(path));
   };
 
   const renderDirectory = (path: string, depth: number) => {
@@ -87,17 +90,19 @@ export function ProjectFileTree({ filesBase, activePath, onOpenFile, className =
       const fullPath = path ? `${path}/${entry.name}` : entry.name;
       const directory = isDirectory(entry);
       const open = directory && expanded.has(fullPath);
+      const loading = directory && directories[fullPath]?.loading;
       return (
         <div key={fullPath}>
           <button
             type="button"
-            onClick={() => directory ? toggle(fullPath) : onOpenFile(fullPath, entry.size)}
+            onClick={() => directory ? void toggle(fullPath) : onOpenFile(fullPath, entry.size)}
+            disabled={loading}
             className={`flex w-full items-center gap-1.5 rounded px-2 py-1.5 text-left font-mono text-xs transition-colors hover:bg-black/10 ${activePath === fullPath ? "bg-black/15 text-fel-bright" : "text-bone-dim"}`}
             style={{ paddingLeft: 8 + depth * 16 }}
             title={fullPath}
           >
             {directory ? <ChevronRight size={13} className={`flex-none text-bone-faint transition-transform ${open ? "rotate-90" : ""}`} aria-hidden /> : <span className="w-[13px] flex-none" />}
-            {directory ? (open ? <FolderOpen size={15} className="flex-none text-fel-deep" aria-hidden /> : <Folder size={15} className="flex-none text-fel-deep" aria-hidden />) : <File size={14} className="flex-none text-bone-faint" aria-hidden />}
+            {directory ? (loading ? <LoaderCircle size={15} className="flex-none animate-spin text-fel-deep" aria-hidden /> : open ? <FolderOpen size={15} className="flex-none text-fel-deep" aria-hidden /> : <Folder size={15} className="flex-none text-fel-deep" aria-hidden />) : <File size={14} className="flex-none text-bone-faint" aria-hidden />}
             <span className="min-w-0 flex-1 truncate">{entry.name}</span>
             {!directory && entry.size !== undefined && <span className="flex-none text-[0.62rem] text-bone-faint">{formatFileSize(entry.size)}</span>}
           </button>
