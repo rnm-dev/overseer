@@ -96,6 +96,7 @@ export const en: Record<string, string> = {
   "proj.files.empty": "Empty folder.",
   "proj.files.pick": "Select a file to view.",
   "proj.files.tooLarge": "File too large to preview ({size}).",
+  "proj.files.refresh": "Refresh project files",
   "proj.files.dropRoot": "Drop to upload to the project root",
   "proj.files.moveRoot": "Move file to the project root",
   "proj.files.uploading": "Uploading {done}/{total}…",

@@ -96,6 +96,7 @@ export const ru: Record<string, string> = {
   "proj.files.empty": "Пустая папка.",
   "proj.files.pick": "Выберите файл для просмотра.",
   "proj.files.tooLarge": "Файл слишком большой для просмотра ({size}).",
+  "proj.files.refresh": "Обновить файлы проекта",
   "proj.files.dropRoot": "Перетащите для загрузки в корень проекта",
   "proj.files.moveRoot": "Переместить файл в корень проекта",
   "proj.files.uploading": "Загрузка {done}/{total}…",

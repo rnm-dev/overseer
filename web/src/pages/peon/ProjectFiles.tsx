@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type DragEvent } from "react";
 import { createPortal } from "react-dom";
-import { ChevronRight, Folder, FolderOpen, LoaderCircle, X } from "lucide-react";
+import { ChevronRight, Folder, FolderOpen, LoaderCircle, RefreshCw, X } from "lucide-react";
 import { api, ApiError, getToken } from "../../api";
 import { HighlightedCode, Markdown, languageForPath } from "../../components/RichText";
 import { useT } from "../../i18n";
@@ -75,6 +75,8 @@ export function ProjectFileTree({ filesBase, activePath, onOpenFile, onFileMoved
   const [dragSource, setDragSource] = useState<string | null>(null);
   const [upload, setUpload] = useState<UploadState | null>(null);
   const [move, setMove] = useState<MoveState | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const refreshingRef = useRef(false);
   const uploadNoticeTimer = useRef<number | null>(null);
 
   const load = useCallback(async (path: string) => {
@@ -124,17 +126,19 @@ export function ProjectFileTree({ filesBase, activePath, onOpenFile, onFileMoved
     load("");
   }, [filesBase, load]);
 
+  const refreshExpanded = useCallback(async (manual = false) => {
+    if (refreshingRef.current || (!manual && document.visibilityState === "hidden")) return;
+    refreshingRef.current = true;
+    if (manual) setRefreshing(true);
+    try {
+      await Promise.all([...expanded].map(refreshDirectory));
+    } finally {
+      refreshingRef.current = false;
+      if (manual) setRefreshing(false);
+    }
+  }, [expanded, refreshDirectory]);
+
   useEffect(() => {
-    let refreshing = false;
-    const refreshExpanded = async () => {
-      if (refreshing || document.visibilityState === "hidden") return;
-      refreshing = true;
-      try {
-        await Promise.all([...expanded].map(refreshDirectory));
-      } finally {
-        refreshing = false;
-      }
-    };
     const timer = window.setInterval(() => void refreshExpanded(), 3_000);
     const onVisibility = () => { if (document.visibilityState === "visible") void refreshExpanded(); };
     document.addEventListener("visibilitychange", onVisibility);
@@ -142,7 +146,7 @@ export function ProjectFileTree({ filesBase, activePath, onOpenFile, onFileMoved
       window.clearInterval(timer);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [expanded, refreshDirectory]);
+  }, [refreshExpanded]);
 
   const toggle = async (path: string) => {
     if (expanded.has(path)) {
@@ -304,12 +308,22 @@ export function ProjectFileTree({ filesBase, activePath, onOpenFile, onFileMoved
 
   return (
     <div
-      className={`relative flex min-h-0 flex-col rounded-xl transition-[background-color,box-shadow] duration-150 ${dropTarget === "" ? "bg-fel/[0.06] shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--color-fel-deep)_75%,transparent)]" : ""} ${className}`}
+      className={`group/file-tree relative flex min-h-0 flex-col rounded-xl transition-[background-color,box-shadow] duration-150 ${dropTarget === "" ? "bg-fel/[0.06] shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--color-fel-deep)_75%,transparent)]" : ""} ${className}`}
       onDragEnter={(event) => acceptDrag(event, "")}
       onDragOver={(event) => acceptDrag(event, "")}
       onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropTarget(null); }}
       onDrop={(event) => dropInto(event, "")}
     >
+      <button
+        type="button"
+        onClick={() => void refreshExpanded(true)}
+        disabled={refreshing}
+        className="absolute right-2 top-2 z-10 grid size-7 place-items-center rounded-md bg-iron-950/85 text-bone-faint opacity-70 shadow-sm backdrop-blur transition-[opacity,color,background-color] hover:bg-iron-800 hover:text-fel-bright hover:opacity-100 focus-visible:opacity-100 disabled:cursor-wait"
+        title={t("proj.files.refresh")}
+        aria-label={t("proj.files.refresh")}
+      >
+        <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} aria-hidden />
+      </button>
       <div className="min-h-0 flex-1 overflow-y-auto p-1.5">{renderDirectory("", 0)}</div>
       {dropTarget === "" && <div className="pointer-events-none absolute inset-x-3 bottom-3 rounded-lg bg-iron-950/95 px-3 py-2 text-center font-mono text-xs text-fel-bright shadow-lg">{dragSource ? t("proj.files.moveRoot") : t("proj.files.dropRoot")}</div>}
       {upload && (
