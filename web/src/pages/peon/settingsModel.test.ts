@@ -55,3 +55,26 @@ test("settings save preserves the original payload before the catalog loads", ()
   const form = { defaultAgent: "codex", aiDefaultModel: "gpt-5.6-sol" };
   assert.deepEqual(buildSettingsPayload(form, null, false), form);
 });
+
+test("new peon settings omit unset null fields from the partial PATCH", () => {
+  const claude: ModelProvider = {
+    agent: "claude-code",
+    label: "Claude Code",
+    models: [{ id: "claude-sonnet-5", label: "Sonnet 5", default: true }],
+    reasoningEfforts: [],
+  };
+  assert.deepEqual(
+    buildSettingsPayload({
+      name: null,
+      fileTransferRoot: null,
+      heartbeatIntervalMs: 15_000,
+      defaultAgent: "claude-code",
+      aiDefaultModel: "claude-sonnet-5",
+    }, claude, true),
+    {
+      heartbeatIntervalMs: 15_000,
+      defaultAgent: "claude-code",
+      aiDefaultModel: "claude-sonnet-5",
+    },
+  );
+});

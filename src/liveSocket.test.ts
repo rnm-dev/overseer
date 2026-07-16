@@ -7,7 +7,7 @@ import pg from "pg";
 import { newDb } from "pg-mem";
 import WebSocket from "ws";
 import { initDb, query, setPool } from "./db.js";
-import { issueDevice } from "./auth.js";
+import { consumeWebSocketTicket, issueDevice, issueWebSocketTicket, verifyDeviceToken } from "./auth.js";
 import { createWorkspace } from "./workspaces.js";
 import { registry } from "./registry.js";
 import { attachLiveSocket, parseSse } from "./liveSocket.js";
@@ -74,8 +74,23 @@ function messageCollector(ws: WebSocket): {
 }
 
 test("SSE parser accepts CRLF and preserves multi-line data", () => {
-  assert.deepEqual(parseSse("event: event\r\ndata: one\r\ndata: two"), { event: "event", data: "one\ntwo" });
+  assert.deepEqual(parseSse("event: event\r\nid: 42\r\ndata: one\r\ndata: two"), { event: "event", id: "42", data: "one\ntwo" });
+  assert.deepEqual(parseSse("data: no-id"), { event: null, id: null, data: "no-id" });
   assert.equal(parseSse(": keepalive"), null);
+});
+
+test("WebSocket tickets are short-lived credentials that can only be consumed once", async () => {
+  const mem = newDb();
+  const adapter = mem.adapters.createPg();
+  await initDb(new adapter.Pool() as unknown as pg.Pool);
+  await query(`INSERT INTO users (id,email,created_at) VALUES ('ticket-user','ticket@example.test',1)`);
+  const { token } = await issueDevice("ticket-user", "test", { ip: null, userAgent: null });
+  const auth = await verifyDeviceToken(token);
+  assert.ok(auth);
+  const issued = await issueWebSocketTicket(auth);
+
+  assert.equal((await consumeWebSocketTicket(issued.ticket))?.userId, "ticket-user");
+  assert.equal(await consumeWebSocketTicket(issued.ticket), null);
 });
 
 test("session live index rejects a stale reconcile after a terminal update", async () => {
@@ -85,6 +100,7 @@ test("session live index rejects a stale reconcile after a terminal update", asy
   await upsertSession("workspace-stale", "peon-stale", {
     id: "session-stale",
     status: "completed",
+    promptPreview: "authoritative opening",
     startedAt: 100,
     lastActivityAt: 300,
     endedAt: 300,
@@ -94,6 +110,7 @@ test("session live index rejects a stale reconcile after a terminal update", asy
   await upsertSession("workspace-stale", "peon-stale", {
     id: "session-stale",
     status: "running",
+    promptPreview: "stale opening",
     startedAt: 100,
     lastActivityAt: 200,
     endedAt: null,
@@ -101,6 +118,7 @@ test("session live index rejects a stale reconcile after a terminal update", asy
   const { sessions } = await listSessions({ peonId: "peon-stale", limit: 10, offset: 0 });
   assert.equal(sessions[0]?.status, "completed");
   assert.equal(sessions[0]?.endedAt, 300);
+  assert.equal(sessions[0]?.promptPreview, "authoritative opening");
   const events = await readEventsSince("workspace-stale", 0);
   assert.equal(events.length, 1, "a rejected stale row must not be broadcast");
 });
@@ -112,17 +130,24 @@ test("WebSocket handshake and session tails survive ordering and replacement rac
   await query(`INSERT INTO users (id, email, created_at) VALUES ($1, $2, $3)`, ["user-1", "tank@example.test", Date.now()]);
   const workspace = await createWorkspace("Tank", "user-1");
   const { token } = await issueDevice("user-1", "test", { ip: null, userAgent: null });
+  const auth = await verifyDeviceToken(token);
+  assert.ok(auth);
+  const { ticket } = await issueWebSocketTicket(auth);
 
   let replacementStreams = 0;
+  let crlfResumeHeader: string | undefined;
+  let replacementResumeHeader: string | undefined;
   const peon = http.createServer((req, res) => {
     const path = new URL(req.url ?? "/", "http://peon.test").pathname;
     res.setHeader("Content-Type", "text/event-stream");
     if (path.endsWith("/sessions/crlf/stream")) {
+      crlfResumeHeader = typeof req.headers["last-event-id"] === "string" ? req.headers["last-event-id"] : undefined;
       // Split CRLF's delimiter across writes to exercise the incremental framer.
-      res.write("event: event\r\ndata: {\"kind\":\"crlf\"}\r\n");
+      res.write("event: event\r\nid: 7\r\ndata: {\"kind\":\"crlf\"}\r\n");
       return setTimeout(() => res.end("\r\n"), 5);
     }
     if (path.endsWith("/sessions/replacement/stream")) {
+      replacementResumeHeader = typeof req.headers["last-event-id"] === "string" ? req.headers["last-event-id"] : undefined;
       replacementStreams += 1;
       res.write(`event: event\ndata: {"stream":${replacementStreams}}\n\n`);
       return;
@@ -144,15 +169,22 @@ test("WebSocket handshake and session tails survive ordering and replacement rac
     address: "127.0.0.1",
     controlPort: peonPort,
     protocol: 1,
-    capabilities: [],
+    capabilities: ["transcript-pagination-v1"],
     token: "peon-token",
     load: null,
   });
+  const largeIndexedSession = {
+    id: "large-snapshot-session",
+    projectKey: null,
+    title: "Large raw session",
+    transcript: "x".repeat(2 * 1024 * 1024),
+  };
+  await upsertSession(workspace.id, "peon-1", largeIndexedSession);
 
   const appServer = http.createServer();
   const wss = attachLiveSocket(appServer);
   const appPort = await listen(appServer);
-  const ws = new WebSocket(`ws://127.0.0.1:${appPort}/api/ws?token=${encodeURIComponent(token)}`);
+  const ws = new WebSocket(`ws://127.0.0.1:${appPort}/api/ws?ticket=${encodeURIComponent(ticket)}`);
   const collector = messageCollector(ws);
 
   try {
@@ -160,13 +192,19 @@ test("WebSocket handshake and session tails survive ordering and replacement rac
     // These intentionally arrive while credential verification is still pending,
     // and subscribe is intentionally adjacent to hello.
     ws.send(JSON.stringify({ type: "hello", workspaceId: workspace.id, cursor: 0 }));
-    ws.send(JSON.stringify({ type: "subscribe", peonId: "peon-1", sessionId: "crlf" }));
-    await collector.waitFor((message) => message.type === "snapshot");
+    ws.send(JSON.stringify({ type: "subscribe", peonId: "peon-1", sessionId: "crlf", lastEventId: "event-6" }));
+    const snapshot = await collector.waitFor((message) => message.type === "snapshot");
+    assert.equal("sessions" in snapshot, false, "REST-owned session lists must not be duplicated in the WebSocket handshake");
+    assert.equal("peons" in snapshot, false, "REST-owned Peon lists must not be duplicated in the WebSocket handshake");
+    assert.ok(JSON.stringify(snapshot).length < 10_000, "REST records must not inflate the WebSocket snapshot");
     const crlf = await collector.waitFor((message) => message.type === "tail" && message.sessionId === "crlf");
     assert.equal(crlf.data, "{\"kind\":\"crlf\"}");
+    assert.equal(crlf.id, "7");
+    assert.equal(crlfResumeHeader, "event-6", "durable subscriptions resume after the paginated snapshot");
 
     ws.send(JSON.stringify({ type: "subscribe", peonId: "peon-1", sessionId: "replacement" }));
     await collector.waitFor((message) => message.type === "tail" && message.sessionId === "replacement" && message.data === '{"stream":1}');
+    assert.equal(replacementResumeHeader, undefined, "subscriptions without a durable boundary remain backward compatible");
     const replaceAt = collector.messages.length;
     ws.send(JSON.stringify({ type: "unsubscribe", sessionId: "replacement" }));
     ws.send(JSON.stringify({ type: "subscribe", peonId: "peon-1", sessionId: "replacement" }));
@@ -192,5 +230,123 @@ test("WebSocket handshake and session tails survive ordering and replacement rac
     await new Promise<void>((resolve) => wss.close(() => resolve()));
     await closeServer(appServer);
     await closeServer(peon);
+  }
+});
+
+test("presence is Overseer-only, route-based, ACL-filtered, and cleared on disconnect", async () => {
+  const mem = newDb();
+  const adapter = mem.adapters.createPg();
+  await initDb(new adapter.Pool() as unknown as pg.Pool);
+  const now = Date.now();
+  await query(
+    `INSERT INTO users (id, email, github_login, created_at) VALUES
+       ('presence-owner', 'owner@example.test', 'owner', $1),
+       ('presence-viewer', 'viewer@example.test', 'viewer', $1),
+       ('presence-member', 'member@example.test', 'member', $1)`,
+    [now],
+  );
+  const workspace = await createWorkspace("Presence", "presence-owner");
+  await query(
+    `INSERT INTO workspace_members (workspace_id, user_id, role, added_at) VALUES
+       ($1, 'presence-viewer', 'owner', $2),
+       ($1, 'presence-member', 'member', $2)`,
+    [workspace.id, now],
+  );
+  await registry.register({
+    peonId: "presence-peon",
+    credentialId: "presence-credential",
+    workspaceId: workspace.id,
+    name: "presence",
+    hostname: null,
+    address: "127.0.0.1",
+    // Nothing listens here: presence must never need a Peon request.
+    controlPort: 9,
+    protocol: 1,
+    capabilities: [],
+    token: "unused",
+    load: null,
+  });
+  await upsertSession(workspace.id, "presence-peon", {
+    id: "presence-session",
+    projectKey: "secret-project",
+    status: "running",
+    startedAt: now,
+    lastActivityAt: now,
+  });
+  await query(
+    `INSERT INTO workspace_member_peon_access (workspace_id, user_id, peon_id, granted_at, granted_by)
+     VALUES ($1, 'presence-member', 'presence-peon', $2, 'presence-owner')`,
+    [workspace.id, now],
+  );
+
+  const appServer = http.createServer();
+  const wss = attachLiveSocket(appServer);
+  const appPort = await listen(appServer);
+  const sockets: WebSocket[] = [];
+  async function connect(userId: string) {
+    const { token } = await issueDevice(userId, "presence-test", { ip: null, userAgent: null });
+    const auth = await verifyDeviceToken(token);
+    assert.ok(auth);
+    const { ticket } = await issueWebSocketTicket(auth);
+    const ws = new WebSocket(`ws://127.0.0.1:${appPort}/api/ws?ticket=${encodeURIComponent(ticket)}`);
+    sockets.push(ws);
+    const collector = messageCollector(ws);
+    await once(ws, "open");
+    ws.send(JSON.stringify({ type: "hello", workspaceId: workspace.id, cursor: 0 }));
+    await collector.waitFor((message) => message.type === "snapshot");
+    return { ws, collector };
+  }
+
+  try {
+    const owner = await connect("presence-owner");
+    const viewer = await connect("presence-viewer");
+    const member = await connect("presence-member");
+
+    viewer.ws.send(JSON.stringify({
+      type: "presence:set",
+      scope: "session",
+      peonId: "presence-peon",
+      sessionId: "presence-session",
+    }));
+    const ownerSession = await owner.collector.waitFor((message) =>
+      message.type === "presence"
+      && Array.isArray(message.presence)
+      && message.presence.some((entry) => (entry as { userId?: string; scope?: string }).userId === "presence-viewer"
+        && (entry as { scope?: string }).scope === "session"),
+    );
+    assert.ok(ownerSession);
+    const restricted = await member.collector.waitFor((message) => message.type === "presence");
+    assert.equal(
+      (restricted.presence as Array<{ userId: string }>).some((entry) => entry.userId === "presence-viewer"),
+      false,
+      "a member without project access must not see session presence",
+    );
+
+    viewer.ws.send(JSON.stringify({ type: "presence:set", scope: "peon", peonId: "presence-peon" }));
+    const memberPeon = await member.collector.waitFor((message) =>
+      message.type === "presence"
+      && Array.isArray(message.presence)
+      && message.presence.some((entry) => (entry as { userId?: string; scope?: string }).userId === "presence-viewer"
+        && (entry as { scope?: string }).scope === "peon"),
+    );
+    assert.ok(memberPeon, "Peon-level presence is visible with Peon access");
+
+    const disconnectAt = owner.collector.messages.length;
+    viewer.ws.terminate();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    const afterDisconnect = owner.collector.messages
+      .slice(disconnectAt)
+      .filter((message) => message.type === "presence")
+      .at(-1);
+    assert.ok(afterDisconnect, "disconnect broadcasts a fresh presence snapshot");
+    assert.equal(
+      (afterDisconnect.presence as Array<{ userId: string }>).some((entry) => entry.userId === "presence-viewer"),
+      false,
+    );
+  } finally {
+    for (const ws of sockets) ws.terminate();
+    for (const client of wss.clients) client.terminate();
+    await new Promise<void>((resolve) => wss.close(() => resolve()));
+    await closeServer(appServer);
   }
 });

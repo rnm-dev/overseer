@@ -18,6 +18,13 @@ export function buildSettingsPayload<T extends { aiDefaultModel?: string | null 
   catalogLoaded: boolean,
 ): T {
   const payload = { ...form };
+  // GET uses null for settings which have never been configured, while PATCH
+  // validates values that are present (for example, name must be a non-empty
+  // string and fileTransferRoot must be a string). PATCH is partial, so do not
+  // echo those unset values back as explicit nulls.
+  for (const key of Object.keys(payload) as Array<keyof T>) {
+    if (payload[key] === null) delete payload[key];
+  }
   if (!catalogLoaded) return payload;
   if (provider?.agent === "claude-code") payload.aiDefaultModel = resolveDefaultModel(provider, form.aiDefaultModel);
   else delete payload.aiDefaultModel;

@@ -47,7 +47,7 @@ export function createServer(): express.Express {
   // leak. The web dashboard is served same-origin and ignores this.
   api.use((req, res, next) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
+    res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
     res.setHeader("Access-Control-Allow-Headers", "Authorization,Content-Type,X-Actor,X-Api-Key,Peon-Content-Sha256,Peon-Request-Id,Range");
     res.setHeader("Access-Control-Expose-Headers", "Peon-Content-Sha256,Content-Range,Accept-Ranges");
     if (req.method === "OPTIONS") return res.sendStatus(204);

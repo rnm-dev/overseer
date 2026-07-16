@@ -32,7 +32,7 @@ Every request:
 |---|---|
 | `Authorization: Bearer <token>` | shared secret = `settings.overseerToken`. Empty on the peon ⇒ whole namespace is off (`503 AGENT_API_DISABLED`). |
 | `Peon-Protocol: 1` | optional; major-version check, `400 UNSUPPORTED_PROTOCOL` on mismatch. |
-| `Peon-Actor: <username>` | optional; the human on whose behalf the command is issued. Trusted (the token is trusted) and forwarded into a session's `author`, so one shared token doesn't collapse every operator into one identity. |
+| `Peon-Actor: <email>` | optional; the canonical email of the human on whose behalf the command is issued. Trusted (the token is trusted) and forwarded into a session's `author`; mutable profile aliases such as a GitHub login are kept separately and never substituted here. |
 | `Peon-Request-Id: <uuid>` | optional; correlation id, echoed back on the response. Doubles as the idempotency key for `POST /sessions`. |
 
 Errors are always `{ "error": "<human message>", "code": "<STABLE_CODE>" }` —
@@ -56,6 +56,7 @@ POST /api/v1/sessions                   start; body { prompt, dir?, projectKey?,
 POST /api/v1/sessions/:id/followup      continue; body { prompt, permissionMode?, model?, reasoningEffort? }
 POST /api/v1/sessions/:id/cancel        cancel the active run
 POST /api/v1/control/pause | /resume    toggle settings.paused
+POST /api/v1/control/check-update       run and return a fresh update check
 POST /api/v1/control/update             install the available update
 GET  /api/v1/sessions/:id/stream        SSE tail (events: `event`, `change`)
 GET  /api/v1/sessions/:id/file          preview text/metadata; query `path`
@@ -63,6 +64,7 @@ GET  /api/v1/sessions/:id/file/raw      raw preview bytes; query `path`
 GET  /api/v1/sessions/:id/file/stream   preview file-change SSE; query `path`
 POST /api/v1/sessions/:id/preview       persist+broadcast preview; body { path }
 GET  /api/v1/projects                   list projects            ⚠ PEON-SIDE TODO
+GET  /api/v1/projects/:key/skills       discover project skills
 GET  /api/v1/settings                   read the safe settings   ⚠ PEON-SIDE TODO
 PATCH /api/v1/settings                  update settings (partial) ⚠ PEON-SIDE TODO
 ```
@@ -82,7 +84,9 @@ PATCH /api/v1/settings                  update settings (partial) ⚠ PEON-SIDE 
 The SHA and check timestamp fields may be null before the first completed check.
 `updateCheckError` is null after a successful check and otherwise contains the
 latest check failure. Overseer uses `updateAvailable` to offer the update action,
-which calls `POST /api/v1/control/update`.
+which calls `POST /api/v1/control/update`. Its explicit "Check now" action calls
+`POST /api/v1/control/check-update`; unlike `GET /api/v1/status`, that endpoint
+waits for a new remote check and returns the refreshed update fields.
 
 ### Projects & settings on the agent surface — PEON-SIDE CHANGES NEEDED
 
@@ -103,6 +107,12 @@ PATCH /api/v1/settings   { name?, fileTransferRoot?, heartbeatIntervalMs? }
   → 200 { ...updated subset }
      - partial body; persist atomically (reuse the local `PATCH /api/settings` logic)
      - never expose/accept `overseerToken` here
+
+GET /api/v1/projects/:key/skills
+  → 200 { skills: [ { name, description, path? } ] }
+     - discovers project-local skills without caching or persisting them
+     - `path`, when present, identifies the project-relative `.agents/skills/.../SKILL.md`
+     - unknown projects return `404 UNKNOWN_PROJECT`
 ```
 
 **Idempotency:** `POST /sessions` uses the session id — supply it via

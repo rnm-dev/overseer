@@ -1,6 +1,7 @@
-import { useMemo, type ComponentPropsWithoutRef } from "react";
+import { isValidElement, useMemo, type ComponentPropsWithoutRef, type ReactNode } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { MermaidDiagram } from "./MermaidDiagram";
 import hljs from "highlight.js/lib/core";
 import bash from "highlight.js/lib/languages/bash";
 import c from "highlight.js/lib/languages/c";
@@ -58,9 +59,19 @@ function MarkdownCode({ className, children, node: _node, ...props }: ComponentP
   return <code className={className || "markdown-inline-code"} {...props}>{children}</code>;
 }
 
+function MarkdownPre({ children, node: _node, ...props }: ComponentPropsWithoutRef<"pre"> & { node?: unknown }) {
+  const code = isValidElement<{ className?: string; children?: ReactNode }>(children) ? children : null;
+  const language = /(?:^|\s)language-([^\s]+)/.exec(code?.props.className ?? "")?.[1]?.toLowerCase();
+  if (language === "mermaid") {
+    return <MermaidDiagram source={String(code?.props.children ?? "").replace(/\n$/, "")} />;
+  }
+  return <pre {...props}>{children}</pre>;
+}
+
 const baseMarkdownComponents: Components = {
   table: ({ children }) => <div className="markdown-table-wrap"><table>{children}</table></div>,
   code: MarkdownCode,
+  pre: MarkdownPre,
 };
 
 function localFilePath(href: string | undefined): string | null {

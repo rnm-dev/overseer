@@ -17,6 +17,7 @@ export class ApiError extends Error {
     public status: number,
     public code: string,
     message: string,
+    public requestId?: string,
   ) {
     super(message);
   }
@@ -30,13 +31,13 @@ export async function api<T = unknown>(path: string, opts: RequestInit = {}): Pr
 
   const res = await fetch(`/api${path}`, { ...opts, headers });
   if (!res.ok) {
-    let body: { code?: string; error?: string } | null = null;
+    let body: { code?: string; error?: string; requestId?: string } | null = null;
     try {
       body = await res.json();
     } catch {
       /* non-JSON error */
     }
-    throw new ApiError(res.status, body?.code ?? "ERROR", body?.error || res.statusText || `request failed (${res.status})`);
+    throw new ApiError(res.status, body?.code ?? "ERROR", body?.error || res.statusText || `request failed (${res.status})`, body?.requestId);
   }
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;

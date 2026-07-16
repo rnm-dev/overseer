@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { api, ApiError, json } from "../../api";
 import { useT } from "../../i18n";
-import { Button, Label } from "../../ui";
+import { playPeonSound } from "../../peonSounds";
+import { Label } from "../../ui";
 import { usePeon } from "./context";
-import { Composer } from "./Composer";
+import { Composer, supportsDesktopComposerFocus } from "./Composer";
 import { composerDraftKey, useComposerDraft } from "./drafts";
 import { AgentSelect, defaultModelId, defaultReasoningEffortId, ModelSelect, Picker, ReasoningEffortSelect, providerForAgent, providerForModel, useModels } from "./models";
-import { buildNewSessionRequest, setupSessionFromNavigationState, type SetupSessionNavigationState } from "./setupSessionCommand";
+import { buildNewSessionRequest } from "./newSessionRequest";
 import { PathInput } from "./PathInput";
 
 // author: Viktor
@@ -24,33 +25,21 @@ interface Project {
 const DEFAULT_FILE_ROOT = "/tmp/peon-files";
 const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
 const isImage = (f: File) => IMAGE_TYPES.has(f.type);
-const supportsDesktopAutofocus = () =>
-  typeof window !== "undefined" &&
-  (typeof window.matchMedia === "function"
-    ? window.matchMedia("(hover: hover) and (pointer: fine)").matches
-    : window.innerWidth >= 768);
-
 export function PeonNewSession() {
   const t = useT();
   const navigate = useNavigate();
-  const location = useLocation();
   const [searchParams] = useSearchParams();
   // Preselect this project when opening from within a session (see PeonDetail).
   const preselectProject = searchParams.get("project");
-  const { peon, base, wsId } = usePeon();
+  const { peon, base, wsId, isOwner } = usePeon();
   const { catalog, supported: modelsSupported } = useModels(base);
-  const setupSession = setupSessionFromNavigationState(location.state);
-
   const [projects, setProjects] = useState<Project[]>([]);
-  const [projectKey, setProjectKey] = useState(setupSession?.projectKey ?? "");
-  const [dir, setDir] = useState(setupSession?.dir ?? "");
-  const [expectsOutcome] = useState<boolean | undefined>(setupSession?.expectsOutcome);
-  const [agent, setAgent] = useState(setupSession?.agent ?? "");
-  const [model, setModel] = useState(setupSession?.model ?? "");
-  const [reasoningEffort, setReasoningEffort] = useState(setupSession?.reasoningEffort ?? "");
-  // A setup command is transient form state. Editing or cancelling it must not
-  // replace the operator's unrelated, saved new-session draft.
-  const [input, setInput] = useComposerDraft(composerDraftKey(wsId, peon.peonId, null), setupSession?.prompt, !setupSession);
+  const [projectKey, setProjectKey] = useState("");
+  const [dir, setDir] = useState("");
+  const [agent, setAgent] = useState("");
+  const [model, setModel] = useState("");
+  const [reasoningEffort, setReasoningEffort] = useState("");
+  const [input, setInput] = useComposerDraft(composerDraftKey(wsId, peon.peonId, null));
   const [files, setFiles] = useState<File[]>([]);
   const [filesEnabled, setFilesEnabled] = useState<boolean | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -58,7 +47,7 @@ export function PeonNewSession() {
   const [preview, setPreview] = useState<string | null>(null);
   const selectedProvider = providerForAgent(catalog, agent) ?? (!agent ? (providerForAgent(catalog, catalog?.defaultAgent) ?? providerForModel(catalog, catalog?.defaultModel)) : null);
   const selectedProject = projects.find((project) => project.key === projectKey);
-  const selectedProjectRoot = selectedProject?.path ?? selectedProject?.dir ?? (projectKey ? setupSession?.dir : undefined);
+  const selectedProjectRoot = selectedProject?.path ?? selectedProject?.dir;
   const projectBrowseLocations = useMemo(
     () => projects.flatMap((project) => {
       const root = project.path ?? project.dir;
@@ -75,14 +64,12 @@ export function PeonNewSession() {
   useEffect(() => {
     if (!catalog || catalog.providers.length === 0) return;
     const provider =
-      providerForAgent(catalog, setupSession?.agent) ??
-      providerForModel(catalog, setupSession?.model) ??
       providerForAgent(catalog, catalog.defaultAgent) ??
       providerForModel(catalog, catalog.defaultModel) ??
       catalog.providers[0];
-    setAgent(setupSession?.agent || provider.agent);
-    setModel(setupSession?.model || defaultModelId(provider) || "");
-    setReasoningEffort(setupSession?.reasoningEffort || defaultReasoningEffortId(provider) || "");
+    setAgent(provider.agent);
+    setModel(defaultModelId(provider) || "");
+    setReasoningEffort(defaultReasoningEffortId(provider) || "");
   }, [catalog]);
 
   useEffect(() => {
@@ -94,18 +81,16 @@ export function PeonNewSession() {
         setProjects(list);
         // Prefer the project passed from the current session, if it's still
         // one the peon offers; otherwise fall back to the first.
-        const preselect = setupSession?.projectKey ?? (preselectProject && list.some((p) => p.key === preselectProject) ? preselectProject : list[0]?.key);
+        const preselect = preselectProject && list.some((p) => p.key === preselectProject) ? preselectProject : list[0]?.key;
         setProjectKey(preselect ?? "");
-        if (!setupSession) {
-          const project = list.find((p) => p.key === preselect);
-          setDir(project?.path ?? project?.dir ?? "");
-        }
+        const project = list.find((p) => p.key === preselect);
+        setDir(project?.path ?? project?.dir ?? "");
       })
       .catch(() => {});
     return () => {
       alive = false;
     };
-  }, [base, preselectProject, setupSession?.projectKey]);
+  }, [base, preselectProject]);
 
   // Whether file transfer is enabled on the peon. If it's off, auto-enable a
   // default /tmp sandbox so attaching just works (no manual Settings step).
@@ -115,6 +100,7 @@ export function PeonNewSession() {
       .then(async (s) => {
         if (!alive) return;
         if (s.filesEnabled) return setFilesEnabled(true);
+        if (!isOwner) return setFilesEnabled(false);
         try {
           await api(`${base}/settings`, { method: "PATCH", body: JSON.stringify({ fileTransferRoot: DEFAULT_FILE_ROOT }) });
           if (alive) setFilesEnabled(true);
@@ -126,13 +112,13 @@ export function PeonNewSession() {
     return () => {
       alive = false;
     };
-  }, [base]);
+  }, [base, isOwner]);
 
   // Upload one file into a draft sandbox folder (a client-generated id — the
   // session doesn't exist yet) so its path can ride along in the same request
   // that starts the session, exactly like a followup's attachments[].
   async function uploadFile(draftId: string, f: File): Promise<string> {
-    const safe = f.name.replace(/[^\w.\-]+/g, "_") || "file";
+    const safe = f.name.replace(/[^\w.-]+/g, "_") || "file";
     const buf = await f.arrayBuffer();
     const digest = await crypto.subtle.digest("SHA-256", buf);
     const hex = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
@@ -152,13 +138,14 @@ export function PeonNewSession() {
       const draftId = crypto.randomUUID();
       const attachments: { type: "file" | "image"; path: string }[] = [];
       for (const f of files) attachments.push({ type: isImage(f) ? "image" : "file", path: await uploadFile(draftId, f) });
-      const body = buildNewSessionRequest({ prompt: input, projectKey, dir, expectsOutcome, agent, model, reasoningEffort, attachments });
+      const body = buildNewSessionRequest({ prompt: input, projectKey, dir, agent, model, reasoningEffort, attachments });
       const res = await api<{ id?: string; session?: { id?: string } }>(`${base}/sessions`, {
         ...json(body),
         headers: { "Peon-Request-Id": draftId },
       });
       const id = res.id ?? res.session?.id;
       if (id) {
+        playPeonSound("start");
         setInput("");
         navigate(`/peons/${peon.peonId}/sessions/${id}`);
       }
@@ -182,7 +169,7 @@ export function PeonNewSession() {
             placeholder={t("newSession.promptPlaceholder")}
             submitTitle={t("newSession.start")}
             disabled={submitting}
-            autoFocus={supportsDesktopAutofocus()}
+            autoFocus={supportsDesktopComposerFocus()}
             files={files}
             onFilesChange={setFiles}
             onPreviewFile={setPreview}
@@ -227,12 +214,12 @@ export function PeonNewSession() {
               ) : undefined
             }
           />
-          {(projects.length > 0 || setupSession) && (
+          {projects.length > 0 && (
             <div className="mt-3 grid gap-3 md:grid-cols-2">
               <div className="space-y-1">
                 <Label>{t("newSession.project")}</Label>
                 <Picker
-                  options={(setupSession && !projects.some((p) => p.key === setupSession.projectKey) ? [{ key: setupSession.projectKey }, ...projects] : projects).map((p) => ({ id: p.key, label: p.key }))}
+                  options={projects.map((p) => ({ id: p.key, label: p.key }))}
                   value={projectKey}
                   onChange={(next) => {
                     setProjectKey(next);
@@ -257,21 +244,6 @@ export function PeonNewSession() {
                   className="h-10"
                 />
               </div>
-            </div>
-          )}
-          {setupSession && (
-            <div className="mt-3 flex justify-end">
-              <Button
-                variant="iron"
-                onClick={() => {
-                  const returnTo = (location.state as SetupSessionNavigationState | null)?.returnTo;
-                  if (returnTo) navigate(returnTo);
-                  else navigate(-1);
-                }}
-                disabled={submitting}
-              >
-                {t("action.cancel")}
-              </Button>
             </div>
           )}
         </div>

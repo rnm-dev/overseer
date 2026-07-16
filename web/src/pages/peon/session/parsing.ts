@@ -19,6 +19,10 @@ export interface Ev {
   type?: string;
   text?: string;
   author?: string;
+  authorEmail?: string;
+  authorGithubLogin?: string;
+  authorAvatarUrl?: string;
+  commandId?: string;
   message?: { role?: string; content?: Block[] | string; usage?: unknown };
   model?: string;
   cwd?: string;
@@ -31,6 +35,15 @@ export interface Ev {
   path?: string;
   createdAt?: number;
   attachments?: MessageAttachment[];
+  // Durable pagination identity on capable Peons. Legacy transcripts omit it.
+  eventId?: string;
+  // Client-only reconciliation metadata. These fields are never sent back to
+  // Peon and flattenEvents intentionally ignores them.
+  _tailEventId?: string;
+  _tailId?: number;
+  _clientId?: string;
+  _optimistic?: boolean;
+  _baselineTailId?: number | null;
   [k: string]: unknown;
 }
 
@@ -75,6 +88,21 @@ export function textFromContent(content: unknown): string {
       .join("\n");
   }
   return "";
+}
+
+// Tool adapters return both plain text and serialized JSON through the same
+// string field. Keep ordinary output byte-for-byte as it arrived, but give
+// compound JSON values a stable, readable representation in the details view.
+export function prettyJsonOutput(source: string): string | null {
+  const trimmed = source.trim();
+  if (!(trimmed.startsWith("{") || trimmed.startsWith("["))) return null;
+  try {
+    const value: unknown = JSON.parse(trimmed);
+    if (value === null || typeof value !== "object") return null;
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return null;
+  }
 }
 export function toolSummary(input: unknown, name?: string): string {
   if (!input || typeof input !== "object") return "";
@@ -166,7 +194,7 @@ export function latestRunSignal(events: Ev[]): RunSignal {
 // later "user" event) — flatten everything into a single ordered item list so a
 // tool call renders as one row once its result lands, matched by tool_use_id.
 export type Item =
-  | { kind: "user"; key: string; text: string; author?: string; attachments?: MessageAttachment[]; createdAt?: number }
+  | { kind: "user"; key: string; text: string; author?: string; authorEmail?: string; authorGithubLogin?: string; authorAvatarUrl?: string; attachments?: MessageAttachment[]; createdAt?: number }
   | { kind: "text"; key: string; text: string; createdAt?: number }
   | { kind: "thinking"; key: string; text: string }
   | { kind: "tool"; key: string; name?: string; input?: unknown; result?: { text: string; error?: boolean } }
@@ -182,7 +210,7 @@ export function flattenEvents(events: Ev[], t: T): Item[] {
   events.forEach((ev, ei) => {
     switch (ev.type) {
       case "user_message":
-        items.push({ kind: "user", key: `${ei}`, text: ev.text || "", author: ev.author, attachments: ev.attachments, createdAt: ev.createdAt });
+        items.push({ kind: "user", key: `${ei}`, text: ev.text || "", author: ev.author, authorEmail: ev.authorEmail, authorGithubLogin: ev.authorGithubLogin, authorAvatarUrl: ev.authorAvatarUrl, attachments: ev.attachments, createdAt: ev.createdAt });
         return;
       case "assistant": {
         const blocks = Array.isArray(ev.message?.content) ? (ev.message!.content as Block[]) : [];

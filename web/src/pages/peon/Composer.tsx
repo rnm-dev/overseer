@@ -17,13 +17,25 @@ const isImage = (f: File) => IMAGE_TYPES.has(f.type);
 // Friendly chip label — pasted screenshots have a machine name; show a short one.
 const chipName = (f: File) => (/^pasted-\d+/.test(f.name) ? "Pasted image" : f.name);
 
+export function supportsDesktopComposerFocus(): boolean {
+  if (typeof window === "undefined" || typeof navigator === "undefined") return false;
+  const nav = navigator as Navigator & { userAgentData?: { mobile?: boolean } };
+  // Keep phones/tablets from summoning the software keyboard when a composer
+  // mounts, including when a connected mouse makes their primary pointer fine.
+  if (nav.userAgentData?.mobile || /Android|iPhone|iPad|iPod|Mobile/i.test(nav.userAgent)) return false;
+  return typeof window.matchMedia === "function"
+    ? window.matchMedia("(min-width: 768px) and (hover: hover) and (pointer: fine)").matches
+    : window.innerWidth >= 768;
+}
+
 export interface ComposerProps {
   value: string;
   onChange: (v: string) => void;
   onSubmit: () => void;
   placeholder: string;
   submitTitle: string;
-  // True while the current prompt is in flight — disables inputs and spins the send button.
+  submitLabel?: string;
+  // True while the current prompt is in flight — locks input and spins the send button.
   disabled: boolean;
   autoFocus?: boolean;
   files: File[];
@@ -36,6 +48,7 @@ export interface ComposerProps {
   onErrorChange: (msg: string | null) => void;
   leftExtra?: ReactNode;
   rightExtra?: ReactNode;
+  secondaryAction?: { label: string; onClick: () => void; disabled?: boolean; pending?: boolean };
 }
 
 export function Composer({
@@ -44,6 +57,7 @@ export function Composer({
   onSubmit,
   placeholder,
   submitTitle,
+  submitLabel,
   disabled,
   autoFocus,
   files,
@@ -54,6 +68,7 @@ export function Composer({
   onErrorChange,
   leftExtra,
   rightExtra,
+  secondaryAction,
 }: ComposerProps) {
   const t = useT();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -66,6 +81,15 @@ export function Composer({
   useEffect(() => {
     if (!value && textareaRef.current) textareaRef.current.style.height = "auto";
   }, [value]);
+
+  function submit() {
+    onSubmit();
+    // Clicking the send button moves focus away from the textarea. Put it back
+    // on desktop so typing can continue immediately; blur explicitly on mobile
+    // so its software keyboard closes after sending.
+    if (autoFocus) textareaRef.current?.focus();
+    else textareaRef.current?.blur();
+  }
 
   function addFiles(picked: File[]) {
     const ok = picked.filter((f) => f.size <= MAX_FILE_BYTES);
@@ -110,12 +134,13 @@ export function Composer({
       />
       <textarea
         ref={textareaRef}
-        className="composer-input max-h-40 min-h-[2.25rem] w-full resize-none bg-transparent px-1.5 py-1.5 font-mono text-sm leading-normal text-bone placeholder:text-bone-faint focus:outline-none"
+        className="composer-input max-h-40 min-h-[2.25rem] w-full resize-none bg-transparent px-1.5 py-1.5 font-body text-sm leading-normal text-bone placeholder:text-bone-faint focus:outline-none"
         rows={1}
         autoFocus={autoFocus}
         value={value}
         placeholder={placeholder}
-        disabled={disabled}
+        disabled={disabled && !autoFocus}
+        readOnly={disabled && Boolean(autoFocus)}
         onChange={(e) => {
           onChange(e.target.value);
           e.target.style.height = "auto";
@@ -124,7 +149,7 @@ export function Composer({
         onKeyDown={(e) => {
           if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
-            onSubmit();
+            submit();
           }
         }}
         onPaste={(e) => {
@@ -160,15 +185,27 @@ export function Composer({
         </div>
         <div className="composer-toolbar-right flex min-w-0 flex-wrap items-center justify-end gap-1.5">
           {rightExtra}
+          {secondaryAction && (
+            <button
+              type="button"
+              onClick={secondaryAction.onClick}
+              disabled={disabled || secondaryAction.disabled}
+              className="h-8 flex-none rounded-md border border-iron-700 px-2.5 font-mono text-xs text-bone-dim transition-colors hover:border-ember/60 hover:text-ember disabled:cursor-wait disabled:opacity-40"
+            >
+              {secondaryAction.pending ? "…" : secondaryAction.label}
+            </button>
+          )}
           <button
             type="button"
-            onClick={onSubmit}
+            onClick={submit}
             disabled={disabled || (!value.trim() && files.length === 0)}
             title={submitTitle}
-            className="flex h-8 w-8 flex-none items-center justify-center rounded-full bg-fel text-fel-ink transition-colors hover:bg-fel-bright disabled:bg-iron-800 disabled:text-bone-faint"
+            className={`flex h-8 flex-none items-center justify-center bg-fel text-fel-ink transition-colors hover:bg-fel-bright disabled:bg-iron-800 disabled:text-bone-faint ${submitLabel ? "rounded-md px-3 font-mono text-xs font-semibold" : "w-8 rounded-full"}`}
           >
             {disabled ? (
               <span className="block h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+            ) : submitLabel ? (
+              submitLabel
             ) : (
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                 <path d="M9 10 4 15l5 5" />

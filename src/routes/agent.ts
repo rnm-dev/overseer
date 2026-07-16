@@ -4,6 +4,7 @@ import { reconcilePeon, ingestEvents } from "../sessionIndex.js";
 import { appendEvent, broadcast } from "../eventLog.js";
 import { bindPeon } from "../credentials.js";
 import { bearer, credentialAuth, sourceAddress } from "./helpers.js";
+import { normalizePeonUrl } from "../peonClient.js";
 
 // NORTH-BOUND — mounted at /api/v1/peons. Called by peons (peonRegistrar.ts /
 // peonEventPusher.ts). Auth: the peon's per-peon recruitment credential, which
@@ -18,6 +19,10 @@ export function agentRouter(): express.Router {
     if (typeof b.peonId !== "string" || !b.peonId.trim()) return res.status(400).json({ error: "peonId is required", code: "BAD_REQUEST" });
     if (typeof b.controlPort !== "number") return res.status(400).json({ error: "controlPort (number) is required", code: "BAD_REQUEST" });
     const peonId = b.peonId.trim();
+    if (cred.boundPeonId && cred.boundPeonId !== peonId) return res.status(409).json({ error: "credential is already bound to a different Peon", code: "PEON_ID_MISMATCH" });
+    const publicUrl = b.publicUrl === undefined ? null : typeof b.publicUrl === "string" ? normalizePeonUrl(b.publicUrl) : null;
+    if (b.publicUrl !== undefined && !publicUrl) return res.status(400).json({ error: "publicUrl must be an http(s) URL without credentials, query, or fragment", code: "BAD_PUBLIC_URL" });
+    if (!(await bindPeon(cred.id, peonId))) return res.status(409).json({ error: "credential is already bound to a different Peon", code: "PEON_ID_MISMATCH" });
     const record = await registry.register({
       peonId,
       credentialId: cred.id,
@@ -26,12 +31,12 @@ export function agentRouter(): express.Router {
       hostname: typeof b.hostname === "string" ? b.hostname : null,
       address: sourceAddress(req),
       controlPort: b.controlPort,
+      publicUrl,
       protocol: typeof b.protocol === "number" ? b.protocol : null,
       capabilities: Array.isArray(b.capabilities) ? b.capabilities.filter((c: unknown) => typeof c === "string") : [],
       token: bearer(req),
       load: extractLoad(b),
     });
-    await bindPeon(cred.id, peonId);
     // Warm the index for this peon without blocking the response.
     void reconcilePeon(record).catch(() => null);
     // Durable peon event — a topology change worth replaying on resume.

@@ -9,6 +9,8 @@ export interface PeonView {
   hostname: string | null;
   address: string;
   controlPort: number;
+  publicUrl: string | null;
+  addressSource: "paired" | "manual" | "advertised" | "discovered";
   connectionPinned: boolean;
   baseUrl: string;
   online: boolean;
@@ -24,6 +26,11 @@ export interface PeonContext {
   wsId: string;
   base: string; // `/workspaces/${wsId}/peons/${peonId}`
   reload: () => void;
+  isOwner: boolean;
+  orderedSessionIds: string[];
+  sessionHref?: (peonId: string, sessionId: string) => string;
+  sessionsHomeHref?: string;
+  onSessionDeleted?: (peonId: string, sessionId: string) => void;
 }
 
 export const usePeon = () => useOutletContext<PeonContext>();

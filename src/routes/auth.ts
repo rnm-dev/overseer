@@ -1,14 +1,14 @@
 import express from "express";
 import { config } from "../config.js";
-import { ensureUserFromGithub, getUserById, issueDevice, listDevices, revokeDevice } from "../auth.js";
+import { ensureUserFromGithub, getUserById, issueDevice, issueWebSocketTicket, listDevices, revokeDevice } from "../auth.js";
 import { exchangeCodeForProfile, GithubAuthError } from "../github.js";
 import { ensureDefaultWorkspace, getInvitePreview } from "../workspaces.js";
 import { clientInfo } from "./helpers.js";
 import { createHash, randomBytes } from "node:crypto";
 import { query } from "../db.js";
 
-const NATIVE_STATE_TTL_MS = 5 * 60_000;
-const NATIVE_CODE_TTL_MS = 3 * 60_000;
+const OAUTH_STATE_TTL_MS = 5 * 60_000;
+const OAUTH_CODE_TTL_MS = 3 * 60_000;
 const rateBuckets = new Map<string, number[]>();
 const digest = (value: string) => createHash("sha256").update(value).digest("hex");
 const opaque = () => randomBytes(32).toString("base64url");
@@ -28,9 +28,10 @@ function nativeCallback(value: unknown): string | null {
 }
 
 // PUBLIC auth endpoints — mounted on /api BEFORE operatorAuth: they're how a
-// client gets a token. The SPA builds GitHub's authorize URL from this config,
-// GitHub redirects the browser back to the SPA's /auth/github/callback, and the
-// SPA posts the code here.
+// client gets a token. Web and native starts persist an opaque state value and
+// send GitHub to the same frontend callback. The SPA submits code + state here;
+// the API looks up the flow and either logs in the web client or returns the
+// allowlisted native deep link.
 export function publicAuthRouter(): express.Router {
   const router = express.Router();
 
@@ -38,80 +39,27 @@ export function publicAuthRouter(): express.Router {
     res.json({ clientId: config.githubClientId, scope: config.githubScope, redirectUri: config.githubRedirectUri });
   });
 
-  router.post("/auth/github", async (req, res) => {
-    const code = typeof req.body?.code === "string" ? req.body.code.trim() : "";
-    if (!code) return res.status(400).json({ error: "code is required", code: "BAD_REQUEST" });
-    if (!config.githubClientId || !config.githubClientSecret) {
-      return res.status(503).json({ error: "GitHub sign-in is not configured", code: "GITHUB_DISABLED" });
-    }
-    try {
-      const profile = await exchangeCodeForProfile(code);
-      const user = await ensureUserFromGithub(profile);
-      // Open sign-up: everyone gets a personal workspace so the app is never empty.
-      await ensureDefaultWorkspace(user.id, user.email);
-      const client = clientInfo(req);
-      const { token, device } = await issueDevice(user.id, client.userAgent?.slice(0, 80) ?? null, client);
-      res.json({ token, user: { email: user.email, githubLogin: user.githubLogin, avatarUrl: user.avatarUrl }, device });
-    } catch (err) {
-      if (err instanceof GithubAuthError) return res.status(400).json({ error: err.message, code: err.code });
-      console.error("auth: github sign-in failed:", err instanceof Error ? err.message : err);
-      res.status(502).json({ error: "GitHub sign-in failed", code: "GITHUB_ERROR" });
-    }
-  });
-
-  router.post("/auth/github/native/start", async (req, res) => {
-    if (limited(req, "native-start", 10)) return res.status(429).json({ error: "too many sign-in attempts", code: "RATE_LIMITED" });
-    if (!config.githubClientId || !config.githubClientSecret) return res.status(503).json({ error: "GitHub sign-in is not configured", code: "GITHUB_DISABLED" });
-    const callback = nativeCallback(req.body?.callback);
-    if (!callback) return res.status(400).json({ error: "callback is not allowed", code: "INVALID_CALLBACK" });
+  async function start(flow: "web" | "native", callback: string): Promise<{ authorizationUrl: string; state: string }> {
     const state = opaque();
     const now = Date.now();
-    await query(`INSERT INTO native_oauth_attempts (state_hash, callback_url, created_at, expires_at) VALUES ($1,$2,$3,$4)`, [digest(state), callback, now, now + NATIVE_STATE_TTL_MS]);
+    await query(
+      `INSERT INTO oauth_attempts (state_hash, flow, callback_url, created_at, expires_at) VALUES ($1,$2,$3,$4,$5)`,
+      [digest(state), flow, callback, now, now + OAUTH_STATE_TTL_MS],
+    );
     const authorize = new URL("https://github.com/login/oauth/authorize");
     authorize.searchParams.set("client_id", config.githubClientId);
     authorize.searchParams.set("scope", config.githubScope);
-    authorize.searchParams.set("redirect_uri", config.githubNativeRedirectUri);
+    authorize.searchParams.set("redirect_uri", config.githubRedirectUri);
     authorize.searchParams.set("state", state);
-    res.json({ authorizationUrl: authorize.toString(), state });
-  });
+    return { authorizationUrl: authorize.toString(), state };
+  }
 
-  router.get("/auth/github/native/callback", async (req, res) => {
-    const state = typeof req.query.state === "string" ? req.query.state : "";
-    const code = typeof req.query.code === "string" ? req.query.code : "";
-    const now = Date.now();
-    const claimed = await query<{ callback_url: string }>(
-      `UPDATE native_oauth_attempts SET completed_at=$2 WHERE state_hash=$1 AND completed_at IS NULL AND expires_at >= $2 RETURNING callback_url`,
-      [digest(state), now],
-    );
-    const attempt = claimed.rows[0];
-    if (!attempt) return res.status(400).json({ error: "invalid, expired, or already used state", code: "BAD_STATE" });
-    const target = new URL(attempt.callback_url);
-    target.searchParams.set("state", state);
-    if (!code) {
-      target.searchParams.set("error", typeof req.query.error === "string" ? req.query.error : "github_denied");
-      return res.redirect(302, target.toString());
-    }
-    try {
-      const profile = await exchangeCodeForProfile(code, config.githubNativeRedirectUri);
-      const user = await ensureUserFromGithub(profile);
-      await ensureDefaultWorkspace(user.id, user.email);
-      const appCode = opaque();
-      await query(`UPDATE native_oauth_attempts SET app_code_hash=$2, user_id=$3, code_expires_at=$4 WHERE state_hash=$1`, [digest(state), digest(appCode), user.id, Date.now() + NATIVE_CODE_TTL_MS]);
-      target.searchParams.set("code", appCode);
-      return res.redirect(302, target.toString());
-    } catch (err) {
-      target.searchParams.set("error", err instanceof GithubAuthError ? err.code : "GITHUB_ERROR");
-      return res.redirect(302, target.toString());
-    }
-  });
-
-  router.post("/auth/github/native/exchange", async (req, res) => {
-    if (limited(req, "native-exchange", 20)) return res.status(429).json({ error: "too many exchange attempts", code: "RATE_LIMITED" });
+  async function exchangeNativeAppCode(req: express.Request, res: express.Response): Promise<express.Response> {
     const state = typeof req.body?.state === "string" ? req.body.state : "";
     const code = typeof req.body?.code === "string" ? req.body.code : "";
     if (!state || !code) return res.status(400).json({ error: "code and state are required", code: "BAD_REQUEST" });
     const consumed = await query<{ user_id: string }>(
-      `DELETE FROM native_oauth_attempts WHERE state_hash=$1 AND app_code_hash=$2 AND code_expires_at >= $3 RETURNING user_id`,
+      `DELETE FROM oauth_attempts WHERE state_hash=$1 AND app_code_hash=$2 AND code_expires_at >= $3 AND flow='native' RETURNING user_id`,
       [digest(state), digest(code), Date.now()],
     );
     const userId = consumed.rows[0]?.user_id;
@@ -120,7 +68,74 @@ export function publicAuthRouter(): express.Router {
     if (!user) return res.status(400).json({ error: "login user no longer exists", code: "BAD_APP_CODE" });
     const client = clientInfo(req);
     const { token, device } = await issueDevice(user.id, client.userAgent?.slice(0, 80) ?? null, client);
-    res.json({ token, user: { email: user.email, githubLogin: user.githubLogin, avatarUrl: user.avatarUrl }, device });
+    return res.json({ token, user: { email: user.email, githubLogin: user.githubLogin, avatarUrl: user.avatarUrl }, device });
+  }
+
+  router.post("/auth/github/start", async (req, res) => {
+    if (limited(req, "web-start", 10)) return res.status(429).json({ error: "too many sign-in attempts", code: "RATE_LIMITED" });
+    if (!config.githubClientId || !config.githubClientSecret) return res.status(503).json({ error: "GitHub sign-in is not configured", code: "GITHUB_DISABLED" });
+    res.json(await start("web", `${config.publicUrl}/auth/github/callback`));
+  });
+
+  router.post("/auth/github/native/start", async (req, res) => {
+    if (limited(req, "native-start", 10)) return res.status(429).json({ error: "too many sign-in attempts", code: "RATE_LIMITED" });
+    if (!config.githubClientId || !config.githubClientSecret) return res.status(503).json({ error: "GitHub sign-in is not configured", code: "GITHUB_DISABLED" });
+    const callback = nativeCallback(req.body?.callback);
+    if (!callback) return res.status(400).json({ error: "callback is not allowed", code: "INVALID_CALLBACK" });
+    res.json(await start("native", callback));
+  });
+
+  router.post("/auth/github", async (req, res) => {
+    const state = typeof req.body?.state === "string" ? req.body.state : "";
+    const code = typeof req.body?.code === "string" ? req.body.code : "";
+    const githubError = typeof req.body?.error === "string" ? req.body.error : "";
+    if (!state || (!code && !githubError)) return res.status(400).json({ error: "state and a code or error are required", code: "BAD_REQUEST" });
+    const now = Date.now();
+    const claimed = await query<{ flow: string; callback_url: string }>(
+      `UPDATE oauth_attempts SET completed_at=$2 WHERE state_hash=$1 AND completed_at IS NULL AND expires_at >= $2 RETURNING flow, callback_url`,
+      [digest(state), now],
+    );
+    const attempt = claimed.rows[0];
+    if (!attempt) return res.status(400).json({ error: "invalid, expired, or already used state", code: "BAD_STATE" });
+
+    const nativeRedirect = (error: string, appCode?: string): express.Response => {
+      const target = new URL(attempt.callback_url);
+      target.searchParams.set("state", state);
+      if (appCode) target.searchParams.set("code", appCode);
+      else target.searchParams.set("error", error);
+      return res.json({ flow: "native", redirectUrl: target.toString() });
+    };
+
+    if (!code) {
+      if (attempt.flow === "native") return nativeRedirect(githubError || "github_denied");
+      return res.status(400).json({ error: "GitHub sign-in was denied", code: "GITHUB_DENIED" });
+    }
+    try {
+      const profile = await exchangeCodeForProfile(code, config.githubRedirectUri);
+      const user = await ensureUserFromGithub(profile);
+      await ensureDefaultWorkspace(user.id, user.email);
+      if (attempt.flow === "native") {
+        const appCode = opaque();
+        await query(`UPDATE oauth_attempts SET app_code_hash=$2, user_id=$3, code_expires_at=$4 WHERE state_hash=$1`, [digest(state), digest(appCode), user.id, Date.now() + OAUTH_CODE_TTL_MS]);
+        return nativeRedirect("", appCode);
+      }
+      if (attempt.flow !== "web") return res.status(400).json({ error: "invalid OAuth flow", code: "BAD_STATE" });
+      await query(`DELETE FROM oauth_attempts WHERE state_hash=$1`, [digest(state)]);
+      const client = clientInfo(req);
+      const { token, device } = await issueDevice(user.id, client.userAgent?.slice(0, 80) ?? null, client);
+      return res.json({ flow: "web", token, user: { email: user.email, githubLogin: user.githubLogin, avatarUrl: user.avatarUrl }, device });
+    } catch (err) {
+      const error = err instanceof GithubAuthError ? err.code : "GITHUB_ERROR";
+      if (attempt.flow === "native") return nativeRedirect(error);
+      if (err instanceof GithubAuthError) return res.status(400).json({ error: err.message, code: err.code });
+      console.error("auth: github sign-in failed:", err instanceof Error ? err.message : err);
+      return res.status(502).json({ error: "GitHub sign-in failed", code: error });
+    }
+  });
+
+  router.post("/auth/github/native/exchange", async (req, res) => {
+    if (limited(req, "native-exchange", 20)) return res.status(429).json({ error: "too many exchange attempts", code: "RATE_LIMITED" });
+    return exchangeNativeAppCode(req, res);
   });
 
   // Public preview for a /join link — the join page shows which workspace the
@@ -139,11 +154,22 @@ export function accountRouter(): express.Router {
   const router = express.Router();
 
   router.get("/auth/me", (req, res) => {
-    res.json({ user: { email: req.user!.email }, deviceId: req.user!.deviceId });
+    res.json({
+      user: {
+        email: req.user!.email,
+        githubLogin: req.user!.githubLogin,
+        avatarUrl: req.user!.avatarUrl,
+      },
+      deviceId: req.user!.deviceId,
+    });
   });
 
   router.get("/auth/devices", async (req, res) => {
     res.json({ devices: await listDevices(req.user!.userId) });
+  });
+
+  router.post("/auth/ws-ticket", async (req, res) => {
+    res.status(201).json(await issueWebSocketTicket(req.user!));
   });
 
   // Revoke any of my own devices (a lost phone → revoke just that one).

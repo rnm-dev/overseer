@@ -1,10 +1,9 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { api, getToken, json, setToken } from "./api";
 
-// Auth state for the dashboard. Sign-in is GitHub OAuth, SPA-driven:
-//   loginWithGithub()      → redirect the browser to GitHub's authorize URL
-//   (GitHub → /auth/github/callback in the SPA)
-//   completeGithubCallback → verify state, trade the code for a device token
+// Auth state for the dashboard. GitHub returns every flow to this SPA; the SPA
+// submits code + state to the API, whose server-backed attempt determines whether
+// to finish web login or open the native app with a short-lived code.
 // On success we hold a device token (persisted in localStorage) + the user.
 
 export interface User {
@@ -15,8 +14,11 @@ export interface User {
 
 interface GithubConfig {
   clientId: string;
-  scope: string;
-  redirectUri: string;
+}
+
+interface GithubStart {
+  authorizationUrl: string;
+  state: string;
 }
 
 // CSRF guard: a random value stashed before the redirect and checked on return.
@@ -26,7 +28,7 @@ interface AuthState {
   user: User | null;
   ready: boolean; // finished the initial "am I already logged in?" check
   loginWithGithub: () => Promise<void>;
-  completeGithubCallback: (code: string, state: string) => Promise<void>;
+  completeGithubCallback: (code: string | null, state: string, error: string | null) => Promise<"web" | "native">;
   logout: () => Promise<void>;
 }
 
@@ -61,22 +63,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async loginWithGithub() {
       const cfg = await api<GithubConfig>("/auth/github/config");
       if (!cfg.clientId) throw new Error("GitHub sign-in is not configured");
-      const state = crypto.randomUUID();
-      sessionStorage.setItem(STATE_KEY, state);
-      const url = new URL("https://github.com/login/oauth/authorize");
-      url.searchParams.set("client_id", cfg.clientId);
-      url.searchParams.set("redirect_uri", cfg.redirectUri);
-      url.searchParams.set("scope", cfg.scope);
-      url.searchParams.set("state", state);
-      window.location.assign(url.toString());
+      const started = await api<GithubStart>("/auth/github/start", { method: "POST" });
+      sessionStorage.setItem(STATE_KEY, started.state);
+      window.location.assign(started.authorizationUrl);
     },
-    async completeGithubCallback(code, state) {
+    async completeGithubCallback(code, state, error) {
       const saved = sessionStorage.getItem(STATE_KEY);
+      const r = await api<
+        | { flow: "web"; token: string; user: User }
+        | { flow: "native"; redirectUrl: string }
+      >("/auth/github", json({ code, state, error }));
+      if (r.flow === "native") {
+        const target = new URL(r.redirectUrl);
+        if (target.protocol !== "overseer:") throw new Error("invalid native sign-in callback");
+        window.location.assign(target.toString());
+        return "native";
+      }
       sessionStorage.removeItem(STATE_KEY);
       if (!saved || saved !== state) throw new Error("sign-in state mismatch — please try again");
-      const r = await api<{ token: string; user: User }>("/auth/github", json({ code }));
       setToken(r.token);
       setUser(r.user);
+      return "web";
     },
     async logout() {
       try {

@@ -3,7 +3,7 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { after, test } from "node:test";
 import { createServer } from "./server.js";
-import { callPeon, normalizePeonUrl, normalizeProxyError } from "./peonClient.js";
+import { callPeon, classifyPeonNetworkError, normalizePeonUrl, normalizeProxyError } from "./peonClient.js";
 
 const servers: http.Server[] = [];
 after(async () => Promise.all(servers.map((server) => new Promise<void>((resolve) => server.close(() => resolve())))));
@@ -63,10 +63,69 @@ test("fleet calls use the unified API once and preserve protocol headers", async
   assert.ok(seen.every((request) => request.body === '{"prompt":"hello"}'));
 });
 
-test("recruitment URLs normalize a trailing unified API path", () => {
-  assert.equal(normalizePeonUrl("peon.test:4570/api/v1/"), "http://peon.test:4570");
-  assert.equal(normalizePeonUrl("https://peon.test/base/api/v1"), "https://peon.test/base");
+test("fleet calls generate a correlation id when the caller does not supply one", async () => {
+  let requestId: string | undefined;
+  const server = http.createServer((req, res) => {
+    requestId = req.headers["peon-request-id"] as string | undefined;
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end("{}");
+  });
+  const port = await listen(server);
+  const result = await callPeon({ baseUrl: `http://127.0.0.1:${port}`, token: "pn_test" }, "GET", "/status", { actor: "operator@example.com" });
+
+  assert.match(requestId ?? "", /^[0-9a-f-]{36}$/);
+  assert.equal(result.requestId, requestId);
+});
+
+test("Armory update start and polling preserve authenticated fleet status contracts", async () => {
+  const seen: Array<{ url: string | undefined; authorization: string | undefined; protocol: string | undefined }> = [];
+  const server = http.createServer((req, res) => {
+    seen.push({
+      url: req.url,
+      authorization: req.headers.authorization,
+      protocol: req.headers["peon-protocol"] as string | undefined,
+    });
+    res.setHeader("Content-Type", "application/json");
+    if (req.url === "/api/v1/armory/packages/current/update") {
+      res.writeHead(202).end('{"operation":{"id":"op-update","kind":"update","status":"queued"}}');
+    } else if (req.url === "/api/v1/armory/operations/op-update") {
+      res.writeHead(200).end('{"operation":{"id":"op-update","kind":"update","status":"success"}}');
+    } else if (req.url === "/api/v1/armory/packages/missing/update") {
+      res.writeHead(404).end('{"code":"PACKAGE_NOT_ACTIVE","error":"Package is not active"}');
+    } else {
+      res.writeHead(409).end('{"code":"NO_UPDATE_AVAILABLE","error":"No update is available"}');
+    }
+  });
+  const port = await listen(server);
+  const conn = { baseUrl: `http://127.0.0.1:${port}`, token: "pn_armory" };
+  const start = await callPeon(conn, "POST", "/armory/packages/current/update", { actor: "operator@example.com", body: { version: "2.0.0" } });
+  const poll = await callPeon(conn, "GET", "/armory/operations/op-update", { actor: "operator@example.com" });
+  const missing = await callPeon(conn, "POST", "/armory/packages/missing/update", { actor: "operator@example.com", body: {} });
+  const conflict = await callPeon(conn, "POST", "/armory/packages/current/no-update", { actor: "operator@example.com", body: {} });
+
+  assert.equal(start.status, 202);
+  assert.equal((start.json as { operation: { id: string } }).operation.id, "op-update");
+  assert.equal(poll.status, 200);
+  assert.equal((poll.json as { operation: { status: string } }).operation.status, "success");
+  assert.deepEqual([missing.status, (missing.json as { code: string }).code], [404, "PACKAGE_NOT_ACTIVE"]);
+  assert.deepEqual([conflict.status, (conflict.json as { code: string }).code], [409, "NO_UPDATE_AVAILABLE"]);
+  assert.ok(seen.every((request) => request.authorization === "Bearer pn_armory" && request.protocol === "1"));
+});
+
+test("canonical Peon URLs preserve identity and reject unsafe components", () => {
+  assert.equal(normalizePeonUrl("http://peon.test:4570/"), "http://peon.test:4570");
+  assert.equal(normalizePeonUrl("https://peon.test:443/base/"), "https://peon.test:443/base");
+  assert.equal(normalizePeonUrl("peon.test:4570"), null);
+  assert.equal(normalizePeonUrl("http://user:pass@peon.test:4570"), null);
+  assert.equal(normalizePeonUrl("http://peon.test:4570/?token=x"), null);
+  assert.equal(normalizePeonUrl("http://peon.test:4570/#fragment"), null);
   assert.equal(normalizePeonUrl("not a url"), null);
+});
+
+test("network enrollment errors are actionable", () => {
+  assert.equal(classifyPeonNetworkError(Object.assign(new Error("fetch failed"), { cause: { code: "ENOTFOUND" } })).code, "DNS_FAILURE");
+  assert.equal(classifyPeonNetworkError(Object.assign(new Error("fetch failed"), { cause: { code: "ECONNREFUSED" } })).code, "CONNECTION_REFUSED");
+  assert.equal(classifyPeonNetworkError(Object.assign(new Error("fetch failed"), { cause: { code: "SELF_SIGNED_CERT_IN_CHAIN" } })).code, "TLS_FAILURE");
 });
 
 test("filesystem permission failures become a useful structured 403", () => {

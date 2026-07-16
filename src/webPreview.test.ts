@@ -37,7 +37,8 @@ test("HTML preview grants proxy a rooted asset tree without exposing Peon creden
     peon_id text primary key, credential_id text not null, workspace_id text not null,
     name text not null, hostname text, address text not null, control_port integer not null,
     protocol integer, capabilities jsonb, token text not null, connection_pinned boolean default false,
-    load jsonb, registered_at bigint not null, last_seen bigint not null
+    load jsonb, registered_at bigint not null, last_seen bigint not null,
+    public_url text, address_source text not null default 'discovered'
   )`);
 
   const files: Record<string, string> = {

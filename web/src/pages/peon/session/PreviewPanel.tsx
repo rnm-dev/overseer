@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
+import { Check, Copy } from "lucide-react";
 import { ApiError, getToken } from "../../../api";
 import type { Translate } from "../../../i18n";
 import { HighlightedCode, Markdown, languageForPath } from "../../../components/RichText";
@@ -79,6 +80,7 @@ export function PreviewPanel({ base, sessionId, target, pinned, onPinnedChange, 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<ApiError | null>(null);
   const [watchError, setWatchError] = useState<string | null>(null);
+  const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
   const [revision, setRevision] = useState(0);
   const ext = useMemo(() => extension(target.path), [target.path]);
   const isImage = IMAGE_EXTENSIONS.has(ext);
@@ -88,6 +90,15 @@ export function PreviewPanel({ base, sessionId, target, pinned, onPinnedChange, 
   const filePath = `${base}/sessions/${encodeURIComponent(sessionId)}/file?path=${encodeURIComponent(target.path)}`;
   const rawPath = `${base}/sessions/${encodeURIComponent(sessionId)}/file/raw?path=${encodeURIComponent(target.path)}`;
   const webPath = `${base}/sessions/${encodeURIComponent(sessionId)}/web-preview`;
+  const canCopy = !!file && !file.binary && file.content !== null;
+
+  useEffect(() => setCopyStatus("idle"), [target.path, revision]);
+
+  useEffect(() => {
+    if (copyStatus === "idle") return;
+    const timer = window.setTimeout(() => setCopyStatus("idle"), 1800);
+    return () => window.clearTimeout(timer);
+  }, [copyStatus]);
 
   useEffect(() => {
     const ctrl = new AbortController();
@@ -195,6 +206,16 @@ export function PreviewPanel({ base, sessionId, target, pinned, onPinnedChange, 
     }
   }
 
+  async function copyContent() {
+    if (!canCopy) return;
+    try {
+      await navigator.clipboard.writeText(file.content ?? "");
+      setCopyStatus("copied");
+    } catch {
+      setCopyStatus("failed");
+    }
+  }
+
   return createPortal(
     <aside className="fixed bottom-0 right-0 top-0 z-[45] flex w-full flex-col border-l border-iron-700 bg-iron-950 shadow-2xl sm:w-[min(54rem,70vw)]">
       <header className="flex items-center gap-2 border-b border-iron-800 px-3 py-2.5">
@@ -205,6 +226,17 @@ export function PreviewPanel({ base, sessionId, target, pinned, onPinnedChange, 
         <button type="button" aria-pressed={pinned} title={pinned ? t("session.preview.unpin") : t("session.preview.pin")} onClick={() => onPinnedChange(!pinned)} className={`rounded px-2 py-1 font-mono text-xs transition-colors hover:bg-iron-800 ${pinned ? "text-fel-bright" : "text-bone-dim"}`}>
           {pinned ? "◆" : "◇"}
         </button>
+        {canCopy && (
+          <button
+            type="button"
+            title={t(`session.preview.${copyStatus === "idle" ? "copy" : copyStatus}`)}
+            aria-label={t(`session.preview.${copyStatus === "idle" ? "copy" : copyStatus}`)}
+            onClick={() => void copyContent()}
+            className={`rounded px-2 py-1 transition-colors hover:bg-iron-800 ${copyStatus === "copied" ? "text-fel-bright" : copyStatus === "failed" ? "text-blood" : "text-bone-dim hover:text-bone"}`}
+          >
+            {copyStatus === "copied" ? <Check size={14} aria-hidden /> : <Copy size={14} aria-hidden />}
+          </button>
+        )}
         <button type="button" title={t("session.preview.download")} onClick={download} className="rounded px-2 py-1 font-mono text-xs text-bone-dim transition-colors hover:bg-iron-800 hover:text-bone">↓</button>
         <button type="button" title={t("session.preview.close")} onClick={onClose} className="rounded px-2 py-1 font-mono text-lg leading-none text-bone-dim transition-colors hover:bg-iron-800 hover:text-bone">×</button>
       </header>

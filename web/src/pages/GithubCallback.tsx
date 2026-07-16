@@ -5,9 +5,8 @@ import { ApiError } from "../api";
 import { useT } from "../i18n";
 import { Card, Logo } from "../ui";
 
-// Landing page for GitHub's redirect. Reads ?code&state, finishes sign-in, then
-// forwards into the app — or to a pending invite if the user arrived via a /join
-// link before authenticating.
+// GitHub's shared frontend callback. It submits code + state to the API, which
+// either finishes web sign-in or tells the browser to open the native app.
 const PENDING_INVITE_KEY = "overseer_pending_invite";
 
 export function GithubCallback() {
@@ -23,12 +22,14 @@ export function GithubCallback() {
     done.current = true;
     const code = params.get("code");
     const state = params.get("state");
-    if (params.get("error") || !code || !state) {
+    const githubError = params.get("error");
+    if (!state || (!code && !githubError)) {
       setError(t("login.callbackFailed"));
       return;
     }
-    completeGithubCallback(code, state)
-      .then(() => {
+    completeGithubCallback(code, state, githubError)
+      .then((flow) => {
+        if (flow === "native") return;
         const pending = sessionStorage.getItem(PENDING_INVITE_KEY);
         if (pending) {
           sessionStorage.removeItem(PENDING_INVITE_KEY);

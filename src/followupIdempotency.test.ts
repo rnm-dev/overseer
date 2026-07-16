@@ -41,3 +41,28 @@ test("simultaneous follow-ups share one durable successful response and reject c
   assert.equal(conflict.status, 409);
   assert.deepEqual(conflict.json, { error: "request ID was already used with a different payload", code: "IDEMPOTENCY_CONFLICT" });
 });
+
+test("different commands for one session execute in arrival order without overlap", async () => {
+  const mem = newDb();
+  const adapter = mem.adapters.createPg();
+  await initDb(new adapter.Pool() as unknown as pg.Pool);
+  const events: string[] = [];
+  let active = 0;
+  let maximumActive = 0;
+  const execute = (name: string, delay: number) => async () => {
+    active += 1;
+    maximumActive = Math.max(maximumActive, active);
+    events.push(`${name}:start`);
+    await new Promise((resolve) => setTimeout(resolve, delay));
+    events.push(`${name}:end`);
+    active -= 1;
+    return { status: 202, ok: true, json: { accepted: name } };
+  };
+
+  const first = runIdempotentFollowup("peon-1", "session-1", "command-1", { prompt: "first" }, execute("first", 30));
+  const second = runIdempotentFollowup("peon-1", "session-1", "command-2", { prompt: "second" }, execute("second", 1));
+  await Promise.all([first, second]);
+
+  assert.equal(maximumActive, 1);
+  assert.deepEqual(events, ["first:start", "first:end", "second:start", "second:end"]);
+});

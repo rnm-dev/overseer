@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
-import { query } from "./db.js";
+import { query, withAdvisoryLock } from "./db.js";
+import { membership } from "./workspaces.js";
+import { canAccessPeon, canAccessProject } from "./access.js";
 import type { EventKind, LiveEvent } from "./eventLog.js";
 
 export type PushProvider = "expo" | "fcm" | "apns";
@@ -80,8 +82,8 @@ export async function enqueuePushForEvent(event: LiveEvent): Promise<void> {
   if (event.cursor <= 0) return;
   const payload = JSON.stringify(notificationPayload(event));
   const enabledColumn: Record<EventKind, string> = { session: "session_events", peon: "peon_events" };
-  const { rows } = await query<{ id: string }>(
-    `SELECT s.id FROM push_subscriptions s
+  const { rows } = await query<{ id: string; user_id: string }>(
+    `SELECT s.id, s.user_id FROM push_subscriptions s
        JOIN workspace_members m ON m.user_id=s.user_id AND m.workspace_id=$1
        LEFT JOIN push_preferences p ON p.user_id=s.user_id AND p.workspace_id=$1
       WHERE s.disabled_at IS NULL AND s.provider='expo'
@@ -90,6 +92,15 @@ export async function enqueuePushForEvent(event: LiveEvent): Promise<void> {
   );
   const now = Date.now();
   for (const row of rows) {
+    const role = await membership(event.workspaceId, row.user_id);
+    if (!role || !(await canAccessPeon(event.workspaceId, row.user_id, role, event.peonId))) continue;
+    const projectKey = event.payload && typeof event.payload === "object" && typeof (event.payload as { projectKey?: unknown }).projectKey === "string"
+      ? (event.payload as { projectKey: string }).projectKey
+      : null;
+    const projectId = event.payload && typeof event.payload === "object" && typeof (event.payload as { projectId?: unknown }).projectId === "string"
+      ? (event.payload as { projectId: string }).projectId
+      : null;
+    if (projectKey && !(await canAccessProject(event.workspaceId, row.user_id, role, event.peonId, projectKey, projectId))) continue;
     await query(
       `INSERT INTO push_outbox (id,event_cursor,subscription_id,payload,available_at,created_at) VALUES ($1,$2,$3,$4,$5,$5)
        ON CONFLICT (event_cursor,subscription_id) DO NOTHING`,
@@ -114,6 +125,10 @@ export function startPushWorker(): void {
 }
 
 export async function deliverPending(): Promise<void> {
+  await withAdvisoryLock("overseer:push-delivery", deliverPendingLocked);
+}
+
+async function deliverPendingLocked(): Promise<void> {
   const { rows } = await query<{ id: string; token: string; payload: unknown; attempts: number }>(
     `SELECT o.id,s.token,o.payload,o.attempts FROM push_outbox o JOIN push_subscriptions s ON s.id=o.subscription_id
       WHERE o.delivered_at IS NULL AND o.available_at <= $1 AND s.disabled_at IS NULL AND s.provider='expo'

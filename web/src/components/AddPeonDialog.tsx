@@ -7,7 +7,7 @@ import { Button, Dialog, Input, Label } from "../ui";
 // "Check" to see it connect (shows the peon's name), then "Add". Both hit the
 // workspace-scoped endpoints; the connect check is a dry run that stores nothing.
 
-type Check = { state: "ok"; name: string | null } | { state: "err"; message: string } | { state: "idle" | "checking" };
+type Check = { state: "ok"; name: string | null } | { state: "paired-waiting" } | { state: "err"; message: string; requestId?: string } | { state: "idle" | "checking" };
 
 export function AddPeonDialog({ workspaceId, onClose, onAdded }: { workspaceId: string; onClose: () => void; onAdded: () => void }) {
   const t = useT();
@@ -32,11 +32,12 @@ export function AddPeonDialog({ workspaceId, onClose, onAdded }: { workspaceId: 
   async function doAdd() {
     setAdding(true);
     try {
-      await api(`${base}/recruit`, json({ address: url, secret }));
+      const result = await api<{ registered?: boolean }>(`${base}/recruit`, json({ address: url, secret }));
       onAdded();
-      onClose();
+      if (result.registered === false) setCheck({ state: "paired-waiting" });
+      else onClose();
     } catch (err) {
-      setCheck({ state: "err", message: err instanceof ApiError ? err.message : t("error.couldntAdd") });
+      setCheck({ state: "err", message: err instanceof ApiError ? err.message : t("error.couldntAdd"), requestId: err instanceof ApiError ? err.requestId : undefined });
     } finally {
       setAdding(false);
     }
@@ -88,6 +89,12 @@ export function AddPeonDialog({ workspaceId, onClose, onAdded }: { workspaceId: 
         {check.state === "err" && (
           <div className="border border-blood/30 bg-blood/10 p-3 font-mono text-sm text-blood">
             {check.message}
+            {check.requestId && <div className="mt-1 text-xs">{t("addPeon.requestId", { id: check.requestId })}</div>}
+          </div>
+        )}
+        {check.state === "paired-waiting" && (
+          <div className="border border-fel/30 bg-fel/10 p-3 font-mono text-sm text-fel-bright">
+            ⚡ {t("addPeon.pairedWaiting")}
           </div>
         )}
 

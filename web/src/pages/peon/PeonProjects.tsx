@@ -18,7 +18,7 @@ interface Project {
 
 export function PeonProjects() {
   const t = useT();
-  const { peon, base } = usePeon();
+  const { peon, base, isOwner } = usePeon();
   const [projects, setProjects] = useState<Project[] | null>(null);
   const [unsupported, setUnsupported] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -37,7 +37,7 @@ export function PeonProjects() {
     return () => {
       alive = false;
     };
-  }, [base, peon.online]);
+  }, [base, peon.online, t]);
 
   if (!peon.online) return <p className="font-mono text-sm text-bone-faint">{t("peon.offlineNote")}</p>;
   if (unsupported) return <p className="font-mono text-sm text-bone-faint">{t("peon.unsupported")}</p>;
@@ -48,8 +48,8 @@ export function PeonProjects() {
     <div className="space-y-3">
       <PageHeader
         title={t("peon.tab.projects")}
-        menuLabel={t("session.menu")}
-        menu={(close) => (
+        menuLabel={isOwner ? t("session.menu") : undefined}
+        menu={isOwner ? ((close) => (
           <MenuItem
             onClick={() => {
               close();
@@ -58,7 +58,7 @@ export function PeonProjects() {
           >
             {t("newProject.new")}
           </MenuItem>
-        )}
+        )) : undefined}
       />
       <Card>
       {projects.length === 0 ? (

@@ -4,6 +4,26 @@ import type { PeonCallResult } from "./peonClient.js";
 
 const LEASE_MS = 35_000;
 
+// A Peon accepts only one follow-up transition for a session at a time. Keep
+// distinct command IDs in arrival order too: idempotency alone only coalesces
+// retries of the same command and otherwise lets concurrent operators race.
+const sessionQueues = new Map<string, Promise<void>>();
+
+async function inSessionOrder<T>(peonId: string, sessionId: string, work: () => Promise<T>): Promise<T> {
+  const key = `${peonId.length}:${peonId}${sessionId}`;
+  const previous = sessionQueues.get(key) ?? Promise.resolve();
+  let release!: () => void;
+  const turn = new Promise<void>((resolve) => { release = resolve; });
+  sessionQueues.set(key, turn);
+  await previous;
+  try {
+    return await work();
+  } finally {
+    release();
+    if (sessionQueues.get(key) === turn) sessionQueues.delete(key);
+  }
+}
+
 function canonical(value: unknown): string {
   if (value === null || typeof value !== "object") return JSON.stringify(value);
   if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
@@ -29,14 +49,24 @@ export async function runIdempotentFollowup(
   body: unknown,
   execute: () => Promise<PeonCallResult>,
 ): Promise<PeonCallResult> {
+  return inSessionOrder(peonId, sessionId, () => runIdempotentFollowupInOrder(peonId, sessionId, commandId, body, execute));
+}
+
+async function runIdempotentFollowupInOrder(
+  peonId: string,
+  sessionId: string,
+  commandId: string,
+  body: unknown,
+  execute: () => Promise<PeonCallResult>,
+): Promise<PeonCallResult> {
   const payloadHash = createHash("sha256").update(canonical(body)).digest("hex");
   const owner = randomUUID();
   for (;;) {
     const now = Date.now();
     const inserted = await query(
-      `INSERT INTO followup_commands (peon_id, session_id, command_id, payload_hash, owner_id, lease_expires_at, created_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING`,
-      [peonId, sessionId, commandId, payloadHash, owner, now + LEASE_MS, now],
+      `INSERT INTO followup_commands (peon_id, session_id, command_id, payload_hash, owner_id, lease_expires_at, created_at, request_body)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING`,
+      [peonId, sessionId, commandId, payloadHash, owner, now + LEASE_MS, now, JSON.stringify(body)],
     );
     let owns = (inserted.rowCount ?? 0) > 0;
     const { rows } = await query<{ payload_hash: string; response_status: number | null; response_body: unknown; lease_expires_at: number }>(

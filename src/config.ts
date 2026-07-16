@@ -17,19 +17,18 @@ export interface Config {
   reconcileIntervalMs: number;
 
   // ---- operator/mobile auth (GitHub OAuth → device tokens) ----
-  // Public base URL of the operator surface. The SPA lives here and the GitHub
-  // OAuth callback lands on it (/auth/github/callback), so it must match how the
-  // app is actually reached.
+  // Public base URL of the operator surface. The SPA's OAuth callback lives
+  // here, so it must match how the app is actually reached.
   publicUrl: string;
   // GitHub OAuth app credentials (github.ts). The SPA drives the redirect; the
   // server does the code→token exchange with the secret, never exposed to the client.
   githubClientId: string;
   githubClientSecret: string;
   githubScope: string;
-  // Where GitHub sends the browser back — a client-side route in the SPA that then
-  // posts the code to /api/auth/github. Must match the OAuth app's registered URL.
+  // The single frontend HTTPS callback registered with GitHub. Both web and
+  // native starts use it; the SPA submits code + state to the API, where
+  // server-backed state decides which client receives the result.
   githubRedirectUri: string;
-  githubNativeRedirectUri: string;
   githubNativeCallbacks: string[];
   // How long an issued device token lives.
   deviceTokenTtlMs: number;
@@ -64,7 +63,6 @@ export const config: Config = {
   githubClientSecret: process.env.OVERSEER_GITHUB_CLIENT_SECRET ?? "",
   githubScope: process.env.OVERSEER_GITHUB_SCOPE ?? "read:user user:email",
   githubRedirectUri: process.env.OVERSEER_GITHUB_REDIRECT_URI ?? `${publicUrl}/auth/github/callback`,
-  githubNativeRedirectUri: process.env.OVERSEER_GITHUB_NATIVE_REDIRECT_URI ?? `${publicUrl}/api/auth/github/native/callback`,
   githubNativeCallbacks: (process.env.OVERSEER_GITHUB_NATIVE_CALLBACKS ?? "overseer://oauth/github")
     .split(",").map((value) => value.trim()).filter(Boolean),
   deviceTokenTtlMs: num("OVERSEER_DEVICE_TOKEN_TTL_MS", 90 * 24 * 60 * 60_000),

@@ -142,6 +142,8 @@ export async function issueDevice(userId: string, label: string | null, client: 
 export interface AuthContext {
   userId: string;
   email: string;
+  githubLogin: string | null;
+  avatarUrl: string | null;
   deviceId: string;
 }
 
@@ -158,8 +160,10 @@ export async function verifyDeviceToken(token: string): Promise<AuthContext | nu
     revoked_at: number | null;
     user_id: string;
     email: string;
+    github_login: string | null;
+    avatar_url: string | null;
   }>(
-    `SELECT d.id AS device_id, d.token_hash, d.expires_at, d.revoked_at, u.id AS user_id, u.email
+    `SELECT d.id AS device_id, d.token_hash, d.expires_at, d.revoked_at, u.id AS user_id, u.email, u.github_login, u.avatar_url
        FROM devices d JOIN users u ON u.id = d.user_id
       WHERE d.id = $1`,
     [parsed.id],
@@ -175,7 +179,40 @@ export async function verifyDeviceToken(token: string): Promise<AuthContext | nu
     now,
     now - 3_600_000,
   ]).catch(() => undefined);
-  return { userId: row.user_id, email: row.email, deviceId: row.device_id };
+  return { userId: row.user_id, email: row.email, githubLogin: row.github_login, avatarUrl: row.avatar_url, deviceId: row.device_id };
+}
+
+const WEBSOCKET_TICKET_TTL_MS = 30_000;
+
+export async function issueWebSocketTicket(auth: AuthContext): Promise<{ ticket: string; expiresAt: number }> {
+  const ticket = randomBytes(32).toString("base64url");
+  const now = Date.now();
+  const expiresAt = now + WEBSOCKET_TICKET_TTL_MS;
+  await query(
+    `INSERT INTO websocket_tickets (ticket_hash,user_id,device_id,created_at,expires_at) VALUES ($1,$2,$3,$4,$5)`,
+    [sha256(ticket), auth.userId, auth.deviceId, now, expiresAt],
+  );
+  // Opportunistic bounded cleanup; no credential material is stored here.
+  void query(`DELETE FROM websocket_tickets WHERE expires_at < $1`, [now]).catch(() => undefined);
+  return { ticket, expiresAt };
+}
+
+export async function consumeWebSocketTicket(ticket: string): Promise<AuthContext | null> {
+  if (!ticket || ticket.length > 128) return null;
+  const consumed = await query<{ user_id: string; device_id: string }>(
+    `DELETE FROM websocket_tickets WHERE ticket_hash=$1 AND expires_at >= $2 RETURNING user_id,device_id`,
+    [sha256(ticket), Date.now()],
+  );
+  const row = consumed.rows[0];
+  if (!row) return null;
+  // A device revoked after ticket issuance must still be rejected.
+  const active = await query<{ email: string; github_login: string | null; avatar_url: string | null }>(
+    `SELECT u.email,u.github_login,u.avatar_url FROM devices d JOIN users u ON u.id=d.user_id
+      WHERE d.id=$1 AND d.user_id=$2 AND d.revoked_at IS NULL AND d.expires_at >= $3`,
+    [row.device_id, row.user_id, Date.now()],
+  );
+  const user = active.rows[0];
+  return user ? { userId: row.user_id, deviceId: row.device_id, email: user.email, githubLogin: user.github_login, avatarUrl: user.avatar_url } : null;
 }
 
 export async function listDevices(userId: string): Promise<DeviceView[]> {

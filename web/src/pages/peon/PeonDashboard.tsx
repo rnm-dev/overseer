@@ -4,6 +4,9 @@ import { api } from "../../api";
 import { Badge, Card, titleize } from "../../ui";
 import { useT } from "../../i18n";
 import { usePeon } from "./context";
+import { useLiveSocket } from "../../liveSocket";
+import { SessionPresence } from "../../components/SessionPresence";
+import { sessionDisplayTitle } from "./sessionList";
 
 // author: Viktor
 
@@ -16,6 +19,7 @@ interface Session {
   id: string;
   status?: string | null;
   title?: string | null;
+  promptPreview?: string | null;
   prompt?: string | null;
   projectKey?: string | null;
   dir?: string | null;
@@ -47,6 +51,7 @@ function statusTone(status?: string | null): "green" | "amber" | "red" | "neutra
 export function PeonDashboard() {
   const t = useT();
   const { peon, base } = usePeon();
+  const { viewersFor } = useLiveSocket();
   const [status, setStatus] = useState<LiveStatus | null>(null);
   const [sessions, setSessions] = useState<Session[] | null>(null);
   const [projects, setProjects] = useState<Project[] | null>(null);
@@ -111,11 +116,12 @@ export function PeonDashboard() {
                             {titleize(s.projectKey)}
                           </span>
                         )}
-                        <div className="truncate font-display text-sm font-medium text-bone">{s.title || s.prompt || t("session.untitled")}</div>
+                        <div className="truncate font-display text-sm font-medium text-bone">{sessionDisplayTitle(s, t("session.untitled"))}</div>
                       </div>
                       <div className="mt-0.5 truncate font-mono text-xs text-bone-faint">{s.lastMessagePreview || s.dir || "—"}</div>
                     </div>
                     <div className="flex flex-none flex-col items-end gap-1">
+                      <SessionPresence viewers={viewersFor(peon.peonId, s.id)} />
                       {ago(s.lastActivityAt ?? s.startedAt) && <span className="font-mono text-[0.7rem] text-bone-dim">{ago(s.lastActivityAt ?? s.startedAt)}</span>}
                       {s.status && s.status !== "completed" && <Badge tone={statusTone(s.status)}>{s.status.replace(/_/g, " ")}</Badge>}
                     </div>

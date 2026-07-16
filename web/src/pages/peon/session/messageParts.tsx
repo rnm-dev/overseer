@@ -1,7 +1,8 @@
 import { useState, type ReactNode } from "react";
 import { Dialog } from "../../../ui";
-import { Markdown } from "../../../components/RichText";
-import { orcishThinkingLabel, toolSummary, type Item, type MessageAttachment, type T } from "./parsing";
+import { HighlightedCode, Markdown } from "../../../components/RichText";
+import { orcishThinkingLabel, prettyJsonOutput, toolSummary, type Item, type MessageAttachment, type T } from "./parsing";
+import { Avatar } from "../../../components/Avatar";
 
 // The transcript render atoms: one component per Item kind, plus the Markdown
 // renderer and the "agent is working" indicator. Pure presentation — all parsing
@@ -26,12 +27,13 @@ function LocalMessageTime({ createdAt }: { createdAt?: number }) {
   return <time dateTime={date.toISOString()} title={`${local} (${Intl.DateTimeFormat().resolvedOptions().timeZone})`}>{local}</time>;
 }
 
-export function UserBubble({ text, author, attachments, createdAt, onOpenAttachment }: { text: string; author?: string; attachments?: MessageAttachment[]; createdAt?: number; onOpenAttachment?: (attachment: MessageAttachment) => void }) {
-  const avatarLabel = author?.trim().charAt(0).toUpperCase() || "?";
+export function UserBubble({ text, author, authorEmail, authorAvatarUrl, attachments, createdAt, onOpenAttachment }: { text: string; author?: string; authorEmail?: string; authorGithubLogin?: string; authorAvatarUrl?: string; attachments?: MessageAttachment[]; createdAt?: number; onOpenAttachment?: (attachment: MessageAttachment) => void }) {
+  const displayAuthor = authorEmail || author;
+  const avatarLabel = displayAuthor || "Unknown message author";
   return (
     <div className="flex items-end justify-end gap-2">
       <div className="max-w-[80%] whitespace-pre-wrap break-words rounded-xl rounded-br-sm border border-fel/25 bg-fel/[0.12] px-3 py-1.5 text-sm leading-normal text-bone">
-        {author && <div className="mb-1 truncate font-mono text-[0.68rem] leading-tight text-fel-bright" title={author}>{author}</div>}
+        {displayAuthor && <div className="mb-1 truncate font-mono text-[0.68rem] leading-tight text-fel-bright" title={displayAuthor}>{displayAuthor}</div>}
         {text && <div>{text}</div>}
         {!!attachments?.length && (
           <div className={text ? "mt-2 grid gap-1" : "grid gap-1"}>
@@ -40,9 +42,7 @@ export function UserBubble({ text, author, attachments, createdAt, onOpenAttachm
         )}
         {createdAt && <div className="mt-1 text-right font-mono text-[0.65rem] leading-tight text-bone-faint"><LocalMessageTime createdAt={createdAt} /></div>}
       </div>
-      <div className="grid size-7 shrink-0 place-items-center rounded-full border border-fel/35 bg-fel/15 font-display text-[0.68rem] font-semibold text-fel-bright" aria-label={author ? `Message from ${author}` : "Unknown message author"} title={author}>
-        {avatarLabel}
-      </div>
+      <Avatar src={authorAvatarUrl} label={avatarLabel} className="border-fel/35 bg-fel/15 text-fel-bright" />
     </div>
   );
 }
@@ -138,6 +138,7 @@ function editDiff(input: unknown): DiffLine[] | null {
 
 function ToolDetailsModal({ name, input, command, result, t, onClose }: { name?: string; input?: unknown; command: string; result?: { text: string; error?: boolean }; t: T; onClose: () => void }) {
   const diff = name === "Edit" ? editDiff(input) : null;
+  const jsonOutput = result?.error || !result?.text ? null : prettyJsonOutput(result.text);
   const inputText = (() => {
     if (name !== "Edit") return command;
     if (input && typeof input === "object") {
@@ -174,9 +175,17 @@ function ToolDetailsModal({ name, input, command, result, t, onClose }: { name?:
         )}
         <div>
           <div className="mb-1 font-display text-[0.62rem] font-semibold uppercase tracking-[0.18em] text-bone-dim">{t("session.chat.output")}</div>
-          <pre className={`max-h-64 overflow-auto whitespace-pre-wrap break-words rounded bg-iron-900/70 p-2.5 font-mono text-xs ${result?.error ? "text-blood" : "text-bone-dim"}`}>
-            {result?.text?.trim() ? result.text : t("session.chat.noOutput")}
-          </pre>
+          {jsonOutput !== null ? (
+            <HighlightedCode
+              source={jsonOutput}
+              language="json"
+              className="max-h-64 !border-0 !bg-iron-900/70 !p-2.5 !text-xs"
+            />
+          ) : (
+            <pre className={`max-h-64 overflow-auto whitespace-pre-wrap break-words rounded bg-iron-900/70 p-2.5 font-mono text-xs ${result?.error ? "text-blood" : "text-bone-dim"}`}>
+              {result?.text?.trim() ? result.text : t("session.chat.noOutput")}
+            </pre>
+          )}
         </div>
       </div>
     </Dialog>
@@ -225,7 +234,7 @@ interface PreviewRequest {
 export function ItemView({ item, t, onOpenPreview, onOpenAttachment }: { item: Item; t: T; onOpenPreview?: (preview: PreviewRequest) => void; onOpenAttachment?: (attachment: MessageAttachment) => void }) {
   switch (item.kind) {
     case "user":
-      return <UserBubble text={item.text} author={item.author} attachments={item.attachments} createdAt={item.createdAt} onOpenAttachment={onOpenAttachment} />;
+      return <UserBubble text={item.text} author={item.author} authorEmail={item.authorEmail} authorGithubLogin={item.authorGithubLogin} authorAvatarUrl={item.authorAvatarUrl} attachments={item.attachments} createdAt={item.createdAt} onOpenAttachment={onOpenAttachment} />;
     case "text":
       return (
         <div className="text-sm leading-relaxed text-bone">

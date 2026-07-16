@@ -1,0 +1,138 @@
+import assert from "node:assert/strict";
+import http from "node:http";
+import type { AddressInfo } from "node:net";
+import { after, before, test } from "node:test";
+import type pg from "pg";
+import { newDb } from "pg-mem";
+import { config } from "./config.js";
+import { initDb } from "./db.js";
+import { createServer } from "./server.js";
+
+let server: http.Server;
+let port: number;
+const originalFetch = globalThis.fetch;
+const originalConfig = {
+  publicUrl: config.publicUrl,
+  githubClientId: config.githubClientId,
+  githubClientSecret: config.githubClientSecret,
+  githubRedirectUri: config.githubRedirectUri,
+  githubNativeCallbacks: config.githubNativeCallbacks,
+};
+
+before(async () => {
+  const mem = newDb();
+  const adapter = mem.adapters.createPg();
+  await initDb(new adapter.Pool() as unknown as pg.Pool);
+
+  config.publicUrl = "https://overseer.example";
+  config.githubClientId = "github-client";
+  config.githubClientSecret = "github-secret";
+  config.githubRedirectUri = "https://overseer.example/auth/github/callback";
+  config.githubNativeCallbacks = ["overseer://oauth/github"];
+
+  globalThis.fetch = async (input, init) => {
+    const url = String(input);
+    if (url === "https://github.com/login/oauth/access_token") {
+      const body = JSON.parse(String(init?.body)) as { code: string; redirect_uri: string };
+      assert.equal(body.redirect_uri, config.githubRedirectUri);
+      return Response.json({ access_token: `token-${body.code}` });
+    }
+    if (url === "https://api.github.com/user") {
+      const token = new Headers(init?.headers).get("authorization")?.replace("Bearer token-", "") ?? "unknown";
+      const native = token === "native-github-code";
+      return Response.json({
+        id: native ? 202 : 101,
+        login: native ? "native-user" : "web-user",
+        email: native ? "native@example.test" : "web@example.test",
+        name: null,
+        avatar_url: null,
+      });
+    }
+    throw new Error(`unexpected fetch: ${url}`);
+  };
+
+  server = http.createServer(createServer());
+  port = await new Promise<number>((resolve) => server.listen(0, "127.0.0.1", () => resolve((server.address() as AddressInfo).port)));
+});
+
+after(async () => {
+  globalThis.fetch = originalFetch;
+  Object.assign(config, originalConfig);
+  await new Promise<void>((resolve) => server.close(() => resolve()));
+});
+
+interface TestResponse {
+  status: number;
+  location?: string;
+  body: Record<string, unknown>;
+}
+
+function request(path: string, method = "GET", body?: unknown): Promise<TestResponse> {
+  const encoded = body === undefined ? undefined : JSON.stringify(body);
+  return new Promise((resolve, reject) => {
+    const req = http.request({
+      hostname: "127.0.0.1",
+      port,
+      path,
+      method,
+      headers: encoded ? { "content-type": "application/json", "content-length": Buffer.byteLength(encoded) } : undefined,
+    }, (res) => {
+      const chunks: Buffer[] = [];
+      res.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+      res.on("end", () => {
+        const text = Buffer.concat(chunks).toString("utf8");
+        resolve({
+          status: res.statusCode ?? 0,
+          location: res.headers.location,
+          body: text && res.headers["content-type"]?.includes("json") ? JSON.parse(text) as Record<string, unknown> : {},
+        });
+      });
+    });
+    req.on("error", reject);
+    req.end(encoded);
+  });
+}
+
+function started(response: TestResponse): { state: string; authorizationUrl: URL } {
+  assert.equal(response.status, 200);
+  const state = response.body.state;
+  const authorizationUrl = response.body.authorizationUrl;
+  assert.equal(typeof state, "string");
+  assert.equal(typeof authorizationUrl, "string");
+  const authorize = new URL(authorizationUrl as string);
+  assert.equal(authorize.searchParams.get("redirect_uri"), config.githubRedirectUri);
+  assert.equal(authorize.searchParams.get("state"), state);
+  return { state: state as string, authorizationUrl: authorize };
+}
+
+test("web OAuth uses the shared frontend callback and completes through the API", async () => {
+  const { state } = started(await request("/api/auth/github/start", "POST"));
+  const exchanged = await request("/api/auth/github", "POST", { state, code: "web-github-code" });
+  assert.equal(exchanged.status, 200);
+  assert.equal(exchanged.body.flow, "web");
+  assert.equal((exchanged.body.user as { githubLogin: string }).githubLogin, "web-user");
+  assert.equal(typeof exchanged.body.token, "string");
+
+  const replay = await request("/api/auth/github", "POST", { state, code: "web-github-code" });
+  assert.equal(replay.status, 400);
+  assert.equal(replay.body.code, "BAD_STATE");
+});
+
+test("native OAuth uses the same frontend callback before opening the app scheme", async () => {
+  const { state } = started(await request("/api/auth/github/native/start", "POST", { callback: "overseer://oauth/github" }));
+  const completed = await request("/api/auth/github", "POST", { state, code: "native-github-code" });
+  assert.equal(completed.status, 200);
+  assert.equal(completed.body.flow, "native");
+
+  const app = new URL(completed.body.redirectUrl as string);
+  assert.equal(`${app.protocol}//${app.host}${app.pathname}`, "overseer://oauth/github");
+  assert.equal(app.searchParams.get("state"), state);
+  const appCode = app.searchParams.get("code");
+  assert.ok(appCode);
+  assert.notEqual(appCode, "native-github-code");
+
+  const exchanged = await request("/api/auth/github/native/exchange", "POST", { state, code: appCode });
+  assert.equal(exchanged.status, 200);
+  assert.equal((exchanged.body.user as { githubLogin: string }).githubLogin, "native-user");
+  assert.equal(typeof exchanged.body.token, "string");
+});

@@ -1,41 +1,72 @@
-import { Navigate, Route, Routes } from "react-router-dom";
+import { lazy, Suspense } from "react";
+import { Navigate, Route, Routes, useParams } from "react-router-dom";
 import { useAuth } from "./auth";
 import { useT } from "./i18n";
 import { WorkspaceProvider } from "./workspace";
 import { LiveSocketProvider } from "./liveSocket";
 import { AppLayout } from "./components/AppLayout";
-import { Login } from "./pages/Login";
-import { Dashboard } from "./pages/Dashboard";
-import { GithubCallback } from "./pages/GithubCallback";
-import { Join } from "./pages/Join";
-import { PeonDetail } from "./pages/PeonDetail";
-import { PeonDashboard } from "./pages/peon/PeonDashboard";
-import { PeonNewSession } from "./pages/peon/PeonNewSession";
-import { PeonSessionDetail } from "./pages/peon/PeonSessionDetail";
-import { PeonProjects } from "./pages/peon/PeonProjects";
-import { PeonProjectDetail } from "./pages/peon/PeonProjectDetail";
-import { PeonStats } from "./pages/peon/PeonStats";
-import { PeonSettings } from "./pages/peon/PeonSettings";
+import { peonSettingsPath } from "./pages/peon/settingsNavigation";
+
+const Login = lazy(() => import("./pages/Login").then((m) => ({ default: m.Login })));
+const Dashboard = lazy(() => import("./pages/Dashboard").then((m) => ({ default: m.Dashboard })));
+const GithubCallback = lazy(() => import("./pages/GithubCallback").then((m) => ({ default: m.GithubCallback })));
+const Join = lazy(() => import("./pages/Join").then((m) => ({ default: m.Join })));
+const PeonDetail = lazy(() => import("./pages/PeonDetail").then((m) => ({ default: m.PeonDetail })));
+const PeonDashboard = lazy(() => import("./pages/peon/PeonDashboard").then((m) => ({ default: m.PeonDashboard })));
+const PeonNewSession = lazy(() => import("./pages/peon/PeonNewSession").then((m) => ({ default: m.PeonNewSession })));
+const PeonSessionDetail = lazy(() => import("./pages/peon/PeonSessionDetail").then((m) => ({ default: m.PeonSessionDetail })));
+const PeonProjects = lazy(() => import("./pages/peon/PeonProjects").then((m) => ({ default: m.PeonProjects })));
+const PeonProjectDetail = lazy(() => import("./pages/peon/PeonProjectDetail").then((m) => ({ default: m.PeonProjectDetail })));
+const PeonStats = lazy(() => import("./pages/peon/PeonStats").then((m) => ({ default: m.PeonStats })));
+const PeonSettings = lazy(() => import("./pages/peon/PeonSettings").then((m) => ({ default: m.PeonSettings })));
+const Members = lazy(() => import("./pages/Members").then((m) => ({ default: m.Members })));
+const WorkspaceSessions = lazy(() => import("./pages/WorkspaceSessions").then((m) => ({ default: m.WorkspaceSessions })));
+const WorkspaceSessionsEmpty = lazy(() => import("./pages/WorkspaceSessions").then((m) => ({ default: m.WorkspaceSessionsEmpty })));
+const ProjectMembers = lazy(() => import("./pages/peon/ProjectMembers").then((m) => ({ default: m.ProjectMembers })));
+const ProjectFileBrowser = lazy(() => import("./pages/peon/ProjectFileBrowser").then((m) => ({ default: m.ProjectFileBrowser })));
+const ProjectSkills = lazy(() => import("./pages/peon/ProjectSkills").then((m) => ({ default: m.ProjectSkills })));
+const ProjectSettings = lazy(() => import("./pages/peon/ProjectSettings").then((m) => ({ default: m.ProjectSettings })));
+
+function LegacyPeonArmoryRedirect() {
+  const { peonId = "", packageId } = useParams();
+  return <Navigate to={peonSettingsPath(peonId, "armory", packageId)} replace />;
+}
+
+function Loading() {
+  const t = useT();
+  return (
+    <div className="grid min-h-screen place-items-center gap-4">
+      <div className="flex flex-col items-center gap-4">
+        <div className="forge-spin" />
+        <p className="rune text-xs text-bone-dim">{t("app.loading")}</p>
+      </div>
+    </div>
+  );
+}
+
+function PeonSessionsEmpty() {
+  const t = useT();
+  return (
+    <div className="grid min-h-[55vh] place-items-center text-center">
+      <div>
+        <h1 className="font-display text-xl font-bold text-bone">{t("peon.tab.sessions")}</h1>
+        <p className="mt-2 font-mono text-sm text-bone-faint">{t("sessions.choose")}</p>
+      </div>
+    </div>
+  );
+}
 
 export function App() {
   const { user, ready } = useAuth();
-  const t = useT();
 
   if (!ready) {
-    return (
-      <div className="grid min-h-screen place-items-center gap-4">
-        <div className="flex flex-col items-center gap-4">
-          <div className="forge-spin" />
-          <p className="rune text-xs text-bone-dim">{t("app.loading")}</p>
-        </div>
-      </div>
-    );
+    return <Loading />;
   }
 
   return (
-    <Routes>
+    <Suspense fallback={<Loading />}><Routes>
       <Route path="/login" element={user ? <Navigate to="/" replace /> : <Login />} />
-      {/* Public: GitHub redirects here, and invite links resolve here — both work signed-out. */}
+      {/* Public: GitHub returns web and native OAuth here; invite links also work signed-out. */}
       <Route path="/auth/github/callback" element={<GithubCallback />} />
       <Route path="/join/:token" element={<Join />} />
 
@@ -54,18 +85,34 @@ export function App() {
         }
       >
         <Route index element={<Dashboard />} />
+        <Route path="workspaces/:workspaceId/members" element={<Members />} />
+        <Route path="workspaces/:workspaceId/sessions" element={<WorkspaceSessions />}>
+          <Route index element={<WorkspaceSessionsEmpty />} />
+          <Route path=":peonId/:sid" element={<PeonSessionDetail />} />
+        </Route>
         <Route path="peons/:peonId" element={<PeonDetail />}>
-          <Route index element={<PeonDashboard />} />
+          <Route index element={<Navigate to="sessions" replace />} />
+          <Route path="overview" element={<PeonDashboard />} />
+          <Route path="sessions" element={<PeonSessionsEmpty />} />
           <Route path="sessions/new" element={<PeonNewSession />} />
           <Route path="sessions/:sid" element={<PeonSessionDetail />} />
           <Route path="projects" element={<PeonProjects />} />
           <Route path="projects/:key" element={<PeonProjectDetail />} />
+          <Route path="projects/:key/files" element={<ProjectFileBrowser />} />
+          <Route path="projects/:key/skills" element={<ProjectSkills />} />
+          <Route path="projects/:key/members" element={<ProjectMembers />} />
+          <Route path="projects/:key/settings" element={<ProjectSettings />} />
           <Route path="stats" element={<PeonStats />} />
+          <Route path="armory" element={<LegacyPeonArmoryRedirect />} />
+          <Route path="armory/:packageId" element={<LegacyPeonArmoryRedirect />} />
           <Route path="settings" element={<PeonSettings />} />
+          <Route path="settings/agent" element={<PeonSettings />} />
+          <Route path="settings/armory" element={<PeonSettings />} />
+          <Route path="settings/armory/:packageId" element={<PeonSettings />} />
         </Route>
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+    </Routes></Suspense>
   );
 }

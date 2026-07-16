@@ -32,7 +32,7 @@ export function AttachmentPreview({ base, attachment, onClose }: { base: string;
       } else setError("This binary format cannot be previewed.");
     }).catch((err) => { if (!ctrl.signal.aborted) setError(err instanceof Error ? err.message : String(err)); });
     return () => { ctrl.abort(); if (objectUrl) URL.revokeObjectURL(objectUrl); };
-  }, [attachment.path, attachment.type, base, name]);
+  }, [attachment, attachment.path, attachment.type, base, name]);
 
   return (
     <Dialog title={name} onClose={onClose} size="lg">

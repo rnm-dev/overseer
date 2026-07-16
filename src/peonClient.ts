@@ -1,11 +1,12 @@
 import { Readable } from "node:stream";
+import { randomUUID } from "node:crypto";
 import type { Request as ExpressRequest, Response as ExpressResponse } from "express";
 import { baseUrl, type PeonRecord } from "./registry.js";
 
 // The overseer's south-bound client: how it calls a peon's unified fleet API. Every
 // call carries the peon's credential token + the acting operator via Peon-Actor.
 
-const PROTOCOL = 1;
+export const PROTOCOL = 1;
 export const PEON_API_PATH = "/api/v1";
 
 export interface PeonConn {
@@ -17,18 +18,25 @@ export function connOfRecord(record: PeonRecord): PeonConn {
   return { baseUrl: baseUrl(record), token: record.token };
 }
 
-// Accept whatever address an operator pastes at recruit time (with/without scheme,
-// tolerating a trailing fleet API path) and return the server base. Removing the
-// API path here ensures callers never duplicate the version segment.
+// Canonical callback URLs are identities, not discovery hints. Keep the hostname,
+// scheme, explicit port and path (apart from a trailing slash), and never resolve
+// DNS while normalizing.
 export function normalizePeonUrl(raw: string): string | null {
-  let s = raw.trim();
+  const s = raw.trim();
   if (!s) return null;
-  if (!/^https?:\/\//i.test(s)) s = `http://${s}`;
+  if (!/^https?:\/\//i.test(s)) return null;
   try {
     const u = new URL(s);
-    let path = u.pathname.replace(/\/+$/, "");
-    if (path.endsWith(PEON_API_PATH)) path = path.slice(0, -PEON_API_PATH.length);
-    return `${u.protocol}//${u.host}${path}`;
+    if ((u.protocol !== "http:" && u.protocol !== "https:") || !u.hostname) return null;
+    if (u.username || u.password || s.includes("?") || s.includes("#")) return null;
+    const authority = s.slice(s.indexOf("//") + 2).split(/[/?#]/, 1)[0];
+    const port = authority.startsWith("[")
+      ? authority.match(/^\[[^\]]+\]:(\d+)$/)?.[1]
+      : authority.match(/:(\d+)$/)?.[1];
+    if (port && (Number(port) < 1 || Number(port) > 65535)) return null;
+    const host = `${u.hostname}${port ? `:${port}` : ""}`;
+    const path = u.pathname.replace(/\/+$/, "");
+    return `${u.protocol}//${host}${path}`;
   } catch {
     return null;
   }
@@ -54,6 +62,7 @@ export interface PeonCallResult {
   status: number;
   ok: boolean;
   json: unknown;
+  requestId?: string;
 }
 
 interface ProxyErrorResponse {
@@ -90,22 +99,35 @@ export async function callPeon(
   opts: { actor?: string | null; body?: unknown; timeoutMs?: number; requestId?: string } = {},
 ): Promise<PeonCallResult> {
   const url = apiUrl(conn, pathname);
+  const requestId = opts.requestId ?? randomUUID();
   try {
     const res = await fetch(url, {
       method,
       headers: headers(conn.token, opts.actor ?? null, {
         ...(opts.body !== undefined ? { "Content-Type": "application/json" } : {}),
-        ...(opts.requestId ? { "Peon-Request-Id": opts.requestId } : {}),
+        "Peon-Request-Id": requestId,
       }),
       body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
       signal: AbortSignal.timeout(opts.timeoutMs ?? 30_000),
     });
     const text = await res.text();
     const json = text ? safeJson(text) : null;
-    return { status: res.status, ok: res.ok, json };
+    const responseRequestId = res.headers.get("peon-request-id") ?? res.headers.get("x-request-id") ?? res.headers.get("x-correlation-id") ?? requestId;
+    return { status: res.status, ok: res.ok, json, requestId: responseRequestId };
   } catch (err) {
-    return { status: 502, ok: false, json: { error: `peon unreachable: ${err instanceof Error ? err.message : String(err)}`, code: "PEON_UNREACHABLE" } };
+    return { status: 502, ok: false, json: classifyPeonNetworkError(err) };
   }
+}
+
+export function classifyPeonNetworkError(err: unknown): { error: string; code: string } {
+  const error = err as Error & { cause?: { code?: string; message?: string } };
+  const code = error?.cause?.code ?? "";
+  const detail = [error?.message, error?.cause?.message].filter(Boolean).join(": ");
+  if (["ENOTFOUND", "EAI_AGAIN"].includes(code)) return { code: "DNS_FAILURE", error: "the Peon domain could not be resolved" };
+  if (code === "ECONNREFUSED") return { code: "CONNECTION_REFUSED", error: "Overseer resolved the address but the Peon refused the connection" };
+  if (error?.name === "TimeoutError" || code === "ETIMEDOUT" || code === "UND_ERR_CONNECT_TIMEOUT") return { code: "CONNECTION_TIMEOUT", error: "Overseer resolved the address but timed out connecting to the Peon" };
+  if (/(?:CERT|TLS|SSL|SELF_SIGNED|UNABLE_TO_VERIFY|WRONG_VERSION)/i.test(`${code} ${detail}`)) return { code: "TLS_FAILURE", error: `TLS/certificate problem while connecting to the Peon${detail ? `: ${detail}` : ""}` };
+  return { error: `peon unreachable: ${detail || String(err)}`, code: "PEON_UNREACHABLE" };
 }
 
 function safeJson(text: string): unknown {
@@ -164,7 +186,14 @@ export async function proxyStream(conn: PeonConn, pathname: string, res: Express
 // throws only if the initial connect fails.
 const STREAM_CONNECT_TIMEOUT_MS = 15_000;
 
-export async function streamPeonTo(conn: PeonConn, pathname: string, onChunk: (text: string) => void, signal: AbortSignal, actor: string | null = null): Promise<void> {
+export async function streamPeonTo(
+  conn: PeonConn,
+  pathname: string,
+  onChunk: (text: string) => void,
+  signal: AbortSignal,
+  actor: string | null = null,
+  lastEventId: string | null = null,
+): Promise<void> {
   const url = apiUrl(conn, pathname);
   const controller = new AbortController();
   const abort = () => controller.abort(signal.reason);
@@ -172,7 +201,10 @@ export async function streamPeonTo(conn: PeonConn, pathname: string, onChunk: (t
   else signal.addEventListener("abort", abort, { once: true });
   const connectTimer = setTimeout(() => controller.abort(new Error("peon stream connect timeout")), STREAM_CONNECT_TIMEOUT_MS);
   try {
-    const upstream = await fetch(url, { headers: headers(conn.token, actor), signal: controller.signal });
+    const upstream = await fetch(url, {
+      headers: headers(conn.token, actor, lastEventId ? { "Last-Event-ID": lastEventId } : {}),
+      signal: controller.signal,
+    });
     clearTimeout(connectTimer); // the long-lived body has connected; only the caller owns its lifetime now
     if (!upstream.ok || !upstream.body) throw new Error(`peon stream ${upstream.status}`);
     const reader = upstream.body.getReader();

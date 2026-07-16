@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ButtonHTMLAttributes, type ReactNode, type InputHTMLAttributes } from "react";
+import { useEffect, useId, useRef, useState, type ButtonHTMLAttributes, type ReactNode, type InputHTMLAttributes, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import { LOCALES, useI18n } from "./i18n";
@@ -35,8 +35,73 @@ export function Card({ children, className = "" }: { children: ReactNode; classN
   return <div className={`warplate ${className}`}>{children}</div>;
 }
 
-export function Dialog({ title, children, onClose, size = "md" }: { title: string; children: ReactNode; onClose: () => void; size?: "md" | "lg" }) {
+export function Dialog({ title, children, onClose, size = "md", dismissible = true }: { title: string; children: ReactNode; onClose: () => void; size?: "md" | "lg"; dismissible?: boolean }) {
   const { t } = useI18n();
+  const titleId = useId();
+  const panelRef = useRef<HTMLDivElement>(null);
+  const closeRef = useRef(onClose);
+  const dismissibleRef = useRef(dismissible);
+  const dragRef = useRef<{ pointerId: number; startY: number; lastY: number; lastAt: number; velocity: number } | null>(null);
+  const [dragY, setDragY] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  closeRef.current = onClose;
+  dismissibleRef.current = dismissible;
+
+  useEffect(() => {
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const frame = requestAnimationFrame(() => {
+      const panel = panelRef.current;
+      const target = panel?.querySelector<HTMLElement>("[autofocus], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])");
+      (target ?? panel)?.focus();
+    });
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && dismissibleRef.current) closeRef.current();
+      if (event.key !== "Tab" || !panelRef.current) return;
+      const focusable = Array.from(panelRef.current.querySelectorAll<HTMLElement>("button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex='-1'])"));
+      if (!focusable.length) { event.preventDefault(); panelRef.current.focus(); return; }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      cancelAnimationFrame(frame);
+      document.removeEventListener("keydown", onKeyDown);
+      document.body.style.overflow = previousOverflow;
+      previousFocus?.focus();
+    };
+  }, []);
+
+  function startDrag(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!dismissible || !window.matchMedia("(max-width: 767px)").matches) return;
+    dragRef.current = { pointerId: event.pointerId, startY: event.clientY, lastY: event.clientY, lastAt: performance.now(), velocity: 0 };
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setDragging(true);
+  }
+
+  function moveDrag(event: ReactPointerEvent<HTMLDivElement>) {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const now = performance.now();
+    drag.velocity = (event.clientY - drag.lastY) / Math.max(1, now - drag.lastAt);
+    drag.lastY = event.clientY;
+    drag.lastAt = now;
+    setDragY(Math.max(0, event.clientY - drag.startY));
+  }
+
+  function endDrag(event: ReactPointerEvent<HTMLDivElement>) {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const distance = Math.max(0, event.clientY - drag.startY);
+    const velocity = performance.now() - drag.lastAt < 80 ? drag.velocity : 0;
+    dragRef.current = null;
+    setDragging(false);
+    if (distance > 96 || (distance > 28 && velocity > 0.55)) closeRef.current();
+    else setDragY(0);
+  }
   // Only dismiss when a press starts AND ends on the backdrop — so selecting text
   // inside and releasing outside (or vice-versa) never closes the modal.
   const downOnBackdrop = useRef(false);
@@ -46,26 +111,74 @@ export function Dialog({ title, children, onClose, size = "md" }: { title: strin
   // `fixed` descendants resolve against that ancestor instead of the viewport.
   return createPortal(
     <div
-      className="fixed inset-0 z-50 grid place-items-center p-4"
+      className="fixed inset-0 z-50 grid items-end md:place-items-center md:p-4"
       style={{ background: "rgba(0,0,0,0.72)", backdropFilter: "blur(4px)" }}
       onMouseDown={(e) => (downOnBackdrop.current = e.target === e.currentTarget)}
       onMouseUp={(e) => {
-        if (e.target === e.currentTarget && downOnBackdrop.current) onClose();
+        if (dismissible && e.target === e.currentTarget && downOnBackdrop.current) onClose();
         downOnBackdrop.current = false;
       }}
     >
-      <Card className={`reveal w-full p-6 ${size === "lg" ? "max-w-2xl" : "max-w-md"}`}>
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        className={`warplate w-full max-h-[calc(100dvh-0.75rem)] overflow-y-auto rounded-b-none rounded-t-2xl p-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))] shadow-2xl md:max-h-[calc(100vh-2rem)] md:rounded-lg md:pb-6 ${size === "lg" ? "md:max-w-2xl" : "md:max-w-md"}`}
+        style={{ transform: `translateY(${dragY}px)`, transition: dragging ? "none" : "transform 180ms ease" }}
+      >
+        <div
+          aria-hidden="true"
+          className="-mx-6 -mt-6 mb-2 flex h-8 touch-none cursor-grab items-center justify-center md:hidden"
+          onPointerDown={startDrag}
+          onPointerMove={moveDrag}
+          onPointerUp={endDrag}
+          onPointerCancel={endDrag}
+        >
+          <span className="h-1 w-10 rounded-full bg-iron-600" />
+        </div>
         <div className="mb-1 flex items-center justify-between">
-          <h3 className="rune fel-glow text-sm">{title}</h3>
-          <button className="btn-ghost text-lg leading-none text-bone-faint hover:text-blood" onClick={onClose} aria-label={t("a11y.close")}>
+          <h3 id={titleId} className="rune fel-glow text-sm">{title}</h3>
+          <button className="btn-ghost text-lg leading-none text-bone-faint hover:text-blood" onClick={onClose} disabled={!dismissible} aria-label={t("a11y.close")}>
             ✕
           </button>
         </div>
         <hr className="hairline mb-5" />
         {children}
-      </Card>
+      </div>
     </div>,
     document.body,
+  );
+}
+
+export function ConfirmationDialog({ title, description, confirmLabel, pendingLabel, onConfirm, onClose, pending = false, destructive = true }: {
+  title: string;
+  description?: ReactNode;
+  confirmLabel: string;
+  pendingLabel?: string;
+  onConfirm: () => void;
+  onClose: () => void;
+  pending?: boolean;
+  destructive?: boolean;
+}) {
+  const { t } = useI18n();
+  return (
+    <Dialog title={title} onClose={onClose} dismissible={!pending}>
+      {description && <div className="mb-5 text-sm leading-relaxed text-bone-dim">{description}</div>}
+      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        <Button variant="iron" onClick={onClose} disabled={pending}>{t("action.cancel")}</Button>
+        <Button
+          autoFocus
+          className={destructive ? "!border-blood/50 !text-blood hover:!bg-blood/10" : ""}
+          variant={destructive ? "iron" : "fel"}
+          onClick={onConfirm}
+          disabled={pending}
+        >
+          {pending ? pendingLabel ?? confirmLabel : confirmLabel}
+        </Button>
+      </div>
+    </Dialog>
   );
 }
 
@@ -190,29 +303,12 @@ export function PageHeader({
   menu?: (close: () => void) => ReactNode;
   menuLabel?: string;
 }) {
-  const [menuOpen, setMenuOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!menuOpen) return;
-    const onDown = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setMenuOpen(false);
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [menuOpen]);
-
   return (
     <FixedPaneHeader>
     <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-3 py-2.5 sm:px-6">
       <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
         {backTo && (
-          <Link to={backTo} relative="path" className="flex-none font-mono text-xs text-bone-dim hover:text-fel-bright">
+          <Link to={backTo} relative="path" className="flex-none font-body text-xs text-bone-dim hover:text-fel-bright">
             {backLabel}
           </Link>
         )}
@@ -222,25 +318,21 @@ export function PageHeader({
       {(actions || menu) && (
         <div className="flex flex-none items-center gap-2">
           {actions}
-          {menu && <div className="relative" ref={menuRef}>
-          <button
-            type="button"
-            title={menuLabel}
-            onClick={() => setMenuOpen((o) => !o)}
-            className="flex items-center rounded p-1 text-bone-dim transition-colors hover:bg-iron-800 hover:text-bone"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-              <circle cx="12" cy="5" r="1.75" />
-              <circle cx="12" cy="12" r="1.75" />
-              <circle cx="12" cy="19" r="1.75" />
-            </svg>
-          </button>
-          {menuOpen && (
-            <div className="absolute right-0 top-full z-30 mt-1 w-44 overflow-hidden rounded-lg border border-iron-800 bg-iron-950 py-1 shadow-lg">
-              {menu(() => setMenuOpen(false))}
-            </div>
+          {menu && (
+            <DropdownMenu
+              label={menuLabel}
+              buttonClassName="flex items-center rounded p-1 text-bone-dim transition-colors hover:bg-iron-800 hover:text-bone"
+              trigger={(
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                  <circle cx="12" cy="5" r="1.75" />
+                  <circle cx="12" cy="12" r="1.75" />
+                  <circle cx="12" cy="19" r="1.75" />
+                </svg>
+              )}
+            >
+              {menu}
+            </DropdownMenu>
           )}
-          </div>}
         </div>
       )}
     </div>
@@ -248,11 +340,67 @@ export function PageHeader({
   );
 }
 
+export function DropdownMenu({
+  label,
+  trigger,
+  children,
+  className = "",
+  buttonClassName = "",
+  menuAlignClassName = "right-0",
+  menuWidthClassName = "w-44",
+}: {
+  label?: string;
+  trigger: ReactNode | ((open: boolean) => ReactNode);
+  children: (close: () => void) => ReactNode;
+  className?: string;
+  buttonClassName?: string;
+  menuAlignClassName?: string;
+  menuWidthClassName?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (event: MouseEvent) => {
+      if (ref.current && !ref.current.contains(event.target as Node)) setOpen(false);
+    };
+    const onKey = (event: KeyboardEvent) => event.key === "Escape" && setOpen(false);
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  return (
+    <div ref={ref} className={`relative ${className}`}>
+      <button
+        type="button"
+        title={label}
+        aria-label={label}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        className={buttonClassName}
+        onClick={() => setOpen((value) => !value)}
+      >
+        {typeof trigger === "function" ? trigger(open) : trigger}
+      </button>
+      {open && (
+        <div role="menu" className={`absolute top-full z-30 mt-1 overflow-hidden rounded-lg border border-iron-800 bg-iron-950 py-1 shadow-lg ${menuAlignClassName} ${menuWidthClassName}`}>
+          {children(() => setOpen(false))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Shared look for a row inside a PageHeader kebab menu — exported as a class
 // string (not just a <MenuItem> button) so a navigation entry can use it on a
 // <Link> too.
 export function menuItemClass(tone: "default" | "danger" = "default"): string {
-  return `block w-full px-3 py-1.5 text-left font-mono text-xs transition-colors disabled:opacity-40 ${
+  return `block w-full px-3 py-1.5 text-left font-body text-xs transition-colors disabled:opacity-40 ${
     tone === "danger" ? "text-blood hover:bg-blood/10" : "text-bone-dim hover:bg-iron-900 hover:text-fel-bright"
   }`;
 }

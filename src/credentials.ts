@@ -69,8 +69,12 @@ export async function resolveCredential(token: string): Promise<PeonCredential |
   return rows[0] ? rowToCredential(rows[0]) : null;
 }
 
-export async function bindPeon(credentialId: string, peonId: string): Promise<void> {
-  await query(`UPDATE peon_credentials SET bound_peon_id = $2 WHERE id = $1`, [credentialId, peonId]);
+export async function bindPeon(credentialId: string, peonId: string): Promise<boolean> {
+  const { rowCount } = await query(
+    `UPDATE peon_credentials SET bound_peon_id = $2 WHERE id = $1 AND (bound_peon_id IS NULL OR bound_peon_id = $2)`,
+    [credentialId, peonId],
+  );
+  return (rowCount ?? 0) > 0;
 }
 
 // Revoke a credential — the peon's token stops authenticating on its next call.

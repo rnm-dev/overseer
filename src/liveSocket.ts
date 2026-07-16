@@ -1,20 +1,21 @@
 import type { Server } from "node:http";
+import { randomUUID } from "node:crypto";
 import { WebSocketServer, WebSocket } from "ws";
-import { verifyDeviceToken } from "./auth.js";
-import { membership } from "./workspaces.js";
-import { registry, toView } from "./registry.js";
-import { listSessions } from "./sessionIndex.js";
+import { consumeWebSocketTicket } from "./auth.js";
+import { membership, type Role } from "./workspaces.js";
+import { registry } from "./registry.js";
+import { getIndexedSession } from "./sessionIndex.js";
 import { bus, latestCursor, oldestCursor, readEventsSince, type LiveEvent } from "./eventLog.js";
-import { connOfRecord, streamPeonTo } from "./peonClient.js";
-import { config } from "./config.js";
+import { callPeon, connOfRecord, streamPeonTo } from "./peonClient.js";
+import { eventVisible, peonVisible, projectVisible, refreshClientAccess, sessionVisible } from "./liveAccess.js";
+import { heartbeatPresence, listHeartbeatPresence, presenceBus, removePresence, touchPresence } from "./presence.js";
 
 // The north-bound (overseer→client) transport: one authenticated WebSocket per
-// app, multiplexing peon + session state + live session tails, resumable by cursor.
+// app, multiplexing presence + live session tails, resumable by cursor.
 //   client → { type:"hello", workspaceId, cursor? }
-//   server → { type:"snapshot", peons, sessions, cursor }  then replays events>cursor, then live
-//   server → { type:"peon"|"session", cursor, payload }    (live deltas; cursor:0 = transient)
+//   server → { type:"snapshot", presence, cursor }          then replays events>cursor, then live
 //   client → { type:"subscribe"|"unsubscribe", peonId, sessionId }
-//   server → { type:"tail", sessionId, event, data }       (bridged from the peon SSE)
+//   server → { type:"tail", sessionId, event, id, data }   (bridged from the peon SSE)
 //
 // Live self-heal: the server periodically pushes { type:"sync", cursor } — the
 // latest cursor for the client's workspace. The client compares it to what it has
@@ -26,16 +27,43 @@ import { config } from "./config.js";
 // author: Viktor
 
 interface Client {
+  presenceConnectionId: string;
   ws: WebSocket;
   userId: string;
   actor: string;
+  identity: PresenceUser;
   workspaceId: string | null;
+  role: Role | null;
+  allowedPeons: Set<string> | null;
+  allowedProjects: Map<string, Set<string>> | null;
   live: boolean;
   alive: boolean;
   closed: boolean;
   queuedMessages: number;
   messageQueue: Promise<void>;
   tails: Map<string, AbortController>;
+  location: PresenceLocation | null;
+}
+
+interface PresenceUser {
+  userId: string;
+  email: string;
+  githubLogin: string | null;
+  avatarUrl: string | null;
+}
+
+interface PresenceLocation {
+  scope: "workspace" | "peon" | "session";
+  peonId: string | null;
+  sessionId: string | null;
+  projectKey: string | null;
+  projectId: string | null;
+}
+
+interface PresenceEntry extends PresenceUser {
+  scope: PresenceLocation["scope"];
+  peonId: string | null;
+  sessionId: string | null;
 }
 
 const MAX_BUFFERED_BYTES = 8 * 1024 * 1024;
@@ -74,7 +102,7 @@ export function attachLiveSocket(server: Server): WebSocketServer {
   const wsCursor = new Map<string, number>();
 
   wss.on("connection", (ws, req) => {
-    const token = new URL(req.url ?? "", "http://x").searchParams.get("token");
+    const ticket = new URL(req.url ?? "", "http://x").searchParams.get("ticket");
     let client: Client | null = null;
     let disconnected = false;
     const pending: string[] = [];
@@ -95,17 +123,20 @@ export function attachLiveSocket(server: Server): WebSocketServer {
     ws.on("close", () => {
       disconnected = true;
       if (!client) return;
+      const workspaceId = client.workspaceId;
       client.closed = true;
       for (const c of client.tails.values()) c.abort();
       client.tails.clear();
+      client.location = null;
       clients.delete(client);
+      if (workspaceId) removePresence(workspaceId, client.userId, client.presenceConnectionId);
     });
     ws.on("error", () => {});
 
     void (async () => {
-      let auth: Awaited<ReturnType<typeof verifyDeviceToken>> = null;
+      let auth: Awaited<ReturnType<typeof consumeWebSocketTicket>>;
       try {
-        auth = token ? await verifyDeviceToken(token) : null;
+        auth = ticket ? await consumeWebSocketTicket(ticket) : null;
       } catch {
         if (!disconnected) ws.close(1011, "authentication unavailable");
         return;
@@ -114,16 +145,22 @@ export function attachLiveSocket(server: Server): WebSocketServer {
       if (!auth) return ws.close(4401, "unauthorized");
 
       client = {
+        presenceConnectionId: `ws:${randomUUID()}`,
         ws,
         userId: auth.userId,
         actor: auth.email,
+        identity: { userId: auth.userId, email: auth.email, githubLogin: auth.githubLogin, avatarUrl: auth.avatarUrl },
         workspaceId: null,
+        role: null,
+        allowedPeons: null,
+        allowedProjects: null,
         live: false,
         alive: true,
         closed: false,
         queuedMessages: 0,
         messageQueue: Promise.resolve(),
         tails: new Map(),
+        location: null,
       };
       clients.add(client);
       for (const raw of pending) enqueueMessage(client, raw, wsCursor);
@@ -137,10 +174,12 @@ export function attachLiveSocket(server: Server): WebSocketServer {
     // broadcasts are liveness the client re-derives, never a resume target).
     if (e.cursor > 0) wsCursor.set(e.workspaceId, Math.max(e.cursor, wsCursor.get(e.workspaceId) ?? 0));
     for (const c of clients) {
-      if (c.live && c.workspaceId === e.workspaceId) send(c.ws, { type: e.kind, cursor: e.cursor, payload: e.payload });
+      if (c.live && c.workspaceId === e.workspaceId && eventVisible(c, e)) send(c.ws, { type: e.kind, cursor: e.cursor, payload: e.payload });
     }
   };
   bus.on("event", onBusEvent);
+  const onPresenceChange = (workspaceId: string) => broadcastPresence(clients, workspaceId);
+  presenceBus.on("changed", onPresenceChange);
 
   // Cursor sync — refresh high-water marks from Postgres, not only the local bus.
   // That makes self-heal work across multiple overseer processes and after any
@@ -159,9 +198,21 @@ export function attachLiveSocket(server: Server): WebSocketServer {
         // Cached bus high-water remains useful during a transient DB failure.
       }
     })).finally(() => {
-      for (const client of clients) {
-        if (client.live && client.workspaceId) send(client.ws, { type: "sync", cursor: wsCursor.get(client.workspaceId) ?? 0 });
-      }
+      void Promise.all([...clients].map(async (client) => {
+        await refreshClientAccess(client);
+        const location = client.location;
+        if (!location?.peonId) return;
+        if (!peonVisible(client, location.peonId)
+          || (location.scope === "session" && !sessionVisible(client, location.peonId, location.projectKey, location.projectId))) {
+          client.location = null;
+          if (client.workspaceId) removePresence(client.workspaceId, client.userId, client.presenceConnectionId);
+        }
+      })).finally(() => {
+        for (const workspaceId of workspaces) broadcastPresence(clients, workspaceId);
+        for (const client of clients) {
+          if (client.live && client.workspaceId) send(client.ws, { type: "sync", cursor: wsCursor.get(client.workspaceId) ?? 0 });
+        }
+      });
       syncRunning = false;
     });
   }, 15_000);
@@ -185,6 +236,7 @@ export function attachLiveSocket(server: Server): WebSocketServer {
     clearInterval(sync);
     clearInterval(ping);
     bus.off("event", onBusEvent);
+    presenceBus.off("changed", onPresenceChange);
   });
   return wss;
 }
@@ -209,7 +261,7 @@ function enqueueMessage(client: Client, raw: string, wsCursor: Map<string, numbe
 }
 
 async function onMessage(client: Client, raw: string, wsCursor: Map<string, number>): Promise<void> {
-  let msg: { type?: string; workspaceId?: string; cursor?: number; peonId?: string; sessionId?: string };
+  let msg: { type?: string; workspaceId?: string; cursor?: number; scope?: string; peonId?: string; sessionId?: string; lastEventId?: string };
   try {
     msg = JSON.parse(raw);
   } catch {
@@ -220,29 +272,37 @@ async function onMessage(client: Client, raw: string, wsCursor: Map<string, numb
   // immediately — a healthy connection then always sees inbound traffic, and the
   // client's watchdog tears down + resumes a socket that's gone silent.
   if (msg.type === "ping") {
+    if (client.workspaceId) touchPresence(client.workspaceId, client.userId, client.presenceConnectionId);
     send(client.ws, { type: "pong" });
     return;
   }
   if (msg.type === "hello") return hello(client, msg, wsCursor);
   if (!client.workspaceId) return; // everything else requires a workspace
   if (msg.type === "resume") return resume(client, msg.cursor, wsCursor);
-  if (msg.type === "subscribe" && msg.peonId && msg.sessionId) return subscribe(client, msg.peonId, msg.sessionId);
+  if (msg.type === "presence:set") return setPresence(client, msg);
+  if (msg.type === "subscribe" && msg.peonId && msg.sessionId) return subscribe(client, msg.peonId, msg.sessionId, msg.lastEventId);
   if (msg.type === "unsubscribe" && msg.sessionId) unsubscribe(client, msg.sessionId);
 }
 
 async function hello(client: Client, msg: { workspaceId?: string }, wsCursor: Map<string, number>): Promise<void> {
   const workspaceId = String(msg.workspaceId ?? "");
-  if (!workspaceId || !(await membership(workspaceId, client.userId))) {
+  const role = workspaceId ? await membership(workspaceId, client.userId) : null;
+  if (!workspaceId || !role) {
     send(client.ws, { type: "error", error: "unknown workspace" });
     client.ws.close(4403, "unknown workspace");
     return;
   }
   if (client.closed) return;
   // Switching workspace resets everything for this socket.
+  const previousWorkspaceId = client.workspaceId;
   for (const c of client.tails.values()) c.abort();
   client.tails.clear();
+  client.location = null;
+  if (previousWorkspaceId) removePresence(previousWorkspaceId, client.userId, client.presenceConnectionId);
   client.live = false;
   client.workspaceId = workspaceId;
+  client.role = role;
+  await refreshClientAccess(client);
 
   await snapshotAndReplay(client, workspaceId, wsCursor);
 }
@@ -253,9 +313,12 @@ async function snapshotAndReplay(client: Client, workspaceId: string, wsCursor: 
   // snapshot barrier after live fan-out is re-enabled.
   client.live = false;
   const snapCursor = await latestCursor();
-  const [peons, { sessions }] = await Promise.all([registry.list(workspaceId), listSessions({ workspaceId, limit: 500, offset: 0 })]);
   if (client.closed || client.workspaceId !== workspaceId) return;
-  send(client.ws, { type: "snapshot", peons: peons.map(toView), sessions, cursor: snapCursor, offlineAfterMs: config.offlineAfterMs });
+  send(client.ws, {
+    type: "snapshot",
+    presence: collectPresence(client),
+    cursor: snapCursor,
+  });
 
   // Go live BEFORE replaying the finite snapshot window. Any
   // overlap between replay and the first live frames is harmless — the client
@@ -294,14 +357,65 @@ async function replayWindow(client: Client, workspaceId: string, from: number, t
     if (page.length === 0) break;
     for (const e of page) {
       if (client.closed || client.workspaceId !== workspaceId) return;
-      send(client.ws, { type: e.kind, cursor: e.cursor, payload: e.payload });
+      if (eventVisible(client, e)) send(client.ws, { type: e.kind, cursor: e.cursor, payload: e.payload });
     }
     cursor = page[page.length - 1]!.cursor;
     if (page.length < REPLAY_PAGE_SIZE) break;
   }
 }
 
-async function subscribe(client: Client, peonId: string, sessionId: string): Promise<void> {
+async function setPresence(
+  client: Client,
+  msg: { scope?: string; peonId?: string; sessionId?: string },
+): Promise<void> {
+  if (!client.workspaceId) return;
+  let next: PresenceLocation;
+  if (msg.scope === "workspace") {
+    next = { scope: "workspace", peonId: null, sessionId: null, projectKey: null, projectId: null };
+  } else if (msg.scope === "peon" || msg.scope === "session") {
+    const peonId = String(msg.peonId ?? "");
+    const record = peonId ? await registry.get(peonId) : null;
+    if (!record || record.workspaceId !== client.workspaceId || !peonVisible(client, peonId)) {
+      updateLocation(client, { scope: "workspace", peonId: null, sessionId: null, projectKey: null, projectId: null });
+      send(client.ws, { type: "presenceRetry", reason: "unknown peon" });
+      return;
+    }
+    if (msg.scope === "peon") {
+      next = { scope: "peon", peonId, sessionId: null, projectKey: null, projectId: null };
+    } else {
+      const sessionId = String(msg.sessionId ?? "");
+      const session = sessionId ? await getIndexedSession(peonId, sessionId) : null;
+      if (!session || !sessionVisible(client, peonId, session.projectKey, session.projectId)) {
+        // A just-created session can reach the route before its pushed index row.
+        // Ask the browser to retry; validation remains entirely local to Overseer.
+        updateLocation(client, { scope: "peon", peonId, sessionId: null, projectKey: null, projectId: null });
+        send(client.ws, { type: "presenceRetry", reason: "unknown session" });
+        return;
+      }
+      next = { scope: "session", peonId, sessionId, projectKey: session.projectKey, projectId: session.projectId };
+    }
+  } else {
+    return;
+  }
+  updateLocation(client, next);
+}
+
+function updateLocation(client: Client, next: PresenceLocation): void {
+  if (!client.workspaceId) return;
+  client.location = next;
+  heartbeatPresence({
+    connectionId: client.presenceConnectionId,
+    workspaceId: client.workspaceId,
+    ...client.identity,
+    scope: next.scope,
+    peonId: next.peonId,
+    sessionId: next.sessionId,
+    projectKey: next.projectKey,
+    projectId: next.projectId,
+  });
+}
+
+async function subscribe(client: Client, peonId: string, sessionId: string, requestedLastEventId?: string): Promise<void> {
   if (client.tails.has(sessionId)) return;
   // Reserve the slot BEFORE the first await. Two subscribe messages for the same
   // session arrive back-to-back (the mount effect + the onopen re-subscribe); without
@@ -317,9 +431,38 @@ async function subscribe(client: Client, peonId: string, sessionId: string): Pro
     send(client.ws, { type: "tailError", peonId, sessionId, error: "unknown peon", retryable: false });
     return;
   }
+  if (!peonVisible(client, peonId)) {
+    if (client.tails.get(sessionId) === ctrl) client.tails.delete(sessionId);
+    send(client.ws, { type: "tailError", peonId, sessionId, error: "unknown peon", retryable: false });
+    return;
+  }
+  if (client.role !== "owner") {
+    const detail = await callPeon(connOfRecord(record), "GET", `/sessions/${encodeURIComponent(sessionId)}`, { actor: client.actor });
+    const projectKey = detail.ok && detail.json && typeof detail.json === "object" && typeof (detail.json as { projectKey?: unknown }).projectKey === "string"
+      ? (detail.json as { projectKey: string }).projectKey
+      : null;
+    const projectId = detail.ok && detail.json && typeof detail.json === "object" && typeof (detail.json as { projectId?: unknown }).projectId === "string"
+      ? (detail.json as { projectId: string }).projectId
+      : null;
+    if (!detail.ok || (projectKey && !projectVisible(client, peonId, projectKey, projectId))) {
+      if (client.tails.get(sessionId) === ctrl) client.tails.delete(sessionId);
+      send(client.ws, { type: "tailError", peonId, sessionId, error: "unknown session", retryable: false });
+      return;
+    }
+  }
 
   let buf = "";
   let streamError: string | null = null;
+  // Durable transcript Peons use the standard SSE resume header to begin strictly
+  // after the bounded HTTP snapshot. Legacy Peons retain their historical stream
+  // behavior, and untrusted socket input cannot become a malformed HTTP header.
+  const lastEventId = record.capabilities.includes("transcript-pagination-v1")
+    && typeof requestedLastEventId === "string"
+    && requestedLastEventId.length > 0
+    && requestedLastEventId.length <= 1024
+    && !/[\r\n]/.test(requestedLastEventId)
+    ? requestedLastEventId
+    : null;
   void streamPeonTo(
     connOfRecord(record),
     `/sessions/${encodeURIComponent(sessionId)}/stream`,
@@ -337,7 +480,7 @@ async function subscribe(client: Client, peonId: string, sessionId: string): Pro
           break;
         }
         const frame = parseSse(rawFrame);
-        if (frame) send(client.ws, { type: "tail", peonId, sessionId, event: frame.event, data: frame.data });
+        if (frame) send(client.ws, { type: "tail", peonId, sessionId, event: frame.event, id: frame.id, data: frame.data });
       }
       if (Buffer.byteLength(buf) > MAX_SSE_FRAME_BYTES) {
         streamError = "peon sent an oversized SSE frame";
@@ -346,6 +489,7 @@ async function subscribe(client: Client, peonId: string, sessionId: string): Pro
     },
     ctrl.signal,
     client.actor,
+    lastEventId,
   )
     .catch(() => {
       streamError ??= "peon unreachable";
@@ -366,14 +510,45 @@ function unsubscribe(client: Client, sessionId: string): void {
   client.tails.delete(sessionId);
 }
 
-// Minimal SSE frame parse: `event:` line + one or more `data:` lines.
-export function parseSse(frame: string): { event: string | null; data: string } | null {
+function broadcastPresence(clients: Set<Client>, workspaceId: string): void {
+  for (const client of clients) {
+    if (!client.live || client.workspaceId !== workspaceId) continue;
+    send(client.ws, { type: "presence", presence: collectPresence(client) });
+  }
+}
+
+function collectPresence(recipient: Client): PresenceEntry[] {
+  if (!recipient.workspaceId) return [];
+  const entries = new Map<string, PresenceEntry>();
+  for (const entry of listHeartbeatPresence(recipient.workspaceId)) {
+    if (entry.peonId && !peonVisible(recipient, entry.peonId)) continue;
+    if (entry.scope === "session" && entry.peonId && !sessionVisible(recipient, entry.peonId, entry.projectKey, entry.projectId)) continue;
+    const key = `${entry.userId}\0${entry.scope}\0${entry.peonId ?? ""}\0${entry.sessionId ?? ""}`;
+    if (!entries.has(key)) entries.set(key, {
+      userId: entry.userId,
+      email: entry.email,
+      githubLogin: entry.githubLogin,
+      avatarUrl: entry.avatarUrl,
+      scope: entry.scope,
+      peonId: entry.peonId,
+      sessionId: entry.sessionId,
+    });
+  }
+  return [...entries.values()].sort((a, b) => (a.githubLogin || a.email).localeCompare(b.githubLogin || b.email));
+}
+
+// transcript row and its replayed live frame, so preserve it across the bridge.
+// Minimal SSE frame parse: `event:`/`id:` plus one or more `data:` lines.
+// Peon's monotonically increasing id is the stable identity across reconnects.
+export function parseSse(frame: string): { event: string | null; id: string | null; data: string } | null {
   let event: string | null = null;
+  let id: string | null = null;
   const data: string[] = [];
   for (const line of frame.split(/\r?\n/)) {
     if (line.startsWith("event:")) event = line.slice(6).trim();
+    else if (line.startsWith("id:")) id = line.slice(3).trim();
     else if (line.startsWith("data:")) data.push(line.slice(5).replace(/^ /, ""));
   }
   if (event === null && data.length === 0) return null; // comment/keepalive
-  return { event, data: data.join("\n") };
+  return { event, id, data: data.join("\n") };
 }

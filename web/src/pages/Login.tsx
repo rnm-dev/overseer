@@ -5,8 +5,8 @@ import { useT } from "../i18n";
 import { Skull } from "lucide-react";
 import { Button, Card, GithubMark, LocaleSwitcher, Logo } from "../ui";
 
-// Sign-in is a single GitHub button. It redirects to GitHub; the browser comes
-// back to /auth/github/callback (GithubCallback), which finishes the exchange.
+// Sign-in is a single GitHub button. GitHub returns to the shared frontend
+// callback, which asks the API to finish the web or native flow.
 
 export function Login() {
   const { loginWithGithub } = useAuth();

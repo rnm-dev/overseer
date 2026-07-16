@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID } from "node:crypto";
-import { query } from "./db.js";
+import { query, transaction } from "./db.js";
 
 // Multi-tenant workspaces — the ACL layer. A workspace scopes its members (users)
 // and its peons. Peons connect via overseer-minted credentials (credentials.ts).
@@ -19,6 +19,8 @@ export interface WorkspaceWithRole extends WorkspaceRecord {
 export interface MemberRecord {
   userId: string;
   email: string;
+  githubLogin: string | null;
+  avatarUrl: string | null;
   role: Role;
   addedAt: number;
 }
@@ -26,6 +28,7 @@ export interface InviteRecord {
   id: string;
   workspaceId: string;
   token: string;
+  inviteeLabel: string | null;
   role: Role;
   createdAt: number;
   expiresAt: number | null;
@@ -56,14 +59,12 @@ export async function createWorkspace(name: string, ownerUserId: string): Promis
   const id = randomUUID();
   const slug = await uniqueSlug(name);
   const now = Date.now();
-  await query(`INSERT INTO workspaces (id, name, slug, created_by, created_at) VALUES ($1, $2, $3, $4, $5)`, [
-    id,
-    name,
-    slug,
-    ownerUserId,
-    now,
-  ]);
-  await query(`INSERT INTO workspace_members (workspace_id, user_id, role, added_at) VALUES ($1, $2, 'owner', $3)`, [id, ownerUserId, now]);
+  await transaction(async (tx) => {
+    await tx.query(`INSERT INTO workspaces (id, name, slug, created_by, created_at) VALUES ($1, $2, $3, $4, $5)`, [
+      id, name, slug, ownerUserId, now,
+    ]);
+    await tx.query(`INSERT INTO workspace_members (workspace_id, user_id, role, added_at) VALUES ($1, $2, 'owner', $3)`, [id, ownerUserId, now]);
+  });
   return { id, name, slug, createdAt: now, role: "owner" };
 }
 
@@ -87,25 +88,54 @@ export async function membership(workspaceId: string, userId: string): Promise<R
 }
 
 export async function listMembers(workspaceId: string): Promise<MemberRecord[]> {
-  const { rows } = await query<{ user_id: string; email: string; role: Role; added_at: number }>(
-    `SELECT m.user_id, u.email, m.role, m.added_at
+  const { rows } = await query<{ user_id: string; email: string; github_login: string | null; avatar_url: string | null; role: Role; added_at: number }>(
+    `SELECT m.user_id, u.email, u.github_login, u.avatar_url, m.role, m.added_at
        FROM workspace_members m JOIN users u ON u.id = m.user_id
       WHERE m.workspace_id = $1 ORDER BY m.added_at ASC`,
     [workspaceId],
   );
-  return rows.map((r) => ({ userId: r.user_id, email: r.email, role: r.role, addedAt: r.added_at }));
+  return rows.map((r) => ({ userId: r.user_id, email: r.email, githubLogin: r.github_login, avatarUrl: r.avatar_url, role: r.role, addedAt: r.added_at }));
+}
+
+export type UpdateRoleResult = "updated" | "not_found" | "last_owner";
+
+export async function updateMemberRole(workspaceId: string, userId: string, role: Role): Promise<UpdateRoleResult> {
+  return transaction(async (tx) => {
+    // Every role change locks the same workspace row. Concurrent demotions can
+    // no longer each observe the other owner and both commit.
+    await tx.query(`SELECT id FROM workspaces WHERE id = $1 FOR UPDATE`, [workspaceId]);
+    const { rows } = await tx.query<{ role: Role }>(
+      `SELECT role FROM workspace_members WHERE workspace_id = $1 AND user_id = $2`, [workspaceId, userId],
+    );
+    const current = rows[0]?.role;
+    if (!current) return "not_found";
+    if (current === role) return "updated";
+    if (current === "owner" && role === "member") {
+      const owners = await tx.query<{ count: number }>(
+        `SELECT COUNT(*)::int AS count FROM workspace_members WHERE workspace_id = $1 AND role = 'owner'`, [workspaceId],
+      );
+      if ((owners.rows[0]?.count ?? 0) <= 1) return "last_owner";
+    }
+    await tx.query(`UPDATE workspace_members SET role = $3 WHERE workspace_id = $1 AND user_id = $2`, [workspaceId, userId, role]);
+    return "updated";
+  });
 }
 
 export type RemoveMemberResult = "removed" | "not_found" | "owner";
 
 export async function removeMember(workspaceId: string, userId: string): Promise<RemoveMemberResult> {
-  const role = await membership(workspaceId, userId);
-  if (!role) return "not_found";
-  // Ownership needs an explicit transfer/demotion workflow. Member removal must
-  // never strand a workspace or let one owner silently remove another owner.
-  if (role === "owner") return "owner";
-  const { rowCount } = await query(`DELETE FROM workspace_members WHERE workspace_id = $1 AND user_id = $2 AND role = 'member'`, [workspaceId, userId]);
-  return (rowCount ?? 0) > 0 ? "removed" : "not_found";
+  return transaction(async (tx) => {
+    const current = await tx.query<{ role: Role }>(
+      `SELECT role FROM workspace_members WHERE workspace_id = $1 AND user_id = $2 FOR UPDATE`, [workspaceId, userId],
+    );
+    const role = current.rows[0]?.role;
+    if (!role) return "not_found";
+    if (role === "owner") return "owner";
+    await tx.query(`DELETE FROM workspace_member_project_access WHERE workspace_id = $1 AND user_id = $2`, [workspaceId, userId]);
+    await tx.query(`DELETE FROM workspace_member_peon_access WHERE workspace_id = $1 AND user_id = $2`, [workspaceId, userId]);
+    const { rowCount } = await tx.query(`DELETE FROM workspace_members WHERE workspace_id = $1 AND user_id = $2 AND role = 'member'`, [workspaceId, userId]);
+    return (rowCount ?? 0) > 0 ? "removed" : "not_found";
+  });
 }
 
 // Every user gets a personal workspace on first sign-in so the app is never empty.
@@ -134,33 +164,36 @@ interface InviteRow {
   id: string;
   workspace_id: string;
   token: string;
+  invitee_label: string | null;
   role: Role;
   created_at: number;
   expires_at: number | null;
 }
 function rowToInvite(r: InviteRow): InviteRecord {
-  return { id: r.id, workspaceId: r.workspace_id, token: r.token, role: r.role, createdAt: r.created_at, expiresAt: r.expires_at };
+  return { id: r.id, workspaceId: r.workspace_id, token: r.token, inviteeLabel: r.invitee_label, role: r.role, createdAt: r.created_at, expiresAt: r.expires_at };
 }
 
-// Multi-use link: anyone with it can join until it expires or is revoked.
-export async function createInvite(workspaceId: string, role: Role, createdBy: string): Promise<InviteRecord> {
+// One link per pending member; accepting it consumes it permanently. The label
+// is display-only and deliberately is not matched against the accepting user's
+// GitHub email: possession of the private token is the invitation capability.
+export async function createInvite(workspaceId: string, role: Role, createdBy: string, inviteeLabel: string): Promise<InviteRecord> {
   const id = randomUUID();
   const token = newInviteToken();
   const now = Date.now();
   const expiresAt = now + INVITE_TTL_MS;
   await query(
-    `INSERT INTO workspace_invitations (id, workspace_id, token, role, created_by, created_at, expires_at, revoked_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, NULL)`,
-    [id, workspaceId, token, role, createdBy, now, expiresAt],
+    `INSERT INTO workspace_invitations (id, workspace_id, token, role, created_by, created_at, expires_at, revoked_at, invitee_label)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, NULL, $8)`,
+    [id, workspaceId, token, role, createdBy, now, expiresAt, inviteeLabel],
   );
-  return { id, workspaceId, token, role, createdAt: now, expiresAt };
+  return { id, workspaceId, token, inviteeLabel, role, createdAt: now, expiresAt };
 }
 
 export async function listInvites(workspaceId: string): Promise<InviteRecord[]> {
   const { rows } = await query<InviteRow>(
-    `SELECT id, workspace_id, token, role, created_at, expires_at
+    `SELECT id, workspace_id, token, invitee_label, role, created_at, expires_at
        FROM workspace_invitations
-      WHERE workspace_id = $1 AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > $2)
+      WHERE workspace_id = $1 AND revoked_at IS NULL AND accepted_at IS NULL AND (expires_at IS NULL OR expires_at > $2)
       ORDER BY created_at DESC`,
     [workspaceId, Date.now()],
   );
@@ -181,7 +214,7 @@ export async function getInvitePreview(token: string): Promise<{ workspaceId: st
   const { rows } = await query<{ workspace_id: string; role: Role; name: string }>(
     `SELECT i.workspace_id, i.role, w.name
        FROM workspace_invitations i JOIN workspaces w ON w.id = i.workspace_id
-      WHERE i.token = $1 AND i.revoked_at IS NULL AND (i.expires_at IS NULL OR i.expires_at > $2)`,
+      WHERE i.token = $1 AND i.revoked_at IS NULL AND i.accepted_at IS NULL AND (i.expires_at IS NULL OR i.expires_at > $2)`,
     [token, Date.now()],
   );
   const r = rows[0];
@@ -192,27 +225,39 @@ export type AcceptResult = { ok: true; workspace: WorkspaceWithRole; alreadyMemb
 
 // Consume an invite for an authenticated user: idempotently add them as a member.
 export async function acceptInvite(token: string, userId: string): Promise<AcceptResult> {
-  const preview = await getInvitePreview(token);
-  if (!preview) return { ok: false };
-  const existing = await membership(preview.workspaceId, userId);
-  if (!existing) {
-    await query(
-      `INSERT INTO workspace_members (workspace_id, user_id, role, added_at) VALUES ($1, $2, $3, $4)
-         ON CONFLICT (workspace_id, user_id) DO NOTHING`,
-      [preview.workspaceId, userId, preview.role, Date.now()],
+  return transaction(async (tx) => {
+    const now = Date.now();
+    const consumed = await tx.query<{ workspace_id: string; role: Role }>(
+      `UPDATE workspace_invitations SET accepted_by = $2, accepted_at = $3
+        WHERE token = $1 AND revoked_at IS NULL AND accepted_at IS NULL AND (expires_at IS NULL OR expires_at > $3)
+        RETURNING workspace_id, role`,
+      [token, userId, now],
     );
-  }
-  const { rows } = await query<{ id: string; name: string; slug: string; created_at: number; role: Role }>(
-    `SELECT w.id, w.name, w.slug, w.created_at, m.role
-       FROM workspaces w JOIN workspace_members m ON m.workspace_id = w.id
-      WHERE w.id = $1 AND m.user_id = $2`,
-    [preview.workspaceId, userId],
-  );
-  const w = rows[0];
-  if (!w) return { ok: false };
-  return {
-    ok: true,
-    alreadyMember: !!existing,
-    workspace: { id: w.id, name: w.name, slug: w.slug, createdAt: w.created_at, role: w.role },
-  };
+    const invite = consumed.rows[0];
+    if (!invite) return { ok: false };
+    const member = await tx.query<{ role: Role }>(
+      `SELECT role FROM workspace_members WHERE workspace_id = $1 AND user_id = $2`, [invite.workspace_id, userId],
+    );
+    const existing = member.rows[0]?.role ?? null;
+    if (!existing) {
+      await tx.query(
+        `INSERT INTO workspace_members (workspace_id, user_id, role, added_at) VALUES ($1, $2, $3, $4)
+           ON CONFLICT (workspace_id, user_id) DO NOTHING`,
+        [invite.workspace_id, userId, invite.role, now],
+      );
+    }
+    const { rows } = await tx.query<{ id: string; name: string; slug: string; created_at: number; role: Role }>(
+      `SELECT w.id, w.name, w.slug, w.created_at, m.role
+         FROM workspaces w JOIN workspace_members m ON m.workspace_id = w.id
+        WHERE w.id = $1 AND m.user_id = $2`,
+      [invite.workspace_id, userId],
+    );
+    const w = rows[0];
+    if (!w) throw new Error("accepted invitation did not create workspace membership");
+    return {
+      ok: true,
+      alreadyMember: !!existing,
+      workspace: { id: w.id, name: w.name, slug: w.slug, createdAt: w.created_at, role: w.role },
+    };
+  });
 }

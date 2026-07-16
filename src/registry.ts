@@ -13,6 +13,8 @@ export interface PeonRecord {
   // controlPort — where the overseer calls back. NAT'd peons need no public address.
   address: string;
   controlPort: number;
+  publicUrl: string | null;
+  addressSource: AddressSource;
   protocol: number | null;
   capabilities: string[];
   // The credential's token, presented back when the overseer calls this peon.
@@ -23,6 +25,8 @@ export interface PeonRecord {
   lastSeen: number;
   load: PeonLoad | null;
 }
+
+export type AddressSource = "paired" | "manual" | "advertised" | "discovered";
 
 export interface PeonLoad {
   activeSessions: number;
@@ -41,6 +45,8 @@ interface PeonRow {
   hostname: string | null;
   address: string;
   control_port: number;
+  public_url: string | null;
+  address_source: AddressSource;
   protocol: number | null;
   capabilities: string[];
   token: string;
@@ -59,6 +65,8 @@ function rowToRecord(r: PeonRow): PeonRecord {
     hostname: r.hostname,
     address: r.address,
     controlPort: r.control_port,
+    publicUrl: r.public_url ?? null,
+    addressSource: r.address_source ?? (r.connection_pinned ? "manual" : "discovered"),
     protocol: r.protocol,
     capabilities: r.capabilities ?? [],
     token: r.token,
@@ -77,6 +85,7 @@ export interface RegisterInput {
   hostname: string | null;
   address: string;
   controlPort: number;
+  publicUrl?: string | null;
   protocol: number | null;
   capabilities: string[];
   token: string;
@@ -84,24 +93,63 @@ export interface RegisterInput {
 }
 
 export const registry = {
-  // Upsert on register; registered_at is preserved, everything else refreshed.
+  // Upsert liveness and capabilities. Authenticated advertised/legacy addresses
+  // may improve a discovery-only row, but registration can never downgrade an
+  // operator-owned paired/manual canonical URL.
   async register(input: RegisterInput): Promise<PeonRecord> {
     const now = Date.now();
+    const advertised = input.publicUrl ? urlParts(input.publicUrl) : null;
+    const incomingSource: AddressSource = advertised || input.hostname ? "advertised" : "discovered";
+    const incomingAddress = advertised?.hostname ?? input.hostname ?? input.address;
+    const incomingPort = advertised?.port ?? input.controlPort;
     const { rows } = await query<PeonRow>(
-      `INSERT INTO peons (peon_id, credential_id, workspace_id, name, hostname, address, control_port, protocol, capabilities, token, load, registered_at, last_seen)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12)
+      `INSERT INTO peons (peon_id, credential_id, workspace_id, name, hostname, address, control_port, public_url, address_source, protocol, capabilities, token, load, registered_at, last_seen)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $14)
        ON CONFLICT (peon_id) DO UPDATE SET
          credential_id = EXCLUDED.credential_id, workspace_id = EXCLUDED.workspace_id,
          name = EXCLUDED.name, hostname = EXCLUDED.hostname,
-         -- A pinned connection is operator-owned: keep it, don't clobber with the
-         -- NAT-observed source / self-reported port.
-         address = CASE WHEN peons.connection_pinned THEN peons.address ELSE EXCLUDED.address END,
-         control_port = CASE WHEN peons.connection_pinned THEN peons.control_port ELSE EXCLUDED.control_port END,
+         address = CASE
+           WHEN peons.address_source IN ('paired', 'manual') THEN peons.address
+           WHEN peons.address_source = 'advertised' AND EXCLUDED.address_source = 'discovered' THEN peons.address
+           ELSE EXCLUDED.address END,
+         control_port = CASE
+           WHEN peons.address_source IN ('paired', 'manual') THEN peons.control_port
+           WHEN peons.address_source = 'advertised' AND EXCLUDED.address_source = 'discovered' THEN peons.control_port
+           ELSE EXCLUDED.control_port END,
+         public_url = CASE
+           WHEN peons.address_source IN ('paired', 'manual') THEN peons.public_url
+           WHEN EXCLUDED.public_url IS NOT NULL THEN EXCLUDED.public_url
+           ELSE peons.public_url END,
+         address_source = CASE
+           WHEN peons.address_source IN ('paired', 'manual') THEN peons.address_source
+           WHEN peons.address_source = 'advertised' AND EXCLUDED.address_source = 'discovered' THEN peons.address_source
+           ELSE EXCLUDED.address_source END,
          protocol = EXCLUDED.protocol,
          capabilities = EXCLUDED.capabilities, token = EXCLUDED.token, load = EXCLUDED.load,
          last_seen = EXCLUDED.last_seen
        RETURNING *`,
-      [input.peonId, input.credentialId, input.workspaceId, input.name, input.hostname, input.address, input.controlPort, input.protocol, JSON.stringify(input.capabilities), input.token, input.load ? JSON.stringify(input.load) : null, now],
+      [input.peonId, input.credentialId, input.workspaceId, input.name, input.hostname, incomingAddress, incomingPort, input.publicUrl, incomingSource, input.protocol, JSON.stringify(input.capabilities), input.token, input.load ? JSON.stringify(input.load) : null, now],
+    );
+    return rowToRecord(rows[0]);
+  },
+
+  // Enrollment can race registration in either direction. This upsert creates an
+  // offline pending row when registration is delayed, or atomically promotes the
+  // already-registered row to the operator-entered paired URL.
+  async confirmPairing(input: { peonId: string; credentialId: string; workspaceId: string; token: string; publicUrl: string; name?: string | null }): Promise<PeonRecord> {
+    const now = Date.now();
+    const parts = urlParts(input.publicUrl);
+    if (!parts) throw new Error("invalid canonical Peon URL");
+    const { rows } = await query<PeonRow>(
+      `INSERT INTO peons (peon_id, credential_id, workspace_id, name, hostname, address, control_port, public_url, address_source, protocol, capabilities, token, load, connection_pinned, registered_at, last_seen)
+       VALUES ($1, $2, $3, $4, NULL, $5, $6, $7, 'paired', NULL, '[]', $8, NULL, TRUE, $9, 0)
+       ON CONFLICT (peon_id) DO UPDATE SET
+         credential_id = EXCLUDED.credential_id, workspace_id = EXCLUDED.workspace_id,
+         address = EXCLUDED.address, control_port = EXCLUDED.control_port,
+         public_url = EXCLUDED.public_url, address_source = 'paired',
+         connection_pinned = TRUE, token = EXCLUDED.token
+       RETURNING *`,
+      [input.peonId, input.credentialId, input.workspaceId, input.name || input.peonId, parts.hostname, parts.port, input.publicUrl, input.token, now],
     );
     return rowToRecord(rows[0]);
   },
@@ -119,10 +167,23 @@ export const registry = {
   // Operator override of the call-back location (address / control port). Pins the
   // connection so a subsequent register() won't overwrite it (survives peon
   // restarts). Null ⇒ unknown peon.
-  async updateConnection(peonId: string, patch: { address?: string; controlPort?: number }): Promise<PeonRecord | null> {
+  async updateConnection(peonId: string, publicUrl: string): Promise<PeonRecord | null> {
+    const parts = urlParts(publicUrl);
+    if (!parts) return null;
     const { rows } = await query<PeonRow>(
-      `UPDATE peons SET address = COALESCE($2, address), control_port = COALESCE($3, control_port), connection_pinned = TRUE WHERE peon_id = $1 RETURNING *`,
-      [peonId, patch.address ?? null, patch.controlPort ?? null],
+      `UPDATE peons SET address = $2, control_port = $3, public_url = $4, address_source = 'manual', connection_pinned = TRUE WHERE peon_id = $1 RETURNING *`,
+      [peonId, parts.hostname, parts.port, publicUrl],
+    );
+    return rows.length ? rowToRecord(rows[0]) : null;
+  },
+
+  // Settings live on the Peon, but fleet lists are registry-backed. Mirror a
+  // successfully saved display name so the dashboard does not keep showing the
+  // hostname captured at registration until the Peon restarts and re-registers.
+  async updateName(peonId: string, name: string): Promise<PeonRecord | null> {
+    const { rows } = await query<PeonRow>(
+      `UPDATE peons SET name = $2 WHERE peon_id = $1 RETURNING *`,
+      [peonId, name],
     );
     return rows.length ? rowToRecord(rows[0]) : null;
   },
@@ -147,8 +208,19 @@ export const registry = {
 };
 
 export function baseUrl(record: PeonRecord): string {
+  if (record.publicUrl) return record.publicUrl;
   const host = record.address.includes(":") ? `[${record.address}]` : record.address;
   return `http://${host}:${record.controlPort}`;
+}
+
+function urlParts(publicUrl: string): { hostname: string; port: number } | null {
+  try {
+    const url = new URL(publicUrl);
+    const port = url.port ? Number(url.port) : url.protocol === "https:" ? 443 : 80;
+    return url.hostname ? { hostname: url.hostname, port } : null;
+  } catch {
+    return null;
+  }
 }
 
 export function toView(record: PeonRecord): PeonView {

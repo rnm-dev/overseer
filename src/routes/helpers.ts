@@ -3,13 +3,14 @@ import { registry, type PeonRecord } from "../registry.js";
 import { membership, type Role } from "../workspaces.js";
 import { type AuthContext, verifyDeviceToken } from "../auth.js";
 import { resolveCredential } from "../credentials.js";
+import { canAccessPeon } from "../access.js";
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace Express {
     interface Request {
       user?: AuthContext; // set by operatorAuth
-      peonCred?: { id: string; workspaceId: string }; // set by credentialAuth
+      peonCred?: { id: string; workspaceId: string; boundPeonId: string | null }; // set by credentialAuth
     }
   }
 }
@@ -43,7 +44,7 @@ export const credentialAuth: express.RequestHandler = (req, res, next) => {
   void (async () => {
     const cred = await resolveCredential(bearer(req));
     if (!cred) return res.status(401).json({ error: "invalid or revoked peon credential", code: "UNAUTHENTICATED" });
-    req.peonCred = { id: cred.id, workspaceId: cred.workspaceId };
+    req.peonCred = { id: cred.id, workspaceId: cred.workspaceId, boundPeonId: cred.boundPeonId };
     next();
   })().catch(next);
 };
@@ -81,13 +82,25 @@ export const ownerOnly = (res: express.Response, role: Role): boolean => {
   return true;
 };
 
+export interface OperatorIdentity {
+  email: string;
+  githubLogin: string | null;
+}
+
 // Proxy to one peon in the workspace — membership + ownership enforced first.
 export const withWorkspacePeon =
-  (handler: (req: express.Request, res: express.Response, ctx: { record: PeonRecord; actor: string | null }) => unknown): express.RequestHandler =>
+  (handler: (req: express.Request, res: express.Response, ctx: { record: PeonRecord; operator: OperatorIdentity; workspaceId: string; userId: string; role: Role }) => unknown): express.RequestHandler =>
   withWorkspace(async (req, res, ctx) => {
     const record = await registry.get(String(req.params.id));
     if (!record || record.workspaceId !== ctx.workspaceId) return res.status(404).json({ error: "unknown peon", code: "UNKNOWN_PEON" });
-    return handler(req, res, { record, actor: req.user?.email ?? null });
+    if (!(await canAccessPeon(ctx.workspaceId, ctx.userId, ctx.role, record.peonId))) return res.status(404).json({ error: "unknown peon", code: "UNKNOWN_PEON" });
+    // Identity fields stay separate. Peon-Actor is deliberately the immutable,
+    // canonical email; GitHub login is profile metadata and never substitutes it.
+    return handler(req, res, {
+      record,
+      operator: { email: req.user!.email, githubLogin: req.user!.githubLogin },
+      ...ctx,
+    });
   });
 
 export const restSegments = (req: express.Request): string[] => (req.params.rest as unknown as string[] | undefined) ?? [];

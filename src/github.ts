@@ -1,9 +1,8 @@
 import { config } from "./config.js";
 
-// GitHub OAuth — the server half of the SPA flow. The browser redirects to GitHub
-// and lands back on the SPA's /auth/github/callback with a code; the SPA posts that
-// code here and we exchange it (with the client secret, server-side only) for the
-// user's identity. GitHub never talks to this API directly.
+// GitHub OAuth identity exchange. GitHub returns every client flow to the same
+// frontend HTTPS callback, which submits the authorization code to the API. The
+// client secret and code exchange remain server-side.
 // author: Viktor
 
 export interface GithubProfile {

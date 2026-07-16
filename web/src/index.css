@@ -7,9 +7,9 @@
  *  Design tokens (Tailwind v4 @theme -> utilities: bg-fel, text-bone…) *
  * ------------------------------------------------------------------ */
 @theme {
-  --font-display: "Oxanium", ui-sans-serif, system-ui, sans-serif;
-  --font-body: "Chakra Petch", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "Share Tech Mono", ui-monospace, monospace;
+  --font-display: "Golos Text", ui-sans-serif, system-ui, sans-serif;
+  --font-body: "Golos Text", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Ubuntu Mono", ui-monospace, monospace;
 
   /* voids & iron — neutral dark greys */
   --color-void: #0b0c0b;
@@ -76,16 +76,6 @@ html.peon-sidebar-resizing * {
 .title-fade--overflow {
   -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 1.75rem), transparent);
   mask-image: linear-gradient(to right, #000 calc(100% - 1.75rem), transparent);
-}
-
-@media (min-width: 768px) {
-  /* UserBox is outside PeonDetail's flex row. Keep it in the sidebar (rather
-     than the main pane, where a fixed composer can cover it) and size it with
-     the sidebar. Its normal dashboard position remains bottom-left. */
-  html.peon-layout-active .user-box {
-    left: 0.75rem;
-    width: calc(var(--peon-sidebar-width) - 1.5rem);
-  }
 }
 
 @media (min-width: 1024px) {
@@ -230,6 +220,21 @@ html.peon-sidebar-resizing * {
 .markdown-body pre code,
 .code-view code { background: transparent; padding: 0; font: inherit; white-space: pre; }
 .markdown-body pre .markdown-inline-code { border: 0; color: var(--color-bone-dim); }
+.mermaid-diagram {
+  margin: 0.75rem 0;
+  overflow-x: auto;
+  border: 1px solid var(--color-iron-800);
+  border-radius: 7px;
+  background: #111411;
+  padding: 1rem;
+}
+.mermaid-diagram-canvas { display: flex; min-width: max-content; justify-content: center; }
+.mermaid-diagram-canvas:empty { display: none; }
+.mermaid-diagram-canvas svg { width: auto; max-width: 100%; height: auto; }
+.mermaid-diagram-status,
+.mermaid-diagram figcaption { color: var(--color-bone-dim); font-size: 0.78rem; }
+.mermaid-diagram figcaption { margin-bottom: 0.65rem; color: var(--color-forge); }
+.markdown-body .mermaid-diagram-source { margin: 0; }
 .markdown-table-wrap {
   max-width: 100%;
   overflow-x: auto;
@@ -359,7 +364,7 @@ html.peon-sidebar-resizing * {
  *  Fields                                                             *
  * ------------------------------------------------------------------ */
 .field {
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
   width: 100%;
   color: var(--color-bone);
   background: var(--color-iron-950);

@@ -1,97 +1,87 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { getToken } from "./api";
+import { api, getToken, json } from "./api";
 import { useWorkspace } from "./workspace";
+import { useAuth } from "./auth";
+import { useLocation } from "react-router-dom";
+import { presenceLocationForPath } from "./presence";
 
-// The single north-bound transport: one WebSocket per app, resumable by cursor.
-// Feeds live peons + sessions and bridges live session tails from the peon SSE.
+// The selected workspace transport: resumable live events, presence, and session
+// tails. Fleet-dashboard workspaces use the same protocol via workspaceLive.ts.
 // See app/src/liveSocket.ts for the server side.
 // author: Viktor
 
-const DEFAULT_OFFLINE_MS = 45_000;
 // Liveness watchdog: ping every PING_MS; if nothing at all arrives for STALE_MS,
 // the socket is a zombie (looks OPEN, silently dead — common behind proxies /
 // on mobile) so tear it down and resume. STALE_MS allows ~2 missed pongs.
 const PING_MS = 10_000;
 const STALE_MS = 25_000;
 
-export interface PeonView {
-  peonId: string;
-  name: string | null;
-  hostname: string | null;
-  baseUrl: string;
-  online: boolean;
-  lastSeen: number;
-  capabilities: string[];
-  protocol: number | null;
-  load: { activeSessions?: number; paused?: boolean; uptimeSec?: number } | null;
-}
-export interface SessionRow {
-  peonId: string;
-  sessionId: string;
-  status: string | null;
-  title: string | null;
-  projectKey: string | null;
-  preview: string | null;
-  author: string | null;
-  startedAt: number | null;
-  endedAt: number | null;
-  lastActivityAt: number | null;
-  syncedAt: number;
-}
 export interface TailFrame {
   event: string | null;
+  id: string | null;
   data: string;
 }
-type TailMsg = { event?: string | null; data?: string };
+export interface PresenceUser {
+  userId: string;
+  email: string;
+  githubLogin: string | null;
+  avatarUrl: string | null;
+}
+export interface PresenceEntry extends PresenceUser {
+  scope: "workspace" | "peon" | "session";
+  peonId: string | null;
+  sessionId: string | null;
+}
+export interface SessionLiveEvent {
+  peonId?: string;
+  sessionId?: string;
+  deleted?: boolean;
+  syncedAt?: number;
+  [key: string]: unknown;
+}
+type TailMsg = { event?: string | null; id?: string | null; data?: string };
 
 interface LiveSocketValue {
-  connected: boolean;
-  peons: PeonView[];
-  sessions: SessionRow[];
-  subscribe: (peonId: string, sessionId: string, onFrame: (f: TailFrame) => void) => () => void;
+  viewersFor: (peonId: string, sessionId: string) => PresenceUser[];
+  viewersForPeon: (peonId: string) => PresenceUser[];
+  viewersForWorkspace: () => PresenceUser[];
+  subscribe: (peonId: string, sessionId: string, onFrame: (f: TailFrame) => void, lastEventId?: string | null) => () => void;
+  subscribeSessions: (onSession: (session: SessionLiveEvent) => void) => () => void;
 }
 
 const Ctx = createContext<LiveSocketValue | null>(null);
 
 export function LiveSocketProvider({ children }: { children: ReactNode }) {
   const { current } = useWorkspace();
+  const { user } = useAuth();
+  const { pathname } = useLocation();
   const wsId = current?.id;
   const token = getToken();
 
-  const [connected, setConnected] = useState(false);
-  const [peonMap, setPeonMap] = useState<Map<string, PeonView>>(new Map());
-  const [sessionMap, setSessionMap] = useState<Map<string, SessionRow>>(new Map());
-  const [offlineAfterMs, setOfflineAfterMs] = useState(DEFAULT_OFFLINE_MS);
-  const [now, setNow] = useState(() => Date.now());
+  const [presence, setPresence] = useState<PresenceEntry[]>([]);
 
   const sockRef = useRef<WebSocket | null>(null);
   const readyRef = useRef(false); // authenticated workspace snapshot received
   const cursorsRef = useRef<Map<string, number>>(new Map()); // per-workspace resume cursor
-  const tailHandlers = useRef<Map<string, { peonId: string; onFrame: (f: TailFrame) => void }>>(new Map());
+  const tailHandlers = useRef<Map<string, { peonId: string; onFrame: (f: TailFrame) => void; resumeEnabled: boolean; lastEventId: string | null }>>(new Map());
+  const sessionHandlers = useRef<Set<(session: SessionLiveEvent) => void>>(new Set());
   // Per-session backoff for tail auto-resubscribe (tailEnd/tailError) — separate
   // from the socket-level backoff so one flaky session tail can't affect others.
   const tailBackoff = useRef<Map<string, number>>(new Map());
   const tailRetryTimers = useRef<Map<string, number>>(new Map());
-
-  // 1s tick so `online` (derived from lastSeen) decays without a server event.
-  useEffect(() => {
-    const t = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(t);
-  }, []);
+  const desiredPresence = useMemo(() => presenceLocationForPath(pathname), [pathname]);
+  const desiredPresenceRef = useRef(desiredPresence);
+  desiredPresenceRef.current = desiredPresence;
 
   useEffect(() => {
     if (!wsId) {
       readyRef.current = false;
-      setConnected(false);
-      setPeonMap(new Map());
-      setSessionMap(new Map());
+      setPresence([]);
       return;
     }
     if (!token) {
       readyRef.current = false;
-      setConnected(false);
-      setPeonMap(new Map());
-      setSessionMap(new Map());
+      setPresence([]);
       return;
     }
 
@@ -102,20 +92,31 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
     let connectStartedAt = 0;
     let lastResumeAt = 0; // debounce gap-resume requests so repeated syncs don't spam
     let connectionGeneration = 0;
+    let ticketPending = false;
 
     // Fresh workspace ⇒ clear the view until its snapshot lands.
     readyRef.current = false;
-    setConnected(false);
-    setPeonMap(new Map());
-    setSessionMap(new Map());
+    setPresence([]);
 
-    const connect = () => {
-      if (closed) return;
+    const connect = async () => {
+      if (closed || ticketPending) return;
       // A delayed retry, focus event, and online event can all arrive in the same
       // turn. Only one of them gets to create the next transport.
       const currentSocket = sockRef.current;
       if (currentSocket && (currentSocket.readyState === WebSocket.CONNECTING || currentSocket.readyState === WebSocket.OPEN)) return;
-      const url = `${location.origin.replace(/^http/, "ws")}/api/ws?token=${encodeURIComponent(token)}`;
+      ticketPending = true;
+      let ticket: string;
+      try {
+        ({ ticket } = await api<{ ticket: string }>("/auth/ws-ticket", { method: "POST" }));
+      } catch {
+        ticketPending = false;
+        if (!closed && !retry) retry = window.setTimeout(() => { retry = null; void connect(); }, backoff);
+        backoff = Math.min(backoff * 2, 10_000);
+        return;
+      }
+      ticketPending = false;
+      if (closed) return;
+      const url = `${location.origin.replace(/^http/, "ws")}/api/ws?ticket=${encodeURIComponent(ticket)}`;
       const ws = new WebSocket(url);
       const generation = ++connectionGeneration;
       sockRef.current = ws;
@@ -140,7 +141,6 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
         if (sockRef.current !== ws || generation !== connectionGeneration) return;
         readyRef.current = false;
         sockRef.current = null;
-        setConnected(false);
         if (closed) return;
         if (retry) window.clearTimeout(retry);
         // Jitter prevents every open dashboard reconnecting in lockstep after an
@@ -148,7 +148,7 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
         const delay = Math.round(backoff * (0.8 + Math.random() * 0.4));
         retry = window.setTimeout(() => {
           retry = null;
-          connect();
+          void connect();
         }, delay);
         backoff = Math.min(backoff * 2, 10_000);
       };
@@ -174,7 +174,6 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
     // also schedule a competing reconnect.
     const reconnectNow = () => {
       if (closed) return;
-      setConnected(false);
       readyRef.current = false;
       const old = sockRef.current;
       if (old) {
@@ -190,7 +189,7 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
         window.clearTimeout(retry);
         retry = null;
       }
-      connect();
+      void connect();
     };
 
     const bump = (cursor: unknown) => {
@@ -217,17 +216,12 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
       switch (msg.type) {
         case "snapshot": {
           readyRef.current = true;
-          setConnected(true);
           // TCP open is not enough to call a connection healthy: auth or the
           // snapshot query can still fail immediately. Reset retry pressure only
           // after the full application handshake succeeds.
           backoff = 1000;
-          const peons = (msg.peons as PeonView[]) ?? [];
-          const sessions = (msg.sessions as SessionRow[]) ?? [];
-          const serverOfflineAfterMs = Number(msg.offlineAfterMs);
-          setOfflineAfterMs(Number.isFinite(serverOfflineAfterMs) && serverOfflineAfterMs > 0 ? serverOfflineAfterMs : DEFAULT_OFFLINE_MS);
-          setPeonMap(new Map(peons.map((p) => [p.peonId, p])));
-          setSessionMap(new Map(sessions.map((s) => [`${s.peonId}:${s.sessionId}`, s])));
+          const presence = (msg.presence as PresenceEntry[]) ?? [];
+          setPresence(presence);
           cursorsRef.current.set(wsId, Number(msg.cursor) || 0);
           // `snapshot` is the handshake-ready barrier. Sending subscriptions here
           // (not in onopen) works with slow auth/DB lookups and older servers that
@@ -235,8 +229,9 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
           const ws = sockRef.current;
           if (ws?.readyState === WebSocket.OPEN) {
             for (const [sessionId, h] of tailHandlers.current) {
-              ws.send(JSON.stringify({ type: "subscribe", peonId: h.peonId, sessionId }));
+              ws.send(JSON.stringify({ type: "subscribe", peonId: h.peonId, sessionId, ...(h.lastEventId ? { lastEventId: h.lastEventId } : {}) }));
             }
+            ws.send(JSON.stringify({ type: "presence:set", ...desiredPresenceRef.current }));
           }
           break;
         }
@@ -252,28 +247,26 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
           break;
         }
         case "peon": {
-          const p = msg.payload as PeonView;
-          setPeonMap((prev) => {
-            const ex = prev.get(p.peonId);
-            if (ex && (p.lastSeen ?? 0) < (ex.lastSeen ?? 0)) return prev; // last-writer-wins
-            const next = new Map(prev);
-            next.set(p.peonId, p);
-            return next;
-          });
           bump(msg.cursor);
           break;
         }
         case "session": {
-          const s = msg.payload as SessionRow;
-          const key = `${s.peonId}:${s.sessionId}`;
-          setSessionMap((prev) => {
-            const ex = prev.get(key);
-            if (ex && (s.syncedAt ?? 0) < (ex.syncedAt ?? 0)) return prev;
-            const next = new Map(prev);
-            next.set(key, s);
-            return next;
-          });
           bump(msg.cursor);
+          if (msg.payload && typeof msg.payload === "object") {
+            for (const onSession of sessionHandlers.current) onSession(msg.payload as SessionLiveEvent);
+          }
+          break;
+        }
+        case "presence": {
+          setPresence((msg.presence as PresenceEntry[]) ?? []);
+          break;
+        }
+        case "presenceRetry": {
+          window.setTimeout(() => {
+            if (readyRef.current && sockRef.current?.readyState === WebSocket.OPEN) {
+              sockRef.current.send(JSON.stringify({ type: "presence:set", ...desiredPresenceRef.current }));
+            }
+          }, 1000);
           break;
         }
         case "tail": {
@@ -286,7 +279,9 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
             tailRetryTimers.current.delete(sid);
           }
           tailBackoff.current.delete(sid); // live data flowing again — reset backoff
-          handler.onFrame({ event: (msg as TailMsg).event ?? null, data: (msg as TailMsg).data ?? "" });
+          const frameId = (msg as TailMsg).id ?? null;
+          if (handler.resumeEnabled && frameId) handler.lastEventId = frameId;
+          handler.onFrame({ event: (msg as TailMsg).event ?? null, id: frameId, data: (msg as TailMsg).data ?? "" });
           break;
         }
         case "tailEnd":
@@ -298,7 +293,7 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
             // same stream. One pending retry means this terminal generation is
             // already handled; do not notify twice or spawn overlapping timers.
             if (tailRetryTimers.current.has(sid)) break;
-            handler.onFrame({ event: msg.type, data: String(msg.error ?? "") });
+            handler.onFrame({ event: msg.type, id: null, data: String(msg.error ?? "") });
             if (msg.retryable === false) {
               tailBackoff.current.delete(sid);
               break;
@@ -312,7 +307,7 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
             const timer = window.setTimeout(() => {
               tailRetryTimers.current.delete(sid);
               if (tailHandlers.current.get(sid) !== handler) return; // unsubscribed since
-              if (readyRef.current && sockRef.current?.readyState === WebSocket.OPEN) sockRef.current.send(JSON.stringify({ type: "subscribe", peonId: handler.peonId, sessionId: sid }));
+              if (readyRef.current && sockRef.current?.readyState === WebSocket.OPEN) sockRef.current.send(JSON.stringify({ type: "subscribe", peonId: handler.peonId, sessionId: sid, ...(handler.lastEventId ? { lastEventId: handler.lastEventId } : {}) }));
             }, delay);
             tailRetryTimers.current.set(sid, timer);
           }
@@ -337,7 +332,7 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
       // zombie: no socket, no retry, and updates resume only after F5.
       if (ws?.readyState === WebSocket.CLOSING || ws?.readyState === WebSocket.CLOSED) return reconnectNow();
       if (!ws) {
-        if (retry === null) connect();
+        if (retry === null) void connect();
         return;
       }
       if (ws.readyState !== WebSocket.OPEN) return;
@@ -366,12 +361,14 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
       }
     };
     const onVisible = () => document.visibilityState === "visible" && kick();
+    const retryTimers = tailRetryTimers.current;
+    const tailBackoffs = tailBackoff.current;
     window.addEventListener("online", kick);
     window.addEventListener("focus", kick);
     window.addEventListener("pageshow", kick); // bfcache restore — timers were frozen
     document.addEventListener("visibilitychange", onVisible);
 
-    connect();
+    void connect();
     return () => {
       closed = true;
       readyRef.current = false;
@@ -381,18 +378,57 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
       window.removeEventListener("pageshow", kick);
       document.removeEventListener("visibilitychange", onVisible);
       if (retry) window.clearTimeout(retry);
-      for (const timer of tailRetryTimers.current.values()) window.clearTimeout(timer);
-      tailRetryTimers.current.clear();
-      tailBackoff.current.clear();
+      for (const timer of retryTimers.values()) window.clearTimeout(timer);
+      retryTimers.clear();
+      tailBackoffs.clear();
       sockRef.current?.close();
       sockRef.current = null;
     };
   }, [wsId, token]);
 
+  useEffect(() => {
+    const ws = sockRef.current;
+    if (readyRef.current && ws?.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: "presence:set", ...desiredPresence }));
+    }
+  }, [desiredPresence]);
+
+  // Independent route heartbeat: keeps presence accurate when a browser/proxy
+  // has a wedged WebSocket but ordinary authenticated HTTP still works.
+  useEffect(() => {
+    if (!wsId || !token) return;
+    const connectionId = crypto.randomUUID();
+    let stopped = false;
+    const beat = () => {
+      if (stopped) return;
+      void api<{ presence: PresenceEntry[] }>(`/workspaces/${wsId}/presence`, json({ connectionId, ...desiredPresence }))
+        .then((result) => {
+          if (!stopped) setPresence(result.presence ?? []);
+        })
+        .catch(() => undefined);
+    };
+    const clear = () => {
+      void api(`/workspaces/${wsId}/presence`, { ...json({ connectionId }), method: "DELETE", keepalive: true }).catch(() => undefined);
+    };
+    beat();
+    const timer = window.setInterval(beat, 10_000);
+    window.addEventListener("focus", beat);
+    window.addEventListener("pagehide", clear);
+    document.addEventListener("visibilitychange", beat);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+      window.removeEventListener("focus", beat);
+      window.removeEventListener("pagehide", clear);
+      document.removeEventListener("visibilitychange", beat);
+      clear();
+    };
+  }, [desiredPresence, token, wsId]);
+
   const subscribe = useMemo(
-    () => (peonId: string, sessionId: string, onFrame: (f: TailFrame) => void) => {
+    () => (peonId: string, sessionId: string, onFrame: (f: TailFrame) => void, lastEventId?: string | null) => {
       const previous = tailHandlers.current.get(sessionId);
-      const handler = { peonId, onFrame };
+      const handler = { peonId, onFrame, resumeEnabled: lastEventId !== undefined, lastEventId: lastEventId ?? null };
       tailHandlers.current.set(sessionId, handler);
       const timer = tailRetryTimers.current.get(sessionId);
       if (timer) {
@@ -404,7 +440,7 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
       // InvalidStateError. The post-handshake snapshot flushes pending subscriptions.
       if (readyRef.current && sockRef.current?.readyState === WebSocket.OPEN) {
         if (previous && previous.peonId !== peonId) sockRef.current.send(JSON.stringify({ type: "unsubscribe", sessionId }));
-        sockRef.current.send(JSON.stringify({ type: "subscribe", peonId, sessionId }));
+        sockRef.current.send(JSON.stringify({ type: "subscribe", peonId, sessionId, ...(handler.lastEventId ? { lastEventId: handler.lastEventId } : {}) }));
       }
       return () => {
         // An older subscriber cleanup must not delete/unsubscribe a newer handler
@@ -423,14 +459,41 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
     [],
   );
 
-  // Derive live `online` from lastSeen against the ticking clock.
-  const peons = useMemo(
-    () => [...peonMap.values()].map((p) => ({ ...p, online: now - (p.lastSeen ?? 0) <= offlineAfterMs })).sort((a, b) => (a.name ?? "").localeCompare(b.name ?? "")),
-    [peonMap, now, offlineAfterMs],
-  );
-  const sessions = useMemo(() => [...sessionMap.values()].sort((a, b) => (b.lastActivityAt ?? 0) - (a.lastActivityAt ?? 0)), [sessionMap]);
+  const subscribeSessions = useMemo(() => (onSession: (session: SessionLiveEvent) => void) => {
+    sessionHandlers.current.add(onSession);
+    return () => sessionHandlers.current.delete(onSession);
+  }, []);
 
-  return <Ctx.Provider value={{ connected, peons, sessions, subscribe }}>{children}</Ctx.Provider>;
+  const withLocalUser = useMemo(() => (entries: PresenceUser[], matchesLocal: boolean): PresenceUser[] => {
+    const viewers = uniqueUsers(entries);
+    if (!user || !matchesLocal || viewers.some((viewer) => viewer.email === user.email)) return viewers;
+    return [{ userId: `self:${user.email}`, email: user.email, githubLogin: user.githubLogin ?? null, avatarUrl: user.avatarUrl ?? null }, ...viewers];
+  }, [user]);
+
+  const viewersFor = useMemo(() => (peonId: string, sessionId: string) => withLocalUser(
+    presence.filter((entry) => entry.scope === "session" && entry.peonId === peonId && entry.sessionId === sessionId),
+    desiredPresence.scope === "session" && desiredPresence.peonId === peonId && desiredPresence.sessionId === sessionId,
+  ), [desiredPresence, presence, withLocalUser]);
+
+  const viewersForPeon = useMemo(() => (peonId: string) => {
+    return withLocalUser(
+      presence.filter((entry) => entry.peonId === peonId),
+      desiredPresence.peonId === peonId,
+    );
+  }, [desiredPresence.peonId, presence, withLocalUser]);
+
+  const viewersForWorkspace = useMemo(() => () => withLocalUser(presence, true), [presence, withLocalUser]);
+
+  return <Ctx.Provider value={{ viewersFor, viewersForPeon, viewersForWorkspace, subscribe, subscribeSessions }}>{children}</Ctx.Provider>;
+}
+
+function uniqueUsers(entries: PresenceUser[]): PresenceUser[] {
+  const users = new Map<string, PresenceUser>();
+  for (const entry of entries) {
+    const key = entry.email.toLowerCase();
+    if (!users.has(key)) users.set(key, entry);
+  }
+  return [...users.values()].sort((a, b) => (a.githubLogin || a.email).localeCompare(b.githubLogin || b.email));
 }
 
 export function useLiveSocket(): LiveSocketValue {

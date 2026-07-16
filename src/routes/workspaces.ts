@@ -6,11 +6,17 @@ import {
   listInvites,
   listMembers,
   listWorkspacesForUser,
+  membership,
   removeMember,
   revokeInvite,
+  updateMemberRole,
   type Role,
 } from "../workspaces.js";
 import { ownerOnly, userOf, withWorkspace } from "./helpers.js";
+import { canAccessPeon, canAccessProject, listMemberAccess, replaceMemberAccess, type MemberAccess } from "../access.js";
+import { registry } from "../registry.js";
+import { getIndexedSession } from "../sessionIndex.js";
+import { heartbeatPresence, listVisiblePresence, removePresence } from "../presence.js";
 
 // Workspaces (multi-tenant ACL) — mounted on /api AFTER operatorAuth. Routes
 // under /workspaces/:wsId require membership (the ACL gate via withWorkspace).
@@ -29,6 +35,45 @@ export function workspacesRouter(): express.Router {
 
   // Members
   router.get("/workspaces/:wsId/members", withWorkspace(async (_req, res, ctx) => res.json({ members: await listMembers(ctx.workspaceId) })));
+  router.get("/workspaces/:wsId/presence", withWorkspace(async (_req, res, ctx) => {
+    res.json({ presence: await visiblePresenceFor(ctx.workspaceId, ctx.userId, ctx.role) });
+  }));
+  router.post("/workspaces/:wsId/presence", withWorkspace(async (req, res, ctx) => {
+    const connectionId = typeof req.body?.connectionId === "string" ? req.body.connectionId : "";
+    const scope = req.body?.scope;
+    if (!connectionId || connectionId.length > 100 || !["workspace", "peon", "session"].includes(scope)) {
+      return res.status(400).json({ error: "invalid presence heartbeat", code: "BAD_REQUEST" });
+    }
+    const peonId = scope === "workspace" ? null : String(req.body?.peonId ?? "");
+    const record = peonId ? await registry.get(peonId) : null;
+    if (peonId && (!record || record.workspaceId !== ctx.workspaceId || !(await canAccessPeon(ctx.workspaceId, ctx.userId, ctx.role, peonId)))) {
+      return res.status(404).json({ error: "unknown peon", code: "UNKNOWN_PEON" });
+    }
+    const sessionId = scope === "session" ? String(req.body?.sessionId ?? "") : null;
+    const session = scope === "session" && peonId && sessionId ? await getIndexedSession(peonId, sessionId) : null;
+    if (scope === "session" && (!session || (session.projectKey && !(await canAccessProject(ctx.workspaceId, ctx.userId, ctx.role, peonId!, session.projectKey, session.projectId))))) {
+      return res.status(404).json({ error: "unknown session", code: "UNKNOWN_SESSION" });
+    }
+    heartbeatPresence({
+      connectionId,
+      workspaceId: ctx.workspaceId,
+      userId: req.user!.userId,
+      email: req.user!.email,
+      githubLogin: req.user!.githubLogin,
+      avatarUrl: req.user!.avatarUrl,
+      scope,
+      peonId,
+      sessionId,
+      projectKey: session?.projectKey ?? null,
+      projectId: session?.projectId ?? null,
+    });
+    res.json({ presence: await visiblePresenceFor(ctx.workspaceId, ctx.userId, ctx.role) });
+  }));
+  router.delete("/workspaces/:wsId/presence", withWorkspace(async (req, res, ctx) => {
+    const connectionId = typeof req.body?.connectionId === "string" ? req.body.connectionId : "";
+    if (connectionId) removePresence(ctx.workspaceId, ctx.userId, connectionId);
+    res.status(204).end();
+  }));
   router.delete(
     "/workspaces/:wsId/members/:userId",
     withWorkspace(async (req, res, ctx) => {
@@ -37,6 +82,54 @@ export function workspacesRouter(): express.Router {
       if (result === "not_found") return res.status(404).json({ error: "not a member", code: "UNKNOWN_MEMBER" });
       if (result === "owner") return res.status(409).json({ error: "workspace owners cannot be removed", code: "CANNOT_REMOVE_OWNER" });
       res.json({ ok: true });
+    }),
+  );
+  router.patch(
+    "/workspaces/:wsId/members/:userId",
+    withWorkspace(async (req, res, ctx) => {
+      if (!ownerOnly(res, ctx.role)) return;
+      if (req.body?.role !== "owner" && req.body?.role !== "member") return res.status(400).json({ error: "role must be owner or member", code: "BAD_REQUEST" });
+      const role: Role = req.body.role;
+      const result = await updateMemberRole(ctx.workspaceId, String(req.params.userId), role);
+      if (result === "not_found") return res.status(404).json({ error: "not a member", code: "UNKNOWN_MEMBER" });
+      if (result === "last_owner") return res.status(409).json({ error: "assign another owner before changing this role", code: "LAST_OWNER" });
+      res.json({ ok: true, role });
+    }),
+  );
+  router.get(
+    "/workspaces/:wsId/members/:userId/access",
+    withWorkspace(async (req, res, ctx) => {
+      if (!ownerOnly(res, ctx.role)) return;
+      const userId = String(req.params.userId);
+      const memberRole = await membership(ctx.workspaceId, userId);
+      if (!memberRole) return res.status(404).json({ error: "not a member", code: "UNKNOWN_MEMBER" });
+      res.json({ access: await listMemberAccess(ctx.workspaceId, userId), unrestricted: memberRole === "owner" });
+    }),
+  );
+  router.put(
+    "/workspaces/:wsId/members/:userId/access",
+    withWorkspace(async (req, res, ctx) => {
+      if (!ownerOnly(res, ctx.role)) return;
+      const userId = String(req.params.userId);
+      const memberRole = await membership(ctx.workspaceId, userId);
+      if (!memberRole) return res.status(404).json({ error: "not a member", code: "UNKNOWN_MEMBER" });
+      if (memberRole === "owner") return res.status(409).json({ error: "owners always have full access", code: "OWNER_UNRESTRICTED" });
+      const peonIds: string[] = Array.isArray(req.body?.peonIds) ? (req.body.peonIds as unknown[]).filter((value): value is string => typeof value === "string" && !!value) : [];
+      const projects: { peonId: string; projectKey: string; projectId?: string | null }[] = Array.isArray(req.body?.projects)
+        ? (req.body.projects as unknown[]).filter((value): value is { peonId: string; projectKey: string; projectId?: string | null } => {
+            if (!value || typeof value !== "object") return false;
+            const item = value as { peonId?: unknown; projectKey?: unknown; projectId?: unknown };
+            return typeof item.peonId === "string" && !!item.peonId && typeof item.projectKey === "string" && !!item.projectKey
+              && (item.projectId === undefined || item.projectId === null || typeof item.projectId === "string");
+          })
+        : [];
+      const workspacePeons = new Set((await registry.list(ctx.workspaceId)).map((record) => record.peonId));
+      const access: MemberAccess = {
+        peonIds: [...new Set(peonIds)].filter((id) => workspacePeons.has(id)),
+        projects: projects.filter((item) => workspacePeons.has(item.peonId)),
+      };
+      await replaceMemberAccess(ctx.workspaceId, userId, access, ctx.userId);
+      res.json({ access });
     }),
   );
 
@@ -53,8 +146,13 @@ export function workspacesRouter(): express.Router {
     "/workspaces/:wsId/invites",
     withWorkspace(async (req, res, ctx) => {
       if (!ownerOnly(res, ctx.role)) return;
-      const role: Role = req.body?.role === "owner" ? "owner" : "member";
-      res.status(201).json({ invite: await createInvite(ctx.workspaceId, role, ctx.userId) });
+      if (req.body?.role !== "owner" && req.body?.role !== "member") return res.status(400).json({ error: "role must be owner or member", code: "BAD_REQUEST" });
+      const role: Role = req.body.role;
+      const inviteeLabel = typeof req.body?.inviteeLabel === "string" ? req.body.inviteeLabel.trim() : "";
+      // Display-only organizer label. The private token is the capability; do
+      // not compare this value with the email returned by GitHub OAuth.
+      if (!inviteeLabel) return res.status(400).json({ error: "member label is required", code: "BAD_REQUEST" });
+      res.status(201).json({ invite: await createInvite(ctx.workspaceId, role, ctx.userId, inviteeLabel) });
     }),
   );
   router.delete(
@@ -75,4 +173,12 @@ export function workspacesRouter(): express.Router {
   });
 
   return router;
+}
+
+function visiblePresenceFor(workspaceId: string, userId: string, role: Role) {
+  return listVisiblePresence(
+    workspaceId,
+    (peonId) => canAccessPeon(workspaceId, userId, role, peonId),
+    (peonId, projectKey, projectId) => canAccessProject(workspaceId, userId, role, peonId, projectKey, projectId),
+  );
 }

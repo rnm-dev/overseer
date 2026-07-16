@@ -1,0 +1,72 @@
+import { Check, ChevronDown } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { useT } from "../i18n";
+import { useWorkspace } from "../workspace";
+import { DropdownMenu, menuItemClass, StatusDot } from "../ui";
+
+export function PeonScopeSwitcher({ workspaceId, peonId }: { workspaceId: string; peonId?: string }) {
+  const t = useT();
+  const navigate = useNavigate();
+  const { groups } = useWorkspace();
+  const peons = groups.find((group) => group.workspace.id === workspaceId)?.peons ?? [];
+  const selected = peonId ? peons.find((peon) => peon.peonId === peonId) : undefined;
+  const currentLabel = selected?.name || (peonId ? t("peons.unnamed") : t("sessions.allPeons"));
+
+  const choose = (nextPeonId: string, close: () => void) => {
+    close();
+    navigate(nextPeonId
+      ? `/peons/${encodeURIComponent(nextPeonId)}`
+      : `/workspaces/${encodeURIComponent(workspaceId)}/sessions`);
+  };
+
+  return (
+    <DropdownMenu
+      label={t("sessions.scope")}
+      className="min-w-0 flex-1"
+      buttonClassName="flex w-full min-w-0 items-center gap-2 rounded px-0.5 py-1 text-left transition-colors hover:text-fel-bright focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-fel/70"
+      menuAlignClassName="left-0"
+      menuWidthClassName="w-full min-w-52"
+      trigger={(open) => (
+        <>
+          {selected && <StatusDot state={selected.online ? "on" : "off"} />}
+          <span className="min-w-0 truncate font-display text-base font-extrabold tracking-wide text-bone" title={currentLabel}>{currentLabel}</span>
+          <ChevronDown size={15} className={`flex-none text-bone-dim transition-transform ${open ? "rotate-180" : ""}`} aria-hidden />
+        </>
+      )}
+    >
+      {(close) => (
+        <>
+          <button
+            type="button"
+            role="menuitemradio"
+            aria-checked={!peonId}
+            className={`${menuItemClass()} !flex items-center gap-2 ${!peonId ? "bg-fel/10 text-fel-bright" : ""}`}
+            onClick={() => choose("", close)}
+          >
+            <span className="w-2 flex-none" />
+            <span className="min-w-0 flex-1 truncate">{t("sessions.allPeons")}</span>
+            {!peonId && <Check size={14} className="flex-none" aria-hidden />}
+          </button>
+          <div className="my-1 border-t border-iron-800" />
+          {peons.map((peon) => {
+            const active = peon.peonId === peonId;
+            return (
+              <button
+                key={peon.peonId}
+                type="button"
+                role="menuitemradio"
+                aria-checked={active}
+                className={`${menuItemClass()} !flex items-center gap-2 ${active ? "bg-fel/10 text-fel-bright" : ""}`}
+                onClick={() => choose(peon.peonId, close)}
+              >
+                <StatusDot state={peon.online ? "on" : "off"} />
+                <span className="min-w-0 flex-1 truncate">{peon.name || t("peons.unnamed")}</span>
+                {active && <Check size={14} className="flex-none" aria-hidden />}
+              </button>
+            );
+          })}
+        </>
+      )}
+    </DropdownMenu>
+  );
+}
