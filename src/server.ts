@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 import express from "express";
+import { config } from "./config.js";
 import { operatorAuth } from "./routes/helpers.js";
 import { agentRouter } from "./routes/agent.js";
 import { accountRouter, publicAuthRouter } from "./routes/auth.js";
@@ -8,6 +9,7 @@ import { workspacesRouter } from "./routes/workspaces.js";
 import { peonsRouter } from "./routes/peons.js";
 import { pushRouter } from "./routes/push.js";
 import { webPreviewHandler } from "./webPreview.js";
+import { peonReleasesRouter, releasePublisherRouter } from "./routes/releases.js";
 
 // The overseer's two-sided HTTP surface:
 //
@@ -18,6 +20,12 @@ import { webPreviewHandler } from "./webPreview.js";
 //                       workspace and proxy through to that peon.
 //
 // The route handlers live in ./routes/*; this file is just wiring.
+
+export function isAllowedProductionHost(rawHost: string | undefined, publicUrl = config.publicUrl): boolean {
+  const publicHost = new URL(publicUrl).hostname.toLowerCase().replace(/\.$/, "");
+  const requestHost = (rawHost ?? "").split(":", 1)[0].toLowerCase().replace(/\.$/, "");
+  return requestHost === publicHost;
+}
 
 export function createServer(): express.Express {
   const app = express();
@@ -36,8 +44,20 @@ export function createServer(): express.Express {
     res.json({ ok: true });
   });
 
+  // Production uses Overseer as the hostless fallback in the shared
+  // kamal-proxy so dynamic preview subdomains can reach the same container.
+  // nginx constrains public ingress, and this second boundary prevents direct
+  // access to kamal-proxy:8080 with an unrelated Host from exposing the SPA/API.
+  if (process.env.NODE_ENV === "production") {
+    app.use((req, res, next) => {
+      if (isAllowedProductionHost(req.headers.host)) return next();
+      res.status(421).json({ error: "request host is not served here", code: "MISDIRECTED_REQUEST" });
+    });
+  }
+
   // North-bound: peon registration + heartbeat + event push.
   app.use("/api/v1/peons", agentRouter());
+  app.use("/api/v1/releases", peonReleasesRouter());
 
   // South-facing: operator + mobile API.
   const api = express.Router();
@@ -57,6 +77,10 @@ export function createServer(): express.Express {
   // Public auth endpoints (GitHub OAuth) sit BEFORE the operator guard — they're
   // how a client gets a token.
   api.use(publicAuthRouter());
+
+  // CI/infrastructure publishing uses its own deployment secret, not a user or
+  // workspace role. This route must sit before the operator device-token guard.
+  api.use(releasePublisherRouter());
 
   // The operator auth guard — everything below requires a device token.
   api.use(operatorAuth);

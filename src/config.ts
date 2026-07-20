@@ -38,6 +38,12 @@ export interface Config {
   // details or credentials are encoded in the public URL.
   previewDomain: string;
   previewTokenTtlMs: number;
+
+  // Global Peon release archive storage. Publishing uses a dedicated secret;
+  // downloads use normal Peon credentials.
+  releaseToken: string;
+  releaseDirectory: string;
+  releaseMaxBytes: number;
 }
 
 function num(name: string, fallback: number): number {
@@ -68,6 +74,9 @@ export const config: Config = {
   deviceTokenTtlMs: num("OVERSEER_DEVICE_TOKEN_TTL_MS", 90 * 24 * 60 * 60_000),
   previewDomain: (process.env.OVERSEER_PREVIEW_DOMAIN ?? "preview.overseer.rnm.dev").toLowerCase().replace(/^\.+|\.+$/g, ""),
   previewTokenTtlMs: num("OVERSEER_PREVIEW_TOKEN_TTL_MS", 10 * 60_000),
+  releaseToken: process.env.OVERSEER_RELEASE_TOKEN ?? "",
+  releaseDirectory: process.env.OVERSEER_RELEASE_DIRECTORY ?? "/data/releases",
+  releaseMaxBytes: num("OVERSEER_RELEASE_MAX_BYTES", 512 * 1024 * 1024),
 };
 
 // Surfaced at startup so a deploy with no secrets set fails loud rather than
@@ -78,5 +87,7 @@ export function configWarnings(): string[] {
     w.push("OVERSEER_PEON_CALLBACK_URL is empty — recruitment can't tell a peon where to phone home, so no peon can be connected until it's set.");
   if (!config.githubClientId || !config.githubClientSecret)
     w.push("OVERSEER_GITHUB_CLIENT_ID / OVERSEER_GITHUB_CLIENT_SECRET are not both set — GitHub sign-in is disabled, so nobody can log in.");
+  if (!config.releaseToken)
+    w.push("OVERSEER_RELEASE_TOKEN is empty — Peon release publishing is disabled.");
   return w;
 }

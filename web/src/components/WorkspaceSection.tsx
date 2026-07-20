@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { MessageSquare, Server, Users } from "lucide-react";
 import { api } from "../api";
 import { Badge, Button, StatusDot } from "../ui";
 import { useT } from "../i18n";
@@ -55,19 +56,33 @@ export function WorkspaceSection({ workspace, peons }: { workspace: Workspace; p
     : uniquePresenceUsers(remotePresence.filter((entry) => entry.peonId === peonId));
 
   return (
-    <section className="mb-9">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-        <h2 className="flex items-center gap-2.5 font-display text-sm font-bold uppercase tracking-[0.14em] text-bone">
-          <span>{workspace.name}</span>
-          {peons.length > 0 && (
-            <span className="font-mono text-[0.7rem] font-normal tracking-normal tabular-nums text-bone-faint">
-              {onlineCount}/{peons.length}
+    <section className="warplate mb-5 overflow-hidden" aria-labelledby={`workspace-${wsId}`}>
+      <div className="flex flex-wrap items-start justify-between gap-x-5 gap-y-3 border-b border-iron-800 bg-iron-950/35 px-5 py-4">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 id={`workspace-${wsId}`} className="truncate font-display text-base font-semibold tracking-wide text-bone">
+              {workspace.name}
+            </h2>
+            <Badge tone={isOwner ? "green" : "neutral"}>{t(isOwner ? "workspace.owner" : "workspace.member")}</Badge>
+          </div>
+          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-bone-faint">
+            <span className="font-mono">/{workspace.slug}</span>
+            <span className="inline-flex items-center gap-1.5">
+              <Server size={13} aria-hidden="true" />
+              {peons.length === 0
+                ? t("workspace.noPeons")
+                : t("workspace.peonStatus", { online: onlineCount, total: peons.length })}
             </span>
-          )}
-        </h2>
+          </div>
+        </div>
         <div className="flex items-center gap-2">
+          <Link className="btn-ghost inline-flex items-center gap-1.5" to={`/workspaces/${wsId}/sessions`}>
+            <MessageSquare size={13} aria-hidden="true" />
+            {t("peon.tab.sessions")}
+          </Link>
           {isOwner && (
-            <Link className="btn-ghost" to={`/workspaces/${wsId}/members`}>
+            <Link className="btn-ghost inline-flex items-center gap-1.5" to={`/workspaces/${wsId}/members`}>
+              <Users size={13} aria-hidden="true" />
               {t("dashboard.wsAdmin")}
             </Link>
           )}
@@ -78,16 +93,23 @@ export function WorkspaceSection({ workspace, peons }: { workspace: Workspace; p
       </div>
 
       {peons.length === 0 ? (
-        <p className="warplate px-5 py-8 text-center font-mono text-sm text-bone-faint">{t("peons.empty")}</p>
+        <div className="px-5 py-9 text-center">
+          <p className="text-sm text-bone-dim">{t(isOwner ? "workspace.emptyOwner" : "workspace.emptyMember")}</p>
+          {isOwner && (
+            <button type="button" className="btn-ghost mt-2" onClick={() => setShowAddPeon(true)}>
+              {t("peons.connect")}
+            </button>
+          )}
+        </div>
       ) : (
-        <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <ul className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 lg:grid-cols-3">
           {peons.map((p) => {
             const st = status[p.peonId];
             const online = st?.online ?? p.online;
             const active = st?.status?.activeSessionCount ?? 0;
             return (
               <li key={p.peonId}>
-                <div className="warplate flex h-full flex-col transition-colors hover:border-fel/40 hover:bg-fel/[0.03]">
+                <div className="flex h-full flex-col rounded-lg border border-iron-800 bg-iron-950/30 transition-colors hover:border-fel/40 hover:bg-fel/[0.03]">
                   <Link to={`/peons/${p.peonId}`} className="flex flex-1 flex-col justify-between gap-3 px-4 py-3.5">
                     <div className="flex items-start justify-between gap-2">
                       <StatusDot state={online ? "on" : "off"} />

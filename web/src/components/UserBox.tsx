@@ -6,7 +6,7 @@ import { useT } from "../i18n";
 import { peonSoundsEnabled, setPeonSoundsEnabled } from "../peonSounds";
 
 // author: Viktor
-// Floating account panel, shown only on the fleet dashboard by AppLayout.
+// Account panel, shown as the final in-flow block on the fleet dashboard.
 export function UserBox() {
   const { user, logout } = useAuth();
   const t = useT();
@@ -19,7 +19,7 @@ export function UserBox() {
   };
 
   return (
-    <div className="user-box fixed bottom-3 left-3 z-40 w-64 space-y-2.5 rounded-lg border border-iron-800 bg-iron-950/85 px-3 py-3 shadow-lg backdrop-blur">
+    <div className="user-box mx-auto mb-3 mt-6 w-64 space-y-2.5 rounded-lg border border-iron-800 bg-iron-950/85 px-3 py-3 shadow-lg backdrop-blur">
       <div className="truncate px-0.5 font-mono text-[0.7rem] text-bone-dim" title={user?.email}>
         {user?.email}
       </div>

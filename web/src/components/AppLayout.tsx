@@ -12,7 +12,7 @@ export function AppLayout() {
   const { pathname } = useLocation();
 
   return (
-    <div className="min-h-screen">
+    <div className="flex min-h-screen flex-col">
       <Outlet />
       {showsUserBox(pathname) && <UserBox />}
     </div>

@@ -3,3 +3,6 @@ dist/
 data/
 *.log
 *.tsbuildinfo
+.kamal/secrets
+.kamal/env/
+backups/

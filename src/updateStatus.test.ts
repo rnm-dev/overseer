@@ -13,9 +13,17 @@ test("update controls are exposed and their status contract is documented", asyn
   const updateRoute = router.stack.find(
     (layer) => layer.route?.path === "/workspaces/:wsId/peons/:id/control/update",
   );
+  const cliUpdatesRoute = router.stack.find(
+    (layer) => layer.route?.path === "/workspaces/:wsId/peons/:id/ai/cli-updates",
+  );
+  const cliUpdateRoute = router.stack.find(
+    (layer) => layer.route?.path === "/workspaces/:wsId/peons/:id/ai/cli-updates/:provider",
+  );
 
   assert.equal(checkUpdateRoute?.route?.methods?.post, true);
   assert.equal(updateRoute?.route?.methods?.post, true);
+  assert.equal(cliUpdatesRoute?.route?.methods?.get, true);
+  assert.equal(cliUpdateRoute?.route?.methods?.post, true);
 
   const protocol = await readFile(new URL("../PROTOCOL.md", import.meta.url), "utf8");
   for (const field of [

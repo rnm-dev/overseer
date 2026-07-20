@@ -1,0 +1,83 @@
+# Overseer production deployment on nid-01.
+# Cloudflare and host nginx terminate public TLS. The shared kamal-proxy listens
+# on host ports 8080/8443, so this service must not boot or reconfigure the proxy.
+service: overseer
+image: vibze/overseer
+
+servers:
+  web:
+    - 94.247.128.103
+
+# Intentionally no host/hosts: tokenized preview subdomains are dynamic. This
+# makes Overseer the fallback only inside kamal-proxy; production host validation
+# and the nginx allowlist reject unrelated hostnames.
+proxy:
+  ssl: false
+  app_port: 5000
+  forward_headers: true
+  response_timeout: 3600
+  healthcheck:
+    path: /healthz
+    interval: 3
+    timeout: 3
+  buffering:
+    requests: false
+    responses: false
+
+registry:
+  username: vibze
+  password:
+    - KAMAL_REGISTRY_PASSWORD
+
+builder:
+  arch: amd64
+  context: .
+
+env:
+  clear:
+    NODE_ENV: production
+    OVERSEER_HOST: 0.0.0.0
+    OVERSEER_PORT: 5000
+    OVERSEER_PUBLIC_URL: https://overseer.rnm.dev
+    OVERSEER_PEON_CALLBACK_URL: https://overseer.rnm.dev
+    OVERSEER_PREVIEW_DOMAIN: preview.overseer.rnm.dev
+    OVERSEER_PREVIEW_TOKEN_TTL_MS: 600000
+    OVERSEER_OFFLINE_AFTER_MS: 45000
+    OVERSEER_RECONCILE_INTERVAL_MS: 30000
+    OVERSEER_RELEASE_DIRECTORY: /data/releases
+    OVERSEER_RELEASE_MAX_BYTES: 536870912
+  secret:
+    - DATABASE_URL
+    - OVERSEER_GITHUB_CLIENT_ID
+    - OVERSEER_GITHUB_CLIENT_SECRET
+    - OVERSEER_RELEASE_TOKEN
+
+# Application-owned persistent data. This named volume is independent of every
+# versioned app container and must be included in backup/cutover verification.
+volumes:
+  - overseer-releases:/data/releases
+
+accessories:
+  postgres:
+    service: overseer-postgres
+    image: postgres:16-alpine
+    host: 94.247.128.103
+    env:
+      clear:
+        POSTGRES_USER: overseer
+        POSTGRES_DB: overseer
+      secret:
+        - POSTGRES_PASSWORD
+    volumes:
+      - overseer-postgres-data:/var/lib/postgresql/data
+      - overseer-postgres-backups:/backups
+    options:
+      health-cmd: "pg_isready -U overseer -d overseer"
+      health-interval: 5s
+      health-timeout: 5s
+      health-retries: 12
+
+aliases:
+  logs: app logs -f
+  shell: app exec --interactive --reuse "sh"
+  dbconsole: accessory exec postgres --interactive "psql -U overseer -d overseer"

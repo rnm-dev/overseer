@@ -25,6 +25,20 @@ test("session index keeps the opening preview separate from latest activity", as
   assert.equal("raw" in sessions[0]!, false);
 });
 
+test("session index filters authors before choosing the newest page", async () => {
+  const mem = newDb();
+  const adapter = mem.adapters.createPg();
+  await initDb(new adapter.Pool() as unknown as pg.Pool);
+
+  await upsertSession("workspace", "peon", { id: "other-newest", initiator: "other@example.com", lastActivityAt: 30 });
+  await upsertSession("workspace", "peon", { id: "mine-older", initiator: "ME@example.com", lastActivityAt: 10 });
+  await upsertSession("workspace", "peon", { id: "mine-newest", initiator: "me@example.com", lastActivityAt: 20 });
+
+  const result = await listSessions({ peonId: "peon", authors: ["me@example.com"], limit: 1, offset: 0 });
+  assert.equal(result.total, 2);
+  assert.deepEqual(result.sessions.map((session) => session.sessionId), ["mine-newest"]);
+});
+
 test("legacy full records derive a bounded opening preview", async () => {
   const mem = newDb();
   const adapter = mem.adapters.createPg();

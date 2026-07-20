@@ -22,6 +22,19 @@ export function transcriptQuery(query: express.Request["query"], supported: bool
 
 export function registerSessionRoutes(router: express.Router): void {
   const wp = "/workspaces/:wsId/peons/:id";
+  const callSupportedPeonPath = async (
+    record: PeonRecord,
+    method: "GET" | "POST",
+    paths: string[],
+    actor: string,
+    body?: unknown,
+  ) => {
+    let result = await callPeon(connOfRecord(record), method, paths[0]!, { actor, body });
+    for (let index = 1; index < paths.length && (result.status === 404 || result.status === 401); index += 1) {
+      result = await callPeon(connOfRecord(record), method, paths[index]!, { actor, body });
+    }
+    return result;
+  };
   const withWorkspaceSession = (handler: Parameters<typeof withWorkspacePeon>[0]) => withWorkspacePeon(async (req, res, c) => {
     if (c.role !== "owner") {
       const lookup = await callPeon(connOfRecord(c.record), "GET", `/sessions/${encodeURIComponent(String(req.params.sid))}`, { actor: c.operator.email });
@@ -166,6 +179,29 @@ export function registerSessionRoutes(router: express.Router): void {
   router.post(`${wp}/control/resume`, withWorkspacePeon(async (_req, res, c) => { if (!ownerOnly(res, c.role)) return; relay(await callPeon(connOfRecord(c.record), "POST", "/control/resume", { actor: c.operator.email }), res); }));
   router.post(`${wp}/control/check-update`, withWorkspacePeon(async (_req, res, c) => { if (!ownerOnly(res, c.role)) return; relay(await callPeon(connOfRecord(c.record), "POST", "/control/check-update", { actor: c.operator.email }), res); }));
   router.post(`${wp}/control/update`, withWorkspacePeon(async (_req, res, c) => { if (!ownerOnly(res, c.role)) return; relay(await callPeon(connOfRecord(c.record), "POST", "/control/update", { actor: c.operator.email }), res); }));
+  router.get(`${wp}/ai/cli-updates`, withWorkspacePeon(async (req, res, c) => {
+    if (!ownerOnly(res, c.role)) return;
+    const query = req.query.refresh === "true" || req.query.refresh === "1" ? "?refresh=true" : "";
+    const paths = ["/ai/cli-updates", "/ai/updates", "/cli-updates"].map((path) => `${path}${query}`);
+    relay(await callSupportedPeonPath(c.record, "GET", paths, c.operator.email), res);
+  }));
+  router.post(`${wp}/ai/cli-updates/:provider`, withWorkspacePeon(async (req, res, c) => {
+    if (!ownerOnly(res, c.role)) return;
+    const provider = String(req.params.provider);
+    if (provider !== "codex" && provider !== "claude-code") {
+      return res.status(400).json({ error: "provider must be codex or claude-code", code: "BAD_PROVIDER" });
+    }
+    const encoded = encodeURIComponent(provider);
+    const paths = [
+      `/ai/cli-updates/${encoded}`,
+      `/ai/cli-updates/${encoded}/update`,
+      `/ai/updates/${encoded}`,
+      `/ai/updates/${encoded}/update`,
+      `/cli-updates/${encoded}`,
+      `/cli-updates/${encoded}/update`,
+    ];
+    relay(await callSupportedPeonPath(c.record, "POST", paths, c.operator.email, req.body), res);
+  }));
   router.get(`${wp}/sessions/:sid/stream`, withWorkspaceSession((req, res, c) => proxyStream(connOfRecord(c.record), `/sessions/${encodeURIComponent(String(req.params.sid))}/stream`, res, c.operator.email)));
 
   // First-class session artifact previews. These deliberately mirror Peon's

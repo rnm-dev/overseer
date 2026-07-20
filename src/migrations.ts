@@ -338,4 +338,19 @@ export const MIGRATIONS: { id: string; statements: string[] }[] = [
     id: "014_session_prompt_preview",
     statements: [`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS prompt_preview TEXT`],
   },
+  {
+    // Global, immutable Peon releases. Archive bytes live on the configured
+    // persistent volume; Postgres remains the metadata system of record.
+    id: "015_peon_releases",
+    statements: [
+      `CREATE TABLE IF NOT EXISTS releases (
+         version     TEXT PRIMARY KEY,
+         storage_key TEXT NOT NULL,
+         size         BIGINT NOT NULL,
+         sha256       TEXT NOT NULL,
+         created_at   BIGINT NOT NULL
+       )`,
+      `CREATE INDEX IF NOT EXISTS releases_created_idx ON releases (created_at)`,
+    ],
+  },
 ];

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { after, test } from "node:test";
-import { createServer } from "./server.js";
+import { createServer, isAllowedProductionHost } from "./server.js";
 
 const servers: http.Server[] = [];
 after(async () => Promise.all(servers.map((server) => new Promise<void>((resolve) => server.close(() => resolve())))));
@@ -38,3 +38,11 @@ test("JSON parser accepts composer-sized payloads beyond Express's default limit
   assert.equal(await postJson(port, body), 404);
 });
 
+test("production host validation accepts only the configured operator origin", () => {
+  const publicUrl = "https://overseer.rnm.dev";
+  assert.equal(isAllowedProductionHost("overseer.rnm.dev", publicUrl), true);
+  assert.equal(isAllowedProductionHost("OVERSEER.RNM.DEV.:443", publicUrl), true);
+  assert.equal(isAllowedProductionHost("token.preview.overseer.rnm.dev", publicUrl), false);
+  assert.equal(isAllowedProductionHost("unrelated.invalid", publicUrl), false);
+  assert.equal(isAllowedProductionHost(undefined, publicUrl), false);
+});

@@ -72,6 +72,7 @@ export function PeonSessionDetail() {
   // Session title + inline rename.
   const [title, setTitle] = useState<string | null>(null);
   const [projectKey, setProjectKey] = useState<string | null>(null);
+  const [loadedMetadataKey, setLoadedMetadataKey] = useState<string | null>(null);
   const [turnCount, setTurnCount] = useState<number | null>(null);
   const [sessionUsage, setSessionUsage] = useState<unknown>(null);
   const [editing, setEditing] = useState(false);
@@ -244,6 +245,7 @@ export function PeonSessionDetail() {
   }, [oldestHistoryEventId, sessionKey]);
 
   const stickToBottomRef = useRef(true);
+  const transcriptRef = useRef<HTMLDivElement>(null);
   const {
     input, setInput, files, setFiles, sending, sendError, setSendError,
     queueItems, removingQueueItems, filesEnabled, send, enqueue, removeQueuedItem,
@@ -303,6 +305,7 @@ export function PeonSessionDetail() {
           if (s.status === "running") setRunningModel(s.model ?? null);
         }
         setSessionModel(s.model ?? null);
+        setLoadedMetadataKey(sessionKey);
       })
       .catch(() => {});
     return () => {
@@ -368,7 +371,7 @@ export function PeonSessionDetail() {
     }
   }
 
-  const { showScrollToBottom, scrollToBottom } = useScrollToBottom(stickToBottomRef, history, live);
+  const { showScrollToBottom, scrollToBottom } = useScrollToBottom(stickToBottomRef, history, live, transcriptRef, sessionKey);
   // What the agent is doing right now, from the freshest event (live wins over history).
   const lastEvent = orderedLive.length ? orderedLive[orderedLive.length - 1] : history?.length ? history[history.length - 1] : undefined;
   const working = workingActivity(lastEvent);
@@ -410,6 +413,7 @@ export function PeonSessionDetail() {
     <div className="min-w-0">
       <SessionHeader
         peonId={peon.peonId}
+        metadataLoading={loadedMetadataKey !== sessionKey}
         projectKey={projectKey}
         title={title}
         draft={draft}
@@ -436,7 +440,7 @@ export function PeonSessionDetail() {
         viewers={viewersFor(peon.peonId, sid)}
       />
       {/* transcript — flows into the page; the body scrolls it */}
-      <div className="min-w-0 overflow-x-hidden pt-4" style={{ paddingBottom: composerHeight }}>
+      <div ref={transcriptRef} className="min-w-0 overflow-x-hidden pt-4" style={{ paddingBottom: composerHeight }}>
         {history === null ? (
           showHistorySpinner && (
             <div className="grid min-h-[40vh] place-items-center">

@@ -6,3 +6,8 @@ data
 CLAUDE.md
 PROTOCOL.md
 README.md
+.kamal
+backups
+web/node_modules
+web/dist
+web/*.log

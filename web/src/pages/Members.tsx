@@ -217,7 +217,7 @@ export function Members() {
     <div className="min-h-screen px-4 pb-24 pt-5 sm:px-6 sm:pt-8">
       <div className="mx-auto max-w-5xl">
         <header className="mb-8">
-          <Link to="/" className="mb-6 inline-flex items-center gap-2 font-mono text-xs text-bone-faint transition-colors hover:text-bone">
+          <Link to={`/workspaces/${encodeURIComponent(workspaceId)}`} className="mb-6 inline-flex items-center gap-2 font-mono text-xs text-bone-faint transition-colors hover:text-bone">
             <ArrowLeft size={14} aria-hidden /> {t("members.back")}
           </Link>
           <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">

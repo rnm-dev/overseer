@@ -1,11 +1,14 @@
-import { lazy, Suspense } from "react";
-import { Navigate, Route, Routes, useParams } from "react-router-dom";
+import { lazy, Suspense, useEffect, useState } from "react";
+import { Navigate, Route, Routes, useNavigate, useOutletContext, useParams } from "react-router-dom";
+import { api } from "./api";
 import { useAuth } from "./auth";
 import { useT } from "./i18n";
 import { WorkspaceProvider } from "./workspace";
 import { LiveSocketProvider } from "./liveSocket";
 import { AppLayout } from "./components/AppLayout";
 import { peonSettingsPath } from "./pages/peon/settingsNavigation";
+import type { PeonContext } from "./pages/peon/context";
+import type { IndexedSessionLite } from "./pages/peon/sessionList";
 
 const Login = lazy(() => import("./pages/Login").then((m) => ({ default: m.Login })));
 const Dashboard = lazy(() => import("./pages/Dashboard").then((m) => ({ default: m.Dashboard })));
@@ -20,6 +23,7 @@ const PeonProjectDetail = lazy(() => import("./pages/peon/PeonProjectDetail").th
 const PeonStats = lazy(() => import("./pages/peon/PeonStats").then((m) => ({ default: m.PeonStats })));
 const PeonSettings = lazy(() => import("./pages/peon/PeonSettings").then((m) => ({ default: m.PeonSettings })));
 const Members = lazy(() => import("./pages/Members").then((m) => ({ default: m.Members })));
+const WorkspaceDashboard = lazy(() => import("./pages/WorkspaceDashboard").then((m) => ({ default: m.WorkspaceDashboard })));
 const WorkspaceSessions = lazy(() => import("./pages/WorkspaceSessions").then((m) => ({ default: m.WorkspaceSessions })));
 const WorkspaceSessionsEmpty = lazy(() => import("./pages/WorkspaceSessions").then((m) => ({ default: m.WorkspaceSessionsEmpty })));
 const ProjectMembers = lazy(() => import("./pages/peon/ProjectMembers").then((m) => ({ default: m.ProjectMembers })));
@@ -46,6 +50,32 @@ function Loading() {
 
 function PeonSessionsEmpty() {
   const t = useT();
+  const navigate = useNavigate();
+  const { peon, wsId } = useOutletContext<PeonContext>();
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    const query = new URLSearchParams({
+      peonId: peon.peonId,
+      mine: "true",
+      limit: "1",
+      offset: "0",
+    });
+    api<{ sessions: IndexedSessionLite[] }>(`/workspaces/${encodeURIComponent(wsId)}/sessions?${query}`)
+      .then((result) => {
+        if (!active) return;
+        const sessionId = result.sessions?.[0]?.sessionId;
+        if (sessionId) navigate(encodeURIComponent(sessionId), { replace: true });
+        else setLoading(false);
+      })
+      .catch(() => {
+        if (active) setLoading(false);
+      });
+    return () => { active = false; };
+  }, [navigate, peon.peonId, wsId]);
+
+  if (loading) return <div className="grid min-h-[55vh] place-items-center"><div className="forge-spin" /></div>;
   return (
     <div className="grid min-h-[55vh] place-items-center text-center">
       <div>
@@ -85,6 +115,7 @@ export function App() {
         }
       >
         <Route index element={<Dashboard />} />
+        <Route path="workspaces/:workspaceId" element={<WorkspaceDashboard />} />
         <Route path="workspaces/:workspaceId/members" element={<Members />} />
         <Route path="workspaces/:workspaceId/sessions" element={<WorkspaceSessions />}>
           <Route index element={<WorkspaceSessionsEmpty />} />

@@ -10,6 +10,7 @@ import { PeonArmory } from "./PeonArmory";
 import { buildSettingsPayload, resolveDefaultModel } from "./settingsModel";
 import { peonSettingsPath, peonSettingsTabFromPath, SOUL_EDITOR_ROWS } from "./settingsNavigation";
 import { savePeonSoul, soulExcerpt } from "./peonApi";
+import { CliUpdatesPanel } from "./CliUpdatesPanel";
 
 // author: Viktor
 
@@ -282,6 +283,7 @@ export function PeonSettings() {
           )}
         </Card>
       )}
+      <CliUpdatesPanel base={base} online={peon.online} />
       <Card className="space-y-5 px-5 py-5">
         <div>
           <h3 className="font-display text-sm font-bold text-bone">{t("peon.conn.title")}</h3>

@@ -44,6 +44,28 @@ Errors are always `{ "error": "<human message>", "code": "<STABLE_CODE>" }` —
 
 ## Endpoints
 
+### Global Peon releases (Overseer-hosted)
+
+These endpoints are served by Overseer rather than by an individual Peon.
+Releases are global and are never scoped to a workspace.
+
+```
+PUT /api/releases/:version
+  Authorization: Bearer <OVERSEER_RELEASE_TOKEN>
+  Content-Type: application/octet-stream
+  Peon-Content-Sha256: <optional SHA-256 hex digest>
+  <raw .tar.gz bytes>
+
+GET /api/v1/releases/latest
+GET /api/v1/releases/:version/archive
+  Authorization: Bearer <Peon recruitment credential>
+```
+
+Publishing returns `201 { release: { version, size, sha256, createdAt,
+archiveUrl } }`. Versions are immutable; publishing an existing version returns
+`409 RELEASE_EXISTS`. Archive downloads support byte ranges and return the
+digest in `Peon-Content-Sha256` and `ETag`.
+
 ### Control / sessions (reuses the same stores as `/api/*`)
 
 ```

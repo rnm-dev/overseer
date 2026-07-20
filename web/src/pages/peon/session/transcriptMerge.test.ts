@@ -57,6 +57,12 @@ test("an optimistic row stays after every tail position already observed", () =>
   assert.deepEqual(orderLiveEvents([optimistic, twelfth, delayedTenth]), [delayedTenth, twelfth, optimistic]);
 });
 
+test("an optimistic row with no numeric baseline stays after durable live events", () => {
+  const latestAgent: Ev = { type: "assistant", text: "latest", _tailEventId: "event-12" };
+  const optimistic: Ev = { type: "user_message", text: "next", _baselineTailId: 0, _optimistic: true };
+  assert.deepEqual(orderLiveEvents([latestAgent, optimistic]), [latestAgent, optimistic]);
+});
+
 test("authoritative history replaces replayed and optimistic live rows", () => {
   const history: Ev[] = [
     { type: "user_message", text: "again", author: "a@test", createdAt: 100 },

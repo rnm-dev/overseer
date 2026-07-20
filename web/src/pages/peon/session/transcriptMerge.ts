@@ -48,7 +48,12 @@ export function orderLiveEvents(events: Ev[]): Ev[] {
     .sort((a, b) => {
       const position = (event: Ev): number => {
         if (typeof event._tailId === "number") return event._tailId;
-        if (typeof event._baselineTailId === "number") return event._baselineTailId + 0.5;
+        // A zero baseline means there is no numeric legacy-tail position to sort
+        // against. This is also the normal value for durable opaque-ID tails,
+        // whose already-rendered events intentionally retain insertion order.
+        // Giving that optimistic row position 0.5 would briefly move it above
+        // all durable live events until the authoritative refresh arrived.
+        if (typeof event._baselineTailId === "number" && event._baselineTailId > 0) return event._baselineTailId + 0.5;
         return Number.POSITIVE_INFINITY;
       };
       return position(a.event) - position(b.event) || a.index - b.index;

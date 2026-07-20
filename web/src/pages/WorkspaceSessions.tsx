@@ -178,7 +178,7 @@ export function WorkspaceSessions() {
         className={`fixed inset-y-0 left-0 z-50 flex h-[100dvh] w-[min(20rem,86vw)] shrink-0 flex-col border-r border-iron-800 bg-iron-950 shadow-2xl transition-[transform,visibility] duration-200 md:visible md:sticky md:top-0 md:z-auto md:h-screen md:w-[var(--peon-sidebar-width)] md:translate-x-0 md:bg-iron-950/50 md:shadow-none ${drawerOpen ? "visible translate-x-0" : "invisible -translate-x-full md:visible"}`}
       >
         <div className="border-b border-iron-800 px-3 pb-3 pt-3.5">
-          <NavLink to="/" className="mb-2 inline-block font-body text-xs text-bone-dim transition-colors hover:text-fel-bright">{t("peon.back")}</NavLink>
+          <NavLink to={`/workspaces/${encodeURIComponent(workspaceId)}`} className="mb-2 inline-block font-body text-xs text-bone-dim transition-colors hover:text-fel-bright">{t("peon.back")}</NavLink>
           <div className="flex items-center gap-2">
             <PeonScopeSwitcher workspaceId={workspaceId} />
           </div>

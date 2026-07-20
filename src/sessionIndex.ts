@@ -308,6 +308,7 @@ export interface ListOptions {
   workspaceId?: string;
   peonId?: string;
   status?: string;
+  authors?: string[];
   access?: { userId: string };
   limit: number;
   offset: number;
@@ -356,6 +357,14 @@ export async function listSessions(opts: ListOptions): Promise<{ sessions: Sessi
   if (opts.status) {
     params.push(opts.status);
     where.push(`sessions.status = $${params.length}`);
+  }
+  const authors = [...new Set((opts.authors ?? []).map((author) => author.trim().toLocaleLowerCase("en-US")).filter(Boolean))];
+  if (authors.length) {
+    const placeholders = authors.map((author) => {
+      params.push(author);
+      return `$${params.length}`;
+    });
+    where.push(`LOWER(sessions.author) IN (${placeholders.join(", ")})`);
   }
   if (opts.access) {
     if (!opts.workspaceId) throw new Error("workspaceId is required for access-scoped session queries");

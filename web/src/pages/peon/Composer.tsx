@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useT } from "../../i18n";
 
 // author: Viktor
@@ -16,6 +16,10 @@ const MAX_FILES = 10;
 const isImage = (f: File) => IMAGE_TYPES.has(f.type);
 // Friendly chip label — pasted screenshots have a machine name; show a short one.
 const chipName = (f: File) => (/^pasted-\d+/.test(f.name) ? "Pasted image" : f.name);
+
+export function isFileDrag(types: ArrayLike<string>): boolean {
+  return Array.from(types).includes("Files");
+}
 
 export function supportsDesktopComposerFocus(): boolean {
   if (typeof window === "undefined" || typeof navigator === "undefined") return false;
@@ -73,6 +77,8 @@ export function Composer({
   const t = useT();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const dragDepthRef = useRef(0);
+  const [dragActive, setDragActive] = useState(false);
   // Object URLs for image thumbnails; revoked when the file set changes/unmounts.
   const previews = useMemo(() => files.map((f) => (isImage(f) ? URL.createObjectURL(f) : null)), [files]);
   useEffect(() => () => previews.forEach((u) => u && URL.revokeObjectURL(u)), [previews]);
@@ -97,8 +103,45 @@ export function Composer({
     onErrorChange(ok.length < picked.length ? t("session.compose.tooLarge") : files.length + ok.length > MAX_FILES ? t("session.compose.tooMany") : null);
   }
 
+  function resetDrag() {
+    dragDepthRef.current = 0;
+    setDragActive(false);
+  }
+
   return (
-    <div className="composer-shell rounded-xl border border-iron-700 bg-iron-900/95 px-2 py-1 shadow-[0_-6px_28px_-14px_rgba(0,0,0,0.8)] backdrop-blur transition-colors focus-within:border-fel-deep">
+    <div
+      data-file-drop-zone="composer"
+      className={`composer-shell relative rounded-xl border bg-iron-900/95 px-2 py-1 shadow-[0_-6px_28px_-14px_rgba(0,0,0,0.8)] backdrop-blur transition-colors focus-within:border-fel-deep ${dragActive ? "border-fel-deep bg-fel/10" : "border-iron-700"}`}
+      onDragEnter={(event) => {
+        if (!isFileDrag(event.dataTransfer.types)) return;
+        event.preventDefault();
+        dragDepthRef.current += 1;
+        if (!disabled) setDragActive(true);
+      }}
+      onDragOver={(event) => {
+        if (!isFileDrag(event.dataTransfer.types)) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = disabled ? "none" : "copy";
+      }}
+      onDragLeave={() => {
+        if (dragDepthRef.current === 0) return;
+        dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+        if (dragDepthRef.current === 0) setDragActive(false);
+      }}
+      onDrop={(event) => {
+        if (!isFileDrag(event.dataTransfer.types)) return;
+        event.preventDefault();
+        resetDrag();
+        if (disabled) return;
+        if (!filesEnabled) return onErrorChange(t("session.compose.filesDisabledHint"));
+        addFiles(Array.from(event.dataTransfer.files));
+      }}
+    >
+      {dragActive && (
+        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-iron-950/90 px-4 text-center font-mono text-xs font-semibold text-fel-bright" role="status">
+          {filesEnabled ? t("session.compose.dropFiles") : t("session.compose.filesDisabled")}
+        </div>
+      )}
       {error && <div className="px-2 pb-1 pt-0.5 font-mono text-xs text-blood">⚠ {error}</div>}
       {files.length > 0 && (
         <div className="flex flex-wrap gap-1.5 px-1 pb-1.5 pt-1">

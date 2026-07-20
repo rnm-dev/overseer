@@ -9,6 +9,7 @@ import type { PresenceUser } from "../../../liveSocket";
 
 interface Props {
   peonId: string;
+  metadataLoading: boolean;
   projectKey: string | null;
   title: string | null;
   draft: string;
@@ -35,9 +36,111 @@ interface Props {
   viewers: PresenceUser[];
 }
 
+interface SessionHeaderIdentityProps {
+  peonId: string;
+  metadataLoading: boolean;
+  projectKey: string | null;
+  title: string | null;
+  draft: string;
+  setDraft: Dispatch<SetStateAction<string>>;
+  editing: boolean;
+  setEditing: Dispatch<SetStateAction<boolean>>;
+  savingName: boolean;
+  setRenameNote: Dispatch<SetStateAction<string | null>>;
+  firstUserMessage: string | null;
+  saveName: () => Promise<void>;
+  cancelRename: () => void;
+}
+
+export function SessionHeaderIdentity({
+  peonId, metadataLoading, projectKey, title, draft, setDraft, editing,
+  setEditing, savingName, setRenameNote, firstUserMessage, saveName, cancelRename,
+}: SessionHeaderIdentityProps) {
+  const t = useT();
+
+  if (metadataLoading) {
+    return (
+      <div
+        className="flex min-w-0 flex-1 items-center gap-2"
+        role="status"
+        aria-label={t("app.loading")}
+        aria-busy="true"
+      >
+        <span className="h-3.5 w-16 flex-none animate-pulse rounded bg-iron-700/70 motion-reduce:animate-none" aria-hidden />
+        <span className="h-3.5 w-44 max-w-[55%] animate-pulse rounded bg-iron-700/70 motion-reduce:animate-none" aria-hidden />
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {projectKey && (
+        <Link
+          to={`/peons/${peonId}/projects/${encodeURIComponent(projectKey)}`}
+          className="flex-none whitespace-nowrap font-display text-sm font-semibold text-forge transition-colors hover:text-fel-bright"
+          title={t("session.project")}
+        >
+          {titleize(projectKey)}
+        </Link>
+      )}
+      <div
+        className={`flex min-w-0 flex-1 items-center rounded transition-colors ${editing ? "bg-iron-800/70" : ""}`}
+        onBlur={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null) && !savingName) cancelRename();
+        }}
+      >
+        <input
+          value={draft}
+          placeholder={firstUserMessage || t("session.untitled")}
+          aria-label={t("session.renamePlaceholder")}
+          title={title ?? firstUserMessage ?? undefined}
+          disabled={savingName}
+          onFocus={(e) => {
+            setRenameNote(null);
+            setEditing(true);
+            e.currentTarget.select();
+          }}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") void saveName();
+            if (e.key === "Escape") cancelRename();
+          }}
+          className="min-w-0 flex-1 truncate border-0 bg-transparent p-0 font-display text-sm font-semibold text-bone outline-none placeholder:text-bone placeholder:opacity-100 disabled:cursor-wait"
+        />
+        {editing && (
+          <div className="ml-1 flex shrink-0 items-center gap-0.5 pr-0.5">
+            <button
+              type="button"
+              className="grid size-5 place-items-center rounded text-xs text-fel-bright transition-colors hover:bg-fel/15 disabled:opacity-50"
+              title={t("session.rename.save")}
+              aria-label={t("session.rename.save")}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => void saveName()}
+              disabled={savingName}
+            >
+              ✓
+            </button>
+            <button
+              type="button"
+              className="grid size-5 place-items-center rounded text-sm text-bone-dim transition-colors hover:bg-iron-700 hover:text-bone disabled:opacity-50"
+              title={t("action.cancel")}
+              aria-label={t("action.cancel")}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={cancelRename}
+              disabled={savingName}
+            >
+              ×
+            </button>
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
 export function SessionHeader(props: Props) {
   const {
-    peonId, projectKey, title, draft, setDraft, editing, setEditing,
+    peonId, metadataLoading, projectKey, title, draft, setDraft, editing, setEditing,
     savingName, renameNote, setRenameNote, firstUserMessage, turnTotal,
     usageSummary, filesOpen, changeFilesOpen, confirmDelete, setConfirmDelete,
     deleting, deleteNote, setDeleteNote, stopNote, saveName, cancelRename, remove, viewers,
@@ -66,66 +169,21 @@ export function SessionHeader(props: Props) {
   <div className="space-y-1.5 px-3 py-2.5 sm:px-6">
     <div className="flex items-center gap-3">
       <div className="flex min-w-0 flex-1 items-center gap-1.5">
-        {projectKey && (
-          <Link
-                  to={`/peons/${peonId}/projects/${encodeURIComponent(projectKey)}`}
-            className="flex-none whitespace-nowrap font-display text-sm font-semibold text-forge transition-colors hover:text-fel-bright"
-            title={t("session.project")}
-          >
-            {titleize(projectKey)}
-          </Link>
-        )}
-        <div
-          className={`flex min-w-0 flex-1 items-center rounded transition-colors ${editing ? "bg-iron-800/70" : ""}`}
-          onBlur={(e) => {
-            if (!e.currentTarget.contains(e.relatedTarget as Node | null) && !savingName) cancelRename();
-          }}
-        >
-          <input
-            value={draft}
-            placeholder={firstUserMessage || t("session.untitled")}
-            aria-label={t("session.renamePlaceholder")}
-            title={title ?? firstUserMessage ?? undefined}
-            disabled={savingName}
-            onFocus={(e) => {
-              setRenameNote(null);
-              setEditing(true);
-              e.currentTarget.select();
-            }}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") void saveName();
-              if (e.key === "Escape") cancelRename();
-            }}
-            className="min-w-0 flex-1 truncate border-0 bg-transparent p-0 font-display text-sm font-semibold text-bone outline-none placeholder:text-bone placeholder:opacity-100 disabled:cursor-wait"
-          />
-          {editing && (
-            <div className="ml-1 flex shrink-0 items-center gap-0.5 pr-0.5">
-              <button
-                type="button"
-                className="grid size-5 place-items-center rounded text-xs text-fel-bright transition-colors hover:bg-fel/15 disabled:opacity-50"
-                title={t("session.rename.save")}
-                aria-label={t("session.rename.save")}
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => void saveName()}
-                disabled={savingName}
-              >
-                ✓
-              </button>
-              <button
-                type="button"
-                className="grid size-5 place-items-center rounded text-sm text-bone-dim transition-colors hover:bg-iron-700 hover:text-bone disabled:opacity-50"
-                title={t("action.cancel")}
-                aria-label={t("action.cancel")}
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={cancelRename}
-                disabled={savingName}
-              >
-                ×
-              </button>
-            </div>
-          )}
-        </div>
+        <SessionHeaderIdentity
+          peonId={peonId}
+          metadataLoading={metadataLoading}
+          projectKey={projectKey}
+          title={title}
+          draft={draft}
+          setDraft={setDraft}
+          editing={editing}
+          setEditing={setEditing}
+          savingName={savingName}
+          setRenameNote={setRenameNote}
+          firstUserMessage={firstUserMessage}
+          saveName={saveName}
+          cancelRename={cancelRename}
+        />
       </div>
 
       {showHeaderStats && (

@@ -146,12 +146,14 @@ export function registerFleetRoutes(router: express.Router): void {
     withWorkspace(async (req, res, ctx) => {
       const peonId = typeof req.query.peonId === "string" ? req.query.peonId : undefined;
       const status = typeof req.query.status === "string" ? req.query.status : undefined;
+      const mine = req.query.mine === "true" || req.query.mine === "1";
       const limit = Number.parseInt(String(req.query.limit ?? "50"), 10) || 50;
       const offset = Number.parseInt(String(req.query.offset ?? "0"), 10) || 0;
       const { sessions, total } = await listSessions({
         workspaceId: ctx.workspaceId,
         peonId,
         status,
+        authors: mine ? [req.user!.email, req.user!.githubLogin ?? ""] : undefined,
         limit,
         offset,
         access: ctx.role === "member" ? { userId: ctx.userId } : undefined,

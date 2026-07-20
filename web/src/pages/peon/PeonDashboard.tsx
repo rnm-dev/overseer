@@ -7,6 +7,7 @@ import { usePeon } from "./context";
 import { useLiveSocket } from "../../liveSocket";
 import { SessionPresence } from "../../components/SessionPresence";
 import { sessionDisplayTitle } from "./sessionList";
+import { peonOverviewNewSessionPath, peonOverviewProjectsPath, peonOverviewSessionsPath } from "./overviewNavigation";
 
 // author: Viktor
 
@@ -95,7 +96,7 @@ export function PeonDashboard() {
       <div>
         <div className="mb-3 flex items-center justify-between gap-3">
           <h3 className="font-display text-[0.6rem] uppercase tracking-[0.16em] text-bone-dim">{t("peon.dash.recentSessions")}</h3>
-          <Link to="sessions/new" className="btn btn-sm">
+          <Link to={peonOverviewNewSessionPath(peon.peonId)} className="btn btn-sm">
             {t("newSession.new")}
           </Link>
         </div>
@@ -108,7 +109,7 @@ export function PeonDashboard() {
             <ul className="divide-y divide-iron-800">
               {recent.map((s) => (
                 <li key={s.id}>
-                  <Link to={`sessions/${s.id}`} className="flex items-start justify-between gap-3 px-5 py-4 transition-colors hover:bg-fel/[0.03]">
+                  <Link to={peonOverviewSessionsPath(peon.peonId, s.id)} className="flex items-start justify-between gap-3 px-5 py-4 transition-colors hover:bg-fel/[0.03]">
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5">
                         {s.projectKey && (
@@ -137,7 +138,7 @@ export function PeonDashboard() {
       <div>
         <div className="mb-3 flex items-center justify-between">
           <h3 className="font-display text-[0.6rem] uppercase tracking-[0.16em] text-bone-dim">{t("peon.dash.projects")}</h3>
-          <Link to="projects" className="font-mono text-xs text-bone-dim transition-colors hover:text-fel-bright">
+          <Link to={peonOverviewProjectsPath(peon.peonId)} className="font-mono text-xs text-bone-dim transition-colors hover:text-fel-bright">
             {t("peon.dash.viewAll")}
           </Link>
         </div>
@@ -150,7 +151,7 @@ export function PeonDashboard() {
             <ul className="divide-y divide-iron-800">
               {topProjects.map((p) => (
                 <li key={p.key}>
-                  <Link to={`projects/${encodeURIComponent(p.key)}`} className="flex items-center justify-between gap-3 px-5 py-4 transition-colors hover:bg-fel/[0.03]">
+                  <Link to={peonOverviewProjectsPath(peon.peonId, p.key)} className="flex items-center justify-between gap-3 px-5 py-4 transition-colors hover:bg-fel/[0.03]">
                     <div className="min-w-0">
                       <div className="truncate font-display text-sm font-medium text-bone">{p.key}</div>
                       {p.path && <div className="mt-0.5 truncate font-mono text-xs text-bone-faint">{p.path}</div>}

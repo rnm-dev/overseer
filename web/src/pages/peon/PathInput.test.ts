@@ -1,6 +1,25 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { isPathWithin, normalizeAbsolutePath, pathFromRoot, relativeToRoot, virtualDirectoryNames } from "./PathInput";
+import * as React from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { I18nProvider } from "../../i18n";
+import { PathInput, isPathWithin, normalizeAbsolutePath, pathFromRoot, relativeToRoot, virtualDirectoryNames } from "./PathInput";
+
+(globalThis as typeof globalThis & { React: typeof React }).React = React;
+
+test("path fields use the technical monospace typography", () => {
+  const markup = renderToStaticMarkup(React.createElement(
+    I18nProvider,
+    null,
+    React.createElement(PathInput, {
+      base: "/peon",
+      value: "/rnm/overseer",
+      onChange: () => undefined,
+    }),
+  ));
+
+  assert.match(markup, /<input class="field pr-11 path-field"/);
+});
 
 test("path selector normalizes and joins absolute paths", () => {
   assert.equal(normalizeAbsolutePath("/srv//projects/../repos/"), "/srv/repos");
