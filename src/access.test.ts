@@ -4,6 +4,7 @@ import type pg from "pg";
 import { newDb } from "pg-mem";
 import { initDb, query } from "./db.js";
 import { allowedProjectKeys, canAccessPeon, canAccessProject, listMemberAccess, replaceMemberAccess } from "./access.js";
+import { projectVisible, type AccessClient } from "./liveAccess.js";
 import { backfillStoredSessionProjectIds, listSessions, resolveSessionProjectIds } from "./sessionIndex.js";
 
 test("legacy session keys receive a project ID only when the folded mapping is unambiguous", () => {
@@ -65,6 +66,26 @@ test("stable project IDs survive key changes and do not authorize key reuse", as
 
   assert.equal(await canAccessProject("ws", "member", "member", "p1", "expo", "project-expo"), true);
   assert.equal(await canAccessProject("ws", "member", "member", "p1", "EXPO", "different-project"), false);
+
+  await replaceMemberAccess("ws", "legacy-member", {
+    peonIds: ["p1"],
+    projects: [{ peonId: "p1", projectKey: "EXPO", projectId: null }],
+  }, "owner");
+  assert.equal(await canAccessProject("ws", "legacy-member", "member", "p1", "EXPO"), true);
+  assert.equal(await canAccessProject("ws", "legacy-member", "member", "p1", "EXPO", "reused-project"), false);
+});
+
+test("live access treats a supplied project ID as authoritative", () => {
+  const client: AccessClient = {
+    userId: "member",
+    workspaceId: "ws",
+    role: "member",
+    allowedPeons: new Set(["p1"]),
+    allowedProjects: new Map([["p1", new Set(["key:EXPO"])]]),
+    tails: new Map(),
+  };
+  assert.equal(projectVisible(client, "p1", "EXPO"), true);
+  assert.equal(projectVisible(client, "p1", "EXPO", "reused-project"), false);
 });
 
 test("member ACLs are applied before session pagination and counting", async () => {
@@ -92,4 +113,8 @@ test("member ACLs are applied before session pagination and counting", async () 
   assert.equal(first.total, 2);
   assert.deepEqual(first.sessions.map((session) => session.sessionId), ["allowed-project"]);
   assert.deepEqual(second.sessions.map((session) => session.sessionId), ["unscoped"]);
+
+  const capped = await listSessions({ workspaceId: "ws", access: { userId: "member" }, perPeonLimit: 1, limit: 200, offset: 0 });
+  assert.equal(capped.total, 2);
+  assert.deepEqual(capped.sessions.map((session) => session.sessionId), ["allowed-project"]);
 });

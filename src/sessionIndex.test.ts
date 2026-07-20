@@ -63,6 +63,44 @@ test("legacy full records derive a bounded opening preview", async () => {
   assert.equal(stored.rows[0]?.raw.promptPreview, "x".repeat(200));
 });
 
+test("session list projects a legacy prompt without returning the raw snapshot", async () => {
+  const mem = newDb();
+  const adapter = mem.adapters.createPg();
+  await initDb(new adapter.Pool() as unknown as pg.Pool);
+  await query(
+    `INSERT INTO sessions (peon_id,session_id,raw,synced_at)
+     VALUES ($1,$2,$3,$4)`,
+    ["peon", "legacy-raw", JSON.stringify({ prompt: "x".repeat(500), transcript: "y".repeat(100_000) }), 1],
+  );
+
+  const { sessions } = await listSessions({ peonId: "peon", limit: 10, offset: 0 });
+  assert.equal(sessions[0]?.promptPreview, "x".repeat(200));
+  assert.equal("raw" in sessions[0]!, false);
+});
+
+test("workspace hydration caps each Peon independently and keeps global activity order", async () => {
+  const mem = newDb();
+  const adapter = mem.adapters.createPg();
+  await initDb(new adapter.Pool() as unknown as pg.Pool);
+  await query(
+    `INSERT INTO peons (peon_id,credential_id,workspace_id,name,address,control_port,capabilities,token,registered_at,last_seen)
+     VALUES ('p1','c1','ws','One','127.0.0.1',1,'[]','t',1,1),
+            ('p2','c2','ws','Two','127.0.0.1',1,'[]','t',1,1)`,
+  );
+  for (const [peonId, activities] of [["p1", [50, 30, 10]], ["p2", [40, 20, 5]]] as const) {
+    for (const activity of activities) {
+      await query(
+        `INSERT INTO sessions (peon_id,session_id,last_activity_at,raw,synced_at) VALUES ($1,$2,$3,'{}',$3)`,
+        [peonId, `${peonId}-${activity}`, activity],
+      );
+    }
+  }
+
+  const result = await listSessions({ workspaceId: "ws", perPeonLimit: 2, limit: 200, offset: 0 });
+  assert.equal(result.total, 6);
+  assert.deepEqual(result.sessions.map((session) => session.sessionId), ["p1-50", "p2-40", "p1-30", "p2-20"]);
+});
+
 test("Peon collection reconciliation indexes summaries without exposing cached raw data", async () => {
   const mem = newDb();
   const adapter = mem.adapters.createPg();

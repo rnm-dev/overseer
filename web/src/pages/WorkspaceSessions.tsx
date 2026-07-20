@@ -14,7 +14,7 @@ const SIDEBAR_WIDTH_KEY = "overseer.peon-sidebar-width";
 const DEFAULT_SIDEBAR_WIDTH = 256;
 const MIN_SIDEBAR_WIDTH = 208;
 const MAX_SIDEBAR_WIDTH = 480;
-const ALL_SESSION_LIMIT = 200;
+const ALL_SESSION_LIMIT = 50;
 
 function savedSidebarWidth(): number {
   const saved = Number(window.localStorage.getItem(SIDEBAR_WIDTH_KEY));

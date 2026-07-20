@@ -154,6 +154,7 @@ export function registerFleetRoutes(router: express.Router): void {
         peonId,
         status,
         authors: mine ? [req.user!.email, req.user!.githubLogin ?? ""] : undefined,
+        perPeonLimit: peonId ? undefined : 50,
         limit,
         offset,
         access: ctx.role === "member" ? { userId: ctx.userId } : undefined,

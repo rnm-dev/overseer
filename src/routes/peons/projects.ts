@@ -56,7 +56,7 @@ export function registerProjectRoutes(router: express.Router): void {
       if (!project || typeof project !== "object" || typeof (project as { key?: unknown }).key !== "string") return false;
       const key = (project as { key: string }).key;
       const id = (project as { projectId?: unknown }).projectId;
-      return (typeof id === "string" && allowedIds.has(id)) || legacyKeys.has(key);
+      return typeof id === "string" ? allowedIds.has(id) : legacyKeys.has(key);
     }) : [];
     res.status(result.status).json({ ...body, projects });
   }));

@@ -65,7 +65,7 @@ export function peonVisible(client: AccessClient, peonId: string): boolean {
 export function projectVisible(client: AccessClient, peonId: string, projectKey: string, projectId?: string | null): boolean {
   if (client.role === "owner") return true;
   const allowed = client.allowedProjects?.get(peonId);
-  return !!allowed && (projectId ? allowed.has(`id:${projectId}`) || allowed.has(`key:${projectKey}`) : allowed.has(`key:${projectKey}`));
+  return !!allowed && (projectId ? allowed.has(`id:${projectId}`) : allowed.has(`key:${projectKey}`));
 }
 
 export function sessionVisible(client: AccessClient, peonId: string, projectKey: string | null | undefined, projectId?: string | null): boolean {

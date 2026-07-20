@@ -79,7 +79,7 @@ export function registerSessionRoutes(router: express.Router): void {
       if (!session || typeof session !== "object") return false;
       const key = (session as { projectKey?: unknown }).projectKey;
       const id = (session as { projectId?: unknown }).projectId;
-      return typeof key !== "string" || !key || (typeof id === "string" && allowedIds.has(id)) || legacyKeys.has(key);
+      return typeof key !== "string" || !key || (typeof id === "string" ? allowedIds.has(id) : legacyKeys.has(key));
     }) : [];
     res.status(result.status).json({ ...body, sessions });
   }));

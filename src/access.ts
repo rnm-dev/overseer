@@ -58,7 +58,7 @@ export async function canAccessProject(workspaceId: string, userId: string, role
   const { rows } = await query(
     `SELECT 1 FROM workspace_member_project_access
       WHERE workspace_id = $1 AND user_id = $2 AND peon_id = $3
-        AND (${projectId ? `project_id = $5 OR (project_id IS NULL AND project_key = $4)` : `project_key = $4`})`,
+        AND (${projectId ? `project_id = $5` : `project_id IS NULL AND project_key = $4`})`,
     projectId ? [workspaceId, userId, peonId, projectKey, projectId] : [workspaceId, userId, peonId, projectKey],
   );
   return rows.length > 0;

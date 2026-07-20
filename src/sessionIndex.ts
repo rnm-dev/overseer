@@ -310,13 +310,14 @@ export interface ListOptions {
   status?: string;
   authors?: string[];
   access?: { userId: string };
+  perPeonLimit?: number;
   limit: number;
   offset: number;
 }
 
 export async function getIndexedSession(peonId: string, sessionId: string): Promise<SessionIndexRow | null> {
   const { rows } = await query<SessionRow>(
-    `SELECT * FROM sessions WHERE peon_id = $1 AND session_id = $2`,
+    `SELECT ${sessionProjection} FROM sessions WHERE sessions.peon_id = $1 AND sessions.session_id = $2`,
     [peonId, sessionId],
   );
   return rows[0] ? rowToIndexRow(rows[0]) : null;
@@ -337,8 +338,27 @@ interface SessionRow {
   ended_at: number | null;
   last_activity_at: number | null;
   synced_at: number;
-  raw: unknown;
 }
+
+const sessionProjection = `
+  sessions.peon_id,
+  sessions.session_id,
+  sessions.status,
+  sessions.project_key,
+  sessions.project_id,
+  sessions.title,
+  COALESCE(
+    sessions.prompt_preview,
+    sessions.raw->>'promptPreview',
+    sessions.raw->>'prompt'
+  ) AS prompt_preview,
+  sessions.preview,
+  sessions.author,
+  sessions.outcome,
+  sessions.started_at,
+  sessions.ended_at,
+  sessions.last_activity_at,
+  sessions.synced_at`;
 
 // Query the index — filter by peon and/or status, newest activity first,
 // paginated. Returns the page plus the total matching count.
@@ -378,7 +398,7 @@ export async function listSessions(opts: ListOptions): Promise<{ sessions: Sessi
       LEFT JOIN workspace_member_project_access ppa
         ON ppa.peon_id=sessions.peon_id AND ppa.user_id=${user} AND ppa.workspace_id=${workspace}
        AND ((sessions.project_id IS NOT NULL AND ppa.project_id=sessions.project_id)
-         OR (ppa.project_id IS NULL AND ppa.project_key=sessions.project_key))`;
+         OR (sessions.project_id IS NULL AND ppa.project_id IS NULL AND ppa.project_key=sessions.project_key))`;
     where.push(`(sessions.project_key IS NULL OR sessions.project_key = '' OR ppa.peon_id IS NOT NULL)`);
   }
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
@@ -388,9 +408,25 @@ export async function listSessions(opts: ListOptions): Promise<{ sessions: Sessi
 
   const limit = Math.min(Math.max(1, opts.limit), 200);
   const offset = Math.max(0, opts.offset);
+  if (opts.perPeonLimit !== undefined) {
+    const perPeonLimit = Math.min(Math.max(1, opts.perPeonLimit), 50);
+    const { rows } = await query<SessionRow>(
+      `SELECT DISTINCT ${sessionProjection} ${fromSql} ${whereSql}
+       ORDER BY sessions.last_activity_at DESC NULLS LAST, sessions.session_id`,
+      params,
+    );
+    const counts = new Map<string, number>();
+    const sessions = rows.filter((row) => {
+      const count = counts.get(row.peon_id) ?? 0;
+      if (count >= perPeonLimit) return false;
+      counts.set(row.peon_id, count + 1);
+      return true;
+    });
+    return { sessions: sessions.map(rowToIndexRow), total };
+  }
   const pageParams = [...params, limit, offset];
   const { rows } = await query<SessionRow>(
-    `SELECT DISTINCT sessions.* ${fromSql} ${whereSql}
+    `SELECT DISTINCT ${sessionProjection} ${fromSql} ${whereSql}
      ORDER BY sessions.last_activity_at DESC NULLS LAST, sessions.session_id
      LIMIT $${pageParams.length - 1} OFFSET $${pageParams.length}`,
     pageParams,
@@ -399,12 +435,6 @@ export async function listSessions(opts: ListOptions): Promise<{ sessions: Sessi
 }
 
 function rowToIndexRow(r: SessionRow): SessionIndexRow {
-  const raw = r.raw && typeof r.raw === "object" ? r.raw as { promptPreview?: unknown; prompt?: unknown } : null;
-  const legacyPromptPreview = typeof raw?.promptPreview === "string"
-    ? raw.promptPreview
-    : typeof raw?.prompt === "string"
-      ? raw.prompt.slice(0, 200)
-      : null;
   return {
     peonId: r.peon_id,
     sessionId: r.session_id,
@@ -412,7 +442,7 @@ function rowToIndexRow(r: SessionRow): SessionIndexRow {
     projectKey: r.project_key,
     projectId: r.project_id,
     title: r.title,
-    promptPreview: r.prompt_preview ?? legacyPromptPreview,
+    promptPreview: r.prompt_preview?.slice(0, 200) ?? null,
     preview: r.preview,
     author: r.author,
     outcome: r.outcome,
