@@ -8,6 +8,8 @@ import {
   getSessionQueue,
   removeSessionQueueItem,
   removeWaitingQueueItem,
+  sendSessionQueueItemNow,
+  sendWaitingQueueItemNow,
   type QueueItem,
 } from "./queue";
 
@@ -34,16 +36,31 @@ function recorder(response: unknown = {}) {
   return { calls, request };
 }
 
-test("queue API client preserves Fleet FIFO order and removes an encoded item", async () => {
+test("queue API client preserves Fleet FIFO order and targets an encoded item for remove or send now", async () => {
   const first = item("1");
   const second = item("2");
   const fake = recorder({ items: [first, second] });
   assert.deepEqual(await getSessionQueue("/peon", "session/1", fake.request), [first, second]);
   await removeSessionQueueItem("/peon", "session/1", "item/2", fake.request);
+  await sendSessionQueueItemNow("/peon", "session/1", "item/2", fake.request);
   assert.deepEqual(fake.calls.map(({ path, options }) => [path, options?.method]), [
     ["/peon/sessions/session%2F1/queue", undefined],
     ["/peon/sessions/session%2F1/queue/item%2F2", "DELETE"],
+    ["/peon/sessions/session%2F1/queue/item%2F2/send", "POST"],
   ]);
+});
+
+test("send now reconciles the authoritative queue and ignores an item already popped by Peon", async () => {
+  let reconciled = 0;
+  const failures: unknown[] = [];
+  await sendWaitingQueueItemNow(
+    "already-popped",
+    async () => { throw Object.assign(new Error("unknown queue item"), { code: "UNKNOWN_QUEUE_ITEM" }); },
+    async () => { reconciled += 1; },
+    (error) => failures.push(error),
+  );
+  assert.equal(reconciled, 1);
+  assert.deepEqual(failures, []);
 });
 
 test("Queue & stop and ordinary queue preserve attachments, model, effort, and command ID", async () => {

@@ -40,6 +40,10 @@ export function removeSessionQueueItem(base: string, sessionId: string, itemId: 
   return request(`${queuePath(base, sessionId)}/${encodeURIComponent(itemId)}`, { method: "DELETE" });
 }
 
+export function sendSessionQueueItemNow(base: string, sessionId: string, itemId: string, request: ApiRequest = api) {
+  return request(`${queuePath(base, sessionId)}/${encodeURIComponent(itemId)}/send`, { method: "POST" });
+}
+
 // Queue snapshots are authoritative and must be applied in the order fetched.
 // Serializing refreshes also guarantees that a change received during a GET
 // triggers one final GET instead of allowing stale parallel responses to reorder
@@ -89,6 +93,22 @@ export async function removeWaitingQueueItem(
 ): Promise<void> {
   try {
     await remove(itemId);
+  } catch (error) {
+    const code = error && typeof error === "object" && "code" in error ? (error as { code?: unknown }).code : null;
+    if (code !== "UNKNOWN_QUEUE_ITEM") failed(error);
+  } finally {
+    await reconcile();
+  }
+}
+
+export async function sendWaitingQueueItemNow(
+  itemId: string,
+  sendNow: (id: string) => Promise<unknown>,
+  reconcile: () => Promise<void>,
+  failed: (error: unknown) => void,
+): Promise<void> {
+  try {
+    await sendNow(itemId);
   } catch (error) {
     const code = error && typeof error === "object" && "code" in error ? (error as { code?: unknown }).code : null;
     if (code !== "UNKNOWN_QUEUE_ITEM") failed(error);

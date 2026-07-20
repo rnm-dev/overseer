@@ -10,7 +10,9 @@ interface Props {
   setComposerNode: Dispatch<SetStateAction<HTMLDivElement | null>>;
   queueItems: QueueItem[];
   removingQueueItems: ReadonlySet<string>;
+  sendingQueueItems: ReadonlySet<string>;
   removeQueuedItem: (id: string) => Promise<void>;
+  sendQueuedItemNow: (id: string) => Promise<void>;
   input: string;
   setInput: (value: string) => void;
   running: boolean;
@@ -37,7 +39,7 @@ interface Props {
 
 export function SessionComposerDock(props: Props) {
   const {
-    setComposerNode, queueItems, removingQueueItems, removeQueuedItem,
+    setComposerNode, queueItems, removingQueueItems, sendingQueueItems, removeQueuedItem, sendQueuedItemNow,
     input, setInput, running, enqueue, send, sending, files, setFiles,
     setAttachmentPreview, filesEnabled, sendError, setSendError,
     modelsSupported, catalog, sessionKey, sessionProvider, overrideModel,
@@ -48,7 +50,14 @@ export function SessionComposerDock(props: Props) {
   return createPortal(
     <div ref={setComposerNode} className="session-composer fixed bottom-0 left-0 right-0 z-40 bg-gradient-to-t from-void via-void to-transparent pt-6 md:left-[var(--peon-sidebar-width)]">
       <div className="mx-auto max-w-[76rem] px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:px-6 sm:pb-[max(1rem,env(safe-area-inset-bottom))]">
-    <QueueList items={queueItems} removing={removingQueueItems} onRemove={(id) => void removeQueuedItem(id)} t={t} />
+    <QueueList
+      items={queueItems}
+      removing={removingQueueItems}
+      sending={sendingQueueItems}
+      onRemove={(id) => void removeQueuedItem(id)}
+      onSendNow={(id) => void sendQueuedItemNow(id)}
+      t={t}
+    />
     <Composer
       value={input}
       onChange={setInput}

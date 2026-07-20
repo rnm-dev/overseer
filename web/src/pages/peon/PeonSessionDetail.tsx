@@ -248,7 +248,7 @@ export function PeonSessionDetail() {
   const transcriptRef = useRef<HTMLDivElement>(null);
   const {
     input, setInput, files, setFiles, sending, sendError, setSendError,
-    queueItems, removingQueueItems, filesEnabled, send, enqueue, removeQueuedItem,
+    queueItems, removingQueueItems, sendingQueueItems, filesEnabled, send, enqueue, removeQueuedItem, sendQueuedItemNow,
   } = useSessionComposer({
     base,
     sid,
@@ -375,6 +375,9 @@ export function PeonSessionDetail() {
   // What the agent is doing right now, from the freshest event (live wins over history).
   const lastEvent = orderedLive.length ? orderedLive[orderedLive.length - 1] : history?.length ? history[history.length - 1] : undefined;
   const working = workingActivity(lastEvent);
+  const workingStepKey = lastEvent
+    ? String(lastEvent.eventId ?? lastEvent._tailEventId ?? lastEvent._tailId ?? `${lastEvent.type ?? "event"}:${lastEvent.createdAt ?? "unstamped"}:${history?.length ?? 0}:${orderedLive.length}`)
+    : `${sessionKey}:starting`;
   // Flattened render list — pairs each tool_use with its later tool_result so it
   // renders as a single row (see flattenEvents).
   const items = useMemo(() => flattenEvents([...(history ?? []), ...orderedLive], t), [history, orderedLive, t]);
@@ -475,11 +478,13 @@ export function PeonSessionDetail() {
                 className={items.length === 0 ? "" : gapClass(items[items.length - 1].kind === "user", false)}
               >
                 <Working
+                  key={workingStepKey}
                   label={
                     working.key === "session.working.thinking"
                       ? orcishThinkingLabel(`working:${JSON.stringify(lastEvent ?? {})}`)
                       : t(working.key, working.name ? { name: working.name } : undefined)
                   }
+                  startedAt={typeof lastEvent?.createdAt === "number" ? lastEvent.createdAt : undefined}
                   model={modelLabel(catalog, runningModel)}
                   onStop={stop}
                   stopping={stopping}
@@ -518,7 +523,9 @@ export function PeonSessionDetail() {
         setComposerNode={setComposerNode}
         queueItems={queueItems}
         removingQueueItems={removingQueueItems}
+        sendingQueueItems={sendingQueueItems}
         removeQueuedItem={removeQueuedItem}
+        sendQueuedItemNow={sendQueuedItemNow}
         input={input}
         setInput={setInput}
         running={running}

@@ -398,12 +398,13 @@ export function ProjectFilePreviewModal({ filesBase, path, size, onClose }: { fi
   }, [filesBase, path, size, t]);
 
   return createPortal(
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/75 p-4 backdrop-blur-sm" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <section role="dialog" aria-modal="true" aria-label={path} className="flex h-[min(85vh,56rem)] w-full max-w-5xl flex-col overflow-hidden rounded-xl bg-iron-950 shadow-2xl">
-        <header className="flex items-center gap-3 border-b border-iron-800 px-4 py-3">
+    <div className="fixed inset-0 z-50 grid place-items-center bg-[radial-gradient(circle_at_50%_18%,rgba(149,201,103,0.08),transparent_38%),rgba(2,4,3,0.82)] p-4 backdrop-blur-md" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+      <section role="dialog" aria-modal="true" aria-label={path} className="relative flex h-[min(88vh,56rem)] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-iron-700/80 bg-iron-950/95 shadow-[0_28px_90px_rgba(0,0,0,0.65),0_0_0_1px_rgba(149,201,103,0.04)]">
+        <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 z-10 h-px bg-gradient-to-r from-transparent via-fel/45 to-transparent" />
+        <header className="flex items-center gap-3 border-b border-iron-800 bg-iron-900/70 px-4 py-3.5">
           <FileTypeIcon name={path} size={16} />
           <span className="min-w-0 flex-1 truncate font-mono text-xs text-bone-dim" title={path}>{path}</span>
-          <button type="button" onClick={onClose} className="rounded p-1 text-bone-faint hover:bg-iron-800 hover:text-bone" aria-label={t("session.preview.close")}><X size={18} /></button>
+          <button type="button" onClick={onClose} className="grid h-8 w-8 place-items-center rounded-lg border border-transparent text-bone-faint transition-colors hover:border-iron-700 hover:bg-iron-800 hover:text-bone" aria-label={t("session.preview.close")}><X size={18} /></button>
         </header>
         <div className="min-h-0 flex-1 overflow-auto">
           {preview.loading ? <div className="grid h-full place-items-center"><div className="forge-spin" /></div>

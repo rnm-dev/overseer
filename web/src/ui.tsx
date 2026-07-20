@@ -35,7 +35,7 @@ export function Card({ children, className = "" }: { children: ReactNode; classN
   return <div className={`warplate ${className}`}>{children}</div>;
 }
 
-export function Dialog({ title, children, onClose, size = "md", dismissible = true }: { title: string; children: ReactNode; onClose: () => void; size?: "md" | "lg"; dismissible?: boolean }) {
+export function Dialog({ title, children, onClose, size = "md", dismissible = true }: { title: ReactNode; children: ReactNode; onClose: () => void; size?: "md" | "lg"; dismissible?: boolean }) {
   const { t } = useI18n();
   const titleId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
@@ -111,8 +111,7 @@ export function Dialog({ title, children, onClose, size = "md", dismissible = tr
   // `fixed` descendants resolve against that ancestor instead of the viewport.
   return createPortal(
     <div
-      className="fixed inset-0 z-50 grid items-end md:place-items-center md:p-4"
-      style={{ background: "rgba(0,0,0,0.72)", backdropFilter: "blur(4px)" }}
+      className="fixed inset-0 z-50 grid items-end bg-[radial-gradient(circle_at_50%_18%,rgba(149,201,103,0.08),transparent_38%),rgba(2,4,3,0.82)] backdrop-blur-md md:place-items-center md:p-5"
       onMouseDown={(e) => (downOnBackdrop.current = e.target === e.currentTarget)}
       onMouseUp={(e) => {
         if (dismissible && e.target === e.currentTarget && downOnBackdrop.current) onClose();
@@ -125,26 +124,26 @@ export function Dialog({ title, children, onClose, size = "md", dismissible = tr
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
-        className={`warplate w-full max-h-[calc(100dvh-0.75rem)] overflow-y-auto rounded-b-none rounded-t-2xl p-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))] shadow-2xl md:max-h-[calc(100vh-2rem)] md:rounded-lg md:pb-6 ${size === "lg" ? "md:max-w-2xl" : "md:max-w-md"}`}
+        className={`relative w-full max-h-[calc(100dvh-0.75rem)] overflow-hidden overflow-y-auto rounded-b-none rounded-t-2xl border border-iron-700/80 bg-iron-900/95 p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] shadow-[0_28px_90px_rgba(0,0,0,0.65),0_0_0_1px_rgba(149,201,103,0.04)] md:max-h-[calc(100vh-2.5rem)] md:rounded-xl md:p-6 md:pb-6 ${size === "lg" ? "md:max-w-2xl" : "md:max-w-md"}`}
         style={{ transform: `translateY(${dragY}px)`, transition: dragging ? "none" : "transform 180ms ease" }}
       >
         <div
           aria-hidden="true"
-          className="-mx-6 -mt-6 mb-2 flex h-8 touch-none cursor-grab items-center justify-center md:hidden"
+          className="-mx-5 -mt-5 mb-1 flex h-9 touch-none cursor-grab items-center justify-center md:hidden"
           onPointerDown={startDrag}
           onPointerMove={moveDrag}
           onPointerUp={endDrag}
           onPointerCancel={endDrag}
         >
-          <span className="h-1 w-10 rounded-full bg-iron-600" />
+          <span className="h-1 w-10 rounded-full bg-iron-600/90" />
         </div>
-        <div className="mb-1 flex items-center justify-between">
-          <h3 id={titleId} className="rune fel-glow text-sm">{title}</h3>
-          <button className="btn-ghost text-lg leading-none text-bone-faint hover:text-blood" onClick={onClose} disabled={!dismissible} aria-label={t("a11y.close")}>
+        <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-fel/45 to-transparent" />
+        <div className="mb-4 flex items-start gap-3 border-b border-iron-800/90 pb-4">
+          <h3 id={titleId} className="min-w-0 flex-1 font-display text-base font-bold tracking-wide text-bone">{title}</h3>
+          <button className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-transparent text-base leading-none text-bone-faint transition-colors hover:border-iron-700 hover:bg-iron-800 hover:text-bone" onClick={onClose} disabled={!dismissible} aria-label={t("a11y.close")}>
             ✕
           </button>
         </div>
-        <hr className="hairline mb-5" />
         {children}
       </div>
     </div>,

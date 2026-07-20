@@ -160,6 +160,14 @@ export function registerSessionRoutes(router: express.Router): void {
   router.post(`${wp}/sessions/:sid/queue`, withWorkspaceSession(async (req, res, c) => {
     relay(await callPeon(connOfRecord(c.record), "POST", `/sessions/${encodeURIComponent(String(req.params.sid))}/queue`, { actor: c.operator.email, body: req.body }), res);
   }));
+  router.post(`${wp}/sessions/:sid/queue/:itemId/send`, withWorkspaceSession(async (req, res, c) => {
+    relay(await callPeon(
+      connOfRecord(c.record),
+      "POST",
+      `/sessions/${encodeURIComponent(String(req.params.sid))}/queue/${encodeURIComponent(String(req.params.itemId))}/send`,
+      { actor: c.operator.email },
+    ), res);
+  }));
   router.delete(`${wp}/sessions/:sid/queue/:itemId`, withWorkspaceSession(async (req, res, c) => {
     relay(await callPeon(
       connOfRecord(c.record),

@@ -10,7 +10,8 @@ export const en: Record<string, string> = {
   "action.signOut": "Sign out",
   "action.remove": "remove",
   "a11y.close": "close",
-  "user.peonSounds": "Peon sounds",
+  "user.peonSounds": "Sounds",
+  "user.noSound": "No sound",
 
   "login.github": "Sign in with GitHub",
   "login.signingIn": "redirecting to GitHub…",
@@ -322,6 +323,7 @@ export const en: Record<string, string> = {
   "session.queue.title": "Queued follow-ups",
   "session.queue.action": "Queue",
   "session.queue.stop": "Queue & stop",
+  "session.queue.sendNow": "Send now",
   "session.queue.remove": "Remove queued follow-up",
   "session.queue.effort": "effort: {effort}",
   "session.preview.open": "Open preview",

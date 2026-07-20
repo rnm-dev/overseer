@@ -104,6 +104,13 @@ export function prettyJsonOutput(source: string): string | null {
     return null;
   }
 }
+
+// Edit is a state-changing system command. Its useful result is the diff shown
+// in the changes section; the runtime does not emit a meaningful stdout block.
+export function toolHasOutputSection(name?: string): boolean {
+  return name?.trim().toLowerCase() !== "edit";
+}
+
 export function toolSummary(input: unknown, name?: string): string {
   if (!input || typeof input !== "object") return "";
   const i = input as Record<string, unknown>;

@@ -5,7 +5,7 @@ import type { Translate } from "../../../i18n";
 import { composerDraftKey, useComposerDraft } from "../drafts";
 import type { ModelsCatalog } from "../models";
 import type { Ev } from "./parsing";
-import { createQueueReconciler, enqueueSessionFollowup, getSessionQueue, removeSessionQueueItem, removeWaitingQueueItem, type QueueItem } from "./queue";
+import { createQueueReconciler, enqueueSessionFollowup, getSessionQueue, removeSessionQueueItem, removeWaitingQueueItem, sendSessionQueueItemNow, sendWaitingQueueItemNow, type QueueItem } from "./queue";
 import { createSubmissionGate } from "./submissionGate";
 import type { PendingEcho } from "./transcriptMerge";
 
@@ -57,6 +57,7 @@ export function useSessionComposer({
   const [sendError, setSendError] = useState<string | null>(null);
   const [queueItems, setQueueItems] = useState<QueueItem[]>([]);
   const [removingQueueItems, setRemovingQueueItems] = useState<Set<string>>(new Set());
+  const [sendingQueueItems, setSendingQueueItems] = useState<Set<string>>(new Set());
   const [filesEnabled, setFilesEnabled] = useState<boolean | null>(null);
   useEffect(() => { setSending(false); }, [sessionKey]);
 
@@ -240,7 +241,7 @@ export function useSessionComposer({
   }
 
   async function removeQueuedItem(itemId: string) {
-    if (removingQueueItems.has(itemId)) return;
+    if (removingQueueItems.has(itemId) || sendingQueueItems.has(itemId)) return;
     setRemovingQueueItems((current) => new Set(current).add(itemId));
     try {
       await removeWaitingQueueItem(
@@ -258,12 +259,33 @@ export function useSessionComposer({
     }
   }
 
+  async function sendQueuedItemNow(itemId: string) {
+    if (sendingQueueItems.has(itemId) || removingQueueItems.has(itemId)) return;
+    setSendingQueueItems((current) => new Set(current).add(itemId));
+    setSendError(null);
+    try {
+      await sendWaitingQueueItemNow(
+        itemId,
+        (id) => sendSessionQueueItemNow(base, sid, id),
+        () => queueReconcilerRef.current?.reconcile() ?? Promise.resolve(),
+        (err) => setSendError(err instanceof ApiError ? err.message : t("error.generic")),
+      );
+    } finally {
+      setSendingQueueItems((current) => {
+        const next = new Set(current);
+        next.delete(itemId);
+        return next;
+      });
+    }
+  }
+
   // Initial load and every later stream change use the same serialized GET path.
   // A reconnect's replayed change therefore also reconciles items that popped
   // while this browser was disconnected.
   useEffect(() => {
     setQueueItems([]);
     setRemovingQueueItems(new Set());
+    setSendingQueueItems(new Set());
     const reconciler = createQueueReconciler(
       () => getSessionQueue(base, sid),
       setQueueItems,
@@ -293,6 +315,6 @@ export function useSessionComposer({
 
   return {
     input, setInput, files, setFiles, sending, sendError, setSendError,
-    queueItems, removingQueueItems, filesEnabled, send, enqueue, removeQueuedItem,
+    queueItems, removingQueueItems, sendingQueueItems, filesEnabled, send, enqueue, removeQueuedItem, sendQueuedItemNow,
   };
 }

@@ -3,17 +3,37 @@ import test from "node:test";
 import {
   createPeonSoundPlayer,
   isSuccessfulRunResult,
-  PEON_SOUND_PATHS,
-  PEON_SOUNDS_STORAGE_KEY,
-  peonSoundsEnabled,
-  setPeonSoundsEnabled,
+  LEGACY_PEON_SOUNDS_STORAGE_KEY,
+  selectedSoundPack,
+  setSelectedSoundPack,
+  SOUND_PACK_PATHS,
+  SOUND_PACK_STORAGE_KEY,
+  SOUND_PACKS,
 } from "../peonSounds";
 
-test("Peon lifecycle cues use the bundled semantic sound paths", () => {
-  assert.deepEqual(PEON_SOUND_PATHS, {
-    start: "/sounds/peon/work-start.wav",
-    stop: "/sounds/peon/work-stop.wav",
-    complete: "/sounds/peon/work-complete.wav",
+test("sound pack selector exposes the requested packs and bundled semantic paths", () => {
+  assert.deepEqual(SOUND_PACKS.map(({ id }) => id), ["peon", "peasant", "none", "dota2_axe", "sc_scv"]);
+  assert.deepEqual(SOUND_PACK_PATHS, {
+    peon: {
+      start: ["/sounds/peon/work-start.wav", "/sounds/peon/work-start-2.wav"],
+      stop: ["/sounds/peon/work-stop.wav", "/sounds/peon/work-stop-2.wav"],
+      complete: ["/sounds/peon/work-complete.wav", "/sounds/peon/work-start.wav"],
+    },
+    peasant: {
+      start: ["/sounds/peasant/work-start.wav", "/sounds/peasant/work-start-2.wav"],
+      stop: ["/sounds/peasant/work-stop.wav", "/sounds/peasant/work-stop-2.wav"],
+      complete: ["/sounds/peasant/work-complete.wav", "/sounds/peasant/work-complete-2.wav"],
+    },
+    dota2_axe: {
+      start: ["/sounds/dota2_axe/work-start.mp3", "/sounds/dota2_axe/work-start-2.mp3"],
+      stop: ["/sounds/dota2_axe/work-stop.mp3", "/sounds/dota2_axe/work-stop-2.mp3"],
+      complete: ["/sounds/dota2_axe/work-complete.mp3", "/sounds/dota2_axe/work-complete-2.mp3"],
+    },
+    sc_scv: {
+      start: ["/sounds/sc_scv/work-start.mp3", "/sounds/sc_scv/work-start-2.mp3"],
+      stop: ["/sounds/sc_scv/work-stop.mp3", "/sounds/sc_scv/work-stop-2.mp3"],
+      complete: ["/sounds/sc_scv/work-complete.mp3", "/sounds/sc_scv/work-complete-2.mp3"],
+    },
   });
 });
 
@@ -30,12 +50,12 @@ test("sound player reuses and rewinds audio without surfacing playback rejection
         return Promise.reject(new Error("autoplay blocked"));
       },
     };
-  });
+  }, undefined, () => 0);
 
   assert.doesNotThrow(() => player("start"));
   assert.doesNotThrow(() => player("start"));
   await Promise.resolve();
-  assert.deepEqual(created, [PEON_SOUND_PATHS.start]);
+  assert.deepEqual(created, [SOUND_PACK_PATHS.peon.start[0]]);
   assert.equal(plays, 2);
 });
 
@@ -46,25 +66,58 @@ test("only a successful fresh result qualifies as work completion", () => {
   assert.equal(isSuccessfulRunResult({ type: "assistant" }), false);
 });
 
-test("sound preference defaults on, persists off, and gates playback", () => {
+test("sound preference defaults to Peon, migrates the legacy toggle, and gates playback", () => {
   const values = new Map<string, string>();
   const storage = {
     getItem: (key: string) => values.get(key) ?? null,
     setItem: (key: string, value: string) => { values.set(key, value); },
   };
-  assert.equal(peonSoundsEnabled(storage), true);
-  setPeonSoundsEnabled(false, storage);
-  assert.equal(values.get(PEON_SOUNDS_STORAGE_KEY), "false");
-  assert.equal(peonSoundsEnabled(storage), false);
+  assert.equal(selectedSoundPack(storage), "peon");
+  values.set(LEGACY_PEON_SOUNDS_STORAGE_KEY, "false");
+  assert.equal(selectedSoundPack(storage), "none");
+
+  setSelectedSoundPack("dota2_axe", storage);
+  assert.equal(values.get(SOUND_PACK_STORAGE_KEY), "dota2_axe");
+  assert.equal(values.get(LEGACY_PEON_SOUNDS_STORAGE_KEY), "true");
+  assert.equal(selectedSoundPack(storage), "dota2_axe");
 
   let created = 0;
   const play = createPeonSoundPlayer(() => {
     created += 1;
     return { currentTime: 0, preload: "none", play: () => undefined };
-  }, () => peonSoundsEnabled(storage));
-  play("start");
-  assert.equal(created, 0);
-  setPeonSoundsEnabled(true, storage);
+  }, () => selectedSoundPack(storage), () => 0);
   play("start");
   assert.equal(created, 1);
+  setSelectedSoundPack("none", storage);
+  play("start");
+  assert.equal(created, 1);
+});
+
+test("sound player changes source when the selected pack changes", () => {
+  let pack: "peon" | "sc_scv" = "peon";
+  const created: string[] = [];
+  const play = createPeonSoundPlayer((src) => {
+    created.push(src);
+    return { currentTime: 0, preload: "none", play: () => undefined };
+  }, () => pack, () => 0);
+
+  play("complete");
+  pack = "sc_scv";
+  play("complete");
+  assert.deepEqual(created, [SOUND_PACK_PATHS.peon.complete[0], SOUND_PACK_PATHS.sc_scv.complete[0]]);
+});
+
+test("sound player randomly selects and caches candidates from the semantic pool", () => {
+  let random = 0;
+  const created: string[] = [];
+  const play = createPeonSoundPlayer((src) => {
+    created.push(src);
+    return { currentTime: 0, preload: "none", play: () => undefined };
+  }, () => "dota2_axe", () => random);
+
+  play("start");
+  random = 0.999;
+  play("start");
+  play("start");
+  assert.deepEqual(created, SOUND_PACK_PATHS.dota2_axe.start);
 });

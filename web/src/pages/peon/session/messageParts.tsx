@@ -1,8 +1,9 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Dialog } from "../../../ui";
 import { HighlightedCode, Markdown } from "../../../components/RichText";
-import { orcishThinkingLabel, prettyJsonOutput, toolSummary, type Item, type MessageAttachment, type T } from "./parsing";
+import { orcishThinkingLabel, prettyJsonOutput, toolHasOutputSection, toolSummary, type Item, type MessageAttachment, type T } from "./parsing";
 import { Avatar } from "../../../components/Avatar";
+import { Pencil, Terminal } from "lucide-react";
 
 // The transcript render atoms: one component per Item kind, plus the Markdown
 // renderer and the "agent is working" indicator. Pure presentation — all parsing
@@ -63,10 +64,16 @@ function ToolRow({ name, input, result, t }: { name?: string; input?: unknown; r
   const [open, setOpen] = useState(false);
   const command = toolSummary(input, name);
   const failed = !!result?.error;
+  const isEdit = !toolHasOutputSection(name);
+  const stats = isEdit ? editStatsFromInput(input) : null;
   return (
     <div className="flex justify-start">
       <div className={`flex min-w-0 max-w-[85%] items-center gap-1.5 py-0.5 font-mono text-xs ${failed ? "text-blood" : ""}`}>
-        <span className={`shrink-0 ${failed ? "text-blood" : "text-fel-bright"}`}>⚙ {name || t("session.chat.tool")}</span>
+        <span className={`flex shrink-0 items-center gap-1 ${failed ? "text-blood" : "text-fel-bright"}`}>
+          {isEdit ? <Pencil size={13} aria-hidden /> : <Terminal size={13} aria-hidden />}
+          {name || t("session.chat.tool")}
+          {stats && <span className="ml-0.5 font-mono text-[0.7rem] font-normal">(<span className="text-fel-bright">+{stats.added}</span>,<span className="text-blood">−{stats.removed}</span>)</span>}
+        </span>
         <span className="min-w-0 flex-1 truncate text-bone-faint">{command}</span>
         <button onClick={() => setOpen(true)} className="shrink-0 font-mono text-[0.7rem] text-bone-faint underline decoration-dotted underline-offset-2 transition-colors hover:text-fel-bright">
           {t("session.chat.details")}
@@ -77,9 +84,53 @@ function ToolRow({ name, input, result, t }: { name?: string; input?: unknown; r
   );
 }
 
-type DiffLine = { kind: "context" | "remove" | "add"; text: string };
+type DiffLine = {
+  kind: "context" | "remove" | "add";
+  text: string;
+  oldLine?: number;
+  newLine?: number;
+};
 
-function editDiff(input: unknown): DiffLine[] | null {
+export function editStats(lines: DiffLine[] | null): { added: number; removed: number } | null {
+  if (!lines) return null;
+  return lines.reduce((counts, line) => {
+    if (line.kind === "add") counts.added++;
+    if (line.kind === "remove") counts.removed++;
+    return counts;
+  }, { added: 0, removed: 0 });
+}
+
+export function editStatsFromInput(input: unknown): { added: number; removed: number } | null {
+  if (!input || typeof input !== "object") return null;
+  const value = input as Record<string, unknown>;
+  if (Array.isArray(value.changes)) {
+    let added = 0;
+    let removed = 0;
+    let foundDiff = false;
+    for (const rawChange of value.changes) {
+      if (!rawChange || typeof rawChange !== "object") continue;
+      const diff = (rawChange as Record<string, unknown>).diff;
+      if (typeof diff !== "string") continue;
+      foundDiff = true;
+      for (const line of diff.split("\n")) {
+        if (line.startsWith("+") && !line.startsWith("+++")) added++;
+        if (line.startsWith("-") && !line.startsWith("---")) removed++;
+      }
+    }
+    if (foundDiff) return { added, removed };
+  }
+  const oldText = value.old_string;
+  const newText = value.new_string;
+  if (typeof oldText === "string" && typeof newText === "string") {
+    return {
+      added: newText === "" ? 0 : newText.split("\n").length,
+      removed: oldText === "" ? 0 : oldText.split("\n").length,
+    };
+  }
+  return null;
+}
+
+export function editDiff(input: unknown): DiffLine[] | null {
   if (!input || typeof input !== "object") return null;
   const value = input as Record<string, unknown>;
 
@@ -91,10 +142,27 @@ function editDiff(input: unknown): DiffLine[] | null {
       const change = rawChange as Record<string, unknown>;
       const path = typeof change.path === "string" ? change.path : "changed file";
       if (typeof change.diff === "string") {
+        let oldLine: number | undefined;
+        let newLine: number | undefined;
         for (const text of change.diff.split("\n")) {
+          const hunk = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(text);
+          if (hunk) {
+            oldLine = Number(hunk[1]);
+            newLine = Number(hunk[2]);
+            lines.push({ kind: "context", text });
+            continue;
+          }
           const isHeader = text.startsWith("+++") || text.startsWith("---");
           const kind: DiffLine["kind"] = !isHeader && text.startsWith("+") ? "add" : !isHeader && text.startsWith("-") ? "remove" : "context";
-          lines.push({ kind, text: kind === "context" ? text : text.slice(1) });
+          const numbered = oldLine !== undefined && newLine !== undefined && !isHeader;
+          lines.push({
+            kind,
+            text: kind === "context" ? text : text.slice(1),
+            oldLine: numbered && kind !== "add" ? oldLine : undefined,
+            newLine: numbered && kind !== "remove" ? newLine : undefined,
+          });
+          if (numbered && kind !== "add") oldLine = oldLine! + 1;
+          if (numbered && kind !== "remove") newLine = newLine! + 1;
         }
       }
       if (change.diffTruncated === true) {
@@ -125,22 +193,27 @@ function editDiff(input: unknown): DiffLine[] | null {
   let j = 0;
   while (i < before.length || j < after.length) {
     if (i < before.length && j < after.length && before[i] === after[j]) {
-      lines.push({ kind: "context", text: before[i++]! });
+      lines.push({ kind: "context", text: before[i]!, oldLine: i + 1, newLine: j + 1 });
+      i++;
       j++;
     } else if (j < after.length && (i === before.length || lengths[i]![j + 1]! >= lengths[i + 1]![j]!)) {
-      lines.push({ kind: "add", text: after[j++]! });
+      lines.push({ kind: "add", text: after[j]!, newLine: j + 1 });
+      j++;
     } else {
-      lines.push({ kind: "remove", text: before[i++]! });
+      lines.push({ kind: "remove", text: before[i]!, oldLine: i + 1 });
+      i++;
     }
   }
   return lines;
 }
 
 function ToolDetailsModal({ name, input, command, result, t, onClose }: { name?: string; input?: unknown; command: string; result?: { text: string; error?: boolean }; t: T; onClose: () => void }) {
-  const diff = name === "Edit" ? editDiff(input) : null;
+  const isEdit = !toolHasOutputSection(name);
+  const diff = isEdit ? editDiff(input) : null;
+  const stats = editStats(diff);
   const jsonOutput = result?.error || !result?.text ? null : prettyJsonOutput(result.text);
   const inputText = (() => {
-    if (name !== "Edit") return command;
+    if (!isEdit) return command;
     if (input && typeof input === "object") {
       const value = input as Record<string, unknown>;
       const patch = value.patch ?? value.diff;
@@ -149,44 +222,54 @@ function ToolDetailsModal({ name, input, command, result, t, onClose }: { name?:
     }
     return command;
   })();
+  const title = (
+    <span className="flex min-w-0 items-center gap-2.5">
+      {isEdit ? <Pencil size={18} className="shrink-0 text-fel-bright" aria-hidden /> : <Terminal size={18} className="shrink-0 text-fel-bright" aria-hidden />}
+      <span className="truncate">{name || t("session.chat.tool")}</span>
+      {stats && <span className="shrink-0 font-mono text-sm font-normal tracking-normal">(<span className="text-blood">−{stats.removed}</span>,<span className="text-fel-bright">+{stats.added}</span>)</span>}
+    </span>
+  );
   return (
-    <Dialog title={`⚙ ${name || t("session.chat.tool")}`} onClose={onClose} size="lg">
-      <div className="space-y-4">
+    <Dialog title={title} onClose={onClose} size="lg">
+      <div className="space-y-3">
         {diff ? (
-          <div>
-            <div className="mb-1 font-display text-[0.62rem] font-semibold uppercase tracking-[0.18em] text-bone-dim">{t("session.chat.changes")}</div>
-            <div className="max-h-96 overflow-auto rounded bg-iron-900/70 py-2 font-mono text-xs" aria-label={t("session.chat.changes")}>
+          <div className="-mx-5 max-h-[min(32rem,65vh)] overflow-auto py-1 font-mono text-xs md:-mx-6" aria-label={t("session.chat.changes")}>
               {diff.map((line, index) => (
                 <div
                   key={index}
-                  className={`grid grid-cols-[1.5rem_1fr] px-2.5 ${line.kind === "add" ? "bg-fel/15 text-fel-bright" : line.kind === "remove" ? "bg-blood/15 text-blood" : "text-bone-dim"}`}
+                  className={`grid grid-cols-[1.5rem_3rem_3rem_minmax(0,1fr)] px-5 py-px md:px-6 ${line.kind === "add" ? "bg-fel/15 text-fel-bright" : line.kind === "remove" ? "bg-blood/15 text-blood" : "text-bone-dim"}`}
                 >
                   <span className="select-none text-center opacity-70">{line.kind === "add" ? "+" : line.kind === "remove" ? "−" : " "}</span>
-                  <span className="whitespace-pre-wrap break-words">{line.text || " "}</span>
+                  <span className="select-none border-r border-iron-700/60 pr-2 text-right tabular-nums text-bone-faint" aria-label={line.oldLine === undefined ? undefined : `Old line ${line.oldLine}`}>{line.oldLine ?? ""}</span>
+                  <span className="select-none border-r border-iron-700/60 pr-2 text-right tabular-nums text-bone-faint" aria-label={line.newLine === undefined ? undefined : `New line ${line.newLine}`}>{line.newLine ?? ""}</span>
+                  <span className="whitespace-pre-wrap break-words pl-3">{line.text || " "}</span>
                 </div>
               ))}
-            </div>
           </div>
         ) : (
-          <div>
-          <div className="mb-1 font-display text-[0.62rem] font-semibold uppercase tracking-[0.18em] text-bone-dim">{t("session.chat.command")}</div>
-          <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded bg-iron-900/70 p-2.5 font-mono text-xs text-bone-dim">{inputText || "—"}</pre>
-          </div>
+          <section className="overflow-hidden rounded-xl border border-iron-700/80 bg-iron-950/55">
+            <div className="flex items-center gap-2 border-b border-iron-800 bg-iron-900/70 px-3.5 py-2.5 font-display text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-bone-dim">
+              <span className="text-fel-bright" aria-hidden>›_</span>{t("session.chat.command")}
+            </div>
+            <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words p-3.5 font-mono text-xs leading-relaxed text-bone-dim">{inputText || "—"}</pre>
+          </section>
         )}
-        <div>
-          <div className="mb-1 font-display text-[0.62rem] font-semibold uppercase tracking-[0.18em] text-bone-dim">{t("session.chat.output")}</div>
+        {toolHasOutputSection(name) && <section className={`overflow-hidden rounded-xl border bg-iron-950/55 ${result?.error ? "border-blood/35" : "border-iron-700/80"}`}>
+          <div className="flex items-center gap-2 border-b border-iron-800 bg-iron-900/70 px-3.5 py-2.5 font-display text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-bone-dim">
+            <span className={result?.error ? "text-blood" : "text-forge"} aria-hidden>↳</span>{t("session.chat.output")}
+          </div>
           {jsonOutput !== null ? (
             <HighlightedCode
               source={jsonOutput}
               language="json"
-              className="max-h-64 !border-0 !bg-iron-900/70 !p-2.5 !text-xs"
+              className="max-h-72 !rounded-none !border-0 !bg-transparent !p-3.5 !text-xs"
             />
           ) : (
-            <pre className={`max-h-64 overflow-auto whitespace-pre-wrap break-words rounded bg-iron-900/70 p-2.5 font-mono text-xs ${result?.error ? "text-blood" : "text-bone-dim"}`}>
+            <pre className={`max-h-72 overflow-auto whitespace-pre-wrap break-words p-3.5 font-mono text-xs leading-relaxed ${result?.error ? "text-blood" : "text-bone-dim"}`}>
               {result?.text?.trim() ? result.text : t("session.chat.noOutput")}
             </pre>
           )}
-        </div>
+        </section>}
       </div>
     </Dialog>
   );
@@ -272,6 +355,7 @@ export function ItemView({ item, t, onOpenPreview, onOpenAttachment }: { item: I
 
 export function Working({
   label,
+  startedAt,
   model,
   onStop,
   stopping,
@@ -279,12 +363,23 @@ export function Working({
   stoppingLabel,
 }: {
   label: string;
+  startedAt?: number;
   model?: string | null;
   onStop: () => void;
   stopping: boolean;
   stopLabel: string;
   stoppingLabel: string;
 }) {
+  const fallbackStartedAt = useRef(Date.now());
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 1_000);
+    return () => window.clearInterval(id);
+  }, []);
+  const effectiveStartedAt = typeof startedAt === "number" && Number.isFinite(startedAt) && startedAt > 0 && startedAt <= now
+    ? startedAt
+    : fallbackStartedAt.current;
+  const duration = formatStepDuration(now - effectiveStartedAt);
   return (
     <div className="reveal flex items-center justify-start gap-2 font-mono text-xs text-bone-faint">
       <span className="thinking-dots" aria-hidden>
@@ -293,6 +388,7 @@ export function Working({
         <span />
       </span>
       <span>{label}</span>
+      <span className="tabular-nums text-bone-dim">· {duration}</span>
       {model && <span className="text-bone-dim">· {model}</span>}
       <button
         type="button"
@@ -306,4 +402,14 @@ export function Working({
       </button>
     </div>
   );
+}
+
+export function formatStepDuration(elapsedMs: number): string {
+  const totalSeconds = Math.max(0, Math.floor(elapsedMs / 1_000));
+  const seconds = totalSeconds % 60;
+  const totalMinutes = Math.floor(totalSeconds / 60);
+  if (totalMinutes < 60) return `${totalMinutes}:${seconds.toString().padStart(2, "0")}`;
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return `${hours}:${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
 }
