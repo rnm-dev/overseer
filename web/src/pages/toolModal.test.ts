@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { editDiff, editStats, editStatsFromInput } from "./peon/session/messageParts";
+import { editDiff, editFileName, editStats, editStatsFromInput } from "./peon/session/messageParts";
 import { toolHasOutputSection } from "./peon/session/parsing";
 
 test("edit tool details omit the output section", () => {
@@ -13,6 +13,15 @@ test("other tool detail types retain their output section", () => {
   assert.equal(toolHasOutputSection("Bash"), true);
   assert.equal(toolHasOutputSection("Read"), true);
   assert.equal(toolHasOutputSection(undefined), true);
+});
+
+test("edit modal title uses the edited file name", () => {
+  assert.equal(editFileName({ file_path: "/workspace/src/App.tsx" }), "App.tsx");
+  assert.equal(editFileName({ filePath: "src\\components\\Dialog.tsx" }), "Dialog.tsx");
+  assert.equal(editFileName({ changes: [{ path: "web/src/main.tsx" }] }), "main.tsx");
+  assert.equal(editFileName({ changes: [{ path: "src/one.ts" }, { path: "src/two.ts" }] }), "one.ts (+1)");
+  assert.equal(editFileName({ patch: "*** Update File: web/src/ui.tsx\n@@" }), "ui.tsx");
+  assert.equal(editFileName({ old_string: "before", new_string: "after" }), null);
 });
 
 test("edit stats count added and removed lines for modal and chat labels", () => {

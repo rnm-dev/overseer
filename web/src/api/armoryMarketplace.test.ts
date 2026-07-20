@@ -233,6 +233,38 @@ test("Heroboard and every manifest field type render without configured values o
   for (const unsupported of ["Install", "Enable", "Disable", "Update", "Uninstall", "Purge", "Verify now"]) assert.doesNotMatch(markup, new RegExp(`>${unsupported}<`, "i"));
 });
 
+test("optional patterned text fields stay empty and opt out of URL and password-manager autofill", () => {
+  const markup = renderToStaticMarkup(createElement(ArmoryConfigurationPanel, {
+    base: "/workspaces/ws/peons/http%3A%2F%2Fpeon-serik.mesh.rnm%3A4570",
+    packageId: "google-analytics",
+    installed,
+    schema: {
+      packageId: "google-analytics",
+      fields: [{
+        id: "defaultPropertyId",
+        label: "Default GA4 property ID",
+        type: "text",
+        required: false,
+        validation: { pattern: "^[0-9]{1,32}$" },
+      }],
+      configured: {},
+      hostWrites: [],
+    },
+    schemaError: null,
+    onRetrySchema: () => {},
+    onRefresh: async () => {},
+  }));
+
+  assert.match(markup, /name="armory-config-google-analytics-defaultPropertyId"/);
+  assert.match(markup, /autoComplete="off"/);
+  assert.match(markup, /data-1p-ignore="true"/);
+  assert.match(markup, /data-lpignore="true"/);
+  assert.match(markup, /readonly=""/);
+  assert.match(markup, /value=""/);
+  assert.match(markup, /pattern="\^\[0-9\]\{1,32\}\$"/);
+  assert.doesNotMatch(markup, /value="http:\/\/peon-serik\.mesh\.rnm:4570"/);
+});
+
 test("verified configuration hides the form behind an explicit edit action", () => {
   const markup = renderToStaticMarkup(createElement(ArmoryConfigurationPanel, {
     base: "/selected-peon", packageId: "heroboard",

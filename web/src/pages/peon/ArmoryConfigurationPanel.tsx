@@ -27,7 +27,8 @@ function statusPresentation(status: InstalledPackage["configurationStatus"]): { 
   return { label: "Not required", detail: "No configuration is required for this package.", tone: "neutral" };
 }
 
-function FieldControl({ field, value, error, configured, disabled, onValue }: {
+function FieldControl({ packageId, field, value, error, configured, disabled, onValue }: {
+  packageId: string;
   field: ArmoryConfigurationField;
   value: string;
   error?: string;
@@ -42,6 +43,8 @@ function FieldControl({ field, value, error, configured, disabled, onValue }: {
   const common = { id, disabled, required: field.required, "aria-describedby": describedBy, "aria-invalid": Boolean(error) };
   const fileInput = useRef<HTMLInputElement>(null);
   const hasBadges = configured;
+  const [userActivated, setUserActivated] = useState(false);
+  const fieldName = `armory-config-${packageId}-${field.id}`;
 
   useEffect(() => { if (!value && fileInput.current) fileInput.current.value = ""; }, [value]);
 
@@ -61,14 +64,29 @@ function FieldControl({ field, value, error, configured, disabled, onValue }: {
       <div className="min-w-0">
         <div className="relative">
           {field.type === "select" ? (
-            <select {...common} className={`field w-full ${hasBadges ? "pr-44" : ""}`} value={value} onChange={(event) => onValue(event.target.value)}>
+            <select {...common} name={fieldName} autoComplete="off" className={`field w-full ${hasBadges ? "pr-44" : ""}`} value={value} onChange={(event) => onValue(event.target.value)}>
               <option value="">Select…</option>
               {(field.options ?? []).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
             </select>
           ) : field.type === "file" ? (
-            <input {...common} ref={fileInput} className={`field w-full file:mr-3 file:border-0 file:bg-iron-800 file:px-3 file:py-1 file:text-bone ${hasBadges ? "pr-40" : ""}`} type="file" onChange={(event) => void readFile(event)} />
+            <input {...common} ref={fileInput} name={fieldName} autoComplete="off" className={`field w-full file:mr-3 file:border-0 file:bg-iron-800 file:px-3 file:py-1 file:text-bone ${hasBadges ? "pr-40" : ""}`} type="file" onChange={(event) => void readFile(event)} />
           ) : (
-            <input {...common} className={`field w-full ${hasBadges ? "pr-40" : ""}`} type={field.type === "secret" ? "password" : "text"} value={value} onChange={(event) => onValue(event.target.value)} pattern={field.validation?.pattern} maxLength={field.validation?.maxLength} />
+            <input
+              {...common}
+              name={fieldName}
+              autoComplete={field.type === "secret" ? "new-password" : "off"}
+              data-1p-ignore="true"
+              data-lpignore="true"
+              data-form-type="other"
+              readOnly={!userActivated}
+              onFocus={() => setUserActivated(true)}
+              className={`field w-full ${hasBadges ? "pr-40" : ""}`}
+              type={field.type === "secret" ? "password" : "text"}
+              value={value}
+              onChange={(event) => onValue(event.target.value)}
+              pattern={field.validation?.pattern}
+              maxLength={field.validation?.maxLength}
+            />
           )}
           {hasBadges && <div className={`pointer-events-none absolute top-1/2 flex -translate-y-1/2 gap-1.5 ${field.type === "select" ? "right-8" : "right-3"}`}><Badge>Configured</Badge></div>}
         </div>
@@ -246,7 +264,7 @@ export function ArmoryConfigurationPanel({ base, packageId, installed, schema, s
         </div>
       </Card>}
       {schema && schema.fields.length > 0 && (!configured || editing || operationActive(operation)) && <Card className="p-5"><form className="space-y-5" onSubmit={(event) => { event.preventDefault(); void submit(); }} autoComplete="off">
-        {schema.fields.map((field) => <FieldControl key={field.id} field={field} value={values[field.id] ?? ""} error={errors[field.id]} configured={schema.configured[field.id] === true} disabled={busy} onValue={(value) => { setValues((current) => ({ ...current, [field.id]: value })); setErrors((current) => { const next = { ...current }; delete next[field.id]; return next; }); }} />)}
+        {schema.fields.map((field) => <FieldControl key={field.id} packageId={packageId} field={field} value={values[field.id] ?? ""} error={errors[field.id]} configured={schema.configured[field.id] === true} disabled={busy} onValue={(value) => { setValues((current) => ({ ...current, [field.id]: value })); setErrors((current) => { const next = { ...current }; delete next[field.id]; return next; }); }} />)}
         {schema.hostWrites.length > 0 && <Card className="border-forge/50 bg-forge/[0.03] p-4"><h3 className="font-display text-sm font-bold text-ember">Host writes</h3><p className="mt-2 text-sm text-bone-dim">This package may write outside its managed Armory home at these exact paths:</p><ul className="mt-2 space-y-1 font-mono text-xs text-bone">{schema.hostWrites.map((path) => <li key={path} className="break-all">{path}</li>)}</ul><label className="mt-3 flex items-start gap-2 text-sm text-bone"><input type="checkbox" className="mt-0.5 accent-fel" checked={hostConfirmed} disabled={busy} onChange={(event) => { setHostConfirmed(event.target.checked); setErrors((current) => { const next = { ...current }; delete next.$hostWrites; return next; }); }} />I confirm these host-write paths.</label>{errors.$hostWrites && <p role="alert" className="mt-2 text-xs text-blood">{errors.$hostWrites}</p>}</Card>}
         {Boolean(requestError) && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 border-l-2 border-blood bg-blood/5 p-3 text-sm text-blood"><span>Peon rejected the configuration.</span>{operationConflict && <Button type="button" size="sm" variant="iron" onClick={() => { setRequestError(null); void onRefresh(); }}>Refresh operation status</Button>}</div>}
         <div className="flex flex-wrap gap-3"><Button type="submit" disabled={busy}>{submitting ? "Submitting…" : "Save configuration"}</Button>{configured && editing && <Button type="button" variant="iron" disabled={busy} onClick={() => { setEditing(false); setValues({}); setErrors({}); setHostConfirmed(false); }}>Cancel</Button>}<Button type="button" variant="iron" aria-haspopup="dialog" disabled={busy} onClick={() => setDeleteOpen(true)}>Delete configuration</Button></div>

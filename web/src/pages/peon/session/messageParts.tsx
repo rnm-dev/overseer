@@ -130,6 +130,35 @@ export function editStatsFromInput(input: unknown): { added: number; removed: nu
   return null;
 }
 
+export function editFileName(input: unknown): string | null {
+  if (!input || typeof input !== "object") return null;
+  const value = input as Record<string, unknown>;
+  const explicitPath = value.file_path ?? value.filePath ?? value.path ?? value.filename;
+  let path = typeof explicitPath === "string" && explicitPath.trim() ? explicitPath.trim() : null;
+  let additionalFiles = 0;
+
+  if (!path && Array.isArray(value.changes)) {
+    const paths = value.changes
+      .map((change) => change && typeof change === "object" ? (change as Record<string, unknown>).path : undefined)
+      .filter((candidate): candidate is string => typeof candidate === "string" && !!candidate.trim());
+    path = paths[0]?.trim() ?? null;
+    additionalFiles = Math.max(0, paths.length - 1);
+  }
+
+  if (!path) {
+    const patch = value.patch ?? value.diff;
+    if (typeof patch === "string") {
+      path = patch.match(/^\*\*\* (?:Update|Add|Delete) File:\s*(.+)$/m)?.[1]?.trim()
+        ?? patch.match(/^\+\+\+\s+(?:b\/)?(.+)$/m)?.[1]?.trim()
+        ?? null;
+    }
+  }
+
+  if (!path) return null;
+  const fileName = path.split(/[\\/]/).filter(Boolean).pop() ?? path;
+  return additionalFiles > 0 ? `${fileName} (+${additionalFiles})` : fileName;
+}
+
 export function editDiff(input: unknown): DiffLine[] | null {
   if (!input || typeof input !== "object") return null;
   const value = input as Record<string, unknown>;
@@ -209,6 +238,7 @@ export function editDiff(input: unknown): DiffLine[] | null {
 
 function ToolDetailsModal({ name, input, command, result, t, onClose }: { name?: string; input?: unknown; command: string; result?: { text: string; error?: boolean }; t: T; onClose: () => void }) {
   const isEdit = !toolHasOutputSection(name);
+  const modalName = isEdit ? editFileName(input) ?? name : name;
   const diff = isEdit ? editDiff(input) : null;
   const stats = editStats(diff);
   const jsonOutput = result?.error || !result?.text ? null : prettyJsonOutput(result.text);
@@ -225,7 +255,7 @@ function ToolDetailsModal({ name, input, command, result, t, onClose }: { name?:
   const title = (
     <span className="flex min-w-0 items-center gap-2.5">
       {isEdit ? <Pencil size={18} className="shrink-0 text-fel-bright" aria-hidden /> : <Terminal size={18} className="shrink-0 text-fel-bright" aria-hidden />}
-      <span className="truncate">{name || t("session.chat.tool")}</span>
+      <span className="truncate">{modalName || t("session.chat.tool")}</span>
       {stats && <span className="shrink-0 font-mono text-sm font-normal tracking-normal">(<span className="text-blood">−{stats.removed}</span>,<span className="text-fel-bright">+{stats.added}</span>)</span>}
     </span>
   );
