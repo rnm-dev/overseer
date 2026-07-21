@@ -21,7 +21,7 @@ import { createQueueActivityTracker, createQueueReconciler } from "./session/que
 import type { PreviewTarget } from "./session/PreviewPanel";
 import { useSessionTranscript } from "./session/useSessionTranscript";
 import { useSessionComposer } from "./session/useSessionComposer";
-import { SessionHeader } from "./session/SessionHeader";
+import { SessionHeader, sessionHeaderMetadataLoading } from "./session/SessionHeader";
 import { SessionComposerDock } from "./session/SessionComposerDock";
 import { SessionOverlays } from "./session/SessionOverlays";
 import { useScrollToBottom } from "./session/useScrollToBottom";
@@ -222,7 +222,6 @@ export function PeonSessionDetail() {
     pendingEchoesRef,
     historyReadyRef,
     tailHighWaterRef,
-    refreshTranscript,
   } = useSessionTranscript({
     base,
     sid,
@@ -287,7 +286,6 @@ export function PeonSessionDetail() {
     setRunning,
     setRunningModel,
     setStopNote,
-    refreshTranscript,
     onWorkStarted,
   });
 
@@ -423,12 +421,16 @@ export function PeonSessionDetail() {
     setRenameNote(null);
     setEditing(false);
   };
+  // A title-less metadata response can arrive before the transcript's opening
+  // user message, which is the display title fallback. Keep the loading state
+  // through that gap instead of briefly exposing "Untitled session".
+  const headerMetadataLoading = sessionHeaderMetadataLoading(loadedMetadataKey, sessionKey, title, firstUserMessage);
 
   return (
     <div className="min-w-0">
       <SessionHeader
         peonId={peon.peonId}
-        metadataLoading={loadedMetadataKey !== sessionKey}
+        metadataLoading={headerMetadataLoading}
         projectKey={projectKey}
         title={title}
         draft={draft}
@@ -544,6 +546,7 @@ export function PeonSessionDetail() {
         enqueue={enqueue}
         send={send}
         sending={sending}
+        controlConnected={peon.controlConnected ?? peon.online}
         files={files}
         setFiles={setFiles}
         setAttachmentPreview={setAttachmentPreview}

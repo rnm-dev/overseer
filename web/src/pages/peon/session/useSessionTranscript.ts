@@ -22,6 +22,11 @@ import {
   type TranscriptPage,
   type TranscriptResponse,
 } from "./transcriptPagination";
+import {
+  TAIL_FALLBACK_CHECK_MS,
+  replaceTranscriptRequest,
+  transcriptReconcileMode,
+} from "./transcriptReconciliation";
 
 interface Args {
   base: string;
@@ -77,6 +82,11 @@ export function useSessionTranscript({
   const pendingLiveRef = useRef<Array<{ event: Ev; tailId: number | null; tailEventId: string | null }>>([]);
   const olderLoadInFlightRef = useRef(false);
   const reconciliationSessionRef = useRef(sessionKey);
+  const lastTailActivityAtRef = useRef<number | null>(Date.now());
+  const tailUnhealthyRef = useRef(false);
+  const lastFallbackReconcileAtRef = useRef<number | null>(null);
+  const latestReconcileControllerRef = useRef<AbortController | null>(null);
+  const olderLoadControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     setShowHistorySpinner(false);
@@ -98,6 +108,13 @@ export function useSessionTranscript({
     seenRef.current = new Set();
     pendingLiveRef.current = [];
     pendingEchoesRef.current = [];
+    lastTailActivityAtRef.current = Date.now();
+    tailUnhealthyRef.current = false;
+    lastFallbackReconcileAtRef.current = null;
+    latestReconcileControllerRef.current?.abort();
+    latestReconcileControllerRef.current = null;
+    olderLoadControllerRef.current?.abort();
+    olderLoadControllerRef.current = null;
   }
 
   const consumeOptimisticEcho = useCallback((event: Ev, tailId: number | null, tailEventId: string | null): boolean => {
@@ -190,8 +207,11 @@ export function useSessionTranscript({
     setHistory(merged.events);
   }, []);
 
-  const fetchLatestTranscript = useCallback(async (): Promise<TranscriptPage> => {
-    let page = parseTranscriptPage(await api<TranscriptResponse>(transcriptPageUrl(base, sid, paginationSupported)));
+  const fetchLatestTranscript = useCallback(async (signal?: AbortSignal): Promise<TranscriptPage> => {
+    let page = parseTranscriptPage(await api<TranscriptResponse>(
+      transcriptPageUrl(base, sid, paginationSupported),
+      signal ? { signal } : undefined,
+    ));
     const current = loadedTranscriptRef.current;
     if (!page.paginated || !current?.paginated) return page;
     const knownIds = new Set(current.events.flatMap((event) => eventId(event) ?? []));
@@ -200,19 +220,15 @@ export function useSessionTranscript({
       const cursor = page.nextCursor;
       if (usedCursors.has(cursor)) throw new Error("Peon repeated a transcript cursor");
       usedCursors.add(cursor);
-      const older = parseTranscriptPage(await api<TranscriptResponse>(transcriptPageUrl(base, sid, true, cursor)));
+      const older = parseTranscriptPage(await api<TranscriptResponse>(
+        transcriptPageUrl(base, sid, true, cursor),
+        signal ? { signal } : undefined,
+      ));
       if (!older.paginated) return older;
       page = prependOlderPage(page, older);
     }
     return page;
   }, [base, paginationSupported, sid]);
-
-  const refreshTranscript = useCallback(async (): Promise<boolean> => {
-    const page = await fetchLatestTranscript();
-    if (reconciliationSessionRef.current !== sessionKey) return false;
-    applyAuthoritativeSnapshot(page);
-    return true;
-  }, [applyAuthoritativeSnapshot, fetchLatestTranscript, sessionKey]);
 
   useEffect(() => {
     let alive = true;
@@ -227,6 +243,13 @@ export function useSessionTranscript({
     pendingLiveRef.current = [];
     pendingEchoesRef.current = [];
     olderLoadInFlightRef.current = false;
+    latestReconcileControllerRef.current?.abort();
+    latestReconcileControllerRef.current = null;
+    olderLoadControllerRef.current?.abort();
+    olderLoadControllerRef.current = null;
+    lastTailActivityAtRef.current = Date.now();
+    tailUnhealthyRef.current = false;
+    lastFallbackReconcileAtRef.current = null;
     setHistory(null);
     setLive([]);
     setHasOlder(false);
@@ -237,6 +260,8 @@ export function useSessionTranscript({
       applyAuthoritativeSnapshot(page);
       setTailStartId(page.paginated && page.events.length ? eventId(page.events[page.events.length - 1]!) : null);
       historyReadyRef.current = true;
+      lastTailActivityAtRef.current = Date.now();
+      tailUnhealthyRef.current = false;
       const metadataStatus = metadataStatusRef.current.get(sessionKey);
       if (latestRunSignal(page.events) === "running" && (metadataStatus === undefined || metadataStatus === "running")) onSnapshotRunning();
       const pending = pendingLiveRef.current;
@@ -245,16 +270,31 @@ export function useSessionTranscript({
         if (pushFreshEvent(item.event, item.tailId, item.tailEventId)) openFreshPreview(item.event);
       }
     };
-    fetchLatestTranscript()
+    const controller = new AbortController();
+    fetchLatestTranscript(controller.signal)
       .then((page) => alive && ready(page))
       .catch(() => alive && ready(parseTranscriptPage([])));
-    return () => { alive = false; };
+    return () => {
+      alive = false;
+      controller.abort();
+      latestReconcileControllerRef.current?.abort();
+      latestReconcileControllerRef.current = null;
+      olderLoadControllerRef.current?.abort();
+      olderLoadControllerRef.current = null;
+    };
   }, [applyAuthoritativeSnapshot, fetchLatestTranscript, metadataStatusRef, onSnapshotRunning, openFreshPreview, pushFreshEvent, sessionKey]);
 
   useEffect(() => {
     if (tailStartId === undefined) return;
     return subscribe(peonId, sid, (frame) => {
-    if (frame.event === "change" || frame.event === "tailEnd" || frame.event === "tailError") {
+    if (frame.event === "tailEnd" || frame.event === "tailError") {
+      tailUnhealthyRef.current = true;
+      onQueueChange();
+      return;
+    }
+    lastTailActivityAtRef.current = Date.now();
+    tailUnhealthyRef.current = false;
+    if (frame.event === "change") {
       onQueueChange();
       return;
     }
@@ -281,27 +321,45 @@ export function useSessionTranscript({
     let inFlight = false;
     const reconcile = async () => {
       if (!alive || inFlight || !historyReadyRef.current) return;
+      const now = Date.now();
+      const mode = transcriptReconcileMode({
+        now,
+        running,
+        historyReady: historyReadyRef.current,
+        tailUnhealthy: tailUnhealthyRef.current,
+        lastTailActivityAt: lastTailActivityAtRef.current,
+        lastReconcileAt: lastFallbackReconcileAtRef.current,
+      });
+      if (mode === "none") return;
+      if (latestReconcileControllerRef.current) return;
       inFlight = true;
+      lastFallbackReconcileAtRef.current = now;
+      const controller = new AbortController();
+      latestReconcileControllerRef.current = controller;
       try {
-        const [session, result] = await Promise.all([
-          api<{ status?: string | null }>(`${base}/sessions/${encodeURIComponent(sid)}`),
-          fetchLatestTranscript(),
-        ]);
+        const session = await api<{ status?: string | null }>(`${base}/sessions/${encodeURIComponent(sid)}`, { signal: controller.signal });
         if (!alive) return;
-        applyAuthoritativeSnapshot(result);
         metadataStatusRef.current.set(sessionKey, session.status ?? null);
+        if (mode === "transcript" || session.status !== "running") {
+          const result = await fetchLatestTranscript(controller.signal);
+          if (!alive) return;
+          applyAuthoritativeSnapshot(result);
+        }
         if (session.status !== "running") onRunFinished();
       } catch {
         // A transient poll failure must not disturb a healthy live tail.
       } finally {
+        if (latestReconcileControllerRef.current === controller) latestReconcileControllerRef.current = null;
         inFlight = false;
       }
     };
-    const timer = window.setInterval(reconcile, 2_000);
+    const timer = window.setInterval(reconcile, TAIL_FALLBACK_CHECK_MS);
     void reconcile();
     return () => {
       alive = false;
       window.clearInterval(timer);
+      latestReconcileControllerRef.current?.abort();
+      latestReconcileControllerRef.current = null;
     };
   }, [applyAuthoritativeSnapshot, base, fetchLatestTranscript, metadataStatusRef, onRunFinished, running, sessionKey, sid]);
 
@@ -310,10 +368,15 @@ export function useSessionTranscript({
     const cursor = current?.paginated ? current.nextCursor : null;
     if (!current?.paginated || !current.hasMore || !cursor || olderLoadInFlightRef.current) return false;
     olderLoadInFlightRef.current = true;
+    const controller = replaceTranscriptRequest(olderLoadControllerRef.current);
+    olderLoadControllerRef.current = controller;
     setLoadingOlder(true);
     setOlderLoadError(false);
     try {
-      const page = parseTranscriptPage(await api<TranscriptResponse>(transcriptPageUrl(base, sid, true, cursor)));
+      const page = parseTranscriptPage(await api<TranscriptResponse>(
+        transcriptPageUrl(base, sid, true, cursor),
+        { signal: controller.signal },
+      ));
       if (reconciliationSessionRef.current !== sessionKey || !page.paginated) return false;
       if (page.hasMore && page.nextCursor === cursor) throw new Error("Peon repeated a transcript cursor");
       const merged = prependOlderPage(loadedTranscriptRef.current ?? current, page);
@@ -326,6 +389,7 @@ export function useSessionTranscript({
       if (reconciliationSessionRef.current === sessionKey) setOlderLoadError(true);
       return false;
     } finally {
+      if (olderLoadControllerRef.current === controller) olderLoadControllerRef.current = null;
       olderLoadInFlightRef.current = false;
       if (reconciliationSessionRef.current === sessionKey) setLoadingOlder(false);
     }
@@ -345,6 +409,5 @@ export function useSessionTranscript({
     pendingEchoesRef,
     historyReadyRef,
     tailHighWaterRef,
-    refreshTranscript,
   };
 }

@@ -41,6 +41,7 @@ export interface ComposerProps {
   submitLabel?: string;
   // True while the current prompt is in flight — locks input and spins the send button.
   disabled: boolean;
+  pending?: boolean;
   autoFocus?: boolean;
   files: File[];
   onFilesChange: (files: File[]) => void;
@@ -63,6 +64,7 @@ export function Composer({
   submitTitle,
   submitLabel,
   disabled,
+  pending = disabled,
   autoFocus,
   files,
   onFilesChange,
@@ -245,7 +247,7 @@ export function Composer({
             title={submitTitle}
             className={`flex h-8 flex-none items-center justify-center bg-fel text-fel-ink transition-colors hover:bg-fel-bright disabled:bg-iron-800 disabled:text-bone-faint ${submitLabel ? "rounded-md px-3 font-mono text-xs font-semibold" : "w-8 rounded-full"}`}
           >
-            {disabled ? (
+            {pending ? (
               <span className="block h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
             ) : submitLabel ? (
               submitLabel

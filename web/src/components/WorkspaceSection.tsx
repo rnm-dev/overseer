@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { MessageSquare, Server, Users } from "lucide-react";
 import { api } from "../api";
-import { Badge, Button, StatusDot } from "../ui";
+import { Badge, Button } from "../ui";
+import { PeonConnectionStatusDot } from "./PeonConnectionStatusDot";
 import { useT } from "../i18n";
 import type { Workspace } from "../workspace";
 import { AddPeonDialog } from "./AddPeonDialog";
@@ -113,7 +114,7 @@ export function WorkspaceSection({ workspace }: { workspace: Workspace }) {
                 <div className="flex h-full flex-col rounded-lg border border-iron-800 bg-iron-950/30 transition-colors hover:border-fel/40 hover:bg-fel/[0.03]">
                   <Link to={`/peons/${p.peonId}`} className="flex flex-1 flex-col justify-between gap-3 px-4 py-3.5">
                     <div className="flex items-start justify-between gap-2">
-                      <StatusDot state={online ? "on" : "off"} />
+                      <PeonConnectionStatusDot {...p} />
                       <div className="flex items-center gap-2">
                         <SessionPresence viewers={peonViewers(p.peonId)} />
                         <Badge tone={online ? "green" : "red"}>{online ? t("peons.online") : t("peons.offline")}</Badge>

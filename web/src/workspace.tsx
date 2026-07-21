@@ -14,6 +14,10 @@ export interface PeonLite {
   peonId: string;
   name: string | null;
   online: boolean;
+  controlConnected?: boolean;
+  transferConnected?: boolean;
+  controlConnectedAt?: number | null;
+  transferConnectedAt?: number | null;
 }
 
 export interface PeonGroup {

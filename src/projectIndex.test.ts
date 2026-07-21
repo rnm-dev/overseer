@@ -7,6 +7,7 @@ import {
   applySocketProjectEvent,
   applySocketProjectSnapshot,
   claimProjectSyncGeneration,
+  commitSnapshotCoveredProjectEvent,
   hasCanonicalProjectCatalog,
   listIndexedProjects,
   releaseProjectSyncGeneration,
@@ -114,4 +115,25 @@ test("project durable events share the delivery inbox, deduplicate replays, and 
   await releaseProjectSyncGeneration("peon", generation);
   const state = await query<{ status: string }>(`SELECT status FROM peon_project_sync WHERE peon_id='peon'`);
   assert.equal(state.rows[0]?.status, "stale");
+});
+
+test("project snapshot supersedes queued events from a retired catalog epoch", async () => {
+  const { generation } = await fixture();
+  await applySocketProjectSnapshot({
+    workspaceId: "ws", peonId: "peon", generation, catalogEpoch: "projects-new", barrierSeq: 0,
+    projects: [{ projectId: "project-current", key: "current", name: null, dir: null, metadata: null }],
+  });
+
+  const committed = await commitSnapshotCoveredProjectEvent({
+    peonId: "peon", generation, catalogEpoch: "projects-retired", seq: 99,
+    deliveryEpoch: "delivery-stable", deliveryCursor: "cursor-1",
+    messageId: "00000000-0000-4000-8000-000000000099",
+  });
+
+  assert.deepEqual(committed, {
+    catalog: { epoch: "projects-new", acknowledgedSeq: 0 },
+    delivery: { epoch: "delivery-stable", acknowledgedCursor: "cursor-1" },
+  });
+  assert.deepEqual((await listIndexedProjects("peon")).map((project) => project.projectId), ["project-current"]);
+  assert.equal((await query<{ count: number }>(`SELECT COUNT(*)::int AS count FROM peon_session_inbox`)).rows[0]?.count, 1);
 });

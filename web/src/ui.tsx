@@ -1,7 +1,8 @@
-import { useEffect, useId, useRef, useState, type ButtonHTMLAttributes, type ReactNode, type InputHTMLAttributes, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type ButtonHTMLAttributes, type ReactNode, type InputHTMLAttributes, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import { LOCALES, useI18n } from "./i18n";
+import { DIALOG_EXIT_MS, sheetDragProgress, shouldDismissSheet } from "./dialogMotion";
 
 // UI primitives — styling lives in index.css (.warplate, .btn-*, .field, .badge-*).
 // author: Viktor
@@ -41,23 +42,36 @@ export function Dialog({ title, children, onClose, size = "md", dismissible = tr
   const panelRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef(onClose);
   const dismissibleRef = useRef(dismissible);
+  const closeTimerRef = useRef<number | null>(null);
   const dragRef = useRef<{ pointerId: number; startY: number; lastY: number; lastAt: number; velocity: number } | null>(null);
+  const [phase, setPhase] = useState<"opening" | "open" | "closing">("opening");
   const [dragY, setDragY] = useState(0);
+  const [dragProgress, setDragProgress] = useState(0);
   const [dragging, setDragging] = useState(false);
   closeRef.current = onClose;
   dismissibleRef.current = dismissible;
+
+  const requestClose = useCallback(() => {
+    if (!dismissibleRef.current || closeTimerRef.current !== null) return;
+    dragRef.current = null;
+    setDragging(false);
+    setPhase("closing");
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    closeTimerRef.current = window.setTimeout(() => closeRef.current(), reducedMotion ? 0 : DIALOG_EXIT_MS);
+  }, []);
 
   useEffect(() => {
     const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    const frame = requestAnimationFrame(() => {
+    const entranceFrame = requestAnimationFrame(() => setPhase("open"));
+    const focusFrame = requestAnimationFrame(() => {
       const panel = panelRef.current;
       const target = panel?.querySelector<HTMLElement>("[autofocus], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])");
       (target ?? panel)?.focus();
     });
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && dismissibleRef.current) closeRef.current();
+      if (event.key === "Escape" && dismissibleRef.current) requestClose();
       if (event.key !== "Tab" || !panelRef.current) return;
       const focusable = Array.from(panelRef.current.querySelectorAll<HTMLElement>("button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex='-1'])"));
       if (!focusable.length) { event.preventDefault(); panelRef.current.focus(); return; }
@@ -68,12 +82,14 @@ export function Dialog({ title, children, onClose, size = "md", dismissible = tr
     };
     document.addEventListener("keydown", onKeyDown);
     return () => {
-      cancelAnimationFrame(frame);
+      cancelAnimationFrame(entranceFrame);
+      cancelAnimationFrame(focusFrame);
+      if (closeTimerRef.current !== null) window.clearTimeout(closeTimerRef.current);
       document.removeEventListener("keydown", onKeyDown);
       document.body.style.overflow = previousOverflow;
       previousFocus?.focus();
     };
-  }, []);
+  }, [requestClose]);
 
   function startDrag(event: ReactPointerEvent<HTMLDivElement>) {
     if (!dismissible || !window.matchMedia("(max-width: 767px)").matches) return;
@@ -86,10 +102,13 @@ export function Dialog({ title, children, onClose, size = "md", dismissible = tr
     const drag = dragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
     const now = performance.now();
-    drag.velocity = (event.clientY - drag.lastY) / Math.max(1, now - drag.lastAt);
+    const sampleVelocity = (event.clientY - drag.lastY) / Math.max(1, now - drag.lastAt);
+    drag.velocity = drag.velocity * 0.35 + sampleVelocity * 0.65;
     drag.lastY = event.clientY;
     drag.lastAt = now;
-    setDragY(Math.max(0, event.clientY - drag.startY));
+    const distance = Math.max(0, event.clientY - drag.startY);
+    setDragY(distance);
+    setDragProgress(sheetDragProgress(distance, window.innerHeight));
   }
 
   function endDrag(event: ReactPointerEvent<HTMLDivElement>) {
@@ -99,33 +118,40 @@ export function Dialog({ title, children, onClose, size = "md", dismissible = tr
     const velocity = performance.now() - drag.lastAt < 80 ? drag.velocity : 0;
     dragRef.current = null;
     setDragging(false);
-    if (distance > 96 || (distance > 28 && velocity > 0.55)) closeRef.current();
-    else setDragY(0);
+    if (shouldDismissSheet(distance, velocity, panelRef.current?.offsetHeight ?? window.innerHeight)) requestClose();
+    else {
+      setDragY(0);
+      setDragProgress(0);
+    }
   }
-  // Only dismiss when a press starts AND ends on the backdrop — so selecting text
-  // inside and releasing outside (or vice-versa) never closes the modal.
-  const downOnBackdrop = useRef(false);
+
+  function cancelDrag(event: ReactPointerEvent<HTMLDivElement>) {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    dragRef.current = null;
+    setDragging(false);
+    setDragY(0);
+    setDragProgress(0);
+  }
   // Portaled to <body>: a page-level `.reveal` entrance animation leaves a
   // non-"none" computed transform behind after it finishes (animation-fill-mode:
   // both resolves to an identity matrix, not the literal keyword), which makes
   // `fixed` descendants resolve against that ancestor instead of the viewport.
   return createPortal(
     <div
-      className="fixed inset-0 z-50 grid items-end bg-[radial-gradient(circle_at_50%_18%,rgba(149,201,103,0.08),transparent_38%),rgba(2,4,3,0.82)] backdrop-blur-md md:place-items-center md:p-5"
-      onMouseDown={(e) => (downOnBackdrop.current = e.target === e.currentTarget)}
-      onMouseUp={(e) => {
-        if (dismissible && e.target === e.currentTarget && downOnBackdrop.current) onClose();
-        downOnBackdrop.current = false;
-      }}
+      className="dialog-layer fixed inset-0 z-50 grid items-end md:place-items-center md:p-5"
+      data-state={phase}
+      data-dragging={dragging || undefined}
+      style={{ "--dialog-drag-y": `${dragY}px`, "--dialog-drag-progress": dragProgress } as React.CSSProperties}
     >
+      <div className="dialog-backdrop absolute inset-0" aria-hidden="true" onClick={dismissible ? requestClose : undefined} />
       <div
         ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
-        className={`relative w-full max-h-[calc(100dvh-0.75rem)] overflow-hidden overflow-y-auto rounded-b-none rounded-t-2xl border border-iron-700/80 bg-iron-900/95 p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] shadow-[0_28px_90px_rgba(0,0,0,0.65),0_0_0_1px_rgba(149,201,103,0.04)] md:max-h-[calc(100vh-2.5rem)] md:rounded-xl md:p-6 md:pb-6 ${size === "lg" ? "md:max-w-2xl" : "md:max-w-md"}`}
-        style={{ transform: `translateY(${dragY}px)`, transition: dragging ? "none" : "transform 180ms ease" }}
+        className={`dialog-panel relative w-full max-h-[calc(100dvh-0.75rem)] overflow-hidden overflow-y-auto rounded-b-none rounded-t-2xl border-0 bg-iron-900/95 p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] shadow-[0_28px_90px_rgba(0,0,0,0.65),0_0_0_1px_rgba(149,201,103,0.04)] md:max-h-[calc(100vh-2.5rem)] md:rounded-xl md:border md:border-iron-700/80 md:p-6 md:pb-6 ${size === "lg" ? "md:max-w-2xl" : "md:max-w-md"}`}
       >
         <div
           aria-hidden="true"
@@ -133,14 +159,14 @@ export function Dialog({ title, children, onClose, size = "md", dismissible = tr
           onPointerDown={startDrag}
           onPointerMove={moveDrag}
           onPointerUp={endDrag}
-          onPointerCancel={endDrag}
+          onPointerCancel={cancelDrag}
         >
           <span className="h-1 w-10 rounded-full bg-iron-600/90" />
         </div>
         <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-fel/45 to-transparent" />
         <div className="mb-4 flex items-start gap-3 border-b border-iron-800/90 pb-4">
           <h3 id={titleId} className="min-w-0 flex-1 font-display text-base font-bold tracking-wide text-bone">{title}</h3>
-          <button className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-transparent text-base leading-none text-bone-faint transition-colors hover:border-iron-700 hover:bg-iron-800 hover:text-bone" onClick={onClose} disabled={!dismissible} aria-label={t("a11y.close")}>
+          <button className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-transparent text-base leading-none text-bone-faint transition-colors hover:border-iron-700 hover:bg-iron-800 hover:text-bone" onClick={requestClose} disabled={!dismissible} aria-label={t("a11y.close")}>
             ✕
           </button>
         </div>
@@ -248,7 +274,7 @@ export function LocaleSwitcher({ className = "" }: { className?: string }) {
 // fixed positioning independent of the page reveal transform; the measured
 // spacer preserves normal document flow when the header grows (menus aside,
 // inline forms and error messages can make it taller).
-export function FixedPaneHeader({ children }: { children: ReactNode }) {
+export function FixedPaneHeader({ children, className = "" }: { children: ReactNode; className?: string }) {
   const [node, setNode] = useState<HTMLDivElement | null>(null);
   const [height, setHeight] = useState(49);
 
@@ -270,12 +296,12 @@ export function FixedPaneHeader({ children }: { children: ReactNode }) {
   return (
     <>
       {createPortal(
-        <div ref={setNode} className="fixed-pane-header fixed left-0 right-0 top-12 z-20 border-b border-iron-800 bg-void md:left-[var(--peon-sidebar-width)] md:top-0">
+        <div ref={setNode} className={`fixed-pane-header fixed left-0 right-0 top-12 z-20 border-b border-iron-800 bg-void md:left-[var(--peon-sidebar-width)] md:top-0 ${className}`}>
           {children}
         </div>,
         document.body,
       )}
-      <div aria-hidden className="-mt-4 sm:-mt-7" style={{ height }} />
+      <div aria-hidden className={`-mt-4 sm:-mt-7 ${className}`} style={{ height }} />
     </>
   );
 }

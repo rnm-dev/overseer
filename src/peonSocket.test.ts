@@ -271,9 +271,6 @@ test("canonical durable session catalogs snapshot, commit, acknowledge, and resu
   assert.deepEqual(resumeAck.channels, { "session-catalog-v1": { epoch: "catalog-1", acknowledgedSeq: 1 } });
   assert.deepEqual(resumeAck.delivery, { epoch: "delivery-1", acknowledgedCursor: "cursor-1" });
   assert.equal(resumed.messages.some((message) => message.type === "session_catalog_snapshot_request"), false);
-  const rejectedGap = new Promise<{ code: number; reason: string }>((resolve) => {
-    second.once("close", (code, reason) => resolve({ code, reason: reason.toString() }));
-  });
   second.send(JSON.stringify({
     type: "durable_message", epoch: "delivery-1", cursor: "cursor-3",
     messageId: "00000000-0000-4000-8000-000000000003", priority: "normal",
@@ -282,7 +279,18 @@ test("canonical durable session catalogs snapshot, commit, acknowledge, and resu
       session: { id: "must-not-commit", status: "running" },
     },
   }));
-  assert.deepEqual(await rejectedGap, { code: 1002, reason: "session catalog sequence gap" });
+  const recoveryRequest = await resumed.waitFor((message) => message.type === "session_catalog_snapshot_request");
+  second.send(JSON.stringify({
+    type: "session_catalog_snapshot_page", requestId: recoveryRequest.requestId,
+    epoch: "catalog-1", revision: 3, barrierSeq: 3,
+    sessions: [
+      { id: "from-snapshot", title: "Snapshot", status: "running", lastActivityAt: 10 },
+      { id: "created-live", title: "Created live", status: "running", lastActivityAt: 20 },
+    ],
+    nextCursor: null, hasMore: false,
+  }));
+  await resumed.waitFor((message) => message.type === "durable_ack" && message.cursor === "cursor-3");
+  await resumed.waitFor((message) => message.type === "session_catalog_ack" && message.acknowledgedSeq === 3);
   assert.equal((await listSessions({ peonId: "sync-peon", limit: 10, offset: 0 })).sessions.some(
     (session) => session.sessionId === "must-not-commit"), false);
 
@@ -307,6 +315,148 @@ test("canonical durable session catalogs snapshot, commit, acknowledge, and resu
   });
   epochChanged.send(JSON.stringify({ type: "session_catalog_snapshot_cancelled", requestId: freshRequest.requestId }));
   assert.deepEqual(await cancelled, { code: 1002, reason: "session catalog snapshot cancelled" });
+  await new Promise<void>((resolve) => wss.close(() => resolve()));
+  await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+});
+
+test("catalog epoch rollover drains superseded durable events without reconnect poisoning", async () => {
+  const db = newDb();
+  const Pool = db.adapters.createPg().Pool;
+  await initDb(new Pool() as unknown as pg.Pool);
+  const workspaceId = "epoch-rollover-workspace";
+  await query(
+    `INSERT INTO workspaces (id,name,slug,created_by,created_at) VALUES ($1,'Epoch rollover','epoch-rollover','owner',$2)`,
+    [workspaceId, Date.now()],
+  );
+  const { credential, token } = await mintCredential(workspaceId, "Epoch Peon", "owner");
+  assert.equal(await bindPeon(credential.id, "epoch-peon"), true);
+  await registry.register({
+    peonId: "epoch-peon", credentialId: credential.id, workspaceId, name: "Epoch Peon",
+    hostname: null, address: "127.0.0.1", controlPort: 4570, publicUrl: null, protocol: 1,
+    capabilities: [], token, load: null,
+  });
+
+  const server = http.createServer();
+  const wss = attachPeonSocket(server);
+  const port = await listen(server);
+  const url = `ws://127.0.0.1:${port}/api/v1/peons/ws`;
+
+  const initial = await open(url, token);
+  const initialMessages = jsonCollector(initial);
+  initial.send(JSON.stringify({
+    type: "hello", protocol: 1, peonId: "epoch-peon",
+    capabilities: ["session-catalog-v1", "durable-delivery-v1"],
+    channels: { "session-catalog-v1": { epoch: "catalog-old", revision: 0, earliestSeq: 0, latestSeq: 0 } },
+    delivery: {
+      epoch: "delivery-stable", earliestCursor: null, latestCursor: null, acknowledgedCursor: null,
+      pendingMessages: 0, pendingBytes: 0, maxMessages: 5_000, maxBytes: 33_554_432,
+      backpressured: false, negotiated: false, recoveredFromCorruption: false, lastError: null,
+    },
+  }));
+  const initialRequest = await initialMessages.waitFor((message) => message.type === "session_catalog_snapshot_request");
+  initial.send(JSON.stringify({
+    type: "session_catalog_snapshot_page", requestId: initialRequest.requestId,
+    epoch: "catalog-old", revision: 0, barrierSeq: 0,
+    sessions: [{ id: "retired", title: "Retired", status: "completed", lastActivityAt: 1 }],
+    nextCursor: null, hasMore: false,
+  }));
+  await initialMessages.waitFor((message) => message.type === "session_catalog_ack");
+  initial.close();
+  await closed(initial);
+
+  const rollover = await open(url, token);
+  const rolloverMessages = jsonCollector(rollover);
+  const unexpectedlyClosed = new Promise<never>((_, reject) => {
+    rollover.once("close", (code, reason) => reject(new Error(`rollover socket closed ${code}: ${reason.toString()}`)));
+  });
+  rollover.send(JSON.stringify({
+    type: "hello", protocol: 1, peonId: "epoch-peon",
+    capabilities: ["session-catalog-v1", "durable-delivery-v1"],
+    channels: { "session-catalog-v1": { epoch: "catalog-new", revision: 0, earliestSeq: 0, latestSeq: 0 } },
+    delivery: {
+      epoch: "delivery-stable", earliestCursor: "cursor-1", latestCursor: "cursor-1", acknowledgedCursor: null,
+      pendingMessages: 1, pendingBytes: 256, maxMessages: 5_000, maxBytes: 33_554_432,
+      backpressured: false, negotiated: true, recoveredFromCorruption: false, lastError: null,
+    },
+  }));
+  const helloAck = await rolloverMessages.waitFor((message) => message.type === "hello_ack");
+  assert.deepEqual(helloAck.channels, {});
+  assert.deepEqual(helloAck.delivery, { epoch: "delivery-stable", acknowledgedCursor: null });
+  const rolloverRequest = await rolloverMessages.waitFor((message) => message.type === "session_catalog_snapshot_request");
+
+  // This message was durably queued before the catalog was rebuilt. Its cursor
+  // still owns the global delivery frontier, but its old-epoch mutation is now
+  // superseded by the new authoritative snapshot.
+  rollover.send(JSON.stringify({
+    type: "durable_message", epoch: "delivery-stable", cursor: "cursor-1",
+    messageId: "00000000-0000-4000-8000-000000000020", priority: "normal",
+    payload: {
+      type: "session_catalog_event", epoch: "catalog-old", seq: 1, revision: 1,
+      session: { id: "must-not-return", title: "Stale", status: "running", lastActivityAt: 2 },
+    },
+  }));
+  rollover.send(JSON.stringify({
+    type: "session_catalog_snapshot_page", requestId: rolloverRequest.requestId,
+    epoch: "catalog-new", revision: 0, barrierSeq: 0,
+    sessions: [{ id: "current", title: "Current", status: "running", lastActivityAt: 3 }],
+    nextCursor: null, hasMore: false,
+  }));
+
+  await Promise.race([
+    rolloverMessages.waitFor((message) => message.type === "durable_ack" && message.cursor === "cursor-1"),
+    unexpectedlyClosed,
+  ]);
+  const sessions = (await listSessions({ peonId: "epoch-peon", limit: 10, offset: 0 })).sessions;
+  assert.deepEqual(sessions.map((session) => session.sessionId), ["current"]);
+  const checkpoint = await query<{
+    catalog_epoch: string; acknowledged_seq: number; delivery_epoch: string; acknowledged_cursor: string; status: string;
+  }>(
+    `SELECT catalog_epoch,acknowledged_seq,delivery_epoch,acknowledged_cursor,status
+       FROM peon_session_sync WHERE peon_id='epoch-peon'`,
+  );
+  assert.deepEqual(checkpoint.rows[0], {
+    catalog_epoch: "catalog-new", acknowledged_seq: 0,
+    delivery_epoch: "delivery-stable", acknowledged_cursor: "cursor-1", status: "ready",
+  });
+
+  // Replaceable session summaries may coalesce before transmission, leaving a
+  // deliberate catalog sequence gap while retaining one ordered delivery
+  // cursor. The receiver fences that event behind a new snapshot instead of
+  // closing and retrying the same poison message forever.
+  rollover.send(JSON.stringify({
+    type: "durable_message", epoch: "delivery-stable", cursor: "cursor-2",
+    messageId: "00000000-0000-4000-8000-000000000021", priority: "normal",
+    payload: {
+      type: "session_catalog_event", epoch: "catalog-new", seq: 2, revision: 2,
+      session: { id: "latest", title: "Coalesced latest", status: "running", lastActivityAt: 4 },
+    },
+  }));
+  const recoveryRequest = await Promise.race([
+    rolloverMessages.waitFor((message) => message.type === "session_catalog_snapshot_request"
+      && message.requestId !== rolloverRequest.requestId),
+    unexpectedlyClosed,
+  ]);
+  rollover.send(JSON.stringify({
+    type: "session_catalog_snapshot_page", requestId: recoveryRequest.requestId,
+    epoch: "catalog-new", revision: 2, barrierSeq: 2,
+    sessions: [{ id: "latest", title: "Coalesced latest", status: "running", lastActivityAt: 4 }],
+    nextCursor: null, hasMore: false,
+  }));
+  await Promise.race([
+    rolloverMessages.waitFor((message) => message.type === "durable_ack" && message.cursor === "cursor-2"),
+    unexpectedlyClosed,
+  ]);
+  assert.deepEqual(
+    (await listSessions({ peonId: "epoch-peon", limit: 10, offset: 0 })).sessions.map((session) => session.sessionId),
+    ["latest"],
+  );
+  const recovered = await query<{ acknowledged_seq: number; acknowledged_cursor: string; status: string }>(
+    `SELECT acknowledged_seq,acknowledged_cursor,status FROM peon_session_sync WHERE peon_id='epoch-peon'`,
+  );
+  assert.deepEqual(recovered.rows[0], { acknowledged_seq: 2, acknowledged_cursor: "cursor-2", status: "ready" });
+
+  rollover.close();
+  await closed(rollover);
   await new Promise<void>((resolve) => wss.close(() => resolve()));
   await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
 });

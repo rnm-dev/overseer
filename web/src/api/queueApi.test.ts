@@ -4,3 +4,4 @@ import "../pages/peon/session/queue.test";
 import "../pages/peon/session/submissionGate.test";
 import "../pages/peon/session/transcriptMerge.test";
 import "../pages/peon/session/transcriptPagination.test";
+import "../pages/peon/session/transcriptReconciliation.test";

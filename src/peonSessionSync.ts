@@ -378,20 +378,47 @@ export class PeonCatalogSync {
     }
     this.receivedDurableMessage = true;
     if (this.snapshot || this.projectSnapshot) {
-      this.bufferedBytes += frameBytes;
-      if (this.bufferedBytes > MAX_SNAPSHOT_BYTES) throw new SessionSyncProtocolError("catalog snapshot byte limit exceeded");
-      if (this.bufferedEvents.length >= MAX_BUFFERED_EVENTS) throw new SessionSyncProtocolError("too many events during catalog snapshots");
-      this.bufferedEvents.push(event);
+      this.bufferEvent(event, frameBytes);
       return;
     }
-    if (event.channel === "session" && !this.checkpoint?.catalog) throw new SessionSyncProtocolError("session catalog event arrived before snapshot");
-    if (event.channel === "project" && !this.projectCheckpoint?.catalog) throw new SessionSyncProtocolError("project catalog event arrived before snapshot");
+    const checkpoint = event.channel === "session" ? this.checkpoint?.catalog : this.projectCheckpoint?.catalog;
+    if (!checkpoint) throw new SessionSyncProtocolError(`${event.channel} catalog event arrived before snapshot`);
+    // Peon may coalesce replaceable summaries before their durable cursor is
+    // sent. That intentionally preserves the delivery frontier while skipping
+    // one or more catalog sequence numbers. Fence the queued event behind a
+    // fresh authoritative snapshot instead of poisoning every reconnect.
+    if (checkpoint.epoch === event.catalogEpoch && event.seq > checkpoint.acknowledgedSeq + 1) {
+      this.bufferEvent(event, frameBytes);
+      if (event.channel === "session") {
+        await markSessionSyncing(this.record.peonId, this.generation);
+        this.requestSnapshot();
+      } else {
+        await markProjectSyncing(this.record.peonId, this.generation);
+        this.requestProjectSnapshot();
+      }
+      return;
+    }
     await this.applyEvent(event);
+  }
+
+  private bufferEvent(event: DurableCatalogEvent, frameBytes: number): void {
+    this.bufferedBytes += frameBytes;
+    if (this.bufferedBytes > MAX_SNAPSHOT_BYTES) throw new SessionSyncProtocolError("catalog snapshot byte limit exceeded");
+    if (this.bufferedEvents.length >= MAX_BUFFERED_EVENTS) throw new SessionSyncProtocolError("too many events during catalog snapshots");
+    this.bufferedEvents.push(event);
   }
 
   private async applyEvent(event: DurableCatalogEvent): Promise<void> {
     const checkpoint = event.channel === "session" ? this.checkpoint?.catalog : this.projectCheckpoint?.catalog;
-    if (checkpoint && checkpoint.epoch !== event.catalogEpoch) throw new SessionSyncProtocolError(`${event.channel} catalog epoch mismatch`);
+    // A catalog can be rebuilt independently of the shared durable outbox. In
+    // that case the outbox may still contain events from the retired catalog
+    // epoch. The authoritative snapshot/checkpoint for the epoch advertised in
+    // hello supersedes those events, but their delivery cursors must still be
+    // committed in order or one stale message poisons every reconnect.
+    if (checkpoint && checkpoint.epoch !== event.catalogEpoch) {
+      await this.commitSnapshotCoveredEvent(event);
+      return;
+    }
     let committed;
     try {
       committed = event.channel === "session" ? await applySocketSessionEvent({
@@ -438,31 +465,35 @@ export class PeonCatalogSync {
     for (const event of events) {
       const checkpoint = event.channel === "session" ? this.checkpoint?.catalog : this.projectCheckpoint?.catalog;
       if (!checkpoint) throw new SessionSyncProtocolError(`${event.channel} catalog event arrived before snapshot`);
-      if (event.seq > checkpoint.acknowledgedSeq) {
+      if (checkpoint.epoch === event.catalogEpoch && event.seq > checkpoint.acknowledgedSeq) {
         await this.applyEvent(event);
         continue;
       }
-      let committed;
-      try {
-        committed = event.channel === "session"
-          ? await commitSnapshotCoveredSessionEvent({
-            peonId: this.record.peonId, generation: this.generation, catalogEpoch: event.catalogEpoch, seq: event.seq,
-            deliveryEpoch: event.deliveryEpoch, deliveryCursor: event.deliveryCursor, messageId: event.messageId,
-          })
-          : await commitSnapshotCoveredProjectEvent({
-            peonId: this.record.peonId, generation: this.generation, catalogEpoch: event.catalogEpoch, seq: event.seq,
-            deliveryEpoch: event.deliveryEpoch, deliveryCursor: event.deliveryCursor, messageId: event.messageId,
-          });
-      } catch (error) {
-        throw new SessionSyncProtocolError(error instanceof Error ? error.message : "covered catalog event commit failed");
-      }
-      if (event.channel === "session") this.checkpoint = { catalog: committed.catalog, delivery: committed.delivery, previouslyReady: true };
-      else {
-        this.projectCheckpoint = { catalog: committed.catalog, previouslyReady: true };
-        if (this.checkpoint) this.checkpoint = { ...this.checkpoint, delivery: committed.delivery };
-      }
-      this.sendCommittedAcks(event.channel, committed);
+      await this.commitSnapshotCoveredEvent(event);
     }
+  }
+
+  private async commitSnapshotCoveredEvent(event: DurableCatalogEvent): Promise<void> {
+    let committed;
+    try {
+      committed = event.channel === "session"
+        ? await commitSnapshotCoveredSessionEvent({
+          peonId: this.record.peonId, generation: this.generation, catalogEpoch: event.catalogEpoch, seq: event.seq,
+          deliveryEpoch: event.deliveryEpoch, deliveryCursor: event.deliveryCursor, messageId: event.messageId,
+        })
+        : await commitSnapshotCoveredProjectEvent({
+          peonId: this.record.peonId, generation: this.generation, catalogEpoch: event.catalogEpoch, seq: event.seq,
+          deliveryEpoch: event.deliveryEpoch, deliveryCursor: event.deliveryCursor, messageId: event.messageId,
+        });
+    } catch (error) {
+      throw new SessionSyncProtocolError(error instanceof Error ? error.message : "covered catalog event commit failed");
+    }
+    if (event.channel === "session") this.checkpoint = { catalog: committed.catalog, delivery: committed.delivery, previouslyReady: true };
+    else {
+      this.projectCheckpoint = { catalog: committed.catalog, previouslyReady: true };
+      if (this.checkpoint) this.checkpoint = { ...this.checkpoint, delivery: committed.delivery };
+    }
+    this.sendCommittedAcks(event.channel, committed);
   }
 
   private parseDurableEvent(message: Record<string, unknown>): DurableCatalogEvent {

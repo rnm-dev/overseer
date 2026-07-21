@@ -4,13 +4,15 @@ import { Link, NavLink, Outlet, useLocation, useParams } from "react-router-dom"
 import { api, ApiError } from "../api";
 import { useWorkspace } from "../workspace";
 import { usePeonPresence } from "../hooks/usePeonPresence";
-import { StatusDot } from "../ui";
+import { useMobileDrawer } from "../hooks/useMobileDrawer";
 import { useT } from "../i18n";
 import { useLiveSocket, type SessionLiveEvent } from "../liveSocket";
 import { PeonScopeSwitcher } from "../components/PeonScopeSwitcher";
 import { FadingTitle, SessionSidebarList } from "../components/SessionSidebarList";
+import { PeonConnectionStatusDot } from "../components/PeonConnectionStatusDot";
 import type { PeonContext, PeonView } from "./peon/context";
-import { applySessionEvent, mergeSessions, sessionDisplayTitle, sessionFromIndex, type IndexedSessionEvent, type IndexedSessionLite, type SessionLite } from "./peon/sessionList";
+import { applySessionEvent, mergeSessions, sessionDisplayTitle, sessionFromIndex, sessionSidebarCanLoad, type IndexedSessionEvent, type IndexedSessionLite, type SessionLite } from "./peon/sessionList";
+import { MobilePaneIdentity } from "./peon/session/mobileHeader";
 
 // author: Viktor
 
@@ -71,7 +73,7 @@ export function PeonDetail() {
   const [sessionOffset, setSessionOffset] = useState(0);
   const [sessionsLoading, setSessionsLoading] = useState(false);
   const [sessionPageError, setSessionPageError] = useState(false);
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  const { drawerOpen, setDrawerOpen } = useMobileDrawer();
   const [sidebarWidth, setSidebarWidth] = useState(savedSidebarWidth);
   const [resizing, setResizing] = useState(false);
   const sessionScrollNode = useRef<HTMLDivElement>(null);
@@ -115,23 +117,9 @@ export function PeonDetail() {
     };
   }, [sidebarWidth]);
 
-  // Route changes select an item from the mobile drawer. Close it immediately
-  // so the newly selected page is visible, and keep background content from
-  // scrolling while the drawer is open.
-  useEffect(() => setDrawerOpen(false), [location.pathname]);
-  useEffect(() => {
-    if (!drawerOpen) return;
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    document.body.classList.add("peon-drawer-open");
-    const onKey = (event: KeyboardEvent) => event.key === "Escape" && setDrawerOpen(false);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.body.style.overflow = previous;
-      document.body.classList.remove("peon-drawer-open");
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [drawerOpen]);
+  // Route changes select an item from the mobile drawer. Start its exit motion
+  // as soon as the newly selected page becomes active.
+  useEffect(() => setDrawerOpen(false), [location.pathname, setDrawerOpen]);
 
   const reload = useCallback(() => {
     if (!wsId) return;
@@ -153,7 +141,7 @@ export function PeonDetail() {
   }, [reload]);
 
   const loadNextSessions = useCallback(async () => {
-    if (!wsId || !online || sessionLoading.current) return;
+    if (!sessionSidebarCanLoad(wsId) || sessionLoading.current) return;
     const epoch = sessionLoadEpoch.current;
     const offset = nextSessionOffset.current;
     sessionLoading.current = true;
@@ -178,7 +166,7 @@ export function PeonDetail() {
         setSessionsLoading(false);
       }
     }
-  }, [online, peonId, wsId]);
+  }, [peonId, wsId]);
 
   // Sessions for the sidebar come from Overseer's local paginated index. The
   // index is continuously reconciled with Peon, avoiding a full-list transfer
@@ -192,19 +180,19 @@ export function PeonDetail() {
     setSessionOffset(0);
     setSessionsLoading(false);
     setSessionPageError(false);
-    if (!wsId || !online) return;
+    if (!sessionSidebarCanLoad(wsId)) return;
     void loadNextSessions();
     return () => {
       sessionLoadEpoch.current += 1;
       sessionLoading.current = false;
     };
-  }, [loadNextSessions, wsId, online]);
+  }, [loadNextSessions, wsId]);
 
   // Refresh the newest page while online as a correctness backstop for an old
   // Peon or a temporarily disconnected workspace socket. Loaded older pages are
   // retained, and duplicates are merged by session id.
   useEffect(() => {
-    if (!wsId || !online) return;
+    if (!sessionSidebarCanLoad(wsId)) return;
     const refresh = async () => {
       const epoch = sessionLoadEpoch.current;
       try {
@@ -227,13 +215,13 @@ export function PeonDetail() {
     };
     const timer = window.setInterval(refresh, 5000);
     return () => window.clearInterval(timer);
-  }, [online, peonId, wsId]);
+  }, [peonId, wsId]);
 
   const hasMoreSessions = sessionTotal !== null && sessionOffset < sessionTotal;
   useEffect(() => {
     const root = sessionScrollNode.current;
     const target = sessionLoadSentinel.current;
-    if (!root || !target || !online || !hasMoreSessions || sessionsLoading || sessionPageError) return;
+    if (!root || !target || !hasMoreSessions || sessionsLoading || sessionPageError) return;
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries.some((entry) => entry.isIntersecting)) void loadNextSessions();
@@ -242,7 +230,7 @@ export function PeonDetail() {
     );
     observer.observe(target);
     return () => observer.disconnect();
-  }, [hasMoreSessions, loadNextSessions, online, sessionPageError, sessionsLoading]);
+  }, [hasMoreSessions, loadNextSessions, sessionPageError, sessionsLoading]);
 
   // Session summaries already arrive over the workspace socket. Apply them to
   // the sidebar immediately; the 5s pull remains a correctness backstop for an
@@ -315,19 +303,20 @@ export function PeonDetail() {
   };
   return (
     <div className="flex min-h-screen">
-      {drawerOpen && (
-        <button
-          type="button"
-          aria-label={t("a11y.close")}
-          className="fixed inset-0 z-40 bg-black/65 backdrop-blur-[1px] md:hidden"
-          onClick={() => setDrawerOpen(false)}
-        />
-      )}
+      <button
+        type="button"
+        aria-label={t("a11y.close")}
+        aria-hidden={!drawerOpen}
+        disabled={!drawerOpen}
+        tabIndex={-1}
+        data-open={drawerOpen}
+        className="mobile-drawer-backdrop fixed inset-0 z-40 md:hidden"
+        onClick={() => setDrawerOpen(false)}
+      />
       <aside
         id="peon-navigation"
-        className={`fixed inset-y-0 left-0 z-50 flex h-[100dvh] w-[min(20rem,86vw)] shrink-0 flex-col border-r border-iron-800 bg-iron-950 shadow-2xl transition-[transform,visibility] duration-200 md:visible md:sticky md:top-0 md:z-auto md:h-screen md:w-[var(--peon-sidebar-width)] md:translate-x-0 md:bg-iron-950/50 md:shadow-none ${
-          drawerOpen ? "visible translate-x-0" : "invisible -translate-x-full md:visible"
-        }`}
+        data-open={drawerOpen}
+        className="mobile-drawer-panel fixed inset-y-0 left-0 z-50 flex h-[100dvh] w-[min(20rem,86vw)] shrink-0 flex-col border-r border-iron-800 bg-iron-950 shadow-2xl md:visible md:sticky md:top-0 md:z-auto md:h-screen md:w-[var(--peon-sidebar-width)] md:translate-x-0 md:bg-iron-950/50 md:shadow-none"
       >
         {/* header: back + workspace-wide Peon scope switcher */}
         <div className="border-b border-iron-800 px-3 pb-3 pt-3.5">
@@ -374,9 +363,8 @@ export function PeonDetail() {
           </Link>
         </div>
         <div ref={sessionScrollNode} className="min-h-0 flex-1 overflow-y-auto px-2 pb-24">
-          {!online ? (
-            <p className="px-2 py-2 font-body text-xs text-bone-faint">{t("peon.offlineNote")}</p>
-          ) : ordered.length === 0 && !sessionsLoading && !sessionPageError ? (
+          {!online && <p className="px-2 py-2 font-body text-xs text-bone-faint">{t("peon.offlineNote")}</p>}
+          {ordered.length === 0 && !sessionsLoading && !sessionPageError ? (
             <p className="px-2 py-2 font-body text-xs text-bone-faint">{t("peon.dash.noSessions")}</p>
           ) : (
             <>
@@ -431,9 +419,12 @@ export function PeonDetail() {
           >
             <Menu size={20} />
           </button>
-          <StatusDot state={online ? "on" : "off"} />
-          <span className="min-w-0 flex-1 whitespace-nowrap font-display text-sm font-bold text-bone"><FadingTitle>{peon.name || t("peons.unnamed")}</FadingTitle></span>
-          {sid && <span className="ml-auto flex-none font-body text-[0.68rem] text-bone-faint">{t("peon.tab.sessions")}</span>}
+          <MobilePaneIdentity sessionActive={!!sid}>
+            <>
+              <PeonConnectionStatusDot {...displayedPeon} />
+              <span className="min-w-0 flex-1 whitespace-nowrap font-display text-sm font-bold text-bone"><FadingTitle>{peon.name || t("peons.unnamed")}</FadingTitle></span>
+            </>
+          </MobilePaneIdentity>
         </div>
         <div className="mx-auto max-w-6xl px-3 py-4 reveal sm:px-6 sm:py-7">
           <Outlet context={ctx} />

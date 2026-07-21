@@ -115,10 +115,119 @@ html.peon-sidebar-resizing * {
   z-index: 1;
 }
 
+/* Shared dialog motion: a bottom sheet on phones, a restrained scale/fade on
+ * larger screens. The easing mirrors iOS' quick start and soft spring-like
+ * settle without pulling an animation runtime into the bundle. */
+.dialog-backdrop {
+  background: radial-gradient(circle at 50% 18%, rgba(149, 201, 103, 0.08), transparent 38%), rgba(2, 4, 3, 0.82);
+  opacity: 0;
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+  transition: opacity 260ms ease;
+}
+
+.dialog-panel {
+  transform: translate3d(0, calc(100% + 1rem), 0);
+  transform-origin: center bottom;
+  will-change: transform;
+  transition: transform 420ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.dialog-layer[data-state="open"] .dialog-backdrop {
+  opacity: calc(1 - var(--dialog-drag-progress, 0) * 0.5);
+}
+
+.dialog-layer[data-state="open"] .dialog-panel {
+  transform: translate3d(0, var(--dialog-drag-y, 0px), 0);
+}
+
+.dialog-layer[data-dragging="true"] .dialog-backdrop,
+.dialog-layer[data-dragging="true"] .dialog-panel {
+  transition: none;
+}
+
+.dialog-layer[data-state="closing"] .dialog-backdrop {
+  opacity: 0;
+  transition-duration: 240ms;
+}
+
+.dialog-layer[data-state="closing"] .dialog-panel {
+  transform: translate3d(0, calc(100% + 1rem), 0);
+  transition-duration: 300ms;
+  transition-timing-function: cubic-bezier(0.4, 0, 1, 1);
+}
+
+@media (min-width: 768px) {
+  .dialog-panel {
+    opacity: 0;
+    transform: translate3d(0, 10px, 0) scale(0.975);
+    transform-origin: center;
+    transition: opacity 180ms ease, transform 300ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  .dialog-layer[data-state="open"] .dialog-panel {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+
+  .dialog-layer[data-state="closing"] .dialog-panel {
+    opacity: 0;
+    transform: translate3d(0, 8px, 0) scale(0.98);
+    transition-duration: 180ms;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dialog-backdrop,
+  .dialog-panel {
+    transition-duration: 1ms !important;
+  }
+}
+
 /* Fixed pane UI is portaled above #root so fixed positioning is not captured
  * by the page reveal transform. Hide it while the mobile navigation drawer
  * (which lives inside #root) is open, so the drawer owns the full screen. */
 @media (max-width: 767px) {
+  .mobile-drawer-backdrop {
+    visibility: hidden;
+    opacity: 0;
+    pointer-events: none;
+    background: rgb(0 0 0 / 0.66);
+    -webkit-backdrop-filter: blur(0);
+    backdrop-filter: blur(0);
+    transition:
+      opacity 260ms cubic-bezier(0.32, 0.72, 0, 1),
+      -webkit-backdrop-filter 320ms cubic-bezier(0.32, 0.72, 0, 1),
+      backdrop-filter 320ms cubic-bezier(0.32, 0.72, 0, 1),
+      visibility 0s linear 360ms;
+  }
+
+  .mobile-drawer-backdrop[data-open="true"] {
+    visibility: visible;
+    opacity: 1;
+    pointer-events: auto;
+    -webkit-backdrop-filter: blur(3px);
+    backdrop-filter: blur(3px);
+    transition-delay: 0s;
+  }
+
+  .mobile-drawer-panel {
+    visibility: hidden;
+    transform: translate3d(calc(-100% - 1rem), 0, 0) scale(0.985);
+    transform-origin: left center;
+    overscroll-behavior: contain;
+    will-change: transform;
+    transition:
+      transform 380ms cubic-bezier(0.32, 0.72, 0, 1),
+      visibility 0s linear 380ms;
+  }
+
+  .mobile-drawer-panel[data-open="true"] {
+    visibility: visible;
+    transform: translate3d(0, 0, 0) scale(1);
+    transition-delay: 0s;
+  }
+
   body.peon-drawer-open .fixed-pane-header,
   body.peon-drawer-open .session-composer {
     visibility: hidden;
@@ -130,6 +239,13 @@ html.peon-sidebar-resizing * {
   textarea,
   select {
     font-size: 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) and (max-width: 767px) {
+  .mobile-drawer-backdrop,
+  .mobile-drawer-panel {
+    transition-duration: 1ms;
   }
 }
 

@@ -14,6 +14,10 @@ export interface PeonView {
   connectionPinned: boolean;
   baseUrl: string;
   online: boolean;
+  controlConnected?: boolean;
+  transferConnected?: boolean;
+  controlConnectedAt?: number | null;
+  transferConnectedAt?: number | null;
   protocol: number | null;
   capabilities: string[];
   registeredAt: number;

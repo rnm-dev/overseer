@@ -36,6 +36,12 @@ export interface IndexedSessionEvent extends IndexedSessionLite {
   deleted?: boolean;
 }
 
+// The sidebar reads Overseer's local projection, so Peon transport liveness is
+// intentionally not part of this gate.
+export function sessionSidebarCanLoad(workspaceId: string | undefined): boolean {
+  return Boolean(workspaceId);
+}
+
 export function sessionFromIndex(session: IndexedSessionLite): SessionLite {
   return {
     peonId: session.peonId,
