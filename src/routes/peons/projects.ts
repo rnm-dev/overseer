@@ -6,7 +6,7 @@ import { reconcilePeon } from "../../sessionIndex.js";
 import { allowedProjects, canAccessProject } from "../../access.js";
 import { ownerOnly, relay, restSegments, withWorkspacePeon } from "../helpers.js";
 import { openPeonProjectFile, PeonFileStreamError, type ProjectFileRange } from "../../peonFileStream.js";
-import { listProjectDocs } from "../../projectDocs.js";
+import { listProjectDocs } from "../../modules/projectDocs/index.js";
 import { PeonOperationError } from "../../peonOperationChannel.js";
 import {
   getIndexedProject,
