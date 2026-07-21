@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { indexAcceptedSession } from "./acceptedSession.js";
+import { indexAcceptedSession } from "./modules/acceptedSession/index.js";
 import { upsertSession } from "./sessionIndex.js";
 
 test("indexes authoritative direct and wrapped accepted session responses", async () => {

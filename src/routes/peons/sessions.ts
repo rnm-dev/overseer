@@ -6,7 +6,7 @@ import { ownerOnly, relay, withWorkspacePeon } from "../helpers.js";
 import { mintWebPreview } from "../../webPreview.js";
 import { runIdempotentFollowup, validCommandId } from "../../followupIdempotency.js";
 import { enrichTranscriptMetadata } from "../../transcriptTimestamps.js";
-import { indexAcceptedSession } from "../../acceptedSession.js";
+import { indexAcceptedSession } from "../../modules/acceptedSession/index.js";
 import { deleteIndexedSession } from "../../sessionIndex.js";
 
 export function transcriptQuery(query: express.Request["query"], supported: boolean): string {
