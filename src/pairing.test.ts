@@ -4,7 +4,7 @@ import type { AddressInfo } from "node:net";
 import { after, test } from "node:test";
 import type pg from "pg";
 import { newDb } from "pg-mem";
-import { issueDevice } from "./auth.js";
+import { issueDevice } from "./modules/auth/index.js";
 import { config } from "./config.js";
 import { initDb, query } from "./db.js";
 import { createServer } from "./server.js";

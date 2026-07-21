@@ -1,7 +1,7 @@
 import express from "express";
 import { registry, type PeonRecord } from "../registry.js";
 import { membership, type Role } from "../workspaces.js";
-import { type AuthContext, verifyDeviceToken } from "../auth.js";
+import { type AuthContext, verifyDeviceToken } from "../modules/auth/index.js";
 import { resolveCredential } from "../credentials.js";
 import { canAccessPeon } from "../access.js";
 

@@ -2,7 +2,7 @@ import type { IncomingMessage, Server } from "node:http";
 import { randomUUID } from "node:crypto";
 import type { Duplex } from "node:stream";
 import { WebSocketServer, WebSocket } from "ws";
-import { consumeWebSocketTicket } from "./auth.js";
+import { consumeWebSocketTicket } from "./modules/auth/index.js";
 import { membership, type Role } from "./workspaces.js";
 import { registry, toView } from "./registry.js";
 import { getIndexedSession } from "./sessionIndex.js";
