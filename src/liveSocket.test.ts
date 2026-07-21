@@ -7,7 +7,7 @@ import pg from "pg";
 import { newDb } from "pg-mem";
 import WebSocket from "ws";
 import { initDb, query, setPool } from "./db.js";
-import { consumeWebSocketTicket, issueDevice, issueWebSocketTicket, verifyDeviceToken } from "./auth.js";
+import { consumeWebSocketTicket, issueDevice, issueWebSocketTicket, verifyDeviceToken } from "./modules/auth/index.js";
 import { createWorkspace } from "./workspaces.js";
 import { registry } from "./registry.js";
 import { attachLiveSocket, parseSse } from "./liveSocket.js";
