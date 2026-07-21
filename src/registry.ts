@@ -1,5 +1,6 @@
 import { query } from "./db.js";
-import { isPeonConnected } from "./peonConnections.js";
+import { isPeonConnected, peonConnectionStartedAt } from "./peonConnections.js";
+import { isPeonTransferConnected, peonTransferConnectionStartedAt } from "./peonTransferConnections.js";
 
 // The peon registry — Postgres-backed (`peons` table). `online` and `baseUrl` are
 // derived, never stored.
@@ -35,7 +36,14 @@ export interface PeonLoad {
 }
 
 // The operator-facing shape: never leak the raw credential token.
-export type PeonView = Omit<PeonRecord, "token"> & { online: boolean; baseUrl: string };
+export type PeonView = Omit<PeonRecord, "token"> & {
+  online: boolean;
+  controlConnected: boolean;
+  transferConnected: boolean;
+  controlConnectedAt: number | null;
+  transferConnectedAt: number | null;
+  baseUrl: string;
+};
 
 interface PeonRow {
   peon_id: string;
@@ -225,5 +233,14 @@ function urlParts(publicUrl: string): { hostname: string; port: number } | null 
 
 export function toView(record: PeonRecord): PeonView {
   const { token: _token, ...rest } = record;
-  return { ...rest, online: isPeonConnected(record.peonId), baseUrl: baseUrl(record) };
+  const controlConnected = isPeonConnected(record.peonId);
+  return {
+    ...rest,
+    online: controlConnected,
+    controlConnected,
+    transferConnected: isPeonTransferConnected(record.peonId),
+    controlConnectedAt: controlConnected ? peonConnectionStartedAt(record.peonId) : null,
+    transferConnectedAt: peonTransferConnectionStartedAt(record.peonId),
+    baseUrl: baseUrl(record),
+  };
 }

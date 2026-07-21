@@ -1,6 +1,9 @@
 import type { Ev } from "./parsing";
 
-export const TRANSCRIPT_PAGE_SIZE = 100;
+// Tool-result events can be hundreds of KiB even though their output is folded
+// in the UI. Keep the initial render bounded; older history remains available
+// through the existing opaque-cursor pagination control.
+export const TRANSCRIPT_PAGE_SIZE = 50;
 
 export type TranscriptResponse = Ev[] | {
   events?: Ev[];

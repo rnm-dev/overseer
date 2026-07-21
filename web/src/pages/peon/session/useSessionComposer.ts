@@ -40,7 +40,6 @@ interface Args {
   setRunning: (running: boolean) => void;
   setRunningModel: (model: string | null) => void;
   setStopNote: Dispatch<SetStateAction<string | null>>;
-  refreshTranscript: () => Promise<boolean>;
   onWorkStarted: () => void;
 }
 
@@ -50,7 +49,7 @@ export function useSessionComposer({
   overrideReasoningEffort, catalog, currentSessionKeyRef, queueReconcilerRef,
   queueActivity,
   pendingEchoesRef, historyReadyRef, tailHighWaterRef, stickToBottomRef,
-  setLive, setRunning, setRunningModel, setStopNote, refreshTranscript, onWorkStarted,
+  setLive, setRunning, setRunningModel, setStopNote, onWorkStarted,
 }: Args) {
   const [input, setInput] = useComposerDraft(composerDraftKey(wsId, peonId, sid));
   const [files, setFiles] = useState<File[]>([]);
@@ -161,16 +160,6 @@ export function useSessionComposer({
       request.headers = { "Peon-Request-Id": clientId };
       await api(`${base}/sessions/${encodeURIComponent(sid)}/followup`, request);
       if (currentSessionKeyRef.current === sessionKey) onWorkStarted();
-
-      // A fast run can finish before the active-run poll's next interval. Refresh
-      // once after acceptance so the optimistic/live row is promptly replaced by
-      // the timestamp-enriched authoritative transcript in either case.
-      try {
-        if (currentSessionKeyRef.current === sessionKey) await refreshTranscript();
-      } catch {
-        // The live tail still carries the accepted message; normal polling will
-        // reconcile it after a transient transcript failure.
-      }
     } catch (err) {
       if (currentSessionKeyRef.current !== sessionKey) return;
       // If its SSE event already arrived, Peon committed the message even if the

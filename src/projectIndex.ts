@@ -363,7 +363,10 @@ export async function commitSnapshotCoveredProjectEvent(input: {
         delivery: { epoch: input.deliveryEpoch, acknowledgedCursor: input.deliveryCursor },
       };
     });
-    if (checkpoint.catalog.epoch !== input.catalogEpoch || input.seq > checkpoint.catalog.acknowledgedSeq) {
+    // Catalog rollover does not necessarily reset the shared durable outbox.
+    // A snapshot for the advertised epoch supersedes queued events from the
+    // retired epoch; advance only delivery so the global stream can recover.
+    if (checkpoint.catalog.epoch === input.catalogEpoch && input.seq > checkpoint.catalog.acknowledgedSeq) {
       throw new Error("project event is not covered by the committed snapshot");
     }
     if (inserted) await advanceDelivery(tx, input.peonId, input.generation, input.deliveryEpoch, input.deliveryCursor);

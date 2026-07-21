@@ -168,7 +168,8 @@ export function PeonNewSession() {
             onSubmit={start}
             placeholder={t("newSession.promptPlaceholder")}
             submitTitle={t("newSession.start")}
-            disabled={submitting}
+            disabled={submitting || !(peon.controlConnected ?? peon.online)}
+            pending={submitting}
             autoFocus={supportsDesktopComposerFocus()}
             files={files}
             onFilesChange={setFiles}

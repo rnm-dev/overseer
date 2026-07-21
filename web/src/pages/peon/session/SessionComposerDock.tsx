@@ -19,6 +19,7 @@ interface Props {
   enqueue: (startNow: boolean) => Promise<void>;
   send: () => Promise<void>;
   sending: boolean;
+  controlConnected: boolean;
   files: File[];
   setFiles: Dispatch<SetStateAction<File[]>>;
   setAttachmentPreview: Dispatch<SetStateAction<string | null>>;
@@ -40,7 +41,7 @@ interface Props {
 export function SessionComposerDock(props: Props) {
   const {
     setComposerNode, queueItems, removingQueueItems, sendingQueueItems, removeQueuedItem, sendQueuedItemNow,
-    input, setInput, running, enqueue, send, sending, files, setFiles,
+    input, setInput, running, enqueue, send, sending, controlConnected, files, setFiles,
     setAttachmentPreview, filesEnabled, sendError, setSendError,
     modelsSupported, catalog, sessionKey, sessionProvider, overrideModel,
     setOverrideModel, sessionModel, overrideReasoningEffort,
@@ -65,7 +66,8 @@ export function SessionComposerDock(props: Props) {
       placeholder={t("session.compose.placeholder")}
       submitTitle={running ? t("session.queue.action") : t("session.compose.send")}
       submitLabel={running ? t("session.queue.action") : undefined}
-      disabled={sending}
+      disabled={sending || !controlConnected}
+      pending={sending}
       autoFocus={supportsDesktopComposerFocus()}
       files={files}
       onFilesChange={setFiles}

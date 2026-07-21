@@ -104,6 +104,8 @@ test("Peon transfer WebSocket authenticates, handshakes, replaces generations, a
   const first = await open(transferUrl, token);
   await transferHello(first, record.peonId);
   assert.equal(isPeonTransferConnected(record.peonId), true);
+  assert.equal(toView(record).transferConnected, true);
+  assert.equal(typeof toView(record).transferConnectedAt, "number");
 
   const firstClosed = closed(first);
   const second = await open(transferUrl, token);
@@ -117,6 +119,7 @@ test("Peon transfer WebSocket authenticates, handshakes, replaces generations, a
   assert.deepEqual(await unsupported, { code: 1008, reason: "invalid file transfer frame" });
   await waitFor(() => !isPeonTransferConnected(record.peonId));
   assert.equal(isPeonTransferConnected(record.peonId), false);
+  assert.equal(toView(record).transferConnected, false);
   assert.equal(toView(record).online, true);
 
   const current = await open(transferUrl, token);

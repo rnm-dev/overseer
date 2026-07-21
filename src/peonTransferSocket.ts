@@ -1,13 +1,14 @@
 import type { IncomingMessage, Server } from "node:http";
 import type { Duplex } from "node:stream";
 import { WebSocket, WebSocketServer } from "ws";
+import { broadcast } from "./eventLog.js";
 import { authenticatePeonUpgrade } from "./peonSocketAuth.js";
 import {
   claimPeonTransferConnection,
   PROJECT_FILE_READ_CAPABILITY,
   releasePeonTransferConnection,
 } from "./peonTransferConnections.js";
-import type { PeonRecord } from "./registry.js";
+import { toView, type PeonRecord } from "./registry.js";
 import { failPeonFileTransfers, handlePeonFileBinary, handlePeonFileJson } from "./peonFileStream.js";
 
 export const PEON_TRANSFER_SOCKET_PATH = "/api/v1/peons/transfer/ws";
@@ -28,6 +29,10 @@ interface TransferClient {
 interface TransferSocketOptions {
   connectionCheckMs?: number;
   helloTimeoutMs?: number;
+}
+
+function publishPresence(record: PeonRecord): void {
+  broadcast({ workspaceId: record.workspaceId, peonId: record.peonId, kind: "peon", payload: toView(record) });
 }
 
 // Dedicated data-plane socket. For now it only authenticates, handshakes, and
@@ -102,6 +107,7 @@ export function attachPeonTransferSocket(server: Server, options: TransferSocket
           failPeonFileTransfers(record.peonId, previous, "PEON_TRANSFER_REPLACED");
           previous.close(4001, "replaced by a newer transfer connection");
         }
+        publishPresence(record);
         ws.send(JSON.stringify({ type: "hello_ack", protocol: PROTOCOL, channel: CHANNEL, capabilities: accepted }));
         return;
       }
@@ -111,7 +117,10 @@ export function attachPeonTransferSocket(server: Server, options: TransferSocket
     ws.on("close", () => {
       clearTimeout(helloTimeout);
       clients.delete(client);
-      if (client.ready && releasePeonTransferConnection(record.peonId, ws)) failPeonFileTransfers(record.peonId, ws);
+      if (client.ready && releasePeonTransferConnection(record.peonId, ws)) {
+        failPeonFileTransfers(record.peonId, ws);
+        publishPresence(record);
+      }
     });
   });
 

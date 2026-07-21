@@ -7,6 +7,7 @@ import { SessionSidebarList } from "../components/SessionSidebarList";
 import { useT } from "../i18n";
 import { useLiveSocket, type SessionLiveEvent } from "../liveSocket";
 import { useWorkspace } from "../workspace";
+import { useMobileDrawer } from "../hooks/useMobileDrawer";
 import type { PeonContext, PeonView } from "./peon/context";
 import { applySessionEvent, mergeSessions, sessionFromIndex, type IndexedSessionEvent, type IndexedSessionLite, type SessionLite } from "./peon/sessionList";
 
@@ -40,7 +41,7 @@ export function WorkspaceSessions() {
   const [sessionError, setSessionError] = useState(false);
   const [activePeon, setActivePeon] = useState<PeonView | null>(null);
   const [activePeonError, setActivePeonError] = useState(false);
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  const { drawerOpen, setDrawerOpen } = useMobileDrawer();
   const [sidebarWidth, setSidebarWidth] = useState(savedSidebarWidth);
   const [resizing, setResizing] = useState(false);
   const loadEpoch = useRef(0);
@@ -107,19 +108,7 @@ export function WorkspaceSessions() {
     return () => window.clearInterval(timer);
   }, [peonId, reloadActivePeon]);
 
-  useEffect(() => setDrawerOpen(false), [location.pathname]);
-  useEffect(() => {
-    if (!drawerOpen) return;
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    const onKey = (event: KeyboardEvent) => event.key === "Escape" && setDrawerOpen(false);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.body.style.overflow = previous;
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [drawerOpen]);
-
+  useEffect(() => setDrawerOpen(false), [location.pathname, setDrawerOpen]);
   useEffect(() => {
     if (!resizing) return;
     const resize = (event: PointerEvent) => {
@@ -172,10 +161,20 @@ export function WorkspaceSessions() {
 
   return (
     <div className="flex min-h-screen">
-      {drawerOpen && <button type="button" aria-label={t("a11y.close")} className="fixed inset-0 z-40 bg-black/65 backdrop-blur-[1px] md:hidden" onClick={() => setDrawerOpen(false)} />}
+      <button
+        type="button"
+        aria-label={t("a11y.close")}
+        aria-hidden={!drawerOpen}
+        disabled={!drawerOpen}
+        tabIndex={-1}
+        data-open={drawerOpen}
+        className="mobile-drawer-backdrop fixed inset-0 z-40 md:hidden"
+        onClick={() => setDrawerOpen(false)}
+      />
       <aside
         id="workspace-session-navigation"
-        className={`fixed inset-y-0 left-0 z-50 flex h-[100dvh] w-[min(20rem,86vw)] shrink-0 flex-col border-r border-iron-800 bg-iron-950 shadow-2xl transition-[transform,visibility] duration-200 md:visible md:sticky md:top-0 md:z-auto md:h-screen md:w-[var(--peon-sidebar-width)] md:translate-x-0 md:bg-iron-950/50 md:shadow-none ${drawerOpen ? "visible translate-x-0" : "invisible -translate-x-full md:visible"}`}
+        data-open={drawerOpen}
+        className="mobile-drawer-panel fixed inset-y-0 left-0 z-50 flex h-[100dvh] w-[min(20rem,86vw)] shrink-0 flex-col border-r border-iron-800 bg-iron-950 shadow-2xl md:visible md:sticky md:top-0 md:z-auto md:h-screen md:w-[var(--peon-sidebar-width)] md:translate-x-0 md:bg-iron-950/50 md:shadow-none"
       >
         <div className="border-b border-iron-800 px-3 pb-3 pt-3.5">
           <NavLink to={`/workspaces/${encodeURIComponent(workspaceId)}`} className="mb-2 inline-block font-body text-xs text-bone-dim transition-colors hover:text-fel-bright">{t("peon.back")}</NavLink>

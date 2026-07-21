@@ -2,7 +2,8 @@ import { Check, ChevronDown } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useT } from "../i18n";
 import { useWorkspacePeonPresence } from "../hooks/usePeonPresence";
-import { DropdownMenu, menuItemClass, StatusDot } from "../ui";
+import { DropdownMenu, menuItemClass } from "../ui";
+import { PeonConnectionStatusDot } from "./PeonConnectionStatusDot";
 
 export function PeonScopeSwitcher({ workspaceId, peonId }: { workspaceId: string; peonId?: string }) {
   const t = useT();
@@ -27,7 +28,7 @@ export function PeonScopeSwitcher({ workspaceId, peonId }: { workspaceId: string
       menuWidthClassName="w-full min-w-52"
       trigger={(open) => (
         <>
-          {selected && <StatusDot state={selected.online ? "on" : "off"} />}
+          {selected && <PeonConnectionStatusDot {...selected} />}
           <span className="min-w-0 truncate font-display text-base font-extrabold tracking-wide text-bone" title={currentLabel}>{currentLabel}</span>
           <ChevronDown size={15} className={`flex-none text-bone-dim transition-transform ${open ? "rotate-180" : ""}`} aria-hidden />
         </>
@@ -58,7 +59,7 @@ export function PeonScopeSwitcher({ workspaceId, peonId }: { workspaceId: string
                 className={`${menuItemClass()} !flex items-center gap-2 ${active ? "bg-fel/10 text-fel-bright" : ""}`}
                 onClick={() => choose(peon.peonId, close)}
               >
-                <StatusDot state={peon.online ? "on" : "off"} />
+                <PeonConnectionStatusDot {...peon} />
                 <span className="min-w-0 flex-1 truncate">{peon.name || t("peons.unnamed")}</span>
                 {active && <Check size={14} className="flex-none" aria-hidden />}
               </button>

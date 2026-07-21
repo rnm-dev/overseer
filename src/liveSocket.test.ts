@@ -196,7 +196,15 @@ test("WebSocket handshake and session tails survive ordering and replacement rac
     const snapshot = await collector.waitFor((message) => message.type === "snapshot");
     assert.equal("sessions" in snapshot, false, "REST-owned session lists must not be duplicated in the WebSocket handshake");
     assert.equal("peons" in snapshot, false, "REST-owned Peon lists must not be duplicated in the WebSocket handshake");
-    assert.deepEqual(snapshot.peonPresence, [{ peonId: "peon-1", name: "stub", online: false }], "socket snapshot owns initial online state without duplicating full Peon records");
+    assert.deepEqual(snapshot.peonPresence, [{
+      peonId: "peon-1",
+      name: "stub",
+      online: false,
+      controlConnected: false,
+      transferConnected: false,
+      controlConnectedAt: null,
+      transferConnectedAt: null,
+    }], "socket snapshot owns initial connection state without duplicating full Peon records");
     assert.ok(JSON.stringify(snapshot).length < 10_000, "REST records must not inflate the WebSocket snapshot");
     broadcast({ workspaceId: workspace.id, peonId: "peon-1", kind: "peon", payload: { peonId: "peon-1", name: "stub", online: true } });
     const peonPresence = await collector.waitFor((message) => message.type === "peon" && (message.payload as { peonId?: string })?.peonId === "peon-1");

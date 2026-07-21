@@ -5,12 +5,14 @@ import { WebSocket } from "ws";
 // offline, and a replacement is fenced by the socket object itself.
 const connections = new Map<string, WebSocket>();
 const capabilities = new WeakMap<WebSocket, ReadonlySet<string>>();
+const connectedAt = new WeakMap<WebSocket, number>();
 export const PROJECT_FILE_READ_CAPABILITY = "project-file-read-v1";
 
 export function claimPeonTransferConnection(peonId: string, socket: WebSocket, acceptedCapabilities: readonly string[] = []): WebSocket | undefined {
   const previous = connections.get(peonId);
   connections.set(peonId, socket);
   capabilities.set(socket, new Set(acceptedCapabilities));
+  connectedAt.set(socket, Date.now());
   return previous === socket ? undefined : previous;
 }
 
@@ -22,6 +24,11 @@ export function releasePeonTransferConnection(peonId: string, socket: WebSocket)
 
 export function isPeonTransferConnected(peonId: string): boolean {
   return connections.get(peonId)?.readyState === WebSocket.OPEN;
+}
+
+export function peonTransferConnectionStartedAt(peonId: string): number | null {
+  const socket = connections.get(peonId);
+  return socket?.readyState === WebSocket.OPEN ? connectedAt.get(socket) ?? null : null;
 }
 
 export function getPeonTransferConnection(peonId: string, requiredCapability?: string): WebSocket | undefined {

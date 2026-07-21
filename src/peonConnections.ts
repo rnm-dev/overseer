@@ -6,11 +6,13 @@ import { WebSocket } from "ws";
 // replaced connection cannot remove the newer connection.
 const connections = new Map<string, WebSocket>();
 const capabilities = new WeakMap<WebSocket, ReadonlySet<string>>();
+const connectedAt = new WeakMap<WebSocket, number>();
 
 export function claimPeonConnection(peonId: string, socket: WebSocket, acceptedCapabilities: readonly string[] = []): WebSocket | undefined {
   const previous = connections.get(peonId);
   connections.set(peonId, socket);
   capabilities.set(socket, new Set(acceptedCapabilities));
+  connectedAt.set(socket, Date.now());
   return previous === socket ? undefined : previous;
 }
 
@@ -22,6 +24,11 @@ export function releasePeonConnection(peonId: string, socket: WebSocket): boolea
 
 export function isPeonConnected(peonId: string): boolean {
   return connections.has(peonId);
+}
+
+export function peonConnectionStartedAt(peonId: string): number | null {
+  const socket = connections.get(peonId);
+  return socket ? connectedAt.get(socket) ?? null : null;
 }
 
 export function getPeonConnection(peonId: string): WebSocket | undefined {

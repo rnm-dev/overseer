@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { applySessionEvent, mergeSessions, sessionDisplayTitle, sessionFromIndex } from "./sessionList";
+import { applySessionEvent, mergeSessions, sessionDisplayTitle, sessionFromIndex, sessionSidebarCanLoad } from "./sessionList";
 
 test("sessionFromIndex uses the opening preview instead of latest activity", () => {
   assert.deepEqual(sessionFromIndex({
@@ -29,6 +29,11 @@ test("session titles prefer a designated name, then opening preview, then legacy
   assert.equal(sessionDisplayTitle({ promptPreview: "Opening", prompt: "Legacy" }, "Untitled"), "Opening");
   assert.equal(sessionDisplayTitle({ prompt: "Legacy" }, "Untitled"), "Legacy");
   assert.equal(sessionDisplayTitle({}, "Untitled"), "Untitled");
+});
+
+test("session sidebar remains loadable independently of Peon socket state", () => {
+  assert.equal(sessionSidebarCanLoad("workspace-1"), true);
+  assert.equal(sessionSidebarCanLoad(undefined), false);
 });
 
 test("mergeSessions keeps equal session ids from different Peons and rejects stale HTTP summaries", () => {

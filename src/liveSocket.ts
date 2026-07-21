@@ -340,7 +340,15 @@ async function snapshotAndReplay(client: Client, workspaceId: string, wsCursor: 
       .filter((record) => peonVisible(client, record.peonId))
       .map((record) => {
         const view = toView(record);
-        return { peonId: view.peonId, name: view.name, online: view.online };
+        return {
+          peonId: view.peonId,
+          name: view.name,
+          online: view.online,
+          controlConnected: view.controlConnected,
+          transferConnected: view.transferConnected,
+          controlConnectedAt: view.controlConnectedAt,
+          transferConnectedAt: view.transferConnectedAt,
+        };
       }),
     cursor: snapCursor,
   });

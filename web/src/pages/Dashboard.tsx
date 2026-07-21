@@ -4,7 +4,8 @@ import { ChevronRight } from "lucide-react";
 import { api } from "../api";
 import { useWorkspace, type Workspace } from "../workspace";
 import { useWorkspacePeonPresence } from "../hooks/usePeonPresence";
-import { Logo, StatusDot } from "../ui";
+import { Logo } from "../ui";
+import { PeonConnectionStatusDot } from "../components/PeonConnectionStatusDot";
 import { useT } from "../i18n";
 import { useAuth, type User } from "../auth";
 import { SessionPresence } from "../components/SessionPresence";
@@ -132,7 +133,7 @@ function WorkspaceCard({ workspace }: { workspace: Workspace }) {
                 to={peonHref(peon.peonId)}
                 className="group/peon flex items-center gap-3 px-4 py-3 transition-colors hover:bg-iron-800/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-fel/60"
               >
-                <StatusDot state={online ? "on" : "off"} />
+                <PeonConnectionStatusDot {...peon} />
                 <span className="min-w-0 flex-1 truncate font-display text-sm font-semibold text-bone group-hover/peon:text-fel-bright">
                   {peon.name || t("peons.unnamed")}
                 </span>

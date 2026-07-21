@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { useEffect, useRef, useState, type Dispatch, type RefObject, type SetStateAction } from "react";
+import { createPortal } from "react-dom";
 import { FolderTree } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useT } from "../../../i18n";
@@ -6,6 +7,7 @@ import { ConfirmationDialog, FixedPaneHeader, titleize } from "../../../ui";
 import { compactNum, type UsageBreakdown } from "./parsing";
 import { SessionPresence } from "../../../components/SessionPresence";
 import type { PresenceUser } from "../../../liveSocket";
+import { MOBILE_SESSION_HEADER_ID } from "./mobileHeader";
 
 interface Props {
   peonId: string;
@@ -50,6 +52,41 @@ interface SessionHeaderIdentityProps {
   firstUserMessage: string | null;
   saveName: () => Promise<void>;
   cancelRename: () => void;
+}
+
+export function sessionHeaderMetadataLoading(
+  loadedMetadataKey: string | null,
+  sessionKey: string,
+  title: string | null,
+  firstUserMessage: string | null,
+): boolean {
+  return loadedMetadataKey !== sessionKey || (!title && !firstUserMessage);
+}
+
+export function SessionHeaderStats({ turnTotal, usageSummary }: { turnTotal: number; usageSummary: UsageBreakdown | null }) {
+  const t = useT();
+  if (turnTotal <= 0 && !usageSummary) return null;
+
+  return (
+    <div className="flex min-w-0 items-center gap-1.5 whitespace-nowrap font-mono text-[0.62rem] text-bone-faint sm:text-xs">
+      {turnTotal > 0 && <span>{t("session.chat.turns", { n: turnTotal })}</span>}
+      {turnTotal > 0 && usageSummary && <span>·</span>}
+      {usageSummary && (
+        <span
+          className="truncate"
+          title={`${t("peon.stats.cacheWrite")} ${compactNum.format(usageSummary.cacheCreate)} · ${t("peon.stats.cacheRead")} ${compactNum.format(usageSummary.cacheRead)}`}
+        >
+          {compactNum.format(usageSummary.input)} {t("peon.stats.inputTokens").toLowerCase()}
+        </span>
+      )}
+      {usageSummary && usageSummary.output > 0 && <span>·</span>}
+      {usageSummary && usageSummary.output > 0 && (
+        <span className="truncate">
+          {compactNum.format(usageSummary.output)} {t("peon.stats.outputTokens").toLowerCase()}
+        </span>
+      )}
+    </div>
+  );
 }
 
 export function SessionHeaderIdentity({
@@ -147,13 +184,19 @@ export function SessionHeader(props: Props) {
   } = props;
   const t = useT();
   const [menuOpen, setMenuOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-  const showHeaderStats = turnTotal > 0 || !!usageSummary;
+  const mobileMenuRef = useRef<HTMLDivElement>(null);
+  const desktopMenuRef = useRef<HTMLDivElement>(null);
+  const [mobileHeaderNode, setMobileHeaderNode] = useState<HTMLElement | null>(null);
+
+  useEffect(() => {
+    setMobileHeaderNode(document.getElementById(MOBILE_SESSION_HEADER_ID));
+  }, []);
 
   useEffect(() => {
     if (!menuOpen) return;
     const onDown = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) setMenuOpen(false);
+      const target = event.target as Node;
+      if (!mobileMenuRef.current?.contains(target) && !desktopMenuRef.current?.contains(target)) setMenuOpen(false);
     };
     const onKey = (event: KeyboardEvent) => event.key === "Escape" && setMenuOpen(false);
     document.addEventListener("mousedown", onDown);
@@ -164,43 +207,81 @@ export function SessionHeader(props: Props) {
     };
   }, [menuOpen]);
 
+  const renderMenu = (ref: RefObject<HTMLDivElement>) => (
+    <div className="relative flex-none" ref={ref}>
+      <button
+        type="button"
+        title={t("session.menu")}
+        aria-label={t("session.menu")}
+        aria-haspopup="menu"
+        aria-expanded={menuOpen}
+        onClick={() => setMenuOpen((o) => !o)}
+        className="flex items-center rounded p-1 text-bone-dim transition-colors hover:bg-iron-800 hover:text-bone"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+          <circle cx="12" cy="5" r="1.75" />
+          <circle cx="12" cy="12" r="1.75" />
+          <circle cx="12" cy="19" r="1.75" />
+        </svg>
+      </button>
+      {menuOpen && (
+        <div role="menu" className="absolute right-0 top-full z-30 mt-1 w-40 overflow-hidden rounded-lg border border-iron-800 bg-iron-950 py-1 shadow-lg">
+          <button
+            role="menuitem"
+            className="block w-full px-3 py-1.5 text-left font-mono text-xs text-blood transition-colors hover:bg-blood/10"
+            onClick={() => {
+              setDeleteNote(null);
+              setConfirmDelete(true);
+              setMenuOpen(false);
+            }}
+          >
+            {t("session.delete")}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+
+  const identity = (
+    <SessionHeaderIdentity
+      peonId={peonId}
+      metadataLoading={metadataLoading}
+      projectKey={projectKey}
+      title={title}
+      draft={draft}
+      setDraft={setDraft}
+      editing={editing}
+      setEditing={setEditing}
+      savingName={savingName}
+      setRenameNote={setRenameNote}
+      firstUserMessage={firstUserMessage}
+      saveName={saveName}
+      cancelRename={cancelRename}
+    />
+  );
+
   return (
-<FixedPaneHeader>
+<>
+  {mobileHeaderNode && createPortal(
+    <div className="flex min-w-0 flex-1 items-center gap-2">
+      <div className="flex min-w-0 flex-1 flex-col justify-center">
+        <div className="flex min-w-0 items-center gap-1.5">{identity}</div>
+        <SessionHeaderStats turnTotal={turnTotal} usageSummary={usageSummary} />
+      </div>
+      <SessionPresence viewers={viewers} />
+      {renderMenu(mobileMenuRef)}
+    </div>,
+    mobileHeaderNode,
+  )}
+
+  <FixedPaneHeader className="hidden md:block">
   <div className="space-y-1.5 px-3 py-2.5 sm:px-6">
     <div className="flex items-center gap-3">
       <div className="flex min-w-0 flex-1 items-center gap-1.5">
-        <SessionHeaderIdentity
-          peonId={peonId}
-          metadataLoading={metadataLoading}
-          projectKey={projectKey}
-          title={title}
-          draft={draft}
-          setDraft={setDraft}
-          editing={editing}
-          setEditing={setEditing}
-          savingName={savingName}
-          setRenameNote={setRenameNote}
-          firstUserMessage={firstUserMessage}
-          saveName={saveName}
-          cancelRename={cancelRename}
-        />
+        {identity}
       </div>
 
-      {showHeaderStats && (
-        <div className="hidden flex-none items-center gap-1.5 whitespace-nowrap font-mono text-xs text-bone-faint sm:flex">
-          {turnTotal > 0 && <span>{t("session.chat.turns", { n: turnTotal })}</span>}
-          {turnTotal > 0 && usageSummary && <span>·</span>}
-          {usageSummary?.costUsd !== undefined && <span>${usageSummary.costUsd.toFixed(2)}</span>}
-          {usageSummary?.costUsd !== undefined && usageSummary.output > 0 && <span>·</span>}
-          {usageSummary && usageSummary.output > 0 && (
-            <span
-              title={`${t("peon.stats.inputTokens")} ${compactNum.format(usageSummary.input)} · ${t("peon.stats.cacheWrite")} ${compactNum.format(usageSummary.cacheCreate)} · ${t("peon.stats.cacheRead")} ${compactNum.format(usageSummary.cacheRead)}`}
-            >
-              {compactNum.format(usageSummary.output)} {t("peon.stats.outputTokens").toLowerCase()}
-            </span>
-          )}
-        </div>
-      )}
+      <div className="flex-none"><SessionHeaderStats turnTotal={turnTotal} usageSummary={usageSummary} /></div>
 
       <SessionPresence viewers={viewers} />
 
@@ -215,34 +296,7 @@ export function SessionHeader(props: Props) {
         <FolderTree size={16} aria-hidden />
       </button>
 
-      <div className="relative flex-none" ref={menuRef}>
-        <button
-          type="button"
-          title={t("session.menu")}
-          onClick={() => setMenuOpen((o) => !o)}
-          className="flex items-center rounded p-1 text-bone-dim transition-colors hover:bg-iron-800 hover:text-bone"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-            <circle cx="12" cy="5" r="1.75" />
-            <circle cx="12" cy="12" r="1.75" />
-            <circle cx="12" cy="19" r="1.75" />
-          </svg>
-        </button>
-        {menuOpen && (
-          <div className="absolute right-0 top-full z-30 mt-1 w-40 overflow-hidden rounded-lg border border-iron-800 bg-iron-950 py-1 shadow-lg">
-            <button
-              className="block w-full px-3 py-1.5 text-left font-mono text-xs text-blood transition-colors hover:bg-blood/10"
-              onClick={() => {
-                setDeleteNote(null);
-                setConfirmDelete(true);
-                setMenuOpen(false);
-              }}
-            >
-              {t("session.delete")}
-            </button>
-          </div>
-        )}
-      </div>
+      {renderMenu(desktopMenuRef)}
     </div>
 
     {confirmDelete && <ConfirmationDialog title={t("session.delete.confirm")} confirmLabel={t("session.delete.confirmYes")} pendingLabel={t("session.delete.deleting")} pending={deleting} onClose={() => setConfirmDelete(false)} onConfirm={() => void remove()} />}
@@ -251,5 +305,13 @@ export function SessionHeader(props: Props) {
     {stopNote && <div className="font-mono text-xs text-ember">⚠ {stopNote}</div>}
   </div>
 </FixedPaneHeader>
+  {(renameNote || deleteNote || stopNote) && (
+    <div className="space-y-1 px-3 pt-2 font-mono text-xs md:hidden">
+      {renameNote && <div className="text-blood">{renameNote}</div>}
+      {deleteNote && <div className="text-blood">⚠ {deleteNote}</div>}
+      {stopNote && <div className="text-ember">⚠ {stopNote}</div>}
+    </div>
+  )}
+</>
   );
 }
