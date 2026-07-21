@@ -1,8 +1,8 @@
 import { config } from "./config.js";
-import { query } from "./db.js";
+import { query, transaction, type Transaction } from "./db.js";
 import { registry, toView, type PeonRecord } from "./registry.js";
 import { callPeon, connOfRecord } from "./peonClient.js";
-import { appendEvent } from "./eventLog.js";
+import { insertEvent, publishCommittedEvent, type LiveEvent } from "./eventLog.js";
 
 // The aggregated session index — a materialized view of every peon's sessions,
 // so "all sessions across every peon" is one local Postgres query instead of a
@@ -18,7 +18,7 @@ import { appendEvent } from "./eventLog.js";
 // Peon summaries are the index contract. Older Peons may still send full
 // SessionRecords, so every input is projected immediately and detail-only state
 // never enters the cache or its public list response.
-interface PeonSession {
+export interface PeonSession {
   id: string;
   agent?: string | null;
   backendSessionId?: string | null;
@@ -70,17 +70,61 @@ export interface SessionIndexRow {
   syncedAt: number;
 }
 
+// JavaScript strings may contain unpaired UTF-16 surrogates even though those
+// values cannot be represented in PostgreSQL JSONB. Replace malformed units at
+// the projection boundary and truncate by Unicode code point so a valid emoji
+// is never split into the exact malformed value we are defending against.
+export function sanitizeUnicode(value: string): string {
+  let clean = "";
+  for (let index = 0; index < value.length; index += 1) {
+    const unit = value.charCodeAt(index);
+    if (unit >= 0xd800 && unit <= 0xdbff) {
+      const next = value.charCodeAt(index + 1);
+      if (next >= 0xdc00 && next <= 0xdfff) {
+        clean += value[index] + value[index + 1];
+        index += 1;
+      } else {
+        clean += "\ufffd";
+      }
+    } else if (unit >= 0xdc00 && unit <= 0xdfff) {
+      clean += "\ufffd";
+    } else {
+      clean += value[index];
+    }
+  }
+  return clean;
+}
+
+function sanitizeOptionalUnicode(value: string | null | undefined): string | null {
+  return value == null ? null : sanitizeUnicode(value);
+}
+
+function sanitizeJsonUnicode(value: unknown): unknown {
+  if (typeof value === "string") return sanitizeUnicode(value);
+  if (Array.isArray(value)) return value.map(sanitizeJsonUnicode);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [sanitizeUnicode(key), sanitizeJsonUnicode(item)]));
+  }
+  return value;
+}
+
+function truncateUnicode(value: string, maxCodePoints: number): string {
+  return [...sanitizeUnicode(value)].slice(0, maxCodePoints).join("");
+}
+
 export function normalizeSessionSummary(s: PeonSession): SessionSummary {
   return {
-    id: s.id,
-    status: s.status ?? null,
-    projectKey: s.projectKey ?? null,
-    projectId: s.projectId ?? null,
-    title: s.title ?? null,
-    promptPreview: s.promptPreview ?? s.prompt?.slice(0, 200) ?? null,
-    lastMessagePreview: s.lastMessagePreview ?? null,
-    initiator: s.initiator ?? null,
-    outcome: s.outcome ?? null,
+    id: sanitizeUnicode(s.id),
+    status: sanitizeOptionalUnicode(s.status),
+    projectKey: sanitizeOptionalUnicode(s.projectKey),
+    projectId: sanitizeOptionalUnicode(s.projectId),
+    title: sanitizeOptionalUnicode(s.title),
+    promptPreview: s.promptPreview != null
+      ? sanitizeUnicode(s.promptPreview)
+      : s.prompt != null ? truncateUnicode(s.prompt, 200) : null,
+    lastMessagePreview: sanitizeOptionalUnicode(s.lastMessagePreview),
+    initiator: sanitizeOptionalUnicode(s.initiator),
+    outcome: sanitizeJsonUnicode(s.outcome ?? null),
     startedAt: s.startedAt ?? null,
     endedAt: s.endedAt ?? null,
     lastActivityAt: s.lastActivityAt ?? null,
@@ -100,7 +144,14 @@ function nextSyncedAt(): number {
   return lastSyncedAt;
 }
 
-export async function upsertSession(workspaceId: string, peonId: string, s: PeonSession): Promise<void> {
+interface StoredMutation {
+  event: LiveEvent | null;
+  fingerprintKey?: string;
+  fingerprint?: string;
+  deletedKey?: string;
+}
+
+async function storeSession(tx: Transaction, workspaceId: string, peonId: string, s: PeonSession): Promise<StoredMutation> {
   const summary = normalizeSessionSummary(s);
   const row: SessionIndexRow = {
     peonId,
@@ -118,7 +169,7 @@ export async function upsertSession(workspaceId: string, peonId: string, s: Peon
     lastActivityAt: summary.lastActivityAt,
     syncedAt: nextSyncedAt(),
   };
-  const stored = await query<{ synced_at: number }>(
+  const stored = await tx.query<{ synced_at: number }>(
     `INSERT INTO sessions
        (peon_id, session_id, status, project_key, project_id, title, prompt_preview, preview, author, outcome, started_at, ended_at, last_activity_at, raw, synced_at)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
@@ -160,16 +211,53 @@ export async function upsertSession(workspaceId: string, peonId: string, s: Peon
   );
   // rowCount differs between PostgreSQL and pg-mem for a rejected conflict, but
   // both expose the winning RETURNING version. Only broadcast our accepted row.
-  if (Number(stored.rows[0]?.synced_at) !== row.syncedAt) return;
+  if (Number(stored.rows[0]?.synced_at) !== row.syncedAt) return { event: null };
 
   const key = `${peonId}:${row.sessionId}`;
   const fp = `${row.status}|${row.projectId}|${row.projectKey}|${row.lastActivityAt}|${row.endedAt}|${row.title}|${row.promptPreview}|${row.preview}`;
   if (fingerprints.get(key) !== fp) {
-    await appendEvent({ workspaceId, peonId, sessionId: row.sessionId, kind: "session", payload: row });
-    // Only suppress a future identical reconcile after the durable event exists.
-    // If append fails, leaving the old fingerprint makes the next pass retry.
-    fingerprints.set(key, fp);
+    const event = await insertEvent(tx, { workspaceId, peonId, sessionId: row.sessionId, kind: "session", payload: row });
+    return { event, fingerprintKey: key, fingerprint: fp };
   }
+  return { event: null };
+}
+
+async function publishMutation(mutation: StoredMutation): Promise<void> {
+  if (!mutation.event) return;
+  await publishCommittedEvent(mutation.event);
+  if (mutation.deletedKey) fingerprints.delete(mutation.deletedKey);
+  else if (mutation.fingerprintKey && mutation.fingerprint) fingerprints.set(mutation.fingerprintKey, mutation.fingerprint);
+}
+
+export async function upsertSession(workspaceId: string, peonId: string, s: PeonSession): Promise<void> {
+  const mutation = await transaction((tx) => storeSession(tx, workspaceId, peonId, s));
+  await publishMutation(mutation);
+}
+
+async function deleteSession(
+  tx: Transaction,
+  workspaceId: string,
+  peonId: string,
+  sessionId: string,
+  expectedSyncedAt?: number,
+): Promise<StoredMutation> {
+  const syncedAt = nextSyncedAt();
+  const params: unknown[] = [peonId, sessionId];
+  const versionGuard = expectedSyncedAt === undefined ? "" : ` AND synced_at = $${params.push(expectedSyncedAt)}`;
+  const deleted = await tx.query<{ session_id: string }>(
+    `DELETE FROM sessions WHERE peon_id = $1 AND session_id = $2${versionGuard} RETURNING session_id`,
+    params,
+  );
+  if (!deleted.rows[0]) return { event: null };
+
+  const event = await insertEvent(tx, {
+    workspaceId,
+    peonId,
+    sessionId,
+    kind: "session",
+    payload: { peonId, sessionId, deleted: true, syncedAt },
+  });
+  return { event, deletedKey: `${peonId}:${sessionId}` };
 }
 
 export async function deleteIndexedSession(
@@ -178,30 +266,32 @@ export async function deleteIndexedSession(
   sessionId: string,
   expectedSyncedAt?: number,
 ): Promise<boolean> {
-  const syncedAt = nextSyncedAt();
-  const params: unknown[] = [peonId, sessionId];
-  const versionGuard = expectedSyncedAt === undefined ? "" : ` AND synced_at = $${params.push(expectedSyncedAt)}`;
-  const deleted = await query<{ session_id: string }>(
-    `DELETE FROM sessions WHERE peon_id = $1 AND session_id = $2${versionGuard} RETURNING session_id`,
-    params,
-  );
-  if (!deleted.rows[0]) return false;
-
-  fingerprints.delete(`${peonId}:${sessionId}`);
-  await appendEvent({
-    workspaceId,
-    peonId,
-    sessionId,
-    kind: "session",
-    payload: { peonId, sessionId, deleted: true, syncedAt },
-  });
-  return true;
+  const mutation = await transaction((tx) => deleteSession(tx, workspaceId, peonId, sessionId, expectedSyncedAt));
+  await publishMutation(mutation);
+  return mutation.event !== null;
 }
 
 // Pull one peon's full session list into the index. Returns the count synced, or
 // null if the peon was unreachable / returned garbage (caller decides whether to
 // care — a transient miss just leaves the last-known rows in place).
 export async function reconcilePeon(record: PeonRecord): Promise<number | null> {
+  const sync = await query<{ status: string; updated_at: number | string; catalog_epoch: string | null }>(
+    `SELECT status, updated_at, catalog_epoch FROM peon_session_sync WHERE peon_id = $1`,
+    [record.peonId],
+  );
+  // Registry capabilities describe the HTTP API, so socket authority is proven
+  // by the negotiated sync lease/checkpoint instead. Before the first socket
+  // snapshot, or after a failed first attempt, legacy reconciliation remains
+  // available. A live first sync is the only writer, but its database lease
+  // expires so a process crash cannot strand the Peon without either transport.
+  const state = sync.rows[0];
+  const activeFirstSync = state?.status === "syncing" && Number(state.updated_at) >= Date.now() - 120_000;
+  // Only migration-018's catalog checkpoint proves canonical cutover. Old
+  // ready/stale values belong to the retired sessions.* dialect. Conversely,
+  // once a canonical snapshot has committed, never restore HTTP authority merely
+  // because a quiet resumed socket has not produced another catalog event.
+  if (state && (state.catalog_epoch !== null || activeFirstSync)) return null;
+
   // Remember exactly which rows existed before the remote snapshot. Deletions
   // are version-guarded below so a pushed update racing this pull cannot be
   // removed merely because it was absent from the older snapshot.
@@ -213,19 +303,302 @@ export async function reconcilePeon(record: PeonRecord): Promise<number | null> 
   if (!res.ok) return null;
   const sessions = (res.json as { sessions?: unknown })?.sessions;
   if (!Array.isArray(sessions)) return null;
-  const resolvedSessions = resolveSessionProjectIds(sessions as PeonSession[]);
-  for (const s of resolvedSessions) {
-    if (s && typeof s.id === "string") await upsertSession(record.workspaceId, record.peonId, s);
+  await applySessionIndexSnapshot(record.workspaceId, record.peonId, sessions as PeonSession[], existing.rows);
+  return sessions.length;
+}
+
+export async function applySessionIndexSnapshot(
+  workspaceId: string,
+  peonId: string,
+  sessions: PeonSession[],
+  existingRows?: { session_id: string; synced_at: number }[],
+): Promise<number> {
+  const existing = existingRows ?? (await query<{ session_id: string; synced_at: number }>(
+    `SELECT session_id, synced_at FROM sessions WHERE peon_id = $1`,
+    [peonId],
+  )).rows;
+  const resolvedSessions = resolveSessionProjectIds(sessions);
+  for (const session of resolvedSessions) {
+    if (session && typeof session.id === "string") await upsertSession(workspaceId, peonId, session);
   }
   const remoteIds = new Set(resolvedSessions.flatMap((session) => typeof session?.id === "string" ? [session.id] : []));
-  for (const row of existing.rows) {
+  for (const row of existing) {
     if (!remoteIds.has(row.session_id)) {
-      await deleteIndexedSession(record.workspaceId, record.peonId, row.session_id, Number(row.synced_at));
+      await deleteIndexedSession(workspaceId, peonId, row.session_id, Number(row.synced_at));
     }
   }
-  await backfillStoredSessionProjectIds(record.peonId, resolvedSessions);
-  await backfillProjectAccess(record.workspaceId, record.peonId, resolvedSessions);
-  return sessions.length;
+  await backfillStoredSessionProjectIds(peonId, resolvedSessions);
+  await backfillProjectAccess(workspaceId, peonId, resolvedSessions);
+  return resolvedSessions.length;
+}
+
+export interface SessionSyncCheckpoint {
+  catalog: { epoch: string; acknowledgedSeq: number } | null;
+  delivery: { epoch: string; acknowledgedCursor: string | null } | null;
+  previouslyReady: boolean;
+}
+
+export class StaleSessionSyncGenerationError extends Error {}
+
+export async function claimSessionSyncGeneration(peonId: string, generation: string): Promise<SessionSyncCheckpoint | null> {
+  const { rows } = await query<{
+    catalog_epoch: string | null;
+    acknowledged_seq: number | string | null;
+    delivery_epoch: string | null;
+    acknowledged_cursor: string | null;
+    previous_status: string | null;
+  }>(
+    `INSERT INTO peon_session_sync (peon_id, epoch, cursor, status, updated_at, generation)
+     VALUES ($1,NULL,NULL,'syncing',$2,$3)
+     ON CONFLICT (peon_id) DO UPDATE SET
+       status=CASE WHEN peon_session_sync.catalog_epoch IS NULL THEN 'syncing' ELSE 'ready' END,
+       updated_at=EXCLUDED.updated_at, generation=EXCLUDED.generation
+     RETURNING catalog_epoch, acknowledged_seq, delivery_epoch, acknowledged_cursor,
+       CASE WHEN catalog_epoch IS NOT NULL THEN 'ready' ELSE NULL END AS previous_status`,
+    [peonId, Date.now(), generation],
+  );
+  const row = rows[0];
+  if (!row) return null;
+  return {
+    catalog: row.catalog_epoch && row.acknowledged_seq !== null
+      ? { epoch: row.catalog_epoch, acknowledgedSeq: Number(row.acknowledged_seq) }
+      : null,
+    delivery: row.delivery_epoch
+      ? { epoch: row.delivery_epoch, acknowledgedCursor: row.acknowledged_cursor }
+      : null,
+    previouslyReady: row.previous_status === "ready",
+  };
+}
+
+export async function markSessionSyncing(peonId: string, generation: string): Promise<void> {
+  const updated = await query<{ peon_id: string }>(
+    `UPDATE peon_session_sync SET status='syncing', updated_at=$3
+     WHERE peon_id=$1 AND generation=$2 RETURNING peon_id`,
+    [peonId, generation, Date.now()],
+  );
+  if (!updated.rows[0]) throw new StaleSessionSyncGenerationError("session sync connection was replaced");
+}
+
+export async function releaseSessionSyncGeneration(peonId: string, generation: string): Promise<void> {
+  await query(
+    `UPDATE peon_session_sync
+       SET status = CASE WHEN catalog_epoch IS NULL THEN 'fallback' ELSE 'stale' END, updated_at = $3
+     WHERE peon_id = $1 AND generation = $2`,
+    [peonId, generation, Date.now()],
+  );
+}
+
+async function advanceSessionCheckpoints(
+  tx: Transaction,
+  peonId: string,
+  generation: string,
+  catalogEpoch: string,
+  acknowledgedSeq: number,
+  delivery?: { epoch: string; acknowledgedCursor: string | null },
+): Promise<void> {
+  const deliveryUpdate = delivery
+    ? `, delivery_epoch=$6, acknowledged_cursor=$7`
+    : "";
+  const params: unknown[] = [peonId, generation, catalogEpoch, acknowledgedSeq, Date.now()];
+  if (delivery) params.push(delivery.epoch, delivery.acknowledgedCursor);
+  const updated = await tx.query<{ peon_id: string }>(
+    `UPDATE peon_session_sync SET catalog_epoch=$3, acknowledged_seq=$4, status='ready', updated_at=$5${deliveryUpdate}
+     WHERE peon_id=$1 AND generation=$2 RETURNING peon_id`,
+    params,
+  );
+  if (!updated.rows[0]) throw new StaleSessionSyncGenerationError("session sync connection was replaced");
+}
+
+async function assertSessionSyncGeneration(tx: Transaction, peonId: string, generation: string): Promise<void> {
+  const current = await tx.query<{ peon_id: string }>(
+    `SELECT peon_id FROM peon_session_sync WHERE peon_id=$1 AND generation=$2`,
+    [peonId, generation],
+  );
+  if (!current.rows[0]) throw new StaleSessionSyncGenerationError("session sync connection was replaced");
+}
+
+async function publishSyncMutations(mutations: StoredMutation[]): Promise<void> {
+  for (const mutation of mutations) {
+    // The event is already durable in the same transaction as the projection
+    // and checkpoint. Mark its fingerprint before best-effort live fan-out; a
+    // process crash is repaired through the operator event-log cursor.
+    if (mutation.deletedKey) fingerprints.delete(mutation.deletedKey);
+    else if (mutation.fingerprintKey && mutation.fingerprint) fingerprints.set(mutation.fingerprintKey, mutation.fingerprint);
+    if (mutation.event) {
+      await publishCommittedEvent(mutation.event).catch((error) => {
+        console.warn("session sync event fan-out failed:", error instanceof Error ? error.message : String(error));
+      });
+    }
+  }
+}
+
+export async function applySocketSessionSnapshot(input: {
+  workspaceId: string;
+  peonId: string;
+  generation: string;
+  catalogEpoch: string;
+  barrierSeq: number;
+  deliveryEpoch: string;
+  acknowledgedCursor: string | null;
+  sessions: PeonSession[];
+}): Promise<void> {
+  const resolvedSessions = resolveSessionProjectIds(input.sessions);
+  const mutations = await transaction(async (tx) => {
+    await assertSessionSyncGeneration(tx, input.peonId, input.generation);
+    const existing = await tx.query<{ session_id: string; synced_at: number }>(
+      `SELECT session_id, synced_at FROM sessions WHERE peon_id = $1`,
+      [input.peonId],
+    );
+    const committed: StoredMutation[] = [];
+    for (const session of resolvedSessions) committed.push(await storeSession(tx, input.workspaceId, input.peonId, session));
+    const remoteIds = new Set(resolvedSessions.map((session) => session.id));
+    for (const row of existing.rows) {
+      if (!remoteIds.has(row.session_id)) {
+        committed.push(await deleteSession(tx, input.workspaceId, input.peonId, row.session_id, Number(row.synced_at)));
+      }
+    }
+    await advanceSessionCheckpoints(tx, input.peonId, input.generation, input.catalogEpoch, input.barrierSeq, {
+      epoch: input.deliveryEpoch,
+      acknowledgedCursor: input.acknowledgedCursor,
+    });
+    return committed;
+  });
+  await publishSyncMutations(mutations);
+  await backfillStoredSessionProjectIds(input.peonId, resolvedSessions);
+  await backfillProjectAccess(input.workspaceId, input.peonId, resolvedSessions);
+}
+
+export async function applySocketSessionEvent(input: {
+  workspaceId: string;
+  peonId: string;
+  generation: string;
+  catalogEpoch: string;
+  seq: number;
+  deliveryEpoch: string;
+  deliveryCursor: string;
+  messageId: string;
+  operation: "upsert" | "delete";
+  session?: PeonSession;
+  sessionId?: string;
+}): Promise<{ catalog: { epoch: string; acknowledgedSeq: number }; delivery: { epoch: string; acknowledgedCursor: string } }> {
+  const result = await transaction(async (tx) => {
+    await assertSessionSyncGeneration(tx, input.peonId, input.generation);
+    const inserted = await tx.query<{ cursor: string }>(
+      `INSERT INTO peon_session_inbox (peon_id, epoch, cursor, created_at, message_id)
+       VALUES ($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING RETURNING cursor`,
+      [input.peonId, input.deliveryEpoch, input.deliveryCursor, Date.now(), input.messageId],
+    );
+    if (!inserted.rows[0]) {
+      const replay = await tx.query<{ epoch: string; cursor: string; message_id: string | null }>(
+        `SELECT epoch, cursor, message_id FROM peon_session_inbox
+         WHERE peon_id=$1 AND ((epoch=$2 AND cursor=$3) OR message_id=$4)`,
+        [input.peonId, input.deliveryEpoch, input.deliveryCursor, input.messageId],
+      );
+      const replayed = replay.rows[0];
+      if (!replayed || replayed.epoch !== input.deliveryEpoch || replayed.cursor !== input.deliveryCursor || replayed.message_id !== input.messageId) {
+        throw new Error("durable message replay identity mismatch");
+      }
+      const current = await tx.query<{
+        catalog_epoch: string | null; acknowledged_seq: number | string | null;
+        delivery_epoch: string | null; acknowledged_cursor: string | null;
+      }>(
+        `SELECT catalog_epoch, acknowledged_seq, delivery_epoch, acknowledged_cursor
+         FROM peon_session_sync WHERE peon_id=$1 AND generation=$2`,
+        [input.peonId, input.generation],
+      );
+      if (!current.rows[0]) throw new StaleSessionSyncGenerationError("session sync connection was replaced");
+      const checkpoint = current.rows[0];
+      if (!checkpoint.catalog_epoch || checkpoint.acknowledged_seq === null || !checkpoint.delivery_epoch || !checkpoint.acknowledged_cursor) {
+        throw new Error("duplicate durable message has no committed checkpoint");
+      }
+      return {
+        checkpoint: {
+          catalog: { epoch: checkpoint.catalog_epoch, acknowledgedSeq: Number(checkpoint.acknowledged_seq) },
+          delivery: { epoch: checkpoint.delivery_epoch, acknowledgedCursor: checkpoint.acknowledged_cursor },
+        },
+        mutation: null,
+      };
+    }
+    const current = await tx.query<{ catalog_epoch: string | null; acknowledged_seq: number | string | null }>(
+      `SELECT catalog_epoch, acknowledged_seq FROM peon_session_sync WHERE peon_id=$1 AND generation=$2`,
+      [input.peonId, input.generation],
+    );
+    const catalog = current.rows[0];
+    if (!catalog?.catalog_epoch || catalog.acknowledged_seq === null) throw new Error("session catalog event arrived before snapshot");
+    if (catalog.catalog_epoch !== input.catalogEpoch) throw new Error("session catalog epoch mismatch");
+    if (input.seq !== Number(catalog.acknowledged_seq) + 1) throw new Error("session catalog sequence gap");
+    const mutation = input.operation === "upsert"
+      ? await storeSession(tx, input.workspaceId, input.peonId, input.session!)
+      : await deleteSession(tx, input.workspaceId, input.peonId, input.sessionId!);
+    await advanceSessionCheckpoints(
+      tx, input.peonId, input.generation, input.catalogEpoch, input.seq,
+      { epoch: input.deliveryEpoch, acknowledgedCursor: input.deliveryCursor },
+    );
+    return {
+      checkpoint: {
+        catalog: { epoch: input.catalogEpoch, acknowledgedSeq: input.seq },
+        delivery: { epoch: input.deliveryEpoch, acknowledgedCursor: input.deliveryCursor },
+      },
+      mutation,
+    };
+  });
+  if (result.mutation) await publishSyncMutations([result.mutation]);
+  return result.checkpoint;
+}
+
+export async function commitSnapshotCoveredSessionEvent(input: {
+  peonId: string;
+  generation: string;
+  catalogEpoch: string;
+  seq: number;
+  deliveryEpoch: string;
+  deliveryCursor: string;
+  messageId: string;
+}): Promise<{ catalog: { epoch: string; acknowledgedSeq: number }; delivery: { epoch: string; acknowledgedCursor: string } }> {
+  return transaction(async (tx) => {
+    await assertSessionSyncGeneration(tx, input.peonId, input.generation);
+    const inserted = await tx.query<{ cursor: string }>(
+      `INSERT INTO peon_session_inbox (peon_id, epoch, cursor, created_at, message_id)
+       VALUES ($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING RETURNING cursor`,
+      [input.peonId, input.deliveryEpoch, input.deliveryCursor, Date.now(), input.messageId],
+    );
+    const current = await tx.query<{
+      catalog_epoch: string | null; acknowledged_seq: number | string | null;
+      delivery_epoch: string | null; acknowledged_cursor: string | null;
+    }>(
+      `SELECT catalog_epoch, acknowledged_seq, delivery_epoch, acknowledged_cursor
+       FROM peon_session_sync WHERE peon_id=$1 AND generation=$2`,
+      [input.peonId, input.generation],
+    );
+    const checkpoint = current.rows[0];
+    if (!checkpoint?.catalog_epoch || checkpoint.acknowledged_seq === null) throw new Error("covered event has no snapshot checkpoint");
+    if (checkpoint.catalog_epoch !== input.catalogEpoch || input.seq > Number(checkpoint.acknowledged_seq)) {
+      throw new Error("event is not covered by the committed snapshot");
+    }
+    if (!inserted.rows[0]) {
+      const replay = await tx.query<{ epoch: string; cursor: string; message_id: string | null }>(
+        `SELECT epoch, cursor, message_id FROM peon_session_inbox
+         WHERE peon_id=$1 AND ((epoch=$2 AND cursor=$3) OR message_id=$4)`,
+        [input.peonId, input.deliveryEpoch, input.deliveryCursor, input.messageId],
+      );
+      const row = replay.rows[0];
+      if (!row || row.epoch !== input.deliveryEpoch || row.cursor !== input.deliveryCursor || row.message_id !== input.messageId) {
+        throw new Error("durable message replay identity mismatch");
+      }
+    } else {
+      await advanceSessionCheckpoints(
+        tx, input.peonId, input.generation, checkpoint.catalog_epoch, Number(checkpoint.acknowledged_seq),
+        { epoch: input.deliveryEpoch, acknowledgedCursor: input.deliveryCursor },
+      );
+    }
+    return {
+      catalog: { epoch: checkpoint.catalog_epoch, acknowledgedSeq: Number(checkpoint.acknowledged_seq) },
+      delivery: {
+        epoch: inserted.rows[0] ? input.deliveryEpoch : checkpoint.delivery_epoch ?? input.deliveryEpoch,
+        acknowledgedCursor: inserted.rows[0] ? input.deliveryCursor : checkpoint.acknowledged_cursor ?? input.deliveryCursor,
+      },
+    };
+  });
 }
 
 export async function backfillStoredSessionProjectIds(
@@ -313,6 +686,55 @@ export interface ListOptions {
   perPeonLimit?: number;
   limit: number;
   offset: number;
+}
+
+export interface SessionCatalogState {
+  peonId: string;
+  online: boolean;
+  state: "legacy" | "fallback" | "syncing" | "ready" | "stale" | "offline";
+  stale: boolean;
+  updatedAt: number | null;
+  catalogRevision: number | null;
+  deliveryCommitted: boolean;
+}
+
+export async function getSessionCatalogStates(workspaceId: string, peonId?: string): Promise<SessionCatalogState[]> {
+  const records = (await registry.list()).filter((record) =>
+    record.workspaceId === workspaceId && (peonId === undefined || record.peonId === peonId));
+  if (records.length === 0) return [];
+  const { rows } = await query<{
+    peon_id: string; status: string; updated_at: number | string;
+    catalog_epoch: string | null; acknowledged_seq: number | string | null; delivery_epoch: string | null;
+  }>(
+    `SELECT peon_id, status, updated_at, catalog_epoch, acknowledged_seq, delivery_epoch
+     FROM peon_session_sync WHERE peon_id IN (${records.map((_, index) => `$${index + 1}`).join(",")})`,
+    records.map((record) => record.peonId),
+  );
+  const byPeon = new Map(rows.map((row) => [row.peon_id, row]));
+  return records.map((record) => {
+    const row = byPeon.get(record.peonId);
+    const online = toView(record).online;
+    const canonical = row?.catalog_epoch != null;
+    const activeState = canonical
+      ? row!.status === "syncing" ? "syncing" as const : row!.status === "ready" ? "ready" as const : "stale" as const
+      : row?.status === "syncing" ? "syncing" as const
+        : row?.status === "fallback" ? "fallback" as const
+          : "legacy" as const;
+    const state = online ? activeState : "offline" as const;
+    return {
+      peonId: record.peonId,
+      online,
+      state,
+      // Legacy and fallback Peons are still refreshed by authoritative HTTP
+      // reconciliation. Only an offline Peon or an incomplete/failed canonical
+      // projection is stale; canonical readiness is not a prerequisite for
+      // freshness during the compatibility rollout.
+      stale: !online || activeState === "syncing" || activeState === "stale",
+      updatedAt: row ? Number(row.updated_at) : null,
+      catalogRevision: canonical && row?.acknowledged_seq !== null ? Number(row?.acknowledged_seq) : null,
+      deliveryCommitted: canonical && row?.delivery_epoch != null,
+    };
+  });
 }
 
 export async function getIndexedSession(peonId: string, sessionId: string): Promise<SessionIndexRow | null> {

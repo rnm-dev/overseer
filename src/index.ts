@@ -3,6 +3,8 @@ import { initDb } from "./db.js";
 import { createServer } from "./server.js";
 import { startReconciler } from "./sessionIndex.js";
 import { attachLiveSocket } from "./liveSocket.js";
+import { attachPeonSocket } from "./peonSocket.js";
+import { attachPeonTransferSocket } from "./peonTransferSocket.js";
 import { pruneEvents } from "./eventLog.js";
 import { startPushWorker } from "./push.js";
 
@@ -25,6 +27,8 @@ async function main(): Promise<void> {
   });
   // Resumable client transport shares the HTTP server (nginx upgrades /api/ws).
   attachLiveSocket(server);
+  attachPeonSocket(server);
+  attachPeonTransferSocket(server);
 }
 
 main().catch((err) => {

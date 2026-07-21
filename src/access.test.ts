@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import type pg from "pg";
 import { newDb } from "pg-mem";
 import { initDb, query } from "./db.js";
-import { allowedProjectKeys, canAccessPeon, canAccessProject, listMemberAccess, replaceMemberAccess } from "./access.js";
-import { projectVisible, type AccessClient } from "./liveAccess.js";
+import { allowedProjectKeys, canAccessPeon, canAccessProject, listMemberAccess, projectAccessQuery, replaceMemberAccess } from "./access.js";
+import { eventVisible, projectVisible, type AccessClient } from "./liveAccess.js";
 import { backfillStoredSessionProjectIds, listSessions, resolveSessionProjectIds } from "./sessionIndex.js";
 
 test("legacy session keys receive a project ID only when the folded mapping is unambiguous", () => {
@@ -75,6 +75,17 @@ test("stable project IDs survive key changes and do not authorize key reuse", as
   assert.equal(await canAccessProject("ws", "legacy-member", "member", "p1", "EXPO", "reused-project"), false);
 });
 
+test("project access queries bind contiguous parameters for stable IDs and legacy keys", () => {
+  const stable = projectAccessQuery("ws", "member", "p1", "renamed-key", "project-expo");
+  assert.match(stable.text, /project_id = \$4/);
+  assert.doesNotMatch(stable.text, /\$5/);
+  assert.deepEqual(stable.values, ["ws", "member", "p1", "project-expo"]);
+
+  const legacy = projectAccessQuery("ws", "member", "p1", "EXPO", null);
+  assert.match(legacy.text, /project_id IS NULL AND project_key = \$4/);
+  assert.deepEqual(legacy.values, ["ws", "member", "p1", "EXPO"]);
+});
+
 test("live access treats a supplied project ID as authoritative", () => {
   const client: AccessClient = {
     userId: "member",
@@ -86,6 +97,21 @@ test("live access treats a supplied project ID as authoritative", () => {
   };
   assert.equal(projectVisible(client, "p1", "EXPO"), true);
   assert.equal(projectVisible(client, "p1", "EXPO", "reused-project"), false);
+});
+
+test("project catalog events are filtered by stable project ID, including tombstones", () => {
+  const client: AccessClient = {
+    userId: "member", workspaceId: "ws", role: "member",
+    allowedPeons: new Set(["p1"]), allowedProjects: new Map([["p1", new Set(["id:visible"])]]), tails: new Map(),
+  };
+  assert.equal(eventVisible(client, {
+    cursor: 1, workspaceId: "ws", peonId: "p1", sessionId: null, kind: "project",
+    payload: { peonId: "p1", projectId: "visible", deleted: true, syncedAt: 1 }, createdAt: 1,
+  }), true);
+  assert.equal(eventVisible(client, {
+    cursor: 2, workspaceId: "ws", peonId: "p1", sessionId: null, kind: "project",
+    payload: { peonId: "p1", projectId: "hidden", key: "same-key", syncedAt: 2 }, createdAt: 2,
+  }), false);
 });
 
 test("member ACLs are applied before session pagination and counting", async () => {

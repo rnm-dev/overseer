@@ -8,10 +8,6 @@ export interface Config {
   peonCallbackUrl: string;
   // Postgres connection string — the single system-of-record. Required to boot.
   databaseUrl: string;
-  // A peon is considered offline if its last heartbeat is older than this. Set
-  // comfortably above a peon's heartbeatIntervalMs (default 15s) so a single
-  // missed beat doesn't flap it offline.
-  offlineAfterMs: number;
   // How often the session index reconciles by pulling each online peon's
   // /sessions. A durable baseline independent of (later) event push.
   reconcileIntervalMs: number;
@@ -62,7 +58,6 @@ export const config: Config = {
   host: process.env.OVERSEER_HOST ?? "127.0.0.1",
   peonCallbackUrl: (process.env.OVERSEER_PEON_CALLBACK_URL ?? "").replace(/\/+$/, ""),
   databaseUrl: process.env.DATABASE_URL ?? process.env.OVERSEER_DATABASE_URL ?? "",
-  offlineAfterMs: num("OVERSEER_OFFLINE_AFTER_MS", 45_000),
   reconcileIntervalMs: num("OVERSEER_RECONCILE_INTERVAL_MS", 30_000),
   publicUrl,
   githubClientId: process.env.OVERSEER_GITHUB_CLIENT_ID ?? "",

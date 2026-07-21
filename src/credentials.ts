@@ -1,5 +1,7 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { query } from "./db.js";
+import { evictPeonConnection } from "./peonConnections.js";
+import { evictPeonTransferConnection } from "./peonTransferConnections.js";
 
 // Peon credentials — the recruitment tokens. The overseer mints a token scoped to
 // a workspace; the peon presents it to register/heartbeat/push, and the overseer
@@ -79,10 +81,14 @@ export async function bindPeon(credentialId: string, peonId: string): Promise<bo
 
 // Revoke a credential — the peon's token stops authenticating on its next call.
 export async function revokeCredential(workspaceId: string, credentialId: string): Promise<boolean> {
-  const { rowCount } = await query(
-    `UPDATE peon_credentials SET revoked_at = $3 WHERE id = $1 AND workspace_id = $2 AND revoked_at IS NULL`,
+  const { rows, rowCount } = await query<{ bound_peon_id: string | null }>(
+    `UPDATE peon_credentials SET revoked_at = $3 WHERE id = $1 AND workspace_id = $2 AND revoked_at IS NULL RETURNING bound_peon_id`,
     [credentialId, workspaceId, Date.now()],
   );
+  if (rows[0]?.bound_peon_id) {
+    evictPeonConnection(rows[0].bound_peon_id);
+    evictPeonTransferConnection(rows[0].bound_peon_id);
+  }
   return (rowCount ?? 0) > 0;
 }
 
@@ -92,4 +98,6 @@ export async function revokeCredentialForPeon(workspaceId: string, peonId: strin
     `UPDATE peon_credentials SET revoked_at = $3 WHERE workspace_id = $1 AND bound_peon_id = $2 AND revoked_at IS NULL`,
     [workspaceId, peonId, Date.now()],
   );
+  evictPeonConnection(peonId);
+  evictPeonTransferConnection(peonId);
 }

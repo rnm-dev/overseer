@@ -1,9 +1,10 @@
-import type { Server } from "node:http";
+import type { IncomingMessage, Server } from "node:http";
 import { randomUUID } from "node:crypto";
+import type { Duplex } from "node:stream";
 import { WebSocketServer, WebSocket } from "ws";
 import { consumeWebSocketTicket } from "./auth.js";
 import { membership, type Role } from "./workspaces.js";
-import { registry } from "./registry.js";
+import { registry, toView } from "./registry.js";
 import { getIndexedSession } from "./sessionIndex.js";
 import { bus, latestCursor, oldestCursor, readEventsSince, type LiveEvent } from "./eventLog.js";
 import { callPeon, connOfRecord, streamPeonTo } from "./peonClient.js";
@@ -13,7 +14,7 @@ import { heartbeatPresence, listHeartbeatPresence, presenceBus, removePresence, 
 // The north-bound (overseer→client) transport: one authenticated WebSocket per
 // app, multiplexing presence + live session tails, resumable by cursor.
 //   client → { type:"hello", workspaceId, cursor? }
-//   server → { type:"snapshot", presence, cursor }          then replays events>cursor, then live
+//   server → { type:"snapshot", presence, peonPresence, cursor } then replays events>cursor, then live
 //   client → { type:"subscribe"|"unsubscribe", peonId, sessionId }
 //   server → { type:"tail", sessionId, event, id, data }   (bridged from the peon SSE)
 //
@@ -93,7 +94,17 @@ const send = (ws: WebSocket, msg: unknown): boolean => {
 };
 
 export function attachLiveSocket(server: Server): WebSocketServer {
-  const wss = new WebSocketServer({ server, path: "/api/ws", maxPayload: 64 * 1024 });
+  // Route upgrades explicitly. WebSocketServer's `{ server, path }` mode installs
+  // a catch-all upgrade listener that responds 400 to every other path. That
+  // races the independently authenticated Peon socket attached to this same
+  // HTTP server and rejects it before its async credential lookup can finish.
+  const wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 });
+  const onUpgrade = (req: IncomingMessage, socket: Duplex, head: Buffer) => {
+    const path = new URL(req.url ?? "", "http://overseer.local").pathname;
+    if (path !== "/api/ws") return;
+    wss.handleUpgrade(req, socket, head, (ws) => wss.emit("connection", ws, req));
+  };
+  server.on("upgrade", onUpgrade);
   const clients = new Set<Client>();
   // Latest appended (cursor>0) event cursor per workspace, kept in memory from the
   // bus. It's the yardstick the periodic sync hands each client so it can tell
@@ -174,7 +185,14 @@ export function attachLiveSocket(server: Server): WebSocketServer {
     // broadcasts are liveness the client re-derives, never a resume target).
     if (e.cursor > 0) wsCursor.set(e.workspaceId, Math.max(e.cursor, wsCursor.get(e.workspaceId) ?? 0));
     for (const c of clients) {
-      if (c.live && c.workspaceId === e.workspaceId && eventVisible(c, e)) send(c.ws, { type: e.kind, cursor: e.cursor, payload: e.payload });
+      // Peon connection presence is ephemeral and has no replay cursor. Let it
+      // pass while the initial materialized snapshot is being assembled so a
+      // connect/disconnect in that window cannot be lost. Durable events remain
+      // gated until snapshotAndReplay establishes its cursor barrier.
+      const presenceDuringSnapshot = e.cursor === 0 && e.kind === "peon";
+      if ((c.live || presenceDuringSnapshot) && c.workspaceId === e.workspaceId && eventVisible(c, e)) {
+        send(c.ws, { type: e.kind, cursor: e.cursor, payload: e.payload });
+      }
     }
   };
   bus.on("event", onBusEvent);
@@ -237,6 +255,7 @@ export function attachLiveSocket(server: Server): WebSocketServer {
     clearInterval(ping);
     bus.off("event", onBusEvent);
     presenceBus.off("changed", onPresenceChange);
+    server.off("upgrade", onUpgrade);
   });
   return wss;
 }
@@ -312,11 +331,17 @@ async function snapshotAndReplay(client: Client, workspaceId: string, wsCursor: 
   // tails are independent. Anything appended in this window is replayed from the
   // snapshot barrier after live fan-out is re-enabled.
   client.live = false;
-  const snapCursor = await latestCursor();
+  const [snapCursor, records] = await Promise.all([latestCursor(), registry.list(workspaceId)]);
   if (client.closed || client.workspaceId !== workspaceId) return;
   send(client.ws, {
     type: "snapshot",
     presence: collectPresence(client),
+    peonPresence: records
+      .filter((record) => peonVisible(client, record.peonId))
+      .map((record) => {
+        const view = toView(record);
+        return { peonId: view.peonId, name: view.name, online: view.online };
+      }),
     cursor: snapCursor,
   });
 

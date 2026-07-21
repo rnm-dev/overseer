@@ -1,9 +1,29 @@
 import express from "express";
+import { pipeline } from "node:stream/promises";
 import { registry, toView } from "../../registry.js";
 import { callPeon, connOfRecord, normalizePeonUrl, proxyFileDownload, proxyFileUpload, proxyGet, proxyUpload } from "../../peonClient.js";
 import { reconcilePeon } from "../../sessionIndex.js";
 import { allowedProjects, canAccessProject } from "../../access.js";
 import { ownerOnly, relay, restSegments, withWorkspacePeon } from "../helpers.js";
+import { openPeonProjectFile, PeonFileStreamError, type ProjectFileRange } from "../../peonFileStream.js";
+import {
+  getIndexedProject,
+  getProjectCatalogState,
+  hasCanonicalProjectCatalog,
+  listIndexedProjects,
+} from "../../projectIndex.js";
+
+function requestedRange(value: string | undefined): ProjectFileRange | undefined {
+  if (value === undefined) return undefined;
+  const match = /^bytes=(\d+)-(\d*)$/.exec(value);
+  if (!match) throw new PeonFileStreamError("INVALID_RANGE", "only one explicit byte range is supported", 416);
+  const start = Number(match[1]);
+  const end = match[2] ? Number(match[2]) : undefined;
+  if (!Number.isSafeInteger(start) || (end !== undefined && (!Number.isSafeInteger(end) || end < start))) {
+    throw new PeonFileStreamError("INVALID_RANGE", "invalid byte range", 416);
+  }
+  return { start, ...(end === undefined ? {} : { end }) };
+}
 
 export function registerProjectRoutes(router: express.Router): void {
   const wp = "/workspaces/:wsId/peons/:id";
@@ -35,7 +55,11 @@ export function registerProjectRoutes(router: express.Router): void {
   const withWorkspaceProject = (handler: Parameters<typeof withWorkspacePeon>[0]) => withWorkspacePeon(async (req, res, c) => {
     const key = String(req.params.key);
     let projectId: string | null = null;
-    if (c.role !== "owner") {
+    if (await hasCanonicalProjectCatalog(c.record.peonId)) {
+      const project = await getIndexedProject(c.record.peonId, key);
+      if (!project) return res.status(404).json({ error: "unknown project", code: "UNKNOWN_PROJECT" });
+      projectId = project.projectId;
+    } else if (c.role !== "owner") {
       const detail = await callPeon(connOfRecord(c.record), "GET", proj(key), { actor: c.operator.email });
       if (!detail.ok) return relay(detail, res);
       projectId = detail.json && typeof detail.json === "object" && typeof (detail.json as { projectId?: unknown }).projectId === "string"
@@ -46,6 +70,15 @@ export function registerProjectRoutes(router: express.Router): void {
     return handler(req, res, c);
   });
   router.get(`${wp}/projects`, withWorkspacePeon(async (_req, res, c) => {
+    if (await hasCanonicalProjectCatalog(c.record.peonId)) {
+      const all = await listIndexedProjects(c.record.peonId);
+      // The branch above is intentionally local: canonical project reads remain
+      // useful while Peon is offline and cannot race a mutable key lookup.
+      const access = (await allowedProjects(c.workspaceId, c.userId, c.role, c.record.peonId)) ?? [];
+      const allowedIds = new Set(access.flatMap((item) => item.projectId ? [item.projectId] : []));
+      const filtered = c.role === "owner" ? all : all.filter((project) => allowedIds.has(project.projectId));
+      return res.json({ projects: filtered, catalog: await getProjectCatalogState(c.record) });
+    }
     const result = await callPeon(connOfRecord(c.record), "GET", "/projects", { actor: c.operator.email });
     if (!result.ok || c.role === "owner" || !result.json || typeof result.json !== "object") return relay(result, res);
     const access = (await allowedProjects(c.workspaceId, c.userId, c.role, c.record.peonId)) ?? [];
@@ -66,12 +99,61 @@ export function registerProjectRoutes(router: express.Router): void {
     relay(await callPeon(connOfRecord(c.record), "GET", `/projects/suggest-dir${label ? `?label=${encodeURIComponent(label)}` : ""}`, { actor: c.operator.email }), res);
   }));
   router.post(`${wp}/projects`, withWorkspacePeon(async (req, res, c) => { if (!ownerOnly(res, c.role)) return; relay(await callPeon(connOfRecord(c.record), "POST", "/projects", { actor: c.operator.email, body: req.body }), res); }));
-  router.get(`${wp}/projects/:key`, withWorkspaceProject(async (req, res, c) => relay(await callPeon(connOfRecord(c.record), "GET", proj(String(req.params.key)), { actor: c.operator.email }), res)));
+  router.get(`${wp}/projects/by-id/:projectId/files/{*rest}`, withWorkspacePeon(async (req, res, c) => {
+    const projectId = String(req.params.projectId);
+    if (!(await canAccessProject(c.workspaceId, c.userId, c.role, c.record.peonId, "", projectId))) {
+      return res.status(404).json({ error: "unknown project", code: "UNKNOWN_PROJECT" });
+    }
+    const controller = new AbortController();
+    res.on("close", () => controller.abort());
+    try {
+      const file = await openPeonProjectFile({
+        peonId: c.record.peonId,
+        projectId,
+        relativePath: restSegments(req).join("/"),
+        actor: { userId: c.userId, email: c.operator.email },
+        range: requestedRange(typeof req.headers.range === "string" ? req.headers.range : undefined),
+        signal: controller.signal,
+      });
+      res.status(file.status);
+      res.setHeader("Content-Type", file.contentType);
+      res.setHeader("Content-Length", String(file.contentLength));
+      if (file.contentRange) res.setHeader("Content-Range", file.contentRange);
+      if (file.acceptRanges) res.setHeader("Accept-Ranges", file.acceptRanges);
+      if (file.etag) res.setHeader("ETag", file.etag);
+      if (file.lastModified) res.setHeader("Last-Modified", file.lastModified);
+      await pipeline(file.stream, res);
+    } catch (error) {
+      if (res.headersSent || res.destroyed || controller.signal.aborted) {
+        if (!res.destroyed) res.destroy(error instanceof Error ? error : undefined);
+        return;
+      }
+      const typed = error instanceof PeonFileStreamError
+        ? error
+        : new PeonFileStreamError("PEON_FILE_STREAM_FAILED", "project file stream failed", 502);
+      res.status(typed.status === 499 ? 502 : typed.status).json({ error: typed.message, code: typed.code });
+    }
+  }));
+  router.get(`${wp}/projects/:key`, withWorkspaceProject(async (req, res, c) => {
+    if (await hasCanonicalProjectCatalog(c.record.peonId)) {
+      const project = await getIndexedProject(c.record.peonId, String(req.params.key));
+      if (!project) return res.status(404).json({ error: "unknown project", code: "UNKNOWN_PROJECT" });
+      return res.json(project);
+    }
+    relay(await callPeon(connOfRecord(c.record), "GET", proj(String(req.params.key)), { actor: c.operator.email }), res);
+  }));
   router.get(`${wp}/projects/:key/skills`, withWorkspaceProject(async (req, res, c) => {
     res.setHeader("Cache-Control", "no-store");
     relay(await callPeon(connOfRecord(c.record), "GET", `${proj(String(req.params.key))}/skills`, { actor: c.operator.email }), res);
   }));
-  router.get(`${wp}/projects/:key/settings`, withWorkspaceProject(async (req, res, c) => relay(await callPeon(connOfRecord(c.record), "GET", `${proj(String(req.params.key))}/settings`, { actor: c.operator.email }), res)));
+  router.get(`${wp}/projects/:key/settings`, withWorkspaceProject(async (req, res, c) => {
+    if (await hasCanonicalProjectCatalog(c.record.peonId)) {
+      const project = await getIndexedProject(c.record.peonId, String(req.params.key));
+      if (!project) return res.status(404).json({ error: "unknown project", code: "UNKNOWN_PROJECT" });
+      return res.json({ projectId: project.projectId, key: project.key, name: project.name ?? project.key, dir: project.dir ?? "", metadata: project.metadata });
+    }
+    relay(await callPeon(connOfRecord(c.record), "GET", `${proj(String(req.params.key))}/settings`, { actor: c.operator.email }), res);
+  }));
   router.patch(`${wp}/projects/:key/settings`, withWorkspaceProject(async (req, res, c) => { if (!ownerOnly(res, c.role)) return; relay(await callPeon(connOfRecord(c.record), "PATCH", `${proj(String(req.params.key))}/settings`, { actor: c.operator.email, body: req.body }), res); }));
   router.delete(`${wp}/projects/:key`, withWorkspaceProject(async (req, res, c) => { if (!ownerOnly(res, c.role)) return; relay(await callPeon(connOfRecord(c.record), "DELETE", proj(String(req.params.key)), { actor: c.operator.email }), res); }));
   router.get(`${wp}/settings`, withWorkspacePeon(async (_req, res, c) => { if (!ownerOnly(res, c.role)) return; relay(await callPeon(connOfRecord(c.record), "GET", "/settings", { actor: c.operator.email }), res); }));

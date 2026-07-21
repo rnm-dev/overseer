@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { query } from "./db.js";
+import { query, type Transaction } from "./db.js";
 import { enqueuePushForEvent } from "./push.js";
 
 // The append-only event log — the single choke point that both persists a
@@ -8,7 +8,7 @@ import { enqueuePushForEvent } from "./push.js";
 // appendEvent(): it writes a row, then emits it. liveSocket.ts is the consumer.
 // author: Viktor
 
-export type EventKind = "session" | "peon";
+export type EventKind = "session" | "project" | "peon";
 
 export interface LiveEvent {
   cursor: number;
@@ -24,7 +24,7 @@ export interface LiveEvent {
 export const bus = new EventEmitter();
 bus.setMaxListeners(0);
 
-interface AppendInput {
+export interface AppendInput {
   workspaceId: string;
   peonId: string;
   sessionId?: string | null;
@@ -32,9 +32,11 @@ interface AppendInput {
   payload: unknown;
 }
 
-export async function appendEvent(e: AppendInput): Promise<LiveEvent> {
+type EventWriter = Pick<Transaction, "query">;
+
+export async function insertEvent(writer: EventWriter, e: AppendInput): Promise<LiveEvent> {
   const createdAt = Date.now();
-  const { rows } = await query<{ cursor: string }>(
+  const { rows } = await writer.query<{ cursor: string }>(
     `INSERT INTO events (workspace_id, peon_id, session_id, kind, payload, created_at)
      VALUES ($1,$2,$3,$4,$5,$6) RETURNING cursor`,
     [e.workspaceId, e.peonId, e.sessionId ?? null, e.kind, JSON.stringify(e.payload), createdAt],
@@ -48,8 +50,17 @@ export async function appendEvent(e: AppendInput): Promise<LiveEvent> {
     payload: e.payload,
     createdAt,
   };
+  return event;
+}
+
+export async function publishCommittedEvent(event: LiveEvent): Promise<void> {
   bus.emit("event", event);
   await enqueuePushForEvent(event);
+}
+
+export async function appendEvent(e: AppendInput): Promise<LiveEvent> {
+  const event = await insertEvent({ query }, e);
+  await publishCommittedEvent(event);
   return event;
 }
 

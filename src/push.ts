@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { query, withAdvisoryLock } from "./db.js";
 import { membership } from "./workspaces.js";
 import { canAccessPeon, canAccessProject } from "./access.js";
-import type { EventKind, LiveEvent } from "./eventLog.js";
+import type { LiveEvent } from "./eventLog.js";
 
 export type PushProvider = "expo" | "fcm" | "apns";
 export type PushPlatform = "ios" | "android";
@@ -79,15 +79,18 @@ function notificationPayload(event: LiveEvent) {
 }
 
 export async function enqueuePushForEvent(event: LiveEvent): Promise<void> {
-  if (event.cursor <= 0) return;
+  // Project catalog events keep open dashboards coherent but are not operator
+  // alerts. Keep the existing preference schema and notification behavior
+  // unchanged rather than treating a project rename like a Peon status alert.
+  if (event.cursor <= 0 || event.kind === "project") return;
   const payload = JSON.stringify(notificationPayload(event));
-  const enabledColumn: Record<EventKind, string> = { session: "session_events", peon: "peon_events" };
+  const enabledColumn = event.kind === "session" ? "session_events" : "peon_events";
   const { rows } = await query<{ id: string; user_id: string }>(
     `SELECT s.id, s.user_id FROM push_subscriptions s
        JOIN workspace_members m ON m.user_id=s.user_id AND m.workspace_id=$1
        LEFT JOIN push_preferences p ON p.user_id=s.user_id AND p.workspace_id=$1
       WHERE s.disabled_at IS NULL AND s.provider='expo'
-        AND COALESCE(p.enabled, TRUE)=TRUE AND COALESCE(p.${enabledColumn[event.kind]}, TRUE)=TRUE`,
+        AND COALESCE(p.enabled, TRUE)=TRUE AND COALESCE(p.${enabledColumn}, TRUE)=TRUE`,
     [event.workspaceId],
   );
   const now = Date.now();

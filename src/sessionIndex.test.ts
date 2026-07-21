@@ -5,7 +5,16 @@ import test from "node:test";
 import type pg from "pg";
 import { newDb } from "pg-mem";
 import { initDb, query } from "./db.js";
-import { listSessions, reconcilePeon, upsertSession } from "./sessionIndex.js";
+import {
+  applySocketSessionEvent,
+  applySocketSessionSnapshot,
+  claimSessionSyncGeneration,
+  listSessions,
+  reconcilePeon,
+  releaseSessionSyncGeneration,
+  StaleSessionSyncGenerationError,
+  upsertSession,
+} from "./sessionIndex.js";
 
 test("session index keeps the opening preview separate from latest activity", async () => {
   const mem = newDb();
@@ -61,6 +70,32 @@ test("legacy full records derive a bounded opening preview", async () => {
   assert.equal(stored.rows[0]?.raw.prompt, undefined);
   assert.equal(stored.rows[0]?.raw.backendSessionId, undefined);
   assert.equal(stored.rows[0]?.raw.promptPreview, "x".repeat(200));
+});
+
+test("session normalization never splits emoji or writes unpaired surrogates to JSONB", async () => {
+  const mem = newDb();
+  const adapter = mem.adapters.createPg();
+  await initDb(new adapter.Pool() as unknown as pg.Pool);
+
+  await upsertSession("workspace", "peon", {
+    id: "unicode",
+    prompt: `${"x".repeat(199)}😀tail`,
+    title: "broken-high-\ud83d",
+    lastMessagePreview: "broken-low-\udc00",
+    outcome: { message: "nested-\ud83d", "key-\udc00": ["valid-😀", "broken-\udc00"] },
+  });
+
+  const stored = await query<{ raw: Record<string, unknown>; outcome: Record<string, unknown> }>(
+    `SELECT raw,outcome FROM sessions WHERE peon_id=$1 AND session_id=$2`,
+    ["peon", "unicode"],
+  );
+  assert.equal(stored.rows[0]?.raw.promptPreview, `${"x".repeat(199)}😀`);
+  assert.equal(stored.rows[0]?.raw.title, "broken-high-�");
+  assert.equal(stored.rows[0]?.raw.lastMessagePreview, "broken-low-�");
+  assert.deepEqual(stored.rows[0]?.outcome, {
+    message: "nested-�",
+    "key-�": ["valid-😀", "broken-�"],
+  });
 });
 
 test("session list projects a legacy prompt without returning the raw snapshot", async () => {
@@ -173,4 +208,126 @@ test("Peon collection reconciliation removes sessions deleted at the Peon", asyn
   const events = await query<{ payload: { deleted?: boolean; sessionId?: string } }>(`SELECT payload FROM events WHERE session_id=$1`, ["deleted-remotely"]);
   assert.equal(events.rows.at(-1)?.payload.deleted, true);
   assert.equal(events.rows.at(-1)?.payload.sessionId, "deleted-remotely");
+});
+
+test("reverse-connected session catalogs never race legacy HTTP reconciliation", async () => {
+  const mem = newDb();
+  const adapter = mem.adapters.createPg();
+  await initDb(new adapter.Pool() as unknown as pg.Pool);
+  await upsertSession("workspace", "peon", { id: "last-known", lastActivityAt: 10 });
+
+  const result = await reconcilePeon({
+    peonId: "peon", credentialId: "credential", workspaceId: "workspace", name: "Peon",
+    hostname: null, address: "unreachable.invalid", controlPort: 4570, publicUrl: null,
+    addressSource: "discovered", protocol: 1, capabilities: ["session-catalog-v1"], token: "token",
+    connectionPinned: false, registeredAt: 1, lastSeen: 1, load: null,
+  });
+
+  assert.equal(result, null);
+  assert.deepEqual(
+    (await listSessions({ peonId: "peon", limit: 10, offset: 0 })).sessions.map((session) => session.sessionId),
+    ["last-known"],
+  );
+});
+
+test("socket session commits are generation-fenced and durably deduplicated", async () => {
+  const mem = newDb();
+  const adapter = mem.adapters.createPg();
+  await initDb(new adapter.Pool() as unknown as pg.Pool);
+
+  await claimSessionSyncGeneration("fenced-peon", "old-generation");
+  await claimSessionSyncGeneration("fenced-peon", "new-generation");
+  await assert.rejects(
+    applySocketSessionEvent({
+      workspaceId: "workspace", peonId: "fenced-peon", generation: "old-generation",
+      catalogEpoch: "catalog", seq: 1, deliveryEpoch: "delivery", deliveryCursor: "cursor-1",
+      messageId: "00000000-0000-4000-8000-000000000001",
+      operation: "upsert", session: { id: "stale-write", lastActivityAt: 1 },
+    }),
+    StaleSessionSyncGenerationError,
+  );
+  assert.deepEqual((await listSessions({ peonId: "fenced-peon", limit: 10, offset: 0 })).sessions, []);
+  assert.equal((await query<{ count: number }>(`SELECT COUNT(*)::int AS count FROM peon_session_inbox`)).rows[0]?.count, 0);
+
+  await applySocketSessionSnapshot({
+    workspaceId: "workspace", peonId: "fenced-peon", generation: "new-generation",
+    catalogEpoch: "catalog", barrierSeq: 0, deliveryEpoch: "delivery", acknowledgedCursor: null, sessions: [],
+  });
+  const input = {
+    workspaceId: "workspace", peonId: "fenced-peon", generation: "new-generation",
+    catalogEpoch: "catalog", seq: 1, deliveryEpoch: "delivery", deliveryCursor: "cursor-1",
+    messageId: "00000000-0000-4000-8000-000000000002", operation: "upsert" as const,
+    session: { id: "committed-once", lastActivityAt: 2 },
+  };
+  const committed = {
+    catalog: { epoch: "catalog", acknowledgedSeq: 1 },
+    delivery: { epoch: "delivery", acknowledgedCursor: "cursor-1" },
+  };
+  assert.deepEqual(await applySocketSessionEvent(input), committed);
+  assert.deepEqual(await applySocketSessionEvent(input), committed);
+  assert.equal((await query<{ count: number }>(`SELECT COUNT(*)::int AS count FROM peon_session_inbox`)).rows[0]?.count, 1);
+  assert.equal((await query<{ count: number }>(`SELECT COUNT(*)::int AS count FROM events WHERE session_id='committed-once'`)).rows[0]?.count, 1);
+});
+
+test("legacy reconciliation remains available until the first socket snapshot succeeds", async () => {
+  const mem = newDb();
+  const adapter = mem.adapters.createPg();
+  await initDb(new adapter.Pool() as unknown as pg.Pool);
+  let requests = 0;
+  const server = http.createServer((_req, res) => {
+    requests += 1;
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify({ sessions: [{ id: "legacy", lastActivityAt: requests }] }));
+  });
+  const port = await new Promise<number>((resolve) => server.listen(0, "127.0.0.1", () => resolve((server.address() as AddressInfo).port)));
+  const record = {
+    peonId: "cutover-peon", credentialId: "credential", workspaceId: "workspace", name: "Peon",
+    hostname: null, address: "127.0.0.1", controlPort: port, publicUrl: `http://127.0.0.1:${port}`,
+    addressSource: "advertised" as const, protocol: 1, capabilities: ["sessions"], token: "token",
+    connectionPinned: false, registeredAt: 1, lastSeen: 1, load: null,
+  };
+  try {
+    assert.equal(await reconcilePeon(record), 1);
+    assert.equal(requests, 1, "HTTP registration metadata alone must not disable legacy sync");
+
+    await query(
+      `INSERT INTO peon_session_sync (peon_id, epoch, cursor, status, updated_at, generation)
+       VALUES ($1,'retired-epoch','retired-cursor','ready',$2,NULL)`,
+      [record.peonId, Date.now()],
+    );
+    assert.equal(await reconcilePeon(record), 1);
+    assert.equal(requests, 2, "a pre-018 ready row must not count as canonical cutover");
+    await query(`DELETE FROM peon_session_sync WHERE peon_id=$1`, [record.peonId]);
+
+    await claimSessionSyncGeneration(record.peonId, "failed-first-sync");
+    assert.equal(await reconcilePeon(record), null);
+    assert.equal(requests, 2, "legacy sync must not race an active socket snapshot");
+    await query(`UPDATE peon_session_sync SET updated_at=$2 WHERE peon_id=$1`, [record.peonId, Date.now() - 121_000]);
+    assert.equal(await reconcilePeon(record), 1);
+    assert.equal(requests, 3, "an abandoned first-sync lease must restore legacy fallback after a process crash");
+    await releaseSessionSyncGeneration(record.peonId, "failed-first-sync");
+    assert.equal(await reconcilePeon(record), 1);
+    assert.equal(requests, 4, "a failed first socket sync restores legacy fallback");
+
+    await claimSessionSyncGeneration(record.peonId, "successful-sync");
+    await applySocketSessionSnapshot({
+      workspaceId: record.workspaceId, peonId: record.peonId, generation: "successful-sync",
+      catalogEpoch: "epoch", barrierSeq: 0, deliveryEpoch: "delivery", acknowledgedCursor: null,
+      sessions: [{ id: "socket", lastActivityAt: 10 }],
+    });
+    await releaseSessionSyncGeneration(record.peonId, "successful-sync");
+    assert.equal(await reconcilePeon(record), null);
+    assert.equal(requests, 4, "successful socket cutover retains last-known rows without dual authority");
+
+    await claimSessionSyncGeneration(record.peonId, "quiet-resume");
+    await query(`UPDATE peon_session_sync SET updated_at=$2 WHERE peon_id=$1`, [record.peonId, Date.now() - 121_000]);
+    assert.equal((await query<{ status: string }>(
+      `SELECT status FROM peon_session_sync WHERE peon_id=$1`, [record.peonId],
+    )).rows[0]?.status, "ready");
+    assert.equal(await reconcilePeon(record), null);
+    assert.equal(requests, 4, "a quiet canonical resume must never restore HTTP authority");
+    await releaseSessionSyncGeneration(record.peonId, "quiet-resume");
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
 });

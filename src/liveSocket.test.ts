@@ -12,7 +12,7 @@ import { createWorkspace } from "./workspaces.js";
 import { registry } from "./registry.js";
 import { attachLiveSocket, parseSse } from "./liveSocket.js";
 import { listSessions, upsertSession } from "./sessionIndex.js";
-import { readEventsSince } from "./eventLog.js";
+import { broadcast, readEventsSince } from "./eventLog.js";
 
 function listen(server: http.Server): Promise<number> {
   return new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve((server.address() as AddressInfo).port)));
@@ -196,7 +196,11 @@ test("WebSocket handshake and session tails survive ordering and replacement rac
     const snapshot = await collector.waitFor((message) => message.type === "snapshot");
     assert.equal("sessions" in snapshot, false, "REST-owned session lists must not be duplicated in the WebSocket handshake");
     assert.equal("peons" in snapshot, false, "REST-owned Peon lists must not be duplicated in the WebSocket handshake");
+    assert.deepEqual(snapshot.peonPresence, [{ peonId: "peon-1", name: "stub", online: false }], "socket snapshot owns initial online state without duplicating full Peon records");
     assert.ok(JSON.stringify(snapshot).length < 10_000, "REST records must not inflate the WebSocket snapshot");
+    broadcast({ workspaceId: workspace.id, peonId: "peon-1", kind: "peon", payload: { peonId: "peon-1", name: "stub", online: true } });
+    const peonPresence = await collector.waitFor((message) => message.type === "peon" && (message.payload as { peonId?: string })?.peonId === "peon-1");
+    assert.equal((peonPresence.payload as { online?: boolean }).online, true, "Peon connection presence must fan out immediately");
     const crlf = await collector.waitFor((message) => message.type === "tail" && message.sessionId === "crlf");
     assert.equal(crlf.data, "{\"kind\":\"crlf\"}");
     assert.equal(crlf.id, "7");

@@ -48,7 +48,8 @@ export function agentRouter(): express.Router {
     const record = await registry.heartbeat(String(req.params.id), req.peonCred!.id, extractLoad(req.body ?? {}));
     // 404 tells the peon we lost it, so it re-registers.
     if (!record) return res.status(404).json({ error: "unknown peon — re-register", code: "UNKNOWN_PEON" });
-    // Liveness only — broadcast (no DB row); clients re-derive it from the snapshot.
+    // Heartbeats retain load/freshness metadata. Socket presence is the sole
+    // online/offline authority, so this broadcast cannot make a Peon online.
     broadcast({ workspaceId: record.workspaceId, peonId: record.peonId, kind: "peon", payload: toView(record) });
     res.json(toView(record));
   });

@@ -81,5 +81,6 @@ export function eventVisible(client: AccessClient, event: LiveEvent): boolean {
   const projectId = event.payload && typeof event.payload === "object" && typeof (event.payload as { projectId?: unknown }).projectId === "string"
     ? (event.payload as { projectId: string }).projectId
     : null;
+  if (event.kind === "project") return !!projectId && projectVisible(client, event.peonId, projectKey ?? "", projectId);
   return !projectKey || projectVisible(client, event.peonId, projectKey, projectId);
 }

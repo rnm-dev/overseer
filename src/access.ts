@@ -6,6 +6,22 @@ export interface MemberAccess {
   projects: { peonId: string; projectKey: string; projectId?: string | null }[];
 }
 
+export function projectAccessQuery(workspaceId: string, userId: string, peonId: string, projectKey: string, projectId?: string | null): { text: string; values: string[] } {
+  if (projectId) {
+    return {
+      text: `SELECT 1 FROM workspace_member_project_access
+        WHERE workspace_id = $1 AND user_id = $2 AND peon_id = $3 AND project_id = $4`,
+      values: [workspaceId, userId, peonId, projectId],
+    };
+  }
+  return {
+    text: `SELECT 1 FROM workspace_member_project_access
+      WHERE workspace_id = $1 AND user_id = $2 AND peon_id = $3
+        AND project_id IS NULL AND project_key = $4`,
+    values: [workspaceId, userId, peonId, projectKey],
+  };
+}
+
 export async function listMemberAccess(workspaceId: string, userId: string): Promise<MemberAccess> {
   const [peons, projects] = await Promise.all([
     query<{ peon_id: string }>(
@@ -55,12 +71,8 @@ export async function canAccessPeon(workspaceId: string, userId: string, role: R
 
 export async function canAccessProject(workspaceId: string, userId: string, role: Role, peonId: string, projectKey: string, projectId?: string | null): Promise<boolean> {
   if (role === "owner") return true;
-  const { rows } = await query(
-    `SELECT 1 FROM workspace_member_project_access
-      WHERE workspace_id = $1 AND user_id = $2 AND peon_id = $3
-        AND (${projectId ? `project_id = $5` : `project_id IS NULL AND project_key = $4`})`,
-    projectId ? [workspaceId, userId, peonId, projectKey, projectId] : [workspaceId, userId, peonId, projectKey],
-  );
+  const lookup = projectAccessQuery(workspaceId, userId, peonId, projectKey, projectId);
+  const { rows } = await query(lookup.text, lookup.values);
   return rows.length > 0;
 }
 

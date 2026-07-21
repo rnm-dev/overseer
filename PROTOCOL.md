@@ -24,6 +24,219 @@ auth-gate in `controlServer.ts`.
   no inbound reachability is still discoverable.
 - **Addressing:** `http://<peon>.<tailnet>.ts.net:4570/api/v1/...`
 
+### Dedicated reverse transfer socket (staged)
+
+Overseer exposes a second Peon-initiated WebSocket at
+`/api/v1/peons/transfer/ws`. This data-plane connection is deliberately
+separate from the control/session socket at `/api/v1/peons/ws`, so future bulk
+file bytes cannot delay control heartbeats, acknowledgements, or session state.
+Both sockets use the same enrolled, revocable Peon bearer credential and
+Peon/workspace binding checks.
+
+After the HTTP upgrade, Peon must send:
+
+```json
+{ "type": "hello", "protocol": 1, "channel": "file-transfer", "peonId": "optional-stable-id", "capabilities": ["project-file-read-v1"] }
+```
+
+Overseer answers:
+
+```json
+{ "type": "hello_ack", "protocol": 1, "channel": "file-transfer", "capabilities": ["project-file-read-v1"] }
+```
+
+At most one ready transfer connection is current per Peon; a newer successful
+hello replaces the older generation. Transfer connectivity does not determine
+Peon online presence, which remains owned by the control socket. Overseer sends
+WebSocket ping frames every 30 seconds and terminates a connection that misses a
+pong round. Credential revocation evicts both channels.
+
+Overseer echoes only implemented transfer capabilities. A connected Peon that
+does not negotiate `project-file-read-v1` is lifecycle-ready but unavailable to
+the project file stream service; Overseer never sends it `file_open`.
+
+The first data-plane operation is a project-relative file read. Its authenticated
+browser surface uses stable project identity:
+
+```
+GET /api/workspaces/:wsId/peons/:peonId/projects/by-id/:projectId/files/{relativePath}
+Range: bytes=<start>-<optional-end>
+```
+
+Overseer authorizes workspace, Peon, and project-ID access, rejects absolute or
+traversing paths, and sends the trusted server-derived actor:
+
+```json
+{
+  "type": "file_open", "protocol": 1, "requestId": "uuid",
+  "projectId": "stable-project-id", "relativePath": "dist/index.html",
+  "actor": { "userId": "stable-user-id", "email": "operator@example.com" },
+  "range": { "start": 0, "end": 1023 }
+}
+```
+
+Peon resolves the project ID and remains authoritative for canonical root,
+symlink, permission, and file checks. It answers exactly one pre-body outcome:
+
+```json
+{ "type": "file_error", "requestId": "uuid", "status": 404, "code": "NOT_FOUND", "message": "file does not exist" }
+```
+
+or:
+
+```json
+{
+  "type": "file_meta", "requestId": "uuid", "status": 200,
+  "contentType": "application/octet-stream", "contentLength": 1234,
+  "acceptRanges": "bytes", "etag": "optional", "lastModified": "optional"
+}
+```
+
+Status `206` additionally requires `contentRange`. After valid metadata,
+Overseer grants a bounded byte window with
+`file_credit {requestId,bytes}`. Peon must not exceed cumulative granted credit.
+File bytes use binary WebSocket frames with a 22-byte header: byte 0 protocol
+version `1`, byte 1 frame type `1` (chunk), bytes 2–17 the UUID as 16 network
+bytes, bytes 18–21 an unsigned big-endian sequence, then at most 65,514 payload
+bytes. Sequence starts at zero. Peon finishes with
+`file_end {requestId}`; the exact `contentLength` must have arrived.
+
+Overseer sends `file_cancel {requestId,reason}` when the browser aborts, metadata
+times out, or the transfer is no longer wanted. Socket disconnect/replacement
+fails every request owned by that socket. Late frames for a recently cancelled
+request are ignored for a short bounded window so a cancellation race cannot
+kill other users' multiplexed transfers. Protocol violations close the transfer
+socket. No complete file is buffered by Overseer.
+
+### Reverse-connected session catalog (incremental rollout)
+
+The canonical path requires both `session-catalog-v1` and
+`durable-delivery-v1` in the authenticated WebSocket hello. The HTTP
+registration capability list describes the Peon's HTTP API and is not used to
+negotiate reverse-socket channels. Overseer echoes both or neither. Peons
+without the pair retain legacy HTTP reconciliation until the first reverse
+snapshot commits; the two authorities never run concurrently after cutover.
+
+Hello carries independent catalog and delivery domains:
+
+```json
+{
+  "type": "hello", "protocol": 1, "peonId": "stable-id",
+  "capabilities": ["session-catalog-v1", "durable-delivery-v1"],
+  "channels": { "session-catalog-v1": {
+    "epoch": "catalog-epoch", "revision": 42, "earliestSeq": 10, "latestSeq": 42
+  }},
+  "delivery": {
+    "epoch": "delivery-epoch", "earliestCursor": "opaque", "latestCursor": "opaque",
+    "negotiated": false
+  }
+}
+```
+
+`delivery.negotiated` reports the Peon's state before the current
+`hello_ack`; it is normally `false` on first contact and is never an admission
+condition for the capability pair.
+
+`hello_ack` returns accepted capabilities and, only when matching epochs are
+resumable, `channels["session-catalog-v1"] = {epoch, acknowledgedSeq}` and
+`delivery = {epoch, acknowledgedCursor}`. Catalog and delivery epochs are never
+compared or substituted. Any stale checkpoint is omitted and causes a fresh
+snapshot.
+
+Overseer requests snapshot pages with
+`session_catalog_snapshot_request {requestId, limit:100, cursor?}`. Peon returns
+`session_catalog_snapshot_page {requestId, epoch, revision, barrierSeq,
+sessions, nextCursor, hasMore}`. All pages retain the first page's epoch,
+revision, and barrier. Overseer stages the bounded snapshot and atomically
+replaces the active projection only on `hasMore:false`; cancellation, timeout,
+disconnect, malformed pages, or changed barriers discard staging. Cancellation
+uses `session_catalog_snapshot_cancel` / `session_catalog_snapshot_cancelled`.
+
+Ordered changes travel inside:
+
+```json
+{
+  "type": "durable_message", "epoch": "delivery-epoch", "cursor": "opaque",
+  "messageId": "uuid", "priority": "normal",
+  "payload": {
+    "type": "session_catalog_event", "epoch": "catalog-epoch",
+    "seq": 43, "revision": 43,
+    "session": { "id": "session-id", "status": "running" }
+  }
+}
+```
+
+Deletion replaces `session` with `deletedSessionId`. Projection mutation,
+authorized operator event, delivery inbox record, and both checkpoints commit
+in one transaction. Only then does Overseer send independent cumulative
+`durable_ack {epoch,cursor}` and `session_catalog_ack
+{epoch,acknowledgedSeq}`. Replays are harmless by delivery epoch/cursor and
+message ID; sequence gaps, wrong epochs, unknown payloads, or malformed frames
+cannot advance acknowledgement and fence the connection.
+
+Durable events received while a snapshot is staged retain their original
+delivery order. Events newer than `barrierSeq` apply after the atomic snapshot;
+events at or below the barrier are already represented by it but still commit an
+idempotent inbox record and advance `durable_ack`, so covered messages cannot
+remain stuck in Peon's delivery queue.
+
+Overseer fences commits by connection generation, limits complete frames to 60
+KiB, accepts at most 250 summaries per page, 1,000 pages, 10,000 summaries per
+snapshot, 1,000 buffered events, and 8 MiB staged per sync. Inbound work is also
+bounded per Peon and by an 8 MiB process-wide queued-byte budget. Last-known rows
+remain available while stale or rebuilding. An abandoned *first* sync lease
+expires after two minutes so legacy reconciliation can recover after a crash;
+once migration-018 `catalog_epoch` exists, HTTP authority never resumes.
+
+`GET /api/workspaces/:wsId/sessions` remains local, paginated, and ACL-filtered.
+Its top-level `catalogs` array exposes each visible Peon's `online`,
+`legacy|fallback|syncing|ready|stale|offline` state, stale flag, checkpoint
+freshness timestamp, committed catalog revision, and delivery-commit presence.
+
+### Reverse-connected project catalog
+
+`project-catalog-v1` is an optional channel on the same authenticated control
+socket and requires `session-catalog-v1` plus `durable-delivery-v1` during the
+incremental rollout. It has its own catalog epoch and sequence, but shares the
+single Peon-wide durable delivery epoch/cursor. Overseer therefore returns one
+`hello_ack` containing the accepted capabilities and independently resumable
+channel checkpoints:
+
+```json
+{
+  "type": "hello_ack", "protocol": 1,
+  "capabilities": ["session-catalog-v1", "durable-delivery-v1", "project-catalog-v1"],
+  "channels": {
+    "session-catalog-v1": { "epoch": "sessions", "acknowledgedSeq": 42 },
+    "project-catalog-v1": { "epoch": "projects", "acknowledgedSeq": 8 }
+  },
+  "delivery": { "epoch": "delivery", "acknowledgedCursor": "opaque" }
+}
+```
+
+Overseer requests bounded pages with
+`project_catalog_snapshot_request {requestId,limit:100,cursor?}`. Peon returns
+`project_catalog_snapshot_page {requestId,epoch,revision,barrierSeq,projects,
+nextCursor,hasMore}`. Every project is the safe catalog document
+`{projectId,key,name?,label?,dir?,path?,metadata?}`. `projectId` is immutable;
+`key` is mutable routing/display metadata. File contents, directory trees,
+skills, credentials, and session-derived rollups never enter this channel.
+
+Ordered changes use the existing `durable_message` envelope with payload
+`project_catalog_event {epoch,seq,revision,project}` or the deletion form
+`{epoch,seq,revision,deletedProjectId}`. Overseer atomically commits the shared
+inbox record, project projection/tombstone, project checkpoint, browser event,
+and shared delivery checkpoint before sending `durable_ack` followed by
+`project_catalog_ack`. While either negotiated catalog snapshot is incomplete,
+all durable messages are buffered within the existing aggregate item/byte
+limits and then drained in their original delivery order.
+
+For a canonical Peon, project list/detail/settings reads are served from the
+local projection and remain available while the Peon is offline. Create,
+update, and delete remain authenticated HTTP commands during this slice; their
+authoritative result returns through the project catalog. Older Peons retain
+the proxied HTTP project APIs until their first project snapshot commits.
+
 ## Envelope
 
 Every request:

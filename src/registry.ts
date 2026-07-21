@@ -1,5 +1,5 @@
-import { config } from "./config.js";
 import { query } from "./db.js";
+import { isPeonConnected } from "./peonConnections.js";
 
 // The peon registry — Postgres-backed (`peons` table). `online` and `baseUrl` are
 // derived, never stored.
@@ -225,5 +225,5 @@ function urlParts(publicUrl: string): { hostname: string; port: number } | null 
 
 export function toView(record: PeonRecord): PeonView {
   const { token: _token, ...rest } = record;
-  return { ...rest, online: Date.now() - record.lastSeen <= config.offlineAfterMs, baseUrl: baseUrl(record) };
+  return { ...rest, online: isPeonConnected(record.peonId), baseUrl: baseUrl(record) };
 }

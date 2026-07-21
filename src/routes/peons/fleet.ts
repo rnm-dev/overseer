@@ -2,10 +2,10 @@ import express from "express";
 import { config } from "../../config.js";
 import { registry, toView, type PeonRecord } from "../../registry.js";
 import { callPeon, connOfRecord, normalizePeonUrl, PROTOCOL } from "../../peonClient.js";
-import { listSessions } from "../../sessionIndex.js";
+import { getSessionCatalogStates, listSessions } from "../../sessionIndex.js";
 import { bindPeon, mintCredential, revokeCredential, revokeCredentialForPeon } from "../../credentials.js";
 import { ownerOnly, withWorkspace } from "../helpers.js";
-import { canAccessPeon } from "../../access.js";
+import { canAccessPeon, listMemberAccess } from "../../access.js";
 
 function enrollmentFallback(status: number, code: string): string {
   if (code === "DNS_FAILURE") return "the Peon domain could not be resolved";
@@ -125,15 +125,14 @@ export function registerFleetRoutes(router: express.Router): void {
           const r = await callPeon(connOfRecord(record), "GET", "/status", { timeoutMs: 4_000 });
           if (r.ok) return { ...view, status: r.json, statusError: null, lastError: null };
 
-          // A fresh heartbeat only proves that the peon can reach the overseer.
-          // The dashboard's status probe also verifies the reverse/control path;
-          // if that fails, presenting the peon as online is misleading because no
-          // operator action can reach it.
+          // Connection presence remains authoritative. Until status commands are
+          // routed over WSS, a legacy callback probe may fail for a connected Peon
+          // behind NAT; expose that as missing detail without flipping it offline.
           const lastError =
             r.json && typeof r.json === "object" && "error" in r.json && typeof r.json.error === "string"
               ? r.json.error
               : `status probe failed (${r.status})`;
-          return { ...view, online: false, status: null, statusError: r.json, lastError };
+          return { ...view, status: null, statusError: r.json, lastError };
         }),
       );
       res.json({ peons: results });
@@ -159,7 +158,22 @@ export function registerFleetRoutes(router: express.Router): void {
         offset,
         access: ctx.role === "member" ? { userId: ctx.userId } : undefined,
       });
-      res.json({ sessions, total, limit, offset });
+      let catalogs = await getSessionCatalogStates(ctx.workspaceId, peonId);
+      if (ctx.role === "member") {
+        const allowed = new Set((await listMemberAccess(ctx.workspaceId, ctx.userId)).peonIds);
+        catalogs = catalogs.filter((catalog) => allowed.has(catalog.peonId));
+      }
+      const catalogByPeon = new Map(catalogs.map((catalog) => [catalog.peonId, catalog]));
+      const visibleSessions = sessions.map((session) => {
+        const catalog = catalogByPeon.get(session.peonId);
+        return catalog ? {
+          ...session,
+          catalogState: catalog.state,
+          catalogStale: catalog.stale,
+          catalogUpdatedAt: catalog.updatedAt,
+        } : session;
+      });
+      res.json({ sessions: visibleSessions, total, limit, offset, catalogs });
     }),
   );
 }

@@ -353,4 +353,74 @@ export const MIGRATIONS: { id: string; statements: string[] }[] = [
       `CREATE INDEX IF NOT EXISTS releases_created_idx ON releases (created_at)`,
     ],
   },
+  {
+    // Durable resume point for the reverse-connected session catalog. Cursors
+    // are Peon-owned opaque strings; never interpret them as clocks or offsets.
+    id: "016_peon_session_sync",
+    statements: [
+      `CREATE TABLE IF NOT EXISTS peon_session_sync (
+         peon_id    TEXT PRIMARY KEY,
+         epoch      TEXT,
+         cursor     TEXT,
+         status     TEXT NOT NULL,
+         updated_at BIGINT NOT NULL
+       )`,
+    ],
+  },
+  {
+    // Generation fencing prevents a replaced socket from committing late. The
+    // inbox makes Peon cursor ingestion durable and idempotent across restarts.
+    id: "017_session_sync_hardening",
+    statements: [
+      `ALTER TABLE peon_session_sync ADD COLUMN IF NOT EXISTS generation TEXT`,
+      `CREATE TABLE IF NOT EXISTS peon_session_inbox (
+         peon_id    TEXT NOT NULL,
+         epoch      TEXT NOT NULL,
+         cursor     TEXT NOT NULL,
+         created_at BIGINT NOT NULL,
+         PRIMARY KEY (peon_id, epoch, cursor)
+       )`,
+    ],
+  },
+  {
+    // The canonical protocol has independent catalog and durable-delivery
+    // epochs/checkpoints. Keep the old columns in place for rollback, but do
+    // not reinterpret checkpoints written by the retired sessions.* dialect.
+    id: "018_canonical_session_catalog",
+    statements: [
+      `ALTER TABLE peon_session_sync ADD COLUMN IF NOT EXISTS catalog_epoch TEXT`,
+      `ALTER TABLE peon_session_sync ADD COLUMN IF NOT EXISTS acknowledged_seq BIGINT`,
+      `ALTER TABLE peon_session_sync ADD COLUMN IF NOT EXISTS delivery_epoch TEXT`,
+      `ALTER TABLE peon_session_sync ADD COLUMN IF NOT EXISTS acknowledged_cursor TEXT`,
+      `ALTER TABLE peon_session_inbox ADD COLUMN IF NOT EXISTS message_id TEXT`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS peon_session_inbox_message_id_idx ON peon_session_inbox (peon_id, message_id) WHERE message_id IS NOT NULL`,
+    ],
+  },
+  {
+    // Peon remains authoritative for projects. This materialized projection is
+    // keyed by the immutable Peon-issued ID; project_key is mutable navigation
+    // metadata and must never become an authorization identity again.
+    id: "019_project_catalog",
+    statements: [
+      `CREATE TABLE IF NOT EXISTS projects (
+         peon_id     TEXT NOT NULL,
+         project_id  TEXT NOT NULL,
+         project_key TEXT NOT NULL,
+         name         TEXT,
+         dir          TEXT,
+         metadata     TEXT,
+         synced_at    BIGINT NOT NULL,
+         PRIMARY KEY (peon_id, project_id)
+       )`,
+      `CREATE INDEX IF NOT EXISTS projects_peon_key_idx ON projects (peon_id, project_key)`,
+      `CREATE TABLE IF NOT EXISTS peon_project_sync (
+         peon_id          TEXT PRIMARY KEY,
+         catalog_epoch    TEXT,
+         acknowledged_seq BIGINT,
+         status           TEXT NOT NULL,
+         updated_at       BIGINT NOT NULL,
+         generation       TEXT
+       )`,
+    ],
+  },
 ];
