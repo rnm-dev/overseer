@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { childPath, listProjectDocs } from "./projectDocs.js";
+import { childPath, listProjectDocs } from "./modules/projectDocs/index.js";
 import { PeonOperationError } from "./peonOperationChannel.js";
 import type { FolderListInput, FolderListResult } from "./peonFolderListing.js";
 import { peonsRouter } from "./routes/peons.js";
