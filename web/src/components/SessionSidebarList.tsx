@@ -116,7 +116,8 @@ export function SessionSidebarList({
           >
             <NavLink
               to={to(session)}
-              className={({ isActive }) => `block rounded px-2.5 py-1.5 transition-colors ${isActive ? "bg-fel/10" : "hover:bg-iron-900"}`}
+              title={session.catalogStale ? t("session.catalogStaleTitle") : undefined}
+              className={({ isActive }) => `block rounded px-2.5 py-1.5 transition-colors ${session.catalogStale ? "opacity-70" : ""} ${isActive ? "bg-fel/10" : "hover:bg-iron-900"}`}
             >
               <div className="flex items-center gap-1.5">
                 <span className={`h-1.5 w-1.5 flex-none rounded-full ${statusColor(session.status)}`} aria-hidden />
@@ -128,6 +129,11 @@ export function SessionSidebarList({
               <div className="mt-0.5 flex items-center gap-1.5 pl-3 font-body text-[0.65rem] text-bone-faint">
                 {peonName && <span className="max-w-[35%] flex-none truncate text-bone-dim">{peonName}</span>}
                 {session.projectKey && <span className="max-w-[30%] flex-none truncate font-mono text-forge/80">{session.projectKey}</span>}
+                {session.catalogStale && (
+                  <span className="flex-none font-mono uppercase tracking-wide text-forge/70">
+                    {session.catalogState === "syncing" ? t("session.catalogSyncing") : t("session.catalogStale")}
+                  </span>
+                )}
                 {session.lastMessagePreview && (
                   <span className="min-w-0 flex-1 whitespace-nowrap" title={session.lastMessagePreview}>
                     <FadingTitle>{session.lastMessagePreview}</FadingTitle>

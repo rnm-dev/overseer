@@ -17,7 +17,7 @@ import {
   type MessageAttachment,
 } from "./session/parsing";
 import { ItemView, Working } from "./session/messageParts";
-import { createQueueReconciler } from "./session/queue";
+import { createQueueActivityTracker, createQueueReconciler } from "./session/queue";
 import type { PreviewTarget } from "./session/PreviewPanel";
 import { useSessionTranscript } from "./session/useSessionTranscript";
 import { useSessionComposer } from "./session/useSessionComposer";
@@ -26,7 +26,7 @@ import { SessionComposerDock } from "./session/SessionComposerDock";
 import { SessionOverlays } from "./session/SessionOverlays";
 import { useScrollToBottom } from "./session/useScrollToBottom";
 import { nextSessionAfterDeletion } from "./session/nextSession";
-import { isSuccessfulRunResult, playPeonSound } from "../../peonSounds";
+import { isSuccessfulRunResult, onSelectedSoundPackChange, playPeonSound, syncWorkSoundLoop } from "../../peonSounds";
 
 // author: Viktor
 // The transcript parsing/render pieces live in ./session/*; this file owns the
@@ -132,8 +132,18 @@ export function PeonSessionDetail() {
   const [stopping, setStopping] = useState(false);
   const [stopNote, setStopNote] = useState<string | null>(null);
   const suppressCompletionSoundRef = useRef(false);
+  useEffect(() => {
+    const sync = () => syncWorkSoundLoop(running);
+    sync();
+    const unsubscribe = onSelectedSoundPackChange(sync);
+    return () => {
+      unsubscribe();
+      syncWorkSoundLoop(false);
+    };
+  }, [running, sessionKey]);
 
   const queueReconcilerRef = useRef<ReturnType<typeof createQueueReconciler> | null>(null);
+  const queueActivityRef = useRef(createQueueActivityTracker());
   const [attachmentPreview, setAttachmentPreview] = useState<string | null>(null);
   const [sentAttachmentPreview, setSentAttachmentPreview] = useState<MessageAttachment | null>(null);
   const [artifactPreview, setArtifactPreview] = useState<PreviewTarget | null>(null);
@@ -179,6 +189,7 @@ export function PeonSessionDetail() {
     }));
   }, [sessionKey]);
   const onRunFinished = useCallback((event?: { type?: string; is_error?: boolean }) => {
+    if (queueActivityRef.current.hasPending(sessionKey)) return;
     setRunning(false);
     setMetaTick((value) => value + 1);
     if (!event || !isSuccessfulRunResult(event)) return;
@@ -187,7 +198,7 @@ export function PeonSessionDetail() {
       return;
     }
     playPeonSound("complete");
-  }, [setRunning]);
+  }, [sessionKey, setRunning]);
   const onWorkStarted = useCallback(() => {
     suppressCompletionSoundRef.current = false;
     playPeonSound("start");
@@ -267,6 +278,7 @@ export function PeonSessionDetail() {
     catalog,
     currentSessionKeyRef,
     queueReconcilerRef,
+    queueActivity: queueActivityRef.current,
     pendingEchoesRef,
     historyReadyRef,
     tailHighWaterRef,

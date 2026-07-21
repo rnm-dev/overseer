@@ -1,14 +1,13 @@
 import { Check, ChevronDown } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useT } from "../i18n";
-import { useWorkspace } from "../workspace";
+import { useWorkspacePeonPresence } from "../hooks/usePeonPresence";
 import { DropdownMenu, menuItemClass, StatusDot } from "../ui";
 
 export function PeonScopeSwitcher({ workspaceId, peonId }: { workspaceId: string; peonId?: string }) {
   const t = useT();
   const navigate = useNavigate();
-  const { groups } = useWorkspace();
-  const peons = groups.find((group) => group.workspace.id === workspaceId)?.peons ?? [];
+  const peons = useWorkspacePeonPresence(workspaceId);
   const selected = peonId ? peons.find((peon) => peon.peonId === peonId) : undefined;
   const currentLabel = selected?.name || (peonId ? t("peons.unnamed") : t("sessions.allPeons"));
 

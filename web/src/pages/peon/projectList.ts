@@ -1,0 +1,62 @@
+export interface ProjectLite {
+  peonId?: string;
+  projectId?: string | null;
+  key: string;
+  name?: string | null;
+  path?: string | null;
+  dir?: string | null;
+  metadata?: string | null;
+  sessionCount?: number;
+  activeCount?: number;
+  lastActivityMs?: number | null;
+  syncedAt?: number;
+  deleted?: boolean;
+}
+
+export interface ProjectLiveEvent extends Partial<ProjectLite> {
+  peonId: string;
+  projectId: string;
+  deleted?: boolean;
+  syncedAt: number;
+}
+
+function identity(project: Pick<ProjectLite, "peonId" | "projectId" | "key">): string {
+  return `${project.peonId ?? ""}\0${project.projectId ?? `key:${project.key}`}`;
+}
+
+export function mergeProjects(current: ProjectLite[], incoming: ProjectLite[]): ProjectLite[] {
+  const merged = new Map(current.map((project) => [identity(project), project]));
+  for (const project of incoming) {
+    const key = identity(project);
+    const previous = merged.get(key);
+    if (previous?.syncedAt != null && project.syncedAt != null && previous.syncedAt > project.syncedAt) continue;
+    merged.set(key, { ...previous, ...project, deleted: false });
+  }
+  return [...merged.values()];
+}
+
+export function applyProjectEvent(current: ProjectLite[], event: ProjectLiveEvent): ProjectLite[] {
+  const index = current.findIndex((project) => project.peonId === event.peonId && project.projectId === event.projectId);
+  if (index >= 0 && current[index]!.syncedAt != null && current[index]!.syncedAt! > event.syncedAt) return current;
+  if (event.deleted) {
+    const tombstone: ProjectLite = {
+      ...(index >= 0 ? current[index] : {}),
+      peonId: event.peonId,
+      projectId: event.projectId,
+      key: index >= 0 ? current[index]!.key : "",
+      syncedAt: event.syncedAt,
+      deleted: true,
+    };
+    return index < 0
+      ? [...current, tombstone]
+      : current.map((project, itemIndex) => itemIndex === index ? tombstone : project);
+  }
+  if (!event.key) return current;
+  const next: ProjectLite = { ...(index >= 0 ? current[index] : {}), ...event, key: event.key, deleted: false };
+  if (index < 0) return [...current, next];
+  return current.map((project, itemIndex) => itemIndex === index ? next : project);
+}
+
+export function visibleProjects(projects: ProjectLite[]): ProjectLite[] {
+  return projects.filter((project) => !project.deleted);
+}

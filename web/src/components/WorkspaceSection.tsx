@@ -4,12 +4,13 @@ import { MessageSquare, Server, Users } from "lucide-react";
 import { api } from "../api";
 import { Badge, Button, StatusDot } from "../ui";
 import { useT } from "../i18n";
-import type { PeonLite, Workspace } from "../workspace";
+import type { Workspace } from "../workspace";
 import { AddPeonDialog } from "./AddPeonDialog";
 import { SessionPresence } from "./SessionPresence";
 import { useLiveSocket, type PresenceUser } from "../liveSocket";
 import { useWorkspace } from "../workspace";
 import { useWorkspaceLivePresence } from "../workspaceLive";
+import { useWorkspacePeonPresence } from "../hooks/usePeonPresence";
 
 // author: Viktor
 // One workspace on the fleet dashboard: its peons in a grid and links to its
@@ -18,25 +19,25 @@ import { useWorkspaceLivePresence } from "../workspaceLive";
 interface StatusPeon {
   peonId: string;
   name: string | null;
-  online?: boolean;
   status?: { activeSessionCount?: number } | null;
   lastError?: string | null;
 }
-export function WorkspaceSection({ workspace, peons }: { workspace: Workspace; peons: PeonLite[] }) {
+export function WorkspaceSection({ workspace }: { workspace: Workspace }) {
   const t = useT();
   const { viewersForPeon } = useLiveSocket();
   const { current } = useWorkspace();
   const wsId = workspace.id;
   const isOwner = workspace.role === "owner";
+  const peons = useWorkspacePeonPresence(wsId);
 
   const [status, setStatus] = useState<Record<string, StatusPeon>>({});
   const [showAddPeon, setShowAddPeon] = useState(false);
   const remotePresence = useWorkspaceLivePresence(wsId, current?.id !== wsId);
 
-  const onlineCount = peons.filter((p) => status[p.peonId]?.online ?? p.online).length;
+  const onlineCount = peons.filter((p) => p.online).length;
 
-  // Active-session counts (+ live online / lastError) per peon, independent of
-  // the single-workspace live socket so every workspace grid is equally fresh.
+  // HTTP supplies active-session counts and last errors only. Connectivity is
+  // read from the socket-owned workspace projection above.
   useEffect(() => {
     let alive = true;
     const pull = () =>
@@ -105,7 +106,7 @@ export function WorkspaceSection({ workspace, peons }: { workspace: Workspace; p
         <ul className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 lg:grid-cols-3">
           {peons.map((p) => {
             const st = status[p.peonId];
-            const online = st?.online ?? p.online;
+            const online = p.online;
             const active = st?.status?.activeSessionCount ?? 0;
             return (
               <li key={p.peonId}>

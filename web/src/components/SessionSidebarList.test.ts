@@ -39,3 +39,24 @@ test("session rows fade the latest message inline between project metadata and t
   assert.ok(preview > project);
   assert.match(markup, /OVERSEER<\/span><span class="min-w-0 flex-1 whitespace-nowrap"[^>]*><span class="title-fade">Latest assistant response<\/span>/);
 });
+
+test("stale catalog rows are visibly marked without changing their session status", () => {
+  const markup = renderToStaticMarkup(React.createElement(
+    I18nProvider,
+    null,
+    React.createElement(
+      MemoryRouter,
+      null,
+      React.createElement(SessionSidebarList, {
+        sessions: [{ peonId: "peon-1", id: "session-1", title: "Last known", status: "running", catalogState: "offline", catalogStale: true }],
+        to: () => "/sessions/session-1",
+        peonIdFor: () => "peon-1",
+        viewersFor: () => [],
+      }),
+    ),
+  ));
+
+  assert.match(markup, />stale</);
+  assert.match(markup, /opacity-70/);
+  assert.match(markup, /bg-fel/);
+});

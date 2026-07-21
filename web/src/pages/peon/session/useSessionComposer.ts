@@ -5,7 +5,7 @@ import type { Translate } from "../../../i18n";
 import { composerDraftKey, useComposerDraft } from "../drafts";
 import type { ModelsCatalog } from "../models";
 import type { Ev } from "./parsing";
-import { createQueueReconciler, enqueueSessionFollowup, getSessionQueue, removeSessionQueueItem, removeWaitingQueueItem, sendSessionQueueItemNow, sendWaitingQueueItemNow, type QueueItem } from "./queue";
+import { createQueueReconciler, enqueueSessionFollowup, getSessionQueue, removeSessionQueueItem, removeWaitingQueueItem, sendSessionQueueItemNow, sendWaitingQueueItemNow, type QueueActivityTracker, type QueueItem } from "./queue";
 import { createSubmissionGate } from "./submissionGate";
 import type { PendingEcho } from "./transcriptMerge";
 
@@ -31,6 +31,7 @@ interface Args {
   catalog: ModelsCatalog | null;
   currentSessionKeyRef: MutableRefObject<string>;
   queueReconcilerRef: MutableRefObject<ReturnType<typeof createQueueReconciler> | null>;
+  queueActivity: QueueActivityTracker;
   pendingEchoesRef: MutableRefObject<PendingEcho[]>;
   historyReadyRef: MutableRefObject<boolean>;
   tailHighWaterRef: MutableRefObject<number>;
@@ -47,6 +48,7 @@ export function useSessionComposer({
   base, sid, sessionKey, wsId, peonId, user, t, running, runningModel,
   sessionModel, sessionAgent, sessionPermissionMode, overrideModel,
   overrideReasoningEffort, catalog, currentSessionKeyRef, queueReconcilerRef,
+  queueActivity,
   pendingEchoesRef, historyReadyRef, tailHighWaterRef, stickToBottomRef,
   setLive, setRunning, setRunningModel, setStopNote, refreshTranscript, onWorkStarted,
 }: Args) {
@@ -284,11 +286,15 @@ export function useSessionComposer({
   // while this browser was disconnected.
   useEffect(() => {
     setQueueItems([]);
+    queueActivity.replace(sessionKey, []);
     setRemovingQueueItems(new Set());
     setSendingQueueItems(new Set());
     const reconciler = createQueueReconciler(
       () => getSessionQueue(base, sid),
-      setQueueItems,
+      (items) => {
+        queueActivity.replace(sessionKey, items);
+        setQueueItems(items);
+      },
       (error) => {
         if (!isPeonNeedsUpdate(error)) setSendError(error instanceof ApiError ? error.message : t("error.generic"));
       },
@@ -299,7 +305,7 @@ export function useSessionComposer({
       reconciler.dispose();
       if (queueReconcilerRef.current === reconciler) queueReconcilerRef.current = null;
     };
-  }, [base, queueReconcilerRef, sid, t]);
+  }, [base, queueActivity, queueReconcilerRef, sessionKey, sid, t]);
 
   // `change` from the Peon is the fast path, but older Peons do not always emit
   // it when they automatically pop the next follow-up. While the widget still
