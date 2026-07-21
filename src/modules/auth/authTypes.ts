@@ -1,5 +1,3 @@
-import type { GithubProfile } from "../../github.js";
-
 export type OAuthFlow = "web" | "native";
 
 export interface OauthStartResult {
