@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { heartbeatPresence, listHeartbeatPresence, listVisiblePresence, removePresence } from "../presence.js";
+import { heartbeatPresence, listHeartbeatPresence, listVisiblePresence, removePresence } from "../modules/presence/index.js";
 
 test("HTTP presence heartbeat moves a connection atomically and clears it", () => {
   const base = {

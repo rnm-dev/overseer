@@ -9,7 +9,7 @@ import { getIndexedSession } from "./sessionIndex.js";
 import { bus, latestCursor, oldestCursor, readEventsSince, type LiveEvent } from "./eventLog.js";
 import { callPeon, connOfRecord, streamPeonTo } from "./peonClient.js";
 import { eventVisible, peonVisible, projectVisible, refreshClientAccess, sessionVisible } from "./liveAccess.js";
-import { heartbeatPresence, listHeartbeatPresence, presenceBus, removePresence, touchPresence } from "./presence.js";
+import { heartbeatPresence, listHeartbeatPresence, presenceBus, removePresence, touchPresence } from "./modules/presence/index.js";
 
 // The north-bound (overseer→client) transport: one authenticated WebSocket per
 // app, multiplexing presence + live session tails, resumable by cursor.
