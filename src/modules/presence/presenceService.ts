@@ -1,29 +1,8 @@
 import { EventEmitter } from "node:events";
+import type { StoredPresence, VisiblePresence } from "./presenceTypes.js";
 
-export interface PresenceIdentity {
-  userId: string;
-  email: string;
-  githubLogin: string | null;
-  avatarUrl: string | null;
-}
-
-export interface StoredPresence extends PresenceIdentity {
-  connectionId: string;
-  workspaceId: string;
-  scope: "workspace" | "peon" | "session";
-  peonId: string | null;
-  sessionId: string | null;
-  projectKey: string | null;
-  projectId: string | null;
-  expiresAt: number;
-}
-
-export type VisiblePresence = Omit<StoredPresence, "connectionId" | "workspaceId" | "projectKey" | "projectId" | "expiresAt">;
-
-// Mobile browsers aggressively suspend background-tab timers and sockets. A
-// 90-second lease tolerates that suspension without turning presence into a
-// long-lived "recently seen" signal. Foreground clients renew every 10 seconds.
 const TTL_MS = 90_000;
+
 const entries = new Map<string, StoredPresence>();
 export const presenceBus = new EventEmitter();
 

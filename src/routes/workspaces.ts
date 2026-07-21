@@ -16,7 +16,7 @@ import { ownerOnly, userOf, withWorkspace } from "./helpers.js";
 import { canAccessPeon, canAccessProject, listMemberAccess, replaceMemberAccess, type MemberAccess } from "../access.js";
 import { registry } from "../registry.js";
 import { getIndexedSession } from "../sessionIndex.js";
-import { heartbeatPresence, listVisiblePresence, removePresence } from "../presence.js";
+import { heartbeatPresence, listVisiblePresence, removePresence } from "../modules/presence/index.js";
 
 // Workspaces (multi-tenant ACL) — mounted on /api AFTER operatorAuth. Routes
 // under /workspaces/:wsId require membership (the ACL gate via withWorkspace).
