@@ -12,14 +12,18 @@ target structure when it is changed. Large directory-only rewrites are avoided.
 ```text
 src/
   app/                    # process bootstrap and application composition
-  infrastructure/         # database, external providers, deployment concerns
+  infrastructure/
+    db/                   # pool, transactions, migrations
+    github/               # external GitHub integration
+    peonHttp/             # outbound Peon HTTP client and stream proxies
+    push/                 # notification delivery
+    releases/             # release storage and publication
   modules/
     auth/
-    files/
+    access/
     fleet/
+    presence/
     projects/
-    realtime/
-    releases/
     sessions/
     workspaces/
   shared/                 # small, domain-neutral primitives only
@@ -31,6 +35,31 @@ the domain name already describes the capability and its ownership.
 
 The current root-level files are legacy entry points. They may remain as thin
 compatibility facades while callers migrate to a module's public entry point.
+
+### Stable module taxonomy
+
+The top-level taxonomy is deliberately small. New directories must fit one of
+these ownership categories rather than being created for a single use case.
+
+- `auth` owns users, devices, and OAuth flows.
+- `access` owns cross-resource authorization policies and grants.
+- `fleet` owns Peon enrollment, registry state, and connection lifecycle.
+- `presence` owns operator presence state and visibility.
+- `projects` owns project projections, metadata, documentation, and membership.
+- `sessions` owns session projections, reconciliation, accepted-session indexing,
+  queries, and session lifecycle rules.
+- `workspaces` owns workspaces, membership, and invitations.
+
+Code that communicates with an external system or provides a technical runtime
+facility belongs in `infrastructure`, not in a product module. In particular:
+
+- `acceptedSession` is a sessions use case and should move into `sessions`;
+- `projectDocs` belongs to `projects`;
+- `peonClient` is an outbound transport and should become `infrastructure/peonHttp`;
+- connection adapters and WebSocket protocol state machines may remain near app
+  composition until a precise `fleet` or infrastructure owner is established.
+
+These are migration destinations, not instructions for a directory-only rewrite.
 
 ## Module contract
 
@@ -65,6 +94,10 @@ app -> routes/adapters -> modules -> infrastructure
 - A module must not import an HTTP route or React component.
 - Infrastructure must not depend on product modules.
 - Cross-module calls use the target module's public entry point.
+- A module must not reach another module through a root compatibility facade.
+  For example, use `../workspaces/index.js`, not `../../workspaces.js`.
+- Root compatibility facades are for unmigrated root-level callers only. They
+  must not become a permanent indirection layer between modules.
 - Cyclic runtime dependencies are not allowed. Shared type contracts should be
   moved to the module that owns them or to a small domain-neutral contract file.
 
@@ -86,6 +119,12 @@ when a few named functions provide a clearer boundary.
 Use names that describe ownership rather than an implementation pattern:
 `sessionProjection` owns the local materialized session projection;
 `sessionQueries` reads it; `sessionNormalization` protects its input boundary.
+
+The suffix `Service` is allowed only while a file represents one cohesive
+capability. Split it when the name hides multiple independently changing areas.
+Prefer ownership-specific names such as `workspaceMembership`,
+`workspaceInvitations`, `peonHttpClient`, `peonStreamProxy`, and
+`peonFileProxy` over increasingly broad service files.
 
 ## Functions and classes
 
@@ -120,6 +159,42 @@ Page components coordinate feature hooks and components. Protocol state,
 request orchestration, and reusable domain transformations belong in dedicated
 feature modules rather than in route components.
 
+The frontend has not completed this directory migration. Its existing
+`pages/peon/session` feature grouping is a valid intermediate state; new logic
+should deepen feature ownership instead of adding more state to route components.
+
+## Architecture fitness checks
+
+The architecture must eventually be enforced by lint or tests rather than by
+documentation alone. Checks should reject:
+
+- imports of a module's internal files from outside that module;
+- imports of root compatibility facades from inside `src/modules`;
+- runtime dependency cycles;
+- new root-level domain implementation files;
+- generic new filenames such as `utils.ts`, `helpers.ts`, or `manager.ts`.
+
+Type-only cycles should also be removed by moving the shared contract to its
+owner, even though they do not create a JavaScript runtime cycle.
+
+## Refactoring priorities
+
+Refactoring follows risk and ownership, not raw line count:
+
+1. Remove module-to-root-facade dependency indirection.
+2. Establish `modules/projects` from the current project index and project docs.
+3. Move accepted-session indexing into `modules/sessions`.
+4. Move outbound Peon HTTP/proxy code into `infrastructure/peonHttp`.
+5. Split large realtime files by protocol responsibility while preserving their
+   state-machine invariants and characterization tests.
+6. Continue extracting state and orchestration from large frontend route
+   components into feature hooks and models.
+
+Large protocol state machines are not split merely to satisfy a line limit. A
+large file is acceptable when it has one lifecycle, one invariant set, and one
+reason to change. Files that mix queries, transport, policy, and UI orchestration
+should be split even when they are shorter.
+
 ## Migration policy
 
 1. New capabilities start in the target module structure.
@@ -128,6 +203,10 @@ feature modules rather than in route components.
    require unrelated callers to change.
 4. Each move keeps behavior stable and passes `npm run verify`.
 5. Remove a facade only after all callers use the module's public entry point.
+6. In the watched development tree, create the new implementation and facade
+   before unlinking the old path. Restart and health-check the app explicitly
+   after a physical move so the watcher cannot remain down after a transient
+   missing-module restart.
 
 Architecture is a constraint on ownership and dependencies, not a target number
 of directories or classes. Prefer the smallest structure that makes those
