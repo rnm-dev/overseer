@@ -8,6 +8,7 @@ import { Markdown } from "../../components/RichText";
 import { ProjectPageHeader } from "./ProjectPageHeader";
 import { ProjectTabs } from "./ProjectTabs";
 import { type ProjectDetail } from "./peonApi";
+import { ProjectDocumentation } from "./ProjectDocumentation";
 
 // author: Viktor
 
@@ -22,6 +23,7 @@ export function PeonProjectDetail() {
   useEffect(() => {
     let alive = true;
     setDetailErr(false);
+    setDetail(null);
     api<ProjectDetail>(`${base}/projects/${encodeURIComponent(key)}`)
       .then((d) => alive && setDetail(d))
       .catch(() => alive && setDetailErr(true));
@@ -37,13 +39,14 @@ export function PeonProjectDetail() {
 
       {detailErr && <div className="font-mono text-xs text-blood">⚠ {t("error.loadFailed")}</div>}
 
-      {detail && (
+      {detail && <>
         <Card className="overflow-hidden px-6 py-6 sm:px-8 sm:py-8">
           <article className="mx-auto max-w-3xl text-sm leading-relaxed text-bone-dim">
             <Markdown source={projectMarkdown(detail, key, t)} />
           </article>
         </Card>
-      )}
+        <ProjectDocumentation base={base} projectId={detail.projectId ?? null} />
+      </>}
     </div>
   );
 }

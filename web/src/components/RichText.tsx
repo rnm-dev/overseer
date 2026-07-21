@@ -94,10 +94,11 @@ function localFilePath(href: string | undefined): string | null {
   return path.replace(/#L\d+(?:-L?\d+)?$/, "").replace(/:\d+(?::\d+)?$/, "");
 }
 
-export function Markdown({ source, className = "", onOpenFile }: {
+export function Markdown({ source, className = "", onOpenFile, onOpenLink }: {
   source: string;
   className?: string;
   onOpenFile?: (path: string) => void;
+  onOpenLink?: (href: string) => boolean;
 }) {
   const components = useMemo<Components>(() => ({
     ...baseMarkdownComponents,
@@ -106,9 +107,11 @@ export function Markdown({ source, className = "", onOpenFile }: {
       if (path && onOpenFile) {
         return <a href={href} onClick={(event) => { event.preventDefault(); onOpenFile(path); }}>{children}</a>;
       }
-      return <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>;
+      return <a href={href} target="_blank" rel="noopener noreferrer" onClick={(event) => {
+        if (href && onOpenLink?.(href)) event.preventDefault();
+      }}>{children}</a>;
     },
-  }), [onOpenFile]);
+  }), [onOpenFile, onOpenLink]);
 
   return (
     <div className={`markdown-body ${className}`}>

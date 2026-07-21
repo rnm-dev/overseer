@@ -6,6 +6,8 @@ import { reconcilePeon } from "../../sessionIndex.js";
 import { allowedProjects, canAccessProject } from "../../access.js";
 import { ownerOnly, relay, restSegments, withWorkspacePeon } from "../helpers.js";
 import { openPeonProjectFile, PeonFileStreamError, type ProjectFileRange } from "../../peonFileStream.js";
+import { listProjectDocs } from "../../projectDocs.js";
+import { PeonOperationError } from "../../peonOperationChannel.js";
 import {
   getIndexedProject,
   getProjectCatalogState,
@@ -99,6 +101,24 @@ export function registerProjectRoutes(router: express.Router): void {
     relay(await callPeon(connOfRecord(c.record), "GET", `/projects/suggest-dir${label ? `?label=${encodeURIComponent(label)}` : ""}`, { actor: c.operator.email }), res);
   }));
   router.post(`${wp}/projects`, withWorkspacePeon(async (req, res, c) => { if (!ownerOnly(res, c.role)) return; relay(await callPeon(connOfRecord(c.record), "POST", "/projects", { actor: c.operator.email, body: req.body }), res); }));
+  router.get(`${wp}/projects/:projectId/docs`, withWorkspacePeon(async (req, res, c) => {
+    const projectId = String(req.params.projectId);
+    if (!(await canAccessProject(c.workspaceId, c.userId, c.role, c.record.peonId, "", projectId))) {
+      return res.status(404).json({ error: "unknown project", code: "UNKNOWN_PROJECT" });
+    }
+    const controller = new AbortController();
+    req.once("aborted", () => controller.abort());
+    res.once("close", () => controller.abort());
+    try {
+      res.json(await listProjectDocs(c.record.peonId, projectId, controller.signal));
+    } catch (error) {
+      if (controller.signal.aborted || res.headersSent || res.destroyed) return;
+      const typed = error instanceof PeonOperationError
+        ? error
+        : new PeonOperationError("DOCS_LIST_FAILED", "project documentation could not be listed", 502);
+      res.status(typed.status === 499 ? 502 : typed.status).json({ error: typed.message, code: typed.code });
+    }
+  }));
   router.get(`${wp}/projects/by-id/:projectId/files/{*rest}`, withWorkspacePeon(async (req, res, c) => {
     const projectId = String(req.params.projectId);
     if (!(await canAccessProject(c.workspaceId, c.userId, c.role, c.record.peonId, "", projectId))) {
