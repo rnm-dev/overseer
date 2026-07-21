@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { api, json } from "./api";
+import { applyPeonProjection, mergePeonInventory, type PeonProjection } from "./workspacePeons";
 
 export interface Workspace {
   id: string;
@@ -26,6 +27,7 @@ interface WorkspaceState {
   ready: boolean;
   groups: PeonGroup[];
   workspaceIdOfPeon: (peonId: string) => string | undefined;
+  updatePeon: (workspaceId: string, peon: PeonProjection) => void;
   setCurrent: (id: string) => void;
   create: (name: string) => Promise<Workspace>;
   refresh: () => Promise<void>;
@@ -51,8 +53,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     refresh().catch(() => setReady(true));
   }, [refresh]);
 
-  // Poll every workspace's peon list so the grouped sidebar shows them all with
-  // live-ish online dots (server computes `online`). Re-runs when the set changes.
+  // HTTP owns Peon inventory only. Socket snapshots/events are the sole source
+  // of online state, so list polling always preserves the current projection.
   const wsIds = workspaces.map((w) => w.id).join(",");
   useEffect(() => {
     if (!wsIds) return;
@@ -69,7 +71,11 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
           }
         }),
       );
-      if (alive) setPeonsByWs(Object.fromEntries(entries));
+      if (alive) {
+        setPeonsByWs((current) => Object.fromEntries(entries.map(([workspaceId, peons]) => {
+          return [workspaceId, mergePeonInventory(current[workspaceId] ?? [], peons)];
+        })));
+      }
     };
     pull();
     const timer = window.setInterval(pull, 10000);
@@ -82,6 +88,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const setCurrent = useCallback((id: string) => {
     localStorage.setItem(CURRENT_KEY, id);
     setCurrentId(id);
+  }, []);
+
+  const updatePeon = useCallback((workspaceId: string, peon: PeonProjection) => {
+    setPeonsByWs((current) => applyPeonProjection(current, workspaceId, peon));
   }, []);
 
   const create = useCallback(
@@ -99,7 +109,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const groups = useMemo<PeonGroup[]>(() => workspaces.map((w) => ({ workspace: w, peons: peonsByWs[w.id] ?? [] })), [workspaces, peonsByWs]);
   const workspaceIdOfPeon = useCallback((peonId: string) => Object.keys(peonsByWs).find((id) => peonsByWs[id].some((p) => p.peonId === peonId)), [peonsByWs]);
 
-  return <Ctx.Provider value={{ workspaces, current, ready, groups, workspaceIdOfPeon, setCurrent, create, refresh }}>{children}</Ctx.Provider>;
+  return <Ctx.Provider value={{ workspaces, current, ready, groups, workspaceIdOfPeon, updatePeon, setCurrent, create, refresh }}>{children}</Ctx.Provider>;
 }
 
 export function useWorkspace(): WorkspaceState {

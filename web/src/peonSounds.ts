@@ -3,6 +3,14 @@ export type PeonSound = "start" | "stop" | "complete";
 export type SoundPack = "none" | "peon" | "peasant" | "dota2_axe" | "sc_scv";
 type SoundPool = readonly [string, ...string[]];
 
+export const SCV_WORKING_SOUND_PATHS: SoundPool = [
+  "/sounds/sc_scv/work-active-0.wav",
+  "/sounds/sc_scv/work-active-1.wav",
+  "/sounds/sc_scv/work-active-2.wav",
+  "/sounds/sc_scv/work-active-3.wav",
+  "/sounds/sc_scv/work-active-4.wav",
+];
+
 export const SOUND_PACKS: readonly { id: SoundPack; label: string }[] = [
   { id: "peon", label: "Peon" },
   { id: "peasant", label: "Peasant (Warcraft III)" },
@@ -36,6 +44,7 @@ export const SOUND_PACK_PATHS: Record<Exclude<SoundPack, "none">, Record<PeonSou
 
 export const SOUND_PACK_STORAGE_KEY = "overseer.sound-pack";
 export const LEGACY_PEON_SOUNDS_STORAGE_KEY = "overseer.peon-sounds-enabled";
+const soundPackListeners = new Set<() => void>();
 
 interface SoundPreferenceStorage {
   getItem: (key: string) => string | null;
@@ -71,6 +80,12 @@ export function setSelectedSoundPack(pack: SoundPack, storage: SoundPreferenceSt
   } catch {
     // A private/restricted browser may deny storage; keep the UI usable.
   }
+  for (const listener of soundPackListeners) listener();
+}
+
+export function onSelectedSoundPackChange(listener: () => void): () => void {
+  soundPackListeners.add(listener);
+  return () => soundPackListeners.delete(listener);
 }
 
 interface AudioPlayer {
@@ -111,6 +126,84 @@ export function createPeonSoundPlayer(
 }
 
 export const playPeonSound = createPeonSoundPlayer((src) => new Audio(src));
+
+interface LoopAudio extends AudioPlayer {
+  onended: ((event: Event) => unknown) | null;
+  pause: () => void;
+}
+
+type CreateLoopAudio = (src: string) => LoopAudio;
+
+export function createWorkSoundLoop(
+  createAudio: CreateLoopAudio,
+  random: () => number = Math.random,
+) {
+  let running = false;
+  let current: LoopAudio | null = null;
+  let previousIndex = -1;
+
+  const playNext = () => {
+    if (!running) return;
+    let index = Math.floor(random() * SCV_WORKING_SOUND_PATHS.length);
+    if (index === previousIndex && SCV_WORKING_SOUND_PATHS.length > 1) {
+      index = (index + 1) % SCV_WORKING_SOUND_PATHS.length;
+    }
+    previousIndex = index;
+    const player = createAudio(SCV_WORKING_SOUND_PATHS[index] ?? SCV_WORKING_SOUND_PATHS[0]);
+    current = player;
+    player.preload = "auto";
+    player.onended = () => {
+      if (current !== player) return;
+      current = null;
+      playNext();
+    };
+    try {
+      const playback = player.play();
+      if (playback && typeof playback.catch === "function") {
+        void playback.catch(() => {
+          if (current === player) current = null;
+        });
+      }
+    } catch {
+      if (current === player) current = null;
+    }
+  };
+
+  return {
+    start() {
+      if (running) return;
+      running = true;
+      playNext();
+    },
+    stop() {
+      running = false;
+      const player = current;
+      current = null;
+      if (!player) return;
+      player.onended = null;
+      try {
+        player.pause();
+        player.currentTime = 0;
+      } catch {
+        // Stopping ambience must not affect session navigation or controls.
+      }
+    },
+  };
+}
+
+const workSoundLoop = createWorkSoundLoop((src) => new Audio(src));
+
+export function createWorkSoundController(
+  loop: { start: () => void; stop: () => void },
+  selectedPack: () => SoundPack = selectedSoundPack,
+) {
+  return (running: boolean) => {
+    if (running && selectedPack() === "sc_scv") loop.start();
+    else loop.stop();
+  };
+}
+
+export const syncWorkSoundLoop = createWorkSoundController(workSoundLoop);
 
 export function isSuccessfulRunResult(event: { type?: string; is_error?: boolean }): boolean {
   return event.type === "result" && event.is_error !== true;

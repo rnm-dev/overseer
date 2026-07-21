@@ -8,6 +8,7 @@ import { useLiveSocket } from "../../liveSocket";
 import { SessionPresence } from "../../components/SessionPresence";
 import { sessionDisplayTitle } from "./sessionList";
 import { peonOverviewNewSessionPath, peonOverviewProjectsPath, peonOverviewSessionsPath } from "./overviewNavigation";
+import { applyProjectEvent, mergeProjects, visibleProjects, type ProjectLite as Project } from "./projectList";
 
 // author: Viktor
 
@@ -28,13 +29,6 @@ interface Session {
   startedAt?: number | null;
   lastActivityAt?: number | null;
 }
-interface Project {
-  key: string;
-  path?: string | null;
-  sessionCount?: number;
-  activeCount?: number;
-}
-
 function ago(ms?: number | null): string {
   if (!ms) return "";
   const s = Math.floor((Date.now() - ms) / 1000);
@@ -52,7 +46,7 @@ function statusTone(status?: string | null): "green" | "amber" | "red" | "neutra
 export function PeonDashboard() {
   const t = useT();
   const { peon, base } = usePeon();
-  const { viewersFor } = useLiveSocket();
+  const { viewersFor, subscribeProjects, subscribeSessions } = useLiveSocket();
   const [status, setStatus] = useState<LiveStatus | null>(null);
   const [sessions, setSessions] = useState<Session[] | null>(null);
   const [projects, setProjects] = useState<Project[] | null>(null);
@@ -63,7 +57,6 @@ export function PeonDashboard() {
     const pull = () => {
       api<LiveStatus>(`${base}/status`).then((s) => alive && setStatus(s)).catch(() => {});
       api<{ sessions: Session[] }>(`${base}/sessions`).then((r) => alive && setSessions(r.sessions ?? [])).catch(() => alive && setSessions([]));
-      api<{ projects: Project[] }>(`${base}/projects`).then((r) => alive && setProjects(r.projects ?? [])).catch(() => alive && setProjects([]));
     };
     pull();
     const timer = window.setInterval(pull, 10000);
@@ -72,6 +65,35 @@ export function PeonDashboard() {
       window.clearInterval(timer);
     };
   }, [base, peon.online]);
+
+  useEffect(() => {
+    let alive = true;
+    let refreshTimer: number | null = null;
+    setProjects(null);
+    const load = () => api<{ projects: Project[] }>(`${base}/projects`)
+      .then((result) => {
+        if (!alive) return;
+        const incoming = (result.projects ?? []).map((project) => ({ ...project, peonId: project.peonId ?? peon.peonId }));
+        setProjects((current) => mergeProjects(current ?? [], incoming));
+      })
+      .catch(() => { if (alive && peon.online) setProjects((current) => current ?? []); });
+    void load();
+    const unsubscribeSessions = subscribeSessions((event) => {
+      if (event.peonId !== peon.peonId) return;
+      if (refreshTimer !== null) window.clearTimeout(refreshTimer);
+      refreshTimer = window.setTimeout(() => { void load(); }, 50);
+    });
+    return () => {
+      alive = false;
+      unsubscribeSessions();
+      if (refreshTimer !== null) window.clearTimeout(refreshTimer);
+    };
+  }, [base, peon.online, peon.peonId, subscribeSessions]);
+
+  useEffect(() => subscribeProjects((event) => {
+    if (event.peonId !== peon.peonId) return;
+    setProjects((current) => applyProjectEvent(current ?? [], event));
+  }), [peon.peonId, subscribeProjects]);
 
   if (!peon.online) {
     return <p className="font-mono text-sm text-bone-faint">{t("peon.offlineNote")}</p>;
@@ -82,7 +104,7 @@ export function PeonDashboard() {
   const authBad = authState === "broken" || authState === "unauthenticated";
 
   const recent = [...(sessions ?? [])].sort((a, b) => (b.lastActivityAt ?? b.startedAt ?? 0) - (a.lastActivityAt ?? a.startedAt ?? 0)).slice(0, 5);
-  const topProjects = [...(projects ?? [])].slice(0, 5);
+  const topProjects = visibleProjects(projects ?? []).slice(0, 5);
 
   return (
     <div className="space-y-6">
@@ -150,7 +172,7 @@ export function PeonDashboard() {
           ) : (
             <ul className="divide-y divide-iron-800">
               {topProjects.map((p) => (
-                <li key={p.key}>
+                <li key={p.projectId ?? p.key}>
                   <Link to={peonOverviewProjectsPath(peon.peonId, p.key)} className="flex items-center justify-between gap-3 px-5 py-4 transition-colors hover:bg-fel/[0.03]">
                     <div className="min-w-0">
                       <div className="truncate font-display text-sm font-medium text-bone">{p.key}</div>

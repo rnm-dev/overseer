@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { ChevronRight } from "lucide-react";
 import { api } from "../api";
-import { useWorkspace, type PeonLite, type Workspace } from "../workspace";
+import { useWorkspace, type Workspace } from "../workspace";
+import { useWorkspacePeonPresence } from "../hooks/usePeonPresence";
 import { Logo, StatusDot } from "../ui";
 import { useT } from "../i18n";
 import { useAuth, type User } from "../auth";
@@ -67,7 +68,7 @@ export function Dashboard() {
         <ul className={workspaceListClass(groups.length)}>
           {groups.map((group) => (
             <li key={group.workspace.id}>
-              <WorkspaceCard workspace={group.workspace} peons={group.peons} />
+              <WorkspaceCard workspace={group.workspace} />
             </li>
           ))}
         </ul>
@@ -78,15 +79,15 @@ export function Dashboard() {
 
 interface HomePeonStatus {
   peonId: string;
-  online?: boolean;
   status?: { activeSessionCount?: number } | null;
 }
 
-function WorkspaceCard({ workspace, peons }: { workspace: Workspace; peons: PeonLite[] }) {
+function WorkspaceCard({ workspace }: { workspace: Workspace }) {
   const t = useT();
   const { current } = useWorkspace();
   const { viewersForPeon } = useLiveSocket();
   const [status, setStatus] = useState<Record<string, HomePeonStatus>>({});
+  const peons = useWorkspacePeonPresence(workspace.id);
   const remotePresence = useWorkspaceLivePresence(workspace.id, current?.id !== workspace.id);
 
   const peonViewers = (peonId: string) => current?.id === workspace.id
@@ -123,7 +124,7 @@ function WorkspaceCard({ workspace, peons }: { workspace: Workspace; peons: Peon
         <ul className="divide-y divide-iron-800 border-t border-iron-800">
           {peons.map((peon) => {
             const current = status[peon.peonId];
-            const online = current?.online ?? peon.online;
+            const online = peon.online;
             const activeSessions = current?.status?.activeSessionCount ?? 0;
             const viewers = peonViewers(peon.peonId);
             return <li key={peon.peonId}>

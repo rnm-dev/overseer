@@ -16,19 +16,16 @@ export function QueueList({ items, removing, sending, onRemove, onSendNow, t }: 
       <ol className="max-h-56 space-y-2 overflow-y-auto">
         {items.map((item) => (
           <li key={item.id} className="ml-auto flex min-w-0 max-w-[80%] items-start gap-2 rounded-xl rounded-br-sm border border-fel/25 bg-fel/[0.12] px-3 py-2 shadow-lg backdrop-blur">
-            <div
-              className={`mt-0.5 grid size-8 shrink-0 place-items-center rounded-full border bg-iron-950/45 shadow-inner ${sending.has(item.id) ? "animate-pulse border-ember/45 text-ember" : "border-fel/30 text-fel-bright"}`}
+            <Hourglass
+              size={13}
+              strokeWidth={1.75}
+              className={`mt-1 shrink-0 ${sending.has(item.id) ? "animate-pulse text-ember" : "text-fel-bright"}`}
               aria-hidden
-            >
-              <Hourglass size={16} strokeWidth={1.8} />
-            </div>
+            />
             <div className="min-w-0 flex-1">
               <div className="whitespace-pre-wrap break-words text-sm leading-normal text-bone">{item.prompt}</div>
               <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[11px] text-bone-faint">
                 {item.author && <span>@{item.author}</span>}
-                {item.model && <span>{item.model}</span>}
-                {item.reasoningEffort && <span>{t("session.queue.effort", { effort: item.reasoningEffort })}</span>}
-                {item.permissionMode && <span>{item.permissionMode}</span>}
                 {(item.attachments ?? []).map((attachment, attachmentIndex) => (
                   <span key={`${attachment.path ?? attachment.name ?? "attachment"}:${attachmentIndex}`}>📎 {attachmentLabel(attachment)}</span>
                 ))}
@@ -37,13 +34,14 @@ export function QueueList({ items, removing, sending, onRemove, onSendNow, t }: 
             <div className="flex shrink-0 items-center gap-1">
               <button
                 type="button"
-                className="flex h-9 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-ember transition-colors hover:bg-ember/10 disabled:cursor-wait disabled:opacity-40"
+                className="flex size-9 items-center justify-center rounded-md text-xs font-medium text-ember transition-colors hover:bg-ember/10 disabled:cursor-wait disabled:opacity-40 sm:w-auto sm:gap-1.5 sm:px-2"
                 disabled={sending.has(item.id) || removing.has(item.id)}
                 onClick={() => onSendNow(item.id)}
                 title={t("session.queue.sendNow")}
                 aria-label={t("session.queue.sendNow")}
               >
-                {sending.has(item.id) ? "…" : <><Send size={15} aria-hidden /><span>{t("session.queue.sendNow")}</span></>}
+                <Send size={15} className={sending.has(item.id) ? "animate-pulse" : undefined} aria-hidden />
+                <span className="hidden sm:inline">{t("session.queue.sendNow")}</span>
               </button>
               <button
                 type="button"

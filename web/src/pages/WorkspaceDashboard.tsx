@@ -23,7 +23,7 @@ export function WorkspaceDashboard() {
       <Link to="/" className="mb-6 inline-flex items-center gap-2 text-xs text-bone-faint transition-colors hover:text-bone">
         <ArrowLeft size={14} aria-hidden="true" /> {t("workspace.back")}
       </Link>
-      <WorkspaceSection workspace={group.workspace} peons={group.peons} />
+      <WorkspaceSection workspace={group.workspace} />
     </main>
   );
 }

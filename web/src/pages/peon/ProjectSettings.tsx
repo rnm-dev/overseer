@@ -24,7 +24,7 @@ export function ProjectSettings() {
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    if (!isOwner || !peon.online) return;
+    if (!isOwner) return;
     let alive = true;
     setLoadError(null);
     getProjectSettings(base, key)
@@ -35,13 +35,11 @@ export function ProjectSettings() {
       })
       .catch((error) => alive && setLoadError(error instanceof Error ? error.message : t("error.loadFailed")));
     return () => { alive = false; };
-  }, [base, isOwner, key, peon.online, t]);
+  }, [base, isOwner, key, t]);
 
   if (!isOwner) return <Navigate to={projectRoute(peon.peonId, key)} replace />;
-  if (!peon.online) return <p className="font-mono text-sm text-bone-faint">{t("peon.offlineNote")}</p>;
-
   async function save() {
-    if (!form || saving || !form.key.trim() || !form.name.trim() || !form.dir.trim()) return;
+    if (!peon.online || !form || saving || !form.key.trim() || !form.name.trim() || !form.dir.trim()) return;
     setSaving(true);
     setSaved(false);
     setSaveError(null);
@@ -66,6 +64,7 @@ export function ProjectSettings() {
   return <div className="space-y-3">
     <ProjectPageHeader name={settings?.name} />
     <ProjectTabs />
+    {!peon.online && <p className="font-mono text-xs text-bone-faint">{t("peon.offlineNote")}</p>}
     {loadError && <p role="alert" className="border-l-2 border-blood bg-blood/5 py-2 pl-3 font-mono text-xs text-blood">⚠ {loadError}</p>}
     {form && <Card className="overflow-hidden">
       <div className="border-b border-iron-800 bg-iron-900/40 px-5 py-3">
@@ -81,7 +80,7 @@ export function ProjectSettings() {
       <div className="flex items-center justify-end gap-3 border-t border-iron-800 px-5 py-3">
         {saveError && <p role="alert" className="mr-auto font-mono text-xs text-blood">⚠ {saveError}</p>}
         {saved && <span className="mr-auto font-mono text-xs text-fel-bright">⚡ {t("peon.settings.saved")}</span>}
-        <Button onClick={() => void save()} disabled={saving || !form.key.trim() || !form.name.trim() || !form.dir.trim()}>{saving ? t("proj.saving") : t("proj.save")}</Button>
+        <Button onClick={() => void save()} disabled={!peon.online || saving || !form.key.trim() || !form.name.trim() || !form.dir.trim()}>{saving ? t("proj.saving") : t("proj.save")}</Button>
       </div>
     </Card>}
   </div>;

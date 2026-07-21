@@ -13,7 +13,7 @@ import { type ProjectDetail } from "./peonApi";
 
 export function PeonProjectDetail() {
   const t = useT();
-  const { peon, base } = usePeon();
+  const { base } = usePeon();
   const { key = "" } = useParams();
 
   const [detail, setDetail] = useState<ProjectDetail | null>(null);
@@ -29,8 +29,6 @@ export function PeonProjectDetail() {
       alive = false;
     };
   }, [base, key]);
-
-  if (!peon.online) return <p className="font-mono text-sm text-bone-faint">{t("peon.offlineNote")}</p>;
 
   return (
     <div className="space-y-3">

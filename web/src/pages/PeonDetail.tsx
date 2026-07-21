@@ -3,6 +3,7 @@ import { BarChart3, FolderKanban, LayoutDashboard, Menu, MessageSquare, Settings
 import { Link, NavLink, Outlet, useLocation, useParams } from "react-router-dom";
 import { api, ApiError } from "../api";
 import { useWorkspace } from "../workspace";
+import { usePeonPresence } from "../hooks/usePeonPresence";
 import { StatusDot } from "../ui";
 import { useT } from "../i18n";
 import { useLiveSocket, type SessionLiveEvent } from "../liveSocket";
@@ -78,6 +79,7 @@ export function PeonDetail() {
   const sessionLoadEpoch = useRef(0);
   const sessionLoading = useRef(false);
   const nextSessionOffset = useRef(0);
+  const { online } = usePeonPresence(peonId, wsId);
 
   useEffect(() => {
     if (!resizing) return;
@@ -135,7 +137,9 @@ export function PeonDetail() {
     if (!wsId) return;
     api<PeonView>(base)
       .then((p) => {
-        setPeon(p);
+        // HTTP supplies metadata only; connectivity comes exclusively from the
+        // workspace socket projection below.
+        setPeon({ ...p, online: false });
         setError(null);
       })
       .catch((err) => setError(err instanceof ApiError && err.status === 404 ? t("peon.notFound") : err instanceof Error ? err.message : t("error.loadFailed")));
@@ -148,7 +152,6 @@ export function PeonDetail() {
     return () => window.clearInterval(timer);
   }, [reload]);
 
-  const online = peon?.online;
   const loadNextSessions = useCallback(async () => {
     if (!wsId || !online || sessionLoading.current) return;
     const epoch = sessionLoadEpoch.current;
@@ -294,8 +297,10 @@ export function PeonDetail() {
   }
   if (!peon) return <div className="grid min-h-screen place-items-center"><div className="forge-spin" /></div>;
 
+  const displayedPeon = { ...peon, online };
+
   const ctx: PeonContext = {
-    peon,
+    peon: displayedPeon,
     wsId: wsId!,
     base,
     reload,
@@ -369,7 +374,7 @@ export function PeonDetail() {
           </Link>
         </div>
         <div ref={sessionScrollNode} className="min-h-0 flex-1 overflow-y-auto px-2 pb-24">
-          {!peon.online ? (
+          {!online ? (
             <p className="px-2 py-2 font-body text-xs text-bone-faint">{t("peon.offlineNote")}</p>
           ) : ordered.length === 0 && !sessionsLoading && !sessionPageError ? (
             <p className="px-2 py-2 font-body text-xs text-bone-faint">{t("peon.dash.noSessions")}</p>
@@ -426,7 +431,7 @@ export function PeonDetail() {
           >
             <Menu size={20} />
           </button>
-          <StatusDot state={peon.online ? "on" : "off"} />
+          <StatusDot state={online ? "on" : "off"} />
           <span className="min-w-0 flex-1 whitespace-nowrap font-display text-sm font-bold text-bone"><FadingTitle>{peon.name || t("peons.unnamed")}</FadingTitle></span>
           {sid && <span className="ml-auto flex-none font-body text-[0.68rem] text-bone-faint">{t("peon.tab.sessions")}</span>}
         </div>

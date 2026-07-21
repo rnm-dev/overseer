@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { api } from "./api";
 import type { PresenceEntry } from "./liveSocket";
+import { useWorkspace } from "./workspace";
+import { parsePeonProjection, parsePeonProjections } from "./workspacePeons";
 
 // A normal Overseer workspace socket for fleet-dashboard sections that are not
 // the selected workspace. It participates in the same hello/cursor/replay/live
@@ -8,6 +10,7 @@ import type { PresenceEntry } from "./liveSocket";
 // use the already-established event stream without another transport mode.
 export function useWorkspaceLivePresence(workspaceId: string, enabled: boolean): PresenceEntry[] {
   const [presence, setPresence] = useState<PresenceEntry[]>([]);
+  const { updatePeon } = useWorkspace();
 
   useEffect(() => {
     if (!enabled) {
@@ -65,6 +68,13 @@ export function useWorkspaceLivePresence(workspaceId: string, enabled: boolean):
           setPresence((message.presence as PresenceEntry[]) ?? []);
           backoff = 1_000;
         }
+        if (message.type === "snapshot") {
+          for (const peon of parsePeonProjections(message.peonPresence)) updatePeon(workspaceId, peon);
+        }
+        if (message.type === "peon") {
+          const peon = parsePeonProjection(message.payload);
+          if (peon) updatePeon(workspaceId, peon);
+        }
         const nextCursor = Number(message.cursor) || 0;
         if (message.type === "sync") {
           if (nextCursor > cursor && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "resume", cursor }));
@@ -106,7 +116,7 @@ export function useWorkspaceLivePresence(workspaceId: string, enabled: boolean):
       if (retry !== null) window.clearTimeout(retry);
       socket?.close(1000);
     };
-  }, [enabled, workspaceId]);
+  }, [enabled, updatePeon, workspaceId]);
 
   return presence;
 }

@@ -11,11 +11,11 @@ const queuedItem: QueueItem = {
   id: "second",
   sessionId: "session",
   prompt: "Send this before the first item",
-  attachments: [],
-  permissionMode: null,
-  author: null,
-  model: null,
-  reasoningEffort: null,
+  attachments: [{ type: "file", path: "/tmp/plan.md", name: "plan.md" }],
+  permissionMode: "full-access",
+  author: "viktor@example.test",
+  model: "gpt-5",
+  reasoningEffort: "high",
   commandId: null,
   queuedAt: 2,
 };
@@ -32,8 +32,13 @@ test("every queued item exposes an accessible send-now action", () => {
     }),
   );
   assert.match(html, /aria-label="Отправить сейчас"/);
-  assert.match(html, />Отправить сейчас<\/span>/);
+  assert.match(html, /class="hidden sm:inline">Отправить сейчас<\/span>/);
   assert.match(html, /lucide-hourglass/);
+  assert.match(html, /width="13"[^>]*lucide-hourglass/);
+  assert.doesNotMatch(html, /size-8[^>]*>[\s\S]*?lucide-hourglass/);
+  assert.match(html, /@viktor@example\.test/);
+  assert.match(html, /plan\.md/);
+  assert.doesNotMatch(html, /gpt-5|high|full-access/);
 });
 
 test("send-now action is disabled while that queued item is being dispatched", () => {

@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   createPeonSoundPlayer,
+  createWorkSoundController,
+  createWorkSoundLoop,
   isSuccessfulRunResult,
   LEGACY_PEON_SOUNDS_STORAGE_KEY,
   selectedSoundPack,
@@ -9,6 +11,7 @@ import {
   SOUND_PACK_PATHS,
   SOUND_PACK_STORAGE_KEY,
   SOUND_PACKS,
+  SCV_WORKING_SOUND_PATHS,
 } from "../peonSounds";
 
 test("sound pack selector exposes the requested packs and bundled semantic paths", () => {
@@ -120,4 +123,55 @@ test("sound player randomly selects and caches candidates from the semantic pool
   play("start");
   play("start");
   assert.deepEqual(created, SOUND_PACK_PATHS.dota2_axe.start);
+});
+
+test("SCV working ambience randomly advances without immediately repeating a clip", () => {
+  const created: Array<{ src: string; paused: boolean; currentTime: number; onended: (() => void) | null }> = [];
+  const random = [0, 0, 0.99];
+  const loop = createWorkSoundLoop((src) => {
+    const audio = {
+      src,
+      paused: false,
+      currentTime: 4,
+      preload: "none",
+      onended: null as (() => void) | null,
+      pause() { this.paused = true; },
+      play: () => undefined,
+    };
+    created.push(audio);
+    return audio;
+  }, () => random.shift() ?? 0);
+
+  loop.start();
+  loop.start();
+  assert.deepEqual(created.map(({ src }) => src), [SCV_WORKING_SOUND_PATHS[0]]);
+  created[0].onended?.();
+  created[1].onended?.();
+  assert.deepEqual(created.map(({ src }) => src), [
+    SCV_WORKING_SOUND_PATHS[0],
+    SCV_WORKING_SOUND_PATHS[1],
+    SCV_WORKING_SOUND_PATHS[4],
+  ]);
+
+  loop.stop();
+  assert.equal(created[2].paused, true);
+  assert.equal(created[2].currentTime, 0);
+  assert.equal(created[2].onended, null);
+});
+
+test("working ambience runs only while the SCV pack is selected", () => {
+  let pack: "sc_scv" | "peon" = "peon";
+  let starts = 0;
+  let stops = 0;
+  const sync = createWorkSoundController({
+    start: () => { starts += 1; },
+    stop: () => { stops += 1; },
+  }, () => pack);
+
+  sync(true);
+  pack = "sc_scv";
+  sync(true);
+  sync(false);
+  assert.equal(starts, 1);
+  assert.equal(stops, 2);
 });

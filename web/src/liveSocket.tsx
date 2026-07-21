@@ -4,6 +4,7 @@ import { useWorkspace } from "./workspace";
 import { useAuth } from "./auth";
 import { useLocation } from "react-router-dom";
 import { presenceLocationForPath } from "./presence";
+import { parsePeonProjection, parsePeonProjections } from "./workspacePeons";
 
 // The selected workspace transport: resumable live events, presence, and session
 // tails. Fleet-dashboard workspaces use the same protocol via workspaceLive.ts.
@@ -39,6 +40,14 @@ export interface SessionLiveEvent {
   syncedAt?: number;
   [key: string]: unknown;
 }
+export interface ProjectLiveEvent {
+  peonId: string;
+  projectId: string;
+  key?: string;
+  deleted?: boolean;
+  syncedAt: number;
+  [key: string]: unknown;
+}
 type TailMsg = { event?: string | null; id?: string | null; data?: string };
 
 interface LiveSocketValue {
@@ -47,12 +56,13 @@ interface LiveSocketValue {
   viewersForWorkspace: () => PresenceUser[];
   subscribe: (peonId: string, sessionId: string, onFrame: (f: TailFrame) => void, lastEventId?: string | null) => () => void;
   subscribeSessions: (onSession: (session: SessionLiveEvent) => void) => () => void;
+  subscribeProjects: (onProject: (project: ProjectLiveEvent) => void) => () => void;
 }
 
 const Ctx = createContext<LiveSocketValue | null>(null);
 
 export function LiveSocketProvider({ children }: { children: ReactNode }) {
-  const { current } = useWorkspace();
+  const { current, updatePeon } = useWorkspace();
   const { user } = useAuth();
   const { pathname } = useLocation();
   const wsId = current?.id;
@@ -65,6 +75,7 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
   const cursorsRef = useRef<Map<string, number>>(new Map()); // per-workspace resume cursor
   const tailHandlers = useRef<Map<string, { peonId: string; onFrame: (f: TailFrame) => void; resumeEnabled: boolean; lastEventId: string | null }>>(new Map());
   const sessionHandlers = useRef<Set<(session: SessionLiveEvent) => void>>(new Set());
+  const projectHandlers = useRef<Set<(project: ProjectLiveEvent) => void>>(new Set());
   // Per-session backoff for tail auto-resubscribe (tailEnd/tailError) — separate
   // from the socket-level backoff so one flaky session tail can't affect others.
   const tailBackoff = useRef<Map<string, number>>(new Map());
@@ -222,6 +233,7 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
           backoff = 1000;
           const presence = (msg.presence as PresenceEntry[]) ?? [];
           setPresence(presence);
+          for (const peon of parsePeonProjections(msg.peonPresence)) updatePeon(wsId, peon);
           cursorsRef.current.set(wsId, Number(msg.cursor) || 0);
           // `snapshot` is the handshake-ready barrier. Sending subscriptions here
           // (not in onopen) works with slow auth/DB lookups and older servers that
@@ -248,12 +260,21 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
         }
         case "peon": {
           bump(msg.cursor);
+          const peon = parsePeonProjection(msg.payload);
+          if (peon) updatePeon(wsId, peon);
           break;
         }
         case "session": {
           bump(msg.cursor);
           if (msg.payload && typeof msg.payload === "object") {
             for (const onSession of sessionHandlers.current) onSession(msg.payload as SessionLiveEvent);
+          }
+          break;
+        }
+        case "project": {
+          bump(msg.cursor);
+          if (msg.payload && typeof msg.payload === "object") {
+            for (const onProject of projectHandlers.current) onProject(msg.payload as ProjectLiveEvent);
           }
           break;
         }
@@ -384,7 +405,7 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
       sockRef.current?.close();
       sockRef.current = null;
     };
-  }, [wsId, token]);
+  }, [wsId, token, updatePeon]);
 
   useEffect(() => {
     const ws = sockRef.current;
@@ -464,6 +485,11 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
     return () => sessionHandlers.current.delete(onSession);
   }, []);
 
+  const subscribeProjects = useMemo(() => (onProject: (project: ProjectLiveEvent) => void) => {
+    projectHandlers.current.add(onProject);
+    return () => projectHandlers.current.delete(onProject);
+  }, []);
+
   const withLocalUser = useMemo(() => (entries: PresenceUser[], matchesLocal: boolean): PresenceUser[] => {
     const viewers = uniqueUsers(entries);
     if (!user || !matchesLocal || viewers.some((viewer) => viewer.email === user.email)) return viewers;
@@ -484,7 +510,7 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
 
   const viewersForWorkspace = useMemo(() => () => withLocalUser(presence, true), [presence, withLocalUser]);
 
-  return <Ctx.Provider value={{ viewersFor, viewersForPeon, viewersForWorkspace, subscribe, subscribeSessions }}>{children}</Ctx.Provider>;
+  return <Ctx.Provider value={{ viewersFor, viewersForPeon, viewersForWorkspace, subscribe, subscribeSessions, subscribeProjects }}>{children}</Ctx.Provider>;
 }
 
 function uniqueUsers(entries: PresenceUser[]): PresenceUser[] {

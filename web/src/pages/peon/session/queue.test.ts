@@ -3,6 +3,7 @@ import test from "node:test";
 import type { ApiRequest } from "../peonApi";
 import {
   attachmentLabel,
+  createQueueActivityTracker,
   createQueueReconciler,
   enqueueSessionFollowup,
   getSessionQueue,
@@ -48,6 +49,20 @@ test("queue API client preserves Fleet FIFO order and targets an encoded item fo
     ["/peon/sessions/session%2F1/queue/item%2F2", "DELETE"],
     ["/peon/sessions/session%2F1/queue/item%2F2/send", "POST"],
   ]);
+});
+
+test("queued work keeps only its own session active across consecutive run results", () => {
+  const activity = createQueueActivityTracker();
+  activity.replace("peon-1:session-1", [item("1"), item("2")]);
+
+  assert.equal(activity.hasPending("peon-1:session-1"), true);
+  assert.equal(activity.hasPending("peon-1:session-2"), false);
+
+  activity.replace("peon-1:session-1", [item("2")]);
+  assert.equal(activity.hasPending("peon-1:session-1"), true);
+
+  activity.replace("peon-1:session-1", []);
+  assert.equal(activity.hasPending("peon-1:session-1"), false);
 });
 
 test("send now reconciles the authoritative queue and ignores an item already popped by Peon", async () => {

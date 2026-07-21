@@ -10,6 +10,9 @@ export interface SessionLite {
   endedAt?: number | null;
   lastActivityAt?: number | null;
   syncedAt?: number | null;
+  catalogState?: "legacy" | "fallback" | "syncing" | "ready" | "stale" | "offline";
+  catalogStale?: boolean;
+  catalogUpdatedAt?: number | null;
 }
 
 export interface IndexedSessionLite {
@@ -24,6 +27,9 @@ export interface IndexedSessionLite {
   endedAt?: number | null;
   lastActivityAt?: number | null;
   syncedAt?: number | null;
+  catalogState?: SessionLite["catalogState"];
+  catalogStale?: boolean;
+  catalogUpdatedAt?: number | null;
 }
 
 export interface IndexedSessionEvent extends IndexedSessionLite {
@@ -43,6 +49,9 @@ export function sessionFromIndex(session: IndexedSessionLite): SessionLite {
     endedAt: session.endedAt,
     lastActivityAt: session.lastActivityAt,
     syncedAt: session.syncedAt,
+    catalogState: session.catalogState,
+    catalogStale: session.catalogStale,
+    catalogUpdatedAt: session.catalogUpdatedAt,
   };
 }
 

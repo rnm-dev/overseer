@@ -25,6 +25,26 @@ export interface EnqueueInput {
   startNow?: boolean;
 }
 
+export interface QueueActivityTracker {
+  replace: (sessionKey: string, items: readonly QueueItem[]) => void;
+  hasPending: (sessionKey: string) => boolean;
+}
+
+// A result ends one turn, not necessarily the queued chain. Keep this tiny
+// session-keyed tracker outside React state so a result frame and the queue GET
+// it triggers cannot create an idle render between consecutive queued turns.
+export function createQueueActivityTracker(): QueueActivityTracker {
+  let current: { sessionKey: string; pending: boolean } | null = null;
+  return {
+    replace(sessionKey, items) {
+      current = { sessionKey, pending: items.length > 0 };
+    },
+    hasPending(sessionKey) {
+      return current?.sessionKey === sessionKey && current.pending;
+    },
+  };
+}
+
 const queuePath = (base: string, sessionId: string) => `${base}/sessions/${encodeURIComponent(sessionId)}/queue`;
 
 export async function getSessionQueue(base: string, sessionId: string, request: ApiRequest = api): Promise<QueueItem[]> {
