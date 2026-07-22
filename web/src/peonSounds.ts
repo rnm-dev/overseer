@@ -191,7 +191,7 @@ export const playWorkSound = () => workSoundPlayer.play();
 export const stopWorkSound = () => workSoundPlayer.stop();
 
 export function isAgentWorkUpdate(event: { type?: string }): boolean {
-  return event.type !== "user_message" && event.type !== "result";
+  return event.type === "assistant";
 }
 
 export function isSuccessfulRunResult(event: { type?: string; is_error?: boolean }): boolean {

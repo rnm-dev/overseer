@@ -178,10 +178,12 @@ test("working sound plays only while the SCV pack is selected", () => {
   assert.equal(plays, 1);
 });
 
-test("only non-terminal agent events trigger the working sound", () => {
+test("only assistant updates trigger the working sound", () => {
   assert.equal(isAgentWorkUpdate({ type: "assistant" }), true);
-  assert.equal(isAgentWorkUpdate({ type: "user" }), true);
-  assert.equal(isAgentWorkUpdate({ type: "system" }), true);
+  assert.equal(isAgentWorkUpdate({ type: "user" }), false);
+  assert.equal(isAgentWorkUpdate({ type: "system" }), false);
+  assert.equal(isAgentWorkUpdate({ type: "preview" }), false);
+  assert.equal(isAgentWorkUpdate({ type: "_raw" }), false);
   assert.equal(isAgentWorkUpdate({ type: "user_message" }), false);
   assert.equal(isAgentWorkUpdate({ type: "result" }), false);
 });
