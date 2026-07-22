@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { editDiff, editFileName, editStats, editStatsFromInput } from "./peon/session/messageParts";
+import { renderToStaticMarkup } from "react-dom/server";
+import { ItemView, editDiff, editFileName, editOperation, editStats, editStatsFromInput } from "./peon/session/messageParts";
 import { toolHasOutputSection } from "./peon/session/parsing";
+
+const t = ((key: string) => key) as Parameters<typeof ItemView>[0]["t"];
 
 test("edit tool details omit the output section", () => {
   assert.equal(toolHasOutputSection("Edit"), false);
@@ -34,6 +37,41 @@ test("edit stats count added and removed lines for modal and chat labels", () =>
   assert.equal(editStats(null), null);
   assert.deepEqual(editStatsFromInput({ changes: [{ diff: "--- a/file\n+++ b/file\n-old one\n-old two\n+new" }] }), { added: 1, removed: 2 });
   assert.deepEqual(editStatsFromInput({ old_string: "old one\nold two", new_string: "new" }), { added: 1, removed: 2 });
+});
+
+test("file changes expose create and delete operations from current and legacy Codex kinds", () => {
+  assert.equal(editOperation({ changes: [{ kind: { type: "add" }, path: "new.ts", diff: "" }] }), "Create");
+  assert.equal(editOperation({ changes: [{ kind: { type: "delete" }, path: "old.ts", diff: "" }] }), "Delete");
+  assert.equal(editOperation({ changes: [{ kind: "add" }] }), "Create");
+  assert.equal(editOperation({ changes: [{ kind: "update" }] }), "Edit");
+  assert.equal(editOperation({ changes: [{ kind: "add" }, { kind: "delete" }] }), "Edit");
+  assert.equal(editOperation({ patch: "*** Add File: src/new.ts\n+hello" }), "Create");
+  assert.equal(editOperation({ diff: "--- a/old.ts\n+++ /dev/null\n-old" }), "Delete");
+});
+
+test("create and delete stats use real diff lines and whole-file hunk metadata", () => {
+  assert.deepEqual(editStatsFromInput({ changes: [{ kind: { type: "add" }, diff: "--- /dev/null\n+++ b/new.ts\n@@ -0,0 +1,3 @@\n+one\n+two\n+three" }] }), { added: 3, removed: 0 });
+  assert.deepEqual(editStatsFromInput({ changes: [{ kind: { type: "delete" }, diff: "--- a/old.ts\n+++ /dev/null\n@@ -1,2 +0,0 @@\n-one\n-two" }] }), { added: 0, removed: 2 });
+  assert.deepEqual(editStatsFromInput({ changes: [{ kind: { type: "add" }, diff: "@@ -0,0 +1,7 @@" }] }), { added: 7, removed: 0 });
+  assert.deepEqual(editStatsFromInput({ changes: [{ kind: { type: "delete" }, diff: "@@ -1,5 +0,0 @@" }] }), { added: 0, removed: 5 });
+  assert.deepEqual(editStatsFromInput({ changes: [{ kind: { type: "add" }, diff: "--- /dev/null\n+++ b/empty.ts" }] }), { added: 0, removed: 0 });
+});
+
+test("file change rows show the operation and only its relevant line count", () => {
+  const created = renderToStaticMarkup(ItemView({
+    item: { kind: "tool", key: "create", name: "Edit", input: { changes: [{ kind: { type: "add" }, path: "src/new.ts", diff: "@@ -0,0 +1,3 @@" }] } },
+    t,
+  }));
+  const deleted = renderToStaticMarkup(ItemView({
+    item: { kind: "tool", key: "delete", name: "Edit", input: { changes: [{ kind: { type: "delete" }, path: "src/old.ts", diff: "@@ -1,2 +0,0 @@" }] } },
+    t,
+  }));
+  assert.match(created, />Create</);
+  assert.match(created, />\+3</);
+  assert.doesNotMatch(created, /−0/);
+  assert.match(deleted, />Delete</);
+  assert.match(deleted, />−2</);
+  assert.doesNotMatch(deleted, /\+0/);
 });
 
 test("edit diff tracks old and new file line numbers across unified diff hunks", () => {

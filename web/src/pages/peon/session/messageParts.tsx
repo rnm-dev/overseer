@@ -3,7 +3,7 @@ import { Dialog } from "../../../ui";
 import { HighlightedCode, Markdown } from "../../../components/RichText";
 import { orcishThinkingLabel, prettyJsonOutput, toolHasOutputSection, toolSummary, type Item, type MessageAttachment, type T } from "./parsing";
 import { Avatar } from "../../../components/Avatar";
-import { Pencil, Terminal } from "lucide-react";
+import { FilePlus, FileX, Pencil, Terminal } from "lucide-react";
 
 // The transcript render atoms: one component per Item kind, plus the Markdown
 // renderer and the "agent is working" indicator. Pure presentation — all parsing
@@ -65,14 +65,15 @@ function ToolRow({ name, input, result, t }: { name?: string; input?: unknown; r
   const command = toolSummary(input, name);
   const failed = !!result?.error;
   const isEdit = !toolHasOutputSection(name);
+  const operation = isEdit ? editOperation(input) : null;
   const stats = isEdit ? editStatsFromInput(input) : null;
   return (
     <div className="flex justify-start">
       <div className={`flex min-w-0 max-w-[85%] items-center gap-1.5 py-0.5 font-mono text-xs ${failed ? "text-blood" : ""}`}>
         <span className={`flex shrink-0 items-center gap-1 ${failed ? "text-blood" : "text-fel-bright"}`}>
-          {isEdit ? <Pencil size={13} aria-hidden /> : <Terminal size={13} aria-hidden />}
-          {name || t("session.chat.tool")}
-          {stats && <span className="ml-0.5 font-mono text-[0.7rem] font-normal">(<span className="text-fel-bright">+{stats.added}</span>,<span className="text-blood">−{stats.removed}</span>)</span>}
+          {operation === "Create" ? <FilePlus size={13} aria-hidden /> : operation === "Delete" ? <FileX size={13} aria-hidden /> : isEdit ? <Pencil size={13} aria-hidden /> : <Terminal size={13} aria-hidden />}
+          {operation ?? name ?? t("session.chat.tool")}
+          {stats && <EditStats operation={operation ?? "Edit"} stats={stats} />}
         </span>
         <span className="min-w-0 flex-1 truncate text-bone-faint">{command}</span>
         <button onClick={() => setOpen(true)} className="shrink-0 font-mono text-[0.7rem] text-bone-faint underline decoration-dotted underline-offset-2 transition-colors hover:text-fel-bright">
@@ -100,9 +101,75 @@ export function editStats(lines: DiffLine[] | null): { added: number; removed: n
   }, { added: 0, removed: 0 });
 }
 
+type EditOperation = "Create" | "Delete" | "Edit";
+
+function normalizedChangeKind(change: Record<string, unknown>): string | null {
+  const rawKind = change.kind;
+  if (typeof rawKind === "string") return rawKind.trim().toLowerCase();
+  if (rawKind && typeof rawKind === "object") {
+    const type = (rawKind as Record<string, unknown>).type;
+    if (typeof type === "string") return type.trim().toLowerCase();
+  }
+  return null;
+}
+
+function operationFromKind(kind: string | null): EditOperation | null {
+  if (kind === "add" || kind === "create" || kind === "added") return "Create";
+  if (kind === "delete" || kind === "remove" || kind === "deleted") return "Delete";
+  if (kind === "update" || kind === "edit" || kind === "rename") return "Edit";
+  return null;
+}
+
+export function editOperation(input: unknown): EditOperation {
+  if (!input || typeof input !== "object") return "Edit";
+  const value = input as Record<string, unknown>;
+  if (Array.isArray(value.changes) && value.changes.length > 0) {
+    const operations = value.changes.map((rawChange) => {
+      if (!rawChange || typeof rawChange !== "object") return null;
+      return operationFromKind(normalizedChangeKind(rawChange as Record<string, unknown>));
+    });
+    if (operations.every((operation) => operation === "Create")) return "Create";
+    if (operations.every((operation) => operation === "Delete")) return "Delete";
+    if (operations.some(Boolean)) return "Edit";
+  }
+
+  const patch = value.patch ?? value.diff;
+  if (typeof patch === "string") {
+    if (/^\*\*\* Add File:/m.test(patch) || /^---\s+\/dev\/null\s*$/m.test(patch)) return "Create";
+    if (/^\*\*\* Delete File:/m.test(patch) || /^\+\+\+\s+\/dev\/null\s*$/m.test(patch)) return "Delete";
+  }
+  return "Edit";
+}
+
+function statsFromDiff(diff: string, operation: EditOperation): { added: number; removed: number } {
+  let added = 0;
+  let removed = 0;
+  const hunks: Array<{ oldLength: number; newLength: number }> = [];
+  for (const line of diff.split("\n")) {
+    const hunk = /^@@ -(?:\d+)(?:,(\d+))? \+(?:\d+)(?:,(\d+))? @@/.exec(line);
+    if (hunk) {
+      hunks.push({ oldLength: hunk[1] === undefined ? 1 : Number(hunk[1]), newLength: hunk[2] === undefined ? 1 : Number(hunk[2]) });
+      continue;
+    }
+    if (line.startsWith("+") && !line.startsWith("+++")) added++;
+    if (line.startsWith("-") && !line.startsWith("---")) removed++;
+  }
+
+  // A few Codex app-server builds emit only hunk metadata for whole-file
+  // creates/deletes. Those ranges are exact because the opposite side is empty.
+  if (operation === "Create" && added === 0) {
+    added = hunks.reduce((count, hunk) => count + (hunk.oldLength === 0 ? hunk.newLength : 0), 0);
+  }
+  if (operation === "Delete" && removed === 0) {
+    removed = hunks.reduce((count, hunk) => count + (hunk.newLength === 0 ? hunk.oldLength : 0), 0);
+  }
+  return { added, removed };
+}
+
 export function editStatsFromInput(input: unknown): { added: number; removed: number } | null {
   if (!input || typeof input !== "object") return null;
   const value = input as Record<string, unknown>;
+  const operation = editOperation(input);
   if (Array.isArray(value.changes)) {
     let added = 0;
     let removed = 0;
@@ -112,10 +179,9 @@ export function editStatsFromInput(input: unknown): { added: number; removed: nu
       const diff = (rawChange as Record<string, unknown>).diff;
       if (typeof diff !== "string") continue;
       foundDiff = true;
-      for (const line of diff.split("\n")) {
-        if (line.startsWith("+") && !line.startsWith("+++")) added++;
-        if (line.startsWith("-") && !line.startsWith("---")) removed++;
-      }
+      const stats = statsFromDiff(diff, operation);
+      added += stats.added;
+      removed += stats.removed;
     }
     if (foundDiff) return { added, removed };
   }
@@ -128,6 +194,16 @@ export function editStatsFromInput(input: unknown): { added: number; removed: nu
     };
   }
   return null;
+}
+
+function EditStats({ operation, stats }: { operation: EditOperation; stats: { added: number; removed: number } }) {
+  return (
+    <span className="ml-0.5 font-mono text-[0.7rem] font-normal">
+      ({operation !== "Delete" && <span className="text-fel-bright">+{stats.added}</span>}
+      {operation === "Edit" && ","}
+      {operation !== "Create" && <span className="text-blood">−{stats.removed}</span>})
+    </span>
+  );
 }
 
 export function editFileName(input: unknown): string | null {
@@ -240,7 +316,7 @@ function ToolDetailsModal({ name, input, command, result, t, onClose }: { name?:
   const isEdit = !toolHasOutputSection(name);
   const modalName = isEdit ? editFileName(input) ?? name : name;
   const diff = isEdit ? editDiff(input) : null;
-  const stats = editStats(diff);
+  const stats = isEdit ? editStatsFromInput(input) : editStats(diff);
   const jsonOutput = result?.error || !result?.text ? null : prettyJsonOutput(result.text);
   const inputText = (() => {
     if (!isEdit) return command;
