@@ -69,8 +69,14 @@ export function PeonSessionDetail() {
   // settle in the small render→effect window and must not mutate the new session.
   currentSessionKeyRef.current = sessionKey;
 
+  useEffect(() => {
+    if (!sid) return;
+    void api(`${base}/sessions/${encodeURIComponent(sid)}/attention/read`, { method: "POST" }).catch(() => undefined);
+  }, [base, sid]);
+
   // Session title + inline rename.
   const [title, setTitle] = useState<string | null>(null);
+  const [openingMessage, setOpeningMessage] = useState<string | null>(null);
   const [projectKey, setProjectKey] = useState<string | null>(null);
   const [loadedMetadataKey, setLoadedMetadataKey] = useState<string | null>(null);
   const [turnCount, setTurnCount] = useState<number | null>(null);
@@ -192,13 +198,14 @@ export function PeonSessionDetail() {
     if (queueActivityRef.current.hasPending(sessionKey)) return;
     setRunning(false);
     setMetaTick((value) => value + 1);
+    void api(`${base}/sessions/${encodeURIComponent(sid)}/attention/read`, { method: "POST" }).catch(() => undefined);
     if (!event || !isSuccessfulRunResult(event)) return;
     if (suppressCompletionSoundRef.current) {
       suppressCompletionSoundRef.current = false;
       return;
     }
     playPeonSound("complete");
-  }, [sessionKey, setRunning]);
+  }, [base, sessionKey, setRunning, sid]);
   const onWorkStarted = useCallback(() => {
     suppressCompletionSoundRef.current = false;
     playPeonSound("start");
@@ -293,13 +300,14 @@ export function PeonSessionDetail() {
   useEffect(() => {
     let alive = true;
     const runRevision = runRevisionRef.current.get(sessionKey) ?? 0;
-    api<{ title?: string | null; projectKey?: string | null; status?: string | null; agent?: string | null; backendSessionId?: string | null; model?: string | null; reasoningEffort?: string | null; permissionMode?: string | null; turnCount?: number | null; usage?: unknown }>(
+    api<{ title?: string | null; prompt?: string | null; promptPreview?: string | null; projectKey?: string | null; status?: string | null; agent?: string | null; backendSessionId?: string | null; model?: string | null; reasoningEffort?: string | null; permissionMode?: string | null; turnCount?: number | null; usage?: unknown }>(
       `${base}/sessions/${encodeURIComponent(sid)}`,
     )
       .then((s) => {
         if (!alive) return;
         metadataStatusRef.current.set(sessionKey, s.status ?? null);
         setTitle(s.title ?? null);
+        setOpeningMessage(s.promptPreview?.trim() || s.prompt?.trim() || null);
         setDraft(s.title ?? "");
         setEditing(false);
         setProjectKey(s.projectKey ?? null);
@@ -391,12 +399,6 @@ export function PeonSessionDetail() {
   // Flattened render list — pairs each tool_use with its later tool_result so it
   // renders as a single row (see flattenEvents).
   const items = useMemo(() => flattenEvents([...(history ?? []), ...orderedLive], t), [history, orderedLive, t]);
-  // Untitled session ⇒ fall back to the opening line of the first user message,
-  // so the header reads as something recognizable instead of a generic label.
-  const firstUserMessage = useMemo(() => {
-    const first = items.find((i) => i.kind === "user");
-    return first ? first.text.split("\n")[0].trim() || null : null;
-  }, [items]);
   const transcriptTurns = useMemo(
     () => [...(history ?? []), ...orderedLive].reduce((sum, ev) => sum + (ev.type === "result" && typeof ev.num_turns === "number" ? ev.num_turns : 0), 0),
     [history, orderedLive],
@@ -421,10 +423,10 @@ export function PeonSessionDetail() {
     setRenameNote(null);
     setEditing(false);
   };
-  // A title-less metadata response can arrive before the transcript's opening
-  // user message, which is the display title fallback. Keep the loading state
-  // through that gap instead of briefly exposing "Untitled session".
-  const headerMetadataLoading = sessionHeaderMetadataLoading(loadedMetadataKey, sessionKey, title, firstUserMessage);
+  // The metadata prompt is the opening message of the whole conversation. Do
+  // not derive header identity from the currently loaded transcript page: for
+  // long sessions that page is only a recent batch and can start mid-thread.
+  const headerMetadataLoading = sessionHeaderMetadataLoading(loadedMetadataKey, sessionKey, title, openingMessage);
 
   return (
     <div className="min-w-0">
@@ -440,7 +442,7 @@ export function PeonSessionDetail() {
         savingName={savingName}
         renameNote={renameNote}
         setRenameNote={setRenameNote}
-        firstUserMessage={firstUserMessage}
+        openingMessage={openingMessage}
         turnTotal={turnTotal}
         usageSummary={usageSummary}
         filesOpen={filesOpen}

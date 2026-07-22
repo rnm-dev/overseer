@@ -114,6 +114,19 @@ test("project catalog events are filtered by stable project ID, including tombst
   }), false);
 });
 
+test("attention events are visible only to their target user", () => {
+  const client: AccessClient = {
+    userId: "member", workspaceId: "ws", role: "member",
+    allowedPeons: new Set(["p1"]), allowedProjects: new Map(), tails: new Map(),
+  };
+  const event = {
+    cursor: 3, workspaceId: "ws", peonId: "p1", sessionId: "s1", kind: "attention" as const,
+    payload: { userId: "member", peonId: "p1", sessionId: "s1", unread: true }, createdAt: 3,
+  };
+  assert.equal(eventVisible(client, event), true);
+  assert.equal(eventVisible(client, { ...event, payload: { ...event.payload, userId: "other" } }), false);
+});
+
 test("member ACLs are applied before session pagination and counting", async () => {
   const mem = newDb();
   const adapter = mem.adapters.createPg();

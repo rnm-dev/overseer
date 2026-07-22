@@ -13,6 +13,8 @@ export interface SessionLite {
   catalogState?: "legacy" | "fallback" | "syncing" | "ready" | "stale" | "offline";
   catalogStale?: boolean;
   catalogUpdatedAt?: number | null;
+  attentionUnread?: boolean;
+  attentionUpdatedAt?: number;
 }
 
 export interface IndexedSessionLite {
@@ -30,6 +32,8 @@ export interface IndexedSessionLite {
   catalogState?: SessionLite["catalogState"];
   catalogStale?: boolean;
   catalogUpdatedAt?: number | null;
+  attentionUnread?: boolean;
+  attentionUpdatedAt?: number;
 }
 
 export interface IndexedSessionEvent extends IndexedSessionLite {
@@ -58,7 +62,19 @@ export function sessionFromIndex(session: IndexedSessionLite): SessionLite {
     catalogState: session.catalogState,
     catalogStale: session.catalogStale,
     catalogUpdatedAt: session.catalogUpdatedAt,
+    ...(typeof session.attentionUnread === "boolean" ? { attentionUnread: session.attentionUnread } : {}),
+    ...(typeof session.attentionUpdatedAt === "number" ? { attentionUpdatedAt: session.attentionUpdatedAt } : {}),
   };
+}
+
+export function applyAttentionEvent(
+  current: SessionLite[],
+  event: { peonId: string; sessionId: string; unread: boolean; updatedAt?: number },
+): SessionLite[] {
+  const key = sessionIdentity({ peonId: event.peonId, id: event.sessionId });
+  return current.map((session) => sessionIdentity(session) === key && (event.updatedAt ?? 0) >= (session.attentionUpdatedAt ?? 0)
+    ? { ...session, attentionUnread: event.unread, attentionUpdatedAt: event.updatedAt ?? 0 }
+    : session);
 }
 
 export function sessionDisplayTitle(
@@ -81,7 +97,12 @@ export function mergeSessions(current: SessionLite[], incoming: SessionLite[]): 
     const key = sessionIdentity(session);
     const previous = merged.get(key);
     if (previous && previous.syncedAt != null && session.syncedAt != null && previous.syncedAt > session.syncedAt) continue;
-    merged.set(key, { ...previous, ...session });
+    const next = { ...previous, ...session };
+    if ((previous?.attentionUpdatedAt ?? 0) > (session.attentionUpdatedAt ?? 0)) {
+      next.attentionUnread = previous?.attentionUnread;
+      next.attentionUpdatedAt = previous?.attentionUpdatedAt;
+    }
+    merged.set(key, next);
   }
   return [...merged.values()];
 }

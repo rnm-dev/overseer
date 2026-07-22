@@ -74,6 +74,12 @@ export function sessionVisible(client: AccessClient, peonId: string, projectKey:
 
 export function eventVisible(client: AccessClient, event: LiveEvent): boolean {
   if (!peonVisible(client, event.peonId)) return false;
+  if (event.kind === "attention") {
+    const userId = event.payload && typeof event.payload === "object"
+      ? (event.payload as { userId?: unknown }).userId
+      : null;
+    return userId === client.userId;
+  }
   if (event.kind === "peon" || client.role === "owner") return true;
   const projectKey = event.payload && typeof event.payload === "object" && typeof (event.payload as { projectKey?: unknown }).projectKey === "string"
     ? (event.payload as { projectKey: string }).projectKey

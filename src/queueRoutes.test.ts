@@ -14,4 +14,5 @@ test("follow-up queue operations are exposed through the workspace Peon proxy", 
   assert.equal(has(queue, "post"), true);
   assert.equal(has(`${queue}/:itemId/send`, "post"), true);
   assert.equal(has(`${queue}/:itemId`, "delete"), true);
+  assert.equal(has("/workspaces/:wsId/peons/:id/sessions/:sid/attention/read", "post"), true);
 });

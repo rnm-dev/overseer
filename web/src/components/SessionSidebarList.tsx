@@ -16,13 +16,15 @@ function ago(ms?: number | null): string {
   return `${Math.floor(hours / 24)}d`;
 }
 
-function statusColor(status?: string | null): string {
+export function sessionStatusLightClass(status?: string | null, attentionUnread = false): string {
   return status === "running"
-    ? "bg-fel shadow-[0_0_6px_var(--color-fel)]"
+    ? "bg-fel-bright shadow-[0_0_4px_var(--color-fel),0_0_11px_var(--color-fel)]"
+    : attentionUnread
+      ? "bg-forge shadow-[0_0_4px_var(--color-forge),0_0_12px_var(--color-forge)]"
     : status === "needs_human"
-      ? "bg-forge shadow-[0_0_6px_var(--color-forge)]"
+      ? "bg-forge shadow-[0_0_4px_var(--color-forge),0_0_10px_var(--color-forge)]"
       : status === "failure" || status === "failed" || status === "error"
-        ? "bg-blood"
+        ? "bg-blood shadow-[0_0_4px_var(--color-blood),0_0_9px_var(--color-blood)]"
         : "bg-iron-700";
 }
 
@@ -120,7 +122,7 @@ export function SessionSidebarList({
               className={({ isActive }) => `block rounded px-2.5 py-1.5 transition-colors ${session.catalogStale ? "opacity-70" : ""} ${isActive ? "bg-fel/10" : "hover:bg-iron-900"}`}
             >
               <div className="flex items-center gap-1.5">
-                <span className={`h-1.5 w-1.5 flex-none rounded-full ${statusColor(session.status)}`} aria-hidden />
+                <span className={`h-2 w-2 flex-none rounded-full ${sessionStatusLightClass(session.status, session.attentionUnread)}`} aria-hidden />
                 <span className="min-w-0 flex-1 whitespace-nowrap font-display text-[0.8rem] text-bone">
                   <FadingTitle>{sessionDisplayTitle(session, t("session.untitled"))}</FadingTitle>
                 </span>

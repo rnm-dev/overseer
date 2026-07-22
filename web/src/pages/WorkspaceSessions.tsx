@@ -9,7 +9,7 @@ import { useLiveSocket, type SessionLiveEvent } from "../liveSocket";
 import { useWorkspace } from "../workspace";
 import { useMobileDrawer } from "../hooks/useMobileDrawer";
 import type { PeonContext, PeonView } from "./peon/context";
-import { applySessionEvent, mergeSessions, sessionFromIndex, type IndexedSessionEvent, type IndexedSessionLite, type SessionLite } from "./peon/sessionList";
+import { applyAttentionEvent, applySessionEvent, mergeSessions, sessionFromIndex, type IndexedSessionEvent, type IndexedSessionLite, type SessionLite } from "./peon/sessionList";
 
 const SIDEBAR_WIDTH_KEY = "overseer.peon-sidebar-width";
 const DEFAULT_SIDEBAR_WIDTH = 256;
@@ -29,7 +29,7 @@ export function WorkspaceSessions() {
   const location = useLocation();
   const { workspaceId = "", peonId = "" } = useParams();
   const { current, groups, setCurrent } = useWorkspace();
-  const { subscribeSessions, viewersFor } = useLiveSocket();
+  const { subscribeAttention, subscribeSessions, viewersFor } = useLiveSocket();
   const group = groups.find((item) => item.workspace.id === workspaceId);
   const peons = useMemo(() => group?.peons ?? [], [group]);
   const peonNames = useMemo(() => new Map(peons.map((peon) => [peon.peonId, peon.name || t("peons.unnamed")])), [peons, t]);
@@ -83,6 +83,10 @@ export function WorkspaceSessions() {
     setSessions((currentSessions) => applySessionEvent(currentSessions, event as IndexedSessionEvent));
     if (event.deleted) setSessionTotal((total) => total === null ? null : Math.max(0, total - 1));
   }), [current?.id, subscribeSessions, workspaceId]);
+
+  useEffect(() => subscribeAttention((event) => {
+    setSessions((currentSessions) => applyAttentionEvent(currentSessions, event));
+  }), [subscribeAttention]);
 
   const reloadActivePeon = useCallback(() => {
     if (!workspaceId || !peonId) {
@@ -168,7 +172,7 @@ export function WorkspaceSessions() {
         disabled={!drawerOpen}
         tabIndex={-1}
         data-open={drawerOpen}
-        className="mobile-drawer-backdrop fixed inset-0 z-40 md:hidden"
+        className="mobile-drawer-backdrop fixed inset-0 z-[45] md:hidden"
         onClick={() => setDrawerOpen(false)}
       />
       <aside

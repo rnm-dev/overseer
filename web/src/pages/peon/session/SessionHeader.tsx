@@ -21,7 +21,7 @@ interface Props {
   savingName: boolean;
   renameNote: string | null;
   setRenameNote: Dispatch<SetStateAction<string | null>>;
-  firstUserMessage: string | null;
+  openingMessage: string | null;
   turnTotal: number;
   usageSummary: UsageBreakdown | null;
   filesOpen: boolean;
@@ -49,7 +49,7 @@ interface SessionHeaderIdentityProps {
   setEditing: Dispatch<SetStateAction<boolean>>;
   savingName: boolean;
   setRenameNote: Dispatch<SetStateAction<string | null>>;
-  firstUserMessage: string | null;
+  openingMessage: string | null;
   saveName: () => Promise<void>;
   cancelRename: () => void;
 }
@@ -58,9 +58,9 @@ export function sessionHeaderMetadataLoading(
   loadedMetadataKey: string | null,
   sessionKey: string,
   title: string | null,
-  firstUserMessage: string | null,
+  openingMessage: string | null,
 ): boolean {
-  return loadedMetadataKey !== sessionKey || (!title && !firstUserMessage);
+  return loadedMetadataKey !== sessionKey || (!title && !openingMessage);
 }
 
 export function SessionHeaderStats({ turnTotal, usageSummary }: { turnTotal: number; usageSummary: UsageBreakdown | null }) {
@@ -91,7 +91,7 @@ export function SessionHeaderStats({ turnTotal, usageSummary }: { turnTotal: num
 
 export function SessionHeaderIdentity({
   peonId, metadataLoading, projectKey, title, draft, setDraft, editing,
-  setEditing, savingName, setRenameNote, firstUserMessage, saveName, cancelRename,
+  setEditing, savingName, setRenameNote, openingMessage, saveName, cancelRename,
 }: SessionHeaderIdentityProps) {
   const t = useT();
 
@@ -128,9 +128,9 @@ export function SessionHeaderIdentity({
       >
         <input
           value={draft}
-          placeholder={firstUserMessage || t("session.untitled")}
+          placeholder={openingMessage || t("session.untitled")}
           aria-label={t("session.renamePlaceholder")}
-          title={title ?? firstUserMessage ?? undefined}
+          title={title ?? openingMessage ?? undefined}
           disabled={savingName}
           onFocus={(e) => {
             setRenameNote(null);
@@ -178,7 +178,7 @@ export function SessionHeaderIdentity({
 export function SessionHeader(props: Props) {
   const {
     peonId, metadataLoading, projectKey, title, draft, setDraft, editing, setEditing,
-    savingName, renameNote, setRenameNote, firstUserMessage, turnTotal,
+    savingName, renameNote, setRenameNote, openingMessage, turnTotal,
     usageSummary, filesOpen, changeFilesOpen, confirmDelete, setConfirmDelete,
     deleting, deleteNote, setDeleteNote, stopNote, saveName, cancelRename, remove, viewers,
   } = props;
@@ -254,7 +254,7 @@ export function SessionHeader(props: Props) {
       setEditing={setEditing}
       savingName={savingName}
       setRenameNote={setRenameNote}
-      firstUserMessage={firstUserMessage}
+      openingMessage={openingMessage}
       saveName={saveName}
       cancelRename={cancelRename}
     />

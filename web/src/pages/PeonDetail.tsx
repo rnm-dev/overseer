@@ -11,7 +11,7 @@ import { PeonScopeSwitcher } from "../components/PeonScopeSwitcher";
 import { FadingTitle, SessionSidebarList } from "../components/SessionSidebarList";
 import { PeonConnectionStatusDot } from "../components/PeonConnectionStatusDot";
 import type { PeonContext, PeonView } from "./peon/context";
-import { applySessionEvent, mergeSessions, sessionDisplayTitle, sessionFromIndex, sessionSidebarCanLoad, type IndexedSessionEvent, type IndexedSessionLite, type SessionLite } from "./peon/sessionList";
+import { applyAttentionEvent, applySessionEvent, mergeSessions, sessionDisplayTitle, sessionFromIndex, sessionSidebarCanLoad, type IndexedSessionEvent, type IndexedSessionLite, type SessionLite } from "./peon/sessionList";
 import { MobilePaneIdentity } from "./peon/session/mobileHeader";
 
 // author: Viktor
@@ -52,7 +52,7 @@ function savedSidebarWidth(): number {
 export function PeonDetail() {
   const t = useT();
   const { peonId = "", sid = "" } = useParams();
-  const { viewersFor, subscribeSessions } = useLiveSocket();
+  const { viewersFor, subscribeAttention, subscribeSessions } = useLiveSocket();
   const location = useLocation();
   const { current, workspaces, setCurrent, workspaceIdOfPeon } = useWorkspace();
   const wsOfPeon = workspaceIdOfPeon(peonId);
@@ -245,6 +245,11 @@ export function PeonDetail() {
     if (event.deleted) setSessionTotal((total) => total === null ? null : Math.max(0, total - 1));
   }), [peonId, subscribeSessions]);
 
+  useEffect(() => subscribeAttention((event) => {
+    if (event.peonId !== peonId) return;
+    setSessions((current) => applyAttentionEvent(current, event));
+  }), [peonId, subscribeAttention]);
+
   // Keep browser tabs identifiable when several peons/sessions are open. While
   // the selected session is running, animate a small spinner so background work
   // remains visible even when this tab is not focused.
@@ -310,7 +315,7 @@ export function PeonDetail() {
         disabled={!drawerOpen}
         tabIndex={-1}
         data-open={drawerOpen}
-        className="mobile-drawer-backdrop fixed inset-0 z-40 md:hidden"
+        className="mobile-drawer-backdrop fixed inset-0 z-[45] md:hidden"
         onClick={() => setDrawerOpen(false)}
       />
       <aside
@@ -362,7 +367,7 @@ export function PeonDetail() {
             {t("newSession.new")}
           </Link>
         </div>
-        <div ref={sessionScrollNode} className="min-h-0 flex-1 overflow-y-auto px-2 pb-24">
+        <div ref={sessionScrollNode} className="min-h-0 flex-1 overflow-y-auto pb-24 pl-3.5 pr-1">
           {!online && <p className="px-2 py-2 font-body text-xs text-bone-faint">{t("peon.offlineNote")}</p>}
           {ordered.length === 0 && !sessionsLoading && !sessionPageError ? (
             <p className="px-2 py-2 font-body text-xs text-bone-faint">{t("peon.dash.noSessions")}</p>

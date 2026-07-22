@@ -8,6 +8,16 @@ import { runIdempotentFollowup, validCommandId } from "../../followupIdempotency
 import { enrichTranscriptMetadata } from "../../transcriptTimestamps.js";
 import { indexAcceptedSession } from "../../modules/acceptedSession/index.js";
 import { deleteIndexedSession } from "../../sessionIndex.js";
+import { cancelSessionRequest, markSessionAttentionRead, recordSessionRequest } from "../../sessionAttention.js";
+
+function acceptedSessionId(result: { ok: boolean; json: unknown }): string | null {
+  if (!result.ok || !result.json || typeof result.json !== "object") return null;
+  const body = result.json as Record<string, unknown>;
+  if (typeof body.id === "string") return body.id;
+  return body.session && typeof body.session === "object" && typeof (body.session as Record<string, unknown>).id === "string"
+    ? String((body.session as Record<string, unknown>).id)
+    : null;
+}
 
 export function transcriptQuery(query: express.Request["query"], supported: boolean): string {
   if (!supported) return "";
@@ -139,6 +149,16 @@ export function registerSessionRoutes(router: express.Router): void {
         body: req.body,
         requestId: typeof requestId === "string" ? requestId : undefined,
       });
+      const sessionId = acceptedSessionId(result);
+      if (sessionId) {
+        await recordSessionRequest({
+          workspaceId: c.workspaceId,
+          userId: c.userId,
+          peonId: c.record.peonId,
+          sessionId,
+          occurrenceKey: `create:${typeof requestId === "string" ? requestId : sessionId}`,
+        }).catch(() => undefined);
+      }
       await indexAcceptedSession(result, c.workspaceId, c.record.peonId);
       relay(result, res);
     }),
@@ -151,14 +171,33 @@ export function registerSessionRoutes(router: express.Router): void {
     const result = await runIdempotentFollowup(c.record.peonId, sid, commandId, req.body, () =>
       callPeon(connOfRecord(c.record), "POST", `/sessions/${encodeURIComponent(sid)}/followup`, { actor: c.operator.email, body: req.body, requestId: commandId }),
     );
+    if (result.ok) {
+      await recordSessionRequest({
+        workspaceId: c.workspaceId,
+        userId: c.userId,
+        peonId: c.record.peonId,
+        sessionId: sid,
+        occurrenceKey: `followup:${commandId}`,
+      }).catch(() => undefined);
+    }
     await indexAcceptedSession(result, c.workspaceId, c.record.peonId);
     relay(result, res);
+  }));
+  router.post(`${wp}/sessions/:sid/attention/read`, withWorkspaceSession(async (req, res, c) => {
+    await markSessionAttentionRead(c.workspaceId, c.userId, c.record.peonId, String(req.params.sid));
+    res.json({ ok: true });
   }));
   router.get(`${wp}/sessions/:sid/queue`, withWorkspaceSession(async (req, res, c) => {
     relay(await callPeon(connOfRecord(c.record), "GET", `/sessions/${encodeURIComponent(String(req.params.sid))}/queue`, { actor: c.operator.email }), res);
   }));
   router.post(`${wp}/sessions/:sid/queue`, withWorkspaceSession(async (req, res, c) => {
-    relay(await callPeon(connOfRecord(c.record), "POST", `/sessions/${encodeURIComponent(String(req.params.sid))}/queue`, { actor: c.operator.email, body: req.body }), res);
+    const sid = String(req.params.sid);
+    const result = await callPeon(connOfRecord(c.record), "POST", `/sessions/${encodeURIComponent(sid)}/queue`, { actor: c.operator.email, body: req.body });
+    const commandId = typeof req.body?.commandId === "string" ? req.body.commandId : null;
+    if (result.ok && commandId) {
+      await recordSessionRequest({ workspaceId: c.workspaceId, userId: c.userId, peonId: c.record.peonId, sessionId: sid, occurrenceKey: `queue:${commandId}` }).catch(() => undefined);
+    }
+    relay(result, res);
   }));
   router.post(`${wp}/sessions/:sid/queue/:itemId/send`, withWorkspaceSession(async (req, res, c) => {
     relay(await callPeon(
@@ -169,12 +208,21 @@ export function registerSessionRoutes(router: express.Router): void {
     ), res);
   }));
   router.delete(`${wp}/sessions/:sid/queue/:itemId`, withWorkspaceSession(async (req, res, c) => {
-    relay(await callPeon(
+    const sid = String(req.params.sid);
+    const itemId = String(req.params.itemId);
+    const queue = await callPeon(connOfRecord(c.record), "GET", `/sessions/${encodeURIComponent(sid)}/queue`, { actor: c.operator.email });
+    const items = queue.ok && queue.json && typeof queue.json === "object" && Array.isArray((queue.json as { items?: unknown }).items)
+      ? (queue.json as { items: Array<{ id?: unknown; commandId?: unknown }> }).items
+      : [];
+    const removedCommandId = items.find((item) => item.id === itemId)?.commandId;
+    const result = await callPeon(
       connOfRecord(c.record),
       "DELETE",
-      `/sessions/${encodeURIComponent(String(req.params.sid))}/queue/${encodeURIComponent(String(req.params.itemId))}`,
+      `/sessions/${encodeURIComponent(sid)}/queue/${encodeURIComponent(itemId)}`,
       { actor: c.operator.email },
-    ), res);
+    );
+    if (result.ok && typeof removedCommandId === "string") await cancelSessionRequest(c.record.peonId, sid, `queue:${removedCommandId}`).catch(() => undefined);
+    relay(result, res);
   }));
   router.post(`${wp}/sessions/:sid/cancel`, withWorkspaceSession(async (req, res, c) => relay(await callPeon(connOfRecord(c.record), "POST", `/sessions/${encodeURIComponent(String(req.params.sid))}/cancel`, { actor: c.operator.email }), res)));
   router.delete(`${wp}/sessions/:sid`, withWorkspaceSession(async (req, res, c) => {
