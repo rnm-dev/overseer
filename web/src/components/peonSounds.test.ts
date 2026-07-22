@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   createPeonSoundPlayer,
-  createWorkSoundController,
-  createWorkSoundLoop,
+  createWorkSoundPlayer,
+  isAgentWorkUpdate,
   isSuccessfulRunResult,
   LEGACY_PEON_SOUNDS_STORAGE_KEY,
   selectedSoundPack,
@@ -125,10 +125,10 @@ test("sound player randomly selects and caches candidates from the semantic pool
   assert.deepEqual(created, SOUND_PACK_PATHS.dota2_axe.start);
 });
 
-test("SCV working ambience randomly advances without immediately repeating a clip", () => {
+test("SCV working sound plays once per update and ignores updates while a clip is active", () => {
   const created: Array<{ src: string; paused: boolean; currentTime: number; onended: (() => void) | null }> = [];
   const random = [0, 0, 0.99];
-  const loop = createWorkSoundLoop((src) => {
+  const player = createWorkSoundPlayer((src) => {
     const audio = {
       src,
       paused: false,
@@ -140,38 +140,48 @@ test("SCV working ambience randomly advances without immediately repeating a cli
     };
     created.push(audio);
     return audio;
-  }, () => random.shift() ?? 0);
+  }, () => "sc_scv", () => random.shift() ?? 0);
 
-  loop.start();
-  loop.start();
+  player.play();
+  player.play();
   assert.deepEqual(created.map(({ src }) => src), [SCV_WORKING_SOUND_PATHS[0]]);
   created[0].onended?.();
+  player.play();
   created[1].onended?.();
+  player.play();
   assert.deepEqual(created.map(({ src }) => src), [
     SCV_WORKING_SOUND_PATHS[0],
     SCV_WORKING_SOUND_PATHS[1],
     SCV_WORKING_SOUND_PATHS[4],
   ]);
 
-  loop.stop();
+  player.stop();
   assert.equal(created[2].paused, true);
   assert.equal(created[2].currentTime, 0);
   assert.equal(created[2].onended, null);
 });
 
-test("working ambience runs only while the SCV pack is selected", () => {
+test("working sound plays only while the SCV pack is selected", () => {
   let pack: "sc_scv" | "peon" = "peon";
-  let starts = 0;
-  let stops = 0;
-  const sync = createWorkSoundController({
-    start: () => { starts += 1; },
-    stop: () => { stops += 1; },
-  }, () => pack);
+  let plays = 0;
+  const player = createWorkSoundPlayer(() => ({
+    currentTime: 0,
+    preload: "none",
+    onended: null,
+    pause: () => undefined,
+    play: () => { plays += 1; },
+  }), () => pack, () => 0);
 
-  sync(true);
+  player.play();
   pack = "sc_scv";
-  sync(true);
-  sync(false);
-  assert.equal(starts, 1);
-  assert.equal(stops, 2);
+  player.play();
+  assert.equal(plays, 1);
+});
+
+test("only non-terminal agent events trigger the working sound", () => {
+  assert.equal(isAgentWorkUpdate({ type: "assistant" }), true);
+  assert.equal(isAgentWorkUpdate({ type: "user" }), true);
+  assert.equal(isAgentWorkUpdate({ type: "system" }), true);
+  assert.equal(isAgentWorkUpdate({ type: "user_message" }), false);
+  assert.equal(isAgentWorkUpdate({ type: "result" }), false);
 });
