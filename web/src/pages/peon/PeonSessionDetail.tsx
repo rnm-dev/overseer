@@ -26,7 +26,7 @@ import { SessionComposerDock } from "./session/SessionComposerDock";
 import { SessionOverlays } from "./session/SessionOverlays";
 import { useScrollToBottom } from "./session/useScrollToBottom";
 import { nextSessionAfterDeletion } from "./session/nextSession";
-import { isSuccessfulRunResult, onSelectedSoundPackChange, playPeonSound, syncWorkSoundLoop } from "../../peonSounds";
+import { isSuccessfulRunResult, onSelectedSoundPackChange, playPeonSound, playWorkSound, stopWorkSound } from "../../peonSounds";
 
 // author: Viktor
 // The transcript parsing/render pieces live in ./session/*; this file owns the
@@ -139,12 +139,11 @@ export function PeonSessionDetail() {
   const [stopNote, setStopNote] = useState<string | null>(null);
   const suppressCompletionSoundRef = useRef(false);
   useEffect(() => {
-    const sync = () => syncWorkSoundLoop(running);
-    sync();
-    const unsubscribe = onSelectedSoundPackChange(sync);
+    if (!running) stopWorkSound();
+    const unsubscribe = onSelectedSoundPackChange(stopWorkSound);
     return () => {
       unsubscribe();
-      syncWorkSoundLoop(false);
+      stopWorkSound();
     };
   }, [running, sessionKey]);
 
@@ -210,6 +209,7 @@ export function PeonSessionDetail() {
     suppressCompletionSoundRef.current = false;
     playPeonSound("start");
   }, []);
+  const onAgentUpdate = useCallback(() => playWorkSound(), []);
   const onQueueChange = useCallback(() => {
     void queueReconcilerRef.current?.reconcile();
   }, []);
@@ -242,6 +242,7 @@ export function PeonSessionDetail() {
     onRunningChange: setRunning,
     onSnapshotRunning,
     onRunFinished,
+    onAgentUpdate,
     onQueueChange,
     onPreview,
   });

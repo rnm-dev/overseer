@@ -127,23 +127,23 @@ export function createPeonSoundPlayer(
 
 export const playPeonSound = createPeonSoundPlayer((src) => new Audio(src));
 
-interface LoopAudio extends AudioPlayer {
+interface WorkAudio extends AudioPlayer {
   onended: ((event: Event) => unknown) | null;
   pause: () => void;
 }
 
-type CreateLoopAudio = (src: string) => LoopAudio;
+type CreateWorkAudio = (src: string) => WorkAudio;
 
-export function createWorkSoundLoop(
-  createAudio: CreateLoopAudio,
+export function createWorkSoundPlayer(
+  createAudio: CreateWorkAudio,
+  selectedPack: () => SoundPack = selectedSoundPack,
   random: () => number = Math.random,
 ) {
-  let running = false;
-  let current: LoopAudio | null = null;
+  let current: WorkAudio | null = null;
   let previousIndex = -1;
 
-  const playNext = () => {
-    if (!running) return;
+  const play = () => {
+    if (selectedPack() !== "sc_scv" || current) return;
     let index = Math.floor(random() * SCV_WORKING_SOUND_PATHS.length);
     if (index === previousIndex && SCV_WORKING_SOUND_PATHS.length > 1) {
       index = (index + 1) % SCV_WORKING_SOUND_PATHS.length;
@@ -155,7 +155,6 @@ export function createWorkSoundLoop(
     player.onended = () => {
       if (current !== player) return;
       current = null;
-      playNext();
     };
     try {
       const playback = player.play();
@@ -170,13 +169,8 @@ export function createWorkSoundLoop(
   };
 
   return {
-    start() {
-      if (running) return;
-      running = true;
-      playNext();
-    },
+    play,
     stop() {
-      running = false;
       const player = current;
       current = null;
       if (!player) return;
@@ -191,19 +185,14 @@ export function createWorkSoundLoop(
   };
 }
 
-const workSoundLoop = createWorkSoundLoop((src) => new Audio(src));
+const workSoundPlayer = createWorkSoundPlayer((src) => new Audio(src));
 
-export function createWorkSoundController(
-  loop: { start: () => void; stop: () => void },
-  selectedPack: () => SoundPack = selectedSoundPack,
-) {
-  return (running: boolean) => {
-    if (running && selectedPack() === "sc_scv") loop.start();
-    else loop.stop();
-  };
+export const playWorkSound = () => workSoundPlayer.play();
+export const stopWorkSound = () => workSoundPlayer.stop();
+
+export function isAgentWorkUpdate(event: { type?: string }): boolean {
+  return event.type !== "user_message" && event.type !== "result";
 }
-
-export const syncWorkSoundLoop = createWorkSoundController(workSoundLoop);
 
 export function isSuccessfulRunResult(event: { type?: string; is_error?: boolean }): boolean {
   return event.type === "result" && event.is_error !== true;

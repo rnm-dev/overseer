@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 import { api } from "../../../api";
 import type { TailFrame } from "../../../liveSocket";
+import { isAgentWorkUpdate } from "../../../peonSounds";
 import { latestRunSignal, runSignalFromEvent, sig, type Ev } from "./parsing";
 import {
   canLiveCommitPending,
@@ -41,6 +42,7 @@ interface Args {
   onRunningChange: (running: boolean) => void;
   onSnapshotRunning: () => void;
   onRunFinished: (event?: Ev) => void;
+  onAgentUpdate: (event: Ev) => void;
   onQueueChange: () => void;
   onPreview: (target: PreviewTarget) => void;
 }
@@ -58,6 +60,7 @@ export function useSessionTranscript({
   onRunningChange,
   onSnapshotRunning,
   onRunFinished,
+  onAgentUpdate,
   onQueueChange,
   onPreview,
 }: Args) {
@@ -175,8 +178,9 @@ export function useSessionTranscript({
     const signal = runSignalFromEvent(event);
     if (signal === "running") onRunningChange(true);
     else if (signal === "idle") onRunFinished(event);
+    if (isAgentWorkUpdate(event)) onAgentUpdate(event);
     return true;
-  }, [consumeOptimisticEcho, onRunFinished, onRunningChange, pushLive]);
+  }, [consumeOptimisticEcho, onAgentUpdate, onRunFinished, onRunningChange, pushLive]);
 
   const openFreshPreview = useCallback((event: Ev) => {
     if (event.type !== "preview" || typeof event.path !== "string" || !event.path || previewPinnedRef.current) return;
