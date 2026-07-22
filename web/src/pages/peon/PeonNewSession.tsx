@@ -4,6 +4,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { api, ApiError, json } from "../../api";
 import { useT } from "../../i18n";
 import { playPeonSound } from "../../peonSounds";
+import { useNotifications } from "../../notifications";
 import { Label } from "../../ui";
 import { usePeon } from "./context";
 import { Composer, supportsDesktopComposerFocus } from "./Composer";
@@ -27,6 +28,7 @@ const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp
 const isImage = (f: File) => IMAGE_TYPES.has(f.type);
 export function PeonNewSession() {
   const t = useT();
+  const { notifyError } = useNotifications();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   // Preselect this project when opening from within a session (see PeonDetail).
@@ -151,7 +153,11 @@ export function PeonNewSession() {
       }
       else setSubmitting(false);
     } catch (err) {
-      setError(err instanceof ApiError && err.code === "AGENT_UNAVAILABLE" ? t("newSession.agentUnavailable") : err instanceof ApiError ? err.message : t("error.generic"));
+      notifyError(err, {
+        title: t("newSession.startFailed"),
+        fallback: t("error.generic"),
+        message: err instanceof ApiError && err.code === "AGENT_UNAVAILABLE" ? t("newSession.agentUnavailable") : undefined,
+      });
       setSubmitting(false);
     }
   }

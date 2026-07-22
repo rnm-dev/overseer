@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type Dispatch, type MutableRefObject, type
 import { api, ApiError, isPeonNeedsUpdate, json } from "../../../api";
 import type { User } from "../../../auth";
 import type { Translate } from "../../../i18n";
+import { useNotifications } from "../../../notifications";
 import { composerDraftKey, useComposerDraft } from "../drafts";
 import type { ModelsCatalog } from "../models";
 import type { Ev } from "./parsing";
@@ -12,6 +13,17 @@ import type { PendingEcho } from "./transcriptMerge";
 const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
 const DEFAULT_FILE_ROOT = "/tmp/peon-files";
 const isImage = (file: File) => IMAGE_TYPES.has(file.type);
+
+export function composerActionErrorMessage(error: unknown, t: Translate): string | undefined {
+  const code = error instanceof ApiError ? error.code : "";
+  if (error instanceof ApiError && (code === "RESUME_IN_PROGRESS" || error.status === 409)) return t("session.compose.busy");
+  if (code === "FILES_DISABLED") return t("session.compose.filesDisabledHint");
+  if (code === "ATTACHMENT_TOO_LARGE") return t("session.compose.tooLarge");
+  if (code === "UNSUPPORTED_MEDIA_TYPE") return t("session.compose.badType");
+  if (code === "UNKNOWN_ATTACHMENT_PATH" || code === "PATH_ESCAPE") return t("session.compose.uploadFailed");
+  if (isPeonNeedsUpdate(error)) return t("peon.unsupported");
+  return undefined;
+}
 
 interface Args {
   base: string;
@@ -51,6 +63,7 @@ export function useSessionComposer({
   pendingEchoesRef, historyReadyRef, tailHighWaterRef, stickToBottomRef,
   setLive, setRunning, setRunningModel, setStopNote, onWorkStarted,
 }: Args) {
+  const { notifyError } = useNotifications();
   const [input, setInput] = useComposerDraft(composerDraftKey(wsId, peonId, sid));
   const [files, setFiles] = useState<File[]>([]);
   const [sending, setSending] = useState(false);
@@ -173,14 +186,11 @@ export function useSessionComposer({
       setRunningModel(wasRunning ? prevModel : null);
       setInput(text);
       setFiles(pending);
-      const code = err instanceof ApiError ? err.code : "";
-      if (err instanceof ApiError && (code === "RESUME_IN_PROGRESS" || err.status === 409)) setSendError(t("session.compose.busy"));
-      else if (code === "FILES_DISABLED") setSendError(t("session.compose.filesDisabledHint"));
-      else if (code === "ATTACHMENT_TOO_LARGE") setSendError(t("session.compose.tooLarge"));
-      else if (code === "UNSUPPORTED_MEDIA_TYPE") setSendError(t("session.compose.badType"));
-      else if (code === "UNKNOWN_ATTACHMENT_PATH" || code === "PATH_ESCAPE") setSendError(t("session.compose.uploadFailed"));
-      else if (isPeonNeedsUpdate(err)) setSendError(t("peon.unsupported"));
-      else setSendError(err instanceof ApiError ? err.message : t("error.generic"));
+      notifyError(err, {
+        title: t("session.compose.sendFailed"),
+        fallback: t("error.generic"),
+        message: composerActionErrorMessage(err, t),
+      });
     } finally {
       if (submissionGateRef.current.finish(submission) && currentSessionKeyRef.current === sessionKey) setSending(false);
     }
@@ -219,13 +229,11 @@ export function useSessionComposer({
       }
     } catch (err) {
       if (currentSessionKeyRef.current !== sessionKey) return;
-      const code = err instanceof ApiError ? err.code : "";
-      if (code === "FILES_DISABLED") setSendError(t("session.compose.filesDisabledHint"));
-      else if (code === "ATTACHMENT_TOO_LARGE") setSendError(t("session.compose.tooLarge"));
-      else if (code === "UNSUPPORTED_MEDIA_TYPE") setSendError(t("session.compose.badType"));
-      else if (code === "UNKNOWN_ATTACHMENT_PATH" || code === "PATH_ESCAPE") setSendError(t("session.compose.uploadFailed"));
-      else if (isPeonNeedsUpdate(err)) setSendError(t("peon.unsupported"));
-      else setSendError(err instanceof ApiError ? err.message : t("error.generic"));
+      notifyError(err, {
+        title: t("session.queue.addFailed"),
+        fallback: t("error.generic"),
+        message: composerActionErrorMessage(err, t),
+      });
     } finally {
       if (submissionGateRef.current.finish(submission) && currentSessionKeyRef.current === sessionKey) setSending(false);
     }
@@ -239,7 +247,7 @@ export function useSessionComposer({
         itemId,
         (id) => removeSessionQueueItem(base, sid, id),
         () => queueReconcilerRef.current?.reconcile() ?? Promise.resolve(),
-        (err) => setSendError(err instanceof ApiError ? err.message : t("error.generic")),
+        (err) => notifyError(err, { title: t("session.queue.removeFailed"), fallback: t("error.generic") }),
       );
     } finally {
       setRemovingQueueItems((current) => {
@@ -259,7 +267,7 @@ export function useSessionComposer({
         itemId,
         (id) => sendSessionQueueItemNow(base, sid, id),
         () => queueReconcilerRef.current?.reconcile() ?? Promise.resolve(),
-        (err) => setSendError(err instanceof ApiError ? err.message : t("error.generic")),
+        (err) => notifyError(err, { title: t("session.queue.sendFailed"), fallback: t("error.generic") }),
       );
     } finally {
       setSendingQueueItems((current) => {
@@ -285,7 +293,10 @@ export function useSessionComposer({
         setQueueItems(items);
       },
       (error) => {
-        if (!isPeonNeedsUpdate(error)) setSendError(error instanceof ApiError ? error.message : t("error.generic"));
+        if (!isPeonNeedsUpdate(error)) notifyError(error, {
+          title: t("session.queue.loadFailed"),
+          fallback: t("error.generic"),
+        });
       },
     );
     queueReconcilerRef.current = reconciler;
@@ -294,7 +305,7 @@ export function useSessionComposer({
       reconciler.dispose();
       if (queueReconcilerRef.current === reconciler) queueReconcilerRef.current = null;
     };
-  }, [base, queueActivity, queueReconcilerRef, sessionKey, sid, t]);
+  }, [base, notifyError, queueActivity, queueReconcilerRef, sessionKey, sid, t]);
 
   // `change` from the Peon is the fast path, but older Peons do not always emit
   // it when they automatically pop the next follow-up. While the widget still
