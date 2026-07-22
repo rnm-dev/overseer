@@ -188,6 +188,13 @@ html.peon-sidebar-resizing * {
  * by the page reveal transform. Hide it while the mobile navigation drawer
  * (which lives inside #root) is open, so the drawer owns the full screen. */
 @media (max-width: 767px) {
+  /* The drawer is rendered inside #root while the composer is portaled to
+     <body>. Let the drawer's z-index participate in the page-level stacking
+     order, otherwise #root's z-index traps it below the composer. */
+  #root {
+    z-index: auto;
+  }
+
   .mobile-drawer-backdrop {
     visibility: hidden;
     opacity: 0;
@@ -228,8 +235,7 @@ html.peon-sidebar-resizing * {
     transition-delay: 0s;
   }
 
-  body.peon-drawer-open .fixed-pane-header,
-  body.peon-drawer-open .session-composer {
+  body.peon-drawer-open .fixed-pane-header {
     visibility: hidden;
   }
 
@@ -769,13 +775,15 @@ html.peon-sidebar-resizing * {
   flex: none;
 }
 .statdot--on {
-  background: var(--color-fel);
+  background: var(--color-fel-bright);
+  box-shadow: 0 0 4px var(--color-fel), 0 0 11px var(--color-fel);
 }
 .statdot--off {
   background: var(--color-iron-600);
 }
 .statdot--busy {
   background: var(--color-forge);
+  box-shadow: 0 0 4px var(--color-forge), 0 0 10px var(--color-forge);
 }
 
 /* ------------------------------------------------------------------ *

@@ -124,7 +124,7 @@ export function WorkspaceSection({ workspace }: { workspace: Workspace }) {
                       <div className="truncate font-display text-sm font-semibold tracking-wide text-bone">{p.name || t("peons.unnamed")}</div>
                       {online ? (
                         <div className={`mt-0.5 flex items-center gap-1.5 font-mono text-xs tabular-nums ${active > 0 ? "text-forge" : "text-bone-faint"}`}>
-                          <span className={`h-1.5 w-1.5 rounded-full ${active > 0 ? "bg-forge shadow-[0_0_7px_var(--color-forge)]" : "bg-iron-700"}`} />
+                          <span className={`h-2 w-2 rounded-full ${active > 0 ? "bg-forge shadow-[0_0_4px_var(--color-forge),0_0_11px_var(--color-forge)]" : "bg-iron-700"}`} />
                           {t("peons.active", { n: active })}
                         </div>
                       ) : st?.lastError ? <div className="mt-0.5 truncate font-mono text-xs text-blood/80">{st.lastError}</div> : null}

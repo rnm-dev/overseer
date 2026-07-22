@@ -19,7 +19,7 @@ function renderIdentity(metadataLoading: boolean) {
       projectKey: metadataLoading ? null : "overseer",
       title: metadataLoading ? null : "Loaded title",
       draft: metadataLoading ? "" : "Loaded title",
-      firstUserMessage: null,
+      openingMessage: null,
       editing: false,
       savingName: false,
       setDraft: () => {},
@@ -48,7 +48,7 @@ test("session identity reveals the project and title after metadata loads", () =
   assert.doesNotMatch(loaded, /aria-busy="true"/);
 });
 
-test("session identity keeps shimmering while a title-less response waits for its opening message", () => {
+test("session identity waits for a title or the authoritative conversation opening", () => {
   assert.equal(sessionHeaderMetadataLoading("peon-1:old", "peon-1:new", "Old title", "Old opening"), true);
   assert.equal(sessionHeaderMetadataLoading("peon-1:new", "peon-1:new", null, null), true);
   assert.equal(sessionHeaderMetadataLoading("peon-1:new", "peon-1:new", "Named session", null), false);
@@ -63,7 +63,7 @@ test("session identity keeps shimmering while a title-less response waits for it
       projectKey: "overseer",
       title: null,
       draft: "",
-      firstUserMessage: null,
+      openingMessage: null,
       editing: false,
       savingName: false,
       setDraft: () => {},
@@ -77,6 +77,30 @@ test("session identity keeps shimmering while a title-less response waits for it
   assert.match(waitingForDisplayTitle, /aria-busy="true"/);
   assert.doesNotMatch(waitingForDisplayTitle, /Untitled session/);
   assert.doesNotMatch(waitingForDisplayTitle, /<input/);
+
+  const promptFallback = renderToStaticMarkup(React.createElement(
+    I18nProvider,
+    null,
+    React.createElement(MemoryRouter, null, React.createElement(SessionHeaderIdentity, {
+      peonId: "peon-1",
+      metadataLoading: false,
+      projectKey: "overseer",
+      title: null,
+      draft: "",
+      openingMessage: "Authoritative session prompt",
+      editing: false,
+      savingName: false,
+      setDraft: () => {},
+      setEditing: () => {},
+      setRenameNote: () => {},
+      saveName: async () => {},
+      cancelRename: () => {},
+    })),
+  ));
+
+  assert.match(promptFallback, />Overseer<\/a>/);
+  assert.match(promptFallback, /placeholder="Authoritative session prompt"/);
+  assert.doesNotMatch(promptFallback, /aria-busy="true"/);
 });
 
 test("mobile session navbar replaces Peon chrome with the session header slot", () => {

@@ -4,6 +4,7 @@ import { registry, toView, type PeonRecord } from "../../registry.js";
 import { callPeon, connOfRecord } from "../../peonClient.js";
 import { insertEvent, publishCommittedEvent, type LiveEvent } from "../../eventLog.js";
 import { normalizeSessionSummary } from "./sessionNormalization.js";
+import { completeNextSessionAttention, deleteSessionAttention } from "../../sessionAttention.js";
 import type {
   PeonSession,
   SessionIndexRow,
@@ -42,10 +43,15 @@ interface StoredMutation {
   fingerprintKey?: string;
   fingerprint?: string;
   deletedKey?: string;
+  completion?: { workspaceId: string; peonId: string; sessionId: string; completedAt: number };
 }
 
 async function storeSession(tx: Transaction, workspaceId: string, peonId: string, s: PeonSession): Promise<StoredMutation> {
   const summary = normalizeSessionSummary(s);
+  const previous = await tx.query<{ status: string | null; last_activity_at: number | null; ended_at: number | null }>(
+    `SELECT status, last_activity_at, ended_at FROM sessions WHERE peon_id=$1 AND session_id=$2`,
+    [peonId, summary.id],
+  );
   const row: SessionIndexRow = {
     peonId,
     sessionId: summary.id,
@@ -110,16 +116,33 @@ async function storeSession(tx: Transaction, workspaceId: string, peonId: string
   const fp = `${row.status}|${row.projectId}|${row.projectKey}|${row.lastActivityAt}|${row.endedAt}|${row.title}|${row.promptPreview}|${row.preview}`;
   if (fingerprints.get(key) !== fp) {
     const event = await insertEvent(tx, { workspaceId, peonId, sessionId: row.sessionId, kind: "session", payload: row });
-    return { event, fingerprintKey: key, fingerprint: fp };
+    const before = previous.rows[0];
+    const terminalAt = row.endedAt ?? row.lastActivityAt ?? row.syncedAt;
+    const previousTerminalAt = before?.ended_at ?? before?.last_activity_at ?? 0;
+    const completedRun = row.status === "completed"
+      && (before?.status !== "completed" || terminalAt > previousTerminalAt);
+    return {
+      event,
+      fingerprintKey: key,
+      fingerprint: fp,
+      ...(completedRun ? { completion: { workspaceId, peonId, sessionId: row.sessionId, completedAt: terminalAt } } : {}),
+    };
   }
   return { event: null };
 }
 
 async function publishMutation(mutation: StoredMutation): Promise<void> {
-  if (!mutation.event) return;
-  await publishCommittedEvent(mutation.event);
-  if (mutation.deletedKey) fingerprints.delete(mutation.deletedKey);
-  else if (mutation.fingerprintKey && mutation.fingerprint) fingerprints.set(mutation.fingerprintKey, mutation.fingerprint);
+  if (mutation.event) {
+    await publishCommittedEvent(mutation.event);
+    if (mutation.deletedKey) fingerprints.delete(mutation.deletedKey);
+    else if (mutation.fingerprintKey && mutation.fingerprint) fingerprints.set(mutation.fingerprintKey, mutation.fingerprint);
+  }
+  if (mutation.completion) {
+    const { workspaceId, peonId, sessionId, completedAt } = mutation.completion;
+    await completeNextSessionAttention(workspaceId, peonId, sessionId, completedAt).catch((error) => {
+      console.warn("session attention completion failed:", error instanceof Error ? error.message : String(error));
+    });
+  }
 }
 
 export async function upsertSession(workspaceId: string, peonId: string, s: PeonSession): Promise<void> {
@@ -161,6 +184,7 @@ export async function deleteIndexedSession(
 ): Promise<boolean> {
   const mutation = await transaction((tx) => deleteSession(tx, workspaceId, peonId, sessionId, expectedSyncedAt));
   await publishMutation(mutation);
+  if (mutation.event) await deleteSessionAttention(peonId, sessionId).catch(() => undefined);
   return mutation.event !== null;
 }
 

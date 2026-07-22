@@ -6,6 +6,7 @@ import { getSessionCatalogStates, listSessions } from "../../sessionIndex.js";
 import { bindPeon, mintCredential, revokeCredential, revokeCredentialForPeon } from "../../credentials.js";
 import { ownerOnly, withWorkspace } from "../helpers.js";
 import { canAccessPeon, listMemberAccess } from "../../access.js";
+import { sessionAttentionStates } from "../../sessionAttention.js";
 
 function enrollmentFallback(status: number, code: string): string {
   if (code === "DNS_FAILURE") return "the Peon domain could not be resolved";
@@ -164,14 +165,20 @@ export function registerFleetRoutes(router: express.Router): void {
         catalogs = catalogs.filter((catalog) => allowed.has(catalog.peonId));
       }
       const catalogByPeon = new Map(catalogs.map((catalog) => [catalog.peonId, catalog]));
+      const attention = await sessionAttentionStates(ctx.workspaceId, ctx.userId);
       const visibleSessions = sessions.map((session) => {
         const catalog = catalogByPeon.get(session.peonId);
+        const attentionState = attention.get(`${session.peonId}\0${session.sessionId}`);
+        const attentionUnread = attentionState?.unread ?? false;
+        const attentionUpdatedAt = attentionState?.updatedAt ?? 0;
         return catalog ? {
           ...session,
+          attentionUnread,
+          attentionUpdatedAt,
           catalogState: catalog.state,
           catalogStale: catalog.stale,
           catalogUpdatedAt: catalog.updatedAt,
-        } : session;
+        } : { ...session, attentionUnread, attentionUpdatedAt };
       });
       res.json({ sessions: visibleSessions, total, limit, offset, catalogs });
     }),

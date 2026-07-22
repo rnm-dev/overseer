@@ -8,7 +8,7 @@ import { enqueuePushForEvent } from "./push.js";
 // appendEvent(): it writes a row, then emits it. liveSocket.ts is the consumer.
 // author: Viktor
 
-export type EventKind = "session" | "project" | "peon";
+export type EventKind = "session" | "project" | "peon" | "attention";
 
 export interface LiveEvent {
   cursor: number;

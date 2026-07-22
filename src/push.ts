@@ -82,7 +82,7 @@ export async function enqueuePushForEvent(event: LiveEvent): Promise<void> {
   // Project catalog events keep open dashboards coherent but are not operator
   // alerts. Keep the existing preference schema and notification behavior
   // unchanged rather than treating a project rename like a Peon status alert.
-  if (event.cursor <= 0 || event.kind === "project") return;
+  if (event.cursor <= 0 || event.kind === "project" || event.kind === "attention") return;
   const payload = JSON.stringify(notificationPayload(event));
   const enabledColumn = event.kind === "session" ? "session_events" : "peon_events";
   const { rows } = await query<{ id: string; user_id: string }>(

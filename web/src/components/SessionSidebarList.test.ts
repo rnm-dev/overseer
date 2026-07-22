@@ -4,7 +4,7 @@ import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
 import { I18nProvider } from "../i18n";
-import { SessionSidebarList } from "./SessionSidebarList";
+import { sessionStatusLightClass, SessionSidebarList } from "./SessionSidebarList";
 
 (globalThis as typeof globalThis & { React: typeof React }).React = React;
 
@@ -59,4 +59,12 @@ test("stale catalog rows are visibly marked without changing their session statu
   assert.match(markup, />stale</);
   assert.match(markup, /opacity-70/);
   assert.match(markup, /bg-fel/);
+});
+
+test("session lights prioritize running green, then unread completion amber", () => {
+  assert.match(sessionStatusLightClass("running", true), /bg-fel-bright/);
+  assert.match(sessionStatusLightClass("running", true), /shadow/);
+  assert.match(sessionStatusLightClass("completed", true), /bg-forge/);
+  assert.match(sessionStatusLightClass("completed", true), /shadow/);
+  assert.equal(sessionStatusLightClass("completed", false), "bg-iron-700");
 });

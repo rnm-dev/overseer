@@ -423,4 +423,26 @@ export const MIGRATIONS: { id: string; statements: string[] }[] = [
        )`,
     ],
   },
+  {
+    // Per-user, per-run attention survives refreshes and synchronizes between
+    // devices. A row starts pending when a command is accepted, becomes unread
+    // when that run completes, and becomes read when the user opens the session.
+    id: "020_session_attention",
+    statements: [
+      `CREATE TABLE IF NOT EXISTS session_attention (
+         workspace_id  TEXT NOT NULL,
+         user_id       TEXT NOT NULL,
+         peon_id       TEXT NOT NULL,
+         session_id    TEXT NOT NULL,
+         occurrence_key TEXT NOT NULL,
+         state         TEXT NOT NULL,
+         requested_at  BIGINT NOT NULL,
+         completed_at  BIGINT,
+         read_at       BIGINT,
+         PRIMARY KEY (user_id, peon_id, session_id, occurrence_key)
+       )`,
+      `CREATE INDEX IF NOT EXISTS session_attention_unread_idx ON session_attention (workspace_id, user_id, state, requested_at)`,
+      `CREATE INDEX IF NOT EXISTS session_attention_session_idx ON session_attention (peon_id, session_id, state, requested_at)`,
+    ],
+  },
 ];

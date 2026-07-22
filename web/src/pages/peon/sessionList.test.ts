@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { applySessionEvent, mergeSessions, sessionDisplayTitle, sessionFromIndex, sessionSidebarCanLoad } from "./sessionList";
+import { applyAttentionEvent, applySessionEvent, mergeSessions, sessionDisplayTitle, sessionFromIndex, sessionSidebarCanLoad } from "./sessionList";
 
 test("sessionFromIndex uses the opening preview instead of latest activity", () => {
   assert.deepEqual(sessionFromIndex({
@@ -67,6 +67,17 @@ test("applySessionEvent removes a deleted session without touching the same id o
   ];
   assert.deepEqual(applySessionEvent(sessions, { peonId: "one", sessionId: "same", deleted: true, syncedAt: 11 }), [sessions[1]]);
   assert.deepEqual(applySessionEvent(sessions, { peonId: "one", sessionId: "same", deleted: true, syncedAt: 9 }), sessions);
+});
+
+test("attention events update only the matching Peon-qualified session", () => {
+  const sessions = [
+    { peonId: "one", id: "same", attentionUnread: false },
+    { peonId: "two", id: "same", attentionUnread: false },
+  ];
+  assert.deepEqual(applyAttentionEvent(sessions, { peonId: "one", sessionId: "same", unread: true }), [
+    { peonId: "one", id: "same", attentionUnread: true },
+    sessions[1],
+  ]);
 });
 
 test("a Peon-qualified live summary is replaced by the indexed refresh instead of duplicated", () => {
