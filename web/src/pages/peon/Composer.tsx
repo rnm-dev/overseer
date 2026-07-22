@@ -47,8 +47,8 @@ export interface ComposerProps {
   onFilesChange: (files: File[]) => void;
   onPreviewFile: (url: string) => void;
   filesEnabled: boolean | null;
-  // Surfaced above the toolbar — shared by submit failures and attach validation,
-  // exactly like the single error/sendError state each caller already keeps.
+  // Local input/attachment validation stays next to the field. Failed remote
+  // actions are surfaced by the global notifications hook instead.
   error: string | null;
   onErrorChange: (msg: string | null) => void;
   leftExtra?: ReactNode;
