@@ -733,7 +733,7 @@ html.peon-sidebar-resizing * {
   .composer-toolbar-right {
     min-width: 0;
     flex: 1;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
   }
   .composer-toolbar-right > :last-child {
     margin-left: auto;
@@ -743,7 +743,7 @@ html.peon-sidebar-resizing * {
     max-width: 100%;
   }
   .composer-toolbar-right .model-picker.model-select-compact {
-    flex: 1 1 7rem;
+    flex: 1 1 0;
     width: auto;
   }
   .composer-toolbar-right .model-picker.model-select-compact .model-picker-trigger {

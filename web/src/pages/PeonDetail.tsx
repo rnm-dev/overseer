@@ -53,7 +53,7 @@ function savedSidebarWidth(): number {
 
 export function PeonDetail() {
   const t = useT();
-  const { peonId = "", sid = "" } = useParams();
+  const { peonId = "", sid = "", key: projectKey = "" } = useParams();
   const { viewersFor, subscribeAttention, subscribeProjects, subscribeSessions } = useLiveSocket();
   const location = useLocation();
   const navigate = useNavigate();
@@ -407,7 +407,7 @@ export function PeonDetail() {
 
           {/* sessions list */}
           <section>
-            <div className="flex items-center justify-between pb-1 pl-3.5 pr-1 pt-2">
+            <div className="flex items-center justify-between px-2 pb-1 pt-2 md:pl-3.5 md:pr-1">
               <span className="font-display text-[0.58rem] uppercase tracking-[0.16em] text-bone-faint">{t("peon.tab.sessions")}</span>
               <Link
                 to={newSessionTo}
@@ -416,7 +416,7 @@ export function PeonDetail() {
                 {t("newSession.new")}
               </Link>
             </div>
-            <div className="pl-3.5 pr-1">
+            <div className="px-2 md:pl-3.5 md:pr-1">
               {!online && <p className="px-2 py-2 font-body text-xs text-bone-faint">{t("peon.offlineNote")}</p>}
               {ordered.length === 0 && !sessionsLoading && !sessionPageError ? (
                 <p className="px-2 py-2 font-body text-xs text-bone-faint">{t("peon.dash.noSessions")}</p>
@@ -489,7 +489,7 @@ export function PeonDetail() {
           >
             <Menu size={20} />
           </button>
-          <MobilePaneIdentity sessionActive={!!sid}>
+          <MobilePaneIdentity contentActive={!!sid || !!projectKey}>
             <>
               <PeonConnectionStatusDot {...displayedPeon} />
               <span className="min-w-0 flex-1 whitespace-nowrap font-display text-sm font-bold text-bone"><FadingTitle>{peon.name || t("peons.unnamed")}</FadingTitle></span>

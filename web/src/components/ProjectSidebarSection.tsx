@@ -33,7 +33,7 @@ export function ProjectSidebarSection({ projects, error = false, to, onNew }: Pr
 
   return (
     <section>
-      <div className="flex items-center justify-between pb-1 pl-3.5 pr-1 pt-2">
+      <div className="flex items-center justify-between px-2 pb-1 pt-2 md:pl-3.5 md:pr-1">
         <button
           type="button"
           aria-expanded={expanded}
@@ -55,7 +55,7 @@ export function ProjectSidebarSection({ projects, error = false, to, onNew }: Pr
         )}
       </div>
       {expanded && (
-        <div id="peon-sidebar-projects" className="pb-2 pl-3.5 pr-1">
+        <div id="peon-sidebar-projects" className="px-2 pb-2 md:pl-3.5 md:pr-1">
           {projects === null && !error ? (
             <div className="flex min-h-8 items-center justify-center">
               <span className="forge-spin scale-75" role="status" aria-label={t("projects.loading")} />

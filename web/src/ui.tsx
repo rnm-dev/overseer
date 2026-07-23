@@ -306,6 +306,53 @@ export function FixedPaneHeader({ children, className = "" }: { children: ReactN
   );
 }
 
+// Shared content-header shell for the fixed right-pane header. Session and
+// project pages supply their own identity, metadata, actions, and notices while
+// keeping the same spacing, alignment, and responsive width behavior.
+interface ContentHeaderLayoutProps {
+  identity: ReactNode;
+  metadata?: ReactNode;
+  actions?: ReactNode;
+  notices?: ReactNode;
+  compact?: boolean;
+  metadataPlacement?: "side" | "below";
+}
+
+export function ContentHeaderLayout({
+  identity,
+  metadata,
+  actions,
+  notices,
+  compact = false,
+  metadataPlacement = "side",
+}: ContentHeaderLayoutProps) {
+  const metadataBelow = metadataPlacement === "below";
+  return (
+    <div className={compact ? "min-w-0 flex-1" : "space-y-1.5 px-3 py-2.5 sm:px-6"}>
+      <div className={`flex items-center ${compact ? "gap-2" : "gap-3"}`}>
+        <div className={metadataBelow ? "flex min-w-0 flex-1 flex-col justify-center" : "flex min-w-0 flex-1 items-center gap-1.5"}>
+          {metadataBelow ? <div className="flex min-w-0 items-center gap-1.5">{identity}</div> : identity}
+          {metadataBelow && metadata}
+        </div>
+        {!metadataBelow && metadata && <div className="flex-none">{metadata}</div>}
+        {actions && <div className="flex flex-none items-center gap-2">{actions}</div>}
+      </div>
+      {notices}
+    </div>
+  );
+}
+
+export function ContentHeader({
+  className = "",
+  ...layout
+}: ContentHeaderLayoutProps & { className?: string }) {
+  return (
+    <FixedPaneHeader className={className}>
+      <ContentHeaderLayout {...layout} />
+    </FixedPaneHeader>
+  );
+}
+
 // Slim page header shared by peon sub-pages: optional back link + h1 + inline
 // meta (key/scope/badges), and a kebab menu for actions — so a page never
 // grows a row of loose buttons. Sits flush under the peon nav tabs (the `-mt-4`
@@ -319,6 +366,7 @@ export function PageHeader({
   actions,
   menu,
   menuLabel,
+  className,
 }: {
   title: ReactNode;
   backTo?: string;
@@ -327,11 +375,13 @@ export function PageHeader({
   actions?: ReactNode;
   menu?: (close: () => void) => ReactNode;
   menuLabel?: string;
+  className?: string;
 }) {
   return (
-    <FixedPaneHeader>
-    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-3 py-2.5 sm:px-6">
-      <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
+    <ContentHeader
+      className={className}
+      identity={(
+        <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-3 gap-y-1">
         {backTo && (
           <Link to={backTo} relative="path" className="flex-none font-body text-xs text-bone-dim hover:text-fel-bright">
             {backLabel}
@@ -339,9 +389,10 @@ export function PageHeader({
         )}
         <h1 className="truncate font-display text-sm font-semibold text-bone">{title}</h1>
         {meta}
-      </div>
-      {(actions || menu) && (
-        <div className="flex flex-none items-center gap-2">
+        </div>
+      )}
+      actions={(actions || menu) ? (
+        <>
           {actions}
           {menu && (
             <DropdownMenu
@@ -358,10 +409,9 @@ export function PageHeader({
               {menu}
             </DropdownMenu>
           )}
-        </div>
-      )}
-    </div>
-    </FixedPaneHeader>
+        </>
+      ) : undefined}
+    />
   );
 }
 

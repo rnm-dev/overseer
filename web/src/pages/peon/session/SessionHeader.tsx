@@ -3,11 +3,11 @@ import { createPortal } from "react-dom";
 import { FolderTree } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useT } from "../../../i18n";
-import { ConfirmationDialog, FixedPaneHeader, titleize } from "../../../ui";
+import { ConfirmationDialog, ContentHeader, ContentHeaderLayout, titleize } from "../../../ui";
 import { compactNum, type UsageBreakdown } from "./parsing";
 import { SessionPresence } from "../../../components/SessionPresence";
 import type { PresenceUser } from "../../../liveSocket";
-import { MOBILE_SESSION_HEADER_ID } from "./mobileHeader";
+import { MOBILE_CONTENT_HEADER_ID } from "./mobileHeader";
 
 interface Props {
   peonId: string;
@@ -189,7 +189,7 @@ export function SessionHeader(props: Props) {
   const [mobileHeaderNode, setMobileHeaderNode] = useState<HTMLElement | null>(null);
 
   useEffect(() => {
-    setMobileHeaderNode(document.getElementById(MOBILE_SESSION_HEADER_ID));
+    setMobileHeaderNode(document.getElementById(MOBILE_CONTENT_HEADER_ID));
   }, []);
 
   useEffect(() => {
@@ -263,48 +263,50 @@ export function SessionHeader(props: Props) {
   return (
 <>
   {mobileHeaderNode && createPortal(
-    <div className="flex min-w-0 flex-1 items-center gap-2">
-      <div className="flex min-w-0 flex-1 flex-col justify-center">
-        <div className="flex min-w-0 items-center gap-1.5">{identity}</div>
-        <SessionHeaderStats turnTotal={turnTotal} usageSummary={usageSummary} />
-      </div>
-      <SessionPresence viewers={viewers} />
-      {renderMenu(mobileMenuRef)}
-    </div>,
+    <ContentHeaderLayout
+      compact
+      metadataPlacement="below"
+      identity={identity}
+      metadata={<SessionHeaderStats turnTotal={turnTotal} usageSummary={usageSummary} />}
+      actions={(
+        <>
+          <SessionPresence viewers={viewers} />
+          {renderMenu(mobileMenuRef)}
+        </>
+      )}
+    />,
     mobileHeaderNode,
   )}
 
-  <FixedPaneHeader className="hidden md:block">
-  <div className="space-y-1.5 px-3 py-2.5 sm:px-6">
-    <div className="flex items-center gap-3">
-      <div className="flex min-w-0 flex-1 items-center gap-1.5">
-        {identity}
-      </div>
-
-      <div className="flex-none"><SessionHeaderStats turnTotal={turnTotal} usageSummary={usageSummary} /></div>
-
-      <SessionPresence viewers={viewers} />
-
-      <button
-        type="button"
-        title={t("session.files.open")}
-        aria-label={t("session.files.open")}
-        aria-expanded={filesOpen}
-        onClick={() => changeFilesOpen(!filesOpen)}
-        className={`hidden size-7 flex-none place-items-center rounded transition-colors lg:grid ${filesOpen ? "bg-iron-800 text-fel-bright" : "text-bone-dim hover:bg-iron-800 hover:text-bone"}`}
-      >
-        <FolderTree size={16} aria-hidden />
-      </button>
-
-      {renderMenu(desktopMenuRef)}
-    </div>
-
-    {confirmDelete && <ConfirmationDialog title={t("session.delete.confirm")} confirmLabel={t("session.delete.confirmYes")} pendingLabel={t("session.delete.deleting")} pending={deleting} onClose={() => setConfirmDelete(false)} onConfirm={() => void remove()} />}
-    {renameNote && <div className="font-mono text-xs text-blood">{renameNote}</div>}
-    {deleteNote && <div className="font-mono text-xs text-blood">⚠ {deleteNote}</div>}
-    {stopNote && <div className="font-mono text-xs text-ember">⚠ {stopNote}</div>}
-  </div>
-</FixedPaneHeader>
+  <ContentHeader
+    className="hidden md:block"
+    identity={identity}
+    metadata={<SessionHeaderStats turnTotal={turnTotal} usageSummary={usageSummary} />}
+    actions={(
+      <>
+        <SessionPresence viewers={viewers} />
+        <button
+          type="button"
+          title={t("session.files.open")}
+          aria-label={t("session.files.open")}
+          aria-expanded={filesOpen}
+          onClick={() => changeFilesOpen(!filesOpen)}
+          className={`hidden size-7 flex-none place-items-center rounded transition-colors lg:grid ${filesOpen ? "bg-iron-800 text-fel-bright" : "text-bone-dim hover:bg-iron-800 hover:text-bone"}`}
+        >
+          <FolderTree size={16} aria-hidden />
+        </button>
+        {renderMenu(desktopMenuRef)}
+      </>
+    )}
+    notices={(
+      <>
+        {confirmDelete && <ConfirmationDialog title={t("session.delete.confirm")} confirmLabel={t("session.delete.confirmYes")} pendingLabel={t("session.delete.deleting")} pending={deleting} onClose={() => setConfirmDelete(false)} onConfirm={() => void remove()} />}
+        {renameNote && <div className="font-mono text-xs text-blood">{renameNote}</div>}
+        {deleteNote && <div className="font-mono text-xs text-blood">⚠ {deleteNote}</div>}
+        {stopNote && <div className="font-mono text-xs text-ember">⚠ {stopNote}</div>}
+      </>
+    )}
+  />
   {(renameNote || deleteNote || stopNote) && (
     <div className="space-y-1 px-3 pt-2 font-mono text-xs md:hidden">
       {renameNote && <div className="text-blood">{renameNote}</div>}

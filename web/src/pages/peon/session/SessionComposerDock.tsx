@@ -77,6 +77,7 @@ export function SessionComposerDock(props: Props) {
       onErrorChange={setSendError}
       secondaryAction={running ? {
         label: t("session.queue.stop"),
+        mobileIcon: "zap",
         onClick: () => void enqueue(true),
         disabled: sending || (!input.trim() && files.length === 0),
         pending: sending,

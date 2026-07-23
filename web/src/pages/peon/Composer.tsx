@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Hourglass } from "lucide-react";
+import { Hourglass, Zap } from "lucide-react";
 import { useT } from "../../i18n";
 
 // author: Viktor
@@ -58,7 +58,7 @@ export interface ComposerProps {
   onErrorChange: (msg: string | null) => void;
   leftExtra?: ReactNode;
   rightExtra?: ReactNode;
-  secondaryAction?: { label: string; onClick: () => void; disabled?: boolean; pending?: boolean };
+  secondaryAction?: { label: string; onClick: () => void; disabled?: boolean; pending?: boolean; mobileIcon?: "zap" };
 }
 
 export function Composer({
@@ -241,9 +241,16 @@ export function Composer({
               type="button"
               onClick={secondaryAction.onClick}
               disabled={disabled || secondaryAction.disabled}
-              className={`${COMPOSER_TEXT_ACTION_CLASS} font-mono text-xs text-bone-dim hover:text-ember disabled:cursor-wait disabled:opacity-40`}
+              title={secondaryAction.label}
+              aria-label={secondaryAction.label}
+              className={`${secondaryAction.mobileIcon ? `${COMPOSER_ICON_ACTION_CLASS} sm:w-auto sm:px-3` : COMPOSER_TEXT_ACTION_CLASS} font-mono text-xs text-bone-dim hover:text-ember disabled:cursor-wait disabled:opacity-40`}
             >
-              {secondaryAction.pending ? "…" : secondaryAction.label}
+              {secondaryAction.pending ? "…" : secondaryAction.mobileIcon === "zap" ? (
+                <>
+                  <Zap size={16} className="sm:hidden" aria-hidden />
+                  <span className="hidden sm:inline">{secondaryAction.label}</span>
+                </>
+              ) : secondaryAction.label}
             </button>
           )}
           <button

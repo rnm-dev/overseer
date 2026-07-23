@@ -104,6 +104,18 @@ export function isOwnMessageAuthor(user: User | null, authorEmail?: string, auth
   return authorIdentities.some((identity) => currentIdentities.includes(identity));
 }
 
+export function userMessageAvatar(
+  user: User | null,
+  authorAvatarUrl?: string,
+  authorEmail?: string,
+  authorGithubLogin?: string,
+  author?: string,
+): string | undefined {
+  if (authorAvatarUrl) return authorAvatarUrl;
+  if (!isOwnMessageAuthor(user, authorEmail, authorGithubLogin, author)) return undefined;
+  return user?.avatarUrl || undefined;
+}
+
 export function UserBubble({ text, author, authorEmail, authorGithubLogin, authorAvatarUrl, attachments, createdAt, onOpenAttachment }: { text: string; author?: string; authorEmail?: string; authorGithubLogin?: string; authorAvatarUrl?: string; attachments?: MessageAttachment[]; createdAt?: number; onOpenAttachment?: (attachment: MessageAttachment) => void }) {
   const { user } = useAuth();
   const { locale, t } = useI18n();
@@ -111,6 +123,7 @@ export function UserBubble({ text, author, authorEmail, authorGithubLogin, autho
   const compact = isCompactUserMessage(text, attachments);
   const displayAuthor = authorGithubLogin || authorEmail || author;
   const avatarLabel = displayAuthor || "Unknown message author";
+  const avatarUrl = userMessageAvatar(user, authorAvatarUrl, authorEmail, authorGithubLogin, author);
   return (
     <div className="flex items-end justify-end gap-2">
       <div className={mine ? OWN_USER_BUBBLE_CLASS : OTHER_USER_BUBBLE_CLASS}>
@@ -128,7 +141,7 @@ export function UserBubble({ text, author, authorEmail, authorGithubLogin, autho
         )}
         {createdAt && !compact && <div className={`${mine ? OWN_USER_BUBBLE_TIME_CLASS : OTHER_USER_BUBBLE_TIME_CLASS} mt-1 text-right`}><LocalMessageTime createdAt={createdAt} locale={locale} yesterdayLabel={t("peon.stats.period.yesterday")} /></div>}
       </div>
-      <Avatar src={authorAvatarUrl} label={avatarLabel} className="border-fel/35 bg-fel/15 text-fel-bright" />
+      <Avatar src={avatarUrl} label={avatarLabel} className="border-fel/35 bg-fel/15 text-fel-bright" />
     </div>
   );
 }

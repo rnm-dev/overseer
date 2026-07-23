@@ -5,7 +5,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
 import { I18nProvider } from "../i18n";
 import { sessionHeaderMetadataLoading, SessionHeaderIdentity, SessionHeaderStats } from "./peon/session/SessionHeader";
-import { MobilePaneIdentity, MOBILE_SESSION_HEADER_ID } from "./peon/session/mobileHeader";
+import { MobilePaneIdentity, MOBILE_CONTENT_HEADER_ID } from "./peon/session/mobileHeader";
+import { ProjectMobileHeader } from "./peon/ProjectPageHeader";
 
 (globalThis as typeof globalThis & { React: typeof React }).React = React;
 
@@ -103,21 +104,38 @@ test("session identity waits for a title or the authoritative conversation openi
   assert.doesNotMatch(promptFallback, /aria-busy="true"/);
 });
 
-test("mobile session navbar replaces Peon chrome with the session header slot", () => {
+test("mobile content pages replace Peon chrome with the shared header slot", () => {
   const session = renderToStaticMarkup(React.createElement(
     MobilePaneIdentity,
-    { sessionActive: true },
+    { contentActive: true },
     React.createElement("span", null, "Nova — Sessions"),
   ));
   const peon = renderToStaticMarkup(React.createElement(
     MobilePaneIdentity,
-    { sessionActive: false },
+    { contentActive: false },
     React.createElement("span", null, "Nova"),
   ));
 
-  assert.match(session, new RegExp(`id="${MOBILE_SESSION_HEADER_ID}"`));
+  assert.match(session, new RegExp(`id="${MOBILE_CONTENT_HEADER_ID}"`));
   assert.doesNotMatch(session, /Nova|Sessions/);
   assert.match(peon, /Nova/);
+});
+
+test("mobile project header shows only the project title and new-session action in the navbar", () => {
+  const html = renderToStaticMarkup(React.createElement(
+    I18nProvider,
+    null,
+    React.createElement(MemoryRouter, null, React.createElement(ProjectMobileHeader, {
+      title: "Overseer",
+      newSessionTo: "/peons/nova/sessions/new?project=OVSR",
+    })),
+  ));
+
+  assert.match(html, /title="Overseer">Overseer<\/div>/);
+  assert.match(html, />\+ New session<\/a>/);
+  assert.doesNotMatch(html, /href="\/peons\/nova\/projects"/);
+  assert.doesNotMatch(html, />OVSR<\/div>/);
+  assert.doesNotMatch(html, /px-3 py-2\.5/);
 });
 
 test("session stats stay available in the compact mobile header", () => {

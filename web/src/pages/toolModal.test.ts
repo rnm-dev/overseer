@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import { ItemView, OTHER_ATTACHMENT_CLASS, OTHER_USER_BUBBLE_AUTHOR_CLASS, OTHER_USER_BUBBLE_CLASS, OTHER_USER_BUBBLE_TIME_CLASS, OWN_ATTACHMENT_CLASS, OWN_USER_BUBBLE_CLASS, OWN_USER_BUBBLE_TIME_CLASS, attachmentMeta, editDiff, editFileName, editOperation, editStats, editStatsFromInput, formatMessageTimestamp, isCompactUserMessage, isOwnMessageAuthor } from "./peon/session/messageParts";
+import { ItemView, OTHER_ATTACHMENT_CLASS, OTHER_USER_BUBBLE_AUTHOR_CLASS, OTHER_USER_BUBBLE_CLASS, OTHER_USER_BUBBLE_TIME_CLASS, OWN_ATTACHMENT_CLASS, OWN_USER_BUBBLE_CLASS, OWN_USER_BUBBLE_TIME_CLASS, attachmentMeta, editDiff, editFileName, editOperation, editStats, editStatsFromInput, formatMessageTimestamp, isCompactUserMessage, isOwnMessageAuthor, userMessageAvatar } from "./peon/session/messageParts";
 import { flattenEvents, toolHasOutputSection } from "./peon/session/parsing";
 
 const t = ((key: string) => key) as Parameters<typeof ItemView>[0]["t"];
@@ -31,6 +31,14 @@ test("message ownership matches current email or GitHub login without case sensi
   assert.equal(isOwnMessageAuthor(user, undefined, "VIBZE"), true);
   assert.equal(isOwnMessageAuthor(user, undefined, undefined, "other@example.com"), false);
   assert.equal(isOwnMessageAuthor(null, "viktor.ten@me.com"), false);
+});
+
+test("a newly tailed own message falls back to the signed-in user's avatar", () => {
+  const user = { email: "Viktor.Ten@me.com", githubLogin: "vibze", avatarUrl: "https://avatars.example/viktor.png" };
+  assert.equal(userMessageAvatar(user, undefined, "viktor.ten@me.com"), user.avatarUrl);
+  assert.equal(userMessageAvatar(user, undefined, undefined, "VIBZE"), user.avatarUrl);
+  assert.equal(userMessageAvatar(user, "https://avatars.example/authoritative.png", "viktor.ten@me.com"), "https://avatars.example/authoritative.png");
+  assert.equal(userMessageAvatar(user, undefined, "other@example.com"), undefined);
 });
 
 test("message attachments adapt to bubble ownership and expose compact metadata", () => {
