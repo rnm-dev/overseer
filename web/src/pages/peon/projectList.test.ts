@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { applyProjectEvent, mergeProjects, visibleProjects } from "./projectList";
+import { applyProjectEvent, mergeProjects, visibleProjects, withLiveActiveSessionCounts } from "./projectList";
 
 test("project reducers use stable IDs across renames and reject stale HTTP data", () => {
   const live = [{ peonId: "peon", projectId: "project", key: "renamed", syncedAt: 20, sessionCount: 2 }];
@@ -9,7 +9,7 @@ test("project reducers use stable IDs across renames and reject stale HTTP data"
   ]), live);
   assert.deepEqual(applyProjectEvent(live, {
     peonId: "peon", projectId: "project", key: "renamed-again", syncedAt: 30,
-  }), [{ peonId: "peon", projectId: "project", key: "renamed-again", syncedAt: 30, sessionCount: 2 }]);
+  }), [{ peonId: "peon", projectId: "project", key: "renamed-again", syncedAt: 30, sessionCount: 2, deleted: false }]);
 });
 
 test("project tombstones affect only the matching Peon and stable project ID", () => {
@@ -27,4 +27,20 @@ test("project tombstones affect only the matching Peon and stable project ID", (
   assert.deepEqual(applyProjectEvent(projects, {
     peonId: "one", projectId: "same", deleted: true, syncedAt: 9,
   }), projects);
+});
+
+test("live running sessions drive project active counts without waiting for project rollups", () => {
+  const projects = [
+    { key: "overseer", activeCount: 0 },
+    { key: "website", activeCount: 4 },
+  ];
+  assert.deepEqual(withLiveActiveSessionCounts(projects, [
+    { projectKey: "overseer", status: "running" },
+    { projectKey: "overseer", status: "running" },
+    { projectKey: "overseer", status: "completed" },
+    { projectKey: "website", status: "completed" },
+  ]), [
+    { key: "overseer", activeCount: 2 },
+    { key: "website", activeCount: 0 },
+  ]);
 });

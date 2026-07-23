@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type DragEvent } from "react";
 import { createPortal } from "react-dom";
 import { ChevronRight, Folder, FolderOpen, LoaderCircle, RefreshCw, X } from "lucide-react";
-import { api, ApiError, getToken } from "../../api";
+import { api, ApiError } from "../../api";
 import { HighlightedCode, Markdown, languageForPath } from "../../components/RichText";
 import { useT } from "../../i18n";
 import { FileTypeIcon } from "./FileTypeIcon";
@@ -361,19 +361,23 @@ function FileTreeLoader({ depth, label }: { depth: number; label: string }) {
   );
 }
 
-export function ProjectFilePreviewModal({ filesBase, path, size, onClose }: { filesBase: string; path: string; size?: number; onClose: () => void }) {
+export function ProjectFilePreviewModal({ filesBase, path, size, viewerUrl, onClose }: { filesBase: string; path: string; size?: number; viewerUrl?: string; onClose: () => void }) {
   const t = useT();
   const [preview, setPreview] = useState<FilePreview>({ path, loading: true });
   const imageUrl = useRef<string | null>(null);
+  const browserHtml = !!viewerUrl && /\.html?$/i.test(path);
 
   useEffect(() => {
     const ctrl = new AbortController();
+    if (browserHtml) {
+      setPreview({ path });
+      return () => ctrl.abort();
+    }
     if (!isImagePath(path) && !isPdfPath(path) && typeof size === "number" && size > MAX_VIEW_BYTES) {
       setPreview({ path, note: t("proj.files.tooLarge", { size: formatFileSize(size) }) });
       return () => ctrl.abort();
     }
-    const token = getToken();
-    fetch(`/api${filesBase}/${encodeProjectPath(path)}`, { signal: ctrl.signal, headers: token ? { authorization: `Bearer ${token}` } : {} })
+    fetch(`/api${filesBase}/${encodeProjectPath(path)}`, { signal: ctrl.signal, credentials: "same-origin" })
       .then(async (response) => {
         if (!response.ok) throw new Error(t("error.loadFailed"));
         const contentType = response.headers.get("content-type") || "";
@@ -395,7 +399,7 @@ export function ProjectFilePreviewModal({ filesBase, path, size, onClose }: { fi
       ctrl.abort();
       if (imageUrl.current) URL.revokeObjectURL(imageUrl.current);
     };
-  }, [filesBase, path, size, t]);
+  }, [browserHtml, filesBase, path, size, t]);
 
   return createPortal(
     <div className="fixed inset-0 z-50 grid place-items-center bg-[radial-gradient(circle_at_50%_18%,rgba(149,201,103,0.08),transparent_38%),rgba(2,4,3,0.82)] p-4 backdrop-blur-md" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
@@ -407,7 +411,8 @@ export function ProjectFilePreviewModal({ filesBase, path, size, onClose }: { fi
           <button type="button" onClick={onClose} className="grid h-8 w-8 place-items-center rounded-lg border border-transparent text-bone-faint transition-colors hover:border-iron-700 hover:bg-iron-800 hover:text-bone" aria-label={t("session.preview.close")}><X size={18} /></button>
         </header>
         <div className="min-h-0 flex-1 overflow-auto">
-          {preview.loading ? <div className="grid h-full place-items-center"><div className="forge-spin" /></div>
+          {browserHtml ? <iframe sandbox="allow-scripts allow-forms allow-modals allow-downloads" src={viewerUrl} title={path} className="h-full min-h-[32rem] w-full border-0 bg-white" />
+            : preview.loading ? <div className="grid h-full place-items-center"><div className="forge-spin" /></div>
             : preview.note ? <div className="grid h-full place-items-center p-6 font-mono text-xs text-bone-faint">{preview.note}</div>
               : preview.pdf ? <iframe src={preview.pdf} title={path} className="h-full min-h-[32rem] w-full border-0 bg-white" />
               : preview.image ? <div className="grid min-h-full place-items-center p-5"><img src={preview.image} alt="" className="max-h-full max-w-full rounded" /></div>

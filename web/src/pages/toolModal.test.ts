@@ -109,7 +109,15 @@ test("create and delete stats use real diff lines and whole-file hunk metadata",
   assert.deepEqual(editStatsFromInput({ changes: [{ kind: { type: "delete" }, diff: "--- a/old.ts\n+++ /dev/null\n@@ -1,2 +0,0 @@\n-one\n-two" }] }), { added: 0, removed: 2 });
   assert.deepEqual(editStatsFromInput({ changes: [{ kind: { type: "add" }, diff: "@@ -0,0 +1,7 @@" }] }), { added: 7, removed: 0 });
   assert.deepEqual(editStatsFromInput({ changes: [{ kind: { type: "delete" }, diff: "@@ -1,5 +0,0 @@" }] }), { added: 0, removed: 5 });
-  assert.deepEqual(editStatsFromInput({ changes: [{ kind: { type: "add" }, diff: "--- /dev/null\n+++ b/empty.ts" }] }), { added: 0, removed: 0 });
+  assert.deepEqual(editStatsFromInput({ changes: [{ kind: { type: "add" }, diff: "" }] }), { added: 0, removed: 0 });
+});
+
+test("current Codex raw file contents produce exact create and delete line counts", () => {
+  const contents = "import { NextRequest } from \"next/server\";\n\nexport async function POST() {\n  return new Response();\n}\n";
+  assert.deepEqual(editStatsFromInput({ changes: [{ kind: { type: "add" }, diff: contents }] }), { added: 5, removed: 0 });
+  assert.deepEqual(editStatsFromInput({ changes: [{ kind: { type: "delete" }, diff: contents }] }), { added: 0, removed: 5 });
+  assert.deepEqual(editStatsFromInput({ changes: [{ kind: { type: "add" }, diff: "+literal first line\n-literal second line" }] }), { added: 2, removed: 0 });
+  assert.deepEqual(editStatsFromInput({ changes: [{ kind: "add", diff: "*** Add File: new.ts\n+one\n+two" }] }), { added: 2, removed: 0 });
 });
 
 test("file change rows show the operation and only its relevant line count", () => {

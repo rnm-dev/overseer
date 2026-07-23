@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { api, getToken, json } from "./api";
+import { api, json } from "./api";
 import { useWorkspace } from "./workspace";
 import { useAuth } from "./auth";
 import { useLocation } from "react-router-dom";
@@ -74,8 +74,6 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const { pathname } = useLocation();
   const wsId = current?.id;
-  const token = getToken();
-
   const [presence, setPresence] = useState<PresenceEntry[]>([]);
 
   const sockRef = useRef<WebSocket | null>(null);
@@ -99,7 +97,7 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
       setPresence([]);
       return;
     }
-    if (!token) {
+    if (!user) {
       readyRef.current = false;
       setPresence([]);
       return;
@@ -421,7 +419,7 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
       sockRef.current?.close();
       sockRef.current = null;
     };
-  }, [wsId, token, updatePeon]);
+  }, [wsId, user, updatePeon]);
 
   useEffect(() => {
     const ws = sockRef.current;
@@ -433,7 +431,7 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
   // Independent route heartbeat: keeps presence accurate when a browser/proxy
   // has a wedged WebSocket but ordinary authenticated HTTP still works.
   useEffect(() => {
-    if (!wsId || !token) return;
+    if (!wsId || !user) return;
     const connectionId = crypto.randomUUID();
     let stopped = false;
     const beat = () => {
@@ -460,7 +458,7 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
       document.removeEventListener("visibilitychange", beat);
       clear();
     };
-  }, [desiredPresence, token, wsId]);
+  }, [desiredPresence, user, wsId]);
 
   const subscribe = useMemo(
     () => (peonId: string, sessionId: string, onFrame: (f: TailFrame) => void, lastEventId?: string | null) => {

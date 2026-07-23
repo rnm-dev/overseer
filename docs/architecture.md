@@ -41,11 +41,17 @@ compatibility facades while callers migrate to a module's public entry point.
 The top-level taxonomy is deliberately small. New directories must fit one of
 these ownership categories rather than being created for a single use case.
 
-- `auth` owns users, devices, and OAuth flows.
+- `auth` owns users, devices, OAuth flows, web session cookies, native bearer
+  authentication, and the cookie-authenticated CSRF boundary. Web credentials
+  stay in a host-only HttpOnly cookie; native/mobile clients retain revocable
+  device bearer tokens.
 - `access` owns cross-resource authorization policies and grants.
 - `fleet` owns Peon enrollment, registry state, and connection lifecycle.
 - `presence` owns operator presence state and visibility.
 - `projects` owns project projections, metadata, documentation, and membership.
+  Browser file links use `/view/:peonId/:projectId/*`: workspace membership is
+  derived server-side, bytes stream over the Peon transfer socket, and active
+  content is sandboxed away from the authenticated Overseer origin.
 - `sessions` owns session projections, reconciliation, accepted-session indexing,
   queries, and session lifecycle rules.
 - `workspaces` owns workspaces, membership, and invitations.

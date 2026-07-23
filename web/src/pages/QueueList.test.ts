@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { QueueList } from "./peon/session/QueueList";
+import { QUEUE_ACTION_CLASS, QUEUE_HOURGLASS_CLASS, QueueList } from "./peon/session/QueueList";
 import type { QueueItem } from "./peon/session/queue";
 
 (globalThis as typeof globalThis & { React: typeof React }).React = React;
@@ -38,7 +38,15 @@ test("every queued item exposes an accessible send-now action", () => {
   assert.doesNotMatch(html, /size-8[^>]*>[\s\S]*?lucide-hourglass/);
   assert.doesNotMatch(html, /viktor@example\.test/);
   assert.match(html, /bg-forge-deep\/55/);
-  assert.match(html, /on-surface/);
+  assert.match(QUEUE_ACTION_CLASS, /\bh-7\b/);
+  assert.match(QUEUE_ACTION_CLASS, /\bmin-w-7\b/);
+  assert.match(QUEUE_ACTION_CLASS, /\bbg-black\/10\b/);
+  assert.match(QUEUE_ACTION_CLASS, /\bhover:bg-black\/20\b/);
+  assert.doesNotMatch(QUEUE_ACTION_CLASS, /\bon-surface\b|\bsize-9\b/);
+  assert.match(QUEUE_HOURGLASS_CLASS, /\btext-ember\/70\b/);
+  assert.doesNotMatch(QUEUE_HOURGLASS_CLASS, /\btext-fel-bright\b/);
+  assert.match(html, /width="13"[^>]*lucide-send/);
+  assert.match(html, /width="15"[^>]*lucide-trash2/);
   assert.match(html, /plan\.md/);
   assert.doesNotMatch(html, /gpt-5|high|full-access/);
 });

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Menu } from "lucide-react";
-import { NavLink, Outlet, useLocation, useParams } from "react-router-dom";
+import { NavLink, Outlet, useLocation, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api";
 import { PeonScopeSwitcher } from "../components/PeonScopeSwitcher";
 import { SessionSidebarList } from "../components/SessionSidebarList";
@@ -10,6 +10,7 @@ import { useWorkspace } from "../workspace";
 import { useMobileDrawer } from "../hooks/useMobileDrawer";
 import type { PeonContext, PeonView } from "./peon/context";
 import { applyAttentionEvent, applySessionEvent, mergeSessions, sessionFromIndex, type IndexedSessionEvent, type IndexedSessionLite, type SessionLite } from "./peon/sessionList";
+import { nextSessionAfterDeletion } from "./peon/session/nextSession";
 
 const SIDEBAR_WIDTH_KEY = "overseer.peon-sidebar-width";
 const DEFAULT_SIDEBAR_WIDTH = 256;
@@ -27,7 +28,8 @@ function savedSidebarWidth(): number {
 export function WorkspaceSessions() {
   const t = useT();
   const location = useLocation();
-  const { workspaceId = "", peonId = "" } = useParams();
+  const { workspaceId = "", peonId = "", sid = "" } = useParams();
+  const navigate = useNavigate();
   const { current, groups, setCurrent } = useWorkspace();
   const { subscribeAttention, subscribeSessions, viewersFor } = useLiveSocket();
   const group = groups.find((item) => item.workspace.id === workspaceId);
@@ -155,6 +157,7 @@ export function WorkspaceSessions() {
     reload: reloadActivePeon,
     isOwner,
     orderedSessionIds: activePeonSessionIds,
+    selectedSessionTitle: sessions.find((session) => session.peonId === peonId && session.id === sid)?.title,
     sessionHref: (nextPeonId, sessionId) => `/workspaces/${encodeURIComponent(workspaceId)}/sessions/${encodeURIComponent(nextPeonId)}/${encodeURIComponent(sessionId)}`,
     sessionsHomeHref: `/workspaces/${encodeURIComponent(workspaceId)}/sessions`,
     onSessionDeleted: (deletedPeonId, sessionId) => {
@@ -204,6 +207,24 @@ export function WorkspaceSessions() {
               peonIdFor={(session) => session.peonId ?? ""}
               peonNameFor={(session) => peonNames.get(session.peonId ?? "") ?? t("peons.unnamed")}
               viewersFor={viewersFor}
+              onRename={async (session, title) => {
+                const targetPeonId = session.peonId ?? "";
+                await api(`/workspaces/${encodeURIComponent(workspaceId)}/peons/${encodeURIComponent(targetPeonId)}/sessions/${encodeURIComponent(session.id)}`, { method: "PATCH", body: JSON.stringify({ title }) });
+                setSessions((currentSessions) => currentSessions.map((item) => item.peonId === targetPeonId && item.id === session.id ? { ...item, title } : item));
+              }}
+              onDelete={async (session) => {
+                const targetPeonId = session.peonId ?? "";
+                const targetIds = ordered.filter((item) => item.peonId === targetPeonId).map((item) => item.id);
+                const nextSessionId = nextSessionAfterDeletion(targetIds, session.id);
+                await api(`/workspaces/${encodeURIComponent(workspaceId)}/peons/${encodeURIComponent(targetPeonId)}/sessions/${encodeURIComponent(session.id)}`, { method: "DELETE" });
+                setSessions((currentSessions) => currentSessions.filter((item) => item.peonId !== targetPeonId || item.id !== session.id));
+                setSessionTotal((total) => total === null ? null : Math.max(0, total - 1));
+                if (peonId === targetPeonId && sid === session.id) {
+                  navigate(nextSessionId
+                    ? `/workspaces/${encodeURIComponent(workspaceId)}/sessions/${encodeURIComponent(targetPeonId)}/${encodeURIComponent(nextSessionId)}`
+                    : `/workspaces/${encodeURIComponent(workspaceId)}/sessions`, { replace: true });
+                }
+              }}
             />
           )}
           {sessionTotal !== null && sessionTotal > ordered.length && (

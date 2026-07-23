@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { getToken } from "../../../api";
 import { Dialog } from "../../../ui";
 import type { MessageAttachment } from "./parsing";
 import { attachmentPreviewKind, type AttachmentPreviewKind } from "./attachmentPreviewKind";
@@ -15,10 +14,9 @@ export function AttachmentPreview({ base, attachment, onClose }: { base: string;
     if (!attachment.path) return;
     const ctrl = new AbortController();
     let objectUrl: string | null = null;
-    const token = getToken();
     fetch(`/api${base}/files/${attachment.path.split("/").map(encodeURIComponent).join("/")}`, {
       signal: ctrl.signal,
-      headers: token ? { authorization: `Bearer ${token}` } : {},
+      credentials: "same-origin",
     }).then(async (res) => {
       if (!res.ok) throw new Error(`Preview failed (${res.status})`);
       const blob = await res.blob();

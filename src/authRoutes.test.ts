@@ -64,10 +64,11 @@ after(async () => {
 interface TestResponse {
   status: number;
   location?: string;
+  setCookie: string[];
   body: Record<string, unknown>;
 }
 
-function request(path: string, method = "GET", body?: unknown): Promise<TestResponse> {
+function request(path: string, method = "GET", body?: unknown, headers: Record<string, string> = {}): Promise<TestResponse> {
   const encoded = body === undefined ? undefined : JSON.stringify(body);
   return new Promise((resolve, reject) => {
     const req = http.request({
@@ -75,7 +76,10 @@ function request(path: string, method = "GET", body?: unknown): Promise<TestResp
       port,
       path,
       method,
-      headers: encoded ? { "content-type": "application/json", "content-length": Buffer.byteLength(encoded) } : undefined,
+      headers: {
+        ...headers,
+        ...(encoded ? { "content-type": "application/json", "content-length": String(Buffer.byteLength(encoded)) } : {}),
+      },
     }, (res) => {
       const chunks: Buffer[] = [];
       res.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
@@ -84,6 +88,7 @@ function request(path: string, method = "GET", body?: unknown): Promise<TestResp
         resolve({
           status: res.statusCode ?? 0,
           location: res.headers.location,
+          setCookie: res.headers["set-cookie"] ?? [],
           body: text && res.headers["content-type"]?.includes("json") ? JSON.parse(text) as Record<string, unknown> : {},
         });
       });
@@ -111,11 +116,43 @@ test("web OAuth uses the shared frontend callback and completes through the API"
   assert.equal(exchanged.status, 200);
   assert.equal(exchanged.body.flow, "web");
   assert.equal((exchanged.body.user as { githubLogin: string }).githubLogin, "web-user");
-  assert.equal(typeof exchanged.body.token, "string");
+  assert.equal(exchanged.body.token, undefined);
+  assert.equal(exchanged.setCookie.length, 1);
+  assert.match(exchanged.setCookie[0], /^__Host-overseer_session=[^;]+;/);
+  assert.match(exchanged.setCookie[0], /;\s*Path=\//i);
+  assert.match(exchanged.setCookie[0], /;\s*HttpOnly/i);
+  assert.match(exchanged.setCookie[0], /;\s*Secure/i);
+  assert.match(exchanged.setCookie[0], /;\s*SameSite=Lax/i);
+
+  const cookie = exchanged.setCookie[0].split(";", 1)[0];
+  const rawToken = cookie.slice(cookie.indexOf("=") + 1);
+  const me = await request("/api/auth/me", "GET", undefined, { cookie });
+  assert.equal(me.status, 200);
+  assert.equal((me.body.user as { githubLogin: string }).githubLogin, "web-user");
+
+  const rejectedMutation = await request("/api/auth/ws-ticket", "POST", undefined, { cookie });
+  assert.equal(rejectedMutation.status, 403);
+  assert.equal(rejectedMutation.body.code, "CSRF_ORIGIN");
+  const cookieMutation = await request("/api/auth/ws-ticket", "POST", undefined, { cookie, origin: config.publicUrl });
+  assert.equal(cookieMutation.status, 201);
+
+  const bearerMutation = await request("/api/auth/ws-ticket", "POST", undefined, { authorization: `Bearer ${rawToken}` });
+  assert.equal(bearerMutation.status, 201);
+  const migrated = await request("/api/auth/web-session", "POST", undefined, {
+    authorization: `Bearer ${rawToken}`,
+    origin: config.publicUrl,
+  });
+  assert.equal(migrated.status, 200);
+  assert.match(migrated.setCookie[0], /^__Host-overseer_session=/);
 
   const replay = await request("/api/auth/github", "POST", { state, code: "web-github-code" });
   assert.equal(replay.status, 400);
   assert.equal(replay.body.code, "BAD_STATE");
+
+  const loggedOut = await request("/api/auth/logout", "POST", undefined, { cookie, origin: config.publicUrl });
+  assert.equal(loggedOut.status, 200);
+  assert.match(loggedOut.setCookie[0], /^__Host-overseer_session=;/);
+  assert.equal((await request("/api/auth/me", "GET", undefined, { cookie })).status, 401);
 });
 
 test("native OAuth uses the same frontend callback before opening the app scheme", async () => {

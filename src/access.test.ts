@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import type pg from "pg";
 import { newDb } from "pg-mem";
 import { initDb, query } from "./db.js";
-import { allowedProjectKeys, canAccessPeon, canAccessProject, listMemberAccess, projectAccessQuery, replaceMemberAccess } from "./access.js";
+import { allowedProjectKeys, canAccessPeon, canAccessProject, listMemberAccess, projectAccessQuery, projectMemberCounts, replaceMemberAccess } from "./access.js";
 import { eventVisible, projectVisible, type AccessClient } from "./liveAccess.js";
 import { backfillStoredSessionProjectIds, listSessions, resolveSessionProjectIds } from "./sessionIndex.js";
 
@@ -84,6 +84,31 @@ test("project access queries bind contiguous parameters for stable IDs and legac
   const legacy = projectAccessQuery("ws", "member", "p1", "EXPO", null);
   assert.match(legacy.text, /project_id IS NULL AND project_key = \$4/);
   assert.deepEqual(legacy.values, ["ws", "member", "p1", "EXPO"]);
+});
+
+test("project member counts include every owner and only explicitly granted regular members", async () => {
+  const mem = newDb();
+  const adapter = mem.adapters.createPg();
+  await initDb(new adapter.Pool() as unknown as pg.Pool);
+  await query(`INSERT INTO users (id,email,created_at) VALUES
+    ('owner-1','owner1@test',1),('owner-2','owner2@test',1),('member-1','member1@test',1),('member-2','member2@test',1)`);
+  await query(`INSERT INTO workspaces (id,name,slug,created_at) VALUES ('ws','Workspace','workspace',1)`);
+  await query(`INSERT INTO workspace_members (workspace_id,user_id,role,added_at) VALUES
+    ('ws','owner-1','owner',1),('ws','owner-2','owner',1),('ws','member-1','member',1),('ws','member-2','member',1)`);
+  await replaceMemberAccess("ws", "member-1", {
+    peonIds: ["p1"],
+    projects: [{ peonId: "p1", projectKey: "renamed", projectId: "project-1" }],
+  }, "owner-1");
+  await replaceMemberAccess("ws", "member-2", {
+    peonIds: ["p1"],
+    projects: [{ peonId: "p1", projectKey: "legacy", projectId: null }],
+  }, "owner-1");
+
+  assert.deepEqual(await projectMemberCounts("ws", "p1", [
+    { projectId: "project-1", key: "renamed" },
+    { projectId: "project-2", key: "legacy" },
+    { projectId: "project-3", key: "private" },
+  ]), [3, 3, 2]);
 });
 
 test("live access treats a supplied project ID as authoritative", () => {

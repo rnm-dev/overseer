@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
-import { getToken } from "../../api";
 import { HighlightedCode, Markdown, languageForPath } from "../../components/RichText";
 import { useT } from "../../i18n";
 import { Card } from "../../ui";
@@ -44,8 +43,7 @@ export function ProjectFileBrowser() {
     }
     setViewer({ path: filePath, loading: true });
     try {
-      const token = getToken();
-      const response = await fetch(`/api${filesBase}/${encodeProjectPath(filePath)}`, { headers: token ? { authorization: `Bearer ${token}` } : {} });
+      const response = await fetch(`/api${filesBase}/${encodeProjectPath(filePath)}`, { credentials: "same-origin" });
       if (!response.ok) {
         setViewer({ path: filePath, note: response.status === 404 || response.status === 401 ? t("peon.unsupported") : t("error.loadFailed") });
         return;

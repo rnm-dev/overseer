@@ -1,7 +1,13 @@
 import express from "express";
 import { registry, type PeonRecord } from "../registry.js";
 import { membership, type Role } from "../workspaces.js";
-import { type AuthContext, verifyDeviceToken } from "../modules/auth/index.js";
+import {
+  requestHasTrustedOrigin,
+  requiresCsrfOrigin,
+  type AuthContext,
+  verifyDeviceToken,
+  webSessionToken,
+} from "../modules/auth/index.js";
 import { resolveCredential } from "../credentials.js";
 import { canAccessPeon } from "../access.js";
 
@@ -10,6 +16,7 @@ declare global {
   namespace Express {
     interface Request {
       user?: AuthContext; // set by operatorAuth
+      authTransport?: "bearer" | "cookie"; // set by operatorAuth
       peonCred?: { id: string; workspaceId: string; boundPeonId: string | null }; // set by credentialAuth
     }
   }
@@ -52,9 +59,15 @@ export const credentialAuth: express.RequestHandler = (req, res, next) => {
 // South-facing operator auth guard: a device token → AuthContext on req.user.
 export const operatorAuth: express.RequestHandler = (req, res, next) => {
   void (async () => {
-    const auth = await verifyDeviceToken(bearer(req));
+    const bearerToken = bearer(req);
+    const transport = bearerToken ? "bearer" : "cookie";
+    const auth = await verifyDeviceToken(bearerToken || webSessionToken(req));
     if (!auth) return res.status(401).json({ error: "authentication required", code: "UNAUTHENTICATED" });
+    if (transport === "cookie" && requiresCsrfOrigin(req.method) && !requestHasTrustedOrigin(req)) {
+      return res.status(403).json({ error: "trusted request origin required", code: "CSRF_ORIGIN" });
+    }
     req.user = auth;
+    req.authTransport = transport;
     next();
   })().catch(next);
 };

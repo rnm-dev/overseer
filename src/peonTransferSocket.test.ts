@@ -13,6 +13,7 @@ import { attachPeonTransferSocket, PEON_TRANSFER_SOCKET_PATH } from "./peonTrans
 import { registry, toView, type PeonRecord } from "./registry.js";
 import { encodePeonFileChunk, openPeonProjectFile, PeonFileStreamError } from "./peonFileStream.js";
 import { peonsRouter } from "./routes/peons.js";
+import { isolateProjectFileResponse, projectFileContentType, PROJECT_FILE_CSP } from "./modules/projects/index.js";
 
 function listen(server: http.Server): Promise<number> {
   return new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve((server.address() as AddressInfo).port)));
@@ -214,6 +215,13 @@ test("project file service opens by stable project ID and streams correlated bin
   await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
 });
 
+test("browser viewer infers inline MIME types when Peon reports generic bytes", () => {
+  assert.equal(projectFileContentType("dist/index.html", "application/octet-stream"), "text/html; charset=utf-8");
+  assert.equal(projectFileContentType("assets/app.js", "application/octet-stream"), "text/javascript; charset=utf-8");
+  assert.equal(projectFileContentType("archive.bin", "application/octet-stream"), "application/octet-stream");
+  assert.equal(projectFileContentType("index.html", "text/plain; charset=utf-8"), "text/plain; charset=utf-8");
+});
+
 test("project file service rejects unsafe paths, propagates Peon errors, and cancels aborted opens", async () => {
   await assert.rejects(
     openPeonProjectFile({ peonId: "none", projectId: "project", relativePath: "../secret", actor: { userId: "u", email: "u@example.com" } }),
@@ -295,4 +303,16 @@ test("stable project-ID file route is registered separately from project-key rou
   const router = peonsRouter() as unknown as { stack: { route?: { path?: string; methods?: Record<string, boolean> } }[] };
   const route = router.stack.find((layer) => layer.route?.path === "/workspaces/:wsId/peons/:id/projects/by-id/:projectId/files/{*rest}");
   assert.equal(route?.route?.methods?.get, true);
+});
+
+test("project file responses sandbox active content away from the authenticated Overseer origin", () => {
+  const headers = new Map<string, string>();
+  isolateProjectFileResponse({ setHeader: (name, value) => {
+    headers.set(name.toLowerCase(), String(value));
+    return undefined as never;
+  } });
+  assert.equal(headers.get("content-security-policy"), PROJECT_FILE_CSP);
+  assert.equal(headers.get("referrer-policy"), "no-referrer");
+  assert.equal(headers.get("x-content-type-options"), "nosniff");
+  assert.equal(headers.get("cache-control"), "no-store");
 });

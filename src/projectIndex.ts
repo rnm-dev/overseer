@@ -411,6 +411,10 @@ export async function getIndexedProject(peonId: string, key: string): Promise<In
   return (await listIndexedProjects(peonId)).find((project) => project.key === key) ?? null;
 }
 
+export async function getIndexedProjectById(peonId: string, projectId: string): Promise<IndexedProject | null> {
+  return (await listIndexedProjects(peonId)).find((project) => project.projectId === projectId) ?? null;
+}
+
 export async function hasCanonicalProjectCatalog(peonId: string): Promise<boolean> {
   const { rows } = await query(`SELECT 1 FROM peon_project_sync WHERE peon_id=$1 AND catalog_epoch IS NOT NULL`, [peonId]);
   return rows.length > 0;

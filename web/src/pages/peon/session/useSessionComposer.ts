@@ -167,7 +167,7 @@ export function useSessionComposer({
       }
       const body: { prompt: string; attachments?: typeof attachments; model?: string; reasoningEffort?: string } = { prompt };
       if (attachments.length) body.attachments = attachments;
-      if (overrideModel) body.model = overrideModel; // one-shot override for this turn
+      if (overrideModel) body.model = overrideModel; // becomes the session default after acceptance
       if (overrideReasoningEffort) body.reasoningEffort = overrideReasoningEffort;
       const request = json(body);
       request.headers = { "Peon-Request-Id": clientId };

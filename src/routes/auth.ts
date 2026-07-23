@@ -1,9 +1,21 @@
 import express from "express";
 import { config } from "../config.js";
-import { completeGithubSignIn, consumeOauthAttempt, exchangeNativeAppCode, issueWebSocketTicket, listDevices, revokeDevice, startGithubAuthFlow } from "../modules/auth/index.js";
+import {
+  clearWebSessionCookie,
+  completeGithubSignIn,
+  consumeOauthAttempt,
+  exchangeNativeAppCode,
+  issueWebSocketTicket,
+  listDevices,
+  requestHasTrustedOrigin,
+  revokeDevice,
+  setWebSessionCookie,
+  startGithubAuthFlow,
+  verifyDeviceToken,
+} from "../modules/auth/index.js";
 import { GithubAuthError } from "../github.js";
 import { getInvitePreview } from "../workspaces.js";
-import { clientInfo } from "./helpers.js";
+import { bearer, clientInfo } from "./helpers.js";
 
 const rateBuckets = new Map<string, number[]>();
 
@@ -82,9 +94,9 @@ export function publicAuthRouter(): express.Router {
     try {
       const result = await completeGithubSignIn(attempt, state, code, config.githubRedirectUri, clientInfo(req));
       if (result.flow === "native") return res.json({ flow: "native", redirectUrl: result.redirectUrl });
+      setWebSessionCookie(res, result.token, result.device.expiresAt);
       return res.json({
         flow: "web",
-        token: result.token,
         user: { email: result.user.email, githubLogin: result.user.githubLogin, avatarUrl: result.user.avatarUrl },
         device: result.device,
       });
@@ -109,6 +121,18 @@ export function publicAuthRouter(): express.Router {
       user: { email: redeemed.user.email, githubLogin: redeemed.user.githubLogin, avatarUrl: redeemed.user.avatarUrl },
       device: redeemed.device,
     });
+  });
+
+  // One-release bridge for existing web sessions. The legacy dashboard proves
+  // possession of its localStorage device token once, receives an HttpOnly
+  // cookie, then deletes the JavaScript-readable copy.
+  router.post("/auth/web-session", async (req, res) => {
+    if (!requestHasTrustedOrigin(req)) return res.status(403).json({ error: "trusted request origin required", code: "CSRF_ORIGIN" });
+    const token = bearer(req);
+    const auth = token ? await verifyDeviceToken(token) : null;
+    if (!auth) return res.status(401).json({ error: "authentication required", code: "UNAUTHENTICATED" });
+    setWebSessionCookie(res, token);
+    res.json({ ok: true });
   });
 
   // Public preview for a /join link — the join page shows which workspace the
@@ -155,6 +179,7 @@ export function accountRouter(): express.Router {
   // Logout = revoke the current device.
   router.post("/auth/logout", async (req, res) => {
     await revokeDevice(req.user!.userId, req.user!.deviceId);
+    clearWebSessionCookie(res);
     res.json({ ok: true });
   });
 

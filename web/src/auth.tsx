@@ -1,10 +1,10 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { api, getToken, json, setToken } from "./api";
+import { api, getToken, json, migrateLegacyWebSession, setToken } from "./api";
 
 // Auth state for the dashboard. GitHub returns every flow to this SPA; the SPA
 // submits code + state to the API, whose server-backed attempt determines whether
 // to finish web login or open the native app with a short-lived code.
-// On success we hold a device token (persisted in localStorage) + the user.
+// Web sessions use an HttpOnly cookie. Native clients retain bearer tokens.
 
 export interface User {
   email: string;
@@ -38,17 +38,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [ready, setReady] = useState(false);
 
-  // On boot, if we have a stored token, confirm who we are (or drop a stale one).
+  // One-release migration: exchange a legacy localStorage bearer for an
+  // HttpOnly cookie, then erase the JavaScript-readable credential.
   useEffect(() => {
     (async () => {
-      if (!getToken()) {
-        setReady(true);
-        return;
-      }
       try {
+        const legacyToken = getToken();
+        if (legacyToken) {
+          await migrateLegacyWebSession(legacyToken);
+          setToken(null);
+        }
         const me = await api<{ user?: User }>("/auth/me");
         if (me.user) setUser(me.user);
-        else setToken(null);
       } catch {
         setToken(null);
       } finally {
@@ -70,7 +71,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async completeGithubCallback(code, state, error) {
       const saved = sessionStorage.getItem(STATE_KEY);
       const r = await api<
-        | { flow: "web"; token: string; user: User }
+        | { flow: "web"; user: User }
         | { flow: "native"; redirectUrl: string }
       >("/auth/github", json({ code, state, error }));
       if (r.flow === "native") {
@@ -81,7 +82,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       sessionStorage.removeItem(STATE_KEY);
       if (!saved || saved !== state) throw new Error("sign-in state mismatch — please try again");
-      setToken(r.token);
       setUser(r.user);
       return "web";
     },
@@ -91,7 +91,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } catch {
         /* revoke best-effort */
       }
-      setToken(null);
       setUser(null);
     },
   };

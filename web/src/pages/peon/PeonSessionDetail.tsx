@@ -56,7 +56,7 @@ function storeFilePaneState(pageKey: string, open: boolean) {
 export function PeonSessionDetail() {
   const { locale, t } = useI18n();
   const { user } = useAuth();
-  const { peon, base, wsId, orderedSessionIds, sessionHref, sessionsHomeHref, onSessionDeleted } = usePeon();
+  const { peon, base, wsId, orderedSessionIds, selectedSessionTitle, sessionHref, sessionsHomeHref, onSessionDeleted } = usePeon();
   const { sid = "" } = useParams();
   const { subscribe, viewersFor } = useLiveSocket();
   const navigate = useNavigate();
@@ -78,6 +78,8 @@ export function PeonSessionDetail() {
   const [title, setTitle] = useState<string | null>(null);
   const [openingMessage, setOpeningMessage] = useState<string | null>(null);
   const [projectKey, setProjectKey] = useState<string | null>(null);
+  const [projectId, setProjectId] = useState<string | null>(null);
+  const [projectRoot, setProjectRoot] = useState<string | null>(null);
   const [loadedMetadataKey, setLoadedMetadataKey] = useState<string | null>(null);
   const [turnCount, setTurnCount] = useState<number | null>(null);
   const [sessionUsage, setSessionUsage] = useState<unknown>(null);
@@ -85,6 +87,15 @@ export function PeonSessionDetail() {
   const [draft, setDraft] = useState("");
   const [savingName, setSavingName] = useState(false);
   const [renameNote, setRenameNote] = useState<string | null>(null);
+
+  // Sidebar mutations update the shared indexed summary immediately. Mirror a
+  // renamed selected session into the header without waiting for the next
+  // metadata refresh or durable catalog event.
+  useEffect(() => {
+    if (selectedSessionTitle === undefined) return;
+    setTitle(selectedSessionTitle);
+    if (!editing) setDraft(selectedSessionTitle ?? "");
+  }, [editing, selectedSessionTitle, sessionKey]);
 
 
   // Session default model (null ⇒ follows the peon's global default). Comes
@@ -94,7 +105,8 @@ export function PeonSessionDetail() {
   const [sessionReasoningEffort, setSessionReasoningEffort] = useState<string | null>(null);
   const [sessionPermissionMode, setSessionPermissionMode] = useState<string | null>(null);
   const [metaTick, setMetaTick] = useState(0);
-  // Per-turn model override for the composer ("" ⇒ use the session/peon default).
+  // Pending explicit selections for the next follow-up. Peon persists a sent
+  // selection as the session default, so later turns keep it until switched.
   const [overrideModel, setOverrideModel] = useState("");
   const [overrideReasoningEffort, setOverrideReasoningEffort] = useState("");
   // React Router reuses this component when moving directly between sessions.
@@ -153,7 +165,7 @@ export function PeonSessionDetail() {
   const [sentAttachmentPreview, setSentAttachmentPreview] = useState<MessageAttachment | null>(null);
   const [artifactPreview, setArtifactPreview] = useState<PreviewTarget | null>(null);
   const [previewPinned, setPreviewPinned] = useState(false);
-  const [projectFilePreview, setProjectFilePreview] = useState<{ path: string; size?: number } | null>(null);
+  const [projectFilePreview, setProjectFilePreview] = useState<{ path: string; size?: number; viewerUrl?: string } | null>(null);
   const [filesOpen, setFilesOpen] = useState(() => storedOpenFilePanes().has(filePanePageKey));
   useEffect(() => setProjectFilePreview(null), [sessionKey, projectKey]);
   useEffect(() => setFilesOpen(storedOpenFilePanes().has(filePanePageKey)), [filePanePageKey]);
@@ -301,7 +313,7 @@ export function PeonSessionDetail() {
   useEffect(() => {
     let alive = true;
     const runRevision = runRevisionRef.current.get(sessionKey) ?? 0;
-    api<{ title?: string | null; prompt?: string | null; promptPreview?: string | null; projectKey?: string | null; status?: string | null; agent?: string | null; backendSessionId?: string | null; model?: string | null; reasoningEffort?: string | null; permissionMode?: string | null; turnCount?: number | null; usage?: unknown }>(
+    api<{ title?: string | null; prompt?: string | null; promptPreview?: string | null; projectKey?: string | null; projectId?: string | null; projectRoot?: string | null; status?: string | null; agent?: string | null; backendSessionId?: string | null; model?: string | null; reasoningEffort?: string | null; permissionMode?: string | null; turnCount?: number | null; usage?: unknown }>(
       `${base}/sessions/${encodeURIComponent(sid)}`,
     )
       .then((s) => {
@@ -312,6 +324,8 @@ export function PeonSessionDetail() {
         setDraft(s.title ?? "");
         setEditing(false);
         setProjectKey(s.projectKey ?? null);
+        setProjectId(s.projectId ?? null);
+        setProjectRoot(s.projectRoot ?? null);
         setTurnCount(typeof s.turnCount === "number" ? s.turnCount : null);
         setSessionUsage(s.usage ?? null);
         setSessionAgent(s.agent ?? null);
@@ -486,7 +500,18 @@ export function PeonSessionDetail() {
             )}
             {items.map((item, i) => (
               <div key={item.key} className={i === 0 ? "" : gapClass(items[i - 1].kind === "user", item.kind === "user")}>
-                <ItemView item={item} t={t} locale={locale} yesterdayLabel={t("peon.stats.period.yesterday")} onOpenPreview={(p) => setArtifactPreview({ path: p.path, author: p.author, createdAt: p.createdAt })} onOpenAttachment={setSentAttachmentPreview} />
+                <ItemView
+                  item={item}
+                  t={t}
+                  locale={locale}
+                  yesterdayLabel={t("peon.stats.period.yesterday")}
+                  onOpenPreview={(p) => setArtifactPreview({ path: p.path, author: p.author, createdAt: p.createdAt })}
+                  onOpenAttachment={setSentAttachmentPreview}
+                  onOpenProjectFile={(path, viewerUrl) => setProjectFilePreview({ path, viewerUrl })}
+                  projectViewer={loadedMetadataKey === sessionKey && projectId && projectRoot
+                    ? { peonId: peon.peonId, projectId, projectRoot, currentOrigin: window.location.origin }
+                    : null}
+                />
               </div>
             ))}
             {running && (

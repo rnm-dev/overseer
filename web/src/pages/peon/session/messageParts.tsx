@@ -4,6 +4,7 @@ import { HighlightedCode, Markdown } from "../../../components/RichText";
 import { orcishThinkingLabel, prettyJsonOutput, toolHasOutputSection, toolSummary, type Item, type MessageAttachment, type T } from "./parsing";
 import { Avatar } from "../../../components/Avatar";
 import { FilePlus, FileX, ImageIcon, Paperclip, Pencil, Terminal } from "lucide-react";
+import { projectViewerHref, projectViewerRelativePath, type ProjectViewerContext } from "./projectViewerLink";
 import { useAuth, type User } from "../../../auth";
 import { useI18n, type Locale } from "../../../i18n";
 
@@ -229,7 +230,8 @@ function statsFromDiff(diff: string, operation: EditOperation): { added: number;
   let added = 0;
   let removed = 0;
   const hunks: Array<{ oldLength: number; newLength: number }> = [];
-  for (const line of diff.split("\n")) {
+  const lines = diff.split("\n");
+  for (const line of lines) {
     const hunk = /^@@ -(?:\d+)(?:,(\d+))? \+(?:\d+)(?:,(\d+))? @@/.exec(line);
     if (hunk) {
       hunks.push({ oldLength: hunk[1] === undefined ? 1 : Number(hunk[1]), newLength: hunk[2] === undefined ? 1 : Number(hunk[2]) });
@@ -238,9 +240,18 @@ function statsFromDiff(diff: string, operation: EditOperation): { added: number;
     if (line.startsWith("+") && !line.startsWith("+++")) added++;
     if (line.startsWith("-") && !line.startsWith("---")) removed++;
   }
+  const patchLike = hunks.length > 0
+    || lines.some((line) => /^\*\*\* (?:Add|Delete|Update) File:/.test(line))
+    || (lines.some((line) => /^--- (?:\/dev\/null|[ab]\/)/.test(line)) && lines.some((line) => /^\+\+\+ (?:\/dev\/null|[ab]\/)/.test(line)));
 
-  // A few Codex app-server builds emit only hunk metadata for whole-file
-  // creates/deletes. Those ranges are exact because the opposite side is empty.
+  // Current Codex app-server sends a new/deleted file's complete contents in
+  // `diff`, without unified-diff prefixes. Older builds sent a patch instead.
+  // Patch markers mean the latter; otherwise count raw contents directly.
+  if (operation === "Create" && !patchLike) return { added: contentLineCount(diff), removed: 0 };
+  if (operation === "Delete" && !patchLike) return { added: 0, removed: contentLineCount(diff) };
+
+  // Some builds emit only hunk metadata for whole-file creates/deletes. Those
+  // ranges are exact because the opposite side is empty.
   if (operation === "Create" && added === 0) {
     added = hunks.reduce((count, hunk) => count + (hunk.oldLength === 0 ? hunk.newLength : 0), 0);
   }
@@ -248,6 +259,12 @@ function statsFromDiff(diff: string, operation: EditOperation): { added: number;
     removed = hunks.reduce((count, hunk) => count + (hunk.newLength === 0 ? hunk.oldLength : 0), 0);
   }
   return { added, removed };
+}
+
+function contentLineCount(content: string): number {
+  if (content === "") return 0;
+  const lines = content.split("\n");
+  return lines.length - (lines.at(-1) === "" ? 1 : 0);
 }
 
 export function editStatsFromInput(input: unknown): { added: number; removed: number } | null {
@@ -504,14 +521,24 @@ interface PreviewRequest {
   createdAt?: number;
 }
 
-export function ItemView({ item, t, locale = "en", yesterdayLabel = "Yesterday", onOpenPreview, onOpenAttachment }: { item: Item; t: T; locale?: Locale; yesterdayLabel?: string; onOpenPreview?: (preview: PreviewRequest) => void; onOpenAttachment?: (attachment: MessageAttachment) => void }) {
+export function ItemView({ item, t, locale = "en", yesterdayLabel = "Yesterday", onOpenPreview, onOpenAttachment, onOpenProjectFile, projectViewer }: { item: Item; t: T; locale?: Locale; yesterdayLabel?: string; onOpenPreview?: (preview: PreviewRequest) => void; onOpenAttachment?: (attachment: MessageAttachment) => void; onOpenProjectFile?: (path: string, viewerUrl: string) => void; projectViewer?: ProjectViewerContext | null }) {
   switch (item.kind) {
     case "user":
       return <UserBubble text={item.text} author={item.author} authorEmail={item.authorEmail} authorGithubLogin={item.authorGithubLogin} authorAvatarUrl={item.authorAvatarUrl} attachments={item.attachments} createdAt={item.createdAt} onOpenAttachment={onOpenAttachment} />;
     case "text":
       return (
         <div className="text-sm leading-relaxed text-bone">
-          <Markdown source={item.text} onOpenFile={(path) => onOpenPreview?.({ path })} />
+          <Markdown
+            source={item.text}
+            onOpenFile={(path) => onOpenPreview?.({ path })}
+            transformLink={projectViewer ? (href) => projectViewerHref(href, projectViewer) : undefined}
+            onOpenLink={projectViewer && onOpenProjectFile ? (href) => {
+              const path = projectViewerRelativePath(href, projectViewer);
+              if (!path) return false;
+              onOpenProjectFile(path, href);
+              return true;
+            } : undefined}
+          />
           {(item.createdAt || item.resultMeta) && (
             <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 font-body text-[0.65rem] leading-tight text-bone-faint">
               {item.createdAt && <LocalMessageTime createdAt={item.createdAt} locale={locale} yesterdayLabel={yesterdayLabel} />}

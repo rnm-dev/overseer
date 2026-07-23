@@ -15,10 +15,8 @@ const Dashboard = lazy(() => import("./pages/Dashboard").then((m) => ({ default:
 const GithubCallback = lazy(() => import("./pages/GithubCallback").then((m) => ({ default: m.GithubCallback })));
 const Join = lazy(() => import("./pages/Join").then((m) => ({ default: m.Join })));
 const PeonDetail = lazy(() => import("./pages/PeonDetail").then((m) => ({ default: m.PeonDetail })));
-const PeonDashboard = lazy(() => import("./pages/peon/PeonDashboard").then((m) => ({ default: m.PeonDashboard })));
 const PeonNewSession = lazy(() => import("./pages/peon/PeonNewSession").then((m) => ({ default: m.PeonNewSession })));
 const PeonSessionDetail = lazy(() => import("./pages/peon/PeonSessionDetail").then((m) => ({ default: m.PeonSessionDetail })));
-const PeonProjects = lazy(() => import("./pages/peon/PeonProjects").then((m) => ({ default: m.PeonProjects })));
 const PeonProjectDetail = lazy(() => import("./pages/peon/PeonProjectDetail").then((m) => ({ default: m.PeonProjectDetail })));
 const PeonStats = lazy(() => import("./pages/peon/PeonStats").then((m) => ({ default: m.PeonStats })));
 const PeonSettings = lazy(() => import("./pages/peon/PeonSettings").then((m) => ({ default: m.PeonSettings })));
@@ -123,11 +121,11 @@ export function App() {
         </Route>
         <Route path="peons/:peonId" element={<PeonDetail />}>
           <Route index element={<Navigate to="sessions" replace />} />
-          <Route path="overview" element={<PeonDashboard />} />
+          <Route path="overview" element={<Navigate to="../sessions" relative="path" replace />} />
           <Route path="sessions" element={<PeonSessionsEmpty />} />
           <Route path="sessions/new" element={<PeonNewSession />} />
           <Route path="sessions/:sid" element={<PeonSessionDetail />} />
-          <Route path="projects" element={<PeonProjects />} />
+          <Route path="projects" element={<Navigate to="../sessions" relative="path" replace />} />
           <Route path="projects/:key" element={<PeonProjectDetail />} />
           <Route path="projects/:key/files" element={<ProjectFileBrowser />} />
           <Route path="projects/:key/skills" element={<ProjectSkills />} />
