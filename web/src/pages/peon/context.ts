@@ -32,6 +32,7 @@ export interface PeonContext {
   reload: () => void;
   isOwner: boolean;
   orderedSessionIds: string[];
+  selectedSessionTitle?: string | null;
   sessionHref?: (peonId: string, sessionId: string) => string;
   sessionsHomeHref?: string;
   onSessionDeleted?: (peonId: string, sessionId: string) => void;

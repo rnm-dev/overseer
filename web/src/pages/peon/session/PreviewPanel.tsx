@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { Check, Copy } from "lucide-react";
-import { ApiError, getToken } from "../../../api";
+import { ApiError } from "../../../api";
 import type { Translate } from "../../../i18n";
 import { HighlightedCode, Markdown, languageForPath } from "../../../components/RichText";
 
@@ -50,9 +50,7 @@ async function errorFrom(res: Response): Promise<ApiError> {
 
 async function authorizedFetch(path: string, signal?: AbortSignal, init: RequestInit = {}): Promise<Response> {
   const headers = new Headers(init.headers);
-  const token = getToken();
-  if (token) headers.set("authorization", `Bearer ${token}`);
-  return fetch(`/api${path}`, { ...init, headers, signal });
+  return fetch(`/api${path}`, { ...init, headers, signal, credentials: "same-origin" });
 }
 
 function parseFrame(frame: string): { event: string | null; data: string } | null {
@@ -145,7 +143,7 @@ export function PreviewPanel({ base, sessionId, target, pinned, onPinnedChange, 
   }, [filePath, rawPath, webPath, target.path, isHtml, isImage, isPdf, revision]);
 
   // A fetch-based SSE reader is used because EventSource cannot attach the
-  // operator bearer token. Reconnect after an ordinary EOF; a Peon `changed`
+  // operator session cookie. Reconnect after an ordinary EOF; a Peon `changed`
   // event invalidates both metadata/text and any raw object URL.
   useEffect(() => {
     const ctrl = new AbortController();

@@ -1,6 +1,6 @@
-// Thin fetch wrapper for the overseer /api surface. The web app is served
-// same-origin, so calls are relative ("/api/...") — no base URL, no CORS. The
-// device token (minted by the GitHub sign-in flow) rides as a bearer.
+// Thin fetch wrapper for the Overseer /api surface. Web authentication rides in
+// a same-origin HttpOnly cookie; native clients continue to use bearer tokens.
+// The legacy localStorage helpers remain only for the one-release migration.
 
 const TOKEN_KEY = "overseer_token";
 
@@ -26,10 +26,8 @@ export class ApiError extends Error {
 export async function api<T = unknown>(path: string, opts: RequestInit = {}): Promise<T> {
   const headers = new Headers(opts.headers);
   if (opts.body && !headers.has("content-type")) headers.set("content-type", "application/json");
-  const token = getToken();
-  if (token) headers.set("authorization", `Bearer ${token}`);
 
-  const res = await fetch(`/api${path}`, { ...opts, headers });
+  const res = await fetch(`/api${path}`, { ...opts, headers, credentials: "same-origin" });
   if (!res.ok) {
     let body: { code?: string; error?: string; requestId?: string } | null = null;
     try {
@@ -41,6 +39,15 @@ export async function api<T = unknown>(path: string, opts: RequestInit = {}): Pr
   }
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
+}
+
+export async function migrateLegacyWebSession(token: string): Promise<void> {
+  const res = await fetch("/api/auth/web-session", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new ApiError(res.status, "WEB_SESSION_MIGRATION_FAILED", "Could not migrate the existing web session");
 }
 
 export const json = (body: unknown): RequestInit => ({ method: "POST", body: JSON.stringify(body) });

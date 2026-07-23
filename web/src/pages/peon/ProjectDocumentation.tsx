@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BookOpen, ChevronRight, Folder, RefreshCw, TriangleAlert } from "lucide-react";
-import { api, ApiError, getToken } from "../../api";
+import { api, ApiError } from "../../api";
 import { Markdown } from "../../components/RichText";
 import { useT } from "../../i18n";
 import { Card } from "../../ui";
@@ -103,11 +103,10 @@ export async function retryDocumentationRequest<T>(work: () => Promise<T>, signa
 }
 
 async function fetchDocument(base: string, projectId: string, path: string, signal: AbortSignal): Promise<string> {
-  const token = getToken();
   return retryDocumentationRequest(async () => {
     const response = await fetch(`/api${documentationFilePath(base, projectId, path)}`, {
       signal,
-      headers: token ? { authorization: `Bearer ${token}` } : {},
+      credentials: "same-origin",
     });
     if (!response.ok) throw await responseError(response);
     const length = Number(response.headers.get("content-length"));

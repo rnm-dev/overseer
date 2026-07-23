@@ -9,6 +9,7 @@ import { enrichTranscriptMetadata } from "../../transcriptTimestamps.js";
 import { indexAcceptedSession } from "../../modules/acceptedSession/index.js";
 import { deleteIndexedSession } from "../../sessionIndex.js";
 import { cancelSessionRequest, markSessionAttentionRead, recordSessionRequest } from "../../sessionAttention.js";
+import { getIndexedProject, getIndexedProjectById } from "../../projectIndex.js";
 
 function acceptedSessionId(result: { ok: boolean; json: unknown }): string | null {
   if (!result.ok || !result.json || typeof result.json !== "object") return null;
@@ -93,7 +94,21 @@ export function registerSessionRoutes(router: express.Router): void {
     }) : [];
     res.status(result.status).json({ ...body, sessions });
   }));
-  router.get(`${wp}/sessions/:sid`, withWorkspaceSession(async (req, res, c) => relay(await callPeon(connOfRecord(c.record), "GET", `/sessions/${encodeURIComponent(String(req.params.sid))}`, { actor: c.operator.email }), res)));
+  router.get(`${wp}/sessions/:sid`, withWorkspaceSession(async (req, res, c) => {
+    const result = await callPeon(connOfRecord(c.record), "GET", `/sessions/${encodeURIComponent(String(req.params.sid))}`, { actor: c.operator.email });
+    if (!result.ok || !result.json || typeof result.json !== "object") return relay(result, res);
+    const body = result.json as Record<string, unknown>;
+    const projectId = typeof body.projectId === "string" ? body.projectId : null;
+    const projectKey = typeof body.projectKey === "string" ? body.projectKey : null;
+    const project = projectId
+      ? await getIndexedProjectById(c.record.peonId, projectId)
+      : projectKey ? await getIndexedProject(c.record.peonId, projectKey) : null;
+    res.status(result.status).json({
+      ...body,
+      projectId: projectId ?? project?.projectId ?? null,
+      projectRoot: project?.dir ?? null,
+    });
+  }));
   router.get(`${wp}/sessions/:sid/transcript`, withWorkspaceSession(async (req, res, c) => {
     const query = transcriptQuery(req.query, c.record.capabilities.includes("transcript-pagination-v1"));
     const r = await callPeon(connOfRecord(c.record), "GET", `/sessions/${encodeURIComponent(String(req.params.sid))}/transcript${query}`, { actor: c.operator.email });

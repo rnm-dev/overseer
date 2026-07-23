@@ -304,6 +304,13 @@ GET  /api/v1/settings                   read the safe settings   ⚠ PEON-SIDE T
 PATCH /api/v1/settings                  update settings (partial) ⚠ PEON-SIDE TODO
 ```
 
+On an accepted follow-up, an explicitly supplied `model` and/or
+`reasoningEffort` becomes that session's default for later turns. Omitting a
+field retains the session's prior choice (or the Peon/provider default when the
+session has none). Queued follow-ups capture their effective model and effort
+when they enter the queue, so a later switch does not rewrite already queued
+work.
+
 `GET /api/v1/status` includes the update check state:
 
 ```json

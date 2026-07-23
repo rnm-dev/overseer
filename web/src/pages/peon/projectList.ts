@@ -7,6 +7,7 @@ export interface ProjectLite {
   dir?: string | null;
   metadata?: string | null;
   sessionCount?: number;
+  memberCount?: number;
   activeCount?: number;
   lastActivityMs?: number | null;
   syncedAt?: number;
@@ -59,4 +60,19 @@ export function applyProjectEvent(current: ProjectLite[], event: ProjectLiveEven
 
 export function visibleProjects(projects: ProjectLite[]): ProjectLite[] {
   return projects.filter((project) => !project.deleted);
+}
+
+export function withLiveActiveSessionCounts(
+  projects: ProjectLite[],
+  sessions: Array<{ projectKey?: string | null; status?: string | null }>,
+): ProjectLite[] {
+  const activeByProject = new Map<string, number>();
+  for (const session of sessions) {
+    if (session.status !== "running" || !session.projectKey) continue;
+    activeByProject.set(session.projectKey, (activeByProject.get(session.projectKey) ?? 0) + 1);
+  }
+  return projects.map((project) => ({
+    ...project,
+    activeCount: activeByProject.get(project.key) ?? 0,
+  }));
 }

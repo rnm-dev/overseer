@@ -103,3 +103,35 @@ export async function allowedProjectKeys(workspaceId: string, userId: string, ro
   const projects = await allowedProjects(workspaceId, userId, role, peonId);
   return projects?.map((row) => row.projectKey) ?? null;
 }
+
+export async function projectMemberCounts(
+  workspaceId: string,
+  peonId: string,
+  projects: Array<{ projectId?: string | null; key: string }>,
+): Promise<number[]> {
+  const [owners, grants] = await Promise.all([
+    query<{ count: number | string }>(
+      `SELECT COUNT(*)::int AS count
+       FROM workspace_members
+       WHERE workspace_id = $1 AND role = 'owner'`,
+      [workspaceId],
+    ),
+    query<{ user_id: string; project_id: string | null; project_key: string }>(
+      `SELECT DISTINCT a.user_id,a.project_id,a.project_key
+       FROM workspace_member_project_access a
+       JOIN workspace_members m
+         ON m.workspace_id=a.workspace_id AND m.user_id=a.user_id AND m.role='member'
+       WHERE a.workspace_id=$1 AND a.peon_id=$2`,
+      [workspaceId, peonId],
+    ),
+  ]);
+  const ownerCount = Number(owners.rows[0]?.count ?? 0);
+  return projects.map((project) => {
+    const members = new Set(grants.rows
+      .filter((grant) => project.projectId
+        ? grant.project_id === project.projectId || (grant.project_id === null && grant.project_key === project.key)
+        : grant.project_id === null && grant.project_key === project.key)
+      .map((grant) => grant.user_id));
+    return ownerCount + members.size;
+  });
+}

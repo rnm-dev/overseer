@@ -9,6 +9,7 @@ import type { MessageAttachment } from "./parsing";
 interface FilePreview {
   path: string;
   size?: number;
+  viewerUrl?: string;
 }
 interface Props {
   base: string;
@@ -79,6 +80,7 @@ export function SessionOverlays({
           filesBase={`${base}/projects/${encodeURIComponent(projectKey)}/files`}
           path={projectFilePreview.path}
           size={projectFilePreview.size}
+          viewerUrl={projectFilePreview.viewerUrl}
           onClose={() => setProjectFilePreview(null)}
         />
       )}

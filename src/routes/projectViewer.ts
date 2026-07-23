@@ -1,0 +1,38 @@
+import express from "express";
+import { canAccessPeon, canAccessProject } from "../access.js";
+import { streamProjectFileResponse } from "../modules/projects/index.js";
+import { getIndexedProjectById } from "../projectIndex.js";
+import { registry } from "../registry.js";
+import { membership } from "../workspaces.js";
+import { userOf } from "./helpers.js";
+
+export function projectViewerRouter(): express.Router {
+  const router = express.Router();
+
+  router.get("/:peonId/:projectId/{*rest}", async (req, res) => {
+    const peonId = String(req.params.peonId);
+    const projectId = String(req.params.projectId);
+    const record = await registry.get(peonId);
+    if (!record) return res.status(404).json({ error: "unknown project", code: "UNKNOWN_PROJECT" });
+
+    const auth = userOf(req);
+    const role = await membership(record.workspaceId, auth.userId);
+    const project = await getIndexedProjectById(peonId, projectId);
+    if (!role || !project
+      || !(await canAccessPeon(record.workspaceId, auth.userId, role, peonId))
+      || !(await canAccessProject(record.workspaceId, auth.userId, role, peonId, project.key, projectId))) {
+      return res.status(404).json({ error: "unknown project", code: "UNKNOWN_PROJECT" });
+    }
+
+    await streamProjectFileResponse({
+      req,
+      res,
+      peonId,
+      projectId,
+      relativePath: ((req.params.rest as unknown as string[] | undefined) ?? []).join("/"),
+      actor: { userId: auth.userId, email: auth.email },
+    });
+  });
+
+  return router;
+}

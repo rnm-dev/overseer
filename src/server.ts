@@ -10,6 +10,7 @@ import { peonsRouter } from "./routes/peons.js";
 import { pushRouter } from "./routes/push.js";
 import { webPreviewHandler } from "./webPreview.js";
 import { peonReleasesRouter, releasePublisherRouter } from "./routes/releases.js";
+import { projectViewerRouter } from "./routes/projectViewer.js";
 
 // The overseer's two-sided HTTP surface:
 //
@@ -58,6 +59,11 @@ export function createServer(): express.Express {
   // North-bound: peon registration + heartbeat + event push.
   app.use("/api/v1/peons", agentRouter());
   app.use("/api/v1/releases", peonReleasesRouter());
+
+  // Browser-facing project files use the same operator session cookie as the
+  // dashboard, while native clients may still present a bearer. Workspace and
+  // ACL scope are derived server-side from the stable Peon+project identity.
+  app.use("/view", operatorAuth, projectViewerRouter());
 
   // South-facing: operator + mobile API.
   const api = express.Router();

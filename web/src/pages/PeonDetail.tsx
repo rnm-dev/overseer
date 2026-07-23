@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { BarChart3, FolderKanban, LayoutDashboard, Menu, MessageSquare, Settings, type LucideIcon } from "lucide-react";
-import { Link, NavLink, Outlet, useLocation, useParams } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { BarChart3, Menu, Package, Settings, type LucideIcon } from "lucide-react";
+import { Link, NavLink, Outlet, useLocation, useNavigate, useParams } from "react-router-dom";
 import { api, ApiError } from "../api";
 import { useWorkspace } from "../workspace";
 import { usePeonPresence } from "../hooks/usePeonPresence";
@@ -9,26 +9,28 @@ import { useT } from "../i18n";
 import { useLiveSocket, type SessionLiveEvent } from "../liveSocket";
 import { PeonScopeSwitcher } from "../components/PeonScopeSwitcher";
 import { FadingTitle, SessionSidebarList } from "../components/SessionSidebarList";
+import { ProjectSidebarSection } from "../components/ProjectSidebarSection";
 import { PeonConnectionStatusDot } from "../components/PeonConnectionStatusDot";
 import type { PeonContext, PeonView } from "./peon/context";
+import { NewProjectDialog } from "./peon/NewProjectDialog";
+import { applyProjectEvent, mergeProjects, withLiveActiveSessionCounts, type ProjectLite } from "./peon/projectList";
 import { applyAttentionEvent, applySessionEvent, mergeSessions, sessionDisplayTitle, sessionFromIndex, sessionSidebarCanLoad, type IndexedSessionEvent, type IndexedSessionLite, type SessionLite } from "./peon/sessionList";
 import { MobilePaneIdentity } from "./peon/session/mobileHeader";
+import { nextSessionAfterDeletion } from "./peon/session/nextSession";
 
 // author: Viktor
 
 type PeonNavItem = {
   to: string;
-  key: "peon.tab.sessions" | "peon.tab.dashboard" | "peon.tab.projects" | "peon.tab.stats";
+  key: "peon.tab.work" | "peon.tab.stats";
   icon: LucideIcon;
   ownerOnly?: boolean;
 };
 
-// Sessions is the Peon landing view; the remaining primary views share the
-// compact icon rail with Settings instead of consuming vertical sidebar space.
+// Work is the Peon landing view. Projects live in the sidebar, leaving the
+// compact icon rail for Work, Stats, and Settings.
 const NAV: readonly PeonNavItem[] = [
-  { to: "sessions", key: "peon.tab.sessions", icon: MessageSquare },
-  { to: "overview", key: "peon.tab.dashboard", icon: LayoutDashboard },
-  { to: "projects", key: "peon.tab.projects", icon: FolderKanban },
+  { to: "sessions", key: "peon.tab.work", icon: Package },
   { to: "stats", key: "peon.tab.stats", icon: BarChart3, ownerOnly: true },
 ];
 
@@ -52,8 +54,9 @@ function savedSidebarWidth(): number {
 export function PeonDetail() {
   const t = useT();
   const { peonId = "", sid = "" } = useParams();
-  const { viewersFor, subscribeAttention, subscribeSessions } = useLiveSocket();
+  const { viewersFor, subscribeAttention, subscribeProjects, subscribeSessions } = useLiveSocket();
   const location = useLocation();
+  const navigate = useNavigate();
   const { current, workspaces, setCurrent, workspaceIdOfPeon } = useWorkspace();
   const wsOfPeon = workspaceIdOfPeon(peonId);
   const wsId = wsOfPeon ?? current?.id;
@@ -73,6 +76,9 @@ export function PeonDetail() {
   const [sessionOffset, setSessionOffset] = useState(0);
   const [sessionsLoading, setSessionsLoading] = useState(false);
   const [sessionPageError, setSessionPageError] = useState(false);
+  const [projects, setProjects] = useState<ProjectLite[] | null>(null);
+  const [projectError, setProjectError] = useState(false);
+  const [showNewProject, setShowNewProject] = useState(false);
   const { drawerOpen, setDrawerOpen } = useMobileDrawer();
   const [sidebarWidth, setSidebarWidth] = useState(savedSidebarWidth);
   const [resizing, setResizing] = useState(false);
@@ -139,6 +145,32 @@ export function PeonDetail() {
     const timer = window.setInterval(reload, 5000);
     return () => window.clearInterval(timer);
   }, [reload]);
+
+  const loadProjects = useCallback(async () => {
+    if (!wsId) return;
+    try {
+      const result = await api<{ projects: ProjectLite[] }>(`${base}/projects`);
+      const incoming = (result.projects ?? []).map((project) => ({ ...project, peonId: project.peonId ?? peonId }));
+      setProjects((current) => mergeProjects(current ?? [], incoming));
+      setProjectError(false);
+    } catch {
+      setProjectError(true);
+    }
+  }, [base, peonId, wsId]);
+
+  useEffect(() => {
+    setProjects(null);
+    setProjectError(false);
+    void loadProjects();
+    const timer = window.setInterval(loadProjects, 5000);
+    return () => window.clearInterval(timer);
+  }, [loadProjects]);
+
+  useEffect(() => subscribeProjects((event) => {
+    if (event.peonId !== peonId) return;
+    setProjects((current) => applyProjectEvent(current ?? [], event));
+    setProjectError(false);
+  }), [peonId, subscribeProjects]);
 
   const loadNextSessions = useCallback(async () => {
     if (!sessionSidebarCanLoad(wsId) || sessionLoading.current) return;
@@ -277,6 +309,13 @@ export function PeonDetail() {
 
   // Same ordering as the session list page: newest activity first.
   const ordered = [...sessions].sort((a, b) => (b.lastActivityAt ?? b.startedAt ?? 0) - (a.lastActivityAt ?? a.startedAt ?? 0));
+  // Project rollups refresh independently and can lag a live session event.
+  // Once the sidebar session projection is hydrated, use that same projection
+  // as the immediate source for project activity lights.
+  const sidebarProjects = useMemo(
+    () => projects && sessionTotal !== null ? withLiveActiveSessionCounts(projects, sessions) : projects,
+    [projects, sessionTotal, sessions],
+  );
 
   if (error) {
     return (
@@ -299,6 +338,7 @@ export function PeonDetail() {
     reload,
     isOwner,
     orderedSessionIds: ordered.map((session) => session.id),
+    selectedSessionTitle: sessions.find((session) => session.id === sid)?.title,
     onSessionDeleted: (_deletedPeonId, sessionId) => {
       setSessions((current) => current.filter((session) => session.id !== sessionId));
       setSessionTotal((total) => total === null ? null : Math.max(0, total - 1));
@@ -357,39 +397,64 @@ export function PeonDetail() {
           </div>
         </div>
 
-        {/* sessions list */}
-        <div className="flex items-center justify-between px-3.5 pb-1 pt-2">
-          <span className="font-display text-[0.58rem] uppercase tracking-[0.16em] text-bone-faint">{t("peon.tab.sessions")}</span>
-          <Link
-            to={newSessionTo}
-            className="font-display text-[0.58rem] uppercase tracking-[0.16em] text-bone-dim transition-colors hover:text-fel-bright"
-          >
-            {t("newSession.new")}
-          </Link>
+        <div ref={sessionScrollNode} className="min-h-0 flex-1 overflow-y-auto pb-24">
+          <ProjectSidebarSection
+            projects={sidebarProjects}
+            error={projectError}
+            to={(project) => `projects/${encodeURIComponent(project.key)}`}
+            onNew={isOwner ? () => setShowNewProject(true) : undefined}
+          />
+
+          {/* sessions list */}
+          <section>
+            <div className="flex items-center justify-between pb-1 pl-3.5 pr-1 pt-2">
+              <span className="font-display text-[0.58rem] uppercase tracking-[0.16em] text-bone-faint">{t("peon.tab.sessions")}</span>
+              <Link
+                to={newSessionTo}
+                className="font-display text-[0.58rem] uppercase tracking-[0.16em] text-bone-dim transition-colors hover:text-fel-bright"
+              >
+                {t("newSession.new")}
+              </Link>
+            </div>
+            <div className="pl-3.5 pr-1">
+              {!online && <p className="px-2 py-2 font-body text-xs text-bone-faint">{t("peon.offlineNote")}</p>}
+              {ordered.length === 0 && !sessionsLoading && !sessionPageError ? (
+                <p className="px-2 py-2 font-body text-xs text-bone-faint">{t("peon.dash.noSessions")}</p>
+              ) : (
+                <>
+                  <SessionSidebarList
+                    sessions={ordered}
+                    to={(session) => `sessions/${session.id}`}
+                    peonIdFor={() => peonId}
+                    viewersFor={viewersFor}
+                    onRename={async (session, title) => {
+                      await api(`${base}/sessions/${encodeURIComponent(session.id)}`, { method: "PATCH", body: JSON.stringify({ title }) });
+                      setSessions((current) => current.map((item) => item.id === session.id ? { ...item, title } : item));
+                    }}
+                    onDelete={async (session) => {
+                      const nextSessionId = nextSessionAfterDeletion(ordered.map((item) => item.id), session.id);
+                      await api(`${base}/sessions/${encodeURIComponent(session.id)}`, { method: "DELETE" });
+                      ctx.onSessionDeleted?.(peonId, session.id);
+                      if (sid === session.id) navigate(nextSessionId ? `/peons/${encodeURIComponent(peonId)}/sessions/${encodeURIComponent(nextSessionId)}` : `/peons/${encodeURIComponent(peonId)}`, { replace: true });
+                    }}
+                  />
+                  <div ref={sessionLoadSentinel} className="flex min-h-8 items-center justify-center px-2 py-2" aria-live="polite">
+                    {sessionsLoading && <span className="forge-spin scale-75" role="status" aria-label={t("sessions.loading")} />}
+                    {sessionPageError && (
+                      <button type="button" className="font-body text-[0.68rem] text-bone-dim hover:text-fel-bright" onClick={() => void loadNextSessions()}>
+                        {t("sessions.retry")}
+                      </button>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          </section>
         </div>
-        <div ref={sessionScrollNode} className="min-h-0 flex-1 overflow-y-auto pb-24 pl-3.5 pr-1">
-          {!online && <p className="px-2 py-2 font-body text-xs text-bone-faint">{t("peon.offlineNote")}</p>}
-          {ordered.length === 0 && !sessionsLoading && !sessionPageError ? (
-            <p className="px-2 py-2 font-body text-xs text-bone-faint">{t("peon.dash.noSessions")}</p>
-          ) : (
-            <>
-              <SessionSidebarList
-                sessions={ordered}
-                to={(session) => `sessions/${session.id}`}
-                peonIdFor={() => peonId}
-                viewersFor={viewersFor}
-              />
-              <div ref={sessionLoadSentinel} className="flex min-h-8 items-center justify-center px-2 py-2" aria-live="polite">
-                {sessionsLoading && <span className="forge-spin scale-75" role="status" aria-label={t("sessions.loading")} />}
-                {sessionPageError && (
-                  <button type="button" className="font-body text-[0.68rem] text-bone-dim hover:text-fel-bright" onClick={() => void loadNextSessions()}>
-                    {t("sessions.retry")}
-                  </button>
-                )}
-              </div>
-            </>
-          )}
-        </div>
+        {showNewProject && <NewProjectDialog base={base} onClose={() => {
+          setShowNewProject(false);
+          void loadProjects();
+        }} />}
         <div
           role="separator"
           aria-orientation="vertical"

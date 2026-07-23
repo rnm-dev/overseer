@@ -2,6 +2,9 @@ import { Hourglass, Send, Trash2 } from "lucide-react";
 import { attachmentLabel, type QueueItem } from "./queue";
 import type { Translate } from "../../../i18n";
 
+export const QUEUE_ACTION_CLASS = "flex h-7 min-w-7 items-center justify-center rounded-md bg-black/10 text-[11px] font-medium transition-colors hover:bg-black/20 disabled:cursor-wait disabled:opacity-40";
+export const QUEUE_HOURGLASS_CLASS = "mt-1 shrink-0 text-ember/70";
+
 export function QueueList({ items, removing, sending, onRemove, onSendNow, t }: {
   items: QueueItem[];
   removing: ReadonlySet<string>;
@@ -19,7 +22,7 @@ export function QueueList({ items, removing, sending, onRemove, onSendNow, t }: 
             <Hourglass
               size={13}
               strokeWidth={1.75}
-              className={`mt-1 shrink-0 ${sending.has(item.id) ? "animate-pulse text-ember" : "text-fel-bright"}`}
+              className={`${QUEUE_HOURGLASS_CLASS} ${sending.has(item.id) ? "animate-pulse text-ember" : ""}`}
               aria-hidden
             />
             <div className="min-w-0 flex-1">
@@ -33,24 +36,24 @@ export function QueueList({ items, removing, sending, onRemove, onSendNow, t }: 
             <div className="flex shrink-0 items-center gap-1">
               <button
                 type="button"
-                className="on-surface on-surface--interactive flex size-9 items-center justify-center rounded-lg text-xs font-medium text-ember hover:text-ember disabled:cursor-wait disabled:opacity-40 sm:w-auto sm:gap-1.5 sm:px-2.5"
+                className={`${QUEUE_ACTION_CLASS} text-ember/85 hover:text-ember sm:gap-1 sm:px-2`}
                 disabled={sending.has(item.id) || removing.has(item.id)}
                 onClick={() => onSendNow(item.id)}
                 title={t("session.queue.sendNow")}
                 aria-label={t("session.queue.sendNow")}
               >
-                <Send size={15} className={sending.has(item.id) ? "animate-pulse" : undefined} aria-hidden />
+                <Send size={13} className={sending.has(item.id) ? "animate-pulse" : undefined} aria-hidden />
                 <span className="hidden sm:inline">{t("session.queue.sendNow")}</span>
               </button>
               <button
                 type="button"
-                className="on-surface on-surface--interactive grid size-9 place-items-center rounded-lg text-bone-faint hover:bg-blood/10 hover:text-blood disabled:cursor-wait disabled:opacity-40"
+                className={`${QUEUE_ACTION_CLASS} text-bone/45 hover:bg-blood/10 hover:text-blood`}
                 disabled={removing.has(item.id) || sending.has(item.id)}
                 onClick={() => onRemove(item.id)}
                 title={t("session.queue.remove")}
                 aria-label={t("session.queue.remove")}
               >
-                {removing.has(item.id) ? "…" : <Trash2 size={20} aria-hidden />}
+                {removing.has(item.id) ? "…" : <Trash2 size={15} aria-hidden />}
               </button>
             </div>
           </li>
