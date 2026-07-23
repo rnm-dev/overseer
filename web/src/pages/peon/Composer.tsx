@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Hourglass } from "lucide-react";
 import { useT } from "../../i18n";
 
 // author: Viktor
@@ -32,13 +33,17 @@ export function supportsDesktopComposerFocus(): boolean {
     : window.innerWidth >= 768;
 }
 
+export const COMPOSER_SHELL_CLASS = "surface composer-shell relative p-2 shadow-[0_-6px_28px_-14px_rgba(0,0,0,0.8)] transition-[border-color,box-shadow] focus-within:border-fel-bright focus-within:ring-1 focus-within:ring-fel-bright/55";
+export const COMPOSER_ICON_ACTION_CLASS = "on-surface on-surface--interactive flex h-8 w-8 flex-none items-center justify-center rounded-lg";
+export const COMPOSER_TEXT_ACTION_CLASS = "on-surface on-surface--interactive h-8 flex-none rounded-lg px-3";
+
 export interface ComposerProps {
   value: string;
   onChange: (v: string) => void;
   onSubmit: () => void;
   placeholder: string;
   submitTitle: string;
-  submitLabel?: string;
+  submitIcon?: "send" | "queue";
   // True while the current prompt is in flight — locks input and spins the send button.
   disabled: boolean;
   pending?: boolean;
@@ -62,7 +67,7 @@ export function Composer({
   onSubmit,
   placeholder,
   submitTitle,
-  submitLabel,
+  submitIcon = "send",
   disabled,
   pending = disabled,
   autoFocus,
@@ -81,6 +86,7 @@ export function Composer({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const dragDepthRef = useRef(0);
   const [dragActive, setDragActive] = useState(false);
+  const canSubmit = !disabled && Boolean(value.trim() || files.length);
   // Object URLs for image thumbnails; revoked when the file set changes/unmounts.
   const previews = useMemo(() => files.map((f) => (isImage(f) ? URL.createObjectURL(f) : null)), [files]);
   useEffect(() => () => previews.forEach((u) => u && URL.revokeObjectURL(u)), [previews]);
@@ -113,7 +119,7 @@ export function Composer({
   return (
     <div
       data-file-drop-zone="composer"
-      className={`composer-shell relative rounded-xl border bg-iron-900/95 px-2 py-1 shadow-[0_-6px_28px_-14px_rgba(0,0,0,0.8)] backdrop-blur transition-colors focus-within:border-fel-deep ${dragActive ? "border-fel-deep bg-fel/10" : "border-iron-700"}`}
+      className={`${COMPOSER_SHELL_CLASS} ${dragActive ? "border-fel bg-fel/10" : ""}`}
       onDragEnter={(event) => {
         if (!isFileDrag(event.dataTransfer.types)) return;
         event.preventDefault();
@@ -179,7 +185,7 @@ export function Composer({
       />
       <textarea
         ref={textareaRef}
-        className="composer-input max-h-40 min-h-[2.25rem] w-full resize-none bg-transparent px-1.5 py-1.5 font-body text-sm leading-normal text-bone placeholder:text-bone-faint focus:outline-none"
+        className="composer-input max-h-40 min-h-8 w-full resize-none bg-transparent px-1 py-1 font-body text-sm leading-normal text-bone placeholder:text-bone-faint focus:outline-none"
         rows={1}
         autoFocus={autoFocus}
         value={value}
@@ -208,7 +214,7 @@ export function Composer({
           addFiles(pasted.map((f, i) => (f.name && f.name !== "image.png" ? f : new File([f], `pasted-${Date.now()}-${i}.${(f.type.split("/")[1] || "bin").replace("jpeg", "jpg")}`, { type: f.type }))));
         }}
       />
-      <div className="composer-toolbar flex flex-wrap items-center justify-between gap-1.5 px-1 pb-1 pt-1.5">
+      <div className="composer-toolbar flex flex-wrap items-center justify-between gap-1.5 pt-1">
         <div className="composer-toolbar-left flex min-w-0 flex-wrap items-center gap-1.5">
           <button
             type="button"
@@ -219,7 +225,7 @@ export function Composer({
               onErrorChange(null);
               fileInputRef.current?.click();
             }}
-            className="flex h-8 w-8 flex-none items-center justify-center rounded-md text-bone-faint transition-colors hover:bg-iron-800 hover:text-fel-bright disabled:opacity-30"
+            className={`${COMPOSER_ICON_ACTION_CLASS} text-bone-faint hover:text-fel-bright disabled:opacity-30`}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <path d="M5 12h14" />
@@ -235,7 +241,7 @@ export function Composer({
               type="button"
               onClick={secondaryAction.onClick}
               disabled={disabled || secondaryAction.disabled}
-              className="h-8 flex-none rounded-md border border-iron-700 px-2.5 font-mono text-xs text-bone-dim transition-colors hover:border-ember/60 hover:text-ember disabled:cursor-wait disabled:opacity-40"
+              className={`${COMPOSER_TEXT_ACTION_CLASS} font-mono text-xs text-bone-dim hover:text-ember disabled:cursor-wait disabled:opacity-40`}
             >
               {secondaryAction.pending ? "…" : secondaryAction.label}
             </button>
@@ -243,14 +249,14 @@ export function Composer({
           <button
             type="button"
             onClick={submit}
-            disabled={disabled || (!value.trim() && files.length === 0)}
+            disabled={!canSubmit}
             title={submitTitle}
-            className={`flex h-8 flex-none items-center justify-center bg-fel text-fel-ink transition-colors hover:bg-fel-bright disabled:bg-iron-800 disabled:text-bone-faint ${submitLabel ? "rounded-md px-3 font-mono text-xs font-semibold" : "w-8 rounded-full"}`}
+            className={`flex h-8 w-8 flex-none items-center justify-center rounded-lg transition-colors ${canSubmit ? "bg-fel text-fel-ink hover:bg-fel-bright" : "on-surface text-bone-faint"}`}
           >
             {pending ? (
               <span className="block h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-            ) : submitLabel ? (
-              submitLabel
+            ) : submitIcon === "queue" ? (
+              <Hourglass size={16} aria-hidden />
             ) : (
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                 <path d="M9 10 4 15l5 5" />

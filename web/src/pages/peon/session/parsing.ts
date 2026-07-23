@@ -202,7 +202,7 @@ export function latestRunSignal(events: Ev[]): RunSignal {
 // tool call renders as one row once its result lands, matched by tool_use_id.
 export type Item =
   | { kind: "user"; key: string; text: string; author?: string; authorEmail?: string; authorGithubLogin?: string; authorAvatarUrl?: string; attachments?: MessageAttachment[]; createdAt?: number }
-  | { kind: "text"; key: string; text: string; createdAt?: number }
+  | { kind: "text"; key: string; text: string; createdAt?: number; resultMeta?: { tone?: "neutral" | "error"; text: string } }
   | { kind: "thinking"; key: string; text: string }
   | { kind: "tool"; key: string; name?: string; input?: unknown; result?: { text: string; error?: boolean } }
   | { kind: "loose"; key: string; text: string }
@@ -258,7 +258,19 @@ export function flattenEvents(events: Ev[], t: T): Item[] {
         if (typeof ev.total_cost_usd === "number") parts.push(`$${ev.total_cost_usd.toFixed(2)}`);
         const out = ev.usage?.output_tokens ?? 0;
         if (out > 0) parts.push(`${compactNum.format(out)} ${t("peon.stats.outputTokens").toLowerCase()}`);
-        if (parts.length) items.push({ kind: "notice", key: `${ei}`, tone: ev.is_error ? "error" : "neutral", text: parts.join(" · ") });
+        if (parts.length) {
+          const resultMeta = { tone: ev.is_error ? "error" as const : "neutral" as const, text: parts.join(" · ") };
+          let lastText: Extract<Item, { kind: "text" }> | undefined;
+          for (let i = items.length - 1; i >= 0; i--) {
+            if (items[i].kind === "user") break;
+            if (items[i].kind === "text") {
+              lastText = items[i] as Extract<Item, { kind: "text" }>;
+              break;
+            }
+          }
+          if (lastText) lastText.resultMeta = resultMeta;
+          else items.push({ kind: "notice", key: `${ei}`, ...resultMeta });
+        }
         return;
       }
       case "rate_limit_event":

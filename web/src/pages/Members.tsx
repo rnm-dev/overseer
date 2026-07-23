@@ -282,7 +282,7 @@ export function Members() {
                       {accessBusy && !access ? <div className="forge-spin" /> : access && <div className="space-y-3">
                         {accessPeons.length === 0 ? <p className="font-mono text-xs text-bone-faint">{t("members.noPeons")}</p> : accessPeons.map((peon) => {
                           const peonEnabled = access.peonIds.includes(peon.peonId);
-                          return <div key={peon.peonId} className="rounded-lg border border-iron-800 bg-iron-900/60">
+                          return <div key={peon.peonId} className="surface surface--subtle">
                             <label className="flex cursor-pointer items-center gap-3 px-4 py-3">
                               <input type="checkbox" className="h-4 w-4 accent-[var(--color-fel)]" checked={peonEnabled} onChange={(event) => togglePeon(peon.peonId, event.target.checked)} />
                               <span className="h-2 w-2 rounded-full bg-iron-600" />

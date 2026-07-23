@@ -11,6 +11,7 @@ import { useAuth, type User } from "../auth";
 import { SessionPresence } from "../components/SessionPresence";
 import { useLiveSocket, type PresenceEntry, type PresenceUser } from "../liveSocket";
 import { useWorkspaceLivePresence } from "../workspaceLive";
+import { UserBox } from "../components/UserBox";
 
 // author: Viktor
 // The fleet dashboard (index): every peon in a grid, grouped by workspace. No
@@ -30,6 +31,16 @@ export function peonHref(id: string): string {
 export function workspaceListClass(count: number): string {
   return count === 1 ? "mx-auto max-w-2xl" : "grid gap-4 sm:grid-cols-2";
 }
+
+export function userBoxLayoutClass(workspaceCount: number): string {
+  return `mt-4 ${workspaceListClass(Math.max(workspaceCount, 1))}`;
+}
+
+export const HOME_WORKSPACE_CARD_CLASS = "surface overflow-hidden";
+export const HOME_WORKSPACE_HEADER_CLASS = "group block px-5 py-5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-fel/60";
+export const HOME_WORKSPACE_TITLE_CLASS = "truncate font-display text-lg font-bold tracking-[0.06em] text-fel-bright drop-shadow-[0_0_8px_rgba(134,171,99,0.18)] transition-colors group-hover:text-fel";
+export const HOME_PEON_LIST_CLASS = "space-y-3 px-4 pb-4";
+export const HOME_PEON_LINK_CLASS = "on-surface on-surface--interactive group/peon flex items-center gap-3 rounded-lg px-4 py-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-fel/60";
 
 export function presenceUsersForPeon(entries: PresenceEntry[], peonId: string): PresenceUser[] {
   const users = new Map<string, PresenceUser>();
@@ -60,19 +71,26 @@ export function Dashboard() {
 
       {!ready ? (
         <div className="grid min-h-44 place-items-center" aria-label={t("workspace.loading")}><div className="forge-spin" /></div>
-      ) : groups.length === 0 ? (
-        <div className="warplate px-6 py-12 text-center">
-          <p className="font-display text-base font-semibold text-bone">{t("workspace.empty")}</p>
-          <p className="mx-auto mt-1 max-w-md text-sm text-bone-faint">{t("workspace.emptyJoinedHint")}</p>
-        </div>
       ) : (
-        <ul className={workspaceListClass(groups.length)}>
-          {groups.map((group) => (
-            <li key={group.workspace.id}>
-              <WorkspaceCard workspace={group.workspace} />
-            </li>
-          ))}
-        </ul>
+        <>
+          {groups.length === 0 ? (
+            <div className="surface px-6 py-12 text-center">
+              <p className="font-display text-base font-semibold text-bone">{t("workspace.empty")}</p>
+              <p className="mx-auto mt-1 max-w-md text-sm text-bone-faint">{t("workspace.emptyJoinedHint")}</p>
+            </div>
+          ) : (
+            <ul className={workspaceListClass(groups.length)}>
+              {groups.map((group) => (
+                <li key={group.workspace.id}>
+                  <WorkspaceCard workspace={group.workspace} />
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className={userBoxLayoutClass(groups.length)}>
+            <UserBox />
+          </div>
+        </>
       )}
     </div>
   );
@@ -111,18 +129,18 @@ function WorkspaceCard({ workspace }: { workspace: Workspace }) {
   }, [workspace.id]);
 
   return (
-    <article className="warplate overflow-hidden">
+    <article className={HOME_WORKSPACE_CARD_CLASS}>
       <Link
         to={workspaceHref(workspace.id)}
-        className="group block px-5 py-6 transition-colors hover:bg-fel/[0.035] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-fel/60"
+        className={HOME_WORKSPACE_HEADER_CLASS}
       >
-        <h2 className="truncate font-display text-xl font-bold tracking-wide text-fel-bright transition-colors group-hover:text-fel">
+        <h2 className={HOME_WORKSPACE_TITLE_CLASS}>
           {workspace.name}
         </h2>
       </Link>
 
       {peons.length > 0 && (
-        <ul className="divide-y divide-iron-800 border-t border-iron-800">
+        <ul className={HOME_PEON_LIST_CLASS}>
           {peons.map((peon) => {
             const current = status[peon.peonId];
             const online = peon.online;
@@ -131,7 +149,7 @@ function WorkspaceCard({ workspace }: { workspace: Workspace }) {
             return <li key={peon.peonId}>
               <Link
                 to={peonHref(peon.peonId)}
-                className="group/peon flex items-center gap-3 px-4 py-3 transition-colors hover:bg-iron-800/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-fel/60"
+                className={HOME_PEON_LINK_CLASS}
               >
                 <PeonConnectionStatusDot {...peon} />
                 <span className="min-w-0 flex-1 truncate font-display text-sm font-semibold text-bone group-hover/peon:text-fel-bright">

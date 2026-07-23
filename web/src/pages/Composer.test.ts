@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { I18nProvider } from "../../i18n";
-import { Composer, isFileDrag } from "./Composer";
+import { I18nProvider } from "../i18n";
+import { COMPOSER_ICON_ACTION_CLASS, COMPOSER_SHELL_CLASS, COMPOSER_TEXT_ACTION_CLASS, Composer, isFileDrag } from "./peon/Composer";
 
 (globalThis as typeof globalThis & { React: typeof React }).React = React;
 
@@ -29,6 +29,16 @@ test("composer exposes the shared file drop zone", () => {
 
   assert.match(markup, /data-file-drop-zone="composer"/);
   assert.match(markup, /type="file"/);
+  assert.match(COMPOSER_SHELL_CLASS, /\bsurface\b/);
+  assert.match(COMPOSER_SHELL_CLASS, /focus-within:border-fel-bright/);
+  assert.match(COMPOSER_SHELL_CLASS, /focus-within:ring-1/);
+  assert.match(COMPOSER_SHELL_CLASS, /focus-within:ring-fel-bright\/55/);
+  assert.match(COMPOSER_SHELL_CLASS, /\bp-2\b/);
+  assert.match(COMPOSER_ICON_ACTION_CLASS, /\bon-surface\b/);
+  assert.match(COMPOSER_ICON_ACTION_CLASS, /\bh-8\b/);
+  assert.match(COMPOSER_ICON_ACTION_CLASS, /\bw-8\b/);
+  assert.match(COMPOSER_ICON_ACTION_CLASS, /\brounded-lg\b/);
+  assert.match(COMPOSER_TEXT_ACTION_CLASS, /\bon-surface\b/);
 });
 
 test("file drag detection ignores ordinary text and link drags", () => {
@@ -59,4 +69,32 @@ test("an unavailable composer is disabled without showing an in-flight spinner",
 
   assert.match(markup, /disabled=""/);
   assert.doesNotMatch(markup, /animate-spin/);
+  assert.match(markup, /\bon-surface\b/);
+  assert.doesNotMatch(markup, /\brounded-full\b/);
+});
+
+test("queue mode uses a square hourglass action instead of a text label", () => {
+  const markup = renderToStaticMarkup(React.createElement(
+    I18nProvider,
+    null,
+    React.createElement(Composer, {
+      value: "next prompt",
+      onChange: () => undefined,
+      onSubmit: () => undefined,
+      placeholder: "Message",
+      submitTitle: "Queue",
+      submitIcon: "queue",
+      disabled: false,
+      files: [],
+      onFilesChange: () => undefined,
+      onPreviewFile: () => undefined,
+      filesEnabled: true,
+      error: null,
+      onErrorChange: () => undefined,
+    }),
+  ));
+
+  assert.match(markup, /lucide-hourglass/);
+  assert.doesNotMatch(markup, />Queue</);
+  assert.match(markup, /\bh-8 w-8\b/);
 });

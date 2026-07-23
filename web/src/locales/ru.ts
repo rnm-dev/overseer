@@ -16,6 +16,8 @@ export const ru: Record<string, string> = {
   "toast.requestId": "Запрос:",
   "user.peonSounds": "Звуки",
   "user.noSound": "Без звука",
+  "user.settings": "Настройки",
+  "user.language": "Язык",
 
   "login.github": "Войти через GitHub",
   "login.signingIn": "переход на GitHub…",

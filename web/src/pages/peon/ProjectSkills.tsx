@@ -80,7 +80,7 @@ export function ProjectSkills() {
         {peon.online && state.kind === "ready" && state.skills.length === 0 && <p role="status" className="font-mono text-sm text-bone-faint">{t("proj.skills.empty")}</p>}
         {peon.online && state.kind === "ready" && state.skills.length > 0 && (
           <ul className="grid gap-3 md:grid-cols-2" aria-label={t("proj.skills.title")}>
-            {state.skills.map((skill) => <li key={`${skill.name}:${skill.path ?? ""}`} className="rounded border border-iron-800 bg-iron-900/30 p-4">
+            {state.skills.map((skill) => <li key={`${skill.name}:${skill.path ?? ""}`} className="surface surface--subtle p-4">
               <h3 className="font-display text-sm font-bold text-bone">{skill.name}</h3>
               <p className="mt-1 text-sm leading-relaxed text-bone-dim">{skill.description}</p>
               {skill.path && <p className="mt-3 break-all font-mono text-[0.7rem] text-bone-faint">{skill.path}</p>}

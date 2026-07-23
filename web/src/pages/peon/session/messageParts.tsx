@@ -3,45 +3,129 @@ import { Dialog } from "../../../ui";
 import { HighlightedCode, Markdown } from "../../../components/RichText";
 import { orcishThinkingLabel, prettyJsonOutput, toolHasOutputSection, toolSummary, type Item, type MessageAttachment, type T } from "./parsing";
 import { Avatar } from "../../../components/Avatar";
-import { FilePlus, FileX, Pencil, Terminal } from "lucide-react";
+import { FilePlus, FileX, ImageIcon, Paperclip, Pencil, Terminal } from "lucide-react";
+import { useAuth, type User } from "../../../auth";
+import { useI18n, type Locale } from "../../../i18n";
 
 // The transcript render atoms: one component per Item kind, plus the Markdown
 // renderer and the "agent is working" indicator. Pure presentation — all parsing
 // lives in ./parsing. author: Viktor
 
-function AttachmentPill({ attachment, onOpen }: { attachment: MessageAttachment; onOpen?: () => void }) {
+export const OWN_ATTACHMENT_CLASS = "bg-iron-950/25 text-bone hover:bg-iron-950/40";
+export const OTHER_ATTACHMENT_CLASS = "on-surface text-bone hover:bg-iron-700/60";
+
+export function attachmentMeta(attachment: MessageAttachment): string {
   const label = attachment.name || attachment.path?.split(/[\\/]/).pop() || "attachment";
-  const className = "flex min-w-0 items-center gap-1.5 rounded-md border border-fel/25 bg-iron-950/30 px-2 py-1 font-mono text-[0.7rem] text-bone-dim";
+  const extension = label.includes(".") ? label.split(".").pop()?.toUpperCase() : undefined;
+  const kind = attachment.type === "image" ? (extension || "IMAGE") : (extension || "FILE");
+  if (!attachment.size || attachment.size < 1) return kind;
+  const units = ["B", "KB", "MB", "GB"];
+  let size = attachment.size;
+  let unit = 0;
+  while (size >= 1024 && unit < units.length - 1) {
+    size /= 1024;
+    unit++;
+  }
+  const formatted = unit === 0 || size >= 10 ? Math.round(size).toString() : size.toFixed(1);
+  return `${kind} · ${formatted} ${units[unit]}`;
+}
+
+function AttachmentPill({ attachment, mine, onOpen }: { attachment: MessageAttachment; mine: boolean; onOpen?: () => void }) {
+  const label = attachment.name || attachment.path?.split(/[\\/]/).pop() || "attachment";
+  const className = `group/attachment flex min-w-0 items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors ${mine ? OWN_ATTACHMENT_CLASS : OTHER_ATTACHMENT_CLASS}`;
+  const iconClass = `grid h-7 w-7 shrink-0 place-items-center rounded-md ${mine ? "bg-bone/10 text-bone/80" : "bg-forge/10 text-forge"}`;
   const contents = <>
-      <span className="shrink-0 text-fel-bright" aria-hidden>{attachment.type === "image" ? "▧" : "▤"}</span>
-      <span className="truncate">{label}</span>
+      <span className={iconClass} aria-hidden>
+        {attachment.type === "image" ? <ImageIcon size={14} /> : <Paperclip size={14} />}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate font-display text-xs font-semibold">{label}</span>
+        <span className={`mt-0.5 block font-mono text-[0.65rem] leading-none ${mine ? "text-bone/55" : "text-bone-faint"}`}>{attachmentMeta(attachment)}</span>
+      </span>
     </>;
-  return onOpen ? <button type="button" className={`${className} text-left transition-colors hover:border-fel/50 hover:text-bone`} title={attachment.path || label} onClick={onOpen}>{contents}</button>
+  return onOpen ? <button type="button" className={`${className} cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset ${mine ? "focus-visible:ring-bone/50" : "focus-visible:ring-fel/60"}`} title={attachment.path || label} onClick={onOpen}>{contents}</button>
     : <div className={className} title={attachment.path || label}>{contents}</div>;
 }
 
-function LocalMessageTime({ createdAt }: { createdAt?: number }) {
+function sameLocalDay(left: Date, right: Date): boolean {
+  return left.getFullYear() === right.getFullYear()
+    && left.getMonth() === right.getMonth()
+    && left.getDate() === right.getDate();
+}
+
+export function formatMessageTimestamp(createdAt: number, now: number, locale: Locale, yesterdayLabel: string): string {
+  if (!createdAt) return "";
+  const date = new Date(createdAt);
+  const current = new Date(now);
+  if (Number.isNaN(date.getTime()) || Number.isNaN(current.getTime())) return "";
+  const localeTag = locale === "ru" ? "ru-RU" : "en-GB";
+  const time = new Intl.DateTimeFormat(localeTag, {
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).format(date);
+  if (sameLocalDay(date, current)) return time;
+  const yesterday = new Date(current);
+  yesterday.setDate(current.getDate() - 1);
+  if (sameLocalDay(date, yesterday)) return `${yesterdayLabel.toLowerCase()}, ${time}`;
+  const dayAndMonth = new Intl.DateTimeFormat(localeTag, {
+    day: "numeric",
+    month: "short",
+  }).format(date).replace(/\.$/, "").toLowerCase();
+  return `${dayAndMonth}, ${time}`;
+}
+
+function LocalMessageTime({ createdAt, locale, yesterdayLabel }: { createdAt?: number; locale: Locale; yesterdayLabel: string }) {
   if (!createdAt) return null;
   const date = new Date(createdAt);
   if (Number.isNaN(date.getTime())) return null;
-  const local = date.toLocaleString();
-  return <time dateTime={date.toISOString()} title={`${local} (${Intl.DateTimeFormat().resolvedOptions().timeZone})`}>{local}</time>;
+  const visible = formatMessageTimestamp(createdAt, Date.now(), locale, yesterdayLabel);
+  const local = date.toLocaleString(locale === "ru" ? "ru-RU" : "en-GB");
+  return <time dateTime={date.toISOString()} title={`${local} (${Intl.DateTimeFormat().resolvedOptions().timeZone})`}>{visible}</time>;
 }
 
-export function UserBubble({ text, author, authorEmail, authorAvatarUrl, attachments, createdAt, onOpenAttachment }: { text: string; author?: string; authorEmail?: string; authorGithubLogin?: string; authorAvatarUrl?: string; attachments?: MessageAttachment[]; createdAt?: number; onOpenAttachment?: (attachment: MessageAttachment) => void }) {
-  const displayAuthor = authorEmail || author;
+const USER_BUBBLE_BASE_CLASS = "max-w-[80%] whitespace-pre-wrap break-words rounded-xl rounded-br-sm px-3 py-1.5 text-sm leading-normal text-bone";
+export const OWN_USER_BUBBLE_CLASS = `${USER_BUBBLE_BASE_CLASS} bg-forge-deep`;
+export const OTHER_USER_BUBBLE_CLASS = `${USER_BUBBLE_BASE_CLASS} surface`;
+export const OTHER_USER_BUBBLE_AUTHOR_CLASS = "mb-1 truncate font-body text-[0.68rem] font-semibold leading-tight text-fel-bright";
+export const OWN_USER_BUBBLE_TIME_CLASS = "font-body text-[0.65rem] leading-tight text-bone/60";
+export const OTHER_USER_BUBBLE_TIME_CLASS = "font-body text-[0.65rem] leading-tight text-bone-faint";
+
+export function isCompactUserMessage(text: string, attachments?: MessageAttachment[]): boolean {
+  const trimmed = text.trim();
+  return trimmed.length > 0 && trimmed.length <= 48 && !trimmed.includes("\n") && !attachments?.length;
+}
+
+export function isOwnMessageAuthor(user: User | null, authorEmail?: string, authorGithubLogin?: string, author?: string): boolean {
+  if (!user) return false;
+  const currentIdentities = [user.email, user.githubLogin].filter((value): value is string => !!value).map((value) => value.toLowerCase());
+  const authorIdentities = [authorEmail, authorGithubLogin, author].filter((value): value is string => !!value).map((value) => value.toLowerCase());
+  return authorIdentities.some((identity) => currentIdentities.includes(identity));
+}
+
+export function UserBubble({ text, author, authorEmail, authorGithubLogin, authorAvatarUrl, attachments, createdAt, onOpenAttachment }: { text: string; author?: string; authorEmail?: string; authorGithubLogin?: string; authorAvatarUrl?: string; attachments?: MessageAttachment[]; createdAt?: number; onOpenAttachment?: (attachment: MessageAttachment) => void }) {
+  const { user } = useAuth();
+  const { locale, t } = useI18n();
+  const mine = isOwnMessageAuthor(user, authorEmail, authorGithubLogin, author);
+  const compact = isCompactUserMessage(text, attachments);
+  const displayAuthor = authorGithubLogin || authorEmail || author;
   const avatarLabel = displayAuthor || "Unknown message author";
   return (
     <div className="flex items-end justify-end gap-2">
-      <div className="max-w-[80%] whitespace-pre-wrap break-words rounded-xl rounded-br-sm border border-fel/25 bg-fel/[0.12] px-3 py-1.5 text-sm leading-normal text-bone">
-        {displayAuthor && <div className="mb-1 truncate font-mono text-[0.68rem] leading-tight text-fel-bright" title={displayAuthor}>{displayAuthor}</div>}
-        {text && <div>{text}</div>}
+      <div className={mine ? OWN_USER_BUBBLE_CLASS : OTHER_USER_BUBBLE_CLASS}>
+        {!mine && displayAuthor && <div className={OTHER_USER_BUBBLE_AUTHOR_CLASS} title={displayAuthor}>{displayAuthor}</div>}
+        {compact ? (
+          <div className="flex items-end gap-3">
+            <div className="min-w-0 flex-1">{text}</div>
+            {createdAt && <div className={`${mine ? OWN_USER_BUBBLE_TIME_CLASS : OTHER_USER_BUBBLE_TIME_CLASS} shrink-0 pb-px`}><LocalMessageTime createdAt={createdAt} locale={locale} yesterdayLabel={t("peon.stats.period.yesterday")} /></div>}
+          </div>
+        ) : text ? <div>{text}</div> : null}
         {!!attachments?.length && (
           <div className={text ? "mt-2 grid gap-1" : "grid gap-1"}>
-            {attachments.map((attachment, i) => <AttachmentPill key={`${attachment.path || attachment.name || "attachment"}-${i}`} attachment={attachment} onOpen={attachment.path ? () => onOpenAttachment?.(attachment) : undefined} />)}
+            {attachments.map((attachment, i) => <AttachmentPill key={`${attachment.path || attachment.name || "attachment"}-${i}`} attachment={attachment} mine={mine} onOpen={attachment.path ? () => onOpenAttachment?.(attachment) : undefined} />)}
           </div>
         )}
-        {createdAt && <div className="mt-1 text-right font-mono text-[0.65rem] leading-tight text-bone-faint"><LocalMessageTime createdAt={createdAt} /></div>}
+        {createdAt && !compact && <div className={`${mine ? OWN_USER_BUBBLE_TIME_CLASS : OTHER_USER_BUBBLE_TIME_CLASS} mt-1 text-right`}><LocalMessageTime createdAt={createdAt} locale={locale} yesterdayLabel={t("peon.stats.period.yesterday")} /></div>}
       </div>
       <Avatar src={authorAvatarUrl} label={avatarLabel} className="border-fel/35 bg-fel/15 text-fel-bright" />
     </div>
@@ -53,7 +137,7 @@ export function UserBubble({ text, author, authorEmail, authorAvatarUrl, attachm
 // instead of floating in its own row.
 function Notice({ tone, children }: { tone?: "neutral" | "error"; children: ReactNode }) {
   return (
-    <div className={`-mt-2.5 flex justify-start font-mono text-[0.7rem] ${tone === "error" ? "text-blood" : "text-bone-faint"}`}>{children}</div>
+    <div className={`-mt-2.5 flex justify-start font-body text-[0.7rem] ${tone === "error" ? "text-blood" : "text-bone-faint"}`}>{children}</div>
   );
 }
 
@@ -353,14 +437,14 @@ function ToolDetailsModal({ name, input, command, result, t, onClose }: { name?:
               ))}
           </div>
         ) : (
-          <section className="overflow-hidden rounded-xl border border-iron-700/80 bg-iron-950/55">
+          <section className="surface surface--inset overflow-hidden">
             <div className="flex items-center gap-2 border-b border-iron-800 bg-iron-900/70 px-3.5 py-2.5 font-display text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-bone-dim">
               <span className="text-fel-bright" aria-hidden>›_</span>{t("session.chat.command")}
             </div>
             <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words p-3.5 font-mono text-xs leading-relaxed text-bone-dim">{inputText || "—"}</pre>
           </section>
         )}
-        {toolHasOutputSection(name) && <section className={`overflow-hidden rounded-xl border bg-iron-950/55 ${result?.error ? "border-blood/35" : "border-iron-700/80"}`}>
+        {toolHasOutputSection(name) && <section className={`surface surface--inset overflow-hidden ${result?.error ? "border-blood/35" : ""}`}>
           <div className="flex items-center gap-2 border-b border-iron-800 bg-iron-900/70 px-3.5 py-2.5 font-display text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-bone-dim">
             <span className={result?.error ? "text-blood" : "text-forge"} aria-hidden>↳</span>{t("session.chat.output")}
           </div>
@@ -420,7 +504,7 @@ interface PreviewRequest {
   createdAt?: number;
 }
 
-export function ItemView({ item, t, onOpenPreview, onOpenAttachment }: { item: Item; t: T; onOpenPreview?: (preview: PreviewRequest) => void; onOpenAttachment?: (attachment: MessageAttachment) => void }) {
+export function ItemView({ item, t, locale = "en", yesterdayLabel = "Yesterday", onOpenPreview, onOpenAttachment }: { item: Item; t: T; locale?: Locale; yesterdayLabel?: string; onOpenPreview?: (preview: PreviewRequest) => void; onOpenAttachment?: (attachment: MessageAttachment) => void }) {
   switch (item.kind) {
     case "user":
       return <UserBubble text={item.text} author={item.author} authorEmail={item.authorEmail} authorGithubLogin={item.authorGithubLogin} authorAvatarUrl={item.authorAvatarUrl} attachments={item.attachments} createdAt={item.createdAt} onOpenAttachment={onOpenAttachment} />;
@@ -428,7 +512,13 @@ export function ItemView({ item, t, onOpenPreview, onOpenAttachment }: { item: I
       return (
         <div className="text-sm leading-relaxed text-bone">
           <Markdown source={item.text} onOpenFile={(path) => onOpenPreview?.({ path })} />
-          {item.createdAt && <div className="mt-1 font-mono text-[0.65rem] leading-tight text-bone-faint"><LocalMessageTime createdAt={item.createdAt} /></div>}
+          {(item.createdAt || item.resultMeta) && (
+            <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 font-body text-[0.65rem] leading-tight text-bone-faint">
+              {item.createdAt && <LocalMessageTime createdAt={item.createdAt} locale={locale} yesterdayLabel={yesterdayLabel} />}
+              {item.createdAt && item.resultMeta && <span aria-hidden>·</span>}
+              {item.resultMeta && <span className={item.resultMeta.tone === "error" ? "text-blood" : undefined}>{item.resultMeta.text}</span>}
+            </div>
+          )}
         </div>
       );
     case "thinking":
