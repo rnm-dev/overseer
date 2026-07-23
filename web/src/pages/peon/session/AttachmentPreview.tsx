@@ -36,7 +36,7 @@ export function AttachmentPreview({ base, attachment, onClose }: { base: string;
 
   return (
     <Dialog title={name} onClose={onClose} size="lg">
-      <div className="max-h-[75vh] overflow-auto rounded border border-iron-800 bg-iron-950/50">
+      <div className="surface surface--inset max-h-[75vh] overflow-auto">
         {!url && text === null && !error && <div className="grid h-40 place-items-center"><div className="forge-spin" /></div>}
         {error && <p className="p-4 font-mono text-sm text-blood">{error}</p>}
         {url && (mediaKind === "pdf" ? <iframe src={url} title={name} className="h-[70vh] w-full" /> : <img src={url} alt={name} className="mx-auto max-h-[70vh] max-w-full" />)}

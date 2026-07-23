@@ -270,7 +270,7 @@ function MarketplaceList() {
       </header>
 
       {!peon.online && <p className="border-l-2 border-blood bg-blood/5 px-4 py-3 font-mono text-sm text-blood">This Peon is offline — Armory data is unavailable.</p>}
-      <div className="warplate flex flex-col gap-2.5 p-2.5 lg:flex-row">
+      <div className="surface flex flex-col gap-2.5 p-2.5 lg:flex-row">
         <label className="group relative min-w-0 flex-1">
           <span className="sr-only">Search packages</span>
           <Search className="pointer-events-none absolute left-3.5 top-1/2 z-10 -translate-y-1/2 text-bone-faint transition-colors group-focus-within:text-fel-bright" size={17} aria-hidden />

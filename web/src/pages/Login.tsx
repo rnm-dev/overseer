@@ -34,7 +34,7 @@ export function Login() {
           <p className="mt-3 font-mono text-[0.7rem] uppercase tracking-[0.3em] text-fel-deep">{t("app.tagline")}</p>
         </div>
 
-        <Card className="warplate--lit p-8">
+        <Card className="surface--lit p-8">
           <Button type="button" className="flex w-full items-center justify-center gap-2" disabled={busy} onClick={signIn}>
             <GithubMark size={18} />
             {busy ? t("login.signingIn") : t("login.github")}

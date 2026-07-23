@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import { LOCALES, useI18n } from "./i18n";
 import { DIALOG_EXIT_MS, sheetDragProgress, shouldDismissSheet } from "./dialogMotion";
 
-// UI primitives — styling lives in index.css (.warplate, .btn-*, .field, .badge-*).
+// UI primitives — styling lives in index.css (.surface, .btn-*, .field, .badge-*).
 // author: Viktor
 
 type Variant = "fel" | "iron" | "ghost";
@@ -33,7 +33,7 @@ export function Input({ className = "", ...props }: InputHTMLAttributes<HTMLInpu
 }
 
 export function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
-  return <div className={`warplate ${className}`}>{children}</div>;
+  return <div className={`surface ${className}`}>{children}</div>;
 }
 
 export function Dialog({ title, children, onClose, size = "md", dismissible = true }: { title: ReactNode; children: ReactNode; onClose: () => void; size?: "md" | "lg"; dismissible?: boolean }) {

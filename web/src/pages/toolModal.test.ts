@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import { ItemView, editDiff, editFileName, editOperation, editStats, editStatsFromInput } from "./peon/session/messageParts";
-import { toolHasOutputSection } from "./peon/session/parsing";
+import { ItemView, OTHER_ATTACHMENT_CLASS, OTHER_USER_BUBBLE_AUTHOR_CLASS, OTHER_USER_BUBBLE_CLASS, OTHER_USER_BUBBLE_TIME_CLASS, OWN_ATTACHMENT_CLASS, OWN_USER_BUBBLE_CLASS, OWN_USER_BUBBLE_TIME_CLASS, attachmentMeta, editDiff, editFileName, editOperation, editStats, editStatsFromInput, formatMessageTimestamp, isCompactUserMessage, isOwnMessageAuthor } from "./peon/session/messageParts";
+import { flattenEvents, toolHasOutputSection } from "./peon/session/parsing";
 
 const t = ((key: string) => key) as Parameters<typeof ItemView>[0]["t"];
 
@@ -10,6 +10,61 @@ test("edit tool details omit the output section", () => {
   assert.equal(toolHasOutputSection("Edit"), false);
   assert.equal(toolHasOutputSection("edit"), false);
   assert.equal(toolHasOutputSection(" EDIT "), false);
+});
+
+test("own chat messages use deep forge while other users use the canonical surface", () => {
+  assert.match(OWN_USER_BUBBLE_CLASS, /\bbg-forge-deep\b/);
+  assert.match(OWN_USER_BUBBLE_CLASS, /\btext-bone\b/);
+  assert.doesNotMatch(OWN_USER_BUBBLE_CLASS, /\bsurface\b/);
+  assert.match(OTHER_USER_BUBBLE_CLASS, /\bsurface\b/);
+  assert.doesNotMatch(OTHER_USER_BUBBLE_CLASS, /\bbg-forge-deep\b/);
+  assert.match(OTHER_USER_BUBBLE_AUTHOR_CLASS, /\btext-fel-bright\b/);
+  assert.match(OTHER_USER_BUBBLE_AUTHOR_CLASS, /\bfont-body\b/);
+  assert.match(OWN_USER_BUBBLE_TIME_CLASS, /\btext-bone\/60\b/);
+  assert.match(OTHER_USER_BUBBLE_TIME_CLASS, /\btext-bone-faint\b/);
+  assert.match(OWN_USER_BUBBLE_TIME_CLASS, /\bfont-body\b/);
+});
+
+test("message ownership matches current email or GitHub login without case sensitivity", () => {
+  const user = { email: "Viktor.Ten@me.com", githubLogin: "vibze" };
+  assert.equal(isOwnMessageAuthor(user, "viktor.ten@me.com"), true);
+  assert.equal(isOwnMessageAuthor(user, undefined, "VIBZE"), true);
+  assert.equal(isOwnMessageAuthor(user, undefined, undefined, "other@example.com"), false);
+  assert.equal(isOwnMessageAuthor(null, "viktor.ten@me.com"), false);
+});
+
+test("message attachments adapt to bubble ownership and expose compact metadata", () => {
+  assert.match(OWN_ATTACHMENT_CLASS, /\bbg-iron-950\/25\b/);
+  assert.match(OTHER_ATTACHMENT_CLASS, /\bon-surface\b/);
+  assert.equal(attachmentMeta({ type: "image", name: "preview.png", size: 245_760 }), "PNG · 240 KB");
+  assert.equal(attachmentMeta({ type: "file", name: "notes", size: 1_258_291 }), "FILE · 1.2 MB");
+});
+
+test("message timestamps omit today, name yesterday, and use a short older date", () => {
+  const now = new Date(2026, 4, 25, 8, 30).getTime();
+  assert.equal(formatMessageTimestamp(new Date(2026, 4, 25, 23, 15).getTime(), now, "en", "Yesterday"), "23:15");
+  assert.equal(formatMessageTimestamp(new Date(2026, 4, 24, 23, 15).getTime(), now, "en", "Yesterday"), "yesterday, 23:15");
+  assert.equal(formatMessageTimestamp(new Date(2026, 4, 23, 23, 15).getTime(), now, "en", "Yesterday"), "23 may, 23:15");
+});
+
+test("only short attachment-free single-line user messages use the compact timestamp row", () => {
+  assert.equal(isCompactUserMessage("Short message"), true);
+  assert.equal(isCompactUserMessage("A message that is deliberately longer than forty-eight characters"), false);
+  assert.equal(isCompactUserMessage("first\nsecond"), false);
+  assert.equal(isCompactUserMessage("Short", [{ type: "file", name: "plan.md" }]), false);
+});
+
+test("assistant timestamp and result summary share one Golos metadata row", () => {
+  const [item] = flattenEvents([
+    { type: "assistant", createdAt: Date.now(), message: { content: [{ type: "text", text: "Done" }] } },
+    { type: "result", duration_ms: 3_000, num_turns: 1, usage: { output_tokens: 28 } },
+  ], t);
+  assert.equal(item.kind, "text");
+  if (item.kind !== "text") return;
+  assert.equal(item.resultMeta?.text, "3s · session.chat.turns · 28 peon.stats.outputtokens");
+  const html = renderToStaticMarkup(ItemView({ item, t }));
+  assert.match(html, /font-body/);
+  assert.match(html, /<time[^>]*>[^<]+<\/time><span[^>]*>·<\/span><span>3s · session\.chat\.turns · 28 peon\.stats\.outputtokens<\/span>/);
 });
 
 test("other tool detail types retain their output section", () => {

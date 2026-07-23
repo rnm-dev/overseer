@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { useNavigate, useParams } from "react-router-dom";
 import { api, ApiError, isPeonNeedsUpdate } from "../../api";
 import { useAuth } from "../../auth";
-import { useT } from "../../i18n";
+import { useI18n } from "../../i18n";
 import { useLiveSocket } from "../../liveSocket";
 import { usePeon } from "./context";
 import { modelLabel, optionMatches, providerForAgent, providerForModel, useModels } from "./models";
@@ -54,7 +54,7 @@ function storeFilePaneState(pageKey: string, open: boolean) {
 }
 
 export function PeonSessionDetail() {
-  const t = useT();
+  const { locale, t } = useI18n();
   const { user } = useAuth();
   const { peon, base, wsId, orderedSessionIds, sessionHref, sessionsHomeHref, onSessionDeleted } = usePeon();
   const { sid = "" } = useParams();
@@ -486,7 +486,7 @@ export function PeonSessionDetail() {
             )}
             {items.map((item, i) => (
               <div key={item.key} className={i === 0 ? "" : gapClass(items[i - 1].kind === "user", item.kind === "user")}>
-                <ItemView item={item} t={t} onOpenPreview={(p) => setArtifactPreview({ path: p.path, author: p.author, createdAt: p.createdAt })} onOpenAttachment={setSentAttachmentPreview} />
+                <ItemView item={item} t={t} locale={locale} yesterdayLabel={t("peon.stats.period.yesterday")} onOpenPreview={(p) => setArtifactPreview({ path: p.path, author: p.author, createdAt: p.createdAt })} onOpenAttachment={setSentAttachmentPreview} />
               </div>
             ))}
             {running && (

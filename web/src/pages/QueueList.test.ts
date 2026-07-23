@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { QueueList } from "./QueueList";
-import type { QueueItem } from "./queue";
+import { QueueList } from "./peon/session/QueueList";
+import type { QueueItem } from "./peon/session/queue";
 
 (globalThis as typeof globalThis & { React: typeof React }).React = React;
 
@@ -36,7 +36,9 @@ test("every queued item exposes an accessible send-now action", () => {
   assert.match(html, /lucide-hourglass/);
   assert.match(html, /width="13"[^>]*lucide-hourglass/);
   assert.doesNotMatch(html, /size-8[^>]*>[\s\S]*?lucide-hourglass/);
-  assert.match(html, /@viktor@example\.test/);
+  assert.doesNotMatch(html, /viktor@example\.test/);
+  assert.match(html, /bg-forge-deep\/55/);
+  assert.match(html, /on-surface/);
   assert.match(html, /plan\.md/);
   assert.doesNotMatch(html, /gpt-5|high|full-access/);
 });

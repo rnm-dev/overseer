@@ -65,7 +65,7 @@ export function SessionComposerDock(props: Props) {
       onSubmit={() => void (running ? enqueue(false) : send())}
       placeholder={t("session.compose.placeholder")}
       submitTitle={running ? t("session.queue.action") : t("session.compose.send")}
-      submitLabel={running ? t("session.queue.action") : undefined}
+      submitIcon={running ? "queue" : "send"}
       disabled={sending || !controlConnected}
       pending={sending}
       autoFocus={supportsDesktopComposerFocus()}

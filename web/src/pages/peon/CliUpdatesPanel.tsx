@@ -91,7 +91,7 @@ export function CliUpdatesPanel({ base, online }: Props) {
             const failed = ["failed", "failure"].includes(item.status.toLowerCase());
             const available = item.updateAvailable === true;
             return (
-              <div key={item.provider} className="flex min-h-44 flex-col border border-iron-700 bg-iron-950/35 px-4 py-4">
+              <div key={item.provider} className="surface surface--inset flex min-h-44 flex-col px-4 py-4">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="font-display text-sm font-bold text-bone">{labels[item.provider]}</p>

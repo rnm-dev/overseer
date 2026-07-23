@@ -57,7 +57,7 @@ export function Join() {
       <LocaleSwitcher className="fixed right-4 top-4" />
       <div className="reveal flex w-full max-w-sm flex-col items-center text-center">
         <Logo size={150} />
-        <Card className="warplate--lit mt-6 w-full p-8">
+        <Card className="surface--lit mt-6 w-full p-8">
           {preview === "invalid" ? (
             <>
               <p className="font-mono text-sm text-blood">{t("join.invalid")}</p>

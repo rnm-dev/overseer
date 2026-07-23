@@ -197,7 +197,7 @@ function PathSelectorModal({
 
   return (
     <Dialog title={t("pathSelector.title")} onClose={onClose} size="lg">
-      <div className="overflow-hidden rounded-lg border border-iron-800 bg-iron-950/60">
+      <div className="surface surface--inset overflow-hidden">
         <div className="flex min-h-10 flex-wrap items-center gap-1 border-b border-iron-800 px-3 py-2 font-mono text-xs" title={selectedPath || undefined}>
           <button type="button" onClick={() => setCurrentPath("/")} className="text-bone-dim hover:text-fel-bright">/</button>
           {locations === null && <span className="text-bone-dim">{t("app.loading")}</span>}

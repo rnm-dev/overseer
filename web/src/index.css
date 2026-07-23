@@ -40,6 +40,7 @@
 
   /* forge — softened amber for warnings */
   --color-forge: #d99441;
+  --color-forge-deep: #8d5624;
   --color-ember: #e6b877;
 
   /* blood — softened red for danger */
@@ -416,15 +417,47 @@ html.peon-sidebar-resizing * {
 .hljs-strong { font-weight: 700; }
 
 /* ------------------------------------------------------------------ *
- *  Panels — flat, thin-bordered                                       *
+ *  Surfaces — the default app card/panel treatment                    *
  * ------------------------------------------------------------------ */
-.warplate {
+:where(.surface, .warplate) {
   background: var(--color-iron-900);
   border: 1px solid var(--color-iron-800);
-  border-radius: 8px;
+  border-radius: 12px;
 }
-.warplate--lit {
+
+:where(.surface--lit, .warplate--lit) {
   border-color: var(--color-fel-deep);
+}
+
+:where(.surface--subtle) {
+  background: color-mix(in srgb, var(--color-iron-900) 60%, transparent);
+}
+
+:where(.surface--inset) {
+  background: color-mix(in srgb, var(--color-iron-950) 58%, transparent);
+  border-color: color-mix(in srgb, var(--color-iron-700) 80%, transparent);
+}
+
+:where(.surface--interactive) {
+  transition: background-color 150ms ease, border-color 150ms ease;
+}
+
+:where(.surface--interactive:hover) {
+  background: color-mix(in srgb, var(--color-fel) 3%, var(--color-iron-900));
+  border-color: color-mix(in srgb, var(--color-fel) 40%, var(--color-iron-800));
+}
+
+/* Borderless controls and rows placed inside a surface. */
+:where(.on-surface) {
+  background: color-mix(in srgb, var(--color-iron-800) 52%, var(--color-iron-900));
+}
+
+:where(.on-surface--interactive) {
+  transition: background-color 150ms ease, color 150ms ease;
+}
+
+:where(.on-surface--interactive:hover) {
+  background: color-mix(in srgb, var(--color-iron-700) 48%, var(--color-iron-900));
 }
 
 /* thin rule under a section header */
@@ -658,8 +691,9 @@ html.peon-sidebar-resizing * {
   height: 2rem;
   min-height: 2rem;
   border: none;
-  background: transparent;
-  padding: 0 0.55rem;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-iron-800) 52%, var(--color-iron-900));
+  padding: 0 0.625rem;
   gap: 0.35rem;
   font-family: var(--font-mono);
   font-size: 0.875rem;
@@ -669,7 +703,7 @@ html.peon-sidebar-resizing * {
 .model-picker.model-select-compact .model-picker-trigger:hover,
 .model-picker.model-select-compact .model-picker-trigger:focus {
   border: none;
-  background: rgba(35, 37, 31, 0.6);
+  background: color-mix(in srgb, var(--color-iron-700) 48%, var(--color-iron-900));
   color: var(--color-fel-bright);
 }
 .model-picker.model-select-compact .model-picker-menu {
