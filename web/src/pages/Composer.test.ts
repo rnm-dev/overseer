@@ -98,3 +98,35 @@ test("queue mode uses a square hourglass action instead of a text label", () => 
   assert.doesNotMatch(markup, />Queue</);
   assert.match(markup, /\bh-8 w-8\b/);
 });
+
+test("mobile stop-and-queue action uses a compact lightning icon", () => {
+  const markup = renderToStaticMarkup(React.createElement(
+    I18nProvider,
+    null,
+    React.createElement(Composer, {
+      value: "urgent follow-up",
+      onChange: () => undefined,
+      onSubmit: () => undefined,
+      placeholder: "Message",
+      submitTitle: "Queue",
+      submitIcon: "queue",
+      disabled: false,
+      files: [],
+      onFilesChange: () => undefined,
+      onPreviewFile: () => undefined,
+      filesEnabled: true,
+      error: null,
+      onErrorChange: () => undefined,
+      secondaryAction: {
+        label: "Queue & stop",
+        mobileIcon: "zap",
+        onClick: () => undefined,
+      },
+    }),
+  ));
+
+  assert.match(markup, /aria-label="Queue &amp; stop"/);
+  assert.match(markup, /lucide-zap/);
+  assert.match(markup, /class="hidden sm:inline">Queue &amp; stop/);
+  assert.match(markup, /\bh-8 w-8\b/);
+});

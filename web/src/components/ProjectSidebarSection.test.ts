@@ -41,7 +41,8 @@ test("project sidebar renders a collapsible header and every visible project lin
   assert.match(markup, />OVERSEER</);
   assert.match(markup, />RNM Website</);
   assert.match(markup, /aria-current="page"/);
-  assert.match(markup, /justify-between pb-1 pl-3\.5 pr-1 pt-2/);
+  assert.match(markup, /justify-between px-2 pb-1 pt-2 md:pl-3\.5 md:pr-1/);
+  assert.match(markup, /id="peon-sidebar-projects" class="px-2 pb-2 md:pl-3\.5 md:pr-1"/);
   assert.match(markup, /block rounded px-2\.5 py-1\.5 transition-colors bg-fel\/10/);
   assert.match(markup, /font-display text-\[0\.8rem\] text-bone/);
   assert.match(markup, />3 members</);
