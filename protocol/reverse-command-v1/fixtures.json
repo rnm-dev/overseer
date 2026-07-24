@@ -1,0 +1,86 @@
+{
+  "contractVersion": 1,
+  "capability": "reverse-command-v1",
+  "maxCommandFrameBytes": 61440,
+  "enabledOperations": ["session.cancel"],
+  "frames": {
+    "command": {
+      "type": "command",
+      "protocol": 1,
+      "capability": "reverse-command-v1",
+      "commandId": "018f4f0c-9f30-7a61-bf1a-66d2582bdb4a",
+      "operation": "session.cancel",
+      "target": {
+        "peonId": "f4de920f-e33e-4cf5-97d0-3a75e9266090",
+        "sessionId": "6a379713-f4ca-4ca4-b4a8-9a3fbfea80d5"
+      },
+      "actor": {
+        "userId": "b169219d-45f6-4f42-b78f-3fb931dac7ee",
+        "email": "operator@example.com"
+      },
+      "payload": {},
+      "requestedAt": 1784912400000
+    },
+    "accepted": {
+      "type": "command_accepted",
+      "protocol": 1,
+      "commandId": "018f4f0c-9f30-7a61-bf1a-66d2582bdb4a",
+      "operation": "session.cancel",
+      "state": "accepted",
+      "replayed": false,
+      "acceptedAt": 1784912400010
+    },
+    "durableResult": {
+      "type": "durable_message",
+      "epoch": "delivery-epoch",
+      "cursor": "0000000000000042",
+      "messageId": "b47f43a9-a537-4af7-abcf-ad7acfef8904",
+      "priority": "critical",
+      "capability": "reverse-command-v1",
+      "payload": {
+        "type": "command_result",
+        "protocol": 1,
+        "commandId": "018f4f0c-9f30-7a61-bf1a-66d2582bdb4a",
+        "operation": "session.cancel",
+        "status": "applied",
+        "code": "OK",
+        "completedAt": 1784912400040,
+        "result": {
+          "sessionId": "6a379713-f4ca-4ca4-b4a8-9a3fbfea80d5",
+          "sessionStatus": "cancelled"
+        }
+      }
+    },
+    "statusRequest": {
+      "type": "command_status_request",
+      "protocol": 1,
+      "commandId": "018f4f0c-9f30-7a61-bf1a-66d2582bdb4a"
+    },
+    "terminalStatus": {
+      "type": "command_status",
+      "protocol": 1,
+      "commandId": "018f4f0c-9f30-7a61-bf1a-66d2582bdb4a",
+      "state": "terminal",
+      "result": {
+        "type": "command_result",
+        "protocol": 1,
+        "commandId": "018f4f0c-9f30-7a61-bf1a-66d2582bdb4a",
+        "operation": "session.cancel",
+        "status": "applied",
+        "code": "OK",
+        "completedAt": 1784912400040,
+        "result": {
+          "sessionId": "6a379713-f4ca-4ca4-b4a8-9a3fbfea80d5",
+          "sessionStatus": "cancelled"
+        }
+      }
+    }
+  },
+  "httpMappings": {
+    "PEON_OFFLINE": 503,
+    "CAPABILITY_UNAVAILABLE": 503,
+    "COMMAND_ID_REUSED": 409,
+    "COMMAND_PENDING": 202,
+    "COMMAND_TIMEOUT": 504
+  }
+}
