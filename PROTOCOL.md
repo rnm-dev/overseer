@@ -12,6 +12,11 @@ its own version handle, none of the human presence bookkeeping. Implemented in
 `src/daemon/agentApi.ts` (peon repo), mounted at `/api/v1` ahead of the human cookie
 auth-gate in `controlServer.ts`.
 
+The shared `reverse-command-v1` schema and golden frames are vendored under
+`protocol/reverse-command-v1/`. Its first enabled operation is `session.cancel`.
+Daemon pause/resume is intentionally local-only: Overseer may display paused
+state but must not change it.
+
 ## Topology
 
 - **Transport:** HTTP/JSON over a **Tailscale** tailnet. NAT (office desktops
