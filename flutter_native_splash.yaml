@@ -1,0 +1,16 @@
+flutter_native_splash:
+  color: "#0B0C0B"
+  color_dark: "#0B0C0B"
+  image: assets/images/overseer-splash.png
+  image_dark: assets/images/overseer-splash.png
+  android: true
+  ios: true
+  web: false
+  android_gravity: center
+  ios_content_mode: center
+
+  android_12:
+    color: "#0B0C0B"
+    color_dark: "#0B0C0B"
+    image: assets/images/overseer-splash.png
+    image_dark: assets/images/overseer-splash.png

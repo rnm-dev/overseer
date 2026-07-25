@@ -1,0 +1,546 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:overseer_mobile/features/sessions/domain/followup_repository.dart';
+import 'package:overseer_mobile/features/sessions/domain/new_session_repository.dart';
+import 'package:overseer_mobile/features/sessions/presentation/session_composer.dart';
+import 'package:overseer_mobile/shared/design/colors.dart';
+import 'package:overseer_mobile/shared/design/theme.dart';
+
+void main() {
+  testWidgets('matches the compact web composer hierarchy', (tester) async {
+    final controller = TextEditingController();
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.dark,
+        home: Scaffold(
+          body: Align(
+            alignment: Alignment.bottomCenter,
+            child: SessionComposer(controller: controller),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.byKey(const Key('session-composer-gradient')), findsOneWidget);
+    expect(find.byKey(const Key('session-composer-shell')), findsOneWidget);
+    expect(find.byKey(const Key('session-composer-input')), findsOneWidget);
+    expect(find.bySemanticsLabel('Message'), findsOneWidget);
+    expect(find.byKey(const Key('session-composer-attach')), findsOneWidget);
+    expect(find.byKey(const Key('session-composer-submit')), findsOneWidget);
+    expect(
+      find.byKey(const Key('session-composer-stop-and-run')),
+      findsNothing,
+    );
+    expect(
+      tester.getSize(find.byKey(const Key('session-composer-attach'))),
+      const Size(38, 44),
+    );
+    expect(
+      tester.getSize(find.byKey(const Key('session-composer-submit'))),
+      const Size(38, 44),
+    );
+    expect(
+      tester.getSize(find.byKey(const Key('session-composer-attach-visual'))),
+      const Size(32, 32),
+    );
+    final shellRect = tester.getRect(
+      find.byKey(const Key('session-composer-shell')),
+    );
+    final attachRect = tester.getRect(
+      find.byKey(const Key('session-composer-attach-visual')),
+    );
+    final submitRect = tester.getRect(
+      find.byKey(const Key('session-composer-submit-visual')),
+    );
+    final inputRect = tester.getRect(
+      find.byKey(const Key('session-composer-input')),
+    );
+    final leftInset = attachRect.left - shellRect.left;
+    final rightInset = shellRect.right - submitRect.right;
+    final bottomInset = shellRect.bottom - submitRect.bottom;
+    expect(attachRect.top - inputRect.bottom, 6);
+    expect(leftInset, 9);
+    expect(rightInset, leftInset);
+    expect(bottomInset, leftInset);
+    expect(
+      tester.getSize(find.byKey(const Key('session-composer-submit-visual'))),
+      const Size(32, 32),
+    );
+    expect(
+      tester.getSize(find.byKey(const Key('session-composer-input'))).height,
+      32,
+    );
+
+    final submit = tester.widget<IconButton>(
+      find.byKey(const Key('session-composer-submit')),
+    );
+    expect(submit.onPressed, isNull);
+
+    await tester.tap(find.byKey(const Key('session-composer-input')));
+    await tester.enterText(
+      find.byKey(const Key('session-composer-input')),
+      'Follow up',
+    );
+    await tester.pump();
+
+    final shell = tester.widget<AnimatedContainer>(
+      find.byKey(const Key('session-composer-shell')),
+    );
+    final decoration = shell.decoration! as BoxDecoration;
+    expect(decoration.border, Border.all(color: AppColors.felBright));
+  });
+
+  testWidgets('combines agent, model, and effort in one radio sheet', (
+    tester,
+  ) async {
+    final controller = TextEditingController();
+    addTearDown(controller.dispose);
+    String? selectedAgent;
+    String? selectedModel;
+    String? selectedEffort;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.dark,
+        home: Scaffold(
+          body: SessionComposer(
+            controller: controller,
+            providers: const [
+              ModelProvider(
+                agent: 'codex',
+                label: 'Codex',
+                models: [ModelCatalogOption(id: 'gpt-5', label: 'GPT-5')],
+                reasoningEfforts: [
+                  ModelCatalogOption(id: 'high', label: 'High'),
+                ],
+              ),
+              ModelProvider(
+                agent: 'claude',
+                label: 'Claude',
+                models: [ModelCatalogOption(id: 'opus', label: 'Opus')],
+                reasoningEfforts: [],
+              ),
+            ],
+            defaultAgent: 'codex',
+            onAgentChanged: (value) => selectedAgent = value,
+            onModelChanged: (value) => selectedModel = value,
+            onReasoningEffortChanged: (value) => selectedEffort = value,
+          ),
+        ),
+      ),
+    );
+
+    expect(
+      find.byKey(const Key('session-composer-capabilities')),
+      findsOneWidget,
+    );
+    expect(find.text('Codex · Default · Default'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('session-composer-capabilities')));
+    await tester.pumpAndSettle();
+    expect(find.text('Agent, model & effort'), findsOneWidget);
+    expect(find.byType(RadioListTile<String>), findsNWidgets(6));
+
+    await tester.tap(find.text('Claude').last);
+    await tester.pump();
+    expect(selectedAgent, 'claude');
+
+    await tester.tap(find.text('Codex').last);
+    await tester.pump();
+    await tester.tap(find.text('GPT-5').last);
+    await tester.pump();
+    expect(selectedModel, 'gpt-5');
+
+    await tester.tap(find.text('High').last);
+    await tester.pump();
+    expect(selectedEffort, 'high');
+  });
+
+  testWidgets('keeps the agent fixed for an existing session', (tester) async {
+    final controller = TextEditingController();
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.dark,
+        home: Scaffold(
+          body: SessionComposer(
+            controller: controller,
+            allowAgentSelection: false,
+            providers: const [
+              ModelProvider(
+                agent: 'codex',
+                label: 'Codex',
+                models: [ModelCatalogOption(id: 'gpt-5', label: 'GPT-5')],
+                reasoningEfforts: [],
+              ),
+              ModelProvider(
+                agent: 'claude',
+                label: 'Claude',
+                models: [ModelCatalogOption(id: 'opus', label: 'Opus')],
+                reasoningEfforts: [],
+              ),
+            ],
+            defaultAgent: 'codex',
+          ),
+        ),
+      ),
+    );
+
+    expect(
+      find.bySemanticsLabel(RegExp(r'^Model and effort:')),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const Key('session-composer-capabilities')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Model & effort'), findsOneWidget);
+    expect(find.text('Agent'), findsNothing);
+    expect(find.text('Claude'), findsNothing);
+    expect(find.text('GPT-5'), findsOneWidget);
+  });
+
+  testWidgets('enables send for non-empty input and submits once', (
+    tester,
+  ) async {
+    final controller = TextEditingController();
+    addTearDown(controller.dispose);
+    var submissions = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.dark,
+        home: Scaffold(
+          body: SessionComposer(
+            controller: controller,
+            onSubmit: () => submissions++,
+          ),
+        ),
+      ),
+    );
+
+    await tester.enterText(
+      find.byKey(const Key('session-composer-input')),
+      'Ship it',
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('session-composer-submit')));
+    await tester.pump();
+
+    expect(submissions, 1);
+  });
+
+  testWidgets('uses Enter as a line break without submitting', (tester) async {
+    final controller = TextEditingController(text: 'First line');
+    addTearDown(controller.dispose);
+    var submissions = 0;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.dark,
+        home: Scaffold(
+          body: SessionComposer(
+            controller: controller,
+            onSubmit: () => submissions++,
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const Key('session-composer-input')));
+    controller.selection = TextSelection.collapsed(
+      offset: controller.text.length,
+    );
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pump();
+
+    expect(controller.text, 'First line\n');
+    expect(submissions, 0);
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const Key('session-composer-input')))
+          .textInputAction,
+      TextInputAction.newline,
+    );
+  });
+
+  testWidgets(
+    'keeps pending state inside the submit button when attachments are shown',
+    (tester) async {
+      final controller = TextEditingController(text: 'Next task');
+      addTearDown(controller.dispose);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.dark,
+          home: Scaffold(
+            body: Align(
+              alignment: Alignment.bottomCenter,
+              child: SessionComposer(
+                controller: controller,
+                running: true,
+                pending: true,
+                error: 'Could not send',
+                attachments: [
+                  NewSessionAttachment(
+                    name: 'plan.md',
+                    type: 'file',
+                    bytes: Uint8List.fromList([1, 2, 3]),
+                  ),
+                ],
+                onSubmit: () {},
+                onStopAndRun: () {},
+              ),
+            ),
+          ),
+        ),
+      );
+
+      expect(
+        find.byKey(const Key('session-composer-stop-and-run')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('session-composer-error')), findsOneWidget);
+      expect(find.text('⚠ Could not send'), findsOneWidget);
+      expect(
+        find.byKey(const Key('session-composer-attachments')),
+        findsOneWidget,
+      );
+      expect(find.text('plan.md'), findsOneWidget);
+      expect(
+        find.byKey(const Key('session-composer-pending-label')),
+        findsNothing,
+      );
+      expect(find.byIcon(LucideIcons.hourglass), findsNothing);
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(
+        tester
+            .widget<IconButton>(
+              find.byKey(const Key('session-composer-submit')),
+            )
+            .onPressed,
+        isNull,
+      );
+      expect(
+        tester
+            .widget<IconButton>(
+              find.byKey(const Key('session-composer-stop-and-run')),
+            )
+            .onPressed,
+        isNull,
+      );
+    },
+  );
+
+  testWidgets('enables queue and send-now together while running', (
+    tester,
+  ) async {
+    final controller = TextEditingController();
+    addTearDown(controller.dispose);
+    var queued = 0;
+    var sentNow = 0;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.dark,
+        home: Scaffold(
+          body: Align(
+            alignment: Alignment.bottomCenter,
+            child: SessionComposer(
+              controller: controller,
+              running: true,
+              onSubmit: () => queued++,
+              onStopAndRun: () => sentNow++,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final queueFinder = find.byKey(const Key('session-composer-submit'));
+    final sendNowFinder = find.byKey(
+      const Key('session-composer-stop-and-run'),
+    );
+    expect(tester.widget<IconButton>(queueFinder).onPressed, isNull);
+    expect(tester.widget<IconButton>(sendNowFinder).onPressed, isNull);
+
+    await tester.enterText(
+      find.byKey(const Key('session-composer-input')),
+      'Next task',
+    );
+    await tester.pump();
+
+    expect(tester.widget<IconButton>(queueFinder).onPressed, isNotNull);
+    expect(tester.widget<IconButton>(sendNowFinder).onPressed, isNotNull);
+    expect(find.byTooltip('Queue'), findsOneWidget);
+    expect(find.byTooltip('Send now'), findsOneWidget);
+
+    final queueVisual = tester.widget<Container>(
+      find.byKey(const Key('session-composer-submit-visual')),
+    );
+    final sendNowVisual = tester.widget<Container>(
+      find.byKey(const Key('session-composer-stop-and-run-visual')),
+    );
+    expect(queueVisual.decoration, sendNowVisual.decoration);
+    expect(
+      find.descendant(
+        of: queueFinder,
+        matching: find.byIcon(LucideIcons.listPlus),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: sendNowFinder,
+        matching: find.byIcon(LucideIcons.sendHorizontal),
+      ),
+      findsOneWidget,
+    );
+
+    await tester.tap(queueFinder);
+    await tester.pump();
+    expect(queued, 1);
+
+    await tester.enterText(
+      find.byKey(const Key('session-composer-input')),
+      'Run immediately',
+    );
+    await tester.pump();
+    await tester.tap(sendNowFinder);
+    await tester.pump();
+    expect(sentNow, 1);
+  });
+
+  testWidgets('accepts rich image content inserted by the keyboard', (
+    tester,
+  ) async {
+    final controller = TextEditingController();
+    addTearDown(controller.dispose);
+    KeyboardInsertedContent? inserted;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.dark,
+        home: Scaffold(
+          body: SessionComposer(
+            controller: controller,
+            onContentInserted: (content) => inserted = content,
+          ),
+        ),
+      ),
+    );
+
+    final field = tester.widget<TextField>(
+      find.byKey(const Key('session-composer-input')),
+    );
+    expect(field.contentInsertionConfiguration, isNotNull);
+    expect(
+      field.contentInsertionConfiguration!.allowedMimeTypes,
+      contains('image/png'),
+    );
+    field.contentInsertionConfiguration!.onContentInserted(
+      KeyboardInsertedContent(
+        mimeType: 'image/png',
+        uri: 'content://clipboard/image',
+        data: Uint8List.fromList([1, 2, 3]),
+      ),
+    );
+
+    expect(inserted?.mimeType, 'image/png');
+    expect(inserted?.data, [1, 2, 3]);
+  });
+
+  testWidgets('renders authoritative queued follow-ups with item actions', (
+    tester,
+  ) async {
+    final controller = TextEditingController();
+    addTearDown(controller.dispose);
+    String? sent;
+    String? removed;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.dark,
+        home: Scaffold(
+          body: Align(
+            alignment: Alignment.bottomCenter,
+            child: SessionComposer(
+              controller: controller,
+              queuedItems: const [
+                QueuedFollowup(
+                  id: 'queue-1',
+                  sessionId: 'session',
+                  prompt: 'Review the deployment',
+                  attachments: [
+                    QueuedFollowupAttachment(
+                      type: 'file',
+                      path: 'uploads/session/plan.md',
+                    ),
+                  ],
+                  model: 'gpt-5',
+                  reasoningEffort: 'high',
+                  queuedAt: 1,
+                ),
+              ],
+              onSendQueuedNow: (id) => sent = id,
+              onRemoveQueued: (id) => removed = id,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.byKey(const Key('session-queue-list')), findsOneWidget);
+    expect(find.text('Review the deployment'), findsOneWidget);
+    expect(find.text('📎 plan.md'), findsOneWidget);
+    expect(find.text('gpt-5'), findsNothing);
+    expect(find.text('high'), findsNothing);
+
+    await tester.tap(find.byTooltip('Send now'));
+    await tester.pump();
+    expect(sent, 'queue-1');
+
+    await tester.tap(find.byTooltip('Remove queued follow-up'));
+    await tester.pump();
+    expect(removed, 'queue-1');
+  });
+
+  testWidgets('shows attachments and allows an attachment-only session', (
+    tester,
+  ) async {
+    final controller = TextEditingController();
+    addTearDown(controller.dispose);
+    var submitted = false;
+    var removed = -1;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.dark,
+        home: Scaffold(
+          body: SessionComposer(
+            controller: controller,
+            attachments: [
+              NewSessionAttachment(
+                name: 'plan.md',
+                type: 'file',
+                bytes: Uint8List.fromList([1, 2, 3]),
+              ),
+            ],
+            onRemoveAttachment: (index) => removed = index,
+            onSubmit: () => submitted = true,
+          ),
+        ),
+      ),
+    );
+
+    expect(
+      find.byKey(const Key('session-composer-attachments')),
+      findsOneWidget,
+    );
+    expect(find.text('plan.md'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('session-composer-submit')));
+    expect(submitted, isTrue);
+    await tester.tap(find.byTooltip('Remove plan.md'));
+    expect(removed, 0);
+  });
+}
