@@ -15,6 +15,9 @@ export interface SessionLite {
   catalogUpdatedAt?: number | null;
   attentionUnread?: boolean;
   attentionUpdatedAt?: number;
+  // Browser-local fence for a newly submitted turn. It prevents a delayed
+  // terminal summary from the preceding turn from flashing this row idle.
+  localRunningSince?: number;
 }
 
 export interface IndexedSessionLite {
@@ -77,6 +80,31 @@ export function applyAttentionEvent(
     : session);
 }
 
+// A command accepted from this browser is newer than the sidebar's last
+// materialized summary. Reflect that transition immediately; the next durable
+// Peon summary remains authoritative and replaces these provisional fields.
+export function applyLocalSessionRunningChange(
+  current: SessionLite[],
+  peonId: string,
+  sessionId: string,
+  running: boolean,
+  changedAt: number,
+): SessionLite[] {
+  const key = sessionIdentity({ peonId, id: sessionId });
+  let changed = false;
+  const next = current.map((session) => {
+    if (sessionIdentity(session) !== key) return session;
+    if (running && session.localRunningSince != null) return session;
+    if (!running && session.status !== "running" && session.localRunningSince == null) return session;
+    changed = true;
+    const lastActivityAt = Math.max(session.lastActivityAt ?? 0, changedAt);
+    return running
+      ? { ...session, status: "running", endedAt: null, lastActivityAt, localRunningSince: changedAt }
+      : { ...session, status: "completed", endedAt: changedAt, lastActivityAt, localRunningSince: undefined };
+  });
+  return changed ? next : current;
+}
+
 export function sessionDisplayTitle(
   session: { title?: string | null; promptPreview?: string | null; prompt?: string | null },
   untitled: string,
@@ -98,6 +126,17 @@ export function mergeSessions(current: SessionLite[], incoming: SessionLite[]): 
     const previous = merged.get(key);
     if (previous && previous.syncedAt != null && session.syncedAt != null && previous.syncedAt > session.syncedAt) continue;
     const next = { ...previous, ...session };
+    if (previous?.localRunningSince != null) {
+      const incomingActivity = Math.max(session.lastActivityAt ?? 0, session.endedAt ?? 0, session.startedAt ?? 0);
+      if (session.status !== "running" && incomingActivity <= previous.localRunningSince) {
+        next.status = "running";
+        next.endedAt = null;
+        next.lastActivityAt = Math.max(previous.lastActivityAt ?? 0, previous.localRunningSince);
+        next.localRunningSince = previous.localRunningSince;
+      } else {
+        delete next.localRunningSince;
+      }
+    }
     if ((previous?.attentionUpdatedAt ?? 0) > (session.attentionUpdatedAt ?? 0)) {
       next.attentionUnread = previous?.attentionUnread;
       next.attentionUpdatedAt = previous?.attentionUpdatedAt;

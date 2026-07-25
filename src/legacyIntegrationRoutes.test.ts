@@ -22,6 +22,10 @@ test("legacy integration routes are absent while current project and status rout
   assert.equal(has(`${root}/projects/:key/settings`, "get"), true);
   assert.equal(has(`${root}/projects/:key/settings`, "patch"), true);
   assert.equal(has(`${root}/projects/:key/skills`, "get"), true);
+  assert.equal(has(`${root}/projects/:key/quick-links`, "get"), true);
+  assert.equal(has(`${root}/projects/:key/quick-links`, "post"), true);
+  assert.equal(has(`${root}/projects/:key/quick-links/:linkId`, "patch"), true);
+  assert.equal(has(`${root}/projects/:key/quick-links/:linkId`, "delete"), true);
   assert.equal(has(`${root}/projects/:key`, "patch"), false);
   assert.equal(has(`${root}/projects/import`, "post"), false);
 });

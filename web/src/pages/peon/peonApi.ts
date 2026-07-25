@@ -9,6 +9,19 @@ export interface ProjectDetail {
   scope?: string | null;
   dir?: string;
   metadata: string | null;
+  quickLinks?: ProjectQuickLink[];
+}
+
+export interface ProjectQuickLink {
+  id: string;
+  title: string;
+  url: string;
+  order: number;
+}
+
+export interface ProjectQuickLinksResponse {
+  links: ProjectQuickLink[];
+  cache?: { state?: string; stale?: boolean; updatedAt?: number | null };
 }
 
 export interface CreateProjectInput {
@@ -22,6 +35,7 @@ export interface ProjectSettings {
   name: string;
   dir: string;
   metadata: string | null;
+  quickLinks?: ProjectQuickLink[];
 }
 
 export interface UpdateProjectSettingsInput {
@@ -89,6 +103,30 @@ export function getProjectSettings(base: string, key: string, request: ApiReques
 
 export function updateProjectSettings(base: string, key: string, input: UpdateProjectSettingsInput, request: ApiRequest = api) {
   return request<ProjectSettings>(`${base}/projects/${encodeURIComponent(key)}/settings`, { method: "PATCH", body: JSON.stringify(input) });
+}
+
+export function getProjectQuickLinks(base: string, key: string, request: ApiRequest = api) {
+  return request<ProjectQuickLinksResponse>(`${base}/projects/${encodeURIComponent(key)}/quick-links`);
+}
+
+export function createProjectQuickLink(base: string, key: string, input: { title: string; url: string }, request: ApiRequest = api) {
+  return request<ProjectQuickLink>(`${base}/projects/${encodeURIComponent(key)}/quick-links`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateProjectQuickLink(base: string, key: string, id: string, input: { title: string; url: string }, request: ApiRequest = api) {
+  return request<ProjectQuickLink>(`${base}/projects/${encodeURIComponent(key)}/quick-links/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteProjectQuickLink(base: string, key: string, id: string, request: ApiRequest = api) {
+  return request<{ ok: true }>(`${base}/projects/${encodeURIComponent(key)}/quick-links/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
 }
 
 export function getProjectSkills(base: string, key: string, request: ApiRequest = api) {

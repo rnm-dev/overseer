@@ -9,7 +9,7 @@ import { useLiveSocket, type SessionLiveEvent } from "../liveSocket";
 import { useWorkspace } from "../workspace";
 import { useMobileDrawer } from "../hooks/useMobileDrawer";
 import type { PeonContext, PeonView } from "./peon/context";
-import { applyAttentionEvent, applySessionEvent, mergeSessions, sessionFromIndex, type IndexedSessionEvent, type IndexedSessionLite, type SessionLite } from "./peon/sessionList";
+import { applyAttentionEvent, applyLocalSessionRunningChange, applySessionEvent, mergeSessions, sessionFromIndex, type IndexedSessionEvent, type IndexedSessionLite, type SessionLite } from "./peon/sessionList";
 import { nextSessionAfterDeletion } from "./peon/session/nextSession";
 
 const SIDEBAR_WIDTH_KEY = "overseer.peon-sidebar-width";
@@ -150,6 +150,9 @@ export function WorkspaceSessions() {
     [sessions],
   );
   const activePeonSessionIds = ordered.filter((session) => session.peonId === peonId).map((session) => session.id);
+  const onSessionRunningChange = useCallback((changedPeonId: string, sessionId: string, running: boolean, changedAt: number) => {
+    setSessions((currentSessions) => applyLocalSessionRunningChange(currentSessions, changedPeonId, sessionId, running, changedAt));
+  }, []);
   const outletContext: PeonContext | null = activePeon ? {
     peon: activePeon,
     wsId: workspaceId,
@@ -164,6 +167,7 @@ export function WorkspaceSessions() {
       setSessions((currentSessions) => currentSessions.filter((session) => session.peonId !== deletedPeonId || session.id !== sessionId));
       setSessionTotal((total) => total === null ? null : Math.max(0, total - 1));
     },
+    onSessionRunningChange,
   } : null;
 
   return (

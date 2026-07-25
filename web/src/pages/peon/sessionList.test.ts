@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { applyAttentionEvent, applySessionEvent, mergeSessions, sessionDisplayTitle, sessionFromIndex, sessionSidebarCanLoad } from "./sessionList";
+import { applyAttentionEvent, applyLocalSessionRunningChange, applySessionEvent, mergeSessions, sessionDisplayTitle, sessionFromIndex, sessionSidebarCanLoad } from "./sessionList";
 
 test("sessionFromIndex uses the opening preview instead of latest activity", () => {
   assert.deepEqual(sessionFromIndex({
@@ -111,4 +111,33 @@ test("a Peon-qualified live summary is replaced by the indexed refresh instead o
     lastActivityAt: undefined,
     syncedAt: 20,
   }]);
+});
+
+test("local run transitions keep the matching sidebar row active until durable summaries arrive", () => {
+  const sessions = [
+    { peonId: "one", id: "same", status: "completed", endedAt: 100, lastActivityAt: 100, syncedAt: 7 },
+    { peonId: "two", id: "same", status: "completed", endedAt: 100, lastActivityAt: 100, syncedAt: 8 },
+  ];
+  const running = applyLocalSessionRunningChange(sessions, "one", "same", true, 200);
+  assert.deepEqual(running, [
+    { peonId: "one", id: "same", status: "running", endedAt: null, lastActivityAt: 200, syncedAt: 7, localRunningSince: 200 },
+    sessions[1],
+  ]);
+  assert.deepEqual(mergeSessions(running, [
+    { peonId: "one", id: "same", status: "completed", endedAt: 190, lastActivityAt: 190, syncedAt: 8 },
+  ]), [
+    { peonId: "one", id: "same", status: "running", endedAt: null, lastActivityAt: 200, syncedAt: 8, localRunningSince: 200 },
+    sessions[1],
+  ]);
+  assert.deepEqual(mergeSessions(running, [
+    { peonId: "one", id: "same", status: "running", endedAt: null, lastActivityAt: 210, syncedAt: 8 },
+  ]), [
+    { peonId: "one", id: "same", status: "running", endedAt: null, lastActivityAt: 210, syncedAt: 8 },
+    sessions[1],
+  ]);
+  assert.deepEqual(applyLocalSessionRunningChange(running, "one", "same", false, 300), [
+    { peonId: "one", id: "same", status: "completed", endedAt: 300, lastActivityAt: 300, syncedAt: 7, localRunningSince: undefined },
+    sessions[1],
+  ]);
+  assert.equal(applyLocalSessionRunningChange(running, "one", "same", true, 250), running);
 });

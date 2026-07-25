@@ -1,10 +1,17 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { api, getToken, json, migrateLegacyWebSession, setToken } from "./api";
+import { forgetNativeCallback, nativeCallback } from "./nativeLoginMode";
+import { serverApprovedNativeRedirect } from "./nativeOauthRedirect";
 
 // Auth state for the dashboard. GitHub returns every flow to this SPA; the SPA
 // submits code + state to the API, whose server-backed attempt determines whether
 // to finish web login or open the native app with a short-lived code.
 // Web sessions use an HttpOnly cookie. Native clients retain bearer tokens.
+//
+// A webview launched by the mobile app carries a deep-link callback (see
+// nativeLoginMode). It only changes which start endpoint we call: the flow is
+// recorded server-side with the OAuth state, so the callback page below reads
+// the answer back without knowing which mode it is in.
 
 export interface User {
   email: string;
@@ -64,7 +71,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async loginWithGithub() {
       const cfg = await api<GithubConfig>("/auth/github/config");
       if (!cfg.clientId) throw new Error("GitHub sign-in is not configured");
-      const started = await api<GithubStart>("/auth/github/start", { method: "POST" });
+      const callback = nativeCallback(sessionStorage);
+      const started = callback
+        ? await api<GithubStart>("/auth/github/native/start", json({ callback }))
+        : await api<GithubStart>("/auth/github/start", { method: "POST" });
       sessionStorage.setItem(STATE_KEY, started.state);
       window.location.assign(started.authorizationUrl);
     },
@@ -75,12 +85,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         | { flow: "native"; redirectUrl: string }
       >("/auth/github", json({ code, state, error }));
       if (r.flow === "native") {
-        const target = new URL(r.redirectUrl);
-        if (target.protocol !== "overseer:") throw new Error("invalid native sign-in callback");
-        window.location.assign(target.toString());
+        window.location.assign(serverApprovedNativeRedirect(r.redirectUrl));
         return "native";
       }
       sessionStorage.removeItem(STATE_KEY);
+      forgetNativeCallback(sessionStorage); // a finished web sign-in ⇒ not a webview
       if (!saved || saved !== state) throw new Error("sign-in state mismatch — please try again");
       setUser(r.user);
       return "web";

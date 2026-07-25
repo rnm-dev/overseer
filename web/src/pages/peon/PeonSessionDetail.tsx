@@ -56,7 +56,7 @@ function storeFilePaneState(pageKey: string, open: boolean) {
 export function PeonSessionDetail() {
   const { locale, t } = useI18n();
   const { user } = useAuth();
-  const { peon, base, wsId, orderedSessionIds, selectedSessionTitle, sessionHref, sessionsHomeHref, onSessionDeleted } = usePeon();
+  const { peon, base, wsId, orderedSessionIds, selectedSessionTitle, sessionHref, sessionsHomeHref, onSessionDeleted, onSessionRunningChange } = usePeon();
   const { sid = "" } = useParams();
   const { subscribe, viewersFor } = useLiveSocket();
   const navigate = useNavigate();
@@ -139,7 +139,8 @@ export function PeonSessionDetail() {
       running: next,
       model: next && previous.sessionKey === sessionKey ? previous.model : null,
     }));
-  }, [sessionKey]);
+    onSessionRunningChange?.(peon.peonId, sid, next, Date.now());
+  }, [onSessionRunningChange, peon.peonId, sessionKey, sid]);
   const setRunningModel = useCallback((model: string | null) => {
     setActiveRun((previous) => ({
       sessionKey,

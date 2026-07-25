@@ -10,6 +10,8 @@ import {
   commitSnapshotCoveredProjectEvent,
   hasCanonicalProjectCatalog,
   listIndexedProjects,
+  normalizeProjectQuickLinks,
+  refreshIndexedProjectQuickLinks,
   releaseProjectSyncGeneration,
 } from "./projectIndex.js";
 import { claimSessionSyncGeneration } from "./sessionIndex.js";
@@ -44,7 +46,14 @@ test("project snapshots replace the stable-ID projection and derive session roll
     generation,
     catalogEpoch: "projects-1",
     barrierSeq: 0,
-    projects: [{ projectId: "project-1", key: "new-key", name: "Project", dir: "/work/project", metadata: "Notes" }],
+    projects: [{
+      projectId: "project-1",
+      key: "new-key",
+      name: "Project",
+      dir: "/work/project",
+      metadata: "Notes",
+      quickLinks: [{ id: "docs", title: "Docs", url: "https://example.test/docs", order: 2 }],
+    }],
   });
 
   assert.equal(await hasCanonicalProjectCatalog("peon"), true);
@@ -57,6 +66,36 @@ test("project snapshots replace the stable-ID projection and derive session roll
     activeCount: projects[0]?.activeCount,
     lastActivityMs: projects[0]?.lastActivityMs,
   }, { projectId: "project-1", key: "new-key", sessionCount: 2, activeCount: 1, lastActivityMs: 20 });
+  assert.deepEqual(projects[0]?.quickLinks, [{ id: "docs", title: "Docs", url: "https://example.test/docs", order: 2 }]);
+});
+
+test("quick-link cache refresh uses Peon data, publishes the projection, and rejects unsafe URLs", async () => {
+  const { generation } = await fixture();
+  await applySocketProjectSnapshot({
+    workspaceId: "ws", peonId: "peon", generation, catalogEpoch: "projects-1", barrierSeq: 0,
+    projects: [{ projectId: "project-1", key: "project", name: "Project", dir: "/work/project", metadata: null }],
+  });
+
+  assert.equal(await refreshIndexedProjectQuickLinks({
+    workspaceId: "ws",
+    peonId: "peon",
+    key: "project",
+    quickLinks: [
+      { id: "runbook", title: "Runbook", url: "https://example.test/runbook", order: 3 },
+      { id: "home", title: "Home", url: "https://example.test/", order: 1 },
+    ],
+  }), true);
+  assert.deepEqual((await listIndexedProjects("peon"))[0]?.quickLinks?.map((link) => link.id), ["home", "runbook"]);
+  await assert.rejects(
+    () => refreshIndexedProjectQuickLinks({
+      workspaceId: "ws",
+      peonId: "peon",
+      key: "project",
+      quickLinks: [{ id: "bad", title: "Bad", url: "javascript:alert(1)", order: 0 }],
+    }),
+    /invalid project quick link URL/,
+  );
+  assert.deepEqual(normalizeProjectQuickLinks(undefined), []);
 });
 
 test("project snapshots migrate unambiguous legacy grants and do not rebroadcast unchanged rows", async () => {

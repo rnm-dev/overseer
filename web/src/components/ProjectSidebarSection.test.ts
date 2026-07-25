@@ -4,7 +4,15 @@ import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
 import { I18nProvider } from "../i18n";
-import { ProjectSidebarSection, projectStatusLightClass, sidebarProjects } from "./ProjectSidebarSection";
+import {
+  loadProjectSidebarExpanded,
+  PROJECT_SIDEBAR_EXPANDED_STORAGE_KEY,
+  ProjectSidebarSection,
+  projectContextMenuPosition,
+  projectStatusLightClass,
+  saveProjectSidebarExpanded,
+  sidebarProjects,
+} from "./ProjectSidebarSection";
 
 (globalThis as typeof globalThis & { React: typeof React }).React = React;
 
@@ -43,7 +51,7 @@ test("project sidebar renders a collapsible header and every visible project lin
   assert.match(markup, /aria-current="page"/);
   assert.match(markup, /justify-between px-2 pb-1 pt-2 md:pl-3\.5 md:pr-1/);
   assert.match(markup, /id="peon-sidebar-projects" class="px-2 pb-2 md:pl-3\.5 md:pr-1"/);
-  assert.match(markup, /block rounded px-2\.5 py-1\.5 transition-colors bg-fel\/10/);
+  assert.match(markup, /block rounded px-2\.5 py-1\.5 transition-colors min-w-0 flex-1 bg-fel\/10/);
   assert.match(markup, /font-display text-\[0\.8rem\] text-bone/);
   assert.match(markup, />3 members</);
   assert.match(markup, />•</);
@@ -57,4 +65,59 @@ test("project status light glows only while the project has active sessions", ()
   assert.match(projectStatusLightClass(1), /shadow/);
   assert.equal(projectStatusLightClass(0), "bg-iron-700");
   assert.equal(projectStatusLightClass(), "bg-iron-700");
+});
+
+test("projects with quick links expose a discoverable context-menu button", () => {
+  const markup = renderToStaticMarkup(React.createElement(
+    I18nProvider,
+    null,
+    React.createElement(
+      MemoryRouter,
+      null,
+      React.createElement(ProjectSidebarSection, {
+        projects: [{ key: "OVSR", quickLinks: [{ id: "docs", title: "Docs", url: "https://example.test/docs", order: 0 }] }],
+        to: (project: { key: string }) => `/peons/nova/projects/${project.key}`,
+      }),
+    ),
+  ));
+  assert.match(markup, /aria-haspopup="menu"/);
+  assert.match(markup, /aria-label="Quick Links: OVSR"/);
+  assert.doesNotMatch(renderToStaticMarkup(React.createElement(
+    I18nProvider,
+    null,
+    React.createElement(MemoryRouter, null, React.createElement(ProjectSidebarSection, {
+      projects: [{ key: "EMPTY" }],
+      to: (project: { key: string }) => `/projects/${project.key}`,
+    })),
+  )), /aria-haspopup="menu"/);
+});
+
+test("project quick-link menus stay within viewport bounds", () => {
+  assert.deepEqual(projectContextMenuPosition(999, 999, 320, 480, 10), { x: 104, y: 152 });
+  assert.deepEqual(projectContextMenuPosition(-20, -20, 320, 480, 1), { x: 8, y: 8 });
+});
+
+test("project sidebar expansion preference persists in local storage", () => {
+  const values = new Map<string, string>();
+  const storage = {
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => values.set(key, value),
+  };
+
+  assert.equal(loadProjectSidebarExpanded(storage), true);
+  saveProjectSidebarExpanded(false, storage);
+  assert.equal(values.get(PROJECT_SIDEBAR_EXPANDED_STORAGE_KEY), "false");
+  assert.equal(loadProjectSidebarExpanded(storage), false);
+  saveProjectSidebarExpanded(true, storage);
+  assert.equal(loadProjectSidebarExpanded(storage), true);
+});
+
+test("project sidebar falls back to expanded when local storage is unavailable", () => {
+  const unavailable = {
+    getItem: () => {
+      throw new Error("storage unavailable");
+    },
+  };
+
+  assert.equal(loadProjectSidebarExpanded(unavailable), true);
 });

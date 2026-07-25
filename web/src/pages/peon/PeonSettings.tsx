@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { NavLink, useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { api, ApiError } from "../../api";
 import { Badge, Button, Card, ConfirmationDialog, Input, Label } from "../../ui";
 import { useT } from "../../i18n";
@@ -11,6 +11,7 @@ import { buildSettingsPayload, resolveDefaultModel } from "./settingsModel";
 import { peonSettingsPath, peonSettingsTabFromPath, SOUL_EDITOR_ROWS } from "./settingsNavigation";
 import { savePeonSoul, soulExcerpt } from "./peonApi";
 import { CliUpdatesPanel } from "./CliUpdatesPanel";
+import { RouteTabs } from "../../components/RouteTabs";
 
 // author: Viktor
 
@@ -232,11 +233,14 @@ export function PeonSettings() {
 
   return (
     <div className="space-y-8">
-      <nav className="flex border-b border-iron-700" aria-label={t("peon.settings.tabs")}>
-        <NavLink end to={settingsPath} className={({ isActive }) => `border-b-2 px-4 py-2.5 font-display text-sm font-bold transition-colors ${isActive ? "border-fel text-fel-bright" : "border-transparent text-bone-dim hover:text-bone"}`}>{t("peon.settings.tab.general")}</NavLink>
-        <NavLink to={`${settingsPath}/agent`} className={({ isActive }) => `border-b-2 px-4 py-2.5 font-display text-sm font-bold transition-colors ${isActive ? "border-fel text-fel-bright" : "border-transparent text-bone-dim hover:text-bone"}`}>{t("peon.settings.tab.agent")}</NavLink>
-        <NavLink to={`${settingsPath}/armory`} className={({ isActive }) => `border-b-2 px-4 py-2.5 font-display text-sm font-bold transition-colors ${isActive ? "border-fel text-fel-bright" : "border-transparent text-bone-dim hover:text-bone"}`}>{t("peon.settings.tab.armory")}</NavLink>
-      </nav>
+      <RouteTabs
+        ariaLabel={t("peon.settings.tabs")}
+        tabs={[
+          { to: settingsPath, label: t("peon.settings.tab.general"), end: true },
+          { to: `${settingsPath}/agent`, label: t("peon.settings.tab.agent") },
+          { to: `${settingsPath}/armory`, label: t("peon.settings.tab.armory") },
+        ]}
+      />
 
       {tab === "general" && <>
       {(peon.online || updating) && status && (

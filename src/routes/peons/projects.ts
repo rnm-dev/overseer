@@ -12,6 +12,7 @@ import {
   getProjectCatalogState,
   hasCanonicalProjectCatalog,
   listIndexedProjects,
+  refreshIndexedProjectQuickLinks,
 } from "../../projectIndex.js";
 
 export function registerProjectRoutes(router: express.Router): void {
@@ -41,6 +42,22 @@ export function registerProjectRoutes(router: express.Router): void {
   // order matters: the literal /projects/suggest-dir must precede the
   // /projects/:key param route.
   const proj = (key: string) => `/projects/${encodeURIComponent(key)}`;
+  const refreshQuickLinks = async (c: Parameters<Parameters<typeof withWorkspacePeon>[0]>[2], key: string) => {
+    const result = await callPeon(connOfRecord(c.record), "GET", `${proj(key)}/quick-links`, { actor: c.operator.email });
+    if (!result.ok || !result.json || typeof result.json !== "object") return;
+    const links = (result.json as { links?: unknown }).links;
+    if (!Array.isArray(links)) return;
+    try {
+      await refreshIndexedProjectQuickLinks({
+        workspaceId: c.workspaceId,
+        peonId: c.record.peonId,
+        key,
+        quickLinks: links,
+      });
+    } catch (error) {
+      console.warn("project quick-link cache refresh failed:", error instanceof Error ? error.message : String(error));
+    }
+  };
   const withWorkspaceProject = (handler: Parameters<typeof withWorkspacePeon>[0]) => withWorkspacePeon(async (req, res, c) => {
     const key = String(req.params.key);
     let projectId: string | null = null;
@@ -138,11 +155,42 @@ export function registerProjectRoutes(router: express.Router): void {
     res.setHeader("Cache-Control", "no-store");
     relay(await callPeon(connOfRecord(c.record), "GET", `${proj(String(req.params.key))}/skills`, { actor: c.operator.email }), res);
   }));
+  router.get(`${wp}/projects/:key/quick-links`, withWorkspaceProject(async (req, res, c) => {
+    if (await hasCanonicalProjectCatalog(c.record.peonId)) {
+      const project = await getIndexedProject(c.record.peonId, String(req.params.key));
+      if (!project) return res.status(404).json({ error: "unknown project", code: "UNKNOWN_PROJECT" });
+      return res.json({ links: project.quickLinks ?? [], cache: await getProjectCatalogState(c.record) });
+    }
+    relay(await callPeon(connOfRecord(c.record), "GET", `${proj(String(req.params.key))}/quick-links`, { actor: c.operator.email }), res);
+  }));
+  router.post(`${wp}/projects/:key/quick-links`, withWorkspaceProject(async (req, res, c) => {
+    if (!ownerOnly(res, c.role)) return;
+    const key = String(req.params.key);
+    const result = await callPeon(connOfRecord(c.record), "POST", `${proj(key)}/quick-links`, { actor: c.operator.email, body: req.body });
+    if (result.ok) await refreshQuickLinks(c, key);
+    relay(result, res);
+  }));
+  router.patch(`${wp}/projects/:key/quick-links/:linkId`, withWorkspaceProject(async (req, res, c) => {
+    if (!ownerOnly(res, c.role)) return;
+    const key = String(req.params.key);
+    const path = `${proj(key)}/quick-links/${encodeURIComponent(String(req.params.linkId))}`;
+    const result = await callPeon(connOfRecord(c.record), "PATCH", path, { actor: c.operator.email, body: req.body });
+    if (result.ok) await refreshQuickLinks(c, key);
+    relay(result, res);
+  }));
+  router.delete(`${wp}/projects/:key/quick-links/:linkId`, withWorkspaceProject(async (req, res, c) => {
+    if (!ownerOnly(res, c.role)) return;
+    const key = String(req.params.key);
+    const path = `${proj(key)}/quick-links/${encodeURIComponent(String(req.params.linkId))}`;
+    const result = await callPeon(connOfRecord(c.record), "DELETE", path, { actor: c.operator.email });
+    if (result.ok) await refreshQuickLinks(c, key);
+    relay(result, res);
+  }));
   router.get(`${wp}/projects/:key/settings`, withWorkspaceProject(async (req, res, c) => {
     if (await hasCanonicalProjectCatalog(c.record.peonId)) {
       const project = await getIndexedProject(c.record.peonId, String(req.params.key));
       if (!project) return res.status(404).json({ error: "unknown project", code: "UNKNOWN_PROJECT" });
-      return res.json({ projectId: project.projectId, key: project.key, name: project.name ?? project.key, dir: project.dir ?? "", metadata: project.metadata });
+      return res.json({ projectId: project.projectId, key: project.key, name: project.name ?? project.key, dir: project.dir ?? "", metadata: project.metadata, quickLinks: project.quickLinks ?? [] });
     }
     relay(await callPeon(connOfRecord(c.record), "GET", `${proj(String(req.params.key))}/settings`, { actor: c.operator.email }), res);
   }));

@@ -260,15 +260,26 @@ export function useSessionComposer({
 
   async function sendQueuedItemNow(itemId: string) {
     if (sendingQueueItems.has(itemId) || removingQueueItems.has(itemId)) return;
+    const queued = queueItems.find((item) => item.id === itemId);
+    const wasRunning = running;
+    const previousModel = runningModel;
     setSendingQueueItems((current) => new Set(current).add(itemId));
     setSendError(null);
+    setRunning(true);
+    setRunningModel(queued?.model || runningModel || sessionModel || (!sessionAgent ? catalog?.defaultModel : null) || null);
+    setStopNote(null);
     try {
-      await sendWaitingQueueItemNow(
+      const accepted = await sendWaitingQueueItemNow(
         itemId,
         (id) => sendSessionQueueItemNow(base, sid, id),
         () => queueReconcilerRef.current?.reconcile() ?? Promise.resolve(),
         (err) => notifyError(err, { title: t("session.queue.sendFailed"), fallback: t("error.generic") }),
       );
+      if (accepted) onWorkStarted();
+      else {
+        setRunning(wasRunning);
+        setRunningModel(wasRunning ? previousModel : null);
+      }
     } finally {
       setSendingQueueItems((current) => {
         const next = new Set(current);

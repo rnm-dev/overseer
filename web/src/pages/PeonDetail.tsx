@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BarChart3, Menu, Package, Settings, type LucideIcon } from "lucide-react";
+import { BarChart3, Menu, Pickaxe, Settings, type LucideIcon } from "lucide-react";
 import { Link, NavLink, Outlet, useLocation, useNavigate, useParams } from "react-router-dom";
 import { api, ApiError } from "../api";
 import { useWorkspace } from "../workspace";
@@ -14,7 +14,7 @@ import { PeonConnectionStatusDot } from "../components/PeonConnectionStatusDot";
 import type { PeonContext, PeonView } from "./peon/context";
 import { NewProjectDialog } from "./peon/NewProjectDialog";
 import { applyProjectEvent, mergeProjects, withLiveActiveSessionCounts, type ProjectLite } from "./peon/projectList";
-import { applyAttentionEvent, applySessionEvent, mergeSessions, sessionDisplayTitle, sessionFromIndex, sessionSidebarCanLoad, type IndexedSessionEvent, type IndexedSessionLite, type SessionLite } from "./peon/sessionList";
+import { applyAttentionEvent, applyLocalSessionRunningChange, applySessionEvent, mergeSessions, sessionDisplayTitle, sessionFromIndex, sessionSidebarCanLoad, type IndexedSessionEvent, type IndexedSessionLite, type SessionLite } from "./peon/sessionList";
 import { MobilePaneIdentity } from "./peon/session/mobileHeader";
 import { nextSessionAfterDeletion } from "./peon/session/nextSession";
 
@@ -30,7 +30,7 @@ type PeonNavItem = {
 // Work is the Peon landing view. Projects live in the sidebar, leaving the
 // compact icon rail for Work, Stats, and Settings.
 const NAV: readonly PeonNavItem[] = [
-  { to: "sessions", key: "peon.tab.work", icon: Package },
+  { to: "sessions", key: "peon.tab.work", icon: Pickaxe },
   { to: "stats", key: "peon.tab.stats", icon: BarChart3, ownerOnly: true },
 ];
 
@@ -43,6 +43,10 @@ const MIN_SIDEBAR_WIDTH = 208;
 const MAX_SIDEBAR_WIDTH = 480;
 const WORKING_TITLE_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 const SESSION_PAGE_SIZE = 50;
+
+export function isProjectPath(pathname: string): boolean {
+  return /\/projects\/[^/]+(?:\/.*)?$/.test(pathname);
+}
 
 function savedSidebarWidth(): number {
   const saved = Number(window.localStorage.getItem(SIDEBAR_WIDTH_KEY));
@@ -88,6 +92,9 @@ export function PeonDetail() {
   const sessionLoading = useRef(false);
   const nextSessionOffset = useRef(0);
   const { online } = usePeonPresence(peonId, wsId);
+  const onSessionRunningChange = useCallback((changedPeonId: string, sessionId: string, running: boolean, changedAt: number) => {
+    setSessions((current) => applyLocalSessionRunningChange(current, changedPeonId, sessionId, running, changedAt));
+  }, []);
 
   useEffect(() => {
     if (!resizing) return;
@@ -306,6 +313,7 @@ export function PeonDetail() {
 
   const activeProject = sessions.find((s) => s.id === sid)?.projectKey;
   const newSessionTo = activeProject ? `sessions/new?project=${encodeURIComponent(activeProject)}` : "sessions/new";
+  const projectPageActive = isProjectPath(location.pathname);
 
   // Same ordering as the session list page: newest activity first.
   const ordered = [...sessions].sort((a, b) => (b.lastActivityAt ?? b.startedAt ?? 0) - (a.lastActivityAt ?? a.startedAt ?? 0));
@@ -330,6 +338,29 @@ export function PeonDetail() {
   if (!peon) return <div className="grid min-h-screen place-items-center"><div className="forge-spin" /></div>;
 
   const displayedPeon = { ...peon, online };
+  const onSessionDeleted = (_deletedPeonId: string, sessionId: string) => {
+    setSessions((current) => current.filter((session) => session.id !== sessionId));
+    setSessionTotal((total) => total === null ? null : Math.max(0, total - 1));
+    nextSessionOffset.current = Math.max(0, nextSessionOffset.current - 1);
+    setSessionOffset(nextSessionOffset.current);
+  };
+  const renameSession = async (session: SessionLite, title: string | null) => {
+    await api(`${base}/sessions/${encodeURIComponent(session.id)}`, { method: "PATCH", body: JSON.stringify({ title }) });
+    setSessions((current) => current.map((item) => item.id === session.id ? { ...item, title } : item));
+  };
+  const deleteSession = async (session: SessionLite) => {
+    const nextSessionId = nextSessionAfterDeletion(ordered.map((item) => item.id), session.id);
+    await api(`${base}/sessions/${encodeURIComponent(session.id)}`, { method: "DELETE" });
+    onSessionDeleted(peonId, session.id);
+    if (sid === session.id) {
+      navigate(
+        nextSessionId
+          ? `/peons/${encodeURIComponent(peonId)}/sessions/${encodeURIComponent(nextSessionId)}`
+          : `/peons/${encodeURIComponent(peonId)}`,
+        { replace: true },
+      );
+    }
+  };
 
   const ctx: PeonContext = {
     peon: displayedPeon,
@@ -338,13 +369,16 @@ export function PeonDetail() {
     reload,
     isOwner,
     orderedSessionIds: ordered.map((session) => session.id),
+    sessions: ordered,
+    projects: sidebarProjects ?? [],
+    sessionsLoading,
+    sessionPageError,
+    viewersFor,
+    renameSession,
+    deleteSession,
     selectedSessionTitle: sessions.find((session) => session.id === sid)?.title,
-    onSessionDeleted: (_deletedPeonId, sessionId) => {
-      setSessions((current) => current.filter((session) => session.id !== sessionId));
-      setSessionTotal((total) => total === null ? null : Math.max(0, total - 1));
-      nextSessionOffset.current = Math.max(0, nextSessionOffset.current - 1);
-      setSessionOffset(nextSessionOffset.current);
-    },
+    onSessionDeleted,
+    onSessionRunningChange,
   };
   return (
     <div className="flex min-h-screen">
@@ -427,16 +461,8 @@ export function PeonDetail() {
                     to={(session) => `sessions/${session.id}`}
                     peonIdFor={() => peonId}
                     viewersFor={viewersFor}
-                    onRename={async (session, title) => {
-                      await api(`${base}/sessions/${encodeURIComponent(session.id)}`, { method: "PATCH", body: JSON.stringify({ title }) });
-                      setSessions((current) => current.map((item) => item.id === session.id ? { ...item, title } : item));
-                    }}
-                    onDelete={async (session) => {
-                      const nextSessionId = nextSessionAfterDeletion(ordered.map((item) => item.id), session.id);
-                      await api(`${base}/sessions/${encodeURIComponent(session.id)}`, { method: "DELETE" });
-                      ctx.onSessionDeleted?.(peonId, session.id);
-                      if (sid === session.id) navigate(nextSessionId ? `/peons/${encodeURIComponent(peonId)}/sessions/${encodeURIComponent(nextSessionId)}` : `/peons/${encodeURIComponent(peonId)}`, { replace: true });
-                    }}
+                    onRename={renameSession}
+                    onDelete={deleteSession}
                   />
                   <div ref={sessionLoadSentinel} className="flex min-h-8 items-center justify-center px-2 py-2" aria-live="polite">
                     {sessionsLoading && <span className="forge-spin scale-75" role="status" aria-label={t("sessions.loading")} />}
@@ -496,7 +522,7 @@ export function PeonDetail() {
             </>
           </MobilePaneIdentity>
         </div>
-        <div className="mx-auto max-w-6xl px-3 py-4 reveal sm:px-6 sm:py-7">
+        <div className={`mx-auto w-full px-3 py-4 reveal sm:px-6 sm:py-7 ${projectPageActive ? "max-w-none" : "max-w-6xl"}`}>
           <Outlet context={ctx} />
         </div>
       </main>

@@ -6,6 +6,7 @@ import { useT } from "../../i18n";
 import { usePeon } from "./context";
 import { PathInput } from "./PathInput";
 import { ProjectPageHeader } from "./ProjectPageHeader";
+import { ProjectQuickLinksEditor } from "./ProjectQuickLinks";
 import { ProjectTabs } from "./ProjectTabs";
 import { getProjectSettings, projectMetadataValue, projectRoute, updateProjectSettings, type ProjectSettings as Settings } from "./peonApi";
 
@@ -83,5 +84,13 @@ export function ProjectSettings() {
         <Button onClick={() => void save()} disabled={!peon.online || saving || !form.key.trim() || !form.name.trim() || !form.dir.trim()}>{saving ? t("proj.saving") : t("proj.save")}</Button>
       </div>
     </Card>}
+    {settings && (
+      <ProjectQuickLinksEditor
+        base={base}
+        projectKey={key}
+        online={peon.online}
+        links={settings.quickLinks ?? []}
+      />
+    )}
   </div>;
 }

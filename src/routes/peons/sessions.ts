@@ -215,12 +215,29 @@ export function registerSessionRoutes(router: express.Router): void {
     relay(result, res);
   }));
   router.post(`${wp}/sessions/:sid/queue/:itemId/send`, withWorkspaceSession(async (req, res, c) => {
-    relay(await callPeon(
+    const sid = String(req.params.sid);
+    const result = await callPeon(
       connOfRecord(c.record),
       "POST",
-      `/sessions/${encodeURIComponent(String(req.params.sid))}/queue/${encodeURIComponent(String(req.params.itemId))}/send`,
+      `/sessions/${encodeURIComponent(sid)}/queue/${encodeURIComponent(String(req.params.itemId))}/send`,
       { actor: c.operator.email },
-    ), res);
+    );
+    if (result.ok) {
+      const indexed = await indexAcceptedSession(result, c.workspaceId, c.record.peonId);
+      if (!indexed) {
+        // Older Peons acknowledge the queue mutation without returning the
+        // updated SessionRecord. Pull one authoritative summary so every open
+        // Overseer client receives the running transition immediately.
+        const snapshot = await callPeon(
+          connOfRecord(c.record),
+          "GET",
+          `/sessions/${encodeURIComponent(sid)}`,
+          { actor: c.operator.email },
+        );
+        await indexAcceptedSession(snapshot, c.workspaceId, c.record.peonId);
+      }
+    }
+    relay(result, res);
   }));
   router.delete(`${wp}/sessions/:sid/queue/:itemId`, withWorkspaceSession(async (req, res, c) => {
     const sid = String(req.params.sid);

@@ -68,14 +68,28 @@ test("queued work keeps only its own session active across consecutive run resul
 test("send now reconciles the authoritative queue and ignores an item already popped by Peon", async () => {
   let reconciled = 0;
   const failures: unknown[] = [];
-  await sendWaitingQueueItemNow(
+  const accepted = await sendWaitingQueueItemNow(
     "already-popped",
     async () => { throw Object.assign(new Error("unknown queue item"), { code: "UNKNOWN_QUEUE_ITEM" }); },
     async () => { reconciled += 1; },
     (error) => failures.push(error),
   );
   assert.equal(reconciled, 1);
+  assert.equal(accepted, false);
   assert.deepEqual(failures, []);
+});
+
+test("send now reports a real failure so optimistic activity can roll back", async () => {
+  const error = Object.assign(new Error("offline"), { code: "PEON_UNREACHABLE" });
+  const failures: unknown[] = [];
+  const accepted = await sendWaitingQueueItemNow(
+    "queued",
+    async () => { throw error; },
+    async () => {},
+    (failure) => failures.push(failure),
+  );
+  assert.equal(accepted, false);
+  assert.deepEqual(failures, [error]);
 });
 
 test("Queue & stop and ordinary queue preserve attachments, model, effort, and command ID", async () => {

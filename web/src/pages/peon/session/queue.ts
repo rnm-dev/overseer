@@ -126,13 +126,19 @@ export async function sendWaitingQueueItemNow(
   sendNow: (id: string) => Promise<unknown>,
   reconcile: () => Promise<void>,
   failed: (error: unknown) => void,
-): Promise<void> {
+): Promise<boolean> {
+  let accepted = false;
   try {
     await sendNow(itemId);
+    accepted = true;
   } catch (error) {
     const code = error && typeof error === "object" && "code" in error ? (error as { code?: unknown }).code : null;
+    // The Peon may have automatically popped this item just before the click.
+    // Reconcile silently, but do not claim this click started work: another
+    // operator may also have removed it.
     if (code !== "UNKNOWN_QUEUE_ITEM") failed(error);
   } finally {
     await reconcile();
   }
+  return accepted;
 }

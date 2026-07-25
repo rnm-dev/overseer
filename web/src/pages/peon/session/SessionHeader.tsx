@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState, type Dispatch, type RefObject, type SetStateAction } from "react";
 import { createPortal } from "react-dom";
 import { FolderTree } from "lucide-react";
-import { Link } from "react-router-dom";
 import { useT } from "../../../i18n";
-import { ConfirmationDialog, ContentHeader, ContentHeaderLayout, titleize } from "../../../ui";
+import { ConfirmationDialog, ContentHeader, ContentHeaderIdentitySkeleton, ContentHeaderLayout, ContentHeaderTitle, titleize } from "../../../ui";
 import { compactNum, type UsageBreakdown } from "./parsing";
 import { SessionPresence } from "../../../components/SessionPresence";
 import type { PresenceUser } from "../../../liveSocket";
@@ -96,29 +95,18 @@ export function SessionHeaderIdentity({
   const t = useT();
 
   if (metadataLoading) {
-    return (
-      <div
-        className="flex min-w-0 flex-1 items-center gap-2"
-        role="status"
-        aria-label={t("app.loading")}
-        aria-busy="true"
-      >
-        <span className="h-3.5 w-16 flex-none animate-pulse rounded bg-iron-700/70 motion-reduce:animate-none" aria-hidden />
-        <span className="h-3.5 w-44 max-w-[55%] animate-pulse rounded bg-iron-700/70 motion-reduce:animate-none" aria-hidden />
-      </div>
-    );
+    return <ContentHeaderIdentitySkeleton label={t("app.loading")} />;
   }
 
   return (
     <>
       {projectKey && (
-        <Link
+        <ContentHeaderTitle
           to={`/peons/${peonId}/projects/${encodeURIComponent(projectKey)}`}
-          className="flex-none whitespace-nowrap font-display text-sm font-semibold text-forge transition-colors hover:text-fel-bright"
           title={t("session.project")}
         >
           {titleize(projectKey)}
-        </Link>
+        </ContentHeaderTitle>
       )}
       <div
         className={`flex min-w-0 flex-1 items-center rounded transition-colors ${editing ? "bg-iron-800/70" : ""}`}

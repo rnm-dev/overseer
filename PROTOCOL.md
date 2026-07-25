@@ -218,7 +218,9 @@ Overseer requests bounded pages with
 `project_catalog_snapshot_request {requestId,limit:100,cursor?}`. Peon returns
 `project_catalog_snapshot_page {requestId,epoch,revision,barrierSeq,projects,
 nextCursor,hasMore}`. Every project is the safe catalog document
-`{projectId,key,name?,label?,dir?,path?,metadata?}`. `projectId` is immutable;
+`{projectId,key,name?,label?,dir?,path?,metadata?,quickLinks?}`. `quickLinks`
+is the ordered Peon-owned collection of `{id,title,url,order}` absolute,
+credential-free HTTP(S) links. `projectId` is immutable;
 `key` is mutable routing/display metadata. File contents, directory trees,
 skills, credentials, and session-derived rollups never enter this channel.
 
@@ -236,6 +238,12 @@ local projection and remain available while the Peon is offline. Create,
 update, and delete remain authenticated HTTP commands during this slice; their
 authoritative result returns through the project catalog. Older Peons retain
 the proxied HTTP project APIs until their first project snapshot commits.
+
+Overseer exposes workspace-scoped quick-link reads and owner-only mutations at
+`/api/workspaces/:wsId/peons/:peonId/projects/:key/quick-links` and
+`.../quick-links/:linkId`. Mutations write through to Peon, then refresh the
+local projection from Peon's authoritative list; cached reads stay available
+while the Peon is offline.
 
 ## Envelope
 

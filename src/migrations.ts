@@ -445,4 +445,12 @@ export const MIGRATIONS: { id: string; statements: string[] }[] = [
       `CREATE INDEX IF NOT EXISTS session_attention_session_idx ON session_attention (peon_id, session_id, state, requested_at)`,
     ],
   },
+  {
+    // Peon owns project quick links. Overseer keeps only the catalog-backed
+    // projection so links remain visible while the Peon is temporarily offline.
+    id: "021_project_quick_links",
+    statements: [
+      `ALTER TABLE projects ADD COLUMN IF NOT EXISTS quick_links JSONB NOT NULL DEFAULT '[]'::jsonb`,
+    ],
+  },
 ];
