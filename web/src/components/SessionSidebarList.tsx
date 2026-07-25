@@ -73,6 +73,7 @@ export function SessionSidebarList({
   viewersFor,
   onRename,
   onDelete,
+  appearance = "sidebar",
 }: {
   sessions: SessionLite[];
   to: (session: SessionLite) => string;
@@ -81,6 +82,7 @@ export function SessionSidebarList({
   viewersFor: (peonId: string, sessionId: string) => PresenceUser[];
   onRename: (session: SessionLite, title: string | null) => Promise<void>;
   onDelete: (session: SessionLite) => Promise<void>;
+  appearance?: "sidebar" | "panel";
 }) {
   const t = useT();
   const { notifyError } = useNotifications();
@@ -221,7 +223,7 @@ export function SessionSidebarList({
             <NavLink
               to={to(session)}
               title={session.catalogStale ? t("session.catalogStaleTitle") : undefined}
-              className={({ isActive }) => `block rounded px-2.5 py-1.5 transition-colors ${session.catalogStale ? "opacity-70" : ""} ${isActive ? "bg-fel/10" : "hover:bg-iron-900"}`}
+              className={({ isActive }) => `block rounded px-2.5 py-1.5 transition-[background-color,box-shadow] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-fel/60 ${session.catalogStale ? "opacity-70" : ""} ${isActive ? "bg-fel/10" : appearance === "panel" ? "hover:bg-iron-800/70 hover:shadow-[inset_2px_0_0_var(--color-fel)]" : "hover:bg-iron-900"}`}
             >
               <div className="flex items-center gap-1.5">
                 <span className={`h-2 w-2 flex-none rounded-full ${sessionStatusLightClass(session.status, session.attentionUnread)}`} aria-hidden />

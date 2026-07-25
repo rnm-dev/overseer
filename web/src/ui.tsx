@@ -329,7 +329,7 @@ export function ContentHeaderLayout({
   const metadataBelow = metadataPlacement === "below";
   return (
     <div className={compact ? "min-w-0 flex-1" : "space-y-1.5 px-3 py-2.5 sm:px-6"}>
-      <div className={`flex items-center ${compact ? "gap-2" : "gap-3"}`}>
+      <div className={`flex items-center ${compact ? "gap-2" : "min-h-7 gap-3"}`}>
         <div className={metadataBelow ? "flex min-w-0 flex-1 flex-col justify-center" : "flex min-w-0 flex-1 items-center gap-1.5"}>
           {metadataBelow ? <div className="flex min-w-0 items-center gap-1.5">{identity}</div> : identity}
           {metadataBelow && metadata}
@@ -339,6 +339,39 @@ export function ContentHeaderLayout({
       </div>
       {notices}
     </div>
+  );
+}
+
+export function ContentHeaderIdentitySkeleton({ label }: { label: string }) {
+  return (
+    <div
+      className="flex min-w-0 flex-1 items-center gap-2"
+      role="status"
+      aria-label={label}
+      aria-busy="true"
+    >
+      <span className="h-3.5 w-16 flex-none animate-pulse rounded bg-iron-700/70 motion-reduce:animate-none" aria-hidden />
+      <span className="h-3.5 w-44 max-w-[55%] animate-pulse rounded bg-iron-700/70 motion-reduce:animate-none" aria-hidden />
+    </div>
+  );
+}
+
+export function ContentHeaderTitle({
+  children,
+  to,
+  title,
+}: {
+  children: ReactNode;
+  to?: string;
+  title?: string;
+}) {
+  const className = "min-w-0 truncate whitespace-nowrap font-display text-sm font-semibold text-forge";
+  return to ? (
+    <Link to={to} className={`${className} transition-colors hover:text-fel-bright`} title={title}>
+      {children}
+    </Link>
+  ) : (
+    <h1 className={className} title={title}>{children}</h1>
   );
 }
 

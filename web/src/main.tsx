@@ -5,7 +5,12 @@ import { App } from "./App";
 import { AuthProvider } from "./auth";
 import { I18nProvider } from "./i18n";
 import { NotificationsProvider } from "./notifications";
+import { rememberNativeCallback } from "./nativeLoginMode";
 import "./index.css";
+
+// Before the router runs: an unauthenticated deep entry redirects to /login and
+// drops the query string, which is where the mobile app's callback lives.
+rememberNativeCallback(window.location.search, sessionStorage);
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

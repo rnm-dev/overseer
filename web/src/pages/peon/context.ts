@@ -1,4 +1,7 @@
 import { useOutletContext } from "react-router-dom";
+import type { PresenceUser } from "../../liveSocket";
+import type { SessionLite } from "./sessionList";
+import type { ProjectLite } from "./projectList";
 
 // author: Viktor
 
@@ -32,10 +35,18 @@ export interface PeonContext {
   reload: () => void;
   isOwner: boolean;
   orderedSessionIds: string[];
+  sessions?: SessionLite[];
+  projects?: ProjectLite[];
+  sessionsLoading?: boolean;
+  sessionPageError?: boolean;
+  viewersFor?: (peonId: string, sessionId: string) => PresenceUser[];
+  renameSession?: (session: SessionLite, title: string | null) => Promise<void>;
+  deleteSession?: (session: SessionLite) => Promise<void>;
   selectedSessionTitle?: string | null;
   sessionHref?: (peonId: string, sessionId: string) => string;
   sessionsHomeHref?: string;
   onSessionDeleted?: (peonId: string, sessionId: string) => void;
+  onSessionRunningChange?: (peonId: string, sessionId: string, running: boolean, changedAt: number) => void;
 }
 
 export const usePeon = () => useOutletContext<PeonContext>();

@@ -9,8 +9,8 @@ test("indexes authoritative direct and wrapped accepted session responses", asyn
     writes.push({ workspaceId, peonId, session });
   };
 
-  await indexAcceptedSession({ ok: true, json: { id: "direct", status: "running" } }, "workspace", "peon", write);
-  await indexAcceptedSession({ ok: true, json: { session: { id: "wrapped", status: "running" } } }, "workspace", "peon", write);
+  assert.equal(await indexAcceptedSession({ ok: true, json: { id: "direct", status: "running" } }, "workspace", "peon", write), true);
+  assert.equal(await indexAcceptedSession({ ok: true, json: { session: { id: "wrapped", status: "running" } } }, "workspace", "peon", write), true);
 
   assert.deepEqual(writes, [
     { workspaceId: "workspace", peonId: "peon", session: { id: "direct", status: "running" } },
@@ -22,13 +22,13 @@ test("ignores rejected or malformed responses and isolates index failures", asyn
   let writes = 0;
   const write = async () => { writes += 1; };
 
-  await indexAcceptedSession({ ok: false, json: { id: "rejected" } }, "workspace", "peon", write);
-  await indexAcceptedSession({ ok: true, json: { status: "running" } }, "workspace", "peon", write);
-  await indexAcceptedSession({ ok: true, json: null }, "workspace", "peon", write);
-  await indexAcceptedSession({ ok: true, json: { id: "accepted" } }, "workspace", "peon", async () => {
+  assert.equal(await indexAcceptedSession({ ok: false, json: { id: "rejected" } }, "workspace", "peon", write), false);
+  assert.equal(await indexAcceptedSession({ ok: true, json: { status: "running" } }, "workspace", "peon", write), false);
+  assert.equal(await indexAcceptedSession({ ok: true, json: null }, "workspace", "peon", write), false);
+  assert.equal(await indexAcceptedSession({ ok: true, json: { id: "accepted" } }, "workspace", "peon", async () => {
     writes += 1;
     throw new Error("index unavailable");
-  });
+  }), true);
 
   assert.equal(writes, 1);
 });

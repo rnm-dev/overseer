@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   createProject,
+  createProjectQuickLink,
+  deleteProjectQuickLink,
+  getProjectQuickLinks,
   getProjectSettings,
   getProjectSkills,
   getPeonSoul,
@@ -11,6 +14,7 @@ import {
   projectMetadataValue,
   projectRoute,
   updateProjectSettings,
+  updateProjectQuickLink,
   type ApiRequest,
 } from "../pages/peon/peonApi";
 import { ApiError } from "../api";
@@ -100,6 +104,21 @@ test("project skills use the encoded workspace-scoped project endpoint", async (
     path: "/workspaces/ws/peons/peon/projects/local%2Fproject/skills",
     options: { cache: "no-store" },
   }]);
+});
+
+test("project quick-link API encodes project and link identities for CRUD", async () => {
+  const fake = recorder({ links: [] });
+  await getProjectQuickLinks("/peon", "local/project", fake.request);
+  await createProjectQuickLink("/peon", "local/project", { title: "Docs", url: "https://example.test/docs" }, fake.request);
+  await updateProjectQuickLink("/peon", "local/project", "link/id", { title: "Runbook", url: "https://example.test/runbook" }, fake.request);
+  await deleteProjectQuickLink("/peon", "local/project", "link/id", fake.request);
+
+  assert.deepEqual(fake.calls.map(({ path, options }) => [path, options?.method]), [
+    ["/peon/projects/local%2Fproject/quick-links", undefined],
+    ["/peon/projects/local%2Fproject/quick-links", "POST"],
+    ["/peon/projects/local%2Fproject/quick-links/link%2Fid", "PATCH"],
+    ["/peon/projects/local%2Fproject/quick-links/link%2Fid", "DELETE"],
+  ]);
 });
 
 test("only an empty metadata value is normalized to null", () => {

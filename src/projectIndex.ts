@@ -8,6 +8,14 @@ export interface PeonProject {
   name: string | null;
   dir: string | null;
   metadata: string | null;
+  quickLinks?: ProjectQuickLink[];
+}
+
+export interface ProjectQuickLink {
+  id: string;
+  title: string;
+  url: string;
+  order: number;
 }
 
 export interface IndexedProject extends PeonProject {
@@ -58,27 +66,30 @@ async function storeProject(
   project: PeonProject,
 ): Promise<ProjectMutation> {
   const existing = await tx.query<{
-    project_key: string; name: string | null; dir: string | null; metadata: string | null;
+    project_key: string; name: string | null; dir: string | null; metadata: string | null; quick_links: unknown;
   }>(
-    `SELECT project_key,name,dir,metadata FROM projects WHERE peon_id=$1 AND project_id=$2`,
+    `SELECT project_key,name,dir,metadata,quick_links FROM projects WHERE peon_id=$1 AND project_id=$2`,
     [peonId, project.projectId],
   );
   const current = existing.rows[0];
+  const currentQuickLinks = normalizeProjectQuickLinks(current?.quick_links);
+  const nextQuickLinks = normalizeProjectQuickLinks(project.quickLinks);
   if (current
     && current.project_key === project.key
     && current.name === project.name
     && current.dir === project.dir
-    && current.metadata === project.metadata) {
+    && current.metadata === project.metadata
+    && JSON.stringify(currentQuickLinks) === JSON.stringify(nextQuickLinks)) {
     return { event: null };
   }
   const syncedAt = nextProjectSyncedAt();
   await tx.query(
-    `INSERT INTO projects (peon_id,project_id,project_key,name,dir,metadata,synced_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7)
+    `INSERT INTO projects (peon_id,project_id,project_key,name,dir,metadata,quick_links,synced_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8)
      ON CONFLICT (peon_id,project_id) DO UPDATE SET
        project_key=EXCLUDED.project_key,name=EXCLUDED.name,dir=EXCLUDED.dir,
-       metadata=EXCLUDED.metadata,synced_at=EXCLUDED.synced_at`,
-    [peonId, project.projectId, project.key, project.name, project.dir, project.metadata, syncedAt],
+       metadata=EXCLUDED.metadata,quick_links=EXCLUDED.quick_links,synced_at=EXCLUDED.synced_at`,
+    [peonId, project.projectId, project.key, project.name, project.dir, project.metadata, JSON.stringify(nextQuickLinks), syncedAt],
   );
   const payload = {
     peonId,
@@ -88,6 +99,7 @@ async function storeProject(
     dir: project.dir,
     path: project.dir,
     metadata: project.metadata,
+    quickLinks: nextQuickLinks,
     syncedAt,
   };
   return { event: await insertEvent(tx, { workspaceId, peonId, kind: "project", payload }) };
@@ -379,16 +391,16 @@ export async function commitSnapshotCoveredProjectEvent(input: {
 
 export async function listIndexedProjects(peonId: string): Promise<IndexedProject[]> {
   const { rows } = await query<{
-    project_id: string; project_key: string; name: string | null; dir: string | null; metadata: string | null;
+    project_id: string; project_key: string; name: string | null; dir: string | null; metadata: string | null; quick_links: unknown;
     synced_at: number | string; session_count: number | string; active_count: number | string; last_activity_ms: number | string | null;
   }>(
-    `SELECT p.project_id,p.project_key,p.name,p.dir,p.metadata,p.synced_at,
+    `SELECT p.project_id,p.project_key,p.name,p.dir,p.metadata,p.quick_links,p.synced_at,
        COUNT(s.session_id) AS session_count,
        SUM(CASE WHEN s.status='running' THEN 1 ELSE 0 END) AS active_count,
        MAX(s.last_activity_at) AS last_activity_ms
      FROM projects p LEFT JOIN sessions s ON s.peon_id=p.peon_id AND s.project_id=p.project_id
      WHERE p.peon_id=$1
-     GROUP BY p.project_id,p.project_key,p.name,p.dir,p.metadata,p.synced_at
+     GROUP BY p.project_id,p.project_key,p.name,p.dir,p.metadata,p.quick_links,p.synced_at
      ORDER BY MAX(s.last_activity_at) DESC NULLS LAST,p.project_key`,
     [peonId],
   );
@@ -400,11 +412,71 @@ export async function listIndexedProjects(peonId: string): Promise<IndexedProjec
     dir: row.dir,
     path: row.dir,
     metadata: row.metadata,
+    quickLinks: normalizeProjectQuickLinks(row.quick_links),
     syncedAt: Number(row.synced_at),
     sessionCount: Number(row.session_count),
     activeCount: Number(row.active_count),
     lastActivityMs: row.last_activity_ms === null ? null : Number(row.last_activity_ms),
   }));
+}
+
+export function normalizeProjectQuickLinks(value: unknown): ProjectQuickLink[] {
+  let input = value;
+  if (typeof input === "string") {
+    try { input = JSON.parse(input); } catch { throw new Error("invalid project quick links"); }
+  }
+  if (input === undefined || input === null) return [];
+  if (!Array.isArray(input) || input.length > 100) throw new Error("invalid project quick links");
+  const seenIds = new Set<string>();
+  return input.map((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) throw new Error("invalid project quick link");
+    const link = item as Record<string, unknown>;
+    if (Object.keys(link).some((field) => !["id", "title", "url", "order"].includes(field))) throw new Error("invalid project quick link");
+    if (typeof link.id !== "string" || !link.id || link.id.length > 128 || seenIds.has(link.id)) throw new Error("invalid project quick link id");
+    if (typeof link.title !== "string"
+      || !link.title
+      || link.title.length > 120
+      || [...link.title].some((character) => character.charCodeAt(0) <= 31 || character.charCodeAt(0) === 127)) {
+      throw new Error("invalid project quick link title");
+    }
+    if (typeof link.url !== "string" || !link.url || link.url.length > 2_048) throw new Error("invalid project quick link URL");
+    let parsed: URL;
+    try { parsed = new URL(link.url); } catch { throw new Error("invalid project quick link URL"); }
+    if (!["http:", "https:"].includes(parsed.protocol) || parsed.username || parsed.password) throw new Error("invalid project quick link URL");
+    if (!Number.isSafeInteger(link.order) || Number(link.order) < 0) throw new Error("invalid project quick link order");
+    seenIds.add(link.id);
+    return { id: link.id, title: link.title, url: parsed.href, order: Number(link.order) };
+  }).sort((left, right) => left.order - right.order);
+}
+
+export async function refreshIndexedProjectQuickLinks(input: {
+  workspaceId: string;
+  peonId: string;
+  key: string;
+  quickLinks: unknown;
+}): Promise<boolean> {
+  const links = normalizeProjectQuickLinks(input.quickLinks);
+  const mutation = await transaction(async (tx) => {
+    const { rows } = await tx.query<{
+      project_id: string; project_key: string; name: string | null; dir: string | null; metadata: string | null;
+    }>(
+      `SELECT project_id,project_key,name,dir,metadata FROM projects WHERE peon_id=$1 AND project_key=$2`,
+      [input.peonId, input.key],
+    );
+    const project = rows[0];
+    if (!project) return null;
+    return storeProject(tx, input.workspaceId, input.peonId, {
+      projectId: project.project_id,
+      key: project.project_key,
+      name: project.name,
+      dir: project.dir,
+      metadata: project.metadata,
+      quickLinks: links,
+    });
+  });
+  if (!mutation) return false;
+  await publishMutations([mutation]);
+  return true;
 }
 
 export async function getIndexedProject(peonId: string, key: string): Promise<IndexedProject | null> {

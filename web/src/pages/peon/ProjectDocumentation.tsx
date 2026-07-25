@@ -191,26 +191,20 @@ export function ProjectDocumentation({ base, projectId }: { base: string; projec
 
   return (
     <Card className="overflow-hidden">
-      <header className="relative flex items-center gap-3 border-b border-iron-800/90 bg-gradient-to-r from-fel/[0.07] via-transparent to-transparent px-5 py-4 sm:px-6">
-        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-fel/20 bg-fel/10 text-fel-bright shadow-[inset_0_0_18px_rgba(149,201,103,0.05)]">
-          <BookOpen size={20} aria-hidden />
-        </div>
-        <div className="min-w-0 flex-1">
-          <nav aria-label={t("proj.docs.breadcrumbs")} className="flex min-w-0 items-center gap-1 font-display text-sm font-bold tracking-wide">
-            <button type="button" onClick={goHome} className="shrink-0 text-bone-dim transition-colors hover:text-fel-bright">{t("proj.docs.project")}</button>
-            {breadcrumbs.map((part, index) => {
-              const last = index === breadcrumbs.length - 1;
-              const home = index === 0 && part === "docs";
-              return <span key={`${part}-${index}`} className="contents">
-                <ChevronRight size={13} className="shrink-0 text-bone-faint/55" aria-hidden />
-                {home && !last
-                  ? <button type="button" onClick={goHome} className="min-w-0 truncate text-bone-dim transition-colors hover:text-fel-bright">{part}</button>
-                  : <span className={`min-w-0 truncate ${last ? "text-bone" : "text-bone-dim"}`} title={part}>{part}</span>}
-              </span>;
-            })}
-          </nav>
-          <p className="mt-0.5 text-xs text-bone-faint">{t("proj.docs.hint")}</p>
-        </div>
+      <header className="relative flex min-h-12 items-center gap-3 border-b border-iron-800/90 bg-gradient-to-r from-fel/[0.07] via-transparent to-transparent px-5 py-2 sm:px-6">
+        <nav aria-label={t("proj.docs.breadcrumbs")} className="flex min-w-0 flex-1 items-center gap-1 font-display text-sm font-bold tracking-wide">
+          <button type="button" onClick={goHome} className="shrink-0 text-bone-dim transition-colors hover:text-fel-bright">{t("proj.docs.project")}</button>
+          {breadcrumbs.map((part, index) => {
+            const last = index === breadcrumbs.length - 1;
+            const home = index === 0 && part === "docs";
+            return <span key={`${part}-${index}`} className="contents">
+              <ChevronRight size={13} className="shrink-0 text-bone-faint/55" aria-hidden />
+              {home && !last
+                ? <button type="button" onClick={goHome} className="min-w-0 truncate text-bone-dim transition-colors hover:text-fel-bright">{part}</button>
+                : <span className={`min-w-0 truncate ${last ? "text-bone" : "text-bone-dim"}`} title={part}>{part}</span>}
+            </span>;
+          })}
+        </nav>
         <button
           type="button"
           onClick={refresh}

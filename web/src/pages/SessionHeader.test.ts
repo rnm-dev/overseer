@@ -6,7 +6,7 @@ import { MemoryRouter } from "react-router-dom";
 import { I18nProvider } from "../i18n";
 import { sessionHeaderMetadataLoading, SessionHeaderIdentity, SessionHeaderStats } from "./peon/session/SessionHeader";
 import { MobilePaneIdentity, MOBILE_CONTENT_HEADER_ID } from "./peon/session/mobileHeader";
-import { ProjectMobileHeader } from "./peon/ProjectPageHeader";
+import { ProjectHeaderLayout, ProjectMobileHeader } from "./peon/ProjectPageHeader";
 
 (globalThis as typeof globalThis & { React: typeof React }).React = React;
 
@@ -136,6 +136,58 @@ test("mobile project header shows only the project title and new-session action 
   assert.doesNotMatch(html, /href="\/peons\/nova\/projects"/);
   assert.doesNotMatch(html, />OVSR<\/div>/);
   assert.doesNotMatch(html, /px-3 py-2\.5/);
+});
+
+test("desktop project header uses the session content header hierarchy", () => {
+  const html = renderToStaticMarkup(React.createElement(
+    I18nProvider,
+    null,
+    React.createElement(MemoryRouter, null, React.createElement(ProjectHeaderLayout, {
+      title: "Overseer",
+      newSessionTo: "/peons/nova/sessions/new?project=OVSR",
+    })),
+  ));
+
+  assert.match(html, /space-y-1\.5 px-3 py-2\.5 sm:px-6/);
+  assert.match(html, /min-h-7 gap-3/);
+  assert.match(html, /text-sm font-semibold text-forge" title="Overseer">Overseer<\/h1>/);
+  assert.match(html, /btn btn-fel btn-sm h-7.*\+ New session<\/a>/);
+  assert.doesNotMatch(html, /← Projects/);
+  assert.doesNotMatch(html, /href="\/peons\/nova\/projects"/);
+  assert.doesNotMatch(html, />OVSR<\/span>/);
+});
+
+test("desktop project loading reuses the session identity skeleton", () => {
+  const html = renderToStaticMarkup(React.createElement(
+    I18nProvider,
+    null,
+    React.createElement(MemoryRouter, null, React.createElement(ProjectHeaderLayout, {
+      title: "OVSR",
+      newSessionTo: "/peons/nova/sessions/new?project=OVSR",
+      loading: true,
+    })),
+  ));
+
+  assert.match(html, /role="status"/);
+  assert.match(html, /aria-busy="true"/);
+  assert.match(html, /h-3\.5 w-16/);
+  assert.match(html, /h-3\.5 w-44/);
+  assert.doesNotMatch(html, />OVSR<\/h1>/);
+});
+
+test("project overview can move the desktop new-session action into its content", () => {
+  const html = renderToStaticMarkup(React.createElement(
+    I18nProvider,
+    null,
+    React.createElement(MemoryRouter, null, React.createElement(ProjectHeaderLayout, {
+      title: "Overseer",
+      newSessionTo: "/peons/nova/sessions/new?project=OVSR",
+      showNewSession: false,
+    })),
+  ));
+
+  assert.match(html, />Overseer<\/h1>/);
+  assert.doesNotMatch(html, /\+ New session/);
 });
 
 test("session stats stay available in the compact mobile header", () => {

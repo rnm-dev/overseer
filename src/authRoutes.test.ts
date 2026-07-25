@@ -28,7 +28,7 @@ before(async () => {
   config.githubClientId = "github-client";
   config.githubClientSecret = "github-secret";
   config.githubRedirectUri = "https://overseer.example/auth/github/callback";
-  config.githubNativeCallbacks = ["overseer://oauth/github"];
+  config.githubNativeCallbacks = ["overseer-dev://oauth/github", "overseer://oauth/github"];
 
   globalThis.fetch = async (input, init) => {
     const url = String(input);
@@ -156,13 +156,13 @@ test("web OAuth uses the shared frontend callback and completes through the API"
 });
 
 test("native OAuth uses the same frontend callback before opening the app scheme", async () => {
-  const { state } = started(await request("/api/auth/github/native/start", "POST", { callback: "overseer://oauth/github" }));
+  const { state } = started(await request("/api/auth/github/native/start", "POST", { callback: "overseer-dev://oauth/github" }));
   const completed = await request("/api/auth/github", "POST", { state, code: "native-github-code" });
   assert.equal(completed.status, 200);
   assert.equal(completed.body.flow, "native");
 
   const app = new URL(completed.body.redirectUrl as string);
-  assert.equal(`${app.protocol}//${app.host}${app.pathname}`, "overseer://oauth/github");
+  assert.equal(`${app.protocol}//${app.host}${app.pathname}`, "overseer-dev://oauth/github");
   assert.equal(app.searchParams.get("state"), state);
   const appCode = app.searchParams.get("code");
   assert.ok(appCode);

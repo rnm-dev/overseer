@@ -527,12 +527,20 @@ test("session and project catalogs share one ordered durable delivery frontier",
   ws.send(JSON.stringify({
     type: "project_catalog_snapshot_page", requestId: projectRequest.requestId,
     epoch: "projects", revision: 0, barrierSeq: 0,
-    projects: [{ projectId: "project-1", key: "project", name: "Project", dir: "/work/project", metadata: null }],
+    projects: [{
+      projectId: "project-1",
+      key: "project",
+      name: "Project",
+      dir: "/work/project",
+      metadata: null,
+      quickLinks: [{ id: "docs", title: "Docs", url: "https://example.test/docs", order: 0 }],
+    }],
     nextCursor: null, hasMore: false,
   }));
   await received.waitFor((message) => message.type === "durable_ack" && message.cursor === "cursor-1");
   await received.waitFor((message) => message.type === "project_catalog_ack" && message.acknowledgedSeq === 0);
   assert.equal((await listIndexedProjects("multi-catalog-peon"))[0]?.projectId, "project-1");
+  assert.equal((await listIndexedProjects("multi-catalog-peon"))[0]?.quickLinks?.[0]?.title, "Docs");
   assert.equal((await listSessions({ peonId: "multi-catalog-peon", limit: 10, offset: 0 })).sessions[0]?.sessionId, "session-1");
   assert.equal((await query<{ count: number }>(`SELECT COUNT(*)::int AS count FROM peon_session_inbox`)).rows[0]?.count, 2);
 

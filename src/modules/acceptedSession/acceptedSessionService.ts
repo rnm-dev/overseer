@@ -13,18 +13,19 @@ export async function indexAcceptedSession(
   workspaceId: string,
   peonId: string,
   write: SessionWriter = upsertSession,
-): Promise<void> {
-  if (!result.ok || !result.json || typeof result.json !== "object") return;
+): Promise<boolean> {
+  if (!result.ok || !result.json || typeof result.json !== "object") return false;
   const body = result.json as Record<string, unknown>;
   const session = typeof body.id === "string"
     ? body
     : body.session && typeof body.session === "object" && typeof (body.session as Record<string, unknown>).id === "string"
       ? body.session as Record<string, unknown>
       : null;
-  if (!session) return;
+  if (!session) return false;
   try {
     await write(workspaceId, peonId, session as unknown as Parameters<SessionWriter>[2]);
   } catch {
     // The normal Peon event push and periodic reconcile remain the backstop.
   }
+  return true;
 }

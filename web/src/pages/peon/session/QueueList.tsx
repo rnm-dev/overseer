@@ -2,7 +2,7 @@ import { Hourglass, Send, Trash2 } from "lucide-react";
 import { attachmentLabel, type QueueItem } from "./queue";
 import type { Translate } from "../../../i18n";
 
-export const QUEUE_ACTION_CLASS = "flex h-7 min-w-7 items-center justify-center rounded-md bg-black/10 text-[11px] font-medium transition-colors hover:bg-black/20 disabled:cursor-wait disabled:opacity-40";
+export const QUEUE_ACTION_CLASS = "flex h-7 min-w-7 items-center justify-center rounded-md bg-black/10 text-[11px] font-medium text-white transition-colors hover:bg-black/20 hover:text-white disabled:cursor-wait disabled:opacity-40";
 export const QUEUE_HOURGLASS_CLASS = "mt-1 shrink-0 text-ember/70";
 
 export function QueueList({ items, removing, sending, onRemove, onSendNow, t }: {
@@ -18,7 +18,7 @@ export function QueueList({ items, removing, sending, onRemove, onSendNow, t }: 
     <section className="mb-3" aria-label={t("session.queue.title")}>
       <ol className="max-h-56 space-y-2 overflow-y-auto">
         {items.map((item) => (
-          <li key={item.id} className="ml-auto flex min-w-0 max-w-[80%] items-start gap-2 rounded-xl rounded-br-sm bg-forge-deep/55 px-3 py-2 shadow-lg">
+          <li key={item.id} className="ml-auto flex w-full min-w-0 max-w-none items-start gap-2 rounded-xl rounded-br-sm bg-forge-deep/55 px-3 py-2 shadow-lg backdrop-blur-md md:w-auto md:max-w-[80%]">
             <Hourglass
               size={13}
               strokeWidth={1.75}
@@ -36,7 +36,7 @@ export function QueueList({ items, removing, sending, onRemove, onSendNow, t }: 
             <div className="flex shrink-0 items-center gap-1">
               <button
                 type="button"
-                className={`${QUEUE_ACTION_CLASS} text-ember/85 hover:text-ember sm:gap-1 sm:px-2`}
+                className={`${QUEUE_ACTION_CLASS} sm:gap-1 sm:px-2`}
                 disabled={sending.has(item.id) || removing.has(item.id)}
                 onClick={() => onSendNow(item.id)}
                 title={t("session.queue.sendNow")}
@@ -47,7 +47,7 @@ export function QueueList({ items, removing, sending, onRemove, onSendNow, t }: 
               </button>
               <button
                 type="button"
-                className={`${QUEUE_ACTION_CLASS} text-bone/45 hover:bg-blood/10 hover:text-blood`}
+                className={`${QUEUE_ACTION_CLASS} hover:bg-blood/15`}
                 disabled={removing.has(item.id) || sending.has(item.id)}
                 onClick={() => onRemove(item.id)}
                 title={t("session.queue.remove")}

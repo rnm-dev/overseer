@@ -17,6 +17,7 @@ import {
   commitSnapshotCoveredProjectEvent,
   markProjectSyncing,
   releaseProjectSyncGeneration,
+  normalizeProjectQuickLinks,
   type PeonProject,
   type ProjectSyncCheckpoint,
 } from "./projectIndex.js";
@@ -719,7 +720,8 @@ function parseProject(value: unknown): PeonProject {
   const name = optionalString(project.name ?? project.label, "project.name", 2_000);
   const dir = optionalString(project.dir ?? project.path, "project.dir", 4_096);
   const metadata = optionalString(project.metadata, "project.metadata", 32_000);
-  const allowed = new Set(["projectId", "key", "name", "label", "dir", "path", "metadata"]);
+  const quickLinks = normalizeProjectQuickLinks(project.quickLinks);
+  const allowed = new Set(["projectId", "key", "name", "label", "dir", "path", "metadata", "quickLinks"]);
   if (Object.keys(project).some((field) => !allowed.has(field))) throw new SessionSyncProtocolError("unknown project summary field");
-  return { projectId, key, name, dir, metadata };
+  return { projectId, key, name, dir, metadata, quickLinks };
 }

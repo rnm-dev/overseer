@@ -1,4 +1,5 @@
-import { NavLink, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
+import { RouteTabs, type RouteTab } from "../../components/RouteTabs";
 import { useT } from "../../i18n";
 import { usePeon } from "./context";
 
@@ -7,16 +8,17 @@ export function ProjectTabs() {
   const { peon, isOwner } = usePeon();
   const { key = "" } = useParams();
   const base = `/peons/${encodeURIComponent(peon.peonId)}/projects/${encodeURIComponent(key)}`;
-  const tabClass = ({ isActive }: { isActive: boolean }) =>
-    `border-b-2 px-1 pb-2.5 font-display text-xs font-semibold transition-colors ${isActive ? "border-fel text-fel-bright" : "border-transparent text-bone-faint hover:text-bone"}`;
+  const tabs: RouteTab[] = [
+    { to: base, label: t("proj.tab.overview"), end: true },
+    { to: `${base}/files`, label: t("proj.tab.files") },
+    { to: `${base}/skills`, label: t("proj.tab.skills") },
+  ];
+  if (isOwner) {
+    tabs.push(
+      { to: `${base}/members`, label: t("proj.tab.members") },
+      { to: `${base}/settings`, label: t("proj.tab.settings") },
+    );
+  }
 
-  return (
-    <nav className="mb-4 flex gap-5 border-b border-iron-800" aria-label={t("proj.tabs")}>
-      <NavLink to={base} end className={tabClass}>{t("proj.tab.overview")}</NavLink>
-      <NavLink to={`${base}/files`} className={tabClass}>{t("proj.tab.files")}</NavLink>
-      <NavLink to={`${base}/skills`} className={tabClass}>{t("proj.tab.skills")}</NavLink>
-      {isOwner && <NavLink to={`${base}/members`} className={tabClass}>{t("proj.tab.members")}</NavLink>}
-      {isOwner && <NavLink to={`${base}/settings`} className={tabClass}>{t("proj.tab.settings")}</NavLink>}
-    </nav>
-  );
+  return <RouteTabs ariaLabel={t("proj.tabs")} tabs={tabs} className="mb-4" />;
 }

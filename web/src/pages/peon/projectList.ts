@@ -12,6 +12,7 @@ export interface ProjectLite {
   lastActivityMs?: number | null;
   syncedAt?: number;
   deleted?: boolean;
+  quickLinks?: Array<{ id: string; title: string; url: string; order: number }>;
 }
 
 export interface ProjectLiveEvent extends Partial<ProjectLite> {
