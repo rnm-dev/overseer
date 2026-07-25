@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://peon.local/protocol/reverse-command-v1/schema.json",
+  "title": "Overseer to Peon reverse command protocol v1",
+  "oneOf": [
+    { "$ref": "#/$defs/command" },
+    { "$ref": "#/$defs/commandAccepted" },
+    { "$ref": "#/$defs/commandStatusRequest" },
+    { "$ref": "#/$defs/commandStatus" },
+    { "$ref": "#/$defs/durableCommandResult" }
+  ],
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "actor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["userId", "email"],
+      "properties": {
+        "userId": { "$ref": "#/$defs/uuid" },
+        "email": { "type": "string", "minLength": 3, "maxLength": 320 }
+      }
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["peonId", "sessionId"],
+      "properties": {
+        "peonId": { "$ref": "#/$defs/uuid" },
+        "sessionId": { "$ref": "#/$defs/uuid" },
+        "projectId": { "$ref": "#/$defs/uuid" },
+        "transferId": { "$ref": "#/$defs/uuid" }
+      }
+    },
+    "command": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "protocol", "capability", "commandId", "operation", "target", "actor", "payload", "requestedAt"],
+      "properties": {
+        "type": { "const": "command" },
+        "protocol": { "const": 1 },
+        "capability": { "const": "reverse-command-v1" },
+        "commandId": { "$ref": "#/$defs/uuid" },
+        "operation": { "type": "string", "enum": ["session.cancel"] },
+        "target": { "$ref": "#/$defs/target" },
+        "actor": { "$ref": "#/$defs/actor" },
+        "payload": { "type": "object", "additionalProperties": false, "maxProperties": 0 },
+        "expected": { "type": ["object", "null"], "additionalProperties": true },
+        "requestedAt": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "commandAccepted": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "protocol", "commandId", "operation", "state", "replayed", "acceptedAt"],
+      "properties": {
+        "type": { "const": "command_accepted" },
+        "protocol": { "const": 1 },
+        "commandId": { "$ref": "#/$defs/uuid" },
+        "operation": { "const": "session.cancel" },
+        "state": { "enum": ["accepted", "running"] },
+        "replayed": { "type": "boolean" },
+        "acceptedAt": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "commandResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "protocol", "commandId", "operation", "status", "code", "completedAt", "result"],
+      "properties": {
+        "type": { "const": "command_result" },
+        "protocol": { "const": 1 },
+        "commandId": { "$ref": "#/$defs/uuid" },
+        "operation": { "const": "session.cancel" },
+        "status": { "enum": ["applied", "noop", "rejected", "conflict", "cancelled", "failed"] },
+        "code": { "type": "string", "minLength": 2, "maxLength": 80 },
+        "message": { "type": "string", "maxLength": 1000 },
+        "completedAt": { "type": "integer", "minimum": 0 },
+        "result": { "type": ["object", "null"] }
+      }
+    },
+    "durableCommandResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "epoch", "cursor", "messageId", "priority", "capability", "payload"],
+      "properties": {
+        "type": { "const": "durable_message" },
+        "epoch": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "cursor": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "messageId": { "$ref": "#/$defs/uuid" },
+        "priority": { "enum": ["critical", "control", "normal", "bulk"] },
+        "capability": { "const": "reverse-command-v1" },
+        "payload": { "$ref": "#/$defs/commandResult" }
+      }
+    },
+    "commandStatusRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "protocol", "commandId"],
+      "properties": {
+        "type": { "const": "command_status_request" },
+        "protocol": { "const": 1 },
+        "commandId": { "$ref": "#/$defs/uuid" }
+      }
+    },
+    "commandStatus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "protocol", "commandId", "state"],
+      "properties": {
+        "type": { "const": "command_status" },
+        "protocol": { "const": 1 },
+        "commandId": { "$ref": "#/$defs/uuid" },
+        "state": { "enum": ["unknown", "accepted", "running", "terminal"] },
+        "result": { "$ref": "#/$defs/commandResult" }
+      }
+    }
+  }
+}
