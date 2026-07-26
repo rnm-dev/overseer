@@ -91,7 +91,7 @@ export function PathInput({ base, value, onChange, browseRoot, browseBase, brows
           value={value}
           disabled={disabled}
           onChange={(event) => onChange(event.target.value)}
-          className={`pr-11 path-field ${className}`}
+          className={`pr-11 path-field ${className}`.trim()}
         />
         <button
           type="button"
