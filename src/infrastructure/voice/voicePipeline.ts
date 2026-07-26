@@ -28,6 +28,12 @@ export interface VoicePipelineResult {
   polishMs: number;
   guardrail: VoiceGuardrail | null;
   emptySpeech: boolean;
+  // Why the polish stage failed, for the log only — never returned to a client.
+  // A swallowed failure is otherwise invisible except as a guardrail counter,
+  // which tells you the rate but never the cause.
+  polishError: string | null;
+  // The provider's measure of the audio, when it reports one.
+  durationSeconds: number | null;
 }
 
 export interface VoicePipelineInput {
@@ -123,6 +129,11 @@ export function stripPolishWrapper(text: string): string {
   let value = text.trim();
   const fence = /^```[^\n]*\n([\s\S]*?)\n?```$/.exec(value);
   if (fence) value = fence[1].trim();
+  // "Here's the corrected text:" — a small model announces itself even when
+  // told not to, and the announcement is short enough to slip under the growth
+  // ratio and land in the composer. Requiring a blank line after the label
+  // keeps this off dictation, which Whisper returns as a single paragraph.
+  value = value.replace(/^[^\n]{0,60}:[ \t]*\n\s*\n/, "").trim();
   for (const [open, close] of [['"', '"'], ["'", "'"], ["«", "»"], ["“", "”"], ["`", "`"]]) {
     if (value.length >= 2 && value.startsWith(open) && value.endsWith(close)) {
       value = value.slice(1, -1).trim();
@@ -150,6 +161,8 @@ function empty(result: Partial<VoicePipelineResult> = {}): VoicePipelineResult {
     polishMs: 0,
     guardrail: null,
     emptySpeech: true,
+    polishError: null,
+    durationSeconds: null,
     ...result,
   };
 }
@@ -176,8 +189,9 @@ export async function runVoicePipeline(input: VoicePipelineInput, deps: VoicePip
 
   const raw = transcript.text.trim();
   const language = transcript.language ?? input.language ?? null;
+  const durationSeconds = transcript.durationSeconds ?? null;
   if (!raw || isLikelySilenceHallucination(raw, input.durationMs, input.audio.byteLength)) {
-    return empty({ sttModel: transcript.model, language, sttMs });
+    return empty({ sttModel: transcript.model, language, sttMs, durationSeconds });
   }
 
   const base: VoicePipelineResult = {
@@ -191,6 +205,8 @@ export async function runVoicePipeline(input: VoicePipelineInput, deps: VoicePip
     polishMs: 0,
     guardrail: null,
     emptySpeech: false,
+    polishError: null,
+    durationSeconds,
   };
 
   if (!deps.polish) return { ...base, guardrail: "polish-unconfigured" };
@@ -211,7 +227,12 @@ export async function runVoicePipeline(input: VoicePipelineInput, deps: VoicePip
     );
   } catch (cause) {
     const timedOut = cause instanceof Error && (cause.name === "TimeoutError" || cause.name === "AbortError");
-    return { ...base, polishMs: Date.now() - polishStartedAt, guardrail: timedOut ? "polish-timeout" : "polish-error" };
+    return {
+      ...base,
+      polishMs: Date.now() - polishStartedAt,
+      guardrail: timedOut ? "polish-timeout" : "polish-error",
+      polishError: cause instanceof Error ? cause.message : String(cause),
+    };
   }
   const polishMs = Date.now() - polishStartedAt;
 

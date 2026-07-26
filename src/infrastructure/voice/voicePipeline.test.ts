@@ -10,14 +10,14 @@ import { VoiceProviderError, type SpeechToTextProvider, type TextPolishProvider 
 
 const AUDIO = Buffer.alloc(48_000, 1);
 
-function fakeStt(text: string, extra: { language?: string; fail?: boolean } = {}): SpeechToTextProvider {
+function fakeStt(text: string, extra: { language?: string; fail?: boolean; durationSeconds?: number } = {}): SpeechToTextProvider {
   return {
     id: "fake-stt",
     limits: { maxBytes: 4_000_000, maxDurationMs: 120_000, mediaTypes: ["audio/webm"] },
     isConfigured: () => true,
     transcribe: async () => {
       if (extra.fail) throw new VoiceProviderError("stt", "boom", 500);
-      return { text, language: extra.language, model: "fake-whisper" };
+      return { text, language: extra.language, durationSeconds: extra.durationSeconds, model: "fake-whisper" };
     },
   };
 }
@@ -110,6 +110,9 @@ test("a polish provider error is never fatal", async () => {
   const result = await runVoicePipeline({ audio: AUDIO, mediaType: "audio/webm" }, deps(fakeStt("pause the fleet"), failing));
   assert.equal(result.text, "pause the fleet");
   assert.equal(result.guardrail, "polish-error");
+  // The cause survives for the log; a swallowed failure that leaves no trace
+  // is only a counter, and a counter cannot be debugged.
+  assert.match(result.polishError ?? "", /502 from provider/);
 });
 
 test("an STT failure is fatal — there is nothing to fall back to", async () => {
@@ -159,6 +162,24 @@ test("an empty transcript is empty speech, not an error", async () => {
   const result = await runVoicePipeline({ audio: AUDIO, mediaType: "audio/webm" }, deps(fakeStt("   "), null));
   assert.equal(result.text, "");
   assert.equal(result.emptySpeech, true);
+});
+
+test("an announced answer loses its preamble instead of landing in the composer", () => {
+  // Observed from llama-3.1-8b-instant against real audio: short inputs get a
+  // label line the ratio guardrail is too coarse to catch.
+  assert.equal(stripPolishWrapper('Here\'s the corrected text:\n\n"But we prefer that you start."'), "But we prefer that you start.");
+  assert.equal(stripPolishWrapper("Вот исправленный текст:\n\nЗадеплой Kanat на прод."), "Задеплой Kanat на прод.");
+  // A colon inside ordinary dictation is not a preamble — no blank line.
+  assert.equal(stripPolishWrapper("Note: restart the container."), "Note: restart the container.");
+  assert.equal(stripPolishWrapper("One thing:\nrestart the container."), "One thing:\nrestart the container.");
+});
+
+test("the provider's own duration is carried through for the log", async () => {
+  const result = await runVoicePipeline(
+    { audio: AUDIO, mediaType: "audio/webm", durationMs: 15_000 },
+    deps(fakeStt("deploy the fleet", { durationSeconds: 15.4 }), null),
+  );
+  assert.equal(result.durationSeconds, 15.4);
 });
 
 test("wrapping quotes and code fences are stripped before the ratio is judged", () => {

@@ -57,7 +57,10 @@ function logDictation(context: { userId: string; workspaceId: string; peonId?: s
     context.peonId ? `peon=${context.peonId}` : null,
     context.sessionId ? `session=${context.sessionId}` : null,
     `bytes=${context.bytes}`,
-    context.durationMs === undefined ? null : `durationMs=${Math.round(context.durationMs)}`,
+    // The provider's own measure when it reports one, since a client can
+    // understate what it declared; the claim is kept alongside it.
+    result.durationSeconds === null ? null : `audioSeconds=${result.durationSeconds.toFixed(1)}`,
+    context.durationMs === undefined ? null : `claimedMs=${Math.round(context.durationMs)}`,
     `mediaType=${context.mediaType}`,
     `language=${result.language ?? "auto"}`,
     `sttModel=${result.sttModel ?? "-"}`,
@@ -70,6 +73,9 @@ function logDictation(context: { userId: string; workspaceId: string; peonId?: s
     `totalMs=${context.totalMs}`,
   ].filter(Boolean).join(" ");
   console.log(`voice.transcription ${fields}`);
+  // The pipeline swallows a polish failure by design; without this the cause is
+  // invisible and only the guardrail counter moves.
+  if (result.polishError) console.warn(`voice.polish_failed guardrail=${result.guardrail} reason=${result.polishError}`);
   if (config.voice.logTranscripts) console.log(`voice.transcript raw=${JSON.stringify(result.raw)} text=${JSON.stringify(result.text)}`);
 }
 
