@@ -119,7 +119,7 @@ test("a raw audio body comes back as cleaned text, with raw alongside it and the
   assert.equal(sent.body.polished, true);
   assert.equal(sent.body.language, "ru");
   assert.equal(sent.body.sttModel, "whisper-large-v3-turbo");
-  assert.equal(sent.body.polishModel, "llama-3.1-8b-instant");
+  assert.equal(sent.body.polishModel, "llama-3.3-70b-versatile");
   assert.equal(typeof sent.body.latencyMs, "number");
   assert.match(sent.serverTiming ?? "", /stt;dur=\d+, polish;dur=\d+, total;dur=\d+/);
 });
