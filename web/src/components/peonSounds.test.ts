@@ -11,11 +11,11 @@ import {
   SOUND_PACK_PATHS,
   SOUND_PACK_STORAGE_KEY,
   SOUND_PACKS,
-  SCV_WORKING_SOUND_PATHS,
+  WORKING_SOUND_PATHS,
 } from "../peonSounds";
 
 test("sound pack selector exposes the requested packs and bundled semantic paths", () => {
-  assert.deepEqual(SOUND_PACKS.map(({ id }) => id), ["peon", "peasant", "none", "dota2_axe", "sc_scv"]);
+  assert.deepEqual(SOUND_PACKS.map(({ id }) => id), ["peon", "peasant", "none", "dota2_axe", "sc_scv", "probe"]);
   assert.deepEqual(SOUND_PACK_PATHS, {
     peon: {
       start: ["/sounds/peon/work-start.wav", "/sounds/peon/work-start-2.wav"],
@@ -36,6 +36,16 @@ test("sound pack selector exposes the requested packs and bundled semantic paths
       start: ["/sounds/sc_scv/work-start.mp3", "/sounds/sc_scv/work-start-2.mp3"],
       stop: ["/sounds/sc_scv/work-stop.mp3", "/sounds/sc_scv/work-stop-2.mp3"],
       complete: ["/sounds/sc_scv/work-complete.mp3", "/sounds/sc_scv/work-complete-2.mp3"],
+    },
+    probe: {
+      start: [
+        "/sounds/probe/work-start.wav",
+        "/sounds/probe/work-start-2.wav",
+        "/sounds/probe/work-start-3.wav",
+        "/sounds/probe/work-start-4.wav",
+      ],
+      stop: ["/sounds/probe/work-stop.wav"],
+      complete: ["/sounds/probe/work-complete.wav"],
     },
   });
 });
@@ -144,15 +154,15 @@ test("SCV working sound plays once per update and ignores updates while a clip i
 
   player.play();
   player.play();
-  assert.deepEqual(created.map(({ src }) => src), [SCV_WORKING_SOUND_PATHS[0]]);
+  assert.deepEqual(created.map(({ src }) => src), [WORKING_SOUND_PATHS.sc_scv![0]]);
   created[0].onended?.();
   player.play();
   created[1].onended?.();
   player.play();
   assert.deepEqual(created.map(({ src }) => src), [
-    SCV_WORKING_SOUND_PATHS[0],
-    SCV_WORKING_SOUND_PATHS[1],
-    SCV_WORKING_SOUND_PATHS[4],
+    WORKING_SOUND_PATHS.sc_scv![0],
+    WORKING_SOUND_PATHS.sc_scv![1],
+    WORKING_SOUND_PATHS.sc_scv![4],
   ]);
 
   player.stop();
@@ -184,4 +194,19 @@ test("only non-terminal agent events trigger the working sound", () => {
   assert.equal(isAgentWorkUpdate({ type: "system" }), true);
   assert.equal(isAgentWorkUpdate({ type: "user_message" }), false);
   assert.equal(isAgentWorkUpdate({ type: "result" }), false);
+});
+
+test("work ambience follows the pack and stays silent for packs without one", () => {
+  const created: string[] = [];
+  let pack: "probe" | "peasant" = "probe";
+  const player = createWorkSoundPlayer((src) => {
+    created.push(src);
+    return { currentTime: 0, preload: "none", onended: null, play: () => {}, pause: () => {} };
+  }, () => pack, () => 0);
+
+  player.play();
+  player.stop();
+  pack = "peasant";
+  player.play();
+  assert.deepEqual(created, ["/sounds/probe/work-active-0.wav"]);
 });

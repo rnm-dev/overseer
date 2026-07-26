@@ -1,15 +1,20 @@
 export type PeonSound = "start" | "stop" | "complete";
 
-export type SoundPack = "none" | "peon" | "peasant" | "dota2_axe" | "sc_scv";
+export type SoundPack = "none" | "peon" | "peasant" | "dota2_axe" | "sc_scv" | "probe";
 type SoundPool = readonly [string, ...string[]];
 
-export const SCV_WORKING_SOUND_PATHS: SoundPool = [
-  "/sounds/sc_scv/work-active-0.wav",
-  "/sounds/sc_scv/work-active-1.wav",
-  "/sounds/sc_scv/work-active-2.wav",
-  "/sounds/sc_scv/work-active-3.wav",
-  "/sounds/sc_scv/work-active-4.wav",
-];
+// Ambience played while the agent is mid-turn. Only packs whose source material
+// has a "still working" line get one; the rest stay silent between events.
+export const WORKING_SOUND_PATHS: Partial<Record<Exclude<SoundPack, "none">, SoundPool>> = {
+  sc_scv: [
+    "/sounds/sc_scv/work-active-0.wav",
+    "/sounds/sc_scv/work-active-1.wav",
+    "/sounds/sc_scv/work-active-2.wav",
+    "/sounds/sc_scv/work-active-3.wav",
+    "/sounds/sc_scv/work-active-4.wav",
+  ],
+  probe: ["/sounds/probe/work-active-0.wav"],
+};
 
 export const SOUND_PACKS: readonly { id: SoundPack; label: string }[] = [
   { id: "peon", label: "Peon" },
@@ -17,6 +22,7 @@ export const SOUND_PACKS: readonly { id: SoundPack; label: string }[] = [
   { id: "none", label: "No sound" },
   { id: "dota2_axe", label: "Axe (Dota 2)" },
   { id: "sc_scv", label: "StarCraft SCV" },
+  { id: "probe", label: "Probe (StarCraft)" },
 ];
 
 export const SOUND_PACK_PATHS: Record<Exclude<SoundPack, "none">, Record<PeonSound, SoundPool>> = {
@@ -39,6 +45,16 @@ export const SOUND_PACK_PATHS: Record<Exclude<SoundPack, "none">, Record<PeonSou
     start: ["/sounds/sc_scv/work-start.mp3", "/sounds/sc_scv/work-start-2.mp3"],
     stop: ["/sounds/sc_scv/work-stop.mp3", "/sounds/sc_scv/work-stop-2.mp3"],
     complete: ["/sounds/sc_scv/work-complete.mp3", "/sounds/sc_scv/work-complete-2.mp3"],
+  },
+  probe: {
+    start: [
+      "/sounds/probe/work-start.wav",
+      "/sounds/probe/work-start-2.wav",
+      "/sounds/probe/work-start-3.wav",
+      "/sounds/probe/work-start-4.wav",
+    ],
+    stop: ["/sounds/probe/work-stop.wav"],
+    complete: ["/sounds/probe/work-complete.wav"],
   },
 };
 
@@ -143,13 +159,15 @@ export function createWorkSoundPlayer(
   let previousIndex = -1;
 
   const play = () => {
-    if (selectedPack() !== "sc_scv" || current) return;
-    let index = Math.floor(random() * SCV_WORKING_SOUND_PATHS.length);
-    if (index === previousIndex && SCV_WORKING_SOUND_PATHS.length > 1) {
-      index = (index + 1) % SCV_WORKING_SOUND_PATHS.length;
+    const pack = selectedPack();
+    const pool = pack === "none" ? undefined : WORKING_SOUND_PATHS[pack];
+    if (!pool || current) return;
+    let index = Math.floor(random() * pool.length);
+    if (index === previousIndex && pool.length > 1) {
+      index = (index + 1) % pool.length;
     }
     previousIndex = index;
-    const player = createAudio(SCV_WORKING_SOUND_PATHS[index] ?? SCV_WORKING_SOUND_PATHS[0]);
+    const player = createAudio(pool[index] ?? pool[0]);
     current = player;
     player.preload = "auto";
     player.onended = () => {
