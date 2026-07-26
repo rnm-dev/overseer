@@ -6,6 +6,8 @@ type SoundPool = readonly [string, ...string[]];
 // Ambience played while the agent is mid-turn. Only packs whose source material
 // has a "still working" line get one; the rest stay silent between events.
 export const WORKING_SOUND_PATHS: Partial<Record<Exclude<SoundPack, "none">, SoundPool>> = {
+  peon: ["/sounds/peon/work-active-0.mp3"],
+  peasant: ["/sounds/peasant/work-active-0.mp3"],
   sc_scv: [
     "/sounds/sc_scv/work-active-0.wav",
     "/sounds/sc_scv/work-active-1.wav",
