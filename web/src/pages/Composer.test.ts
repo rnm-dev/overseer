@@ -3,7 +3,7 @@ import test from "node:test";
 import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { I18nProvider } from "../i18n";
-import { COMPOSER_ICON_ACTION_CLASS, COMPOSER_SHELL_CLASS, COMPOSER_TEXT_ACTION_CLASS, Composer, isFileDrag } from "./peon/Composer";
+import { COMPOSER_ICON_ACTION_CLASS, COMPOSER_SHELL_CLASS, COMPOSER_TEXT_ACTION_CLASS, Composer, MAX_TEXTAREA_HEIGHT, isFileDrag } from "./peon/Composer";
 
 (globalThis as typeof globalThis & { React: typeof React }).React = React;
 
@@ -39,6 +39,32 @@ test("composer exposes the shared file drop zone", () => {
   assert.match(COMPOSER_ICON_ACTION_CLASS, /\bw-8\b/);
   assert.match(COMPOSER_ICON_ACTION_CLASS, /\brounded-lg\b/);
   assert.match(COMPOSER_TEXT_ACTION_CLASS, /\bon-surface\b/);
+});
+
+test("the auto-size cap matches the textarea's painted max height", () => {
+  const markup = renderToStaticMarkup(React.createElement(
+    I18nProvider,
+    null,
+    React.createElement(Composer, {
+      value: "first line\nsecond line\nthird line",
+      onChange: () => undefined,
+      onSubmit: () => undefined,
+      placeholder: "Message",
+      submitTitle: "Send",
+      disabled: false,
+      files: [],
+      onFilesChange: () => undefined,
+      onPreviewFile: () => undefined,
+      filesEnabled: true,
+      error: null,
+      onErrorChange: () => undefined,
+    }),
+  ));
+
+  // The restored draft grows the textarea imperatively up to this cap; letting
+  // the two drift would either clip the content or overflow the shell.
+  assert.match(markup, /\bmax-h-40\b/);
+  assert.equal(MAX_TEXTAREA_HEIGHT, 40 * 4); // Tailwind spacing unit = 4px
 });
 
 test("file drag detection ignores ordinary text and link drags", () => {
