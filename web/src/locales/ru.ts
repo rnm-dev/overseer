@@ -319,7 +319,6 @@ export const ru: Record<string, string> = {
   "session.chat.changes": "Изменения",
   "session.chat.output": "Вывод",
   "session.chat.noOutput": "(нет вывода)",
-  "session.working.thinking": "Агент думает…",
   "session.working.typing": "Агент печатает…",
   "session.working.bash": "Выполняет команду…",
   "session.working.read": "Читает файл…",

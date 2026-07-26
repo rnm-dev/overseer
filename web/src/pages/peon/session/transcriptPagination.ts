@@ -4,6 +4,10 @@ import type { Ev } from "./parsing";
 // in the UI. Keep the initial render bounded; older history remains available
 // through the existing opaque-cursor pagination control.
 export const TRANSCRIPT_PAGE_SIZE = 50;
+// Opening a session with only 50 events lands mid-conversation too often, so the
+// first (cursor-less, newest) page pulls three pages' worth up front; subsequent
+// older pages stay at TRANSCRIPT_PAGE_SIZE.
+export const TRANSCRIPT_INITIAL_PAGE_SIZE = TRANSCRIPT_PAGE_SIZE * 3;
 
 export type TranscriptResponse = Ev[] | {
   events?: Ev[];
@@ -72,7 +76,9 @@ export function pagesOverlap(events: Ev[], knownIds: Set<string>): boolean {
 export function transcriptPageUrl(base: string, sid: string, supported: boolean, cursor?: string): string {
   const path = `${base}/sessions/${encodeURIComponent(sid)}/transcript`;
   if (!supported) return path;
-  const params = new URLSearchParams({ limit: String(TRANSCRIPT_PAGE_SIZE) });
+  const params = new URLSearchParams({
+    limit: String(cursor ? TRANSCRIPT_PAGE_SIZE : TRANSCRIPT_INITIAL_PAGE_SIZE),
+  });
   if (cursor) params.set("cursor", cursor);
   return `${path}?${params}`;
 }

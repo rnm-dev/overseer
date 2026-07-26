@@ -319,7 +319,6 @@ export const en: Record<string, string> = {
   "session.chat.changes": "Changes",
   "session.chat.output": "Output",
   "session.chat.noOutput": "(no output)",
-  "session.working.thinking": "Work work!",
   "session.working.typing": "Agent is writing…",
   "session.working.bash": "Running a command…",
   "session.working.read": "Reading a file…",

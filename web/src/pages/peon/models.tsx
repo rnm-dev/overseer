@@ -78,6 +78,16 @@ export function modelLabel(catalog: ModelsCatalog | null, id: string | null | un
   return id;
 }
 
+// Effort ids are provider-scoped (unlike model ids), so resolving a label needs
+// the provider the session runs on. An absent id means "the provider's own
+// default", which is still a concrete effort worth naming in the UI.
+export function reasoningEffortLabel(provider: ModelProvider | null, id: string | null | undefined): string | null {
+  const effort = id
+    ? provider?.reasoningEfforts.find((option) => optionMatches(option, id))
+    : provider?.reasoningEfforts.find((option) => option.default);
+  return effort?.label ?? id ?? null;
+}
+
 export function optionMatches(option: CatalogOption, value: string): boolean {
   return option.id === value || option.alias === value;
 }
