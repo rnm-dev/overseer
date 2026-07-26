@@ -2,10 +2,13 @@
 // authenticated user is not a trusted user — without a quota the instance key
 // is a free public ASR service.
 //
-// Two limits, both per user and both rolling:
+// Three rolling limits. Two are per user:
 //   - a request rate, which stops a script hammering the route;
 //   - an audio-seconds budget, which is what actually costs money, since a
 //     single request may carry two minutes of audio.
+// The third is per instance: a daily request ceiling matching whatever the
+// provider actually grants, so one busy user cannot spend the fleet's whole
+// day and leave everyone else looking at errors.
 //
 // In memory, like the sign-in limiter in routes/auth.ts. One Overseer process
 // holds the whole fleet today; a second instance would need this in Postgres,
@@ -14,11 +17,15 @@
 export interface VoiceQuotaLimits {
   requestsPerMinute: number;
   audioSecondsPerHour: number;
+  // Shared across every user on the instance, because the provider budget is.
+  // 0 means unconfigured — the operator has not told us their provider tier, so
+  // we do not invent one.
+  requestsPerDay: number;
 }
 
 export interface VoiceQuotaDecision {
   allowed: boolean;
-  reason: "requests" | "audio-seconds" | null;
+  reason: "requests" | "audio-seconds" | "instance-day" | null;
   retryAfterSeconds: number;
 }
 
@@ -29,8 +36,15 @@ interface QuotaEntry {
 
 const MINUTE_MS = 60_000;
 const HOUR_MS = 60 * MINUTE_MS;
+const DAY_MS = 24 * HOUR_MS;
 
 const usage = new Map<string, QuotaEntry[]>();
+// The instance-wide ledger. The per-user limits stop one person being abusive;
+// this stops one person — however legitimately — spending the whole fleet's
+// provider budget for the day. On a free provider tier those are very different
+// numbers: 20 requests/minute is 1200 an hour, against a daily ceiling that can
+// be smaller than that.
+let instanceUsage: number[] = [];
 
 // Opus at the ~32 kbps the clients record is roughly 4 KB per second. Charging
 // the larger of the declared duration and this estimate means a client cannot
@@ -44,6 +58,15 @@ export function estimateAudioSeconds(byteLength: number, declaredDurationMs: num
 }
 
 export function checkVoiceQuota(userId: string, chargedSeconds: number, limits: VoiceQuotaLimits, now = Date.now()): VoiceQuotaDecision {
+  // The instance ledger is checked first: if the shared budget is gone, no
+  // per-user allowance can conjure more of it, and the caller deserves the
+  // retry window that actually applies.
+  instanceUsage = instanceUsage.filter((at) => at > now - DAY_MS);
+  if (limits.requestsPerDay > 0 && instanceUsage.length >= limits.requestsPerDay) {
+    const oldest = instanceUsage[0] ?? now;
+    return { allowed: false, reason: "instance-day", retryAfterSeconds: Math.max(1, Math.ceil((oldest + DAY_MS - now) / 1_000)) };
+  }
+
   const entries = (usage.get(userId) ?? []).filter((entry) => entry.at > now - HOUR_MS);
 
   const recent = entries.filter((entry) => entry.at > now - MINUTE_MS);
@@ -61,9 +84,11 @@ export function checkVoiceQuota(userId: string, chargedSeconds: number, limits: 
   }
 
   // Only a request that is actually admitted is recorded — a rejected one must
-  // not extend its own cool-off.
+  // not extend its own cool-off. Both ledgers move together, so the shared
+  // budget is never charged for a request the user was refused.
   entries.push({ at: now, seconds: chargedSeconds });
   usage.set(userId, entries);
+  instanceUsage.push(now);
   pruneIdleUsers(now);
   return { allowed: true, reason: null, retryAfterSeconds: 0 };
 }
@@ -78,4 +103,5 @@ function pruneIdleUsers(now: number): void {
 // Tests drive the limiter directly; the process never needs this.
 export function resetVoiceQuota(): void {
   usage.clear();
+  instanceUsage = [];
 }

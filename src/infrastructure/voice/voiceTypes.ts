@@ -60,11 +60,25 @@ export interface TextPolishProvider {
 export class VoiceProviderError extends Error {
   readonly stage: "stt" | "polish";
   readonly status: number | null;
+  // The provider's own Retry-After, when it sends one. A 429 from upstream is a
+  // rate limit, not an outage, and the caller needs to know how long to wait.
+  readonly retryAfterSeconds: number | null;
 
-  constructor(stage: "stt" | "polish", message: string, status: number | null = null) {
+  constructor(stage: "stt" | "polish", message: string, status: number | null = null, retryAfterSeconds: number | null = null) {
     super(message);
     this.name = "VoiceProviderError";
     this.stage = stage;
     this.status = status;
+    this.retryAfterSeconds = retryAfterSeconds;
   }
+}
+
+// Retry-After is either a delta in seconds or an HTTP date. Groq sends seconds,
+// often fractional; round up so a client never retries a moment too early.
+export function parseRetryAfter(value: string | null): number | null {
+  if (!value) return null;
+  const seconds = Number(value.trim());
+  if (Number.isFinite(seconds)) return Math.max(1, Math.ceil(seconds));
+  const at = Date.parse(value);
+  return Number.isFinite(at) ? Math.max(1, Math.ceil((at - Date.now()) / 1_000)) : null;
 }

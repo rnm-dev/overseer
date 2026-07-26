@@ -173,6 +173,44 @@ test("a provider failure maps to a stable 502 without leaking the provider's bod
   assert.equal(JSON.stringify(sent.body).includes("gsk_secret"), false);
 });
 
+test("an upstream rate limit is a 429 with the provider's own Retry-After, not a 502", async () => {
+  const previous = sttResponse;
+  sttResponse = () => new Response("rate limit reached for whisper-large-v3-turbo", {
+    status: 429,
+    headers: { "retry-after": "7.66" },
+  });
+  const sent = await dictate();
+  sttResponse = previous;
+  // Telling the client the instance is broken would have it retry immediately,
+  // which is the worst possible response to being rate limited.
+  assert.equal(sent.status, 429);
+  assert.equal(sent.body.code, "VOICE_RATE_LIMITED");
+  // Rounded up, so a client never retries a moment too early.
+  assert.equal(sent.retryAfter, "8");
+});
+
+test("a genuine provider outage is still a 502", async () => {
+  const previous = sttResponse;
+  sttResponse = () => new Response("upstream exploded", { status: 503 });
+  const sent = await dictate();
+  sttResponse = previous;
+  assert.equal(sent.status, 502);
+  assert.equal(sent.body.code, "VOICE_PROVIDER_ERROR");
+});
+
+test("the instance-wide daily budget is enforced across users, not just per user", async () => {
+  const previousVoice = config.voice;
+  config.voice = { ...config.voice, requestsPerDay: 1 };
+  const first = await dictate();
+  const second = await dictate();
+  config.voice = previousVoice;
+
+  assert.equal(first.status, 200);
+  assert.equal(second.status, 429);
+  assert.equal(second.body.code, "VOICE_RATE_LIMITED");
+  assert.ok(Number(second.retryAfter) > 0);
+});
+
 test("empty speech is a 200 with an empty transcript, not an error", async () => {
   const previous = sttResponse;
   sttResponse = () => Response.json({ text: "" });

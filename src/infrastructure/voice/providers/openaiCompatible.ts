@@ -1,6 +1,7 @@
 import type { VoiceStageSettings } from "../voiceConfig.js";
 import { audioFileName, VOICE_MEDIA_TYPES } from "../voiceMedia.js";
 import {
+  parseRetryAfter,
   VoiceProviderError,
   type SpeechToTextProvider,
   type TextPolishProvider,
@@ -32,7 +33,12 @@ async function failure(stage: "stt" | "polish", response: Response): Promise<Voi
   // bounded excerpt so nothing resembling a transcript lands in the logs.
   const body = await response.text().catch(() => "");
   const detail = body.slice(0, 200).replace(/\s+/g, " ").trim();
-  return new VoiceProviderError(stage, `${stage} provider responded ${response.status}${detail ? `: ${detail}` : ""}`, response.status);
+  return new VoiceProviderError(
+    stage,
+    `${stage} provider responded ${response.status}${detail ? `: ${detail}` : ""}`,
+    response.status,
+    parseRetryAfter(response.headers.get("retry-after")),
+  );
 }
 
 function asProviderError(stage: "stt" | "polish", cause: unknown): VoiceProviderError {

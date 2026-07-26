@@ -6,8 +6,10 @@ import { resolveVoiceConfig } from "./voiceConfig.js";
 // preset row and the per-stage overrides is the thing most likely to be got
 // wrong by a self-hoster — and the thing that must never silently half-work.
 
+const CONFIGURED = { OVERSEER_VOICE: "groq", OVERSEER_VOICE_API_KEY: "gsk_test", OVERSEER_VOICE_REQUESTS_PER_DAY: "1000" };
+
 test("a preset name plus one key is the entire default configuration", () => {
-  const voice = resolveVoiceConfig({ OVERSEER_VOICE: "groq", OVERSEER_VOICE_API_KEY: "gsk_test" });
+  const voice = resolveVoiceConfig(CONFIGURED);
   assert.equal(voice.preset, "groq");
   assert.deepEqual(voice.stt, { baseUrl: "https://api.groq.com/openai/v1", model: "whisper-large-v3-turbo", apiKey: "gsk_test" });
   assert.deepEqual(voice.polish, { baseUrl: "https://api.groq.com/openai/v1", model: "llama-3.3-70b-versatile", apiKey: "gsk_test" });
@@ -42,7 +44,7 @@ test("a stage base URL with no preset means an OpenAI-compatible endpoint lives 
 });
 
 test("OVERSEER_VOICE_POLISH=off disables the stage deliberately, without a warning", () => {
-  const voice = resolveVoiceConfig({ OVERSEER_VOICE: "groq", OVERSEER_VOICE_API_KEY: "k", OVERSEER_VOICE_POLISH: "off" });
+  const voice = resolveVoiceConfig({ ...CONFIGURED, OVERSEER_VOICE_POLISH: "off" });
   assert.equal(voice.polishDisabled, true);
   assert.equal(voice.polish, null);
   assert.ok(voice.stt);
@@ -76,6 +78,16 @@ test("a stage base URL with no model resolves to nothing and says which variable
   assert.equal(voice.warnings.some((w) => w.includes("OVERSEER_VOICE_STT_MODEL")), true);
 });
 
+test("an instance with no daily ceiling is warned about it, since one user can drain the day", () => {
+  const voice = resolveVoiceConfig({ OVERSEER_VOICE: "groq", OVERSEER_VOICE_API_KEY: "k" });
+  assert.equal(voice.requestsPerDay, 0);
+  assert.equal(voice.warnings.some((w) => w.includes("OVERSEER_VOICE_REQUESTS_PER_DAY")), true);
+
+  const capped = resolveVoiceConfig({ OVERSEER_VOICE: "groq", OVERSEER_VOICE_API_KEY: "k", OVERSEER_VOICE_REQUESTS_PER_DAY: "1000" });
+  assert.equal(capped.requestsPerDay, 1_000);
+  assert.deepEqual(capped.warnings, []);
+});
+
 test("caps and quotas come from the environment with the documented defaults", () => {
   const defaults = resolveVoiceConfig({});
   assert.equal(defaults.maxDurationMs, 120_000);
@@ -84,6 +96,8 @@ test("caps and quotas come from the environment with the documented defaults", (
   assert.equal(defaults.polishTimeoutMs, 1_200);
   assert.equal(defaults.requestsPerMinute, 20);
   assert.equal(defaults.audioSecondsPerHour, 1_800);
+  // Unset by default: only the operator knows their provider tier.
+  assert.equal(defaults.requestsPerDay, 0);
   assert.equal(defaults.logTranscripts, false);
 
   const tuned = resolveVoiceConfig({ OVERSEER_VOICE_MAX_DURATION_MS: "60000", OVERSEER_VOICE_MAX_BYTES: "nonsense" });

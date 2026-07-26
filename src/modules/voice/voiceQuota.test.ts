@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { beforeEach, test } from "node:test";
 import { checkVoiceQuota, estimateAudioSeconds, resetVoiceQuota } from "./voiceQuota.js";
 
-const LIMITS = { requestsPerMinute: 3, audioSecondsPerHour: 60 };
+const LIMITS = { requestsPerMinute: 3, audioSecondsPerHour: 60, requestsPerDay: 0 };
 
 beforeEach(() => resetVoiceQuota());
 
@@ -45,4 +45,41 @@ test("the audio budget rolls off after an hour", () => {
   assert.equal(checkVoiceQuota("u4", 60, LIMITS, now).allowed, true);
   assert.equal(checkVoiceQuota("u4", 60, LIMITS, now + 59 * 60_000).allowed, false);
   assert.equal(checkVoiceQuota("u4", 60, LIMITS, now + 61 * 60_000).allowed, true);
+});
+
+test("an instance-wide daily ceiling stops one user spending the whole provider budget", () => {
+  const limits = { requestsPerMinute: 100, audioSecondsPerHour: 100_000, requestsPerDay: 3 };
+  const now = 4_000_000;
+  // Well inside every per-user allowance, and spread across two users — the
+  // shared budget is what runs out.
+  assert.equal(checkVoiceQuota("a", 1, limits, now).allowed, true);
+  assert.equal(checkVoiceQuota("b", 1, limits, now + 1).allowed, true);
+  assert.equal(checkVoiceQuota("a", 1, limits, now + 2).allowed, true);
+
+  const blocked = checkVoiceQuota("c", 1, limits, now + 3);
+  assert.equal(blocked.allowed, false);
+  assert.equal(blocked.reason, "instance-day");
+  assert.ok(blocked.retryAfterSeconds > 0 && blocked.retryAfterSeconds <= 86_400);
+
+  // It rolls off a day later, not at a fixed midnight.
+  assert.equal(checkVoiceQuota("c", 1, limits, now + 25 * 60 * 60_000).allowed, true);
+});
+
+test("requestsPerDay: 0 means no instance ceiling was configured", () => {
+  const limits = { requestsPerMinute: 100, audioSecondsPerHour: 100_000, requestsPerDay: 0 };
+  for (let i = 0; i < 50; i += 1) {
+    assert.equal(checkVoiceQuota("d", 1, limits, 5_000_000 + i).allowed, true);
+  }
+});
+
+test("a user refused by their own limit does not consume the shared budget", () => {
+  const limits = { requestsPerMinute: 1, audioSecondsPerHour: 100_000, requestsPerDay: 5 };
+  const now = 6_000_000;
+  assert.equal(checkVoiceQuota("e", 1, limits, now).allowed, true);
+  assert.equal(checkVoiceQuota("e", 1, limits, now + 1).allowed, false);
+  // Four of the five remain for everyone else, not three.
+  for (let i = 0; i < 4; i += 1) {
+    assert.equal(checkVoiceQuota(`other-${i}`, 1, limits, now + 2 + i).allowed, true);
+  }
+  assert.equal(checkVoiceQuota("last", 1, limits, now + 10).reason, "instance-day");
 });
