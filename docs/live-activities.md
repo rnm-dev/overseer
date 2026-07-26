@@ -53,6 +53,10 @@ expandable stack. No percentage or made-up stage is displayed.
 ## Background and push boundary
 
 Live WebSocket changes update both platforms while the app process is alive.
+iOS Live Activities and Android ongoing-session surfaces reconcile from the
+currently selected Overseer runtime. Other authenticated Overseer runtimes keep
+their fleet and workspace sockets warm, but do not install competing handlers
+for the process-global native activity channel.
 iOS also requests an ActivityKit update token for every locally started
 activity. The authenticated app registers that token at
 `PUT /api/push/live-activities`; it remains separate from the device's ordinary

@@ -22,6 +22,10 @@ void main() {
     );
     expect(title.data, 'Sheet title');
     expect(title.style, AppTypography.sectionTitle());
+    expect(
+      tester.getTopLeft(find.byKey(const Key('app-bottom-sheet-title'))).dx,
+      tester.getTopLeft(find.text('Body')).dx,
+    );
   });
 
   testWidgets('does not reserve title space when title is omitted', (

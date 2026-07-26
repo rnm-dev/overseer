@@ -22,6 +22,8 @@ abstract interface class OverseerConnectionStore {
   Future<List<OverseerConnection>> readAll();
 
   Future<List<OverseerConnection>> add(Uri serverUrl);
+
+  Future<List<OverseerConnection>> remove(OverseerConnection connection);
 }
 
 class SharedPreferencesOverseerConnectionStore
@@ -64,6 +66,20 @@ class SharedPreferencesOverseerConnectionStore
       OverseerConnection(serverUrl: normalized),
     ];
     await _write(preferences, connections);
+    return connections;
+  }
+
+  @override
+  Future<List<OverseerConnection>> remove(OverseerConnection connection) async {
+    final preferences = await SharedPreferences.getInstance();
+    final current = await readAll();
+    final connections = current
+        .where((item) => item.serverUrl != connection.serverUrl)
+        .toList(growable: false);
+    await _write(preferences, connections);
+    if (connection.usesLegacyStorage) {
+      await preferences.remove(legacyPreferenceKey);
+    }
     return connections;
   }
 

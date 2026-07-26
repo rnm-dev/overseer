@@ -118,7 +118,6 @@ class _NewProjectPageState extends ConsumerState<NewProjectPage> {
                 onBack: _submitting
                     ? null
                     : () => Navigator.of(context).maybePop(),
-                contentHeight: 56,
                 contentPadding: const EdgeInsets.fromLTRB(8, 8, 12, 4),
                 left: Text('New project', style: AppTypography.sectionTitle()),
               ),

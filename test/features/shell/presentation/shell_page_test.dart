@@ -9,7 +9,8 @@ import 'package:overseer_mobile/features/fleet/domain/fleet_repository.dart';
 import 'package:overseer_mobile/features/shell/presentation/shell_page.dart';
 import 'package:overseer_mobile/features/auth/domain/auth_models.dart';
 import 'package:overseer_mobile/shared/layout/responsive_breakpoints.dart';
-import 'package:overseer_mobile/shared/widgets/app_restoring_page.dart';
+import 'package:overseer_mobile/shared/widgets/app_navigation_bar.dart';
+import 'package:overseer_mobile/shared/widgets/overseer_logo.dart';
 
 void main() {
   group('ResponsiveBreakpoints', () {
@@ -22,7 +23,7 @@ void main() {
   });
 
   group('ShellPage', () {
-    testWidgets('keeps the branded loader until initial fleet data arrives', (
+    testWidgets('shows the index shell while initial fleet data loads', (
       tester,
     ) async {
       final result = Completer<List<WorkspaceFleet>>();
@@ -33,25 +34,39 @@ void main() {
         waitForFleet: false,
       );
 
-      expect(find.byType(AppRestoringPage), findsOneWidget);
-      expect(find.byKey(const Key('auth-restoring-progress')), findsOneWidget);
+      expect(find.byKey(const Key('compact-shell')), findsOneWidget);
+      expect(find.byKey(const Key('overseer-index-navbar')), findsOneWidget);
+      expect(find.byKey(const Key('fleet-loading')), findsOneWidget);
       expect(find.byType(CircularProgressIndicator), findsNothing);
-      expect(find.byKey(const Key('compact-shell')), findsNothing);
+      expect(find.byType(OverseerLogo), findsNothing);
 
       result.complete(const []);
       await tester.pump();
 
-      expect(find.byType(AppRestoringPage), findsNothing);
       expect(find.byKey(const Key('compact-shell')), findsOneWidget);
+      expect(find.byKey(const Key('fleet-loading')), findsNothing);
     });
 
     testWidgets('uses the compact shell below 600 pixels', (tester) async {
-      await _pumpShell(tester, width: 599);
+      var returnedToConnections = false;
+      await _pumpShell(
+        tester,
+        width: 599,
+        onBackToConnections: () => returnedToConnections = true,
+      );
 
       expect(find.byKey(const Key('compact-shell')), findsOneWidget);
       expect(find.byType(AppBar), findsNothing);
+      expect(find.byKey(const Key('overseer-index-navbar')), findsOneWidget);
+      expect(find.byType(AppNavigationBar), findsOneWidget);
+      expect(find.text('overseer.rnm.dev'), findsOneWidget);
+      expect(find.byTooltip('Back to Overseer list'), findsOneWidget);
+      expect(find.byType(OverseerLogo), findsNothing);
       await tester.pump();
       expect(find.byKey(const Key('fleet-overview')), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('back-to-overseer-list')));
+      expect(returnedToConnections, isTrue);
     });
 
     testWidgets('uses the medium shell from 600 pixels', (tester) async {
@@ -92,6 +107,7 @@ Future<void> _pumpShell(
   required double width,
   FleetRepository? repository,
   bool waitForFleet = true,
+  VoidCallback? onBackToConnections,
 }) async {
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.binding.setSurfaceSize(Size(width, 800));
@@ -102,10 +118,12 @@ Future<void> _pumpShell(
           repository ?? _EmptyFleetRepository(),
         ),
       ],
-      child: const MaterialApp(
+      child: MaterialApp(
         home: ShellPage(
-          user: OperatorIdentity(email: 'dev@example.com'),
+          user: const OperatorIdentity(email: 'dev@example.com'),
           onSignOut: _signOut,
+          overseerName: 'overseer.rnm.dev',
+          onBackToConnections: onBackToConnections ?? () {},
         ),
       ),
     ),

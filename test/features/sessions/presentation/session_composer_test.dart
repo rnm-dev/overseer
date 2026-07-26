@@ -4,11 +4,152 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:overseer_mobile/features/sessions/domain/followup_repository.dart';
 import 'package:overseer_mobile/features/sessions/domain/new_session_repository.dart';
+import 'package:overseer_mobile/features/sessions/application/voice_dictation_controller.dart';
 import 'package:overseer_mobile/features/sessions/presentation/session_composer.dart';
 import 'package:overseer_mobile/shared/design/colors.dart';
 import 'package:overseer_mobile/shared/design/theme.dart';
+import 'package:overseer_mobile/shared/widgets/app_markdown.dart';
 
 void main() {
+  test('inserts dictation at the selection without clobbering the draft', () {
+    final result = insertVoiceTranscript(
+      const TextEditingValue(
+        text: 'hello world',
+        selection: TextSelection(baseOffset: 6, extentOffset: 11),
+      ),
+      'привет',
+    );
+
+    expect(result.text, 'hello привет');
+    expect(result.selection, const TextSelection.collapsed(offset: 12));
+  });
+
+  testWidgets('shows live dictation without disabling the draft', (
+    tester,
+  ) async {
+    final controller = TextEditingController(text: 'half typed');
+    addTearDown(controller.dispose);
+    var canceled = false;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.dark,
+        home: Scaffold(
+          body: SessionComposer(
+            controller: controller,
+            dictation: const VoiceDictationState(
+              phase: VoiceDictationPhase.recording,
+              enabled: true,
+              duration: Duration(seconds: 108),
+              amplitude: 0.8,
+            ),
+            onVoiceCancel: () => canceled = true,
+          ),
+        ),
+      ),
+    );
+
+    expect(find.byKey(const Key('session-composer-voice')), findsOneWidget);
+    expect(find.byKey(const Key('session-composer-recording')), findsOneWidget);
+    expect(
+      find.byKey(const Key('session-composer-recording-countdown')),
+      findsOneWidget,
+    );
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const Key('session-composer-input')))
+          .enabled,
+      isTrue,
+    );
+    await tester.tap(find.byKey(const Key('session-composer-voice-cancel')));
+    expect(canceled, isTrue);
+  });
+
+  testWidgets('hides disabled voice and keeps composer usable in flight', (
+    tester,
+  ) async {
+    final controller = TextEditingController();
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.dark,
+        home: Scaffold(
+          body: SessionComposer(
+            controller: controller,
+            dictation: const VoiceDictationState(
+              phase: VoiceDictationPhase.transcribing,
+              enabled: true,
+            ),
+          ),
+        ),
+      ),
+    );
+    expect(
+      find.byKey(const Key('session-composer-transcribing')),
+      findsOneWidget,
+    );
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const Key('session-composer-input')))
+          .enabled,
+      isTrue,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.dark,
+        home: Scaffold(
+          body: SessionComposer(
+            controller: controller,
+            dictation: const VoiceDictationState(
+              phase: VoiceDictationPhase.unavailable,
+            ),
+          ),
+        ),
+      ),
+    );
+    expect(find.byKey(const Key('session-composer-voice')), findsNothing);
+  });
+
+  testWidgets('voice errors do not change composer geometry', (tester) async {
+    final controller = TextEditingController();
+    addTearDown(controller.dispose);
+
+    Future<void> pumpWithError(String? error) {
+      return tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.dark,
+          home: Scaffold(
+            body: Align(
+              alignment: Alignment.bottomCenter,
+              child: SessionComposer(
+                controller: controller,
+                dictation: VoiceDictationState(
+                  phase: VoiceDictationPhase.idle,
+                  enabled: true,
+                  error: error,
+                  canOpenSettings: error != null,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    await pumpWithError(null);
+    final height = tester
+        .getSize(find.byKey(const Key('session-composer-shell')))
+        .height;
+    await pumpWithError('Microphone access is blocked.');
+
+    expect(
+      tester.getSize(find.byKey(const Key('session-composer-shell'))).height,
+      height,
+    );
+    expect(find.text('Microphone access is blocked.'), findsNothing);
+  });
+
   testWidgets('matches the compact web composer hierarchy', (tester) async {
     final controller = TextEditingController();
     addTearDown(controller.dispose);
@@ -458,6 +599,7 @@ void main() {
     addTearDown(controller.dispose);
     String? sent;
     String? removed;
+    String? edited;
 
     await tester.pumpWidget(
       MaterialApp(
@@ -471,7 +613,10 @@ void main() {
                 QueuedFollowup(
                   id: 'queue-1',
                   sessionId: 'session',
-                  prompt: 'Review the deployment',
+                  prompt:
+                      '**Review** the `deployment` before release. '
+                      'Confirm the migration, inspect the logs, and verify the '
+                      'mobile smoke test before sending the final update.',
                   attachments: [
                     QueuedFollowupAttachment(
                       type: 'file',
@@ -483,8 +628,9 @@ void main() {
                   queuedAt: 1,
                 ),
               ],
-              onSendQueuedNow: (id) => sent = id,
-              onRemoveQueued: (id) => removed = id,
+              onSendQueuedNow: (id) async => sent = id,
+              onRemoveQueued: (id) async => removed = id,
+              onEditQueued: (id, prompt) async => edited = '$id:$prompt',
             ),
           ),
         ),
@@ -492,17 +638,59 @@ void main() {
     );
 
     expect(find.byKey(const Key('session-queue-list')), findsOneWidget);
-    expect(find.text('Review the deployment'), findsOneWidget);
+    final markdown = tester.widget<AppMarkdownPreview>(
+      find.byKey(const Key('session-queue-markdown-queue-1')),
+    );
+    expect(markdown.maxLines, 3);
+    expect(markdown.overflow, TextOverflow.ellipsis);
     expect(find.text('📎 plan.md'), findsOneWidget);
     expect(find.text('gpt-5'), findsNothing);
     expect(find.text('high'), findsNothing);
+    expect(
+      tester.getSize(find.byKey(const Key('session-queue-item-queue-1'))).width,
+      tester.getSize(find.byKey(const Key('session-composer-shell'))).width,
+    );
 
-    await tester.tap(find.byTooltip('Send now'));
-    await tester.pump();
+    await tester.tap(find.byKey(const Key('session-queue-open-queue-1')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('session-queue-dialog')), findsOneWidget);
+    expect(
+      tester.getSize(find.byKey(const Key('session-queue-dialog'))).height,
+      lessThanOrEqualTo(
+        tester.view.physicalSize.height / tester.view.devicePixelRatio * 0.8,
+      ),
+    );
+    expect(find.byKey(const Key('session-queue-dialog-send')), findsOneWidget);
+    expect(
+      find.byKey(const Key('session-queue-dialog-delete')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('session-queue-dialog-edit')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('session-queue-dialog-edit')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.descendant(
+        of: find.byKey(const Key('session-queue-edit-field')),
+        matching: find.byType(TextField),
+      ),
+      'Edited queued message',
+    );
+    await tester.tap(find.byKey(const Key('session-queue-edit-save')));
+    await tester.pumpAndSettle();
+    expect(edited, 'queue-1:Edited queued message');
+    expect(find.byKey(const Key('session-queue-dialog')), findsNothing);
+
+    await tester.tap(find.byKey(const Key('session-queue-open-queue-1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('session-queue-dialog-send')));
+    await tester.pumpAndSettle();
     expect(sent, 'queue-1');
 
-    await tester.tap(find.byTooltip('Remove queued follow-up'));
-    await tester.pump();
+    await tester.tap(find.byKey(const Key('session-queue-open-queue-1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('session-queue-dialog-delete')));
+    await tester.pumpAndSettle();
     expect(removed, 'queue-1');
   });
 

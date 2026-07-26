@@ -38,7 +38,6 @@ class _SessionFileViewerPageState extends ConsumerState<SessionFileViewerPage> {
           children: [
             AppNavigationBar(
               showBackButton: true,
-              contentHeight: 56,
               contentPadding: const EdgeInsets.fromLTRB(8, 8, 8, 6),
               left: Row(
                 children: [

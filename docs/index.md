@@ -107,10 +107,17 @@ android/ ios/ macos/ windows/ linux/
 Read [architecture.md](architecture.md) before changing dependency boundaries
 or data flow.
 
+Use [ui-kit.md](ui-kit.md) when adding or changing surfaces, cards, actions,
+inputs, list rows, or status treatments.
+
 Feature documentation:
 
+- [fleet.md](fleet.md): cached workspaces and Peons plus multi-Overseer live
+  runtime lifecycle;
 - [sessions.md](sessions.md): session cache, pagination, and live state;
 - [transcripts.md](transcripts.md): transcript cache, composer, queue, and tail;
+- [voice-input.md](voice-input.md): native dictation capture, upload, composer
+  behavior, and real-device QA;
 - [project-detail.md](project-detail.md): project navigation and settings;
 - [project-files.md](project-files.md): project tree and shared file viewer;
 - [peon-settings.md](peon-settings.md): General, Agent, and Armory settings;

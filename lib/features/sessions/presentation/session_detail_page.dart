@@ -4,6 +4,7 @@ import 'dart:ui';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -22,12 +23,16 @@ import '../../auth/application/auth_controller.dart';
 import '../../auth/domain/auth_models.dart';
 import '../../projects/application/projects_controller.dart';
 import '../../projects/domain/project_models.dart';
+import '../../settings/application/sound_pack_controller.dart';
+import '../../settings/domain/sound_pack.dart';
+import '../../settings/domain/work_sound_player.dart';
 import '../application/attachment_clipboard_provider.dart';
 import '../application/session_details_controller.dart';
 import '../application/session_composer_controller.dart';
 import '../application/session_file_controller.dart';
 import '../application/sessions_controller.dart';
 import '../application/transcript_controller.dart';
+import '../application/voice_dictation_controller.dart';
 import '../domain/followup_repository.dart';
 import '../domain/new_session_repository.dart';
 import '../domain/session_models.dart';
@@ -35,6 +40,7 @@ import 'session_composer.dart';
 import 'session_file_viewer_page.dart';
 import 'transcript_item_view.dart';
 import 'transcript_items.dart';
+import 'voice_input_alert_sheet.dart';
 
 class SessionDetailPage extends ConsumerStatefulWidget {
   const SessionDetailPage({super.key, required this.session})
@@ -58,7 +64,8 @@ class SessionDetailPage extends ConsumerStatefulWidget {
   ConsumerState<SessionDetailPage> createState() => _SessionDetailPageState();
 }
 
-class _SessionDetailPageState extends ConsumerState<SessionDetailPage> {
+class _SessionDetailPageState extends ConsumerState<SessionDetailPage>
+    with WidgetsBindingObserver {
   late final FleetLiveService? _live;
   late final TextEditingController _composerController;
   late SessionSummary? _session;
@@ -72,7 +79,10 @@ class _SessionDetailPageState extends ConsumerState<SessionDetailPage> {
   List<NewSessionAttachment> _composerAttachments = const [];
   String? _attachmentError;
   bool _readingAttachments = false;
+  bool _startingSession = false;
+  bool _backgrounded = false;
   String? _selectedProjectKey;
+  FollowupScope? _activeComposerScope;
 
   static const _newSessionDraftId = 'new-session';
 
@@ -87,6 +97,7 @@ class _SessionDetailPageState extends ConsumerState<SessionDetailPage> {
     _selectedProjectKey = widget.projectKey;
     _composerController = TextEditingController();
     _composerController.addListener(_handleComposerChanged);
+    WidgetsBinding.instance.addObserver(this);
     _live = ref.read(fleetLiveServiceProvider);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -104,12 +115,49 @@ class _SessionDetailPageState extends ConsumerState<SessionDetailPage> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _live?.setPresence(
       workspaceId: workspaceId,
       location: PresenceLocation.peon(peonId: peonId),
     );
     _composerController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      if (!_backgrounded) return;
+      _backgrounded = false;
+      final currentSession = session;
+      if (currentSession == null) return;
+      final scope = TranscriptScope(
+        workspaceId: currentSession.workspaceId,
+        peonId: currentSession.peonId,
+        sessionId: currentSession.sessionId,
+        isRunning: currentSession.isRunning,
+      );
+      unawaited(
+        ref
+            .read(transcriptControllerProvider(scope).notifier)
+            .resumeFromBackground(),
+      );
+      return;
+    }
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden) {
+      _backgrounded = true;
+    }
+    final scope = _activeComposerScope;
+    if (scope == null) return;
+    unawaited(
+      ref
+          .read(voiceDictationControllerProvider(scope).notifier)
+          .cancel(
+            message:
+                'Recording was discarded when the app left the foreground.',
+          ),
+    );
   }
 
   @override
@@ -127,6 +175,34 @@ class _SessionDetailPageState extends ConsumerState<SessionDetailPage> {
       peonId: peonId,
       sessionId: currentSession?.sessionId ?? _newSessionDraftId,
     );
+    _activeComposerScope = composerScope;
+    final dictationProvider = voiceDictationControllerProvider(composerScope);
+    final dictation = ref.watch(dictationProvider);
+    ref.listen(dictationProvider, (previous, next) {
+      if (next.completionId != previous?.completionId &&
+          next.completedText != null) {
+        _insertDictation(next.completedText!);
+      }
+      if (next.error != null &&
+          (next.error != previous?.error ||
+              next.canOpenSettings != previous?.canOpenSettings)) {
+        final message = next.error!;
+        final canOpenSettings = next.canOpenSettings;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          ref.read(dictationProvider.notifier).clearError();
+          unawaited(
+            showVoiceInputAlertSheet(
+              context: context,
+              message: message,
+              canOpenSettings: canOpenSettings,
+              openSettings: () =>
+                  ref.read(dictationProvider.notifier).openSettings(),
+            ),
+          );
+        });
+      }
+    });
     final transcriptScope = currentSession == null
         ? null
         : TranscriptScope(
@@ -142,7 +218,8 @@ class _SessionDetailPageState extends ConsumerState<SessionDetailPage> {
       sessionComposerControllerProvider(composerScope),
     );
     final composerState = composer.value;
-    if (composerState != null &&
+    if (!_startingSession &&
+        composerState != null &&
         composerState.draft != _composerController.text) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted || composerState.draft == _composerController.text) {
@@ -237,7 +314,10 @@ class _SessionDetailPageState extends ConsumerState<SessionDetailPage> {
                         projects: projects!,
                         selectedProjectKey: _selectedProjectKey,
                         onProjectSelected: (projectKey) {
-                          if (_selectedProjectKey == projectKey) return;
+                          if (_startingSession ||
+                              _selectedProjectKey == projectKey) {
+                            return;
+                          }
                           _resetSubmissionIdentity();
                           setState(() => _selectedProjectKey = projectKey);
                         },
@@ -292,9 +372,12 @@ class _SessionDetailPageState extends ConsumerState<SessionDetailPage> {
                             enabled: composerState != null,
                             pending:
                                 _readingAttachments ||
+                                _startingSession ||
                                 (composerState?.sending ?? false),
                             pendingLabel: _readingAttachments
                                 ? 'Reading files…'
+                                : _startingSession
+                                ? 'Starting session…'
                                 : _submissionLabel(
                                     composerState,
                                     running: isRunning,
@@ -302,6 +385,16 @@ class _SessionDetailPageState extends ConsumerState<SessionDetailPage> {
                             running: isRunning,
                             queuedCount: composerState?.pending.length ?? 0,
                             queuedItems: composerState?.queue ?? const [],
+                            editingQueuedItems:
+                                composerState?.queueActions.entries
+                                    .where(
+                                      (entry) =>
+                                          entry.value ==
+                                          QueuedFollowupAction.editing,
+                                    )
+                                    .map((entry) => entry.key)
+                                    .toSet() ??
+                                const {},
                             removingQueuedItems:
                                 composerState?.queueActions.entries
                                     .where(
@@ -369,6 +462,24 @@ class _SessionDetailPageState extends ConsumerState<SessionDetailPage> {
                                 .selectReasoningEffort(effort),
                             onAttach: _showAttachmentOptions,
                             onContentInserted: _insertKeyboardContent,
+                            dictation: dictation,
+                            onVoiceStart: () async {
+                              final started = await ref
+                                  .read(dictationProvider.notifier)
+                                  .start();
+                              if (started) {
+                                await HapticFeedback.mediumImpact();
+                              }
+                            },
+                            onVoiceStop: () {
+                              unawaited(HapticFeedback.selectionClick());
+                              unawaited(
+                                ref.read(dictationProvider.notifier).stop(),
+                              );
+                            },
+                            onVoiceCancel: () => unawaited(
+                              ref.read(dictationProvider.notifier).cancel(),
+                            ),
                             onRemoveAttachment: (index) {
                               ref
                                   .read(
@@ -397,6 +508,13 @@ class _SessionDetailPageState extends ConsumerState<SessionDetailPage> {
                                   ).notifier,
                                 )
                                 .removeQueued(itemId),
+                            onEditQueued: (itemId, prompt) => ref
+                                .read(
+                                  sessionComposerControllerProvider(
+                                    composerScope,
+                                  ).notifier,
+                                )
+                                .editQueued(itemId, prompt),
                             onSendQueuedNow: (itemId) => ref
                                 .read(
                                   sessionComposerControllerProvider(
@@ -426,6 +544,14 @@ class _SessionDetailPageState extends ConsumerState<SessionDetailPage> {
     final height = renderBox.size.height;
     if ((height - _composerHeight).abs() < 0.5) return;
     setState(() => _composerHeight = height);
+  }
+
+  void _insertDictation(String transcript) {
+    if (!mounted || transcript.trim().isEmpty) return;
+    _composerController.value = insertVoiceTranscript(
+      _composerController.value,
+      transcript,
+    );
   }
 
   void _scheduleComposerMeasurement() {
@@ -482,6 +608,9 @@ class _SessionDetailPageState extends ConsumerState<SessionDetailPage> {
     if (mounted && submitted && _locallyStoppedSessionId != null) {
       setState(() => _locallyStoppedSessionId = null);
     }
+    if (mounted && submitted && (!running || startNow)) {
+      _playWorkCue(WorkSoundCue.start);
+    }
   }
 
   Future<void> _stopSession(TranscriptScope transcriptScope) async {
@@ -491,6 +620,10 @@ class _SessionDetailPageState extends ConsumerState<SessionDetailPage> {
       _stopping = true;
       _stopError = null;
     });
+    final transcriptController = ref.read(
+      transcriptControllerProvider(transcriptScope).notifier,
+    );
+    transcriptController.suppressNextCompletionSound();
     try {
       await ref
           .read(sessionRepositoryProvider)
@@ -504,18 +637,22 @@ class _SessionDetailPageState extends ConsumerState<SessionDetailPage> {
         _stopping = false;
         _locallyStoppedSessionId = currentSession.sessionId;
       });
+      unawaited(ref.read(workSoundPlayerProvider).stop());
+      _playWorkCue(WorkSoundCue.stop);
       unawaited(
         ref
             .read(transcriptControllerProvider(transcriptScope).notifier)
             .refresh(),
       );
     } on SessionsException catch (error) {
+      transcriptController.restoreCompletionSound();
       if (!mounted) return;
       setState(() {
         _stopping = false;
         _stopError = error.message;
       });
     } catch (_) {
+      transcriptController.restoreCompletionSound();
       if (!mounted) return;
       setState(() {
         _stopping = false;
@@ -562,15 +699,28 @@ class _SessionDetailPageState extends ConsumerState<SessionDetailPage> {
   }
 
   Future<void> _startSession(FollowupScope scope) async {
+    if (_startingSession) return;
+    setState(() => _startingSession = true);
     final created = await ref
         .read(sessionComposerControllerProvider(scope).notifier)
         .startSession(
           projectKey: _selectedProjectKey,
           attachments: _composerAttachments,
         );
-    if (!mounted || created == null) return;
+    if (!mounted) return;
+    if (created == null) {
+      setState(() => _startingSession = false);
+      return;
+    }
+    _playWorkCue(WorkSoundCue.start);
+    await _warmCreatedSession(created);
+    if (!mounted) return;
+    _syncingComposer = true;
+    _composerController.clear();
+    _syncingComposer = false;
     setState(() {
       _session = created;
+      _startingSession = false;
       _composerAttachments = const [];
       _attachmentError = null;
     });
@@ -581,6 +731,50 @@ class _SessionDetailPageState extends ConsumerState<SessionDetailPage> {
         sessionId: created.sessionId,
       ),
     );
+  }
+
+  void _playWorkCue(WorkSoundCue cue) {
+    final pack =
+        ref.read(soundPackControllerProvider).asData?.value ?? SoundPack.peon;
+    unawaited(ref.read(workSoundPlayerProvider).playCue(pack, cue));
+  }
+
+  Future<void> _warmCreatedSession(SessionSummary created) async {
+    final transcriptScope = TranscriptScope(
+      workspaceId: created.workspaceId,
+      peonId: created.peonId,
+      sessionId: created.sessionId,
+      isRunning: created.isRunning,
+    );
+    final composerScope = FollowupScope(
+      workspaceId: created.workspaceId,
+      peonId: created.peonId,
+      sessionId: created.sessionId,
+    );
+    final transcriptProvider = transcriptControllerProvider(transcriptScope);
+    final composerProvider = sessionComposerControllerProvider(composerScope);
+    final transcriptSubscription = ref.listenManual(
+      transcriptProvider,
+      (_, _) {},
+    );
+    final composerSubscription = ref.listenManual(composerProvider, (_, _) {});
+    try {
+      await Future.wait<void>([
+        _settleProvider(ref.read(transcriptProvider.future)),
+        _settleProvider(ref.read(composerProvider.future)),
+      ]);
+    } finally {
+      transcriptSubscription.close();
+      composerSubscription.close();
+    }
+  }
+
+  Future<void> _settleProvider(Future<Object?> future) async {
+    try {
+      await future;
+    } catch (_) {
+      // The destination surface owns its normal retryable error treatment.
+    }
   }
 
   Future<void> _pickAttachments() async {
@@ -1844,7 +2038,6 @@ class _SessionHeader extends StatelessWidget {
       key: const Key('session-navbar'),
       showBackButton: true,
       backButtonKey: const Key('session-back'),
-      contentHeight: 56,
       contentPadding: const EdgeInsets.fromLTRB(8, 10, 8, 6),
       left: Column(
         mainAxisAlignment: MainAxisAlignment.center,

@@ -4,6 +4,30 @@ Overseer uses one feature and data model across iOS, Android, macOS, Windows,
 and Linux. Native runners provide packaging and plugin integration; shared
 business behavior stays in Dart.
 
+## Connection lifecycle
+
+Adding an Overseer is provisional until authentication succeeds. After the
+operator enters a server URL, the add form remains visible with its Continue
+button in a loading state while the app restores an existing token or opens the
+web login. The authenticated Overseer shell is not constructed during this
+provisional check. A successful token restoration or GitHub sign-in commits the
+normalized connection and then opens its shell; a failed or abandoned sign-in
+leaves the saved connection list unchanged and returns the add form to a
+retryable state. The Overseer skeleton is therefore only visible after login,
+while authenticated data is loading.
+On the compact authenticated overview, a standard navigation bar shows the
+selected connection's host and a back arrow to the connection picker. Fleet
+cards begin below the bar with a top gap equal to their horizontal screen
+inset. All shared page navigation bars have a non-overridable 56 logical-pixel
+content height; the platform top safe-area inset is added outside that height.
+
+Saved connections expose deletion through a long-press action menu: a bottom
+sheet on compact and medium layouts, or an anchored context menu on wide
+layouts. The destructive action requires explicit confirmation. Deletion
+removes the connection from ordinary preferences and deletes its namespaced
+device token from secure platform storage. Other connections and their
+credentials are not affected.
+
 ## Capability matrix
 
 | Capability | iOS | Android | macOS | Windows | Linux |
@@ -31,13 +55,18 @@ The server must allow the exact callback in
 `overseer://oauth/github` for prod. Distinct schemes prevent the OS from
 delivering a callback to the wrong side-by-side installation. Never exchange a
 callback received outside an active system authentication session. On Android,
-the `flutter_web_auth_2` callback activity only resolves a currently active
-authentication request, so cold-start and unsolicited callback intents are
-ignored. Windows and Linux do not register Overseer as a system URI handler for
-sign-in because the dedicated OAuth WebView intercepts the callback before
-external navigation. The app-owned desktop OAuth adapter validates the complete
-scheme, host, and path, blocks the callback from rendering as a page, closes the
-WebView, and then exchanges the one-time code.
+the app-owned `OAuthCallbackActivity` only resolves a currently active
+`flutter_web_auth_2` request. It then starts the package response handler inside
+the exact existing Overseer task so the Auth Tab closes instead of leaving an
+authenticated app behind the browser. Both exported activities retain an empty
+task affinity for task-hijacking protection; do not replace this with the
+package-default callback activity or remove the empty affinities. Cold-start and
+unsolicited callback intents cannot exchange a code. Windows and Linux do not
+register Overseer as a system URI handler for sign-in because the dedicated
+OAuth WebView intercepts the callback before external navigation. The app-owned
+desktop OAuth adapter validates the complete scheme, host, and path, blocks the
+callback from rendering as a page, closes the WebView, and then exchanges the
+one-time code.
 
 The same flavor-specific mobile schemes also accept app-owned `/open/peon` and
 `/open/session` links. Unlike OAuth callbacks, these links carry no credential

@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import 'package:overseer_mobile/shared/design/colors.dart';
+import 'package:overseer_mobile/shared/widgets/app_list_tile.dart';
 import 'package:overseer_mobile/shared/widgets/entity_list_tile.dart';
 import 'package:overseer_mobile/shared/widgets/file_type_icon.dart';
 
@@ -67,6 +68,13 @@ void main() {
       );
 
       expect(find.text('Session alpha'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(EntityListTile),
+          matching: find.byType(AppListTile),
+        ),
+        findsOneWidget,
+      );
       final node = tester.getSemantics(find.byType(EntityListTile));
       expect(node.label, contains('Session alpha row'));
       expect(node.flagsCollection.isSelected, isNot(ui.Tristate.none));

@@ -2,7 +2,15 @@ import 'package:flutter/material.dart';
 
 @immutable
 class AppSpacing extends ThemeExtension<AppSpacing> {
-  const AppSpacing({this.screenHorizontal = 8});
+  const AppSpacing({this.screenHorizontal = 12});
+
+  static const double xxs = 4;
+  static const double xs = 8;
+  static const double sm = 12;
+  static const double md = 16;
+  static const double lg = 24;
+  static const double xl = 32;
+  static const double xxl = 48;
 
   final double screenHorizontal;
 

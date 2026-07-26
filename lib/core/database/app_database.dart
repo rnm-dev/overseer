@@ -42,6 +42,34 @@ class LiveCursors extends Table {
   Set<Column<Object>> get primaryKey => {workspaceId};
 }
 
+class CachedWorkspaces extends Table {
+  TextColumn get workspaceId => text()();
+  TextColumn get name => text()();
+  TextColumn get role => text().nullable()();
+  RealColumn get syncedAt => real()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {workspaceId};
+}
+
+class CachedFleetPeons extends Table {
+  TextColumn get workspaceId => text()();
+  TextColumn get peonId => text()();
+  TextColumn get name => text().nullable()();
+  TextColumn get hostname => text().nullable()();
+  TextColumn get baseUrl => text().nullable()();
+  TextColumn get addressSource => text().nullable()();
+  BoolColumn get online => boolean()();
+  RealColumn get lastSeen => real()();
+  TextColumn get capabilitiesJson => text().withDefault(const Constant('[]'))();
+  IntColumn get activeSessions => integer().nullable()();
+  BoolColumn get paused => boolean().nullable()();
+  RealColumn get syncedAt => real()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {workspaceId, peonId};
+}
+
 class CachedProjects extends Table {
   TextColumn get workspaceId => text()();
   TextColumn get peonId => text()();
@@ -164,6 +192,8 @@ class CachedQueuedFollowups extends Table {
 @DriftDatabase(
   tables: [
     CachedSessions,
+    CachedWorkspaces,
+    CachedFleetPeons,
     CachedProjects,
     CachedAiStats,
     CachedPeonManagement,
@@ -182,7 +212,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 10;
+  int get schemaVersion => 11;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -229,6 +259,10 @@ class AppDatabase extends _$AppDatabase {
       }
       if (from < 10) {
         await migrator.createTable(cachedPeonManagement);
+      }
+      if (from < 11) {
+        await migrator.createTable(cachedWorkspaces);
+        await migrator.createTable(cachedFleetPeons);
       }
     },
   );

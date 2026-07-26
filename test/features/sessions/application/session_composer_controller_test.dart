@@ -300,6 +300,33 @@ void main() {
       );
     },
   );
+
+  test('edits an authoritative queued prompt in place', () async {
+    final repository = _FakeFollowupRepository(
+      draft: '',
+      pending: const [],
+      queue: const [
+        QueuedFollowup(
+          id: 'queued',
+          sessionId: 'session',
+          prompt: 'Before',
+          queuedAt: 1,
+        ),
+      ],
+    );
+    final container = ProviderContainer(
+      overrides: [followupRepositoryProvider.overrideWithValue(repository)],
+    );
+    addTearDown(container.dispose);
+
+    await container.read(sessionComposerControllerProvider(scope).future);
+    await container
+        .read(sessionComposerControllerProvider(scope).notifier)
+        .editQueued('queued', 'After');
+
+    expect(repository.editedItemId, 'queued');
+    expect(repository.editedPrompt, 'After');
+  });
 }
 
 class _FakeFollowupRepository implements FollowupRepository {
@@ -318,6 +345,8 @@ class _FakeFollowupRepository implements FollowupRepository {
   final List<FollowupException> submitErrors;
   final List<_SubmissionRecord> submissions = [];
   String? savedDraft;
+  String? editedItemId;
+  String? editedPrompt;
   int refreshCalls = 0;
 
   @override
@@ -343,6 +372,16 @@ class _FakeFollowupRepository implements FollowupRepository {
         : null;
     refreshCalls++;
     if (error != null) throw error;
+  }
+
+  @override
+  Future<void> editQueued(
+    FollowupScope scope,
+    String itemId,
+    String prompt,
+  ) async {
+    editedItemId = itemId;
+    editedPrompt = prompt;
   }
 
   @override

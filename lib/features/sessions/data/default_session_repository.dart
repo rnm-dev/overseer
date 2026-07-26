@@ -208,6 +208,72 @@ class DefaultSessionRepository implements SessionRepository {
     }
   }
 
+  @override
+  Future<void> renameSession({
+    required String workspaceId,
+    required String peonId,
+    required String sessionId,
+    required String? title,
+  }) async {
+    try {
+      await _dio.patch<void>(
+        'workspaces/${Uri.encodeComponent(workspaceId)}'
+        '/peons/${Uri.encodeComponent(peonId)}'
+        '/sessions/${Uri.encodeComponent(sessionId)}',
+        data: {'title': title},
+      );
+      await (database.update(database.cachedSessions)..where(
+            (row) =>
+                row.workspaceId.equals(workspaceId) &
+                row.peonId.equals(peonId) &
+                row.sessionId.equals(sessionId),
+          ))
+          .write(CachedSessionsCompanion(title: Value(title)));
+    } on DioException catch (error) {
+      final data = error.response?.data;
+      final serverMessage = data is Map ? data['error'] as String? : null;
+      throw SessionsException(
+        serverMessage ??
+            switch (error.response?.statusCode) {
+              404 => 'Renaming is unavailable. Update the Peon.',
+              _ => 'Could not rename this session.',
+            },
+      );
+    }
+  }
+
+  @override
+  Future<void> deleteSession({
+    required String workspaceId,
+    required String peonId,
+    required String sessionId,
+  }) async {
+    try {
+      await _dio.delete<void>(
+        'workspaces/${Uri.encodeComponent(workspaceId)}'
+        '/peons/${Uri.encodeComponent(peonId)}'
+        '/sessions/${Uri.encodeComponent(sessionId)}',
+      );
+      await (database.delete(database.cachedSessions)..where(
+            (row) =>
+                row.workspaceId.equals(workspaceId) &
+                row.peonId.equals(peonId) &
+                row.sessionId.equals(sessionId),
+          ))
+          .go();
+    } on DioException catch (error) {
+      final data = error.response?.data;
+      final serverMessage = data is Map ? data['error'] as String? : null;
+      throw SessionsException(
+        serverMessage ??
+            switch (error.response?.statusCode) {
+              404 => 'This session is no longer available.',
+              _ => 'Could not delete this session.',
+            },
+      );
+    }
+  }
+
   SimpleSelectStatement<$CachedTranscriptEventsTable, CachedTranscriptEvent>
   _transcriptQuery({
     required String workspaceId,

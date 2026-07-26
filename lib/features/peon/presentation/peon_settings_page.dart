@@ -5,6 +5,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../../shared/design/colors.dart';
 import '../../../shared/design/typography.dart';
 import '../../../shared/widgets/app_button.dart';
+import '../../../shared/widgets/app_card.dart';
 import '../../../shared/widgets/app_option_bottom_sheet.dart';
 import '../../../shared/widgets/app_text_field.dart';
 import '../../../shared/widgets/confirmation_bottom_sheet.dart';
@@ -1370,37 +1371,23 @@ class _SettingsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: AppColors.rowSurface,
-        border: Border.all(color: AppColors.iron800),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              title,
-              style: AppTypography.display(
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-              ),
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(title, style: AppTypography.entityTitle()),
+          const SizedBox(height: 4),
+          Text(
+            subtitle,
+            style: AppTypography.body(
+              fontSize: 12,
+              color: AppColors.boneDim,
+              height: 1.4,
             ),
-            const SizedBox(height: 4),
-            Text(
-              subtitle,
-              style: AppTypography.mono(
-                fontSize: 10.5,
-                color: AppColors.boneDim,
-                height: 1.4,
-              ),
-            ),
-            const SizedBox(height: 16),
-            child,
-          ],
-        ),
+          ),
+          const SizedBox(height: 16),
+          child,
+        ],
       ),
     );
   }

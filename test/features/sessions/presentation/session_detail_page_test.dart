@@ -166,6 +166,106 @@ void main() {
     },
   );
 
+  testWidgets(
+    'keeps the submitted surface stable until the created session is ready',
+    (tester) async {
+      final creation = Completer<SessionSummary>();
+      final transcript = Completer<TranscriptState>();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            followupRepositoryProvider.overrideWithValue(
+              const _TestFollowupRepository(),
+            ),
+            newSessionRepositoryProvider.overrideWithValue(
+              _PendingNewSessionRepository(creation.future),
+            ),
+            projectRepositoryProvider.overrideWithValue(
+              _TestProjectRepository(),
+            ),
+            transcriptControllerProvider.overrideWith2(
+              (scope) => _PendingTranscriptController(scope, transcript.future),
+            ),
+          ],
+          child: MaterialApp(
+            theme: AppTheme.dark,
+            home: const SessionDetailPage.newSession(
+              workspaceId: 'workspace',
+              peonId: 'peon',
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('session-composer-input')),
+        'Keep this screen steady',
+      );
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('session-composer-submit')));
+      await tester.pump();
+
+      creation.complete(
+        const SessionSummary(
+          workspaceId: 'workspace',
+          peonId: 'peon',
+          sessionId: 'created-session',
+          status: 'running',
+          title: 'Keep this screen steady',
+          syncedAt: 1,
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('New session'), findsOneWidget);
+      expect(
+        find.byKey(const Key('new-session-project-selection')),
+        findsOneWidget,
+      );
+      expect(
+        tester
+            .widget<TextField>(find.byKey(const Key('session-composer-input')))
+            .controller
+            ?.text,
+        'Keep this screen steady',
+      );
+      expect(find.text('Starting session…'), findsOneWidget);
+
+      transcript.complete(
+        TranscriptState(
+          events: [
+            TranscriptEvent(
+              eventId: 'user-message',
+              orderKey: 1,
+              payload: const {
+                'type': 'user_message',
+                'text': 'Keep this screen steady',
+              },
+            ),
+          ],
+          isRunning: false,
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('New session'), findsNothing);
+      expect(
+        find.byKey(const Key('new-session-project-selection')),
+        findsNothing,
+      );
+      expect(find.text('Keep this screen steady'), findsWidgets);
+      expect(
+        tester
+            .widget<TextField>(find.byKey(const Key('session-composer-input')))
+            .controller
+            ?.text,
+        isEmpty,
+      );
+    },
+  );
+
   testWidgets('offers file picking and clipboard paste for a new session', (
     tester,
   ) async {
@@ -542,7 +642,6 @@ void main() {
       find.byKey(const Key('session-navbar')),
     );
     expect(navigationBar.showBackButton, isTrue);
-    expect(navigationBar.contentHeight, 56);
     expect(
       navigationBar.contentPadding,
       const EdgeInsets.fromLTRB(8, 10, 8, 6),
@@ -870,7 +969,7 @@ void main() {
 
     final list = find.byKey(const Key('transcript-list'));
     final scrollable = tester.state<ScrollableState>(
-      find.descendant(of: list, matching: find.byType(Scrollable)),
+      find.descendant(of: list, matching: find.byType(Scrollable)).first,
     );
     expect(scrollable.position.pixels, 0);
 
@@ -1191,6 +1290,13 @@ class _TestFollowupRepository implements FollowupRepository {
   Future<void> refreshQueue(FollowupScope scope) async {}
 
   @override
+  Future<void> editQueued(
+    FollowupScope scope,
+    String itemId,
+    String prompt,
+  ) async {}
+
+  @override
   Future<void> removeQueued(FollowupScope scope, String itemId) async {}
 
   @override
@@ -1315,6 +1421,15 @@ class _TestNewSessionRepository implements NewSessionRepository {
       syncedAt: 1,
     );
   }
+}
+
+class _PendingNewSessionRepository implements NewSessionRepository {
+  const _PendingNewSessionRepository(this.pending);
+
+  final Future<SessionSummary> pending;
+
+  @override
+  Future<SessionSummary> createSession(NewSessionRequest request) => pending;
 }
 
 class _RecordingNewSessionRepository implements NewSessionRepository {

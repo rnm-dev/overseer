@@ -15,6 +15,9 @@ class _WorkspaceSocket {
   bool reconnecting = false;
   bool ready = false;
   bool activeSeeded = false;
+  bool activeSeedComplete = false;
+  int activeReplayEndsRemaining = 0;
+  int activeSeedGeneration = 0;
   PresenceLocation location = const PresenceLocation.workspace();
   final Set<String> peonIds = {};
   final Map<String, _SessionState> sessions = {};

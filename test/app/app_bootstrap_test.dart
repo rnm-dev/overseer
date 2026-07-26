@@ -6,6 +6,7 @@ import 'package:overseer_mobile/app/app_bootstrap.dart';
 import 'package:overseer_mobile/core/config/app_config.dart';
 import 'package:overseer_mobile/core/config/overseer_connection_store.dart';
 import 'package:overseer_mobile/core/notifications/notification_routing.dart';
+import 'package:overseer_mobile/core/security/connection_credential_cleaner.dart';
 
 void main() {
   testWidgets('shows the empty connection state when nothing is saved', (
@@ -25,19 +26,32 @@ void main() {
     expect(find.text('Sign In'), findsNothing);
   });
 
-  testWidgets('adds a connection and returns to the selectable list', (
+  testWidgets('keeps add form visible until authentication succeeds', (
     WidgetTester tester,
   ) async {
+    final store = _FakeConnectionStore();
+    final authentication = Completer<void>();
+    var appBuilds = 0;
     await tester.pumpWidget(
       AppBootstrap(
-        store: _FakeConnectionStore(),
+        store: store,
         environmentConfig: AppConfig.forFlavor(flavor: 'dev'),
+        credentialCleaner: const _NoopCredentialCleaner(),
+        connectionAuthenticator: (_, _) => authentication.future,
+        connectionAppBuilder:
+            (config, connection, onAuthenticated, onBackToConnections) {
+              appBuilds += 1;
+              expect(onAuthenticated, isNull);
+              return const MaterialApp(
+                home: Scaffold(body: Text('Authenticated Overseer')),
+              );
+            },
       ),
     );
     await tester.pump();
 
     await tester.tap(find.byKey(const Key('empty-add-overseer-button')));
-    await tester.pump();
+    await tester.pumpAndSettle();
     expect(find.byType(TextField), findsOneWidget);
 
     await tester.enterText(
@@ -46,11 +60,55 @@ void main() {
     );
     await tester.tap(find.byKey(const Key('server-setup-continue')));
     await tester.pump();
+
+    expect(find.byType(TextField), findsOneWidget);
+    expect(find.text('Checking sign-in…'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    expect(find.byKey(const Key('fleet-loading')), findsNothing);
+    expect(find.text('Authenticated Overseer'), findsNothing);
+    expect(appBuilds, 0);
+    expect(await store.readAll(), isEmpty);
+
+    authentication.complete();
+    await tester.pumpAndSettle();
+
+    expect(find.text('Authenticated Overseer'), findsOneWidget);
+    expect(appBuilds, 1);
+    expect(
+      (await store.readAll()).single.serverUrl,
+      Uri.parse('https://self-hosted.example'),
+    );
+  });
+
+  testWidgets('failed provisional authentication stays on the add form', (
+    WidgetTester tester,
+  ) async {
+    final store = _FakeConnectionStore();
+    await tester.pumpWidget(
+      AppBootstrap(
+        store: store,
+        environmentConfig: AppConfig.forFlavor(flavor: 'dev'),
+        credentialCleaner: const _NoopCredentialCleaner(),
+        connectionAuthenticator: (_, _) =>
+            Future<void>.error(StateError('sign-in cancelled')),
+      ),
+    );
     await tester.pump();
 
-    expect(find.text('self-hosted.example'), findsOneWidget);
-    expect(find.text('https://self-hosted.example'), findsOneWidget);
-    expect(find.text('Choose an Overseer to continue.'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('empty-add-overseer-button')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'https://temporary.example');
+    await tester.tap(find.byKey(const Key('server-setup-continue')));
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.byType(TextField), findsOneWidget);
+    expect(
+      find.text('The Overseer URL could not be opened. Please try again.'),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('fleet-loading')), findsNothing);
+    expect(await store.readAll(), isEmpty);
   });
 
   testWidgets('renders every saved connection', (WidgetTester tester) async {
@@ -68,6 +126,87 @@ void main() {
     expect(find.text('one.example'), findsOneWidget);
     expect(find.text('two.example'), findsOneWidget);
     expect(find.text('Add Overseer'), findsOneWidget);
+  });
+
+  testWidgets('keeps every saved Overseer runtime mounted while switching', (
+    WidgetTester tester,
+  ) async {
+    final connections = <OverseerConnection>[
+      OverseerConnection(serverUrl: Uri.parse('https://one.example')),
+      OverseerConnection(serverUrl: Uri.parse('https://two.example')),
+    ];
+    final initialized = <Uri>[];
+    final disposed = <Uri>[];
+    await tester.pumpWidget(
+      AppBootstrap(
+        store: _FakeConnectionStore(connections),
+        environmentConfig: AppConfig.forFlavor(flavor: 'dev'),
+        connectionAppBuilder:
+            (config, connection, onAuthenticated, onBackToConnections) {
+              return _RuntimeProbe(
+                connection: connection,
+                onBack: onBackToConnections,
+                onInitialized: initialized.add,
+                onDisposed: disposed.add,
+              );
+            },
+      ),
+    );
+    await tester.pump();
+
+    expect(
+      initialized,
+      unorderedEquals(connections.map((item) => item.serverUrl)),
+    );
+    expect(disposed, isEmpty);
+
+    await tester.tap(
+      find.byKey(const ValueKey('overseer-connection-https://one.example')),
+    );
+    await tester.pump();
+    expect(find.text('Runtime one.example'), findsOneWidget);
+
+    await tester.tap(find.text('Back to connections'));
+    await tester.pump();
+    await tester.tap(
+      find.byKey(const ValueKey('overseer-connection-https://two.example')),
+    );
+    await tester.pump();
+
+    expect(find.text('Runtime two.example'), findsOneWidget);
+    expect(initialized, hasLength(2));
+    expect(disposed, isEmpty);
+  });
+
+  testWidgets('deletes a connection and its saved credential', (
+    WidgetTester tester,
+  ) async {
+    final connection = OverseerConnection(
+      serverUrl: Uri.parse('https://one.example'),
+    );
+    final store = _FakeConnectionStore(<OverseerConnection>[connection]);
+    final cleaner = _RecordingCredentialCleaner();
+    await tester.pumpWidget(
+      AppBootstrap(
+        store: store,
+        environmentConfig: AppConfig.forFlavor(flavor: 'dev'),
+        credentialCleaner: cleaner,
+      ),
+    );
+    await tester.pump();
+
+    await tester.longPress(
+      find.byKey(const ValueKey('overseer-connection-https://one.example')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('overseer-menu-delete')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('confirmation-confirm')));
+    await tester.pumpAndSettle();
+
+    expect(cleaner.deleted, same(connection));
+    expect(await store.readAll(), isEmpty);
+    expect(find.text('No connections yet'), findsOneWidget);
   });
 
   testWidgets('falls back to the empty state when preferences cannot be read', (
@@ -114,7 +253,7 @@ void main() {
     expect(find.text('Overseer connections'), findsNothing);
     expect(
       find.text('Sign In').evaluate().length +
-          find.byKey(const Key('auth-restoring-logo')).evaluate().length,
+          find.byKey(const Key('fleet-loading')).evaluate().length,
       1,
     );
   });
@@ -173,6 +312,12 @@ class _FakeConnectionStore implements OverseerConnectionStore {
 
   @override
   Future<List<OverseerConnection>> readAll() async => [..._connections];
+
+  @override
+  Future<List<OverseerConnection>> remove(OverseerConnection connection) async {
+    _connections.removeWhere((item) => item.serverUrl == connection.serverUrl);
+    return [..._connections];
+  }
 }
 
 class _FailingConnectionStore implements OverseerConnectionStore {
@@ -183,6 +328,27 @@ class _FailingConnectionStore implements OverseerConnectionStore {
   @override
   Future<List<OverseerConnection>> readAll() =>
       Future<List<OverseerConnection>>.error(StateError('read failed'));
+
+  @override
+  Future<List<OverseerConnection>> remove(
+    OverseerConnection connection,
+  ) async => <OverseerConnection>[];
+}
+
+class _NoopCredentialCleaner implements ConnectionCredentialCleaner {
+  const _NoopCredentialCleaner();
+
+  @override
+  Future<void> delete(OverseerConnection connection) async {}
+}
+
+class _RecordingCredentialCleaner implements ConnectionCredentialCleaner {
+  OverseerConnection? deleted;
+
+  @override
+  Future<void> delete(OverseerConnection connection) async {
+    deleted = connection;
+  }
 }
 
 class _InitialNotificationGateway implements NotificationMessageGateway {
@@ -238,4 +404,52 @@ class _StreamNotificationGateway implements NotificationMessageGateway {
 
   @override
   Future<NotificationDestination?> initialDestination() async => null;
+}
+
+class _RuntimeProbe extends StatefulWidget {
+  const _RuntimeProbe({
+    required this.connection,
+    required this.onBack,
+    required this.onInitialized,
+    required this.onDisposed,
+  });
+
+  final OverseerConnection connection;
+  final VoidCallback onBack;
+  final ValueChanged<Uri> onInitialized;
+  final ValueChanged<Uri> onDisposed;
+
+  @override
+  State<_RuntimeProbe> createState() => _RuntimeProbeState();
+}
+
+class _RuntimeProbeState extends State<_RuntimeProbe> {
+  @override
+  void initState() {
+    super.initState();
+    widget.onInitialized(widget.connection.serverUrl);
+  }
+
+  @override
+  void dispose() {
+    widget.onDisposed(widget.connection.serverUrl);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      home: Scaffold(
+        body: Column(
+          children: [
+            Text('Runtime ${widget.connection.title}'),
+            TextButton(
+              onPressed: widget.onBack,
+              child: const Text('Back to connections'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }

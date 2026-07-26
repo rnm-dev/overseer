@@ -4,6 +4,7 @@ import 'package:overseer_mobile/features/sessions/domain/session_models.dart';
 import 'package:overseer_mobile/features/sessions/presentation/transcript_item_view.dart';
 import 'package:overseer_mobile/features/sessions/presentation/transcript_items.dart';
 import 'package:overseer_mobile/shared/design/theme.dart';
+import 'package:overseer_mobile/shared/widgets/app_markdown.dart';
 
 void main() {
   test('flattens assistant blocks and pairs a later tool result', () {
@@ -179,6 +180,71 @@ void main() {
       find.byKey(const Key('transcript-user-short')),
     );
     expect(bubbleSize.width, lessThan(160));
+  });
+
+  testWidgets('renders user text as selectable GitHub Markdown', (
+    tester,
+  ) async {
+    const item = TranscriptUserItem(
+      key: 'user-markdown',
+      text: '**Review** `session.dart`',
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.dark,
+        home: const Scaffold(
+          body: SizedBox(width: 400, child: TranscriptItemView(item: item)),
+        ),
+      ),
+    );
+
+    final markdown = tester.widget<AppMarkdown>(
+      find.descendant(
+        of: find.byKey(const Key('transcript-user-user-markdown')),
+        matching: find.byType(AppMarkdown),
+      ),
+    );
+    expect(markdown.data, item.text);
+    expect(markdown.selectable, isTrue);
+    final renderedText = tester
+        .widgetList<SelectableText>(
+          find.descendant(
+            of: find.byKey(const Key('transcript-user-user-markdown')),
+            matching: find.byType(SelectableText),
+          ),
+        )
+        .map((widget) => widget.data ?? widget.textSpan?.toPlainText() ?? '')
+        .join(' ');
+    expect(renderedText, contains('Review'));
+    expect(renderedText, contains('session.dart'));
+    expect(renderedText, isNot(contains('**')));
+  });
+
+  testWidgets('renders assistant text as selectable GitHub Markdown', (
+    tester,
+  ) async {
+    final item = TranscriptTextItem(
+      key: 'markdown',
+      text: '# Result\n\n**Ready** with `code`.\n\n- [x] Done',
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.dark,
+        home: Scaffold(
+          body: SizedBox(width: 400, child: TranscriptItemView(item: item)),
+        ),
+      ),
+    );
+
+    final markdown = tester.widget<AppMarkdown>(
+      find.byKey(const Key('transcript-markdown-markdown')),
+    );
+    expect(markdown.data, item.text);
+    expect(markdown.selectable, isTrue);
+    expect(markdown.textStyle.fontSize, 14);
+    expect(find.text('Result'), findsOneWidget);
+    expect(find.text('Done'), findsOneWidget);
+    expect(find.byIcon(Icons.check_box), findsOneWidget);
   });
 
   test('derives working activity from the freshest assistant block', () {

@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -16,10 +18,11 @@ import '../../sessions/domain/session_models.dart';
 import '../../sessions/sessions.dart';
 import 'peon_settings_page.dart';
 import '../../../shared/design/colors.dart';
-import '../../../shared/design/spacing.dart';
 import '../../../shared/design/typography.dart';
+import '../../../shared/formatters/activity_timestamp.dart';
 import '../../../shared/widgets/app_navigation_bar.dart';
 import '../../../shared/widgets/loading_shimmer.dart';
+import '../../../shared/widgets/sidebar_status_edge.dart';
 import '../../../shared/widgets/status_dot.dart';
 
 enum _PeonTab { work, stats, settings }
@@ -101,7 +104,6 @@ class _PeonHomePageState extends ConsumerState<PeonHomePage> {
                               widget.workspace.role == null ||
                               widget.workspace.role == 'owner',
                         ),
-                        const SliverToBoxAdapter(child: SizedBox(height: 18)),
                         SliverMainAxisGroup(
                           slivers: [
                             _PinnedSectionHeader(
@@ -119,26 +121,37 @@ class _PeonHomePageState extends ConsumerState<PeonHomePage> {
                                 ),
                               ),
                             ),
-                            SliverToBoxAdapter(
-                              child: _SectionFrame(
-                                paddingKey: const Key('peon-screen-padding'),
-                                padding: context.appSpacing.screenInsets(
-                                  top: 6,
-                                  bottom: 32,
-                                ),
-                                child: SessionList(
-                                  workspaceId: widget.workspace.id,
-                                  peonId: widget.peon.id,
-                                  onSessionSelected: (session) =>
-                                      Navigator.of(context).push(
-                                        MaterialPageRoute<void>(
-                                          builder: (context) =>
-                                              SessionDetailPage(
-                                                session: session,
-                                              ),
+                            SliverLayoutBuilder(
+                              builder: (context, constraints) {
+                                final horizontalInset = math.max(
+                                  0.0,
+                                  (constraints.crossAxisExtent - 760) / 2,
+                                );
+                                return SliverPadding(
+                                  padding: EdgeInsets.symmetric(
+                                    horizontal: horizontalInset,
+                                  ),
+                                  sliver: SessionSliverList(
+                                    workspaceId: widget.workspace.id,
+                                    peonId: widget.peon.id,
+                                    onSessionSelected: (session) =>
+                                        Navigator.of(context).push(
+                                          MaterialPageRoute<void>(
+                                            builder: (context) =>
+                                                SessionDetailPage(
+                                                  session: session,
+                                                ),
+                                          ),
                                         ),
-                                      ),
-                                ),
+                                  ),
+                                );
+                              },
+                            ),
+                            const SliverToBoxAdapter(
+                              child: Padding(
+                                key: Key('peon-screen-padding'),
+                                padding: EdgeInsets.only(bottom: 32),
+                                child: SizedBox.shrink(),
                               ),
                             ),
                           ],
@@ -196,13 +209,15 @@ class _ProjectsSectionState extends ConsumerState<_ProjectsSection> {
           child: _SectionHeaderSurface(
             section: 'projects',
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Expanded(
                   child: TextButton.icon(
+                    key: const Key('projects-toggle-action'),
                     onPressed: () => setState(() => _expanded = !_expanded),
                     style: TextButton.styleFrom(
                       alignment: Alignment.centerLeft,
-                      minimumSize: const Size(0, 16),
+                      minimumSize: Size.zero,
                       padding: EdgeInsets.zero,
                       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
@@ -215,11 +230,11 @@ class _ProjectsSectionState extends ConsumerState<_ProjectsSection> {
                     ),
                     label: Text(
                       'PROJECTS',
-                      style: AppTypography.body(
-                        fontSize: 9.5,
-                        fontWeight: FontWeight.w500,
+                      style: AppTypography.display(
+                        fontSize: 8.8,
+                        fontWeight: FontWeight.w600,
                         color: AppColors.boneFaint,
-                        letterSpacing: 1.5,
+                        letterSpacing: 1.408,
                         height: 1,
                       ),
                     ),
@@ -234,17 +249,17 @@ class _ProjectsSectionState extends ConsumerState<_ProjectsSection> {
                       ),
                     ),
                     style: TextButton.styleFrom(
-                      minimumSize: const Size(0, 16),
+                      minimumSize: Size.zero,
                       padding: EdgeInsets.zero,
                       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
                     child: Text(
                       '+ NEW PROJECT',
-                      style: AppTypography.body(
-                        fontSize: 9,
-                        fontWeight: FontWeight.w500,
+                      style: AppTypography.display(
+                        fontSize: 8.8,
+                        fontWeight: FontWeight.w600,
                         color: AppColors.boneDim,
-                        letterSpacing: 1.2,
+                        letterSpacing: 1.408,
                         height: 1,
                       ),
                     ),
@@ -256,7 +271,7 @@ class _ProjectsSectionState extends ConsumerState<_ProjectsSection> {
         if (_expanded)
           SliverToBoxAdapter(
             child: _SectionFrame(
-              padding: const EdgeInsets.fromLTRB(8, 6, 8, 0),
+              padding: EdgeInsets.zero,
               child: projects.when(
                 skipLoadingOnRefresh: true,
                 data: (value) => _ProjectList(
@@ -283,7 +298,7 @@ class _ProjectsSectionState extends ConsumerState<_ProjectsSection> {
   }
 }
 
-class _ProjectList extends StatelessWidget {
+class _ProjectList extends StatefulWidget {
   const _ProjectList({
     required this.state,
     required this.sessions,
@@ -301,19 +316,47 @@ class _ProjectList extends StatelessWidget {
   final VoidCallback onRetry;
 
   @override
+  State<_ProjectList> createState() => _ProjectListState();
+}
+
+class _ProjectListState extends State<_ProjectList> {
+  late Map<String, String> _fingerprints;
+  Map<String, int> _flashRevisions = const {};
+
+  @override
+  void initState() {
+    super.initState();
+    _fingerprints = _projectFingerprints(widget);
+  }
+
+  @override
+  void didUpdateWidget(covariant _ProjectList oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final nextFingerprints = _projectFingerprints(widget);
+    final nextFlashes = Map<String, int>.from(_flashRevisions);
+    for (final entry in nextFingerprints.entries) {
+      if (_fingerprints[entry.key] == entry.value) continue;
+      nextFlashes[entry.key] = (nextFlashes[entry.key] ?? 0) + 1;
+    }
+    nextFlashes.removeWhere((key, _) => !nextFingerprints.containsKey(key));
+    _fingerprints = nextFingerprints;
+    _flashRevisions = nextFlashes;
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (state.catalog?.stale == true)
+        if (widget.state.catalog?.stale == true)
           const _ProjectsNotice(message: 'The project catalog may be stale.'),
-        if (state.message case final message?)
-          _ProjectsNotice(message: message, onRetry: onRetry),
-        if (state.projects.isEmpty && state.isRefreshing)
+        if (widget.state.message case final message?)
+          _ProjectsNotice(message: message, onRetry: widget.onRetry),
+        if (widget.state.projects.isEmpty && widget.state.isRefreshing)
           const _ProjectLoading()
-        else if (state.projects.isEmpty)
+        else if (widget.state.projects.isEmpty)
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             child: Text(
               'No projects on this peon yet.',
               style: AppTypography.body(
@@ -323,29 +366,43 @@ class _ProjectList extends StatelessWidget {
             ),
           )
         else
-          for (final project in state.projects)
-            _ProjectRow(
-              key: Key('project-${project.projectId}'),
-              project: project,
-              activeCount: _activeCount(project),
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => ProjectDetailPage(
-                    workspaceId: project.workspaceId,
-                    peonId: project.peonId,
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (final project in widget.state.projects)
+                  _ProjectRow(
+                    key: Key('project-${project.projectId}'),
                     project: project,
-                    online: online,
-                    isOwner: isOwner,
+                    activeCount: _activeCount(project),
+                    lastActivity: _lastActivityFor(widget, project),
+                    flashRevision: _flashRevisions[project.projectId] ?? 0,
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => ProjectDetailPage(
+                          workspaceId: project.workspaceId,
+                          peonId: project.peonId,
+                          project: project,
+                          online: widget.online,
+                          isOwner: widget.isOwner,
+                        ),
+                      ),
+                    ),
                   ),
-                ),
-              ),
+              ],
             ),
+          ),
       ],
     );
   }
 
   int _activeCount(PeonProject project) {
-    final authoritative = activeSessions;
+    return _activeCountFor(widget, project);
+  }
+
+  int _activeCountFor(_ProjectList target, PeonProject project) {
+    final authoritative = target.activeSessions;
     if (authoritative != null) {
       return authoritative.countForProject(
         peonId: project.peonId,
@@ -353,7 +410,7 @@ class _ProjectList extends StatelessWidget {
         projectKey: project.key,
       );
     }
-    return sessions
+    return target.sessions
         .where(
           (session) =>
               session.isRunning &&
@@ -362,6 +419,29 @@ class _ProjectList extends StatelessWidget {
         )
         .length;
   }
+
+  double _lastActivityFor(_ProjectList target, PeonProject project) {
+    var lastActivity = project.lastActivityMs ?? 0;
+    for (final session in target.sessions) {
+      final belongsToProject =
+          session.projectId == project.projectId ||
+          session.projectKey == project.key;
+      if (belongsToProject && session.sortActivity > lastActivity) {
+        lastActivity = session.sortActivity;
+      }
+    }
+    return lastActivity;
+  }
+
+  Map<String, String> _projectFingerprints(_ProjectList target) => {
+    for (final project in target.state.projects)
+      project.projectId: [
+        project.name ?? '',
+        _activeCountFor(target, project),
+        project.sessionCount,
+        _lastActivityFor(target, project),
+      ].join('|'),
+  };
 }
 
 class _ProjectLoading extends StatelessWidget {
@@ -397,29 +477,26 @@ class _ProjectSkeletonRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return SizedBox(
       height: 48,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+      child: Stack(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 6, 8, 6),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const ShimmerBlock(
-                  width: 8,
-                  height: 8,
-                  borderRadius: BorderRadius.all(Radius.circular(999)),
-                ),
-                const SizedBox(width: 7),
                 ShimmerBlock(width: titleWidth, height: 13),
+                const SizedBox(height: 7),
+                ShimmerBlock(width: detailWidth, height: 9),
               ],
             ),
-            const SizedBox(height: 7),
-            Padding(
-              padding: const EdgeInsets.only(left: 15),
-              child: ShimmerBlock(width: detailWidth, height: 9),
-            ),
-          ],
-        ),
+          ),
+          const Positioned(
+            top: 4,
+            bottom: 4,
+            left: 0,
+            child: ShimmerBlock(width: 2, height: 40),
+          ),
+        ],
       ),
     );
   }
@@ -430,112 +507,138 @@ class _ProjectRow extends StatelessWidget {
     super.key,
     required this.project,
     required this.activeCount,
+    required this.lastActivity,
+    required this.flashRevision,
     required this.onTap,
   });
 
   final PeonProject project;
   final int activeCount;
+  final double lastActivity;
+  final int flashRevision;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final active = activeCount > 0;
-    return Material(
-      color: Colors.transparent,
-      borderRadius: const BorderRadius.all(Radius.circular(6)),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: const BorderRadius.all(Radius.circular(6)),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 48),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
-                  children: [
-                    Semantics(
-                      label: active ? 'Active project' : 'Inactive project',
-                      child: ExcludeSemantics(
-                        child: Container(
-                          key: Key('project-status-${project.projectId}'),
-                          width: 8,
-                          height: 8,
-                          decoration: BoxDecoration(
-                            color: active
-                                ? AppColors.felBright
-                                : AppColors.iron700,
-                            shape: BoxShape.circle,
-                            boxShadow: active
-                                ? [
-                                    BoxShadow(
-                                      color: AppColors.fel.withValues(
-                                        alpha: 0.95,
-                                      ),
-                                      blurRadius: 4,
-                                    ),
-                                    BoxShadow(
-                                      color: AppColors.fel.withValues(
-                                        alpha: 0.72,
-                                      ),
-                                      blurRadius: 11,
-                                    ),
-                                  ]
-                                : null,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 7),
-                    Expanded(
-                      child: Text(
+    final activity = formatActivityTimestamp(lastActivity);
+    return Semantics(
+      button: true,
+      onTap: onTap,
+      label: [
+        active ? 'Active project' : 'Inactive project',
+        project.displayName,
+        '${project.sessionCount} sessions',
+        if (active) '$activeCount active',
+        ?activity,
+      ].join(', '),
+      child: ExcludeSemantics(
+        child: SizedBox(
+          height: 48,
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(onTap: onTap),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 6, 8, 6),
+                child: IgnorePointer(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
                         project.displayName,
                         maxLines: 1,
                         overflow: TextOverflow.fade,
                         softWrap: false,
                         style: AppTypography.display(
-                          fontSize: 13,
+                          fontSize: 12.8,
                           fontWeight: FontWeight.w500,
                         ),
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 3),
-                Padding(
-                  padding: const EdgeInsets.only(left: 15),
-                  child: Row(
-                    children: [
-                      Text(
-                        '${project.memberCount} members',
-                        style: AppTypography.body(
-                          fontSize: 10.5,
-                          color: AppColors.boneFaint,
-                        ),
-                      ),
-                      Text(
-                        '  •  ${project.sessionCount} sessions',
-                        style: AppTypography.body(
-                          fontSize: 10.5,
-                          color: AppColors.boneFaint,
-                        ),
-                      ),
-                      if (active) ...[
-                        const Spacer(),
-                        Text(
-                          '$activeCount active',
-                          style: AppTypography.body(
-                            fontSize: 10.5,
-                            color: AppColors.forge,
+                      const SizedBox(height: 2),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Row(
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    key: Key(
+                                      'project-session-count-${project.projectId}',
+                                    ),
+                                    '${project.sessionCount} sessions',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: AppTypography.body(
+                                      fontSize: 9.6,
+                                      color: AppColors.boneFaint,
+                                    ),
+                                  ),
+                                ),
+                                if (active) ...[
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    '•',
+                                    style: AppTypography.body(
+                                      fontSize: 9.6,
+                                      color: AppColors.boneDim,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Flexible(
+                                    child: Text(
+                                      key: Key(
+                                        'project-active-count-${project.projectId}',
+                                      ),
+                                      '$activeCount active',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: AppTypography.body(
+                                        fontSize: 9.6,
+                                        color: AppColors.forge,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
                           ),
-                        ),
-                      ],
+                          if (activity != null) ...[
+                            const SizedBox(width: 7),
+                            Text(
+                              key: Key('project-activity-${project.projectId}'),
+                              activity,
+                              style: AppTypography.body(
+                                fontSize: 9.6,
+                                color: AppColors.boneFaint,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
                     ],
                   ),
                 ),
-              ],
-            ),
+              ),
+              Positioned(
+                key: Key('project-status-position-${project.projectId}'),
+                top: 4,
+                bottom: 4,
+                left: 0,
+                child: SidebarStatusEdge(
+                  key: Key('project-status-${project.projectId}'),
+                  style: active
+                      ? SidebarStatusEdgeStyle.running
+                      : SidebarStatusEdgeStyle.idle,
+                  semanticLabel: active ? 'Active project' : 'Inactive project',
+                  flashRevision: flashRevision,
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -597,7 +700,6 @@ class _PeonHeader extends StatelessWidget {
       key: const Key('peon-navbar'),
       showBackButton: true,
       backButtonKey: const Key('peon-back'),
-      contentHeight: 56,
       contentPadding: const EdgeInsets.fromLTRB(8, 10, 12, 6),
       left: Row(
         children: [
@@ -715,33 +817,40 @@ class _SectionHeader extends StatelessWidget {
     return _SectionHeaderSurface(
       section: section,
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Expanded(
-            child: Text(
-              title.toUpperCase(),
-              style: AppTypography.body(
-                fontSize: 9.5,
-                fontWeight: FontWeight.w500,
-                color: AppColors.boneFaint,
-                letterSpacing: 1.5,
-                height: 1,
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                title.toUpperCase(),
+                style: AppTypography.display(
+                  fontSize: 8.8,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.boneFaint,
+                  letterSpacing: 1.408,
+                  height: 1,
+                ),
               ),
             ),
           ),
           TextButton(
+            key: Key(
+              '${actionLabel.toLowerCase().replaceAll(' ', '-')}-action',
+            ),
             onPressed: onPressed,
             style: TextButton.styleFrom(
-              minimumSize: const Size(0, 16),
+              minimumSize: Size.zero,
               padding: EdgeInsets.zero,
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
             ),
             child: Text(
               '+ ${actionLabel.toUpperCase()}',
-              style: AppTypography.body(
-                fontSize: 9,
-                fontWeight: FontWeight.w500,
+              style: AppTypography.display(
+                fontSize: 8.8,
+                fontWeight: FontWeight.w600,
                 color: AppColors.boneDim,
-                letterSpacing: 1.2,
+                letterSpacing: 1.408,
                 height: 1,
               ),
             ),
@@ -762,13 +871,10 @@ class _SectionHeaderSurface extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       key: Key('$section-section-header'),
-      decoration: const BoxDecoration(
-        color: AppColors.iron950,
-        borderRadius: BorderRadius.all(Radius.circular(6)),
-      ),
+      decoration: BoxDecoration(color: AppColors.bone.withValues(alpha: 0.05)),
       child: Padding(
         key: Key('$section-section-header-padding'),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 12),
         child: child,
       ),
     );
@@ -821,12 +927,10 @@ class _SectionFrame extends StatelessWidget {
   const _SectionFrame({
     required this.child,
     this.padding = const EdgeInsets.symmetric(horizontal: 8),
-    this.paddingKey,
   });
 
   final Widget child;
   final EdgeInsetsGeometry padding;
-  final Key? paddingKey;
 
   @override
   Widget build(BuildContext context) {
@@ -835,7 +939,6 @@ class _SectionFrame extends StatelessWidget {
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 760),
         child: Padding(
-          key: paddingKey,
           padding: padding,
           child: SizedBox(width: double.infinity, child: child),
         ),

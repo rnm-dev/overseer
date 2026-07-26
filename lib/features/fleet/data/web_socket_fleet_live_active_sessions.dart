@@ -4,6 +4,7 @@ extension _WebSocketFleetLiveActiveSessions on WebSocketFleetLiveService {
   Future<void> _seedActiveSessions(
     String workspaceId,
     _WorkspaceSocket state,
+    int generation,
   ) async {
     try {
       var offset = 0;
@@ -47,25 +48,42 @@ extension _WebSocketFleetLiveActiveSessions on WebSocketFleetLiveService {
         if (sessions.isEmpty) break;
       } while (offset < total);
 
-      if (_stopped || _sockets[workspaceId] != state) return;
+      if (_stopped ||
+          _sockets[workspaceId] != state ||
+          state.activeSeedGeneration != generation) {
+        return;
+      }
       state.sessions
         ..clear()
         ..addAll(seeded);
-      state.activeSeeded = true;
-      for (final event in state.pendingSessions) {
-        _applySession(workspaceId, state, event, notify: false);
-      }
-      state.pendingSessions.clear();
-      for (final peonId in state.peonIds) {
-        _notifyActiveCount(workspaceId, state, peonId);
-      }
-      _notifyActiveSessionSnapshot(workspaceId, state);
+      state.activeSeedComplete = true;
+      _publishActiveSessionsWhenReady(workspaceId, state);
     } catch (error) {
       debugPrint(
         '[LiveSync] active-session seed failed workspace=$workspaceId: '
         '${error.runtimeType}',
       );
     }
+  }
+
+  void _publishActiveSessionsWhenReady(
+    String workspaceId,
+    _WorkspaceSocket state,
+  ) {
+    if (state.activeSeeded ||
+        !state.activeSeedComplete ||
+        state.activeReplayEndsRemaining > 0) {
+      return;
+    }
+    for (final event in state.pendingSessions) {
+      _applySession(workspaceId, state, event, notify: false);
+    }
+    state.pendingSessions.clear();
+    state.activeSeeded = true;
+    for (final peonId in state.peonIds) {
+      _notifyActiveCount(workspaceId, state, peonId);
+    }
+    _notifyActiveSessionSnapshot(workspaceId, state);
   }
 
   void _applySession(

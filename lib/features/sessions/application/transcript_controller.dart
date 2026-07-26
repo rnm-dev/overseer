@@ -98,8 +98,10 @@ class TranscriptController extends AsyncNotifier<TranscriptState> {
   DateTime _lastTailActivity = DateTime.now();
   DateTime? _lastReconcileAt;
   bool _tailUnhealthy = false;
+  bool _tailSubscribed = false;
   bool _reconciling = false;
   bool _running;
+  bool _suppressNextCompletionSound = false;
   final Set<String> _soundedEventIds = {};
   late final FollowupScope _followupScope = FollowupScope(
     workspaceId: scope.workspaceId,
@@ -141,7 +143,13 @@ class TranscriptController extends AsyncNotifier<TranscriptState> {
       unawaited(workSoundPlayer.stop());
     });
     ref.listen(sessionQueueChangeProvider(_followupScope), (_, _) {});
-    Future<void>.microtask(refresh);
+    Future<void>.microtask(() async {
+      final cachedBoundary = cached.events.lastOrNull?.eventId;
+      if (cachedBoundary?.isNotEmpty == true) {
+        _ensureTailSubscribed(cachedBoundary);
+      }
+      await refresh();
+    });
     return TranscriptState(
       events: cached.events,
       isRunning: _running,
@@ -150,6 +158,8 @@ class TranscriptController extends AsyncNotifier<TranscriptState> {
   }
 
   Future<void> refresh() => _refresh(reportFailure: true);
+
+  Future<void> resumeFromBackground() => _refresh(reportFailure: false);
 
   Future<void> _refresh({required bool reportFailure}) async {
     if (!ref.mounted) return;
@@ -175,7 +185,7 @@ class TranscriptController extends AsyncNotifier<TranscriptState> {
         _running = runningSignal ?? _running;
       }
       _nextCursor = page.nextCursor;
-      _subscribeToTail(page.events.lastOrNull?.eventId);
+      _ensureTailSubscribed(page.events.lastOrNull?.eventId);
       _tailUnhealthy = false;
       _lastTailActivity = DateTime.now();
       final latest = state.value ?? current;
@@ -200,16 +210,18 @@ class TranscriptController extends AsyncNotifier<TranscriptState> {
     }
   }
 
-  void _subscribeToTail(String? lastEventId) {
-    ref
-        .read(transcriptLiveServiceProvider)
-        ?.subscribeTranscript(
-          workspaceId: scope.workspaceId,
-          peonId: scope.peonId,
-          sessionId: scope.sessionId,
-          lastEventId: lastEventId,
-          onFrame: _handleTailFrame,
-        );
+  void _ensureTailSubscribed(String? lastEventId) {
+    if (_tailSubscribed) return;
+    final liveService = ref.read(transcriptLiveServiceProvider);
+    if (liveService == null) return;
+    liveService.subscribeTranscript(
+      workspaceId: scope.workspaceId,
+      peonId: scope.peonId,
+      sessionId: scope.sessionId,
+      lastEventId: lastEventId,
+      onFrame: _handleTailFrame,
+    );
+    _tailSubscribed = true;
   }
 
   Future<void> _handleTailFrame(TranscriptTailFrame frame) async {
@@ -254,6 +266,9 @@ class TranscriptController extends AsyncNotifier<TranscriptState> {
       return;
     }
     final payload = Map<String, dynamic>.from(decoded);
+    if (payload['type'] == 'user_message') {
+      _suppressNextCompletionSound = false;
+    }
     await ref
         .read(sessionRepositoryProvider)
         .cacheTailEvent(
@@ -287,12 +302,30 @@ class TranscriptController extends AsyncNotifier<TranscriptState> {
     final type = payload['type'];
     if (type == 'result') {
       unawaited(player.stop());
+      final completionSuppressed = _suppressNextCompletionSound;
+      _suppressNextCompletionSound = false;
+      if (!completionSuppressed &&
+          payload['is_error'] != true &&
+          !_queueHasPending) {
+        final pack =
+            ref.read(soundPackControllerProvider).asData?.value ??
+            SoundPack.peon;
+        unawaited(player.playCue(pack, WorkSoundCue.complete));
+      }
       return;
     }
     if (!isAgentWorkSoundEvent(payload)) return;
     final pack =
         ref.read(soundPackControllerProvider).asData?.value ?? SoundPack.peon;
     unawaited(player.play(pack));
+  }
+
+  void suppressNextCompletionSound() {
+    _suppressNextCompletionSound = true;
+  }
+
+  void restoreCompletionSound() {
+    _suppressNextCompletionSound = false;
   }
 
   bool _runStarted(Map<String, dynamic> payload) {

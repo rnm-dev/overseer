@@ -44,4 +44,27 @@ void main() {
     selector.stop();
     expect(selector.begin(SoundPack.scv, 0.5), isNotNull);
   });
+
+  test('selects semantic cues for every audible pack', () {
+    final selector = WorkSoundCueSelector();
+
+    expect(
+      selector.select(SoundPack.peon, WorkSoundCue.start, 0),
+      'sounds/peon/work-start.wav',
+    );
+    expect(
+      selector.select(SoundPack.peasant, WorkSoundCue.stop, 0.99),
+      'sounds/peasant/work-stop-2.wav',
+    );
+    expect(
+      selector.select(SoundPack.scv, WorkSoundCue.complete, 0),
+      'sounds/sc_scv/work-complete.mp3',
+    );
+  });
+
+  test('mute pack suppresses semantic cues', () {
+    final selector = WorkSoundCueSelector();
+
+    expect(selector.select(SoundPack.mute, WorkSoundCue.start, 0), isNull);
+  });
 }

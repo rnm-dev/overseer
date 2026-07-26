@@ -22,7 +22,7 @@ final sessionComposerControllerProvider = AsyncNotifierProvider.autoDispose
       retry: (_, _) => null,
     );
 
-enum QueuedFollowupAction { removing, sending }
+enum QueuedFollowupAction { editing, removing, sending }
 
 class SessionComposerState {
   const SessionComposerState({
@@ -374,14 +374,23 @@ class SessionComposerController extends AsyncNotifier<SessionComposerState> {
   Future<void> sendQueuedNow(String itemId) =>
       _runQueueAction(itemId, sendNow: true);
 
-  Future<void> _runQueueAction(String itemId, {required bool sendNow}) async {
+  Future<void> editQueued(String itemId, String prompt) =>
+      _runQueueAction(itemId, editPrompt: prompt);
+
+  Future<void> _runQueueAction(
+    String itemId, {
+    bool sendNow = false,
+    String? editPrompt,
+  }) async {
     final current = state.value;
     if (current == null || current.queueActions.containsKey(itemId)) return;
     state = AsyncData(
       current.copyWith(
         queueActions: {
           ...current.queueActions,
-          itemId: sendNow
+          itemId: editPrompt != null
+              ? QueuedFollowupAction.editing
+              : sendNow
               ? QueuedFollowupAction.sending
               : QueuedFollowupAction.removing,
         },
@@ -390,7 +399,9 @@ class SessionComposerController extends AsyncNotifier<SessionComposerState> {
     );
     try {
       final repository = ref.read(followupRepositoryProvider);
-      if (sendNow) {
+      if (editPrompt != null) {
+        await repository.editQueued(scope, itemId, editPrompt);
+      } else if (sendNow) {
         await repository.sendQueuedNow(scope, itemId);
       } else {
         await repository.removeQueued(scope, itemId);
@@ -698,6 +709,13 @@ class _UnavailableFollowupRepository implements FollowupRepository {
 
   @override
   Future<void> refreshQueue(FollowupScope scope) async {}
+
+  @override
+  Future<void> editQueued(
+    FollowupScope scope,
+    String itemId,
+    String prompt,
+  ) async {}
 
   @override
   Future<void> removeQueued(FollowupScope scope, String itemId) async {}

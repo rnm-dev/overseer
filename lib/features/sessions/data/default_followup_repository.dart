@@ -174,6 +174,17 @@ class DefaultFollowupRepository implements FollowupRepository {
   }
 
   @override
+  Future<void> editQueued(FollowupScope scope, String itemId, String prompt) {
+    return _mutateQueue(
+      scope,
+      itemId,
+      method: 'PATCH',
+      data: {'prompt': prompt},
+      fallback: 'Queued message could not be edited.',
+    );
+  }
+
+  @override
   Future<void> removeQueued(FollowupScope scope, String itemId) {
     return _mutateQueue(
       scope,
@@ -200,11 +211,13 @@ class DefaultFollowupRepository implements FollowupRepository {
     required String method,
     required String fallback,
     String suffix = '',
+    Object? data,
   }) async {
     FollowupException? failure;
     try {
       await _dio.request<void>(
         '${_sessionBase(scope)}/queue/${Uri.encodeComponent(itemId)}$suffix',
+        data: data,
         options: Options(method: method),
       );
     } on DioException catch (error) {

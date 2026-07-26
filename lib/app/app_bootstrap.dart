@@ -3,13 +3,21 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:overseer_mobile/app/app.dart';
 import 'package:overseer_mobile/app/app_dependencies.dart';
+import 'package:overseer_mobile/app/overseer_connection_authenticator.dart';
 import 'package:overseer_mobile/core/config/app_config.dart';
 import 'package:overseer_mobile/core/config/overseer_connection_store.dart';
 import 'package:overseer_mobile/core/notifications/notification_routing.dart';
-import 'package:overseer_mobile/features/auth/presentation/auth_restoring_page.dart';
+import 'package:overseer_mobile/core/security/connection_credential_cleaner.dart';
 import 'package:overseer_mobile/features/auth/presentation/overseer_connections_page.dart';
-import 'package:overseer_mobile/features/auth/presentation/server_setup_page.dart';
 import 'package:overseer_mobile/shared/design/theme.dart';
+
+typedef OverseerConnectionAppBuilder =
+    Widget Function(
+      AppConfig config,
+      OverseerConnection connection,
+      VoidCallback? onAuthenticated,
+      VoidCallback onBackToConnections,
+    );
 
 class AppBootstrap extends StatefulWidget {
   const AppBootstrap({
@@ -18,12 +26,18 @@ class AppBootstrap extends StatefulWidget {
     this.environmentConfig,
     this.notificationGateway = const NoopNotificationMessageGateway(),
     this.notificationRouteStore,
+    this.credentialCleaner,
+    this.connectionAuthenticator = authenticateOverseerConnection,
+    this.connectionAppBuilder,
   });
 
   final OverseerConnectionStore? store;
   final AppConfig? environmentConfig;
   final NotificationMessageGateway notificationGateway;
   final NotificationRouteStore? notificationRouteStore;
+  final ConnectionCredentialCleaner? credentialCleaner;
+  final OverseerConnectionAuthenticator connectionAuthenticator;
+  final OverseerConnectionAppBuilder? connectionAppBuilder;
 
   @override
   State<AppBootstrap> createState() => _AppBootstrapState();
@@ -34,6 +48,7 @@ class _AppBootstrapState extends State<AppBootstrap>
   late final OverseerConnectionStore _store;
   late final AppConfig _environmentConfig;
   late final NotificationRouteStore _notificationRouteStore;
+  late final ConnectionCredentialCleaner _credentialCleaner;
   List<OverseerConnection> _connections = const <OverseerConnection>[];
   OverseerConnection? _selectedConnection;
   NotificationDestination? _navigationDestination;
@@ -43,7 +58,6 @@ class _AppBootstrapState extends State<AppBootstrap>
   StreamSubscription<NotificationDestination>? _openedSubscription;
   Timer? _foregroundTimer;
   bool _loading = true;
-  bool _adding = false;
 
   @override
   void initState() {
@@ -54,6 +68,8 @@ class _AppBootstrapState extends State<AppBootstrap>
     _notificationRouteStore =
         widget.notificationRouteStore ??
         SharedPreferencesNotificationRouteStore();
+    _credentialCleaner =
+        widget.credentialCleaner ?? const SecureConnectionCredentialCleaner();
     WidgetsBinding.instance.addObserver(this);
     _foregroundSubscription = widget.notificationGateway.foregroundNotifications
         .listen(_showForegroundNotification);
@@ -119,12 +135,34 @@ class _AppBootstrapState extends State<AppBootstrap>
     }
   }
 
-  Future<void> _add(Uri serverUrl) async {
-    final connections = await _store.add(serverUrl);
+  Future<void> _beginAdd(Uri serverUrl) async {
+    final normalized = normalizeOverseerServerUrl(serverUrl);
+    if (_connections.any((item) => item.serverUrl == normalized)) {
+      throw const DuplicateOverseerConnectionException();
+    }
+    final connection = OverseerConnection(serverUrl: normalized);
+    final config = _environmentConfig.withServerUrl(normalized);
+    await widget.connectionAuthenticator(config, connection);
+    final connections = await _store.add(normalized);
     if (!mounted) return;
     setState(() {
       _connections = connections;
-      _adding = false;
+      _selectedConnection = connection;
+    });
+  }
+
+  Future<void> _delete(OverseerConnection connection) async {
+    await _credentialCleaner.delete(connection);
+    final connections = await _store.remove(connection);
+    if (!mounted) return;
+    setState(() => _connections = connections);
+  }
+
+  void _returnToConnections() {
+    setState(() {
+      _selectedConnection = null;
+      _navigationDestination = null;
+      _navigationRevision += 1;
     });
   }
 
@@ -192,54 +230,74 @@ class _AppBootstrapState extends State<AppBootstrap>
       return MaterialApp(
         title: 'Overseer Mobile',
         theme: AppTheme.dark,
-        home: const AuthRestoringPage(),
+        home: const OverseerConnectionsLoadingPage(),
         builder: (context, child) =>
             _withForegroundSurface(child ?? const SizedBox.shrink()),
       );
     }
 
-    final selectedConnection = _selectedConnection;
-    if (selectedConnection != null) {
-      return AppDependencies(
-        key: ValueKey(selectedConnection.id),
-        config: _environmentConfig.withServerUrl(selectedConnection.serverUrl),
-        connection: selectedConnection,
-        notificationRouteStore: _notificationRouteStore,
-        child: OverseerMobileApp(
-          navigationDestination: _navigationDestination,
-          navigationRevision: _navigationRevision,
-          foregroundNotification: _foregroundNotification,
-          onOpenNotification: (destination) =>
-              unawaited(_openDestination(destination)),
-          onDismissNotification: _dismissForegroundNotification,
-        ),
-      );
-    }
+    final selectedIndex = _selectedConnection == null
+        ? 0
+        : _connections.indexWhere(
+                (item) => item.serverUrl == _selectedConnection!.serverUrl,
+              ) +
+              1;
+    return Directionality(
+      textDirection: TextDirection.ltr,
+      child: IndexedStack(
+        alignment: Alignment.topLeft,
+        index: selectedIndex < 0 ? 0 : selectedIndex,
+        children: [
+          _buildConnectionPicker(),
+          for (final connection in _connections)
+            _buildConnectionApp(connection),
+        ],
+      ),
+    );
+  }
 
-    if (_adding) {
-      return MaterialApp(
-        title: 'Overseer Mobile',
-        theme: AppTheme.dark,
-        home: ServerSetupPage(
-          initialUrl: _environmentConfig.serverUrl.toString(),
-          onContinue: _add,
-          onBack: () => setState(() => _adding = false),
-        ),
-        builder: (context, child) =>
-            _withForegroundSurface(child ?? const SizedBox.shrink()),
-      );
-    }
-
+  Widget _buildConnectionPicker() {
     return MaterialApp(
       title: 'Overseer Mobile',
       theme: AppTheme.dark,
       home: OverseerConnectionsPage(
         connections: _connections,
-        onAdd: () => setState(() => _adding = true),
+        initialUrl: _environmentConfig.serverUrl.toString(),
+        onAdd: _beginAdd,
         onSelect: _select,
+        onDelete: _delete,
       ),
       builder: (context, child) =>
           _withForegroundSurface(child ?? const SizedBox.shrink()),
+    );
+  }
+
+  Widget _buildConnectionApp(OverseerConnection connection) {
+    final config = _environmentConfig.withServerUrl(connection.serverUrl);
+    final isSelected = _selectedConnection?.serverUrl == connection.serverUrl;
+    final appBuilder = widget.connectionAppBuilder;
+    final child = appBuilder != null
+        ? appBuilder(config, connection, null, _returnToConnections)
+        : AppDependencies(
+            key: ValueKey(connection.id),
+            config: config,
+            connection: connection,
+            notificationRouteStore: _notificationRouteStore,
+            sessionActivitiesEnabled: isSelected,
+            child: OverseerMobileApp(
+              onBackToConnections: _returnToConnections,
+              overseerName: connection.title,
+              navigationDestination: isSelected ? _navigationDestination : null,
+              navigationRevision: _navigationRevision,
+              foregroundNotification: _foregroundNotification,
+              onOpenNotification: (destination) =>
+                  unawaited(_openDestination(destination)),
+              onDismissNotification: _dismissForegroundNotification,
+            ),
+          );
+    return KeyedSubtree(
+      key: ValueKey(connection.id),
+      child: TickerMode(enabled: isSelected, child: child),
     );
   }
 }

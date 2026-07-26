@@ -10,7 +10,7 @@ Overseer afterward.
 2. `SessionRepository.watchSessions` keeps the page subscribed to the same
    rows, ordered by descending `lastActivityAt`, then `startedAt`, then
    `sessionId`.
-3. The controller refreshes the first 50 sessions from
+3. The controller refreshes the first 20 sessions from
    `GET /api/workspaces/:workspaceId/sessions?peonId=...` and loads older pages
    by offset. While the page remains mounted, it silently reconciles the first
    page every 5 seconds as a backstop for a temporarily disconnected workspace
@@ -20,6 +20,12 @@ Overseer afterward.
    transaction.
 5. Activity projections update `lastActivityAt`, so Drift emits the reordered
    list without presentation-layer sorting. Delete projections remove the row.
+
+The cache retains the complete known history, while the sliver-native Peon
+history lazily builds only rows near the viewport and exposes 20 sessions at a
+time. Approaching the end automatically reveals the next cached page, which
+remains useful offline, and requests another server page only after the visible
+cache has been exhausted.
 
 Rows use `(workspaceId, peonId, sessionId)` as their local identity and
 `syncedAt` for last-writer-wins reconciliation. Older REST or WebSocket
@@ -33,11 +39,23 @@ After each workspace socket snapshot, the client fetches every indexed
 `peonId`, `projectId`, and `projectKey`. Project counts and running indicators
 use that set instead of historical Drift statuses. An empty successful seed
 clears stale indicators; a failed seed leaves the set unknown so cached state
-remains usable offline. Later session projections update both Drift and the
-active set.
+remains usable offline. During startup, the client buffers session projections
+until both the running-session seed and every initial cursor replay have
+finished, then publishes one reconciled active set. This prevents historical
+status transitions from appearing as transient active-count changes. Later
+session projections update both Drift and the active set.
 
 Visible rows animate into activity order. Newly inserted rows appear in their
 authoritative slot, and reduced-motion preferences disable reordering effects.
+
+Session and project rows mirror the web sidebar. State is carried by a
+two-pixel left edge rather than a dot: running is green, unread completion or
+`needs_human` is amber, failures are red, and idle is a quiet neutral edge.
+Changes to a session's status, activity, preview, title, or unread state replay
+a 620 ms edge flare; project rows do the same when their name, rollups, active
+count, or session activity changes. Initial cached hydration stays still.
+Section headers and rows are full bleed, with the same typography, padding,
+and four-pixel list insets as the web sidebar.
 
 Project detail reuses this same cached/live list with a presentation filter:
 canonical `projectId` matches first, while `projectKey` is a fallback when a

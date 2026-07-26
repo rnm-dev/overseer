@@ -11,10 +11,15 @@ Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
   if (handleDesktopWebViewProcess(args)) return;
 
-  if (kIsWeb || defaultTargetPlatform != TargetPlatform.linux) {
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
+  if ((kIsWeb || defaultTargetPlatform != TargetPlatform.linux) &&
+      Firebase.apps.isEmpty) {
+    try {
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+    } on FirebaseException catch (error) {
+      if (error.code != 'duplicate-app') rethrow;
+    }
   }
 
   final supportsNativePush =

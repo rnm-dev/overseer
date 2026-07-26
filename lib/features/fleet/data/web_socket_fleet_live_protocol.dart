@@ -20,10 +20,13 @@ extension _WebSocketFleetLiveProtocol on WebSocketFleetLiveService {
     if (type == 'snapshot') {
       final snapshotCursor = (decoded['cursor'] as num?)?.toInt() ?? 0;
       final resumeCursor = state.cursor;
+      final seedGeneration = ++state.activeSeedGeneration;
       state
         ..ready = true
         ..attempt = 0
-        ..activeSeeded = false;
+        ..activeSeeded = false
+        ..activeSeedComplete = false
+        ..activeReplayEndsRemaining = snapshotCursor > resumeCursor ? 2 : 1;
       _onActiveSessionSnapshot?.call(workspaceId, null);
       state.pendingSessions.clear();
       for (final peon in (decoded['peonPresence'] as List? ?? const [])) {
@@ -44,7 +47,7 @@ extension _WebSocketFleetLiveProtocol on WebSocketFleetLiveService {
         _sendTailSubscription(state, handler);
       }
       _sendPresence(state);
-      unawaited(_seedActiveSessions(workspaceId, state));
+      unawaited(_seedActiveSessions(workspaceId, state, seedGeneration));
       return;
     }
     if (type == 'presence') {
@@ -96,11 +99,16 @@ extension _WebSocketFleetLiveProtocol on WebSocketFleetLiveService {
       final cursor = (decoded['cursor'] as num?)?.toInt() ?? 0;
       if (cursor > 0) await _onCursor?.call(workspaceId, cursor);
       _bumpCursor(state, cursor);
+      if (!state.activeSeeded && state.activeReplayEndsRemaining > 0) {
+        state.activeReplayEndsRemaining -= 1;
+        _publishActiveSessionsWhenReady(workspaceId, state);
+      }
       return;
     }
     if (type == 'sync') {
       final serverCursor = (decoded['cursor'] as num?)?.toInt() ?? 0;
       if (serverCursor > state.cursor) {
+        if (!state.activeSeeded) state.activeReplayEndsRemaining += 1;
         state.channel?.sink.add(
           jsonEncode({'type': 'resume', 'cursor': state.cursor}),
         );

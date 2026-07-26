@@ -187,6 +187,7 @@ abstract interface class FollowupRepository {
   Stream<List<PendingFollowup>> watchPending(FollowupScope scope);
   Stream<List<QueuedFollowup>> watchQueue(FollowupScope scope);
   Future<void> refreshQueue(FollowupScope scope);
+  Future<void> editQueued(FollowupScope scope, String itemId, String prompt);
   Future<void> removeQueued(FollowupScope scope, String itemId);
   Future<void> sendQueuedNow(FollowupScope scope, String itemId);
   Future<ModelsCatalog?> fetchModelCatalog(FollowupScope scope);

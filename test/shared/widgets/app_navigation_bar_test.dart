@@ -20,6 +20,10 @@ void main() {
       expect(find.text('Left view'), findsOneWidget);
       expect(find.text('Right view'), findsOneWidget);
       expect(find.byTooltip('Back'), findsNothing);
+      expect(
+        tester.getSize(find.byType(AppNavigationBar)).height,
+        AppNavigationBar.fixedContentHeight,
+      );
     },
   );
 
@@ -53,6 +57,6 @@ void main() {
       ),
     );
 
-    expect(tester.getSize(find.byKey(const Key('navbar'))).height, 60);
+    expect(tester.getSize(find.byKey(const Key('navbar'))).height, 72);
   });
 }

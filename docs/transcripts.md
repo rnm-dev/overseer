@@ -36,13 +36,19 @@ does not eagerly download the entire transcript.
 
 1. Read and watch cached events in ascending `orderKey`.
 2. Render those rows immediately.
-3. Fetch the newest 50 events from
+3. When cached events have a newest `eventId`, immediately subscribe to the
+   session tail from that boundary.
+4. In parallel, fetch the newest 50 events from
    `GET /api/workspaces/:workspaceId/peons/:peonId/sessions/:sessionId/transcript`.
-4. Upsert the page by `eventId` in one Drift transaction.
-5. Subscribe to the session tail with the last event ID from that HTTP page.
+5. Upsert the page by `eventId` in one Drift transaction.
+6. If the cache had no boundary, subscribe to the session tail with the last
+   event ID from that HTTP page.
 
-Passing the HTTP boundary as `lastEventId` closes the fetch-to-subscribe race:
-events appended after the snapshot are replayed by the durable tail.
+An existing cache boundary lets live replay begin without waiting for REST.
+The REST page and tail may overlap, so both paths upsert by `eventId`. On a
+fresh cache, passing the HTTP boundary as `lastEventId` closes the
+fetch-to-subscribe race: events appended after the snapshot are replayed by the
+durable tail without streaming an unbounded transcript.
 
 The UI uses a reversed list whose first data item is the newest event. Loading
 older pages inserts above the current viewport, so the visible scroll anchor
@@ -54,10 +60,15 @@ at the bottom; reading older content preserves the operator's scroll position.
 Drift stores the durable wire events unchanged. The presentation adapter
 flattens them into the same semantic rows as the web client:
 
-- `user_message` becomes an operator bubble with author, avatar, timestamp, and
-  inline attachment pills.
-- Assistant text renders directly on the transcript surface; thinking is an
-  inline expandable row.
+- `user_message` becomes an operator bubble with selectable GitHub-Flavored
+  Markdown, author, avatar, timestamp, and inline attachment pills.
+- Assistant text renders selectable GitHub-Flavored Markdown directly on the
+  transcript surface, including headings, lists, task lists, quotes, tables,
+  links, inline code, and fenced code blocks; thinking is an inline expandable
+  row.
+- Session-list previews flatten the same Markdown to a single line while
+  preserving inline emphasis and code styling, so block markup cannot change
+  the fixed sidebar row height.
 - An assistant `tool_use` and the later user-role `tool_result` are paired by
   `tool_use_id` and rendered once as a compact tool row. Each row reserves a
   dotted-underlined `Details` affordance. It opens the shared app bottom sheet:
@@ -116,6 +127,11 @@ files action. The first composer submit sends
 `Peon-Request-Id`, then replaces the local state with the returned real session
 without adding another navigation layer. The cached session row is written
 immediately so the underlying session list can reconcile in place.
+During that handoff, the submitted draft surface remains visible and disabled
+with one `Starting session…` status while the real session's cached transcript
+and composer state hydrate off-screen. The page swaps identities only after
+both are ready, preventing cleared-draft, empty-transcript, and
+disabled-composer frames from appearing as separate transient screens.
 
 The new-session transcript area uses the cached-first project catalog as a
 project selector. A short catalog is centered vertically and horizontally in
@@ -189,16 +205,22 @@ Peons that do not implement the queue endpoint return 404. The client clears
 any stale cached queue and silently disables authoritative queue polling for
 that mounted composer instead of presenting a persistent error.
 
-Each queued follow-up appears above the composer as a compact operator-side
-card with its prompt and attachment names. It intentionally omits author,
+Each queued follow-up appears above the composer as a full-width card matching
+the composer shell. Its Markdown-rendered prompt is limited to three lines, with
+overflow ellipsized, and attachment names remain visible below it. Tapping the
+card opens an animated, centered dialog over a dimmed backdrop. The dialog is
+limited to 80 percent of the viewport height, makes the full prompt scrollable,
+and keeps its actions fixed at the bottom. It intentionally omits author,
 permission, model, and effort metadata to match the web hierarchy. Its mobile
 actions retain at least 42-by-44 logical-pixel touch targets:
 
 - Send now posts to
   `/queue/:itemId/send`.
-- Remove deletes `/queue/:itemId`.
+- Delete removes `/queue/:itemId`.
+- Edit switches the dialog to an editor and atomically patches the prompt at
+  `/queue/:itemId` without changing its queue position or attachments.
 
-Both actions reconcile the authoritative list in `finally`. An
+All actions reconcile the authoritative list in `finally`. An
 `UNKNOWN_QUEUE_ITEM` response is treated as an already-completed race and does
 not surface an error. A non-empty queue also keeps the session's working state
 active across consecutive turn results so the UI does not flash idle between
@@ -231,6 +253,10 @@ and session tails. Each active transcript subscription tracks its own
 - A tail event is committed to Drift before the next socket frame is handled.
 - Socket reconnect resubscribes every mounted transcript after the workspace
   snapshot.
+- Returning from the background immediately replaces each workspace socket and
+  resubscribes mounted tails from their last committed event ID instead of
+  waiting for heartbeat expiry or reconnect backoff. The visible session also
+  silently refreshes its newest REST page as a parallel recovery path.
 - `tailEnd` and retryable `tailError` resubscribe independently without
   replacing the workspace socket.
 - After 15 seconds of silence in a running session, the controller checks the

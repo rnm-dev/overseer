@@ -4,18 +4,12 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../core/live/presence.dart';
 import '../../../core/notifications/notification_permission.dart';
-import '../../../shared/design/colors.dart';
-import '../../../shared/design/motion.dart';
-import '../../../shared/design/spacing.dart';
-import '../../../shared/design/typography.dart';
+import '../../../shared/ui_kit.dart';
 import '../../../shared/widgets/adaptive_selection_picker.dart';
 import '../../../shared/widgets/app_bottom_sheet.dart';
-import '../../../shared/widgets/app_button.dart';
 import '../../../shared/widgets/confirmation_bottom_sheet.dart';
-import '../../../shared/widgets/overseer_logo.dart';
+import '../../../shared/widgets/loading_shimmer.dart';
 import '../../../shared/widgets/presence_stack.dart';
-import '../../../shared/widgets/status_dot.dart';
-import '../../../shared/widgets/surface.dart';
 import '../../auth/domain/auth_models.dart';
 import '../../settings/application/sound_pack_controller.dart';
 import '../../settings/application/notification_permission_controller.dart';
@@ -25,14 +19,10 @@ import '../application/fleet_controller.dart';
 import '../domain/fleet_models.dart';
 import '../domain/fleet_repository.dart';
 
-abstract final class _FleetCardMetrics {
-  static const padding = EdgeInsets.all(20);
-  static const borderRadius = BorderRadius.all(Radius.circular(18));
-  static const headerGap = 18.0;
-  static const rowGap = 10.0;
-  static const rowMinHeight = 64.0;
-  static const rowPadding = EdgeInsets.symmetric(horizontal: 16, vertical: 8);
-  static const rowBorderRadius = BorderRadius.all(Radius.circular(14));
+abstract final class _FleetSectionMetrics {
+  static const headerGap = 10.0;
+  static const rowGap = 8.0;
+  static const sectionGap = 28.0;
 }
 
 class FleetOverview extends ConsumerWidget {
@@ -61,13 +51,28 @@ class FleetOverview extends ConsumerWidget {
         onRefresh: ref.read(fleetControllerProvider.notifier).refresh,
         presence: presence,
       ),
-      loading: () => const _FleetLoading(),
+      loading: () =>
+          _FleetLoading(compact: compact, user: user, onSignOut: onSignOut),
       error: (error, _) => _FleetError(
         message: error is FleetException
             ? error.message
             : 'Could not load your workspaces.',
         onRetry: ref.read(fleetControllerProvider.notifier).refresh,
       ),
+    );
+  }
+}
+
+class FleetOverviewLoading extends StatelessWidget {
+  const FleetOverviewLoading({super.key, this.compact = false});
+
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    return _FleetLoadingLayout(
+      compact: compact,
+      settings: const _SettingsLoading(),
     );
   }
 }
@@ -104,25 +109,25 @@ class _FleetList extends StatelessWidget {
                 child: Padding(
                   key: const Key('fleet-screen-padding'),
                   padding: context.appSpacing.screenInsets(
-                    top: compact ? 18 : 28,
+                    top: compact ? context.appSpacing.screenHorizontal : 28,
                     bottom: 48,
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      if (compact) ...[
-                        const Center(child: OverseerLogo()),
-                        const SizedBox(height: 20),
-                      ],
                       if (workspaces.isEmpty)
                         const _EmptyFleet()
                       else
                         for (final workspace in workspaces) ...[
-                          _WorkspaceCard(fleet: workspace, presence: presence),
-                          const SizedBox(height: 16),
+                          _WorkspaceSection(
+                            fleet: workspace,
+                            presence: presence,
+                          ),
+                          const SizedBox(
+                            height: _FleetSectionMetrics.sectionGap,
+                          ),
                         ],
-                      const SizedBox(height: 8),
-                      _SettingsCard(user: user, onSignOut: onSignOut),
+                      _SettingsSection(user: user, onSignOut: onSignOut),
                     ],
                   ),
                 ),
@@ -135,8 +140,8 @@ class _FleetList extends StatelessWidget {
   }
 }
 
-class _SettingsCard extends ConsumerWidget {
-  const _SettingsCard({required this.user, required this.onSignOut});
+class _SettingsSection extends ConsumerWidget {
+  const _SettingsSection({required this.user, required this.onSignOut});
 
   final OperatorIdentity user;
   final Future<void> Function() onSignOut;
@@ -146,66 +151,59 @@ class _SettingsCard extends ConsumerWidget {
     final soundPack = ref.watch(soundPackControllerProvider);
     final selectedPack = soundPack.value ?? SoundPack.peon;
 
-    return Surface(
-      key: const Key('settings-card'),
-      padding: _FleetCardMetrics.padding,
-      borderRadius: _FleetCardMetrics.borderRadius,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text('Settings', style: AppTypography.sectionTitle()),
-          const SizedBox(height: _FleetCardMetrics.headerGap),
-          AdaptiveSelectionPicker<SoundPack>(
-            key: const Key('sound-pack-menu'),
-            title: 'Sounds',
-            value: selectedPack,
-            options: [
-              for (final pack in SoundPack.values)
-                SelectionOption(value: pack, label: pack.label),
-            ],
-            onSelected: ref.read(soundPackControllerProvider.notifier).select,
-            triggerBuilder: (context, selectedLabel, expanded, onTap) {
-              return _SettingsRow(
-                key: const Key('sound-setting'),
-                leading: selectedPack == SoundPack.mute
-                    ? LucideIcons.volumeX
-                    : LucideIcons.volume2,
-                label: 'Sounds',
-                onTap: onTap,
-                trailing: _SettingValue(
-                  label: selectedLabel,
-                  expanded: expanded,
-                ),
-              );
-            },
+    return Column(
+      key: const Key('settings-section'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const AppSectionHeader(title: 'Settings'),
+        const SizedBox(height: _FleetSectionMetrics.headerGap),
+        AdaptiveSelectionPicker<SoundPack>(
+          key: const Key('sound-pack-menu'),
+          title: 'Sounds',
+          value: selectedPack,
+          options: [
+            for (final pack in SoundPack.values)
+              SelectionOption(value: pack, label: pack.label),
+          ],
+          onSelected: ref.read(soundPackControllerProvider.notifier).select,
+          triggerBuilder: (context, selectedLabel, expanded, onTap) {
+            return _SettingsRow(
+              key: const Key('sound-setting'),
+              leading: selectedPack == SoundPack.mute
+                  ? LucideIcons.volumeX
+                  : LucideIcons.volume2,
+              label: 'Sounds',
+              onTap: onTap,
+              trailing: _SettingValue(label: selectedLabel, expanded: expanded),
+            );
+          },
+        ),
+        const SizedBox(height: _FleetSectionMetrics.rowGap),
+        const _NotificationSettingsRow(),
+        const SizedBox(height: _FleetSectionMetrics.rowGap),
+        _SettingsRow(
+          key: const Key('user-card'),
+          leading: LucideIcons.circleUserRound,
+          label: user.email,
+          onTap: () async {
+            final confirmed = await showAppConfirmationBottomSheet(
+              context: context,
+              title: 'Sign out?',
+              message:
+                  'You will need to sign in with GitHub again to access '
+                  'your workspaces on this device.',
+              confirmLabel: 'Sign out',
+              destructive: true,
+            );
+            if (confirmed) await onSignOut();
+          },
+          trailing: Text(
+            'Sign out',
+            key: const Key('sign-out'),
+            style: AppTypography.controlValue(),
           ),
-          const SizedBox(height: _FleetCardMetrics.rowGap),
-          const _NotificationSettingsRow(),
-          const SizedBox(height: _FleetCardMetrics.rowGap),
-          _SettingsRow(
-            key: const Key('user-card'),
-            leading: LucideIcons.circleUserRound,
-            label: user.email,
-            onTap: () async {
-              final confirmed = await showAppConfirmationBottomSheet(
-                context: context,
-                title: 'Sign out?',
-                message:
-                    'You will need to sign in with GitHub again to access '
-                    'your workspaces on this device.',
-                confirmLabel: 'Sign out',
-                destructive: true,
-              );
-              if (confirmed) await onSignOut();
-            },
-            trailing: Text(
-              'Sign out',
-              key: const Key('sign-out'),
-              style: AppTypography.controlValue(),
-            ),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
@@ -253,16 +251,20 @@ class _NotificationSettingsRowState
       leading: enabled ? LucideIcons.bellRing : LucideIcons.bell,
       label: 'Notifications',
       onTap: interactive ? () => _handleToggle(!enabled) : () {},
-      trailing: Transform.scale(
-        scale: 0.76,
-        alignment: Alignment.centerRight,
-        child: Switch.adaptive(
-          key: const Key('notification-toggle'),
-          value: enabled,
-          onChanged: interactive ? _handleToggle : null,
-          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          activeTrackColor: AppColors.fel,
-          inactiveTrackColor: AppColors.iron700,
+      trailing: SizedBox(
+        width: 44,
+        height: 32,
+        child: FittedBox(
+          fit: BoxFit.contain,
+          alignment: Alignment.centerRight,
+          child: Switch.adaptive(
+            key: const Key('notification-toggle'),
+            value: enabled,
+            onChanged: interactive ? _handleToggle : null,
+            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            activeTrackColor: AppColors.fel,
+            inactiveTrackColor: AppColors.iron700,
+          ),
         ),
       ),
     );
@@ -354,38 +356,13 @@ class _SettingsRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: AppColors.rowSurface,
-      borderRadius: _FleetCardMetrics.rowBorderRadius,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: _FleetCardMetrics.rowBorderRadius,
-        overlayColor: WidgetStatePropertyAll(
-          AppColors.fel.withValues(alpha: 0.1),
-        ),
-        child: Container(
-          constraints: const BoxConstraints(
-            minHeight: _FleetCardMetrics.rowMinHeight,
-          ),
-          padding: _FleetCardMetrics.rowPadding,
-          child: Row(
-            children: [
-              Icon(leading, size: 24, color: AppColors.boneDim),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTypography.controlLabel(),
-                ),
-              ),
-              const SizedBox(width: 8),
-              trailing,
-            ],
-          ),
-        ),
-      ),
+    return AppListTile(
+      title: label,
+      leading: Icon(leading, size: 20, color: AppColors.boneDim),
+      trailing: trailing,
+      onTap: onTap,
+      titleMaxLines: 1,
+      semanticsHint: 'Change $label setting',
     );
   }
 }
@@ -425,43 +402,42 @@ class _SettingValue extends StatelessWidget {
   }
 }
 
-class _WorkspaceCard extends StatelessWidget {
-  const _WorkspaceCard({required this.fleet, required this.presence});
+class _WorkspaceSection extends StatelessWidget {
+  const _WorkspaceSection({required this.fleet, required this.presence});
 
   final WorkspaceFleet fleet;
   final PresenceState presence;
 
   @override
   Widget build(BuildContext context) {
-    return Surface(
+    return Column(
       key: Key('workspace-${fleet.workspace.id}'),
-      padding: _FleetCardMetrics.padding,
-      borderRadius: _FleetCardMetrics.borderRadius,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(fleet.workspace.name, style: AppTypography.sectionTitle()),
-          const SizedBox(height: _FleetCardMetrics.headerGap),
-          if (fleet.peons.isEmpty)
-            Text(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        AppSectionHeader(title: fleet.workspace.name),
+        const SizedBox(height: _FleetSectionMetrics.headerGap),
+        if (fleet.peons.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: Text(
               'No peons available',
               style: AppTypography.body(color: AppColors.boneDim),
-            )
-          else
-            for (var index = 0; index < fleet.peons.length; index++) ...[
-              _PeonRow(
-                workspace: fleet.workspace,
-                peon: fleet.peons[index],
-                viewers: presence.viewersForPeon(
-                  workspaceId: fleet.workspace.id,
-                  peonId: fleet.peons[index].id,
-                ),
+            ),
+          )
+        else
+          for (var index = 0; index < fleet.peons.length; index++) ...[
+            _PeonRow(
+              workspace: fleet.workspace,
+              peon: fleet.peons[index],
+              viewers: presence.viewersForPeon(
+                workspaceId: fleet.workspace.id,
+                peonId: fleet.peons[index].id,
               ),
-              if (index != fleet.peons.length - 1)
-                const SizedBox(height: _FleetCardMetrics.rowGap),
-            ],
-        ],
-      ),
+            ),
+            if (index != fleet.peons.length - 1)
+              const SizedBox(height: _FleetSectionMetrics.rowGap),
+          ],
+      ],
     );
   }
 }
@@ -482,82 +458,197 @@ class _PeonRow extends StatelessWidget {
     final statusText = peon.online
         ? '${peon.activeSessions} active'
         : 'offline';
-    return Semantics(
-      container: true,
-      label: '${peon.displayName}, $statusText',
-      child: Material(
-        color: AppColors.rowSurface,
-        borderRadius: _FleetCardMetrics.rowBorderRadius,
-        child: InkWell(
-          key: Key('peon-${peon.id}'),
-          borderRadius: _FleetCardMetrics.rowBorderRadius,
-          onTap: () => Navigator.of(context).push(
-            MaterialPageRoute<void>(
-              builder: (context) =>
-                  PeonHomePage(workspace: workspace, peon: peon),
+    return AppListTile(
+      key: Key('peon-${peon.id}'),
+      title: peon.displayName,
+      leading: StatusDot(
+        state: peon.online ? StatusDotState.online : StatusDotState.offline,
+        semanticLabel: peon.online ? 'Online' : 'Offline',
+        size: 9,
+      ),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            statusText,
+            style: AppTypography.metadata(
+              color: peon.online ? AppColors.forge : AppColors.boneFaint,
             ),
           ),
-          child: Container(
-            constraints: const BoxConstraints(
-              minHeight: _FleetCardMetrics.rowMinHeight,
-            ),
-            padding: _FleetCardMetrics.rowPadding,
-            child: Row(
-              children: [
-                StatusDot(
-                  state: peon.online
-                      ? StatusDotState.online
-                      : StatusDotState.offline,
-                  semanticLabel: peon.online ? 'Online' : 'Offline',
-                  size: 9,
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Text(
-                    peon.displayName,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppTypography.entityTitle(),
+          if (viewers.isNotEmpty) ...[
+            const SizedBox(width: 8),
+            PresenceStack(
+              key: Key('peon-presence-${peon.id}'),
+              size: PresenceStackSize.xs,
+              viewers: [
+                for (final viewer in viewers)
+                  PresencePerson(
+                    userId: viewer.userId,
+                    displayName: viewer.displayName,
+                    avatarUrl: viewer.avatarUrl,
                   ),
-                ),
-                const SizedBox(width: 12),
-                Text(
-                  statusText,
-                  style: AppTypography.metadata(
-                    color: peon.online ? AppColors.forge : AppColors.boneFaint,
-                  ),
-                ),
-                if (viewers.isNotEmpty) ...[
-                  const SizedBox(width: 8),
-                  PresenceStack(
-                    key: Key('peon-presence-${peon.id}'),
-                    size: PresenceStackSize.xs,
-                    viewers: [
-                      for (final viewer in viewers)
-                        PresencePerson(
-                          userId: viewer.userId,
-                          displayName: viewer.displayName,
-                          avatarUrl: viewer.avatarUrl,
-                        ),
-                    ],
-                  ),
-                ],
               ],
             ),
-          ),
+          ],
+        ],
+      ),
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (context) => PeonHomePage(workspace: workspace, peon: peon),
         ),
       ),
+      titleMaxLines: 1,
+      semanticsHint: 'Open this Peon',
     );
   }
 }
 
 class _FleetLoading extends StatelessWidget {
-  const _FleetLoading();
+  const _FleetLoading({
+    required this.compact,
+    required this.user,
+    required this.onSignOut,
+  });
+
+  final bool compact;
+  final OperatorIdentity user;
+  final Future<void> Function() onSignOut;
 
   @override
   Widget build(BuildContext context) {
-    return Semantics(
-      label: 'Loading workspaces',
-      child: const SizedBox.expand(key: Key('fleet-loading')),
+    return _FleetLoadingLayout(
+      compact: compact,
+      settings: _SettingsSection(user: user, onSignOut: onSignOut),
+    );
+  }
+}
+
+class _FleetLoadingLayout extends StatelessWidget {
+  const _FleetLoadingLayout({required this.compact, required this.settings});
+
+  final bool compact;
+  final Widget settings;
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      slivers: [
+        SliverToBoxAdapter(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 760),
+              child: Padding(
+                padding: context.appSpacing.screenInsets(
+                  top: compact ? context.appSpacing.screenHorizontal : 28,
+                  bottom: 48,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const LoadingShimmer(
+                      key: Key('fleet-loading'),
+                      label: 'Loading workspaces',
+                      child: _FleetSkeleton(),
+                    ),
+                    const SizedBox(height: _FleetSectionMetrics.sectionGap),
+                    settings,
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _SettingsLoading extends StatelessWidget {
+  const _SettingsLoading();
+
+  @override
+  Widget build(BuildContext context) {
+    return const LoadingShimmer(
+      key: Key('settings-loading'),
+      label: 'Loading settings',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Align(
+            alignment: Alignment.centerLeft,
+            child: ShimmerBlock(width: 86, height: 17),
+          ),
+          SizedBox(height: _FleetSectionMetrics.headerGap),
+          _FleetSkeletonRow(titleFraction: 0.34, trailingWidth: 54),
+          SizedBox(height: _FleetSectionMetrics.rowGap),
+          _FleetSkeletonRow(titleFraction: 0.48, trailingWidth: 42),
+          SizedBox(height: _FleetSectionMetrics.rowGap),
+          _FleetSkeletonRow(titleFraction: 0.58, trailingWidth: 62),
+        ],
+      ),
+    );
+  }
+}
+
+class _FleetSkeleton extends StatelessWidget {
+  const _FleetSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Align(
+          alignment: Alignment.centerLeft,
+          child: ShimmerBlock(width: 118, height: 17),
+        ),
+        SizedBox(height: _FleetSectionMetrics.headerGap),
+        _FleetSkeletonRow(titleFraction: 0.42, trailingWidth: 58),
+        SizedBox(height: _FleetSectionMetrics.rowGap),
+        _FleetSkeletonRow(titleFraction: 0.56, trailingWidth: 46),
+        SizedBox(height: _FleetSectionMetrics.rowGap),
+        _FleetSkeletonRow(titleFraction: 0.36, trailingWidth: 52),
+      ],
+    );
+  }
+}
+
+class _FleetSkeletonRow extends StatelessWidget {
+  const _FleetSkeletonRow({
+    required this.titleFraction,
+    required this.trailingWidth,
+  });
+
+  final double titleFraction;
+  final double trailingWidth;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 56,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+        child: Row(
+          children: [
+            const ShimmerBlock(
+              width: 9,
+              height: 9,
+              borderRadius: BorderRadius.all(Radius.circular(999)),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: FractionallySizedBox(
+                alignment: Alignment.centerLeft,
+                widthFactor: titleFraction,
+                child: const ShimmerBlock(width: double.infinity, height: 14),
+              ),
+            ),
+            const SizedBox(width: 10),
+            ShimmerBlock(width: trailingWidth, height: 11),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -588,11 +679,12 @@ class _FleetError extends StatelessWidget {
               style: AppTypography.body(color: AppColors.boneDim),
             ),
             const SizedBox(height: 16),
-            OutlinedButton.icon(
+            AppButton(
               key: const Key('fleet-retry'),
               onPressed: onRetry,
-              icon: const Icon(LucideIcons.refreshCw),
-              label: const Text('Try again'),
+              variant: AppButtonVariant.secondary,
+              leading: const Icon(LucideIcons.refreshCw, size: 18),
+              child: const Text('Try again'),
             ),
           ],
         ),

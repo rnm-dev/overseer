@@ -79,7 +79,7 @@ class AppBottomSheet extends StatelessWidget {
               ),
               if (title case final title?)
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(8, 20, 8, 14),
+                  padding: const EdgeInsets.only(top: 20, bottom: 14),
                   child: Row(
                     children: [
                       Expanded(

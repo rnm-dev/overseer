@@ -20,8 +20,8 @@ void main() {
     await tester.pump();
     await tester.pump();
 
+    expect(find.text('Sign in to Overseer'), findsOneWidget);
     expect(find.text('Sign In'), findsOneWidget);
-    expect(find.bySemanticsLabel('Overseer'), findsOneWidget);
   });
 }
 

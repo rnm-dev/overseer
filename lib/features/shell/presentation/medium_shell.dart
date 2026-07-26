@@ -8,8 +8,8 @@ import '../../fleet/fleet.dart';
 class MediumShell extends StatelessWidget {
   const MediumShell({super.key, required this.user, required this.onSignOut});
 
-  final OperatorIdentity user;
-  final Future<void> Function() onSignOut;
+  final OperatorIdentity? user;
+  final Future<void> Function()? onSignOut;
 
   @override
   Widget build(BuildContext context) {
@@ -42,7 +42,9 @@ class MediumShell extends StatelessWidget {
                 children: [
                   const _MediumHeader(),
                   Expanded(
-                    child: FleetOverview(user: user, onSignOut: onSignOut),
+                    child: user == null
+                        ? const FleetOverviewLoading()
+                        : FleetOverview(user: user!, onSignOut: onSignOut!),
                   ),
                 ],
               ),

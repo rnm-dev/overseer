@@ -17,8 +17,10 @@ import 'package:overseer_mobile/features/sessions/domain/session_repository.dart
 import 'package:overseer_mobile/features/sessions/presentation/session_detail_page.dart';
 import 'package:overseer_mobile/shared/design/colors.dart';
 import 'package:overseer_mobile/shared/design/theme.dart';
+import 'package:overseer_mobile/shared/design/typography.dart';
 import 'package:overseer_mobile/shared/widgets/app_navigation_bar.dart';
 import 'package:overseer_mobile/shared/widgets/app_option_bottom_sheet.dart';
+import 'package:overseer_mobile/shared/widgets/sidebar_status_edge.dart';
 
 void main() {
   testWidgets('shows shimmer skeletons while projects and sessions load', (
@@ -94,7 +96,6 @@ void main() {
     );
     expect(navigationBar.showBackButton, isTrue);
     expect(navigationBar.topInsetReduction, 0);
-    expect(navigationBar.contentHeight, 56);
     expect(
       navigationBar.contentPadding,
       const EdgeInsets.fromLTRB(8, 10, 12, 6),
@@ -153,7 +154,7 @@ void main() {
             find.byKey(const Key('projects-section-header-padding')),
           )
           .padding,
-      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      const EdgeInsets.symmetric(horizontal: 12),
     );
     expect(
       tester
@@ -161,13 +162,31 @@ void main() {
             find.byKey(const Key('sessions-section-header-padding')),
           )
           .padding,
-      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      const EdgeInsets.symmetric(horizontal: 12),
     );
+    expect(find.text('+ NEW PROJECT'), findsOneWidget);
+    expect(find.text('+ NEW SESSION'), findsOneWidget);
+    for (final (headerKey, actionKey) in [
+      (
+        const Key('projects-section-header'),
+        const Key('projects-toggle-action'),
+      ),
+      (const Key('projects-section-header'), const Key('new-project-action')),
+      (const Key('sessions-section-header'), const Key('new-session-action')),
+    ]) {
+      expect(
+        tester.getRect(find.byKey(actionKey)).height,
+        tester.getRect(find.byKey(headerKey)).height,
+      );
+    }
     final viewportWidth = tester.getSize(find.byType(CustomScrollView)).width;
     for (final section in ['projects', 'sessions']) {
       final headerFinder = find.byKey(Key('$section-section-header'));
       final header = tester.widget<Container>(headerFinder);
-      expect((header.decoration! as BoxDecoration).color, AppColors.iron950);
+      expect(
+        (header.decoration! as BoxDecoration).color,
+        AppColors.bone.withValues(alpha: 0.05),
+      );
       expect(tester.getSize(headerFinder).width, viewportWidth);
     }
     final pinnedHeaders = tester.widgetList<SliverPersistentHeader>(
@@ -181,7 +200,7 @@ void main() {
       tester
           .widget<Padding>(find.byKey(const Key('peon-screen-padding')))
           .padding,
-      const EdgeInsets.fromLTRB(8, 6, 8, 32),
+      const EdgeInsets.only(bottom: 32),
     );
 
     await tester.tap(find.text('PROJECTS'));
@@ -233,6 +252,63 @@ void main() {
       tester.getTopLeft(find.byKey(const Key('sessions-section-header'))).dy,
       pinnedTop,
     );
+  });
+
+  testWidgets('lazily builds only viewport-adjacent session rows', (
+    tester,
+  ) async {
+    final repository = _FakeSessionRepository([
+      for (var index = 0; index < 200; index++)
+        _session('lazy-$index', activity: (1000 - index).toDouble()),
+    ]);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          sessionRepositoryProvider.overrideWithValue(repository),
+          projectRepositoryProvider.overrideWithValue(_FakeProjectRepository()),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.dark,
+          home: const PeonHomePage(
+            workspace: Workspace(id: 'rnm', name: 'RNM'),
+            peon: Peon(
+              id: 'marat',
+              name: 'Marat',
+              online: true,
+              lastSeen: 100,
+              capabilities: [],
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('session-lazy-0')), findsOneWidget);
+    expect(
+      find.byKey(const Key('session-lazy-19'), skipOffstage: false),
+      findsNothing,
+    );
+    expect(find.byType(SliverFixedExtentList), findsOneWidget);
+    expect(find.byKey(const Key('sessions-load-more')), findsNothing);
+
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('session-lazy-19'), skipOffstage: false),
+      500,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.pumpAndSettle();
+
+    final sessions =
+        ProviderScope.containerOf(
+          tester.element(find.byType(PeonHomePage)),
+        ).read(
+          sessionsControllerProvider(
+            const SessionsScope(workspaceId: 'rnm', peonId: 'marat'),
+          ),
+        );
+    expect(sessions.requireValue.visibleCount, greaterThan(20));
+    expect(sessions.requireValue.visibleCount % 20, 0);
   });
 
   testWidgets('opens the selected session detail page', (tester) async {
@@ -390,7 +466,7 @@ void main() {
     _expectStatusLight(
       tester,
       sessionId: 'older',
-      color: AppColors.iron700,
+      color: SidebarStatusEdgeStyle.idle.color,
       glowing: false,
     );
     _expectSessionInteractionColors(tester, sessionId: 'newer');
@@ -425,23 +501,27 @@ void main() {
     );
     expect(flightTransform.transform.getTranslation().x, 0);
     expect(flightTransform.transform.getTranslation().y, greaterThan(0));
-    final promotedTransform = tester.widget<Transform>(
-      find.byKey(const Key('session-shuffle-transform-older')),
+    expect(
+      _statusEdgeDecoration(
+        tester,
+        const Key('session-status-older'),
+      ).boxShadow,
+      hasLength(3),
     );
-    expect(promotedTransform.transform.getTranslation().x, 0);
-    expect(promotedTransform.transform.getMaxScaleOnAxis(), greaterThan(1));
-    final promotedHighlight =
-        tester
-                .widget<DecoratedBox>(
-                  find.byKey(const Key('session-shuffle-highlight-older')),
-                )
-                .decoration
-            as BoxDecoration;
-    expect(promotedHighlight.color, isNot(Colors.transparent));
-    expect(promotedHighlight.boxShadow!.single.blurRadius, greaterThan(0));
+    expect(
+      _statusEdgeDecoration(
+        tester,
+        const Key('session-status-newer'),
+      ).boxShadow,
+      hasLength(3),
+    );
+    final idleFlare = _statusEdgeDecoration(
+      tester,
+      const Key('session-status-newer'),
+    ).boxShadow!.first;
+    expect(idleFlare.color.withValues(alpha: 1), AppColors.fel);
 
     await tester.pump(const Duration(milliseconds: 120));
-    expect(tester.hasRunningAnimations, isTrue);
 
     await tester.pumpAndSettle();
 
@@ -507,7 +587,7 @@ void main() {
     );
   });
 
-  testWidgets('shows web-style project rollups and active light', (
+  testWidgets('shows session rollups together and the active light', (
     tester,
   ) async {
     final projectRepository = _FakeProjectRepository([
@@ -554,13 +634,43 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Overseer Mobile'), findsOneWidget);
-    expect(find.text('2 members'), findsOneWidget);
-    expect(find.text('  •  20 sessions'), findsOneWidget);
+    expect(find.text('2 members'), findsNothing);
+    expect(find.text('•'), findsOneWidget);
+    expect(find.text('20 sessions'), findsOneWidget);
     expect(find.text('1 active'), findsOneWidget);
-    final light = tester.widget<Container>(
-      find.byKey(const Key('project-status-overseer-mobile')),
+    expect(
+      tester
+          .getTopLeft(
+            find.byKey(const Key('project-active-count-overseer-mobile')),
+          )
+          .dx,
+      lessThan(
+        tester
+            .getTopLeft(
+              find.byKey(const Key('project-activity-overseer-mobile')),
+            )
+            .dx,
+      ),
     );
-    final decoration = light.decoration! as BoxDecoration;
+    final projectActivity = tester.widget<Text>(
+      find.byKey(const Key('project-activity-overseer-mobile')),
+    );
+    final sessionActivity = tester.widget<Text>(
+      find.byKey(const Key('session-activity-active-project-session')),
+    );
+    expect(projectActivity.style?.fontFamily, AppTypography.fontFamily);
+    expect(sessionActivity.style?.fontFamily, AppTypography.fontFamily);
+    final sessionProjectKey = tester.widget<Text>(
+      find.descendant(
+        of: find.byKey(const Key('session-active-project-session')),
+        matching: find.text('overseer-mobile'),
+      ),
+    );
+    expect(sessionProjectKey.style?.fontFamily, AppTypography.fontFamily);
+    final decoration = _statusEdgeDecoration(
+      tester,
+      const Key('project-status-overseer-mobile'),
+    );
     expect(decoration.color, AppColors.felBright);
     expect(decoration.boxShadow, isNotEmpty);
     final projectInkWell = tester.widget<InkWell>(
@@ -589,17 +699,24 @@ void main() {
         projectKey: 'overseer-mobile',
       ),
     ]);
+    await tester.pump();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(
+      _statusEdgeDecoration(
+        tester,
+        const Key('project-status-overseer-mobile'),
+      ).boxShadow,
+      hasLength(3),
+    );
     await tester.pumpAndSettle();
 
     expect(find.text('1 active'), findsNothing);
-    final inactiveDecoration =
-        tester
-                .widget<Container>(
-                  find.byKey(const Key('project-status-overseer-mobile')),
-                )
-                .decoration!
-            as BoxDecoration;
-    expect(inactiveDecoration.color, AppColors.iron700);
+    final inactiveDecoration = _statusEdgeDecoration(
+      tester,
+      const Key('project-status-overseer-mobile'),
+    );
+    expect(inactiveDecoration.color, SidebarStatusEdgeStyle.idle.color);
     expect(inactiveDecoration.boxShadow, isNull);
   });
 
@@ -662,19 +779,16 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('1 active'), findsNothing);
-      final projectDecoration =
-          tester
-                  .widget<Container>(
-                    find.byKey(const Key('project-status-overseer-ios')),
-                  )
-                  .decoration!
-              as BoxDecoration;
-      expect(projectDecoration.color, AppColors.iron700);
+      final projectDecoration = _statusEdgeDecoration(
+        tester,
+        const Key('project-status-overseer-ios'),
+      );
+      expect(projectDecoration.color, SidebarStatusEdgeStyle.idle.color);
       expect(projectDecoration.boxShadow, isNull);
       sessionDecoration =
           tester.widget<Container>(sessionStatusContainer).decoration!
               as BoxDecoration;
-      expect(sessionDecoration.color, AppColors.iron700);
+      expect(sessionDecoration.color, SidebarStatusEdgeStyle.idle.color);
       expect(sessionDecoration.boxShadow, isNull);
     },
   );
@@ -719,14 +833,11 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('3 active'), findsNothing);
-    final decoration =
-        tester
-                .widget<Container>(
-                  find.byKey(const Key('project-status-overseer-mobile')),
-                )
-                .decoration!
-            as BoxDecoration;
-    expect(decoration.color, AppColors.iron700);
+    final decoration = _statusEdgeDecoration(
+      tester,
+      const Key('project-status-overseer-mobile'),
+    );
+    expect(decoration.color, SidebarStatusEdgeStyle.idle.color);
     expect(decoration.boxShadow, isNull);
   });
 
@@ -771,14 +882,11 @@ void main() {
     await tester.pump();
 
     expect(find.text('3 active'), findsNothing);
-    final decoration =
-        tester
-                .widget<Container>(
-                  find.byKey(const Key('project-status-overseer-mobile')),
-                )
-                .decoration!
-            as BoxDecoration;
-    expect(decoration.color, AppColors.iron700);
+    final decoration = _statusEdgeDecoration(
+      tester,
+      const Key('project-status-overseer-mobile'),
+    );
+    expect(decoration.color, SidebarStatusEdgeStyle.idle.color);
     expect(decoration.boxShadow, isNull);
   });
 
@@ -870,6 +978,37 @@ void main() {
     await tester.tap(find.byKey(const Key('session-menu-rename')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('session-menu-rename')), findsNothing);
+    expect(find.text('Rename session'), findsOneWidget);
+    final renameField = find.descendant(
+      of: find.byKey(const Key('session-rename-field')),
+      matching: find.byType(EditableText),
+    );
+    await tester.enterText(renameField, 'Release readiness');
+    await tester.tap(find.byKey(const Key('session-rename-save')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Rename session'), findsNothing);
+    expect(repository.renamedSession, (
+      workspaceId: 'rnm',
+      peonId: 'marat',
+      sessionId: 'menu',
+      title: 'Release readiness',
+    ));
+
+    await tester.longPress(find.byKey(const Key('session-menu')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('session-menu-delete')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Delete session?'), findsOneWidget);
+    expect(find.textContaining('This cannot be undone.'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('confirmation-confirm')));
+    await tester.pumpAndSettle();
+    expect(repository.deletedSession, (
+      workspaceId: 'rnm',
+      peonId: 'marat',
+      sessionId: 'menu',
+    ));
   });
 
   testWidgets('long press keeps the context menu on wide layouts', (
@@ -992,6 +1131,13 @@ void _expectStatusLight(
   expect(decoration.boxShadow?.isNotEmpty ?? false, glowing);
 }
 
+BoxDecoration _statusEdgeDecoration(WidgetTester tester, Key key) {
+  final container = find
+      .descendant(of: find.byKey(key), matching: find.byType(Container))
+      .first;
+  return tester.widget<Container>(container).decoration! as BoxDecoration;
+}
+
 SessionSummary _session(
   String id, {
   required double activity,
@@ -1017,6 +1163,9 @@ class _FakeSessionRepository implements SessionRepository {
       StreamController<List<SessionSummary>>.broadcast();
   List<SessionSummary> _sessions;
   int fetchCount = 0;
+  ({String workspaceId, String peonId, String sessionId, String? title})?
+  renamedSession;
+  ({String workspaceId, String peonId, String sessionId})? deletedSession;
 
   void emit(List<SessionSummary> sessions) {
     _sessions = sessions;
@@ -1073,6 +1222,34 @@ class _FakeSessionRepository implements SessionRepository {
     required String peonId,
     required String sessionId,
   }) async {}
+
+  @override
+  Future<void> renameSession({
+    required String workspaceId,
+    required String peonId,
+    required String sessionId,
+    required String? title,
+  }) async {
+    renamedSession = (
+      workspaceId: workspaceId,
+      peonId: peonId,
+      sessionId: sessionId,
+      title: title,
+    );
+  }
+
+  @override
+  Future<void> deleteSession({
+    required String workspaceId,
+    required String peonId,
+    required String sessionId,
+  }) async {
+    deletedSession = (
+      workspaceId: workspaceId,
+      peonId: peonId,
+      sessionId: sessionId,
+    );
+  }
 
   @override
   Future<TranscriptCache> loadCachedTranscript({

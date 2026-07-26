@@ -310,6 +310,15 @@ void main() {
       InterceptorsWrapper(
         onRequest: (options, handler) {
           requests.add(options);
+          if (options.method == 'PATCH') {
+            queueItems = [
+              for (final item in queueItems)
+                if (item['id'] == 'item/2')
+                  {...item, 'prompt': options.data['prompt']}
+                else
+                  item,
+            ];
+          }
           if (options.method == 'DELETE') queueItems = [];
           handler.resolve(
             Response<Map<String, dynamic>>(
@@ -333,6 +342,25 @@ void main() {
 
     expect(cached.map((item) => item.id), ['first', 'item/2']);
     expect(cached.first.attachments.single.label, 'plan.md');
+
+    await repository.editQueued(scope, 'item/2', 'Ship the release');
+
+    expect(
+      requests.map((request) => '${request.method} ${request.path}'),
+      contains(
+        'PATCH workspaces/workspace/peons/peon/sessions/session/queue/item%2F2',
+      ),
+    );
+    expect(
+      requests
+          .firstWhere((request) => request.method == 'PATCH')
+          .data['prompt'],
+      'Ship the release',
+    );
+    expect(
+      (await repository.watchQueue(scope).first).last.prompt,
+      'Ship the release',
+    );
 
     await repository.removeQueued(scope, 'item/2');
 
