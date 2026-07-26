@@ -198,7 +198,7 @@ test("only non-terminal agent events trigger the working sound", () => {
 
 test("work ambience follows the pack and stays silent for packs without one", () => {
   const created: string[] = [];
-  let pack: "probe" | "peasant" = "probe";
+  let pack: "probe" | "dota2_axe" = "probe";
   const player = createWorkSoundPlayer((src) => {
     created.push(src);
     return { currentTime: 0, preload: "none", onended: null, play: () => {}, pause: () => {} };
@@ -206,7 +206,7 @@ test("work ambience follows the pack and stays silent for packs without one", ()
 
   player.play();
   player.stop();
-  pack = "peasant";
+  pack = "dota2_axe";
   player.play();
   assert.deepEqual(created, ["/sounds/probe/work-active-0.wav"]);
 });
