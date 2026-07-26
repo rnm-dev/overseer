@@ -46,11 +46,23 @@ env:
     OVERSEER_RECONCILE_INTERVAL_MS: 30000
     OVERSEER_RELEASE_DIRECTORY: /data/releases
     OVERSEER_RELEASE_MAX_BYTES: 536870912
+    # Voice dictation. The preset resolves to Groq's OpenAI-compatible endpoint
+    # and its model pair; only the key is a secret. The daily ceiling matters
+    # because the per-user limits are per user: 20 requests/minute is 1200 an
+    # hour for one person, against a provider tier granting 1000 a day.
+    #
+    # 800 rather than the full 1000 because dev holds the SAME key and keeps its
+    # own ledger — the two instances cannot see each other's spend, so the split
+    # (800 here, 200 on dev) is what keeps the sum inside the tier. Raise this to
+    # 1000 if dev is given its own key, or to the paid tier's limit on upgrade.
+    OVERSEER_VOICE: groq
+    OVERSEER_VOICE_REQUESTS_PER_DAY: 800
   secret:
     - DATABASE_URL
     - OVERSEER_GITHUB_CLIENT_ID
     - OVERSEER_GITHUB_CLIENT_SECRET
     - OVERSEER_RELEASE_TOKEN
+    - OVERSEER_VOICE_API_KEY
 
 # Application-owned persistent data. This named volume is independent of every
 # versioned app container and must be included in backup/cutover verification.
