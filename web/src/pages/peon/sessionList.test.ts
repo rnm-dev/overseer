@@ -21,6 +21,9 @@ test("sessionFromIndex uses the opening preview instead of latest activity", () 
     endedAt: undefined,
     lastActivityAt: undefined,
     syncedAt: undefined,
+    catalogState: undefined,
+    catalogStale: undefined,
+    catalogUpdatedAt: undefined,
   });
 });
 
@@ -75,7 +78,7 @@ test("attention events update only the matching Peon-qualified session", () => {
     { peonId: "two", id: "same", attentionUnread: false },
   ];
   assert.deepEqual(applyAttentionEvent(sessions, { peonId: "one", sessionId: "same", unread: true }), [
-    { peonId: "one", id: "same", attentionUnread: true },
+    { peonId: "one", id: "same", attentionUnread: true, attentionUpdatedAt: 0 },
     sessions[1],
   ]);
 });
@@ -110,6 +113,9 @@ test("a Peon-qualified live summary is replaced by the indexed refresh instead o
     endedAt: undefined,
     lastActivityAt: undefined,
     syncedAt: 20,
+    catalogState: undefined,
+    catalogStale: undefined,
+    catalogUpdatedAt: undefined,
   }]);
 });
 

@@ -238,7 +238,7 @@ export function PeonSessionDetail() {
       return;
     }
     playPeonSound("complete");
-  }, [base, sessionKey, setRunning, sid]);
+  }, [markAttentionRead, sessionKey, setRunning]);
   const onWorkStarted = useCallback(() => {
     suppressCompletionSoundRef.current = false;
     playPeonSound("start");
