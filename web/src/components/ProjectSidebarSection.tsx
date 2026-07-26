@@ -62,7 +62,7 @@ export function projectRowFingerprint(project: ProjectLite): string {
     project.name ?? "",
     project.activeCount ?? 0,
     project.sessionCount ?? 0,
-    project.memberCount ?? 0,
+    project.unreadCount ?? 0,
     project.lastActivityMs ?? 0,
   ].join("|");
 }
@@ -173,12 +173,22 @@ export function ProjectSidebarSection({ projects, error = false, to, onNew }: Pr
                         <span className="block min-w-0 whitespace-nowrap font-display text-[0.8rem] text-bone">
                           <FadingTitle>{project.name?.trim() || project.key}</FadingTitle>
                         </span>
+                        {/* Counts read as one sentence: the total first, then only
+                            the states that need attention — running in fel green,
+                            unread in forge orange, matching the row edge colours. */}
                         <div className="mt-0.5 flex items-center gap-1.5 font-body text-[0.6rem] text-bone-faint">
-                          <span className="flex-none">{t("peon.projects.members", { n: project.memberCount ?? 0 })}</span>
-                          <span className="flex-none text-bone-dim" aria-hidden>•</span>
                           <span className="flex-none">{t("peon.projects.sessions", { n: project.sessionCount ?? 0 })}</span>
                           {(project.activeCount ?? 0) > 0 && (
-                            <span className="ml-auto flex-none text-forge">{t("peon.projects.active", { n: project.activeCount ?? 0 })}</span>
+                            <>
+                              <span className="flex-none text-bone-dim" aria-hidden>•</span>
+                              <span className="flex-none text-fel-bright">{t("peon.projects.active", { n: project.activeCount ?? 0 })}</span>
+                            </>
+                          )}
+                          {(project.unreadCount ?? 0) > 0 && (
+                            <>
+                              <span className="flex-none text-bone-dim" aria-hidden>•</span>
+                              <span className="flex-none text-forge">{t("peon.projects.unread", { n: project.unreadCount ?? 0 })}</span>
+                            </>
                           )}
                         </div>
                       </NavLink>

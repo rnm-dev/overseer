@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import { ItemView, OTHER_ATTACHMENT_CLASS, OTHER_USER_BUBBLE_AUTHOR_CLASS, OTHER_USER_BUBBLE_CLASS, OTHER_USER_BUBBLE_TIME_CLASS, OWN_ATTACHMENT_CLASS, OWN_USER_BUBBLE_CLASS, OWN_USER_BUBBLE_TIME_CLASS, attachmentMeta, editDiff, editFileName, editOperation, editStats, editStatsFromInput, formatMessageTimestamp, isCompactUserMessage, isOwnMessageAuthor, userMessageAvatar } from "./peon/session/messageParts";
+import { ItemView, OTHER_ATTACHMENT_CLASS, OTHER_USER_BUBBLE_AUTHOR_CLASS, OTHER_USER_BUBBLE_CLASS, OTHER_USER_BUBBLE_TIME_CLASS, OWN_ATTACHMENT_CLASS, OWN_USER_BUBBLE_CLASS, OWN_USER_BUBBLE_TIME_CLASS, attachmentMeta, editDiff, editFileName, editOperation, editStats, editStatsFromInput, isCompactUserMessage, isOwnMessageAuthor, userMessageAvatar } from "./peon/session/messageParts";
 import { flattenEvents, toolHasOutputSection } from "./peon/session/parsing";
 
 const t = ((key: string) => key) as Parameters<typeof ItemView>[0]["t"];
@@ -46,13 +46,6 @@ test("message attachments adapt to bubble ownership and expose compact metadata"
   assert.match(OTHER_ATTACHMENT_CLASS, /\bon-surface\b/);
   assert.equal(attachmentMeta({ type: "image", name: "preview.png", size: 245_760 }), "PNG · 240 KB");
   assert.equal(attachmentMeta({ type: "file", name: "notes", size: 1_258_291 }), "FILE · 1.2 MB");
-});
-
-test("message timestamps omit today, name yesterday, and use a short older date", () => {
-  const now = new Date(2026, 4, 25, 8, 30).getTime();
-  assert.equal(formatMessageTimestamp(new Date(2026, 4, 25, 23, 15).getTime(), now, "en", "Yesterday"), "23:15");
-  assert.equal(formatMessageTimestamp(new Date(2026, 4, 24, 23, 15).getTime(), now, "en", "Yesterday"), "yesterday, 23:15");
-  assert.equal(formatMessageTimestamp(new Date(2026, 4, 23, 23, 15).getTime(), now, "en", "Yesterday"), "23 may, 23:15");
 });
 
 test("only short attachment-free single-line user messages use the compact timestamp row", () => {

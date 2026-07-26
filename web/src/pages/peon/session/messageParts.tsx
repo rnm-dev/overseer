@@ -7,6 +7,7 @@ import { FilePlus, FileX, ImageIcon, Paperclip, Pencil, Terminal } from "lucide-
 import { projectViewerHref, projectViewerRelativePath, type ProjectViewerContext } from "./projectViewerLink";
 import { useAuth, type User } from "../../../auth";
 import { useI18n, type Locale } from "../../../i18n";
+import { formatLocalTimestamp, localeTag } from "../../../timeFormat";
 
 // The transcript render atoms: one component per Item kind, plus the Markdown
 // renderer and the "agent is working" indicator. Pure presentation — all parsing
@@ -48,40 +49,12 @@ function AttachmentPill({ attachment, mine, onOpen }: { attachment: MessageAttac
     : <div className={className} title={attachment.path || label}>{contents}</div>;
 }
 
-function sameLocalDay(left: Date, right: Date): boolean {
-  return left.getFullYear() === right.getFullYear()
-    && left.getMonth() === right.getMonth()
-    && left.getDate() === right.getDate();
-}
-
-export function formatMessageTimestamp(createdAt: number, now: number, locale: Locale, yesterdayLabel: string): string {
-  if (!createdAt) return "";
-  const date = new Date(createdAt);
-  const current = new Date(now);
-  if (Number.isNaN(date.getTime()) || Number.isNaN(current.getTime())) return "";
-  const localeTag = locale === "ru" ? "ru-RU" : "en-GB";
-  const time = new Intl.DateTimeFormat(localeTag, {
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-  }).format(date);
-  if (sameLocalDay(date, current)) return time;
-  const yesterday = new Date(current);
-  yesterday.setDate(current.getDate() - 1);
-  if (sameLocalDay(date, yesterday)) return `${yesterdayLabel.toLowerCase()}, ${time}`;
-  const dayAndMonth = new Intl.DateTimeFormat(localeTag, {
-    day: "numeric",
-    month: "short",
-  }).format(date).replace(/\.$/, "").toLowerCase();
-  return `${dayAndMonth}, ${time}`;
-}
-
 function LocalMessageTime({ createdAt, locale, yesterdayLabel }: { createdAt?: number; locale: Locale; yesterdayLabel: string }) {
   if (!createdAt) return null;
   const date = new Date(createdAt);
   if (Number.isNaN(date.getTime())) return null;
-  const visible = formatMessageTimestamp(createdAt, Date.now(), locale, yesterdayLabel);
-  const local = date.toLocaleString(locale === "ru" ? "ru-RU" : "en-GB");
+  const visible = formatLocalTimestamp(createdAt, Date.now(), locale, yesterdayLabel);
+  const local = date.toLocaleString(localeTag(locale));
   return <time dateTime={date.toISOString()} title={`${local} (${Intl.DateTimeFormat().resolvedOptions().timeZone})`}>{visible}</time>;
 }
 

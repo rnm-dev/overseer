@@ -9,6 +9,7 @@ export interface ProjectLite {
   sessionCount?: number;
   memberCount?: number;
   activeCount?: number;
+  unreadCount?: number;
   lastActivityMs?: number | null;
   syncedAt?: number;
   deleted?: boolean;
@@ -68,14 +69,18 @@ export function visibleProjects(projects: ProjectLite[]): ProjectLite[] {
 // changed — that is what makes a project row flash on incoming session updates.
 export function withLiveActiveSessionCounts(
   projects: ProjectLite[],
-  sessions: Array<{ projectKey?: string | null; status?: string | null; lastActivityAt?: number | null }>,
+  sessions: Array<{ projectKey?: string | null; status?: string | null; lastActivityAt?: number | null; attentionUnread?: boolean }>,
 ): ProjectLite[] {
   const activeByProject = new Map<string, number>();
+  const unreadByProject = new Map<string, number>();
   const activityByProject = new Map<string, number>();
   for (const session of sessions) {
     if (!session.projectKey) continue;
     if (session.status === "running") {
       activeByProject.set(session.projectKey, (activeByProject.get(session.projectKey) ?? 0) + 1);
+    }
+    if (session.attentionUnread) {
+      unreadByProject.set(session.projectKey, (unreadByProject.get(session.projectKey) ?? 0) + 1);
     }
     const activity = session.lastActivityAt ?? 0;
     if (activity > (activityByProject.get(session.projectKey) ?? 0)) {
@@ -85,6 +90,7 @@ export function withLiveActiveSessionCounts(
   return projects.map((project) => ({
     ...project,
     activeCount: activeByProject.get(project.key) ?? 0,
+    unreadCount: unreadByProject.get(project.key) ?? 0,
     lastActivityMs: activityByProject.get(project.key) ?? project.lastActivityMs ?? null,
   }));
 }

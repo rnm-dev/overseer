@@ -32,13 +32,15 @@ test("session fingerprints track every field a live update can move", () => {
 });
 
 test("project fingerprints track the live counts the row renders", () => {
-  const base = { key: "OVSR", name: "Overseer", activeCount: 1, sessionCount: 8, memberCount: 3 };
+  const base = { key: "OVSR", name: "Overseer", activeCount: 1, sessionCount: 8, unreadCount: 0 };
   assert.equal(projectRowFingerprint(base), projectRowFingerprint({ ...base }));
   // lastActivityMs is stamped from the project's sessions, so work moving inside
   // a project flashes its row even when every count stays the same.
-  for (const change of [{ name: "Renamed" }, { activeCount: 2 }, { sessionCount: 9 }, { memberCount: 4 }, { lastActivityMs: 99 }]) {
+  for (const change of [{ name: "Renamed" }, { activeCount: 2 }, { sessionCount: 9 }, { unreadCount: 2 }, { lastActivityMs: 99 }]) {
     assert.notEqual(projectRowFingerprint({ ...base, ...change }), projectRowFingerprint(base), JSON.stringify(change));
   }
+  // The member count left the row, so it must no longer flash it.
+  assert.equal(projectRowFingerprint({ ...base, memberCount: 4 }), projectRowFingerprint(base));
 });
 
 test("the flash class rides along only while a row holds a flash nonce", () => {
