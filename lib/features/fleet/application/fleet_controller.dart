@@ -33,9 +33,16 @@ final fleetControllerProvider =
     );
 
 class FleetController extends AsyncNotifier<List<WorkspaceFleet>> {
+  FleetLiveService? _live;
+  LiveProjectionSink? _liveSink;
+  Future<void> _liveReconciliation = Future<void>.value();
+
   @override
   Future<List<WorkspaceFleet>> build() async {
-    final fleet = await ref.read(fleetRepositoryProvider).loadFleet();
+    final repository = ref.read(fleetRepositoryProvider);
+    final fleet = repository is CachedFleetRepository
+        ? await _loadCachedFirst(repository)
+        : await repository.loadFleet();
     unawaited(
       ref
           .read(workspaceConnectionRecorderProvider)
@@ -45,6 +52,8 @@ class FleetController extends AsyncNotifier<List<WorkspaceFleet>> {
     final live = ref.read(fleetLiveServiceProvider);
     if (live != null) {
       final sink = ref.read(liveProjectionSinkProvider);
+      _live = live;
+      _liveSink = sink;
       final projectSink = ref.read(projectLiveProjectionSinkProvider);
       final workspaceIds = fleet.map((item) => item.workspace.id).toList();
       final activeSessions = ref.read(activeSessionsProvider.notifier);
@@ -97,11 +106,64 @@ class FleetController extends AsyncNotifier<List<WorkspaceFleet>> {
     return fleet;
   }
 
+  Future<List<WorkspaceFleet>> _loadCachedFirst(
+    CachedFleetRepository repository,
+  ) async {
+    final cached = await repository.loadCachedFleet();
+    final subscription = repository.watchFleet().listen((fleet) {
+      state = AsyncData(fleet);
+      _scheduleWorkspaceReconciliation(fleet);
+    });
+    ref.onDispose(() => unawaited(subscription.cancel()));
+    if (cached.isEmpty) return repository.refreshFleet();
+    unawaited(repository.refreshFleet().catchError((_) => cached));
+    return cached;
+  }
+
+  void _scheduleWorkspaceReconciliation(List<WorkspaceFleet> fleet) {
+    final live = _live;
+    final FleetWorkspaceReconciler? reconciler =
+        live is FleetWorkspaceReconciler
+        ? live as FleetWorkspaceReconciler
+        : null;
+    if (reconciler == null) return;
+    final workspaceIds = fleet.map((item) => item.workspace.id).toList();
+    _liveReconciliation = _liveReconciliation
+        .then((_) async {
+          final sink = _liveSink;
+          final cursors = sink == null
+              ? const <String, int>{}
+              : {
+                  for (final workspaceId in workspaceIds)
+                    workspaceId: await sink.cursorFor(workspaceId),
+                };
+          await reconciler.reconcileWorkspaces(
+            workspaceIds: workspaceIds,
+            initialCursors: cursors,
+          );
+        })
+        .catchError((_) {});
+  }
+
   Future<void> refresh() async {
-    state = await AsyncValue.guard(ref.read(fleetRepositoryProvider).loadFleet);
+    final repository = ref.read(fleetRepositoryProvider);
+    state = await AsyncValue.guard(
+      repository is CachedFleetRepository
+          ? repository.refreshFleet
+          : repository.loadFleet,
+    );
   }
 
   void _applyPeon(String workspaceId, Map<String, dynamic> projection) {
+    final repository = ref.read(fleetRepositoryProvider);
+    if (repository is CachedFleetRepository) {
+      unawaited(
+        repository.applyPeonProjection(
+          workspaceId: workspaceId,
+          projection: projection,
+        ),
+      );
+    }
     final current = state.value;
     final peonId = projection['peonId'];
     if (current == null || peonId is! String) return;

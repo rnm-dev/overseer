@@ -52,6 +52,107 @@ void main() {
     );
   });
 
+  test('renames a session through Overseer and updates the cache', () async {
+    RequestOptions? request;
+    final dio = Dio(BaseOptions(baseUrl: 'https://overseer.example/api/'));
+    dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) {
+          request = options;
+          handler.resolve(
+            Response<void>(requestOptions: options, statusCode: 200),
+          );
+        },
+      ),
+    );
+    repository = DefaultSessionRepository(
+      database: database,
+      apiUrl: Uri.parse('https://overseer.example/api/'),
+      token: 'test-token',
+      dio: dio,
+    );
+    await repository.applyLiveProjection(
+      workspaceId: 'workspace',
+      cursor: 1,
+      projection: {
+        'peonId': 'peon',
+        'sessionId': 'session/id',
+        'title': 'Old name',
+        'syncedAt': 10,
+      },
+    );
+
+    await repository.renameSession(
+      workspaceId: 'workspace',
+      peonId: 'peon',
+      sessionId: 'session/id',
+      title: 'New name',
+    );
+
+    expect(request?.method, 'PATCH');
+    expect(
+      request?.path,
+      'workspaces/workspace/peons/peon/sessions/session%2Fid',
+    );
+    expect(request?.data, {'title': 'New name'});
+    final cached = await repository.loadCachedSessions(
+      workspaceId: 'workspace',
+      peonId: 'peon',
+    );
+    expect(cached.single.title, 'New name');
+  });
+
+  test(
+    'deletes a session through Overseer and removes it from cache',
+    () async {
+      RequestOptions? request;
+      final dio = Dio(BaseOptions(baseUrl: 'https://overseer.example/api/'));
+      dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (options, handler) {
+            request = options;
+            handler.resolve(
+              Response<void>(requestOptions: options, statusCode: 204),
+            );
+          },
+        ),
+      );
+      repository = DefaultSessionRepository(
+        database: database,
+        apiUrl: Uri.parse('https://overseer.example/api/'),
+        token: 'test-token',
+        dio: dio,
+      );
+      await repository.applyLiveProjection(
+        workspaceId: 'workspace',
+        cursor: 1,
+        projection: {
+          'peonId': 'peon',
+          'sessionId': 'session/id',
+          'title': 'Disposable session',
+          'syncedAt': 10,
+        },
+      );
+
+      await repository.deleteSession(
+        workspaceId: 'workspace',
+        peonId: 'peon',
+        sessionId: 'session/id',
+      );
+
+      expect(request?.method, 'DELETE');
+      expect(
+        request?.path,
+        'workspaces/workspace/peons/peon/sessions/session%2Fid',
+      );
+      final cached = await repository.loadCachedSessions(
+        workspaceId: 'workspace',
+        peonId: 'peon',
+      );
+      expect(cached, isEmpty);
+    },
+  );
+
   test(
     'live activity updates reorder cached sessions and persist cursor',
     () async {

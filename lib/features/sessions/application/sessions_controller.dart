@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -36,6 +37,7 @@ class SessionsScope {
 class SessionsState {
   const SessionsState({
     required this.sessions,
+    this.visibleCount = SessionsController.pageSize,
     this.isRefreshing = false,
     this.isLoadingMore = false,
     this.hasMore = false,
@@ -44,6 +46,7 @@ class SessionsState {
   });
 
   final List<SessionSummary> sessions;
+  final int visibleCount;
   final bool isRefreshing;
   final bool isLoadingMore;
   final bool hasMore;
@@ -52,6 +55,7 @@ class SessionsState {
 
   SessionsState copyWith({
     List<SessionSummary>? sessions,
+    int? visibleCount,
     bool? isRefreshing,
     bool? isLoadingMore,
     bool? hasMore,
@@ -61,6 +65,7 @@ class SessionsState {
   }) {
     return SessionsState(
       sessions: sessions ?? this.sessions,
+      visibleCount: visibleCount ?? this.visibleCount,
       isRefreshing: isRefreshing ?? this.isRefreshing,
       isLoadingMore: isLoadingMore ?? this.isLoadingMore,
       hasMore: hasMore ?? this.hasMore,
@@ -73,13 +78,14 @@ class SessionsState {
 class SessionsController extends AsyncNotifier<SessionsState> {
   SessionsController(this.scope);
 
-  static const _pageSize = 50;
+  static const pageSize = 20;
   static const _reconciliationInterval = Duration(seconds: 5);
 
   final SessionsScope scope;
   StreamSubscription<List<SessionSummary>>? _subscription;
   Timer? _reconciliationTimer;
   int _nextOffset = 0;
+  bool _serverHasMore = false;
 
   SessionRepository get _repository => ref.read(sessionRepositoryProvider);
 
@@ -103,7 +109,7 @@ class SessionsController extends AsyncNotifier<SessionsState> {
       unawaited(_subscription?.cancel());
     });
     Future<void>.microtask(refresh);
-    return SessionsState(sessions: cached);
+    return SessionsState(sessions: cached, hasMore: cached.length > pageSize);
   }
 
   Future<void> refresh() => _refresh(reportFailure: true);
@@ -117,14 +123,16 @@ class SessionsController extends AsyncNotifier<SessionsState> {
         workspaceId: scope.workspaceId,
         peonId: scope.peonId,
         offset: 0,
-        limit: _pageSize,
+        limit: pageSize,
       );
       _nextOffset = page.offset + page.sessions.length;
+      _serverHasMore = page.hasMore;
       final latest = state.value ?? current;
       state = AsyncData(
         latest.copyWith(
           isRefreshing: false,
-          hasMore: page.hasMore,
+          hasMore:
+              _serverHasMore || latest.sessions.length > latest.visibleCount,
           catalogStale: page.catalogStale,
           clearMessage: true,
         ),
@@ -149,6 +157,20 @@ class SessionsController extends AsyncNotifier<SessionsState> {
         !current.hasMore) {
       return;
     }
+    if (current.sessions.length > current.visibleCount) {
+      final visibleCount = math.min(
+        current.sessions.length,
+        current.visibleCount + pageSize,
+      );
+      state = AsyncData(
+        current.copyWith(
+          visibleCount: visibleCount,
+          hasMore: _serverHasMore || current.sessions.length > visibleCount,
+          clearMessage: true,
+        ),
+      );
+      return;
+    }
     state = AsyncData(
       current.copyWith(isLoadingMore: true, clearMessage: true),
     );
@@ -157,14 +179,17 @@ class SessionsController extends AsyncNotifier<SessionsState> {
         workspaceId: scope.workspaceId,
         peonId: scope.peonId,
         offset: _nextOffset,
-        limit: _pageSize,
+        limit: pageSize,
       );
       _nextOffset = page.offset + page.sessions.length;
+      _serverHasMore = page.hasMore;
       final latest = state.value ?? current;
+      final visibleCount = latest.visibleCount + pageSize;
       state = AsyncData(
         latest.copyWith(
+          visibleCount: visibleCount,
           isLoadingMore: false,
-          hasMore: page.hasMore,
+          hasMore: _serverHasMore || latest.sessions.length > visibleCount,
           catalogStale: page.catalogStale,
           clearMessage: true,
         ),
@@ -180,6 +205,11 @@ class SessionsController extends AsyncNotifier<SessionsState> {
   void _applyCachedSessions(List<SessionSummary> sessions) {
     final current = state.value;
     if (current == null) return;
-    state = AsyncData(current.copyWith(sessions: sessions));
+    state = AsyncData(
+      current.copyWith(
+        sessions: sessions,
+        hasMore: _serverHasMore || sessions.length > current.visibleCount,
+      ),
+    );
   }
 }

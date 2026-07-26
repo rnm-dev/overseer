@@ -3,12 +3,115 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:overseer_mobile/shared/design/colors.dart';
 import 'package:overseer_mobile/shared/widgets/app_button.dart';
+import 'package:overseer_mobile/shared/widgets/app_card.dart';
+import 'package:overseer_mobile/shared/widgets/app_list_tile.dart';
+import 'package:overseer_mobile/shared/widgets/app_page_header.dart';
+import 'package:overseer_mobile/shared/widgets/app_section_header.dart';
 import 'package:overseer_mobile/shared/widgets/app_text_field.dart';
 import 'package:overseer_mobile/shared/widgets/status_badge.dart';
 import 'package:overseer_mobile/shared/widgets/status_dot.dart';
 import 'package:overseer_mobile/shared/widgets/surface.dart';
 
 void main() {
+  testWidgets('shared headers keep page and section hierarchy distinct', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: Column(
+            children: [
+              AppPageHeader(
+                title: 'Overseer connections',
+                subtitle: 'Choose an Overseer to continue.',
+              ),
+              AppSectionHeader(
+                title: 'Settings',
+                subtitle: 'Device preferences',
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    final pageTitle = tester.widget<Text>(find.text('Overseer connections'));
+    final sectionTitle = tester.widget<Text>(find.text('Settings'));
+    expect(
+      pageTitle.style?.fontSize,
+      greaterThan(sectionTitle.style!.fontSize!),
+    );
+    expect(sectionTitle.style?.color, AppColors.bone);
+  });
+
+  testWidgets('AppCard composes the shared surface contract', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: AppCard(key: ValueKey('card'), child: Text('Grouped content')),
+        ),
+      ),
+    );
+
+    final card = tester.widget<AppCard>(find.byKey(const ValueKey('card')));
+    final surface = tester.widget<Surface>(
+      find.descendant(
+        of: find.byKey(const ValueKey('card')),
+        matching: find.byType(Surface),
+      ),
+    );
+    expect(surface.padding, card.padding);
+    expect(surface.borderRadius, card.borderRadius);
+  });
+
+  testWidgets(
+    'AppListTile owns shared list visuals and interaction semantics',
+    (WidgetTester tester) async {
+      var taps = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: AppListTile(
+              key: const ValueKey('list-tile'),
+              title: 'Notifications',
+              leading: const Icon(Icons.notifications),
+              trailing: const Text('On'),
+              onTap: () => taps += 1,
+              semanticsHint: 'Manage notification preferences',
+            ),
+          ),
+        ),
+      );
+
+      expect(
+        tester.getSize(find.byKey(const ValueKey('list-tile'))).height,
+        greaterThanOrEqualTo(56),
+      );
+      final decoration =
+          tester
+                  .widget<AnimatedContainer>(
+                    find.descendant(
+                      of: find.byKey(const ValueKey('list-tile')),
+                      matching: find.byType(AnimatedContainer),
+                    ),
+                  )
+                  .decoration
+              as BoxDecoration;
+      expect(decoration.border!.top.color, AppColors.iron800);
+
+      final semantics = tester.getSemantics(
+        find.byKey(const ValueKey('list-tile')),
+      );
+      expect(semantics.label, contains('Notifications'));
+      expect(semantics.hint, contains('Manage notification preferences'));
+
+      await tester.tap(find.byKey(const ValueKey('list-tile')));
+      expect(taps, 1);
+    },
+  );
+
   testWidgets("Surface uses variants and calls onTap when interactive", (
     WidgetTester tester,
   ) async {

@@ -57,7 +57,6 @@ class _ProjectFileViewerPageState extends ConsumerState<ProjectFileViewerPage> {
             AppNavigationBar(
               key: const Key('project-file-viewer-navbar'),
               showBackButton: true,
-              contentHeight: 56,
               contentPadding: const EdgeInsets.fromLTRB(8, 8, 8, 6),
               left: Row(
                 children: [

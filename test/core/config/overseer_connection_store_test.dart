@@ -82,6 +82,30 @@ void main() {
     );
   });
 
+  test('removes one connection and clears its legacy preference', () async {
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      SharedPreferencesOverseerConnectionStore.legacyPreferenceKey:
+          'https://legacy.example',
+      SharedPreferencesOverseerConnectionStore.preferenceKey: <String>[
+        'https://other.example',
+      ],
+    });
+    final store = SharedPreferencesOverseerConnectionStore();
+    final connections = await store.readAll();
+
+    final remaining = await store.remove(connections.last);
+
+    expect(remaining, hasLength(1));
+    expect(remaining.single.serverUrl, Uri.parse('https://other.example'));
+    final preferences = await SharedPreferences.getInstance();
+    expect(
+      preferences.containsKey(
+        SharedPreferencesOverseerConnectionStore.legacyPreferenceKey,
+      ),
+      isFalse,
+    );
+  });
+
   test('uses a stable connection storage identifier', () {
     expect(
       overseerConnectionStorageId(Uri.parse('https://overseer.example/')),

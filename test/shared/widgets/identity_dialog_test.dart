@@ -24,6 +24,25 @@ void main() {
     expect(find.text('B'), findsNothing);
   });
 
+  testWidgets('UserAvatar covers its bounds when rendering an image', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      host(
+        const UserAvatar(
+          label: 'Alice',
+          src: 'https://example.com/avatar.png',
+          size: UserAvatarSize.md,
+        ),
+      ),
+    );
+
+    final image = tester.widget<Image>(find.byType(Image));
+    expect(image.fit, BoxFit.cover);
+    expect(image.width, 28);
+    expect(image.height, 28);
+  });
+
   testWidgets('PresenceStack shows up to three avatars and overflow chip', (
     WidgetTester tester,
   ) async {

@@ -3,10 +3,14 @@ import 'sound_pack.dart';
 abstract interface class WorkSoundPlayer {
   Future<void> play(SoundPack pack);
 
+  Future<void> playCue(SoundPack pack, WorkSoundCue cue);
+
   Future<void> stop();
 
   Future<void> dispose();
 }
+
+enum WorkSoundCue { start, stop, complete }
 
 bool isAgentWorkSoundEvent(Map<String, dynamic> payload) {
   final type = payload['type'];
@@ -18,6 +22,9 @@ class NoopWorkSoundPlayer implements WorkSoundPlayer {
 
   @override
   Future<void> play(SoundPack pack) async {}
+
+  @override
+  Future<void> playCue(SoundPack pack, WorkSoundCue cue) async {}
 
   @override
   Future<void> stop() async {}
@@ -52,4 +59,58 @@ class WorkSoundSelector {
   void finish() => _playing = false;
 
   void stop() => _playing = false;
+}
+
+class WorkSoundCueSelector {
+  static const _assets = <SoundPack, Map<WorkSoundCue, List<String>>>{
+    SoundPack.peon: {
+      WorkSoundCue.start: [
+        'sounds/peon/work-start.wav',
+        'sounds/peon/work-start-2.wav',
+      ],
+      WorkSoundCue.stop: [
+        'sounds/peon/work-stop.wav',
+        'sounds/peon/work-stop-2.wav',
+      ],
+      WorkSoundCue.complete: [
+        'sounds/peon/work-complete.wav',
+        'sounds/peon/work-start.wav',
+      ],
+    },
+    SoundPack.scv: {
+      WorkSoundCue.start: [
+        'sounds/sc_scv/work-start.mp3',
+        'sounds/sc_scv/work-start-2.mp3',
+      ],
+      WorkSoundCue.stop: [
+        'sounds/sc_scv/work-stop.mp3',
+        'sounds/sc_scv/work-stop-2.mp3',
+      ],
+      WorkSoundCue.complete: [
+        'sounds/sc_scv/work-complete.mp3',
+        'sounds/sc_scv/work-complete-2.mp3',
+      ],
+    },
+    SoundPack.peasant: {
+      WorkSoundCue.start: [
+        'sounds/peasant/work-start.wav',
+        'sounds/peasant/work-start-2.wav',
+      ],
+      WorkSoundCue.stop: [
+        'sounds/peasant/work-stop.wav',
+        'sounds/peasant/work-stop-2.wav',
+      ],
+      WorkSoundCue.complete: [
+        'sounds/peasant/work-complete.wav',
+        'sounds/peasant/work-complete-2.wav',
+      ],
+    },
+  };
+
+  String? select(SoundPack pack, WorkSoundCue cue, double random) {
+    final candidates = _assets[pack]?[cue];
+    if (candidates == null || candidates.isEmpty) return null;
+    final index = (random.clamp(0, 0.999999) * candidates.length).floor();
+    return candidates[index];
+  }
 }

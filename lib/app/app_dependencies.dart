@@ -4,8 +4,10 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:overseer_mobile/app/live_sync_lifecycle.dart';
 import 'package:overseer_mobile/app/push_notification_lifecycle.dart';
 import 'package:overseer_mobile/app/session_activity_lifecycle.dart';
+import 'package:overseer_mobile/app/overseer_connection_authenticator.dart';
 import 'package:overseer_mobile/core/config/app_config.dart';
 import 'package:overseer_mobile/core/config/overseer_connection_store.dart';
 import 'package:overseer_mobile/core/database/app_database.dart';
@@ -18,12 +20,8 @@ import 'package:overseer_mobile/core/notifications/firebase_push_messaging_clien
 import 'package:overseer_mobile/core/notifications/notification_permission.dart';
 import 'package:overseer_mobile/core/notifications/notification_routing.dart';
 import 'package:overseer_mobile/core/notifications/push_notification_service.dart';
-import 'package:overseer_mobile/core/security/device_token_store.dart';
 import 'package:overseer_mobile/features/auth/application/auth_controller.dart';
-import 'package:overseer_mobile/features/auth/data/auth_api.dart';
-import 'package:overseer_mobile/features/auth/data/default_auth_repository.dart';
-import 'package:overseer_mobile/features/auth/data/desktop_oauth_browser.dart';
-import 'package:overseer_mobile/features/auth/data/system_oauth_browser.dart';
+import 'package:overseer_mobile/features/auth/application/auth_state.dart';
 import 'package:overseer_mobile/features/ai_stats/application/ai_stats_controller.dart';
 import 'package:overseer_mobile/features/ai_stats/data/dio_ai_stats_repository.dart';
 import 'package:overseer_mobile/features/fleet/application/fleet_controller.dart';
@@ -45,11 +43,14 @@ import 'package:overseer_mobile/features/sessions/application/sessions_controlle
 import 'package:overseer_mobile/features/sessions/application/attachment_clipboard_provider.dart';
 import 'package:overseer_mobile/features/sessions/application/session_composer_controller.dart';
 import 'package:overseer_mobile/features/sessions/application/transcript_controller.dart';
+import 'package:overseer_mobile/features/sessions/application/voice_dictation_controller.dart';
 import 'package:overseer_mobile/features/sessions/data/default_followup_repository.dart';
 import 'package:overseer_mobile/features/sessions/data/default_attachment_clipboard.dart';
 import 'package:overseer_mobile/features/sessions/data/default_new_session_repository.dart';
 import 'package:overseer_mobile/features/sessions/data/default_session_repository.dart';
 import 'package:overseer_mobile/features/sessions/data/dio_session_file_repository.dart';
+import 'package:overseer_mobile/features/sessions/data/dio_voice_input_repository.dart';
+import 'package:overseer_mobile/features/sessions/data/record_voice_recorder.dart';
 import 'package:overseer_mobile/features/sessions/application/session_file_controller.dart';
 
 /// Application composition root.
@@ -63,18 +64,19 @@ class AppDependencies extends StatelessWidget {
     required this.connection,
     required this.notificationRouteStore,
     required this.child,
+    this.onAuthenticated,
+    this.sessionActivitiesEnabled = true,
   });
 
   final AppConfig config;
   final OverseerConnection connection;
   final NotificationRouteStore notificationRouteStore;
   final Widget child;
+  final VoidCallback? onAuthenticated;
+  final bool sessionActivitiesEnabled;
 
   @override
   Widget build(BuildContext context) {
-    final useEmbeddedDesktopOAuth =
-        defaultTargetPlatform == TargetPlatform.windows ||
-        defaultTargetPlatform == TargetPlatform.linux;
     final nativeFirebaseAvailable =
         !kIsWeb &&
         Firebase.apps.isNotEmpty &&
@@ -236,6 +238,21 @@ class AppDependencies extends StatelessWidget {
             dio: ref.watch(overseerHttpClientProvider),
           );
         }),
+        voiceInputRepositoryProvider.overrideWith(
+          (ref) =>
+              DioVoiceInputRepository(ref.watch(overseerHttpClientProvider)),
+        ),
+        microphonePermissionGatewayProvider.overrideWithValue(
+          const PermissionHandlerMicrophoneGateway(),
+        ),
+        voiceRecorderFactoryProvider.overrideWithValue(
+          RecordVoiceRecorderFactory(
+            supported:
+                !kIsWeb &&
+                (defaultTargetPlatform == TargetPlatform.android ||
+                    defaultTargetPlatform == TargetPlatform.iOS),
+          ),
+        ),
         followupRepositoryProvider.overrideWith((ref) {
           final session = ref.watch(authControllerProvider).session;
           if (session == null) {
@@ -267,17 +284,9 @@ class AppDependencies extends StatelessWidget {
           (ref) => ref.watch(projectRepositoryProvider),
         ),
         authRepositoryProvider.overrideWith(
-          (ref) => DefaultAuthRepository(
-            remote: DioAuthRemoteDataSource(apiUrl: config.apiUrl),
-            tokenStore: SecureDeviceTokenStore(
-              serverUrl: connection.serverUrl,
-              migrateLegacyToken: connection.usesLegacyStorage,
-            ),
-            browser: useEmbeddedDesktopOAuth
-                ? DesktopOAuthBrowser()
-                : const SystemOAuthBrowser(),
-            callbackUrl: config.oauthCallbackUrl,
-            loginUrl: config.nativeLoginUrl,
+          (ref) => createOverseerAuthRepository(
+            config: config,
+            connection: connection,
           ),
         ),
         soundPreferenceStoreProvider.overrideWithValue(
@@ -299,6 +308,7 @@ class AppDependencies extends StatelessWidget {
             throw StateError('An authenticated session is required.');
           }
           return DioFleetRepository(
+            database: ref.watch(appDatabaseProvider),
             apiUrl: config.apiUrl,
             token: session.token,
             dio: ref.watch(overseerHttpClientProvider),
@@ -321,9 +331,42 @@ class AppDependencies extends StatelessWidget {
               : null;
         }),
       ],
-      child: PushNotificationLifecycle(
-        child: SessionActivityLifecycle(child: child),
+      child: LiveSyncLifecycle(
+        child: PushNotificationLifecycle(
+          child: sessionActivitiesEnabled
+              ? SessionActivityLifecycle(
+                  child: _AuthenticationSuccessListener(
+                    onAuthenticated: onAuthenticated,
+                    child: child,
+                  ),
+                )
+              : _AuthenticationSuccessListener(
+                  onAuthenticated: onAuthenticated,
+                  child: child,
+                ),
+        ),
       ),
     );
+  }
+}
+
+class _AuthenticationSuccessListener extends ConsumerWidget {
+  const _AuthenticationSuccessListener({
+    required this.onAuthenticated,
+    required this.child,
+  });
+
+  final VoidCallback? onAuthenticated;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    ref.listen<AuthState>(authControllerProvider, (previous, next) {
+      if (previous?.phase != AuthPhase.authenticated &&
+          next.phase == AuthPhase.authenticated) {
+        onAuthenticated?.call();
+      }
+    });
+    return child;
   }
 }

@@ -6,6 +6,7 @@ import '../../../shared/design/colors.dart';
 import '../../../shared/design/typography.dart';
 import '../../../shared/widgets/app_button.dart';
 import '../../../shared/widgets/app_navigation_bar.dart';
+import '../../../shared/widgets/user_avatar.dart';
 import '../../sessions/sessions.dart';
 import '../application/project_detail_controller.dart';
 import '../application/project_files_controller.dart';
@@ -83,7 +84,6 @@ class _ProjectDetailPageState extends ConsumerState<ProjectDetailPage> {
             AppNavigationBar(
               key: const Key('project-detail-navbar'),
               showBackButton: false,
-              contentHeight: 58,
               contentPadding: const EdgeInsets.fromLTRB(4, 4, 8, 4),
               left: Row(
                 children: [
@@ -1081,20 +1081,10 @@ class _MemberRow extends StatelessWidget {
       ),
       child: Row(
         children: [
-          CircleAvatar(
-            radius: 18,
-            backgroundColor: AppColors.iron800,
-            foregroundImage: member.avatarUrl?.isNotEmpty == true
-                ? NetworkImage(member.avatarUrl!)
-                : null,
-            child: Text(
-              member.displayName.characters.first.toUpperCase(),
-              style: AppTypography.display(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                color: AppColors.felBright,
-              ),
-            ),
+          UserAvatar(
+            label: member.displayName,
+            src: member.avatarUrl,
+            size: UserAvatarSize.lg,
           ),
           const SizedBox(width: 10),
           Expanded(

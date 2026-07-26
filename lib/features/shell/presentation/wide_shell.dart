@@ -9,8 +9,8 @@ import '../../fleet/fleet.dart';
 class WideShell extends StatelessWidget {
   const WideShell({super.key, required this.user, required this.onSignOut});
 
-  final OperatorIdentity user;
-  final Future<void> Function() onSignOut;
+  final OperatorIdentity? user;
+  final Future<void> Function()? onSignOut;
 
   @override
   Widget build(BuildContext context) {
@@ -41,10 +41,12 @@ class WideShell extends StatelessWidget {
                             color: Theme.of(
                               context,
                             ).colorScheme.surfaceContainerHighest,
-                            child: FleetOverview(
-                              user: user,
-                              onSignOut: onSignOut,
-                            ),
+                            child: user == null
+                                ? const FleetOverviewLoading()
+                                : FleetOverview(
+                                    user: user!,
+                                    onSignOut: onSignOut!,
+                                  ),
                           ),
                         ),
                         const VerticalDivider(width: 1),

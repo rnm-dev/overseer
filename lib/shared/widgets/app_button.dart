@@ -45,16 +45,16 @@ class AppButton extends StatelessWidget {
 
     return switch (size) {
       AppButtonSize.sm => const EdgeInsets.symmetric(
-        horizontal: 11,
-        vertical: 7,
+        horizontal: 12,
+        vertical: 8,
       ),
       AppButtonSize.md => const EdgeInsets.symmetric(
         horizontal: 16,
-        vertical: 10,
+        vertical: 11,
       ),
       AppButtonSize.lg => const EdgeInsets.symmetric(
         horizontal: 20,
-        vertical: 12,
+        vertical: 13,
       ),
     };
   }
@@ -62,8 +62,8 @@ class AppButton extends StatelessWidget {
   double _fontSize() {
     return switch (size) {
       AppButtonSize.sm => 12,
-      AppButtonSize.md => 13,
-      AppButtonSize.lg => 14,
+      AppButtonSize.md => 14,
+      AppButtonSize.lg => 15,
     };
   }
 
@@ -96,7 +96,7 @@ class AppButton extends StatelessWidget {
 
         return switch (variant) {
           AppButtonVariant.primary => AppColors.fel,
-          AppButtonVariant.secondary => AppColors.iron800,
+          AppButtonVariant.secondary => AppColors.rowSurface,
           AppButtonVariant.ghost => Colors.transparent,
           AppButtonVariant.danger => AppColors.blood,
         };
@@ -124,7 +124,7 @@ class AppButton extends StatelessWidget {
         return switch (variant) {
           AppButtonVariant.secondary => BorderSide(
             color: isEnabled
-                ? AppColors.iron700
+                ? AppColors.iron600
                 : AppColors.iron700.withValues(alpha: 0.45),
           ),
           AppButtonVariant.danger => BorderSide(
@@ -159,9 +159,9 @@ class AppButton extends StatelessWidget {
 
   double _buttonHeight() {
     return switch (size) {
-      AppButtonSize.sm => 32,
-      AppButtonSize.md => 40,
-      AppButtonSize.lg => 46,
+      AppButtonSize.sm => 36,
+      AppButtonSize.md => 44,
+      AppButtonSize.lg => 50,
     };
   }
 

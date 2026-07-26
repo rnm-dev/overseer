@@ -42,3 +42,14 @@ abstract interface class FleetLiveService {
 
   Future<void> stop();
 }
+
+abstract interface class FleetWorkspaceReconciler {
+  Future<void> reconcileWorkspaces({
+    required List<String> workspaceIds,
+    required Map<String, int> initialCursors,
+  });
+}
+
+abstract interface class FleetLiveLifecycle {
+  Future<void> resumeFromBackground();
+}

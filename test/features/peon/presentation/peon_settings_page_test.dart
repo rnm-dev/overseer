@@ -60,6 +60,14 @@ void main() {
 
     expect(find.byKey(const Key('peon-settings-agent-pane')), findsOneWidget);
     expect(find.text('Default agent'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('Soul'),
+      300,
+      scrollable: find.descendant(
+        of: find.byKey(const Key('peon-settings-agent-pane')),
+        matching: find.byType(Scrollable),
+      ),
+    );
     expect(find.text('Soul'), findsOneWidget);
     expect(find.byKey(const Key('peon-soul-field')), findsOneWidget);
   });

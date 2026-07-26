@@ -34,7 +34,8 @@ void main() {
       ),
     );
 
-    expect(find.byKey(const Key('auth-restoring-logo')), findsOneWidget);
+    expect(find.byKey(const Key('fleet-loading')), findsOneWidget);
+    expect(find.byKey(const Key('auth-restoring-logo')), findsNothing);
 
     auth.complete();
     await tester.pump();

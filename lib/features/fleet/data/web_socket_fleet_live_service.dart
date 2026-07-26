@@ -18,7 +18,11 @@ part 'web_socket_fleet_live_state.dart';
 part 'web_socket_fleet_live_transcripts.dart';
 
 class WebSocketFleetLiveService
-    implements FleetLiveService, TranscriptLiveService {
+    implements
+        FleetLiveService,
+        FleetWorkspaceReconciler,
+        FleetLiveLifecycle,
+        TranscriptLiveService {
   WebSocketFleetLiveService({
     required this.serverUrl,
     required Uri apiUrl,
@@ -169,6 +173,57 @@ class WebSocketFleetLiveService
   }
 
   @override
+  Future<void> reconcileWorkspaces({
+    required List<String> workspaceIds,
+    required Map<String, int> initialCursors,
+  }) async {
+    if (_stopped) return;
+    final desired = workspaceIds.toSet();
+    final removed = _sockets.keys
+        .where((workspaceId) => !desired.contains(workspaceId))
+        .toList();
+    for (final workspaceId in removed) {
+      final state = _sockets.remove(workspaceId);
+      if (state == null) continue;
+      await _closeWorkspace(state);
+      _onPresence?.call(workspaceId, const []);
+      _onActiveSessionSnapshot?.call(workspaceId, const []);
+    }
+    for (final workspaceId in desired) {
+      if (_sockets.containsKey(workspaceId)) continue;
+      _sockets[workspaceId] = _WorkspaceSocket(
+        cursor: initialCursors[workspaceId] ?? 0,
+      );
+      unawaited(_open(workspaceId));
+    }
+  }
+
+  @override
+  Future<void> resumeFromBackground() async {
+    if (_stopped || _sockets.isEmpty) return;
+    final staleSockets = <_WorkspaceSocket>[];
+    for (final entry in _sockets.entries.toList()) {
+      final stale = entry.value;
+      final replacement = _WorkspaceSocket(cursor: stale.cursor)
+        ..location = stale.location
+        ..tails.addAll(stale.tails);
+      for (final handler in replacement.tails.values) {
+        handler.retryTimer?.cancel();
+        handler.retryTimer = null;
+      }
+      _sockets[entry.key] = replacement;
+      staleSockets.add(stale);
+    }
+    for (final stale in staleSockets) {
+      unawaited(_closeWorkspace(stale));
+    }
+    if (_stopped) return;
+    for (final workspaceId in _sockets.keys.toList()) {
+      unawaited(_open(workspaceId));
+    }
+  }
+
+  @override
   void setPresence({
     required String workspaceId,
     required PresenceLocation location,
@@ -276,13 +331,17 @@ class WebSocketFleetLiveService
     _onActiveSessionSnapshot = null;
     _onPresence = null;
     for (final state in sockets) {
-      state.retryTimer?.cancel();
-      state.heartbeat?.cancel();
-      for (final handler in state.tails.values) {
-        handler.retryTimer?.cancel();
-      }
-      await state.subscription?.cancel();
-      await state.channel?.sink.close();
+      await _closeWorkspace(state);
     }
+  }
+
+  Future<void> _closeWorkspace(_WorkspaceSocket state) async {
+    state.retryTimer?.cancel();
+    state.heartbeat?.cancel();
+    for (final handler in state.tails.values) {
+      handler.retryTimer?.cancel();
+    }
+    await state.subscription?.cancel();
+    await state.channel?.sink.close();
   }
 }

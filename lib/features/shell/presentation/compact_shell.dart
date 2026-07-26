@@ -1,20 +1,57 @@
 import 'package:flutter/material.dart';
 
+import '../../../shared/design/typography.dart';
+import '../../../shared/widgets/app_navigation_bar.dart';
 import '../../auth/domain/auth_models.dart';
 import '../../fleet/fleet.dart';
 
 class CompactShell extends StatelessWidget {
-  const CompactShell({super.key, required this.user, required this.onSignOut});
+  const CompactShell({
+    super.key,
+    required this.user,
+    required this.onSignOut,
+    this.overseerName,
+    this.onBackToConnections,
+  });
 
-  final OperatorIdentity user;
-  final Future<void> Function() onSignOut;
+  final OperatorIdentity? user;
+  final Future<void> Function()? onSignOut;
+  final String? overseerName;
+  final VoidCallback? onBackToConnections;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       key: const Key('compact-shell'),
       body: SafeArea(
-        child: FleetOverview(compact: true, user: user, onSignOut: onSignOut),
+        top: false,
+        child: Column(
+          children: [
+            AppNavigationBar(
+              key: const Key('overseer-index-navbar'),
+              showBackButton: onBackToConnections != null,
+              onBack: onBackToConnections,
+              backButtonKey: const Key('back-to-overseer-list'),
+              backTooltip: 'Back to Overseer list',
+              left: Text(
+                overseerName ?? 'Overseer',
+                key: const Key('current-overseer-name'),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppTypography.controlLabel(),
+              ),
+            ),
+            Expanded(
+              child: user == null
+                  ? const FleetOverviewLoading(compact: true)
+                  : FleetOverview(
+                      compact: true,
+                      user: user!,
+                      onSignOut: onSignOut!,
+                    ),
+            ),
+          ],
+        ),
       ),
     );
   }

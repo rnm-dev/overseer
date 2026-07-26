@@ -9,14 +9,14 @@ import 'package:overseer_mobile/shared/design/typography.dart';
 
 void main() {
   group('AppTheme.dark', () {
-    test('uses the global eight-pixel screen gutter', () {
+    test('uses the global twelve-pixel screen gutter', () {
       final spacing = AppTheme.dark.extension<AppSpacing>();
 
       expect(spacing, isNotNull);
-      expect(spacing!.screenHorizontal, 8);
+      expect(spacing!.screenHorizontal, 12);
       expect(
         spacing.screenInsets(top: 12, bottom: 32),
-        const EdgeInsets.fromLTRB(8, 12, 8, 32),
+        const EdgeInsets.fromLTRB(12, 12, 12, 32),
       );
     });
 

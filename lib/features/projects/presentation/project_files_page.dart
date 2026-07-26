@@ -49,7 +49,6 @@ class ProjectFilesPage extends ConsumerWidget {
             AppNavigationBar(
               key: const Key('project-files-navbar'),
               showBackButton: true,
-              contentHeight: 56,
               contentPadding: const EdgeInsets.fromLTRB(8, 10, 8, 6),
               left: Column(
                 mainAxisAlignment: MainAxisAlignment.center,

@@ -6,7 +6,10 @@ import 'package:overseer_mobile/features/sessions/application/sessions_controlle
 import 'package:overseer_mobile/features/sessions/domain/session_models.dart';
 import 'package:overseer_mobile/features/sessions/domain/session_repository.dart';
 import 'package:overseer_mobile/features/sessions/presentation/session_list.dart';
+import 'package:overseer_mobile/shared/design/colors.dart';
 import 'package:overseer_mobile/shared/design/theme.dart';
+import 'package:overseer_mobile/shared/widgets/app_markdown.dart';
+import 'package:overseer_mobile/shared/widgets/sidebar_status_edge.dart';
 
 void main() {
   testWidgets('renders independently from the mobile peon shell', (
@@ -77,6 +80,52 @@ void main() {
     expect(selectedSession?.sessionId, 'session');
   });
 
+  testWidgets('renders the last message as compact inline Markdown', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          sessionRepositoryProvider.overrideWithValue(
+            _SessionListRepository([
+              const SessionSummary(
+                workspaceId: 'workspace',
+                peonId: 'peon',
+                sessionId: 'markdown',
+                title: 'Markdown session',
+                preview: '**Fixed** with `code`\n\n- next',
+                syncedAt: 1,
+              ),
+            ]),
+          ),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.dark,
+          home: const Scaffold(
+            body: SessionList(workspaceId: 'workspace', peonId: 'peon'),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final preview = tester.widget<AppMarkdownPreview>(
+      find.byKey(const Key('session-preview-markdown')),
+    );
+    expect(preview.data, '**Fixed** with `code`\n\n- next');
+    final richText = tester.widget<RichText>(
+      find.descendant(
+        of: find.byKey(const Key('session-preview-markdown')),
+        matching: find.byType(RichText),
+      ),
+    );
+    expect(richText.text.toPlainText(), 'Fixed with code • next');
+    expect(
+      tester.getSize(find.byKey(const Key('session-markdown'))).height,
+      48,
+    );
+  });
+
   testWidgets('filters cached sessions by canonical project identity', (
     tester,
   ) async {
@@ -133,6 +182,101 @@ void main() {
     expect(find.text('Legacy project session'), findsOneWidget);
     expect(find.text('Other project session'), findsNothing);
   });
+
+  testWidgets('matches every web sidebar status edge mode and geometry', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          sessionRepositoryProvider.overrideWithValue(
+            _SessionListRepository([
+              const SessionSummary(
+                workspaceId: 'workspace',
+                peonId: 'peon',
+                sessionId: 'running',
+                status: 'running',
+                syncedAt: 5,
+              ),
+              const SessionSummary(
+                workspaceId: 'workspace',
+                peonId: 'peon',
+                sessionId: 'unread',
+                status: 'completed',
+                attentionUnread: true,
+                syncedAt: 4,
+              ),
+              const SessionSummary(
+                workspaceId: 'workspace',
+                peonId: 'peon',
+                sessionId: 'needs-human',
+                status: 'needs_human',
+                syncedAt: 3,
+              ),
+              const SessionSummary(
+                workspaceId: 'workspace',
+                peonId: 'peon',
+                sessionId: 'failed',
+                status: 'failure',
+                syncedAt: 2,
+              ),
+              const SessionSummary(
+                workspaceId: 'workspace',
+                peonId: 'peon',
+                sessionId: 'idle',
+                status: 'completed',
+                syncedAt: 1,
+              ),
+            ]),
+          ),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.dark,
+          home: const Scaffold(
+            body: SessionList(workspaceId: 'workspace', peonId: 'peon'),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    _expectEdge(tester, 'running', AppColors.felBright, glowing: true);
+    _expectEdge(tester, 'unread', AppColors.forge, glowing: true);
+    _expectEdge(tester, 'needs-human', AppColors.forge, glowing: true);
+    _expectEdge(tester, 'failed', AppColors.blood, glowing: true);
+    _expectEdge(
+      tester,
+      'idle',
+      SidebarStatusEdgeStyle.idle.color,
+      glowing: false,
+    );
+    expect(
+      tester.getSize(find.byKey(const Key('session-status-running'))),
+      const Size(2, 40),
+    );
+    expect(
+      tester.getSize(find.byKey(const Key('session-running'))).width,
+      tester.view.physicalSize.width / tester.view.devicePixelRatio,
+    );
+  });
+}
+
+void _expectEdge(
+  WidgetTester tester,
+  String sessionId,
+  Color color, {
+  required bool glowing,
+}) {
+  final container = find
+      .descendant(
+        of: find.byKey(Key('session-status-$sessionId')),
+        matching: find.byType(Container),
+      )
+      .first;
+  final decoration =
+      tester.widget<Container>(container).decoration! as BoxDecoration;
+  expect(decoration.color, color);
+  expect(decoration.boxShadow?.isNotEmpty ?? false, glowing);
 }
 
 class _SessionListRepository implements SessionRepository {
@@ -175,6 +319,21 @@ class _SessionListRepository implements SessionRepository {
 
   @override
   Future<void> cancelSession({
+    required String workspaceId,
+    required String peonId,
+    required String sessionId,
+  }) async {}
+
+  @override
+  Future<void> renameSession({
+    required String workspaceId,
+    required String peonId,
+    required String sessionId,
+    required String? title,
+  }) async {}
+
+  @override
+  Future<void> deleteSession({
     required String workspaceId,
     required String peonId,
     required String sessionId,

@@ -3,6 +3,8 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../shared/design/colors.dart';
 import '../../../shared/design/typography.dart';
+import '../../../shared/formatters/activity_timestamp.dart';
+import '../../../shared/widgets/app_markdown.dart';
 import '../../auth/domain/auth_models.dart';
 import 'tool_details_bottom_sheet.dart';
 import 'transcript_items.dart';
@@ -64,7 +66,7 @@ class _UserBubble extends StatelessWidget {
         item.text.trim().length <= 48 &&
         !item.text.contains('\n') &&
         item.attachments.isEmpty;
-    final timestamp = _formatTimestamp(context, item.createdAt);
+    final timestamp = formatActivityTimestamp(item.createdAt);
     return Row(
       mainAxisAlignment: MainAxisAlignment.end,
       crossAxisAlignment: CrossAxisAlignment.end,
@@ -173,9 +175,9 @@ class _UserText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Text(
-      text,
-      style: AppTypography.body(
+    return AppMarkdown(
+      data: text,
+      textStyle: AppTypography.body(
         fontSize: 14,
         color: AppColors.bone,
         height: 1.35,
@@ -342,14 +344,15 @@ class _AssistantText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final timestamp = _formatTimestamp(context, item.createdAt);
+    final timestamp = formatActivityTimestamp(item.createdAt);
     return Column(
       key: Key('transcript-text-${item.key}'),
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SelectableText(
-          item.text,
-          style: AppTypography.body(
+        AppMarkdown(
+          key: Key('transcript-markdown-${item.key}'),
+          data: item.text,
+          textStyle: AppTypography.body(
             fontSize: 14,
             color: AppColors.bone,
             height: 1.55,
@@ -680,7 +683,7 @@ class _PreviewCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final filename = item.path.replaceAll('\\', '/').split('/').last;
-    final timestamp = _formatTimestamp(context, item.createdAt);
+    final timestamp = formatActivityTimestamp(item.createdAt);
     return Align(
       alignment: Alignment.centerLeft,
       child: Material(
@@ -769,25 +772,6 @@ bool _isOwnMessage(TranscriptUserItem item, OperatorIdentity? operator) {
     item.author,
   ].whereType<String>().any((value) => current.contains(value.toLowerCase()));
 }
-
-String? _formatTimestamp(BuildContext context, double? raw) {
-  if (raw == null || raw <= 0) return null;
-  final milliseconds = raw < 100000000000 ? (raw * 1000).round() : raw.round();
-  final date = DateTime.fromMillisecondsSinceEpoch(milliseconds).toLocal();
-  final now = DateTime.now();
-  final time = MaterialLocalizations.of(
-    context,
-  ).formatTimeOfDay(TimeOfDay.fromDateTime(date), alwaysUse24HourFormat: true);
-  if (_sameDay(date, now)) return time;
-  final yesterday = now.subtract(const Duration(days: 1));
-  if (_sameDay(date, yesterday)) return 'yesterday, $time';
-  return '${date.day}.${date.month.toString().padLeft(2, '0')}, $time';
-}
-
-bool _sameDay(DateTime left, DateTime right) =>
-    left.year == right.year &&
-    left.month == right.month &&
-    left.day == right.day;
 
 String _attachmentMeta(TranscriptAttachment attachment) {
   final extension = attachment.label.contains('.')

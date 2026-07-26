@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:overseer_mobile/shared/design/colors.dart';
 import 'package:overseer_mobile/shared/design/spacing.dart';
 import 'package:overseer_mobile/shared/design/typography.dart';
 import 'package:overseer_mobile/shared/widgets/app_button.dart';
-import 'package:overseer_mobile/shared/widgets/overseer_logo.dart';
+import 'package:overseer_mobile/shared/widgets/app_page_header.dart';
 
 /// Signed-out landing page.
 ///
@@ -15,81 +16,83 @@ class SignInPage extends StatelessWidget {
     required this.onSignIn,
     this.isSigningIn = false,
     this.errorMessage,
-    this.logo = const OverseerLogo(),
+    this.onBack,
   });
 
   final VoidCallback? onSignIn;
   final bool isSigningIn;
   final String? errorMessage;
-  final Widget logo;
-
-  static const String _heroAssetPath = 'assets/images/sign-in-hero.png';
+  final VoidCallback? onBack;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Stack(
-        fit: StackFit.expand,
-        children: <Widget>[
-          const Image(
-            key: Key('sign-in-hero'),
-            image: AssetImage(_heroAssetPath),
-            fit: BoxFit.cover,
-            filterQuality: FilterQuality.high,
-            excludeFromSemantics: true,
-          ),
-          const DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: <Color>[
-                  Color(0x1A060806),
-                  Color(0x40060806),
-                  AppColors.voidColor,
-                ],
-                stops: <double>[0, 0.48, 1],
-              ),
-            ),
-          ),
-          SafeArea(
-            child: Padding(
-              padding: context.appSpacing.screenInsets(top: 20, bottom: 20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: <Widget>[
-                  Center(child: logo),
-                  const Spacer(),
-                  if (errorMessage != null) ...<Widget>[
-                    Semantics(
-                      liveRegion: true,
-                      child: Text(
-                        errorMessage!,
-                        key: const Key('sign-in-error'),
-                        textAlign: TextAlign.center,
-                        style: AppTypography.body(
-                          fontSize: 13,
-                          color: AppColors.blood,
-                          height: 1.4,
-                        ),
-                      ),
+      body: SafeArea(
+        child: Padding(
+          padding: context.appSpacing.screenInsets(top: 20, bottom: 20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              if (onBack != null)
+                Align(
+                  alignment: Alignment.topLeft,
+                  child: IconButton(
+                    key: const Key('auth-back-to-connections'),
+                    tooltip: 'Back to Overseers',
+                    onPressed: onBack,
+                    icon: const Icon(
+                      LucideIcons.arrowLeft,
+                      color: AppColors.bone,
                     ),
-                    const SizedBox(height: 16),
-                  ],
-                  AppButton(
-                    key: const Key('github-sign-in-button'),
-                    onPressed: onSignIn,
-                    loading: isSigningIn,
-                    disabled: isSigningIn,
-                    fullWidth: true,
-                    size: AppButtonSize.lg,
-                    child: Text(isSigningIn ? 'Connecting…' : 'Sign In'),
                   ),
-                ],
+                ),
+              Expanded(
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 520),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: <Widget>[
+                        const AppPageHeader(
+                          title: 'Sign in to Overseer',
+                          subtitle:
+                              'Continue with GitHub to access your workspaces.',
+                        ),
+                        if (errorMessage != null) ...<Widget>[
+                          const SizedBox(height: 20),
+                          Semantics(
+                            liveRegion: true,
+                            child: Text(
+                              errorMessage!,
+                              key: const Key('sign-in-error'),
+                              textAlign: TextAlign.center,
+                              style: AppTypography.body(
+                                fontSize: 13,
+                                color: AppColors.blood,
+                                height: 1.4,
+                              ),
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 24),
+                        AppButton(
+                          key: const Key('github-sign-in-button'),
+                          onPressed: onSignIn,
+                          loading: isSigningIn,
+                          disabled: isSigningIn,
+                          fullWidth: true,
+                          size: AppButtonSize.lg,
+                          child: Text(isSigningIn ? 'Connecting…' : 'Sign In'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               ),
-            ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }

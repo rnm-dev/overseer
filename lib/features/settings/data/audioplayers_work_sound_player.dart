@@ -10,17 +10,23 @@ import '../domain/work_sound_player.dart';
 class AudioplayersWorkSoundPlayer implements WorkSoundPlayer {
   AudioplayersWorkSoundPlayer({
     AudioPlayer? player,
+    AudioPlayer? cuePlayer,
     Random? random,
     WorkSoundSelector? selector,
+    WorkSoundCueSelector? cueSelector,
   }) : _player = player ?? AudioPlayer(),
+       _cuePlayer = cuePlayer ?? AudioPlayer(),
        _random = random ?? Random(),
-       _selector = selector ?? WorkSoundSelector() {
+       _selector = selector ?? WorkSoundSelector(),
+       _cueSelector = cueSelector ?? WorkSoundCueSelector() {
     _completion = _player.onPlayerComplete.listen((_) => _selector.finish());
   }
 
   final AudioPlayer _player;
+  final AudioPlayer _cuePlayer;
   final Random _random;
   final WorkSoundSelector _selector;
+  final WorkSoundCueSelector _cueSelector;
   late final StreamSubscription<void> _completion;
 
   @override
@@ -33,6 +39,20 @@ class AudioplayersWorkSoundPlayer implements WorkSoundPlayer {
       _selector.finish();
       debugPrint(
         '[WorkSound] playback failed pack=${pack.id}: ${error.runtimeType}',
+      );
+    }
+  }
+
+  @override
+  Future<void> playCue(SoundPack pack, WorkSoundCue cue) async {
+    final asset = _cueSelector.select(pack, cue, _random.nextDouble());
+    if (asset == null) return;
+    try {
+      await _cuePlayer.play(AssetSource(asset));
+    } catch (error) {
+      debugPrint(
+        '[WorkSound] cue playback failed pack=${pack.id} '
+        'cue=${cue.name}: ${error.runtimeType}',
       );
     }
   }
@@ -51,5 +71,6 @@ class AudioplayersWorkSoundPlayer implements WorkSoundPlayer {
   Future<void> dispose() async {
     await _completion.cancel();
     await _player.dispose();
+    await _cuePlayer.dispose();
   }
 }

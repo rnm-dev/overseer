@@ -31,6 +31,19 @@ abstract interface class SessionRepository implements LiveProjectionSink {
     required String sessionId,
   });
 
+  Future<void> renameSession({
+    required String workspaceId,
+    required String peonId,
+    required String sessionId,
+    required String? title,
+  });
+
+  Future<void> deleteSession({
+    required String workspaceId,
+    required String peonId,
+    required String sessionId,
+  });
+
   Future<TranscriptCache> loadCachedTranscript({
     required String workspaceId,
     required String peonId,

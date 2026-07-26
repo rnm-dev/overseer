@@ -5,8 +5,8 @@ import 'package:overseer_mobile/core/database/app_database.dart';
 
 void main() {
   group('AppDatabase migrations', () {
-    for (var version = 1; version < 10; version++) {
-      test('migrates schema v$version to v10 without losing data', () async {
+    for (var version = 1; version < 11; version++) {
+      test('migrates schema v$version to v11 without losing data', () async {
         final database = AppDatabase.forTesting(
           NativeDatabase.memory(
             setup: (sqlite) {
@@ -22,10 +22,10 @@ void main() {
         // Opening the database runs the migration.
         expect(
           await database.customSelect('PRAGMA user_version').getSingle(),
-          predicate<QueryRow>((row) => row.read<int>('user_version') == 10),
+          predicate<QueryRow>((row) => row.read<int>('user_version') == 11),
         );
 
-        expect(await _tableNames(database), containsAll(_tablesAtVersion(10)));
+        expect(await _tableNames(database), containsAll(_tablesAtVersion(11)));
         expect(
           await _columnNames(database, 'pending_followup_commands'),
           containsAll(<String>{
@@ -51,7 +51,7 @@ void main() {
                 .getSingle()
                 .then((row) => row.read<int>('count')),
             1,
-            reason: 'The existing row in $table should survive v$version → v10',
+            reason: 'The existing row in $table should survive v$version → v11',
           );
         }
 
@@ -83,11 +83,11 @@ void main() {
       });
     }
 
-    test('creates the complete v10 schema from an empty database', () async {
+    test('creates the complete v11 schema from an empty database', () async {
       final database = AppDatabase.forTesting(NativeDatabase.memory());
       addTearDown(database.close);
 
-      expect(await _tableNames(database), containsAll(_tablesAtVersion(10)));
+      expect(await _tableNames(database), containsAll(_tablesAtVersion(11)));
       expect(
         await _columnNames(database, 'cached_sessions'),
         containsAll(<String>{'attention_unread', 'attention_updated_at'}),
@@ -130,6 +130,7 @@ Set<String> _tablesAtVersion(int version) => <String>{
   if (version >= 5) ...<String>{'composer_drafts', 'pending_followup_commands'},
   if (version >= 8) 'cached_queued_followups',
   if (version >= 10) 'cached_peon_management',
+  if (version >= 11) ...<String>{'cached_workspaces', 'cached_fleet_peons'},
 };
 
 void _createSchemaAtVersion(
@@ -345,6 +346,12 @@ void _seedSchemaAtVersion(
     execute('''
       INSERT INTO cached_queued_followups
       VALUES ('workspace', 'peon', 'session', 'item', '{}', 1, 1)
+    ''');
+  }
+  if (version >= 10) {
+    execute('''
+      INSERT INTO cached_peon_management
+      VALUES ('workspace', 'peon', 'general', '{}', 1)
     ''');
   }
 

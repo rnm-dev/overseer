@@ -993,6 +993,1054 @@ class CachedSessionsCompanion extends UpdateCompanion<CachedSession> {
   }
 }
 
+class $CachedWorkspacesTable extends CachedWorkspaces
+    with TableInfo<$CachedWorkspacesTable, CachedWorkspace> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $CachedWorkspacesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _workspaceIdMeta = const VerificationMeta(
+    'workspaceId',
+  );
+  @override
+  late final GeneratedColumn<String> workspaceId = GeneratedColumn<String>(
+    'workspace_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _roleMeta = const VerificationMeta('role');
+  @override
+  late final GeneratedColumn<String> role = GeneratedColumn<String>(
+    'role',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _syncedAtMeta = const VerificationMeta(
+    'syncedAt',
+  );
+  @override
+  late final GeneratedColumn<double> syncedAt = GeneratedColumn<double>(
+    'synced_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [workspaceId, name, role, syncedAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'cached_workspaces';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<CachedWorkspace> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('workspace_id')) {
+      context.handle(
+        _workspaceIdMeta,
+        workspaceId.isAcceptableOrUnknown(
+          data['workspace_id']!,
+          _workspaceIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_workspaceIdMeta);
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('role')) {
+      context.handle(
+        _roleMeta,
+        role.isAcceptableOrUnknown(data['role']!, _roleMeta),
+      );
+    }
+    if (data.containsKey('synced_at')) {
+      context.handle(
+        _syncedAtMeta,
+        syncedAt.isAcceptableOrUnknown(data['synced_at']!, _syncedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_syncedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {workspaceId};
+  @override
+  CachedWorkspace map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return CachedWorkspace(
+      workspaceId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}workspace_id'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      role: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}role'],
+      ),
+      syncedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}synced_at'],
+      )!,
+    );
+  }
+
+  @override
+  $CachedWorkspacesTable createAlias(String alias) {
+    return $CachedWorkspacesTable(attachedDatabase, alias);
+  }
+}
+
+class CachedWorkspace extends DataClass implements Insertable<CachedWorkspace> {
+  final String workspaceId;
+  final String name;
+  final String? role;
+  final double syncedAt;
+  const CachedWorkspace({
+    required this.workspaceId,
+    required this.name,
+    this.role,
+    required this.syncedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['workspace_id'] = Variable<String>(workspaceId);
+    map['name'] = Variable<String>(name);
+    if (!nullToAbsent || role != null) {
+      map['role'] = Variable<String>(role);
+    }
+    map['synced_at'] = Variable<double>(syncedAt);
+    return map;
+  }
+
+  CachedWorkspacesCompanion toCompanion(bool nullToAbsent) {
+    return CachedWorkspacesCompanion(
+      workspaceId: Value(workspaceId),
+      name: Value(name),
+      role: role == null && nullToAbsent ? const Value.absent() : Value(role),
+      syncedAt: Value(syncedAt),
+    );
+  }
+
+  factory CachedWorkspace.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return CachedWorkspace(
+      workspaceId: serializer.fromJson<String>(json['workspaceId']),
+      name: serializer.fromJson<String>(json['name']),
+      role: serializer.fromJson<String?>(json['role']),
+      syncedAt: serializer.fromJson<double>(json['syncedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'workspaceId': serializer.toJson<String>(workspaceId),
+      'name': serializer.toJson<String>(name),
+      'role': serializer.toJson<String?>(role),
+      'syncedAt': serializer.toJson<double>(syncedAt),
+    };
+  }
+
+  CachedWorkspace copyWith({
+    String? workspaceId,
+    String? name,
+    Value<String?> role = const Value.absent(),
+    double? syncedAt,
+  }) => CachedWorkspace(
+    workspaceId: workspaceId ?? this.workspaceId,
+    name: name ?? this.name,
+    role: role.present ? role.value : this.role,
+    syncedAt: syncedAt ?? this.syncedAt,
+  );
+  CachedWorkspace copyWithCompanion(CachedWorkspacesCompanion data) {
+    return CachedWorkspace(
+      workspaceId: data.workspaceId.present
+          ? data.workspaceId.value
+          : this.workspaceId,
+      name: data.name.present ? data.name.value : this.name,
+      role: data.role.present ? data.role.value : this.role,
+      syncedAt: data.syncedAt.present ? data.syncedAt.value : this.syncedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CachedWorkspace(')
+          ..write('workspaceId: $workspaceId, ')
+          ..write('name: $name, ')
+          ..write('role: $role, ')
+          ..write('syncedAt: $syncedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(workspaceId, name, role, syncedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is CachedWorkspace &&
+          other.workspaceId == this.workspaceId &&
+          other.name == this.name &&
+          other.role == this.role &&
+          other.syncedAt == this.syncedAt);
+}
+
+class CachedWorkspacesCompanion extends UpdateCompanion<CachedWorkspace> {
+  final Value<String> workspaceId;
+  final Value<String> name;
+  final Value<String?> role;
+  final Value<double> syncedAt;
+  final Value<int> rowid;
+  const CachedWorkspacesCompanion({
+    this.workspaceId = const Value.absent(),
+    this.name = const Value.absent(),
+    this.role = const Value.absent(),
+    this.syncedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  CachedWorkspacesCompanion.insert({
+    required String workspaceId,
+    required String name,
+    this.role = const Value.absent(),
+    required double syncedAt,
+    this.rowid = const Value.absent(),
+  }) : workspaceId = Value(workspaceId),
+       name = Value(name),
+       syncedAt = Value(syncedAt);
+  static Insertable<CachedWorkspace> custom({
+    Expression<String>? workspaceId,
+    Expression<String>? name,
+    Expression<String>? role,
+    Expression<double>? syncedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (workspaceId != null) 'workspace_id': workspaceId,
+      if (name != null) 'name': name,
+      if (role != null) 'role': role,
+      if (syncedAt != null) 'synced_at': syncedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  CachedWorkspacesCompanion copyWith({
+    Value<String>? workspaceId,
+    Value<String>? name,
+    Value<String?>? role,
+    Value<double>? syncedAt,
+    Value<int>? rowid,
+  }) {
+    return CachedWorkspacesCompanion(
+      workspaceId: workspaceId ?? this.workspaceId,
+      name: name ?? this.name,
+      role: role ?? this.role,
+      syncedAt: syncedAt ?? this.syncedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (workspaceId.present) {
+      map['workspace_id'] = Variable<String>(workspaceId.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (role.present) {
+      map['role'] = Variable<String>(role.value);
+    }
+    if (syncedAt.present) {
+      map['synced_at'] = Variable<double>(syncedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CachedWorkspacesCompanion(')
+          ..write('workspaceId: $workspaceId, ')
+          ..write('name: $name, ')
+          ..write('role: $role, ')
+          ..write('syncedAt: $syncedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $CachedFleetPeonsTable extends CachedFleetPeons
+    with TableInfo<$CachedFleetPeonsTable, CachedFleetPeon> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $CachedFleetPeonsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _workspaceIdMeta = const VerificationMeta(
+    'workspaceId',
+  );
+  @override
+  late final GeneratedColumn<String> workspaceId = GeneratedColumn<String>(
+    'workspace_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _peonIdMeta = const VerificationMeta('peonId');
+  @override
+  late final GeneratedColumn<String> peonId = GeneratedColumn<String>(
+    'peon_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _hostnameMeta = const VerificationMeta(
+    'hostname',
+  );
+  @override
+  late final GeneratedColumn<String> hostname = GeneratedColumn<String>(
+    'hostname',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _baseUrlMeta = const VerificationMeta(
+    'baseUrl',
+  );
+  @override
+  late final GeneratedColumn<String> baseUrl = GeneratedColumn<String>(
+    'base_url',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _addressSourceMeta = const VerificationMeta(
+    'addressSource',
+  );
+  @override
+  late final GeneratedColumn<String> addressSource = GeneratedColumn<String>(
+    'address_source',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _onlineMeta = const VerificationMeta('online');
+  @override
+  late final GeneratedColumn<bool> online = GeneratedColumn<bool>(
+    'online',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("online" IN (0, 1))',
+    ),
+  );
+  static const VerificationMeta _lastSeenMeta = const VerificationMeta(
+    'lastSeen',
+  );
+  @override
+  late final GeneratedColumn<double> lastSeen = GeneratedColumn<double>(
+    'last_seen',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _capabilitiesJsonMeta = const VerificationMeta(
+    'capabilitiesJson',
+  );
+  @override
+  late final GeneratedColumn<String> capabilitiesJson = GeneratedColumn<String>(
+    'capabilities_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('[]'),
+  );
+  static const VerificationMeta _activeSessionsMeta = const VerificationMeta(
+    'activeSessions',
+  );
+  @override
+  late final GeneratedColumn<int> activeSessions = GeneratedColumn<int>(
+    'active_sessions',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _pausedMeta = const VerificationMeta('paused');
+  @override
+  late final GeneratedColumn<bool> paused = GeneratedColumn<bool>(
+    'paused',
+    aliasedName,
+    true,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("paused" IN (0, 1))',
+    ),
+  );
+  static const VerificationMeta _syncedAtMeta = const VerificationMeta(
+    'syncedAt',
+  );
+  @override
+  late final GeneratedColumn<double> syncedAt = GeneratedColumn<double>(
+    'synced_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    workspaceId,
+    peonId,
+    name,
+    hostname,
+    baseUrl,
+    addressSource,
+    online,
+    lastSeen,
+    capabilitiesJson,
+    activeSessions,
+    paused,
+    syncedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'cached_fleet_peons';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<CachedFleetPeon> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('workspace_id')) {
+      context.handle(
+        _workspaceIdMeta,
+        workspaceId.isAcceptableOrUnknown(
+          data['workspace_id']!,
+          _workspaceIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_workspaceIdMeta);
+    }
+    if (data.containsKey('peon_id')) {
+      context.handle(
+        _peonIdMeta,
+        peonId.isAcceptableOrUnknown(data['peon_id']!, _peonIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_peonIdMeta);
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    }
+    if (data.containsKey('hostname')) {
+      context.handle(
+        _hostnameMeta,
+        hostname.isAcceptableOrUnknown(data['hostname']!, _hostnameMeta),
+      );
+    }
+    if (data.containsKey('base_url')) {
+      context.handle(
+        _baseUrlMeta,
+        baseUrl.isAcceptableOrUnknown(data['base_url']!, _baseUrlMeta),
+      );
+    }
+    if (data.containsKey('address_source')) {
+      context.handle(
+        _addressSourceMeta,
+        addressSource.isAcceptableOrUnknown(
+          data['address_source']!,
+          _addressSourceMeta,
+        ),
+      );
+    }
+    if (data.containsKey('online')) {
+      context.handle(
+        _onlineMeta,
+        online.isAcceptableOrUnknown(data['online']!, _onlineMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_onlineMeta);
+    }
+    if (data.containsKey('last_seen')) {
+      context.handle(
+        _lastSeenMeta,
+        lastSeen.isAcceptableOrUnknown(data['last_seen']!, _lastSeenMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_lastSeenMeta);
+    }
+    if (data.containsKey('capabilities_json')) {
+      context.handle(
+        _capabilitiesJsonMeta,
+        capabilitiesJson.isAcceptableOrUnknown(
+          data['capabilities_json']!,
+          _capabilitiesJsonMeta,
+        ),
+      );
+    }
+    if (data.containsKey('active_sessions')) {
+      context.handle(
+        _activeSessionsMeta,
+        activeSessions.isAcceptableOrUnknown(
+          data['active_sessions']!,
+          _activeSessionsMeta,
+        ),
+      );
+    }
+    if (data.containsKey('paused')) {
+      context.handle(
+        _pausedMeta,
+        paused.isAcceptableOrUnknown(data['paused']!, _pausedMeta),
+      );
+    }
+    if (data.containsKey('synced_at')) {
+      context.handle(
+        _syncedAtMeta,
+        syncedAt.isAcceptableOrUnknown(data['synced_at']!, _syncedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_syncedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {workspaceId, peonId};
+  @override
+  CachedFleetPeon map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return CachedFleetPeon(
+      workspaceId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}workspace_id'],
+      )!,
+      peonId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}peon_id'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      ),
+      hostname: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}hostname'],
+      ),
+      baseUrl: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}base_url'],
+      ),
+      addressSource: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}address_source'],
+      ),
+      online: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}online'],
+      )!,
+      lastSeen: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}last_seen'],
+      )!,
+      capabilitiesJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}capabilities_json'],
+      )!,
+      activeSessions: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}active_sessions'],
+      ),
+      paused: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}paused'],
+      ),
+      syncedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}synced_at'],
+      )!,
+    );
+  }
+
+  @override
+  $CachedFleetPeonsTable createAlias(String alias) {
+    return $CachedFleetPeonsTable(attachedDatabase, alias);
+  }
+}
+
+class CachedFleetPeon extends DataClass implements Insertable<CachedFleetPeon> {
+  final String workspaceId;
+  final String peonId;
+  final String? name;
+  final String? hostname;
+  final String? baseUrl;
+  final String? addressSource;
+  final bool online;
+  final double lastSeen;
+  final String capabilitiesJson;
+  final int? activeSessions;
+  final bool? paused;
+  final double syncedAt;
+  const CachedFleetPeon({
+    required this.workspaceId,
+    required this.peonId,
+    this.name,
+    this.hostname,
+    this.baseUrl,
+    this.addressSource,
+    required this.online,
+    required this.lastSeen,
+    required this.capabilitiesJson,
+    this.activeSessions,
+    this.paused,
+    required this.syncedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['workspace_id'] = Variable<String>(workspaceId);
+    map['peon_id'] = Variable<String>(peonId);
+    if (!nullToAbsent || name != null) {
+      map['name'] = Variable<String>(name);
+    }
+    if (!nullToAbsent || hostname != null) {
+      map['hostname'] = Variable<String>(hostname);
+    }
+    if (!nullToAbsent || baseUrl != null) {
+      map['base_url'] = Variable<String>(baseUrl);
+    }
+    if (!nullToAbsent || addressSource != null) {
+      map['address_source'] = Variable<String>(addressSource);
+    }
+    map['online'] = Variable<bool>(online);
+    map['last_seen'] = Variable<double>(lastSeen);
+    map['capabilities_json'] = Variable<String>(capabilitiesJson);
+    if (!nullToAbsent || activeSessions != null) {
+      map['active_sessions'] = Variable<int>(activeSessions);
+    }
+    if (!nullToAbsent || paused != null) {
+      map['paused'] = Variable<bool>(paused);
+    }
+    map['synced_at'] = Variable<double>(syncedAt);
+    return map;
+  }
+
+  CachedFleetPeonsCompanion toCompanion(bool nullToAbsent) {
+    return CachedFleetPeonsCompanion(
+      workspaceId: Value(workspaceId),
+      peonId: Value(peonId),
+      name: name == null && nullToAbsent ? const Value.absent() : Value(name),
+      hostname: hostname == null && nullToAbsent
+          ? const Value.absent()
+          : Value(hostname),
+      baseUrl: baseUrl == null && nullToAbsent
+          ? const Value.absent()
+          : Value(baseUrl),
+      addressSource: addressSource == null && nullToAbsent
+          ? const Value.absent()
+          : Value(addressSource),
+      online: Value(online),
+      lastSeen: Value(lastSeen),
+      capabilitiesJson: Value(capabilitiesJson),
+      activeSessions: activeSessions == null && nullToAbsent
+          ? const Value.absent()
+          : Value(activeSessions),
+      paused: paused == null && nullToAbsent
+          ? const Value.absent()
+          : Value(paused),
+      syncedAt: Value(syncedAt),
+    );
+  }
+
+  factory CachedFleetPeon.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return CachedFleetPeon(
+      workspaceId: serializer.fromJson<String>(json['workspaceId']),
+      peonId: serializer.fromJson<String>(json['peonId']),
+      name: serializer.fromJson<String?>(json['name']),
+      hostname: serializer.fromJson<String?>(json['hostname']),
+      baseUrl: serializer.fromJson<String?>(json['baseUrl']),
+      addressSource: serializer.fromJson<String?>(json['addressSource']),
+      online: serializer.fromJson<bool>(json['online']),
+      lastSeen: serializer.fromJson<double>(json['lastSeen']),
+      capabilitiesJson: serializer.fromJson<String>(json['capabilitiesJson']),
+      activeSessions: serializer.fromJson<int?>(json['activeSessions']),
+      paused: serializer.fromJson<bool?>(json['paused']),
+      syncedAt: serializer.fromJson<double>(json['syncedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'workspaceId': serializer.toJson<String>(workspaceId),
+      'peonId': serializer.toJson<String>(peonId),
+      'name': serializer.toJson<String?>(name),
+      'hostname': serializer.toJson<String?>(hostname),
+      'baseUrl': serializer.toJson<String?>(baseUrl),
+      'addressSource': serializer.toJson<String?>(addressSource),
+      'online': serializer.toJson<bool>(online),
+      'lastSeen': serializer.toJson<double>(lastSeen),
+      'capabilitiesJson': serializer.toJson<String>(capabilitiesJson),
+      'activeSessions': serializer.toJson<int?>(activeSessions),
+      'paused': serializer.toJson<bool?>(paused),
+      'syncedAt': serializer.toJson<double>(syncedAt),
+    };
+  }
+
+  CachedFleetPeon copyWith({
+    String? workspaceId,
+    String? peonId,
+    Value<String?> name = const Value.absent(),
+    Value<String?> hostname = const Value.absent(),
+    Value<String?> baseUrl = const Value.absent(),
+    Value<String?> addressSource = const Value.absent(),
+    bool? online,
+    double? lastSeen,
+    String? capabilitiesJson,
+    Value<int?> activeSessions = const Value.absent(),
+    Value<bool?> paused = const Value.absent(),
+    double? syncedAt,
+  }) => CachedFleetPeon(
+    workspaceId: workspaceId ?? this.workspaceId,
+    peonId: peonId ?? this.peonId,
+    name: name.present ? name.value : this.name,
+    hostname: hostname.present ? hostname.value : this.hostname,
+    baseUrl: baseUrl.present ? baseUrl.value : this.baseUrl,
+    addressSource: addressSource.present
+        ? addressSource.value
+        : this.addressSource,
+    online: online ?? this.online,
+    lastSeen: lastSeen ?? this.lastSeen,
+    capabilitiesJson: capabilitiesJson ?? this.capabilitiesJson,
+    activeSessions: activeSessions.present
+        ? activeSessions.value
+        : this.activeSessions,
+    paused: paused.present ? paused.value : this.paused,
+    syncedAt: syncedAt ?? this.syncedAt,
+  );
+  CachedFleetPeon copyWithCompanion(CachedFleetPeonsCompanion data) {
+    return CachedFleetPeon(
+      workspaceId: data.workspaceId.present
+          ? data.workspaceId.value
+          : this.workspaceId,
+      peonId: data.peonId.present ? data.peonId.value : this.peonId,
+      name: data.name.present ? data.name.value : this.name,
+      hostname: data.hostname.present ? data.hostname.value : this.hostname,
+      baseUrl: data.baseUrl.present ? data.baseUrl.value : this.baseUrl,
+      addressSource: data.addressSource.present
+          ? data.addressSource.value
+          : this.addressSource,
+      online: data.online.present ? data.online.value : this.online,
+      lastSeen: data.lastSeen.present ? data.lastSeen.value : this.lastSeen,
+      capabilitiesJson: data.capabilitiesJson.present
+          ? data.capabilitiesJson.value
+          : this.capabilitiesJson,
+      activeSessions: data.activeSessions.present
+          ? data.activeSessions.value
+          : this.activeSessions,
+      paused: data.paused.present ? data.paused.value : this.paused,
+      syncedAt: data.syncedAt.present ? data.syncedAt.value : this.syncedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CachedFleetPeon(')
+          ..write('workspaceId: $workspaceId, ')
+          ..write('peonId: $peonId, ')
+          ..write('name: $name, ')
+          ..write('hostname: $hostname, ')
+          ..write('baseUrl: $baseUrl, ')
+          ..write('addressSource: $addressSource, ')
+          ..write('online: $online, ')
+          ..write('lastSeen: $lastSeen, ')
+          ..write('capabilitiesJson: $capabilitiesJson, ')
+          ..write('activeSessions: $activeSessions, ')
+          ..write('paused: $paused, ')
+          ..write('syncedAt: $syncedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    workspaceId,
+    peonId,
+    name,
+    hostname,
+    baseUrl,
+    addressSource,
+    online,
+    lastSeen,
+    capabilitiesJson,
+    activeSessions,
+    paused,
+    syncedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is CachedFleetPeon &&
+          other.workspaceId == this.workspaceId &&
+          other.peonId == this.peonId &&
+          other.name == this.name &&
+          other.hostname == this.hostname &&
+          other.baseUrl == this.baseUrl &&
+          other.addressSource == this.addressSource &&
+          other.online == this.online &&
+          other.lastSeen == this.lastSeen &&
+          other.capabilitiesJson == this.capabilitiesJson &&
+          other.activeSessions == this.activeSessions &&
+          other.paused == this.paused &&
+          other.syncedAt == this.syncedAt);
+}
+
+class CachedFleetPeonsCompanion extends UpdateCompanion<CachedFleetPeon> {
+  final Value<String> workspaceId;
+  final Value<String> peonId;
+  final Value<String?> name;
+  final Value<String?> hostname;
+  final Value<String?> baseUrl;
+  final Value<String?> addressSource;
+  final Value<bool> online;
+  final Value<double> lastSeen;
+  final Value<String> capabilitiesJson;
+  final Value<int?> activeSessions;
+  final Value<bool?> paused;
+  final Value<double> syncedAt;
+  final Value<int> rowid;
+  const CachedFleetPeonsCompanion({
+    this.workspaceId = const Value.absent(),
+    this.peonId = const Value.absent(),
+    this.name = const Value.absent(),
+    this.hostname = const Value.absent(),
+    this.baseUrl = const Value.absent(),
+    this.addressSource = const Value.absent(),
+    this.online = const Value.absent(),
+    this.lastSeen = const Value.absent(),
+    this.capabilitiesJson = const Value.absent(),
+    this.activeSessions = const Value.absent(),
+    this.paused = const Value.absent(),
+    this.syncedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  CachedFleetPeonsCompanion.insert({
+    required String workspaceId,
+    required String peonId,
+    this.name = const Value.absent(),
+    this.hostname = const Value.absent(),
+    this.baseUrl = const Value.absent(),
+    this.addressSource = const Value.absent(),
+    required bool online,
+    required double lastSeen,
+    this.capabilitiesJson = const Value.absent(),
+    this.activeSessions = const Value.absent(),
+    this.paused = const Value.absent(),
+    required double syncedAt,
+    this.rowid = const Value.absent(),
+  }) : workspaceId = Value(workspaceId),
+       peonId = Value(peonId),
+       online = Value(online),
+       lastSeen = Value(lastSeen),
+       syncedAt = Value(syncedAt);
+  static Insertable<CachedFleetPeon> custom({
+    Expression<String>? workspaceId,
+    Expression<String>? peonId,
+    Expression<String>? name,
+    Expression<String>? hostname,
+    Expression<String>? baseUrl,
+    Expression<String>? addressSource,
+    Expression<bool>? online,
+    Expression<double>? lastSeen,
+    Expression<String>? capabilitiesJson,
+    Expression<int>? activeSessions,
+    Expression<bool>? paused,
+    Expression<double>? syncedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (workspaceId != null) 'workspace_id': workspaceId,
+      if (peonId != null) 'peon_id': peonId,
+      if (name != null) 'name': name,
+      if (hostname != null) 'hostname': hostname,
+      if (baseUrl != null) 'base_url': baseUrl,
+      if (addressSource != null) 'address_source': addressSource,
+      if (online != null) 'online': online,
+      if (lastSeen != null) 'last_seen': lastSeen,
+      if (capabilitiesJson != null) 'capabilities_json': capabilitiesJson,
+      if (activeSessions != null) 'active_sessions': activeSessions,
+      if (paused != null) 'paused': paused,
+      if (syncedAt != null) 'synced_at': syncedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  CachedFleetPeonsCompanion copyWith({
+    Value<String>? workspaceId,
+    Value<String>? peonId,
+    Value<String?>? name,
+    Value<String?>? hostname,
+    Value<String?>? baseUrl,
+    Value<String?>? addressSource,
+    Value<bool>? online,
+    Value<double>? lastSeen,
+    Value<String>? capabilitiesJson,
+    Value<int?>? activeSessions,
+    Value<bool?>? paused,
+    Value<double>? syncedAt,
+    Value<int>? rowid,
+  }) {
+    return CachedFleetPeonsCompanion(
+      workspaceId: workspaceId ?? this.workspaceId,
+      peonId: peonId ?? this.peonId,
+      name: name ?? this.name,
+      hostname: hostname ?? this.hostname,
+      baseUrl: baseUrl ?? this.baseUrl,
+      addressSource: addressSource ?? this.addressSource,
+      online: online ?? this.online,
+      lastSeen: lastSeen ?? this.lastSeen,
+      capabilitiesJson: capabilitiesJson ?? this.capabilitiesJson,
+      activeSessions: activeSessions ?? this.activeSessions,
+      paused: paused ?? this.paused,
+      syncedAt: syncedAt ?? this.syncedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (workspaceId.present) {
+      map['workspace_id'] = Variable<String>(workspaceId.value);
+    }
+    if (peonId.present) {
+      map['peon_id'] = Variable<String>(peonId.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (hostname.present) {
+      map['hostname'] = Variable<String>(hostname.value);
+    }
+    if (baseUrl.present) {
+      map['base_url'] = Variable<String>(baseUrl.value);
+    }
+    if (addressSource.present) {
+      map['address_source'] = Variable<String>(addressSource.value);
+    }
+    if (online.present) {
+      map['online'] = Variable<bool>(online.value);
+    }
+    if (lastSeen.present) {
+      map['last_seen'] = Variable<double>(lastSeen.value);
+    }
+    if (capabilitiesJson.present) {
+      map['capabilities_json'] = Variable<String>(capabilitiesJson.value);
+    }
+    if (activeSessions.present) {
+      map['active_sessions'] = Variable<int>(activeSessions.value);
+    }
+    if (paused.present) {
+      map['paused'] = Variable<bool>(paused.value);
+    }
+    if (syncedAt.present) {
+      map['synced_at'] = Variable<double>(syncedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CachedFleetPeonsCompanion(')
+          ..write('workspaceId: $workspaceId, ')
+          ..write('peonId: $peonId, ')
+          ..write('name: $name, ')
+          ..write('hostname: $hostname, ')
+          ..write('baseUrl: $baseUrl, ')
+          ..write('addressSource: $addressSource, ')
+          ..write('online: $online, ')
+          ..write('lastSeen: $lastSeen, ')
+          ..write('capabilitiesJson: $capabilitiesJson, ')
+          ..write('activeSessions: $activeSessions, ')
+          ..write('paused: $paused, ')
+          ..write('syncedAt: $syncedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $CachedProjectsTable extends CachedProjects
     with TableInfo<$CachedProjectsTable, CachedProject> {
   @override
@@ -5283,6 +6331,12 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
   late final $CachedSessionsTable cachedSessions = $CachedSessionsTable(this);
+  late final $CachedWorkspacesTable cachedWorkspaces = $CachedWorkspacesTable(
+    this,
+  );
+  late final $CachedFleetPeonsTable cachedFleetPeons = $CachedFleetPeonsTable(
+    this,
+  );
   late final $CachedProjectsTable cachedProjects = $CachedProjectsTable(this);
   late final $CachedAiStatsTable cachedAiStats = $CachedAiStatsTable(this);
   late final $CachedPeonManagementTable cachedPeonManagement =
@@ -5303,6 +6357,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   @override
   List<DatabaseSchemaEntity> get allSchemaEntities => [
     cachedSessions,
+    cachedWorkspaces,
+    cachedFleetPeons,
     cachedProjects,
     cachedAiStats,
     cachedPeonManagement,
@@ -5757,6 +6813,542 @@ typedef $$CachedSessionsTableProcessedTableManager =
         BaseReferences<_$AppDatabase, $CachedSessionsTable, CachedSession>,
       ),
       CachedSession,
+      PrefetchHooks Function()
+    >;
+typedef $$CachedWorkspacesTableCreateCompanionBuilder =
+    CachedWorkspacesCompanion Function({
+      required String workspaceId,
+      required String name,
+      Value<String?> role,
+      required double syncedAt,
+      Value<int> rowid,
+    });
+typedef $$CachedWorkspacesTableUpdateCompanionBuilder =
+    CachedWorkspacesCompanion Function({
+      Value<String> workspaceId,
+      Value<String> name,
+      Value<String?> role,
+      Value<double> syncedAt,
+      Value<int> rowid,
+    });
+
+class $$CachedWorkspacesTableFilterComposer
+    extends Composer<_$AppDatabase, $CachedWorkspacesTable> {
+  $$CachedWorkspacesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get workspaceId => $composableBuilder(
+    column: $table.workspaceId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get role => $composableBuilder(
+    column: $table.role,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get syncedAt => $composableBuilder(
+    column: $table.syncedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$CachedWorkspacesTableOrderingComposer
+    extends Composer<_$AppDatabase, $CachedWorkspacesTable> {
+  $$CachedWorkspacesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get workspaceId => $composableBuilder(
+    column: $table.workspaceId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get role => $composableBuilder(
+    column: $table.role,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get syncedAt => $composableBuilder(
+    column: $table.syncedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$CachedWorkspacesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $CachedWorkspacesTable> {
+  $$CachedWorkspacesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get workspaceId => $composableBuilder(
+    column: $table.workspaceId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<String> get role =>
+      $composableBuilder(column: $table.role, builder: (column) => column);
+
+  GeneratedColumn<double> get syncedAt =>
+      $composableBuilder(column: $table.syncedAt, builder: (column) => column);
+}
+
+class $$CachedWorkspacesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $CachedWorkspacesTable,
+          CachedWorkspace,
+          $$CachedWorkspacesTableFilterComposer,
+          $$CachedWorkspacesTableOrderingComposer,
+          $$CachedWorkspacesTableAnnotationComposer,
+          $$CachedWorkspacesTableCreateCompanionBuilder,
+          $$CachedWorkspacesTableUpdateCompanionBuilder,
+          (
+            CachedWorkspace,
+            BaseReferences<
+              _$AppDatabase,
+              $CachedWorkspacesTable,
+              CachedWorkspace
+            >,
+          ),
+          CachedWorkspace,
+          PrefetchHooks Function()
+        > {
+  $$CachedWorkspacesTableTableManager(
+    _$AppDatabase db,
+    $CachedWorkspacesTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$CachedWorkspacesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$CachedWorkspacesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$CachedWorkspacesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> workspaceId = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<String?> role = const Value.absent(),
+                Value<double> syncedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => CachedWorkspacesCompanion(
+                workspaceId: workspaceId,
+                name: name,
+                role: role,
+                syncedAt: syncedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String workspaceId,
+                required String name,
+                Value<String?> role = const Value.absent(),
+                required double syncedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => CachedWorkspacesCompanion.insert(
+                workspaceId: workspaceId,
+                name: name,
+                role: role,
+                syncedAt: syncedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$CachedWorkspacesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $CachedWorkspacesTable,
+      CachedWorkspace,
+      $$CachedWorkspacesTableFilterComposer,
+      $$CachedWorkspacesTableOrderingComposer,
+      $$CachedWorkspacesTableAnnotationComposer,
+      $$CachedWorkspacesTableCreateCompanionBuilder,
+      $$CachedWorkspacesTableUpdateCompanionBuilder,
+      (
+        CachedWorkspace,
+        BaseReferences<_$AppDatabase, $CachedWorkspacesTable, CachedWorkspace>,
+      ),
+      CachedWorkspace,
+      PrefetchHooks Function()
+    >;
+typedef $$CachedFleetPeonsTableCreateCompanionBuilder =
+    CachedFleetPeonsCompanion Function({
+      required String workspaceId,
+      required String peonId,
+      Value<String?> name,
+      Value<String?> hostname,
+      Value<String?> baseUrl,
+      Value<String?> addressSource,
+      required bool online,
+      required double lastSeen,
+      Value<String> capabilitiesJson,
+      Value<int?> activeSessions,
+      Value<bool?> paused,
+      required double syncedAt,
+      Value<int> rowid,
+    });
+typedef $$CachedFleetPeonsTableUpdateCompanionBuilder =
+    CachedFleetPeonsCompanion Function({
+      Value<String> workspaceId,
+      Value<String> peonId,
+      Value<String?> name,
+      Value<String?> hostname,
+      Value<String?> baseUrl,
+      Value<String?> addressSource,
+      Value<bool> online,
+      Value<double> lastSeen,
+      Value<String> capabilitiesJson,
+      Value<int?> activeSessions,
+      Value<bool?> paused,
+      Value<double> syncedAt,
+      Value<int> rowid,
+    });
+
+class $$CachedFleetPeonsTableFilterComposer
+    extends Composer<_$AppDatabase, $CachedFleetPeonsTable> {
+  $$CachedFleetPeonsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get workspaceId => $composableBuilder(
+    column: $table.workspaceId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get peonId => $composableBuilder(
+    column: $table.peonId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get hostname => $composableBuilder(
+    column: $table.hostname,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get baseUrl => $composableBuilder(
+    column: $table.baseUrl,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get addressSource => $composableBuilder(
+    column: $table.addressSource,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get online => $composableBuilder(
+    column: $table.online,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get lastSeen => $composableBuilder(
+    column: $table.lastSeen,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get capabilitiesJson => $composableBuilder(
+    column: $table.capabilitiesJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get activeSessions => $composableBuilder(
+    column: $table.activeSessions,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get paused => $composableBuilder(
+    column: $table.paused,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get syncedAt => $composableBuilder(
+    column: $table.syncedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$CachedFleetPeonsTableOrderingComposer
+    extends Composer<_$AppDatabase, $CachedFleetPeonsTable> {
+  $$CachedFleetPeonsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get workspaceId => $composableBuilder(
+    column: $table.workspaceId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get peonId => $composableBuilder(
+    column: $table.peonId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get hostname => $composableBuilder(
+    column: $table.hostname,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get baseUrl => $composableBuilder(
+    column: $table.baseUrl,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get addressSource => $composableBuilder(
+    column: $table.addressSource,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get online => $composableBuilder(
+    column: $table.online,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get lastSeen => $composableBuilder(
+    column: $table.lastSeen,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get capabilitiesJson => $composableBuilder(
+    column: $table.capabilitiesJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get activeSessions => $composableBuilder(
+    column: $table.activeSessions,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get paused => $composableBuilder(
+    column: $table.paused,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get syncedAt => $composableBuilder(
+    column: $table.syncedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$CachedFleetPeonsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $CachedFleetPeonsTable> {
+  $$CachedFleetPeonsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get workspaceId => $composableBuilder(
+    column: $table.workspaceId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get peonId =>
+      $composableBuilder(column: $table.peonId, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<String> get hostname =>
+      $composableBuilder(column: $table.hostname, builder: (column) => column);
+
+  GeneratedColumn<String> get baseUrl =>
+      $composableBuilder(column: $table.baseUrl, builder: (column) => column);
+
+  GeneratedColumn<String> get addressSource => $composableBuilder(
+    column: $table.addressSource,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get online =>
+      $composableBuilder(column: $table.online, builder: (column) => column);
+
+  GeneratedColumn<double> get lastSeen =>
+      $composableBuilder(column: $table.lastSeen, builder: (column) => column);
+
+  GeneratedColumn<String> get capabilitiesJson => $composableBuilder(
+    column: $table.capabilitiesJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get activeSessions => $composableBuilder(
+    column: $table.activeSessions,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get paused =>
+      $composableBuilder(column: $table.paused, builder: (column) => column);
+
+  GeneratedColumn<double> get syncedAt =>
+      $composableBuilder(column: $table.syncedAt, builder: (column) => column);
+}
+
+class $$CachedFleetPeonsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $CachedFleetPeonsTable,
+          CachedFleetPeon,
+          $$CachedFleetPeonsTableFilterComposer,
+          $$CachedFleetPeonsTableOrderingComposer,
+          $$CachedFleetPeonsTableAnnotationComposer,
+          $$CachedFleetPeonsTableCreateCompanionBuilder,
+          $$CachedFleetPeonsTableUpdateCompanionBuilder,
+          (
+            CachedFleetPeon,
+            BaseReferences<
+              _$AppDatabase,
+              $CachedFleetPeonsTable,
+              CachedFleetPeon
+            >,
+          ),
+          CachedFleetPeon,
+          PrefetchHooks Function()
+        > {
+  $$CachedFleetPeonsTableTableManager(
+    _$AppDatabase db,
+    $CachedFleetPeonsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$CachedFleetPeonsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$CachedFleetPeonsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$CachedFleetPeonsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> workspaceId = const Value.absent(),
+                Value<String> peonId = const Value.absent(),
+                Value<String?> name = const Value.absent(),
+                Value<String?> hostname = const Value.absent(),
+                Value<String?> baseUrl = const Value.absent(),
+                Value<String?> addressSource = const Value.absent(),
+                Value<bool> online = const Value.absent(),
+                Value<double> lastSeen = const Value.absent(),
+                Value<String> capabilitiesJson = const Value.absent(),
+                Value<int?> activeSessions = const Value.absent(),
+                Value<bool?> paused = const Value.absent(),
+                Value<double> syncedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => CachedFleetPeonsCompanion(
+                workspaceId: workspaceId,
+                peonId: peonId,
+                name: name,
+                hostname: hostname,
+                baseUrl: baseUrl,
+                addressSource: addressSource,
+                online: online,
+                lastSeen: lastSeen,
+                capabilitiesJson: capabilitiesJson,
+                activeSessions: activeSessions,
+                paused: paused,
+                syncedAt: syncedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String workspaceId,
+                required String peonId,
+                Value<String?> name = const Value.absent(),
+                Value<String?> hostname = const Value.absent(),
+                Value<String?> baseUrl = const Value.absent(),
+                Value<String?> addressSource = const Value.absent(),
+                required bool online,
+                required double lastSeen,
+                Value<String> capabilitiesJson = const Value.absent(),
+                Value<int?> activeSessions = const Value.absent(),
+                Value<bool?> paused = const Value.absent(),
+                required double syncedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => CachedFleetPeonsCompanion.insert(
+                workspaceId: workspaceId,
+                peonId: peonId,
+                name: name,
+                hostname: hostname,
+                baseUrl: baseUrl,
+                addressSource: addressSource,
+                online: online,
+                lastSeen: lastSeen,
+                capabilitiesJson: capabilitiesJson,
+                activeSessions: activeSessions,
+                paused: paused,
+                syncedAt: syncedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$CachedFleetPeonsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $CachedFleetPeonsTable,
+      CachedFleetPeon,
+      $$CachedFleetPeonsTableFilterComposer,
+      $$CachedFleetPeonsTableOrderingComposer,
+      $$CachedFleetPeonsTableAnnotationComposer,
+      $$CachedFleetPeonsTableCreateCompanionBuilder,
+      $$CachedFleetPeonsTableUpdateCompanionBuilder,
+      (
+        CachedFleetPeon,
+        BaseReferences<_$AppDatabase, $CachedFleetPeonsTable, CachedFleetPeon>,
+      ),
+      CachedFleetPeon,
       PrefetchHooks Function()
     >;
 typedef $$CachedProjectsTableCreateCompanionBuilder =
@@ -8039,6 +9631,10 @@ class $AppDatabaseManager {
   $AppDatabaseManager(this._db);
   $$CachedSessionsTableTableManager get cachedSessions =>
       $$CachedSessionsTableTableManager(_db, _db.cachedSessions);
+  $$CachedWorkspacesTableTableManager get cachedWorkspaces =>
+      $$CachedWorkspacesTableTableManager(_db, _db.cachedWorkspaces);
+  $$CachedFleetPeonsTableTableManager get cachedFleetPeons =>
+      $$CachedFleetPeonsTableTableManager(_db, _db.cachedFleetPeons);
   $$CachedProjectsTableTableManager get cachedProjects =>
       $$CachedProjectsTableTableManager(_db, _db.cachedProjects);
   $$CachedAiStatsTableTableManager get cachedAiStats =>

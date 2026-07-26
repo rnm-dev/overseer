@@ -83,9 +83,9 @@ class AppTextField extends StatelessWidget {
             child: Text(
               labelText,
               style: AppTypography.display(
-                fontSize: 10,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 2,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.15,
                 color: AppColors.boneDim,
               ),
             ),
@@ -138,8 +138,8 @@ class AppTextField extends StatelessWidget {
         height: 1.2,
       ),
       filled: true,
-      fillColor: AppColors.iron950,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      fillColor: AppColors.rowSurface,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
       prefixIcon: prefix == null
           ? null
           : Padding(

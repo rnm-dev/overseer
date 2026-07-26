@@ -7,17 +7,19 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../features/auth/domain/auth_models.dart';
 import '../live/active_sessions.dart';
 
-final sessionActivityServiceProvider = Provider<SessionActivityService>(
-  (ref) => const NoopSessionActivityService(),
-);
+final sessionActivityServiceProvider =
+    Provider.autoDispose<SessionActivityService>(
+      (ref) => const NoopSessionActivityService(),
+    );
 
-final sessionActivityCoordinatorProvider = Provider<SessionActivityCoordinator>(
-  (ref) =>
-      SessionActivityCoordinator(ref.watch(sessionActivityServiceProvider)),
-);
+final sessionActivityCoordinatorProvider =
+    Provider.autoDispose<SessionActivityCoordinator>(
+      (ref) =>
+          SessionActivityCoordinator(ref.watch(sessionActivityServiceProvider)),
+    );
 
 final sessionActivityRegistrationProvider =
-    Provider<SessionActivityRegistrationService>(
+    Provider.autoDispose<SessionActivityRegistrationService>(
       (ref) => const NoopSessionActivityRegistrationService(),
     );
 

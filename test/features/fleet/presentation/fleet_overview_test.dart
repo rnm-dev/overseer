@@ -17,8 +17,8 @@ import 'package:overseer_mobile/shared/design/theme.dart';
 import 'package:overseer_mobile/shared/design/motion.dart';
 import 'package:overseer_mobile/shared/design/typography.dart';
 import 'package:overseer_mobile/shared/widgets/app_button.dart';
-import 'package:overseer_mobile/shared/widgets/overseer_logo.dart';
-import 'package:overseer_mobile/shared/widgets/surface.dart';
+import 'package:overseer_mobile/shared/widgets/app_card.dart';
+import 'package:overseer_mobile/shared/widgets/app_list_tile.dart';
 
 void main() {
   testWidgets('shows workspaces, peons, presence, and active sessions', (
@@ -64,38 +64,55 @@ void main() {
       tester
           .widget<Padding>(find.byKey(const Key('fleet-screen-padding')))
           .padding,
-      const EdgeInsets.fromLTRB(8, 18, 8, 48),
-    );
-    expect(
-      tester.getSize(find.byType(OverseerLogo)),
-      const Size.square(OverseerLogo.splashExtent),
+      const EdgeInsets.fromLTRB(12, 12, 12, 48),
     );
 
-    final workspaceCard = tester.widget<Surface>(
-      find.byKey(const Key('workspace-rnm')),
+    final workspaceSection = find.byKey(const Key('workspace-rnm'));
+    final settingsSection = find.byKey(const Key('settings-section'));
+    expect(find.byType(AppCard), findsNothing);
+    expect(workspaceSection, findsOneWidget);
+    expect(settingsSection, findsOneWidget);
+    expect(
+      find.descendant(of: workspaceSection, matching: find.byType(AppListTile)),
+      findsNWidgets(2),
     );
-    final settingsCard = tester.widget<Surface>(
-      find.byKey(const Key('settings-card')),
+    expect(
+      find.descendant(of: settingsSection, matching: find.byType(AppListTile)),
+      findsNWidgets(3),
     );
-    expect(settingsCard.padding, workspaceCard.padding);
-    expect(settingsCard.borderRadius, workspaceCard.borderRadius);
+    expect(
+      tester.getTopLeft(find.text('RNM')).dx,
+      tester.getTopLeft(find.text('Settings')).dx,
+    );
+    expect(
+      tester.getTopLeft(find.byKey(const Key('peon-kanat'))).dx,
+      tester.getTopLeft(find.byKey(const Key('sound-setting'))).dx,
+    );
     expect(
       tester.getSize(find.byKey(const Key('sound-setting'))).height,
       tester.getSize(find.byKey(const Key('peon-kanat'))).height,
     );
+    expect(
+      tester.getSize(find.byKey(const Key('notification-setting'))).height,
+      tester.getSize(find.byKey(const Key('sound-setting'))).height,
+    );
+    expect(
+      tester.getSize(find.byKey(const Key('user-card'))).height,
+      tester.getSize(find.byKey(const Key('sound-setting'))).height,
+    );
 
-    final kanatNode = tester.widget<InkWell>(
+    final kanatNode = tester.widget<AppListTile>(
       find.byKey(const Key('peon-kanat')),
     );
-    final material = tester.widget<Material>(
-      find
-          .ancestor(
-            of: find.byWidget(kanatNode),
-            matching: find.byType(Material),
-          )
-          .first,
+    final soundNode = tester.widget<AppListTile>(
+      find.descendant(
+        of: find.byKey(const Key('sound-setting')),
+        matching: find.byType(AppListTile),
+      ),
     );
-    expect(material.color, isNot(AppTheme.dark.scaffoldBackgroundColor));
+    expect(kanatNode.density, soundNode.density);
+    expect(kanatNode.titleMaxLines, 1);
+    expect(soundNode.titleMaxLines, 1);
 
     live.emitActiveSessions('rnm', 'kanat', 3);
     await tester.pump();
@@ -123,6 +140,8 @@ void main() {
 
     expect(find.byKey(const Key('fleet-loading')), findsOneWidget);
     expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(find.text('Settings'), findsOneWidget);
+    expect(find.text('dev@example.com'), findsOneWidget);
 
     result.complete(const []);
     await tester.pump();

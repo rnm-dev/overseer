@@ -16,6 +16,9 @@ class OverseerMobileApp extends StatefulWidget {
     this.foregroundNotification,
     this.onOpenNotification,
     this.onDismissNotification,
+    this.autoSignIn = false,
+    this.onBackToConnections,
+    this.overseerName,
   });
 
   final NotificationDestination? navigationDestination;
@@ -23,6 +26,9 @@ class OverseerMobileApp extends StatefulWidget {
   final InAppNotification? foregroundNotification;
   final ValueChanged<NotificationDestination>? onOpenNotification;
   final VoidCallback? onDismissNotification;
+  final bool autoSignIn;
+  final VoidCallback? onBackToConnections;
+  final String? overseerName;
 
   @override
   State<OverseerMobileApp> createState() => _OverseerMobileAppState();
@@ -35,7 +41,11 @@ class _OverseerMobileAppState extends State<OverseerMobileApp> {
       GoRoute(
         path: '/',
         name: 'home',
-        builder: (context, state) => const AuthGate(),
+        builder: (context, state) => AuthGate(
+          autoSignIn: widget.autoSignIn,
+          onBack: widget.onBackToConnections,
+          overseerName: widget.overseerName,
+        ),
       ),
       GoRoute(
         path: '/peon',
@@ -44,7 +54,11 @@ class _OverseerMobileAppState extends State<OverseerMobileApp> {
           final workspaceId = state.uri.queryParameters['workspaceId'];
           final peonId = state.uri.queryParameters['peonId'];
           if (workspaceId == null || peonId == null) {
-            return const AuthGate();
+            return AuthGate(
+              autoSignIn: widget.autoSignIn,
+              onBack: widget.onBackToConnections,
+              overseerName: widget.overseerName,
+            );
           }
           return PeonDeepLinkPage(
             key: ValueKey('$workspaceId\u0000$peonId'),
@@ -61,7 +75,11 @@ class _OverseerMobileAppState extends State<OverseerMobileApp> {
           final peonId = state.uri.queryParameters['peonId'];
           final sessionId = state.uri.queryParameters['sessionId'];
           if (workspaceId == null || peonId == null || sessionId == null) {
-            return const AuthGate();
+            return AuthGate(
+              autoSignIn: widget.autoSignIn,
+              onBack: widget.onBackToConnections,
+              overseerName: widget.overseerName,
+            );
           }
           return SessionDeepLinkPage(
             key: ValueKey('$workspaceId\u0000$peonId\u0000$sessionId'),
@@ -78,7 +96,11 @@ class _OverseerMobileAppState extends State<OverseerMobileApp> {
           final workspaceId = state.uri.queryParameters['workspaceId'];
           final peonId = state.uri.queryParameters['peonId'];
           if (workspaceId == null || peonId == null) {
-            return const AuthGate();
+            return AuthGate(
+              autoSignIn: widget.autoSignIn,
+              onBack: widget.onBackToConnections,
+              overseerName: widget.overseerName,
+            );
           }
           return ProjectFilesRoutePage(
             key: ValueKey('$workspaceId\u0000$peonId'),

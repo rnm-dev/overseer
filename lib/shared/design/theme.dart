@@ -58,13 +58,13 @@ class AppTheme {
       highlightColor: AppColors.fel.withValues(alpha: 0.14),
       splashColor: AppColors.fel.withValues(alpha: 0.14),
       textTheme: AppTypography.textTheme,
-      extensions: const [AppSpacing(screenHorizontal: 8)],
+      extensions: const [AppSpacing(screenHorizontal: 12)],
       iconTheme: const IconThemeData(color: AppColors.bone),
       appBarTheme: const AppBarTheme(
         backgroundColor: AppColors.voidColor,
         foregroundColor: AppColors.bone,
         elevation: 0,
-        surfaceTintColor: AppColors.felDim,
+        surfaceTintColor: Colors.transparent,
       ),
       cardTheme: const CardThemeData(
         color: AppColors.iron900,
@@ -97,7 +97,7 @@ class AppTheme {
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: AppColors.iron900,
+        fillColor: AppColors.rowSurface,
         border: const OutlineInputBorder(borderRadius: AppMotion.controlShape),
         enabledBorder: const OutlineInputBorder(
           borderRadius: AppMotion.controlShape,
@@ -125,8 +125,8 @@ class AppTheme {
           ),
           textStyle: AppTypography.body(fontWeight: FontWeight.w600),
           elevation: 0,
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          minimumSize: const Size(0, 40),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          minimumSize: const Size(0, 44),
         ),
       ),
       filledButtonTheme: FilledButtonThemeData(
@@ -137,8 +137,8 @@ class AppTheme {
             borderRadius: AppMotion.controlShape,
           ),
           textStyle: AppTypography.body(fontWeight: FontWeight.w600),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          minimumSize: const Size(0, 40),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          minimumSize: const Size(0, 44),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
@@ -149,8 +149,8 @@ class AppTheme {
             borderRadius: AppMotion.controlShape,
           ),
           textStyle: AppTypography.body(fontWeight: FontWeight.w600),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          minimumSize: const Size(0, 40),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          minimumSize: const Size(0, 44),
         ),
       ),
       textButtonTheme: TextButtonThemeData(

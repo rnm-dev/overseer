@@ -69,15 +69,41 @@ class AppTypography {
   // the visual hierarchy can be tuned from one place.
   static TextStyle sectionTitle({Color? color}) {
     return display(
-      fontSize: 18,
+      fontSize: 17,
+      fontWeight: FontWeight.w600,
+      color: color ?? AppColors.bone,
+      height: 1.25,
+      letterSpacing: -0.15,
+    );
+  }
+
+  static TextStyle pageTitle({Color? color}) {
+    return display(
+      fontSize: 24,
       fontWeight: FontWeight.w700,
-      color: color ?? AppColors.felBright,
-      letterSpacing: 0.6,
+      color: color ?? AppColors.bone,
+      height: 1.2,
+      letterSpacing: -0.35,
+    );
+  }
+
+  static TextStyle sectionLabel({Color? color}) {
+    return body(
+      fontSize: 11,
+      fontWeight: FontWeight.w600,
+      color: color ?? AppColors.boneDim,
+      height: 1.2,
+      letterSpacing: 1.1,
     );
   }
 
   static TextStyle entityTitle({Color? color}) {
-    return body(fontSize: 15, fontWeight: FontWeight.w600, color: color);
+    return body(
+      fontSize: 15,
+      fontWeight: FontWeight.w600,
+      color: color,
+      height: 1.25,
+    );
   }
 
   static TextStyle controlLabel({Color? color}) {

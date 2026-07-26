@@ -16,8 +16,8 @@ class SessionActivityLifecycle extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final authSession = ref.watch(authControllerProvider).session;
     final activeSessions = ref.watch(activeSessionsProvider);
-    final coordinator = ref.read(sessionActivityCoordinatorProvider);
-    final registration = ref.read(sessionActivityRegistrationProvider);
+    final coordinator = ref.watch(sessionActivityCoordinatorProvider);
+    final registration = ref.watch(sessionActivityRegistrationProvider);
     Future<void>.microtask(() {
       unawaited(
         registration.setAuthToken(authSession?.token).catchError((_) {}),

@@ -6,6 +6,8 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../design/colors.dart';
 
 class AppNavigationBar extends StatelessWidget {
+  static const double fixedContentHeight = 56;
+
   const AppNavigationBar({
     super.key,
     this.left,
@@ -16,10 +18,8 @@ class AppNavigationBar extends StatelessWidget {
     this.backTooltip = 'Back',
     this.applyTopSafeArea = true,
     this.topInsetReduction = 0,
-    this.contentHeight = 44,
     this.contentPadding = const EdgeInsets.fromLTRB(8, 2, 12, 2),
-  }) : assert(topInsetReduction >= 0),
-       assert(contentHeight > 0);
+  }) : assert(topInsetReduction >= 0);
 
   final Widget? left;
   final Widget? right;
@@ -29,7 +29,6 @@ class AppNavigationBar extends StatelessWidget {
   final String backTooltip;
   final bool applyTopSafeArea;
   final double topInsetReduction;
-  final double contentHeight;
   final EdgeInsetsGeometry contentPadding;
 
   @override
@@ -47,7 +46,7 @@ class AppNavigationBar extends StatelessWidget {
       child: Padding(
         padding: EdgeInsets.only(top: topInset),
         child: SizedBox(
-          height: contentHeight,
+          height: fixedContentHeight,
           child: Padding(
             padding: contentPadding,
             child: Row(

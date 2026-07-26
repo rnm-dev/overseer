@@ -3,11 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../features/auth/application/auth_controller.dart';
 import '../features/auth/application/auth_state.dart';
-import '../features/auth/presentation/auth_restoring_page.dart';
 import '../features/auth/presentation/sign_in_page.dart';
 import '../features/sessions/application/sessions_controller.dart';
 import '../features/sessions/domain/session_models.dart';
 import '../features/sessions/sessions.dart';
+import '../features/shell/shell.dart';
 
 class SessionDeepLinkPage extends ConsumerWidget {
   const SessionDeepLinkPage({
@@ -25,7 +25,7 @@ class SessionDeepLinkPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final auth = ref.watch(authControllerProvider);
     return switch (auth.phase) {
-      AuthPhase.restoring => const AuthRestoringPage(),
+      AuthPhase.restoring => const ShellPage.loading(),
       AuthPhase.unauthenticated => SignInPage(
         onSignIn: ref.read(authControllerProvider.notifier).signIn,
         errorMessage: auth.errorMessage,

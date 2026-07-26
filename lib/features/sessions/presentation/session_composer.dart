@@ -6,8 +6,49 @@ import '../../../shared/design/colors.dart';
 import '../../../shared/design/motion.dart';
 import '../../../shared/design/typography.dart';
 import '../../../shared/widgets/app_bottom_sheet.dart';
+import '../../../shared/widgets/app_button.dart';
+import '../../../shared/widgets/app_markdown.dart';
+import '../../../shared/widgets/app_text_field.dart';
+import '../application/voice_dictation_controller.dart';
 import '../domain/followup_repository.dart';
 import '../domain/new_session_repository.dart';
+
+TextEditingValue insertVoiceTranscript(
+  TextEditingValue value,
+  String transcript,
+) {
+  final selection = value.selection.isValid
+      ? value.selection
+      : TextSelection.collapsed(offset: value.text.length);
+  var insertion = transcript.trim();
+  if (insertion.isEmpty) return value;
+  if (selection.start > 0 &&
+      !_isWhitespace(value.text.codeUnitAt(selection.start - 1))) {
+    insertion = ' $insertion';
+  }
+  if (selection.end < value.text.length &&
+      !_isWhitespace(value.text.codeUnitAt(selection.end))) {
+    insertion = '$insertion ';
+  }
+  final text = value.text.replaceRange(
+    selection.start,
+    selection.end,
+    insertion,
+  );
+  return value.copyWith(
+    text: text,
+    selection: TextSelection.collapsed(
+      offset: selection.start + insertion.length,
+    ),
+    composing: TextRange.empty,
+  );
+}
+
+bool _isWhitespace(int codeUnit) =>
+    codeUnit == 0x20 ||
+    codeUnit == 0x09 ||
+    codeUnit == 0x0a ||
+    codeUnit == 0x0d;
 
 class SessionComposer extends StatefulWidget {
   const SessionComposer({
@@ -19,6 +60,7 @@ class SessionComposer extends StatefulWidget {
     this.running = false,
     this.queuedCount = 0,
     this.queuedItems = const [],
+    this.editingQueuedItems = const {},
     this.removingQueuedItems = const {},
     this.sendingQueuedItems = const {},
     this.error,
@@ -40,7 +82,12 @@ class SessionComposer extends StatefulWidget {
     this.onSubmit,
     this.onStopAndRun,
     this.onRemoveQueued,
+    this.onEditQueued,
     this.onSendQueuedNow,
+    this.dictation,
+    this.onVoiceStart,
+    this.onVoiceStop,
+    this.onVoiceCancel,
   });
 
   final TextEditingController controller;
@@ -50,6 +97,7 @@ class SessionComposer extends StatefulWidget {
   final bool running;
   final int queuedCount;
   final List<QueuedFollowup> queuedItems;
+  final Set<String> editingQueuedItems;
   final Set<String> removingQueuedItems;
   final Set<String> sendingQueuedItems;
   final String? error;
@@ -70,8 +118,13 @@ class SessionComposer extends StatefulWidget {
   final ValueChanged<int>? onRemoveAttachment;
   final VoidCallback? onSubmit;
   final VoidCallback? onStopAndRun;
-  final ValueChanged<String>? onRemoveQueued;
-  final ValueChanged<String>? onSendQueuedNow;
+  final Future<void> Function(String itemId)? onRemoveQueued;
+  final Future<void> Function(String itemId, String prompt)? onEditQueued;
+  final Future<void> Function(String itemId)? onSendQueuedNow;
+  final VoiceDictationState? dictation;
+  final VoidCallback? onVoiceStart;
+  final VoidCallback? onVoiceStop;
+  final VoidCallback? onVoiceCancel;
 
   @override
   State<SessionComposer> createState() => _SessionComposerState();
@@ -174,8 +227,10 @@ class _SessionComposerState extends State<SessionComposer> {
                 padding: const EdgeInsets.only(bottom: 12),
                 child: _QueuedFollowupList(
                   items: widget.queuedItems,
+                  editing: widget.editingQueuedItems,
                   removing: widget.removingQueuedItems,
                   sending: widget.sendingQueuedItems,
+                  onEdit: widget.onEditQueued,
                   onRemove: widget.onRemoveQueued,
                   onSendNow: widget.onSendQueuedNow,
                 ),
@@ -254,6 +309,14 @@ class _SessionComposerState extends State<SessionComposer> {
                           color: AppColors.boneDim,
                         ),
                       ),
+                    ),
+                  if (widget.dictation?.phase ==
+                          VoiceDictationPhase.recording ||
+                      widget.dictation?.phase ==
+                          VoiceDictationPhase.transcribing)
+                    _VoiceDictationStatus(
+                      state: widget.dictation!,
+                      onCancel: widget.onVoiceCancel,
                     ),
                   if (widget.attachments.isNotEmpty)
                     Padding(
@@ -354,6 +417,13 @@ class _SessionComposerState extends State<SessionComposer> {
                             ? widget.onAttach
                             : null,
                       ),
+                      if (widget.dictation?.showMicrophone == true)
+                        _VoiceDictationButton(
+                          state: widget.dictation!,
+                          enabled: widget.enabled && !widget.pending,
+                          onStart: widget.onVoiceStart,
+                          onStop: widget.onVoiceStop,
+                        ),
                       if (widget.providers.isNotEmpty) ...[
                         Expanded(
                           child: _ComposerCapabilityPicker(
@@ -415,17 +485,21 @@ class _SessionComposerState extends State<SessionComposer> {
 class _QueuedFollowupList extends StatelessWidget {
   const _QueuedFollowupList({
     required this.items,
+    required this.editing,
     required this.removing,
     required this.sending,
+    required this.onEdit,
     required this.onRemove,
     required this.onSendNow,
   });
 
   final List<QueuedFollowup> items;
+  final Set<String> editing;
   final Set<String> removing;
   final Set<String> sending;
-  final ValueChanged<String>? onRemove;
-  final ValueChanged<String>? onSendNow;
+  final Future<void> Function(String itemId, String prompt)? onEdit;
+  final Future<void> Function(String itemId)? onRemove;
+  final Future<void> Function(String itemId)? onSendNow;
 
   @override
   Widget build(BuildContext context) {
@@ -442,56 +516,72 @@ class _QueuedFollowupList extends StatelessWidget {
           separatorBuilder: (_, _) => const SizedBox(height: 8),
           itemBuilder: (context, index) {
             final item = items[index];
+            final isEditing = editing.contains(item.id);
             final isRemoving = removing.contains(item.id);
             final isSending = sending.contains(item.id);
-            final busy = isRemoving || isSending;
-            return Align(
-              alignment: Alignment.centerRight,
-              child: FractionallySizedBox(
-                widthFactor: 0.8,
-                child: Container(
-                  key: Key('session-queue-item-${item.id}'),
-                  padding: const EdgeInsets.fromLTRB(10, 8, 2, 8),
-                  decoration: BoxDecoration(
-                    color: AppColors.iron900.withValues(alpha: 0.78),
-                    borderRadius: const BorderRadius.only(
-                      topLeft: Radius.circular(12),
-                      topRight: Radius.circular(12),
-                      bottomLeft: Radius.circular(12),
-                      bottomRight: Radius.circular(3),
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.28),
-                        blurRadius: 14,
-                        offset: const Offset(0, 5),
+            final busy = isEditing || isRemoving || isSending;
+            return Material(
+              key: Key('session-queue-item-${item.id}'),
+              color: AppColors.iron900.withValues(alpha: 0.78),
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(12),
+                topRight: Radius.circular(12),
+                bottomLeft: Radius.circular(12),
+                bottomRight: Radius.circular(3),
+              ),
+              child: InkWell(
+                key: Key('session-queue-open-${item.id}'),
+                onTap: busy
+                    ? null
+                    : () => _showQueuedFollowupDialog(
+                        context,
+                        item: item,
+                        onEdit: onEdit,
+                        onRemove: onRemove,
+                        onSendNow: onSendNow,
                       ),
-                    ],
-                  ),
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(12),
+                  topRight: Radius.circular(12),
+                  bottomLeft: Radius.circular(12),
+                  bottomRight: Radius.circular(3),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Padding(
                         padding: const EdgeInsets.only(top: 3),
-                        child: Icon(
-                          LucideIcons.hourglass,
-                          size: 13,
-                          color: isSending
-                              ? AppColors.ember
-                              : AppColors.ember.withValues(alpha: 0.7),
-                        ),
+                        child: busy
+                            ? const SizedBox.square(
+                                dimension: 13,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 1.8,
+                                  color: AppColors.ember,
+                                ),
+                              )
+                            : Icon(
+                                LucideIcons.hourglass,
+                                size: 13,
+                                color: AppColors.ember.withValues(alpha: 0.7),
+                              ),
                       ),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              item.prompt,
+                            AppMarkdownPreview(
+                              key: Key('session-queue-markdown-${item.id}'),
+                              data: item.prompt,
                               style: AppTypography.body(
                                 fontSize: 14,
                                 height: 1.35,
                               ),
+                              maxLines: 3,
+                              overflow: TextOverflow.ellipsis,
+                              softWrap: true,
                             ),
                             if (item.attachments.isNotEmpty) ...[
                               const SizedBox(height: 4),
@@ -513,23 +603,14 @@ class _QueuedFollowupList extends StatelessWidget {
                           ],
                         ),
                       ),
-                      _QueueActionButton(
-                        key: Key('session-queue-send-${item.id}'),
-                        tooltip: 'Send now',
-                        icon: LucideIcons.send,
-                        busy: isSending,
-                        enabled: !busy && onSendNow != null,
-                        color: AppColors.ember,
-                        onPressed: () => onSendNow?.call(item.id),
-                      ),
-                      _QueueActionButton(
-                        key: Key('session-queue-remove-${item.id}'),
-                        tooltip: 'Remove queued follow-up',
-                        icon: LucideIcons.trash2,
-                        busy: isRemoving,
-                        enabled: !busy && onRemove != null,
-                        color: AppColors.boneFaint,
-                        onPressed: () => onRemove?.call(item.id),
+                      const SizedBox(width: 6),
+                      const Padding(
+                        padding: EdgeInsets.only(top: 2),
+                        child: Icon(
+                          LucideIcons.maximize2,
+                          size: 14,
+                          color: AppColors.boneFaint,
+                        ),
                       ),
                     ],
                   ),
@@ -543,56 +624,318 @@ class _QueuedFollowupList extends StatelessWidget {
   }
 }
 
-class _QueueActionButton extends StatelessWidget {
-  const _QueueActionButton({
-    super.key,
-    required this.tooltip,
-    required this.icon,
-    required this.busy,
-    required this.enabled,
-    required this.color,
-    required this.onPressed,
+Future<void> _showQueuedFollowupDialog(
+  BuildContext context, {
+  required QueuedFollowup item,
+  required Future<void> Function(String itemId, String prompt)? onEdit,
+  required Future<void> Function(String itemId)? onRemove,
+  required Future<void> Function(String itemId)? onSendNow,
+}) {
+  return showGeneralDialog<void>(
+    context: context,
+    barrierDismissible: true,
+    barrierLabel: 'Close queued message',
+    barrierColor: Colors.black.withValues(alpha: 0.72),
+    transitionDuration: AppMotion.backdropFade,
+    pageBuilder: (_, _, _) => _QueuedFollowupDialog(
+      item: item,
+      onEdit: onEdit,
+      onRemove: onRemove,
+      onSendNow: onSendNow,
+    ),
+    transitionBuilder: (_, animation, _, child) {
+      final curved = CurvedAnimation(
+        parent: animation,
+        curve: AppMotion.modalSettle,
+        reverseCurve: Curves.easeInCubic,
+      );
+      return FadeTransition(
+        opacity: curved,
+        child: ScaleTransition(
+          scale: Tween<double>(begin: 0.94, end: 1).animate(curved),
+          child: child,
+        ),
+      );
+    },
+  );
+}
+
+class _QueuedFollowupDialog extends StatefulWidget {
+  const _QueuedFollowupDialog({
+    required this.item,
+    required this.onEdit,
+    required this.onRemove,
+    required this.onSendNow,
   });
 
-  final String tooltip;
-  final IconData icon;
-  final bool busy;
-  final bool enabled;
-  final Color color;
-  final VoidCallback onPressed;
+  final QueuedFollowup item;
+  final Future<void> Function(String itemId, String prompt)? onEdit;
+  final Future<void> Function(String itemId)? onRemove;
+  final Future<void> Function(String itemId)? onSendNow;
+
+  @override
+  State<_QueuedFollowupDialog> createState() => _QueuedFollowupDialogState();
+}
+
+class _QueuedFollowupDialogState extends State<_QueuedFollowupDialog> {
+  late final TextEditingController _controller = TextEditingController(
+    text: widget.item.prompt,
+  );
+  bool _editing = false;
+  String? _busyAction;
+  String? _error;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _run(String action, Future<void> Function() callback) async {
+    setState(() {
+      _busyAction = action;
+      _error = null;
+    });
+    try {
+      await callback();
+      if (mounted) Navigator.of(context).pop();
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _busyAction = null;
+        _error = 'The queued message could not be updated.';
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    return IconButton(
-      tooltip: tooltip,
-      onPressed: enabled ? onPressed : null,
-      constraints: const BoxConstraints.tightFor(width: 42, height: 44),
-      padding: EdgeInsets.zero,
-      style: IconButton.styleFrom(
-        minimumSize: const Size(42, 44),
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      ),
-      icon: Container(
-        width: 28,
-        height: 28,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(6),
-        ),
-        child: busy
-            ? SizedBox.square(
-                dimension: 13,
-                child: CircularProgressIndicator(
-                  strokeWidth: 1.8,
-                  color: color,
-                ),
-              )
-            : Icon(
-                icon,
-                size: icon == LucideIcons.trash2 ? 15 : 13,
-                color: color,
+    final height = MediaQuery.sizeOf(context).height * 0.8;
+    final busy = _busyAction != null;
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+      child: ConstrainedBox(
+        key: const Key('session-queue-dialog'),
+        constraints: BoxConstraints(maxWidth: 560, maxHeight: height),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: AppColors.iron950,
+            border: Border.all(color: AppColors.iron700),
+            borderRadius: AppMotion.surfaceShape,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.48),
+                blurRadius: 36,
+                offset: const Offset(0, 18),
               ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(18, 14, 8, 8),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        _editing ? 'Edit queued message' : 'Queued message',
+                        style: AppTypography.display(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      key: const Key('session-queue-dialog-close'),
+                      tooltip: 'Close',
+                      onPressed: busy
+                          ? null
+                          : () => Navigator.of(context).pop(),
+                      icon: const Icon(LucideIcons.x, size: 18),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1, color: AppColors.iron800),
+              Flexible(
+                child: SingleChildScrollView(
+                  key: const Key('session-queue-dialog-scroll'),
+                  padding: const EdgeInsets.all(18),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (_editing)
+                        AppTextField(
+                          key: const Key('session-queue-edit-field'),
+                          controller: _controller,
+                          label: 'Message',
+                          minLines: 5,
+                          maxLines: 12,
+                          autofocus: true,
+                          textCapitalization: TextCapitalization.sentences,
+                          onChanged: (_) => setState(() => _error = null),
+                          errorText: _error,
+                        )
+                      else
+                        AppMarkdown(
+                          key: const Key('session-queue-dialog-markdown'),
+                          data: widget.item.prompt,
+                          textStyle: AppTypography.body(
+                            fontSize: 15,
+                            height: 1.5,
+                          ),
+                        ),
+                      if (widget.item.attachments.isNotEmpty) ...[
+                        const SizedBox(height: 14),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 6,
+                          children: [
+                            for (final attachment in widget.item.attachments)
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 9,
+                                  vertical: 6,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: AppColors.iron900,
+                                  border: Border.all(color: AppColors.iron700),
+                                  borderRadius: BorderRadius.circular(7),
+                                ),
+                                child: Text(
+                                  '📎 ${attachment.label}',
+                                  style: AppTypography.mono(
+                                    fontSize: 11,
+                                    color: AppColors.boneDim,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ],
+                      if (_error != null && !_editing) ...[
+                        const SizedBox(height: 12),
+                        Text(
+                          _error!,
+                          style: AppTypography.body(
+                            fontSize: 12,
+                            color: AppColors.blood,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+              const Divider(height: 1, color: AppColors.iron800),
+              Padding(
+                padding: const EdgeInsets.all(12),
+                child: _editing
+                    ? Row(
+                        children: [
+                          Expanded(
+                            child: AppButton(
+                              key: const Key('session-queue-edit-cancel'),
+                              onPressed: busy
+                                  ? null
+                                  : () => setState(() {
+                                      _editing = false;
+                                      _controller.text = widget.item.prompt;
+                                      _error = null;
+                                    }),
+                              variant: AppButtonVariant.ghost,
+                              size: AppButtonSize.sm,
+                              fullWidth: true,
+                              child: const Text('Cancel'),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: AppButton(
+                              key: const Key('session-queue-edit-save'),
+                              onPressed: busy || widget.onEdit == null
+                                  ? null
+                                  : () {
+                                      final prompt = _controller.text.trim();
+                                      if (prompt.isEmpty) {
+                                        setState(
+                                          () => _error =
+                                              'Message cannot be empty.',
+                                        );
+                                        return;
+                                      }
+                                      _run(
+                                        'edit',
+                                        () => widget.onEdit!(
+                                          widget.item.id,
+                                          prompt,
+                                        ),
+                                      );
+                                    },
+                              loading: _busyAction == 'edit',
+                              size: AppButtonSize.sm,
+                              fullWidth: true,
+                              child: const Text('Save'),
+                            ),
+                          ),
+                        ],
+                      )
+                    : Row(
+                        children: [
+                          Expanded(
+                            child: AppButton(
+                              key: const Key('session-queue-dialog-send'),
+                              onPressed: busy || widget.onSendNow == null
+                                  ? null
+                                  : () => _run(
+                                      'send',
+                                      () => widget.onSendNow!(widget.item.id),
+                                    ),
+                              loading: _busyAction == 'send',
+                              size: AppButtonSize.sm,
+                              fullWidth: true,
+                              child: const Text('Send now'),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: AppButton(
+                              key: const Key('session-queue-dialog-delete'),
+                              onPressed: busy || widget.onRemove == null
+                                  ? null
+                                  : () => _run(
+                                      'delete',
+                                      () => widget.onRemove!(widget.item.id),
+                                    ),
+                              loading: _busyAction == 'delete',
+                              variant: AppButtonVariant.danger,
+                              size: AppButtonSize.sm,
+                              fullWidth: true,
+                              child: const Text('Delete'),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: AppButton(
+                              key: const Key('session-queue-dialog-edit'),
+                              onPressed: busy || widget.onEdit == null
+                                  ? null
+                                  : () => setState(() => _editing = true),
+                              variant: AppButtonVariant.secondary,
+                              size: AppButtonSize.sm,
+                              fullWidth: true,
+                              child: const Text('Edit'),
+                            ),
+                          ),
+                        ],
+                      ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -647,6 +990,142 @@ class _AttachmentChip extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _VoiceDictationStatus extends StatelessWidget {
+  const _VoiceDictationStatus({required this.state, required this.onCancel});
+
+  final VoiceDictationState state;
+  final VoidCallback? onCancel;
+
+  @override
+  Widget build(BuildContext context) {
+    if (state.phase == VoiceDictationPhase.transcribing) {
+      return const Padding(
+        key: Key('session-composer-transcribing'),
+        padding: EdgeInsets.fromLTRB(4, 2, 4, 6),
+        child: Row(
+          children: [
+            SizedBox.square(
+              dimension: 12,
+              child: CircularProgressIndicator(strokeWidth: 1.5),
+            ),
+            SizedBox(width: 7),
+            Text('Transcribing…'),
+          ],
+        ),
+      );
+    }
+
+    final seconds = state.duration.inSeconds;
+    final remaining = state.maxDuration - state.duration;
+    final showCountdown = remaining <= const Duration(seconds: 15);
+    return Padding(
+      key: const Key('session-composer-recording'),
+      padding: const EdgeInsets.fromLTRB(4, 2, 0, 6),
+      child: Row(
+        children: [
+          const Icon(LucideIcons.mic, size: 13, color: AppColors.blood),
+          const SizedBox(width: 7),
+          for (var index = 0; index < 5; index++)
+            AnimatedContainer(
+              key: Key('session-composer-level-$index'),
+              duration: const Duration(milliseconds: 90),
+              width: 3,
+              height: 5 + 12 * (state.amplitude * (index + 1) / 5),
+              margin: const EdgeInsets.only(right: 2),
+              decoration: BoxDecoration(
+                color: state.amplitude > index / 6
+                    ? AppColors.felBright
+                    : AppColors.iron700,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          const SizedBox(width: 8),
+          Text(
+            '${seconds ~/ 60}:${(seconds % 60).toString().padLeft(2, '0')}',
+            style: AppTypography.mono(fontSize: 11, color: AppColors.boneDim),
+          ),
+          if (showCountdown) ...[
+            const SizedBox(width: 8),
+            Text(
+              '${remaining.inSeconds.clamp(0, 15)}s left',
+              key: const Key('session-composer-recording-countdown'),
+              style: AppTypography.mono(fontSize: 11, color: AppColors.ember),
+            ),
+          ],
+          const Spacer(),
+          IconButton(
+            key: const Key('session-composer-voice-cancel'),
+            tooltip: 'Cancel recording',
+            onPressed: onCancel,
+            constraints: const BoxConstraints.tightFor(width: 38, height: 38),
+            padding: EdgeInsets.zero,
+            icon: const Icon(
+              LucideIcons.x,
+              size: 15,
+              color: AppColors.boneFaint,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _VoiceDictationButton extends StatelessWidget {
+  const _VoiceDictationButton({
+    required this.state,
+    required this.enabled,
+    required this.onStart,
+    required this.onStop,
+  });
+
+  final VoiceDictationState state;
+  final bool enabled;
+  final VoidCallback? onStart;
+  final VoidCallback? onStop;
+
+  @override
+  Widget build(BuildContext context) {
+    final recording = state.phase == VoiceDictationPhase.recording;
+    final transcribing = state.phase == VoiceDictationPhase.transcribing;
+    return IconButton(
+      key: const Key('session-composer-voice'),
+      tooltip: recording ? 'Stop dictation' : 'Dictate message',
+      onPressed: !enabled || transcribing
+          ? null
+          : recording
+          ? onStop
+          : onStart,
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints.tightFor(width: 38, height: 44),
+      style: IconButton.styleFrom(
+        minimumSize: const Size(38, 44),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        foregroundColor: recording ? AppColors.blood : AppColors.boneFaint,
+        disabledForegroundColor: AppColors.boneFaint.withValues(alpha: 0.45),
+      ),
+      icon: Container(
+        key: const Key('session-composer-voice-visual'),
+        width: 32,
+        height: 32,
+        decoration: BoxDecoration(
+          color: recording
+              ? AppColors.blood.withValues(alpha: 0.14)
+              : AppColors.iron900,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        alignment: Alignment.center,
+        child: transcribing
+            ? const SizedBox.square(
+                dimension: 14,
+                child: CircularProgressIndicator(strokeWidth: 1.5),
+              )
+            : Icon(recording ? LucideIcons.square : LucideIcons.mic, size: 16),
       ),
     );
   }

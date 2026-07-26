@@ -9,6 +9,7 @@ void main() {
     required VoidCallback onSignIn,
     bool isSigningIn = false,
     String? errorMessage,
+    VoidCallback? onBack,
   }) {
     return MaterialApp(
       theme: AppTheme.dark,
@@ -16,28 +17,25 @@ void main() {
         onSignIn: onSignIn,
         isSigningIn: isSigningIn,
         errorMessage: errorMessage,
-        logo: const SizedBox(
-          key: Key('test-overseer-logo'),
-          width: 220,
-          height: 220,
-        ),
+        onBack: onBack,
       ),
     );
   }
 
-  testWidgets('shows the logo and starts GitHub sign in', (
+  testWidgets('shows a plain sign-in page and starts GitHub sign in', (
     WidgetTester tester,
   ) async {
     var attempts = 0;
 
     await tester.pumpWidget(subject(onSignIn: () => attempts++));
 
-    expect(find.byKey(const Key('test-overseer-logo')), findsOneWidget);
-    expect(find.byKey(const Key('sign-in-hero')), findsOneWidget);
+    expect(find.byType(OverseerLogo), findsNothing);
+    expect(find.byType(Image), findsNothing);
+    expect(find.text('Sign in to Overseer'), findsOneWidget);
     expect(find.text('Sign In'), findsOneWidget);
 
     final button = find.byKey(const Key('github-sign-in-button'));
-    expect(tester.getSize(button).width, greaterThan(700));
+    expect(tester.getSize(button).width, lessThanOrEqualTo(520));
     expect(
       tester.getCenter(button).dx,
       tester.getCenter(find.byType(Scaffold)).dx,
@@ -48,20 +46,16 @@ void main() {
     expect(attempts, 1);
   });
 
-  testWidgets('default logo matches the native splash size', (
-    WidgetTester tester,
-  ) async {
+  testWidgets('returns to the Overseer list', (WidgetTester tester) async {
+    var backCalls = 0;
     await tester.pumpWidget(
-      MaterialApp(
-        theme: AppTheme.dark,
-        home: SignInPage(onSignIn: () {}),
-      ),
+      subject(onSignIn: () {}, onBack: () => backCalls += 1),
     );
 
-    expect(
-      tester.getSize(find.byType(OverseerLogo)),
-      const Size.square(OverseerLogo.splashExtent),
-    );
+    await tester.tap(find.byKey(const Key('auth-back-to-connections')));
+
+    expect(backCalls, 1);
+    expect(find.byTooltip('Back to Overseers'), findsOneWidget);
   });
 
   testWidgets('shows a protected loading state', (WidgetTester tester) async {
