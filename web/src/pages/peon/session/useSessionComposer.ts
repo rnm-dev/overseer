@@ -3,7 +3,7 @@ import { api, ApiError, isPeonNeedsUpdate, json } from "../../../api";
 import type { User } from "../../../auth";
 import type { Translate } from "../../../i18n";
 import { useNotifications } from "../../../notifications";
-import { composerDraftKey, useComposerDraft } from "../drafts";
+import { composerDraftKey, useComposerDraft, useComposerDraftFiles } from "../drafts";
 import type { ModelsCatalog } from "../models";
 import type { Ev } from "./parsing";
 import { createQueueReconciler, enqueueSessionFollowup, getSessionQueue, removeSessionQueueItem, removeWaitingQueueItem, sendSessionQueueItemNow, sendWaitingQueueItemNow, type QueueActivityTracker, type QueueItem } from "./queue";
@@ -67,8 +67,9 @@ export function useSessionComposer({
   setLive, setRunning, setRunningSelection, setStopNote, onWorkStarted,
 }: Args) {
   const { notifyError } = useNotifications();
-  const [input, setInput] = useComposerDraft(composerDraftKey(wsId, peonId, sid));
-  const [files, setFiles] = useState<File[]>([]);
+  const draftKey = composerDraftKey(wsId, peonId, sid);
+  const [input, setInput] = useComposerDraft(draftKey);
+  const [files, setFiles] = useComposerDraftFiles(draftKey);
   const [sending, setSending] = useState(false);
   const submissionGateRef = useRef(createSubmissionGate());
   const [sendError, setSendError] = useState<string | null>(null);

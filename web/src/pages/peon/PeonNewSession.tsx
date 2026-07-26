@@ -8,7 +8,7 @@ import { useNotifications } from "../../notifications";
 import { Label } from "../../ui";
 import { usePeon } from "./context";
 import { Composer, supportsDesktopComposerFocus } from "./Composer";
-import { composerDraftKey, useComposerDraft } from "./drafts";
+import { composerDraftKey, useComposerDraft, useComposerDraftFiles } from "./drafts";
 import { AgentSelect, defaultModelId, defaultReasoningEffortId, ModelSelect, Picker, ReasoningEffortSelect, providerForAgent, providerForModel, useModels } from "./models";
 import { buildNewSessionRequest } from "./newSessionRequest";
 import { PathInput } from "./PathInput";
@@ -41,8 +41,9 @@ export function PeonNewSession() {
   const [agent, setAgent] = useState("");
   const [model, setModel] = useState("");
   const [reasoningEffort, setReasoningEffort] = useState("");
-  const [input, setInput] = useComposerDraft(composerDraftKey(wsId, peon.peonId, null));
-  const [files, setFiles] = useState<File[]>([]);
+  const draftKey = composerDraftKey(wsId, peon.peonId, null);
+  const [input, setInput] = useComposerDraft(draftKey);
+  const [files, setFiles] = useComposerDraftFiles(draftKey);
   const [filesEnabled, setFilesEnabled] = useState<boolean | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -149,6 +150,7 @@ export function PeonNewSession() {
       if (id) {
         playPeonSound("start");
         setInput("");
+        setFiles([]); // the attachments went with the session — don't leave them drafted here
         navigate(`/peons/${peon.peonId}/sessions/${id}`);
       }
       else setSubmitting(false);

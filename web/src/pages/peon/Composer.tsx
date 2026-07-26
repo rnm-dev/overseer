@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Hourglass, Zap } from "lucide-react";
 import { useT } from "../../i18n";
 
@@ -14,6 +14,9 @@ import { useT } from "../../i18n";
 const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
 const MAX_FILES = 10;
+// Keep in sync with the textarea's `max-h-40` (10rem) — the auto-size effect
+// caps the grown height and the class caps the painted one.
+export const MAX_TEXTAREA_HEIGHT = 160;
 const isImage = (f: File) => IMAGE_TYPES.has(f.type);
 // Friendly chip label — pasted screenshots have a machine name; show a short one.
 const chipName = (f: File) => (/^pasted-\d+/.test(f.name) ? "Pasted image" : f.name);
@@ -90,10 +93,15 @@ export function Composer({
   // Object URLs for image thumbnails; revoked when the file set changes/unmounts.
   const previews = useMemo(() => files.map((f) => (isImage(f) ? URL.createObjectURL(f) : null)), [files]);
   useEffect(() => () => previews.forEach((u) => u && URL.revokeObjectURL(u)), [previews]);
-  // Textarea height is grown imperatively as the user types (below); when a
-  // caller clears `value` programmatically after submit, collapse it back.
-  useEffect(() => {
-    if (!value && textareaRef.current) textareaRef.current.style.height = "auto";
+  // Size the textarea to its content on every value change, not just while
+  // typing: a draft restored from storage, a session switch, and a programmatic
+  // clear after submit all land at the right height with no intermediate frame
+  // at the single-row default.
+  useLayoutEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    if (value) el.style.height = `${Math.min(el.scrollHeight, MAX_TEXTAREA_HEIGHT)}px`;
   }, [value]);
 
   function submit() {
@@ -192,11 +200,7 @@ export function Composer({
         placeholder={placeholder}
         disabled={disabled && !autoFocus}
         readOnly={disabled && Boolean(autoFocus)}
-        onChange={(e) => {
-          onChange(e.target.value);
-          e.target.style.height = "auto";
-          e.target.style.height = `${Math.min(e.target.scrollHeight, 160)}px`;
-        }}
+        onChange={(e) => onChange(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
