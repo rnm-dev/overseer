@@ -125,7 +125,11 @@ export function voiceRouter(): express.Router {
         workspaceId,
         byteLength: audio.byteLength,
         durationMs,
-        limits: { requestsPerMinute: config.voice.requestsPerMinute, audioSecondsPerHour: config.voice.audioSecondsPerHour },
+        limits: {
+          requestsPerMinute: config.voice.requestsPerMinute,
+          audioSecondsPerHour: config.voice.audioSecondsPerHour,
+          requestsPerDay: config.voice.requestsPerDay,
+        },
       });
       if (!decision.ok) {
         if (decision.retryAfterSeconds) res.setHeader("Retry-After", String(decision.retryAfterSeconds));
@@ -144,6 +148,13 @@ export function voiceRouter(): express.Router {
       } catch (cause) {
         if (cause instanceof VoiceProviderError) {
           console.warn(`voice.provider_error stage=${cause.stage} status=${cause.status ?? "-"} message=${cause.message}`);
+          // An upstream 429 is a rate limit, not an outage. Reporting it as 502
+          // would tell the client to treat a temporary budget exhaustion as a
+          // broken instance and retry immediately, which makes it worse.
+          if (cause.status === 429) {
+            res.setHeader("Retry-After", String(cause.retryAfterSeconds ?? 30));
+            return res.status(429).json({ error: "the speech provider is rate limiting this instance", code: "VOICE_RATE_LIMITED" });
+          }
           return res.status(502).json({ error: "the speech provider is unavailable", code: "VOICE_PROVIDER_ERROR" });
         }
         throw cause;

@@ -37,7 +37,9 @@ export async function authorizeDictation(request: DictationRequest): Promise<Dic
       ok: false,
       status: 429,
       code: "VOICE_RATE_LIMITED",
-      error: quota.reason === "requests" ? "too many dictation requests" : "dictation audio budget exhausted",
+      error: quota.reason === "requests" ? "too many dictation requests"
+        : quota.reason === "instance-day" ? "this instance's daily dictation budget is exhausted"
+        : "dictation audio budget exhausted",
       retryAfterSeconds: quota.retryAfterSeconds,
     };
   }

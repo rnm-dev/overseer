@@ -30,6 +30,7 @@ export interface VoiceConfig {
   polishTimeoutMs: number;
   requestsPerMinute: number;
   audioSecondsPerHour: number;
+  requestsPerDay: number;
   logTranscripts: boolean;
   warnings: string[];
 }
@@ -45,6 +46,13 @@ function num(env: NodeJS.ProcessEnv, name: string, fallback: number): number {
   if (!raw) return fallback;
   const n = Number(raw);
   return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
+// Unlike num(), 0 is meaningful here: it means "no ceiling configured".
+function countOrZero(env: NodeJS.ProcessEnv, name: string): number {
+  const raw = trimmed(env, name);
+  const n = Number(raw);
+  return raw && Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0;
 }
 
 function normalizeBaseUrl(value: string): string {
@@ -119,6 +127,9 @@ export function resolveVoiceConfig(env: NodeJS.ProcessEnv): VoiceConfig {
     : resolveStage(env, "POLISH", row?.baseUrl ?? null, row?.polishModel ?? null, sharedKey);
   warnings.push(...polish.warnings);
 
+  if (stt.settings && countOrZero(env, "OVERSEER_VOICE_REQUESTS_PER_DAY") === 0) {
+    warnings.push("OVERSEER_VOICE_REQUESTS_PER_DAY is not set — nothing caps the instance's total daily provider spend, so one busy user can exhaust it for everyone. Set it to match your provider tier's daily request limit.");
+  }
   if (stt.settings && !polish.settings && !polishDisabled) {
     warnings.push("no voice polish model resolves — dictation returns the raw transcript. Set OVERSEER_VOICE_POLISH_MODEL, or OVERSEER_VOICE_POLISH=off to make that deliberate.");
   }
@@ -138,6 +149,10 @@ export function resolveVoiceConfig(env: NodeJS.ProcessEnv): VoiceConfig {
     polishTimeoutMs: num(env, "OVERSEER_VOICE_POLISH_TIMEOUT_MS", 1_200),
     requestsPerMinute: num(env, "OVERSEER_VOICE_REQUESTS_PER_MINUTE", 20),
     audioSecondsPerHour: num(env, "OVERSEER_VOICE_AUDIO_SECONDS_PER_HOUR", 1_800),
+    // Deliberately unset by default. Only the operator knows their provider
+    // tier, and silently capping a paid account at some guessed number would be
+    // worse than the warning below.
+    requestsPerDay: countOrZero(env, "OVERSEER_VOICE_REQUESTS_PER_DAY"),
     // Audio is never persisted and transcripts are never logged. This flag is
     // for pointing a dev instance at your own dictation while tuning.
     logTranscripts: trimmed(env, "OVERSEER_VOICE_DEBUG_TRANSCRIPTS") === "1",
