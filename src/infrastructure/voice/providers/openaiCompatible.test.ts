@@ -26,7 +26,7 @@ function captureFetch(response: Response): Captured {
 }
 
 test("transcription posts multipart file/model/prompt and reads text back", async () => {
-  const captured = captureFetch(Response.json({ text: " задеплой Kanat ", language: "ru" }));
+  const captured = captureFetch(Response.json({ text: " задеплой Kanat ", language: "ru", duration: 15.5 }));
   const provider = createSpeechToTextProvider(SETTINGS, LIMITS);
 
   const result = await provider.transcribe({
@@ -44,7 +44,9 @@ test("transcription posts multipart file/model/prompt and reads text back", asyn
   assert.equal(form.get("model"), "whisper-large-v3-turbo");
   assert.equal(form.get("language"), "ru");
   assert.equal(form.get("prompt"), "Kanat, Overseer, Peon");
-  assert.equal(form.get("response_format"), "json");
+  // verbose_json, not json: plain json carries no language field, so the
+  // response contract's `language` would be permanently null.
+  assert.equal(form.get("response_format"), "verbose_json");
   // Whisper-family APIs infer the container from the filename, not the part's
   // content type, so the extension has to follow what the client recorded.
   const file = form.get("file") as File;
@@ -53,6 +55,7 @@ test("transcription posts multipart file/model/prompt and reads text back", asyn
 
   assert.equal(result.text, " задеплой Kanat ");
   assert.equal(result.language, "ru");
+  assert.equal(result.durationSeconds, 15.5);
   assert.equal(result.model, "whisper-large-v3-turbo");
 });
 
@@ -62,6 +65,15 @@ test("an mp4 recording from Safari or the Flutter recorder is named for its cont
     audio: Buffer.from("aac"), mediaType: "audio/mp4", signal: AbortSignal.timeout(1_000),
   });
   assert.equal((( captured.init?.body as FormData).get("file") as File).name, "dictation.m4a");
+});
+
+test("a server that answers plain json anyway still works, just without language", async () => {
+  captureFetch(Response.json({ text: "hello" }));
+  const result = await createSpeechToTextProvider(SETTINGS, LIMITS)
+    .transcribe({ audio: Buffer.from("x"), mediaType: "audio/webm", signal: AbortSignal.timeout(1_000) });
+  assert.equal(result.text, "hello");
+  assert.equal(result.language, undefined);
+  assert.equal(result.durationSeconds, undefined);
 });
 
 test("a keyless local endpoint sends no Authorization header", async () => {

@@ -22,6 +22,9 @@ export interface TranscribeInput {
 export interface TranscribeResult {
   text: string;
   language?: string;
+  // The provider's own measure of the audio it decoded. Unlike the client's
+  // declared duration this cannot be understated, so it is what gets logged.
+  durationSeconds?: number;
   model: string;
 }
 

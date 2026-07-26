@@ -51,7 +51,14 @@ export function createSpeechToTextProvider(settings: VoiceStageSettings | null, 
       const form = new FormData();
       form.append("file", new File([new Uint8Array(input.audio)], audioFileName(input.mediaType), { type: input.mediaType }));
       form.append("model", settings.model);
-      form.append("response_format", "json");
+      // verbose_json rather than json: plain `json` carries only `text`, so the
+      // detected language — part of our response contract, and one of the few
+      // quality signals available when transcripts are never stored — would be
+      // permanently null. verbose_json also returns the true audio duration, so
+      // the log records what was actually sent rather than what the client
+      // claimed. It is part of the OpenAI audio contract this adapter targets;
+      // the parser below tolerates a server that answers with plain json anyway.
+      form.append("response_format", "verbose_json");
       form.append("temperature", "0");
       if (input.language) form.append("language", input.language);
       // Whisper's prompt is a style/context hint, not a substitution
@@ -72,11 +79,12 @@ export function createSpeechToTextProvider(settings: VoiceStageSettings | null, 
       }
       if (!response.ok) throw await failure("stt", response);
 
-      const payload = (await response.json().catch(() => null)) as { text?: unknown; language?: unknown } | null;
+      const payload = (await response.json().catch(() => null)) as { text?: unknown; language?: unknown; duration?: unknown } | null;
       if (!payload || typeof payload.text !== "string") throw new VoiceProviderError("stt", "speech-to-text response carried no text");
       return {
         text: payload.text,
         language: typeof payload.language === "string" ? payload.language : undefined,
+        durationSeconds: typeof payload.duration === "number" ? payload.duration : undefined,
         model: settings.model,
       };
     },
