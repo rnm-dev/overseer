@@ -4,6 +4,7 @@ import { useWorkspace } from "./workspace";
 import { useAuth } from "./auth";
 import { useLocation } from "react-router-dom";
 import { presenceLocationForPath } from "./presence";
+import { documentPresence } from "./pages/peon/sessionAttentionRead";
 import { parsePeonProjection, parsePeonProjections } from "./workspacePeons";
 
 // The selected workspace transport: resumable live events, presence, and session
@@ -87,7 +88,24 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
   // from the socket-level backoff so one flaky session tail can't affect others.
   const tailBackoff = useRef<Map<string, number>>(new Map());
   const tailRetryTimers = useRef<Map<string, number>>(new Map());
-  const desiredPresence = useMemo(() => presenceLocationForPath(pathname), [pathname]);
+  const routePresence = useMemo(() => presenceLocationForPath(pathname), [pathname]);
+  // The route says where the operator is; documentPresence says whether they are
+  // actually looking. Both travel with presence so the server can tell a watched
+  // session from a backgrounded tab.
+  const [presenceActive, setPresenceActive] = useState(() => documentPresence(document));
+  useEffect(() => {
+    const sync = () => setPresenceActive(documentPresence(document));
+    sync();
+    document.addEventListener("visibilitychange", sync);
+    window.addEventListener("focus", sync);
+    window.addEventListener("blur", sync);
+    return () => {
+      document.removeEventListener("visibilitychange", sync);
+      window.removeEventListener("focus", sync);
+      window.removeEventListener("blur", sync);
+    };
+  }, []);
+  const desiredPresence = useMemo(() => ({ ...routePresence, active: presenceActive }), [routePresence, presenceActive]);
   const desiredPresenceRef = useRef(desiredPresence);
   desiredPresenceRef.current = desiredPresence;
 

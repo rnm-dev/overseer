@@ -13,8 +13,11 @@ export interface StoredPresence extends PresenceIdentity {
   sessionId: string | null;
   projectKey: string | null;
   projectId: string | null;
+  // Route presence keeps a backgrounded tab in the viewer list, but "the operator
+  // is actually looking at this" needs focus/visibility too. Absent ⇒ active.
+  active?: boolean;
   expiresAt: number;
 }
 
-export type VisiblePresence = Omit<StoredPresence, "connectionId" | "workspaceId" | "projectKey" | "projectId" | "expiresAt">;
+export type VisiblePresence = Omit<StoredPresence, "connectionId" | "workspaceId" | "projectKey" | "projectId" | "expiresAt" | "active">;
 

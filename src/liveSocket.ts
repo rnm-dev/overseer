@@ -44,6 +44,10 @@ interface Client {
   messageQueue: Promise<void>;
   tails: Map<string, AbortController>;
   location: PresenceLocation | null;
+  // Whether that location is actually in front of the operator (tab visible +
+  // focused). A backgrounded tab keeps its place in the viewer list but must not
+  // count as "seen" for session attention.
+  presenceActive: boolean;
 }
 
 interface PresenceUser {
@@ -172,6 +176,7 @@ export function attachLiveSocket(server: Server): WebSocketServer {
         messageQueue: Promise.resolve(),
         tails: new Map(),
         location: null,
+        presenceActive: true,
       };
       clients.add(client);
       for (const raw of pending) enqueueMessage(client, raw, wsCursor);
@@ -399,9 +404,10 @@ async function replayWindow(client: Client, workspaceId: string, from: number, t
 
 async function setPresence(
   client: Client,
-  msg: { scope?: string; peonId?: string; sessionId?: string },
+  msg: { scope?: string; peonId?: string; sessionId?: string; active?: boolean },
 ): Promise<void> {
   if (!client.workspaceId) return;
+  client.presenceActive = msg.active !== false;
   let next: PresenceLocation;
   if (msg.scope === "workspace") {
     next = { scope: "workspace", peonId: null, sessionId: null, projectKey: null, projectId: null };
@@ -445,6 +451,7 @@ function updateLocation(client: Client, next: PresenceLocation): void {
     sessionId: next.sessionId,
     projectKey: next.projectKey,
     projectId: next.projectId,
+    active: client.presenceActive,
   });
 }
 

@@ -30,6 +30,18 @@ export function removePresence(workspaceId: string, userId: string, connectionId
   presenceBus.emit("changed", workspaceId);
 }
 
+// Authoritative answer to "is this user in front of this session right now?".
+// Used to keep a finished run from raising an unread mark the operator would have
+// to clear by hand on the very session they are watching.
+export function isUserViewingSession(workspaceId: string, userId: string, peonId: string, sessionId: string): boolean {
+  return listHeartbeatPresence(workspaceId).some((entry) =>
+    entry.userId === userId
+    && entry.scope === "session"
+    && entry.peonId === peonId
+    && entry.sessionId === sessionId
+    && entry.active !== false);
+}
+
 export function listHeartbeatPresence(workspaceId: string): StoredPresence[] {
   const now = Date.now();
   let pruned = false;
