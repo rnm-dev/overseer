@@ -18,6 +18,7 @@ src/
     peonHttp/             # outbound Peon HTTP client and stream proxies
     push/                 # notification delivery
     releases/             # release storage and publication
+    voice/                # speech-to-text and text-polish provider seam
   modules/
     auth/
     access/
@@ -25,6 +26,7 @@ src/
     presence/
     projects/
     sessions/
+    voice/
     workspaces/
   shared/                 # small, domain-neutral primitives only
 ```
@@ -54,6 +56,9 @@ these ownership categories rather than being created for a single use case.
   content is sandboxed away from the authenticated Overseer origin.
 - `sessions` owns session projections, reconciliation, accepted-session indexing,
   queries, and session lifecycle rules.
+- `voice` owns who may dictate and how much: workspace-membership admission and
+  the rolling per-user request and audio quotas. The providers themselves are an
+  external system and live in `infrastructure/voice`.
 - `workspaces` owns workspaces, membership, and invitations.
 
 Code that communicates with an external system or provides a technical runtime

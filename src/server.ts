@@ -11,6 +11,7 @@ import { pushRouter } from "./routes/push.js";
 import { webPreviewHandler } from "./webPreview.js";
 import { peonReleasesRouter, releasePublisherRouter } from "./routes/releases.js";
 import { projectViewerRouter } from "./routes/projectViewer.js";
+import { voiceRouter } from "./routes/voice.js";
 
 // The overseer's two-sided HTTP surface:
 //
@@ -94,6 +95,9 @@ export function createServer(): express.Express {
   api.use(pushRouter());
   api.use(workspacesRouter());
   api.use(peonsRouter());
+  // Dictation carries a raw audio body, so it mounts its own parser with its
+  // own, larger limit — under this router only.
+  api.use("/v1/voice", voiceRouter());
 
   app.use("/api", api);
 

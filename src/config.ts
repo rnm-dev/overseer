@@ -2,6 +2,8 @@
 // operator key: peons connect with per-peon credentials (credentials.ts),
 // operators with device tokens (auth.ts). peonCallbackUrl is the tailnet URL the
 // overseer hands a peon at recruitment so it knows where to phone home.
+import { resolveVoiceConfig, type VoiceConfig } from "./infrastructure/voice/voiceConfig.js";
+
 export interface Config {
   port: number;
   host: string;
@@ -40,6 +42,12 @@ export interface Config {
   releaseToken: string;
   releaseDirectory: string;
   releaseMaxBytes: number;
+
+  // Voice dictation. The resolution rules (presets, per-stage overrides, which
+  // stage counts as configured) live with the provider seam in
+  // infrastructure/voice; this is only the wiring, so the two never depend on
+  // each other in a cycle.
+  voice: VoiceConfig;
 }
 
 function num(name: string, fallback: number): number {
@@ -72,6 +80,7 @@ export const config: Config = {
   releaseToken: process.env.OVERSEER_RELEASE_TOKEN ?? "",
   releaseDirectory: process.env.OVERSEER_RELEASE_DIRECTORY ?? "/data/releases",
   releaseMaxBytes: num("OVERSEER_RELEASE_MAX_BYTES", 512 * 1024 * 1024),
+  voice: resolveVoiceConfig(process.env),
 };
 
 // Surfaced at startup so a deploy with no secrets set fails loud rather than
@@ -84,5 +93,11 @@ export function configWarnings(): string[] {
     w.push("OVERSEER_GITHUB_CLIENT_ID / OVERSEER_GITHUB_CLIENT_SECRET are not both set — GitHub sign-in is disabled, so nobody can log in.");
   if (!config.releaseToken)
     w.push("OVERSEER_RELEASE_TOKEN is empty — Peon release publishing is disabled.");
+  // An unconfigured or half-configured voice stage is a boot-time warning, not
+  // a request-time failure: clients read /api/v1/voice/capabilities and simply
+  // hide the mic button on an instance with no provider.
+  if (!config.voice.stt)
+    w.push("OVERSEER_VOICE / OVERSEER_VOICE_STT_BASE_URL are not set — voice dictation is disabled.");
+  w.push(...config.voice.warnings);
   return w;
 }
