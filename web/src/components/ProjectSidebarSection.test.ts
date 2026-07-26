@@ -9,7 +9,7 @@ import {
   PROJECT_SIDEBAR_EXPANDED_STORAGE_KEY,
   ProjectSidebarSection,
   projectContextMenuPosition,
-  projectStatusLightClass,
+  projectStatusEdgeClass,
   saveProjectSidebarExpanded,
   sidebarProjects,
 } from "./ProjectSidebarSection";
@@ -49,9 +49,11 @@ test("project sidebar renders a collapsible header and every visible project lin
   assert.match(markup, />OVERSEER</);
   assert.match(markup, />RNM Website</);
   assert.match(markup, /aria-current="page"/);
-  assert.match(markup, /justify-between px-2 pb-1 pt-2 md:pl-3\.5 md:pr-1/);
-  assert.match(markup, /id="peon-sidebar-projects" class="px-2 pb-2 md:pl-3\.5 md:pr-1"/);
-  assert.match(markup, /block rounded px-2\.5 py-1\.5 transition-colors min-w-0 flex-1 bg-fel\/10/);
+  assert.match(markup, /bg-bone\/5 px-3 py-1\.5 font-display text-\[0\.55rem\] uppercase tracking-\[0\.16em\]/);
+  assert.match(markup, /id="peon-sidebar-projects"/);
+  assert.match(markup, /<ul class="py-1">/);
+  assert.match(markup, /relative block min-w-0 flex-1 py-1\.5 pl-3 transition-colors pr-2 bg-fel\/10/);
+  assert.match(markup, /class="absolute inset-y-1 left-0 w-0\.5 bg-fel-bright status-edge status-edge--fel"/);
   assert.match(markup, /font-display text-\[0\.8rem\] text-bone/);
   assert.match(markup, />3 members</);
   assert.match(markup, />•</);
@@ -60,11 +62,11 @@ test("project sidebar renders a collapsible header and every visible project lin
   assert.doesNotMatch(markup, />\/rnm\/overseer</);
 });
 
-test("project status light glows only while the project has active sessions", () => {
-  assert.match(projectStatusLightClass(1), /bg-fel-bright/);
-  assert.match(projectStatusLightClass(1), /shadow/);
-  assert.equal(projectStatusLightClass(0), "bg-iron-700");
-  assert.equal(projectStatusLightClass(), "bg-iron-700");
+test("project status edge glows only while the project has active sessions", () => {
+  assert.match(projectStatusEdgeClass(1), /bg-fel-bright/);
+  assert.match(projectStatusEdgeClass(1), /status-edge status-edge--fel/);
+  assert.equal(projectStatusEdgeClass(0), "bg-bone-faint/40");
+  assert.equal(projectStatusEdgeClass(), "bg-bone-faint/40");
 });
 
 test("projects with quick links expose a discoverable context-menu button", () => {

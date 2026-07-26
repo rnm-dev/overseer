@@ -63,17 +63,28 @@ export function visibleProjects(projects: ProjectLite[]): ProjectLite[] {
   return projects.filter((project) => !project.deleted);
 }
 
+// Also stamps each project with the newest activity among its sessions, so the
+// sidebar can tell that work moved inside a project even when none of its counts
+// changed — that is what makes a project row flash on incoming session updates.
 export function withLiveActiveSessionCounts(
   projects: ProjectLite[],
-  sessions: Array<{ projectKey?: string | null; status?: string | null }>,
+  sessions: Array<{ projectKey?: string | null; status?: string | null; lastActivityAt?: number | null }>,
 ): ProjectLite[] {
   const activeByProject = new Map<string, number>();
+  const activityByProject = new Map<string, number>();
   for (const session of sessions) {
-    if (session.status !== "running" || !session.projectKey) continue;
-    activeByProject.set(session.projectKey, (activeByProject.get(session.projectKey) ?? 0) + 1);
+    if (!session.projectKey) continue;
+    if (session.status === "running") {
+      activeByProject.set(session.projectKey, (activeByProject.get(session.projectKey) ?? 0) + 1);
+    }
+    const activity = session.lastActivityAt ?? 0;
+    if (activity > (activityByProject.get(session.projectKey) ?? 0)) {
+      activityByProject.set(session.projectKey, activity);
+    }
   }
   return projects.map((project) => ({
     ...project,
     activeCount: activeByProject.get(project.key) ?? 0,
+    lastActivityMs: activityByProject.get(project.key) ?? project.lastActivityMs ?? null,
   }));
 }

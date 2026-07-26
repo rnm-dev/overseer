@@ -131,18 +131,23 @@ async function storeSession(tx: Transaction, workspaceId: string, peonId: string
   return { event: null };
 }
 
+// A finished run turns the requesting user's pending attention row unread, which
+// is what paints the "needs your eyes" edge in the sidebar. Every publisher must
+// run this — the projection is the only place that sees the completed transition.
+async function completeAttention(completion: NonNullable<StoredMutation["completion"]>): Promise<void> {
+  const { workspaceId, peonId, sessionId, completedAt } = completion;
+  await completeNextSessionAttention(workspaceId, peonId, sessionId, completedAt).catch((error) => {
+    console.warn("session attention completion failed:", error instanceof Error ? error.message : String(error));
+  });
+}
+
 async function publishMutation(mutation: StoredMutation): Promise<void> {
   if (mutation.event) {
     await publishCommittedEvent(mutation.event);
     if (mutation.deletedKey) fingerprints.delete(mutation.deletedKey);
     else if (mutation.fingerprintKey && mutation.fingerprint) fingerprints.set(mutation.fingerprintKey, mutation.fingerprint);
   }
-  if (mutation.completion) {
-    const { workspaceId, peonId, sessionId, completedAt } = mutation.completion;
-    await completeNextSessionAttention(workspaceId, peonId, sessionId, completedAt).catch((error) => {
-      console.warn("session attention completion failed:", error instanceof Error ? error.message : String(error));
-    });
-  }
+  if (mutation.completion) await completeAttention(mutation.completion);
 }
 
 export async function upsertSession(workspaceId: string, peonId: string, s: PeonSession): Promise<void> {
@@ -340,6 +345,7 @@ async function publishSyncMutations(mutations: StoredMutation[]): Promise<void> 
         console.warn("session sync event fan-out failed:", error instanceof Error ? error.message : String(error));
       });
     }
+    if (mutation.completion) await completeAttention(mutation.completion);
   }
 }
 

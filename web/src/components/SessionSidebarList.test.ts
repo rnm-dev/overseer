@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
 import { I18nProvider } from "../i18n";
 import { NotificationsProvider } from "../notifications";
-import { sessionContextMenuPosition, sessionRenameDraft, sessionStatusLightClass, SessionSidebarList } from "./SessionSidebarList";
+import { sessionContextMenuPosition, sessionRenameDraft, sessionStatusEdgeClass, SessionSidebarList } from "./SessionSidebarList";
 
 (globalThis as typeof globalThis & { React: typeof React }).React = React;
 
@@ -103,10 +103,10 @@ test("rename starts from the title currently displayed in the sidebar", () => {
   assert.equal(sessionRenameDraft({ id: "empty", title: null, promptPreview: null }), "");
 });
 
-test("session lights prioritize running green, then unread completion amber", () => {
-  assert.match(sessionStatusLightClass("running", true), /bg-fel-bright/);
-  assert.match(sessionStatusLightClass("running", true), /shadow/);
-  assert.match(sessionStatusLightClass("completed", true), /bg-forge/);
-  assert.match(sessionStatusLightClass("completed", true), /shadow/);
-  assert.equal(sessionStatusLightClass("completed", false), "bg-iron-700");
+test("session status edges prioritize running green, then unread completion amber", () => {
+  assert.match(sessionStatusEdgeClass("running", true), /bg-fel-bright/);
+  assert.match(sessionStatusEdgeClass("running", true), /status-edge status-edge--fel/);
+  assert.match(sessionStatusEdgeClass("completed", true), /bg-forge/);
+  assert.match(sessionStatusEdgeClass("completed", true), /status-edge status-edge--forge/);
+  assert.equal(sessionStatusEdgeClass("completed", false), "bg-bone-faint/40");
 });

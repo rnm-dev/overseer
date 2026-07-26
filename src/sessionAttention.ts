@@ -34,19 +34,21 @@ export async function completeNextSessionAttention(
   completedAt: number,
 ): Promise<void> {
   const row = await transaction(async (tx) => {
+    // Only a still-pending occurrence can become unread. An occurrence the user
+    // already viewed is terminal, and it must not sit at the head of the queue
+    // soaking up the completions that belong to later requests.
     const pending = await tx.query<{ user_id: string; occurrence_key: string }>(
       `SELECT user_id, occurrence_key FROM session_attention
-       WHERE workspace_id=$1 AND peon_id=$2 AND session_id=$3 AND completed_at IS NULL
+       WHERE workspace_id=$1 AND peon_id=$2 AND session_id=$3 AND state='pending' AND completed_at IS NULL
        ORDER BY requested_at ASC LIMIT 1`,
       [workspaceId, peonId, sessionId],
     );
     const next = pending.rows[0];
     if (!next) return null;
     const updated = await tx.query<{ user_id: string; state: string }>(
-      `UPDATE session_attention SET
-         state = CASE WHEN state = 'pending' THEN 'unread' ELSE state END,
-         completed_at = $5
-       WHERE user_id=$1 AND peon_id=$2 AND session_id=$3 AND occurrence_key=$4 AND completed_at IS NULL
+      `UPDATE session_attention SET state='unread', completed_at = $5
+       WHERE user_id=$1 AND peon_id=$2 AND session_id=$3 AND occurrence_key=$4
+         AND state='pending' AND completed_at IS NULL
        RETURNING user_id, state`,
       [next.user_id, peonId, sessionId, next.occurrence_key, completedAt],
     );

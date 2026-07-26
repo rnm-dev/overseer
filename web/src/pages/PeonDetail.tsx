@@ -10,6 +10,7 @@ import { useLiveSocket, type SessionLiveEvent } from "../liveSocket";
 import { PeonScopeSwitcher } from "../components/PeonScopeSwitcher";
 import { FadingTitle, SessionSidebarList } from "../components/SessionSidebarList";
 import { ProjectSidebarSection } from "../components/ProjectSidebarSection";
+import { SIDEBAR_SECTION_ACTION_CLASS, SidebarSectionHeader } from "../components/SidebarSectionHeader";
 import { PeonConnectionStatusDot } from "../components/PeonConnectionStatusDot";
 import type { PeonContext, PeonView } from "./peon/context";
 import { NewProjectDialog } from "./peon/NewProjectDialog";
@@ -441,19 +442,18 @@ export function PeonDetail() {
 
           {/* sessions list */}
           <section>
-            <div className="flex items-center justify-between px-2 pb-1 pt-2 md:pl-3.5 md:pr-1">
-              <span className="font-display text-[0.58rem] uppercase tracking-[0.16em] text-bone-faint">{t("peon.tab.sessions")}</span>
-              <Link
-                to={newSessionTo}
-                className="font-display text-[0.58rem] uppercase tracking-[0.16em] text-bone-dim transition-colors hover:text-fel-bright"
-              >
-                {t("newSession.new")}
-              </Link>
-            </div>
-            <div className="px-2 md:pl-3.5 md:pr-1">
-              {!online && <p className="px-2 py-2 font-body text-xs text-bone-faint">{t("peon.offlineNote")}</p>}
+            <SidebarSectionHeader
+              label={t("peon.tab.sessions")}
+              action={(
+                <Link to={newSessionTo} className={SIDEBAR_SECTION_ACTION_CLASS}>
+                  {t("newSession.new")}
+                </Link>
+              )}
+            />
+            <div>
+              {!online && <p className="px-3 py-2 font-body text-xs text-bone-faint">{t("peon.offlineNote")}</p>}
               {ordered.length === 0 && !sessionsLoading && !sessionPageError ? (
-                <p className="px-2 py-2 font-body text-xs text-bone-faint">{t("peon.dash.noSessions")}</p>
+                <p className="px-3 py-2 font-body text-xs text-bone-faint">{t("peon.dash.noSessions")}</p>
               ) : (
                 <>
                   <SessionSidebarList
@@ -464,7 +464,7 @@ export function PeonDetail() {
                     onRename={renameSession}
                     onDelete={deleteSession}
                   />
-                  <div ref={sessionLoadSentinel} className="flex min-h-8 items-center justify-center px-2 py-2" aria-live="polite">
+                  <div ref={sessionLoadSentinel} className="flex min-h-8 items-center justify-center px-3 py-2" aria-live="polite">
                     {sessionsLoading && <span className="forge-spin scale-75" role="status" aria-label={t("sessions.loading")} />}
                     {sessionPageError && (
                       <button type="button" className="font-body text-[0.68rem] text-bone-dim hover:text-fel-bright" onClick={() => void loadNextSessions()}>
