@@ -593,14 +593,18 @@ export function Working({
   label,
   startedAt,
   model,
+  effort,
   onStop,
   stopping,
   stopLabel,
   stoppingLabel,
 }: {
-  label: string;
+  // Absent while the agent is merely thinking — there is nothing concrete to
+  // report, so the row shows the run's model and effort instead of filler text.
+  label?: string | null;
   startedAt?: number;
   model?: string | null;
+  effort?: string | null;
   onStop: () => void;
   stopping: boolean;
   stopLabel: string;
@@ -623,9 +627,10 @@ export function Working({
         <span />
         <span />
       </span>
-      <span>{label}</span>
-      <span className="tabular-nums text-bone-dim">· {duration}</span>
+      {label && <span>{label}</span>}
+      <span className="tabular-nums text-bone-dim">{label ? "· " : ""}{duration}</span>
       {model && <span className="text-bone-dim">· {model}</span>}
+      {effort && <span className="text-bone-dim">· {effort}</span>}
       <button
         type="button"
         data-session-stop-control

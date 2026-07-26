@@ -35,8 +35,10 @@ interface Args {
   t: Translate;
   running: boolean;
   runningModel: string | null;
+  runningReasoningEffort: string | null;
   sessionModel: string | null;
   sessionAgent: string | null;
+  sessionReasoningEffort: string | null;
   sessionPermissionMode: string | null;
   overrideModel: string;
   overrideReasoningEffort: string;
@@ -50,18 +52,19 @@ interface Args {
   stickToBottomRef: MutableRefObject<boolean>;
   setLive: Dispatch<SetStateAction<Ev[]>>;
   setRunning: (running: boolean) => void;
-  setRunningModel: (model: string | null) => void;
+  setRunningSelection: (model: string | null, reasoningEffort: string | null) => void;
   setStopNote: Dispatch<SetStateAction<string | null>>;
   onWorkStarted: () => void;
 }
 
 export function useSessionComposer({
   base, sid, sessionKey, wsId, peonId, user, t, running, runningModel,
-  sessionModel, sessionAgent, sessionPermissionMode, overrideModel,
+  runningReasoningEffort, sessionModel, sessionAgent, sessionReasoningEffort,
+  sessionPermissionMode, overrideModel,
   overrideReasoningEffort, catalog, currentSessionKeyRef, queueReconcilerRef,
   queueActivity,
   pendingEchoesRef, historyReadyRef, tailHighWaterRef, stickToBottomRef,
-  setLive, setRunning, setRunningModel, setStopNote, onWorkStarted,
+  setLive, setRunning, setRunningSelection, setStopNote, onWorkStarted,
 }: Args) {
   const { notifyError } = useNotifications();
   const [input, setInput] = useComposerDraft(composerDraftKey(wsId, peonId, sid));
@@ -120,6 +123,7 @@ export function useSessionComposer({
     const pending = files;
     const wasRunning = running;
     const prevModel = runningModel;
+    const prevReasoningEffort = runningReasoningEffort;
     setSending(true);
     setSendError(null);
     // Optimistically echo + ARM the dedup guard BEFORE any await. The peon echoes the
@@ -150,7 +154,10 @@ export function useSessionComposer({
     stickToBottomRef.current = true; // sending always jumps back to the bottom, even if scrolled up reading history
     setLive((prev) => [...prev, echo]);
     setRunning(true);
-    setRunningModel(overrideModel || sessionModel || (!sessionAgent ? catalog?.defaultModel : null) || null);
+    setRunningSelection(
+      overrideModel || sessionModel || (!sessionAgent ? catalog?.defaultModel : null) || null,
+      overrideReasoningEffort || sessionReasoningEffort || null,
+    );
     setStopNote(null);
     setInput("");
     setFiles([]);
@@ -183,7 +190,7 @@ export function useSessionComposer({
       pendingEchoesRef.current = pendingEchoesRef.current.filter((item) => item.clientId !== clientId);
       setLive((prev) => prev.filter((event) => event._clientId !== clientId));
       setRunning(wasRunning);
-      setRunningModel(wasRunning ? prevModel : null);
+      setRunningSelection(wasRunning ? prevModel : null, wasRunning ? prevReasoningEffort : null);
       setInput(text);
       setFiles(pending);
       notifyError(err, {
@@ -263,10 +270,14 @@ export function useSessionComposer({
     const queued = queueItems.find((item) => item.id === itemId);
     const wasRunning = running;
     const previousModel = runningModel;
+    const previousReasoningEffort = runningReasoningEffort;
     setSendingQueueItems((current) => new Set(current).add(itemId));
     setSendError(null);
     setRunning(true);
-    setRunningModel(queued?.model || runningModel || sessionModel || (!sessionAgent ? catalog?.defaultModel : null) || null);
+    setRunningSelection(
+      queued?.model || runningModel || sessionModel || (!sessionAgent ? catalog?.defaultModel : null) || null,
+      queued?.reasoningEffort || runningReasoningEffort || sessionReasoningEffort || null,
+    );
     setStopNote(null);
     try {
       const accepted = await sendWaitingQueueItemNow(
@@ -278,7 +289,7 @@ export function useSessionComposer({
       if (accepted) onWorkStarted();
       else {
         setRunning(wasRunning);
-        setRunningModel(wasRunning ? previousModel : null);
+        setRunningSelection(wasRunning ? previousModel : null, wasRunning ? previousReasoningEffort : null);
       }
     } finally {
       setSendingQueueItems((current) => {
