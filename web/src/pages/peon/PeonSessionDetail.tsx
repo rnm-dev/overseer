@@ -2,15 +2,15 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { createPortal } from "react-dom";
 import { useNavigate, useParams } from "react-router-dom";
 import { api, ApiError, isPeonNeedsUpdate } from "../../api";
+import { documentPresence } from "./sessionAttentionRead";
 import { useAuth } from "../../auth";
 import { useI18n } from "../../i18n";
 import { useLiveSocket } from "../../liveSocket";
 import { usePeon } from "./context";
-import { modelLabel, optionMatches, providerForAgent, providerForModel, useModels } from "./models";
+import { defaultModelId, modelLabel, optionMatches, providerForAgent, providerForModel, reasoningEffortLabel, useModels } from "./models";
 import {
   flattenEvents,
   gapClass,
-  orcishThinkingLabel,
   usageBreakdown,
   usageFromEvent,
   workingActivity,
@@ -69,10 +69,24 @@ export function PeonSessionDetail() {
   // settle in the small render→effect window and must not mutate the new session.
   currentSessionKeyRef.current = sessionKey;
 
-  useEffect(() => {
-    if (!sid) return;
+  // Clearing the unread mark means "the operator has seen this". Only claim that
+  // while the tab is actually in front of them; otherwise wait until it is, so a
+  // run that finishes in a backgrounded tab keeps its amber edge.
+  const markAttentionRead = useCallback(() => {
+    if (!sid || !documentPresence(document)) return;
     void api(`${base}/sessions/${encodeURIComponent(sid)}/attention/read`, { method: "POST" }).catch(() => undefined);
   }, [base, sid]);
+
+  useEffect(() => {
+    markAttentionRead();
+    const onPresence = () => markAttentionRead();
+    document.addEventListener("visibilitychange", onPresence);
+    window.addEventListener("focus", onPresence);
+    return () => {
+      document.removeEventListener("visibilitychange", onPresence);
+      window.removeEventListener("focus", onPresence);
+    };
+  }, [markAttentionRead]);
 
   // Session title + inline rename.
   const [title, setTitle] = useState<string | null>(null);
@@ -123,13 +137,15 @@ export function PeonSessionDetail() {
   // session record, flipped on by sending a followup, off by a `result` frame.
   // Key active-run state to the session so navigating between session routes can
   // never flash the previous session's indicator before the new metadata lands.
-  const [activeRun, setActiveRun] = useState<{ sessionKey: string; running: boolean; model: string | null }>(() => ({
+  const [activeRun, setActiveRun] = useState<{ sessionKey: string; running: boolean; model: string | null; reasoningEffort: string | null }>(() => ({
     sessionKey,
     running: false,
     model: null,
+    reasoningEffort: null,
   }));
   const running = activeRun.sessionKey === sessionKey && activeRun.running;
   const runningModel = activeRun.sessionKey === sessionKey ? activeRun.model : null;
+  const runningReasoningEffort = activeRun.sessionKey === sessionKey ? activeRun.reasoningEffort : null;
   const runRevisionRef = useRef<Map<string, number>>(new Map());
   const metadataStatusRef = useRef<Map<string, string | null>>(new Map());
   const setRunning = useCallback((next: boolean) => {
@@ -138,14 +154,18 @@ export function PeonSessionDetail() {
       sessionKey,
       running: next,
       model: next && previous.sessionKey === sessionKey ? previous.model : null,
+      reasoningEffort: next && previous.sessionKey === sessionKey ? previous.reasoningEffort : null,
     }));
     onSessionRunningChange?.(peon.peonId, sid, next, Date.now());
   }, [onSessionRunningChange, peon.peonId, sessionKey, sid]);
-  const setRunningModel = useCallback((model: string | null) => {
+  // Model and effort always travel together: they describe the same turn, and
+  // the activity indicator reports both.
+  const setRunningSelection = useCallback((model: string | null, reasoningEffort: string | null) => {
     setActiveRun((previous) => ({
       sessionKey,
       running: previous.sessionKey === sessionKey && previous.running,
       model,
+      reasoningEffort,
     }));
   }, [sessionKey]);
   const [stopping, setStopping] = useState(false);
@@ -204,13 +224,14 @@ export function PeonSessionDetail() {
       sessionKey,
       running: true,
       model: previous.sessionKey === sessionKey ? previous.model : null,
+      reasoningEffort: previous.sessionKey === sessionKey ? previous.reasoningEffort : null,
     }));
   }, [sessionKey]);
   const onRunFinished = useCallback((event?: { type?: string; is_error?: boolean }) => {
     if (queueActivityRef.current.hasPending(sessionKey)) return;
     setRunning(false);
     setMetaTick((value) => value + 1);
-    void api(`${base}/sessions/${encodeURIComponent(sid)}/attention/read`, { method: "POST" }).catch(() => undefined);
+    markAttentionRead();
     if (!event || !isSuccessfulRunResult(event)) return;
     if (suppressCompletionSoundRef.current) {
       suppressCompletionSoundRef.current = false;
@@ -290,8 +311,10 @@ export function PeonSessionDetail() {
     t,
     running,
     runningModel,
+    runningReasoningEffort,
     sessionModel,
     sessionAgent,
+    sessionReasoningEffort,
     sessionPermissionMode,
     overrideModel,
     overrideReasoningEffort,
@@ -305,7 +328,7 @@ export function PeonSessionDetail() {
     stickToBottomRef,
     setLive,
     setRunning,
-    setRunningModel,
+    setRunningSelection,
     setStopNote,
     onWorkStarted,
   });
@@ -336,7 +359,7 @@ export function PeonSessionDetail() {
         // transition overwrite that newer transition when its response arrives.
         if ((runRevisionRef.current.get(sessionKey) ?? 0) === runRevision) {
           setRunning(s.status === "running");
-          if (s.status === "running") setRunningModel(s.model ?? null);
+          if (s.status === "running") setRunningSelection(s.model ?? null, s.reasoningEffort ?? null);
         }
         setSessionModel(s.model ?? null);
         setLoadedMetadataKey(sessionKey);
@@ -345,7 +368,7 @@ export function PeonSessionDetail() {
     return () => {
       alive = false;
     };
-  }, [base, sid, sessionKey, metaTick, setRunning, setRunningModel]);
+  }, [base, sid, sessionKey, metaTick, setRunning, setRunningSelection]);
 
   async function remove() {
     setDeleting(true);
@@ -415,6 +438,32 @@ export function PeonSessionDetail() {
   // Flattened render list — pairs each tool_use with its later tool_result so it
   // renders as a single row (see flattenEvents).
   const items = useMemo(() => flattenEvents([...(history ?? []), ...orderedLive], t), [history, orderedLive, t]);
+  // Forge glow: a row pushed into an open transcript comes out hot and cools.
+  // The live tail only grows when the peon (or this composer) pushes something,
+  // so it is the one signal that never fires for loaded history — the newest row
+  // at that moment is the freshly forged one. Own messages already have their
+  // own send animation, so only agent-side rows glow.
+  const liveCount = orderedLive.length;
+  const previousLiveCountRef = useRef(liveCount);
+  const [forgedItemKey, setForgedItemKey] = useState<string | null>(null);
+  useEffect(() => {
+    setForgedItemKey(null);
+    previousLiveCountRef.current = 0;
+  }, [sessionKey]);
+  useEffect(() => {
+    const grew = liveCount > previousLiveCountRef.current;
+    previousLiveCountRef.current = liveCount;
+    if (!grew) return;
+    const newest = items[items.length - 1];
+    if (newest && newest.kind !== "user") setForgedItemKey(newest.key);
+  }, [items, liveCount]);
+  // Item keys are positional, so drop the anchor once it has cooled — otherwise
+  // loading older history could shift it onto an unrelated row and reheat it.
+  useEffect(() => {
+    if (!forgedItemKey) return;
+    const id = window.setTimeout(() => setForgedItemKey(null), 3_000);
+    return () => window.clearTimeout(id);
+  }, [forgedItemKey]);
   const transcriptTurns = useMemo(
     () => [...(history ?? []), ...orderedLive].reduce((sum, ev) => sum + (ev.type === "result" && typeof ev.num_turns === "number" ? ev.num_turns : 0), 0),
     [history, orderedLive],
@@ -500,7 +549,10 @@ export function PeonSessionDetail() {
               </div>
             )}
             {items.map((item, i) => (
-              <div key={item.key} className={i === 0 ? "" : gapClass(items[i - 1].kind === "user", item.kind === "user")}>
+              <div
+                key={item.key}
+                className={`${i === 0 ? "" : gapClass(items[i - 1].kind === "user", item.kind === "user")}${item.key === forgedItemKey ? " forge-cooling" : ""}`}
+              >
                 <ItemView
                   item={item}
                   t={t}
@@ -524,11 +576,12 @@ export function PeonSessionDetail() {
                   key={workingStepKey}
                   label={
                     working.key === "session.working.thinking"
-                      ? orcishThinkingLabel(`working:${JSON.stringify(lastEvent ?? {})}`)
+                      ? null
                       : t(working.key, working.name ? { name: working.name } : undefined)
                   }
                   startedAt={typeof lastEvent?.createdAt === "number" ? lastEvent.createdAt : undefined}
-                  model={modelLabel(catalog, runningModel)}
+                  model={modelLabel(catalog, runningModel ?? sessionModel ?? defaultModelId(sessionProvider))}
+                  effort={reasoningEffortLabel(sessionProvider, runningReasoningEffort ?? sessionReasoningEffort)}
                   onStop={stop}
                   stopping={stopping}
                   stopLabel={t("session.stop")}

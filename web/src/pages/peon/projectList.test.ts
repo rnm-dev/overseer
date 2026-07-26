@@ -40,7 +40,23 @@ test("live running sessions drive project active counts without waiting for proj
     { projectKey: "overseer", status: "completed" },
     { projectKey: "website", status: "completed" },
   ]), [
-    { key: "overseer", activeCount: 2 },
-    { key: "website", activeCount: 0 },
+    { key: "overseer", activeCount: 2, lastActivityMs: null },
+    { key: "website", activeCount: 0, lastActivityMs: null },
+  ]);
+});
+
+test("projects inherit the newest activity among their sessions, whatever the status", () => {
+  assert.deepEqual(withLiveActiveSessionCounts(
+    [{ key: "overseer" }, { key: "website", lastActivityMs: 5 }, { key: "quiet", lastActivityMs: 7 }],
+    [
+      { projectKey: "overseer", status: "running", lastActivityAt: 20 },
+      { projectKey: "overseer", status: "completed", lastActivityAt: 40 },
+      { projectKey: "website", status: "completed", lastActivityAt: 30 },
+      { projectKey: null, status: "running", lastActivityAt: 90 },
+    ],
+  ), [
+    { key: "overseer", activeCount: 1, lastActivityMs: 40 },
+    { key: "website", activeCount: 0, lastActivityMs: 30 },
+    { key: "quiet", activeCount: 0, lastActivityMs: 7 },
   ]);
 });

@@ -4,6 +4,7 @@ import { NavLink, Outlet, useLocation, useNavigate, useParams } from "react-rout
 import { api } from "../api";
 import { PeonScopeSwitcher } from "../components/PeonScopeSwitcher";
 import { SessionSidebarList } from "../components/SessionSidebarList";
+import { SidebarSectionHeader } from "../components/SidebarSectionHeader";
 import { useT } from "../i18n";
 import { useLiveSocket, type SessionLiveEvent } from "../liveSocket";
 import { useWorkspace } from "../workspace";
@@ -194,16 +195,14 @@ export function WorkspaceSessions() {
           </div>
         </div>
 
-        <div className="flex items-center justify-between px-3.5 pb-1 pt-3">
-          <span className="font-display text-[0.58rem] uppercase tracking-[0.16em] text-bone-faint">{t("peon.tab.sessions")}</span>
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-24">
+        <SidebarSectionHeader label={t("peon.tab.sessions")} />
+        <div className="min-h-0 flex-1 overflow-y-auto pb-24">
           {sessionsLoading && ordered.length === 0 ? (
             <div className="flex min-h-20 items-center justify-center"><span className="forge-spin scale-75" role="status" aria-label={t("sessions.loading")} /></div>
           ) : sessionError && ordered.length === 0 ? (
-            <button type="button" className="px-2 py-2 font-body text-xs text-bone-dim hover:text-fel-bright" onClick={() => void loadSessions()}>{t("sessions.retry")}</button>
+            <button type="button" className="px-3 py-2 font-body text-xs text-bone-dim hover:text-fel-bright" onClick={() => void loadSessions()}>{t("sessions.retry")}</button>
           ) : ordered.length === 0 ? (
-            <p className="px-2 py-2 font-body text-xs text-bone-faint">{t("sessions.empty")}</p>
+            <p className="px-3 py-2 font-body text-xs text-bone-faint">{t("sessions.empty")}</p>
           ) : (
             <SessionSidebarList
               sessions={ordered}
@@ -232,7 +231,7 @@ export function WorkspaceSessions() {
             />
           )}
           {sessionTotal !== null && sessionTotal > ordered.length && (
-            <p className="px-2 py-3 text-center font-body text-[0.65rem] text-bone-faint">{t("sessions.showingRecent", { shown: ordered.length, total: sessionTotal })}</p>
+            <p className="px-3 py-3 text-center font-body text-[0.65rem] text-bone-faint">{t("sessions.showingRecent", { shown: ordered.length, total: sessionTotal })}</p>
           )}
         </div>
         <div

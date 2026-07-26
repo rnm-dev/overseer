@@ -9,6 +9,7 @@ import { useNotifications } from "../notifications";
 import { sessionDisplayTitle, sessionIdentity, type SessionLite } from "../pages/peon/sessionList";
 import { Button, ConfirmationDialog, Dialog, Label } from "../ui";
 import { SessionPresence } from "./SessionPresence";
+import { rowEdgeClass, SIDEBAR_ROW_EDGE_IDLE_CLASS, useRowUpdateFlashes } from "./SidebarSectionHeader";
 
 function ago(ms?: number | null): string {
   if (!ms) return "";
@@ -21,16 +22,14 @@ function ago(ms?: number | null): string {
   return `${Math.floor(hours / 24)}d`;
 }
 
-export function sessionStatusLightClass(status?: string | null, attentionUnread = false): string {
+export function sessionStatusEdgeClass(status?: string | null, attentionUnread = false): string {
   return status === "running"
-    ? "bg-fel-bright shadow-[0_0_4px_var(--color-fel),0_0_11px_var(--color-fel)]"
-    : attentionUnread
-      ? "bg-forge shadow-[0_0_4px_var(--color-forge),0_0_12px_var(--color-forge)]"
-    : status === "needs_human"
-      ? "bg-forge shadow-[0_0_4px_var(--color-forge),0_0_10px_var(--color-forge)]"
+    ? "bg-fel-bright status-edge status-edge--fel"
+    : attentionUnread || status === "needs_human"
+      ? "bg-forge status-edge status-edge--forge"
       : status === "failure" || status === "failed" || status === "error"
-        ? "bg-blood shadow-[0_0_4px_var(--color-blood),0_0_9px_var(--color-blood)]"
-        : "bg-iron-700";
+        ? "bg-blood status-edge status-edge--blood"
+        : SIDEBAR_ROW_EDGE_IDLE_CLASS;
 }
 
 export function FadingTitle({ children }: { children: ReactNode }) {
@@ -65,6 +64,19 @@ export function sessionRenameDraft(session: SessionLite): string {
   return sessionDisplayTitle(session, "");
 }
 
+// What a live session update can change in a row. Any of these moving means the
+// Peon told us something new about that session, which is what the flash marks.
+export function sessionRowFingerprint(session: SessionLite): string {
+  return [
+    session.status ?? "",
+    session.lastActivityAt ?? 0,
+    session.lastMessagePreview ?? "",
+    session.title ?? "",
+    session.attentionUnread ? "unread" : "",
+    session.catalogState ?? "",
+  ].join("|");
+}
+
 export function SessionSidebarList({
   sessions,
   to,
@@ -96,6 +108,10 @@ export function SessionSidebarList({
   const [renaming, setRenaming] = useState(false);
   const [deleteSession, setDeleteSession] = useState<SessionLite | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const flashes = useRowUpdateFlashes(sessions.map((session) => ({
+    key: sessionIdentity(session),
+    fingerprint: sessionRowFingerprint(session),
+  })));
 
   useEffect(() => {
     if (!contextMenu) return;
@@ -202,14 +218,16 @@ export function SessionSidebarList({
   }, [sessions]);
 
   return (
-    <ul className="space-y-0.5">
+    <ul className="py-1">
       {sessions.map((session) => {
         const key = sessionIdentity(session);
+        const flash = flashes.get(key);
         const peonId = peonIdFor(session);
         const peonName = peonNameFor?.(session);
         return (
           <li
             key={key}
+            className="relative"
             onContextMenu={(event) => {
               event.preventDefault();
               const position = sessionContextMenuPosition(event.clientX, event.clientY, window.innerWidth, window.innerHeight);
@@ -223,16 +241,21 @@ export function SessionSidebarList({
             <NavLink
               to={to(session)}
               title={session.catalogStale ? t("session.catalogStaleTitle") : undefined}
-              className={({ isActive }) => `block rounded px-2.5 py-1.5 transition-[background-color,box-shadow] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-fel/60 ${session.catalogStale ? "opacity-70" : ""} ${isActive ? "bg-fel/10" : appearance === "panel" ? "hover:bg-iron-800/70 hover:shadow-[inset_2px_0_0_var(--color-fel)]" : "hover:bg-iron-900"}`}
+              className={({ isActive }) => `relative block py-1.5 pl-3 pr-2 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-fel/60 ${session.catalogStale ? "opacity-70" : ""} ${isActive ? "bg-fel/10" : appearance === "panel" ? "hover:bg-iron-800/70" : "hover:bg-iron-900"}`}
             >
-              <div className="flex items-center gap-1.5">
-                <span className={`h-2 w-2 flex-none rounded-full ${sessionStatusLightClass(session.status, session.attentionUnread)}`} aria-hidden />
+              <span
+                key={`edge-${flash ?? 0}`}
+                className={rowEdgeClass(sessionStatusEdgeClass(session.status, session.attentionUnread), flash)}
+                aria-hidden
+              />
+              {/* min-h-5 matches the sm avatar so viewers appearing/leaving never resize the row. */}
+              <div className="flex min-h-5 items-center gap-2">
                 <span className="min-w-0 flex-1 whitespace-nowrap font-display text-[0.8rem] text-bone">
                   <FadingTitle>{sessionDisplayTitle(session, t("session.untitled"))}</FadingTitle>
                 </span>
-                <SessionPresence viewers={viewersFor(peonId, session.id)} size="xs" />
+                <SessionPresence viewers={viewersFor(peonId, session.id)} size="sm" />
               </div>
-              <div className="mt-0.5 flex items-center gap-1.5 pl-3 font-body text-[0.65rem] text-bone-faint">
+              <div className="mt-0.5 flex items-center gap-2 font-body text-[0.6rem] text-bone-faint">
                 {peonName && <span className="max-w-[35%] flex-none truncate text-bone-dim">{peonName}</span>}
                 {session.projectKey && <span className="max-w-[30%] flex-none truncate font-mono text-forge/80">{session.projectKey}</span>}
                 {session.catalogStale && (

@@ -1,10 +1,17 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { ChevronDown, ChevronRight, ExternalLink, MoreHorizontal } from "lucide-react";
+import { ExternalLink, MoreHorizontal } from "lucide-react";
 import { NavLink } from "react-router-dom";
 import { useT } from "../i18n";
 import { visibleProjects, type ProjectLite } from "../pages/peon/projectList";
 import { FadingTitle } from "./SessionSidebarList";
+import {
+  rowEdgeClass,
+  SIDEBAR_ROW_EDGE_IDLE_CLASS,
+  SIDEBAR_SECTION_ACTION_CLASS,
+  SidebarSectionHeader,
+  useRowUpdateFlashes,
+} from "./SidebarSectionHeader";
 
 export const PROJECT_SIDEBAR_EXPANDED_STORAGE_KEY = "overseer:sidebar:projects-expanded";
 
@@ -41,10 +48,23 @@ export function sidebarProjects(projects: ProjectLite[]): ProjectLite[] {
   });
 }
 
-export function projectStatusLightClass(activeCount?: number): string {
+export function projectStatusEdgeClass(activeCount?: number): string {
   return (activeCount ?? 0) > 0
-    ? "bg-fel-bright shadow-[0_0_4px_var(--color-fel),0_0_11px_var(--color-fel)]"
-    : "bg-iron-700";
+    ? "bg-fel-bright status-edge status-edge--fel"
+    : SIDEBAR_ROW_EDGE_IDLE_CLASS;
+}
+
+// A project row moves on its own counts and on activity inside its sessions —
+// the latter arrives as lastActivityMs from withLiveActiveSessionCounts, so a
+// session update flashes its project row too, not only the session row.
+export function projectRowFingerprint(project: ProjectLite): string {
+  return [
+    project.name ?? "",
+    project.activeCount ?? 0,
+    project.sessionCount ?? 0,
+    project.memberCount ?? 0,
+    project.lastActivityMs ?? 0,
+  ].join("|");
 }
 
 export function projectContextMenuPosition(clientX: number, clientY: number, viewportWidth: number, viewportHeight: number, linkCount: number) {
@@ -63,6 +83,10 @@ export function ProjectSidebarSection({ projects, error = false, to, onNew }: Pr
   const menuRef = useRef<HTMLDivElement>(null);
   const [contextMenu, setContextMenu] = useState<{ project: ProjectLite; x: number; y: number } | null>(null);
   const visible = sidebarProjects(projects ?? []);
+  const flashes = useRowUpdateFlashes(visible.map((project) => ({
+    key: project.projectId ?? project.key,
+    fingerprint: projectRowFingerprint(project),
+  })));
   const toggleExpanded = () => {
     setExpanded((current) => {
       const next = !current;
@@ -99,86 +123,82 @@ export function ProjectSidebarSection({ projects, error = false, to, onNew }: Pr
 
   return (
     <section>
-      <div className="flex items-center justify-between px-2 pb-1 pt-2 md:pl-3.5 md:pr-1">
-        <button
-          type="button"
-          aria-expanded={expanded}
-          aria-controls="peon-sidebar-projects"
-          className="-ml-1 flex min-w-0 items-center gap-1 font-display text-[0.58rem] uppercase tracking-[0.16em] text-bone-faint transition-colors hover:text-bone"
-          onClick={toggleExpanded}
-        >
-          {expanded ? <ChevronDown size={12} aria-hidden /> : <ChevronRight size={12} aria-hidden />}
-          <span>{t("peon.tab.projects")}</span>
-        </button>
-        {onNew && (
-          <button
-            type="button"
-            className="font-display text-[0.58rem] uppercase tracking-[0.16em] text-bone-dim transition-colors hover:text-fel-bright"
-            onClick={onNew}
-          >
+      <SidebarSectionHeader
+        label={t("peon.tab.projects")}
+        expanded={expanded}
+        onToggle={toggleExpanded}
+        controls="peon-sidebar-projects"
+        action={onNew && (
+          <button type="button" className={SIDEBAR_SECTION_ACTION_CLASS} onClick={onNew}>
             {t("newProject.new")}
           </button>
         )}
-      </div>
+      />
       {expanded && (
-        <div id="peon-sidebar-projects" className="px-2 pb-2 md:pl-3.5 md:pr-1">
+        <div id="peon-sidebar-projects">
           {projects === null && !error ? (
             <div className="flex min-h-8 items-center justify-center">
               <span className="forge-spin scale-75" role="status" aria-label={t("projects.loading")} />
             </div>
           ) : error && visible.length === 0 ? (
-            <p className="px-2 py-2 font-body text-xs text-bone-faint">{t("error.loadFailed")}</p>
+            <p className="px-3 py-2 font-body text-xs text-bone-faint">{t("error.loadFailed")}</p>
           ) : visible.length === 0 ? (
-            <p className="px-2 py-2 font-body text-xs text-bone-faint">{t("peon.projects.empty")}</p>
+            <p className="px-3 py-2 font-body text-xs text-bone-faint">{t("peon.projects.empty")}</p>
           ) : (
             <nav aria-label={t("peon.tab.projects")}>
-              <ul className="space-y-0.5">
-                {visible.map((project) => (
-                  <li
-                    key={project.projectId ?? project.key}
-                    className="group/project relative flex items-stretch"
-                    onContextMenu={(event) => {
-                      if (!project.quickLinks?.length) return;
-                      event.preventDefault();
-                      openContextMenu(project, event.clientX, event.clientY);
-                    }}
-                  >
-                    <NavLink
-                      to={to(project)}
-                      className={({ isActive }) => `block rounded px-2.5 py-1.5 transition-colors min-w-0 flex-1${project.quickLinks?.length ? " pr-8" : ""} ${isActive ? "bg-fel/10" : "hover:bg-iron-900"}`}
-                      title={project.name ?? project.key}
+              <ul className="py-1">
+                {visible.map((project) => {
+                  const rowKey = project.projectId ?? project.key;
+                  const flash = flashes.get(rowKey);
+                  return (
+                    <li
+                      key={rowKey}
+                      className="group/project relative flex items-stretch"
+                      onContextMenu={(event) => {
+                        if (!project.quickLinks?.length) return;
+                        event.preventDefault();
+                        openContextMenu(project, event.clientX, event.clientY);
+                      }}
                     >
-                      <div className="flex items-center gap-1.5">
-                        <span className={`h-2 w-2 flex-none rounded-full ${projectStatusLightClass(project.activeCount)}`} aria-hidden />
-                        <span className="min-w-0 flex-1 whitespace-nowrap font-display text-[0.8rem] text-bone">
+                      <NavLink
+                        to={to(project)}
+                        className={({ isActive }) => `relative block min-w-0 flex-1 py-1.5 pl-3 transition-colors ${project.quickLinks?.length ? "pr-8" : "pr-2"} ${isActive ? "bg-fel/10" : "hover:bg-iron-900"}`}
+                        title={project.name ?? project.key}
+                      >
+                        <span
+                          key={`edge-${flash ?? 0}`}
+                          className={rowEdgeClass(projectStatusEdgeClass(project.activeCount), flash)}
+                          aria-hidden
+                        />
+                        <span className="block min-w-0 whitespace-nowrap font-display text-[0.8rem] text-bone">
                           <FadingTitle>{project.name?.trim() || project.key}</FadingTitle>
                         </span>
-                      </div>
-                      <div className="mt-0.5 flex items-center gap-1.5 pl-3 font-body text-[0.65rem] text-bone-faint">
-                        <span className="flex-none">{t("peon.projects.members", { n: project.memberCount ?? 0 })}</span>
-                        <span className="flex-none text-bone-dim" aria-hidden>•</span>
-                        <span className="flex-none">{t("peon.projects.sessions", { n: project.sessionCount ?? 0 })}</span>
-                        {(project.activeCount ?? 0) > 0 && (
-                          <span className="ml-auto flex-none text-forge">{t("peon.projects.active", { n: project.activeCount ?? 0 })}</span>
-                        )}
-                      </div>
-                    </NavLink>
-                    {!!project.quickLinks?.length && (
-                      <button
-                        type="button"
-                        aria-label={`${t("proj.quickLinks")}: ${project.name?.trim() || project.key}`}
-                        aria-haspopup="menu"
-                        className="absolute right-1 top-1 grid h-7 w-7 place-items-center rounded text-bone-faint opacity-70 transition-colors hover:bg-iron-800 hover:text-bone focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-fel/60 md:opacity-0 md:group-hover/project:opacity-100"
-                        onClick={(event) => {
-                          const rect = event.currentTarget.getBoundingClientRect();
-                          openContextMenu(project, rect.right, rect.bottom);
-                        }}
-                      >
-                        <MoreHorizontal size={14} aria-hidden />
-                      </button>
-                    )}
-                  </li>
-                ))}
+                        <div className="mt-0.5 flex items-center gap-1.5 font-body text-[0.6rem] text-bone-faint">
+                          <span className="flex-none">{t("peon.projects.members", { n: project.memberCount ?? 0 })}</span>
+                          <span className="flex-none text-bone-dim" aria-hidden>•</span>
+                          <span className="flex-none">{t("peon.projects.sessions", { n: project.sessionCount ?? 0 })}</span>
+                          {(project.activeCount ?? 0) > 0 && (
+                            <span className="ml-auto flex-none text-forge">{t("peon.projects.active", { n: project.activeCount ?? 0 })}</span>
+                          )}
+                        </div>
+                      </NavLink>
+                      {!!project.quickLinks?.length && (
+                        <button
+                          type="button"
+                          aria-label={`${t("proj.quickLinks")}: ${project.name?.trim() || project.key}`}
+                          aria-haspopup="menu"
+                          className="absolute right-1 top-1 grid h-7 w-7 place-items-center rounded text-bone-faint opacity-70 transition-colors hover:bg-iron-800 hover:text-bone focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-fel/60 md:opacity-0 md:group-hover/project:opacity-100"
+                          onClick={(event) => {
+                            const rect = event.currentTarget.getBoundingClientRect();
+                            openContextMenu(project, rect.right, rect.bottom);
+                          }}
+                        >
+                          <MoreHorizontal size={14} aria-hidden />
+                        </button>
+                      )}
+                    </li>
+                    );
+                })}
               </ul>
             </nav>
           )}

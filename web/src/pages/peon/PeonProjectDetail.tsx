@@ -61,7 +61,7 @@ export function ProjectRecentSessions({
         </span>
       </header>
 
-      <div className="p-2">
+      <div>
         {recent.length > 0 ? (
           <SessionSidebarList
             sessions={recent}
