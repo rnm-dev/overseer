@@ -1,5 +1,6 @@
 import { appendEvent } from "./eventLog.js";
 import { query, transaction } from "./db.js";
+import { isUserViewingSession } from "./modules/presence/index.js";
 
 export interface SessionAttentionPayload {
   userId: string;
@@ -45,8 +46,17 @@ export async function completeNextSessionAttention(
     );
     const next = pending.rows[0];
     if (!next) return null;
+    // Attention means "this finished while you were not looking". If the requester
+    // is in front of this very session, the occurrence is already seen: retire it
+    // as read so no unread edge appears on the session they are sitting in.
+    const seen = isUserViewingSession(workspaceId, next.user_id, peonId, sessionId);
     const updated = await tx.query<{ user_id: string; state: string }>(
-      `UPDATE session_attention SET state='unread', completed_at = $5
+      seen
+        ? `UPDATE session_attention SET state='read', completed_at = $5, read_at = $5
+       WHERE user_id=$1 AND peon_id=$2 AND session_id=$3 AND occurrence_key=$4
+         AND state='pending' AND completed_at IS NULL
+       RETURNING user_id, state`
+        : `UPDATE session_attention SET state='unread', completed_at = $5
        WHERE user_id=$1 AND peon_id=$2 AND session_id=$3 AND occurrence_key=$4
          AND state='pending' AND completed_at IS NULL
        RETURNING user_id, state`,

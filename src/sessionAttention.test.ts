@@ -15,6 +15,7 @@ import {
   recordSessionRequest,
   sessionAttentionStates,
 } from "./sessionAttention.js";
+import { heartbeatPresence, removePresence } from "./modules/presence/index.js";
 
 async function setup() {
   const mem = newDb();
@@ -98,4 +99,46 @@ test("the session projection completes the pending attention occurrence once", a
   await upsertSession("projection-ws", "projection-peon", { id: "projection-session", status: "completed", endedAt: 20, lastActivityAt: 20 });
   await upsertSession("projection-ws", "projection-peon", { id: "projection-session", status: "completed", endedAt: 20, lastActivityAt: 20 });
   assert.equal((await sessionAttentionStates("projection-ws", "user-1")).get("projection-peon\0projection-session")?.unread, true);
+});
+
+test("a completion never raises unread on a session the requester is watching", async () => {
+  await setup();
+  removePresence("ws", "user-1", "conn-1");
+  heartbeatPresence({
+    connectionId: "conn-1",
+    workspaceId: "ws",
+    userId: "user-1",
+    email: "user-1@example.com",
+    githubLogin: null,
+    avatarUrl: null,
+    scope: "session",
+    peonId: "peon",
+    sessionId: "session",
+    projectKey: null,
+    projectId: null,
+  });
+  await recordSessionRequest({ workspaceId: "ws", userId: "user-1", peonId: "peon", sessionId: "session", occurrenceKey: "run-1", requestedAt: 10 });
+  await completeNextSessionAttention("ws", "peon", "session", 20);
+  assert.equal((await sessionAttentionStates("ws", "user-1")).get("peon\0session")?.unread, false);
+
+  // A backgrounded tab keeps its route presence but is not "in front of" the
+  // session, so its completion must still raise the amber edge.
+  heartbeatPresence({
+    connectionId: "conn-1",
+    workspaceId: "ws",
+    userId: "user-1",
+    email: "user-1@example.com",
+    githubLogin: null,
+    avatarUrl: null,
+    scope: "session",
+    peonId: "peon",
+    sessionId: "session",
+    projectKey: null,
+    projectId: null,
+    active: false,
+  });
+  await recordSessionRequest({ workspaceId: "ws", userId: "user-1", peonId: "peon", sessionId: "session", occurrenceKey: "run-2", requestedAt: 30 });
+  await completeNextSessionAttention("ws", "peon", "session", 40);
+  assert.equal((await sessionAttentionStates("ws", "user-1")).get("peon\0session")?.unread, true);
+  removePresence("ws", "user-1", "conn-1");
 });

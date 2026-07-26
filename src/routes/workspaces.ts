@@ -66,6 +66,7 @@ export function workspacesRouter(): express.Router {
       sessionId,
       projectKey: session?.projectKey ?? null,
       projectId: session?.projectId ?? null,
+      active: req.body?.active !== false,
     });
     res.json({ presence: await visiblePresenceFor(ctx.workspaceId, ctx.userId, ctx.role) });
   }));
