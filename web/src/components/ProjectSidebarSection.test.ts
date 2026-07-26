@@ -36,7 +36,7 @@ test("project sidebar renders a collapsible header and every visible project lin
       { initialEntries: ["/peons/nova/projects/OVERSEER"] },
       React.createElement(ProjectSidebarSection, {
         projects: [
-          { key: "OVERSEER", path: "/rnm/overseer", activeCount: 2, sessionCount: 8, memberCount: 3 },
+          { key: "OVERSEER", path: "/rnm/overseer", activeCount: 2, sessionCount: 8, unreadCount: 1, memberCount: 3 },
           { key: "WEBSITE", name: "RNM Website", path: "/rnm/websitev2" },
         ],
         to: (project: { key: string }) => `/peons/nova/projects/${project.key}`,
@@ -55,11 +55,35 @@ test("project sidebar renders a collapsible header and every visible project lin
   assert.match(markup, /relative block min-w-0 flex-1 py-1\.5 pl-3 transition-colors pr-2 bg-fel\/10/);
   assert.match(markup, /class="absolute inset-y-1 left-0 w-0\.5 bg-fel-bright status-edge status-edge--fel"/);
   assert.match(markup, /font-display text-\[0\.8rem\] text-bone/);
-  assert.match(markup, />3 members</);
   assert.match(markup, />•</);
-  assert.match(markup, />2 active</);
   assert.match(markup, />8 sessions</);
+  assert.match(markup, /text-fel-bright">2 active</);
+  assert.match(markup, /text-forge">1 unread</);
+  assert.doesNotMatch(markup, />3 members</);
   assert.doesNotMatch(markup, />\/rnm\/overseer</);
+  // Total first, then the states that need attention.
+  assert.ok(markup.indexOf("8 sessions") < markup.indexOf("2 active"));
+  assert.ok(markup.indexOf("2 active") < markup.indexOf("1 unread"));
+});
+
+test("a quiet project shows only its session total, without empty active or unread counts", () => {
+  const markup = renderToStaticMarkup(React.createElement(
+    I18nProvider,
+    null,
+    React.createElement(
+      MemoryRouter,
+      null,
+      React.createElement(ProjectSidebarSection, {
+        projects: [{ key: "QUIET", sessionCount: 3, activeCount: 0, unreadCount: 0 }],
+        to: (project: { key: string }) => `/peons/nova/projects/${project.key}`,
+      }),
+    ),
+  ));
+
+  assert.match(markup, />3 sessions</);
+  assert.doesNotMatch(markup, />0 active</);
+  assert.doesNotMatch(markup, />0 unread</);
+  assert.doesNotMatch(markup, />•</);
 });
 
 test("project status edge glows only while the project has active sessions", () => {

@@ -3,24 +3,14 @@ import { createPortal } from "react-dom";
 import { Pencil, Trash2 } from "lucide-react";
 import { NavLink } from "react-router-dom";
 import { ApiError, isPeonNeedsUpdate } from "../api";
-import { useT } from "../i18n";
+import { useI18n, useT } from "../i18n";
 import type { PresenceUser } from "../liveSocket";
 import { useNotifications } from "../notifications";
 import { sessionDisplayTitle, sessionIdentity, type SessionLite } from "../pages/peon/sessionList";
+import { formatLocalTimestamp } from "../timeFormat";
 import { Button, ConfirmationDialog, Dialog, Label } from "../ui";
 import { SessionPresence } from "./SessionPresence";
 import { rowEdgeClass, SIDEBAR_ROW_EDGE_IDLE_CLASS, useRowUpdateFlashes } from "./SidebarSectionHeader";
-
-function ago(ms?: number | null): string {
-  if (!ms) return "";
-  const seconds = Math.floor((Date.now() - ms) / 1000);
-  if (seconds < 60) return `${seconds}s`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h`;
-  return `${Math.floor(hours / 24)}d`;
-}
 
 export function sessionStatusEdgeClass(status?: string | null, attentionUnread = false): string {
   return status === "running"
@@ -97,6 +87,7 @@ export function SessionSidebarList({
   appearance?: "sidebar" | "panel";
 }) {
   const t = useT();
+  const { locale } = useI18n();
   const { notifyError } = useNotifications();
   const sessionNodes = useRef(new Map<string, HTMLLIElement>());
   const previousSessionTops = useRef(new Map<string, number>());
@@ -257,7 +248,7 @@ export function SessionSidebarList({
               </div>
               <div className="mt-0.5 flex items-center gap-2 font-body text-[0.6rem] text-bone-faint">
                 {peonName && <span className="max-w-[35%] flex-none truncate text-bone-dim">{peonName}</span>}
-                {session.projectKey && <span className="max-w-[30%] flex-none truncate font-mono text-forge/80">{session.projectKey}</span>}
+                {session.projectKey && <span className="max-w-[30%] flex-none truncate font-body text-forge/80">{session.projectKey}</span>}
                 {session.catalogStale && (
                   <span className="flex-none font-mono uppercase tracking-wide text-forge/70">
                     {session.catalogState === "syncing" ? t("session.catalogSyncing") : t("session.catalogStale")}
@@ -268,7 +259,9 @@ export function SessionSidebarList({
                     <FadingTitle>{session.lastMessagePreview}</FadingTitle>
                   </span>
                 )}
-                <span className="ml-auto flex-none font-mono tabular-nums">{ago(session.lastActivityAt ?? session.startedAt)}</span>
+                <span className="ml-auto flex-none font-body tabular-nums">
+                  {formatLocalTimestamp(session.lastActivityAt ?? session.startedAt ?? 0, Date.now(), locale, t("peon.stats.period.yesterday"))}
+                </span>
               </div>
             </NavLink>
           </li>

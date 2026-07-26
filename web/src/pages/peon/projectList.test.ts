@@ -40,8 +40,23 @@ test("live running sessions drive project active counts without waiting for proj
     { projectKey: "overseer", status: "completed" },
     { projectKey: "website", status: "completed" },
   ]), [
-    { key: "overseer", activeCount: 2, lastActivityMs: null },
-    { key: "website", activeCount: 0, lastActivityMs: null },
+    { key: "overseer", activeCount: 2, unreadCount: 0, lastActivityMs: null },
+    { key: "website", activeCount: 0, unreadCount: 0, lastActivityMs: null },
+  ]);
+});
+
+test("unread sessions roll up per project regardless of whether they are still running", () => {
+  assert.deepEqual(withLiveActiveSessionCounts(
+    [{ key: "overseer" }, { key: "website" }],
+    [
+      { projectKey: "overseer", status: "needs_human", attentionUnread: true },
+      { projectKey: "overseer", status: "running", attentionUnread: true },
+      { projectKey: "overseer", status: "completed", attentionUnread: false },
+      { projectKey: "website", status: "completed" },
+    ],
+  ), [
+    { key: "overseer", activeCount: 1, unreadCount: 2, lastActivityMs: null },
+    { key: "website", activeCount: 0, unreadCount: 0, lastActivityMs: null },
   ]);
 });
 
@@ -55,8 +70,8 @@ test("projects inherit the newest activity among their sessions, whatever the st
       { projectKey: null, status: "running", lastActivityAt: 90 },
     ],
   ), [
-    { key: "overseer", activeCount: 1, lastActivityMs: 40 },
-    { key: "website", activeCount: 0, lastActivityMs: 30 },
-    { key: "quiet", activeCount: 0, lastActivityMs: 7 },
+    { key: "overseer", activeCount: 1, unreadCount: 0, lastActivityMs: 40 },
+    { key: "website", activeCount: 0, unreadCount: 0, lastActivityMs: 30 },
+    { key: "quiet", activeCount: 0, unreadCount: 0, lastActivityMs: 7 },
   ]);
 });
