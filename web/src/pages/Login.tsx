@@ -3,10 +3,13 @@ import { useAuth } from "../auth";
 import { ApiError } from "../api";
 import { useT } from "../i18n";
 import { Skull } from "lucide-react";
-import { Button, Card, GithubMark, LocaleSwitcher, Logo } from "../ui";
+import { GithubMark, LocaleSwitcher } from "../ui";
 
 // Sign-in is a single GitHub button. GitHub returns to the shared frontend
 // callback, which asks the API to finish the web or native flow.
+//
+// The page carries no card and no logo: identity is the wordmark, the surface
+// is the void itself (.auth-* in index.css).
 
 export function Login() {
   const { loginWithGithub } = useAuth();
@@ -26,26 +29,25 @@ export function Login() {
   }
 
   return (
-    <div className="grid min-h-screen place-items-center px-4 py-10">
+    <div className="auth-scene">
       <LocaleSwitcher className="fixed right-4 top-4" />
-      <div className="reveal w-full max-w-sm">
-        <div className="mb-7 flex flex-col items-center text-center">
-          <Logo size={190} />
-          <p className="mt-3 font-mono text-[0.7rem] uppercase tracking-[0.3em] text-fel-deep">{t("app.tagline")}</p>
-        </div>
-
-        <Card className="surface--lit p-8">
-          <Button type="button" className="flex w-full items-center justify-center gap-2" disabled={busy} onClick={signIn}>
-            <GithubMark size={18} />
-            {busy ? t("login.signingIn") : t("login.github")}
-          </Button>
-          {error && (
-            <p className="mt-4 flex items-center justify-center gap-1.5 text-center font-mono text-xs text-blood">
-              <Skull size={14} />
-              {error}
-            </p>
-          )}
-        </Card>
+      <div className="auth-stack">
+        <h1 className="auth-wordmark">{t("app.name")}</h1>
+        <p className="auth-tagline">
+          <span className="auth-rule" aria-hidden />
+          {t("app.tagline")}
+          <span className="auth-rule" aria-hidden />
+        </p>
+        <button type="button" className="auth-cta" disabled={busy} onClick={signIn}>
+          <GithubMark size={17} />
+          {busy ? t("login.signingIn") : t("login.github")}
+        </button>
+        {error && (
+          <p className="auth-error" role="alert">
+            <Skull size={14} className="shrink-0" />
+            {error}
+          </p>
+        )}
       </div>
     </div>
   );

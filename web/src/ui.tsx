@@ -253,16 +253,9 @@ export function StatPlate({ value, label, tone = "fel" }: { value: ReactNode; la
 export function LocaleSwitcher({ className = "" }: { className?: string }) {
   const { locale, setLocale } = useI18n();
   return (
-    <div className={`inline-flex border border-iron-700 ${className}`}>
+    <div className={`locale-switch ${className}`}>
       {LOCALES.map((l) => (
-        <button
-          key={l.code}
-          onClick={() => setLocale(l.code)}
-          aria-pressed={locale === l.code}
-          className={`px-2 py-1 font-display text-[0.62rem] font-bold uppercase tracking-[0.1em] transition-colors ${
-            locale === l.code ? "bg-fel text-fel-ink" : "text-bone-dim hover:text-fel-bright"
-          }`}
-        >
+        <button key={l.code} className="locale-switch-item" onClick={() => setLocale(l.code)} aria-pressed={locale === l.code}>
           {l.label}
         </button>
       ))}
