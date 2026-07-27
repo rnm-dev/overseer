@@ -127,14 +127,75 @@ void main() {
       'No speech was detected.',
     );
   });
+
+  test(
+    'cancels an in-flight transcription without publishing its result',
+    () async {
+      final transcription = Completer<VoiceTranscription>();
+      final repository = _FakeRepository(transcription: transcription.future);
+      final recorder = _FakeRecorder(
+        take: VoiceTake(
+          bytes: Uint8List.fromList([1, 2, 3]),
+          duration: const Duration(seconds: 1),
+          rms: 0.1,
+        ),
+      );
+      final container = ProviderContainer(
+        overrides: [
+          voiceInputRepositoryProvider.overrideWithValue(repository),
+          voiceRecorderFactoryProvider.overrideWithValue(
+            _FakeRecorderFactory(recorder),
+          ),
+          microphonePermissionGatewayProvider.overrideWithValue(
+            _FakePermissionGateway(MicrophonePermission.granted),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final subscription = container.listen(
+        voiceDictationControllerProvider(scope),
+        (_, _) {},
+        fireImmediately: true,
+      );
+      addTearDown(subscription.close);
+      await Future<void>.delayed(Duration.zero);
+      final controller = container.read(
+        voiceDictationControllerProvider(scope).notifier,
+      );
+      expect(await controller.start(), isTrue);
+      final stopping = controller.stop();
+      await Future<void>.delayed(Duration.zero);
+      expect(
+        container.read(voiceDictationControllerProvider(scope)).phase,
+        VoiceDictationPhase.transcribing,
+      );
+
+      await controller.cancel();
+      expect(repository.transcriptionCanceled, isTrue);
+      expect(
+        container.read(voiceDictationControllerProvider(scope)).phase,
+        VoiceDictationPhase.idle,
+      );
+
+      transcription.complete(const VoiceTranscription(text: 'too late'));
+      await stopping;
+      expect(
+        container.read(voiceDictationControllerProvider(scope)).completedText,
+        isNull,
+      );
+    },
+  );
 }
 
 class _FakeRepository implements VoiceInputRepository {
-  _FakeRepository({this.enabled = true, this.text = ''});
+  _FakeRepository({this.enabled = true, this.text = '', this.transcription});
 
   final bool enabled;
   final String text;
+  final Future<VoiceTranscription>? transcription;
   int transcriptionCalls = 0;
+  bool transcriptionCanceled = false;
 
   @override
   Future<VoiceCapabilities> capabilities() async => VoiceCapabilities(
@@ -149,8 +210,11 @@ class _FakeRepository implements VoiceInputRepository {
   Future<VoiceTranscription> transcribe({
     required FollowupScope scope,
     required Uint8List audio,
+    Future<void>? cancelFuture,
   }) async {
     transcriptionCalls++;
+    cancelFuture?.then((_) => transcriptionCanceled = true);
+    if (transcription != null) return transcription!;
     return VoiceTranscription(text: text);
   }
 }

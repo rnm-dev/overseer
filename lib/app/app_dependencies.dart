@@ -240,8 +240,10 @@ class AppDependencies extends StatelessWidget {
           );
         }),
         voiceInputRepositoryProvider.overrideWith(
-          (ref) =>
-              DioVoiceInputRepository(ref.watch(overseerHttpClientProvider)),
+          (ref) => DioVoiceInputRepository(
+            ref.watch(overseerHttpClientProvider),
+            apiUrl: config.serverUrl.resolve('/api/v1/'),
+          ),
         ),
         microphonePermissionGatewayProvider.overrideWithValue(
           const PermissionHandlerMicrophoneGateway(),

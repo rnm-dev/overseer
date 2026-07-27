@@ -7,9 +7,11 @@ import '../domain/followup_repository.dart';
 import '../domain/voice_input.dart';
 
 class DioVoiceInputRepository implements VoiceInputRepository {
-  DioVoiceInputRepository(this._dio);
+  DioVoiceInputRepository(this._dio, {required Uri apiUrl})
+    : _apiUrl = apiUrl.resolve('./');
 
   final Dio _dio;
+  final Uri _apiUrl;
   Future<VoiceCapabilities>? _cachedCapabilities;
 
   static const _requestTimeout = Duration(seconds: 20);
@@ -25,7 +27,7 @@ class DioVoiceInputRepository implements VoiceInputRepository {
   Future<VoiceCapabilities> _fetchCapabilities() async {
     try {
       final response = await _dio.get<Map<String, dynamic>>(
-        'voice/capabilities',
+        _apiUrl.resolve('voice/capabilities').toString(),
       );
       final data = response.data ?? const <String, dynamic>{};
       return VoiceCapabilities(
@@ -50,11 +52,18 @@ class DioVoiceInputRepository implements VoiceInputRepository {
   Future<VoiceTranscription> transcribe({
     required FollowupScope scope,
     required Uint8List audio,
+    Future<void>? cancelFuture,
   }) async {
+    final cancelToken = CancelToken();
+    cancelFuture?.then((_) {
+      if (!cancelToken.isCancelled) {
+        cancelToken.cancel('Voice transcription canceled.');
+      }
+    });
     for (var attempt = 0; ; attempt++) {
       try {
         final response = await _dio.post<Map<String, dynamic>>(
-          'voice/transcriptions',
+          _apiUrl.resolve('voice/transcriptions').toString(),
           queryParameters: {
             'workspaceId': scope.workspaceId,
             'peonId': scope.peonId,
@@ -67,6 +76,7 @@ class DioVoiceInputRepository implements VoiceInputRepository {
             sendTimeout: _requestTimeout,
             receiveTimeout: _requestTimeout,
           ),
+          cancelToken: cancelToken,
         );
         final data = response.data ?? const <String, dynamic>{};
         final latencyMs = (data['latencyMs'] as num?)?.toInt();

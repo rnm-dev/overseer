@@ -71,9 +71,19 @@ continues in the background.
 ## Composer behavior and guards
 
 Tap the mic to start and tap the stop icon to transcribe. Recording shows
-elapsed time, a live five-segment level meter, a clear cancel action, and a
-visible remaining-seconds countdown for the final 15 seconds. Start and stop
-provide haptic feedback.
+elapsed time, a live five-segment level meter, a clear stop action, and a
+visible remaining-seconds countdown for the final 15 seconds. While the
+transcription request is in flight, the status row owns the single progress
+indicator and the mic action becomes **Cancel transcription**. Canceling aborts
+the network request, returns the composer to idle immediately, and ignores any
+late response. Recording and transcription use the same fixed-height,
+padding-free, display-only status strip so the composer does not jump between
+phases. Its left edge follows the input text grid, uses the regular product
+typeface, and gives the recording dot a subtle blink unless reduced motion is
+enabled. Recording controls remain in the composer action row. Start and stop
+provide haptic feedback. During recording, the 8-pixel dot uses equal 12-pixel
+top and left distances from the composer edge, with all status-strip spacing on
+the 4-pixel layout grid.
 
 The draft stays editable while transcription is in flight. Returned text
 replaces the current selection or inserts at the caret with boundary spacing;

@@ -514,25 +514,36 @@ class _AttachmentChip extends StatelessWidget {
 }
 
 class _VoiceDictationStatus extends StatelessWidget {
-  const _VoiceDictationStatus({required this.state, required this.onCancel});
+  const _VoiceDictationStatus({required this.state});
 
   final VoiceDictationState state;
-  final VoidCallback? onCancel;
 
   @override
   Widget build(BuildContext context) {
     if (state.phase == VoiceDictationPhase.transcribing) {
-      return const Padding(
-        key: Key('session-composer-transcribing'),
-        padding: EdgeInsets.fromLTRB(4, 2, 4, 6),
+      return SizedBox(
+        key: const Key('session-composer-transcribing'),
+        height: AppSpacing.lg,
         child: Row(
           children: [
-            SizedBox.square(
-              dimension: 12,
-              child: CircularProgressIndicator(strokeWidth: 1.5),
+            const SizedBox(width: AppSpacing.xxs),
+            const SizedBox.square(
+              dimension: AppSpacing.sm,
+              child: CircularProgressIndicator(
+                strokeWidth: 1.5,
+                color: AppColors.felBright,
+              ),
             ),
-            SizedBox(width: 7),
-            Text('Transcribing…'),
+            const SizedBox(width: AppSpacing.xs),
+            Text(
+              'TRANSCRIBING',
+              style: AppTypography.body(
+                color: AppColors.boneDim,
+                fontSize: 10,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.8,
+              ),
+            ),
           ],
         ),
       );
@@ -541,19 +552,29 @@ class _VoiceDictationStatus extends StatelessWidget {
     final seconds = state.duration.inSeconds;
     final remaining = state.maxDuration - state.duration;
     final showCountdown = remaining <= const Duration(seconds: 15);
-    return Padding(
+    return SizedBox(
       key: const Key('session-composer-recording'),
-      padding: const EdgeInsets.fromLTRB(4, 2, 0, 6),
+      height: AppSpacing.lg,
       child: Row(
         children: [
-          const Icon(LucideIcons.mic, size: 13, color: AppColors.blood),
-          const SizedBox(width: 7),
+          const SizedBox(width: AppSpacing.xxs),
+          const _BlinkingRecordingDot(),
+          const SizedBox(width: AppSpacing.xs),
+          Text(
+            'REC',
+            style: AppTypography.body(
+              fontSize: 10,
+              color: AppColors.blood,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(width: AppSpacing.xs),
           for (var index = 0; index < 5; index++)
             AnimatedContainer(
               key: Key('session-composer-level-$index'),
               duration: const Duration(milliseconds: 90),
-              width: 3,
-              height: 5 + 12 * (state.amplitude * (index + 1) / 5),
+              width: 2,
+              height: 4 + 10 * (state.amplitude * (index + 1) / 5),
               margin: const EdgeInsets.only(right: 2),
               decoration: BoxDecoration(
                 color: state.amplitude > index / 6
@@ -562,34 +583,66 @@ class _VoiceDictationStatus extends StatelessWidget {
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
-          const SizedBox(width: 8),
+          const SizedBox(width: AppSpacing.xs),
           Text(
             '${seconds ~/ 60}:${(seconds % 60).toString().padLeft(2, '0')}',
-            style: AppTypography.mono(fontSize: 11, color: AppColors.boneDim),
+            style: AppTypography.body(fontSize: 11, color: AppColors.bone),
           ),
           if (showCountdown) ...[
-            const SizedBox(width: 8),
+            const SizedBox(width: AppSpacing.xs),
             Text(
-              '${remaining.inSeconds.clamp(0, 15)}s left',
+              '${remaining.inSeconds.clamp(0, 15)}s',
               key: const Key('session-composer-recording-countdown'),
-              style: AppTypography.mono(fontSize: 11, color: AppColors.ember),
+              style: AppTypography.body(fontSize: 10, color: AppColors.ember),
             ),
           ],
-          const Spacer(),
-          IconButton(
-            key: const Key('session-composer-voice-cancel'),
-            tooltip: 'Cancel recording',
-            onPressed: onCancel,
-            constraints: const BoxConstraints.tightFor(width: 38, height: 38),
-            padding: EdgeInsets.zero,
-            icon: const Icon(
-              LucideIcons.x,
-              size: 15,
-              color: AppColors.boneFaint,
-            ),
-          ),
         ],
       ),
+    );
+  }
+}
+
+class _BlinkingRecordingDot extends StatefulWidget {
+  const _BlinkingRecordingDot();
+
+  @override
+  State<_BlinkingRecordingDot> createState() => _BlinkingRecordingDotState();
+}
+
+class _BlinkingRecordingDotState extends State<_BlinkingRecordingDot>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 850),
+  )..repeat(reverse: true);
+  late final Animation<double> _opacity = Tween<double>(
+    begin: 0.35,
+    end: 1,
+  ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final reduceMotion =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    final dot = Container(
+      width: AppSpacing.xs,
+      height: AppSpacing.xs,
+      decoration: const BoxDecoration(
+        color: AppColors.blood,
+        shape: BoxShape.circle,
+      ),
+    );
+    if (reduceMotion) return dot;
+    return FadeTransition(
+      key: const Key('session-composer-recording-dot'),
+      opacity: _opacity,
+      child: dot,
     );
   }
 }
@@ -600,12 +653,14 @@ class _VoiceDictationButton extends StatelessWidget {
     required this.enabled,
     required this.onStart,
     required this.onStop,
+    required this.onCancel,
   });
 
   final VoiceDictationState state;
   final bool enabled;
   final VoidCallback? onStart;
   final VoidCallback? onStop;
+  final VoidCallback? onCancel;
 
   @override
   Widget build(BuildContext context) {
@@ -613,9 +668,15 @@ class _VoiceDictationButton extends StatelessWidget {
     final transcribing = state.phase == VoiceDictationPhase.transcribing;
     return IconButton(
       key: const Key('session-composer-voice'),
-      tooltip: recording ? 'Stop dictation' : 'Dictate message',
-      onPressed: !enabled || transcribing
+      tooltip: transcribing
+          ? 'Cancel transcription'
+          : recording
+          ? 'Stop dictation'
+          : 'Dictate message',
+      onPressed: !enabled
           ? null
+          : transcribing
+          ? onCancel
           : recording
           ? onStop
           : onStart,
@@ -624,7 +685,9 @@ class _VoiceDictationButton extends StatelessWidget {
       style: IconButton.styleFrom(
         minimumSize: const Size(38, 44),
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        foregroundColor: recording ? AppColors.blood : AppColors.boneFaint,
+        foregroundColor: recording || transcribing
+            ? AppColors.blood
+            : AppColors.boneFaint,
         disabledForegroundColor: AppColors.boneFaint.withValues(alpha: 0.45),
       ),
       icon: Container(
@@ -632,18 +695,20 @@ class _VoiceDictationButton extends StatelessWidget {
         width: 32,
         height: 32,
         decoration: BoxDecoration(
-          color: recording
+          color: recording || transcribing
               ? AppColors.blood.withValues(alpha: 0.14)
               : AppColors.iron900,
           borderRadius: BorderRadius.circular(8),
         ),
         alignment: Alignment.center,
-        child: transcribing
-            ? const SizedBox.square(
-                dimension: 14,
-                child: CircularProgressIndicator(strokeWidth: 1.5),
-              )
-            : Icon(recording ? LucideIcons.square : LucideIcons.mic, size: 16),
+        child: Icon(
+          transcribing
+              ? LucideIcons.x
+              : recording
+              ? LucideIcons.square
+              : LucideIcons.mic,
+          size: 16,
+        ),
       ),
     );
   }
