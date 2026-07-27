@@ -183,6 +183,37 @@ class DefaultSessionRepository implements SessionRepository {
   }
 
   @override
+  Future<void> markSessionAttentionRead({
+    required String workspaceId,
+    required String peonId,
+    required String sessionId,
+  }) async {
+    try {
+      await _dio.post<void>(
+        'workspaces/${Uri.encodeComponent(workspaceId)}'
+        '/peons/${Uri.encodeComponent(peonId)}'
+        '/sessions/${Uri.encodeComponent(sessionId)}/attention/read',
+      );
+      await (database.update(database.cachedSessions)..where(
+            (row) =>
+                row.workspaceId.equals(workspaceId) &
+                row.peonId.equals(peonId) &
+                row.sessionId.equals(sessionId),
+          ))
+          .write(
+            CachedSessionsCompanion(
+              attentionUnread: const Value(false),
+              attentionUpdatedAt: Value(
+                DateTime.now().millisecondsSinceEpoch.toDouble(),
+              ),
+            ),
+          );
+    } on DioException {
+      throw const SessionsException('Could not mark this session as read.');
+    }
+  }
+
+  @override
   Future<void> cancelSession({
     required String workspaceId,
     required String peonId,

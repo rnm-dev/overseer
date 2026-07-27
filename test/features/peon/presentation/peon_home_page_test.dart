@@ -1096,6 +1096,13 @@ class _FakeSessionRepository implements SessionRepository {
   }) async => const SessionDetails(turnCount: 0);
 
   @override
+  Future<void> markSessionAttentionRead({
+    required String workspaceId,
+    required String peonId,
+    required String sessionId,
+  }) async {}
+
+  @override
   Future<void> cancelSession({
     required String workspaceId,
     required String peonId,

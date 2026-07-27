@@ -57,6 +57,14 @@ count, or session activity changes. Initial cached hydration stays still.
 Section headers and rows are full bleed, with the same typography, padding,
 and four-pixel list insets as the web sidebar.
 
+Opening a session sends
+`POST /api/workspaces/:workspaceId/peons/:peonId/sessions/:sessionId/attention/read`.
+The acknowledgement updates the cached row only after the server accepts it,
+so the amber unread edge clears immediately when returning to the list.
+Returning to the foreground retries the idempotent acknowledgement. A failed
+request does not block the cached transcript or incorrectly claim that it was
+read.
+
 Project detail reuses this same cached/live list with a presentation filter:
 canonical `projectId` matches first, while `projectKey` is a fallback when a
 projection lacks an ID. The shared session controller continues to own

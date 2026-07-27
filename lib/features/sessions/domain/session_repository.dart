@@ -25,6 +25,12 @@ abstract interface class SessionRepository implements LiveProjectionSink {
     required String sessionId,
   });
 
+  Future<void> markSessionAttentionRead({
+    required String workspaceId,
+    required String peonId,
+    required String sessionId,
+  });
+
   Future<void> cancelSession({
     required String workspaceId,
     required String peonId,

@@ -165,6 +165,15 @@ class _SessionDetailPageState extends _SessionDetailAttachmentHost
         sessionId: currentSession.sessionId,
         isRunning: currentSession.isRunning,
       );
+      ref.invalidate(
+        sessionDetailsProvider(
+          SessionDetailsScope(
+            workspaceId: currentSession.workspaceId,
+            peonId: currentSession.peonId,
+            sessionId: currentSession.sessionId,
+          ),
+        ),
+      );
       unawaited(
         ref
             .read(transcriptControllerProvider(scope).notifier)
