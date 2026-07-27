@@ -1,6 +1,7 @@
 import { appendEvent } from "./eventLog.js";
 import { query, transaction } from "./db.js";
 import { isUserViewingSession } from "./modules/presence/index.js";
+import { cancelPendingPush } from "./push.js";
 
 export interface SessionAttentionPayload {
   userId: string;
@@ -87,6 +88,12 @@ export async function markSessionAttentionRead(
     [workspaceId, userId, peonId, sessionId, now],
   );
   if ((result.rowCount ?? 0) === 0) return false;
+  // Whatever was queued for this session is now about something the user is
+  // looking at. Dropping it is best-effort: a failure here costs a redundant
+  // notification, never a lost one.
+  await cancelPendingPush(userId, peonId, sessionId).catch((error) => {
+    console.warn("push: cancelling queued notifications failed:", error instanceof Error ? error.message : String(error));
+  });
   await appendEvent({
     workspaceId,
     peonId,

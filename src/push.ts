@@ -4,6 +4,7 @@ import { membership } from "./workspaces.js";
 import { canAccessPeon, canAccessProject } from "./access.js";
 import { fcmEnabled, fcmSender, PushDeliveryError, type PushMessage } from "./infrastructure/push/index.js";
 import type { LiveEvent } from "./eventLog.js";
+import type { SessionAttentionPayload } from "./sessionAttention.js";
 
 export type PushProvider = "expo" | "fcm" | "apns";
 export type PushPlatform = "ios" | "android";
@@ -83,48 +84,83 @@ function providerList(): string {
   return deliverableProviders().map((p) => `'${p}'`).join(",");
 }
 
-function notificationPayload(event: LiveEvent) {
-  const data = event.payload && typeof event.payload === "object" ? event.payload as Record<string, unknown> : {};
-  const title = event.kind === "session" ? String(data.title ?? "Session updated") : String(data.name ?? "Peon updated");
+// What the phone actually reads. The attention event itself carries only the
+// bookkeeping (who, which session, unread), so the human-readable half is read
+// back from the session index at enqueue time — once per finished turn, which
+// is a rate a query can afford.
+function notificationPayload(event: LiveEvent, session: SessionSummary | null) {
   return {
-    title,
-    body: event.kind === "session" ? String(data.preview ?? data.status ?? "Open Overseer for details") : String(data.status ?? "Agent status changed"),
+    title: session?.title?.trim() || "Session finished",
+    body: session?.preview?.trim() || "Your run has finished",
     data: { workspaceId: event.workspaceId, peonId: event.peonId, sessionId: event.sessionId, kind: event.kind, cursor: event.cursor },
   };
 }
 
+interface SessionSummary { title: string | null; preview: string | null; projectKey: string | null; projectId: string | null }
+
+async function sessionSummary(peonId: string, sessionId: string): Promise<SessionSummary | null> {
+  const { rows } = await query<{ title: string | null; preview: string | null; project_key: string | null; project_id: string | null }>(
+    `SELECT title, preview, project_key, project_id FROM sessions WHERE peon_id=$1 AND session_id=$2`, [peonId, sessionId],
+  );
+  const row = rows[0];
+  return row ? { title: row.title, preview: row.preview, projectKey: row.project_key, projectId: row.project_id } : null;
+}
+
+// A notification is for one person: whoever asked for the turn that just
+// finished, and only if they were not watching it finish. That is exactly the
+// `session_attention` transition to unread, so push hangs off it rather than
+// off the session firehose — a running session emits an event per activity
+// tick, and none of those are worth a buzz.
+//
+// Hanging off attention also inherits its presence rule for free:
+// completeNextSessionAttention retires the occurrence as *read* when the
+// requester is sitting in front of that very session on any connected device,
+// so no unread transition happens and nothing is enqueued.
 export async function enqueuePushForEvent(event: LiveEvent): Promise<void> {
-  // Project catalog events keep open dashboards coherent but are not operator
-  // alerts. Keep the existing preference schema and notification behavior
-  // unchanged rather than treating a project rename like a Peon status alert.
-  if (event.cursor <= 0 || event.kind === "project" || event.kind === "attention") return;
-  const payload = JSON.stringify(notificationPayload(event));
-  const enabledColumn = event.kind === "session" ? "session_events" : "peon_events";
-  const { rows } = await query<{ id: string; user_id: string }>(
-    `SELECT s.id, s.user_id FROM push_subscriptions s
-       JOIN workspace_members m ON m.user_id=s.user_id AND m.workspace_id=$1
-       LEFT JOIN push_preferences p ON p.user_id=s.user_id AND p.workspace_id=$1
-      WHERE s.disabled_at IS NULL AND s.provider IN (${providerList()})
-        AND COALESCE(p.enabled, TRUE)=TRUE AND COALESCE(p.${enabledColumn}, TRUE)=TRUE`,
-    [event.workspaceId],
+  if (event.cursor <= 0 || event.kind !== "attention" || !event.sessionId) return;
+  const attention = event.payload && typeof event.payload === "object" ? event.payload as Partial<SessionAttentionPayload> : null;
+  // unread=false is the read receipt — the same event kind, carrying the
+  // opposite meaning.
+  if (attention?.unread !== true || typeof attention.userId !== "string") return;
+  const userId = attention.userId;
+
+  // The requester had access when they started the run; re-check it here
+  // because a notification can outlive the grant that allowed the request.
+  const role = await membership(event.workspaceId, userId);
+  if (!role || !(await canAccessPeon(event.workspaceId, userId, role, event.peonId))) return;
+  const session = await sessionSummary(event.peonId, event.sessionId);
+  if (session?.projectKey && !(await canAccessProject(event.workspaceId, userId, role, event.peonId, session.projectKey, session.projectId))) return;
+
+  const payload = JSON.stringify(notificationPayload(event, session));
+  const { rows } = await query<{ id: string }>(
+    `SELECT s.id FROM push_subscriptions s
+       LEFT JOIN push_preferences p ON p.user_id=s.user_id AND p.workspace_id=$2
+      WHERE s.user_id=$1 AND s.disabled_at IS NULL AND s.provider IN (${providerList()})
+        AND COALESCE(p.enabled, TRUE)=TRUE AND COALESCE(p.session_events, TRUE)=TRUE`,
+    [userId, event.workspaceId],
   );
   const now = Date.now();
   for (const row of rows) {
-    const role = await membership(event.workspaceId, row.user_id);
-    if (!role || !(await canAccessPeon(event.workspaceId, row.user_id, role, event.peonId))) continue;
-    const projectKey = event.payload && typeof event.payload === "object" && typeof (event.payload as { projectKey?: unknown }).projectKey === "string"
-      ? (event.payload as { projectKey: string }).projectKey
-      : null;
-    const projectId = event.payload && typeof event.payload === "object" && typeof (event.payload as { projectId?: unknown }).projectId === "string"
-      ? (event.payload as { projectId: string }).projectId
-      : null;
-    if (projectKey && !(await canAccessProject(event.workspaceId, row.user_id, role, event.peonId, projectKey, projectId))) continue;
     await query(
       `INSERT INTO push_outbox (id,event_cursor,subscription_id,payload,available_at,created_at) VALUES ($1,$2,$3,$4,$5,$5)
        ON CONFLICT (event_cursor,subscription_id) DO NOTHING`,
       [randomUUID(), event.cursor, row.id, payload, now],
     );
   }
+}
+
+// Read on one device, silent on the others. The worker drains every five
+// seconds and backs off after a failure, so there is a real window in which a
+// queued notification is about a session the user has already opened
+// elsewhere. Delivering it then is noise, and unlike a presence check this
+// reads committed state rather than a socket's liveness.
+export async function cancelPendingPush(userId: string, peonId: string, sessionId: string): Promise<void> {
+  await query(
+    `DELETE FROM push_outbox WHERE delivered_at IS NULL
+       AND subscription_id IN (SELECT id FROM push_subscriptions WHERE user_id=$1)
+       AND event_cursor IN (SELECT cursor FROM events WHERE peon_id=$2 AND session_id=$3)`,
+    [userId, peonId, sessionId],
+  );
 }
 
 let worker: ReturnType<typeof setInterval> | null = null;
