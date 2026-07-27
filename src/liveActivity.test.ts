@@ -39,9 +39,11 @@ const DEVICE_TOKEN = "d1.secret-1";
 const CONNECTION = "conn-1";
 const START_TOKEN = "start-token-0123456789abcdef";
 const UPDATE_TOKEN = "update-token-0123456789abcdef";
+const FCM_TOKEN = "fcm-registration-token-0123456789";
 
 interface Delivered {
   token: string;
+  recipient: string | null;
   topic: string | null;
   event: string;
   state: { runningCount: number; completedCount: number; oldestStartedAt: number | null; updatedAt: number | null };
@@ -60,11 +62,12 @@ const originalPush = config.push;
 // send. The Live Activity payload is read back off the wire rather than out of
 // the builder, because "what APNs received" is the assertion that matters.
 function record(body: string): void {
-  const message = (JSON.parse(body) as { message: { apns: { liveActivityToken: string; headers: Record<string, string>; payload: { aps: Record<string, unknown> } } } }).message;
+  const message = (JSON.parse(body) as { message: { token?: string; apns: { liveActivityToken: string; headers: Record<string, string>; payload: { aps: Record<string, unknown> } } } }).message;
   const aps = message.apns.payload.aps;
   const state = aps["content-state"] as Delivered["state"];
   sent.push({
     token: message.apns.liveActivityToken,
+    recipient: message.token ?? null,
     topic: message.apns.headers["apns-topic"] ?? null,
     event: String(aps.event),
     state,
@@ -105,6 +108,13 @@ beforeEach(async () => {
   await query(`INSERT INTO devices (id,user_id,token_hash,created_at,expires_at) VALUES ('d1','u1',$1,1,9999999999999), ('d2','u2','hash-2',1,9999999999999)`, [
     createHash("sha256").update("secret-1").digest("hex"),
   ]);
+  // The device's ordinary FCM registration. It is not decoration: FCM will not
+  // accept a Live Activity push that does not name an app instance.
+  await query(
+    `INSERT INTO push_subscriptions (id,user_id,device_id,provider,platform,token,app_id,created_at,updated_at)
+     VALUES ('sub-1','u1','d1','fcm','ios',$1,'dev.overseer',1,1)`,
+    [FCM_TOKEN],
+  );
   await query(`INSERT INTO workspaces (id,name,slug,created_at) VALUES ('w1','Fleet','fleet',1), ('w2','Second','second',1)`);
   await query(
     `INSERT INTO workspace_members (workspace_id,user_id,role,added_at)
@@ -144,6 +154,7 @@ test("one aggregate starts, counts every running session, and ends only when the
   assert.equal(sent.length, 1);
   assert.equal(sent[0].event, "start");
   assert.equal(sent[0].token, START_TOKEN, "a start is addressed to the push-to-start token, not to an activity");
+  assert.equal(sent[0].recipient, FCM_TOKEN, "FCM refuses a message that names no app instance, activity token or not");
   assert.equal(sent[0].topic, "dev.overseer.push-type.liveactivity");
   assert.equal(sent[0].state.runningCount, 1);
   assert.equal(sent[0].state.oldestStartedAt, appleDate(1_000));
@@ -266,6 +277,26 @@ test("after the last run ends, the next one starts a fresh aggregate", async () 
   assert.equal(sent.at(-1)?.token, START_TOKEN);
   assert.equal(sent.at(-1)?.state.runningCount, 1);
   assert.equal(sent.at(-1)?.state.completedCount, 1, "the finished run is still unread, and says so");
+});
+
+test("a device with no FCM registration has no delivery path, and is left alone", async () => {
+  // The app installed, signed in and registered its ActivityKit token, but its
+  // ordinary push registration is gone — revoked, rotated, never granted. FCM
+  // would refuse the message, so nothing is attempted and no claim is taken.
+  await query(`UPDATE push_subscriptions SET disabled_at=2 WHERE user_id='u1'`);
+  await start();
+  await indexSession("s1", 1_000);
+  await recordSessionRequest({ workspaceId: "w1", userId: "u1", peonId: "p1", sessionId: "s1", occurrenceKey: "create:1", requestedAt: 1_000 });
+
+  assert.equal(sent.length, 0);
+  const { rows } = await query<{ state: string }>(`SELECT state FROM live_activity_claims WHERE user_id='u1'`);
+  assert.equal(rows[0]?.state ?? "idle", "idle", "a claim taken here would block the start that becomes possible later");
+
+  // Registering the phone for push again is all it takes.
+  await query(`UPDATE push_subscriptions SET disabled_at=NULL WHERE user_id='u1'`);
+  await recordSessionRequest({ workspaceId: "w1", userId: "u1", peonId: "p1", sessionId: "s1", occurrenceKey: "followup:2", requestedAt: 2_000 });
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].event, "start");
 });
 
 test("a connection with no push-to-start token is left to reconcile at launch", async () => {

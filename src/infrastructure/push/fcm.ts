@@ -35,8 +35,17 @@ export class PushDeliveryError extends Error {
 }
 
 export interface LiveActivityDelivery {
+  /**
+   * The app instance's ordinary FCM registration token. FCM v1 requires a
+   * recipient on every message — `token`, `topic` or `condition` — and an
+   * ActivityKit token is not one of them: a message carrying only
+   * `apns.live_activity_token` is refused with 400 "Recipient of the message is
+   * not set". It names the app instance; the activity token below is what the
+   * push is actually delivered to.
+   */
+  registrationToken: string;
   /** ActivityKit's push-to-start or per-activity update token — never an FCM token. */
-  token: string;
+  activityToken: string;
   /** The `aps` envelope built by infrastructure/push/liveActivity.ts. */
   payload: Record<string, unknown>;
   /** `<bundleId>.push-type.liveactivity`, when the client told us its bundle. */
@@ -176,15 +185,19 @@ export function createFcmSender(account: FcmServiceAccount, now: () => number = 
       });
     },
 
-    // A Live Activity has no FCM registration token to address: the target is
-    // ActivityKit's own token, and `apns.live_activity_token` is the field FCM
-    // v1 provides to carry it. The message therefore has no `token` of its own —
-    // adding one would address the app's notification channel instead of the
-    // activity.
+    // A Live Activity is addressed twice over: `apns.live_activity_token` is
+    // where it is delivered, and the message's own `token` is the app instance
+    // FCM routes through. Both are required — verified against
+    // `messages:send?validate_only`, which refuses the activity token on its own
+    // with "Recipient of the message is not set" — so a device with no ordinary
+    // FCM registration cannot be sent a Live Activity at all.
     async sendLiveActivity(delivery: LiveActivityDelivery): Promise<void> {
       const headers: Record<string, string> = { "apns-push-type": "liveactivity", "apns-priority": "10" };
       if (delivery.topic) headers["apns-topic"] = delivery.topic;
-      await deliver({ apns: { liveActivityToken: delivery.token, headers, payload: delivery.payload } });
+      await deliver({
+        token: delivery.registrationToken,
+        apns: { liveActivityToken: delivery.activityToken, headers, payload: delivery.payload },
+      });
     },
   };
 }

@@ -65,6 +65,27 @@ test("a send signs a service-account JWT and posts a v1 message", async () => {
   assert.deepEqual(message.data, { workspaceId: "w1", cursor: "42" });
 });
 
+test("a Live Activity names both the app instance and the activity", async () => {
+  const calls = stubFetch(() => Response.json({ name: "projects/overseer-9fe46/messages/2" }));
+
+  await createFcmSender(ACCOUNT).sendLiveActivity({
+    registrationToken: "app-instance-token",
+    activityToken: "activity-token",
+    payload: { aps: { event: "update", "content-state": { runningCount: 2 } } },
+    topic: "dev.overseer.push-type.liveactivity",
+  });
+
+  const message = (JSON.parse(String(calls[1].init?.body)) as { message: Record<string, unknown> }).message;
+  // Without `token` FCM answers 400 "Recipient of the message is not set" and the
+  // activity is never updated — the failure this shape exists to prevent.
+  assert.equal(message.token, "app-instance-token");
+  const apns = message.apns as { liveActivityToken: string; headers: Record<string, string>; payload: unknown };
+  assert.equal(apns.liveActivityToken, "activity-token");
+  assert.equal(apns.headers["apns-push-type"], "liveactivity");
+  assert.equal(apns.headers["apns-topic"], "dev.overseer.push-type.liveactivity");
+  assert.equal(message.notification, undefined, "an activity push is not a notification");
+});
+
 test("the access token is minted once and reused across sends", async () => {
   const calls = stubFetch(() => Response.json({ name: "ok" }));
   const sender = createFcmSender(ACCOUNT);

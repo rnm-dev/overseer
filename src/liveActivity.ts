@@ -29,10 +29,12 @@ import type { LiveEvent } from "./eventLog.js";
 //     `author` a session carries, which is an actor string that arrived over the
 //     wire.
 //
-// Push notifications and Live Activities are deliberately independent: an FCM
-// registration token addresses the app's notification channel, an ActivityKit
-// token addresses one activity. They rotate on different schedules and are
-// stored apart.
+// Push notifications and Live Activities are stored apart — an ActivityKit
+// token addresses one activity, an FCM registration token addresses the app's
+// notification channel, and they rotate on different schedules. They are not
+// independent at delivery, though: FCM v1 requires a recipient on every message
+// and refuses one carrying only an activity token, so sending to an activity
+// also needs that device's ordinary FCM registration to name the app instance.
 
 export type LiveActivityTokenKind = "start" | "update";
 export type LiveActivityState = "idle" | "starting" | "active";
@@ -177,9 +179,10 @@ export async function disableLiveActivitiesForDevice(userId: string, deviceId: s
   for (const row of rows) {
     const scope = { userId, deviceId, connectionId: row.connection_id };
     const token = await tokenFor(scope, "update");
-    if (token) {
+    const registration = await registrationTokenFor(scope);
+    if (token && registration) {
       const claim = await loadClaim(scope);
-      await sendLiveActivity(token, liveActivityPayload({
+      await sendLiveActivity(registration, token, liveActivityPayload({
         event: "end",
         now,
         state: { runningCount: 0, completedCount: claim?.completed_count ?? 0, oldestStartedAt: null, updatedAt: now },
@@ -355,10 +358,29 @@ function describe(error: unknown): string {
   return (error instanceof Error ? error.message : String(error)).slice(0, 500);
 }
 
-async function sendLiveActivity(token: TokenRow, payload: Record<string, unknown>): Promise<void> {
+// The app instance an activity belongs to, which FCM insists on naming even
+// though the delivery target is the ActivityKit token. It is the same device's
+// ordinary push registration — scoped to (user, device), never to any FCM token
+// the user happens to own elsewhere.
+async function registrationTokenFor(scope: LiveActivityScope): Promise<string | null> {
+  const { rows } = await query<{ token: string }>(
+    `SELECT token FROM push_subscriptions
+      WHERE user_id=$1 AND device_id=$2 AND provider='fcm' AND disabled_at IS NULL
+      ORDER BY updated_at DESC LIMIT 1`,
+    [scope.userId, scope.deviceId],
+  );
+  return rows[0]?.token ?? null;
+}
+
+async function sendLiveActivity(registrationToken: string, token: TokenRow, payload: Record<string, unknown>): Promise<void> {
   const sender = fcmSender();
   if (!sender) throw new PushDeliveryError("FCM is not configured", false);
-  await sender.sendLiveActivity({ token: token.token, payload, topic: liveActivityTopic(token.bundle_id) });
+  await sender.sendLiveActivity({
+    registrationToken,
+    activityToken: token.token,
+    payload,
+    topic: liveActivityTopic(token.bundle_id),
+  });
 }
 
 // Only the counts decide whether a push is worth sending. `updatedAt` moves on
@@ -374,6 +396,11 @@ function materiallyEqual(claim: ClaimRow, state: LiveActivityContentState): bool
 async function applyToScope(scope: LiveActivityScope, state: LiveActivityContentState, now: number): Promise<void> {
   const claim = await loadClaim(scope);
   const active = claim !== null && claim.state !== "idle";
+  // No ordinary FCM registration for this device means FCM has no recipient to
+  // route the activity through, so there is no delivery path at all. Treated
+  // like a missing push-to-start token rather than as an error: the aggregate is
+  // still correct, and the app reconciles it at launch.
+  const registration = await registrationTokenFor(scope);
 
   if (!active) {
     if (state.runningCount <= 0) return;
@@ -381,10 +408,10 @@ async function applyToScope(scope: LiveActivityScope, state: LiveActivityContent
     // iOS below 17.2 has no push-to-start token. It reconciles the aggregate
     // when the app launches; emulating a start with an ordinary notification
     // would be a buzz the operator did not ask for.
-    if (!startToken) return;
+    if (!startToken || !registration) return;
     if (!(await claimStart(scope, state, now))) return;
     try {
-      await sendLiveActivity(startToken, liveActivityPayload({
+      await sendLiveActivity(registration, startToken, liveActivityPayload({
         event: "start",
         now,
         state,
@@ -405,7 +432,7 @@ async function applyToScope(scope: LiveActivityScope, state: LiveActivityContent
   const updateToken = await tokenFor(scope, "update");
 
   if (state.runningCount <= 0) {
-    if (!updateToken) {
+    if (!updateToken || !registration) {
       // Started, but the app has not reported its token yet — there is nothing
       // to address an end to. Release so the next run can start cleanly; the
       // client's own 90-second terminal policy retires what is on screen.
@@ -413,7 +440,7 @@ async function applyToScope(scope: LiveActivityScope, state: LiveActivityContent
       return;
     }
     try {
-      await sendLiveActivity(updateToken, liveActivityPayload({
+      await sendLiveActivity(registration, updateToken, liveActivityPayload({
         event: "end",
         now,
         // The final content is what stays on screen for the dismissal window:
@@ -435,9 +462,9 @@ async function applyToScope(scope: LiveActivityScope, state: LiveActivityContent
   if (claim && materiallyEqual(claim, state)) return;
   // Still `starting`: the awakened app has not handed its token back. The claim
   // keeps the last *sent* content, so binding the token replays the difference.
-  if (!updateToken) return;
+  if (!updateToken || !registration) return;
   try {
-    await sendLiveActivity(updateToken, liveActivityPayload({ event: "update", now, state }));
+    await sendLiveActivity(registration, updateToken, liveActivityPayload({ event: "update", now, state }));
     await recordSent(scope, state, now);
   } catch (error) {
     if (error instanceof PushDeliveryError && error.permanent) {
