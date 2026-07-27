@@ -27,6 +27,8 @@
 		<string>6.0</string>
 		<key>ITSAppUsesNonExemptEncryption</key>
 		<false/>
+		<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+		<string>Overseer may use your location when web content you open requests access, including while that content continues working in the background.</string>
 		<key>NSMicrophoneUsageDescription</key>
 		<string>Overseer uses the microphone only while you dictate a message.</string>
 		<key>CFBundleName</key>
