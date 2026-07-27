@@ -7,6 +7,7 @@ import { mintWebPreview } from "../../webPreview.js";
 import { runIdempotentFollowup, validCommandId } from "../../followupIdempotency.js";
 import { enrichTranscriptMetadata } from "../../transcriptTimestamps.js";
 import { indexAcceptedSession } from "../../modules/acceptedSession/index.js";
+import { cancelSessionRun } from "../../modules/sessionCancel/index.js";
 import { deleteIndexedSession } from "../../sessionIndex.js";
 import { cancelSessionRequest, markSessionAttentionRead, recordSessionRequest } from "../../sessionAttention.js";
 import { getIndexedProject, getIndexedProjectById } from "../../projectIndex.js";
@@ -96,6 +97,13 @@ export function registerSessionRoutes(router: express.Router): void {
   }));
   router.get(`${wp}/sessions/:sid`, withWorkspaceSession(async (req, res, c) => {
     const result = await callPeon(connOfRecord(c.record), "GET", `/sessions/${encodeURIComponent(String(req.params.sid))}`, { actor: c.operator.email });
+    // Reading a session is a reconcile point: opening one — and the client's
+    // run watchdog polling this same route — republishes the Peon's authoritative
+    // record, so a "running" row left behind by a Peon that died mid-run heals
+    // for every client instead of waiting for the periodic reconcile. The
+    // projection ignores older snapshots and only broadcasts real changes, so
+    // repeated reads stay silent.
+    await indexAcceptedSession(result, c.workspaceId, c.record.peonId);
     if (!result.ok || !result.json || typeof result.json !== "object") return relay(result, res);
     const body = result.json as Record<string, unknown>;
     const projectId = typeof body.projectId === "string" ? body.projectId : null;
@@ -256,7 +264,18 @@ export function registerSessionRoutes(router: express.Router): void {
     if (result.ok && typeof removedCommandId === "string") await cancelSessionRequest(c.record.peonId, sid, `queue:${removedCommandId}`).catch(() => undefined);
     relay(result, res);
   }));
-  router.post(`${wp}/sessions/:sid/cancel`, withWorkspaceSession(async (req, res, c) => relay(await callPeon(connOfRecord(c.record), "POST", `/sessions/${encodeURIComponent(String(req.params.sid))}/cancel`, { actor: c.operator.email }), res)));
+  // Stop is self-healing: a 409 SESSION_NOT_RUNNING means the operator pressed
+  // Stop on a run that had already ended, so republish the Peon's authoritative
+  // record and let the stale "running" state clear everywhere.
+  router.post(`${wp}/sessions/:sid/cancel`, withWorkspaceSession(async (req, res, c) => {
+    const sid = String(req.params.sid);
+    const result = await cancelSessionRun({
+      cancel: () => callPeon(connOfRecord(c.record), "POST", `/sessions/${encodeURIComponent(sid)}/cancel`, { actor: c.operator.email }),
+      snapshot: () => callPeon(connOfRecord(c.record), "GET", `/sessions/${encodeURIComponent(sid)}`, { actor: c.operator.email }),
+      publish: (snapshot) => indexAcceptedSession(snapshot, c.workspaceId, c.record.peonId),
+    });
+    relay(result, res);
+  }));
   router.delete(`${wp}/sessions/:sid`, withWorkspaceSession(async (req, res, c) => {
     const sid = String(req.params.sid);
     const result = await callPeon(connOfRecord(c.record), "DELETE", `/sessions/${encodeURIComponent(sid)}`, { actor: c.operator.email });
