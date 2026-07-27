@@ -2,7 +2,7 @@ import express from "express";
 import { config } from "../../config.js";
 import { registry, toView, type PeonRecord } from "../../registry.js";
 import { callPeon, connOfRecord, normalizePeonUrl, PROTOCOL } from "../../peonClient.js";
-import { getSessionCatalogStates, listSessions } from "../../sessionIndex.js";
+import { clampRecentSessionsLimit, getSessionCatalogStates, listOperatorRecentSessions, listSessions } from "../../sessionIndex.js";
 import { bindPeon, mintCredential, revokeCredential, revokeCredentialForPeon } from "../../credentials.js";
 import { ownerOnly, withWorkspace } from "../helpers.js";
 import { canAccessPeon, listMemberAccess } from "../../access.js";
@@ -93,10 +93,19 @@ export function registerFleetRoutes(router: express.Router): void {
     }),
   );
 
-  router.get("/workspaces/:wsId/peons", withWorkspace(async (_req, res, ctx) => {
+  router.get("/workspaces/:wsId/peons", withWorkspace(async (req, res, ctx) => {
     const records = await registry.list(ctx.workspaceId);
     const visible = ctx.role === "owner" ? records : (await Promise.all(records.map(async (record) => await canAccessPeon(ctx.workspaceId, ctx.userId, ctx.role, record.peonId) ? record : null))).filter((record): record is PeonRecord => !!record);
-    res.json({ peons: visible.map(toView) });
+    // Opt-in projection: without it the response shape and cost are unchanged.
+    if (req.query.includeRecentSessions !== "mine") return res.json({ peons: visible.map(toView) });
+    const recent = await listOperatorRecentSessions({
+      workspaceId: ctx.workspaceId,
+      userId: ctx.userId,
+      peonIds: visible.map((record) => record.peonId),
+      limit: clampRecentSessionsLimit(req.query.recentSessionsLimit),
+      access: ctx.role === "member" ? { userId: ctx.userId } : undefined,
+    });
+    res.json({ peons: visible.map((record) => ({ ...toView(record), recentSessions: recent.get(record.peonId) ?? [] })) });
   }));
   router.delete(
     "/workspaces/:wsId/peons/:id",

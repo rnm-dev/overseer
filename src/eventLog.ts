@@ -1,6 +1,7 @@
 import { EventEmitter } from "node:events";
 import { query, type Transaction } from "./db.js";
 import { enqueuePushForEvent } from "./push.js";
+import { syncLiveActivitiesForEvent } from "./liveActivity.js";
 
 // The append-only event log — the single choke point that both persists a
 // resumable, ordered stream (global `cursor`) and fans out live to connected WS
@@ -56,6 +57,13 @@ export async function insertEvent(writer: EventWriter, e: AppendInput): Promise<
 export async function publishCommittedEvent(event: LiveEvent): Promise<void> {
   bus.emit("event", event);
   await enqueuePushForEvent(event);
+  // The Live Activity aggregate is recomputed from committed state on every
+  // event that can move it — the counter on the operator's lock screen must not
+  // depend on a delta arriving. A failure here is never allowed to fail the
+  // write that produced the event.
+  await syncLiveActivitiesForEvent(event).catch((error) => {
+    console.warn("live activity: refresh failed:", error instanceof Error ? error.message : String(error));
+  });
 }
 
 export async function appendEvent(e: AppendInput): Promise<LiveEvent> {

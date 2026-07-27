@@ -453,4 +453,66 @@ export const MIGRATIONS: { id: string; statements: string[] }[] = [
       `ALTER TABLE projects ADD COLUMN IF NOT EXISTS quick_links JSONB NOT NULL DEFAULT '[]'::jsonb`,
     ],
   },
+  {
+    // A Live Activity is one aggregate per operator per device connection —
+    // never one per session — so both tables are keyed by that scope rather
+    // than by a session. ActivityKit's tokens are not FCM registration tokens
+    // and live in their own table: the push-to-start token survives the app
+    // being terminated, and the update token exists only for as long as the
+    // activity ActivityKit handed it back for.
+    //
+    // The claim row is the duplicate-suppressor: its primary key is the scope,
+    // so a conditional UPDATE off `state='idle'` is what makes two simultaneous
+    // "first session started" events produce exactly one start push.
+    id: "022_live_activities",
+    statements: [
+      `CREATE TABLE IF NOT EXISTS live_activity_tokens (
+         id            TEXT PRIMARY KEY,
+         user_id       TEXT NOT NULL,
+         device_id     TEXT NOT NULL,
+         connection_id TEXT NOT NULL,
+         kind          TEXT NOT NULL,
+         activity_id   TEXT,
+         token         TEXT NOT NULL,
+         bundle_id     TEXT,
+         created_at    BIGINT NOT NULL,
+         updated_at    BIGINT NOT NULL,
+         disabled_at   BIGINT
+       )`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS live_activity_tokens_scope_idx ON live_activity_tokens (user_id, device_id, connection_id, kind)`,
+      `CREATE INDEX IF NOT EXISTS live_activity_tokens_user_idx ON live_activity_tokens (user_id)`,
+      `CREATE TABLE IF NOT EXISTS live_activity_claims (
+         user_id            TEXT NOT NULL,
+         device_id          TEXT NOT NULL,
+         connection_id      TEXT NOT NULL,
+         state              TEXT NOT NULL,
+         activity_id        TEXT,
+         running_count      INTEGER NOT NULL DEFAULT 0,
+         completed_count    INTEGER NOT NULL DEFAULT 0,
+         oldest_started_at  BIGINT,
+         content_updated_at BIGINT NOT NULL DEFAULT 0,
+         started_at         BIGINT,
+         ended_at           BIGINT,
+         updated_at         BIGINT NOT NULL,
+         last_error         TEXT,
+         PRIMARY KEY (user_id, device_id, connection_id)
+       )`,
+      `CREATE INDEX IF NOT EXISTS live_activity_claims_user_idx ON live_activity_claims (user_id)`,
+    ],
+  },
+  {
+    // `state` answers "did the operator see the answer"; it cannot also answer
+    // "did the run finish", because opening a still-running session retires an
+    // occurrence to `read` while its execution is still in flight. `resolved_at`
+    // is the lifecycle half: set FIFO as runs complete, regardless of what the
+    // operator has read. Backfill resolves every non-pending occurrence — a
+    // pending row is by construction one whose completion never arrived.
+    id: "023_session_attention_lifecycle",
+    statements: [
+      `ALTER TABLE session_attention ADD COLUMN IF NOT EXISTS resolved_at BIGINT`,
+      `UPDATE session_attention SET resolved_at = COALESCE(completed_at, read_at, requested_at)
+         WHERE resolved_at IS NULL AND state <> 'pending'`,
+      `CREATE INDEX IF NOT EXISTS session_attention_outstanding_idx ON session_attention (peon_id, session_id, resolved_at, requested_at)`,
+    ],
+  },
 ];

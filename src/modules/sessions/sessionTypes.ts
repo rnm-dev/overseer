@@ -67,6 +67,22 @@ export interface ListOptions {
   offset: number;
 }
 
+// One row of the operator-scoped recent-session projection attached to a Peon in
+// the Fleet response. Session facts come from the index; the request-state
+// fields are this operator's alone.
+export interface OperatorRecentSession {
+  sessionId: string;
+  status: string | null;
+  title: string | null;
+  projectId: string | null;
+  projectKey: string | null;
+  startedAt: number | null;
+  lastActivityAt: number | null;
+  lastRequestedAt: number | null;
+  hasOutstandingRequest: boolean;
+  attentionUnread: boolean;
+}
+
 export interface SessionCatalogState {
   peonId: string;
   online: boolean;

@@ -10,9 +10,23 @@ import type { FcmServiceAccount } from "./pushConfig.js";
 // call would mint a fresh token each time. It is rebuilt only if the resolved
 // service account itself changes.
 
-export { createFcmSender, PushDeliveryError, type PushMessage, type PushSender } from "./fcm.js";
+export { createFcmSender, PushDeliveryError, type LiveActivityDelivery, type PushMessage, type PushSender } from "./fcm.js";
 export { resolvePushConfig, type PushConfig, type FcmServiceAccount } from "./pushConfig.js";
 export { plainText } from "./plainText.js";
+export {
+  appleDate,
+  liveActivityPayload,
+  liveActivityTopic,
+  startAlert,
+  ATTRIBUTES_TYPE,
+  APPLE_REFERENCE_EPOCH_MS,
+  STALE_AFTER_MS,
+  TERMINAL_DISMISSAL_MS,
+  type LiveActivityAlert,
+  type LiveActivityAttributes,
+  type LiveActivityContentState,
+  type LiveActivityEvent,
+} from "./liveActivity.js";
 
 let sender: PushSender | null = null;
 let senderAccount: FcmServiceAccount | null = null;

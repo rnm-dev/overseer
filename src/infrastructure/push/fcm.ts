@@ -34,8 +34,18 @@ export class PushDeliveryError extends Error {
   }
 }
 
+export interface LiveActivityDelivery {
+  /** ActivityKit's push-to-start or per-activity update token — never an FCM token. */
+  token: string;
+  /** The `aps` envelope built by infrastructure/push/liveActivity.ts. */
+  payload: Record<string, unknown>;
+  /** `<bundleId>.push-type.liveactivity`, when the client told us its bundle. */
+  topic: string | null;
+}
+
 export interface PushSender {
   send(token: string, message: PushMessage): Promise<void>;
+  sendLiveActivity(delivery: LiveActivityDelivery): Promise<void>;
 }
 
 function base64url(value: string | Buffer): string {
@@ -129,39 +139,52 @@ export function createFcmSender(account: FcmServiceAccount, now: () => number = 
     return inFlight;
   }
 
-  async function post(token: string, message: PushMessage): Promise<Response> {
+  async function post(message: Record<string, unknown>): Promise<Response> {
     return fetch(endpoint, {
       method: "POST",
       headers: { Authorization: `Bearer ${await accessToken()}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        message: {
-          token,
-          notification: { title: message.title, body: message.body },
-          data: stringData(message.data),
-          android: { priority: "HIGH", notification: { sound: "default" } },
-          apns: { headers: { "apns-priority": "10" }, payload: { aps: { sound: "default" } } },
-        },
-      }),
+      body: JSON.stringify({ message }),
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
   }
 
+  async function deliver(message: Record<string, unknown>): Promise<void> {
+    let response = await post(message);
+    // An unauthorized answer is worth exactly one free retry with a fresh
+    // token: a cached token Google revoked early would otherwise wedge every
+    // delivery until the process restarts.
+    if (response.status === 401 && cached) {
+      cached = null;
+      response = await post(message);
+    }
+    if (response.ok) return;
+    const detail = await errorDetail(response);
+    throw new PushDeliveryError(
+      `FCM responded ${response.status}${detail.message ? `: ${detail.message}` : ""}`,
+      isPermanent(response.status, detail.status),
+    );
+  }
+
   return {
     async send(token: string, message: PushMessage): Promise<void> {
-      let response = await post(token, message);
-      // An unauthorized answer is worth exactly one free retry with a fresh
-      // token: a cached token Google revoked early would otherwise wedge every
-      // delivery until the process restarts.
-      if (response.status === 401 && cached) {
-        cached = null;
-        response = await post(token, message);
-      }
-      if (response.ok) return;
-      const detail = await errorDetail(response);
-      throw new PushDeliveryError(
-        `FCM responded ${response.status}${detail.message ? `: ${detail.message}` : ""}`,
-        isPermanent(response.status, detail.status),
-      );
+      await deliver({
+        token,
+        notification: { title: message.title, body: message.body },
+        data: stringData(message.data),
+        android: { priority: "HIGH", notification: { sound: "default" } },
+        apns: { headers: { "apns-priority": "10" }, payload: { aps: { sound: "default" } } },
+      });
+    },
+
+    // A Live Activity has no FCM registration token to address: the target is
+    // ActivityKit's own token, and `apns.live_activity_token` is the field FCM
+    // v1 provides to carry it. The message therefore has no `token` of its own —
+    // adding one would address the app's notification channel instead of the
+    // activity.
+    async sendLiveActivity(delivery: LiveActivityDelivery): Promise<void> {
+      const headers: Record<string, string> = { "apns-push-type": "liveactivity", "apns-priority": "10" };
+      if (delivery.topic) headers["apns-topic"] = delivery.topic;
+      await deliver({ apns: { liveActivityToken: delivery.token, headers, payload: delivery.payload } });
     },
   };
 }
