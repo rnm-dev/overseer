@@ -155,7 +155,16 @@ export function PeonSessionDetail() {
   const runningReasoningEffort = activeRun.sessionKey === sessionKey ? activeRun.reasoningEffort : null;
   const runRevisionRef = useRef<Map<string, number>>(new Map());
   const metadataStatusRef = useRef<Map<string, string | null>>(new Map());
+  // A Peon that refuses a cancel with SESSION_NOT_RUNNING has told us something
+  // stronger than its own session record does: that record can be left at
+  // "running" by a run whose process vanished, and re-reading it would keep
+  // resurrecting the indicator we just cleared. So the refusal outranks the
+  // record until the session produces live work again.
+  const refutedRunRef = useRef<Set<string>>(new Set());
   const setRunning = useCallback((next: boolean) => {
+    // Only a live signal — a sent follow-up or a tail frame — turns a run back
+    // on, and that is exactly what makes the Peon's record trustworthy again.
+    if (next) refutedRunRef.current.delete(sessionKey);
     runRevisionRef.current.set(sessionKey, (runRevisionRef.current.get(sessionKey) ?? 0) + 1);
     setActiveRun((previous) => ({
       sessionKey,
@@ -227,6 +236,9 @@ export function PeonSessionDetail() {
     return () => observer.disconnect();
   }, [composerNode]);
   const onSnapshotRunning = useCallback(() => {
+    // A transcript whose last event is a run signal describes the same stuck
+    // record the Peon already refuted; it is not evidence of live work.
+    if (refutedRunRef.current.has(sessionKey)) return;
     setActiveRun((previous) => ({
       sessionKey,
       running: true,
@@ -365,8 +377,10 @@ export function PeonSessionDetail() {
         // Do not let a metadata request that started before a local/live run
         // transition overwrite that newer transition when its response arrives.
         if ((runRevisionRef.current.get(sessionKey) ?? 0) === runRevision) {
-          setRunning(s.status === "running");
-          if (s.status === "running") setRunningSelection(s.model ?? null, s.reasoningEffort ?? null);
+          const peonRunning = s.status === "running";
+          // A record still claiming a run the Peon itself refused stays refused.
+          if (!peonRunning || !refutedRunRef.current.has(sessionKey)) setRunning(peonRunning);
+          if (peonRunning) setRunningSelection(s.model ?? null, s.reasoningEffort ?? null);
         }
         setSessionModel(s.model ?? null);
         setLoadedMetadataKey(sessionKey);
@@ -415,6 +429,7 @@ export function PeonSessionDetail() {
       // Clear the stale indicator and refetch the peon's authoritative record
       // instead of leaving a stop button that can only ever fail again.
       if (outcome === "already-stopped") {
+        refutedRunRef.current.add(sessionKey);
         setRunning(false);
         setMetaTick((value) => value + 1);
       }
