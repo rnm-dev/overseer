@@ -26,3 +26,13 @@ test("durable events enqueue Expo pushes and respect workspace preferences", asy
   await appendEvent({ workspaceId: "w1", peonId: "p1", sessionId: "s2", kind: "session", payload: { status: "complete" } });
   assert.equal((await query(`SELECT id FROM push_outbox`)).rowCount, 1);
 });
+
+// A registered FCM device on an instance with no service account has nowhere to
+// deliver to. Queueing for it anyway would build a backlog that only ever fails,
+// so the subscription is simply skipped until the credential exists.
+test("an FCM subscription queues nothing while no service account is configured", async () => {
+  await setup();
+  await upsertPushSubscription({ userId: "u1", deviceId: "d1", provider: "fcm", platform: "android", token: "fcm-registration-token-abcdef", appId: "dev.overseer" });
+  await appendEvent({ workspaceId: "w1", peonId: "p1", sessionId: "s1", kind: "session", payload: { title: "Build", status: "complete" } });
+  assert.equal((await query(`SELECT id FROM push_outbox`)).rowCount, 0);
+});

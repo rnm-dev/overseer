@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { query, withAdvisoryLock } from "./db.js";
 import { membership } from "./workspaces.js";
 import { canAccessPeon, canAccessProject } from "./access.js";
+import { fcmEnabled, fcmSender, PushDeliveryError, type PushMessage } from "./infrastructure/push/index.js";
 import type { LiveEvent } from "./eventLog.js";
 
 export type PushProvider = "expo" | "fcm" | "apns";
@@ -68,6 +69,20 @@ export async function setPushPreferences(userId: string, workspaceId: string, va
   return value;
 }
 
+// Which providers this instance can actually reach. Expo authenticates the
+// token itself, so it is always deliverable; FCM only exists once a service
+// account is configured. A subscription for an unreachable provider is neither
+// enqueued nor selected for delivery — a queue of messages nothing can send is
+// worse than no queue at all.
+function deliverableProviders(): PushProvider[] {
+  return fcmEnabled() ? ["expo", "fcm"] : ["expo"];
+}
+
+// The values are this module's own literals, never request input.
+function providerList(): string {
+  return deliverableProviders().map((p) => `'${p}'`).join(",");
+}
+
 function notificationPayload(event: LiveEvent) {
   const data = event.payload && typeof event.payload === "object" ? event.payload as Record<string, unknown> : {};
   const title = event.kind === "session" ? String(data.title ?? "Session updated") : String(data.name ?? "Peon updated");
@@ -89,7 +104,7 @@ export async function enqueuePushForEvent(event: LiveEvent): Promise<void> {
     `SELECT s.id, s.user_id FROM push_subscriptions s
        JOIN workspace_members m ON m.user_id=s.user_id AND m.workspace_id=$1
        LEFT JOIN push_preferences p ON p.user_id=s.user_id AND p.workspace_id=$1
-      WHERE s.disabled_at IS NULL AND s.provider='expo'
+      WHERE s.disabled_at IS NULL AND s.provider IN (${providerList()})
         AND COALESCE(p.enabled, TRUE)=TRUE AND COALESCE(p.${enabledColumn}, TRUE)=TRUE`,
     [event.workspaceId],
   );
@@ -131,27 +146,52 @@ export async function deliverPending(): Promise<void> {
   await withAdvisoryLock("overseer:push-delivery", deliverPendingLocked);
 }
 
+async function sendViaExpo(token: string, message: PushMessage): Promise<void> {
+  const response = await fetch("https://exp.host/--/api/v2/push/send", {
+    method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({ to: token, sound: "default", ...message }),
+    signal: AbortSignal.timeout(10_000),
+  });
+  const result = await response.json() as { data?: { status?: string; message?: string; details?: { error?: string } } };
+  if (response.ok && result.data?.status !== "error") return;
+  const reason = result.data?.message ?? `Expo HTTP ${response.status}`;
+  // Expo reports a retired install the same way FCM does, just under its own
+  // name; treating it as permanent is what keeps a reinstalled phone from
+  // collecting a queue that can never drain.
+  throw new PushDeliveryError(reason, result.data?.details?.error === "DeviceNotRegistered");
+}
+
+async function sendViaFcm(token: string, message: PushMessage): Promise<void> {
+  const sender = fcmSender();
+  if (!sender) throw new PushDeliveryError("FCM is not configured", false);
+  await sender.send(token, message);
+}
+
 async function deliverPendingLocked(): Promise<void> {
-  const { rows } = await query<{ id: string; token: string; payload: unknown; attempts: number }>(
-    `SELECT o.id,s.token,o.payload,o.attempts FROM push_outbox o JOIN push_subscriptions s ON s.id=o.subscription_id
-      WHERE o.delivered_at IS NULL AND o.available_at <= $1 AND s.disabled_at IS NULL AND s.provider='expo'
+  const { rows } = await query<{ id: string; subscription_id: string; provider: PushProvider; token: string; payload: unknown; attempts: number }>(
+    `SELECT o.id,o.subscription_id,s.provider,s.token,o.payload,o.attempts FROM push_outbox o JOIN push_subscriptions s ON s.id=o.subscription_id
+      WHERE o.delivered_at IS NULL AND o.available_at <= $1 AND s.disabled_at IS NULL AND s.provider IN (${providerList()})
       ORDER BY o.created_at LIMIT 100`, [Date.now()],
   );
   for (const row of rows) {
-    const payload = typeof row.payload === "string" ? JSON.parse(row.payload) : row.payload as Record<string, unknown>;
+    const message = (typeof row.payload === "string" ? JSON.parse(row.payload) : row.payload) as PushMessage;
     try {
-      const response = await fetch("https://exp.host/--/api/v2/push/send", {
-        method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({ to: row.token, sound: "default", ...payload }),
-        signal: AbortSignal.timeout(10_000),
-      });
-      const result = await response.json() as { data?: { status?: string; message?: string } };
-      if (!response.ok || result.data?.status === "error") throw new Error(result.data?.message ?? `Expo HTTP ${response.status}`);
+      if (row.provider === "fcm") await sendViaFcm(row.token, message);
+      else await sendViaExpo(row.token, message);
       await query(`UPDATE push_outbox SET delivered_at=$2,last_error=NULL WHERE id=$1`, [row.id, Date.now()]);
     } catch (err) {
       const attempts = row.attempts + 1;
+      const error = String(err).slice(0, 500);
+      // A permanent failure is about the device, not the message: retire the
+      // subscription so its queued messages drop out of the delivery join
+      // instead of being retried for an hour at a time, forever.
+      if (err instanceof PushDeliveryError && err.permanent) {
+        await query(`UPDATE push_subscriptions SET disabled_at=$2 WHERE id=$1`, [row.subscription_id, Date.now()]);
+        await query(`UPDATE push_outbox SET attempts=$2,last_error=$3 WHERE id=$1`, [row.id, attempts, error]);
+        continue;
+      }
       const delay = Math.min(60 * 60_000, 5_000 * 2 ** Math.min(attempts, 10));
-      await query(`UPDATE push_outbox SET attempts=$2,available_at=$3,last_error=$4 WHERE id=$1`, [row.id, attempts, Date.now() + delay, String(err).slice(0, 500)]);
+      await query(`UPDATE push_outbox SET attempts=$2,available_at=$3,last_error=$4 WHERE id=$1`, [row.id, attempts, Date.now() + delay, error]);
     }
   }
 }
