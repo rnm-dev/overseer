@@ -7,6 +7,7 @@ import type pg from "pg";
 import { newDb } from "pg-mem";
 import { config } from "./config.js";
 import { initDb, query } from "./db.js";
+import { appendEvent } from "./eventLog.js";
 import { appleDate } from "./infrastructure/push/index.js";
 import {
   aggregateActivityId,
@@ -203,6 +204,35 @@ test("running sessions in different workspaces share the operator's one aggregat
   await finish("w2-session", 4_000, "w2", "p2");
   assert.equal(sent.at(-1)?.event, "end");
   assert.equal(await liveActivityAggregate("u1", 5_000).then((state) => state.runningCount), 0);
+});
+
+test("a redelivered event neither doubles the activity nor moves the counters", async () => {
+  await start();
+  await indexSession("s1", 1_000);
+  await recordSessionRequest({ workspaceId: "w1", userId: "u1", peonId: "p1", sessionId: "s1", occurrenceKey: "create:1", requestedAt: 1_000 });
+  await bind();
+  assert.deepEqual(sent.map((push) => push.event), ["start"]);
+
+  // The same request arriving twice — a retried command, a replayed frame. The
+  // occurrence is keyed, so the aggregate is recomputed to the same answer.
+  await recordSessionRequest({ workspaceId: "w1", userId: "u1", peonId: "p1", sessionId: "s1", occurrenceKey: "create:1", requestedAt: 1_000 });
+  // And the session's own firehose, which says nothing new about the counts.
+  await appendEvent({ workspaceId: "w1", peonId: "p1", sessionId: "s1", kind: "session", payload: { status: "running" } });
+  await appendEvent({ workspaceId: "w1", peonId: "p1", sessionId: "s1", kind: "session", payload: { status: "running" } });
+
+  assert.deepEqual(sent.map((push) => push.event), ["start"], "an aggregate that has not moved is not worth a push");
+  assert.equal((await liveActivityAggregate("u1", 2_000)).runningCount, 1);
+
+  // A completion delivered twice must not end an activity that is still counting
+  // the second run, nor count the same finish twice.
+  await indexSession("s2", 2_000);
+  await recordSessionRequest({ workspaceId: "w1", userId: "u1", peonId: "p1", sessionId: "s2", occurrenceKey: "create:2", requestedAt: 2_000 });
+  await finish("s1", 3_000);
+  await completeNextSessionAttention("w1", "p1", "s1", 3_000);
+
+  assert.deepEqual(sent.map((push) => push.event), ["start", "update", "update"]);
+  assert.equal(sent.at(-1)?.state.runningCount, 1);
+  assert.equal(sent.at(-1)?.state.completedCount, 1, "one finish, counted once");
 });
 
 test("another operator's run never enters my aggregate", async () => {
