@@ -305,7 +305,7 @@ export const en: Record<string, string> = {
   "session.delete.running": "Cancel the session before deleting it.",
   "session.stop": "stop",
   "session.stop.stopping": "stopping…",
-  "session.stop.nothing": "Nothing is running to stop.",
+  "session.stop.nothing": "Nothing was running — session state refreshed.",
   "session.scrollToBottom": "Scroll to bottom",
   "session.chat.thinking": "Work work",
   "session.chat.ended": "Session ended",

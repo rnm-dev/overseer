@@ -5,6 +5,7 @@ import test from "node:test";
 import type pg from "pg";
 import { newDb } from "pg-mem";
 import { initDb, query } from "./db.js";
+import { indexAcceptedSession } from "./modules/acceptedSession/index.js";
 import {
   applySocketSessionEvent,
   applySocketSessionSnapshot,
@@ -208,6 +209,34 @@ test("Peon collection reconciliation removes sessions deleted at the Peon", asyn
   const events = await query<{ payload: { deleted?: boolean; sessionId?: string } }>(`SELECT payload FROM events WHERE session_id=$1`, ["deleted-remotely"]);
   assert.equal(events.rows.at(-1)?.payload.deleted, true);
   assert.equal(events.rows.at(-1)?.payload.sessionId, "deleted-remotely");
+});
+
+test("re-reading a session heals a run left running by a Peon that died mid-work", async () => {
+  const mem = newDb();
+  const adapter = mem.adapters.createPg();
+  await initDb(new adapter.Pool() as unknown as pg.Pool);
+  // The Peon died while working, so the last thing it ever said was "running".
+  await upsertSession("workspace", "peon", { id: "orphan", status: "running", startedAt: 10, lastActivityAt: 20 });
+
+  // Opening the session re-reads the record the restarted Peon rebuilt on boot.
+  const read = {
+    ok: true,
+    json: {
+      id: "orphan",
+      status: "completed",
+      startedAt: 10,
+      lastActivityAt: 20,
+      endedAt: 30,
+      outcome: { result: "failure", summary: "Daemon restarted while this session was running." },
+    },
+  };
+  assert.equal(await indexAcceptedSession(read, "workspace", "peon"), true);
+  assert.equal((await listSessions({ peonId: "peon", limit: 10, offset: 0 })).sessions[0]?.status, "completed");
+
+  // The same read repeats on every open and on each run-watchdog poll, so it
+  // must stay silent once the index already agrees with the Peon.
+  assert.equal(await indexAcceptedSession(read, "workspace", "peon"), true);
+  assert.equal((await query<{ count: number }>(`SELECT COUNT(*)::int AS count FROM events WHERE session_id='orphan'`)).rows[0]?.count, 2);
 });
 
 test("reverse-connected session catalogs never race legacy HTTP reconciliation", async () => {

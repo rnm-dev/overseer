@@ -305,7 +305,7 @@ export const ru: Record<string, string> = {
   "session.delete.running": "Отмените сессию перед удалением.",
   "session.stop": "остановить",
   "session.stop.stopping": "остановка…",
-  "session.stop.nothing": "Нечего останавливать.",
+  "session.stop.nothing": "Ничего не выполнялось — состояние сессии обновлено.",
   "session.scrollToBottom": "Прокрутить вниз",
   "session.chat.thinking": "Размышление",
   "session.chat.ended": "Сессия завершена",

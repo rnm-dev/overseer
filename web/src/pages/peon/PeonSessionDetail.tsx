@@ -26,6 +26,7 @@ import { SessionComposerDock } from "./session/SessionComposerDock";
 import { SessionOverlays } from "./session/SessionOverlays";
 import { useScrollToBottom } from "./session/useScrollToBottom";
 import { nextSessionAfterDeletion } from "./session/nextSession";
+import { stopOutcome } from "./session/stopOutcome";
 import { isSuccessfulRunResult, onSelectedSoundPackChange, playPeonSound, playWorkSound, stopWorkSound } from "../../peonSounds";
 
 // author: Viktor
@@ -144,6 +145,12 @@ export function PeonSessionDetail() {
     reasoningEffort: null,
   }));
   const running = activeRun.sessionKey === sessionKey && activeRun.running;
+  // A run only exists while the Peon holding it is connected. If it dies mid-run
+  // nothing can report the ending, so stop claiming live work rather than
+  // animating forever; the record is re-read (and the index healed) as soon as
+  // the Peon answers again.
+  const controlConnected = peon.controlConnected ?? peon.online;
+  const liveWork = running && controlConnected;
   const runningModel = activeRun.sessionKey === sessionKey ? activeRun.model : null;
   const runningReasoningEffort = activeRun.sessionKey === sessionKey ? activeRun.reasoningEffort : null;
   const runRevisionRef = useRef<Map<string, number>>(new Map());
@@ -172,13 +179,13 @@ export function PeonSessionDetail() {
   const [stopNote, setStopNote] = useState<string | null>(null);
   const suppressCompletionSoundRef = useRef(false);
   useEffect(() => {
-    if (!running) stopWorkSound();
+    if (!liveWork) stopWorkSound();
     const unsubscribe = onSelectedSoundPackChange(stopWorkSound);
     return () => {
       unsubscribe();
       stopWorkSound();
     };
-  }, [running, sessionKey]);
+  }, [liveWork, sessionKey]);
 
   const queueReconcilerRef = useRef<ReturnType<typeof createQueueReconciler> | null>(null);
   const queueActivityRef = useRef(createQueueActivityTracker());
@@ -403,8 +410,15 @@ export function PeonSessionDetail() {
       playPeonSound("stop");
     } catch (err) {
       suppressCompletionSoundRef.current = false;
-      // 409 ⇒ nothing active to cancel; 404 on an older peon ⇒ needs update.
-      setStopNote(err instanceof ApiError && err.status === 409 ? t("session.stop.nothing") : isPeonNeedsUpdate(err) ? t("peon.unsupported") : t("error.generic"));
+      const outcome = stopOutcome(err);
+      // 409 ⇒ the run had already ended and this page still showed it live.
+      // Clear the stale indicator and refetch the peon's authoritative record
+      // instead of leaving a stop button that can only ever fail again.
+      if (outcome === "already-stopped") {
+        setRunning(false);
+        setMetaTick((value) => value + 1);
+      }
+      setStopNote(outcome === "already-stopped" ? t("session.stop.nothing") : outcome === "unsupported" ? t("peon.unsupported") : t("error.generic"));
     } finally {
       setStopping(false);
     }
@@ -531,7 +545,7 @@ export function PeonSessionDetail() {
               <div className="forge-spin" />
             </div>
           )
-        ) : history.length === 0 && live.length === 0 && !running ? (
+        ) : history.length === 0 && live.length === 0 && !liveWork ? (
           <p className="text-center font-mono text-sm text-bone-faint">{t("session.empty")}</p>
         ) : (
           <div>
@@ -567,7 +581,7 @@ export function PeonSessionDetail() {
                 />
               </div>
             ))}
-            {running && (
+            {liveWork && (
               <div
                 data-session-running-row
                 className={items.length === 0 ? "" : gapClass(items[items.length - 1].kind === "user", false)}
