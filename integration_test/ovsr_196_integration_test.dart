@@ -312,6 +312,13 @@ class _HarnessSessionRepository implements SessionRepository {
   }) async => details;
 
   @override
+  Future<void> markSessionAttentionRead({
+    required String workspaceId,
+    required String peonId,
+    required String sessionId,
+  }) async {}
+
+  @override
   Future<void> cancelSession({
     required String workspaceId,
     required String peonId,

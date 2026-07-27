@@ -19,6 +19,59 @@ void main() {
 
   tearDown(() => database.close());
 
+  test(
+    'marks session attention read and clears the cached unread edge',
+    () async {
+      RequestOptions? request;
+      final dio = Dio(BaseOptions(baseUrl: 'https://overseer.example/api/'));
+      dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (options, handler) {
+            request = options;
+            handler.resolve(
+              Response<void>(requestOptions: options, statusCode: 200),
+            );
+          },
+        ),
+      );
+      repository = DefaultSessionRepository(
+        database: database,
+        apiUrl: Uri.parse('https://overseer.example/api/'),
+        token: 'test-token',
+        dio: dio,
+      );
+      await repository.applyLiveProjection(
+        workspaceId: 'workspace',
+        cursor: 1,
+        projection: {
+          'peonId': 'peon',
+          'sessionId': 'session/id',
+          'attentionUnread': true,
+          'attentionUpdatedAt': 10,
+          'syncedAt': 10,
+        },
+      );
+
+      await repository.markSessionAttentionRead(
+        workspaceId: 'workspace',
+        peonId: 'peon',
+        sessionId: 'session/id',
+      );
+
+      expect(request?.method, 'POST');
+      expect(
+        request?.path,
+        'workspaces/workspace/peons/peon/sessions/session%2Fid/attention/read',
+      );
+      final cached = await repository.loadCachedSessions(
+        workspaceId: 'workspace',
+        peonId: 'peon',
+      );
+      expect(cached.single.attentionUnread, isFalse);
+      expect(cached.single.attentionUpdatedAt, greaterThan(10));
+    },
+  );
+
   test('cancels a running session through the Overseer proxy', () async {
     RequestOptions? request;
     final dio = Dio(BaseOptions(baseUrl: 'https://overseer.example/api/'));
