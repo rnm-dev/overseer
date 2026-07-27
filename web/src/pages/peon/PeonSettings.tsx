@@ -4,10 +4,10 @@ import { api, ApiError } from "../../api";
 import { Badge, Button, Card, ConfirmationDialog, Input, Label } from "../../ui";
 import { useT } from "../../i18n";
 import { usePeon } from "./context";
-import { AgentSelect, ModelSelect, providerForAgent, useModels } from "./models";
+import { AgentSelect, defaultEffortIdFor, effortsForModel, ModelSelect, ReasoningEffortSelect, providerForAgent, useModels } from "./models";
 import { PathInput } from "./PathInput";
 import { PeonArmory } from "./PeonArmory";
-import { buildSettingsPayload, resolveDefaultModel } from "./settingsModel";
+import { buildSettingsPayload, resolveDefaultModel, resolveDefaultReasoningEffort } from "./settingsModel";
 import { peonSettingsPath, peonSettingsTabFromPath, SOUL_EDITOR_ROWS } from "./settingsNavigation";
 import { savePeonSoul, soulExcerpt } from "./peonApi";
 import { CliUpdatesPanel } from "./CliUpdatesPanel";
@@ -20,6 +20,7 @@ interface Settings {
   fileTransferRoot?: string | null;
   heartbeatIntervalMs?: number | null;
   aiDefaultModel?: string | null;
+  aiDefaultReasoningEffort?: string | null;
   defaultAgent?: string | null;
 }
 
@@ -225,6 +226,8 @@ export function PeonSettings() {
     : undefined;
   const defaultAgentProvider = providerForAgent(catalog, defaultAgent);
   const defaultModel = resolveDefaultModel(defaultAgentProvider, form?.aiDefaultModel) ?? "";
+  const effortOptions = effortsForModel(defaultAgentProvider, defaultModel);
+  const defaultReasoningEffort = resolveDefaultReasoningEffort(defaultAgentProvider, defaultModel, form?.aiDefaultReasoningEffort) ?? "";
   const updating = updatePhase === "installing" || updatePhase === "restarting";
   const tab = peonSettingsTabFromPath(location.pathname);
   const settingsPath = peonSettingsPath(peon.peonId);
@@ -360,11 +363,17 @@ export function PeonSettings() {
                 value={defaultAgent ?? ""}
                 onChange={(v) => {
                   const provider = providerForAgent(catalog, v);
-                  setForm((f) => ({
-                    ...(f ?? {}),
-                    defaultAgent: v,
-                    aiDefaultModel: resolveDefaultModel(provider, f?.aiDefaultModel),
-                  }));
+                  setForm((f) => {
+                    const model = resolveDefaultModel(provider, f?.aiDefaultModel);
+                    return {
+                      ...(f ?? {}),
+                      defaultAgent: v,
+                      aiDefaultModel: model,
+                      // Effort ids are agent-scoped; keeping one across a switch
+                      // would show a value the new provider never accepts.
+                      aiDefaultReasoningEffort: resolveDefaultReasoningEffort(provider, model, f?.aiDefaultReasoningEffort),
+                    };
+                  });
                   setSaved(false);
                 }}
                 className="w-full"
@@ -383,6 +392,24 @@ export function PeonSettings() {
               />
               <p className="font-mono text-xs text-bone-faint">{t("peon.settings.aiDefaultModelHint")}</p>
             </div>
+            {/* Hidden entirely for models that take no effort — an empty picker
+                would read as a broken control rather than an absent capability. */}
+            {effortOptions.length > 0 && (
+            <div className="space-y-1.5">
+              <Label>{t("peon.settings.aiDefaultReasoningEffort")}</Label>
+              <ReasoningEffortSelect
+                provider={defaultAgentProvider}
+                model={defaultModel}
+                value={defaultReasoningEffort}
+                onChange={(v) => { setForm((f) => ({ ...(f ?? {}), aiDefaultReasoningEffort: v || null })); setSaved(false); }}
+                defaultLabel={t("peon.settings.aiDefaultReasoningEffortAuto")}
+                defaultId={defaultEffortIdFor(effortOptions)}
+                inlineLabel={false}
+                className="w-full"
+              />
+              <p className="font-mono text-xs text-bone-faint">{t("peon.settings.aiDefaultReasoningEffortHint")}</p>
+            </div>
+            )}
           <div className="flex items-center gap-3">
             <Button onClick={save} disabled={saving}>
               {saving ? t("peon.settings.saving") : t("peon.settings.save")}

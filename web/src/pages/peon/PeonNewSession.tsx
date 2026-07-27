@@ -9,7 +9,7 @@ import { Label } from "../../ui";
 import { usePeon } from "./context";
 import { Composer, supportsDesktopComposerFocus } from "./Composer";
 import { composerDraftKey, useComposerDraft, useComposerDraftFiles } from "./drafts";
-import { AgentSelect, defaultModelId, defaultReasoningEffortId, ModelSelect, Picker, ReasoningEffortSelect, providerForAgent, providerForModel, useModels } from "./models";
+import { AgentSelect, defaultEffortIdFor, defaultModelId, effortsForModel, ModelSelect, optionMatches, Picker, ReasoningEffortSelect, providerForAgent, providerForModel, useModels } from "./models";
 import { buildNewSessionRequest } from "./newSessionRequest";
 import { PathInput } from "./PathInput";
 
@@ -70,9 +70,10 @@ export function PeonNewSession() {
       providerForAgent(catalog, catalog.defaultAgent) ??
       providerForModel(catalog, catalog.defaultModel) ??
       catalog.providers[0];
+    const initialModel = defaultModelId(provider) || "";
     setAgent(provider.agent);
-    setModel(defaultModelId(provider) || "");
-    setReasoningEffort(defaultReasoningEffortId(provider) || "");
+    setModel(initialModel);
+    setReasoningEffort(defaultEffortIdFor(effortsForModel(provider, initialModel)) || "");
   }, [catalog]);
 
   useEffect(() => {
@@ -195,8 +196,9 @@ export function PeonNewSession() {
                       if (next === agent) return;
                       setAgent(next);
                       const provider = providerForAgent(catalog, next);
-                      setModel(defaultModelId(provider) ?? "");
-                      setReasoningEffort(defaultReasoningEffortId(provider) ?? "");
+                      const nextModel = defaultModelId(provider) ?? "";
+                      setModel(nextModel);
+                      setReasoningEffort(defaultEffortIdFor(effortsForModel(provider, nextModel)) ?? "");
                     }}
                     label={t("newSession.agent")}
                     className="model-select-compact"
@@ -204,21 +206,32 @@ export function PeonNewSession() {
                   <ModelSelect
                     provider={selectedProvider}
                     value={model}
-                    onChange={setModel}
+                    onChange={(next) => {
+                      setModel(next);
+                      // Efforts can be per model; land on the new model's own
+                      // default rather than carrying one it may not accept.
+                      const efforts = effortsForModel(selectedProvider, next);
+                      if (!efforts.some((effort) => optionMatches(effort, reasoningEffort))) {
+                        setReasoningEffort(defaultEffortIdFor(efforts) ?? "");
+                      }
+                    }}
                     label={t("newSession.model")}
                     className="model-select-compact"
                     defaultId={defaultModelId(selectedProvider)}
                     allowClear={false}
                   />
+                  {effortsForModel(selectedProvider, model).length > 0 && (
                   <ReasoningEffortSelect
                     provider={selectedProvider}
+                    model={model}
                     value={reasoningEffort}
                     onChange={setReasoningEffort}
                     label={t("newSession.reasoningEffort")}
                     className="model-select-compact"
-                    defaultId={defaultReasoningEffortId(selectedProvider)}
+                    defaultId={defaultEffortIdFor(effortsForModel(selectedProvider, model))}
                     allowClear={false}
                   />
+                  )}
                 </>
               ) : undefined
             }

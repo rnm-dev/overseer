@@ -99,6 +99,7 @@ export function SessionComposerDock(props: Props) {
             <ReasoningEffortSelect
               key={`effort:${sessionKey}`}
               provider={sessionProvider}
+              model={overrideModel || sessionModel || null}
               value={overrideReasoningEffort}
               onChange={setOverrideReasoningEffort}
               label={t("session.compose.reasoningEffort")}

@@ -16,6 +16,11 @@ export interface CatalogOption {
   // effort used when a session doesn't specify one) — this is the reliable
   // source of "default", not the top-level defaultModel (many peons omit it).
   default?: boolean;
+  // Only on model options, and only on peons that scope efforts per model
+  // rather than per provider. Present ⇒ authoritative for that model, including
+  // an empty list meaning "this model takes no effort at all". Absent ⇒ fall
+  // back to the provider-wide list. See effortsForModel.
+  reasoningEfforts?: CatalogOption[];
 }
 
 export interface ModelProvider {
@@ -98,6 +103,19 @@ export function defaultModelId(provider: ModelProvider | null): string | undefin
 
 export function defaultReasoningEffortId(provider: ModelProvider | null): string | undefined {
   return provider?.reasoningEfforts.find((o) => o.default)?.id;
+}
+
+// Which efforts the given model actually accepts. A peon that advertises them
+// per model wins; one that only advertises a provider-wide list keeps working
+// unchanged. An empty result means the model takes no explicit effort and the
+// selector must not offer one.
+export function effortsForModel(provider: ModelProvider | null, model: string | null | undefined): CatalogOption[] {
+  const selected = model ? provider?.models.find((m) => optionMatches(m, model)) : undefined;
+  return selected?.reasoningEfforts ?? provider?.reasoningEfforts ?? [];
+}
+
+export function defaultEffortIdFor(options: CatalogOption[]): string | undefined {
+  return options.find((option) => option.default)?.id;
 }
 
 interface PickerProps {
@@ -240,8 +258,11 @@ export function ModelSelect({ provider, defaultId, ...props }: CapabilityPickerP
   return <Picker {...props} options={options} />;
 }
 
-export function ReasoningEffortSelect({ provider, defaultId, ...props }: CapabilityPickerProps & { provider: ModelProvider | null; defaultId?: string }) {
+// `model` scopes the options to what that model accepts on peons that advertise
+// efforts per model; omit it to offer the provider's whole list.
+export function ReasoningEffortSelect({ provider, defaultId, model, ...props }: CapabilityPickerProps & { provider: ModelProvider | null; defaultId?: string; model?: string | null }) {
   const t = useT();
-  const options = (provider?.reasoningEfforts ?? []).map((o) => (o.id === defaultId ? { ...o, label: t("model.optionDefault", { name: o.label }), triggerLabel: o.label } : o));
+  const options = (model !== undefined ? effortsForModel(provider, model) : provider?.reasoningEfforts ?? [])
+    .map((o) => (o.id === defaultId ? { ...o, label: t("model.optionDefault", { name: o.label }), triggerLabel: o.label } : o));
   return <Picker {...props} options={options} />;
 }
