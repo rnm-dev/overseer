@@ -2,7 +2,7 @@ import type { Dispatch, SetStateAction } from "react";
 import { createPortal } from "react-dom";
 import { useT } from "../../../i18n";
 import { Composer, supportsDesktopComposerFocus } from "../Composer";
-import { ModelSelect, ReasoningEffortSelect, modelLabel, type ModelProvider, type ModelsCatalog } from "../models";
+import { ModelSelect, ReasoningEffortSelect, effortsForModel, modelLabel, type ModelProvider, type ModelsCatalog } from "../models";
 import { QueueList } from "./QueueList";
 import type { QueueItem } from "./queue";
 
@@ -96,6 +96,7 @@ export function SessionComposerDock(props: Props) {
               defaultId={sessionModel ?? undefined}
               allowClear={!sessionModel}
             />
+            {effortsForModel(sessionProvider, overrideModel || sessionModel || null).length > 0 && (
             <ReasoningEffortSelect
               key={`effort:${sessionKey}`}
               provider={sessionProvider}
@@ -106,6 +107,7 @@ export function SessionComposerDock(props: Props) {
               className="model-select-compact"
               defaultLabel={sessionReasoningEffort ? sessionProvider?.reasoningEfforts.find((effort) => effort.id === sessionReasoningEffort)?.label ?? sessionReasoningEffort : t("model.default")}
             />
+            )}
           </>
         ) : undefined
       }
