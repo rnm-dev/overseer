@@ -28,19 +28,24 @@ async function indexSession(input: {
   sessionId: string;
   status?: string;
   title?: string | null;
+  promptPreview?: string | null;
+  preview?: string | null;
   projectKey?: string | null;
   projectId?: string | null;
   startedAt?: number | null;
   lastActivityAt?: number | null;
+  syncedAt?: number;
   author?: string;
 }): Promise<void> {
   await query(
-    `INSERT INTO sessions (peon_id, session_id, status, project_key, project_id, title, author, started_at, last_activity_at, raw, synced_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'{}',1)`,
+    `INSERT INTO sessions (peon_id, session_id, status, project_key, project_id, title, prompt_preview, preview, author, started_at, last_activity_at, raw, synced_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'{}',$12)`,
     [
       input.peonId, input.sessionId, input.status ?? "running",
       input.projectKey ?? null, input.projectId ?? null, input.title ?? null,
+      input.promptPreview ?? null, input.preview ?? null,
       input.author ?? "someone@example.com", input.startedAt ?? null, input.lastActivityAt ?? null,
+      input.syncedAt ?? 1,
     ],
   );
 }
@@ -87,6 +92,33 @@ test("each Peon returns a bounded page in deterministic activity order", async (
   assert.deepEqual(bounded.get("p2")?.map((session) => session.sessionId), ["elsewhere"]);
 });
 
+// The bug this projection was widened for: a row carrying only identity and
+// attention state gives a client nothing to render, so every session showed as
+// "Untitled session". Title, prompt and last-message previews all travel here.
+test("every row carries the display fields a client needs to name a session", async () => {
+  await setup();
+  await indexSession({ peonId: "p1", sessionId: "titled", title: "Ship the fleet projection", promptPreview: "Ship it", preview: "Shipped", lastActivityAt: 30 });
+  await indexSession({ peonId: "p1", sessionId: "prompted", title: null, promptPreview: "Investigate the flaky reconcile", preview: null, lastActivityAt: 20 });
+  await indexSession({ peonId: "p1", sessionId: "previewed", title: null, promptPreview: null, preview: "Working on it", lastActivityAt: 10 });
+  await indexSession({ peonId: "p1", sessionId: "long-prompt", promptPreview: "x".repeat(500), lastActivityAt: 5 });
+  for (const [index, sessionId] of ["titled", "prompted", "previewed", "long-prompt"].entries()) {
+    await recordSessionRequest({ workspaceId: "ws", userId: "user-1", peonId: "p1", sessionId, occurrenceKey: `create:${index}`, requestedAt: index });
+  }
+
+  const rows = (await listFor("user-1", ["p1"])).get("p1") ?? [];
+  const byId = new Map(rows.map((session) => [session.sessionId, session]));
+  assert.equal(byId.get("titled")?.title, "Ship the fleet projection");
+  assert.equal(byId.get("prompted")?.promptPreview, "Investigate the flaky reconcile");
+  assert.equal(byId.get("previewed")?.preview, "Working on it");
+  // Nothing displayable is ever null across all three fields at once.
+  for (const session of rows) {
+    assert.ok(session.title ?? session.promptPreview ?? session.preview, `${session.sessionId} has no display text`);
+    assert.equal(session.peonId, "p1");
+    assert.equal(session.syncedAt, 1);
+  }
+  assert.equal(byId.get("long-prompt")?.promptPreview?.length, 200, "the prompt preview is trimmed exactly like the canonical session list");
+});
+
 test("the limit is clamped to a small bounded range", () => {
   assert.equal(clampRecentSessionsLimit("3"), 3);
   assert.equal(clampRecentSessionsLimit("0"), 1);
@@ -98,32 +130,43 @@ test("the limit is clamped to a small bounded range", () => {
 
 test("outstanding and unread projections track acceptance, completion and read acknowledgement", async () => {
   await setup();
-  await indexSession({ peonId: "p1", sessionId: "s1", lastActivityAt: 10, title: "Implement recent chats", projectKey: "overseer-mobile", projectId: "project-1", startedAt: 5 });
+  await indexSession({
+    peonId: "p1", sessionId: "s1", lastActivityAt: 10, title: "Implement recent chats",
+    promptPreview: "Implement the recent chats list", preview: "Done — the list renders",
+    projectKey: "overseer-mobile", projectId: "project-1", startedAt: 5, syncedAt: 77,
+  });
   await recordSessionRequest({ workspaceId: "ws", userId: "user-1", peonId: "p1", sessionId: "s1", occurrenceKey: "create:1", requestedAt: 6 });
 
   const accepted = (await listFor("user-1", ["p1"])).get("p1")?.[0];
   assert.deepEqual(accepted, {
+    peonId: "p1",
     sessionId: "s1",
     status: "running",
     title: "Implement recent chats",
+    promptPreview: "Implement the recent chats list",
+    preview: "Done — the list renders",
     projectId: "project-1",
     projectKey: "overseer-mobile",
     startedAt: 5,
     lastActivityAt: 10,
+    syncedAt: 77,
     lastRequestedAt: 6,
     hasOutstandingRequest: true,
     attentionUnread: false,
+    attentionUpdatedAt: 6,
   });
 
   await completeNextSessionAttention("ws", "p1", "s1", 20);
   const completed = (await listFor("user-1", ["p1"])).get("p1")?.[0];
   assert.equal(completed?.hasOutstandingRequest, false);
   assert.equal(completed?.attentionUnread, true);
+  assert.equal(completed?.attentionUpdatedAt, 20);
 
   await markSessionAttentionRead("ws", "user-1", "p1", "s1");
   const read = (await listFor("user-1", ["p1"])).get("p1")?.[0];
   assert.equal(read?.hasOutstandingRequest, false);
   assert.equal(read?.attentionUnread, false);
+  assert.ok((read?.attentionUpdatedAt ?? 0) >= 20, "the read acknowledgement is the newest attention timestamp");
   // Reading does not remove the session from the list: the UI decides how to
   // present an already-seen row.
   assert.equal(read?.sessionId, "s1");

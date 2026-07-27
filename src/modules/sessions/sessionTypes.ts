@@ -71,16 +71,23 @@ export interface ListOptions {
 // the Fleet response. Session facts come from the index; the request-state
 // fields are this operator's alone.
 export interface OperatorRecentSession {
+  peonId: string;
   sessionId: string;
   status: string | null;
   title: string | null;
+  promptPreview: string | null;
+  preview: string | null;
   projectId: string | null;
   projectKey: string | null;
   startedAt: number | null;
   lastActivityAt: number | null;
+  // The index's own version of this row, so a client merging the projection with
+  // a cached or live session record can tell which one is newer.
+  syncedAt: number;
   lastRequestedAt: number | null;
   hasOutstandingRequest: boolean;
   attentionUnread: boolean;
+  attentionUpdatedAt: number;
 }
 
 export interface SessionCatalogState {
