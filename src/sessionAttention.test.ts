@@ -16,6 +16,21 @@ import {
   sessionAttentionStates,
 } from "./sessionAttention.js";
 import { heartbeatPresence, removePresence } from "./modules/presence/index.js";
+import { bus, type LiveEvent } from "./eventLog.js";
+import { eventVisible, type AccessClient } from "./liveAccess.js";
+import type { SessionAttentionPayload } from "./sessionAttention.js";
+
+// Collect the operator-scoped attention events the mobile cache lives on.
+function recordAttentionEvents(): { events: LiveEvent[]; payloads: SessionAttentionPayload[]; stop: () => void } {
+  const events: LiveEvent[] = [];
+  const listener = (event: LiveEvent) => { if (event.kind === "attention") events.push(event); };
+  bus.on("event", listener);
+  return {
+    events,
+    get payloads() { return events.map((event) => event.payload as SessionAttentionPayload); },
+    stop: () => bus.off("event", listener),
+  };
+}
 
 async function setup() {
   const mem = newDb();
@@ -141,4 +156,55 @@ test("a completion never raises unread on a session the requester is watching", 
   await completeNextSessionAttention("ws", "peon", "session", 40);
   assert.equal((await sessionAttentionStates("ws", "user-1")).get("peon\0session")?.unread, true);
   removePresence("ws", "user-1", "conn-1");
+});
+
+test("the operator-scoped projection is published on acceptance, completion and read", async () => {
+  await setup();
+  const attention = recordAttentionEvents();
+  try {
+    await recordSessionRequest({ workspaceId: "ws", userId: "user-1", peonId: "peon", sessionId: "session", occurrenceKey: "run-1", requestedAt: 10 });
+    assert.partialDeepStrictEqual(attention.payloads.at(-1), {
+      userId: "user-1", peonId: "peon", sessionId: "session",
+      unread: false, hasOutstandingRequest: true, lastRequestedAt: 10, updatedAt: 10,
+    });
+
+    await completeNextSessionAttention("ws", "peon", "session", 20);
+    assert.partialDeepStrictEqual(attention.payloads.at(-1), {
+      userId: "user-1", unread: true, hasOutstandingRequest: false, lastRequestedAt: 10, completedAt: 20, updatedAt: 20,
+    });
+
+    await markSessionAttentionRead("ws", "user-1", "peon", "session");
+    const read = attention.payloads.at(-1)!;
+    assert.equal(read.unread, false);
+    assert.equal(read.hasOutstandingRequest, false);
+    assert.equal(read.lastRequestedAt, 10);
+  } finally {
+    attention.stop();
+  }
+});
+
+test("one operator's attention state never reaches another operator's socket", async () => {
+  await setup();
+  const attention = recordAttentionEvents();
+  try {
+    await recordSessionRequest({ workspaceId: "ws", userId: "user-1", peonId: "peon", sessionId: "session", occurrenceKey: "run-1", requestedAt: 10 });
+    await recordSessionRequest({ workspaceId: "ws", userId: "user-2", peonId: "peon", sessionId: "session", occurrenceKey: "run-2", requestedAt: 11 });
+    await completeNextSessionAttention("ws", "peon", "session", 20);
+
+    const client = (userId: string): AccessClient => ({
+      userId, workspaceId: "ws", role: "owner", allowedPeons: null, allowedProjects: null, tails: new Map(),
+    });
+    const visibleTo = (userId: string) => attention.events
+      .filter((event) => eventVisible(client(userId), event))
+      .map((event) => (event.payload as SessionAttentionPayload).userId);
+
+    assert.deepEqual(visibleTo("user-1"), ["user-1", "user-1"]);
+    assert.deepEqual(visibleTo("user-2"), ["user-2"]);
+    // The completion belongs to the first request in the queue, so only its
+    // requester is told anything finished.
+    const completions = attention.payloads.filter((payload) => payload.completedAt !== null);
+    assert.deepEqual(completions.map((payload) => [payload.userId, payload.unread]), [["user-1", true]]);
+  } finally {
+    attention.stop();
+  }
 });

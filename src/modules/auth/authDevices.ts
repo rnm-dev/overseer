@@ -1,6 +1,7 @@
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { config } from "../../config.js";
 import { query } from "../../db.js";
+import { disableLiveActivitiesForDevice } from "../../liveActivity.js";
 import type { AuthContext, ClientInfo, DeviceView } from "./authTypes.js";
 
 function sha256(raw: string): string {
@@ -119,6 +120,12 @@ export async function revokeDevice(userId: string, deviceId: string): Promise<bo
   ]);
   if ((rowCount ?? 0) > 0) {
     await query(`UPDATE push_subscriptions SET disabled_at=$3 WHERE device_id=$1 AND user_id=$2 AND disabled_at IS NULL`, [deviceId, userId, now]);
+    // The two token families are independent (one addresses the app's
+    // notification channel, the other an ActivityKit activity), so revocation
+    // has to retire both — and end anything still on screen.
+    await disableLiveActivitiesForDevice(userId, deviceId).catch((error) => {
+      console.warn("live activity: retiring a revoked device failed:", error instanceof Error ? error.message : String(error));
+    });
   }
   return (rowCount ?? 0) > 0;
 }

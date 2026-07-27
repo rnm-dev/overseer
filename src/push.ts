@@ -148,8 +148,10 @@ export async function enqueuePushForEvent(event: LiveEvent): Promise<void> {
   if (event.cursor <= 0 || event.kind !== "attention" || !event.sessionId) return;
   const attention = event.payload && typeof event.payload === "object" ? event.payload as Partial<SessionAttentionPayload> : null;
   // unread=false is the read receipt — the same event kind, carrying the
-  // opposite meaning.
-  if (attention?.unread !== true || typeof attention.userId !== "string") return;
+  // opposite meaning. `completedAt` is what makes this a *completion*: attention
+  // events also announce accepted requests and read receipts, and those carry
+  // the session's standing unread flag without a new turn having finished.
+  if (attention?.unread !== true || typeof attention.completedAt !== "number" || typeof attention.userId !== "string") return;
   const userId = attention.userId;
 
   // The requester had access when they started the run; re-check it here
