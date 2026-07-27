@@ -90,7 +90,9 @@ class VoiceDictationController extends Notifier<VoiceDictationState> {
   StreamSubscription<void>? _interruptionSubscription;
   Timer? _durationTimer;
   DateTime? _startedAt;
+  Completer<void>? _transcriptionCancellation;
   bool _stopping = false;
+  int _operationId = 0;
 
   static const _clientMaxDuration = Duration(seconds: 120);
   static const _minimumDuration = Duration(milliseconds: 300);
@@ -104,6 +106,7 @@ class VoiceDictationController extends Notifier<VoiceDictationState> {
       _durationTimer?.cancel();
       unawaited(_amplitudeSubscription?.cancel());
       unawaited(_interruptionSubscription?.cancel());
+      _transcriptionCancellation?.complete();
       unawaited(recorder.dispose());
     });
     if (!recorder.supported) {
@@ -207,6 +210,7 @@ class VoiceDictationController extends Notifier<VoiceDictationState> {
 
   Future<void> stop() async {
     if (state.phase != VoiceDictationPhase.recording || _stopping) return;
+    final operationId = ++_operationId;
     _stopping = true;
     _stopClockAndStreams();
     try {
@@ -248,11 +252,14 @@ class VoiceDictationController extends Notifier<VoiceDictationState> {
         clearError: true,
       );
       final repository = ref.read(voiceInputRepositoryProvider);
+      final cancellation = Completer<void>();
+      _transcriptionCancellation = cancellation;
       final result = await repository.transcribe(
         scope: scope,
         audio: take.bytes,
+        cancelFuture: cancellation.future,
       );
-      if (!ref.mounted) return;
+      if (!ref.mounted || operationId != _operationId) return;
       final text = result.text.trim();
       state = state.copyWith(
         phase: VoiceDictationPhase.idle,
@@ -264,7 +271,7 @@ class VoiceDictationController extends Notifier<VoiceDictationState> {
             : state.completionId + 1,
       );
     } on VoiceInputException catch (error) {
-      if (!ref.mounted) return;
+      if (!ref.mounted || operationId != _operationId) return;
       state = state.copyWith(
         phase: error.kind == VoiceInputErrorKind.disabled
             ? VoiceDictationPhase.unavailable
@@ -275,20 +282,34 @@ class VoiceDictationController extends Notifier<VoiceDictationState> {
         error: error.message,
       );
     } catch (_) {
-      if (!ref.mounted) return;
+      if (!ref.mounted || operationId != _operationId) return;
       state = state.copyWith(
         phase: VoiceDictationPhase.idle,
         error: 'Voice transcription failed. Please try again.',
       );
     } finally {
-      _stopping = false;
+      if (operationId == _operationId) {
+        _transcriptionCancellation = null;
+        _stopping = false;
+      }
     }
   }
 
   Future<void> cancel({String? message}) async {
-    if (state.phase != VoiceDictationPhase.recording) return;
+    final phase = state.phase;
+    if (phase != VoiceDictationPhase.recording &&
+        phase != VoiceDictationPhase.transcribing) {
+      return;
+    }
+    _operationId++;
+    _stopping = false;
     _stopClockAndStreams();
-    await _recorder!.cancel();
+    if (phase == VoiceDictationPhase.recording) {
+      await _recorder!.cancel();
+    } else {
+      _transcriptionCancellation?.complete();
+      _transcriptionCancellation = null;
+    }
     if (!ref.mounted) return;
     state = state.copyWith(
       phase: VoiceDictationPhase.idle,
@@ -335,6 +356,7 @@ class _UnavailableVoiceInputRepository implements VoiceInputRepository {
   Future<VoiceTranscription> transcribe({
     required FollowupScope scope,
     required Uint8List audio,
+    Future<void>? cancelFuture,
   }) {
     throw const VoiceInputException(
       VoiceInputErrorKind.unavailable,

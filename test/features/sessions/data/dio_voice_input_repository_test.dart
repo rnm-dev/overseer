@@ -10,8 +10,9 @@ void main() {
   test('caches capabilities for the connection', () async {
     final adapter = _VoiceAdapter();
     final repository = DioVoiceInputRepository(
-      Dio(BaseOptions(baseUrl: 'https://overseer.example/api/v1/'))
+      Dio(BaseOptions(baseUrl: 'https://overseer.example/api/'))
         ..httpClientAdapter = adapter,
+      apiUrl: Uri.parse('https://overseer.example/api/v1/'),
     );
 
     final first = await repository.capabilities();
@@ -20,13 +21,15 @@ void main() {
     expect(first.enabled, isTrue);
     expect(second.maxDuration, const Duration(seconds: 120));
     expect(adapter.capabilityCalls, 1);
+    expect(adapter.lastCapabilityPath, '/api/v1/voice/capabilities');
   });
 
   test('uploads raw m4a once more after a network failure', () async {
     final adapter = _VoiceAdapter(failFirstTranscription: true);
     final repository = DioVoiceInputRepository(
-      Dio(BaseOptions(baseUrl: 'https://overseer.example/api/v1/'))
+      Dio(BaseOptions(baseUrl: 'https://overseer.example/api/'))
         ..httpClientAdapter = adapter,
+      apiUrl: Uri.parse('https://overseer.example/api/v1/'),
     );
 
     final result = await repository.transcribe(
@@ -46,6 +49,7 @@ void main() {
       'peonId': 'peon',
       'sessionId': 'session',
     });
+    expect(adapter.lastRequest?.uri.path, '/api/v1/voice/transcriptions');
     expect(adapter.lastBody, [1, 2, 3]);
   });
 }
@@ -56,6 +60,7 @@ class _VoiceAdapter implements HttpClientAdapter {
   final bool failFirstTranscription;
   int capabilityCalls = 0;
   int transcriptionCalls = 0;
+  String? lastCapabilityPath;
   RequestOptions? lastRequest;
   List<int>? lastBody;
 
@@ -67,6 +72,7 @@ class _VoiceAdapter implements HttpClientAdapter {
   ) async {
     if (options.path.endsWith('voice/capabilities')) {
       capabilityCalls++;
+      lastCapabilityPath = options.uri.path;
       return _json({
         'enabled': true,
         'maxDurationMs': 120000,

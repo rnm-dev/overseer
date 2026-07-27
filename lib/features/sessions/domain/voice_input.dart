@@ -55,6 +55,7 @@ abstract interface class VoiceInputRepository {
   Future<VoiceTranscription> transcribe({
     required FollowupScope scope,
     required Uint8List audio,
+    Future<void>? cancelFuture,
   });
 }
 

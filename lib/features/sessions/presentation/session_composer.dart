@@ -4,6 +4,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../shared/design/colors.dart';
 import '../../../shared/design/motion.dart';
+import '../../../shared/design/spacing.dart';
 import '../../../shared/design/typography.dart';
 import '../../../shared/widgets/app_bottom_sheet.dart';
 import '../../../shared/widgets/app_button.dart';
@@ -203,6 +204,9 @@ class _SessionComposerState extends State<SessionComposer> {
     final borderColor = _focusNode.hasFocus
         ? AppColors.felBright
         : AppColors.iron800;
+    final dictationActive =
+        widget.dictation?.phase == VoiceDictationPhase.recording ||
+        widget.dictation?.phase == VoiceDictationPhase.transcribing;
     return DecoratedBox(
       key: const Key('session-composer-gradient'),
       decoration: BoxDecoration(
@@ -239,11 +243,15 @@ class _SessionComposerState extends State<SessionComposer> {
             AnimatedContainer(
               key: const Key('session-composer-shell'),
               duration: AppMotion.fast,
-              padding: const EdgeInsets.fromLTRB(8, 8, 8, 2),
+              padding: EdgeInsets.fromLTRB(
+                AppSpacing.xs,
+                dictationActive ? AppSpacing.xxs : AppSpacing.xs,
+                AppSpacing.xs,
+                AppSpacing.xxs,
+              ),
               decoration: BoxDecoration(
                 color: AppColors.iron950,
                 borderRadius: AppMotion.surfaceShape,
-                border: Border.all(color: borderColor),
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withValues(alpha: 0.48),
@@ -258,6 +266,10 @@ class _SessionComposerState extends State<SessionComposer> {
                       spreadRadius: 1,
                     ),
                 ],
+              ),
+              foregroundDecoration: BoxDecoration(
+                borderRadius: AppMotion.surfaceShape,
+                border: Border.all(color: borderColor),
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -315,10 +327,7 @@ class _SessionComposerState extends State<SessionComposer> {
                           VoiceDictationPhase.recording ||
                       widget.dictation?.phase ==
                           VoiceDictationPhase.transcribing)
-                    _VoiceDictationStatus(
-                      state: widget.dictation!,
-                      onCancel: widget.onVoiceCancel,
-                    ),
+                    _VoiceDictationStatus(state: widget.dictation!),
                   if (widget.attachments.isNotEmpty)
                     Padding(
                       key: const Key('session-composer-attachments'),
@@ -424,6 +433,7 @@ class _SessionComposerState extends State<SessionComposer> {
                           enabled: widget.enabled && !widget.pending,
                           onStart: widget.onVoiceStart,
                           onStop: widget.onVoiceStop,
+                          onCancel: widget.onVoiceCancel,
                         ),
                       if (widget.providers.isNotEmpty) ...[
                         Expanded(

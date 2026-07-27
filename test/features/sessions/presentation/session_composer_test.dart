@@ -8,6 +8,7 @@ import 'package:overseer_mobile/features/sessions/application/voice_dictation_co
 import 'package:overseer_mobile/features/sessions/presentation/session_composer.dart';
 import 'package:overseer_mobile/shared/design/colors.dart';
 import 'package:overseer_mobile/shared/design/theme.dart';
+import 'package:overseer_mobile/shared/design/typography.dart';
 import 'package:overseer_mobile/shared/widgets/app_markdown.dart';
 
 void main() {
@@ -29,7 +30,6 @@ void main() {
   ) async {
     final controller = TextEditingController(text: 'half typed');
     addTearDown(controller.dispose);
-    var canceled = false;
 
     await tester.pumpWidget(
       MaterialApp(
@@ -43,7 +43,6 @@ void main() {
               duration: Duration(seconds: 108),
               amplitude: 0.8,
             ),
-            onVoiceCancel: () => canceled = true,
           ),
         ),
       ),
@@ -52,8 +51,35 @@ void main() {
     expect(find.byKey(const Key('session-composer-voice')), findsOneWidget);
     expect(find.byKey(const Key('session-composer-recording')), findsOneWidget);
     expect(
+      tester
+          .getSize(find.byKey(const Key('session-composer-recording')))
+          .height,
+      24,
+    );
+    expect(
       find.byKey(const Key('session-composer-recording-countdown')),
       findsOneWidget,
+    );
+    final dot = find.byKey(const Key('session-composer-recording-dot'));
+    final shellTopLeft = tester.getTopLeft(
+      find.byKey(const Key('session-composer-shell')),
+    );
+    final dotTopLeft = tester.getTopLeft(dot);
+    expect(
+      dotTopLeft.dx,
+      tester.getTopLeft(find.byKey(const Key('session-composer-input'))).dx + 4,
+    );
+    expect(dotTopLeft.dx - shellTopLeft.dx, 12);
+    expect(dotTopLeft.dy - shellTopLeft.dy, 12);
+    expect(
+      tester.widget<Text>(find.text('REC')).style?.fontFamily,
+      AppTypography.fontFamily,
+    );
+    final initialOpacity = tester.widget<FadeTransition>(dot).opacity.value;
+    await tester.pump(const Duration(milliseconds: 425));
+    expect(
+      tester.widget<FadeTransition>(dot).opacity.value,
+      isNot(initialOpacity),
     );
     expect(
       tester
@@ -61,8 +87,13 @@ void main() {
           .enabled,
       isTrue,
     );
-    await tester.tap(find.byKey(const Key('session-composer-voice-cancel')));
-    expect(canceled, isTrue);
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('session-composer-recording')),
+        matching: find.byType(IconButton),
+      ),
+      findsNothing,
+    );
   });
 
   testWidgets('hides disabled voice and keeps composer usable in flight', (
@@ -70,6 +101,7 @@ void main() {
   ) async {
     final controller = TextEditingController();
     addTearDown(controller.dispose);
+    var canceled = false;
     await tester.pumpWidget(
       MaterialApp(
         theme: AppTheme.dark,
@@ -80,6 +112,7 @@ void main() {
               phase: VoiceDictationPhase.transcribing,
               enabled: true,
             ),
+            onVoiceCancel: () => canceled = true,
           ),
         ),
       ),
@@ -90,10 +123,28 @@ void main() {
     );
     expect(
       tester
+          .getSize(find.byKey(const Key('session-composer-transcribing')))
+          .height,
+      24,
+    );
+    expect(
+      tester
           .widget<TextField>(find.byKey(const Key('session-composer-input')))
           .enabled,
       isTrue,
     );
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    expect(
+      tester.widget<Text>(find.text('TRANSCRIBING')).style?.fontFamily,
+      AppTypography.fontFamily,
+    );
+    final voiceButton = tester.widget<IconButton>(
+      find.byKey(const Key('session-composer-voice')),
+    );
+    expect(voiceButton.tooltip, 'Cancel transcription');
+    expect(voiceButton.onPressed, isNotNull);
+    await tester.tap(find.byKey(const Key('session-composer-voice')));
+    expect(canceled, isTrue);
 
     await tester.pumpWidget(
       MaterialApp(
@@ -204,9 +255,9 @@ void main() {
     final rightInset = shellRect.right - submitRect.right;
     final bottomInset = shellRect.bottom - submitRect.bottom;
     expect(attachRect.top - inputRect.bottom, 6);
-    expect(leftInset, 9);
+    expect(leftInset, 8);
     expect(rightInset, leftInset);
-    expect(bottomInset, leftInset);
+    expect(bottomInset, 10);
     expect(
       tester.getSize(find.byKey(const Key('session-composer-submit-visual'))),
       const Size(32, 32),
@@ -231,7 +282,7 @@ void main() {
     final shell = tester.widget<AnimatedContainer>(
       find.byKey(const Key('session-composer-shell')),
     );
-    final decoration = shell.decoration! as BoxDecoration;
+    final decoration = shell.foregroundDecoration! as BoxDecoration;
     expect(decoration.border, Border.all(color: AppColors.felBright));
   });
 
