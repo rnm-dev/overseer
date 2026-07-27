@@ -63,6 +63,11 @@ env:
     - OVERSEER_GITHUB_CLIENT_SECRET
     - OVERSEER_RELEASE_TOKEN
     - OVERSEER_VOICE_API_KEY
+    # Firebase service account for FCM HTTP v1 (project overseer-9fe46), passed
+    # as base64 of the JSON. Production and dev hold DIFFERENT Firebase projects
+    # — a device token is only valid in the project that minted it — so unlike
+    # the voice key there is no shared budget to split here.
+    - OVERSEER_PUSH_FCM_CREDENTIALS
 
 # Application-owned persistent data. This named volume is independent of every
 # versioned app container and must be included in backup/cutover verification.

@@ -2,6 +2,7 @@
 // operator key: peons connect with per-peon credentials (credentials.ts),
 // operators with device tokens (auth.ts). peonCallbackUrl is the tailnet URL the
 // overseer hands a peon at recruitment so it knows where to phone home.
+import { resolvePushConfig, type PushConfig } from "./infrastructure/push/pushConfig.js";
 import { resolveVoiceConfig, type VoiceConfig } from "./infrastructure/voice/voiceConfig.js";
 
 export interface Config {
@@ -48,6 +49,10 @@ export interface Config {
   // infrastructure/voice; this is only the wiring, so the two never depend on
   // each other in a cycle.
   voice: VoiceConfig;
+
+  // Push notifications. Expo needs no credential; FCM is enabled by a Firebase
+  // service account, resolved next to its sender in infrastructure/push.
+  push: PushConfig;
 }
 
 function num(name: string, fallback: number): number {
@@ -81,6 +86,7 @@ export const config: Config = {
   releaseDirectory: process.env.OVERSEER_RELEASE_DIRECTORY ?? "/data/releases",
   releaseMaxBytes: num("OVERSEER_RELEASE_MAX_BYTES", 512 * 1024 * 1024),
   voice: resolveVoiceConfig(process.env),
+  push: resolvePushConfig(process.env),
 };
 
 // Surfaced at startup so a deploy with no secrets set fails loud rather than
@@ -99,5 +105,9 @@ export function configWarnings(): string[] {
   if (!config.voice.stt)
     w.push("OVERSEER_VOICE / OVERSEER_VOICE_STT_BASE_URL are not set — voice dictation is disabled.");
   w.push(...config.voice.warnings);
+  // A misread credential is a warning, not a boot failure: Expo delivery is
+  // unaffected, and an instance whose mobile clients don't use FCM is a valid
+  // deployment rather than a broken one.
+  w.push(...config.push.warnings);
   return w;
 }
