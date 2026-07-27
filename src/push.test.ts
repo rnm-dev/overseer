@@ -20,8 +20,10 @@ async function setup() {
   await query(`INSERT INTO workspaces (id,name,slug,created_at) VALUES ('w1','Push','push',1)`);
   await query(`INSERT INTO workspace_members (workspace_id,user_id,role,added_at) VALUES ('w1','u1','owner',1), ('w1','u2','owner',1)`);
   await query(
-    `INSERT INTO sessions (peon_id,session_id,status,title,preview,raw,synced_at) VALUES ('p1','s1','completed','Ship the deploy','All three checks passed','{}',1)`,
+    `INSERT INTO sessions (peon_id,session_id,status,title,preview,project_key,project_id,raw,synced_at)
+     VALUES ('p1','s1','completed','Ship the **deploy**','All three checks passed — see \`npm run verify\`','billing-api','pr1','{}',1)`,
   );
+  await query(`INSERT INTO projects (peon_id,project_id,project_key,name,synced_at) VALUES ('p1','pr1','billing-api','Billing API',1)`);
 }
 
 async function subscribe(userId: string, deviceId: string, token: string) {
@@ -40,7 +42,7 @@ async function outbox() {
   return rows.map((r) => ({ subscriptionId: r.subscription_id, payload: typeof r.payload === "string" ? JSON.parse(r.payload) : r.payload as Record<string, unknown> }));
 }
 
-test("a completed user-initiated turn notifies its requester, with the session's own words", async () => {
+test("a completed user-initiated turn notifies its requester, project first and free of Markdown", async () => {
   await setup();
   const subscription = await subscribe("u1", "d1", "ExponentPushToken[testing-token]");
 
@@ -49,9 +51,22 @@ test("a completed user-initiated turn notifies its requester, with the session's
   const queued = await outbox();
   assert.equal(queued.length, 1);
   assert.equal(queued[0].subscriptionId, subscription.id);
-  assert.equal(queued[0].payload.title, "Ship the deploy");
-  assert.equal(queued[0].payload.body, "All three checks passed");
+  assert.equal(queued[0].payload.title, "Billing API — Ship the deploy");
+  assert.equal(queued[0].payload.body, "All three checks passed — see npm run verify");
   assert.deepEqual(queued[0].payload.data, { workspaceId: "w1", peonId: "p1", sessionId: "s1", kind: "attention", cursor: queued[0].payload.data.cursor });
+});
+
+test("a session with no project keeps a bare title, and an unnamed project falls back to its key", async () => {
+  await setup();
+  await subscribe("u1", "d1", "ExponentPushToken[testing-token]");
+  await query(`UPDATE projects SET name=NULL WHERE peon_id='p1' AND project_id='pr1'`);
+  await finishRequestedTurn("u1", "followup:c1");
+
+  await query(`UPDATE sessions SET project_key=NULL, project_id=NULL WHERE peon_id='p1' AND session_id='s1'`);
+  await finishRequestedTurn("u1", "followup:c2");
+
+  const titles = (await outbox()).map((row) => row.payload.title);
+  assert.deepEqual(titles, ["billing-api — Ship the deploy", "Ship the deploy"]);
 });
 
 test("only the requester is told, not everyone in the workspace", async () => {

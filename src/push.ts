@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { query, withAdvisoryLock } from "./db.js";
 import { membership } from "./workspaces.js";
 import { canAccessPeon, canAccessProject } from "./access.js";
-import { fcmEnabled, fcmSender, PushDeliveryError, type PushMessage } from "./infrastructure/push/index.js";
+import { fcmEnabled, fcmSender, plainText, PushDeliveryError, type PushMessage } from "./infrastructure/push/index.js";
 import type { LiveEvent } from "./eventLog.js";
 import type { SessionAttentionPayload } from "./sessionAttention.js";
 
@@ -88,22 +88,50 @@ function providerList(): string {
 // bookkeeping (who, which session, unread), so the human-readable half is read
 // back from the session index at enqueue time — once per finished turn, which
 // is a rate a query can afford.
+//
+// The project leads the title because a notification arrives with no context
+// around it: "Billing API — Fix the webhook retry" answers "where?" before
+// "what?", and a phone truncating the tail still shows which project woke you.
+// Both halves are flattened out of Markdown — see plainText.
 function notificationPayload(event: LiveEvent, session: SessionSummary | null) {
+  const title = plainText(session?.title ?? "") || "Session finished";
+  const project = plainText(session?.projectName ?? "");
   return {
-    title: session?.title?.trim() || "Session finished",
-    body: session?.preview?.trim() || "Your run has finished",
+    title: project ? `${project} — ${title}` : title,
+    body: plainText(session?.preview ?? "") || "Your run has finished",
     data: { workspaceId: event.workspaceId, peonId: event.peonId, sessionId: event.sessionId, kind: event.kind, cursor: event.cursor },
   };
 }
 
-interface SessionSummary { title: string | null; preview: string | null; projectKey: string | null; projectId: string | null }
+interface SessionSummary { title: string | null; preview: string | null; projectKey: string | null; projectId: string | null; projectName: string | null }
+
+// Two queries rather than one join: the catalog row is keyed by project_id but
+// older sessions carry only a project_key, and expressing that fallback as a
+// join condition costs more than a second lookup on a path that runs once per
+// finished turn.
+async function projectName(peonId: string, projectId: string | null, projectKey: string | null): Promise<string | null> {
+  if (!projectId && !projectKey) return null;
+  const { rows } = projectId
+    ? await query<{ name: string | null }>(`SELECT name FROM projects WHERE peon_id=$1 AND project_id=$2`, [peonId, projectId])
+    : await query<{ name: string | null }>(`SELECT name FROM projects WHERE peon_id=$1 AND project_key=$2`, [peonId, projectKey]);
+  // The dashboard shows `name || key`; a notification should not disagree with
+  // the screen the user opens next.
+  return rows[0]?.name?.trim() || projectKey;
+}
 
 async function sessionSummary(peonId: string, sessionId: string): Promise<SessionSummary | null> {
   const { rows } = await query<{ title: string | null; preview: string | null; project_key: string | null; project_id: string | null }>(
     `SELECT title, preview, project_key, project_id FROM sessions WHERE peon_id=$1 AND session_id=$2`, [peonId, sessionId],
   );
   const row = rows[0];
-  return row ? { title: row.title, preview: row.preview, projectKey: row.project_key, projectId: row.project_id } : null;
+  if (!row) return null;
+  return {
+    title: row.title,
+    preview: row.preview,
+    projectKey: row.project_key,
+    projectId: row.project_id,
+    projectName: await projectName(peonId, row.project_id, row.project_key),
+  };
 }
 
 // A notification is for one person: whoever asked for the turn that just
