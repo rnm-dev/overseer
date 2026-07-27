@@ -3,6 +3,7 @@ import { Navigate, Route, Routes, useNavigate, useOutletContext, useParams } fro
 import { api } from "./api";
 import { useAuth } from "./auth";
 import { useT } from "./i18n";
+import { loginRouteTarget } from "./nativeLoginMode";
 import { WorkspaceProvider } from "./workspace";
 import { LiveSocketProvider } from "./liveSocket";
 import { AppLayout } from "./components/AppLayout";
@@ -93,7 +94,10 @@ export function App() {
 
   return (
     <Suspense fallback={<Loading />}><Routes>
-      <Route path="/login" element={user ? <Navigate to="/" replace /> : <Login />} />
+      <Route
+        path="/login"
+        element={loginRouteTarget(Boolean(user), sessionStorage) === "dashboard" ? <Navigate to="/" replace /> : <Login />}
+      />
       {/* Public: GitHub returns web and native OAuth here; invite links also work signed-out. */}
       <Route path="/auth/github/callback" element={<GithubCallback />} />
       <Route path="/join/:token" element={<Join />} />
