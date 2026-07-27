@@ -16,12 +16,14 @@ class TranscriptItemView extends StatelessWidget {
     this.operator,
     this.onOpenAttachment,
     this.onOpenPreview,
+    this.onOpenLink,
   });
 
   final TranscriptItem item;
   final OperatorIdentity? operator;
   final ValueChanged<TranscriptAttachment>? onOpenAttachment;
   final ValueChanged<TranscriptPreviewItem>? onOpenPreview;
+  final ValueChanged<String>? onOpenLink;
 
   @override
   Widget build(BuildContext context) {
@@ -30,8 +32,12 @@ class TranscriptItemView extends StatelessWidget {
         item: user,
         operator: operator,
         onOpenAttachment: onOpenAttachment,
+        onOpenLink: onOpenLink,
       ),
-      TranscriptTextItem text => _AssistantText(item: text),
+      TranscriptTextItem text => _AssistantText(
+        item: text,
+        onOpenLink: onOpenLink,
+      ),
       TranscriptThinkingItem thinking => _ThinkingRow(item: thinking),
       TranscriptToolItem tool => _ToolRow(item: tool),
       TranscriptLooseItem loose => _ActionResult(item: loose),
@@ -50,11 +56,13 @@ class _UserBubble extends StatelessWidget {
     required this.item,
     required this.operator,
     required this.onOpenAttachment,
+    required this.onOpenLink,
   });
 
   final TranscriptUserItem item;
   final OperatorIdentity? operator;
   final ValueChanged<TranscriptAttachment>? onOpenAttachment;
+  final ValueChanged<String>? onOpenLink;
 
   @override
   Widget build(BuildContext context) {
@@ -119,7 +127,12 @@ class _UserBubble extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.end,
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Flexible(child: _UserText(text: item.text)),
+                          Flexible(
+                            child: _UserText(
+                              text: item.text,
+                              onOpenLink: onOpenLink,
+                            ),
+                          ),
                           if (timestamp != null) ...[
                             const SizedBox(width: 12),
                             _Timestamp(text: timestamp, mine: mine),
@@ -127,7 +140,7 @@ class _UserBubble extends StatelessWidget {
                         ],
                       )
                     else if (item.text.isNotEmpty)
-                      _UserText(text: item.text),
+                      _UserText(text: item.text, onOpenLink: onOpenLink),
                     if (item.attachments.isNotEmpty) ...[
                       if (item.text.isNotEmpty) const SizedBox(height: 8),
                       for (final attachment in item.attachments)
@@ -169,14 +182,16 @@ class _UserBubble extends StatelessWidget {
 }
 
 class _UserText extends StatelessWidget {
-  const _UserText({required this.text});
+  const _UserText({required this.text, required this.onOpenLink});
 
   final String text;
+  final ValueChanged<String>? onOpenLink;
 
   @override
   Widget build(BuildContext context) {
     return AppMarkdown(
       data: text,
+      onTapLink: onOpenLink,
       textStyle: AppTypography.body(
         fontSize: 14,
         color: AppColors.bone,
@@ -338,9 +353,10 @@ class _AttachmentPill extends StatelessWidget {
 }
 
 class _AssistantText extends StatelessWidget {
-  const _AssistantText({required this.item});
+  const _AssistantText({required this.item, required this.onOpenLink});
 
   final TranscriptTextItem item;
+  final ValueChanged<String>? onOpenLink;
 
   @override
   Widget build(BuildContext context) {
@@ -352,6 +368,7 @@ class _AssistantText extends StatelessWidget {
         AppMarkdown(
           key: Key('transcript-markdown-${item.key}'),
           data: item.text,
+          onTapLink: onOpenLink,
           textStyle: AppTypography.body(
             fontSize: 14,
             color: AppColors.bone,

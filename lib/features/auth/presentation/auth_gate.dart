@@ -2,8 +2,29 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:overseer_mobile/features/auth/application/auth_controller.dart';
 import 'package:overseer_mobile/features/auth/application/auth_state.dart';
-import 'package:overseer_mobile/features/auth/presentation/sign_in_page.dart';
-import 'package:overseer_mobile/features/shell/shell.dart';
+import 'package:overseer_mobile/features/auth/domain/auth_models.dart';
+
+typedef AuthGateLoadingBuilder =
+    Widget Function({
+      required String? overseerName,
+      required VoidCallback? onBackToConnections,
+    });
+
+typedef AuthGateSignInBuilder =
+    Widget Function({
+      required Future<void> Function() onSignIn,
+      required String? errorMessage,
+      required bool isSigningIn,
+      required VoidCallback? onBack,
+    });
+
+typedef AuthGateShellBuilder =
+    Widget Function({
+      required OperatorIdentity user,
+      required Future<void> Function() onSignOut,
+      String? overseerName,
+      VoidCallback? onBackToConnections,
+    });
 
 class AuthGate extends ConsumerStatefulWidget {
   const AuthGate({
@@ -11,11 +32,17 @@ class AuthGate extends ConsumerStatefulWidget {
     this.autoSignIn = false,
     this.onBack,
     this.overseerName,
+    required this.buildLoading,
+    required this.buildSignIn,
+    required this.buildShell,
   });
 
   final bool autoSignIn;
   final VoidCallback? onBack;
   final String? overseerName;
+  final AuthGateLoadingBuilder buildLoading;
+  final AuthGateSignInBuilder buildSignIn;
+  final AuthGateShellBuilder buildShell;
 
   @override
   ConsumerState<AuthGate> createState() => _AuthGateState();
@@ -37,7 +64,7 @@ class _AuthGateState extends ConsumerState<AuthGate> {
       Future<void>.microtask(controller.signIn);
       return _BackToConnectionsScope(
         onBack: widget.onBack,
-        child: ShellPage.loading(
+        child: widget.buildLoading(
           overseerName: widget.overseerName,
           onBackToConnections: widget.onBack,
         ),
@@ -45,27 +72,29 @@ class _AuthGateState extends ConsumerState<AuthGate> {
     }
 
     final child = switch (auth.phase) {
-      AuthPhase.restoring => ShellPage.loading(
+      AuthPhase.restoring => widget.buildLoading(
         overseerName: widget.overseerName,
         onBackToConnections: widget.onBack,
       ),
-      AuthPhase.unauthenticated => SignInPage(
+      AuthPhase.unauthenticated => widget.buildSignIn(
         onSignIn: controller.signIn,
         errorMessage: auth.errorMessage,
+        isSigningIn: false,
         onBack: widget.onBack,
       ),
       AuthPhase.signingIn =>
         widget.autoSignIn
-            ? ShellPage.loading(
+            ? widget.buildLoading(
                 overseerName: widget.overseerName,
                 onBackToConnections: widget.onBack,
               )
-            : SignInPage(
+            : widget.buildSignIn(
                 onSignIn: controller.signIn,
+                errorMessage: auth.errorMessage,
                 isSigningIn: true,
                 onBack: widget.onBack,
               ),
-      AuthPhase.authenticated => ShellPage(
+      AuthPhase.authenticated => widget.buildShell(
         user: auth.session!.user,
         onSignOut: controller.signOut,
         overseerName: widget.overseerName,

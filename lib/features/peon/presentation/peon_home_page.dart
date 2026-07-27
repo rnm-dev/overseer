@@ -12,10 +12,8 @@ import '../../fleet/application/fleet_live_service.dart';
 import '../../fleet/domain/fleet_models.dart';
 import '../../projects/application/projects_controller.dart';
 import '../../projects/domain/project_models.dart';
-import '../../projects/projects.dart';
 import '../../sessions/application/sessions_controller.dart';
 import '../../sessions/domain/session_models.dart';
-import '../../sessions/sessions.dart';
 import 'peon_settings_page.dart';
 import '../../../shared/design/colors.dart';
 import '../../../shared/design/typography.dart';
@@ -27,11 +25,55 @@ import '../../../shared/widgets/status_dot.dart';
 
 enum _PeonTab { work, stats, settings }
 
+typedef PeonOpenProject =
+    void Function(
+      BuildContext context, {
+      required String workspaceId,
+      required String peonId,
+      required PeonProject project,
+      required bool online,
+      required bool isOwner,
+    });
+
+typedef PeonOpenNewSession =
+    void Function(
+      BuildContext context, {
+      required String workspaceId,
+      required String peonId,
+      String? projectKey,
+    });
+
+typedef PeonOpenNewProject =
+    void Function(
+      BuildContext context, {
+      required String workspaceId,
+      required String peonId,
+    });
+
+typedef PeonSessionListBuilder =
+    Widget Function(
+      BuildContext context, {
+      required String workspaceId,
+      required String peonId,
+    });
+
 class PeonHomePage extends ConsumerStatefulWidget {
-  const PeonHomePage({super.key, required this.workspace, required this.peon});
+  const PeonHomePage({
+    super.key,
+    required this.workspace,
+    required this.peon,
+    this.onNewSession,
+    this.onOpenProject,
+    this.onNewProject,
+    this.sessionListBuilder,
+  });
 
   final Workspace workspace;
   final Peon peon;
+  final PeonOpenNewSession? onNewSession;
+  final PeonOpenProject? onOpenProject;
+  final PeonOpenNewProject? onNewProject;
+  final PeonSessionListBuilder? sessionListBuilder;
 
   @override
   ConsumerState<PeonHomePage> createState() => _PeonHomePageState();
@@ -103,6 +145,8 @@ class _PeonHomePageState extends ConsumerState<PeonHomePage> {
                           canCreate:
                               widget.workspace.role == null ||
                               widget.workspace.role == 'owner',
+                          onOpenProject: widget.onOpenProject,
+                          onNewProject: widget.onNewProject,
                         ),
                         SliverMainAxisGroup(
                           slivers: [
@@ -110,15 +154,13 @@ class _PeonHomePageState extends ConsumerState<PeonHomePage> {
                               child: _SectionHeader(
                                 title: 'Sessions',
                                 actionLabel: 'New session',
-                                onPressed: () => Navigator.of(context).push(
-                                  MaterialPageRoute<void>(
-                                    builder: (_) =>
-                                        SessionDetailPage.newSession(
-                                          workspaceId: widget.workspace.id,
-                                          peonId: widget.peon.id,
-                                        ),
-                                  ),
-                                ),
+                                onPressed: widget.onNewSession == null
+                                    ? null
+                                    : () => widget.onNewSession!(
+                                        context,
+                                        workspaceId: widget.workspace.id,
+                                        peonId: widget.peon.id,
+                                      ),
                               ),
                             ),
                             SliverLayoutBuilder(
@@ -131,19 +173,13 @@ class _PeonHomePageState extends ConsumerState<PeonHomePage> {
                                   padding: EdgeInsets.symmetric(
                                     horizontal: horizontalInset,
                                   ),
-                                  sliver: SessionSliverList(
-                                    workspaceId: widget.workspace.id,
-                                    peonId: widget.peon.id,
-                                    onSessionSelected: (session) =>
-                                        Navigator.of(context).push(
-                                          MaterialPageRoute<void>(
-                                            builder: (context) =>
-                                                SessionDetailPage(
-                                                  session: session,
-                                                ),
-                                          ),
-                                        ),
-                                  ),
+                                  sliver:
+                                      widget.sessionListBuilder?.call(
+                                        context,
+                                        workspaceId: widget.workspace.id,
+                                        peonId: widget.peon.id,
+                                      ) ??
+                                      const _SessionListFallback(),
                                 );
                               },
                             ),
@@ -172,12 +208,16 @@ class _ProjectsSection extends ConsumerStatefulWidget {
     required this.peonId,
     required this.online,
     required this.canCreate,
+    this.onOpenProject,
+    this.onNewProject,
   });
 
   final String workspaceId;
   final String peonId;
   final bool online;
   final bool canCreate;
+  final PeonOpenProject? onOpenProject;
+  final PeonOpenNewProject? onNewProject;
 
   @override
   ConsumerState<_ProjectsSection> createState() => _ProjectsSectionState();
@@ -243,11 +283,13 @@ class _ProjectsSectionState extends ConsumerState<_ProjectsSection> {
                 if (widget.canCreate)
                   TextButton(
                     key: const Key('new-project-action'),
-                    onPressed: () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) => NewProjectPage(scope: scope),
-                      ),
-                    ),
+                    onPressed: widget.onNewProject == null
+                        ? null
+                        : () => widget.onNewProject!(
+                            context,
+                            workspaceId: widget.workspaceId,
+                            peonId: widget.peonId,
+                          ),
                     style: TextButton.styleFrom(
                       minimumSize: Size.zero,
                       padding: EdgeInsets.zero,
@@ -280,6 +322,7 @@ class _ProjectsSectionState extends ConsumerState<_ProjectsSection> {
                   activeSessions: activeSessions,
                   online: widget.online,
                   isOwner: widget.canCreate,
+                  onOpenProject: widget.onOpenProject,
                   onRetry: ref
                       .read(projectsControllerProvider(scope).notifier)
                       .refresh,
@@ -306,6 +349,7 @@ class _ProjectList extends StatefulWidget {
     required this.online,
     required this.isOwner,
     required this.onRetry,
+    this.onOpenProject,
   });
 
   final ProjectsState state;
@@ -314,6 +358,7 @@ class _ProjectList extends StatefulWidget {
   final bool online;
   final bool isOwner;
   final VoidCallback onRetry;
+  final PeonOpenProject? onOpenProject;
 
   @override
   State<_ProjectList> createState() => _ProjectListState();
@@ -378,17 +423,16 @@ class _ProjectListState extends State<_ProjectList> {
                     activeCount: _activeCount(project),
                     lastActivity: _lastActivityFor(widget, project),
                     flashRevision: _flashRevisions[project.projectId] ?? 0,
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) => ProjectDetailPage(
-                          workspaceId: project.workspaceId,
-                          peonId: project.peonId,
-                          project: project,
-                          online: widget.online,
-                          isOwner: widget.isOwner,
-                        ),
-                      ),
-                    ),
+                    onTap: widget.onOpenProject == null
+                        ? null
+                        : () => widget.onOpenProject!(
+                            context,
+                            workspaceId: project.workspaceId,
+                            peonId: project.peonId,
+                            project: project,
+                            online: widget.online,
+                            isOwner: widget.isOwner,
+                          ),
                   ),
               ],
             ),
@@ -509,14 +553,14 @@ class _ProjectRow extends StatelessWidget {
     required this.activeCount,
     required this.lastActivity,
     required this.flashRevision,
-    required this.onTap,
+    this.onTap,
   });
 
   final PeonProject project;
   final int activeCount;
   final double lastActivity;
   final int flashRevision;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -809,7 +853,7 @@ class _SectionHeader extends StatelessWidget {
 
   final String title;
   final String actionLabel;
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context) {
@@ -856,6 +900,25 @@ class _SectionHeader extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _SessionListFallback extends StatelessWidget {
+  const _SessionListFallback();
+
+  @override
+  Widget build(BuildContext context) {
+    return SliverToBoxAdapter(
+      child: SizedBox(
+        height: 160,
+        child: Center(
+          child: Text(
+            'Session list unavailable in this context.',
+            style: AppTypography.body(color: AppColors.boneFaint),
+          ),
+        ),
       ),
     );
   }

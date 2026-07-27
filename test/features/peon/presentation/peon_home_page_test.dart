@@ -15,12 +15,59 @@ import 'package:overseer_mobile/features/sessions/application/sessions_controlle
 import 'package:overseer_mobile/features/sessions/domain/session_models.dart';
 import 'package:overseer_mobile/features/sessions/domain/session_repository.dart';
 import 'package:overseer_mobile/features/sessions/presentation/session_detail_page.dart';
+import 'package:overseer_mobile/features/sessions/presentation/session_list.dart';
 import 'package:overseer_mobile/shared/design/colors.dart';
 import 'package:overseer_mobile/shared/design/theme.dart';
 import 'package:overseer_mobile/shared/design/typography.dart';
 import 'package:overseer_mobile/shared/widgets/app_navigation_bar.dart';
 import 'package:overseer_mobile/shared/widgets/app_option_bottom_sheet.dart';
 import 'package:overseer_mobile/shared/widgets/sidebar_status_edge.dart';
+
+Widget _testPeonHomePage() => PeonHomePage(
+  workspace: const Workspace(id: 'rnm', name: 'RNM'),
+  peon: const Peon(
+    id: 'marat',
+    name: 'Marat',
+    online: true,
+    lastSeen: 100,
+    capabilities: <String>[],
+  ),
+  onNewSession: _openPeonNewSession,
+  sessionListBuilder: _buildPeonSessionList,
+);
+
+void _openPeonNewSession(
+  BuildContext context, {
+  required String workspaceId,
+  required String peonId,
+  String? projectKey,
+}) {
+  Navigator.of(context).push(
+    MaterialPageRoute<void>(
+      builder: (_) => SessionDetailPage.newSession(
+        workspaceId: workspaceId,
+        peonId: peonId,
+        projectKey: projectKey,
+      ),
+    ),
+  );
+}
+
+Widget _buildPeonSessionList(
+  BuildContext context, {
+  required String workspaceId,
+  required String peonId,
+}) {
+  return SessionSliverList(
+    workspaceId: workspaceId,
+    peonId: peonId,
+    onSessionSelected: (session) => Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => SessionDetailPage(session: session),
+      ),
+    ),
+  );
+}
 
 void main() {
   testWidgets('shows shimmer skeletons while projects and sessions load', (
@@ -36,19 +83,7 @@ void main() {
             _PendingProjectRepository(),
           ),
         ],
-        child: MaterialApp(
-          theme: AppTheme.dark,
-          home: const PeonHomePage(
-            workspace: Workspace(id: 'rnm', name: 'RNM'),
-            peon: Peon(
-              id: 'marat',
-              name: 'Marat',
-              online: true,
-              lastSeen: 100,
-              capabilities: [],
-            ),
-          ),
-        ),
+        child: MaterialApp(theme: AppTheme.dark, home: _testPeonHomePage()),
       ),
     );
     await tester.pump();
@@ -73,19 +108,7 @@ void main() {
           sessionRepositoryProvider.overrideWithValue(repository),
           projectRepositoryProvider.overrideWithValue(projectRepository),
         ],
-        child: MaterialApp(
-          theme: AppTheme.dark,
-          home: const PeonHomePage(
-            workspace: Workspace(id: 'rnm', name: 'RNM'),
-            peon: Peon(
-              id: 'marat',
-              name: 'Marat',
-              online: true,
-              lastSeen: 100,
-              capabilities: [],
-            ),
-          ),
-        ),
+        child: MaterialApp(theme: AppTheme.dark, home: _testPeonHomePage()),
       ),
     );
     await tester.pumpAndSettle();
@@ -221,19 +244,7 @@ void main() {
           sessionRepositoryProvider.overrideWithValue(repository),
           projectRepositoryProvider.overrideWithValue(_FakeProjectRepository()),
         ],
-        child: MaterialApp(
-          theme: AppTheme.dark,
-          home: const PeonHomePage(
-            workspace: Workspace(id: 'rnm', name: 'RNM'),
-            peon: Peon(
-              id: 'marat',
-              name: 'Marat',
-              online: true,
-              lastSeen: 100,
-              capabilities: [],
-            ),
-          ),
-        ),
+        child: MaterialApp(theme: AppTheme.dark, home: _testPeonHomePage()),
       ),
     );
     await tester.pumpAndSettle();
@@ -267,19 +278,7 @@ void main() {
           sessionRepositoryProvider.overrideWithValue(repository),
           projectRepositoryProvider.overrideWithValue(_FakeProjectRepository()),
         ],
-        child: MaterialApp(
-          theme: AppTheme.dark,
-          home: const PeonHomePage(
-            workspace: Workspace(id: 'rnm', name: 'RNM'),
-            peon: Peon(
-              id: 'marat',
-              name: 'Marat',
-              online: true,
-              lastSeen: 100,
-              capabilities: [],
-            ),
-          ),
-        ),
+        child: MaterialApp(theme: AppTheme.dark, home: _testPeonHomePage()),
       ),
     );
     await tester.pumpAndSettle();
@@ -321,19 +320,7 @@ void main() {
           sessionRepositoryProvider.overrideWithValue(repository),
           projectRepositoryProvider.overrideWithValue(_FakeProjectRepository()),
         ],
-        child: MaterialApp(
-          theme: AppTheme.dark,
-          home: const PeonHomePage(
-            workspace: Workspace(id: 'rnm', name: 'RNM'),
-            peon: Peon(
-              id: 'marat',
-              name: 'Marat',
-              online: true,
-              lastSeen: 100,
-              capabilities: [],
-            ),
-          ),
-        ),
+        child: MaterialApp(theme: AppTheme.dark, home: _testPeonHomePage()),
       ),
     );
     await tester.pumpAndSettle();
@@ -366,19 +353,7 @@ void main() {
           sessionRepositoryProvider.overrideWithValue(_FakeSessionRepository()),
           projectRepositoryProvider.overrideWithValue(projectRepository),
         ],
-        child: MaterialApp(
-          theme: AppTheme.dark,
-          home: const PeonHomePage(
-            workspace: Workspace(id: 'rnm', name: 'RNM'),
-            peon: Peon(
-              id: 'marat',
-              name: 'Marat',
-              online: true,
-              lastSeen: 100,
-              capabilities: [],
-            ),
-          ),
-        ),
+        child: MaterialApp(theme: AppTheme.dark, home: _testPeonHomePage()),
       ),
     );
     await tester.pump(const Duration(milliseconds: 100));
@@ -430,19 +405,7 @@ void main() {
           sessionRepositoryProvider.overrideWithValue(repository),
           projectRepositoryProvider.overrideWithValue(projectRepository),
         ],
-        child: MaterialApp(
-          theme: AppTheme.dark,
-          home: const PeonHomePage(
-            workspace: Workspace(id: 'rnm', name: 'RNM'),
-            peon: Peon(
-              id: 'marat',
-              name: 'Marat',
-              online: true,
-              lastSeen: 100,
-              capabilities: [],
-            ),
-          ),
-        ),
+        child: MaterialApp(theme: AppTheme.dark, home: _testPeonHomePage()),
       ),
     );
     await tester.pumpAndSettle();
@@ -550,19 +513,7 @@ void main() {
           sessionRepositoryProvider.overrideWithValue(repository),
           projectRepositoryProvider.overrideWithValue(_FakeProjectRepository()),
         ],
-        child: MaterialApp(
-          theme: AppTheme.dark,
-          home: const PeonHomePage(
-            workspace: Workspace(id: 'rnm', name: 'RNM'),
-            peon: Peon(
-              id: 'marat',
-              name: 'Marat',
-              online: true,
-              lastSeen: 100,
-              capabilities: [],
-            ),
-          ),
-        ),
+        child: MaterialApp(theme: AppTheme.dark, home: _testPeonHomePage()),
       ),
     );
     await tester.pumpAndSettle();
@@ -616,19 +567,7 @@ void main() {
           sessionRepositoryProvider.overrideWithValue(sessionRepository),
           projectRepositoryProvider.overrideWithValue(projectRepository),
         ],
-        child: MaterialApp(
-          theme: AppTheme.dark,
-          home: const PeonHomePage(
-            workspace: Workspace(id: 'rnm', name: 'RNM'),
-            peon: Peon(
-              id: 'marat',
-              name: 'Marat',
-              online: true,
-              lastSeen: 100,
-              capabilities: [],
-            ),
-          ),
-        ),
+        child: MaterialApp(theme: AppTheme.dark, home: _testPeonHomePage()),
       ),
     );
     await tester.pumpAndSettle();
@@ -743,19 +682,7 @@ void main() {
             sessionRepositoryProvider.overrideWithValue(sessionRepository),
             projectRepositoryProvider.overrideWithValue(projectRepository),
           ],
-          child: MaterialApp(
-            theme: AppTheme.dark,
-            home: const PeonHomePage(
-              workspace: Workspace(id: 'rnm', name: 'RNM'),
-              peon: Peon(
-                id: 'marat',
-                name: 'Marat',
-                online: true,
-                lastSeen: 100,
-                capabilities: [],
-              ),
-            ),
-          ),
+          child: MaterialApp(theme: AppTheme.dark, home: _testPeonHomePage()),
         ),
       );
       await tester.pumpAndSettle();
@@ -815,19 +742,7 @@ void main() {
           sessionRepositoryProvider.overrideWithValue(_FakeSessionRepository()),
           projectRepositoryProvider.overrideWithValue(projectRepository),
         ],
-        child: MaterialApp(
-          theme: AppTheme.dark,
-          home: const PeonHomePage(
-            workspace: Workspace(id: 'rnm', name: 'RNM'),
-            peon: Peon(
-              id: 'marat',
-              name: 'Marat',
-              online: true,
-              lastSeen: 100,
-              capabilities: [],
-            ),
-          ),
-        ),
+        child: MaterialApp(theme: AppTheme.dark, home: _testPeonHomePage()),
       ),
     );
     await tester.pumpAndSettle();
@@ -863,19 +778,7 @@ void main() {
           ),
           projectRepositoryProvider.overrideWithValue(projectRepository),
         ],
-        child: MaterialApp(
-          theme: AppTheme.dark,
-          home: const PeonHomePage(
-            workspace: Workspace(id: 'rnm', name: 'RNM'),
-            peon: Peon(
-              id: 'marat',
-              name: 'Marat',
-              online: true,
-              lastSeen: 100,
-              capabilities: [],
-            ),
-          ),
-        ),
+        child: MaterialApp(theme: AppTheme.dark, home: _testPeonHomePage()),
       ),
     );
     await tester.pump();
@@ -934,19 +837,7 @@ void main() {
           sessionRepositoryProvider.overrideWithValue(repository),
           projectRepositoryProvider.overrideWithValue(projectRepository),
         ],
-        child: MaterialApp(
-          theme: AppTheme.dark,
-          home: const PeonHomePage(
-            workspace: Workspace(id: 'rnm', name: 'RNM'),
-            peon: Peon(
-              id: 'marat',
-              name: 'Marat',
-              online: true,
-              lastSeen: 100,
-              capabilities: [],
-            ),
-          ),
-        ),
+        child: MaterialApp(theme: AppTheme.dark, home: _testPeonHomePage()),
       ),
     );
     await tester.pumpAndSettle();
@@ -1052,19 +943,7 @@ void main() {
           sessionRepositoryProvider.overrideWithValue(repository),
           projectRepositoryProvider.overrideWithValue(projectRepository),
         ],
-        child: MaterialApp(
-          theme: AppTheme.dark,
-          home: const PeonHomePage(
-            workspace: Workspace(id: 'rnm', name: 'RNM'),
-            peon: Peon(
-              id: 'marat',
-              name: 'Marat',
-              online: true,
-              lastSeen: 100,
-              capabilities: [],
-            ),
-          ),
-        ),
+        child: MaterialApp(theme: AppTheme.dark, home: _testPeonHomePage()),
       ),
     );
     await tester.pumpAndSettle();

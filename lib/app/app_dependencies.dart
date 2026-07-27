@@ -84,6 +84,7 @@ class AppDependencies extends StatelessWidget {
             defaultTargetPlatform == TargetPlatform.iOS);
     return ProviderScope(
       overrides: [
+        overseerServerUrlProvider.overrideWithValue(config.serverUrl),
         appDatabaseProvider.overrideWith((ref) {
           final database = AppDatabase(
             name: connection.usesLegacyStorage

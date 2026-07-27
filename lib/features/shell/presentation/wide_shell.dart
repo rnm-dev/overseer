@@ -7,10 +7,21 @@ import '../../auth/domain/auth_models.dart';
 import '../../fleet/fleet.dart';
 
 class WideShell extends StatelessWidget {
-  const WideShell({super.key, required this.user, required this.onSignOut});
+  const WideShell({
+    super.key,
+    required this.user,
+    required this.onSignOut,
+    this.onOpenPeon,
+  });
 
   final OperatorIdentity? user;
   final Future<void> Function()? onSignOut;
+  final void Function(
+    BuildContext context, {
+    required String workspaceId,
+    required String peonId,
+  })?
+  onOpenPeon;
 
   @override
   Widget build(BuildContext context) {
@@ -46,6 +57,7 @@ class WideShell extends StatelessWidget {
                                 : FleetOverview(
                                     user: user!,
                                     onSignOut: onSignOut!,
+                                    onOpenPeon: onOpenPeon,
                                   ),
                           ),
                         ),

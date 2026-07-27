@@ -14,7 +14,6 @@ import '../../auth/domain/auth_models.dart';
 import '../../settings/application/sound_pack_controller.dart';
 import '../../settings/application/notification_permission_controller.dart';
 import '../../settings/domain/sound_pack.dart';
-import '../../peon/peon.dart';
 import '../application/fleet_controller.dart';
 import '../domain/fleet_models.dart';
 import '../domain/fleet_repository.dart';
@@ -25,17 +24,26 @@ abstract final class _FleetSectionMetrics {
   static const sectionGap = 28.0;
 }
 
+typedef FleetOpenPeon =
+    void Function(
+      BuildContext context, {
+      required String workspaceId,
+      required String peonId,
+    });
+
 class FleetOverview extends ConsumerWidget {
   const FleetOverview({
     super.key,
     this.compact = false,
     required this.user,
     required this.onSignOut,
+    this.onOpenPeon,
   });
 
   final bool compact;
   final OperatorIdentity user;
   final Future<void> Function() onSignOut;
+  final FleetOpenPeon? onOpenPeon;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -49,6 +57,7 @@ class FleetOverview extends ConsumerWidget {
         user: user,
         onSignOut: onSignOut,
         onRefresh: ref.read(fleetControllerProvider.notifier).refresh,
+        onOpenPeon: onOpenPeon,
         presence: presence,
       ),
       loading: () =>
@@ -84,6 +93,7 @@ class _FleetList extends StatelessWidget {
     required this.user,
     required this.onSignOut,
     required this.onRefresh,
+    this.onOpenPeon,
     required this.presence,
   });
 
@@ -92,6 +102,7 @@ class _FleetList extends StatelessWidget {
   final OperatorIdentity user;
   final Future<void> Function() onSignOut;
   final Future<void> Function() onRefresh;
+  final FleetOpenPeon? onOpenPeon;
   final PresenceState presence;
 
   @override
@@ -102,39 +113,64 @@ class _FleetList extends StatelessWidget {
         key: const Key('fleet-overview'),
         physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
-          SliverToBoxAdapter(
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 760),
-                child: Padding(
-                  key: const Key('fleet-screen-padding'),
-                  padding: context.appSpacing.screenInsets(
-                    top: compact ? context.appSpacing.screenHorizontal : 28,
-                    bottom: 48,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      if (workspaces.isEmpty)
-                        const _EmptyFleet()
-                      else
-                        for (final workspace in workspaces) ...[
-                          _WorkspaceSection(
-                            fleet: workspace,
-                            presence: presence,
-                          ),
-                          const SizedBox(
-                            height: _FleetSectionMetrics.sectionGap,
-                          ),
-                        ],
-                      _SettingsSection(user: user, onSignOut: onSignOut),
-                    ],
+          SliverPadding(
+            padding: EdgeInsets.only(
+              top: compact ? context.appSpacing.screenHorizontal : 28,
+            ),
+            sliver: SliverMainAxisGroup(
+              slivers: [
+                if (workspaces.isEmpty)
+                  const SliverToBoxAdapter(
+                    child: _FleetConstrainedContent(child: _EmptyFleet()),
+                  )
+                else
+                  for (final workspace in workspaces) ...[
+                    SliverToBoxAdapter(
+                      child: _WorkspaceSection(
+                        fleet: workspace,
+                        presence: presence,
+                        onOpenPeon: onOpenPeon,
+                      ),
+                    ),
+                    const SliverToBoxAdapter(
+                      child: SizedBox(height: _FleetSectionMetrics.sectionGap),
+                    ),
+                  ],
+                SliverToBoxAdapter(
+                  child: _FleetConstrainedContent(
+                    key: const Key('fleet-screen-padding'),
+                    bottomPadding: 48,
+                    child: _SettingsSection(user: user, onSignOut: onSignOut),
                   ),
                 ),
-              ),
+              ],
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _FleetConstrainedContent extends StatelessWidget {
+  const _FleetConstrainedContent({
+    super.key,
+    required this.child,
+    this.bottomPadding = 0,
+  });
+
+  final Widget child;
+  final double bottomPadding;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 760),
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(12, 0, 12, bottomPadding),
+          child: child,
+        ),
       ),
     );
   }
@@ -403,10 +439,15 @@ class _SettingValue extends StatelessWidget {
 }
 
 class _WorkspaceSection extends StatelessWidget {
-  const _WorkspaceSection({required this.fleet, required this.presence});
+  const _WorkspaceSection({
+    required this.fleet,
+    required this.presence,
+    this.onOpenPeon,
+  });
 
   final WorkspaceFleet fleet;
   final PresenceState presence;
+  final FleetOpenPeon? onOpenPeon;
 
   @override
   Widget build(BuildContext context) {
@@ -414,29 +455,31 @@ class _WorkspaceSection extends StatelessWidget {
       key: Key('workspace-${fleet.workspace.id}'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        AppSectionHeader(title: fleet.workspace.name),
+        _FleetConstrainedContent(
+          child: AppSectionHeader(title: fleet.workspace.name),
+        ),
         const SizedBox(height: _FleetSectionMetrics.headerGap),
         if (fleet.peons.isEmpty)
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: Text(
-              'No peons available',
-              style: AppTypography.body(color: AppColors.boneDim),
+          _FleetConstrainedContent(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: Text(
+                'No peons available',
+                style: AppTypography.body(color: AppColors.boneDim),
+              ),
             ),
           )
         else
-          for (var index = 0; index < fleet.peons.length; index++) ...[
+          for (final peon in fleet.peons)
             _PeonRow(
               workspace: fleet.workspace,
-              peon: fleet.peons[index],
+              peon: peon,
               viewers: presence.viewersForPeon(
                 workspaceId: fleet.workspace.id,
-                peonId: fleet.peons[index].id,
+                peonId: peon.id,
               ),
+              onOpen: onOpenPeon,
             ),
-            if (index != fleet.peons.length - 1)
-              const SizedBox(height: _FleetSectionMetrics.rowGap),
-          ],
       ],
     );
   }
@@ -447,11 +490,13 @@ class _PeonRow extends StatelessWidget {
     required this.workspace,
     required this.peon,
     required this.viewers,
+    this.onOpen,
   });
 
   final Workspace workspace;
   final Peon peon;
   final List<PresenceViewer> viewers;
+  final FleetOpenPeon? onOpen;
 
   @override
   Widget build(BuildContext context) {
@@ -492,11 +537,10 @@ class _PeonRow extends StatelessWidget {
           ],
         ],
       ),
-      onTap: () => Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (context) => PeonHomePage(workspace: workspace, peon: peon),
-        ),
-      ),
+      onTap: onOpen == null
+          ? null
+          : () => onOpen!(context, workspaceId: workspace.id, peonId: peon.id),
+      variant: AppListTileVariant.sectionSurface,
       titleMaxLines: 1,
       semanticsHint: 'Open this Peon',
     );

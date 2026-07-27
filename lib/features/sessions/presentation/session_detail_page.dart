@@ -8,8 +8,10 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/live/presence.dart';
+import '../../../core/config/app_config.dart';
 import '../../fleet/application/fleet_controller.dart';
 import '../../fleet/application/fleet_live_service.dart';
 import '../../../shared/design/colors.dart';
@@ -23,6 +25,7 @@ import '../../auth/application/auth_controller.dart';
 import '../../auth/domain/auth_models.dart';
 import '../../projects/application/projects_controller.dart';
 import '../../projects/domain/project_models.dart';
+import '../../projects/projects.dart';
 import '../../settings/application/sound_pack_controller.dart';
 import '../../settings/domain/sound_pack.dart';
 import '../../settings/domain/work_sound_player.dart';
@@ -34,6 +37,7 @@ import '../application/sessions_controller.dart';
 import '../application/transcript_controller.dart';
 import '../application/voice_dictation_controller.dart';
 import '../domain/followup_repository.dart';
+import '../domain/file_link_transformer.dart';
 import '../domain/new_session_repository.dart';
 import '../domain/session_models.dart';
 import 'session_composer.dart';
@@ -41,6 +45,8 @@ import 'session_file_viewer_page.dart';
 import 'transcript_item_view.dart';
 import 'transcript_items.dart';
 import 'voice_input_alert_sheet.dart';
+part 'session_detail_attachments.dart';
+part 'session_detail_transcript.dart';
 
 class SessionDetailPage extends ConsumerStatefulWidget {
   const SessionDetailPage({super.key, required this.session})
@@ -64,8 +70,24 @@ class SessionDetailPage extends ConsumerStatefulWidget {
   ConsumerState<SessionDetailPage> createState() => _SessionDetailPageState();
 }
 
-class _SessionDetailPageState extends ConsumerState<SessionDetailPage>
-    with WidgetsBindingObserver {
+abstract class _SessionDetailAttachmentHost
+    extends ConsumerState<SessionDetailPage> {
+  String get workspaceId;
+  String get peonId;
+  SessionSummary? get session;
+  // Accessed by the attachment-method mixin through this host contract.
+  // ignore: unused_element
+  bool get _readingAttachments;
+  set _readingAttachments(bool value);
+  // ignore: unused_element
+  String? get _attachmentError;
+  set _attachmentError(String? value);
+  List<NewSessionAttachment> get _composerAttachments;
+  set _composerAttachments(List<NewSessionAttachment> value);
+}
+
+class _SessionDetailPageState extends _SessionDetailAttachmentHost
+    with WidgetsBindingObserver, _SessionDetailAttachmentMethods {
   late final FleetLiveService? _live;
   late final TextEditingController _composerController;
   late SessionSummary? _session;
@@ -76,8 +98,11 @@ class _SessionDetailPageState extends ConsumerState<SessionDetailPage>
   double _composerHeight = 0;
   String? _stopError;
   String? _locallyStoppedSessionId;
+  @override
   List<NewSessionAttachment> _composerAttachments = const [];
+  @override
   String? _attachmentError;
+  @override
   bool _readingAttachments = false;
   bool _startingSession = false;
   bool _backgrounded = false;
@@ -86,8 +111,11 @@ class _SessionDetailPageState extends ConsumerState<SessionDetailPage>
 
   static const _newSessionDraftId = 'new-session';
 
+  @override
   SessionSummary? get session => _session;
+  @override
   String get workspaceId => session?.workspaceId ?? widget.workspaceId!;
+  @override
   String get peonId => session?.peonId ?? widget.peonId!;
 
   @override
@@ -356,6 +384,8 @@ class _SessionDetailPageState extends ConsumerState<SessionDetailPage>
                           .loadOlder(),
                       onOpenAttachment: _openTranscriptAttachment,
                       onOpenPreview: _openTranscriptPreview,
+                      onOpenLink: (href) =>
+                          _openTranscriptLink(href, details: details),
                     ),
                   Align(
                     alignment: Alignment.bottomCenter,
@@ -698,6 +728,87 @@ class _SessionDetailPageState extends ConsumerState<SessionDetailPage>
     );
   }
 
+  Future<void> _openTranscriptLink(
+    String href, {
+    required SessionDetails? details,
+  }) async {
+    final currentSession = session;
+    final target = href.trim();
+    if (currentSession == null || target.isEmpty) return;
+
+    const transformer = FileLinkTransformer();
+    final projectId = details?.projectId?.trim();
+    final projectRoot = details?.projectRoot?.trim();
+    final projectKey = (details?.projectKey ?? currentSession.projectKey)
+        ?.trim();
+    if (projectId?.isNotEmpty == true &&
+        projectRoot?.isNotEmpty == true &&
+        projectKey?.isNotEmpty == true) {
+      final projectFile = transformer.projectFile(
+        target,
+        ProjectFileLinkContext(
+          peonId: currentSession.peonId,
+          projectId: projectId!,
+          projectRoot: projectRoot!,
+          currentOrigin: ref.read(overseerServerUrlProvider)?.origin,
+        ),
+      );
+      if (projectFile != null) {
+        if (!mounted) return;
+        await Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => ProjectFileViewerPage(
+              workspaceId: currentSession.workspaceId,
+              peonId: currentSession.peonId,
+              projectId: projectId,
+              projectKey: projectKey!,
+              path: projectFile.relativePath,
+            ),
+          ),
+        );
+        return;
+      }
+    }
+
+    final localPath = transformer.localFilePath(target);
+    if (localPath != null) {
+      if (!mounted) return;
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => SessionFileViewerPage(
+            scope: SessionFileScope.artifact(
+              workspaceId: currentSession.workspaceId,
+              peonId: currentSession.peonId,
+              sessionId: currentSession.sessionId,
+              path: localPath,
+            ),
+          ),
+        ),
+      );
+      return;
+    }
+
+    final uri = Uri.tryParse(target);
+    if (uri == null ||
+        !const {'http', 'https', 'mailto'}.contains(uri.scheme)) {
+      _showLinkError('This link type is not supported.');
+      return;
+    }
+    try {
+      final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!opened && mounted) _showLinkError('Could not open this link.');
+    } catch (_) {
+      if (mounted) _showLinkError('Could not open this link.');
+    }
+  }
+
+  void _showLinkError(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
   Future<void> _startSession(FollowupScope scope) async {
     if (_startingSession) return;
     setState(() => _startingSession = true);
@@ -775,957 +886,6 @@ class _SessionDetailPageState extends ConsumerState<SessionDetailPage>
     } catch (_) {
       // The destination surface owns its normal retryable error treatment.
     }
-  }
-
-  Future<void> _pickAttachments() async {
-    const maxFiles = 10;
-    const maxBytes = 25 * 1024 * 1024;
-    setState(() {
-      _readingAttachments = true;
-      _attachmentError = null;
-    });
-    try {
-      final result = await FilePicker.pickFiles(
-        allowMultiple: true,
-        withData: false,
-      );
-      if (!mounted || result == null) return;
-      final selected = <NewSessionAttachment>[];
-      var rejectedLargeFiles = 0;
-      var rejectedExtraFiles = 0;
-      final available = maxFiles - _composerAttachments.length;
-      for (final file in result.files) {
-        if (file.size > maxBytes) {
-          rejectedLargeFiles++;
-          continue;
-        }
-        if (selected.length >= available) {
-          rejectedExtraFiles++;
-          continue;
-        }
-        final bytes = file.bytes ?? await file.xFile.readAsBytes();
-        selected.add(
-          NewSessionAttachment(
-            name: file.name,
-            type: _isImageName(file.name) ? 'image' : 'file',
-            bytes: bytes,
-          ),
-        );
-      }
-      final errors = <String>[
-        if (rejectedLargeFiles > 0)
-          '$rejectedLargeFiles '
-              '${rejectedLargeFiles == 1 ? 'file is' : 'files are'} larger than 25 MB.',
-        if (rejectedExtraFiles > 0)
-          'You can attach up to 10 files; '
-              '$rejectedExtraFiles ${rejectedExtraFiles == 1 ? 'file was' : 'files were'} not added.',
-      ];
-      if (selected.isNotEmpty) _resetSubmissionIdentity();
-      setState(() {
-        _composerAttachments = [..._composerAttachments, ...selected];
-        _attachmentError = errors.isEmpty ? null : errors.join(' ');
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _attachmentError = 'Files could not be selected.');
-    } finally {
-      if (mounted) {
-        setState(() {
-          _readingAttachments = false;
-        });
-      }
-    }
-  }
-
-  Future<void> _showAttachmentOptions() {
-    return showAppBottomSheet<void>(
-      context: context,
-      builder: (sheetContext) => AppBottomSheet(
-        title: 'Add attachments',
-        handleKey: const Key('session-attachment-sheet-handle'),
-        children: [
-          _AttachmentOption(
-            key: const Key('session-attachment-choose-files'),
-            icon: LucideIcons.folderOpen,
-            title: 'Choose files',
-            subtitle: 'Up to 10 files, 25 MB each',
-            onTap: () {
-              Navigator.of(sheetContext).pop();
-              unawaited(_pickAttachments());
-            },
-          ),
-          const SizedBox(height: 8),
-          _AttachmentOption(
-            key: const Key('session-attachment-paste'),
-            icon: LucideIcons.clipboardPaste,
-            title: 'Paste from clipboard',
-            subtitle: 'Images and copied files',
-            onTap: () {
-              Navigator.of(sheetContext).pop();
-              unawaited(_pasteAttachments());
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _pasteAttachments() async {
-    const maxFiles = 10;
-    const maxBytes = 25 * 1024 * 1024;
-    setState(() {
-      _readingAttachments = true;
-      _attachmentError = null;
-    });
-    try {
-      final result = await ref
-          .read(attachmentClipboardProvider)
-          .read(
-            availableFiles: maxFiles - _composerAttachments.length,
-            maxBytes: maxBytes,
-          );
-      if (!mounted) return;
-      final errors = _attachmentLimitErrors(
-        skippedTooLarge: result.skippedTooLarge,
-        skippedForLimit: result.skippedForLimit,
-      );
-      if (result.attachments.isNotEmpty) {
-        _resetSubmissionIdentity();
-      }
-      setState(() {
-        _composerAttachments = [
-          ..._composerAttachments,
-          for (final attachment in result.attachments)
-            NewSessionAttachment(
-              name: attachment.name,
-              type: attachment.type,
-              bytes: attachment.bytes,
-            ),
-        ];
-        _attachmentError = result.attachments.isEmpty && errors.isEmpty
-            ? 'The clipboard does not contain an image or file.'
-            : errors.isEmpty
-            ? null
-            : errors.join(' ');
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(
-        () => _attachmentError = 'Clipboard contents could not be pasted.',
-      );
-    } finally {
-      if (mounted) {
-        setState(() {
-          _readingAttachments = false;
-        });
-      }
-    }
-  }
-
-  void _insertKeyboardContent(KeyboardInsertedContent content) {
-    const maxFiles = 10;
-    const maxBytes = 25 * 1024 * 1024;
-    final bytes = content.data;
-    if (bytes == null || bytes.isEmpty) {
-      final uri = content.uri;
-      if (uri.isEmpty) {
-        setState(
-          () => _attachmentError = 'The pasted image could not be read.',
-        );
-        return;
-      }
-      unawaited(
-        _insertKeyboardUriContent(
-          uri: uri,
-          mimeType: content.mimeType,
-          maxBytes: maxBytes,
-        ),
-      );
-      return;
-    }
-    final errors = _attachmentLimitErrors(
-      skippedTooLarge: bytes.length > maxBytes ? 1 : 0,
-      skippedForLimit: _composerAttachments.length >= maxFiles ? 1 : 0,
-    );
-    if (errors.isNotEmpty) {
-      setState(() => _attachmentError = errors.join(' '));
-      return;
-    }
-    final extension = switch (content.mimeType) {
-      'image/jpeg' => 'jpg',
-      'image/gif' => 'gif',
-      'image/webp' => 'webp',
-      _ => 'png',
-    };
-    _resetSubmissionIdentity();
-    setState(() {
-      _composerAttachments = [
-        ..._composerAttachments,
-        NewSessionAttachment(
-          name:
-              'pasted-image-${DateTime.now().millisecondsSinceEpoch}.$extension',
-          type: 'image',
-          bytes: bytes,
-        ),
-      ];
-      _attachmentError = null;
-    });
-  }
-
-  Future<void> _insertKeyboardUriContent({
-    required String uri,
-    required String mimeType,
-    required int maxBytes,
-  }) async {
-    const maxFiles = 10;
-    if (_composerAttachments.length >= maxFiles) {
-      setState(
-        () => _attachmentError = _attachmentLimitErrors(
-          skippedTooLarge: 0,
-          skippedForLimit: 1,
-        ).join(' '),
-      );
-      return;
-    }
-    setState(() {
-      _readingAttachments = true;
-      _attachmentError = null;
-    });
-    try {
-      final result = await ref
-          .read(attachmentClipboardProvider)
-          .readInsertedContent(
-            uri: uri,
-            mimeType: mimeType,
-            maxBytes: maxBytes,
-          );
-      if (!mounted) return;
-      final errors = _attachmentLimitErrors(
-        skippedTooLarge: result.skippedTooLarge,
-        skippedForLimit: result.skippedForLimit,
-      );
-      if (result.attachments.isNotEmpty) {
-        _resetSubmissionIdentity();
-      }
-      setState(() {
-        _composerAttachments = [
-          ..._composerAttachments,
-          ...result.attachments.map(
-            (attachment) => NewSessionAttachment(
-              name: attachment.name,
-              type: attachment.type,
-              bytes: attachment.bytes,
-            ),
-          ),
-        ];
-        _attachmentError = result.attachments.isEmpty && errors.isEmpty
-            ? 'The pasted image could not be read.'
-            : errors.isEmpty
-            ? null
-            : errors.join(' ');
-      });
-    } catch (_) {
-      if (mounted) {
-        setState(
-          () => _attachmentError = 'The pasted image could not be read.',
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _readingAttachments = false;
-        });
-      }
-    }
-  }
-
-  List<String> _attachmentLimitErrors({
-    required int skippedTooLarge,
-    required int skippedForLimit,
-  }) {
-    return [
-      if (skippedTooLarge > 0) 'Files must be 25 MB or smaller.',
-      if (skippedForLimit > 0)
-        'You can attach up to 10 files; '
-            '$skippedForLimit '
-            '${skippedForLimit == 1 ? 'file was' : 'files were'} not added.',
-    ];
-  }
-
-  void _resetSubmissionIdentity() {
-    ref
-        .read(
-          sessionComposerControllerProvider(
-            FollowupScope(
-              workspaceId: workspaceId,
-              peonId: peonId,
-              sessionId: session?.sessionId ?? _newSessionDraftId,
-            ),
-          ).notifier,
-        )
-        .resetSubmissionIdentity();
-  }
-}
-
-class _AttachmentOption extends StatelessWidget {
-  const _AttachmentOption({
-    super.key,
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return ListTile(
-      onTap: onTap,
-      shape: RoundedRectangleBorder(borderRadius: AppMotion.optionShape),
-      tileColor: AppColors.iron950,
-      leading: Icon(icon, size: 20, color: AppColors.felBright),
-      title: Text(
-        title,
-        style: AppTypography.body(fontWeight: FontWeight.w600),
-      ),
-      subtitle: Text(
-        subtitle,
-        style: AppTypography.body(fontSize: 12, color: AppColors.boneFaint),
-      ),
-      trailing: const Icon(
-        LucideIcons.chevronRight,
-        size: 16,
-        color: AppColors.boneFaint,
-      ),
-    );
-  }
-}
-
-bool _isImageName(String name) {
-  final lower = name.toLowerCase();
-  return const ['.png', '.jpg', '.jpeg', '.gif', '.webp'].any(lower.endsWith);
-}
-
-ModelProvider? _modelProviderFor(
-  ModelsCatalog? catalog, {
-  String? agent,
-  String? model,
-}) {
-  if (catalog == null || catalog.providers.isEmpty) return null;
-  for (final provider in catalog.providers) {
-    if (provider.agent == agent) return provider;
-  }
-  if (model != null) {
-    for (final provider in catalog.providers) {
-      if (provider.models.any(
-        (option) => option.id == model || option.alias == model,
-      )) {
-        return provider;
-      }
-    }
-  }
-  for (final provider in catalog.providers) {
-    if (provider.agent == catalog.defaultAgent) return provider;
-  }
-  return catalog.providers.first;
-}
-
-String _catalogLabel(
-  List<ModelCatalogOption>? options,
-  String? value, {
-  required String fallback,
-}) {
-  if (value == null) {
-    for (final option in options ?? const <ModelCatalogOption>[]) {
-      if (option.isDefault) return option.label;
-    }
-    return fallback;
-  }
-  for (final option in options ?? const <ModelCatalogOption>[]) {
-    if (option.id == value || option.alias == value) return option.label;
-  }
-  return value;
-}
-
-String? _submissionLabel(SessionComposerState? state, {required bool running}) {
-  final followup = state?.followupProgress;
-  if (followup != null) {
-    return switch (followup.stage) {
-      FollowupSubmissionStage.uploading =>
-        'Uploading ${followup.current} of ${followup.total}: '
-            '${followup.fileName}',
-      FollowupSubmissionStage.submitting =>
-        running ? 'Adding to queue…' : 'Sending message…',
-    };
-  }
-  final initial = state?.submissionProgress;
-  if (initial != null) {
-    return switch (initial.stage) {
-      NewSessionSubmissionStage.uploading =>
-        'Uploading ${initial.current} of ${initial.total}: ${initial.fileName}',
-      NewSessionSubmissionStage.starting => 'Starting session…',
-    };
-  }
-  return null;
-}
-
-class _TranscriptBody extends StatefulWidget {
-  const _TranscriptBody({
-    required this.transcript,
-    required this.operator,
-    required this.viewers,
-    required this.bottomPadding,
-    required this.showWorking,
-    required this.stopping,
-    required this.stopError,
-    required this.onStop,
-    required this.onRefresh,
-    required this.onLoadOlder,
-    required this.onOpenAttachment,
-    required this.onOpenPreview,
-  });
-
-  final AsyncValue<TranscriptState> transcript;
-  final OperatorIdentity? operator;
-  final List<PresenceViewer> viewers;
-  final double bottomPadding;
-  final bool showWorking;
-  final bool stopping;
-  final String? stopError;
-  final VoidCallback onStop;
-  final Future<void> Function() onRefresh;
-  final Future<void> Function() onLoadOlder;
-  final ValueChanged<TranscriptAttachment> onOpenAttachment;
-  final ValueChanged<TranscriptPreviewItem> onOpenPreview;
-
-  @override
-  State<_TranscriptBody> createState() => _TranscriptBodyState();
-}
-
-class _TranscriptBodyState extends State<_TranscriptBody> {
-  static const _bottomThreshold = 24.0;
-
-  final ScrollController _scrollController = ScrollController();
-
-  @override
-  void didUpdateWidget(covariant _TranscriptBody oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    final transcriptChanged =
-        oldWidget.transcript.value != widget.transcript.value ||
-        oldWidget.showWorking != widget.showWorking;
-    if (!transcriptChanged || !_scrollController.hasClients) return;
-
-    final position = _scrollController.position;
-    final wasAtBottom =
-        position.pixels <= position.minScrollExtent + _bottomThreshold;
-    if (!wasAtBottom) return;
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_scrollController.hasClients) return;
-      _scrollController.jumpTo(_scrollController.position.minScrollExtent);
-    });
-  }
-
-  @override
-  void dispose() {
-    _scrollController.dispose();
-    super.dispose();
-  }
-
-  Widget _workingContent(TranscriptEvent? latestEvent) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _TranscriptWorkingIndicator(
-          activity: transcriptWorkingActivity(latestEvent),
-          stopping: widget.stopping,
-          onStop: widget.onStop,
-        ),
-        if (widget.stopError case final error?)
-          Padding(
-            padding: const EdgeInsets.only(top: 4),
-            child: Text(
-              '⚠ $error',
-              key: const Key('transcript-stop-error'),
-              style: AppTypography.mono(fontSize: 10, color: AppColors.ember),
-            ),
-          ),
-      ],
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final state = widget.transcript.value;
-    final isLoading =
-        widget.transcript.isLoading || (state?.isRefreshing ?? false);
-
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        widget.transcript.when(
-          loading: () => const SizedBox.expand(),
-          error: (_, _) => _TranscriptFailure(onRetry: widget.onRefresh),
-          data: (state) {
-            if (state.events.isEmpty && state.isRefreshing) {
-              return const SizedBox.expand();
-            }
-            if (state.events.isEmpty && !state.isRunning) {
-              return _TranscriptEmpty(
-                message: state.message,
-                onRetry: widget.onRefresh,
-              );
-            }
-            final items = flattenTranscriptEvents(state.events);
-            final hasTopControl = state.hasOlder || state.message != null;
-            final hasWorking = state.isRunning && widget.showWorking;
-            return ListView.builder(
-              key: const Key('transcript-list'),
-              controller: _scrollController,
-              reverse: true,
-              padding: EdgeInsets.fromLTRB(16, 16, 12, widget.bottomPadding),
-              itemCount:
-                  items.length + (hasTopControl ? 1 : 0) + (hasWorking ? 1 : 0),
-              itemBuilder: (context, index) {
-                if (hasWorking && index == 0) {
-                  return Padding(
-                    key: ValueKey(
-                      'transcript-working-flow-${state.events.lastOrNull?.eventId ?? 'empty'}',
-                    ),
-                    padding: const EdgeInsets.only(top: 16),
-                    child: _workingContent(state.events.lastOrNull),
-                  );
-                }
-                final dataIndex = index - (hasWorking ? 1 : 0);
-                if (dataIndex == items.length) {
-                  return _TranscriptHistoryControl(
-                    state: state,
-                    onRetry: widget.onRefresh,
-                    onLoadOlder: widget.onLoadOlder,
-                  );
-                }
-                final chronologicalIndex = items.length - 1 - dataIndex;
-                final item = items[chronologicalIndex];
-                final previous = chronologicalIndex > 0
-                    ? items[chronologicalIndex - 1]
-                    : null;
-                return Padding(
-                  key: ValueKey(item.key),
-                  padding: EdgeInsets.only(
-                    top: transcriptItemGap(previous, item),
-                  ),
-                  child: TranscriptItemView(
-                    item: item,
-                    operator: widget.operator,
-                    onOpenAttachment: widget.onOpenAttachment,
-                    onOpenPreview: widget.onOpenPreview,
-                  ),
-                );
-              },
-            );
-          },
-        ),
-        Positioned(
-          top: 8,
-          left: 16,
-          right: 16,
-          child: _DelayedTranscriptLoadingPill(isLoading: isLoading),
-        ),
-        Positioned(
-          top: 12,
-          right: 14,
-          child: PresenceStack(
-            key: const Key('session-floating-presence'),
-            size: PresenceStackSize.md,
-            softShadow: true,
-            viewers: [
-              for (final viewer in widget.viewers)
-                PresencePerson(
-                  userId: viewer.userId,
-                  displayName: viewer.displayName,
-                  avatarUrl: viewer.avatarUrl,
-                ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _TranscriptWorkingIndicator extends StatefulWidget {
-  const _TranscriptWorkingIndicator({
-    required this.activity,
-    required this.stopping,
-    required this.onStop,
-  });
-
-  final TranscriptWorkingActivity activity;
-  final bool stopping;
-  final VoidCallback onStop;
-
-  @override
-  State<_TranscriptWorkingIndicator> createState() =>
-      _TranscriptWorkingIndicatorState();
-}
-
-class _TranscriptWorkingIndicatorState
-    extends State<_TranscriptWorkingIndicator>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _dots = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 1200),
-  )..repeat();
-  late DateTime _fallbackStartedAt = DateTime.now();
-  late Timer _timer;
-  DateTime _now = DateTime.now();
-
-  @override
-  void initState() {
-    super.initState();
-    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (!mounted) return;
-      setState(() => _now = DateTime.now());
-    });
-  }
-
-  @override
-  void didUpdateWidget(covariant _TranscriptWorkingIndicator oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.activity.startedAt != widget.activity.startedAt ||
-        oldWidget.activity.label != widget.activity.label) {
-      _fallbackStartedAt = DateTime.now();
-      _now = DateTime.now();
-    }
-  }
-
-  @override
-  void dispose() {
-    _timer.cancel();
-    _dots.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final startedAt = _workingStartedAt(widget.activity.startedAt);
-    final duration = _formatWorkingDuration(_now.difference(startedAt));
-    return Row(
-      key: const Key('transcript-working'),
-      children: [
-        Flexible(
-          child: Semantics(
-            label: 'Agent working: ${widget.activity.label}',
-            liveRegion: true,
-            child: ExcludeSemantics(
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  AnimatedBuilder(
-                    animation: _dots,
-                    builder: (context, _) {
-                      return Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          for (var index = 0; index < 3; index++) ...[
-                            if (index > 0) const SizedBox(width: 3),
-                            Opacity(
-                              opacity:
-                                  0.25 +
-                                  0.75 *
-                                      ((math.sin(
-                                                (_dots.value * math.pi * 2) -
-                                                    (index * 0.9),
-                                              ) +
-                                              1) /
-                                          2),
-                              child: const DecoratedBox(
-                                decoration: BoxDecoration(
-                                  color: AppColors.felBright,
-                                  shape: BoxShape.circle,
-                                ),
-                                child: SizedBox.square(dimension: 4),
-                              ),
-                            ),
-                          ],
-                        ],
-                      );
-                    },
-                  ),
-                  const SizedBox(width: 8),
-                  Flexible(
-                    child: Text(
-                      widget.activity.label,
-                      key: const Key('transcript-working-label'),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppTypography.mono(
-                        fontSize: 10,
-                        color: AppColors.felBright,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    '· $duration',
-                    key: const Key('transcript-working-duration'),
-                    style: AppTypography.mono(
-                      fontSize: 10,
-                      color: AppColors.boneFaint,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(width: 4),
-        TextButton.icon(
-          key: const Key('transcript-stop'),
-          onPressed: widget.stopping ? null : widget.onStop,
-          style: TextButton.styleFrom(
-            minimumSize: const Size(0, 36),
-            padding: const EdgeInsets.symmetric(horizontal: 5),
-            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            foregroundColor: AppColors.ember,
-            disabledForegroundColor: AppColors.ember.withValues(alpha: 0.4),
-            textStyle: AppTypography.mono(fontSize: 10),
-          ),
-          icon: const Text('■', style: TextStyle(fontSize: 9, height: 1)),
-          label: Text(widget.stopping ? 'Stopping…' : 'Stop'),
-        ),
-      ],
-    );
-  }
-
-  DateTime _workingStartedAt(double? raw) {
-    if (raw == null || raw <= 0) return _fallbackStartedAt;
-    final milliseconds = raw < 100000000000
-        ? (raw * 1000).round()
-        : raw.round();
-    final parsed = DateTime.fromMillisecondsSinceEpoch(milliseconds);
-    if (parsed.isAfter(_now)) return _fallbackStartedAt;
-    return parsed;
-  }
-}
-
-String _formatWorkingDuration(Duration elapsed) {
-  final totalSeconds = math.max(0, elapsed.inSeconds);
-  final seconds = totalSeconds % 60;
-  final totalMinutes = totalSeconds ~/ 60;
-  if (totalMinutes < 60) {
-    return '$totalMinutes:${seconds.toString().padLeft(2, '0')}';
-  }
-  final hours = totalMinutes ~/ 60;
-  final minutes = totalMinutes % 60;
-  return '$hours:${minutes.toString().padLeft(2, '0')}:'
-      '${seconds.toString().padLeft(2, '0')}';
-}
-
-class _DelayedTranscriptLoadingPill extends StatefulWidget {
-  const _DelayedTranscriptLoadingPill({required this.isLoading});
-
-  static const delay = Duration(seconds: 2);
-
-  final bool isLoading;
-
-  @override
-  State<_DelayedTranscriptLoadingPill> createState() =>
-      _DelayedTranscriptLoadingPillState();
-}
-
-class _DelayedTranscriptLoadingPillState
-    extends State<_DelayedTranscriptLoadingPill> {
-  Timer? _showTimer;
-  bool _isVisible = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _syncVisibility();
-  }
-
-  @override
-  void didUpdateWidget(_DelayedTranscriptLoadingPill oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.isLoading != widget.isLoading) {
-      _syncVisibility();
-    }
-  }
-
-  void _syncVisibility() {
-    _showTimer?.cancel();
-    if (!widget.isLoading) {
-      if (_isVisible) {
-        setState(() => _isVisible = false);
-      }
-      return;
-    }
-    _showTimer = Timer(_DelayedTranscriptLoadingPill.delay, () {
-      if (mounted && widget.isLoading) {
-        setState(() => _isVisible = true);
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _showTimer?.cancel();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return IgnorePointer(
-      child: AnimatedSlide(
-        key: const Key('transcript-loading-slide'),
-        offset: _isVisible ? Offset.zero : const Offset(0, -1.5),
-        duration: _isVisible ? AppMotion.panelClose : AppMotion.base,
-        curve: AppMotion.iosQuick,
-        child: AnimatedOpacity(
-          key: const Key('transcript-loading-opacity'),
-          opacity: _isVisible ? 1 : 0,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeInOutCubic,
-          child: Center(
-            child: Semantics(
-              container: true,
-              liveRegion: true,
-              label: _isVisible ? 'Loading messages' : null,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(999),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                  child: DecoratedBox(
-                    key: const Key('transcript-loading-pill'),
-                    decoration: BoxDecoration(
-                      color: AppColors.iron900.withValues(alpha: 0.88),
-                      borderRadius: BorderRadius.circular(999),
-                      border: Border.all(
-                        color: AppColors.bone.withValues(alpha: 0.08),
-                      ),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 6,
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          TickerMode(
-                            enabled: _isVisible,
-                            child: const SizedBox.square(
-                              dimension: 12,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 1.5,
-                                color: AppColors.boneDim,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            'Loading messages…',
-                            style: AppTypography.body(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w500,
-                              color: AppColors.boneDim,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _TranscriptHistoryControl extends StatelessWidget {
-  const _TranscriptHistoryControl({
-    required this.state,
-    required this.onRetry,
-    required this.onLoadOlder,
-  });
-
-  final TranscriptState state;
-  final Future<void> Function() onRetry;
-  final Future<void> Function() onLoadOlder;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        if (state.message case final message?)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Text(
-              message,
-              key: const Key('transcript-error'),
-              textAlign: TextAlign.center,
-              style: AppTypography.body(fontSize: 12, color: AppColors.blood),
-            ),
-          ),
-        AppButton(
-          key: const Key('transcript-history-action'),
-          onPressed: state.hasOlder ? onLoadOlder : onRetry,
-          variant: AppButtonVariant.ghost,
-          size: AppButtonSize.sm,
-          loading: state.isLoadingOlder,
-          child: Text(state.hasOlder ? 'Load older events' : 'Retry'),
-        ),
-      ],
-    );
-  }
-}
-
-class _TranscriptEmpty extends StatelessWidget {
-  const _TranscriptEmpty({required this.message, required this.onRetry});
-
-  final String? message;
-  final Future<void> Function() onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              message ?? 'No transcript yet.',
-              key: const Key('transcript-empty'),
-              textAlign: TextAlign.center,
-              style: AppTypography.body(
-                fontSize: 14,
-                color: message == null ? AppColors.boneDim : AppColors.blood,
-              ),
-            ),
-            if (message != null) ...[
-              const SizedBox(height: 12),
-              AppButton(
-                key: const Key('transcript-retry'),
-                onPressed: onRetry,
-                variant: AppButtonVariant.secondary,
-                size: AppButtonSize.sm,
-                child: const Text('Retry'),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
   }
 }
 
@@ -2005,20 +1165,6 @@ class _ProjectSelectionNotice extends StatelessWidget {
   }
 }
 
-class _TranscriptFailure extends StatelessWidget {
-  const _TranscriptFailure({required this.onRetry});
-
-  final Future<void> Function() onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    return _TranscriptEmpty(
-      message: 'Could not open the transcript cache.',
-      onRetry: onRetry,
-    );
-  }
-}
-
 class _SessionHeader extends StatelessWidget {
   const _SessionHeader({
     required this.session,
@@ -2102,8 +1248,8 @@ class _SessionHeader extends StatelessWidget {
                 queryParameters: {
                   'workspaceId': session.workspaceId,
                   'peonId': session.peonId,
-                  'projectKey': ?session.projectKey,
-                  'projectId': ?session.projectId,
+                  'projectKey': session.projectKey,
+                  'projectId': session.projectId,
                 },
               ),
               padding: EdgeInsets.zero,

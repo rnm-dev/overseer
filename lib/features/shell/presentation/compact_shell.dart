@@ -10,12 +10,19 @@ class CompactShell extends StatelessWidget {
     super.key,
     required this.user,
     required this.onSignOut,
+    this.onOpenPeon,
     this.overseerName,
     this.onBackToConnections,
   });
 
   final OperatorIdentity? user;
   final Future<void> Function()? onSignOut;
+  final void Function(
+    BuildContext context, {
+    required String workspaceId,
+    required String peonId,
+  })?
+  onOpenPeon;
   final String? overseerName;
   final VoidCallback? onBackToConnections;
 
@@ -48,6 +55,7 @@ class CompactShell extends StatelessWidget {
                       compact: true,
                       user: user!,
                       onSignOut: onSignOut!,
+                      onOpenPeon: onOpenPeon,
                     ),
             ),
           ],

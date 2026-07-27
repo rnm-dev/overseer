@@ -6,10 +6,21 @@ import '../../auth/domain/auth_models.dart';
 import '../../fleet/fleet.dart';
 
 class MediumShell extends StatelessWidget {
-  const MediumShell({super.key, required this.user, required this.onSignOut});
+  const MediumShell({
+    super.key,
+    required this.user,
+    required this.onSignOut,
+    this.onOpenPeon,
+  });
 
   final OperatorIdentity? user;
   final Future<void> Function()? onSignOut;
+  final void Function(
+    BuildContext context, {
+    required String workspaceId,
+    required String peonId,
+  })?
+  onOpenPeon;
 
   @override
   Widget build(BuildContext context) {
@@ -44,7 +55,11 @@ class MediumShell extends StatelessWidget {
                   Expanded(
                     child: user == null
                         ? const FleetOverviewLoading()
-                        : FleetOverview(user: user!, onSignOut: onSignOut!),
+                        : FleetOverview(
+                            user: user!,
+                            onSignOut: onSignOut!,
+                            onOpenPeon: onOpenPeon,
+                          ),
                   ),
                 ],
               ),
