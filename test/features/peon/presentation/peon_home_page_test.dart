@@ -217,6 +217,11 @@ void main() {
     );
     expect(pinnedHeaders, hasLength(2));
     expect(pinnedHeaders.every((header) => header.pinned), isTrue);
+    expect(
+      find.byKey(const Key('pinned-section-header-blur')),
+      findsNWidgets(2),
+    );
+    expect(find.byType(BackdropFilter), findsNWidgets(2));
     expect(find.text('No projects on this peon yet.'), findsOneWidget);
     expect(find.text('No sessions yet', skipOffstage: false), findsOneWidget);
     expect(
@@ -265,6 +270,52 @@ void main() {
     );
   });
 
+  testWidgets('lets the session viewport extend through the bottom safe area', (
+    tester,
+  ) async {
+    final repository = _FakeSessionRepository([
+      _session('safe-area-session', activity: 20),
+    ]);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          sessionRepositoryProvider.overrideWithValue(repository),
+          projectRepositoryProvider.overrideWithValue(_FakeProjectRepository()),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.dark,
+          home: MediaQuery(
+            data: const MediaQueryData(
+              size: Size(390, 844),
+              padding: EdgeInsets.only(bottom: 34),
+              viewPadding: EdgeInsets.only(bottom: 34),
+            ),
+            child: _testPeonHomePage(),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final safeArea = tester.widget<SafeArea>(
+      find.ancestor(
+        of: find.byType(CustomScrollView),
+        matching: find.byType(SafeArea),
+      ),
+    );
+    expect(safeArea.bottom, isFalse);
+    expect(
+      tester
+          .widget<Padding>(find.byKey(const Key('peon-screen-padding')))
+          .padding,
+      const EdgeInsets.only(bottom: 66),
+    );
+    expect(
+      tester.getBottomLeft(find.byType(CustomScrollView)).dy,
+      tester.getBottomLeft(find.byKey(const Key('peon-home-page'))).dy,
+    );
+  });
+
   testWidgets('lazily builds only viewport-adjacent session rows', (
     tester,
   ) async {
@@ -290,6 +341,12 @@ void main() {
     );
     expect(find.byType(SliverFixedExtentList), findsOneWidget);
     expect(find.byKey(const Key('sessions-load-more')), findsNothing);
+    _expectStatusLight(
+      tester,
+      sessionId: 'lazy-0',
+      color: SidebarStatusEdgeStyle.idle.color,
+      glowing: false,
+    );
 
     await tester.scrollUntilVisible(
       find.byKey(const Key('session-lazy-19'), skipOffstage: false),
@@ -308,6 +365,12 @@ void main() {
         );
     expect(sessions.requireValue.visibleCount, greaterThan(20));
     expect(sessions.requireValue.visibleCount % 20, 0);
+    _expectStatusLight(
+      tester,
+      sessionId: 'lazy-19',
+      color: SidebarStatusEdgeStyle.idle.color,
+      glowing: false,
+    );
   });
 
   testWidgets('opens the selected session detail page', (tester) async {
@@ -423,8 +486,8 @@ void main() {
     _expectStatusLight(
       tester,
       sessionId: 'newer',
-      color: AppColors.felBright,
-      glowing: true,
+      color: SidebarStatusEdgeStyle.idle.color,
+      glowing: false,
     );
     _expectStatusLight(
       tester,
@@ -495,8 +558,8 @@ void main() {
     _expectStatusLight(
       tester,
       sessionId: 'older',
-      color: AppColors.felBright,
-      glowing: true,
+      color: SidebarStatusEdgeStyle.idle.color,
+      glowing: false,
     );
   });
 
@@ -660,7 +723,7 @@ void main() {
   });
 
   testWidgets(
-    'authoritative active snapshot overrides a stale cached running session',
+    'cached running session stays inactive without an authoritative snapshot',
     (tester) async {
       final projectRepository = _FakeProjectRepository([
         const PeonProject(
@@ -695,7 +758,8 @@ void main() {
       var sessionDecoration =
           tester.widget<Container>(sessionStatusContainer).decoration!
               as BoxDecoration;
-      expect(sessionDecoration.color, AppColors.felBright);
+      expect(sessionDecoration.color, SidebarStatusEdgeStyle.idle.color);
+      expect(sessionDecoration.boxShadow, isNull);
 
       final container = ProviderScope.containerOf(
         tester.element(find.byType(PeonHomePage)),

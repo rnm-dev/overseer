@@ -20,6 +20,7 @@ import 'package:overseer_mobile/features/projects/domain/project_repository.dart
 import 'package:overseer_mobile/features/sessions/application/session_composer_controller.dart';
 import 'package:overseer_mobile/features/sessions/application/sessions_controller.dart';
 import 'package:overseer_mobile/features/sessions/domain/followup_repository.dart';
+import 'package:overseer_mobile/shared/models/ai_capabilities.dart';
 import 'package:overseer_mobile/features/sessions/domain/new_session_repository.dart';
 import 'package:overseer_mobile/features/sessions/domain/session_models.dart';
 import 'package:overseer_mobile/features/sessions/domain/session_repository.dart';

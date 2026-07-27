@@ -11,6 +11,8 @@ class CompactShell extends StatelessWidget {
     required this.user,
     required this.onSignOut,
     this.onOpenPeon,
+    this.onOpenSession,
+    this.onNewSession,
     this.overseerName,
     this.onBackToConnections,
   });
@@ -23,6 +25,8 @@ class CompactShell extends StatelessWidget {
     required String peonId,
   })?
   onOpenPeon;
+  final FleetOpenSession? onOpenSession;
+  final FleetNewSession? onNewSession;
   final String? overseerName;
   final VoidCallback? onBackToConnections;
 
@@ -56,6 +60,8 @@ class CompactShell extends StatelessWidget {
                       user: user!,
                       onSignOut: onSignOut!,
                       onOpenPeon: onOpenPeon,
+                      onOpenSession: onOpenSession,
+                      onNewSession: onNewSession,
                     ),
             ),
           ],

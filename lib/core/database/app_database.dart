@@ -29,6 +29,11 @@ class CachedSessions extends Table {
   BoolColumn get attentionUnread =>
       boolean().withDefault(const Constant(false))();
   RealColumn get attentionUpdatedAt => real().withDefault(const Constant(0))();
+  BoolColumn get operatorRequested =>
+      boolean().withDefault(const Constant(false))();
+  BoolColumn get hasOutstandingRequest =>
+      boolean().withDefault(const Constant(false))();
+  RealColumn get lastRequestedAt => real().nullable()();
 
   @override
   Set<Column<Object>> get primaryKey => {workspaceId, peonId, sessionId};
@@ -212,7 +217,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 11;
+  int get schemaVersion => 12;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -263,6 +268,20 @@ class AppDatabase extends _$AppDatabase {
       if (from < 11) {
         await migrator.createTable(cachedWorkspaces);
         await migrator.createTable(cachedFleetPeons);
+      }
+      if (from < 12) {
+        await migrator.addColumn(
+          cachedSessions,
+          cachedSessions.operatorRequested,
+        );
+        await migrator.addColumn(
+          cachedSessions,
+          cachedSessions.hasOutstandingRequest,
+        );
+        await migrator.addColumn(
+          cachedSessions,
+          cachedSessions.lastRequestedAt,
+        );
       }
     },
   );

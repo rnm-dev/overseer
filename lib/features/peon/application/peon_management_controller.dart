@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/time/app_time.dart';
 import '../domain/peon_management_models.dart';
 import '../domain/peon_management_repository.dart';
 import '../domain/peon_settings_models.dart';
@@ -141,12 +142,11 @@ class ArmoryController extends AsyncNotifier<ArmoryState> {
     );
     try {
       var operation = await _repository.mutateArmory(scope, packageId, action);
+      final scheduler = ref.read(appSchedulerProvider);
       if (_disposed) return;
       state = AsyncData(state.requireValue.copyWith(operation: operation));
       while (operation.active && !_disposed) {
-        await Future<void>.delayed(
-          ref.read(peonManagementPollingIntervalProvider),
-        );
+        await scheduler.delay(ref.read(peonManagementPollingIntervalProvider));
         if (_disposed) return;
         operation = await _repository.fetchArmoryOperation(scope, operation.id);
         if (!_disposed) {
@@ -219,12 +219,14 @@ class CliUpdatesController extends AsyncNotifier<CliUpdatesState> {
   CliUpdatesController(this.scope);
 
   final PeonSettingsScope scope;
-  Timer? _timer;
+  ScheduledTask? _timer;
+  late AppScheduler _scheduler;
   PeonManagementRepository get _repository =>
       ref.read(peonManagementRepositoryProvider);
 
   @override
   Future<CliUpdatesState> build() async {
+    _scheduler = ref.read(appSchedulerProvider);
     ref.onDispose(() => _timer?.cancel());
     final cached = await _repository.loadCachedCliUpdates(scope);
     if (!scope.online) {
@@ -306,6 +308,9 @@ class CliUpdatesController extends AsyncNotifier<CliUpdatesState> {
   void _schedule(List<CliUpdateItem> items) {
     _timer?.cancel();
     if (!items.any((item) => item.busy)) return;
-    _timer = Timer(const Duration(seconds: 2), refresh);
+    _timer = _scheduler.schedule(
+      const Duration(seconds: 2),
+      () => unawaited(refresh()),
+    );
   }
 }

@@ -1,70 +1,70 @@
 import 'dart:async';
 
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:overseer_mobile/core/live/active_sessions.dart';
 import 'package:overseer_mobile/core/live_activities/session_activity.dart';
-import 'package:overseer_mobile/features/auth/domain/auth_models.dart';
 
 void main() {
-  const auth = AuthSession(
-    token: 'token',
-    user: OperatorIdentity(email: 'viktor.ten@me.com', githubLogin: 'vibze'),
+  const operatorIdentities = {' VIKTOR.TEN@ME.COM ', 'VIBZE'};
+
+  test(
+    'publishes one aggregate for running sessions owned by operator',
+    () async {
+      final service = _RecordingService();
+      final coordinator = SessionActivityCoordinator(service);
+      final state = ActiveSessionsState(
+        authoritativeByWorkspace: {
+          'workspace': ActiveWorkspaceSessions([
+            const ActiveSession(
+              peonId: 'peon',
+              sessionId: 'mine-by-email',
+              title: 'Build Live Activities',
+              author: 'VIKTOR.TEN@ME.COM',
+              startedAt: 1_700_000_000,
+              lastActivityAt: 1_700_000_010,
+            ),
+            const ActiveSession(
+              peonId: 'peon',
+              sessionId: 'mine-by-login',
+              promptPreview: 'Run tests',
+              projectKey: 'overseer-mobile',
+              author: 'Vibze',
+            ),
+            const ActiveSession(
+              peonId: 'peon',
+              sessionId: 'someone-else',
+              title: 'Private work',
+              author: 'other@example.com',
+            ),
+            const ActiveSession(
+              peonId: 'peon',
+              sessionId: 'unknown-owner',
+              title: 'Legacy session',
+            ),
+          ]),
+        },
+      );
+
+      await coordinator.reconcile(
+        connectionId: 'connection',
+        operatorIdentities: operatorIdentities,
+        activeSessions: state,
+        completedUnreadCount: 4,
+        now: DateTime.fromMillisecondsSinceEpoch(1_700_000_020_000),
+      );
+
+      expect(service.calls, hasLength(1));
+      expect(service.calls.single, hasLength(1));
+      expect(service.calls.single.first.activityId, 'overseer:connection');
+      expect(service.calls.single.first.runningCount, 2);
+      expect(service.calls.single.first.completedCount, 4);
+      expect(
+        service.calls.single.first.oldestStartedAt,
+        DateTime.fromMillisecondsSinceEpoch(1_700_000_000_000),
+      );
+    },
   );
-
-  test('publishes only running sessions initiated by the operator', () async {
-    final service = _RecordingService();
-    final coordinator = SessionActivityCoordinator(service);
-    final state = ActiveSessionsState(
-      authoritativeByWorkspace: {
-        'workspace': ActiveWorkspaceSessions([
-          const ActiveSession(
-            peonId: 'peon',
-            sessionId: 'mine-by-email',
-            title: 'Build Live Activities',
-            author: 'VIKTOR.TEN@ME.COM',
-            startedAt: 1_700_000_000,
-            lastActivityAt: 1_700_000_010,
-          ),
-          const ActiveSession(
-            peonId: 'peon',
-            sessionId: 'mine-by-login',
-            promptPreview: 'Run tests',
-            projectKey: 'overseer-mobile',
-            author: 'Vibze',
-          ),
-          const ActiveSession(
-            peonId: 'peon',
-            sessionId: 'someone-else',
-            title: 'Private work',
-            author: 'other@example.com',
-          ),
-          const ActiveSession(
-            peonId: 'peon',
-            sessionId: 'unknown-owner',
-            title: 'Legacy session',
-          ),
-        ]),
-      },
-    );
-
-    await coordinator.reconcile(
-      authSession: auth,
-      activeSessions: state,
-      now: DateTime.fromMillisecondsSinceEpoch(1_700_000_020_000),
-    );
-
-    expect(service.calls, hasLength(1));
-    expect(service.calls.single.map((activity) => activity.sessionId), [
-      'mine-by-email',
-      'mine-by-login',
-    ]);
-    expect(service.calls.single.first.title, 'Build Live Activities');
-    expect(service.calls.single.first.activeCount, 2);
-    expect(
-      service.calls.single.first.startedAt,
-      DateTime.fromMillisecondsSinceEpoch(1_700_000_000_000),
-    );
-  });
 
   test(
     'deduplicates unchanged snapshots and clears them on sign out',
@@ -87,18 +87,24 @@ void main() {
       final now = DateTime.fromMillisecondsSinceEpoch(1_700_000_010_000);
 
       await coordinator.reconcile(
-        authSession: auth,
+        connectionId: 'connection',
+        operatorIdentities: operatorIdentities,
         activeSessions: state,
+        completedUnreadCount: 0,
         now: now,
       );
       await coordinator.reconcile(
-        authSession: auth,
+        connectionId: 'connection',
+        operatorIdentities: operatorIdentities,
         activeSessions: state,
+        completedUnreadCount: 0,
         now: now,
       );
       await coordinator.reconcile(
-        authSession: null,
+        connectionId: 'connection',
+        operatorIdentities: const {},
         activeSessions: state,
+        completedUnreadCount: 0,
         now: now,
       );
 
@@ -108,44 +114,49 @@ void main() {
     },
   );
 
-  test('snapshot map carries truthful live-signal state', () {
+  test('snapshot map carries aggregate live-signal state', () {
     final snapshot = SessionActivitySnapshot(
-      workspaceId: 'workspace',
-      peonId: 'peon',
-      sessionId: 'session',
-      title: 'Build',
-      phase: SessionActivityPhase.waiting,
-      activeCount: 3,
+      connectionId: 'connection',
+      runningCount: 3,
+      completedCount: 2,
+      oldestStartedAt: DateTime.fromMillisecondsSinceEpoch(1000),
       updatedAt: DateTime.fromMillisecondsSinceEpoch(2000),
     );
 
-    expect(snapshot.toMap(), containsPair('activeCount', 3));
-    expect(snapshot.toMap(), containsPair('phase', 'waiting'));
+    expect(snapshot.toMap(), containsPair('runningCount', 3));
+    expect(snapshot.toMap(), containsPair('completedCount', 2));
+    expect(snapshot.toMap(), containsPair('oldestStartedAt', 1000));
     expect(snapshot.toMap(), containsPair('updatedAt', 2000));
   });
 
   test(
-    'registers ActivityKit tokens after auth and cleans up on sign out',
+    'registers ActivityKit start and update tokens after auth and cleans up',
     () async {
       final activities = _TokenService();
       final remote = _RecordingRegistrationRemote();
       final registration = DefaultSessionActivityRegistrationService(
         activities,
         remote,
+        connectionId: 'connection',
       );
       const token = SessionActivityPushToken(
-        activityId: 'w\u0000p\u0000s',
-        workspaceId: 'w',
-        peonId: 'p',
-        sessionId: 's',
+        activityId: 'activity-kit-id',
+        connectionId: 'connection',
         token: '0123456789abcdef0123456789abcdef',
+      );
+      const pushToStart = SessionActivityPushToStartToken(
+        token: 'abcdef0123456789abcdef0123456789',
       );
 
       activities.add(token);
+      activities.addPushToStart(pushToStart);
       await registration.setAuthToken('auth-token');
       await Future<void>.delayed(Duration.zero);
 
       expect(remote.registrations, [('auth-token', token)]);
+      expect(remote.pushToStartRegistrations, [
+        ('auth-token', 'connection', pushToStart),
+      ]);
 
       await registration.setAuthToken(null);
       expect(remote.deletedTokens, ['auth-token']);
@@ -153,6 +164,32 @@ void main() {
       await activities.dispose();
     },
   );
+
+  testWidgets('loads the current ActivityKit push-to-start token', (
+    tester,
+  ) async {
+    const channel = MethodChannel('test/session-activities');
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, (
+      call,
+    ) async {
+      if (call.method == 'getPushToStartToken') {
+        return 'abcdef0123456789abcdef0123456789';
+      }
+      return null;
+    });
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        channel,
+        null,
+      ),
+    );
+    final service = MethodChannelSessionActivityService(channel: channel);
+
+    final token = await service.pushToStartTokenUpdates.first;
+
+    expect(token.token, 'abcdef0123456789abcdef0123456789');
+    await service.dispose();
+  });
 }
 
 class _RecordingService implements SessionActivityService {
@@ -162,28 +199,51 @@ class _RecordingService implements SessionActivityService {
   Stream<SessionActivityPushToken> get pushTokenUpdates => const Stream.empty();
 
   @override
-  Future<void> synchronize(List<SessionActivitySnapshot> activities) async {
+  Stream<SessionActivityPushToStartToken> get pushToStartTokenUpdates =>
+      const Stream.empty();
+
+  @override
+  Future<void> synchronize({
+    required String connectionId,
+    required List<SessionActivitySnapshot> activities,
+  }) async {
     calls.add(List.unmodifiable(activities));
   }
 }
 
 class _TokenService implements SessionActivityService {
   final _tokens = StreamController<SessionActivityPushToken>.broadcast();
+  final _pushToStartTokens =
+      StreamController<SessionActivityPushToStartToken>.broadcast();
 
   @override
   Stream<SessionActivityPushToken> get pushTokenUpdates => _tokens.stream;
 
-  void add(SessionActivityPushToken token) => _tokens.add(token);
+  @override
+  Stream<SessionActivityPushToStartToken> get pushToStartTokenUpdates =>
+      _pushToStartTokens.stream;
 
-  Future<void> dispose() => _tokens.close();
+  void add(SessionActivityPushToken token) => _tokens.add(token);
+  void addPushToStart(SessionActivityPushToStartToken token) =>
+      _pushToStartTokens.add(token);
+
+  Future<void> dispose() async {
+    await _tokens.close();
+    await _pushToStartTokens.close();
+  }
 
   @override
-  Future<void> synchronize(List<SessionActivitySnapshot> activities) async {}
+  Future<void> synchronize({
+    required String connectionId,
+    required List<SessionActivitySnapshot> activities,
+  }) async {}
 }
 
 class _RecordingRegistrationRemote
     implements SessionActivityRegistrationRemote {
   final registrations = <(String, SessionActivityPushToken)>[];
+  final pushToStartRegistrations =
+      <(String, String, SessionActivityPushToStartToken)>[];
   final deletedTokens = <String>[];
 
   @override
@@ -192,6 +252,15 @@ class _RecordingRegistrationRemote
     required SessionActivityPushToken activity,
   }) async {
     registrations.add((authToken, activity));
+  }
+
+  @override
+  Future<void> registerPushToStart({
+    required String authToken,
+    required String connectionId,
+    required SessionActivityPushToStartToken token,
+  }) async {
+    pushToStartRegistrations.add((authToken, connectionId, token));
   }
 
   @override

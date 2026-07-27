@@ -5,6 +5,7 @@ import 'package:drift/drift.dart';
 
 import '../../../core/database/app_database.dart';
 import '../../../core/network/overseer_http_client.dart';
+import '../../../core/time/app_time.dart';
 import '../domain/peon_management_models.dart';
 import '../domain/peon_management_repository.dart';
 import '../domain/peon_settings_models.dart';
@@ -15,10 +16,12 @@ class DioPeonManagementRepository implements PeonManagementRepository {
     required Uri apiUrl,
     required String token,
     Dio? dio,
+    this._clock = const SystemAppClock(),
   }) : _dio = dio ?? createOverseerHttpClient(apiUrl: apiUrl, token: token);
 
   final AppDatabase database;
   final Dio _dio;
+  final AppClock _clock;
 
   String _root(PeonSettingsScope scope) =>
       'workspaces/${Uri.encodeComponent(scope.workspaceId)}/peons/'
@@ -61,7 +64,7 @@ class DioPeonManagementRepository implements PeonManagementRepository {
         registry: page.registry,
         packages: packages,
         total: page.total,
-        cachedAt: DateTime.now().millisecondsSinceEpoch.toDouble(),
+        cachedAt: _clock.now().millisecondsSinceEpoch.toDouble(),
       );
       await _cache(scope, 'armory', inventory.toJson());
       return inventory;
@@ -224,7 +227,7 @@ class DioPeonManagementRepository implements PeonManagementRepository {
           peonId: scope.peonId,
           kind: kind,
           payloadJson: jsonEncode(payload),
-          updatedAt: DateTime.now().millisecondsSinceEpoch.toDouble(),
+          updatedAt: _clock.now().millisecondsSinceEpoch.toDouble(),
         ),
       );
 

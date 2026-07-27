@@ -13,6 +13,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 
 import '../design/colors.dart';
 import '../design/typography.dart';
+import 'app_button.dart';
 
 enum FileViewMode { preview, source }
 
@@ -23,12 +24,14 @@ class FileViewBlock extends StatelessWidget {
     required this.bytes,
     this.contentType,
     required this.mode,
+    this.onOpenDesktopHtmlPreview,
   });
 
   final String path;
   final Uint8List bytes;
   final String? contentType;
   final FileViewMode mode;
+  final Future<void> Function(String document)? onOpenDesktopHtmlPreview;
 
   @override
   Widget build(BuildContext context) {
@@ -67,7 +70,10 @@ class FileViewBlock extends StatelessWidget {
       return _MarkdownPreview(source: source);
     }
     if (isHtmlFile(path) && mode == FileViewMode.preview) {
-      return _HtmlPreview(source: source);
+      return _HtmlPreview(
+        source: source,
+        onOpenDesktopPreview: onOpenDesktopHtmlPreview,
+      );
     }
     return _CodePreview(source: source, path: path);
   }
@@ -305,9 +311,10 @@ class _CodeBlock extends StatelessWidget {
 }
 
 class _HtmlPreview extends StatefulWidget {
-  const _HtmlPreview({required this.source});
+  const _HtmlPreview({required this.source, this.onOpenDesktopPreview});
 
   final String source;
+  final Future<void> Function(String document)? onOpenDesktopPreview;
 
   @override
   State<_HtmlPreview> createState() => _HtmlPreviewState();
@@ -315,6 +322,7 @@ class _HtmlPreview extends StatefulWidget {
 
 class _HtmlPreviewState extends State<_HtmlPreview> {
   WebViewController? _controller;
+  bool _openingDesktopPreview = false;
 
   @override
   void initState() {
@@ -348,6 +356,25 @@ class _HtmlPreviewState extends State<_HtmlPreview> {
   Widget build(BuildContext context) {
     final controller = _controller;
     if (controller == null) {
+      final openDesktopPreview = widget.onOpenDesktopPreview;
+      if (openDesktopPreview != null) {
+        return _ViewerMessage(
+          key: const Key('file-view-html-external-preview'),
+          icon: LucideIcons.appWindow,
+          title: 'Preview opens in a separate window',
+          message:
+              'The isolated browser preview uses the native desktop WebView.',
+          action: AppButton(
+            key: const Key('file-view-html-open-preview'),
+            onPressed: _openingDesktopPreview
+                ? null
+                : () => _openDesktopPreview(openDesktopPreview),
+            loading: _openingDesktopPreview,
+            leading: const Icon(LucideIcons.externalLink, size: 15),
+            child: const Text('Open Preview'),
+          ),
+        );
+      }
       return const _ViewerMessage(
         key: Key('file-view-html-preview-unavailable'),
         icon: LucideIcons.monitorX,
@@ -363,6 +390,22 @@ class _HtmlPreviewState extends State<_HtmlPreview> {
       child: WebViewWidget(controller: controller),
     );
   }
+
+  Future<void> _openDesktopPreview(
+    Future<void> Function(String document) open,
+  ) async {
+    setState(() => _openingDesktopPreview = true);
+    try {
+      await open(_isolatedHtml(widget.source));
+    } on Object catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Couldn’t open browser preview: $error')),
+      );
+    } finally {
+      if (mounted) setState(() => _openingDesktopPreview = false);
+    }
+  }
 }
 
 class _ViewerMessage extends StatelessWidget {
@@ -371,11 +414,13 @@ class _ViewerMessage extends StatelessWidget {
     required this.icon,
     required this.title,
     required this.message,
+    this.action,
   });
 
   final IconData icon;
   final String title;
   final String message;
+  final Widget? action;
 
   @override
   Widget build(BuildContext context) {
@@ -404,6 +449,7 @@ class _ViewerMessage extends StatelessWidget {
                 color: AppColors.boneFaint,
               ),
             ),
+            if (action != null) ...[const SizedBox(height: 16), action!],
           ],
         ),
       ),

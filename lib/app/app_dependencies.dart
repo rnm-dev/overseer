@@ -11,6 +11,8 @@ import 'package:overseer_mobile/app/overseer_connection_authenticator.dart';
 import 'package:overseer_mobile/core/config/app_config.dart';
 import 'package:overseer_mobile/core/config/overseer_connection_store.dart';
 import 'package:overseer_mobile/core/database/app_database.dart';
+import 'package:overseer_mobile/core/diagnostics/app_diagnostics.dart';
+import 'package:overseer_mobile/core/live/live_projection_sink.dart';
 import 'package:overseer_mobile/core/live/transcript_live_service.dart';
 import 'package:overseer_mobile/core/live_activities/session_activity.dart';
 import 'package:overseer_mobile/core/network/overseer_http_client.dart';
@@ -20,6 +22,8 @@ import 'package:overseer_mobile/core/notifications/firebase_push_messaging_clien
 import 'package:overseer_mobile/core/notifications/notification_permission.dart';
 import 'package:overseer_mobile/core/notifications/notification_routing.dart';
 import 'package:overseer_mobile/core/notifications/push_notification_service.dart';
+import 'package:overseer_mobile/core/platform/html_preview_launcher.dart';
+import 'package:overseer_mobile/core/time/app_time.dart';
 import 'package:overseer_mobile/features/auth/application/auth_controller.dart';
 import 'package:overseer_mobile/features/auth/application/auth_state.dart';
 import 'package:overseer_mobile/features/ai_stats/application/ai_stats_controller.dart';
@@ -85,6 +89,19 @@ class AppDependencies extends StatelessWidget {
     return ProviderScope(
       overrides: [
         overseerServerUrlProvider.overrideWithValue(config.serverUrl),
+        appDiagnosticsProvider.overrideWithValue(
+          const DebugPrintAppDiagnostics(),
+        ),
+        sessionActivityConnectionIdProvider.overrideWithValue(
+          overseerConnectionStorageId(connection.serverUrl),
+        ),
+        htmlPreviewLauncherProvider.overrideWithValue(
+          !kIsWeb &&
+                  (defaultTargetPlatform == TargetPlatform.windows ||
+                      defaultTargetPlatform == TargetPlatform.linux)
+              ? DesktopWebViewHtmlPreviewLauncher()
+              : const UnsupportedHtmlPreviewLauncher(),
+        ),
         appDatabaseProvider.overrideWith((ref) {
           final database = AppDatabase(
             name: connection.usesLegacyStorage
@@ -154,6 +171,8 @@ class AppDependencies extends StatelessWidget {
           final service = DefaultSessionActivityRegistrationService(
             ref.watch(sessionActivityServiceProvider),
             DioSessionActivityRegistrationRemote(apiUrl: config.apiUrl),
+            connectionId: overseerConnectionStorageId(connection.serverUrl),
+            diagnostics: ref.watch(appDiagnosticsProvider),
           );
           ref.onDispose(() => unawaited(service.dispose()));
           return service;
@@ -168,6 +187,7 @@ class AppDependencies extends StatelessWidget {
             apiUrl: config.apiUrl,
             token: session.token,
             dio: ref.watch(overseerHttpClientProvider),
+            clock: ref.watch(appClockProvider),
           );
         }),
         peonSettingsRepositoryProvider.overrideWith((ref) {
@@ -191,6 +211,7 @@ class AppDependencies extends StatelessWidget {
             apiUrl: config.apiUrl,
             token: session.token,
             dio: ref.watch(overseerHttpClientProvider),
+            clock: ref.watch(appClockProvider),
           );
         }),
         projectRepositoryProvider.overrideWith((ref) {
@@ -226,6 +247,7 @@ class AppDependencies extends StatelessWidget {
             apiUrl: config.apiUrl,
             token: session.token,
             dio: ref.watch(overseerHttpClientProvider),
+            clock: ref.watch(appClockProvider),
           );
         }),
         sessionFileRepositoryProvider.overrideWith((ref) {
@@ -248,8 +270,8 @@ class AppDependencies extends StatelessWidget {
         microphonePermissionGatewayProvider.overrideWithValue(
           const PermissionHandlerMicrophoneGateway(),
         ),
-        voiceRecorderFactoryProvider.overrideWithValue(
-          RecordVoiceRecorderFactory(
+        voiceRecorderFactoryProvider.overrideWith(
+          (ref) => RecordVoiceRecorderFactory(
             supported:
                 !kIsWeb &&
                 (defaultTargetPlatform == TargetPlatform.android ||
@@ -261,6 +283,7 @@ class AppDependencies extends StatelessWidget {
             silenceThresholdRms: defaultTargetPlatform == TargetPlatform.iOS
                 ? null
                 : 0.008,
+            clock: ref.watch(appClockProvider),
           ),
         ),
         followupRepositoryProvider.overrideWith((ref) {
@@ -273,6 +296,7 @@ class AppDependencies extends StatelessWidget {
             apiUrl: config.apiUrl,
             token: session.token,
             dio: ref.watch(overseerHttpClientProvider),
+            clock: ref.watch(appClockProvider),
           );
         }),
         newSessionRepositoryProvider.overrideWith((ref) {
@@ -285,10 +309,15 @@ class AppDependencies extends StatelessWidget {
             apiUrl: config.apiUrl,
             token: session.token,
             dio: ref.watch(overseerHttpClientProvider),
+            clock: ref.watch(appClockProvider),
           );
         }),
         liveProjectionSinkProvider.overrideWith(
           (ref) => ref.watch(sessionRepositoryProvider),
+        ),
+        attentionProjectionSinkProvider.overrideWith(
+          (ref) =>
+              ref.watch(sessionRepositoryProvider) as AttentionProjectionSink,
         ),
         projectLiveProjectionSinkProvider.overrideWith(
           (ref) => ref.watch(projectRepositoryProvider),
@@ -322,6 +351,7 @@ class AppDependencies extends StatelessWidget {
             apiUrl: config.apiUrl,
             token: session.token,
             dio: ref.watch(overseerHttpClientProvider),
+            clock: ref.watch(appClockProvider),
           );
         }),
         fleetLiveServiceProvider.overrideWith((ref) {
@@ -332,6 +362,9 @@ class AppDependencies extends StatelessWidget {
             apiUrl: config.apiUrl,
             token: session.token,
             dio: ref.watch(overseerHttpClientProvider),
+            clock: ref.watch(appClockProvider),
+            scheduler: ref.watch(appSchedulerProvider),
+            diagnostics: ref.watch(appDiagnosticsProvider),
           );
         }),
         transcriptLiveServiceProvider.overrideWith((ref) {

@@ -18,6 +18,7 @@ class AppListTile extends StatelessWidget {
     required this.title,
     this.subtitle,
     this.leading,
+    this.titleTrailing,
     this.trailing,
     this.status,
     this.selected = false,
@@ -34,6 +35,7 @@ class AppListTile extends StatelessWidget {
   final String title;
   final String? subtitle;
   final Widget? leading;
+  final Widget? titleTrailing;
   final Widget? trailing;
   final Widget? status;
   final bool selected;
@@ -49,10 +51,7 @@ class AppListTile extends StatelessWidget {
   bool get _interactive => (onTap != null || onLongPress != null) && enabled;
 
   EdgeInsets get _padding => switch (density) {
-    AppListTileDensity.compact => const EdgeInsets.symmetric(
-      horizontal: 12,
-      vertical: 9,
-    ),
+    AppListTileDensity.compact => const EdgeInsets.symmetric(horizontal: 12),
     AppListTileDensity.standard => const EdgeInsets.symmetric(
       horizontal: 14,
       vertical: 11,
@@ -142,16 +141,27 @@ class AppListTile extends StatelessWidget {
                     mainAxisAlignment: MainAxisAlignment.center,
                     mainAxisSize: MainAxisSize.min,
                     children: <Widget>[
-                      Text(
-                        title,
-                        style: AppTypography.body(
-                          fontSize: _titleSize,
-                          fontWeight: FontWeight.w600,
-                          color: titleColor,
-                        ),
-                        maxLines: titleMaxLines,
-                        overflow: TextOverflow.ellipsis,
-                        softWrap: true,
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Flexible(
+                            child: Text(
+                              title,
+                              style: AppTypography.body(
+                                fontSize: _titleSize,
+                                fontWeight: FontWeight.w600,
+                                color: titleColor,
+                              ),
+                              maxLines: titleMaxLines,
+                              overflow: TextOverflow.ellipsis,
+                              softWrap: true,
+                            ),
+                          ),
+                          if (titleTrailing != null) ...[
+                            const SizedBox(width: 8),
+                            titleTrailing!,
+                          ],
+                        ],
                       ),
                       if (subtitle != null && subtitle!.isNotEmpty) ...<Widget>[
                         SizedBox(height: _textGap),

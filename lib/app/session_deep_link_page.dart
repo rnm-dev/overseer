@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/time/app_time.dart';
 import '../features/auth/application/auth_controller.dart';
 import '../features/auth/application/auth_state.dart';
 import '../features/auth/presentation/sign_in_page.dart';
 import '../features/sessions/application/sessions_controller.dart';
-import '../features/sessions/domain/session_models.dart';
 import '../features/sessions/sessions.dart';
 import '../features/shell/shell.dart';
 
@@ -78,7 +78,11 @@ class _ResolvedSessionPageState extends ConsumerState<_ResolvedSessionPage> {
           sessionId: widget.sessionId,
           status: 'running',
           title: 'Session',
-          syncedAt: DateTime.now().millisecondsSinceEpoch.toDouble(),
+          syncedAt: ref
+              .read(appClockProvider)
+              .now()
+              .millisecondsSinceEpoch
+              .toDouble(),
         );
   }
 

@@ -4,8 +4,9 @@ import 'package:dio/dio.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../features/auth/domain/auth_models.dart';
+import '../diagnostics/app_diagnostics.dart';
 import '../live/active_sessions.dart';
+import '../time/app_time.dart';
 
 final sessionActivityServiceProvider =
     Provider.autoDispose<SessionActivityService>(
@@ -14,8 +15,11 @@ final sessionActivityServiceProvider =
 
 final sessionActivityCoordinatorProvider =
     Provider.autoDispose<SessionActivityCoordinator>(
-      (ref) =>
-          SessionActivityCoordinator(ref.watch(sessionActivityServiceProvider)),
+      (ref) => SessionActivityCoordinator(
+        ref.watch(sessionActivityServiceProvider),
+        clock: ref.watch(appClockProvider),
+        diagnostics: ref.watch(appDiagnosticsProvider),
+      ),
     );
 
 final sessionActivityRegistrationProvider =
@@ -23,65 +27,46 @@ final sessionActivityRegistrationProvider =
       (ref) => const NoopSessionActivityRegistrationService(),
     );
 
-enum SessionActivityPhase {
-  queued,
-  working,
-  waiting,
-  needsAttention,
-  succeeded,
-  failed,
-}
-
 class SessionActivitySnapshot {
   const SessionActivitySnapshot({
-    required this.workspaceId,
-    required this.peonId,
-    required this.sessionId,
-    required this.title,
-    required this.phase,
+    required this.connectionId,
+    required this.runningCount,
+    required this.completedCount,
     required this.updatedAt,
-    this.activeCount = 1,
-    this.projectName,
-    this.detail,
-    this.startedAt,
+    this.oldestStartedAt,
   });
 
-  final String workspaceId;
-  final String peonId;
-  final String sessionId;
-  final String title;
-  final int activeCount;
-  final String? projectName;
-  final String? detail;
-  final SessionActivityPhase phase;
-  final DateTime? startedAt;
+  final String connectionId;
+  final int runningCount;
+  final int completedCount;
+  final DateTime? oldestStartedAt;
   final DateTime updatedAt;
 
-  String get activityId => '$workspaceId\u0000$peonId\u0000$sessionId';
+  String get activityId => 'overseer:$connectionId';
 
   Map<String, Object?> toMap() => {
     'activityId': activityId,
-    'workspaceId': workspaceId,
-    'peonId': peonId,
-    'sessionId': sessionId,
-    'title': title,
-    'activeCount': activeCount,
-    if (projectName != null) 'projectName': projectName,
-    if (detail != null) 'detail': detail,
-    'phase': phase.name,
-    if (startedAt != null) 'startedAt': startedAt!.millisecondsSinceEpoch,
+    'connectionId': connectionId,
+    'runningCount': runningCount,
+    'completedCount': completedCount,
+    if (oldestStartedAt != null)
+      'oldestStartedAt': oldestStartedAt!.millisecondsSinceEpoch,
     'updatedAt': updatedAt.millisecondsSinceEpoch,
   };
 }
 
 abstract interface class SessionActivityService {
   Stream<SessionActivityPushToken> get pushTokenUpdates;
+  Stream<SessionActivityPushToStartToken> get pushToStartTokenUpdates;
 
   /// Makes the OS surfaces exactly match [activities].
   ///
   /// Implementations must be idempotent so a cold launch can recover
   /// activities created by an earlier app process.
-  Future<void> synchronize(List<SessionActivitySnapshot> activities);
+  Future<void> synchronize({
+    required String connectionId,
+    required List<SessionActivitySnapshot> activities,
+  });
 }
 
 class NoopSessionActivityService implements SessionActivityService {
@@ -91,27 +76,46 @@ class NoopSessionActivityService implements SessionActivityService {
   Stream<SessionActivityPushToken> get pushTokenUpdates => const Stream.empty();
 
   @override
-  Future<void> synchronize(List<SessionActivitySnapshot> activities) async {}
+  Stream<SessionActivityPushToStartToken> get pushToStartTokenUpdates =>
+      const Stream.empty();
+
+  @override
+  Future<void> synchronize({
+    required String connectionId,
+    required List<SessionActivitySnapshot> activities,
+  }) async {}
 }
 
 class MethodChannelSessionActivityService implements SessionActivityService {
-  MethodChannelSessionActivityService({
-    this._channel = const MethodChannel('dev.rnm.overseer/session-activities'),
-  }) {
+  MethodChannelSessionActivityService({MethodChannel? channel})
+    : _channel =
+          channel ??
+          const MethodChannel('dev.rnm.overseer/session-activities') {
     _channel.setMethodCallHandler(_handleNativeCall);
+    unawaited(_loadPushToStartToken());
   }
 
   final MethodChannel _channel;
   final _pushTokenUpdates =
       StreamController<SessionActivityPushToken>.broadcast();
+  final _pushToStartTokenUpdates =
+      StreamController<SessionActivityPushToStartToken>.broadcast();
 
   @override
   Stream<SessionActivityPushToken> get pushTokenUpdates =>
       _pushTokenUpdates.stream;
 
   @override
-  Future<void> synchronize(List<SessionActivitySnapshot> activities) async {
+  Stream<SessionActivityPushToStartToken> get pushToStartTokenUpdates =>
+      _pushToStartTokenUpdates.stream;
+
+  @override
+  Future<void> synchronize({
+    required String connectionId,
+    required List<SessionActivitySnapshot> activities,
+  }) async {
     await _channel.invokeMethod<void>('synchronize', {
+      'connectionId': connectionId,
       'activities': [for (final activity in activities) activity.toMap()],
     });
   }
@@ -119,21 +123,22 @@ class MethodChannelSessionActivityService implements SessionActivityService {
   Future<void> dispose() async {
     _channel.setMethodCallHandler(null);
     await _pushTokenUpdates.close();
+    await _pushToStartTokenUpdates.close();
   }
 
   Future<void> _handleNativeCall(MethodCall call) async {
+    if (call.method == 'pushToStartTokenChanged') {
+      _addPushToStartToken(call.arguments);
+      return;
+    }
     if (call.method != 'pushTokenChanged') return;
     final arguments = call.arguments;
     if (arguments is! Map) return;
     final activityId = arguments['activityId'];
-    final workspaceId = arguments['workspaceId'];
-    final peonId = arguments['peonId'];
-    final sessionId = arguments['sessionId'];
+    final connectionId = arguments['connectionId'];
     final token = arguments['token'];
     if (activityId is! String ||
-        workspaceId is! String ||
-        peonId is! String ||
-        sessionId is! String ||
+        connectionId is! String ||
         token is! String ||
         token.isEmpty) {
       return;
@@ -141,28 +146,50 @@ class MethodChannelSessionActivityService implements SessionActivityService {
     _pushTokenUpdates.add(
       SessionActivityPushToken(
         activityId: activityId,
-        workspaceId: workspaceId,
-        peonId: peonId,
-        sessionId: sessionId,
+        connectionId: connectionId,
         token: token,
       ),
     );
+  }
+
+  Future<void> _loadPushToStartToken() async {
+    try {
+      final token = await _channel.invokeMethod<String>('getPushToStartToken');
+      _addPushToStartToken(token);
+    } on PlatformException {
+      // iOS versions before push-to-start support return no token.
+    } on MissingPluginException {
+      // The capability remains a no-op on unsupported hosts.
+    }
+  }
+
+  void _addPushToStartToken(Object? value) {
+    final token = switch (value) {
+      final String token => token,
+      final Map arguments when arguments['token'] is String =>
+        arguments['token'] as String,
+      _ => null,
+    };
+    if (token == null || token.isEmpty) return;
+    _pushToStartTokenUpdates.add(SessionActivityPushToStartToken(token: token));
   }
 }
 
 class SessionActivityPushToken {
   const SessionActivityPushToken({
     required this.activityId,
-    required this.workspaceId,
-    required this.peonId,
-    required this.sessionId,
+    required this.connectionId,
     required this.token,
   });
 
   final String activityId;
-  final String workspaceId;
-  final String peonId;
-  final String sessionId;
+  final String connectionId;
+  final String token;
+}
+
+class SessionActivityPushToStartToken {
+  const SessionActivityPushToStartToken({required this.token});
+
   final String token;
 }
 
@@ -170,6 +197,12 @@ abstract interface class SessionActivityRegistrationRemote {
   Future<void> register({
     required String authToken,
     required SessionActivityPushToken activity,
+  });
+
+  Future<void> registerPushToStart({
+    required String authToken,
+    required String connectionId,
+    required SessionActivityPushToStartToken token,
   });
 
   Future<void> deleteAll({required String authToken});
@@ -199,11 +232,22 @@ class DioSessionActivityRegistrationRemote
       'push/live-activities',
       data: {
         'activityId': activity.activityId,
-        'workspaceId': activity.workspaceId,
-        'peonId': activity.peonId,
-        'sessionId': activity.sessionId,
+        'connectionId': activity.connectionId,
         'token': activity.token,
       },
+      options: Options(headers: {'Authorization': 'Bearer $authToken'}),
+    );
+  }
+
+  @override
+  Future<void> registerPushToStart({
+    required String authToken,
+    required String connectionId,
+    required SessionActivityPushToStartToken token,
+  }) async {
+    await _dio.put<void>(
+      'push/live-activities/start-token',
+      data: {'connectionId': connectionId, 'token': token.token},
       options: Options(headers: {'Authorization': 'Bearer $authToken'}),
     );
   }
@@ -236,14 +280,27 @@ class NoopSessionActivityRegistrationService
 
 class DefaultSessionActivityRegistrationService
     implements SessionActivityRegistrationService {
-  DefaultSessionActivityRegistrationService(this._activities, this._remote) {
+  DefaultSessionActivityRegistrationService(
+    this._activities,
+    this._remote, {
+    required this.connectionId,
+    this._diagnostics = const NoopAppDiagnostics(),
+  }) {
     _subscription = _activities.pushTokenUpdates.listen(_register);
+    _pushToStartSubscription = _activities.pushToStartTokenUpdates.listen(
+      _registerPushToStart,
+    );
   }
 
   final SessionActivityService _activities;
   final SessionActivityRegistrationRemote _remote;
+  final String connectionId;
+  final AppDiagnostics _diagnostics;
   late final StreamSubscription<SessionActivityPushToken> _subscription;
+  late final StreamSubscription<SessionActivityPushToStartToken>
+  _pushToStartSubscription;
   final Map<String, SessionActivityPushToken> _latest = {};
+  SessionActivityPushToStartToken? _latestPushToStart;
   String? _authToken;
   Future<void> _pending = Future<void>.value();
 
@@ -252,20 +309,41 @@ class DefaultSessionActivityRegistrationService
     if (authToken == _authToken) return _pending;
     final previous = _authToken;
     _authToken = authToken;
-    _pending = _pending.catchError((_) {}).then((_) async {
-      if (authToken == null) {
-        if (previous != null) {
-          try {
-            await _remote.deleteAll(authToken: previous);
-          } catch (_) {}
-        }
-        return;
-      }
-      for (final activity in _latest.values) {
-        await _registerNow(authToken, activity);
-      }
-    });
+    _pending = _pending
+        .catchError((error) {
+          _recordRegistrationFailure('previous', error);
+        })
+        .then((_) async {
+          if (authToken == null) {
+            if (previous != null) {
+              try {
+                await _remote.deleteAll(authToken: previous);
+              } catch (error) {
+                _recordRegistrationFailure('delete', error);
+              }
+            }
+            return;
+          }
+          final pushToStart = _latestPushToStart;
+          if (pushToStart != null) {
+            await _registerPushToStartNow(authToken, pushToStart);
+          }
+          for (final activity in _latest.values) {
+            await _registerNow(authToken, activity);
+          }
+        });
     return _pending;
+  }
+
+  void _registerPushToStart(SessionActivityPushToStartToken token) {
+    _latestPushToStart = token;
+    final authToken = _authToken;
+    if (authToken == null) return;
+    _pending = _pending
+        .catchError((error) {
+          _recordRegistrationFailure('previous', error);
+        })
+        .then((_) => _registerPushToStartNow(authToken, token));
   }
 
   void _register(SessionActivityPushToken activity) {
@@ -273,7 +351,9 @@ class DefaultSessionActivityRegistrationService
     final authToken = _authToken;
     if (authToken == null) return;
     _pending = _pending
-        .catchError((_) {})
+        .catchError((error) {
+          _recordRegistrationFailure('previous', error);
+        })
         .then((_) => _registerNow(authToken, activity));
   }
 
@@ -283,65 +363,122 @@ class DefaultSessionActivityRegistrationService
   ) async {
     try {
       await _remote.register(authToken: authToken, activity: activity);
-    } catch (_) {
+    } catch (error) {
+      _recordRegistrationFailure('update_token', error);
       // ActivityKit rotates and re-emits tokens. The next authenticated launch
       // and live session update are natural retries.
     }
   }
 
+  Future<void> _registerPushToStartNow(
+    String authToken,
+    SessionActivityPushToStartToken token,
+  ) async {
+    try {
+      await _remote.registerPushToStart(
+        authToken: authToken,
+        connectionId: connectionId,
+        token: token,
+      );
+    } catch (error) {
+      _recordRegistrationFailure('start_token', error);
+      // ActivityKit re-emits rotated tokens. Auth restoration also retries the
+      // latest token without delaying application startup.
+    }
+  }
+
+  void _recordRegistrationFailure(String state, Object error) {
+    _diagnostics.record(
+      AppDiagnosticEvent(
+        name: 'activity.registration',
+        level: AppDiagnosticLevel.warning,
+        connectionId: connectionId,
+        state: state,
+        outcome: 'failed',
+        errorType: error.runtimeType.toString(),
+      ),
+    );
+  }
+
   @override
   Future<void> dispose() async {
     await _subscription.cancel();
+    await _pushToStartSubscription.cancel();
   }
 }
 
 class SessionActivityCoordinator {
-  SessionActivityCoordinator(this._service);
+  SessionActivityCoordinator(
+    this._service, {
+    this._clock = const SystemAppClock(),
+    this._diagnostics = const NoopAppDiagnostics(),
+  });
 
   final SessionActivityService _service;
+  final AppClock _clock;
+  final AppDiagnostics _diagnostics;
   String? _lastFingerprint;
   Future<void> _pending = Future<void>.value();
 
   Future<void> reconcile({
-    required AuthSession? authSession,
+    required String connectionId,
+    required Set<String> operatorIdentities,
     required ActiveSessionsState activeSessions,
+    required int completedUnreadCount,
     DateTime? now,
   }) {
-    final snapshots = _ownedSnapshots(
-      authSession: authSession,
+    final snapshots = _aggregateSnapshot(
+      connectionId: connectionId,
+      operatorIdentities: operatorIdentities,
       activeSessions: activeSessions,
-      now: now ?? DateTime.now(),
+      completedUnreadCount: completedUnreadCount,
+      now: now ?? _clock.now(),
     );
     final fingerprint = snapshots
         .map(
           (item) =>
-              '${item.activityId}|${item.title}|${item.projectName}|'
-              '${item.detail}|${item.phase.name}|'
-              '${item.activeCount}|'
-              '${item.startedAt?.millisecondsSinceEpoch}|'
+              '${item.activityId}|${item.runningCount}|'
+              '${item.completedCount}|'
+              '${item.oldestStartedAt?.millisecondsSinceEpoch}|'
               '${item.updatedAt.millisecondsSinceEpoch}',
         )
         .join('\n');
     if (_lastFingerprint == fingerprint) return _pending;
     _lastFingerprint = fingerprint;
     _pending = _pending
-        .catchError((_) {})
-        .then((_) => _service.synchronize(snapshots));
+        .catchError((error) {
+          _diagnostics.record(
+            AppDiagnosticEvent(
+              name: 'activity.synchronize',
+              level: AppDiagnosticLevel.warning,
+              connectionId: connectionId,
+              state: 'previous_failed',
+              errorType: error.runtimeType.toString(),
+            ),
+          );
+        })
+        .then(
+          (_) => _service.synchronize(
+            connectionId: connectionId,
+            activities: snapshots,
+          ),
+        );
     return _pending;
   }
 
-  List<SessionActivitySnapshot> _ownedSnapshots({
-    required AuthSession? authSession,
+  List<SessionActivitySnapshot> _aggregateSnapshot({
+    required String connectionId,
+    required Set<String> operatorIdentities,
     required ActiveSessionsState activeSessions,
+    required int completedUnreadCount,
     required DateTime now,
   }) {
-    if (authSession == null) return const [];
-    final identities = {
-      authSession.user.email.trim().toLowerCase(),
-      if (authSession.user.githubLogin?.trim().isNotEmpty == true)
-        authSession.user.githubLogin!.trim().toLowerCase(),
-    };
-    final owned = <({String workspaceId, ActiveSession session})>[];
+    final identities = operatorIdentities
+        .map((identity) => identity.trim().toLowerCase())
+        .where((identity) => identity.isNotEmpty)
+        .toSet();
+    if (identities.isEmpty) return const [];
+    final owned = <ActiveSession>[];
     final workspaces = activeSessions.authoritativeByWorkspace.entries.toList()
       ..sort((left, right) => left.key.compareTo(right.key));
     for (final entry in workspaces) {
@@ -350,44 +487,35 @@ class SessionActivityCoordinator {
       for (final session in sessions) {
         final author = session.author?.trim().toLowerCase();
         if (author == null || !identities.contains(author)) continue;
-        owned.add((workspaceId: entry.key, session: session));
+        owned.add(session);
       }
     }
+    if (owned.isEmpty) return const [];
+    final startedAt = owned
+        .map((session) => _dateFromEpoch(session.startedAt))
+        .whereType<DateTime>()
+        .fold<DateTime?>(
+          null,
+          (oldest, value) =>
+              oldest == null || value.isBefore(oldest) ? value : oldest,
+        );
+    final updatedAt = owned
+        .map((session) => _dateFromEpoch(session.lastActivityAt))
+        .whereType<DateTime>()
+        .fold<DateTime?>(
+          null,
+          (latest, value) =>
+              latest == null || value.isAfter(latest) ? value : latest,
+        );
     return [
-      for (final item in owned)
-        SessionActivitySnapshot(
-          workspaceId: item.workspaceId,
-          peonId: item.session.peonId,
-          sessionId: item.session.sessionId,
-          title: _firstNonEmpty([
-            item.session.title,
-            item.session.promptPreview,
-            item.session.projectKey,
-          ], fallback: 'Running session'),
-          activeCount: owned.length,
-          projectName: _optional(item.session.projectKey),
-          detail: _optional(item.session.preview) ?? 'Agent signal is active',
-          phase: SessionActivityPhase.working,
-          startedAt: _dateFromEpoch(item.session.startedAt),
-          updatedAt: _dateFromEpoch(item.session.lastActivityAt) ?? now,
-        ),
+      SessionActivitySnapshot(
+        connectionId: connectionId,
+        runningCount: owned.length,
+        completedCount: completedUnreadCount.clamp(0, 1 << 31),
+        oldestStartedAt: startedAt,
+        updatedAt: updatedAt ?? now,
+      ),
     ];
-  }
-
-  static String _firstNonEmpty(
-    Iterable<String?> values, {
-    required String fallback,
-  }) {
-    for (final value in values) {
-      final normalized = _optional(value);
-      if (normalized != null) return normalized;
-    }
-    return fallback;
-  }
-
-  static String? _optional(String? value) {
-    final normalized = value?.trim();
-    return normalized == null || normalized.isEmpty ? null : normalized;
   }
 
   static DateTime? _dateFromEpoch(double? epoch) {

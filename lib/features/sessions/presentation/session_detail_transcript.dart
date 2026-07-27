@@ -103,7 +103,7 @@ class _TranscriptBodyState extends State<_TranscriptBody> {
             if (state.events.isEmpty && state.isRefreshing) {
               return const SizedBox.expand();
             }
-            if (state.events.isEmpty && !state.isRunning) {
+            if (state.events.isEmpty && !widget.showWorking) {
               return _TranscriptEmpty(
                 message: state.message,
                 onRetry: widget.onRefresh,
@@ -111,7 +111,7 @@ class _TranscriptBodyState extends State<_TranscriptBody> {
             }
             final items = flattenTranscriptEvents(state.events);
             final hasTopControl = state.hasOlder || state.message != null;
-            final hasWorking = state.isRunning && widget.showWorking;
+            final hasWorking = widget.showWorking;
             return ListView.builder(
               key: const Key('transcript-list'),
               controller: _scrollController,

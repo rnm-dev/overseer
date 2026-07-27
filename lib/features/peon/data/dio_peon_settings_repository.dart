@@ -1,7 +1,7 @@
 import 'package:dio/dio.dart';
 
 import '../../../core/network/overseer_http_client.dart';
-import '../../sessions/domain/followup_repository.dart';
+import '../../../shared/models/ai_capabilities.dart';
 import '../domain/peon_settings_models.dart';
 import '../domain/peon_settings_repository.dart';
 

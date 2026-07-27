@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:overseer_mobile/core/live/active_sessions.dart';
 import 'package:overseer_mobile/core/live/presence.dart';
 import 'package:overseer_mobile/features/sessions/application/sessions_controller.dart';
 import 'package:overseer_mobile/features/sessions/domain/session_models.dart';
@@ -183,7 +184,43 @@ void main() {
     expect(find.text('Other project session'), findsNothing);
   });
 
-  testWidgets('matches every web sidebar status edge mode and geometry', (
+  testWidgets('defaults cached running sessions to an inactive edge', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          sessionRepositoryProvider.overrideWithValue(
+            _SessionListRepository([
+              const SessionSummary(
+                workspaceId: 'workspace',
+                peonId: 'peon',
+                sessionId: 'cached-running',
+                status: 'running',
+                syncedAt: 1,
+              ),
+            ]),
+          ),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.dark,
+          home: const Scaffold(
+            body: SessionList(workspaceId: 'workspace', peonId: 'peon'),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    _expectEdge(
+      tester,
+      'cached-running',
+      SidebarStatusEdgeStyle.idle.color,
+      glowing: false,
+    );
+  });
+
+  testWidgets('matches every authoritative sidebar status edge and geometry', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -205,13 +242,6 @@ void main() {
                 status: 'completed',
                 attentionUnread: true,
                 syncedAt: 4,
-              ),
-              const SessionSummary(
-                workspaceId: 'workspace',
-                peonId: 'peon',
-                sessionId: 'needs-human',
-                status: 'needs_human',
-                syncedAt: 3,
               ),
               const SessionSummary(
                 workspaceId: 'workspace',
@@ -240,9 +270,16 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    ProviderScope.containerOf(
+      tester.element(find.byType(SessionList)),
+    ).read(activeSessionsProvider.notifier).replaceWorkspace(
+      'workspace',
+      const [ActiveSession(peonId: 'peon', sessionId: 'running')],
+    );
+    await tester.pumpAndSettle();
+
     _expectEdge(tester, 'running', AppColors.felBright, glowing: true);
     _expectEdge(tester, 'unread', AppColors.forge, glowing: true);
-    _expectEdge(tester, 'needs-human', AppColors.forge, glowing: true);
     _expectEdge(tester, 'failed', AppColors.blood, glowing: true);
     _expectEdge(
       tester,

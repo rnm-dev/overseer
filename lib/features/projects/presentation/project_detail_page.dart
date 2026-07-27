@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../shared/design/colors.dart';
 import '../../../shared/design/typography.dart';
 import '../../../shared/widgets/app_button.dart';
+import '../../../shared/widgets/app_markdown.dart';
 import '../../../shared/widgets/app_navigation_bar.dart';
 import '../../../shared/widgets/user_avatar.dart';
 import '../application/project_detail_controller.dart';
@@ -45,6 +47,8 @@ typedef ProjectDetailSessionsBuilder =
       required String projectKey,
     });
 
+typedef ProjectDetailLinkLauncher = Future<bool> Function(Uri uri);
+
 class ProjectDetailPage extends ConsumerStatefulWidget {
   const ProjectDetailPage({
     super.key,
@@ -56,6 +60,7 @@ class ProjectDetailPage extends ConsumerStatefulWidget {
     this.onNewSession,
     this.onOpenFile,
     this.sessionListBuilder,
+    this.linkLauncher,
   });
 
   final String workspaceId;
@@ -66,6 +71,7 @@ class ProjectDetailPage extends ConsumerStatefulWidget {
   final ProjectDetailNewSessionIntent? onNewSession;
   final ProjectDetailOpenFileIntent? onOpenFile;
   final ProjectDetailSessionsBuilder? sessionListBuilder;
+  final ProjectDetailLinkLauncher? linkLauncher;
 
   @override
   ConsumerState<ProjectDetailPage> createState() => _ProjectDetailPageState();
@@ -213,6 +219,7 @@ class _ProjectDetailPageState extends ConsumerState<ProjectDetailPage> {
       onOpenDocument: (path) => ref
           .read(projectDetailControllerProvider(_scope).notifier)
           .openDocumentation(path),
+      onTapLink: (target) => _openMarkdownLink(state, target),
     ),
     ProjectDetailTab.sessions => _ProjectSessionsPane(
       workspaceId: widget.workspaceId,
@@ -249,6 +256,77 @@ class _ProjectDetailPageState extends ConsumerState<ProjectDetailPage> {
           .setMemberAccess(member, enabled),
     ),
   };
+
+  Future<void> _openMarkdownLink(
+    ProjectDetailState state,
+    String target,
+  ) async {
+    final uri = Uri.tryParse(target.trim());
+    if (uri == null) {
+      _showLinkError('This link is invalid.');
+      return;
+    }
+
+    if (uri.scheme.isNotEmpty) {
+      if (!const {'http', 'https', 'mailto'}.contains(uri.scheme)) {
+        _showLinkError('This link type is not supported.');
+        return;
+      }
+      try {
+        final opened =
+            await widget.linkLauncher?.call(uri) ??
+            await launchUrl(uri, mode: LaunchMode.externalApplication);
+        if (!opened && mounted) _showLinkError('Could not open this link.');
+      } catch (_) {
+        if (mounted) _showLinkError('Could not open this link.');
+      }
+      return;
+    }
+
+    if (uri.path.isEmpty) {
+      _showLinkError('In-page links are not supported yet.');
+      return;
+    }
+
+    final currentPath = state.documentationPath ?? 'docs/index.md';
+    final resolved = Uri(path: currentPath).resolveUri(uri).normalizePath();
+    final path = resolved.path.replaceFirst(RegExp(r'^/+'), '');
+    if (path.isEmpty) {
+      _showLinkError('This project link is invalid.');
+      return;
+    }
+
+    final isDocumentationMarkdown =
+        path.startsWith('docs/') &&
+        RegExp(r'\.(md|markdown|mdx)$', caseSensitive: false).hasMatch(path);
+    if (isDocumentationMarkdown) {
+      await ref
+          .read(projectDetailControllerProvider(_scope).notifier)
+          .openDocumentation(path);
+      return;
+    }
+
+    final onOpenFile = widget.onOpenFile;
+    if (onOpenFile == null) {
+      _showLinkError('Could not open this project file.');
+      return;
+    }
+    onOpenFile(
+      context,
+      workspaceId: widget.workspaceId,
+      peonId: widget.peonId,
+      projectId: state.project.projectId,
+      projectKey: state.project.key,
+      path: path,
+    );
+  }
+
+  void _showLinkError(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
 
   void _retryCurrent(ProjectDetailState state) {
     final controller = ref.read(
@@ -334,11 +412,13 @@ class _OverviewPane extends StatelessWidget {
     required this.state,
     required this.onRefresh,
     required this.onOpenDocument,
+    required this.onTapLink,
   });
 
   final ProjectDetailState state;
   final VoidCallback onRefresh;
   final ValueChanged<String> onOpenDocument;
+  final ValueChanged<String> onTapLink;
 
   @override
   Widget build(BuildContext context) {
@@ -368,7 +448,7 @@ class _OverviewPane extends StatelessWidget {
                 ),
               ),
               if (state.documentationSource case final source?)
-                _MarkdownDocument(source: source)
+                _MarkdownDocument(source: source, onTapLink: onTapLink)
               else if (listing == null && state.loading)
                 const _DocumentationSkeleton()
               else if (listing == null)

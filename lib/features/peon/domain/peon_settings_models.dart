@@ -1,4 +1,4 @@
-import '../../sessions/domain/followup_repository.dart';
+import '../../../shared/models/ai_capabilities.dart';
 
 class PeonSettingsScope {
   const PeonSettingsScope({

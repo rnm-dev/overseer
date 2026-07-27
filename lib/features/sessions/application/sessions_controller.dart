@@ -3,6 +3,8 @@ import 'dart:math' as math;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/diagnostics/app_diagnostics.dart';
+import '../../../core/time/app_time.dart';
 import '../domain/session_models.dart';
 import '../domain/session_repository.dart';
 
@@ -83,7 +85,7 @@ class SessionsController extends AsyncNotifier<SessionsState> {
 
   final SessionsScope scope;
   StreamSubscription<List<SessionSummary>>? _subscription;
-  Timer? _reconciliationTimer;
+  ScheduledTask? _reconciliationTimer;
   int _nextOffset = 0;
   bool _serverHasMore = false;
 
@@ -91,6 +93,8 @@ class SessionsController extends AsyncNotifier<SessionsState> {
 
   @override
   Future<SessionsState> build() async {
+    final scheduler = ref.read(appSchedulerProvider);
+    final diagnostics = ref.read(appDiagnosticsProvider);
     final cached = await _repository.loadCachedSessions(
       workspaceId: scope.workspaceId,
       peonId: scope.peonId,
@@ -100,10 +104,16 @@ class SessionsController extends AsyncNotifier<SessionsState> {
       peonId: scope.peonId,
     );
     _subscription = stream.listen(_applyCachedSessions);
-    _reconciliationTimer = Timer.periodic(
-      _reconciliationInterval,
-      (_) => unawaited(_refresh(reportFailure: false)),
-    );
+    _reconciliationTimer = scheduler.periodic(_reconciliationInterval, () {
+      diagnostics.record(
+        AppDiagnosticEvent(
+          name: 'sessions.reconcile',
+          workspaceId: scope.workspaceId,
+          state: 'scheduled',
+        ),
+      );
+      unawaited(_refresh(reportFailure: false));
+    });
     ref.onDispose(() {
       _reconciliationTimer?.cancel();
       unawaited(_subscription?.cancel());

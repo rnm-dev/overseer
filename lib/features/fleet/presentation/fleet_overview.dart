@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../../core/live/active_sessions.dart';
 import '../../../core/live/presence.dart';
 import '../../../core/notifications/notification_permission.dart';
 import '../../../shared/ui_kit.dart';
@@ -11,6 +12,7 @@ import '../../../shared/widgets/confirmation_bottom_sheet.dart';
 import '../../../shared/widgets/loading_shimmer.dart';
 import '../../../shared/widgets/presence_stack.dart';
 import '../../auth/domain/auth_models.dart';
+import '../../sessions/sessions.dart';
 import '../../settings/application/sound_pack_controller.dart';
 import '../../settings/application/notification_permission_controller.dart';
 import '../../settings/domain/sound_pack.dart';
@@ -31,6 +33,21 @@ typedef FleetOpenPeon =
       required String peonId,
     });
 
+typedef FleetOpenSession =
+    void Function(
+      BuildContext context, {
+      required String workspaceId,
+      required String peonId,
+      required String sessionId,
+    });
+
+typedef FleetNewSession =
+    void Function(
+      BuildContext context, {
+      required String workspaceId,
+      required String peonId,
+    });
+
 class FleetOverview extends ConsumerWidget {
   const FleetOverview({
     super.key,
@@ -38,17 +55,22 @@ class FleetOverview extends ConsumerWidget {
     required this.user,
     required this.onSignOut,
     this.onOpenPeon,
+    this.onOpenSession,
+    this.onNewSession,
   });
 
   final bool compact;
   final OperatorIdentity user;
   final Future<void> Function() onSignOut;
   final FleetOpenPeon? onOpenPeon;
+  final FleetOpenSession? onOpenSession;
+  final FleetNewSession? onNewSession;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final fleet = ref.watch(fleetControllerProvider);
     final presence = ref.watch(presenceProvider);
+    final activeSessions = ref.watch(activeSessionsProvider);
     return fleet.when(
       skipLoadingOnRefresh: true,
       data: (workspaces) => _FleetList(
@@ -58,7 +80,10 @@ class FleetOverview extends ConsumerWidget {
         onSignOut: onSignOut,
         onRefresh: ref.read(fleetControllerProvider.notifier).refresh,
         onOpenPeon: onOpenPeon,
+        onOpenSession: onOpenSession,
+        onNewSession: onNewSession,
         presence: presence,
+        activeSessions: activeSessions,
       ),
       loading: () =>
           _FleetLoading(compact: compact, user: user, onSignOut: onSignOut),
@@ -94,7 +119,10 @@ class _FleetList extends StatelessWidget {
     required this.onSignOut,
     required this.onRefresh,
     this.onOpenPeon,
+    this.onOpenSession,
+    this.onNewSession,
     required this.presence,
+    required this.activeSessions,
   });
 
   final List<WorkspaceFleet> workspaces;
@@ -103,7 +131,10 @@ class _FleetList extends StatelessWidget {
   final Future<void> Function() onSignOut;
   final Future<void> Function() onRefresh;
   final FleetOpenPeon? onOpenPeon;
+  final FleetOpenSession? onOpenSession;
+  final FleetNewSession? onNewSession;
   final PresenceState presence;
+  final ActiveSessionsState activeSessions;
 
   @override
   Widget build(BuildContext context) {
@@ -130,6 +161,11 @@ class _FleetList extends StatelessWidget {
                         fleet: workspace,
                         presence: presence,
                         onOpenPeon: onOpenPeon,
+                        onOpenSession: onOpenSession,
+                        onNewSession: onNewSession,
+                        activeSessions: activeSessions.forWorkspace(
+                          workspace.workspace.id,
+                        ),
                       ),
                     ),
                     const SliverToBoxAdapter(
@@ -443,11 +479,17 @@ class _WorkspaceSection extends StatelessWidget {
     required this.fleet,
     required this.presence,
     this.onOpenPeon,
+    this.onOpenSession,
+    this.onNewSession,
+    required this.activeSessions,
   });
 
   final WorkspaceFleet fleet;
   final PresenceState presence;
   final FleetOpenPeon? onOpenPeon;
+  final FleetOpenSession? onOpenSession;
+  final FleetNewSession? onNewSession;
+  final ActiveWorkspaceSessions? activeSessions;
 
   @override
   Widget build(BuildContext context) {
@@ -470,8 +512,8 @@ class _WorkspaceSection extends StatelessWidget {
             ),
           )
         else
-          for (final peon in fleet.peons)
-            _PeonRow(
+          for (final (index, peon) in fleet.peons.indexed) ...[
+            _PeonGroup(
               workspace: fleet.workspace,
               peon: peon,
               viewers: presence.viewersForPeon(
@@ -479,7 +521,69 @@ class _WorkspaceSection extends StatelessWidget {
                 peonId: peon.id,
               ),
               onOpen: onOpenPeon,
+              onOpenSession: onOpenSession,
+              onNewSession: onNewSession,
+              activeSessions: activeSessions,
             ),
+            if (index < fleet.peons.length - 1)
+              const SizedBox(height: _FleetSectionMetrics.rowGap),
+          ],
+      ],
+    );
+  }
+}
+
+class _PeonGroup extends StatelessWidget {
+  const _PeonGroup({
+    required this.workspace,
+    required this.peon,
+    required this.viewers,
+    required this.activeSessions,
+    this.onOpen,
+    this.onOpenSession,
+    this.onNewSession,
+  });
+
+  static const _visibleSessionLimit = 3;
+
+  final Workspace workspace;
+  final Peon peon;
+  final List<PresenceViewer> viewers;
+  final ActiveWorkspaceSessions? activeSessions;
+  final FleetOpenPeon? onOpen;
+  final FleetOpenSession? onOpenSession;
+  final FleetNewSession? onNewSession;
+
+  @override
+  Widget build(BuildContext context) {
+    final sessions = peon.recentSessions
+        .take(_visibleSessionLimit)
+        .toList(growable: false);
+    return Column(
+      key: Key('peon-group-${peon.id}'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _PeonRow(
+          workspace: workspace,
+          peon: peon,
+          viewers: viewers,
+          onOpen: onOpen,
+          onNewSession: onNewSession,
+        ),
+        if (sessions.isNotEmpty)
+          _AnimatedRecentSessionList(
+            peonId: peon.id,
+            sessions: sessions,
+            activeSessions: activeSessions,
+            onOpen: onOpenSession == null
+                ? null
+                : (session) => onOpenSession!(
+                    context,
+                    workspaceId: workspace.id,
+                    peonId: peon.id,
+                    sessionId: session.sessionId,
+                  ),
+          ),
       ],
     );
   }
@@ -491,18 +595,17 @@ class _PeonRow extends StatelessWidget {
     required this.peon,
     required this.viewers,
     this.onOpen,
+    this.onNewSession,
   });
 
   final Workspace workspace;
   final Peon peon;
   final List<PresenceViewer> viewers;
   final FleetOpenPeon? onOpen;
+  final FleetNewSession? onNewSession;
 
   @override
   Widget build(BuildContext context) {
-    final statusText = peon.online
-        ? '${peon.activeSessions} active'
-        : 'offline';
     return AppListTile(
       key: Key('peon-${peon.id}'),
       title: peon.displayName,
@@ -511,18 +614,9 @@ class _PeonRow extends StatelessWidget {
         semanticLabel: peon.online ? 'Online' : 'Offline',
         size: 9,
       ),
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            statusText,
-            style: AppTypography.metadata(
-              color: peon.online ? AppColors.forge : AppColors.boneFaint,
-            ),
-          ),
-          if (viewers.isNotEmpty) ...[
-            const SizedBox(width: 8),
-            PresenceStack(
+      titleTrailing: viewers.isEmpty
+          ? null
+          : PresenceStack(
               key: Key('peon-presence-${peon.id}'),
               size: PresenceStackSize.xs,
               viewers: [
@@ -534,15 +628,321 @@ class _PeonRow extends StatelessWidget {
                   ),
               ],
             ),
-          ],
-        ],
-      ),
+      trailing: onNewSession == null
+          ? null
+          : _PeonNewSessionAction(
+              key: Key('peon-new-session-${peon.id}'),
+              onPressed: () => onNewSession!(
+                context,
+                workspaceId: workspace.id,
+                peonId: peon.id,
+              ),
+            ),
       onTap: onOpen == null
           ? null
           : () => onOpen!(context, workspaceId: workspace.id, peonId: peon.id),
+      density: AppListTileDensity.compact,
       variant: AppListTileVariant.sectionSurface,
       titleMaxLines: 1,
       semanticsHint: 'Open this Peon',
+    );
+  }
+}
+
+class _PeonNewSessionAction extends StatelessWidget {
+  const _PeonNewSessionAction({super.key, required this.onPressed});
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 44,
+      child: TextButton(
+        onPressed: onPressed,
+        style: TextButton.styleFrom(
+          minimumSize: Size.zero,
+          padding: EdgeInsets.zero,
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
+        child: Text(
+          '+ NEW SESSION',
+          style: AppTypography.display(
+            fontSize: 8.8,
+            fontWeight: FontWeight.w600,
+            color: AppColors.boneDim,
+            letterSpacing: 1.408,
+            height: 1,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AnimatedRecentSessionList extends StatefulWidget {
+  const _AnimatedRecentSessionList({
+    required this.peonId,
+    required this.sessions,
+    required this.activeSessions,
+    required this.onOpen,
+  });
+
+  final String peonId;
+  final List<FleetRecentSession> sessions;
+  final ActiveWorkspaceSessions? activeSessions;
+  final ValueChanged<FleetRecentSession>? onOpen;
+
+  @override
+  State<_AnimatedRecentSessionList> createState() =>
+      _AnimatedRecentSessionListState();
+}
+
+class _AnimatedRecentSessionListState
+    extends State<_AnimatedRecentSessionList> {
+  late Map<String, String> _fingerprints;
+  Map<String, int> _flashRevisions = const {};
+  Set<String> _appearing = const {};
+
+  @override
+  void initState() {
+    super.initState();
+    _fingerprints = _sessionFingerprints(widget.sessions);
+  }
+
+  @override
+  void didUpdateWidget(covariant _AnimatedRecentSessionList oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final nextFingerprints = _sessionFingerprints(widget.sessions);
+    final nextFlashes = Map<String, int>.from(_flashRevisions);
+    final appearing = <String>{};
+    for (final entry in nextFingerprints.entries) {
+      final previous = _fingerprints[entry.key];
+      if (previous == null) appearing.add(entry.key);
+      if (previous == null || previous != entry.value) {
+        nextFlashes[entry.key] = (nextFlashes[entry.key] ?? 0) + 1;
+      }
+    }
+    nextFlashes.removeWhere((key, _) => !nextFingerprints.containsKey(key));
+    _fingerprints = nextFingerprints;
+    _flashRevisions = nextFlashes;
+    _appearing = appearing;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final reduceMotion =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    final rowExtent = SessionWorkItem.extentFor(context);
+    return AnimatedSize(
+      duration: reduceMotion
+          ? Duration.zero
+          : const Duration(milliseconds: 240),
+      curve: AppMotion.softSettle,
+      alignment: Alignment.topCenter,
+      child: SizedBox(
+        key: Key('recent-sessions-${widget.peonId}'),
+        height: widget.sessions.length * rowExtent,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            for (final (index, session) in widget.sessions.indexed)
+              _FlyingRecentSessionPosition(
+                key: ValueKey(session.sessionId),
+                debugId: session.sessionId,
+                top: index * rowExtent,
+                rowExtent: rowExtent,
+                reduceMotion: reduceMotion,
+                child: _RecentSessionEntrance(
+                  animate: _appearing.contains(session.sessionId),
+                  reduceMotion: reduceMotion,
+                  child: SessionWorkItem(
+                    key: Key('session-${session.sessionId}'),
+                    session: _sessionSummary(session),
+                    authoritativeRunning:
+                        widget.activeSessions?.contains(
+                          peonId: session.peonId,
+                          sessionId: session.sessionId,
+                        ) ??
+                        false,
+                    flashRevision: _flashRevisions[session.sessionId] ?? 0,
+                    onSelected: widget.onOpen == null
+                        ? null
+                        : (_) => widget.onOpen!(session),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Map<String, String> _sessionFingerprints(List<FleetRecentSession> sessions) =>
+      {
+        for (final session in sessions)
+          session.sessionId: [
+            session.status ?? '',
+            session.lastActivityAt ?? 0,
+            session.title ?? '',
+            session.preview ?? '',
+            session.hasOutstandingRequest ? 'waiting' : '',
+            session.attentionUnread ? 'unread' : '',
+          ].join('|'),
+      };
+
+  SessionSummary _sessionSummary(FleetRecentSession session) {
+    return SessionSummary(
+      workspaceId: session.workspaceId,
+      peonId: session.peonId,
+      sessionId: session.sessionId,
+      status: session.status,
+      projectKey: session.projectKey,
+      projectId: session.projectId,
+      title: session.title,
+      promptPreview: session.promptPreview,
+      preview: session.preview,
+      startedAt: session.startedAt,
+      lastActivityAt: session.lastActivityAt,
+      syncedAt: session.syncedAt,
+      attentionUnread: session.attentionUnread,
+      attentionUpdatedAt: session.attentionUpdatedAt,
+      hasOutstandingRequest: session.hasOutstandingRequest,
+      lastRequestedAt: session.lastRequestedAt,
+    );
+  }
+}
+
+class _FlyingRecentSessionPosition extends StatefulWidget {
+  const _FlyingRecentSessionPosition({
+    super.key,
+    required this.debugId,
+    required this.top,
+    required this.rowExtent,
+    required this.reduceMotion,
+    required this.child,
+  });
+
+  final String debugId;
+  final double top;
+  final double rowExtent;
+  final bool reduceMotion;
+  final Widget child;
+
+  @override
+  State<_FlyingRecentSessionPosition> createState() =>
+      _FlyingRecentSessionPositionState();
+}
+
+class _FlyingRecentSessionPositionState
+    extends State<_FlyingRecentSessionPosition>
+    with SingleTickerProviderStateMixin {
+  static const _flightDuration = Duration(milliseconds: 240);
+  static const _flightCurve = Cubic(0.22, 1, 0.36, 1);
+
+  late double _fromTop = widget.top;
+  late double _toTop = widget.top;
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: _flightDuration,
+    value: 1,
+  );
+
+  double get _currentTop {
+    final progress = _flightCurve.transform(_controller.value);
+    return _fromTop + ((_toTop - _fromTop) * progress);
+  }
+
+  @override
+  void didUpdateWidget(covariant _FlyingRecentSessionPosition oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.top == oldWidget.top) return;
+    final currentTop = _currentTop;
+    _fromTop = widget.reduceMotion ? widget.top : currentTop;
+    _toTop = widget.top;
+    if (widget.reduceMotion) {
+      _controller.value = 1;
+    } else {
+      _controller.forward(from: 0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned(
+      top: 0,
+      left: 0,
+      right: 0,
+      height: widget.rowExtent,
+      child: AnimatedBuilder(
+        animation: _controller,
+        child: widget.child,
+        builder: (context, child) => Transform.translate(
+          key: Key('recent-session-position-${widget.debugId}'),
+          offset: Offset(0, _currentTop),
+          child: child,
+        ),
+      ),
+    );
+  }
+}
+
+class _RecentSessionEntrance extends StatefulWidget {
+  const _RecentSessionEntrance({
+    required this.animate,
+    required this.reduceMotion,
+    required this.child,
+  });
+
+  final bool animate;
+  final bool reduceMotion;
+  final Widget child;
+
+  @override
+  State<_RecentSessionEntrance> createState() => _RecentSessionEntranceState();
+}
+
+class _RecentSessionEntranceState extends State<_RecentSessionEntrance>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: AppMotion.base,
+    value: widget.animate && !widget.reduceMotion ? 0 : 1,
+  );
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_controller.value == 0) _controller.forward();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final animation = CurvedAnimation(
+      parent: _controller,
+      curve: AppMotion.softSettle,
+    );
+    return FadeTransition(
+      opacity: animation,
+      child: SlideTransition(
+        position: Tween<Offset>(
+          begin: const Offset(0, 0.12),
+          end: Offset.zero,
+        ).animate(animation),
+        child: widget.child,
+      ),
     );
   }
 }

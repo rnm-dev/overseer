@@ -6,6 +6,10 @@ import 'package:overseer_mobile/features/sessions/application/session_composer_c
 import 'package:overseer_mobile/features/sessions/domain/followup_repository.dart';
 import 'package:overseer_mobile/features/sessions/domain/new_session_repository.dart';
 import 'package:overseer_mobile/features/sessions/domain/session_models.dart';
+import 'package:overseer_mobile/shared/models/ai_capabilities.dart';
+
+import '../../../support/manual_app_time.dart';
+import 'package:overseer_mobile/core/time/app_time.dart';
 
 void main() {
   const scope = FollowupScope(
@@ -48,6 +52,49 @@ void main() {
     expect(state.draft, 'restore me');
     expect(state.pending.map((item) => item.commandId), ['command']);
     expect(state.queue.map((item) => item.id), ['queued']);
+  });
+
+  test('retries pending follow-ups with deterministic backoff', () async {
+    final scheduler = ManualAppScheduler();
+    final repository = _FakeFollowupRepository(
+      draft: '',
+      pending: const [
+        PendingFollowup(
+          commandId: 'command',
+          scope: scope,
+          prompt: 'retry me',
+          serverQueue: false,
+          startNow: false,
+          createdAt: 1,
+        ),
+      ],
+      retryResults: const [true, false],
+    );
+    final container = ProviderContainer(
+      overrides: [
+        followupRepositoryProvider.overrideWithValue(repository),
+        appSchedulerProvider.overrideWithValue(scheduler),
+      ],
+    );
+    addTearDown(container.dispose);
+    final subscription = container.listen(
+      sessionComposerControllerProvider(scope),
+      (_, _) {},
+      fireImmediately: true,
+    );
+    addTearDown(subscription.close);
+
+    await container.read(sessionComposerControllerProvider(scope).future);
+    await scheduler.advance(Duration.zero);
+    expect(repository.retryCalls, 0);
+    expect(scheduler.pendingDelays, contains(const Duration(seconds: 2)));
+
+    await scheduler.advance(const Duration(seconds: 2));
+    expect(repository.retryCalls, 1);
+
+    await scheduler.advance(const Duration(seconds: 4));
+    expect(repository.retryCalls, 2);
+    expect(scheduler.pendingTaskCount, 0);
   });
 
   test(
@@ -336,6 +383,7 @@ class _FakeFollowupRepository implements FollowupRepository {
     this.queue = const [],
     this.refreshErrors = const [],
     this.submitErrors = const [],
+    this.retryResults = const [],
   });
 
   final String draft;
@@ -343,11 +391,13 @@ class _FakeFollowupRepository implements FollowupRepository {
   final List<QueuedFollowup> queue;
   final List<Object?> refreshErrors;
   final List<FollowupException> submitErrors;
+  final List<bool> retryResults;
   final List<_SubmissionRecord> submissions = [];
   String? savedDraft;
   String? editedItemId;
   String? editedPrompt;
   int refreshCalls = 0;
+  int retryCalls = 0;
 
   @override
   Future<String> loadDraft(FollowupScope scope) async => draft;
@@ -421,7 +471,13 @@ class _FakeFollowupRepository implements FollowupRepository {
   }
 
   @override
-  Future<bool> retryPending(FollowupScope scope) async => pending.isNotEmpty;
+  Future<bool> retryPending(FollowupScope scope) async {
+    final result = retryCalls < retryResults.length
+        ? retryResults[retryCalls]
+        : pending.isNotEmpty;
+    retryCalls++;
+    return result;
+  }
 }
 
 class _SubmissionRecord {

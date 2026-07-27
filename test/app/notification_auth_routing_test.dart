@@ -13,6 +13,36 @@ import 'package:overseer_mobile/features/sessions/domain/session_models.dart';
 import 'package:overseer_mobile/features/sessions/domain/session_repository.dart';
 
 void main() {
+  testWidgets('session deep link keeps home beneath it for system back', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          authRepositoryProvider.overrideWithValue(_RestoringAuthRepository()),
+          sessionRepositoryProvider.overrideWithValue(
+            _RecordingSessionRepository(),
+          ),
+        ],
+        child: const OverseerMobileApp(
+          navigationDestination: NotificationDestination.session(
+            workspaceId: 'workspace',
+            peonId: 'peon',
+            sessionId: 'session',
+          ),
+        ),
+      ),
+    );
+
+    final navigator = tester.state<NavigatorState>(find.byType(Navigator));
+    expect(navigator.canPop(), isTrue);
+
+    await tester.binding.handlePopRoute();
+    await tester.pump();
+
+    expect(navigator.canPop(), isFalse);
+  });
+
   testWidgets('retains a notification session route through auth restoration', (
     tester,
   ) async {

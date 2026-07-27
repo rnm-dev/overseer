@@ -9,8 +9,8 @@ import 'package:overseer_mobile/features/peon/domain/peon_management_repository.
 import 'package:overseer_mobile/features/peon/domain/peon_settings_models.dart';
 import 'package:overseer_mobile/features/peon/domain/peon_settings_repository.dart';
 import 'package:overseer_mobile/features/peon/presentation/peon_settings_page.dart';
-import 'package:overseer_mobile/features/sessions/domain/followup_repository.dart';
 import 'package:overseer_mobile/shared/design/theme.dart';
+import 'package:overseer_mobile/shared/models/ai_capabilities.dart';
 
 void main() {
   testWidgets('renders web-parity General and Agent settings', (tester) async {

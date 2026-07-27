@@ -3,6 +3,9 @@ import 'dart:math';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/diagnostics/app_diagnostics.dart';
+import '../../../core/time/app_time.dart';
+import '../../../shared/models/ai_capabilities.dart';
 import '../domain/followup_repository.dart';
 import '../domain/new_session_repository.dart';
 import '../domain/session_models.dart';
@@ -107,8 +110,8 @@ class SessionComposerController extends AsyncNotifier<SessionComposerState> {
   final FollowupScope scope;
   StreamSubscription<List<PendingFollowup>>? _pendingSubscription;
   StreamSubscription<List<QueuedFollowup>>? _queueSubscription;
-  Timer? _retryTimer;
-  Timer? _queuePollTimer;
+  ScheduledTask? _retryTimer;
+  ScheduledTask? _queuePollTimer;
   int _retryAttempt = 0;
   String? _newSessionRequestId;
   _NewSessionPayloadIdentity? _newSessionPayloadIdentity;
@@ -117,12 +120,16 @@ class SessionComposerController extends AsyncNotifier<SessionComposerState> {
   bool _queueRefreshing = false;
   bool _queueRefreshAgain = false;
   bool _queueAvailable = true;
+  late AppScheduler _scheduler;
+  late AppDiagnostics _diagnostics;
 
   bool get _supportsQueue =>
       scope.sessionId != 'new-session' && _queueAvailable;
 
   @override
   Future<SessionComposerState> build() async {
+    _scheduler = ref.read(appSchedulerProvider);
+    _diagnostics = ref.read(appDiagnosticsProvider);
     final repository = ref.read(followupRepositoryProvider);
     final results = await Future.wait<Object?>([
       repository.loadDraft(scope),
@@ -158,7 +165,9 @@ class SessionComposerController extends AsyncNotifier<SessionComposerState> {
       );
       Future<void>.microtask(refreshQueue);
     }
-    if (pending.isNotEmpty) Timer.run(_scheduleRetry);
+    if (pending.isNotEmpty) {
+      _scheduler.schedule(Duration.zero, _scheduleRetry);
+    }
     ref.onDispose(() {
       _pendingSubscription?.cancel();
       _queueSubscription?.cancel();
@@ -294,7 +303,17 @@ class SessionComposerController extends AsyncNotifier<SessionComposerState> {
         ),
       );
       return false;
-    } catch (_) {
+    } catch (error) {
+      _diagnostics.record(
+        AppDiagnosticEvent(
+          name: 'followup.submit',
+          level: AppDiagnosticLevel.error,
+          workspaceId: scope.workspaceId,
+          sessionId: scope.sessionId,
+          state: 'failed',
+          errorType: error.runtimeType.toString(),
+        ),
+      );
       final latest = state.value ?? current;
       state = AsyncData(
         latest.copyWith(
@@ -351,8 +370,18 @@ class SessionComposerController extends AsyncNotifier<SessionComposerState> {
           if (current != null) {
             state = AsyncData(current.copyWith(queueError: error.message));
           }
-        } catch (_) {
+        } catch (error) {
           if (!ref.mounted) return;
+          _diagnostics.record(
+            AppDiagnosticEvent(
+              name: 'queue.refresh',
+              level: AppDiagnosticLevel.warning,
+              workspaceId: scope.workspaceId,
+              sessionId: scope.sessionId,
+              state: 'failed',
+              errorType: error.runtimeType.toString(),
+            ),
+          );
           final current = state.value;
           if (current != null) {
             state = AsyncData(
@@ -423,9 +452,9 @@ class SessionComposerController extends AsyncNotifier<SessionComposerState> {
       _queuePollTimer = null;
       return;
     }
-    _queuePollTimer ??= Timer.periodic(
+    _queuePollTimer ??= _scheduler.periodic(
       const Duration(seconds: 2),
-      (_) => unawaited(refreshQueue()),
+      () => unawaited(refreshQueue()),
     );
   }
 
@@ -500,7 +529,16 @@ class SessionComposerController extends AsyncNotifier<SessionComposerState> {
         ),
       );
       return null;
-    } catch (_) {
+    } catch (error) {
+      _diagnostics.record(
+        AppDiagnosticEvent(
+          name: 'session.create',
+          level: AppDiagnosticLevel.error,
+          workspaceId: scope.workspaceId,
+          state: 'failed',
+          errorType: error.runtimeType.toString(),
+        ),
+      );
       final latest = state.value ?? current;
       state = AsyncData(
         latest.copyWith(
@@ -517,23 +555,61 @@ class SessionComposerController extends AsyncNotifier<SessionComposerState> {
     if (_retryTimer != null) return;
     final seconds = 1 << _retryAttempt.clamp(1, 5);
     _retryAttempt++;
-    _retryTimer = Timer(Duration(seconds: seconds), () async {
+    _diagnostics.record(
+      AppDiagnosticEvent(
+        name: 'queue.retry',
+        workspaceId: scope.workspaceId,
+        sessionId: scope.sessionId,
+        state: 'scheduled',
+        attempt: _retryAttempt,
+      ),
+    );
+    _retryTimer = _scheduler.schedule(Duration(seconds: seconds), () async {
       _retryTimer = null;
       try {
         final stillPending = await ref
             .read(followupRepositoryProvider)
             .retryPending(scope);
         if (stillPending) {
+          _diagnostics.record(
+            AppDiagnosticEvent(
+              name: 'queue.retry',
+              workspaceId: scope.workspaceId,
+              sessionId: scope.sessionId,
+              state: 'pending',
+              attempt: _retryAttempt,
+            ),
+          );
           _scheduleRetry();
         } else {
           _retryAttempt = 0;
+          _diagnostics.record(
+            AppDiagnosticEvent(
+              name: 'queue.retry',
+              workspaceId: scope.workspaceId,
+              sessionId: scope.sessionId,
+              state: 'complete',
+            ),
+          );
         }
       } on FollowupException catch (error) {
         final current = state.value;
         if (current != null) {
           state = AsyncData(current.copyWith(error: error.message));
         }
-      } catch (_) {
+      } catch (error) {
+        _diagnostics.record(
+          AppDiagnosticEvent(
+            name: 'queue.retry',
+            level: AppDiagnosticLevel.warning,
+            workspaceId: scope.workspaceId,
+            sessionId: scope.sessionId,
+            state: 'failed',
+            outcome: 'retrying',
+            attempt: _retryAttempt,
+            errorType: error.runtimeType.toString(),
+          ),
+        );
         _scheduleRetry();
       }
     });

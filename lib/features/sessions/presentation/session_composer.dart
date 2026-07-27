@@ -6,6 +6,7 @@ import '../../../shared/design/colors.dart';
 import '../../../shared/design/motion.dart';
 import '../../../shared/design/spacing.dart';
 import '../../../shared/design/typography.dart';
+import '../../../shared/models/ai_capabilities.dart';
 import '../../../shared/widgets/app_bottom_sheet.dart';
 import '../../../shared/widgets/app_button.dart';
 import '../../../shared/widgets/app_markdown.dart';

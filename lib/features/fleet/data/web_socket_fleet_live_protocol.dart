@@ -7,7 +7,7 @@ extension _WebSocketFleetLiveProtocol on WebSocketFleetLiveService {
     Object? raw,
   ) async {
     if (raw is! String || _sockets[workspaceId] != state) return;
-    state.lastReceivedAt = DateTime.now();
+    state.lastReceivedAt = _clock.now();
     final Object? decoded;
     try {
       decoded = jsonDecode(raw);
@@ -37,7 +37,14 @@ extension _WebSocketFleetLiveProtocol on WebSocketFleetLiveService {
         }
       }
       _replacePresence(workspaceId, decoded['presence']);
-      debugPrint('[LiveSync] connected workspace=$workspaceId');
+      _diagnostics.record(
+        AppDiagnosticEvent(
+          name: 'live.connection',
+          workspaceId: workspaceId,
+          state: 'connected',
+          cursor: state.cursor,
+        ),
+      );
       if (snapshotCursor > resumeCursor) {
         state.channel?.sink.add(
           jsonEncode({'type': 'resume', 'cursor': resumeCursor}),
@@ -55,7 +62,7 @@ extension _WebSocketFleetLiveProtocol on WebSocketFleetLiveService {
       return;
     }
     if (type == 'presenceRetry') {
-      Timer(const Duration(seconds: 1), () {
+      _scheduler.schedule(const Duration(seconds: 1), () {
         if (!_stopped && _sockets[workspaceId] == state && state.ready) {
           _sendPresence(state);
         }
@@ -65,7 +72,7 @@ extension _WebSocketFleetLiveProtocol on WebSocketFleetLiveService {
     if (type == 'peon') {
       final cursor = (decoded['cursor'] as num?)?.toInt() ?? 0;
       if (cursor > 0) await _onCursor?.call(workspaceId, cursor);
-      _bumpCursor(state, cursor);
+      _bumpCursor(workspaceId, state, cursor);
       final payload = decoded['payload'];
       if (payload is Map<String, dynamic>) {
         _onPeon?.call(workspaceId, payload);
@@ -77,7 +84,7 @@ extension _WebSocketFleetLiveProtocol on WebSocketFleetLiveService {
       final payload = decoded['payload'];
       if (payload is Map<String, dynamic>) {
         await _onSession?.call(workspaceId, cursor, payload);
-        _bumpCursor(state, cursor);
+        _bumpCursor(workspaceId, state, cursor);
         if (state.activeSeeded) {
           _applySession(workspaceId, state, payload);
         } else {
@@ -86,19 +93,28 @@ extension _WebSocketFleetLiveProtocol on WebSocketFleetLiveService {
       }
       return;
     }
+    if (type == 'attention') {
+      final cursor = (decoded['cursor'] as num?)?.toInt() ?? 0;
+      final payload = decoded['payload'];
+      if (payload is Map<String, dynamic>) {
+        await _onAttention?.call(workspaceId, cursor, payload);
+        _bumpCursor(workspaceId, state, cursor);
+      }
+      return;
+    }
     if (type == 'project') {
       final cursor = (decoded['cursor'] as num?)?.toInt() ?? 0;
       final payload = decoded['payload'];
       if (payload is Map<String, dynamic>) {
         await _onProject?.call(workspaceId, cursor, payload);
-        _bumpCursor(state, cursor);
+        _bumpCursor(workspaceId, state, cursor);
       }
       return;
     }
     if (type == 'resumeEnd') {
       final cursor = (decoded['cursor'] as num?)?.toInt() ?? 0;
       if (cursor > 0) await _onCursor?.call(workspaceId, cursor);
-      _bumpCursor(state, cursor);
+      _bumpCursor(workspaceId, state, cursor);
       if (!state.activeSeeded && state.activeReplayEndsRemaining > 0) {
         state.activeReplayEndsRemaining -= 1;
         _publishActiveSessionsWhenReady(workspaceId, state);
@@ -128,7 +144,6 @@ extension _WebSocketFleetLiveProtocol on WebSocketFleetLiveService {
         ..retryTimer = null
         ..attempt = 0;
       final eventId = decoded['id'] as String?;
-      if (eventId?.isNotEmpty == true) handler.lastEventId = eventId;
       await handler.onFrame(
         TranscriptTailFrame.event(
           eventId: eventId,
@@ -136,6 +151,10 @@ extension _WebSocketFleetLiveProtocol on WebSocketFleetLiveService {
           data: decoded['data'] as String? ?? '',
         ),
       );
+      // The handler commits transcript events to Drift. Advancing before that
+      // future completes can acknowledge an event that never became durable;
+      // a reconnect would then resume after it and create a permanent gap.
+      if (eventId?.isNotEmpty == true) handler.lastEventId = eventId;
       return;
     }
     if (type == 'tailEnd' || type == 'tailError') {
@@ -148,6 +167,19 @@ extension _WebSocketFleetLiveProtocol on WebSocketFleetLiveService {
         return;
       }
       final retryable = decoded['retryable'] != false;
+      _diagnostics.record(
+        AppDiagnosticEvent(
+          name: 'transcript.tail',
+          level: retryable
+              ? AppDiagnosticLevel.warning
+              : AppDiagnosticLevel.error,
+          workspaceId: workspaceId,
+          sessionId: sessionId,
+          state: 'terminal',
+          outcome: retryable ? 'retrying' : 'stopped',
+          attempt: handler.attempt,
+        ),
+      );
       await handler.onFrame(
         TranscriptTailFrame.terminal(
           retryable: retryable,
@@ -167,9 +199,19 @@ extension _WebSocketFleetLiveProtocol on WebSocketFleetLiveService {
     _onPresence?.call(workspaceId, entries);
   }
 
-  int _bumpCursor(_WorkspaceSocket state, Object? value) {
+  int _bumpCursor(String workspaceId, _WorkspaceSocket state, Object? value) {
     final cursor = (value as num?)?.toInt() ?? 0;
-    if (cursor > state.cursor) state.cursor = cursor;
+    if (cursor > state.cursor) {
+      state.cursor = cursor;
+      _diagnostics.record(
+        AppDiagnosticEvent(
+          name: 'live.cursor',
+          workspaceId: workspaceId,
+          state: 'advanced',
+          cursor: cursor,
+        ),
+      );
+    }
     return cursor;
   }
 }

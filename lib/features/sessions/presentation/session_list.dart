@@ -436,7 +436,7 @@ class _LazySessionSliverState extends State<_LazySessionSliver> {
 
   @override
   Widget build(BuildContext context) {
-    final rowExtent = _sessionRowExtent(context);
+    final rowExtent = SessionWorkItem.extentFor(context);
     final reduceMotion =
         MediaQuery.maybeOf(context)?.disableAnimations ?? false;
     return SliverPadding(
@@ -461,15 +461,17 @@ class _LazySessionSliverState extends State<_LazySessionSliver> {
             child: Semantics(
               sortKey: OrdinalSortKey(index.toDouble()),
               selected: session.sessionId == widget.selectedSessionId,
-              child: _SessionRow(
+              child: SessionWorkItem(
                 key: Key('session-${session.sessionId}'),
                 session: session,
                 selected: session.sessionId == widget.selectedSessionId,
                 onSelected: widget.onSessionSelected,
-                authoritativeRunning: widget.activeSessions?.contains(
-                  peonId: session.peonId,
-                  sessionId: session.sessionId,
-                ),
+                authoritativeRunning:
+                    widget.activeSessions?.contains(
+                      peonId: session.peonId,
+                      sessionId: session.sessionId,
+                    ) ??
+                    false,
                 viewers: widget.presence.viewersForSession(
                   workspaceId: session.workspaceId,
                   peonId: session.peonId,
@@ -566,28 +568,6 @@ class _LazyReorderingSessionRowState extends State<_LazyReorderingSessionRow>
       },
     );
   }
-}
-
-double _sessionRowExtent(BuildContext context) {
-  final textScaler = MediaQuery.textScalerOf(context);
-  double lineHeight(TextStyle style) {
-    final painter = TextPainter(
-      text: TextSpan(text: 'Ag', style: style),
-      textDirection: TextDirection.ltr,
-      textScaler: textScaler,
-      maxLines: 1,
-    )..layout();
-    return painter.height;
-  }
-
-  final titleHeight = lineHeight(
-    AppTypography.display(fontSize: 12.8, fontWeight: FontWeight.w500),
-  );
-  final detailHeight = [
-    AppTypography.body(fontSize: 9.6),
-    AppTypography.body(fontSize: 9.6),
-  ].map(lineHeight).reduce((height, candidate) => math.max(height, candidate));
-  return math.max(48, 12 + math.max(20, titleHeight) + 2 + detailHeight);
 }
 
 class _SessionListLoading extends StatelessWidget {
@@ -718,15 +698,17 @@ class _AnimatedSessionListState extends State<_AnimatedSessionList> {
                 child: Semantics(
                   sortKey: OrdinalSortKey(index.toDouble()),
                   selected: session.sessionId == widget.selectedSessionId,
-                  child: _SessionRow(
+                  child: SessionWorkItem(
                     key: Key('session-${session.sessionId}'),
                     session: session,
                     selected: session.sessionId == widget.selectedSessionId,
                     onSelected: widget.onSessionSelected,
-                    authoritativeRunning: widget.activeSessions?.contains(
-                      peonId: session.peonId,
-                      sessionId: session.sessionId,
-                    ),
+                    authoritativeRunning:
+                        widget.activeSessions?.contains(
+                          peonId: session.peonId,
+                          sessionId: session.sessionId,
+                        ) ??
+                        false,
                     viewers: widget.presence.viewersForSession(
                       workspaceId: session.workspaceId,
                       peonId: session.peonId,
@@ -756,26 +738,7 @@ class _AnimatedSessionListState extends State<_AnimatedSessionList> {
   };
 
   double _rowExtent(BuildContext context) {
-    final textScaler = MediaQuery.textScalerOf(context);
-    final titleHeight = _lineHeight(
-      AppTypography.display(fontSize: 12.8, fontWeight: FontWeight.w500),
-      textScaler,
-    );
-    final detailHeight = [AppTypography.body(fontSize: 9.6)]
-        .map((style) => _lineHeight(style, textScaler))
-        .reduce((height, candidate) => height > candidate ? height : candidate);
-    final rowHeight = 12 + math.max(20, titleHeight) + 2 + detailHeight;
-    return math.max(48, rowHeight);
-  }
-
-  double _lineHeight(TextStyle style, TextScaler textScaler) {
-    final painter = TextPainter(
-      text: TextSpan(text: 'Ag', style: style),
-      textDirection: TextDirection.ltr,
-      textScaler: textScaler,
-      maxLines: 1,
-    )..layout();
-    return painter.height;
+    return SessionWorkItem.extentFor(context);
   }
 }
 

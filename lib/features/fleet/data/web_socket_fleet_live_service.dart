@@ -3,13 +3,14 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
+import '../../../core/diagnostics/app_diagnostics.dart';
 import '../../../core/live/active_sessions.dart';
 import '../../../core/live/presence.dart';
 import '../../../core/live/transcript_live_service.dart';
 import '../../../core/network/overseer_http_client.dart';
+import '../../../core/time/app_time.dart';
 import '../application/fleet_live_service.dart';
 
 part 'web_socket_fleet_live_active_sessions.dart';
@@ -22,12 +23,16 @@ class WebSocketFleetLiveService
         FleetLiveService,
         FleetWorkspaceReconciler,
         FleetLiveLifecycle,
+        AttentionFleetLiveService,
         TranscriptLiveService {
   WebSocketFleetLiveService({
     required this.serverUrl,
     required Uri apiUrl,
     required String token,
     Dio? dio,
+    this._clock = const SystemAppClock(),
+    this._scheduler = const SystemAppScheduler(),
+    this._diagnostics = const NoopAppDiagnostics(),
   }) : _dio = dio ?? createOverseerHttpClient(apiUrl: apiUrl, token: token);
 
   static const _heartbeatInterval = Duration(seconds: 10);
@@ -35,6 +40,9 @@ class WebSocketFleetLiveService
 
   final Uri serverUrl;
   final Dio _dio;
+  final AppClock _clock;
+  final AppScheduler _scheduler;
+  final AppDiagnostics _diagnostics;
   final Map<String, _WorkspaceSocket> _sockets = {};
   final Random _random = Random();
 
@@ -46,6 +54,12 @@ class WebSocketFleetLiveService
     Map<String, dynamic> session,
   )?
   _onSession;
+  Future<void> Function(
+    String workspaceId,
+    int cursor,
+    Map<String, dynamic> attention,
+  )?
+  _onAttention;
   Future<void> Function(
     String workspaceId,
     int cursor,
@@ -109,6 +123,18 @@ class WebSocketFleetLiveService
     }
   }
 
+  @override
+  void setAttentionHandler(
+    Future<void> Function(
+      String workspaceId,
+      int cursor,
+      Map<String, dynamic> attention,
+    )
+    handler,
+  ) {
+    _onAttention = handler;
+  }
+
   Future<void> _open(String workspaceId) async {
     final state = _sockets[workspaceId];
     if (_stopped || state == null || state.connecting) return;
@@ -116,6 +142,15 @@ class WebSocketFleetLiveService
       ..connecting = true
       ..retryTimer?.cancel()
       ..retryTimer = null;
+    _diagnostics.record(
+      AppDiagnosticEvent(
+        name: 'live.connection',
+        workspaceId: workspaceId,
+        state: 'connecting',
+        cursor: state.cursor,
+        attempt: state.attempt,
+      ),
+    );
 
     try {
       final response = await _dio.post<Map<String, dynamic>>('auth/ws-ticket');
@@ -140,7 +175,7 @@ class WebSocketFleetLiveService
 
       state
         ..connecting = false
-        ..lastReceivedAt = DateTime.now();
+        ..lastReceivedAt = _clock.now();
       channel.sink.add(
         jsonEncode({
           'type': 'hello',
@@ -158,15 +193,23 @@ class WebSocketFleetLiveService
         onDone: () => _disconnected(workspaceId, state),
         cancelOnError: true,
       );
-      state.heartbeat = Timer.periodic(
+      state.heartbeat = _scheduler.periodic(
         _heartbeatInterval,
-        (_) => _heartbeat(workspaceId, state),
+        () => _heartbeat(workspaceId, state),
       );
     } catch (error) {
       state.connecting = false;
-      debugPrint(
-        '[LiveSync] connection failed workspace=$workspaceId: '
-        '${error.runtimeType}',
+      _diagnostics.record(
+        AppDiagnosticEvent(
+          name: 'live.connection',
+          level: AppDiagnosticLevel.warning,
+          workspaceId: workspaceId,
+          state: 'failed',
+          outcome: 'retrying',
+          cursor: state.cursor,
+          attempt: state.attempt,
+          errorType: error.runtimeType.toString(),
+        ),
       );
       _scheduleReconnect(workspaceId, state);
     }
@@ -282,7 +325,17 @@ class WebSocketFleetLiveService
 
   void _heartbeat(String workspaceId, _WorkspaceSocket state) {
     if (_stopped || _sockets[workspaceId] != state) return;
-    if (DateTime.now().difference(state.lastReceivedAt) > _staleInterval) {
+    if (_clock.now().difference(state.lastReceivedAt) > _staleInterval) {
+      _diagnostics.record(
+        AppDiagnosticEvent(
+          name: 'live.connection',
+          level: AppDiagnosticLevel.warning,
+          workspaceId: workspaceId,
+          state: 'stale',
+          outcome: 'reconnecting',
+          cursor: state.cursor,
+        ),
+      );
       unawaited(state.channel?.sink.close());
       _disconnected(workspaceId, state);
       return;
@@ -292,16 +345,31 @@ class WebSocketFleetLiveService
 
   void _disconnected(String workspaceId, _WorkspaceSocket state) {
     if (_sockets[workspaceId] != state || state.reconnecting) return;
+    final subscription = state.subscription;
+    final channel = state.channel;
     state
       ..reconnecting = true
       ..ready = false
       ..connecting = false;
     state.heartbeat?.cancel();
     state.heartbeat = null;
-    unawaited(state.subscription?.cancel());
     state.subscription = null;
     state.channel = null;
-    debugPrint('[LiveSync] disconnected workspace=$workspaceId');
+    unawaited(() async {
+      await subscription?.cancel();
+      await channel?.sink.close();
+    }());
+    _diagnostics.record(
+      AppDiagnosticEvent(
+        name: 'live.connection',
+        level: AppDiagnosticLevel.warning,
+        workspaceId: workspaceId,
+        state: 'disconnected',
+        outcome: 'retrying',
+        cursor: state.cursor,
+        attempt: state.attempt,
+      ),
+    );
     _scheduleReconnect(workspaceId, state);
   }
 
@@ -315,7 +383,19 @@ class WebSocketFleetLiveService
       milliseconds: (baseMs * (0.8 + _random.nextDouble() * 0.4)).round(),
     );
     state.retryTimer?.cancel();
-    state.retryTimer = Timer(delay, () => unawaited(_open(workspaceId)));
+    _diagnostics.record(
+      AppDiagnosticEvent(
+        name: 'live.retry',
+        workspaceId: workspaceId,
+        state: 'scheduled',
+        cursor: state.cursor,
+        attempt: state.attempt,
+      ),
+    );
+    state.retryTimer = _scheduler.schedule(
+      delay,
+      () => unawaited(_open(workspaceId)),
+    );
   }
 
   @override

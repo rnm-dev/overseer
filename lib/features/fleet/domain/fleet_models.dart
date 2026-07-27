@@ -24,6 +24,7 @@ class Peon {
     this.baseUrl,
     this.addressSource,
     this.load,
+    this.recentSessions = const [],
   });
 
   final String id;
@@ -35,6 +36,7 @@ class Peon {
   final double lastSeen;
   final List<String> capabilities;
   final PeonLoad? load;
+  final List<FleetRecentSession> recentSessions;
 
   String get displayName {
     final candidate = name?.trim().isNotEmpty == true ? name : hostname;
@@ -44,6 +46,54 @@ class Peon {
   }
 
   int get activeSessions => load?.activeSessions ?? 0;
+}
+
+class FleetRecentSession {
+  const FleetRecentSession({
+    required this.workspaceId,
+    required this.peonId,
+    required this.sessionId,
+    required this.syncedAt,
+    required this.attentionUpdatedAt,
+    required this.hasOutstandingRequest,
+    required this.attentionUnread,
+    this.status,
+    this.projectKey,
+    this.projectId,
+    this.title,
+    this.promptPreview,
+    this.preview,
+    this.startedAt,
+    this.lastActivityAt,
+    this.lastRequestedAt,
+  });
+
+  final String workspaceId;
+  final String peonId;
+  final String sessionId;
+  final String? status;
+  final String? projectKey;
+  final String? projectId;
+  final String? title;
+  final String? promptPreview;
+  final String? preview;
+  final double? startedAt;
+  final double? lastActivityAt;
+  final double syncedAt;
+  final double attentionUpdatedAt;
+  final bool hasOutstandingRequest;
+  final bool attentionUnread;
+  final double? lastRequestedAt;
+
+  double get sortActivity => lastActivityAt ?? startedAt ?? 0;
+
+  String get displayTitle {
+    for (final candidate in [title, promptPreview, preview]) {
+      final value = candidate?.trim();
+      if (value != null && value.isNotEmpty) return value;
+    }
+    return 'Untitled session';
+  }
 }
 
 class WorkspaceFleet {

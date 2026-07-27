@@ -55,25 +55,34 @@ class UserAvatar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hasSource = src != null && src!.trim().isNotEmpty;
-    Widget avatar = Container(
+    Widget avatar = SizedBox(
       width: _diameter,
       height: _diameter,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: AppColors.iron900,
-        border: Border.all(color: AppColors.iron950),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          ClipOval(
+            child: hasSource
+                ? Image.network(
+                    src!,
+                    width: double.infinity,
+                    height: double.infinity,
+                    fit: BoxFit.cover,
+                    excludeFromSemantics: true,
+                    errorBuilder: (_, _, _) => _fallback(),
+                  )
+                : _fallback(),
+          ),
+          IgnorePointer(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: AppColors.iron950),
+              ),
+            ),
+          ),
+        ],
       ),
-      clipBehavior: Clip.antiAlias,
-      child: hasSource
-          ? Image.network(
-              src!,
-              width: _diameter,
-              height: _diameter,
-              fit: BoxFit.cover,
-              excludeFromSemantics: true,
-              errorBuilder: (_, _, _) => _fallback(),
-            )
-          : _fallback(),
     );
 
     if (!decorative) {

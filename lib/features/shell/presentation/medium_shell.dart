@@ -11,6 +11,8 @@ class MediumShell extends StatelessWidget {
     required this.user,
     required this.onSignOut,
     this.onOpenPeon,
+    this.onOpenSession,
+    this.onNewSession,
   });
 
   final OperatorIdentity? user;
@@ -21,6 +23,8 @@ class MediumShell extends StatelessWidget {
     required String peonId,
   })?
   onOpenPeon;
+  final FleetOpenSession? onOpenSession;
+  final FleetNewSession? onNewSession;
 
   @override
   Widget build(BuildContext context) {
@@ -59,6 +63,8 @@ class MediumShell extends StatelessWidget {
                             user: user!,
                             onSignOut: onSignOut!,
                             onOpenPeon: onOpenPeon,
+                            onOpenSession: onOpenSession,
+                            onNewSession: onNewSession,
                           ),
                   ),
                 ],

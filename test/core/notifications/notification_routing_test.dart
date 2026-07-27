@@ -28,6 +28,23 @@ void main() {
       });
     });
 
+    test('routes attention payloads to the referenced session', () {
+      expect(
+        NotificationDestination.fromData({
+          'kind': 'attention',
+          'workspaceId': 'workspace',
+          'peonId': 'peon',
+          'sessionId': 'session',
+          'cursor': '42',
+        }),
+        const NotificationDestination.session(
+          workspaceId: 'workspace',
+          peonId: 'peon',
+          sessionId: 'session',
+        ),
+      );
+    });
+
     test('routes peon payloads without requiring a session identifier', () {
       expect(
         NotificationDestination.fromData({
@@ -80,6 +97,14 @@ void main() {
       expect(
         NotificationDestination.fromData({
           'kind': 'session',
+          'workspaceId': 'workspace',
+          'peonId': 'peon',
+        }),
+        isNull,
+      );
+      expect(
+        NotificationDestination.fromData({
+          'kind': 'attention',
           'workspaceId': 'workspace',
           'peonId': 'peon',
         }),

@@ -59,9 +59,14 @@ extension _WebSocketFleetLiveActiveSessions on WebSocketFleetLiveService {
       state.activeSeedComplete = true;
       _publishActiveSessionsWhenReady(workspaceId, state);
     } catch (error) {
-      debugPrint(
-        '[LiveSync] active-session seed failed workspace=$workspaceId: '
-        '${error.runtimeType}',
+      _diagnostics.record(
+        AppDiagnosticEvent(
+          name: 'live.active_seed',
+          level: AppDiagnosticLevel.warning,
+          workspaceId: workspaceId,
+          state: 'failed',
+          errorType: error.runtimeType.toString(),
+        ),
       );
     }
   }

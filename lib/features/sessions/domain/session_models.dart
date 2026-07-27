@@ -17,6 +17,9 @@ class SessionSummary {
     this.lastActivityAt,
     this.attentionUnread = false,
     this.attentionUpdatedAt = 0,
+    this.operatorRequested = false,
+    this.hasOutstandingRequest = false,
+    this.lastRequestedAt,
   });
 
   final String workspaceId;
@@ -36,6 +39,9 @@ class SessionSummary {
   final double syncedAt;
   final bool attentionUnread;
   final double attentionUpdatedAt;
+  final bool operatorRequested;
+  final bool hasOutstandingRequest;
+  final double? lastRequestedAt;
 
   double get sortActivity => lastActivityAt ?? startedAt ?? 0;
 

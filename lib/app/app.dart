@@ -6,6 +6,7 @@ import 'package:overseer_mobile/features/auth/presentation/sign_in_page.dart';
 import 'package:overseer_mobile/features/auth/domain/auth_models.dart';
 import 'package:overseer_mobile/shared/design/theme.dart';
 import 'package:overseer_mobile/features/shell/shell.dart';
+import 'package:overseer_mobile/features/sessions/presentation/session_detail_page.dart';
 
 import 'peon_deep_link_page.dart';
 import 'project_files_route_page.dart';
@@ -53,6 +54,33 @@ class _OverseerMobileAppState extends State<OverseerMobileApp> {
           buildSignIn: _buildAuthSignIn,
           buildShell: _buildAuthShell,
         ),
+        routes: [
+          GoRoute(
+            path: 'session',
+            name: 'session',
+            builder: (context, state) {
+              final workspaceId = state.uri.queryParameters['workspaceId'];
+              final peonId = state.uri.queryParameters['peonId'];
+              final sessionId = state.uri.queryParameters['sessionId'];
+              if (workspaceId == null || peonId == null || sessionId == null) {
+                return AuthGate(
+                  autoSignIn: widget.autoSignIn,
+                  onBack: widget.onBackToConnections,
+                  overseerName: widget.overseerName,
+                  buildLoading: _buildAuthLoading,
+                  buildSignIn: _buildAuthSignIn,
+                  buildShell: _buildAuthShell,
+                );
+              }
+              return SessionDeepLinkPage(
+                key: ValueKey('$workspaceId\u0000$peonId\u0000$sessionId'),
+                workspaceId: workspaceId,
+                peonId: peonId,
+                sessionId: sessionId,
+              );
+            },
+          ),
+        ],
       ),
       GoRoute(
         path: '/peon',
@@ -74,31 +102,6 @@ class _OverseerMobileAppState extends State<OverseerMobileApp> {
             key: ValueKey('$workspaceId\u0000$peonId'),
             workspaceId: workspaceId,
             peonId: peonId,
-          );
-        },
-      ),
-      GoRoute(
-        path: '/session',
-        name: 'session',
-        builder: (context, state) {
-          final workspaceId = state.uri.queryParameters['workspaceId'];
-          final peonId = state.uri.queryParameters['peonId'];
-          final sessionId = state.uri.queryParameters['sessionId'];
-          if (workspaceId == null || peonId == null || sessionId == null) {
-            return AuthGate(
-              autoSignIn: widget.autoSignIn,
-              onBack: widget.onBackToConnections,
-              overseerName: widget.overseerName,
-              buildLoading: _buildAuthLoading,
-              buildSignIn: _buildAuthSignIn,
-              buildShell: _buildAuthShell,
-            );
-          }
-          return SessionDeepLinkPage(
-            key: ValueKey('$workspaceId\u0000$peonId\u0000$sessionId'),
-            workspaceId: workspaceId,
-            peonId: peonId,
-            sessionId: sessionId,
           );
         },
       ),
@@ -200,6 +203,30 @@ class _OverseerMobileAppState extends State<OverseerMobileApp> {
             context.pushNamed(
               'peon',
               queryParameters: {'workspaceId': workspaceId, 'peonId': peonId},
+            ),
+    onOpenSession:
+        (
+          context, {
+          required String workspaceId,
+          required String peonId,
+          required String sessionId,
+        }) => context.pushNamed(
+          'session',
+          queryParameters: {
+            'workspaceId': workspaceId,
+            'peonId': peonId,
+            'sessionId': sessionId,
+          },
+        ),
+    onNewSession:
+        (context, {required String workspaceId, required String peonId}) =>
+            Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => SessionDetailPage.newSession(
+                  workspaceId: workspaceId,
+                  peonId: peonId,
+                ),
+              ),
             ),
   );
 

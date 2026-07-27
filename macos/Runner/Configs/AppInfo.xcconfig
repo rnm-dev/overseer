@@ -13,7 +13,7 @@ OAUTH_CALLBACK_SCHEME = overseer
 PRODUCT_BUNDLE_IDENTIFIER = org.ovrseer.app
 
 // Apple developer team shared with the iOS target.
-DEVELOPMENT_TEAM = CU55M6L93Q
+DEVELOPMENT_TEAM = F7KV67KV2U
 
 // The copyright displayed in application information
 PRODUCT_COPYRIGHT = Copyright © 2026 RNM. All rights reserved.

@@ -3,7 +3,9 @@ import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/diagnostics/app_diagnostics.dart';
 import '../../../core/live/transcript_live_service.dart';
+import '../../../core/time/app_time.dart';
 import '../../settings/application/sound_pack_controller.dart';
 import '../../settings/domain/sound_pack.dart';
 import '../../settings/domain/work_sound_player.dart';
@@ -89,17 +91,16 @@ class TranscriptController extends AsyncNotifier<TranscriptState> {
 
   static const _pageSize = 50;
   static const _reconciliationCheck = Duration(seconds: 5);
-  static const _reconciliationSilence = Duration(seconds: 15);
+  static const _reconciliationInterval = Duration(seconds: 5);
 
   final TranscriptScope scope;
   StreamSubscription<List<TranscriptEvent>>? _subscription;
-  Timer? _reconciliationTimer;
+  ScheduledTask? _reconciliationTimer;
   String? _nextCursor;
-  DateTime _lastTailActivity = DateTime.now();
   DateTime? _lastReconcileAt;
-  bool _tailUnhealthy = false;
   bool _tailSubscribed = false;
   bool _reconciling = false;
+  bool _refreshingLatest = false;
   bool _running;
   bool _suppressNextCompletionSound = false;
   bool _initialSoundSnapshotReceived = false;
@@ -108,6 +109,9 @@ class TranscriptController extends AsyncNotifier<TranscriptState> {
   String? _initialSoundBoundary;
   final List<(String, Map<String, dynamic>)> _pendingInitialSounds = [];
   final Set<String> _soundedEventIds = {};
+  late AppClock _clock;
+  late AppScheduler _scheduler;
+  late AppDiagnostics _diagnostics;
   late final FollowupScope _followupScope = FollowupScope(
     workspaceId: scope.workspaceId,
     peonId: scope.peonId,
@@ -116,6 +120,9 @@ class TranscriptController extends AsyncNotifier<TranscriptState> {
 
   @override
   Future<TranscriptState> build() async {
+    _clock = ref.read(appClockProvider);
+    _scheduler = ref.read(appSchedulerProvider);
+    _diagnostics = ref.read(appDiagnosticsProvider);
     final repository = ref.read(sessionRepositoryProvider);
     final liveService = ref.read(transcriptLiveServiceProvider);
     final workSoundPlayer = ref.read(workSoundPlayerProvider);
@@ -131,9 +138,9 @@ class TranscriptController extends AsyncNotifier<TranscriptState> {
           sessionId: scope.sessionId,
         )
         .listen(_applyCachedEvents);
-    _reconciliationTimer = Timer.periodic(
+    _reconciliationTimer = _scheduler.periodic(
       _reconciliationCheck,
-      (_) => unawaited(_reconcile()),
+      () => unawaited(_reconcile()),
     );
     ref.onDispose(() {
       _reconciliationTimer?.cancel();
@@ -151,9 +158,6 @@ class TranscriptController extends AsyncNotifier<TranscriptState> {
     Future<void>.microtask(() async {
       final cachedBoundary = cached.events.lastOrNull?.eventId;
       _initialTailBoundary = cachedBoundary;
-      if (cachedBoundary?.isNotEmpty == true) {
-        _ensureTailSubscribed(cachedBoundary);
-      }
       await refresh();
     });
     return TranscriptState(
@@ -170,7 +174,8 @@ class TranscriptController extends AsyncNotifier<TranscriptState> {
   Future<void> _refresh({required bool reportFailure}) async {
     if (!ref.mounted) return;
     final current = state.value;
-    if (current == null || current.isRefreshing) return;
+    if (current == null || current.isLoadingOlder || _refreshingLatest) return;
+    _refreshingLatest = true;
     if (reportFailure) {
       state = AsyncData(
         current.copyWith(isRefreshing: true, clearMessage: true),
@@ -191,10 +196,11 @@ class TranscriptController extends AsyncNotifier<TranscriptState> {
         _running = runningSignal ?? _running;
       }
       _nextCursor = page.nextCursor;
+      if (!_initialSoundSnapshotReceived) {
+        _soundedEventIds.addAll(page.events.map((event) => event.eventId));
+      }
       _establishInitialSoundBoundary(page.events.lastOrNull?.eventId);
       _ensureTailSubscribed(page.events.lastOrNull?.eventId);
-      _tailUnhealthy = false;
-      _lastTailActivity = DateTime.now();
       final latest = state.value ?? current;
       state = AsyncData(
         latest.copyWith(
@@ -206,6 +212,7 @@ class TranscriptController extends AsyncNotifier<TranscriptState> {
       );
     } on SessionsException catch (error) {
       if (!ref.mounted) return;
+      _ensureTailSubscribed(_initialTailBoundary);
       final latest = state.value ?? current;
       state = AsyncData(
         latest.copyWith(
@@ -214,6 +221,8 @@ class TranscriptController extends AsyncNotifier<TranscriptState> {
           clearMessage: !reportFailure,
         ),
       );
+    } finally {
+      _refreshingLatest = false;
     }
   }
 
@@ -229,12 +238,31 @@ class TranscriptController extends AsyncNotifier<TranscriptState> {
       onFrame: _handleTailFrame,
     );
     _tailSubscribed = true;
+    _diagnostics.record(
+      AppDiagnosticEvent(
+        name: 'transcript.tail',
+        workspaceId: scope.workspaceId,
+        sessionId: scope.sessionId,
+        state: 'subscribed',
+      ),
+    );
   }
 
   Future<void> _handleTailFrame(TranscriptTailFrame frame) async {
     if (!ref.mounted) return;
     if (frame.terminal) {
-      _tailUnhealthy = true;
+      _diagnostics.record(
+        AppDiagnosticEvent(
+          name: 'transcript.tail',
+          level: frame.retryable
+              ? AppDiagnosticLevel.warning
+              : AppDiagnosticLevel.error,
+          workspaceId: scope.workspaceId,
+          sessionId: scope.sessionId,
+          state: 'terminal',
+          outcome: frame.retryable ? 'reconciling' : 'stopped',
+        ),
+      );
       _notifyQueueChanged();
       if (!frame.retryable) {
         final current = state.value;
@@ -250,8 +278,6 @@ class TranscriptController extends AsyncNotifier<TranscriptState> {
       await _reconcile(forceTranscript: true);
       return;
     }
-    _lastTailActivity = DateTime.now();
-    _tailUnhealthy = false;
     if (frame.event == 'change') {
       _notifyQueueChanged();
       return;
@@ -265,11 +291,11 @@ class TranscriptController extends AsyncNotifier<TranscriptState> {
     try {
       decoded = jsonDecode(frame.data);
     } on FormatException {
-      await _reconcile(forceTranscript: true);
+      await _recoverMalformedTailEvent(eventId);
       return;
     }
     if (decoded is! Map) {
-      await _reconcile(forceTranscript: true);
+      await _recoverMalformedTailEvent(eventId);
       return;
     }
     final payload = Map<String, dynamic>.from(decoded);
@@ -295,6 +321,21 @@ class TranscriptController extends AsyncNotifier<TranscriptState> {
     } else if (_runStarted(payload)) {
       _setRunning(true);
     }
+  }
+
+  Future<void> _recoverMalformedTailEvent(String eventId) async {
+    await _reconcile(forceTranscript: true);
+    final cached = await ref
+        .read(sessionRepositoryProvider)
+        .loadCachedTranscript(
+          workspaceId: scope.workspaceId,
+          peonId: scope.peonId,
+          sessionId: scope.sessionId,
+        );
+    if (cached.events.any((event) => event.eventId == eventId)) return;
+    throw const SessionsException(
+      'A live transcript event could not be stored. Reconnecting to replay it.',
+    );
   }
 
   void _notifyQueueChanged() {
@@ -408,39 +449,66 @@ class TranscriptController extends AsyncNotifier<TranscriptState> {
   }
 
   Future<void> _reconcile({bool forceTranscript = false}) async {
-    if (_reconciling || state.value == null) return;
-    final now = DateTime.now();
-    if (_lastReconcileAt != null &&
-        now.difference(_lastReconcileAt!) < _reconciliationSilence) {
+    if (_reconciling ||
+        state.value == null ||
+        state.value?.isLoadingOlder == true) {
       return;
     }
+    final now = _clock.now();
     if (!forceTranscript &&
-        (!_running ||
-            now.difference(_lastTailActivity) < _reconciliationSilence)) {
+        _lastReconcileAt != null &&
+        now.difference(_lastReconcileAt!) < _reconciliationInterval) {
       return;
     }
     _reconciling = true;
     _lastReconcileAt = now;
+    _diagnostics.record(
+      AppDiagnosticEvent(
+        name: 'transcript.reconcile',
+        workspaceId: scope.workspaceId,
+        sessionId: scope.sessionId,
+        state: 'started',
+        outcome: forceTranscript ? 'forced' : 'scheduled',
+      ),
+    );
     try {
-      final details = await ref
-          .read(sessionRepositoryProvider)
-          .fetchDetails(
+      try {
+        final details = await ref
+            .read(sessionRepositoryProvider)
+            .fetchDetails(
+              workspaceId: scope.workspaceId,
+              peonId: scope.peonId,
+              sessionId: scope.sessionId,
+            );
+        if (!ref.mounted) return;
+        final detailsRunning = details.status == 'running';
+        if (detailsRunning || !_queueHasPending) {
+          _setRunning(detailsRunning);
+        }
+      } on SessionsException catch (error) {
+        _diagnostics.record(
+          AppDiagnosticEvent(
+            name: 'transcript.status_reconcile',
+            level: AppDiagnosticLevel.warning,
             workspaceId: scope.workspaceId,
-            peonId: scope.peonId,
             sessionId: scope.sessionId,
-          );
-      if (!ref.mounted) return;
-      final detailsRunning = details.status == 'running';
-      if (detailsRunning || !_queueHasPending) {
-        _setRunning(detailsRunning);
+            state: 'failed',
+            errorType: error.runtimeType.toString(),
+          ),
+        );
+        // Transcript anti-entropy remains independent from status recovery.
       }
-      if (forceTranscript || _tailUnhealthy || !_running) {
-        await _refresh(reportFailure: false);
-      }
-    } on SessionsException {
-      // A transient fallback failure must not disturb cached transcript rows.
+      await _refresh(reportFailure: false);
     } finally {
       _reconciling = false;
+      _diagnostics.record(
+        AppDiagnosticEvent(
+          name: 'transcript.reconcile',
+          workspaceId: scope.workspaceId,
+          sessionId: scope.sessionId,
+          state: 'complete',
+        ),
+      );
     }
   }
 
@@ -449,6 +517,7 @@ class TranscriptController extends AsyncNotifier<TranscriptState> {
     if (current == null ||
         current.isLoadingOlder ||
         current.isRefreshing ||
+        _refreshingLatest ||
         !current.hasOlder) {
       return;
     }

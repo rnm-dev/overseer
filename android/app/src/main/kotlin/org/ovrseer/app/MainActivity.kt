@@ -23,9 +23,6 @@ class MainActivity : FlutterActivity() {
     private val notificationSettingsChannelName = "dev.rnm.overseer/notification-settings"
     private val attachmentClipboardChannelName = "dev.rnm.overseer/attachment-clipboard"
     private val notificationChannelId = "running_sessions"
-    private val preferencesName = "overseer_session_activities"
-    private val notificationGroupKey = "overseer_running_sessions"
-    private val summaryNotificationId = 0x4f565200
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -39,7 +36,8 @@ class MainActivity : FlutterActivity() {
                     @Suppress("UNCHECKED_CAST")
                     val activities = call.argument<List<Map<String, Any?>>>("activities")
                         ?: emptyList()
-                    synchronizeNotifications(activities)
+                    val connectionId = call.argument<String>("connectionId") ?: ""
+                    synchronizeNotifications(connectionId, activities)
                     result.success(null)
                 } catch (error: Throwable) {
                     result.error("SESSION_ACTIVITY_SYNC_FAILED", error.message, null)
@@ -243,8 +241,21 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    private fun synchronizeNotifications(activities: List<Map<String, Any?>>) {
+    private fun synchronizeNotifications(
+        connectionId: String,
+        activities: List<Map<String, Any?>>,
+    ) {
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val legacyPreferences = getSharedPreferences(
+            "overseer_session_activities",
+            Context.MODE_PRIVATE,
+        )
+        for (legacyId in legacyPreferences.getStringSet("activity_ids", emptySet()).orEmpty()) {
+            manager.cancel(notificationId(legacyId))
+        }
+        manager.cancel(0x4f565200)
+        legacyPreferences.edit().remove("activity_ids").apply()
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             manager.createNotificationChannel(
                 NotificationChannel(
@@ -252,54 +263,39 @@ class MainActivity : FlutterActivity() {
                     "Running sessions",
                     NotificationManager.IMPORTANCE_LOW,
                 ).apply {
-                    description = "Live signals from sessions started by you"
+                    description = "Aggregate live signal for your agent sessions"
                     setShowBadge(false)
                 },
             )
         }
 
-        val preferences = getSharedPreferences(preferencesName, Context.MODE_PRIVATE)
-        val previousIds = preferences.getStringSet("activity_ids", emptySet())?.toSet()
-            ?: emptySet()
-        val desiredIds = activities.mapNotNull { it["activityId"] as? String }.toSet()
-
-        for (activityId in previousIds - desiredIds) {
+        val activityId = "overseer:$connectionId"
+        val activity = activities.firstOrNull()
+        if (activity == null) {
             manager.cancel(notificationId(activityId))
+            return
         }
-        for (activity in activities) {
-            val activityId = activity["activityId"] as? String ?: continue
-            manager.notify(notificationId(activityId), buildNotification(activity))
-        }
-        if (activities.size > 1) {
-            manager.notify(summaryNotificationId, buildSummaryNotification(activities))
-        } else {
-            manager.cancel(summaryNotificationId)
-        }
-        preferences.edit().putStringSet("activity_ids", desiredIds).apply()
+        manager.notify(notificationId(activityId), buildNotification(activity))
     }
 
     private fun buildNotification(activity: Map<String, Any?>): android.app.Notification {
-        val title = activity["title"] as? String ?: "Running session"
-        val detail = activity["detail"] as? String ?: "Working"
-        val project = activity["projectName"] as? String
-        val startedAt = (activity["startedAt"] as? Number)?.toLong()
-        val activeCount = (activity["activeCount"] as? Number)?.toInt() ?: 1
+        val runningCount = (activity["runningCount"] as? Number)?.toInt() ?: 0
+        val completedCount = (activity["completedCount"] as? Number)?.toInt() ?: 0
+        val startedAt = (activity["oldestStartedAt"] as? Number)?.toLong()
         val activityId = activity["activityId"] as String
-        val liveLabel = if (activeCount > 1) "$activeCount ACTIVE" else "LIVE SIGNAL"
+        val detail = "$runningCount RUNNING · $completedCount COMPLETED"
 
         return NotificationCompat.Builder(this, notificationChannelId)
             .setSmallIcon(R.drawable.ic_overseer_signal)
-            .setContentTitle(title)
+            .setContentTitle("Overseer · Live signal")
             .setContentText(detail)
-            .setSubText(listOfNotNull(liveLabel, project).joinToString(" · "))
             .setStyle(NotificationCompat.BigTextStyle().bigText(detail))
-            .setContentIntent(sessionPendingIntent(notificationId(activityId), activity))
+            .setContentIntent(launchPendingIntent(notificationId(activityId)))
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
-            .setColor(Color.rgb(82, 240, 176))
+            .setColor(Color.rgb(134, 171, 99))
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOnlyAlertOnce(true)
             .setOngoing(true)
-            .setGroup(notificationGroupKey)
             .setShowWhen(startedAt != null)
             .apply {
                 if (startedAt != null) {
@@ -307,35 +303,6 @@ class MainActivity : FlutterActivity() {
                     setUsesChronometer(true)
                 }
             }
-            .build()
-    }
-
-    private fun buildSummaryNotification(
-        activities: List<Map<String, Any?>>,
-    ): android.app.Notification {
-        val count = activities.size
-        val inbox = NotificationCompat.InboxStyle()
-            .setBigContentTitle("$count live agent signals")
-            .setSummaryText("Overseer is watching")
-        for (activity in activities.take(5)) {
-            val title = activity["title"] as? String ?: "Running session"
-            val project = activity["projectName"] as? String
-            inbox.addLine(listOfNotNull(project, title).joinToString(" · "))
-        }
-        return NotificationCompat.Builder(this, notificationChannelId)
-            .setSmallIcon(R.drawable.ic_overseer_signal)
-            .setContentTitle("$count sessions running")
-            .setContentText("Your agents are active")
-            .setSubText("OVERSEER · LIVE SIGNALS")
-            .setStyle(inbox)
-            .setContentIntent(launchPendingIntent(summaryNotificationId))
-            .setCategory(NotificationCompat.CATEGORY_SERVICE)
-            .setColor(Color.rgb(82, 240, 176))
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .setOnlyAlertOnce(true)
-            .setOngoing(true)
-            .setGroup(notificationGroupKey)
-            .setGroupSummary(true)
             .build()
     }
 
@@ -347,30 +314,6 @@ class MainActivity : FlutterActivity() {
             this,
             requestCode,
             launchIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
-    }
-
-    private fun sessionPendingIntent(
-        requestCode: Int,
-        activity: Map<String, Any?>,
-    ): PendingIntent {
-        val scheme = if (packageName.endsWith(".dev")) "overseer-dev" else "overseer"
-        val uri = Uri.Builder()
-            .scheme(scheme)
-            .authority("open")
-            .path("/session")
-            .appendQueryParameter("workspaceId", activity["workspaceId"] as? String)
-            .appendQueryParameter("peonId", activity["peonId"] as? String)
-            .appendQueryParameter("sessionId", activity["sessionId"] as? String)
-            .build()
-        val intent = Intent(Intent.ACTION_VIEW, uri, this, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
-        }
-        return PendingIntent.getActivity(
-            this,
-            requestCode,
-            intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
     }

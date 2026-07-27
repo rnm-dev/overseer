@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:record/record.dart';
 
+import '../../../core/time/app_time.dart';
 import '../domain/voice_input.dart';
 
 class PermissionHandlerMicrophoneGateway
@@ -36,15 +37,18 @@ class RecordVoiceRecorderFactory implements VoiceRecorderFactory {
   const RecordVoiceRecorderFactory({
     required this.supported,
     required this.silenceThresholdRms,
+    this.clock = const SystemAppClock(),
   });
 
   final bool supported;
   final double? silenceThresholdRms;
+  final AppClock clock;
 
   @override
   VoiceRecorder create() => RecordVoiceRecorder(
     supported: supported,
     silenceThresholdRms: silenceThresholdRms,
+    clock: clock,
   );
 }
 
@@ -52,12 +56,14 @@ class RecordVoiceRecorder implements VoiceRecorder {
   RecordVoiceRecorder({
     required this.supported,
     required this.silenceThresholdRms,
+    this.clock = const SystemAppClock(),
   });
 
   @override
   final bool supported;
   @override
   final double? silenceThresholdRms;
+  final AppClock clock;
   final AudioRecorder _recorder = AudioRecorder();
   final StreamController<double> _amplitudeController =
       StreamController<double>.broadcast();
@@ -106,7 +112,7 @@ class RecordVoiceRecorder implements VoiceRecorder {
       final directory = await getTemporaryDirectory();
       final path =
           '${directory.path}/overseer-dictation-'
-          '${DateTime.now().microsecondsSinceEpoch}.m4a';
+          '${clock.now().microsecondsSinceEpoch}.m4a';
       _linearAmplitudeSamples.clear();
       _interruptionSubscription = session.interruptionEventStream.listen((
         event,

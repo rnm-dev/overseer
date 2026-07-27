@@ -10,6 +10,7 @@ import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/live/active_sessions.dart';
 import '../../../core/live/presence.dart';
 import '../../../core/config/app_config.dart';
 import '../../fleet/application/fleet_controller.dart';
@@ -17,6 +18,7 @@ import '../../fleet/application/fleet_live_service.dart';
 import '../../../shared/design/colors.dart';
 import '../../../shared/design/motion.dart';
 import '../../../shared/design/typography.dart';
+import '../../../shared/models/ai_capabilities.dart';
 import '../../../shared/widgets/app_button.dart';
 import '../../../shared/widgets/app_bottom_sheet.dart';
 import '../../../shared/widgets/app_navigation_bar.dart';
@@ -303,9 +305,21 @@ class _SessionDetailPageState extends _SessionDetailAttachmentHost
               ),
             ),
           );
-    final reportedRunning =
-        transcript?.value?.isRunning ??
-        (details?.status == 'running' || (currentSession?.isRunning ?? false));
+    final activeWorkspace = currentSession == null
+        ? null
+        : ref.watch(
+            activeSessionsProvider.select(
+              (state) => state.forWorkspace(workspaceId),
+            ),
+          );
+    final reportedRunning = currentSession == null
+        ? false
+        : activeWorkspace?.contains(
+                peonId: peonId,
+                sessionId: currentSession.sessionId,
+              ) ??
+              transcript?.value?.isRunning ??
+              (details?.status == 'running' || currentSession.isRunning);
     final isRunning =
         (reportedRunning || (composerState?.queue.isNotEmpty ?? false)) &&
         _locallyStoppedSessionId != currentSession?.sessionId;
@@ -345,27 +359,23 @@ class _SessionDetailPageState extends _SessionDetailAttachmentHost
                 fit: StackFit.expand,
                 children: [
                   if (isNewSession)
-                    Padding(
-                      padding: EdgeInsets.only(bottom: _composerHeight),
-                      child: _NewSessionBody(
-                        projects: projects!,
-                        selectedProjectKey: _selectedProjectKey,
-                        onProjectSelected: (projectKey) {
-                          if (_startingSession ||
-                              _selectedProjectKey == projectKey) {
-                            return;
-                          }
-                          _resetSubmissionIdentity();
-                          setState(() => _selectedProjectKey = projectKey);
-                        },
-                        onRetry: () => ref
-                            .read(
-                              projectsControllerProvider(
-                                projectsScope!,
-                              ).notifier,
-                            )
-                            .refresh(),
-                      ),
+                    _NewSessionBody(
+                      projects: projects!,
+                      selectedProjectKey: _selectedProjectKey,
+                      bottomPadding: _composerHeight,
+                      onProjectSelected: (projectKey) {
+                        if (_startingSession ||
+                            _selectedProjectKey == projectKey) {
+                          return;
+                        }
+                        _resetSubmissionIdentity();
+                        setState(() => _selectedProjectKey = projectKey);
+                      },
+                      onRetry: () => ref
+                          .read(
+                            projectsControllerProvider(projectsScope!).notifier,
+                          )
+                          .refresh(),
                     )
                   else
                     _TranscriptBody(
@@ -902,12 +912,14 @@ class _NewSessionBody extends StatelessWidget {
   const _NewSessionBody({
     required this.projects,
     required this.selectedProjectKey,
+    required this.bottomPadding,
     required this.onProjectSelected,
     required this.onRetry,
   });
 
   final AsyncValue<ProjectsState> projects;
   final String? selectedProjectKey;
+  final double bottomPadding;
   final ValueChanged<String> onProjectSelected;
   final Future<void> Function() onRetry;
 
@@ -916,10 +928,11 @@ class _NewSessionBody extends StatelessWidget {
     return LayoutBuilder(
       key: const Key('new-session-project-selection'),
       builder: (context, constraints) => SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(28, 32, 28, 24),
+        key: const Key('new-session-project-scroll'),
+        padding: EdgeInsets.fromLTRB(28, 32, 28, 24 + bottomPadding),
         child: ConstrainedBox(
           constraints: BoxConstraints(
-            minHeight: math.max(0, constraints.maxHeight - 56),
+            minHeight: math.max(0, constraints.maxHeight - 56 - bottomPadding),
           ),
           child: Center(
             child: ConstrainedBox(

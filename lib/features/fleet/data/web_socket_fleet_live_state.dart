@@ -5,8 +5,8 @@ class _WorkspaceSocket {
 
   WebSocketChannel? channel;
   StreamSubscription<Object?>? subscription;
-  Timer? heartbeat;
-  Timer? retryTimer;
+  ScheduledTask? heartbeat;
+  ScheduledTask? retryTimer;
   DateTime lastReceivedAt = DateTime.fromMillisecondsSinceEpoch(0);
   int cursor;
   Future<void> messageQueue = Future.value();
@@ -38,7 +38,7 @@ class _TailHandler {
   final Future<void> Function(TranscriptTailFrame frame) onFrame;
   String? lastEventId;
   int attempt = 0;
-  Timer? retryTimer;
+  ScheduledTask? retryTimer;
 }
 
 class _SessionState {

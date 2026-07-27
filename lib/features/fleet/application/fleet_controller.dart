@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/diagnostics/app_diagnostics.dart';
 import '../../../core/live/active_sessions.dart';
 import '../../../core/live/live_projection_sink.dart';
 import '../../../core/live/presence.dart';
@@ -18,6 +19,9 @@ final fleetRepositoryProvider = Provider<FleetRepository>(
 
 final fleetLiveServiceProvider = Provider<FleetLiveService?>((ref) => null);
 final liveProjectionSinkProvider = Provider<LiveProjectionSink?>((ref) => null);
+final attentionProjectionSinkProvider = Provider<AttentionProjectionSink?>(
+  (ref) => null,
+);
 final projectLiveProjectionSinkProvider = Provider<LiveProjectionSink?>(
   (ref) => null,
 );
@@ -47,11 +51,23 @@ class FleetController extends AsyncNotifier<List<WorkspaceFleet>> {
       ref
           .read(workspaceConnectionRecorderProvider)
           .recordWorkspaceIds(fleet.map((item) => item.workspace.id))
-          .catchError((_) {}),
+          .catchError((error) {
+            ref
+                .read(appDiagnosticsProvider)
+                .record(
+                  AppDiagnosticEvent(
+                    name: 'workspace.connection_record',
+                    level: AppDiagnosticLevel.warning,
+                    state: 'failed',
+                    errorType: error.runtimeType.toString(),
+                  ),
+                );
+          }),
     );
     final live = ref.read(fleetLiveServiceProvider);
     if (live != null) {
       final sink = ref.read(liveProjectionSinkProvider);
+      final attentionSink = ref.read(attentionProjectionSinkProvider);
       _live = live;
       _liveSink = sink;
       final projectSink = ref.read(projectLiveProjectionSinkProvider);
@@ -67,6 +83,26 @@ class FleetController extends AsyncNotifier<List<WorkspaceFleet>> {
                 workspaceId: await sink.cursorFor(workspaceId),
             };
       ref.onDispose(() => unawaited(live.stop()));
+      final attentionLive = live is AttentionFleetLiveService
+          ? live as AttentionFleetLiveService
+          : null;
+      if (attentionLive != null) {
+        attentionLive.setAttentionHandler((
+          workspaceId,
+          cursor,
+          attention,
+        ) async {
+          if (attentionSink == null) {
+            await sink?.advanceCursor(workspaceId: workspaceId, cursor: cursor);
+            return;
+          }
+          await attentionSink.applyAttentionProjection(
+            workspaceId: workspaceId,
+            cursor: cursor,
+            projection: attention,
+          );
+        });
+      }
       unawaited(
         live.connect(
           workspaceIds: workspaceIds,
@@ -116,7 +152,22 @@ class FleetController extends AsyncNotifier<List<WorkspaceFleet>> {
     });
     ref.onDispose(() => unawaited(subscription.cancel()));
     if (cached.isEmpty) return repository.refreshFleet();
-    unawaited(repository.refreshFleet().catchError((_) => cached));
+    unawaited(
+      repository.refreshFleet().catchError((error) {
+        ref
+            .read(appDiagnosticsProvider)
+            .record(
+              AppDiagnosticEvent(
+                name: 'workspace.refresh',
+                level: AppDiagnosticLevel.warning,
+                state: 'failed',
+                outcome: 'cached',
+                errorType: error.runtimeType.toString(),
+              ),
+            );
+        return cached;
+      }),
+    );
     return cached;
   }
 
@@ -128,6 +179,10 @@ class FleetController extends AsyncNotifier<List<WorkspaceFleet>> {
         : null;
     if (reconciler == null) return;
     final workspaceIds = fleet.map((item) => item.workspace.id).toList();
+    final diagnostics = ref.read(appDiagnosticsProvider);
+    diagnostics.record(
+      const AppDiagnosticEvent(name: 'workspace.reconcile', state: 'scheduled'),
+    );
     _liveReconciliation = _liveReconciliation
         .then((_) async {
           final sink = _liveSink;
@@ -141,8 +196,23 @@ class FleetController extends AsyncNotifier<List<WorkspaceFleet>> {
             workspaceIds: workspaceIds,
             initialCursors: cursors,
           );
+          diagnostics.record(
+            const AppDiagnosticEvent(
+              name: 'workspace.reconcile',
+              state: 'complete',
+            ),
+          );
         })
-        .catchError((_) {});
+        .catchError((error) {
+          diagnostics.record(
+            AppDiagnosticEvent(
+              name: 'workspace.reconcile',
+              level: AppDiagnosticLevel.warning,
+              state: 'failed',
+              errorType: error.runtimeType.toString(),
+            ),
+          );
+        });
   }
 
   Future<void> refresh() async {
@@ -190,6 +260,7 @@ class FleetController extends AsyncNotifier<List<WorkspaceFleet>> {
                     lastSeen: peon.lastSeen,
                     capabilities: peon.capabilities,
                     load: peon.load,
+                    recentSessions: peon.recentSessions,
                   ),
             ],
           ),
@@ -228,6 +299,7 @@ class FleetController extends AsyncNotifier<List<WorkspaceFleet>> {
                       activeSessions: activeSessions,
                       paused: peon.load?.paused,
                     ),
+                    recentSessions: peon.recentSessions,
                   ),
             ],
           ),

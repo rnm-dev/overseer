@@ -193,6 +193,47 @@ class $CachedSessionsTable extends CachedSessions
         requiredDuringInsert: false,
         defaultValue: const Constant(0),
       );
+  static const VerificationMeta _operatorRequestedMeta = const VerificationMeta(
+    'operatorRequested',
+  );
+  @override
+  late final GeneratedColumn<bool> operatorRequested = GeneratedColumn<bool>(
+    'operator_requested',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("operator_requested" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _hasOutstandingRequestMeta =
+      const VerificationMeta('hasOutstandingRequest');
+  @override
+  late final GeneratedColumn<bool> hasOutstandingRequest =
+      GeneratedColumn<bool>(
+        'has_outstanding_request',
+        aliasedName,
+        false,
+        type: DriftSqlType.bool,
+        requiredDuringInsert: false,
+        defaultConstraints: GeneratedColumn.constraintIsAlways(
+          'CHECK ("has_outstanding_request" IN (0, 1))',
+        ),
+        defaultValue: const Constant(false),
+      );
+  static const VerificationMeta _lastRequestedAtMeta = const VerificationMeta(
+    'lastRequestedAt',
+  );
+  @override
+  late final GeneratedColumn<double> lastRequestedAt = GeneratedColumn<double>(
+    'last_requested_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     workspaceId,
@@ -212,6 +253,9 @@ class $CachedSessionsTable extends CachedSessions
     syncedAt,
     attentionUnread,
     attentionUpdatedAt,
+    operatorRequested,
+    hasOutstandingRequest,
+    lastRequestedAt,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -353,6 +397,33 @@ class $CachedSessionsTable extends CachedSessions
         ),
       );
     }
+    if (data.containsKey('operator_requested')) {
+      context.handle(
+        _operatorRequestedMeta,
+        operatorRequested.isAcceptableOrUnknown(
+          data['operator_requested']!,
+          _operatorRequestedMeta,
+        ),
+      );
+    }
+    if (data.containsKey('has_outstanding_request')) {
+      context.handle(
+        _hasOutstandingRequestMeta,
+        hasOutstandingRequest.isAcceptableOrUnknown(
+          data['has_outstanding_request']!,
+          _hasOutstandingRequestMeta,
+        ),
+      );
+    }
+    if (data.containsKey('last_requested_at')) {
+      context.handle(
+        _lastRequestedAtMeta,
+        lastRequestedAt.isAcceptableOrUnknown(
+          data['last_requested_at']!,
+          _lastRequestedAtMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -430,6 +501,18 @@ class $CachedSessionsTable extends CachedSessions
         DriftSqlType.double,
         data['${effectivePrefix}attention_updated_at'],
       )!,
+      operatorRequested: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}operator_requested'],
+      )!,
+      hasOutstandingRequest: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}has_outstanding_request'],
+      )!,
+      lastRequestedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}last_requested_at'],
+      ),
     );
   }
 
@@ -457,6 +540,9 @@ class CachedSession extends DataClass implements Insertable<CachedSession> {
   final double syncedAt;
   final bool attentionUnread;
   final double attentionUpdatedAt;
+  final bool operatorRequested;
+  final bool hasOutstandingRequest;
+  final double? lastRequestedAt;
   const CachedSession({
     required this.workspaceId,
     required this.peonId,
@@ -475,6 +561,9 @@ class CachedSession extends DataClass implements Insertable<CachedSession> {
     required this.syncedAt,
     required this.attentionUnread,
     required this.attentionUpdatedAt,
+    required this.operatorRequested,
+    required this.hasOutstandingRequest,
+    this.lastRequestedAt,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -518,6 +607,11 @@ class CachedSession extends DataClass implements Insertable<CachedSession> {
     map['synced_at'] = Variable<double>(syncedAt);
     map['attention_unread'] = Variable<bool>(attentionUnread);
     map['attention_updated_at'] = Variable<double>(attentionUpdatedAt);
+    map['operator_requested'] = Variable<bool>(operatorRequested);
+    map['has_outstanding_request'] = Variable<bool>(hasOutstandingRequest);
+    if (!nullToAbsent || lastRequestedAt != null) {
+      map['last_requested_at'] = Variable<double>(lastRequestedAt);
+    }
     return map;
   }
 
@@ -562,6 +656,11 @@ class CachedSession extends DataClass implements Insertable<CachedSession> {
       syncedAt: Value(syncedAt),
       attentionUnread: Value(attentionUnread),
       attentionUpdatedAt: Value(attentionUpdatedAt),
+      operatorRequested: Value(operatorRequested),
+      hasOutstandingRequest: Value(hasOutstandingRequest),
+      lastRequestedAt: lastRequestedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastRequestedAt),
     );
   }
 
@@ -590,6 +689,11 @@ class CachedSession extends DataClass implements Insertable<CachedSession> {
       attentionUpdatedAt: serializer.fromJson<double>(
         json['attentionUpdatedAt'],
       ),
+      operatorRequested: serializer.fromJson<bool>(json['operatorRequested']),
+      hasOutstandingRequest: serializer.fromJson<bool>(
+        json['hasOutstandingRequest'],
+      ),
+      lastRequestedAt: serializer.fromJson<double?>(json['lastRequestedAt']),
     );
   }
   @override
@@ -613,6 +717,9 @@ class CachedSession extends DataClass implements Insertable<CachedSession> {
       'syncedAt': serializer.toJson<double>(syncedAt),
       'attentionUnread': serializer.toJson<bool>(attentionUnread),
       'attentionUpdatedAt': serializer.toJson<double>(attentionUpdatedAt),
+      'operatorRequested': serializer.toJson<bool>(operatorRequested),
+      'hasOutstandingRequest': serializer.toJson<bool>(hasOutstandingRequest),
+      'lastRequestedAt': serializer.toJson<double?>(lastRequestedAt),
     };
   }
 
@@ -634,6 +741,9 @@ class CachedSession extends DataClass implements Insertable<CachedSession> {
     double? syncedAt,
     bool? attentionUnread,
     double? attentionUpdatedAt,
+    bool? operatorRequested,
+    bool? hasOutstandingRequest,
+    Value<double?> lastRequestedAt = const Value.absent(),
   }) => CachedSession(
     workspaceId: workspaceId ?? this.workspaceId,
     peonId: peonId ?? this.peonId,
@@ -656,6 +766,11 @@ class CachedSession extends DataClass implements Insertable<CachedSession> {
     syncedAt: syncedAt ?? this.syncedAt,
     attentionUnread: attentionUnread ?? this.attentionUnread,
     attentionUpdatedAt: attentionUpdatedAt ?? this.attentionUpdatedAt,
+    operatorRequested: operatorRequested ?? this.operatorRequested,
+    hasOutstandingRequest: hasOutstandingRequest ?? this.hasOutstandingRequest,
+    lastRequestedAt: lastRequestedAt.present
+        ? lastRequestedAt.value
+        : this.lastRequestedAt,
   );
   CachedSession copyWithCompanion(CachedSessionsCompanion data) {
     return CachedSession(
@@ -690,6 +805,15 @@ class CachedSession extends DataClass implements Insertable<CachedSession> {
       attentionUpdatedAt: data.attentionUpdatedAt.present
           ? data.attentionUpdatedAt.value
           : this.attentionUpdatedAt,
+      operatorRequested: data.operatorRequested.present
+          ? data.operatorRequested.value
+          : this.operatorRequested,
+      hasOutstandingRequest: data.hasOutstandingRequest.present
+          ? data.hasOutstandingRequest.value
+          : this.hasOutstandingRequest,
+      lastRequestedAt: data.lastRequestedAt.present
+          ? data.lastRequestedAt.value
+          : this.lastRequestedAt,
     );
   }
 
@@ -712,7 +836,10 @@ class CachedSession extends DataClass implements Insertable<CachedSession> {
           ..write('lastActivityAt: $lastActivityAt, ')
           ..write('syncedAt: $syncedAt, ')
           ..write('attentionUnread: $attentionUnread, ')
-          ..write('attentionUpdatedAt: $attentionUpdatedAt')
+          ..write('attentionUpdatedAt: $attentionUpdatedAt, ')
+          ..write('operatorRequested: $operatorRequested, ')
+          ..write('hasOutstandingRequest: $hasOutstandingRequest, ')
+          ..write('lastRequestedAt: $lastRequestedAt')
           ..write(')'))
         .toString();
   }
@@ -736,6 +863,9 @@ class CachedSession extends DataClass implements Insertable<CachedSession> {
     syncedAt,
     attentionUnread,
     attentionUpdatedAt,
+    operatorRequested,
+    hasOutstandingRequest,
+    lastRequestedAt,
   );
   @override
   bool operator ==(Object other) =>
@@ -757,7 +887,10 @@ class CachedSession extends DataClass implements Insertable<CachedSession> {
           other.lastActivityAt == this.lastActivityAt &&
           other.syncedAt == this.syncedAt &&
           other.attentionUnread == this.attentionUnread &&
-          other.attentionUpdatedAt == this.attentionUpdatedAt);
+          other.attentionUpdatedAt == this.attentionUpdatedAt &&
+          other.operatorRequested == this.operatorRequested &&
+          other.hasOutstandingRequest == this.hasOutstandingRequest &&
+          other.lastRequestedAt == this.lastRequestedAt);
 }
 
 class CachedSessionsCompanion extends UpdateCompanion<CachedSession> {
@@ -778,6 +911,9 @@ class CachedSessionsCompanion extends UpdateCompanion<CachedSession> {
   final Value<double> syncedAt;
   final Value<bool> attentionUnread;
   final Value<double> attentionUpdatedAt;
+  final Value<bool> operatorRequested;
+  final Value<bool> hasOutstandingRequest;
+  final Value<double?> lastRequestedAt;
   final Value<int> rowid;
   const CachedSessionsCompanion({
     this.workspaceId = const Value.absent(),
@@ -797,6 +933,9 @@ class CachedSessionsCompanion extends UpdateCompanion<CachedSession> {
     this.syncedAt = const Value.absent(),
     this.attentionUnread = const Value.absent(),
     this.attentionUpdatedAt = const Value.absent(),
+    this.operatorRequested = const Value.absent(),
+    this.hasOutstandingRequest = const Value.absent(),
+    this.lastRequestedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   CachedSessionsCompanion.insert({
@@ -817,6 +956,9 @@ class CachedSessionsCompanion extends UpdateCompanion<CachedSession> {
     required double syncedAt,
     this.attentionUnread = const Value.absent(),
     this.attentionUpdatedAt = const Value.absent(),
+    this.operatorRequested = const Value.absent(),
+    this.hasOutstandingRequest = const Value.absent(),
+    this.lastRequestedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : workspaceId = Value(workspaceId),
        peonId = Value(peonId),
@@ -840,6 +982,9 @@ class CachedSessionsCompanion extends UpdateCompanion<CachedSession> {
     Expression<double>? syncedAt,
     Expression<bool>? attentionUnread,
     Expression<double>? attentionUpdatedAt,
+    Expression<bool>? operatorRequested,
+    Expression<bool>? hasOutstandingRequest,
+    Expression<double>? lastRequestedAt,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -861,6 +1006,10 @@ class CachedSessionsCompanion extends UpdateCompanion<CachedSession> {
       if (attentionUnread != null) 'attention_unread': attentionUnread,
       if (attentionUpdatedAt != null)
         'attention_updated_at': attentionUpdatedAt,
+      if (operatorRequested != null) 'operator_requested': operatorRequested,
+      if (hasOutstandingRequest != null)
+        'has_outstanding_request': hasOutstandingRequest,
+      if (lastRequestedAt != null) 'last_requested_at': lastRequestedAt,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -883,6 +1032,9 @@ class CachedSessionsCompanion extends UpdateCompanion<CachedSession> {
     Value<double>? syncedAt,
     Value<bool>? attentionUnread,
     Value<double>? attentionUpdatedAt,
+    Value<bool>? operatorRequested,
+    Value<bool>? hasOutstandingRequest,
+    Value<double?>? lastRequestedAt,
     Value<int>? rowid,
   }) {
     return CachedSessionsCompanion(
@@ -903,6 +1055,10 @@ class CachedSessionsCompanion extends UpdateCompanion<CachedSession> {
       syncedAt: syncedAt ?? this.syncedAt,
       attentionUnread: attentionUnread ?? this.attentionUnread,
       attentionUpdatedAt: attentionUpdatedAt ?? this.attentionUpdatedAt,
+      operatorRequested: operatorRequested ?? this.operatorRequested,
+      hasOutstandingRequest:
+          hasOutstandingRequest ?? this.hasOutstandingRequest,
+      lastRequestedAt: lastRequestedAt ?? this.lastRequestedAt,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -961,6 +1117,17 @@ class CachedSessionsCompanion extends UpdateCompanion<CachedSession> {
     if (attentionUpdatedAt.present) {
       map['attention_updated_at'] = Variable<double>(attentionUpdatedAt.value);
     }
+    if (operatorRequested.present) {
+      map['operator_requested'] = Variable<bool>(operatorRequested.value);
+    }
+    if (hasOutstandingRequest.present) {
+      map['has_outstanding_request'] = Variable<bool>(
+        hasOutstandingRequest.value,
+      );
+    }
+    if (lastRequestedAt.present) {
+      map['last_requested_at'] = Variable<double>(lastRequestedAt.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -987,6 +1154,9 @@ class CachedSessionsCompanion extends UpdateCompanion<CachedSession> {
           ..write('syncedAt: $syncedAt, ')
           ..write('attentionUnread: $attentionUnread, ')
           ..write('attentionUpdatedAt: $attentionUpdatedAt, ')
+          ..write('operatorRequested: $operatorRequested, ')
+          ..write('hasOutstandingRequest: $hasOutstandingRequest, ')
+          ..write('lastRequestedAt: $lastRequestedAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -6390,6 +6560,9 @@ typedef $$CachedSessionsTableCreateCompanionBuilder =
       required double syncedAt,
       Value<bool> attentionUnread,
       Value<double> attentionUpdatedAt,
+      Value<bool> operatorRequested,
+      Value<bool> hasOutstandingRequest,
+      Value<double?> lastRequestedAt,
       Value<int> rowid,
     });
 typedef $$CachedSessionsTableUpdateCompanionBuilder =
@@ -6411,6 +6584,9 @@ typedef $$CachedSessionsTableUpdateCompanionBuilder =
       Value<double> syncedAt,
       Value<bool> attentionUnread,
       Value<double> attentionUpdatedAt,
+      Value<bool> operatorRequested,
+      Value<bool> hasOutstandingRequest,
+      Value<double?> lastRequestedAt,
       Value<int> rowid,
     });
 
@@ -6505,6 +6681,21 @@ class $$CachedSessionsTableFilterComposer
 
   ColumnFilters<double> get attentionUpdatedAt => $composableBuilder(
     column: $table.attentionUpdatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get operatorRequested => $composableBuilder(
+    column: $table.operatorRequested,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get hasOutstandingRequest => $composableBuilder(
+    column: $table.hasOutstandingRequest,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get lastRequestedAt => $composableBuilder(
+    column: $table.lastRequestedAt,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -6602,6 +6793,21 @@ class $$CachedSessionsTableOrderingComposer
     column: $table.attentionUpdatedAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<bool> get operatorRequested => $composableBuilder(
+    column: $table.operatorRequested,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get hasOutstandingRequest => $composableBuilder(
+    column: $table.hasOutstandingRequest,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get lastRequestedAt => $composableBuilder(
+    column: $table.lastRequestedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$CachedSessionsTableAnnotationComposer
@@ -6677,6 +6883,21 @@ class $$CachedSessionsTableAnnotationComposer
     column: $table.attentionUpdatedAt,
     builder: (column) => column,
   );
+
+  GeneratedColumn<bool> get operatorRequested => $composableBuilder(
+    column: $table.operatorRequested,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get hasOutstandingRequest => $composableBuilder(
+    column: $table.hasOutstandingRequest,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<double> get lastRequestedAt => $composableBuilder(
+    column: $table.lastRequestedAt,
+    builder: (column) => column,
+  );
 }
 
 class $$CachedSessionsTableTableManager
@@ -6729,6 +6950,9 @@ class $$CachedSessionsTableTableManager
                 Value<double> syncedAt = const Value.absent(),
                 Value<bool> attentionUnread = const Value.absent(),
                 Value<double> attentionUpdatedAt = const Value.absent(),
+                Value<bool> operatorRequested = const Value.absent(),
+                Value<bool> hasOutstandingRequest = const Value.absent(),
+                Value<double?> lastRequestedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => CachedSessionsCompanion(
                 workspaceId: workspaceId,
@@ -6748,6 +6972,9 @@ class $$CachedSessionsTableTableManager
                 syncedAt: syncedAt,
                 attentionUnread: attentionUnread,
                 attentionUpdatedAt: attentionUpdatedAt,
+                operatorRequested: operatorRequested,
+                hasOutstandingRequest: hasOutstandingRequest,
+                lastRequestedAt: lastRequestedAt,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -6769,6 +6996,9 @@ class $$CachedSessionsTableTableManager
                 required double syncedAt,
                 Value<bool> attentionUnread = const Value.absent(),
                 Value<double> attentionUpdatedAt = const Value.absent(),
+                Value<bool> operatorRequested = const Value.absent(),
+                Value<bool> hasOutstandingRequest = const Value.absent(),
+                Value<double?> lastRequestedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => CachedSessionsCompanion.insert(
                 workspaceId: workspaceId,
@@ -6788,6 +7018,9 @@ class $$CachedSessionsTableTableManager
                 syncedAt: syncedAt,
                 attentionUnread: attentionUnread,
                 attentionUpdatedAt: attentionUpdatedAt,
+                operatorRequested: operatorRequested,
+                hasOutstandingRequest: hasOutstandingRequest,
+                lastRequestedAt: lastRequestedAt,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

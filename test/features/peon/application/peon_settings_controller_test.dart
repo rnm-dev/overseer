@@ -3,7 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:overseer_mobile/features/peon/application/peon_settings_controller.dart';
 import 'package:overseer_mobile/features/peon/domain/peon_settings_models.dart';
 import 'package:overseer_mobile/features/peon/domain/peon_settings_repository.dart';
-import 'package:overseer_mobile/features/sessions/domain/followup_repository.dart';
+import 'package:overseer_mobile/shared/models/ai_capabilities.dart';
 
 void main() {
   const scope = PeonSettingsScope(
