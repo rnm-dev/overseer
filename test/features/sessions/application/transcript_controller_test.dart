@@ -232,6 +232,90 @@ void main() {
     expect(sounds.cues, [(SoundPack.peon, WorkSoundCue.complete)]);
   });
 
+  test(
+    'keeps replayed unread completion silent when opening session',
+    () async {
+      final latest = Completer<TranscriptPage>();
+      final repository = _FakeSessionRepository(
+        cached: TranscriptCache(
+          events: [
+            TranscriptEvent(
+              eventId: 'cached-1',
+              orderKey: 1,
+              payload: {'type': 'assistant'},
+            ),
+          ],
+          hasOlder: false,
+        ),
+        latest: latest.future,
+      );
+      final live = _FakeTranscriptLiveService();
+      final sounds = _RecordingWorkSoundPlayer();
+      final container = ProviderContainer(
+        overrides: [
+          sessionRepositoryProvider.overrideWithValue(repository),
+          transcriptLiveServiceProvider.overrideWithValue(live),
+          workSoundPlayerProvider.overrideWithValue(sounds),
+        ],
+      );
+      addTearDown(container.dispose);
+      final subscription = container.listen(
+        transcriptControllerProvider(scope),
+        (_, _) {},
+        fireImmediately: true,
+      );
+      addTearDown(subscription.close);
+
+      await container.read(transcriptControllerProvider(scope).future);
+      while (live.onFrame == null) {
+        await Future<void>.delayed(Duration.zero);
+      }
+
+      await live.onFrame!(
+        const TranscriptTailFrame.event(
+          eventId: 'unread-result',
+          data: '{"type":"result","is_error":false}',
+        ),
+      );
+      expect(sounds.cues, isEmpty);
+
+      latest.complete(
+        TranscriptPage(
+          events: [
+            TranscriptEvent(
+              eventId: 'unread-result',
+              orderKey: 2,
+              payload: {'type': 'result', 'is_error': false},
+            ),
+          ],
+          nextCursor: null,
+          hasMore: false,
+          insertedCount: 1,
+        ),
+      );
+      while (!repository.latestCompleted) {
+        await Future<void>.delayed(Duration.zero);
+      }
+      expect(sounds.cues, isEmpty);
+
+      await live.onFrame!(
+        const TranscriptTailFrame.event(
+          eventId: 'unread-result',
+          data: '{"type":"result","is_error":false}',
+        ),
+      );
+      expect(sounds.cues, isEmpty);
+
+      await live.onFrame!(
+        const TranscriptTailFrame.event(
+          eventId: 'fresh-result',
+          data: '{"type":"result","is_error":false}',
+        ),
+      );
+      expect(sounds.cues, [(SoundPack.peon, WorkSoundCue.complete)]);
+    },
+  );
+
   test('manual stop suppresses its completion result sound', () async {
     final live = _FakeTranscriptLiveService();
     final sounds = _RecordingWorkSoundPlayer();

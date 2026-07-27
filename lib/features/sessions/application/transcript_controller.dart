@@ -102,6 +102,11 @@ class TranscriptController extends AsyncNotifier<TranscriptState> {
   bool _reconciling = false;
   bool _running;
   bool _suppressNextCompletionSound = false;
+  bool _initialSoundSnapshotReceived = false;
+  bool _initialSoundCatchUpComplete = false;
+  String? _initialTailBoundary;
+  String? _initialSoundBoundary;
+  final List<(String, Map<String, dynamic>)> _pendingInitialSounds = [];
   final Set<String> _soundedEventIds = {};
   late final FollowupScope _followupScope = FollowupScope(
     workspaceId: scope.workspaceId,
@@ -145,6 +150,7 @@ class TranscriptController extends AsyncNotifier<TranscriptState> {
     ref.listen(sessionQueueChangeProvider(_followupScope), (_, _) {});
     Future<void>.microtask(() async {
       final cachedBoundary = cached.events.lastOrNull?.eventId;
+      _initialTailBoundary = cachedBoundary;
       if (cachedBoundary?.isNotEmpty == true) {
         _ensureTailSubscribed(cachedBoundary);
       }
@@ -185,6 +191,7 @@ class TranscriptController extends AsyncNotifier<TranscriptState> {
         _running = runningSignal ?? _running;
       }
       _nextCursor = page.nextCursor;
+      _establishInitialSoundBoundary(page.events.lastOrNull?.eventId);
       _ensureTailSubscribed(page.events.lastOrNull?.eventId);
       _tailUnhealthy = false;
       _lastTailActivity = DateTime.now();
@@ -279,7 +286,7 @@ class TranscriptController extends AsyncNotifier<TranscriptState> {
           payload: payload,
         );
     if (!ref.mounted) return;
-    _handleSound(eventId, payload);
+    _handleTailSound(eventId, payload);
     if (payload['type'] == 'result') {
       if (!_queueHasPending) {
         _setRunning(false);
@@ -294,6 +301,68 @@ class TranscriptController extends AsyncNotifier<TranscriptState> {
     ref
         .read(sessionQueueChangeProvider(_followupScope).notifier)
         .notifyChanged();
+  }
+
+  void _establishInitialSoundBoundary(String? eventId) {
+    if (_initialSoundSnapshotReceived) return;
+    _initialSoundSnapshotReceived = true;
+    _initialSoundBoundary = eventId;
+
+    if (!_tailSubscribed || eventId == _initialTailBoundary) {
+      _initialSoundCatchUpComplete = true;
+      final pending = List.of(_pendingInitialSounds);
+      _pendingInitialSounds.clear();
+      for (final (pendingId, pendingPayload) in pending) {
+        _handleSound(pendingId, pendingPayload);
+      }
+      return;
+    }
+    if (eventId == null) {
+      _initialSoundCatchUpComplete = true;
+      _soundedEventIds.addAll(
+        _pendingInitialSounds.map((pending) => pending.$1),
+      );
+      _pendingInitialSounds.clear();
+      return;
+    }
+
+    final boundaryIndex = _pendingInitialSounds.lastIndexWhere(
+      (pending) => pending.$1 == eventId,
+    );
+    if (boundaryIndex < 0) {
+      _soundedEventIds.addAll(
+        _pendingInitialSounds.map((pending) => pending.$1),
+      );
+      _pendingInitialSounds.clear();
+      return;
+    }
+
+    _initialSoundCatchUpComplete = true;
+    _soundedEventIds.addAll(
+      _pendingInitialSounds
+          .take(boundaryIndex + 1)
+          .map((pending) => pending.$1),
+    );
+    final fresh = _pendingInitialSounds.skip(boundaryIndex + 1).toList();
+    _pendingInitialSounds.clear();
+    for (final (pendingId, pendingPayload) in fresh) {
+      _handleSound(pendingId, pendingPayload);
+    }
+  }
+
+  void _handleTailSound(String eventId, Map<String, dynamic> payload) {
+    if (!_initialSoundSnapshotReceived) {
+      _pendingInitialSounds.add((eventId, payload));
+      return;
+    }
+    if (!_initialSoundCatchUpComplete) {
+      _soundedEventIds.add(eventId);
+      if (eventId == _initialSoundBoundary) {
+        _initialSoundCatchUpComplete = true;
+      }
+      return;
+    }
+    _handleSound(eventId, payload);
   }
 
   void _handleSound(String eventId, Map<String, dynamic> payload) {

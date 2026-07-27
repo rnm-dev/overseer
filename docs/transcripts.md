@@ -99,6 +99,9 @@ flattens them into the same semantic rows as the web client:
   consecutively. Cached history, user messages, terminal results, and duplicate
   event IDs stay silent; leaving the transcript or changing packs stops the
   current clip.
+- Completion cues play only for successful results received after the mounted
+  transcript has caught up to its opening snapshot. Tail events replayed while
+  opening a session, including unread results, remain silent.
 
 Transcript attachment pills with a committed `path` open a dedicated
 full-screen attachment detail surface. Transcript `preview` cards open the
