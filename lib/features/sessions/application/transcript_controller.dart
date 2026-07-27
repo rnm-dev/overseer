@@ -101,6 +101,7 @@ class TranscriptController extends AsyncNotifier<TranscriptState> {
   bool _tailSubscribed = false;
   bool _reconciling = false;
   bool _refreshingLatest = false;
+  bool _refreshLatestAgain = false;
   bool _running;
   bool _suppressNextCompletionSound = false;
   bool _initialSoundSnapshotReceived = false;
@@ -171,6 +172,14 @@ class TranscriptController extends AsyncNotifier<TranscriptState> {
 
   Future<void> resumeFromBackground() => _refresh(reportFailure: false);
 
+  Future<void> refreshAfterSubmission() async {
+    if (_refreshingLatest) {
+      _refreshLatestAgain = true;
+      return;
+    }
+    await _refresh(reportFailure: false);
+  }
+
   Future<void> _refresh({required bool reportFailure}) async {
     if (!ref.mounted) return;
     final current = state.value;
@@ -223,6 +232,10 @@ class TranscriptController extends AsyncNotifier<TranscriptState> {
       );
     } finally {
       _refreshingLatest = false;
+      if (_refreshLatestAgain && ref.mounted) {
+        _refreshLatestAgain = false;
+        unawaited(_refresh(reportFailure: false));
+      }
     }
   }
 

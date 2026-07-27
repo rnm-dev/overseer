@@ -155,7 +155,8 @@ project detail page preselects that project.
 
 New sessions and follow-ups share the same attachment flow:
 
-- choose files with the system picker or paste clipboard files and images;
+- choose files with the system picker, select images from the photo library,
+  capture a new photo, or paste clipboard files and images;
 - accept up to ten files of 25 MB each;
 - accept Android rich-keyboard images, including URI-only payloads;
 - show removable chips and separate reading, upload, and submission progress;
@@ -186,6 +187,13 @@ server-owned queue endpoint and include the same ID as `commandId`; the
 secondary lightning action also passes `startNow: true`. Overseer durably
 deduplicates that `commandId`, so retrying after a lost response cannot enqueue
 the same turn twice.
+
+After an immediate submission is accepted, the mounted transcript requests a
+fresh authoritative newest page instead of depending solely on the live tail.
+If the opening refresh is still in flight, the post-submit refresh is
+coalesced behind it rather than dropped. This provides an HTTP anti-entropy
+path for a missed or delayed `user_message` socket frame without rendering a
+synthetic local message.
 
 Transient transport errors and HTTP 408, 425, 429, or 5xx responses retain the
 local command for exponential retry. Commands for one session remain FIFO, so

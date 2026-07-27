@@ -40,7 +40,6 @@ credentials are not affected.
 | Firebase push | FCM registration implemented; APNs key required | FCM registration implemented | Not selected | Not selected | Not selected |
 | Foreground notification UI | In-app card | In-app card | Unsupported | Unsupported | Unsupported |
 | Notification/deep-link routing | Peon/session, auth-restored | Peon/session, auth-restored | Push unsupported | Push unsupported | Push unsupported |
-| Running-session system activity | Live Activity (16.2+) | Ongoing notification | No-op | No-op | No-op |
 
 Mobile sign-in begins at the web login page, not directly at GitHub. Each
 flavor keeps one paired origin and callback: dev uses
@@ -148,8 +147,8 @@ targets continue to produce the single production-identity desktop runner.
 
 macOS and iOS use Swift Package Manager. The runners register flavor-specific
 `overseer-dev` and `overseer` URL schemes. Overseer Mobile supports iOS 15.0
-and later; the Live Activity extension remains available on iOS 16.2 and
-later. macOS enables the app sandbox, outbound networking, and Keychain access.
+and later. macOS enables the app sandbox, outbound networking, and Keychain
+access.
 
 ```sh
 flutter build ios --simulator --flavor dev
@@ -158,9 +157,8 @@ flutter build macos --flavor dev
 flutter build macos --flavor prod
 ```
 
-TestFlight builds require the `prod` flavor, App Store signing for both the app
-and its Live Activity extension, and current Apple SDK tooling. Follow the full
-[TestFlight release process](testflight.md).
+TestFlight builds require the `prod` flavor, App Store signing, and current
+Apple SDK tooling. Follow the full [TestFlight release process](testflight.md).
 
 ### Windows
 

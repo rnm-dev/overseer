@@ -313,6 +313,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Add attachments'), findsOneWidget);
+    expect(find.byKey(const Key('session-attachment-gallery')), findsOneWidget);
+    expect(find.text('Photo library'), findsOneWidget);
+    expect(find.byKey(const Key('session-attachment-camera')), findsOneWidget);
+    expect(find.text('Take photo'), findsOneWidget);
     expect(
       find.byKey(const Key('session-attachment-choose-files')),
       findsOneWidget,
@@ -1312,6 +1316,9 @@ class _TestTranscriptController extends TranscriptController {
 
   @override
   Future<void> refresh() async {}
+
+  @override
+  Future<void> refreshAfterSubmission() async {}
 
   @override
   Future<void> loadOlder() async {}

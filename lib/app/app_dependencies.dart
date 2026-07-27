@@ -6,7 +6,6 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:overseer_mobile/app/live_sync_lifecycle.dart';
 import 'package:overseer_mobile/app/push_notification_lifecycle.dart';
-import 'package:overseer_mobile/app/session_activity_lifecycle.dart';
 import 'package:overseer_mobile/app/overseer_connection_authenticator.dart';
 import 'package:overseer_mobile/core/config/app_config.dart';
 import 'package:overseer_mobile/core/config/overseer_connection_store.dart';
@@ -14,7 +13,6 @@ import 'package:overseer_mobile/core/database/app_database.dart';
 import 'package:overseer_mobile/core/diagnostics/app_diagnostics.dart';
 import 'package:overseer_mobile/core/live/live_projection_sink.dart';
 import 'package:overseer_mobile/core/live/transcript_live_service.dart';
-import 'package:overseer_mobile/core/live_activities/session_activity.dart';
 import 'package:overseer_mobile/core/network/overseer_http_client.dart';
 import 'package:overseer_mobile/core/notifications/default_push_notification_service.dart';
 import 'package:overseer_mobile/core/notifications/dio_push_subscription_remote.dart';
@@ -69,7 +67,6 @@ class AppDependencies extends StatelessWidget {
     required this.notificationRouteStore,
     required this.child,
     this.onAuthenticated,
-    this.sessionActivitiesEnabled = true,
   });
 
   final AppConfig config;
@@ -77,7 +74,6 @@ class AppDependencies extends StatelessWidget {
   final NotificationRouteStore notificationRouteStore;
   final Widget child;
   final VoidCallback? onAuthenticated;
-  final bool sessionActivitiesEnabled;
 
   @override
   Widget build(BuildContext context) {
@@ -91,9 +87,6 @@ class AppDependencies extends StatelessWidget {
         overseerServerUrlProvider.overrideWithValue(config.serverUrl),
         appDiagnosticsProvider.overrideWithValue(
           const DebugPrintAppDiagnostics(),
-        ),
-        sessionActivityConnectionIdProvider.overrideWithValue(
-          overseerConnectionStorageId(connection.serverUrl),
         ),
         htmlPreviewLauncherProvider.overrideWithValue(
           !kIsWeb &&
@@ -150,29 +143,6 @@ class AppDependencies extends StatelessWidget {
             FirebasePushMessagingClient(),
             DioPushSubscriptionRemote(apiUrl: config.apiUrl),
             platform,
-          );
-          ref.onDispose(() => unawaited(service.dispose()));
-          return service;
-        }),
-        sessionActivityServiceProvider.overrideWith((ref) {
-          final supported =
-              !kIsWeb &&
-              (defaultTargetPlatform == TargetPlatform.iOS ||
-                  defaultTargetPlatform == TargetPlatform.android);
-          if (!supported) return const NoopSessionActivityService();
-          final service = MethodChannelSessionActivityService();
-          ref.onDispose(() => unawaited(service.dispose()));
-          return service;
-        }),
-        sessionActivityRegistrationProvider.overrideWith((ref) {
-          if (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS) {
-            return const NoopSessionActivityRegistrationService();
-          }
-          final service = DefaultSessionActivityRegistrationService(
-            ref.watch(sessionActivityServiceProvider),
-            DioSessionActivityRegistrationRemote(apiUrl: config.apiUrl),
-            connectionId: overseerConnectionStorageId(connection.serverUrl),
-            diagnostics: ref.watch(appDiagnosticsProvider),
           );
           ref.onDispose(() => unawaited(service.dispose()));
           return service;
@@ -376,17 +346,10 @@ class AppDependencies extends StatelessWidget {
       ],
       child: LiveSyncLifecycle(
         child: PushNotificationLifecycle(
-          child: sessionActivitiesEnabled
-              ? SessionActivityLifecycle(
-                  child: _AuthenticationSuccessListener(
-                    onAuthenticated: onAuthenticated,
-                    child: child,
-                  ),
-                )
-              : _AuthenticationSuccessListener(
-                  onAuthenticated: onAuthenticated,
-                  child: child,
-                ),
+          child: _AuthenticationSuccessListener(
+            onAuthenticated: onAuthenticated,
+            child: child,
+          ),
         ),
       ),
     );

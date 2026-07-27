@@ -77,12 +77,6 @@ sends FCM notification and data payloads through Firebase Admin, retries
 transient failures with exponential backoff, and disables registration tokens
 that Firebase reports as permanently invalid.
 
-On iOS 17.2 and newer, the ActivityKit push-to-start capability can create the
-aggregate Live Activity while the app is terminated once the backend aggregate
-contract is deployed. ActivityKit start and update tokens remain separate from
-the ordinary FCM registration token; see
-[live-activities.md](live-activities.md).
-
 Configure the complete service-account JSON as a deployment secret:
 
 ```sh

@@ -24,9 +24,6 @@ The app supports:
 - Android and iOS push registration, shared foreground notification UI, and
   cached-first Peon/session tap and deep-link routing through connection and
   authentication restoration;
-- iOS and Android running-session system activities. Android background
-  ongoing-session reconciliation awaits an authoritative server data-message
-  contract.
 
 Known platform and deployment limits live with the relevant feature
 documentation instead of in this overview.
@@ -128,8 +125,6 @@ Feature documentation:
 - [ai-stats.md](ai-stats.md): usage, quota, capabilities, and privacy;
 - [presence.md](presence.md): route-scoped operator presence;
 - [push-notifications.md](push-notifications.md): FCM lifecycle and deployment;
-- [live-activities.md](live-activities.md): iOS Live Activities and Android
-  ongoing notifications.
 
 ## Non-negotiable behavior
 

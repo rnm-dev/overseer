@@ -1,9 +1,7 @@
 # TestFlight release
 
 Use the `prod` flavor for every TestFlight build. Its application identifier is
-`org.ovrseer.app`, its Live Activity extension is
-`org.ovrseer.app.liveActivityWidget`, and it connects to
-`https://overseer.rnm.dev`.
+`org.ovrseer.app`, and it connects to `https://overseer.rnm.dev`.
 
 ## Apple prerequisites
 
@@ -12,7 +10,6 @@ Xcode 26 or later and the iOS 26 SDK or later. The release Mac must also have:
 
 - an Apple Developer account added to Xcode for team `F7KV67KV2U`;
 - an App Store Connect app record whose bundle ID is `org.ovrseer.app`;
-- explicit App IDs for the app and `org.ovrseer.app.liveActivityWidget`;
 - Push Notifications enabled for the app App ID;
 - Xcode-managed App Store distribution certificates and provisioning profiles;
 - the production APNs key configured in Firebase project `overseer-9fe46`; and
@@ -30,8 +27,7 @@ version: 1.0.0+3
 ```
 
 Increment the build number for every upload, even when the marketing version
-does not change. The Runner and Live Activity extension inherit the same
-version and build values; verify both before uploading.
+does not change.
 
 ## Release commit and tag
 
@@ -90,13 +86,10 @@ Before upload, inspect the built bundle:
 ```sh
 APP=build/ios/archive/Runner.xcarchive/Products/Applications/Runner.app
 plutil -p "$APP/Info.plist"
-plutil -p "$APP/PlugIns/SessionActivityWidget.appex/Info.plist"
 find "$APP" -name PrivacyInfo.xcprivacy -print
 ```
 
-Both bundles must have the same `CFBundleShortVersionString` and
-`CFBundleVersion`. The app must use `org.ovrseer.app`; the extension must use
-`org.ovrseer.app.liveActivityWidget`.
+The app must use `org.ovrseer.app`.
 
 ## App Store Connect information
 
@@ -120,10 +113,10 @@ Suggested TestFlight information:
 
 - **Beta description:** Monitor Overseer workspaces, Peons, projects, sessions,
   and transcripts from iPhone and iPad, including offline cache, follow-ups,
-  push routing, and Live Activities.
+  and push routing.
 - **What to test:** GitHub sign-in; cached/offline reopening; project and
   session navigation; new sessions and queued follow-ups with attachments;
-  push notification routing; and running-session Live Activities.
+  and push notification routing.
 - **Feedback email:** `viktor.ten@me.com`
 
 Internal testers can use a processed build immediately. External testing may
@@ -139,5 +132,4 @@ On a physical iPhone using the uploaded TestFlight build:
 4. Reconnect and verify REST/WebSocket reconciliation.
 5. Send a new session and an existing-session follow-up with an attachment.
 6. Verify foreground, background, and terminated-state push routing.
-7. Start and finish a session and verify its Live Activity and deep link.
-8. Sign out and confirm notification and activity state is removed.
+7. Sign out and confirm notification state is removed.

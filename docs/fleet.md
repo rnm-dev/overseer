@@ -83,9 +83,3 @@ Reduced-motion preferences suppress entrance, reorder, and flare animation.
 
 Push registration remains active in every authenticated runtime so an inactive
 Overseer can still route a notification to its connection.
-
-iOS Live Activities and Android ongoing-session surfaces use the selected
-runtime only. The platform activity channel is process-global, so hidden
-runtimes must not install competing handlers. Switching the selected Overseer
-disposes the previous activity adapter while leaving its fleet and WebSocket
-runtime active.
