@@ -283,7 +283,6 @@ class _AppBootstrapState extends State<AppBootstrap>
             config: config,
             connection: connection,
             notificationRouteStore: _notificationRouteStore,
-            sessionActivitiesEnabled: isSelected,
             child: OverseerMobileApp(
               onBackToConnections: _returnToConnections,
               overseerName: connection.title,

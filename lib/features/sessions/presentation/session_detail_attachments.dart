@@ -1,6 +1,79 @@
 part of 'session_detail_page.dart';
 
 mixin _SessionDetailAttachmentMethods on _SessionDetailAttachmentHost {
+  Future<void> _pickImages(ImageSource source) async {
+    const maxFiles = 10;
+    const maxBytes = 25 * 1024 * 1024;
+    final available = maxFiles - _composerAttachments.length;
+    if (available <= 0) {
+      setState(
+        () => _attachmentError = _attachmentLimitErrors(
+          skippedTooLarge: 0,
+          skippedForLimit: 1,
+        ).join(' '),
+      );
+      return;
+    }
+
+    setState(() {
+      _readingAttachments = true;
+      _attachmentError = null;
+    });
+    try {
+      final picker = ImagePicker();
+      final images = source == ImageSource.gallery
+          ? await picker.pickMultiImage(limit: available)
+          : <XFile?>[
+              await picker.pickImage(source: ImageSource.camera),
+            ].nonNulls.toList();
+      if (!mounted || images.isEmpty) return;
+
+      final selected = <NewSessionAttachment>[];
+      var rejectedLargeFiles = 0;
+      var rejectedExtraFiles = 0;
+      for (final image in images) {
+        final size = await image.length();
+        if (size > maxBytes) {
+          rejectedLargeFiles++;
+          continue;
+        }
+        if (selected.length >= available) {
+          rejectedExtraFiles++;
+          continue;
+        }
+        selected.add(
+          NewSessionAttachment(
+            name: image.name,
+            type: 'image',
+            bytes: await image.readAsBytes(),
+          ),
+        );
+      }
+      final errors = _attachmentLimitErrors(
+        skippedTooLarge: rejectedLargeFiles,
+        skippedForLimit: rejectedExtraFiles,
+      );
+      if (selected.isNotEmpty) _resetSubmissionIdentity();
+      setState(() {
+        _composerAttachments = [..._composerAttachments, ...selected];
+        _attachmentError = errors.isEmpty ? null : errors.join(' ');
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(
+        () => _attachmentError = source == ImageSource.camera
+            ? 'A photo could not be taken.'
+            : 'Images could not be selected.',
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _readingAttachments = false;
+        });
+      }
+    }
+  }
+
   Future<void> _pickAttachments() async {
     const maxFiles = 10;
     const maxBytes = 25 * 1024 * 1024;
@@ -68,6 +141,28 @@ mixin _SessionDetailAttachmentMethods on _SessionDetailAttachmentHost {
         title: 'Add attachments',
         handleKey: const Key('session-attachment-sheet-handle'),
         children: [
+          _AttachmentOption(
+            key: const Key('session-attachment-gallery'),
+            icon: LucideIcons.images,
+            title: 'Photo library',
+            subtitle: 'Choose one or more images',
+            onTap: () {
+              Navigator.of(sheetContext).pop();
+              unawaited(_pickImages(ImageSource.gallery));
+            },
+          ),
+          const SizedBox(height: 8),
+          _AttachmentOption(
+            key: const Key('session-attachment-camera'),
+            icon: LucideIcons.camera,
+            title: 'Take photo',
+            subtitle: 'Use the device camera',
+            onTap: () {
+              Navigator.of(sheetContext).pop();
+              unawaited(_pickImages(ImageSource.camera));
+            },
+          ),
+          const SizedBox(height: 8),
           _AttachmentOption(
             key: const Key('session-attachment-choose-files'),
             icon: LucideIcons.folderOpen,

@@ -45,18 +45,13 @@ inspect_ipa() {
   trap "rm -rf '$inspect_dir'" EXIT
   unzip -q "$ipa_path" -d "$inspect_dir"
 
-  local app_path extension_path
+  local app_path
   app_path="$(find "$inspect_dir/Payload" -maxdepth 1 -type d -name '*.app' -print -quit)"
-  extension_path="$app_path/PlugIns/SessionActivityWidget.appex"
 
-  local app_id extension_id app_version extension_version
-  local app_build extension_build encryption aps_environment
+  local app_id app_version app_build encryption aps_environment
   app_id="$(plutil -extract CFBundleIdentifier raw "$app_path/Info.plist")"
-  extension_id="$(plutil -extract CFBundleIdentifier raw "$extension_path/Info.plist")"
   app_version="$(plutil -extract CFBundleShortVersionString raw "$app_path/Info.plist")"
-  extension_version="$(plutil -extract CFBundleShortVersionString raw "$extension_path/Info.plist")"
   app_build="$(plutil -extract CFBundleVersion raw "$app_path/Info.plist")"
-  extension_build="$(plutil -extract CFBundleVersion raw "$extension_path/Info.plist")"
   encryption="$(plutil -extract ITSAppUsesNonExemptEncryption raw "$app_path/Info.plist")"
   aps_environment="$(
     codesign -d --entitlements :- "$app_path" 2>/dev/null |
@@ -64,9 +59,6 @@ inspect_ipa() {
   )"
 
   [[ "$app_id" == "org.ovrseer.app" ]]
-  [[ "$extension_id" == "org.ovrseer.app.liveActivityWidget" ]]
-  [[ "$app_version" == "$extension_version" ]]
-  [[ "$app_build" == "$extension_build" ]]
   [[ "$encryption" == "false" ]]
   [[ "$aps_environment" == "production" ]]
 

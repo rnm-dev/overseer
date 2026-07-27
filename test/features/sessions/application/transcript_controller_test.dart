@@ -30,6 +30,47 @@ void main() {
   );
 
   test(
+    'coalesces an authoritative post-submit refresh behind an opening refresh',
+    () async {
+      final opening = Completer<TranscriptPage>();
+      final afterSubmit = Completer<TranscriptPage>();
+      final repository = _SequencedTranscriptRepository([
+        opening.future,
+        afterSubmit.future,
+      ]);
+      final container = ProviderContainer(
+        overrides: [sessionRepositoryProvider.overrideWithValue(repository)],
+      );
+      addTearDown(container.dispose);
+      final subscription = container.listen(
+        transcriptControllerProvider(scope),
+        (_, _) {},
+        fireImmediately: true,
+      );
+      addTearDown(subscription.close);
+
+      await container.read(transcriptControllerProvider(scope).future);
+      while (repository.latestRequests < 1) {
+        await Future<void>.delayed(Duration.zero);
+      }
+
+      await container
+          .read(transcriptControllerProvider(scope).notifier)
+          .refreshAfterSubmission();
+      expect(repository.latestRequests, 1);
+
+      opening.complete(_emptyTranscriptPage);
+      while (repository.latestRequests < 2) {
+        await Future<void>.delayed(Duration.zero);
+      }
+      expect(repository.latestRequests, 2);
+
+      afterSubmit.complete(_emptyTranscriptPage);
+      await Future<void>.delayed(Duration.zero);
+    },
+  );
+
+  test(
     'subscribes from the newest page after latest transcript refresh completes',
     () async {
       final latest = Completer<TranscriptPage>();
@@ -655,4 +696,29 @@ class _FakeSessionRepository implements SessionRepository {
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+const _emptyTranscriptPage = TranscriptPage(
+  events: [],
+  nextCursor: null,
+  hasMore: false,
+  insertedCount: 0,
+);
+
+class _SequencedTranscriptRepository extends _FakeSessionRepository {
+  _SequencedTranscriptRepository(this.pages);
+
+  final List<Future<TranscriptPage>> pages;
+  int _nextPage = 0;
+
+  @override
+  Future<TranscriptPage> fetchLatestTranscript({
+    required String workspaceId,
+    required String peonId,
+    required String sessionId,
+    int limit = 50,
+  }) {
+    latestRequests += 1;
+    return pages[_nextPage++];
+  }
 }

@@ -36,12 +36,10 @@ only.
    Require `git status --porcelain --untracked-files=all` to be empty after
    the commit. Record the release commit SHA. Include all non-ignored project
    changes; never silently omit an unrelated tracked change.
-7. Ensure active `IOS_APP_STORE` profiles exist for both bundle IDs and the
-   installed distribution certificate:
+7. Ensure an active `IOS_APP_STORE` profile exists for the app bundle ID and
+   the installed distribution certificate:
 
    - `org.ovrseer.app` → profile name `Overseer App Store`
-   - `org.ovrseer.app.liveActivityWidget` →
-     `Overseer Live Activity App Store`
    - team `F7KV67KV2U`
 
    Reuse active profiles. Create a missing profile through App Store Connect
