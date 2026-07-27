@@ -111,7 +111,16 @@ export function defaultReasoningEffortId(provider: ModelProvider | null): string
 // selector must not offer one.
 export function effortsForModel(provider: ModelProvider | null, model: string | null | undefined): CatalogOption[] {
   const selected = model ? provider?.models.find((m) => optionMatches(m, model)) : undefined;
-  return selected?.reasoningEfforts ?? provider?.reasoningEfforts ?? [];
+  // No identified model (a session that never picked one) — the provider-wide
+  // list is the only honest answer.
+  if (!selected || !provider) return provider?.reasoningEfforts ?? [];
+  if (selected.reasoningEfforts) return selected.reasoningEfforts;
+  // A peon that scopes efforts per model omits the key entirely for a model
+  // that takes none — Haiku ships as `{id, label, alias}` with no list — so
+  // once any sibling model carries one, absence means "none" rather than
+  // "unspecified". Only a peon that publishes no per-model lists at all still
+  // falls back to the provider-wide catalog.
+  return provider.models.some((m) => m.reasoningEfforts !== undefined) ? [] : provider.reasoningEfforts ?? [];
 }
 
 export function defaultEffortIdFor(options: CatalogOption[]): string | undefined {

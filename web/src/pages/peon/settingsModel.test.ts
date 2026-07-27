@@ -84,8 +84,14 @@ const claudeWithEfforts: ModelProvider = {
   agent: "claude-code",
   label: "Claude Code",
   models: [
-    { id: "claude-opus-5", label: "Opus 5", default: true },
-    { id: "claude-haiku-4-5", label: "Haiku 4.5", reasoningEfforts: [] },
+    { id: "claude-opus-5", label: "Opus 5", default: true, reasoningEfforts: [
+      { id: "low", label: "Low" },
+      { id: "high", label: "High", default: true },
+      { id: "max", label: "Max" },
+    ] },
+    // Omits the key entirely, exactly as a real peon does for an
+    // effort-less model — not an empty list.
+    { id: "claude-haiku-4-5", label: "Haiku 4.5" },
   ],
   reasoningEfforts: [
     { id: "low", label: "Low" },
@@ -141,4 +147,41 @@ test("an older peon exposing only provider-level efforts still resolves", () => 
   const legacy: ModelProvider = { ...claudeWithEfforts, models: [{ id: "claude-opus-5", label: "Opus 5", default: true }] };
   assert.deepEqual(effortsForModel(legacy, "claude-opus-5").map((e) => e.id), ["low", "high", "max"]);
   assert.equal(resolveDefaultReasoningEffort(legacy, "claude-opus-5", "low"), "low");
+});
+
+// The shape a current production Peon actually publishes: efforts live on each
+// model, and a model that takes none (Haiku) omits the key rather than sending
+// an empty list. Verified against peon-kanat.mesh.rnm on 2026-07-27.
+const liveClaude: ModelProvider = {
+  agent: "claude-code",
+  label: "Claude Code",
+  models: [
+    { id: "claude-opus-5", label: "Opus 5", alias: "opus", default: true, reasoningEfforts: [
+      { id: "low", label: "Low" }, { id: "high", label: "High", default: true }, { id: "max", label: "Max" },
+    ] },
+    { id: "claude-haiku-4-5-20251001", label: "Haiku 4.5", alias: "haiku" },
+  ],
+  reasoningEfforts: [
+    { id: "low", label: "Low" }, { id: "high", label: "High", default: true }, { id: "max", label: "Max" },
+  ],
+};
+
+test("a model omitting the effort key on an effort-scoping peon takes no effort", () => {
+  assert.deepEqual(effortsForModel(liveClaude, "claude-opus-5").map((e) => e.id), ["low", "high", "max"]);
+  // Haiku must not inherit the provider-wide list just because it omits its own.
+  assert.deepEqual(effortsForModel(liveClaude, "claude-haiku-4-5-20251001"), []);
+  assert.equal(resolveDefaultReasoningEffort(liveClaude, "claude-haiku-4-5-20251001", "high"), null);
+  assert.deepEqual(
+    buildSettingsPayload({ defaultAgent: "claude-code", aiDefaultModel: "claude-haiku-4-5-20251001", aiDefaultReasoningEffort: "high" }, liveClaude, true),
+    { defaultAgent: "claude-code", aiDefaultModel: "claude-haiku-4-5-20251001" },
+  );
+});
+
+test("a model alias resolves to the same effort list as its id", () => {
+  assert.deepEqual(effortsForModel(liveClaude, "opus").map((e) => e.id), ["low", "high", "max"]);
+  assert.deepEqual(effortsForModel(liveClaude, "haiku"), []);
+});
+
+test("a session with no model of its own still offers the provider list", () => {
+  assert.deepEqual(effortsForModel(liveClaude, null).map((e) => e.id), ["low", "high", "max"]);
 });
