@@ -77,10 +77,14 @@ App Store Connect metadata, upload, and smoke-test preparation.
 Before committing:
 
 ```sh
-dart format --output=none --set-exit-if-changed lib test tool
+dart format --output=none --set-exit-if-changed lib test integration_test tool
 flutter analyze
 flutter test
 ```
+
+CI also runs the deterministic critical operator flow and produces an Android
+dev APK. See [continuous-integration.md](continuous-integration.md) for local
+commands, native-host ownership, and credential rules.
 
 After changing Drift, Freezed, or JSON-serializable declarations:
 

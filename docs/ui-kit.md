@@ -60,6 +60,10 @@ Cards are not default page structure. Use them only when a boundary helps the
 user understand a related form, summary, or preview. Workspace and settings
 indexes use `AppSectionHeader` followed by standalone `AppListTile` rows.
 
+Use `AppListTileVariant.sectionSurface` for full-bleed rows that continue the
+session section-header surface: it uses the same five-percent bone background,
+square corners, and no border.
+
 All modal sheets enter through `showAppBottomSheet` and compose
 `AppBottomSheet` (or the option/confirmation wrappers). Sheet titles, fields,
 actions, and option rows share the same 16-pixel content grid.

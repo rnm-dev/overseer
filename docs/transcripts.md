@@ -66,6 +66,11 @@ flattens them into the same semantic rows as the web client:
   transcript surface, including headings, lists, task lists, quotes, tables,
   links, inline code, and fenced code blocks; thinking is an inline expandable
   row.
+- Chat links follow the web interceptor contract: absolute session file paths
+  open in the shared artifact viewer, paths inside the current project open in
+  the project file viewer, and `http`, `https`, and `mailto` links open through
+  the system handler. Unsupported schemes remain in the transcript and report
+  a non-destructive error when tapped.
 - Session-list previews flatten the same Markdown to a single line while
   preserving inline emphasis and code styling, so block markup cannot change
   the fixed sidebar row height.

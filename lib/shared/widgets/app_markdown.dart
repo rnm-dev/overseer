@@ -14,11 +14,13 @@ class AppMarkdown extends StatelessWidget {
     required this.data,
     required this.textStyle,
     this.selectable = true,
+    this.onTapLink,
   });
 
   final String data;
   final TextStyle textStyle;
   final bool selectable;
+  final ValueChanged<String>? onTapLink;
 
   @override
   Widget build(BuildContext context) {
@@ -26,6 +28,13 @@ class AppMarkdown extends StatelessWidget {
       data: data,
       selectable: selectable,
       styleSheet: _messageStyleSheet(textStyle),
+      onTapLink: onTapLink == null
+          ? null
+          : (_, href, _) {
+              if (href != null && href.trim().isNotEmpty) {
+                onTapLink!(href);
+              }
+            },
     );
   }
 }

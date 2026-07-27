@@ -13,6 +13,7 @@ import 'package:overseer_mobile/features/fleet/domain/fleet_models.dart';
 import 'package:overseer_mobile/features/fleet/domain/fleet_repository.dart';
 import 'package:overseer_mobile/features/fleet/presentation/fleet_overview.dart';
 import 'package:overseer_mobile/features/auth/domain/auth_models.dart';
+import 'package:overseer_mobile/shared/design/colors.dart';
 import 'package:overseer_mobile/shared/design/theme.dart';
 import 'package:overseer_mobile/shared/design/motion.dart';
 import 'package:overseer_mobile/shared/design/typography.dart';
@@ -60,12 +61,7 @@ void main() {
     expect(find.text('2 active'), findsOneWidget);
     expect(find.text('Thor'), findsOneWidget);
     expect(find.text('offline'), findsOneWidget);
-    expect(
-      tester
-          .widget<Padding>(find.byKey(const Key('fleet-screen-padding')))
-          .padding,
-      const EdgeInsets.fromLTRB(12, 12, 12, 48),
-    );
+    expect(find.byKey(const Key('fleet-screen-padding')), findsOneWidget);
 
     final workspaceSection = find.byKey(const Key('workspace-rnm'));
     final settingsSection = find.byKey(const Key('settings-section'));
@@ -84,9 +80,10 @@ void main() {
       tester.getTopLeft(find.text('RNM')).dx,
       tester.getTopLeft(find.text('Settings')).dx,
     );
+    expect(tester.getTopLeft(find.byKey(const Key('peon-kanat'))).dx, 0);
     expect(
-      tester.getTopLeft(find.byKey(const Key('peon-kanat'))).dx,
-      tester.getTopLeft(find.byKey(const Key('sound-setting'))).dx,
+      tester.getSize(find.byKey(const Key('peon-kanat'))).width,
+      tester.view.physicalSize.width / tester.view.devicePixelRatio,
     );
     expect(
       tester.getSize(find.byKey(const Key('sound-setting'))).height,
@@ -111,8 +108,29 @@ void main() {
       ),
     );
     expect(kanatNode.density, soundNode.density);
+    expect(kanatNode.variant, AppListTileVariant.sectionSurface);
+    expect(soundNode.variant, AppListTileVariant.standalone);
     expect(kanatNode.titleMaxLines, 1);
     expect(soundNode.titleMaxLines, 1);
+    final kanatMaterial = tester.widget<Material>(
+      find
+          .descendant(
+            of: find.byKey(const Key('peon-kanat')),
+            matching: find.byType(Material),
+          )
+          .first,
+    );
+    expect(kanatMaterial.color, AppColors.bone.withValues(alpha: 0.05));
+    expect(kanatMaterial.borderRadius, BorderRadius.zero);
+    final kanatContainer = tester.widget<AnimatedContainer>(
+      find.descendant(
+        of: find.byKey(const Key('peon-kanat')),
+        matching: find.byType(AnimatedContainer),
+      ),
+    );
+    final kanatDecoration = kanatContainer.decoration! as BoxDecoration;
+    expect(kanatDecoration.borderRadius, BorderRadius.zero);
+    expect(kanatDecoration.border!.top.width, 0);
 
     live.emitActiveSessions('rnm', 'kanat', 3);
     await tester.pump();

@@ -2,10 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:overseer_mobile/core/notifications/notification_routing.dart';
 import 'package:overseer_mobile/features/auth/presentation/auth_gate.dart';
+import 'package:overseer_mobile/features/auth/presentation/sign_in_page.dart';
+import 'package:overseer_mobile/features/auth/domain/auth_models.dart';
 import 'package:overseer_mobile/shared/design/theme.dart';
+import 'package:overseer_mobile/features/shell/shell.dart';
 
 import 'peon_deep_link_page.dart';
 import 'project_files_route_page.dart';
+import 'project_detail_route_page.dart';
 import 'session_deep_link_page.dart';
 
 class OverseerMobileApp extends StatefulWidget {
@@ -45,6 +49,9 @@ class _OverseerMobileAppState extends State<OverseerMobileApp> {
           autoSignIn: widget.autoSignIn,
           onBack: widget.onBackToConnections,
           overseerName: widget.overseerName,
+          buildLoading: _buildAuthLoading,
+          buildSignIn: _buildAuthSignIn,
+          buildShell: _buildAuthShell,
         ),
       ),
       GoRoute(
@@ -58,6 +65,9 @@ class _OverseerMobileAppState extends State<OverseerMobileApp> {
               autoSignIn: widget.autoSignIn,
               onBack: widget.onBackToConnections,
               overseerName: widget.overseerName,
+              buildLoading: _buildAuthLoading,
+              buildSignIn: _buildAuthSignIn,
+              buildShell: _buildAuthShell,
             );
           }
           return PeonDeepLinkPage(
@@ -79,6 +89,9 @@ class _OverseerMobileAppState extends State<OverseerMobileApp> {
               autoSignIn: widget.autoSignIn,
               onBack: widget.onBackToConnections,
               overseerName: widget.overseerName,
+              buildLoading: _buildAuthLoading,
+              buildSignIn: _buildAuthSignIn,
+              buildShell: _buildAuthShell,
             );
           }
           return SessionDeepLinkPage(
@@ -100,6 +113,9 @@ class _OverseerMobileAppState extends State<OverseerMobileApp> {
               autoSignIn: widget.autoSignIn,
               onBack: widget.onBackToConnections,
               overseerName: widget.overseerName,
+              buildLoading: _buildAuthLoading,
+              buildSignIn: _buildAuthSignIn,
+              buildShell: _buildAuthShell,
             );
           }
           return ProjectFilesRoutePage(
@@ -111,7 +127,80 @@ class _OverseerMobileAppState extends State<OverseerMobileApp> {
           );
         },
       ),
+      GoRoute(
+        path: '/project',
+        name: 'project',
+        builder: (context, state) {
+          final workspaceId = state.uri.queryParameters['workspaceId'];
+          final peonId = state.uri.queryParameters['peonId'];
+          final projectId = state.uri.queryParameters['projectId'];
+          final projectKey = state.uri.queryParameters['projectKey'];
+          if (workspaceId == null ||
+              peonId == null ||
+              projectId == null ||
+              projectKey == null) {
+            return AuthGate(
+              autoSignIn: widget.autoSignIn,
+              onBack: widget.onBackToConnections,
+              overseerName: widget.overseerName,
+              buildLoading: _buildAuthLoading,
+              buildSignIn: _buildAuthSignIn,
+              buildShell: _buildAuthShell,
+            );
+          }
+          return ProjectDetailRoutePage(
+            key: ValueKey(
+              '$workspaceId\u0000$peonId\u0000$projectId\u0000$projectKey',
+            ),
+            workspaceId: workspaceId,
+            peonId: peonId,
+            projectId: projectId,
+            projectKey: projectKey,
+            projectName: state.uri.queryParameters['projectName'],
+            projectSyncedAt: state.uri.queryParameters['syncedAt'],
+            isOwner: state.uri.queryParameters['isOwner'] == 'true',
+          );
+        },
+      ),
     ],
+  );
+
+  Widget _buildAuthLoading({
+    required String? overseerName,
+    required VoidCallback? onBackToConnections,
+  }) => ShellPage.loading(
+    overseerName: overseerName,
+    onBackToConnections: onBackToConnections,
+  );
+
+  Widget _buildAuthSignIn({
+    required Future<void> Function() onSignIn,
+    String? errorMessage,
+    required bool isSigningIn,
+    VoidCallback? onBack,
+  }) => SignInPage(
+    onSignIn: onSignIn,
+    errorMessage: errorMessage,
+    isSigningIn: isSigningIn,
+    onBack: onBack,
+  );
+
+  Widget _buildAuthShell({
+    required OperatorIdentity user,
+    required Future<void> Function() onSignOut,
+    String? overseerName,
+    VoidCallback? onBackToConnections,
+  }) => ShellPage(
+    user: user,
+    onSignOut: onSignOut,
+    overseerName: overseerName,
+    onBackToConnections: onBackToConnections,
+    onOpenPeon:
+        (context, {required String workspaceId, required String peonId}) =>
+            context.pushNamed(
+              'peon',
+              queryParameters: {'workspaceId': workspaceId, 'peonId': peonId},
+            ),
   );
 
   @override

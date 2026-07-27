@@ -7,7 +7,41 @@ import 'package:overseer_mobile/features/auth/application/auth_controller.dart';
 import 'package:overseer_mobile/features/auth/domain/auth_models.dart';
 import 'package:overseer_mobile/features/auth/domain/auth_repository.dart';
 import 'package:overseer_mobile/features/auth/presentation/auth_gate.dart';
+import 'package:overseer_mobile/features/auth/presentation/sign_in_page.dart';
 import 'package:overseer_mobile/shared/design/theme.dart';
+import 'package:overseer_mobile/features/shell/shell.dart';
+
+Widget _buildAuthGateLoading({
+  required String? overseerName,
+  required VoidCallback? onBackToConnections,
+}) => ShellPage.loading(
+  overseerName: overseerName,
+  onBackToConnections: onBackToConnections,
+);
+
+Widget _buildAuthGateSignIn({
+  required Future<void> Function() onSignIn,
+  String? errorMessage,
+  required bool isSigningIn,
+  VoidCallback? onBack,
+}) => SignInPage(
+  onSignIn: onSignIn,
+  errorMessage: errorMessage,
+  isSigningIn: isSigningIn,
+  onBack: onBack,
+);
+
+Widget _buildAuthGateShell({
+  required OperatorIdentity user,
+  required Future<void> Function() onSignOut,
+  String? overseerName,
+  VoidCallback? onBackToConnections,
+}) => ShellPage(
+  user: user,
+  onSignOut: onSignOut,
+  overseerName: overseerName,
+  onBackToConnections: onBackToConnections,
+);
 
 void main() {
   testWidgets('shows the Overseer index while the session is restored', (
@@ -22,7 +56,12 @@ void main() {
         overrides: [authRepositoryProvider.overrideWithValue(repository)],
         child: MaterialApp(
           theme: AppTheme.dark,
-          home: const AuthGate(overseerName: 'overseer.example'),
+          home: const AuthGate(
+            overseerName: 'overseer.example',
+            buildLoading: _buildAuthGateLoading,
+            buildSignIn: _buildAuthGateSignIn,
+            buildShell: _buildAuthGateShell,
+          ),
         ),
       ),
     );
@@ -53,7 +92,12 @@ void main() {
         ],
         child: MaterialApp(
           theme: AppTheme.dark,
-          home: AuthGate(onBack: () => backCalls += 1),
+          home: AuthGate(
+            onBack: () => backCalls += 1,
+            buildLoading: _buildAuthGateLoading,
+            buildSignIn: _buildAuthGateSignIn,
+            buildShell: _buildAuthGateShell,
+          ),
         ),
       ),
     );
@@ -75,7 +119,12 @@ void main() {
         ],
         child: MaterialApp(
           theme: AppTheme.dark,
-          home: AuthGate(onBack: () => backCalls += 1),
+          home: AuthGate(
+            onBack: () => backCalls += 1,
+            buildLoading: _buildAuthGateLoading,
+            buildSignIn: _buildAuthGateSignIn,
+            buildShell: _buildAuthGateShell,
+          ),
         ),
       ),
     );
@@ -100,7 +149,12 @@ void main() {
         overrides: [authRepositoryProvider.overrideWithValue(repository)],
         child: MaterialApp(
           theme: AppTheme.dark,
-          home: const AuthGate(autoSignIn: true),
+          home: const AuthGate(
+            autoSignIn: true,
+            buildLoading: _buildAuthGateLoading,
+            buildSignIn: _buildAuthGateSignIn,
+            buildShell: _buildAuthGateShell,
+          ),
         ),
       ),
     );
@@ -124,7 +178,12 @@ void main() {
         overrides: [authRepositoryProvider.overrideWithValue(repository)],
         child: MaterialApp(
           theme: AppTheme.dark,
-          home: const AuthGate(autoSignIn: true),
+          home: const AuthGate(
+            autoSignIn: true,
+            buildLoading: _buildAuthGateLoading,
+            buildSignIn: _buildAuthGateSignIn,
+            buildShell: _buildAuthGateShell,
+          ),
         ),
       ),
     );

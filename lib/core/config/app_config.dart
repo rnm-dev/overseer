@@ -1,5 +1,8 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
+
+final overseerServerUrlProvider = Provider<Uri?>((ref) => null);
 
 @immutable
 class AppConfig {

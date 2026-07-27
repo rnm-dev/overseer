@@ -247,6 +247,29 @@ void main() {
     expect(find.byIcon(Icons.check_box), findsOneWidget);
   });
 
+  testWidgets('forwards transcript Markdown link taps to the chat handler', (
+    tester,
+  ) async {
+    final opened = <String>[];
+    final item = TranscriptTextItem(
+      key: 'link',
+      text: '[Open docs](https://example.com/docs)',
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.dark,
+        home: Scaffold(
+          body: TranscriptItemView(item: item, onOpenLink: opened.add),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Open docs'));
+    await tester.pump();
+
+    expect(opened, ['https://example.com/docs']);
+  });
+
   test('derives working activity from the freshest assistant block', () {
     final bash = _event('bash', 0, {
       'type': 'assistant',

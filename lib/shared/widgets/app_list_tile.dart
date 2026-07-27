@@ -6,6 +6,8 @@ import 'package:overseer_mobile/shared/design/typography.dart';
 
 enum AppListTileDensity { compact, standard }
 
+enum AppListTileVariant { standalone, sectionSurface }
+
 /// The shared interactive row for navigation, settings, and entity lists.
 ///
 /// Feature widgets provide meaning through their content and semantics while
@@ -23,6 +25,7 @@ class AppListTile extends StatelessWidget {
     this.onTap,
     this.onLongPress,
     this.density = AppListTileDensity.standard,
+    this.variant = AppListTileVariant.standalone,
     this.titleMaxLines = 2,
     this.semanticsLabel,
     this.semanticsHint,
@@ -38,6 +41,7 @@ class AppListTile extends StatelessWidget {
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
   final AppListTileDensity density;
+  final AppListTileVariant variant;
   final int titleMaxLines;
   final String? semanticsLabel;
   final String? semanticsHint;
@@ -77,10 +81,19 @@ class AppListTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final sectionSurface = variant == AppListTileVariant.sectionSurface;
+    final shape = sectionSurface ? BorderRadius.zero : AppMotion.listTileShape;
     final backgroundColor = selected
         ? AppColors.felDim.withAlpha(78)
         : Colors.transparent;
-    final borderColor = selected ? AppColors.fel : AppColors.iron800;
+    final surfaceColor = sectionSurface
+        ? AppColors.bone.withValues(alpha: 0.05)
+        : AppColors.rowSurface;
+    final borderColor = selected
+        ? AppColors.fel
+        : sectionSurface
+        ? Colors.transparent
+        : AppColors.iron800;
     final titleColor = enabled
         ? (selected ? AppColors.felBright : AppColors.bone)
         : AppColors.boneFaint;
@@ -95,12 +108,12 @@ class AppListTile extends StatelessWidget {
       hint: semanticsHint,
       excludeSemantics: semanticsLabel != null,
       child: Material(
-        color: enabled ? AppColors.rowSurface : AppColors.iron950,
-        borderRadius: AppMotion.listTileShape,
+        color: enabled ? surfaceColor : AppColors.iron950,
+        borderRadius: shape,
         child: InkWell(
           onTap: _interactive ? onTap : null,
           onLongPress: _interactive ? onLongPress : null,
-          borderRadius: AppMotion.listTileShape,
+          borderRadius: shape,
           overlayColor: WidgetStatePropertyAll(
             AppColors.fel.withValues(alpha: 0.1),
           ),
@@ -112,9 +125,9 @@ class AppListTile extends StatelessWidget {
               color: enabled ? backgroundColor : AppColors.iron950,
               border: Border.all(
                 color: enabled ? borderColor : AppColors.iron800,
-                width: 0.75,
+                width: sectionSurface ? 0 : 0.75,
               ),
-              borderRadius: AppMotion.listTileShape,
+              borderRadius: shape,
             ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,

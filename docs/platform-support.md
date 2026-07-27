@@ -166,6 +166,10 @@ flutter build linux
 
 ## Release checks
 
+CI compiles debug builds for macOS, Windows, and Linux on matching native
+GitHub-hosted runners. These compile gates do not replace the following
+platform smoke tests.
+
 For every target:
 
 1. Build on its native host.
