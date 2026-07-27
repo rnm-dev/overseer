@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../../core/platform/html_preview_launcher.dart';
 import '../../../shared/design/colors.dart';
 import '../../../shared/design/typography.dart';
 import '../../../shared/widgets/app_button.dart';
@@ -27,6 +28,7 @@ class _SessionFileViewerPageState extends ConsumerState<SessionFileViewerPage> {
   @override
   Widget build(BuildContext context) {
     final file = ref.watch(sessionFileControllerProvider(widget.scope));
+    final htmlPreviewLauncher = ref.watch(htmlPreviewLauncherProvider);
     final path = widget.scope.displayPath;
     final switchable = isMarkdownFile(path) || isHtmlFile(path);
     return Scaffold(
@@ -104,6 +106,12 @@ class _SessionFileViewerPageState extends ConsumerState<SessionFileViewerPage> {
                   bytes: preview.bytes,
                   contentType: preview.contentType,
                   mode: _mode,
+                  onOpenDesktopHtmlPreview: htmlPreviewLauncher.supported
+                      ? (document) => htmlPreviewLauncher.open(
+                          title: preview.path,
+                          document: document,
+                        )
+                      : null,
                 ),
               ),
             ),

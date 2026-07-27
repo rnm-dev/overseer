@@ -5,24 +5,6 @@ String _breadcrumbs(String? path) {
   return 'Project  ›  ${path.split('/').join('  ›  ')}';
 }
 
-double _headingSize(String line) {
-  final count = line.characters.takeWhile((value) => value == '#').length;
-  return switch (count) {
-    1 => 22,
-    2 => 18,
-    3 => 16,
-    _ => 14,
-  };
-}
-
-String _stripMarkdown(String line) => line
-    .replaceFirst(RegExp(r'^#{1,6}\s*'), '')
-    .replaceAllMapped(
-      RegExp(r'\[([^\]]+)\]\([^)]+\)'),
-      (match) => match.group(1) ?? '',
-    )
-    .replaceAll(RegExp(r'[*_`~]'), '');
-
 class _ProjectTabs extends StatelessWidget {
   const _ProjectTabs({
     required this.tabs,
@@ -403,52 +385,23 @@ class _DocumentationRow extends StatelessWidget {
 }
 
 class _MarkdownDocument extends StatelessWidget {
-  const _MarkdownDocument({required this.source});
+  const _MarkdownDocument({required this.source, required this.onTapLink});
 
   final String source;
+  final ValueChanged<String> onTapLink;
 
   @override
   Widget build(BuildContext context) {
-    final lines = source.split('\n');
-    var inCode = false;
     return Padding(
       padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          for (final line in lines)
-            if (line.trim().startsWith('```'))
-              Builder(
-                builder: (_) {
-                  inCode = !inCode;
-                  return const SizedBox(height: 4);
-                },
-              )
-            else
-              Padding(
-                padding: EdgeInsets.only(bottom: line.trim().isEmpty ? 8 : 5),
-                child: SelectableText(
-                  _stripMarkdown(line),
-                  style: inCode
-                      ? AppTypography.mono(
-                          fontSize: 11,
-                          color: AppColors.boneDim,
-                          height: 1.45,
-                        )
-                      : line.startsWith('#')
-                      ? AppTypography.display(
-                          fontSize: _headingSize(line),
-                          fontWeight: FontWeight.w700,
-                          height: 1.25,
-                        )
-                      : AppTypography.body(
-                          fontSize: 13,
-                          color: AppColors.bone,
-                          height: 1.5,
-                        ),
-                ),
-              ),
-        ],
+      child: AppMarkdown(
+        data: source,
+        textStyle: AppTypography.body(
+          fontSize: 13,
+          color: AppColors.bone,
+          height: 1.5,
+        ),
+        onTapLink: onTapLink,
       ),
     );
   }

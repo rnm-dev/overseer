@@ -39,8 +39,8 @@ Choose a component by meaning before choosing its visual variant:
 Project and session navigation rows follow the web sidebar contract instead of
 the standalone-list contract: the row is full bleed, its content uses
 12-pixel left and 8-pixel right padding, and its two-pixel status edge is inset
-four pixels vertically at the absolute left. Running work is green, unread or
-human-blocked work is forge amber, failures are blood red, and idle rows use
+four pixels vertically at the absolute left. Running work is green, unread
+completed work is forge amber, failures are blood red, and idle rows use
 `boneFaint` at 40% opacity. A changed row flares once for 620 ms; an idle row's
 flare falls back to `fel`. Initial list hydration does not flare, and
 reduced-motion settings suppress the animation.
@@ -51,6 +51,8 @@ Feature-specific widgets may wrap these components to add domain meaning.
 They should not duplicate borders, radii, pressed colors, or touch-target
 geometry. `EntityListTile` is the reference pattern: it retains an entity-level
 API while delegating its visual contract to `AppListTile`.
+`AppListTile.titleTrailing` places compact metadata such as presence directly
+after the title while preserving title truncation and shared row geometry.
 
 Use the shared spacing scale (`xxs`, `xs`, `sm`, `md`, `lg`, `xl`, `xxl`) for
 new composition. Mobile page gutters are 12 logical pixels. Controls use a
@@ -63,6 +65,10 @@ indexes use `AppSectionHeader` followed by standalone `AppListTile` rows.
 Use `AppListTileVariant.sectionSurface` for full-bleed rows that continue the
 session section-header surface: it uses the same five-percent bone background,
 square corners, and no border.
+
+Pinned section headers retain that translucent surface and apply a clipped
+12-pixel backdrop blur so content scrolling underneath reads as frosted glass
+without blurring the rest of the viewport.
 
 All modal sheets enter through `showAppBottomSheet` and compose
 `AppBottomSheet` (or the option/confirmation wrappers). Sheet titles, fields,

@@ -50,6 +50,9 @@ another feature's `data/` implementation or internal `presentation/` files.
 When one feature deliberately exposes reusable UI, export that surface from
 `features/<feature>/<feature>.dart` and import only that public entrypoint.
 Public presentation dependencies between features must remain acyclic.
+Cross-feature value objects that are genuinely feature-neutral live in a
+deliberately named `shared/models/` module; for example, Sessions and Peon
+settings share the AI provider/model capability catalog from there.
 
 Cross-feature navigation belongs to the app router. A leaf feature routes by
 name or reports user intent; it does not construct another feature's internal
@@ -59,6 +62,18 @@ Promote code to `shared` only after it is genuinely domain-neutral and reused.
 `core` contains app-wide technical capabilities such as HTTP configuration,
 authentication storage, database setup, live sync, notifications, connectivity,
 clock, and logging. It must not become a miscellaneous utilities folder.
+
+Application and data code receives time through `AppClock` and scheduling
+through `AppScheduler`. Wall-clock reads and raw timers remain acceptable only
+for purely visual widget-local animation or elapsed-time presentation. Tests
+override both providers with manual time so retry, polling, freshness, and
+reconciliation boundaries do not sleep.
+
+Operational diagnostics use the bounded `AppDiagnosticEvent` schema. Events may
+carry safe connection, workspace, session, cursor, attempt, state, outcome, and
+error-type correlation only. They must never include device tokens, WebSocket
+tickets, prompts, transcript payloads, attachment contents, secrets, or private
+paths.
 
 `app/app_dependencies.dart` is the composition root. It is the one place that
 may import contracts and their concrete implementations together to install

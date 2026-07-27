@@ -7,6 +7,8 @@ import 'package:drift/drift.dart';
 
 import '../../../core/database/app_database.dart';
 import '../../../core/network/overseer_http_client.dart';
+import '../../../core/time/app_time.dart';
+import '../../../shared/models/ai_capabilities.dart';
 import '../domain/followup_repository.dart';
 import '../domain/new_session_repository.dart';
 
@@ -17,12 +19,14 @@ class DefaultFollowupRepository implements FollowupRepository {
     required String token,
     Dio? dio,
     Random? random,
+    this._clock = const SystemAppClock(),
   }) : _random = random ?? Random.secure(),
        _dio = dio ?? createOverseerHttpClient(apiUrl: apiUrl, token: token);
 
   final AppDatabase database;
   final Dio _dio;
   final Random _random;
+  final AppClock _clock;
 
   @override
   Future<String> loadDraft(FollowupScope scope) async {
@@ -57,7 +61,7 @@ class DefaultFollowupRepository implements FollowupRepository {
             peonId: scope.peonId,
             sessionId: scope.sessionId,
             draftText: text,
-            updatedAt: DateTime.now().millisecondsSinceEpoch.toDouble(),
+            updatedAt: _clock.now().millisecondsSinceEpoch.toDouble(),
           ),
         );
   }
@@ -145,7 +149,7 @@ class DefaultFollowupRepository implements FollowupRepository {
     FollowupScope scope,
     List<QueuedFollowup> items,
   ) async {
-    final syncedAt = DateTime.now().millisecondsSinceEpoch.toDouble();
+    final syncedAt = _clock.now().millisecondsSinceEpoch.toDouble();
     await database.transaction(() async {
       await (database.delete(database.cachedQueuedFollowups)..where(
             (row) =>
@@ -300,7 +304,7 @@ class DefaultFollowupRepository implements FollowupRepository {
       prompt: trimmed.isEmpty ? '(see attachments)' : trimmed,
       serverQueue: serverQueue,
       startNow: startNow,
-      createdAt: DateTime.now().microsecondsSinceEpoch / 1000,
+      createdAt: _clock.now().microsecondsSinceEpoch / 1000,
       agent: agent,
       model: model,
       reasoningEffort: reasoningEffort,
@@ -381,6 +385,19 @@ class DefaultFollowupRepository implements FollowupRepository {
           options: Options(headers: {'Peon-Request-Id': command.commandId}),
         );
       }
+      await (database.update(database.cachedSessions)..where(
+            (row) =>
+                row.workspaceId.equals(scope.workspaceId) &
+                row.peonId.equals(scope.peonId) &
+                row.sessionId.equals(scope.sessionId),
+          ))
+          .write(
+            CachedSessionsCompanion(
+              operatorRequested: const Value(true),
+              hasOutstandingRequest: const Value(true),
+              lastRequestedAt: Value(command.createdAt),
+            ),
+          );
       await _complete(command.commandId);
       return FollowupDelivery.delivered;
     } on DioException catch (error) {

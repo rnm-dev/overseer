@@ -29,7 +29,7 @@ class NotificationDestination {
     if (workspaceId == null || peonId == null) return null;
     final kind = data['kind'];
     final sessionId = _safeIdentifier(data['sessionId']);
-    if (kind == 'session') {
+    if (kind == 'session' || kind == 'attention') {
       return sessionId == null
           ? null
           : NotificationDestination.session(

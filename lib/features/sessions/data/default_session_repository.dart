@@ -4,20 +4,25 @@ import 'package:dio/dio.dart';
 import 'package:drift/drift.dart';
 
 import '../../../core/database/app_database.dart';
+import '../../../core/live/live_projection_sink.dart';
 import '../../../core/network/overseer_http_client.dart';
+import '../../../core/time/app_time.dart';
 import '../domain/session_models.dart';
 import '../domain/session_repository.dart';
 
-class DefaultSessionRepository implements SessionRepository {
+class DefaultSessionRepository
+    implements SessionRepository, AttentionProjectionSink {
   DefaultSessionRepository({
     required this.database,
     required Uri apiUrl,
     required String token,
     Dio? dio,
+    this._clock = const SystemAppClock(),
   }) : _dio = dio ?? createOverseerHttpClient(apiUrl: apiUrl, token: token);
 
   final AppDatabase database;
   final Dio _dio;
+  final AppClock _clock;
 
   SimpleSelectStatement<$CachedSessionsTable, CachedSession> _sessionQuery({
     required String workspaceId,
@@ -83,21 +88,38 @@ class DefaultSessionRepository implements SessionRepository {
       if (rawSessions is! List) {
         throw const FormatException('Invalid sessions response');
       }
-      final sessions = rawSessions
-          .map(
-            (item) => _domainFromJson(
-              workspaceId,
-              Map<String, dynamic>.from(item as Map),
-            ),
-          )
+      final decodedSessions = rawSessions
+          .map((item) {
+            final json = Map<String, dynamic>.from(item as Map);
+            return (json: json, session: _domainFromJson(workspaceId, json));
+          })
+          .toList(growable: false);
+      final sessions = decodedSessions
+          .map((item) => item.session)
           .toList(growable: false);
       await database.batch((batch) {
-        for (final session in sessions) {
+        for (final item in decodedSessions) {
+          final session = item.session;
+          final includeAttentionState =
+              item.json.containsKey('attentionUnread') ||
+              item.json.containsKey('attentionUpdatedAt');
+          final includeOperatorState =
+              item.json.containsKey('operatorRequested') ||
+              item.json.containsKey('hasOutstandingRequest') ||
+              item.json.containsKey('lastRequestedAt');
           batch.insert(
             database.cachedSessions,
-            _companion(session),
+            _companion(
+              session,
+              includeAttentionState: includeAttentionState,
+              includeOperatorState: includeOperatorState,
+            ),
             onConflict: DoUpdate<CachedSessions, CachedSession>(
-              (_) => _companion(session),
+              (_) => _companion(
+                session,
+                includeAttentionState: includeAttentionState,
+                includeOperatorState: includeOperatorState,
+              ),
               where: (old) =>
                   old.syncedAt.isSmallerOrEqualValue(session.syncedAt),
             ),
@@ -204,7 +226,7 @@ class DefaultSessionRepository implements SessionRepository {
             CachedSessionsCompanion(
               attentionUnread: const Value(false),
               attentionUpdatedAt: Value(
-                DateTime.now().millisecondsSinceEpoch.toDouble(),
+                _clock.now().millisecondsSinceEpoch.toDouble(),
               ),
             ),
           );
@@ -439,7 +461,7 @@ class DefaultSessionRepository implements SessionRepository {
 
       late List<String> orderedIds;
       late int insertedCount;
-      final updatedAt = DateTime.now().millisecondsSinceEpoch.toDouble();
+      final updatedAt = _clock.now().millisecondsSinceEpoch.toDouble();
       await database.transaction(() async {
         final existingRows = await _transcriptQuery(
           workspaceId: workspaceId,
@@ -451,19 +473,13 @@ class DefaultSessionRepository implements SessionRepository {
             .toList(growable: true);
         final existingSet = existingIds.toSet();
         insertedCount = incomingIds.difference(existingSet).length;
-        orderedIds = prepend
-            ? [
-                ...incoming
-                    .map((event) => event['eventId']! as String)
-                    .where((id) => !existingSet.contains(id)),
-                ...existingIds,
-              ]
-            : [
-                ...existingIds,
-                ...incoming
-                    .map((event) => event['eventId']! as String)
-                    .where((id) => !existingSet.contains(id)),
-              ];
+        orderedIds = _mergeTranscriptOrder(
+          existingIds: existingIds,
+          incomingIds: incoming
+              .map((event) => event['eventId']! as String)
+              .toList(growable: false),
+          prependWhenDisjoint: prepend,
+        );
 
         for (var index = 0; index < orderedIds.length; index++) {
           final eventId = orderedIds[index];
@@ -558,7 +574,7 @@ class DefaultSessionRepository implements SessionRepository {
       );
     }
     final event = Map<String, dynamic>.from(payload)..['eventId'] = eventId;
-    final updatedAt = DateTime.now().millisecondsSinceEpoch.toDouble();
+    final updatedAt = _clock.now().millisecondsSinceEpoch.toDouble();
     await database.transaction(() async {
       final existing =
           await (database.select(database.cachedTranscriptEvents)..where(
@@ -638,17 +654,73 @@ class DefaultSessionRepository implements SessionRepository {
             .go();
       } else {
         final session = _domainFromJson(workspaceId, projection);
+        final companion = _companion(
+          session,
+          includeAttentionState:
+              projection.containsKey('attentionUnread') ||
+              projection.containsKey('attentionUpdatedAt'),
+          includeOperatorState:
+              projection.containsKey('hasOutstandingRequest') ||
+              projection.containsKey('lastRequestedAt'),
+        );
         await database
             .into(database.cachedSessions)
             .insert(
-              _companion(session),
+              companion,
               onConflict: DoUpdate(
-                (_) => _companion(session),
+                (_) => companion,
                 where: (old) =>
                     old.syncedAt.isSmallerOrEqualValue(session.syncedAt),
               ),
             );
       }
+      await _advanceCursorInTransaction(workspaceId, cursor);
+    });
+  }
+
+  @override
+  Future<void> applyAttentionProjection({
+    required String workspaceId,
+    required int cursor,
+    required Map<String, dynamic> projection,
+  }) async {
+    final peonId = projection['peonId'];
+    final sessionId = projection['sessionId'];
+    if (peonId is! String || sessionId is! String) {
+      await advanceCursor(workspaceId: workspaceId, cursor: cursor);
+      return;
+    }
+    final updatedAt = (projection['updatedAt'] as num?)?.toDouble() ?? 0;
+    final companion = CachedSessionsCompanion.insert(
+      workspaceId: workspaceId,
+      peonId: peonId,
+      sessionId: sessionId,
+      syncedAt: 0,
+      operatorRequested: const Value(true),
+      hasOutstandingRequest: projection.containsKey('hasOutstandingRequest')
+          ? Value(projection['hasOutstandingRequest'] as bool? ?? false)
+          : const Value.absent(),
+      lastRequestedAt: projection.containsKey('lastRequestedAt')
+          ? Value((projection['lastRequestedAt'] as num?)?.toDouble())
+          : const Value.absent(),
+      attentionUnread: projection.containsKey('unread')
+          ? Value(projection['unread'] as bool? ?? false)
+          : projection.containsKey('attentionUnread')
+          ? Value(projection['attentionUnread'] as bool? ?? false)
+          : const Value.absent(),
+      attentionUpdatedAt: Value(updatedAt),
+    );
+    await database.transaction(() async {
+      await database
+          .into(database.cachedSessions)
+          .insert(
+            companion,
+            onConflict: DoUpdate(
+              (_) => companion,
+              where: (old) =>
+                  old.attentionUpdatedAt.isSmallerOrEqualValue(updatedAt),
+            ),
+          );
       await _advanceCursorInTransaction(workspaceId, cursor);
     });
   }
@@ -710,6 +782,12 @@ class DefaultSessionRepository implements SessionRepository {
       syncedAt: (json['syncedAt'] as num?)?.toDouble() ?? 0,
       attentionUnread: json['attentionUnread'] as bool? ?? false,
       attentionUpdatedAt: (json['attentionUpdatedAt'] as num?)?.toDouble() ?? 0,
+      operatorRequested:
+          (json['operatorRequested'] as bool?) ??
+          (json.containsKey('hasOutstandingRequest') ||
+              json.containsKey('lastRequestedAt')),
+      hasOutstandingRequest: json['hasOutstandingRequest'] as bool? ?? false,
+      lastRequestedAt: (json['lastRequestedAt'] as num?)?.toDouble(),
     );
   }
 
@@ -751,6 +829,9 @@ class DefaultSessionRepository implements SessionRepository {
       syncedAt: row.syncedAt,
       attentionUnread: row.attentionUnread,
       attentionUpdatedAt: row.attentionUpdatedAt,
+      operatorRequested: row.operatorRequested,
+      hasOutstandingRequest: row.hasOutstandingRequest,
+      lastRequestedAt: row.lastRequestedAt,
     );
   }
 
@@ -766,7 +847,11 @@ class DefaultSessionRepository implements SessionRepository {
     );
   }
 
-  CachedSessionsCompanion _companion(SessionSummary session) {
+  CachedSessionsCompanion _companion(
+    SessionSummary session, {
+    bool includeAttentionState = true,
+    bool includeOperatorState = true,
+  }) {
     return CachedSessionsCompanion.insert(
       workspaceId: session.workspaceId,
       peonId: session.peonId,
@@ -783,8 +868,84 @@ class DefaultSessionRepository implements SessionRepository {
       endedAt: Value(session.endedAt),
       lastActivityAt: Value(session.lastActivityAt),
       syncedAt: session.syncedAt,
-      attentionUnread: Value(session.attentionUnread),
-      attentionUpdatedAt: Value(session.attentionUpdatedAt),
+      attentionUnread: includeAttentionState
+          ? Value(session.attentionUnread)
+          : const Value.absent(),
+      attentionUpdatedAt: includeAttentionState
+          ? Value(session.attentionUpdatedAt)
+          : const Value.absent(),
+      operatorRequested: includeOperatorState
+          ? Value(session.operatorRequested)
+          : const Value.absent(),
+      hasOutstandingRequest: includeOperatorState
+          ? Value(session.hasOutstandingRequest)
+          : const Value.absent(),
+      lastRequestedAt: includeOperatorState
+          ? Value(session.lastRequestedAt)
+          : const Value.absent(),
     );
   }
+}
+
+List<String> _mergeTranscriptOrder({
+  required List<String> existingIds,
+  required List<String> incomingIds,
+  required bool prependWhenDisjoint,
+}) {
+  if (existingIds.isEmpty) return List.of(incomingIds);
+  if (incomingIds.isEmpty) return List.of(existingIds);
+
+  final incomingIndex = <String, int>{
+    for (var index = 0; index < incomingIds.length; index++)
+      incomingIds[index]: index,
+  };
+  final firstOverlap = existingIds.indexWhere(incomingIndex.containsKey);
+  if (firstOverlap < 0) {
+    return prependWhenDisjoint
+        ? [...incomingIds, ...existingIds]
+        : [...existingIds, ...incomingIds];
+  }
+  final lastOverlap = existingIds.lastIndexWhere(incomingIndex.containsKey);
+
+  var previousIncomingIndex = -1;
+  var overlapsInServerOrder = true;
+  for (var index = firstOverlap; index <= lastOverlap; index++) {
+    final serverIndex = incomingIndex[existingIds[index]];
+    if (serverIndex == null) continue;
+    if (serverIndex < previousIncomingIndex) {
+      overlapsInServerOrder = false;
+      break;
+    }
+    previousIncomingIndex = serverIndex;
+  }
+
+  final prefix = existingIds.take(firstOverlap);
+  final suffix = existingIds.skip(lastOverlap + 1);
+  if (!overlapsInServerOrder) {
+    final middleExtras = existingIds
+        .sublist(firstOverlap, lastOverlap + 1)
+        .where((id) => !incomingIndex.containsKey(id));
+    return [...prefix, ...incomingIds, ...middleExtras, ...suffix];
+  }
+
+  final extrasBeforeAnchor = <String, List<String>>{};
+  final pendingExtras = <String>[];
+  for (var index = firstOverlap + 1; index <= lastOverlap; index++) {
+    final id = existingIds[index];
+    if (incomingIndex.containsKey(id)) {
+      if (pendingExtras.isNotEmpty) {
+        extrasBeforeAnchor[id] = List.of(pendingExtras);
+        pendingExtras.clear();
+      }
+    } else {
+      pendingExtras.add(id);
+    }
+  }
+
+  return [
+    ...prefix,
+    for (final id in incomingIds) ...[...?extrasBeforeAnchor[id], id],
+    ...pendingExtras,
+    ...suffix,
+  ];
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../auth/domain/auth_models.dart';
+import '../../fleet/fleet.dart';
 import '../../../shared/layout/responsive_breakpoints.dart';
 import 'compact_shell.dart';
 import 'medium_shell.dart';
@@ -12,6 +13,8 @@ class ShellPage extends StatelessWidget {
     required this.user,
     required this.onSignOut,
     this.onOpenPeon,
+    this.onOpenSession,
+    this.onNewSession,
     this.overseerName,
     this.onBackToConnections,
   }) : assert(user != null),
@@ -23,7 +26,9 @@ class ShellPage extends StatelessWidget {
     this.onBackToConnections,
   }) : user = null,
        onSignOut = null,
-       onOpenPeon = null;
+       onOpenPeon = null,
+       onOpenSession = null,
+       onNewSession = null;
 
   final OperatorIdentity? user;
   final Future<void> Function()? onSignOut;
@@ -33,6 +38,14 @@ class ShellPage extends StatelessWidget {
     required String peonId,
   })?
   onOpenPeon;
+  final void Function(
+    BuildContext context, {
+    required String workspaceId,
+    required String peonId,
+    required String sessionId,
+  })?
+  onOpenSession;
+  final FleetNewSession? onNewSession;
   final String? overseerName;
   final VoidCallback? onBackToConnections;
 
@@ -45,6 +58,8 @@ class ShellPage extends StatelessWidget {
             user: user,
             onSignOut: onSignOut,
             onOpenPeon: onOpenPeon,
+            onOpenSession: onOpenSession,
+            onNewSession: onNewSession,
             overseerName: overseerName,
             onBackToConnections: onBackToConnections,
           ),
@@ -52,11 +67,15 @@ class ShellPage extends StatelessWidget {
             user: user,
             onSignOut: onSignOut,
             onOpenPeon: onOpenPeon,
+            onOpenSession: onOpenSession,
+            onNewSession: onNewSession,
           ),
           ResponsiveLayoutSize.wide => WideShell(
             user: user,
             onSignOut: onSignOut,
             onOpenPeon: onOpenPeon,
+            onOpenSession: onOpenSession,
+            onNewSession: onNewSession,
           ),
         };
       },

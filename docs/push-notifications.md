@@ -30,11 +30,13 @@ Android and iOS continue to use their operating-system notification surfaces
 while the app is backgrounded.
 
 Normal FCM taps are consumed from both the terminated-launch message and the
-background-open stream. The client accepts only bounded `workspaceId`,
-`peonId`, `sessionId`, and `kind` routing fields from the server payload.
-Session events open cached-first session detail; Peon events open a conservative
-cached-first Peon shell whose cached projects and sessions render while fleet
-identity refreshes. The same destinations are available as:
+background-open stream. Attention notifications carry bounded `workspaceId`,
+`peonId`, and `sessionId` routing fields plus `kind: attention`; the client
+opens the referenced cached-first session detail. The accompanying `cursor` is
+an event-log resume token and is not used for routing. Legacy `session` and
+`peon` kinds remain accepted for compatibility, with Peon events opening a
+conservative cached-first Peon shell whose cached projects and sessions render
+while fleet identity refreshes. The same destinations are available as:
 
 ```text
 overseer[-dev]://open/peon?workspaceId=…&peonId=…
@@ -59,6 +61,9 @@ again, the app presents instructions with a direct link to this app's
 notification settings. Turning an enabled toggle off uses the same system
 settings path because apps cannot revoke their own notification permission.
 The toggle refreshes when the app resumes.
+If permission becomes enabled while the system settings screen is open, the
+resume refresh also retries authenticated FCM subscription registration
+immediately; the user does not need to relaunch the app.
 
 Desktop and web targets do not register push subscriptions or present a
 pretend notification provider. macOS, Windows, Linux, and web therefore expose
@@ -71,6 +76,12 @@ queues accessible session and Peon events in its durable push outbox. The worker
 sends FCM notification and data payloads through Firebase Admin, retries
 transient failures with exponential backoff, and disables registration tokens
 that Firebase reports as permanently invalid.
+
+On iOS 17.2 and newer, the ActivityKit push-to-start capability can create the
+aggregate Live Activity while the app is terminated once the backend aggregate
+contract is deployed. ActivityKit start and update tokens remain separate from
+the ordinary FCM registration token; see
+[live-activities.md](live-activities.md).
 
 Configure the complete service-account JSON as a deployment secret:
 

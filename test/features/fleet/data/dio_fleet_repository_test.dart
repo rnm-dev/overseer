@@ -12,8 +12,9 @@ void main() {
   test('persists and watches the workspace and Peon fleet', () async {
     final database = AppDatabase.forTesting(NativeDatabase.memory());
     addTearDown(database.close);
+    final adapter = _FleetAdapter();
     final dio = Dio(BaseOptions(baseUrl: 'https://overseer.example/api/v1/'))
-      ..httpClientAdapter = _FleetAdapter();
+      ..httpClientAdapter = adapter;
     final repository = DioFleetRepository(
       database: database,
       apiUrl: Uri.parse('https://overseer.example/api/v1/'),
@@ -29,6 +30,19 @@ void main() {
     expect(cached.single.workspace.id, 'workspace-1');
     expect(cached.single.peons.single.online, isFalse);
     expect(cached.single.peons.single.capabilities, ['codex']);
+    expect(cached.single.peons.single.recentSessions, hasLength(1));
+    expect(
+      cached.single.peons.single.recentSessions.single.displayTitle,
+      'Waiting session',
+    );
+    expect(
+      cached.single.peons.single.recentSessions.single.hasOutstandingRequest,
+      isTrue,
+    );
+    expect(adapter.peonRequest?.queryParameters, {
+      'includeRecentSessions': 'mine',
+      'recentSessionsLimit': 10,
+    });
 
     final onlineFleet = repository.watchFleet().firstWhere(
       (fleet) => fleet.single.peons.single.online,
@@ -49,6 +63,8 @@ void main() {
 }
 
 class _FleetAdapter implements HttpClientAdapter {
+  RequestOptions? peonRequest;
+
   @override
   Future<ResponseBody> fetch(
     RequestOptions options,
@@ -63,6 +79,7 @@ class _FleetAdapter implements HttpClientAdapter {
       });
     }
     if (options.path.endsWith('workspaces/workspace-1/peons')) {
+      peonRequest = options;
       return _jsonResponse({
         'peons': [
           {
@@ -72,6 +89,19 @@ class _FleetAdapter implements HttpClientAdapter {
             'lastSeen': 12,
             'capabilities': ['codex'],
             'load': {'activeSessions': 2, 'paused': false},
+            'recentSessions': [
+              {
+                'sessionId': 'session-1',
+                'title': 'Waiting session',
+                'status': 'running',
+                'lastActivityAt': 100,
+                'syncedAt': 100,
+                'lastRequestedAt': 95,
+                'attentionUpdatedAt': 95,
+                'hasOutstandingRequest': true,
+                'attentionUnread': false,
+              },
+            ],
           },
         ],
       });

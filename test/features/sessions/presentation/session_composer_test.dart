@@ -9,6 +9,7 @@ import 'package:overseer_mobile/features/sessions/presentation/session_composer.
 import 'package:overseer_mobile/shared/design/colors.dart';
 import 'package:overseer_mobile/shared/design/theme.dart';
 import 'package:overseer_mobile/shared/design/typography.dart';
+import 'package:overseer_mobile/shared/models/ai_capabilities.dart';
 import 'package:overseer_mobile/shared/widgets/app_markdown.dart';
 
 void main() {

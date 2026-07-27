@@ -103,6 +103,59 @@ void main() {
     );
     expect(tester.widget<AppButton>(newSessionButton).onPressed, isNull);
   });
+
+  testWidgets('opens external and relative links from project Markdown', (
+    tester,
+  ) async {
+    final repository = _FakeProjectDetailRepository(project);
+    final launched = <Uri>[];
+    String? openedProjectFile;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          projectDetailRepositoryProvider.overrideWithValue(repository),
+        ],
+        child: MaterialApp(
+          home: ProjectDetailPage(
+            workspaceId: 'workspace',
+            peonId: 'peon',
+            project: project,
+            online: true,
+            isOwner: true,
+            linkLauncher: (uri) async {
+              launched.add(uri);
+              return true;
+            },
+            onOpenFile:
+                (
+                  _, {
+                  required workspaceId,
+                  required peonId,
+                  required projectId,
+                  required projectKey,
+                  required path,
+                }) {
+                  openedProjectFile = path;
+                },
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Website'));
+    await tester.pump();
+    expect(launched, [Uri.parse('https://example.com')]);
+
+    await tester.tap(find.text('Source'));
+    await tester.pump();
+    expect(openedProjectFile, 'lib/main.dart');
+
+    await tester.tap(find.text('Architecture'));
+    await tester.pumpAndSettle();
+    expect(repository.fetchedPaths.last, 'docs/architecture.md');
+    expect(find.text('Architecture details'), findsOneWidget);
+  });
 }
 
 class _FakeProjectDetailRepository implements ProjectDetailRepository {
@@ -110,6 +163,7 @@ class _FakeProjectDetailRepository implements ProjectDetailRepository {
 
   final PeonProject project;
   int fileFetches = 0;
+  final List<String> fetchedPaths = [];
 
   @override
   Future<PeonProject> fetchProject({
@@ -136,9 +190,24 @@ class _FakeProjectDetailRepository implements ProjectDetailRepository {
     required String path,
   }) async {
     fileFetches++;
+    fetchedPaths.add(path);
     return ProjectFilePreview(
       path: path,
-      bytes: Uint8List.fromList('# Project documentation'.codeUnits),
+      bytes: Uint8List.fromList(switch (path) {
+        'docs/index.md' =>
+          '''
+# Project documentation
+
+[Website](https://example.com)
+
+[Architecture](architecture.md)
+
+[Source](../lib/main.dart)
+'''
+              .codeUnits,
+        'docs/architecture.md' => '# Architecture details'.codeUnits,
+        _ => '# Project documentation'.codeUnits,
+      }),
       contentType: 'text/markdown',
     );
   }

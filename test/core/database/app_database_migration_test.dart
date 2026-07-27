@@ -5,8 +5,8 @@ import 'package:overseer_mobile/core/database/app_database.dart';
 
 void main() {
   group('AppDatabase migrations', () {
-    for (var version = 1; version < 11; version++) {
-      test('migrates schema v$version to v11 without losing data', () async {
+    for (var version = 1; version < 12; version++) {
+      test('migrates schema v$version to v12 without losing data', () async {
         final database = AppDatabase.forTesting(
           NativeDatabase.memory(
             setup: (sqlite) {
@@ -22,10 +22,18 @@ void main() {
         // Opening the database runs the migration.
         expect(
           await database.customSelect('PRAGMA user_version').getSingle(),
-          predicate<QueryRow>((row) => row.read<int>('user_version') == 11),
+          predicate<QueryRow>((row) => row.read<int>('user_version') == 12),
         );
 
-        expect(await _tableNames(database), containsAll(_tablesAtVersion(11)));
+        expect(await _tableNames(database), containsAll(_tablesAtVersion(12)));
+        expect(
+          await _columnNames(database, 'cached_sessions'),
+          containsAll(<String>{
+            'operator_requested',
+            'has_outstanding_request',
+            'last_requested_at',
+          }),
+        );
         expect(
           await _columnNames(database, 'pending_followup_commands'),
           containsAll(<String>{
@@ -51,7 +59,7 @@ void main() {
                 .getSingle()
                 .then((row) => row.read<int>('count')),
             1,
-            reason: 'The existing row in $table should survive v$version → v11',
+            reason: 'The existing row in $table should survive v$version → v12',
           );
         }
 
@@ -83,14 +91,20 @@ void main() {
       });
     }
 
-    test('creates the complete v11 schema from an empty database', () async {
+    test('creates the complete v12 schema from an empty database', () async {
       final database = AppDatabase.forTesting(NativeDatabase.memory());
       addTearDown(database.close);
 
-      expect(await _tableNames(database), containsAll(_tablesAtVersion(11)));
+      expect(await _tableNames(database), containsAll(_tablesAtVersion(12)));
       expect(
         await _columnNames(database, 'cached_sessions'),
-        containsAll(<String>{'attention_unread', 'attention_updated_at'}),
+        containsAll(<String>{
+          'attention_unread',
+          'attention_updated_at',
+          'operator_requested',
+          'has_outstanding_request',
+          'last_requested_at',
+        }),
       );
       expect(
         await _columnNames(database, 'pending_followup_commands'),
@@ -277,6 +291,33 @@ void _createSchemaAtVersion(
       )
     ''');
   }
+  if (version >= 11) {
+    execute('''
+      CREATE TABLE cached_workspaces (
+        workspace_id TEXT NOT NULL PRIMARY KEY,
+        name TEXT NOT NULL,
+        role TEXT,
+        synced_at REAL NOT NULL
+      )
+    ''');
+    execute('''
+      CREATE TABLE cached_fleet_peons (
+        workspace_id TEXT NOT NULL,
+        peon_id TEXT NOT NULL,
+        name TEXT,
+        hostname TEXT,
+        base_url TEXT,
+        address_source TEXT,
+        online INTEGER NOT NULL,
+        last_seen REAL NOT NULL,
+        capabilities_json TEXT NOT NULL DEFAULT '[]',
+        active_sessions INTEGER,
+        paused INTEGER,
+        synced_at REAL NOT NULL,
+        PRIMARY KEY (workspace_id, peon_id)
+      )
+    ''');
+  }
 
   execute('''
     CREATE TABLE migration_markers (
@@ -352,6 +393,17 @@ void _seedSchemaAtVersion(
     execute('''
       INSERT INTO cached_peon_management
       VALUES ('workspace', 'peon', 'general', '{}', 1)
+    ''');
+  }
+  if (version >= 11) {
+    execute('''
+      INSERT INTO cached_workspaces
+      VALUES ('workspace', 'Workspace', 'owner', 1)
+    ''');
+    execute('''
+      INSERT INTO cached_fleet_peons (
+        workspace_id, peon_id, name, online, last_seen, synced_at
+      ) VALUES ('workspace', 'peon', 'Peon', 1, 1, 1)
     ''');
   }
 

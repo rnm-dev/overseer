@@ -1,0 +1,4 @@
+interface:
+  display_name: "Upload to TestFlight"
+  short_description: "Build and upload a validated TestFlight release"
+  default_prompt: "Use $upload-testflight to build and upload the current production release to TestFlight."

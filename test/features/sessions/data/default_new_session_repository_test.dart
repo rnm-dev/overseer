@@ -7,6 +7,8 @@ import 'package:overseer_mobile/core/database/app_database.dart';
 import 'package:overseer_mobile/features/sessions/data/default_new_session_repository.dart';
 import 'package:overseer_mobile/features/sessions/domain/new_session_repository.dart';
 
+import '../../../support/manual_app_time.dart';
+
 void main() {
   late AppDatabase database;
 
@@ -46,11 +48,13 @@ void main() {
           },
         ),
       );
+      final clock = MutableAppClock(DateTime.utc(2026, 7, 27, 10, 30));
       final repository = DefaultNewSessionRepository(
         database: database,
         apiUrl: Uri.parse('https://overseer.example/api/'),
         token: 'token',
         dio: dio,
+        clock: clock,
       );
 
       final session = await repository.createSession(
@@ -89,6 +93,7 @@ void main() {
         database.cachedSessions,
       )).getSingle();
       expect(cached.sessionId, 'created-session');
+      expect(cached.syncedAt, clock.now().millisecondsSinceEpoch.toDouble());
     },
   );
 

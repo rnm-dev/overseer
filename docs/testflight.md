@@ -10,7 +10,7 @@ Use the `prod` flavor for every TestFlight build. Its application identifier is
 As of April 28, 2026, App Store Connect requires iOS uploads to be built with
 Xcode 26 or later and the iOS 26 SDK or later. The release Mac must also have:
 
-- an Apple Developer account added to Xcode for team `CU55M6L93Q`;
+- an Apple Developer account added to Xcode for team `F7KV67KV2U`;
 - an App Store Connect app record whose bundle ID is `org.ovrseer.app`;
 - explicit App IDs for the app and `org.ovrseer.app.liveActivityWidget`;
 - Push Notifications enabled for the app App ID;
@@ -26,12 +26,32 @@ provisioning profiles, API keys, or App Store Connect credentials.
 The release version and build number come from `pubspec.yaml`:
 
 ```yaml
-version: 1.0.0+2
+version: 1.0.0+3
 ```
 
 Increment the build number for every upload, even when the marketing version
 does not change. The Runner and Live Activity extension inherit the same
 version and build values; verify both before uploading.
+
+## Release commit and tag
+
+Every TestFlight release includes all non-ignored project changes in a dedicated
+commit before the production archive is built. Use this message format:
+
+```text
+chore(release): TestFlight 1.0.0+4
+```
+
+The release tree must be clean after the commit. After Apple reports the build
+as `VALID`, create an annotated tag on that exact commit:
+
+```sh
+git tag -a "v1.0.0+4" RELEASE_SHA -m "TestFlight 1.0.0 (4)"
+```
+
+Never tag a rejected build, and never overwrite or move an existing release
+tag. Do not push the commit or tag unless the release task explicitly includes
+the push.
 
 ## Preflight
 
@@ -49,6 +69,11 @@ network libraries. Reassess this declaration before adding proprietary or
 non-standard encryption.
 
 ## Build
+
+For the routine agent-driven path, invoke the project skill
+`$upload-testflight`. It performs preflight, build-number selection, signing,
+direct App Store Connect upload, and status monitoring. Its deterministic local
+helper is `.agents/skills/upload-testflight/scripts/testflight_local.sh`.
 
 After the Apple account and provisioning assets are available:
 

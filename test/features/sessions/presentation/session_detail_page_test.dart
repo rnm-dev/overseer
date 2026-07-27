@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:overseer_mobile/core/live/active_sessions.dart';
 import 'package:overseer_mobile/core/live/presence.dart';
 import 'package:overseer_mobile/features/projects/application/projects_controller.dart';
 import 'package:overseer_mobile/features/projects/domain/project_detail_models.dart';
@@ -22,6 +23,7 @@ import 'package:overseer_mobile/features/sessions/domain/session_repository.dart
 import 'package:overseer_mobile/features/sessions/presentation/session_detail_page.dart';
 import 'package:overseer_mobile/shared/design/colors.dart';
 import 'package:overseer_mobile/shared/design/theme.dart';
+import 'package:overseer_mobile/shared/models/ai_capabilities.dart';
 import 'package:overseer_mobile/shared/widgets/app_navigation_bar.dart';
 import 'package:overseer_mobile/shared/widgets/presence_stack.dart';
 
@@ -81,6 +83,22 @@ void main() {
     expect(
       tester.getCenter(find.byKey(const Key('new-session-project-title'))).dx,
       closeTo(200, 0.5),
+    );
+    final selectionFinder = find.byKey(
+      const Key('new-session-project-selection'),
+    );
+    final composerFinder = find.byKey(const Key('session-composer-gradient'));
+    final projectScroll = tester.widget<SingleChildScrollView>(
+      find.byKey(const Key('new-session-project-scroll')),
+    );
+
+    expect(
+      tester.getBottomLeft(selectionFinder).dy,
+      tester.getBottomLeft(composerFinder).dy,
+    );
+    expect(
+      (projectScroll.padding! as EdgeInsets).bottom,
+      closeTo(tester.getSize(composerFinder).height + 24, 0.5),
     );
   });
 
@@ -1223,6 +1241,65 @@ void main() {
     await tester.pump();
     expect(find.byKey(const Key('transcript-working')), findsNothing);
   });
+
+  testWidgets(
+    'shows Stop when the authoritative live snapshot marks the session active',
+    (tester) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            sessionDetailsProvider.overrideWith(
+              (ref, scope) async =>
+                  const SessionDetails(turnCount: 1, status: 'idle'),
+            ),
+            transcriptControllerProvider.overrideWith2(
+              (scope) => _TestTranscriptController(
+                scope,
+                const TranscriptState(isRunning: false, events: []),
+              ),
+            ),
+          ],
+          child: MaterialApp(
+            theme: AppTheme.dark,
+            home: const SessionDetailPage(
+              session: SessionSummary(
+                workspaceId: 'workspace',
+                peonId: 'peon',
+                sessionId: 'session',
+                status: 'idle',
+                title: 'Live running transcript',
+                syncedAt: 1,
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(find.byKey(const Key('transcript-stop')), findsNothing);
+
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(SessionDetailPage)),
+      );
+      container.read(activeSessionsProvider.notifier).replaceWorkspace(
+        'workspace',
+        const [ActiveSession(peonId: 'peon', sessionId: 'session')],
+      );
+      expect(
+        container
+            .read(activeSessionsProvider)
+            .forWorkspace('workspace')
+            ?.contains(peonId: 'peon', sessionId: 'session'),
+        isTrue,
+      );
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(find.byKey(const Key('transcript-working')), findsOneWidget);
+      expect(find.byKey(const Key('transcript-stop')), findsOneWidget);
+    },
+  );
 }
 
 class _TestTranscriptController extends TranscriptController {

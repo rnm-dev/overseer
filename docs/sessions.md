@@ -32,8 +32,10 @@ Rows use `(workspaceId, peonId, sessionId)` as their local identity and
 projections cannot regress newer cached data.
 
 Session history and current activity have separate freshness rules. Drift owns
-the offline-first history, but a cached `status == running` is only a fallback
-until live sync has seeded the workspace's authoritative active-session set.
+the offline-first history, but cached `status == running` does not make a
+session row active. Until live sync has seeded the workspace's authoritative
+active-session set, session rows default to inactive so stale cache hydration
+and lazy row construction cannot flash a false running glow.
 After each workspace socket snapshot, the client fetches every indexed
 `status=running` page and publishes the resulting session IDs with their
 `peonId`, `projectId`, and `projectKey`. Project counts and running indicators
@@ -49,8 +51,8 @@ Visible rows animate into activity order. Newly inserted rows appear in their
 authoritative slot, and reduced-motion preferences disable reordering effects.
 
 Session and project rows mirror the web sidebar. State is carried by a
-two-pixel left edge rather than a dot: running is green, unread completion or
-`needs_human` is amber, failures are red, and idle is a quiet neutral edge.
+two-pixel left edge rather than a dot: authoritatively running is green, an
+unread completion is amber, failures are red, and idle is a quiet neutral edge.
 Changes to a session's status, activity, preview, title, or unread state replay
 a 620 ms edge flare; project rows do the same when their name, rollups, active
 count, or session activity changes. Initial cached hydration stays still.
@@ -64,6 +66,12 @@ so the amber unread edge clears immediately when returning to the list.
 Returning to the foreground retries the idempotent acknowledgement. A failed
 request does not block the cached transcript or incorrectly claim that it was
 read.
+
+The Peon session state machine remains `running → completed`. Operator request
+lifecycle is orthogonal: `hasOutstandingRequest`, `lastRequestedAt`, and
+`attentionUnread` are user-scoped projections backed by Overseer
+`session_attention`. They must not be inferred from the session status or from
+an outcome value.
 
 Project detail reuses this same cached/live list with a presentation filter:
 canonical `projectId` matches first, while `projectKey` is a fallback when a

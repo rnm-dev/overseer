@@ -12,20 +12,24 @@ import 'package:overseer_mobile/features/fleet/application/fleet_live_service.da
 import 'package:overseer_mobile/features/fleet/domain/fleet_models.dart';
 import 'package:overseer_mobile/features/fleet/domain/fleet_repository.dart';
 import 'package:overseer_mobile/features/fleet/presentation/fleet_overview.dart';
+import 'package:overseer_mobile/features/sessions/sessions.dart';
 import 'package:overseer_mobile/features/auth/domain/auth_models.dart';
 import 'package:overseer_mobile/shared/design/colors.dart';
+import 'package:overseer_mobile/shared/design/spacing.dart';
 import 'package:overseer_mobile/shared/design/theme.dart';
 import 'package:overseer_mobile/shared/design/motion.dart';
 import 'package:overseer_mobile/shared/design/typography.dart';
 import 'package:overseer_mobile/shared/widgets/app_button.dart';
 import 'package:overseer_mobile/shared/widgets/app_card.dart';
 import 'package:overseer_mobile/shared/widgets/app_list_tile.dart';
+import 'package:overseer_mobile/shared/widgets/sidebar_status_edge.dart';
 
 void main() {
-  testWidgets('shows workspaces, peons, presence, and active sessions', (
-    tester,
-  ) async {
+  testWidgets('shows compact Peon actions and inline presence', (tester) async {
     final live = _FakeFleetLiveService();
+    String? newSessionWorkspaceId;
+    String? newSessionPeonId;
+    var openedPeonCount = 0;
     await _pump(
       tester,
       _FakeFleetRepository(
@@ -53,14 +57,22 @@ void main() {
         ],
       ),
       live: live,
+      onOpenPeon: (context, {required workspaceId, required peonId}) {
+        openedPeonCount += 1;
+      },
+      onNewSession: (context, {required workspaceId, required peonId}) {
+        newSessionWorkspaceId = workspaceId;
+        newSessionPeonId = peonId;
+      },
     );
     await tester.pump();
 
     expect(find.text('RNM'), findsOneWidget);
     expect(find.text('Kanat'), findsOneWidget);
-    expect(find.text('2 active'), findsOneWidget);
+    expect(find.text('2 active'), findsNothing);
     expect(find.text('Thor'), findsOneWidget);
-    expect(find.text('offline'), findsOneWidget);
+    expect(find.text('offline'), findsNothing);
+    expect(find.text('+ NEW SESSION'), findsNWidgets(2));
     expect(find.byKey(const Key('fleet-screen-padding')), findsOneWidget);
 
     final workspaceSection = find.byKey(const Key('workspace-rnm'));
@@ -85,10 +97,12 @@ void main() {
       tester.getSize(find.byKey(const Key('peon-kanat'))).width,
       tester.view.physicalSize.width / tester.view.devicePixelRatio,
     );
+    expect(tester.getSize(find.byKey(const Key('peon-kanat'))).height, 44);
     expect(
-      tester.getSize(find.byKey(const Key('sound-setting'))).height,
-      tester.getSize(find.byKey(const Key('peon-kanat'))).height,
+      tester.getSize(find.byKey(const Key('peon-new-session-kanat'))).height,
+      44,
     );
+    expect(tester.getSize(find.byKey(const Key('sound-setting'))).height, 56);
     expect(
       tester.getSize(find.byKey(const Key('notification-setting'))).height,
       tester.getSize(find.byKey(const Key('sound-setting'))).height,
@@ -107,7 +121,8 @@ void main() {
         matching: find.byType(AppListTile),
       ),
     );
-    expect(kanatNode.density, soundNode.density);
+    expect(kanatNode.density, AppListTileDensity.compact);
+    expect(soundNode.density, AppListTileDensity.standard);
     expect(kanatNode.variant, AppListTileVariant.sectionSurface);
     expect(soundNode.variant, AppListTileVariant.standalone);
     expect(kanatNode.titleMaxLines, 1);
@@ -134,7 +149,7 @@ void main() {
 
     live.emitActiveSessions('rnm', 'kanat', 3);
     await tester.pump();
-    expect(find.text('3 active'), findsOneWidget);
+    expect(find.text('3 active'), findsNothing);
 
     live.emitPresence('rnm', const [
       PresenceEntry(
@@ -150,6 +165,20 @@ void main() {
     expect(find.byKey(const Key('peon-presence-kanat')), findsOneWidget);
     expect(find.bySemanticsLabel('Online viewers: viewer'), findsOneWidget);
     expect(find.byKey(const Key('peon-presence-thor')), findsNothing);
+    expect(
+      tester.getTopLeft(find.byKey(const Key('peon-presence-kanat'))).dx,
+      greaterThan(tester.getTopRight(find.text('Kanat')).dx),
+    );
+
+    await tester.tap(find.byKey(const Key('peon-new-session-kanat')));
+    await tester.pump();
+    expect(newSessionWorkspaceId, 'rnm');
+    expect(newSessionPeonId, 'kanat');
+    expect(openedPeonCount, 0);
+
+    await tester.tap(find.byKey(const Key('peon-kanat')));
+    await tester.pump();
+    expect(openedPeonCount, 1);
   });
 
   testWidgets('shows loading and empty states', (tester) async {
@@ -166,6 +195,172 @@ void main() {
 
     expect(find.text('No workspaces available'), findsOneWidget);
     expect(find.text('dev@example.com'), findsOneWidget);
+  });
+
+  testWidgets('shows three personal recent sessions and opens a session', (
+    tester,
+  ) async {
+    String? openedSessionId;
+    await _pump(
+      tester,
+      _FakeFleetRepository(
+        result: const [
+          WorkspaceFleet(
+            workspace: Workspace(id: 'rnm', name: 'RNM'),
+            peons: [
+              Peon(
+                id: 'kanat',
+                name: 'Kanat',
+                online: true,
+                lastSeen: 100,
+                capabilities: [],
+                recentSessions: [
+                  FleetRecentSession(
+                    workspaceId: 'rnm',
+                    peonId: 'kanat',
+                    sessionId: 'ready',
+                    title: 'Ready response',
+                    syncedAt: 40,
+                    attentionUpdatedAt: 40,
+                    hasOutstandingRequest: false,
+                    attentionUnread: true,
+                    lastActivityAt: 40,
+                  ),
+                  FleetRecentSession(
+                    workspaceId: 'rnm',
+                    peonId: 'kanat',
+                    sessionId: 'working',
+                    title: 'Working request',
+                    status: 'running',
+                    syncedAt: 30,
+                    attentionUpdatedAt: 30,
+                    hasOutstandingRequest: true,
+                    attentionUnread: false,
+                    lastActivityAt: 30,
+                  ),
+                  FleetRecentSession(
+                    workspaceId: 'rnm',
+                    peonId: 'kanat',
+                    sessionId: 'viewed',
+                    title: 'Viewed request',
+                    projectKey: 'overseer-mobile',
+                    syncedAt: 20,
+                    attentionUpdatedAt: 20,
+                    hasOutstandingRequest: false,
+                    attentionUnread: false,
+                    lastActivityAt: 20,
+                  ),
+                  FleetRecentSession(
+                    workspaceId: 'rnm',
+                    peonId: 'kanat',
+                    sessionId: 'hidden',
+                    title: 'Older hidden request',
+                    syncedAt: 10,
+                    attentionUpdatedAt: 10,
+                    hasOutstandingRequest: false,
+                    attentionUnread: false,
+                    lastActivityAt: 10,
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ],
+      ),
+      onOpenSession:
+          (
+            context, {
+            required workspaceId,
+            required peonId,
+            required sessionId,
+          }) {
+            openedSessionId = sessionId;
+          },
+    );
+    await tester.pump();
+
+    expect(find.text('Ready response'), findsOneWidget);
+    expect(find.byType(SessionWorkItem), findsNWidgets(3));
+    expect(find.text('overseer-mobile'), findsOneWidget);
+    expect(find.text('Older hidden request'), findsNothing);
+
+    final idleEdge = find
+        .descendant(
+          of: find.byKey(const Key('session-status-working')),
+          matching: find.byType(Container),
+        )
+        .first;
+    final idleDecoration =
+        tester.widget<Container>(idleEdge).decoration! as BoxDecoration;
+    expect(idleDecoration.color, SidebarStatusEdgeStyle.idle.color);
+
+    await tester.tap(find.byKey(const Key('session-ready')));
+    await tester.pump();
+    expect(openedSessionId, 'ready');
+  });
+
+  testWidgets('spaces Peon groups after the previous group content', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      _FakeFleetRepository(
+        result: const [
+          WorkspaceFleet(
+            workspace: Workspace(id: 'rnm', name: 'RNM'),
+            peons: [
+              Peon(
+                id: 'alpha',
+                name: 'Alpha',
+                online: true,
+                lastSeen: 100,
+                capabilities: [],
+              ),
+              Peon(
+                id: 'beta',
+                name: 'Beta',
+                online: true,
+                lastSeen: 90,
+                capabilities: [],
+                recentSessions: [
+                  FleetRecentSession(
+                    workspaceId: 'rnm',
+                    peonId: 'beta',
+                    sessionId: 'beta-session',
+                    title: 'Beta session',
+                    syncedAt: 80,
+                    attentionUpdatedAt: 80,
+                    hasOutstandingRequest: true,
+                    attentionUnread: false,
+                    lastActivityAt: 80,
+                  ),
+                ],
+              ),
+              Peon(
+                id: 'gamma',
+                name: 'Gamma',
+                online: false,
+                lastSeen: 70,
+                capabilities: [],
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+    await tester.pump();
+
+    final alphaBottom = tester
+        .getBottomLeft(find.byKey(const Key('peon-alpha')))
+        .dy;
+    final betaTop = tester.getTopLeft(find.byKey(const Key('peon-beta'))).dy;
+    final betaSessionBottom = tester
+        .getBottomLeft(find.byKey(const Key('session-beta-session')))
+        .dy;
+    final gammaTop = tester.getTopLeft(find.byKey(const Key('peon-gamma'))).dy;
+
+    expect(betaTop - alphaBottom, AppSpacing.xs);
+    expect(gammaTop - betaSessionBottom, AppSpacing.xs);
   });
 
   testWidgets('resumes live updates and applies session projections', (
@@ -382,6 +577,9 @@ Future<void> _pump(
   LiveProjectionSink? projectSink,
   NotificationPermissionGateway? notificationPermissions,
   Future<void> Function()? onSignOut,
+  FleetOpenPeon? onOpenPeon,
+  FleetOpenSession? onOpenSession,
+  FleetNewSession? onNewSession,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
@@ -403,6 +601,9 @@ Future<void> _pump(
             compact: true,
             user: const OperatorIdentity(email: 'dev@example.com'),
             onSignOut: onSignOut ?? _signOut,
+            onOpenPeon: onOpenPeon,
+            onOpenSession: onOpenSession,
+            onNewSession: onNewSession,
           ),
         ),
       ),

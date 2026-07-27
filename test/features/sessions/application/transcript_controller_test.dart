@@ -13,6 +13,9 @@ import 'package:overseer_mobile/features/settings/application/sound_pack_control
 import 'package:overseer_mobile/features/settings/domain/sound_pack.dart';
 import 'package:overseer_mobile/features/settings/domain/work_sound_player.dart';
 
+import '../../../support/manual_app_time.dart';
+import 'package:overseer_mobile/core/time/app_time.dart';
+
 void main() {
   const scope = TranscriptScope(
     workspaceId: 'workspace',
@@ -27,7 +30,7 @@ void main() {
   );
 
   test(
-    'subscribes from cached boundary before latest transcript refresh completes',
+    'subscribes from the newest page after latest transcript refresh completes',
     () async {
       final latest = Completer<TranscriptPage>();
       final repository = _FakeSessionRepository(
@@ -59,11 +62,11 @@ void main() {
       addTearDown(subscription.close);
 
       await container.read(transcriptControllerProvider(scope).future);
-      while (live.subscriptions.isEmpty) {
+      while (repository.latestRequests < 1) {
         await Future<void>.delayed(Duration.zero);
       }
 
-      expect(live.subscriptions, ['cached-7']);
+      expect(live.subscriptions, isEmpty);
       expect(repository.latestCompleted, isFalse);
 
       latest.complete(
@@ -83,9 +86,53 @@ void main() {
       await Future<void>.delayed(Duration.zero);
       await Future<void>.delayed(Duration.zero);
 
-      expect(live.subscriptions, ['cached-7']);
+      expect(live.subscriptions, ['latest-9']);
     },
   );
+
+  test('falls back to the cached boundary when latest refresh fails', () async {
+    final latest = Completer<TranscriptPage>();
+    final repository = _FakeSessionRepository(
+      cached: TranscriptCache(
+        events: [
+          TranscriptEvent(
+            eventId: 'cached-7',
+            orderKey: 7,
+            payload: {'type': 'assistant'},
+          ),
+        ],
+        hasOlder: true,
+      ),
+      latest: latest.future,
+    );
+    final live = _FakeTranscriptLiveService();
+    final container = ProviderContainer(
+      overrides: [
+        sessionRepositoryProvider.overrideWithValue(repository),
+        transcriptLiveServiceProvider.overrideWithValue(live),
+      ],
+    );
+    addTearDown(container.dispose);
+    final subscription = container.listen(
+      transcriptControllerProvider(scope),
+      (_, _) {},
+      fireImmediately: true,
+    );
+    addTearDown(subscription.close);
+
+    await container.read(transcriptControllerProvider(scope).future);
+    while (repository.latestRequests < 1) {
+      await Future<void>.delayed(Duration.zero);
+    }
+    latest.completeError(
+      const SessionsException('Latest transcript unavailable.'),
+    );
+    while (live.subscriptions.isEmpty) {
+      await Future<void>.delayed(Duration.zero);
+    }
+
+    expect(live.subscriptions, ['cached-7']);
+  });
 
   test('keeps running fenced across consecutive queued turns', () async {
     final live = _FakeTranscriptLiveService();
@@ -174,6 +221,152 @@ void main() {
           .read(transcriptControllerProvider(scope).notifier)
           .resumeFromBackground();
 
+      expect(repository.latestRequests, 2);
+    },
+  );
+
+  test('every terminal tail failure forces immediate REST recovery', () async {
+    final repository = _FakeSessionRepository();
+    final live = _FakeTranscriptLiveService();
+    final container = ProviderContainer(
+      overrides: [
+        sessionRepositoryProvider.overrideWithValue(repository),
+        transcriptLiveServiceProvider.overrideWithValue(live),
+      ],
+    );
+    addTearDown(container.dispose);
+    final subscription = container.listen(
+      transcriptControllerProvider(scope),
+      (_, _) {},
+      fireImmediately: true,
+    );
+    addTearDown(subscription.close);
+
+    await container.read(transcriptControllerProvider(scope).future);
+    while (live.onFrame == null || repository.latestRequests < 1) {
+      await Future<void>.delayed(Duration.zero);
+    }
+
+    await live.onFrame!(
+      const TranscriptTailFrame.terminal(
+        retryable: true,
+        error: 'stream interrupted',
+      ),
+    );
+    await live.onFrame!(
+      const TranscriptTailFrame.terminal(
+        retryable: true,
+        error: 'stream interrupted again',
+      ),
+    );
+
+    expect(repository.detailsRequests, 2);
+    expect(repository.latestRequests, 3);
+  });
+
+  test(
+    'does not acknowledge a malformed tail event unless REST recovered it',
+    () async {
+      final repository = _FakeSessionRepository();
+      final live = _FakeTranscriptLiveService();
+      final container = ProviderContainer(
+        overrides: [
+          sessionRepositoryProvider.overrideWithValue(repository),
+          transcriptLiveServiceProvider.overrideWithValue(live),
+        ],
+      );
+      addTearDown(container.dispose);
+      final subscription = container.listen(
+        transcriptControllerProvider(scope),
+        (_, _) {},
+        fireImmediately: true,
+      );
+      addTearDown(subscription.close);
+
+      await container.read(transcriptControllerProvider(scope).future);
+      while (live.onFrame == null || repository.latestRequests < 1) {
+        await Future<void>.delayed(Duration.zero);
+      }
+
+      await expectLater(
+        live.onFrame!(
+          const TranscriptTailFrame.event(
+            eventId: 'malformed-event',
+            data: '{not-json',
+          ),
+        ),
+        throwsA(isA<SessionsException>()),
+      );
+      expect(repository.latestRequests, 2);
+    },
+  );
+
+  test(
+    'transcript recovery continues when session details are unavailable',
+    () async {
+      final repository = _FakeSessionRepository(detailsFail: true);
+      final live = _FakeTranscriptLiveService();
+      final container = ProviderContainer(
+        overrides: [
+          sessionRepositoryProvider.overrideWithValue(repository),
+          transcriptLiveServiceProvider.overrideWithValue(live),
+        ],
+      );
+      addTearDown(container.dispose);
+      final subscription = container.listen(
+        transcriptControllerProvider(scope),
+        (_, _) {},
+        fireImmediately: true,
+      );
+      addTearDown(subscription.close);
+
+      await container.read(transcriptControllerProvider(scope).future);
+      while (live.onFrame == null || repository.latestRequests < 1) {
+        await Future<void>.delayed(Duration.zero);
+      }
+
+      await live.onFrame!(
+        const TranscriptTailFrame.terminal(
+          retryable: true,
+          error: 'stream interrupted',
+        ),
+      );
+
+      expect(repository.detailsRequests, 1);
+      expect(repository.latestRequests, 2);
+    },
+  );
+
+  test(
+    'periodically reconciles an idle transcript as an anti-entropy backstop',
+    () async {
+      const idleScope = TranscriptScope(
+        workspaceId: 'workspace',
+        peonId: 'peon',
+        sessionId: 'idle-session',
+      );
+      final repository = _FakeSessionRepository();
+      final clock = MutableAppClock(DateTime.utc(2026, 7, 27));
+      final scheduler = ManualAppScheduler(clock: clock);
+      final container = ProviderContainer(
+        overrides: [
+          sessionRepositoryProvider.overrideWithValue(repository),
+          appClockProvider.overrideWithValue(clock),
+          appSchedulerProvider.overrideWithValue(scheduler),
+        ],
+      );
+      addTearDown(container.dispose);
+      final subscription = container.listen(
+        transcriptControllerProvider(idleScope),
+        (_, _) {},
+        fireImmediately: true,
+      );
+      addTearDown(subscription.close);
+
+      await container.read(transcriptControllerProvider(idleScope).future);
+      await scheduler.advance(const Duration(seconds: 5));
+
+      expect(repository.detailsRequests, 1);
       expect(repository.latestRequests, 2);
     },
   );
@@ -267,16 +460,9 @@ void main() {
       addTearDown(subscription.close);
 
       await container.read(transcriptControllerProvider(scope).future);
-      while (live.onFrame == null) {
+      while (repository.latestRequests < 1) {
         await Future<void>.delayed(Duration.zero);
       }
-
-      await live.onFrame!(
-        const TranscriptTailFrame.event(
-          eventId: 'unread-result',
-          data: '{"type":"result","is_error":false}',
-        ),
-      );
       expect(sounds.cues, isEmpty);
 
       latest.complete(
@@ -296,6 +482,7 @@ void main() {
       while (!repository.latestCompleted) {
         await Future<void>.delayed(Duration.zero);
       }
+      expect(live.subscriptions, ['unread-result']);
       expect(sounds.cues, isEmpty);
 
       await live.onFrame!(
@@ -397,6 +584,7 @@ class _FakeTranscriptLiveService implements TranscriptLiveService {
 class _FakeSessionRepository implements SessionRepository {
   _FakeSessionRepository({
     this.cached = const TranscriptCache(events: [], hasOlder: false),
+    this.detailsFail = false,
     Future<TranscriptPage>? latest,
   }) : _latest =
            latest ??
@@ -410,9 +598,11 @@ class _FakeSessionRepository implements SessionRepository {
            );
 
   final TranscriptCache cached;
+  final bool detailsFail;
   final Future<TranscriptPage> _latest;
   bool latestCompleted = false;
   int latestRequests = 0;
+  int detailsRequests = 0;
 
   @override
   Future<TranscriptCache> loadCachedTranscript({
@@ -446,7 +636,13 @@ class _FakeSessionRepository implements SessionRepository {
     required String workspaceId,
     required String peonId,
     required String sessionId,
-  }) async => const SessionDetails(turnCount: 1, status: 'completed');
+  }) async {
+    detailsRequests += 1;
+    if (detailsFail) {
+      throw const SessionsException('Session details unavailable.');
+    }
+    return const SessionDetails(turnCount: 1, status: 'completed');
+  }
 
   @override
   Future<void> cacheTailEvent({

@@ -3,6 +3,8 @@ import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/diagnostics/app_diagnostics.dart';
+import '../../../core/time/app_time.dart';
 import '../domain/followup_repository.dart';
 import '../domain/voice_input.dart';
 
@@ -88,16 +90,22 @@ class VoiceDictationController extends Notifier<VoiceDictationState> {
   VoiceCapabilities? _capabilities;
   StreamSubscription<double>? _amplitudeSubscription;
   StreamSubscription<void>? _interruptionSubscription;
-  Timer? _durationTimer;
+  ScheduledTask? _durationTimer;
   DateTime? _startedAt;
   Completer<void>? _transcriptionCancellation;
   bool _stopping = false;
   int _operationId = 0;
+  late AppClock _clock;
+  late AppScheduler _scheduler;
+  late AppDiagnostics _diagnostics;
 
   static const _clientMaxDuration = Duration(seconds: 120);
   static const _minimumDuration = Duration(milliseconds: 300);
   @override
   VoiceDictationState build() {
+    _clock = ref.read(appClockProvider);
+    _scheduler = ref.read(appSchedulerProvider);
+    _diagnostics = ref.read(appDiagnosticsProvider);
     final recorder = ref.read(voiceRecorderFactoryProvider).create();
     _recorder = recorder;
     ref.onDispose(() {
@@ -130,8 +138,18 @@ class VoiceDictationController extends Notifier<VoiceDictationState> {
         enabled: capabilities.enabled,
         maxDuration: maxDuration,
       );
-    } catch (_) {
+    } catch (error) {
       if (!ref.mounted) return;
+      _diagnostics.record(
+        AppDiagnosticEvent(
+          name: 'voice.capabilities',
+          level: AppDiagnosticLevel.warning,
+          workspaceId: scope.workspaceId,
+          sessionId: scope.sessionId,
+          state: 'unavailable',
+          errorType: error.runtimeType.toString(),
+        ),
+      );
       // Older or currently unreachable instances do not expose a broken mic.
       state = const VoiceDictationState(phase: VoiceDictationPhase.unavailable);
     }
@@ -162,7 +180,7 @@ class VoiceDictationController extends Notifier<VoiceDictationState> {
         await _recorder!.cancel();
         return false;
       }
-      _startedAt = DateTime.now();
+      _startedAt = _clock.now();
       _amplitudeSubscription = _recorder!.amplitude.listen((amplitude) {
         if (state.phase != VoiceDictationPhase.recording) return;
         state = state.copyWith(amplitude: amplitude);
@@ -172,12 +190,15 @@ class VoiceDictationController extends Notifier<VoiceDictationState> {
           cancel(message: 'Recording was discarded after an interruption.'),
         );
       });
-      _durationTimer = Timer.periodic(const Duration(milliseconds: 250), (_) {
-        if (state.phase != VoiceDictationPhase.recording) return;
-        final duration = DateTime.now().difference(_startedAt!);
-        state = state.copyWith(duration: duration);
-        if (duration >= state.maxDuration) unawaited(stop());
-      });
+      _durationTimer = _scheduler.periodic(
+        const Duration(milliseconds: 250),
+        () {
+          if (state.phase != VoiceDictationPhase.recording) return;
+          final duration = _clock.now().difference(_startedAt!);
+          state = state.copyWith(duration: duration);
+          if (duration >= state.maxDuration) unawaited(stop());
+        },
+      );
       state = state.copyWith(
         phase: VoiceDictationPhase.recording,
         duration: Duration.zero,
@@ -195,8 +216,18 @@ class VoiceDictationController extends Notifier<VoiceDictationState> {
         canOpenSettings: false,
       );
       return false;
-    } catch (_) {
+    } catch (error) {
       if (!ref.mounted) return false;
+      _diagnostics.record(
+        AppDiagnosticEvent(
+          name: 'voice.recording',
+          level: AppDiagnosticLevel.error,
+          workspaceId: scope.workspaceId,
+          sessionId: scope.sessionId,
+          state: 'start_failed',
+          errorType: error.runtimeType.toString(),
+        ),
+      );
       state = state.copyWith(
         phase: VoiceDictationPhase.idle,
         error: 'Could not start the microphone. Please try again.',
@@ -281,8 +312,18 @@ class VoiceDictationController extends Notifier<VoiceDictationState> {
             : state.enabled,
         error: error.message,
       );
-    } catch (_) {
+    } catch (error) {
       if (!ref.mounted || operationId != _operationId) return;
+      _diagnostics.record(
+        AppDiagnosticEvent(
+          name: 'voice.transcription',
+          level: AppDiagnosticLevel.error,
+          workspaceId: scope.workspaceId,
+          sessionId: scope.sessionId,
+          state: 'failed',
+          errorType: error.runtimeType.toString(),
+        ),
+      );
       state = state.copyWith(
         phase: VoiceDictationPhase.idle,
         error: 'Voice transcription failed. Please try again.',

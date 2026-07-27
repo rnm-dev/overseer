@@ -36,19 +36,22 @@ does not eagerly download the entire transcript.
 
 1. Read and watch cached events in ascending `orderKey`.
 2. Render those rows immediately.
-3. When cached events have a newest `eventId`, immediately subscribe to the
-   session tail from that boundary.
-4. In parallel, fetch the newest 50 events from
+3. Fetch the newest 50 events from
    `GET /api/workspaces/:workspaceId/peons/:peonId/sessions/:sessionId/transcript`.
-5. Upsert the page by `eventId` in one Drift transaction.
-6. If the cache had no boundary, subscribe to the session tail with the last
-   event ID from that HTTP page.
+4. Upsert the page by `eventId` in one Drift transaction.
+5. Subscribe to the session tail with the last event ID from that HTTP page.
+   If the request fails, fall back to the newest cached `eventId`.
 
-An existing cache boundary lets live replay begin without waiting for REST.
-The REST page and tail may overlap, so both paths upsert by `eventId`. On a
-fresh cache, passing the HTTP boundary as `lastEventId` closes the
-fetch-to-subscribe race: events appended after the snapshot are replayed by the
-durable tail without streaming an unbounded transcript.
+Starting from the HTTP snapshot boundary makes the newest page appear as one
+cache transaction instead of replaying a potentially large gap one event at a
+time. Passing that boundary as `lastEventId` closes the fetch-to-subscribe race:
+events appended after the snapshot are replayed by the durable tail. REST and
+tail may still overlap during recovery, so both paths upsert by `eventId`.
+
+The live service advances its in-memory `lastEventId` only after the frame
+handler has committed that event to Drift. If decoding or persistence fails,
+the workspace socket reconnects from the previous durable boundary so the Peon
+replays the unacknowledged event instead of leaving a permanent transcript gap.
 
 The UI uses a reversed list whose first data item is the newest event. Loading
 older pages inserts above the current viewport, so the visible scroll anchor
@@ -92,8 +95,10 @@ flattens them into the same semantic rows as the web client:
   a contextual label derived from the freshest assistant block, and elapsed
   step time. Its inline `Stop` action posts to the session cancel endpoint,
   disables as `Stopping…` while pending, removes the working row after
-  acceptance, and keeps a retryable inline error on failure. Tail `result`
-  events and REST status reconciliation also remove it.
+  acceptance, and keeps a retryable inline error on failure. The authoritative
+  workspace active-session snapshot controls whether this live row is present;
+  transcript and REST status are fallbacks only until that snapshot arrives.
+  Tail `result` events and REST status reconciliation also remove it.
 - With the SCV sound pack selected, each fresh non-terminal agent tail event
   may play one bundled `work-active` clip. Clips never overlap or repeat
   consecutively. Cached history, user messages, terminal results, and duplicate
@@ -259,6 +264,9 @@ and session tails. Each active transcript subscription tracks its own
 `lastEventId` and retry backoff.
 
 - A tail event is committed to Drift before the next socket frame is handled.
+- Its `lastEventId` becomes the reconnect boundary only after that commit
+  succeeds. A failed handler closes the abandoned socket before reconnecting
+  from the previous committed boundary.
 - Socket reconnect resubscribes every mounted transcript after the workspace
   snapshot.
 - Returning from the background immediately replaces each workspace socket and
@@ -267,10 +275,17 @@ and session tails. Each active transcript subscription tracks its own
   silently refreshes its newest REST page as a parallel recovery path.
 - `tailEnd` and retryable `tailError` resubscribe independently without
   replacing the workspace socket.
-- After 15 seconds of silence in a running session, the controller checks the
-  small session-details endpoint.
-- A terminal tail, malformed frame, or completed run triggers a bounded newest
-  page reconciliation.
+- Every five seconds, the mounted controller checks session details and merges
+  the newest REST transcript page even when the socket appears healthy or the
+  session appears idle. This anti-entropy loop repairs a silently missed run
+  start, intermediate event, or completion before it ages out of the bounded
+  newest page.
+- REST overlap is merged in server order, so a repaired middle event returns to
+  its original position instead of being appended after newer cached rows.
+- Every terminal tail bypasses the periodic throttle and immediately triggers
+  a bounded newest-page reconciliation.
+- A malformed frame is acknowledged only if that exact event ID is recovered
+  through REST; otherwise the handler fails and reconnect replays it.
 - Transient fallback failures preserve cached rows and do not mark the cache
   unusable.
 

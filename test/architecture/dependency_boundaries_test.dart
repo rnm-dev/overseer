@@ -94,6 +94,78 @@ void main() {
     violations.addAll(_dependencyCycles(publicPresentationDependencies));
     expect(violations, isEmpty, reason: violations.join('\n'));
   });
+
+  test('core and shared AI capabilities have neutral ownership', () {
+    final violations = <String>[];
+    final coreFiles = Directory('lib/core')
+        .listSync(recursive: true)
+        .whereType<File>()
+        .where((file) => file.path.endsWith('.dart'));
+
+    for (final file in coreFiles) {
+      final path = file.path.replaceAll(r'\', '/');
+      final source = file.readAsStringSync();
+      for (final match in _importPattern.allMatches(source)) {
+        final target = _resolveImport(path, match.group(1)!);
+        if (target.startsWith('lib/features/')) {
+          violations.add('$path imports feature-owned code "$target"');
+        }
+      }
+    }
+
+    final peonFiles = Directory('lib/features/peon')
+        .listSync(recursive: true)
+        .whereType<File>()
+        .where(
+          (file) =>
+              file.path.endsWith('.dart') &&
+              file.path.replaceAll(r'\', '/').contains('peon_settings'),
+        );
+    for (final file in peonFiles) {
+      final path = file.path.replaceAll(r'\', '/');
+      final source = file.readAsStringSync();
+      for (final match in _importPattern.allMatches(source)) {
+        final target = _resolveImport(path, match.group(1)!);
+        if (target.startsWith('lib/features/sessions/')) {
+          violations.add('$path imports session-owned code "$target"');
+        }
+      }
+    }
+
+    expect(violations, isEmpty, reason: violations.join('\n'));
+  });
+
+  test('application and data timing uses the app-owned time boundary', () {
+    final violations = <String>[];
+    final dartFiles = Directory('lib/features')
+        .listSync(recursive: true)
+        .whereType<File>()
+        .where((file) {
+          final path = file.path.replaceAll(r'\', '/');
+          return path.endsWith('.dart') &&
+              !path.endsWith('.g.dart') &&
+              (path.contains('/application/') || path.contains('/data/'));
+        });
+    const forbidden = <String>[
+      'DateTime.now(',
+      'Timer(',
+      'Timer.periodic(',
+      'Future.delayed(',
+      'Future<void>.delayed(',
+    ];
+
+    for (final file in dartFiles) {
+      final path = file.path.replaceAll(r'\', '/');
+      final source = file.readAsStringSync();
+      for (final token in forbidden) {
+        if (source.contains(token)) {
+          violations.add('$path bypasses AppClock/AppScheduler with "$token"');
+        }
+      }
+    }
+
+    expect(violations, isEmpty, reason: violations.join('\n'));
+  });
 }
 
 final _importPattern = RegExp(r'''(?:import|export)\s+['"]([^'"]+)['"]''');

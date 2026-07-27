@@ -4,6 +4,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../shared/design/colors.dart';
 import '../../../shared/design/typography.dart';
+import '../../../shared/models/ai_capabilities.dart';
 import '../../../shared/widgets/app_button.dart';
 import '../../../shared/widgets/app_card.dart';
 import '../../../shared/widgets/app_option_bottom_sheet.dart';
@@ -11,7 +12,6 @@ import '../../../shared/widgets/app_text_field.dart';
 import '../../../shared/widgets/confirmation_bottom_sheet.dart';
 import '../../fleet/application/fleet_controller.dart';
 import '../../fleet/domain/fleet_models.dart';
-import '../../sessions/domain/followup_repository.dart';
 import '../application/peon_settings_controller.dart';
 import '../application/peon_management_controller.dart';
 import '../domain/peon_management_models.dart';

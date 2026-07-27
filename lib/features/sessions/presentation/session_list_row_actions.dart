@@ -1,26 +1,49 @@
 part of 'session_list.dart';
 
-class _SessionRow extends StatelessWidget {
-  const _SessionRow({
+/// Canonical compact work item used wherever a session appears in an index.
+///
+/// Activity defaults to off until the live active-session projection confirms
+/// that this session is running.
+class SessionWorkItem extends StatelessWidget {
+  const SessionWorkItem({
     super.key,
     required this.session,
-    required this.selected,
-    required this.onSelected,
-    required this.authoritativeRunning,
-    required this.viewers,
-    required this.flashRevision,
-    required this.onRename,
-    required this.onDelete,
+    this.selected = false,
+    this.onSelected,
+    this.authoritativeRunning = false,
+    this.viewers = const [],
+    this.flashRevision = 0,
+    this.onRename,
+    this.onDelete,
   });
 
   final SessionSummary session;
   final bool selected;
   final ValueChanged<SessionSummary>? onSelected;
-  final bool? authoritativeRunning;
+  final bool authoritativeRunning;
   final List<PresenceViewer> viewers;
   final int flashRevision;
-  final Future<void> Function(SessionSummary session, String? title) onRename;
-  final Future<void> Function(SessionSummary session) onDelete;
+  final Future<void> Function(SessionSummary session, String? title)? onRename;
+  final Future<void> Function(SessionSummary session)? onDelete;
+
+  static double extentFor(BuildContext context) {
+    final textScaler = MediaQuery.textScalerOf(context);
+    double lineHeight(TextStyle style) {
+      final painter = TextPainter(
+        text: TextSpan(text: 'Ag', style: style),
+        textDirection: TextDirection.ltr,
+        textScaler: textScaler,
+        maxLines: 1,
+      )..layout();
+      return painter.height;
+    }
+
+    final titleHeight = lineHeight(
+      AppTypography.display(fontSize: 12.8, fontWeight: FontWeight.w500),
+    );
+    final detailHeight = lineHeight(AppTypography.body(fontSize: 9.6));
+    return math.max(48, 12 + math.max(20, titleHeight) + 2 + detailHeight);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -36,52 +59,54 @@ class _SessionRow extends StatelessWidget {
             child: InkWell(
               onTap: onSelected == null ? null : () => onSelected!(session),
               onTapDown: (details) => pressPosition = details.globalPosition,
-              onLongPress: () async {
-                await HapticFeedback.mediumImpact();
-                if (!context.mounted) return;
-                final action = await _showSessionContextMenu(
-                  context,
-                  pressPosition,
-                );
-                if (!context.mounted || action == null) {
-                  return;
-                }
-                if (action == _SessionMenuAction.rename) {
-                  await showAppBottomSheet<void>(
-                    context: context,
-                    builder: (_) => _RenameSessionSheet(
-                      session: session,
-                      onRename: onRename,
-                    ),
-                  );
-                  return;
-                }
-                final confirmed = await showAppConfirmationBottomSheet(
-                  context: context,
-                  title: 'Delete session?',
-                  message:
-                      'Delete “${session.displayTitle}” permanently? '
-                      'This cannot be undone.',
-                  confirmLabel: 'Delete session',
-                  destructive: true,
-                );
-                if (!confirmed || !context.mounted) return;
-                try {
-                  await onDelete(session);
-                } on SessionsException catch (error) {
-                  if (!context.mounted) return;
-                  ScaffoldMessenger.of(
-                    context,
-                  ).showSnackBar(SnackBar(content: Text(error.message)));
-                } catch (_) {
-                  if (!context.mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Could not delete this session.'),
-                    ),
-                  );
-                }
-              },
+              onLongPress: onRename == null || onDelete == null
+                  ? null
+                  : () async {
+                      await HapticFeedback.mediumImpact();
+                      if (!context.mounted) return;
+                      final action = await _showSessionContextMenu(
+                        context,
+                        pressPosition,
+                      );
+                      if (!context.mounted || action == null) {
+                        return;
+                      }
+                      if (action == _SessionMenuAction.rename) {
+                        await showAppBottomSheet<void>(
+                          context: context,
+                          builder: (_) => _RenameSessionSheet(
+                            session: session,
+                            onRename: onRename!,
+                          ),
+                        );
+                        return;
+                      }
+                      final confirmed = await showAppConfirmationBottomSheet(
+                        context: context,
+                        title: 'Delete session?',
+                        message:
+                            'Delete “${session.displayTitle}” permanently? '
+                            'This cannot be undone.',
+                        confirmLabel: 'Delete session',
+                        destructive: true,
+                      );
+                      if (!confirmed || !context.mounted) return;
+                      try {
+                        await onDelete!(session);
+                      } on SessionsException catch (error) {
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(
+                          context,
+                        ).showSnackBar(SnackBar(content: Text(error.message)));
+                      } catch (_) {
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Could not delete this session.'),
+                          ),
+                        );
+                      }
+                    },
             ),
           ),
         ),
@@ -190,7 +215,7 @@ class _SessionRow extends StatelessWidget {
   }
 
   (SidebarStatusEdgeStyle, String) get _sessionEdgeStyle {
-    if (authoritativeRunning ?? session.status == 'running') {
+    if (authoritativeRunning) {
       return (SidebarStatusEdgeStyle.running, 'Running');
     }
     if (session.attentionUnread || session.status == 'needs_human') {

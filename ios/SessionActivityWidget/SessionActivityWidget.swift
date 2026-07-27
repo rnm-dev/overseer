@@ -2,22 +2,51 @@ import ActivityKit
 import SwiftUI
 import WidgetKit
 
+private extension Color {
+  init(hex: UInt32) {
+    self.init(
+      .sRGB,
+      red: Double((hex >> 16) & 0xFF) / 255,
+      green: Double((hex >> 8) & 0xFF) / 255,
+      blue: Double(hex & 0xFF) / 255,
+      opacity: 1
+    )
+  }
+}
+
+private enum ActivityPalette {
+  static let voidColor = Color(hex: 0x0B0C0B)
+  static let iron800 = Color(hex: 0x262A23)
+  static let fel = Color(hex: 0x86AB63)
+  static let felBright = Color(hex: 0xA6C78A)
+  static let felDeep = Color(hex: 0x5C7A41)
+  static let forge = Color(hex: 0xD99441)
+  static let blood = Color(hex: 0xD95F48)
+  static let bone = Color(hex: 0xE7E6DC)
+  static let boneDim = Color(hex: 0x9A9C8E)
+  static let boneFaint = Color(hex: 0x64685A)
+}
+
 @available(iOSApplicationExtension 16.2, *)
 struct OverseerSessionAttributes: ActivityAttributes {
   struct ContentState: Codable, Hashable {
-    let title: String
+    let runningCount: Int?
+    let completedCount: Int?
+    let oldestStartedAt: Date?
+    let updatedAt: Date
+    let title: String?
     let activeCount: Int?
     let projectName: String?
     let detail: String?
-    let phase: String
+    let phase: String?
     let startedAt: Date?
-    let updatedAt: Date
   }
 
   let activityId: String
-  let workspaceId: String
-  let peonId: String
-  let sessionId: String
+  let connectionId: String?
+  let workspaceId: String?
+  let peonId: String?
+  let sessionId: String?
 }
 
 @main
@@ -34,49 +63,56 @@ struct OverseerSessionActivityWidget: Widget {
   var body: some WidgetConfiguration {
     ActivityConfiguration(for: OverseerSessionAttributes.self) { context in
       lockScreenView(context)
-        .activityBackgroundTint(canvas)
-        .activitySystemActionForegroundColor(.white)
+        .activityBackgroundTint(ActivityPalette.voidColor)
+        .activitySystemActionForegroundColor(ActivityPalette.bone)
     } dynamicIsland: { context in
       DynamicIsland {
         DynamicIslandExpandedRegion(.leading) {
-          signalMark(context.state, size: 34)
+          signalMark(size: 34)
         }
         DynamicIslandExpandedRegion(.trailing) {
-          activityClock(context.state)
+          runtime(context.state)
             .font(.caption.weight(.medium).monospacedDigit())
-            .foregroundStyle(.white.opacity(0.72))
+            .foregroundStyle(ActivityPalette.boneDim)
         }
         DynamicIslandExpandedRegion(.center) {
-          VStack(spacing: 2) {
-            Text(eyebrow(context.state))
-              .font(.caption2.weight(.bold))
-              .tracking(1.1)
-              .foregroundStyle(accent)
-            Text(context.state.title)
-              .font(.headline)
-              .lineLimit(1)
-          }
+          Text("OVERSEER · LIVE")
+            .font(.caption2.weight(.bold))
+            .tracking(1.1)
+            .foregroundStyle(ActivityPalette.felBright)
         }
         DynamicIslandExpandedRegion(.bottom) {
-          VStack(alignment: .leading, spacing: 9) {
-            Text(context.state.detail ?? "Agent signal is active")
-              .font(.caption)
-              .foregroundStyle(.white.opacity(0.76))
-              .lineLimit(2)
-            signalFooter(context.state)
+          HStack(spacing: 8) {
+            metric(
+              value: runningCount(context.state),
+              label: "RUNNING",
+              color: ActivityPalette.felBright
+            )
+            metric(
+              value: completedCount(context.state),
+              label: "COMPLETED",
+              color: ActivityPalette.forge
+            )
           }
         }
       } compactLeading: {
-        signalMark(context.state, size: 23)
+        HStack(spacing: 4) {
+          Circle()
+            .fill(ActivityPalette.felBright)
+            .frame(width: 7, height: 7)
+          Text("\(runningCount(context.state))")
+            .font(.caption2.weight(.bold).monospacedDigit())
+            .foregroundStyle(ActivityPalette.bone)
+        }
       } compactTrailing: {
-        activityClock(context.state)
+        runtime(context.state)
           .font(.caption2.weight(.semibold).monospacedDigit())
-          .foregroundStyle(accent)
+          .foregroundStyle(ActivityPalette.felBright)
       } minimal: {
-        signalMark(context.state, size: 22)
+        signalMark(size: 22)
       }
-      .widgetURL(deepLink(context.attributes))
-      .keylineTint(accent)
+      .widgetURL(deepLink())
+      .keylineTint(ActivityPalette.fel)
     }
   }
 
@@ -84,192 +120,112 @@ struct OverseerSessionActivityWidget: Widget {
     _ context: ActivityViewContext<OverseerSessionAttributes>
   ) -> some View {
     VStack(alignment: .leading, spacing: 12) {
-      HStack(spacing: 11) {
-        signalMark(context.state, size: 36)
-        VStack(alignment: .leading, spacing: 3) {
+      HStack(spacing: 10) {
+        signalMark(size: 34)
+        VStack(alignment: .leading, spacing: 2) {
           Text("OVERSEER · LIVE SIGNAL")
             .font(.caption2.weight(.bold))
-            .tracking(1.25)
-            .foregroundStyle(accent)
-          if let projectName = context.state.projectName {
-            Text(projectName.uppercased())
-              .font(.caption2.weight(.medium))
-              .foregroundStyle(.white.opacity(0.48))
-              .lineLimit(1)
-          }
+            .tracking(1.2)
+            .foregroundStyle(ActivityPalette.felBright)
+          Text("Agent sessions")
+            .font(.caption)
+            .foregroundStyle(ActivityPalette.boneDim)
         }
         Spacer()
-        stateBadge(context.state)
+        runtime(context.state)
+          .font(.subheadline.weight(.semibold).monospacedDigit())
+          .foregroundStyle(ActivityPalette.bone)
       }
-      VStack(alignment: .leading, spacing: 5) {
-        Text(context.state.title)
-          .font(.system(size: 18, weight: .semibold, design: .rounded))
-          .foregroundStyle(.white)
-          .lineLimit(1)
-        Text(context.state.detail ?? "Agent signal is active")
-          .font(.subheadline)
-          .foregroundStyle(.white.opacity(0.68))
-          .lineLimit(2)
-      }
-      Rectangle()
-        .fill(
-          LinearGradient(
-            colors: [
-              stateColor(context.state).opacity(0.05),
-              stateColor(context.state),
-              signalBlue,
-              signalBlue.opacity(0.05),
-            ],
-            startPoint: .leading,
-            endPoint: .trailing
-          )
+
+      HStack(spacing: 9) {
+        metric(
+          value: runningCount(context.state),
+          label: "RUNNING",
+          color: ActivityPalette.felBright
         )
-        .frame(height: 1)
-      signalFooter(context.state)
+        metric(
+          value: completedCount(context.state),
+          label: "COMPLETED",
+          color: ActivityPalette.forge
+        )
+      }
+
+      HStack(spacing: 5) {
+        Image(systemName: "waveform.path.ecg")
+          .font(.caption2.weight(.bold))
+          .foregroundStyle(ActivityPalette.fel)
+        Text("UPDATED")
+          .font(.caption2.weight(.bold))
+          .tracking(0.8)
+          .foregroundStyle(ActivityPalette.boneFaint)
+        Text(context.state.updatedAt, style: .relative)
+          .font(.caption.monospacedDigit())
+          .foregroundStyle(ActivityPalette.boneDim)
+        Spacer()
+        Text("Tap to open")
+          .font(.caption2)
+          .foregroundStyle(ActivityPalette.boneFaint)
+      }
     }
     .padding(.horizontal, 16)
     .padding(.vertical, 14)
-    .widgetURL(deepLink(context.attributes))
+    .widgetURL(deepLink())
   }
 
-  private func signalFooter(
-    _ state: OverseerSessionAttributes.ContentState
-  ) -> some View {
-    HStack(spacing: 6) {
-      Image(systemName: "waveform.path.ecg")
+  private func metric(value: Int, label: String, color: Color) -> some View {
+    HStack(spacing: 7) {
+      Circle()
+        .fill(color)
+        .frame(width: 7, height: 7)
+      Text("\(value)")
+        .font(.headline.weight(.bold).monospacedDigit())
+        .foregroundStyle(ActivityPalette.bone)
+      Text(label)
         .font(.caption2.weight(.bold))
-        .foregroundStyle(stateColor(state))
-      Text(isTerminal(state) ? "FINISHED" : "SIGNAL")
-        .font(.caption2.weight(.bold))
-        .tracking(0.8)
-        .foregroundStyle(.white.opacity(0.45))
-      Text(state.updatedAt, style: .relative)
-        .font(.caption.monospacedDigit())
-        .foregroundStyle(.white.opacity(0.72))
-      Spacer()
-      Image(systemName: "clock")
-        .font(.caption2.weight(.semibold))
-        .foregroundStyle(signalBlue)
-      activityClock(state)
-        .font(.caption.weight(.medium).monospacedDigit())
-        .foregroundStyle(.white.opacity(0.78))
+        .tracking(0.7)
+        .foregroundStyle(color)
+      Spacer(minLength: 0)
     }
+    .padding(.horizontal, 10)
+    .padding(.vertical, 8)
+    .background(ActivityPalette.iron800, in: RoundedRectangle(cornerRadius: 10))
   }
 
-  private func signalMark(
-    _ state: OverseerSessionAttributes.ContentState,
-    size: CGFloat
-  ) -> some View {
+  private func signalMark(size: CGFloat) -> some View {
     ZStack {
       Circle()
-        .fill(
-          LinearGradient(
-            colors: [stateColor(state).opacity(0.28), signalBlue.opacity(0.16)],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-          )
-        )
+        .fill(ActivityPalette.fel.opacity(0.2))
       Circle()
-        .stroke(stateColor(state).opacity(0.42), lineWidth: 1)
-      if #available(iOSApplicationExtension 17.0, *) {
-        if isTerminal(state) {
-          Image(systemName: stateIcon(state))
-            .font(.system(size: size * 0.44, weight: .bold))
-            .foregroundStyle(stateColor(state))
-        } else {
-          Image(systemName: stateIcon(state))
-            .font(.system(size: size * 0.44, weight: .bold))
-            .foregroundStyle(stateColor(state))
-            .symbolEffect(.pulse)
-        }
-      } else {
-        Image(systemName: stateIcon(state))
-          .font(.system(size: size * 0.44, weight: .bold))
-          .foregroundStyle(stateColor(state))
-      }
+        .stroke(ActivityPalette.fel.opacity(0.45), lineWidth: 1)
+      Image(systemName: "waveform.path.ecg")
+        .font(.system(size: size * 0.42, weight: .bold))
+        .foregroundStyle(ActivityPalette.felBright)
     }
     .frame(width: size, height: size)
   }
 
-  private func stateBadge(_ state: OverseerSessionAttributes.ContentState) -> some View {
-    let count = state.activeCount ?? 1
-    return HStack(spacing: 5) {
-      Circle()
-        .fill(stateColor(state))
-        .frame(width: 6, height: 6)
-      Text(isTerminal(state) ? terminalLabel(state) : count > 1 ? "\(count) ACTIVE" : "LIVE")
-        .font(.caption2.weight(.bold))
-        .tracking(0.7)
-        .foregroundStyle(.white.opacity(0.82))
-    }
-    .padding(.horizontal, 9)
-    .padding(.vertical, 6)
-    .background(.white.opacity(0.07), in: Capsule())
-  }
-
-  private var accent: Color {
-    Color(red: 0.32, green: 0.94, blue: 0.69)
-  }
-
-  private var signalBlue: Color {
-    Color(red: 0.32, green: 0.72, blue: 1.0)
-  }
-
-  private var canvas: Color {
-    Color(red: 0.035, green: 0.047, blue: 0.073)
-  }
-
   @ViewBuilder
-  private func activityClock(_ state: OverseerSessionAttributes.ContentState) -> some View {
-    if isTerminal(state) {
-      Text(terminalLabel(state))
-    } else if let startedAt = state.startedAt {
+  private func runtime(_ state: OverseerSessionAttributes.ContentState) -> some View {
+    if runningCount(state) == 0 {
+      Text("DONE")
+    } else if let startedAt = state.oldestStartedAt ?? state.startedAt {
       Text(timerInterval: startedAt...Date.distantFuture, countsDown: false)
     } else {
       Text("LIVE")
     }
   }
 
-  private func isTerminal(_ state: OverseerSessionAttributes.ContentState) -> Bool {
-    ["succeeded", "failed", "ended"].contains(state.phase)
+  private func runningCount(_ state: OverseerSessionAttributes.ContentState) -> Int {
+    max(0, state.runningCount ?? state.activeCount ?? 0)
   }
 
-  private func terminalLabel(_ state: OverseerSessionAttributes.ContentState) -> String {
-    state.phase == "failed" ? "FAILED" : state.phase == "succeeded" ? "DONE" : "ENDED"
+  private func completedCount(_ state: OverseerSessionAttributes.ContentState) -> Int {
+    max(0, state.completedCount ?? 0)
   }
 
-  private func stateIcon(_ state: OverseerSessionAttributes.ContentState) -> String {
-    state.phase == "failed"
-      ? "xmark"
-      : isTerminal(state) ? "checkmark" : state.phase == "needsAttention" ? "person.crop.circle.badge.exclamationmark" : "waveform.path.ecg"
-  }
-
-  private func stateColor(_ state: OverseerSessionAttributes.ContentState) -> Color {
-    state.phase == "failed"
-      ? Color(red: 1.0, green: 0.38, blue: 0.42)
-      : state.phase == "needsAttention" ? Color(red: 1.0, green: 0.72, blue: 0.28) : accent
-  }
-
-  private func eyebrow(_ state: OverseerSessionAttributes.ContentState) -> String {
-    let count = state.activeCount ?? 1
-    return isTerminal(state)
-      ? terminalLabel(state)
-      : count > 1 ? "\(count) ACTIVE · LIVE" : "LIVE SIGNAL"
-  }
-
-  private func deepLink(_ attributes: OverseerSessionAttributes) -> URL? {
-    var components = URLComponents()
+  private func deepLink() -> URL? {
     let bundleIdentifier = Bundle.main.bundleIdentifier ?? ""
-    components.scheme = bundleIdentifier.contains(".app.dev.")
-      ? "overseer-dev"
-      : "overseer"
-    components.host = "open"
-    components.path = "/session"
-    components.queryItems = [
-      URLQueryItem(name: "workspaceId", value: attributes.workspaceId),
-      URLQueryItem(name: "peonId", value: attributes.peonId),
-      URLQueryItem(name: "sessionId", value: attributes.sessionId),
-    ]
-    return components.url
+    let scheme = bundleIdentifier.contains(".app.dev.") ? "overseer-dev" : "overseer"
+    return URL(string: "\(scheme)://open")
   }
 }

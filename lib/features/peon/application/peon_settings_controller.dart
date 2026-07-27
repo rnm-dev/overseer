@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/time/app_time.dart';
 import '../domain/peon_settings_models.dart';
 import '../domain/peon_settings_repository.dart';
 
@@ -37,6 +38,7 @@ class PeonSettingsController extends AsyncNotifier<PeonSettingsState> {
   final PeonSettingsScope scope;
   final Completer<void> _disposed = Completer<void>();
   late PeonSettingsPollingPolicy _pollingPolicy;
+  late AppScheduler _scheduler;
 
   PeonSettingsRepository get _repository =>
       ref.read(peonSettingsRepositoryProvider);
@@ -44,6 +46,7 @@ class PeonSettingsController extends AsyncNotifier<PeonSettingsState> {
   @override
   Future<PeonSettingsState> build() async {
     _pollingPolicy = ref.read(peonSettingsPollingPolicyProvider);
+    _scheduler = ref.read(appSchedulerProvider);
     ref.onDispose(() {
       if (!_disposed.isCompleted) _disposed.complete();
     });
@@ -196,7 +199,7 @@ class PeonSettingsController extends AsyncNotifier<PeonSettingsState> {
   Future<void> _waitForRestart() async {
     for (var attempt = 0; attempt < _pollingPolicy.maxAttempts; attempt++) {
       await Future.any<void>([
-        Future<void>.delayed(_pollingPolicy.interval),
+        _scheduler.delay(_pollingPolicy.interval),
         _disposed.future,
       ]);
       if (_disposed.isCompleted || !ref.mounted) return;

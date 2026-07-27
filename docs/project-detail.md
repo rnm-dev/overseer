@@ -45,7 +45,10 @@ key rename cannot redirect an in-flight read to another project.
 Overview lists the project documentation root and automatically renders
 `docs/index.md` when present. Documentation is limited to 512 KB. Missing,
 offline, loading, and retry states stay inside the web-style documentation card
-without discarding the cached project header.
+without discarding the cached project header. Markdown links are interactive:
+web and email links open externally, links to other files under `docs/` stay in
+the Overview reader, and other relative project links open the shared file
+viewer.
 
 ### Sessions
 

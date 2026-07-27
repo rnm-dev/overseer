@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/diagnostics/app_diagnostics.dart';
 import '../features/fleet/application/fleet_controller.dart';
 import '../features/fleet/application/fleet_live_service.dart';
 
@@ -33,11 +34,29 @@ class _LiveSyncLifecycleState extends ConsumerState<LiveSyncLifecycle>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    ref
+        .read(appDiagnosticsProvider)
+        .record(
+          AppDiagnosticEvent(
+            name: 'app.lifecycle',
+            state: state.name,
+            outcome: _backgrounded ? 'backgrounded' : 'foreground',
+          ),
+        );
     if (state == AppLifecycleState.resumed) {
       if (!_backgrounded) return;
       _backgrounded = false;
       final live = ref.read(fleetLiveServiceProvider);
       if (live case final FleetLiveLifecycle lifecycle) {
+        ref
+            .read(appDiagnosticsProvider)
+            .record(
+              const AppDiagnosticEvent(
+                name: 'live.lifecycle',
+                state: 'resumed',
+                outcome: 'reconnecting',
+              ),
+            );
         unawaited(lifecycle.resumeFromBackground());
       }
       return;

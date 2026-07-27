@@ -39,8 +39,10 @@ void main() {
 
     final image = tester.widget<Image>(find.byType(Image));
     expect(image.fit, BoxFit.cover);
-    expect(image.width, 28);
-    expect(image.height, 28);
+    expect(image.width, double.infinity);
+    expect(image.height, double.infinity);
+    expect(tester.getSize(find.byType(Image)), const Size.square(28));
+    expect(tester.getSize(find.byType(ClipOval)), const Size.square(28));
   });
 
   testWidgets('PresenceStack shows up to three avatars and overflow chip', (

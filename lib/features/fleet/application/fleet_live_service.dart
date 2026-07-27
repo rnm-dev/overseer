@@ -43,6 +43,17 @@ abstract interface class FleetLiveService {
   Future<void> stop();
 }
 
+abstract interface class AttentionFleetLiveService {
+  void setAttentionHandler(
+    Future<void> Function(
+      String workspaceId,
+      int cursor,
+      Map<String, dynamic> attention,
+    )
+    handler,
+  );
+}
+
 abstract interface class FleetWorkspaceReconciler {
   Future<void> reconcileWorkspaces({
     required List<String> workspaceIds,

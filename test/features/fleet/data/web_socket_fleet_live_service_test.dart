@@ -5,10 +5,51 @@ import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:overseer_mobile/core/diagnostics/app_diagnostics.dart';
 import 'package:overseer_mobile/core/live/active_sessions.dart';
 import 'package:overseer_mobile/features/fleet/data/web_socket_fleet_live_service.dart';
 
+import '../../../support/manual_app_time.dart';
+
 void main() {
+  test('reconnect backoff advances without wall-clock sleeping', () async {
+    final scheduler = ManualAppScheduler();
+    final diagnostics = _RecordingDiagnostics();
+    final adapter = _FailingTicketAdapter();
+    final dio = Dio(BaseOptions(baseUrl: 'https://overseer.example/api/v1/'))
+      ..httpClientAdapter = adapter;
+    final service = WebSocketFleetLiveService(
+      serverUrl: Uri.parse('https://overseer.example'),
+      apiUrl: Uri.parse('https://overseer.example/api/v1/'),
+      token: 'test-token',
+      dio: dio,
+      scheduler: scheduler,
+      diagnostics: diagnostics,
+    );
+    addTearDown(service.stop);
+
+    await service.connect(
+      workspaceIds: const ['workspace-1'],
+      initialCursors: const {'workspace-1': 0},
+      onPeon: (_, _) {},
+      onSession: (_, _, _) async {},
+      onProject: (_, _, _) async {},
+      onCursor: (_, _) async {},
+      onActiveSessions: (_, _, _) {},
+      onActiveSessionSnapshot: (_, _) {},
+      onPresence: (_, _) {},
+    );
+    await scheduler.advance(Duration.zero);
+    expect(adapter.ticketRequests, 1);
+
+    await scheduler.advance(const Duration(seconds: 2));
+    expect(adapter.ticketRequests, 2);
+    expect(
+      diagnostics.events.map((event) => (event.name, event.state)),
+      containsAll([('live.connection', 'failed'), ('live.retry', 'scheduled')]),
+    );
+  });
+
   test(
     'foreground resume reconnects and replays a mounted transcript tail',
     () async {
@@ -87,6 +128,85 @@ void main() {
   );
 
   test(
+    'reconnect resumes after the last durably handled transcript event',
+    () async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      final probes = StreamController<_SocketProbe>.broadcast();
+      final serverSubscription = server.listen((request) async {
+        probes.add(_SocketProbe(await WebSocketTransformer.upgrade(request)));
+      });
+      final adapter = _ImmediateFleetAdapter();
+      final dio = Dio(
+        BaseOptions(baseUrl: 'http://127.0.0.1:${server.port}/api/v1/'),
+      )..httpClientAdapter = adapter;
+      final service = WebSocketFleetLiveService(
+        serverUrl: Uri.parse('http://127.0.0.1:${server.port}'),
+        apiUrl: Uri.parse('http://127.0.0.1:${server.port}/api/v1/'),
+        token: 'test-token',
+        dio: dio,
+      );
+      addTearDown(() async {
+        await service.stop();
+        await probes.close();
+        await serverSubscription.cancel();
+        await server.close(force: true);
+      });
+
+      await service.connect(
+        workspaceIds: const ['workspace-1'],
+        initialCursors: const {'workspace-1': 0},
+        onPeon: (_, _) {},
+        onSession: (_, _, _) async {},
+        onProject: (_, _, _) async {},
+        onCursor: (_, _) async {},
+        onActiveSessions: (_, _, _) {},
+        onActiveSessionSnapshot: (_, _) {},
+        onPresence: (_, _) {},
+      );
+
+      final first = await probes.stream.first;
+      await first.next('hello');
+      first.socket.add(
+        jsonEncode({'type': 'snapshot', 'cursor': 0, 'presence': const []}),
+      );
+      final handlingFailed = Completer<void>();
+      service.subscribeTranscript(
+        workspaceId: 'workspace-1',
+        peonId: 'peon-1',
+        sessionId: 'session-1',
+        lastEventId: 'event-7',
+        onFrame: (_) async {
+          if (!handlingFailed.isCompleted) handlingFailed.complete();
+          throw StateError('simulated cache write failure');
+        },
+      );
+      await first.next('subscribe');
+
+      final reconnected = probes.stream.first;
+      first.socket.add(
+        jsonEncode({
+          'type': 'tail',
+          'peonId': 'peon-1',
+          'sessionId': 'session-1',
+          'id': 'event-8',
+          'data': '{"type":"assistant"}',
+        }),
+      );
+      await handlingFailed.future;
+
+      final second = await reconnected.timeout(const Duration(seconds: 3));
+      await first.closed.future.timeout(const Duration(seconds: 1));
+      await second.next('hello');
+      second.socket.add(
+        jsonEncode({'type': 'snapshot', 'cursor': 0, 'presence': const []}),
+      );
+      final subscription = await second.next('subscribe');
+
+      expect(subscription['lastEventId'], 'event-7');
+    },
+  );
+
+  test(
     'publishes active counts only after the seed and both startup replays',
     () async {
       final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
@@ -112,7 +232,16 @@ void main() {
 
       final counts = <int>[];
       final snapshots = <List<ActiveSession>?>[];
+      final attentionEvents =
+          <({String workspaceId, int cursor, Map<String, dynamic> payload})>[];
       final firstCount = Completer<void>();
+      service.setAttentionHandler((workspaceId, cursor, payload) async {
+        attentionEvents.add((
+          workspaceId: workspaceId,
+          cursor: cursor,
+          payload: payload,
+        ));
+      });
       await service.connect(
         workspaceIds: const ['workspace-1'],
         initialCursors: const {'workspace-1': 0},
@@ -204,6 +333,24 @@ void main() {
       );
       await _waitFor(() => counts.length == 2);
       expect(counts, [3, 4]);
+
+      socket.add(
+        jsonEncode({
+          'type': 'attention',
+          'cursor': 12,
+          'payload': {
+            'peonId': 'peon-1',
+            'sessionId': 'live-4',
+            'hasOutstandingRequest': false,
+            'attentionUnread': true,
+            'updatedAt': 50,
+          },
+        }),
+      );
+      await _waitFor(() => attentionEvents.isNotEmpty);
+      expect(attentionEvents.single.workspaceId, 'workspace-1');
+      expect(attentionEvents.single.cursor, 12);
+      expect(attentionEvents.single.payload['sessionId'], 'live-4');
     },
   );
 }
@@ -300,6 +447,36 @@ class _ImmediateFleetAdapter implements HttpClientAdapter {
   void close({bool force = false}) {}
 }
 
+class _FailingTicketAdapter implements HttpClientAdapter {
+  int ticketRequests = 0;
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    ticketRequests++;
+    return ResponseBody.fromString(
+      '{"error":"offline"}',
+      HttpStatus.serviceUnavailable,
+      headers: {
+        Headers.contentTypeHeader: [Headers.jsonContentType],
+      },
+    );
+  }
+
+  @override
+  void close({bool force = false}) {}
+}
+
+class _RecordingDiagnostics implements AppDiagnostics {
+  final events = <AppDiagnosticEvent>[];
+
+  @override
+  void record(AppDiagnosticEvent event) => events.add(event);
+}
+
 class _SocketProbe {
   _SocketProbe(this.socket) {
     socket.listen((raw) {
@@ -310,10 +487,11 @@ class _SocketProbe {
       } else {
         _pending[message['type'] as String] = message;
       }
-    });
+    }, onDone: closed.complete);
   }
 
   final WebSocket socket;
+  final Completer<void> closed = Completer<void>();
   final Map<String, Map<String, dynamic>> _pending = {};
   final Map<String, Completer<Map<String, dynamic>>> _waiters = {};
 

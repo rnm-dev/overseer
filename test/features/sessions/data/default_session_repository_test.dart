@@ -260,6 +260,67 @@ void main() {
     },
   );
 
+  test(
+    'attention projections update operator state without regressing session',
+    () async {
+      await repository.applyLiveProjection(
+        workspaceId: 'workspace',
+        cursor: 1,
+        projection: {
+          'peonId': 'peon',
+          'sessionId': 'session',
+          'title': 'Keep this title',
+          'lastActivityAt': 20,
+          'syncedAt': 20,
+        },
+      );
+
+      await repository.applyAttentionProjection(
+        workspaceId: 'workspace',
+        cursor: 2,
+        projection: {
+          'peonId': 'peon',
+          'sessionId': 'session',
+          'hasOutstandingRequest': true,
+          'lastRequestedAt': 25,
+          'unread': false,
+          'updatedAt': 25,
+        },
+      );
+
+      final waiting = await repository.loadCachedSessions(
+        workspaceId: 'workspace',
+        peonId: 'peon',
+      );
+      expect(waiting.single.title, 'Keep this title');
+      expect(waiting.single.operatorRequested, isTrue);
+      expect(waiting.single.hasOutstandingRequest, isTrue);
+      expect(waiting.single.lastRequestedAt, 25);
+
+      await repository.applyAttentionProjection(
+        workspaceId: 'workspace',
+        cursor: 3,
+        projection: {
+          'peonId': 'peon',
+          'sessionId': 'session',
+          'hasOutstandingRequest': false,
+          'lastRequestedAt': 25,
+          'attentionUnread': true,
+          'updatedAt': 30,
+        },
+      );
+
+      final ready = await repository.loadCachedSessions(
+        workspaceId: 'workspace',
+        peonId: 'peon',
+      );
+      expect(ready.single.hasOutstandingRequest, isFalse);
+      expect(ready.single.attentionUnread, isTrue);
+      expect(ready.single.attentionUpdatedAt, 30);
+      expect(await repository.cursorFor('workspace'), 3);
+    },
+  );
+
   test('older live projection cannot regress or delete a newer row', () async {
     await repository.applyLiveProjection(
       workspaceId: 'workspace',
@@ -363,6 +424,89 @@ void main() {
     );
     expect(cached.single.sessionId, 'remote');
   });
+
+  test(
+    'session page refresh preserves operator attention fields when omitted',
+    () async {
+      final dio = Dio();
+      dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (options, handler) {
+            handler.resolve(
+              Response<Map<String, dynamic>>(
+                requestOptions: options,
+                data: {
+                  'sessions': [
+                    {
+                      'peonId': 'peon',
+                      'sessionId': 'recent',
+                      'title': 'Updated title',
+                      'status': 'running',
+                      'lastActivityAt': 100,
+                      'syncedAt': 100,
+                      'attentionUnread': false,
+                      'attentionUpdatedAt': 90,
+                    },
+                  ],
+                  'total': 1,
+                  'limit': 20,
+                  'offset': 0,
+                },
+              ),
+            );
+          },
+        ),
+      );
+      repository = DefaultSessionRepository(
+        database: database,
+        apiUrl: Uri.parse('https://overseer.example/api/'),
+        token: 'test-token',
+        dio: dio,
+      );
+      await repository.applyLiveProjection(
+        workspaceId: 'workspace',
+        cursor: 1,
+        projection: {
+          'peonId': 'peon',
+          'sessionId': 'recent',
+          'title': 'Original title',
+          'status': 'running',
+          'lastActivityAt': 50,
+          'syncedAt': 50,
+        },
+      );
+      await repository.applyAttentionProjection(
+        workspaceId: 'workspace',
+        cursor: 2,
+        projection: {
+          'peonId': 'peon',
+          'sessionId': 'recent',
+          'hasOutstandingRequest': true,
+          'lastRequestedAt': 60,
+          'attentionUnread': true,
+          'updatedAt': 60,
+        },
+      );
+
+      await repository.fetchPage(
+        workspaceId: 'workspace',
+        peonId: 'peon',
+        offset: 0,
+        limit: 20,
+      );
+
+      final cached = await repository.loadCachedSessions(
+        workspaceId: 'workspace',
+        peonId: 'peon',
+      );
+      expect(cached.single.title, 'Updated title');
+      expect(cached.single.operatorRequested, isTrue);
+      expect(cached.single.hasOutstandingRequest, isTrue);
+      expect(cached.single.lastRequestedAt, 60);
+      expect(cached.single.attentionUnread, isFalse);
+      expect(cached.single.attentionUpdatedAt, 90);
+    },
+  );
 
   test('fetches session turn and token statistics', () async {
     RequestOptions? request;
@@ -549,4 +693,67 @@ void main() {
       expect(withTail.events.last.displayText, 'live enriched');
     },
   );
+
+  test('REST reconciliation inserts a missed event in server order', () async {
+    await repository.cacheTailEvent(
+      workspaceId: 'workspace',
+      peonId: 'peon',
+      sessionId: 'session',
+      eventId: 'event-1',
+      payload: {'type': 'assistant', 'text': 'first'},
+    );
+    await repository.cacheTailEvent(
+      workspaceId: 'workspace',
+      peonId: 'peon',
+      sessionId: 'session',
+      eventId: 'event-3',
+      payload: {'type': 'assistant', 'text': 'third'},
+    );
+    final dio = Dio();
+    dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) => handler.resolve(
+          Response<Map<String, dynamic>>(
+            requestOptions: options,
+            data: {
+              'events': [
+                {'eventId': 'event-1', 'type': 'assistant', 'text': 'first'},
+                {
+                  'eventId': 'event-2',
+                  'type': 'assistant',
+                  'text': 'recovered',
+                },
+                {'eventId': 'event-3', 'type': 'assistant', 'text': 'third'},
+              ],
+              'nextCursor': null,
+              'hasMore': false,
+            },
+          ),
+        ),
+      ),
+    );
+    repository = DefaultSessionRepository(
+      database: database,
+      apiUrl: Uri.parse('https://overseer.example/api/'),
+      token: 'test-token',
+      dio: dio,
+    );
+
+    await repository.fetchLatestTranscript(
+      workspaceId: 'workspace',
+      peonId: 'peon',
+      sessionId: 'session',
+    );
+
+    final cached = await repository.loadCachedTranscript(
+      workspaceId: 'workspace',
+      peonId: 'peon',
+      sessionId: 'session',
+    );
+    expect(cached.events.map((event) => event.eventId), [
+      'event-1',
+      'event-2',
+      'event-3',
+    ]);
+  });
 }

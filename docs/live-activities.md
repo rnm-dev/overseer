@@ -1,88 +1,78 @@
 # Running-session system activities
 
-Overseer mirrors sessions initiated by the signed-in operator onto system
-surfaces:
+Overseer exposes one aggregate system activity for each selected Overseer
+connection:
 
 - iOS 16.2 and newer: ActivityKit Live Activity on the Lock Screen and Dynamic
-  Island where available.
-- Android: low-importance ongoing live-signal notification.
-- Other platforms: no-op capability implementation.
+  Island where available;
+- Android: one low-importance ongoing notification;
+- other platforms: a no-op capability.
 
-The app treats this as a capability behind
-`core/live_activities/session_activity.dart`; feature and presentation code do
-not branch on the operating system.
+The capability lives behind `core/live_activities/session_activity.dart`.
+Feature and presentation code do not branch on the operating system.
 
-## Ownership and lifecycle
+## State and lifecycle
 
-The workspace WebSocket's authoritative running-session snapshot is the source
-of truth. Its compact session projection retains `author`, title, preview,
-project, and timestamps. The coordinator publishes a session only when its
-author case-insensitively matches the authenticated operator's email or GitHub
-login. A missing author is not assumed to be owned.
+The authoritative workspace WebSocket running-session snapshots are the source
+of truth. A running session contributes only when its `author`
+case-insensitively matches the authenticated operator's email or GitHub login.
+A missing author is not treated as owned.
 
-Each activity has a stable composite ID of workspace, Peon, and session. Native
-implementations synchronize the complete desired set instead of processing
-imperative start/stop calls. This makes updates idempotent and lets a cold app
-launch:
+The activity contains:
 
-1. update activities left by an earlier process;
-2. start newly discovered owned sessions;
-3. end activities no longer present in the authoritative running snapshot;
-4. clear all activities on sign-out.
+- `runningCount`: owned sessions currently present in authoritative running
+  snapshots;
+- `completedCount`: cached sessions whose per-operator `attentionUnread` flag
+  is true;
+- `oldestStartedAt`: the earliest known start time among owned running
+  sessions;
+- `updatedAt`: the latest known activity time among those sessions.
 
-Android persists only the stable activity IDs needed to cancel stale
-notifications. Session content and credentials are not persisted by this
-layer. iOS queries ActivityKit for the existing activities.
+There is never one activity per session. The stable activity identity is scoped
+to the saved Overseer connection. The activity exists while `runningCount` is
+non-zero. When the final run disappears, iOS ends it and leaves the terminal
+card visible for 90 seconds; Android removes its ongoing notification.
+Sign-out clears the selected connection's activity.
 
-## Live-signal design
+The client synchronizes the complete desired aggregate instead of issuing
+imperative start/stop calls. This makes foreground and cold-launch
+reconciliation idempotent. Cached unread changes update `COMPLETED`
+immediately, including when a session is marked read.
 
-The system activity is intentionally a live signal rather than a conventional
-progress meter. It shows only data Overseer actually knows:
+## Visual treatment
 
-- session title and project;
-- latest available preview;
-- elapsed runtime;
-- relative age of the last session activity;
-- the real count of the operator's concurrently running sessions.
+The Lock Screen and Dynamic Island use the UI kit palette:
 
-The Lock Screen and Dynamic Island use a mint/cyan pulse mark, `LIVE SIGNAL`
-label, signal age, and elapsed timer. Android uses the same language in an
-ongoing notification and groups multiple owned sessions into a single
-expandable stack. No percentage or made-up stage is displayed.
+- fel green for `RUNNING` and the live signal;
+- forge amber for `COMPLETED` pending-read sessions;
+- bone text on void and iron surfaces.
+
+The primary duration is the elapsed time since `oldestStartedAt`; freshness is
+shown as relative time since `updatedAt`. The aggregate activity opens the app
+home because it represents multiple possible sessions.
 
 ## Background and push boundary
 
-Live WebSocket changes update both platforms while the app process is alive.
-iOS Live Activities and Android ongoing-session surfaces reconcile from the
-currently selected Overseer runtime. Other authenticated Overseer runtimes keep
-their fleet and workspace sockets warm, but do not install competing handlers
-for the process-global native activity channel.
-iOS also requests an ActivityKit update token for every locally started
-activity. The authenticated app registers that token at
-`PUT /api/push/live-activities`; it remains separate from the device's ordinary
-FCM registration token.
+While the app process is alive, WebSocket and Drift changes reconcile the
+activity. A cold launch also discovers currently running owned sessions and
+repairs the local system surface.
 
-When the server commits a matching session event, the durable push outbox sends
-an ActivityKit `update` or `end` payload through Firebase Admin's APNs bridge.
-The content state carries only server-known title, project, preview, phase, and
-timestamps. `needs_human` remains an active amber state. Explicit completion,
-failure, or cancellation ends the activity and leaves its terminal card visible
-for 90 seconds. Sign-out disables every Live Activity registration for that
-authenticated device.
+The iOS client observes two separate ActivityKit token types:
 
-This is update-token delivery, not push-to-start: Overseer must discover the
-operator-owned running session and start its Live Activity locally once. After
-that, remote updates continue while the app is suspended. Firebase must have an
-APNs authentication key configured for the iOS app, and the Overseer server
-must have `OVERSEER_FIREBASE_SERVICE_ACCOUNT_JSON`.
+- a device-scoped push-to-start token on iOS 17.2 and newer;
+- an update token for the aggregate activity after ActivityKit creates it.
 
-Android ongoing notifications reconcile from the live socket while the process
-is active. Background reconciliation is unsupported because the FCM payload
-does not contain the ownership proof and complete activity state required to
-synchronize the notification set safely.
+These tokens are not ordinary FCM registration tokens. The mobile client is
+prepared to register them through authenticated Live Activity endpoints, but
+remote aggregate start/update/end delivery depends on the backend task linked
+from the project tracker. Until that backend contract ships, a session started
+from the web while the app is terminated appears only after the next app
+launch/reconciliation.
 
-Every per-session system surface opens
-`overseer[-dev]://open/session?workspaceId=…&peonId=…&sessionId=…`. The router
-preserves that destination through auth restoration and opens the cached-first
-session detail. The Android multi-session summary intentionally opens the app
-home because it represents more than one destination.
+The backend contract must preserve one aggregate per user device and Overseer
+connection, update all four fields from authoritative server state, and end it
+only when the running count reaches zero. iOS 16.2 through 17.1 cannot use
+push-to-start and always rely on launch reconciliation.
+
+Android background reconciliation remains unsupported until the server provides
+an authoritative aggregate data-message contract.

@@ -5,6 +5,7 @@ import 'package:drift/drift.dart';
 
 import '../../../core/database/app_database.dart';
 import '../../../core/network/overseer_http_client.dart';
+import '../../../core/time/app_time.dart';
 import '../domain/ai_stats_models.dart';
 import '../domain/ai_stats_repository.dart';
 
@@ -14,10 +15,12 @@ class DioAiStatsRepository implements AiStatsRepository {
     required Uri apiUrl,
     required String token,
     Dio? dio,
+    this._clock = const SystemAppClock(),
   }) : _dio = dio ?? createOverseerHttpClient(apiUrl: apiUrl, token: token);
 
   final AppDatabase database;
   final Dio _dio;
+  final AppClock _clock;
 
   @override
   Future<AiStats?> loadCachedStats({
@@ -70,7 +73,7 @@ class DioAiStatsRepository implements AiStatsRepository {
               peonId: peonId,
               period: period.apiValue,
               payloadJson: jsonEncode(stats.toJson()),
-              updatedAt: DateTime.now().millisecondsSinceEpoch.toDouble(),
+              updatedAt: _clock.now().millisecondsSinceEpoch.toDouble(),
             ),
           );
       return stats;

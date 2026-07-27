@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -111,6 +112,7 @@ class _PeonHomePageState extends ConsumerState<PeonHomePage> {
       key: const Key('peon-home-page'),
       body: SafeArea(
         top: false,
+        bottom: _tab != _PeonTab.work,
         child: Column(
           children: [
             _PeonHeader(
@@ -183,11 +185,15 @@ class _PeonHomePageState extends ConsumerState<PeonHomePage> {
                                 );
                               },
                             ),
-                            const SliverToBoxAdapter(
+                            SliverToBoxAdapter(
                               child: Padding(
-                                key: Key('peon-screen-padding'),
-                                padding: EdgeInsets.only(bottom: 32),
-                                child: SizedBox.shrink(),
+                                key: const Key('peon-screen-padding'),
+                                padding: EdgeInsets.only(
+                                  bottom:
+                                      32 +
+                                      MediaQuery.viewPaddingOf(context).bottom,
+                                ),
+                                child: const SizedBox.shrink(),
                               ),
                             ),
                           ],
@@ -948,6 +954,7 @@ class _PinnedSectionHeader extends StatelessWidget {
   const _PinnedSectionHeader({required this.child});
 
   static const extent = 28.0;
+  static const blurSigma = 12.0;
 
   final Widget child;
 
@@ -977,7 +984,16 @@ class _PinnedSectionHeaderDelegate extends SliverPersistentHeaderDelegate {
     double shrinkOffset,
     bool overlapsContent,
   ) {
-    return SizedBox.expand(child: child);
+    return ClipRect(
+      child: BackdropFilter(
+        key: const Key('pinned-section-header-blur'),
+        filter: ImageFilter.blur(
+          sigmaX: _PinnedSectionHeader.blurSigma,
+          sigmaY: _PinnedSectionHeader.blurSigma,
+        ),
+        child: SizedBox.expand(child: child),
+      ),
+    );
   }
 
   @override

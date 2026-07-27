@@ -4,6 +4,7 @@ import 'package:drift/drift.dart';
 
 import '../../../core/database/app_database.dart';
 import '../../../core/network/overseer_http_client.dart';
+import '../../../core/time/app_time.dart';
 import '../domain/new_session_repository.dart';
 import '../domain/session_models.dart';
 
@@ -13,10 +14,12 @@ class DefaultNewSessionRepository implements NewSessionRepository {
     required Uri apiUrl,
     required String token,
     Dio? dio,
+    this._clock = const SystemAppClock(),
   }) : _dio = dio ?? createOverseerHttpClient(apiUrl: apiUrl, token: token);
 
   final AppDatabase database;
   final Dio _dio;
+  final AppClock _clock;
 
   @override
   Future<SessionSummary> createSession(NewSessionRequest request) async {
@@ -101,7 +104,7 @@ class DefaultNewSessionRepository implements NewSessionRepository {
       if (sessionId == null || sessionId.isEmpty) {
         throw const FormatException('Invalid new session response');
       }
-      final now = DateTime.now().millisecondsSinceEpoch.toDouble();
+      final now = _clock.now().millisecondsSinceEpoch.toDouble();
       final session = SessionSummary(
         workspaceId: request.workspaceId,
         peonId: request.peonId,
@@ -117,6 +120,9 @@ class DefaultNewSessionRepository implements NewSessionRepository {
         startedAt: now,
         lastActivityAt: now,
         syncedAt: now,
+        operatorRequested: true,
+        hasOutstandingRequest: true,
+        lastRequestedAt: now,
       );
       await database
           .into(database.cachedSessions)
@@ -132,6 +138,9 @@ class DefaultNewSessionRepository implements NewSessionRepository {
               startedAt: Value(session.startedAt),
               lastActivityAt: Value(session.lastActivityAt),
               syncedAt: session.syncedAt,
+              operatorRequested: const Value(true),
+              hasOutstandingRequest: const Value(true),
+              lastRequestedAt: Value(now),
             ),
           );
       return session;

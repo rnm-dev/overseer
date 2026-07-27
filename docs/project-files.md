@@ -37,9 +37,10 @@ types for compatibility with the web client and server responses.
   the UI.
 - HTML files can switch between browser Preview and Code. Browser Preview runs
   in an isolated local document, blocks navigation and network subresources,
-  and allows only inline scripts/styles plus data/blob media. Embedded browser
-  preview is available on Android, iOS, and macOS; Windows and Linux show the
-  truthful unavailable state and retain Code mode.
+  and allows only inline scripts/styles plus data/blob media. Android, iOS, and
+  macOS embed the preview. Windows and Linux expose an Open Preview action that
+  opens the same isolated document in a separate native WebView2 or WebKitGTK
+  window; Code mode remains available in the main app.
 - Images retain the existing pan-and-zoom preview.
 
 The format renderer and its controlled Preview/Code switch live in the shared
@@ -51,6 +52,8 @@ navigation, and error/retry states.
 
 ## Limits
 
-The browser does not edit, upload, move, or cache project files. HTML preview
-does not resolve relative assets. File contents are fetched on open and are not
-persisted.
+The browser does not edit, upload, or move project files. HTML preview does not
+resolve relative assets. File contents are fetched on open and are not
+persisted in the app cache. Windows and Linux write the isolated HTML document
+and an ephemeral WebView profile to operating-system temporary storage and
+remove that directory after the preview window closes.

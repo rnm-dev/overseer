@@ -32,10 +32,11 @@ credentials are not affected.
 
 | Capability | iOS | Android | macOS | Windows | Linux |
 | --- | --- | --- | --- | --- | --- |
-| GitHub OAuth | System authentication session | Auth Tab | System authentication session | Embedded WebView2 window | Embedded WebKitGTK window |
+| GitHub OAuth | System authentication session | Auth Tab | Default external browser | Embedded WebView2 window | Embedded WebKitGTK window |
 | OAuth callback | Flavor-specific scheme | Flavor-specific scheme | Flavor-specific scheme | Intercepted inside WebView | Intercepted inside WebView |
 | Device token | Keychain | Encrypted platform storage | Keychain | Windows secure storage | libsecret |
 | REST/WebSocket | Supported | Supported | Supported | Supported | Supported |
+| HTML file preview | Embedded WebView | Embedded WebView | Embedded WebView | Separate WebView2 window | Separate WebKitGTK window |
 | Firebase push | FCM registration implemented; APNs key required | FCM registration implemented | Not selected | Not selected | Not selected |
 | Foreground notification UI | In-app card | In-app card | Unsupported | Unsupported | Unsupported |
 | Notification/deep-link routing | Peon/session, auth-restored | Peon/session, auth-restored | Push unsupported | Push unsupported | Push unsupported |
@@ -46,8 +47,9 @@ flavor keeps one paired origin and callback: dev uses
 `https://overseer-dev.rnm.dev/login?callback=overseer-dev%3A%2F%2Foauth%2Fgithub`
 and prod uses
 `https://overseer.rnm.dev/login?callback=overseer%3A%2F%2Foauth%2Fgithub`.
-The app opens that URL in a system authentication session and exchanges the
-`state` and one-time `code` returned in the callback with
+On iOS and Android, the app opens that URL in a system authentication session.
+On macOS, Launch Services opens it in the user's default browser. The app
+exchanges the `state` and one-time `code` returned in the callback with
 `/api/auth/github/native/exchange`.
 
 The server must allow the exact callback in
@@ -67,6 +69,20 @@ OAuth WebView intercepts the callback before external navigation. The app-owned
 desktop OAuth adapter validates the complete scheme, host, and path, blocks the
 callback from rendering as a page, closes the WebView, and then exchanges the
 one-time code.
+
+On macOS, the app delegate forwards a flavor-specific callback to Dart only
+while an OAuth request is active. Dart validates the complete scheme, host, and
+path and stops listening after success, failure, or the five-minute timeout.
+The browser choice is controlled by the user's macOS default-browser setting;
+the app does not select Safari or another specific browser.
+
+Windows and Linux reuse the same native desktop WebView capability for HTML
+file previews. Because the plugin provides a separate native window rather than
+an embeddable Flutter surface, Preview shows an explicit Open Preview action.
+The app writes the isolated CSP-protected document and an ephemeral browser
+profile to temporary storage, permits navigation only to that document plus
+`about`, `data`, and `blob` resources, and removes the temporary directory when
+the preview window closes. macOS retains its embedded preview.
 
 The same flavor-specific mobile schemes also accept app-owned `/open/peon` and
 `/open/session` links. Unlike OAuth callbacks, these links carry no credential
@@ -119,21 +135,21 @@ configuration in `android/app/src/dev/google-services.json`; the root
 `flutterfire configure` replaces `lib/firebase_options.dart`, so restore the
 flavor selection and both development app IDs if the generated options change.
 
-The macOS dev flavor disables signing for local builds, so it can run beside
-production without creating another provisioning profile. Sign it with the
-development or distribution identity before sharing it with another Mac.
-Installing dev on a physical iPhone requires registering
-`org.ovrseer.app.dev` in the Apple Developer account; simulator builds do
-not require that registration.
+The macOS dev flavor uses automatic Apple Development signing with team
+`F7KV67KV2U`. Its development provisioning profile is required because the
+sandboxed app stores device tokens in Keychain. Installing dev on a physical
+iPhone likewise requires registering `org.ovrseer.app.dev` in the Apple
+Developer account; simulator builds do not require that registration.
 
 Flutter 3.44 does not expose `--flavor` for Windows or Linux builds. Those
 targets continue to produce the single production-identity desktop runner.
 
 ### Apple
 
-macOS and iOS use Swift Package Manager. The runners register the `overseer`
-URL scheme. macOS enables the app sandbox, outbound networking, and Keychain
-access.
+macOS and iOS use Swift Package Manager. The runners register flavor-specific
+`overseer-dev` and `overseer` URL schemes. Overseer Mobile supports iOS 15.0
+and later; the Live Activity extension remains available on iOS 16.2 and
+later. macOS enables the app sandbox, outbound networking, and Keychain access.
 
 ```sh
 flutter build ios --simulator --flavor dev

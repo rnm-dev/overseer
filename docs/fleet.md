@@ -46,9 +46,38 @@ The fleet controller:
 The initial loading shell is reserved for a connection that has no cached
 fleet. A failed background refresh preserves the visible cached fleet.
 
+Fleet refreshes opt into the authenticated operator's bounded recent-session
+projection with
+`includeRecentSessions=mine&recentSessionsLimit=10`. The response remains one
+request per workspace: every Peon carries its recent sessions, and the
+repository upserts them into `cached_sessions` in the same fleet transaction.
+The overview renders the first three per Peon while retaining the larger buffer
+for deletion and reorder backfill. Adjacent Peon groups keep one `xs` spacing
+step between them, placed after the previous Peon's final recent-session row.
+The Peon header is a compact 44-pixel row: online state precedes the name,
+operator presence follows it inline, and a session-list-style `+ NEW SESSION`
+action replaces the active-session count on the right.
+
+Operator membership, request lifecycle, and response attention remain separate
+from the Peon session state machine. Cached rows store whether the current
+operator has requested work, whether a request is still outstanding, the last
+request timestamp, and whether a completed response is unread. A refresh
+replaces the operator-scoped projection without regressing attention events
+that arrived after the request began.
+
+The Peon session-page refresh shares those cached rows but does not necessarily
+carry the operator membership or request-lifecycle fields. Its merge updates
+only fields present in that response, so opening a Peon and returning to Fleet
+cannot remove the personalized recent-session projection.
+
 After a refreshed catalog changes the workspace set, live sync adds sockets for
 new workspaces and closes sockets for removed workspaces without restarting
 unaffected connections.
+
+Workspace `attention` events update the same cached rows and cursor
+transactionally. New rows enter the overview, activity changes move them into
+authoritative order, and state changes replay the shared status-edge flare.
+Reduced-motion preferences suppress entrance, reorder, and flare animation.
 
 ## Shared native services
 
