@@ -93,8 +93,13 @@ Before upload, the client discards:
 
 - takes shorter than 300 milliseconds;
 - empty recorder output;
-- takes whose amplitude samples have RMS below `0.008`;
+- on Android, takes whose amplitude samples have RMS below `0.008`;
 - files larger than the server-advertised `maxBytes`.
+
+iOS does not use recorder-meter RMS as a hard silence gate. AVAudioRecorder can
+report ordinary speech below the Android-calibrated threshold while still
+producing valid audio, so non-empty iOS takes reach transcription and an empty
+provider result is reported as “Nothing was said.”
 
 ## Verification
 

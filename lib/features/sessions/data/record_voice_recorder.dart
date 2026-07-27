@@ -33,19 +33,31 @@ class PermissionHandlerMicrophoneGateway
 }
 
 class RecordVoiceRecorderFactory implements VoiceRecorderFactory {
-  const RecordVoiceRecorderFactory({required this.supported});
+  const RecordVoiceRecorderFactory({
+    required this.supported,
+    required this.silenceThresholdRms,
+  });
 
   final bool supported;
+  final double? silenceThresholdRms;
 
   @override
-  VoiceRecorder create() => RecordVoiceRecorder(supported: supported);
+  VoiceRecorder create() => RecordVoiceRecorder(
+    supported: supported,
+    silenceThresholdRms: silenceThresholdRms,
+  );
 }
 
 class RecordVoiceRecorder implements VoiceRecorder {
-  RecordVoiceRecorder({required this.supported});
+  RecordVoiceRecorder({
+    required this.supported,
+    required this.silenceThresholdRms,
+  });
 
   @override
   final bool supported;
+  @override
+  final double? silenceThresholdRms;
   final AudioRecorder _recorder = AudioRecorder();
   final StreamController<double> _amplitudeController =
       StreamController<double>.broadcast();

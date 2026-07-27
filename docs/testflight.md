@@ -2,7 +2,7 @@
 
 Use the `prod` flavor for every TestFlight build. Its application identifier is
 `org.ovrseer.app`, its Live Activity extension is
-`org.ovrseer.app.SessionActivityWidget`, and it connects to
+`org.ovrseer.app.liveActivityWidget`, and it connects to
 `https://overseer.rnm.dev`.
 
 ## Apple prerequisites
@@ -12,7 +12,7 @@ Xcode 26 or later and the iOS 26 SDK or later. The release Mac must also have:
 
 - an Apple Developer account added to Xcode for team `CU55M6L93Q`;
 - an App Store Connect app record whose bundle ID is `org.ovrseer.app`;
-- explicit App IDs for the app and `org.ovrseer.app.SessionActivityWidget`;
+- explicit App IDs for the app and `org.ovrseer.app.liveActivityWidget`;
 - Push Notifications enabled for the app App ID;
 - Xcode-managed App Store distribution certificates and provisioning profiles;
 - the production APNs key configured in Firebase project `overseer-9fe46`; and
@@ -71,7 +71,7 @@ find "$APP" -name PrivacyInfo.xcprivacy -print
 
 Both bundles must have the same `CFBundleShortVersionString` and
 `CFBundleVersion`. The app must use `org.ovrseer.app`; the extension must use
-`org.ovrseer.app.SessionActivityWidget`.
+`org.ovrseer.app.liveActivityWidget`.
 
 ## App Store Connect information
 

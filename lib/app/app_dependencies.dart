@@ -254,6 +254,13 @@ class AppDependencies extends StatelessWidget {
                 !kIsWeb &&
                 (defaultTargetPlatform == TargetPlatform.android ||
                     defaultTargetPlatform == TargetPlatform.iOS),
+            // AVAudioRecorder metering on iOS can report normal speech below
+            // the Android-calibrated cutoff even while producing valid audio.
+            // Let the transcription service decide whether a non-empty iOS
+            // take contains speech instead of rejecting it locally.
+            silenceThresholdRms: defaultTargetPlatform == TargetPlatform.iOS
+                ? null
+                : 0.008,
           ),
         ),
         followupRepositoryProvider.overrideWith((ref) {
