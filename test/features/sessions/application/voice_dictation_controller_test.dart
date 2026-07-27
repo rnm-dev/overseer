@@ -129,6 +129,53 @@ void main() {
   });
 
   test(
+    'uploads a non-empty low-meter take when silence gating is disabled',
+    () async {
+      final repository = _FakeRepository(text: 'Quiet but audible.');
+      final recorder = _FakeRecorder(
+        take: VoiceTake(
+          bytes: Uint8List.fromList([1, 2, 3]),
+          duration: const Duration(seconds: 2),
+          rms: 0.0001,
+        ),
+        silenceThresholdRms: null,
+      );
+      final container = ProviderContainer(
+        overrides: [
+          voiceInputRepositoryProvider.overrideWithValue(repository),
+          voiceRecorderFactoryProvider.overrideWithValue(
+            _FakeRecorderFactory(recorder),
+          ),
+          microphonePermissionGatewayProvider.overrideWithValue(
+            _FakePermissionGateway(MicrophonePermission.granted),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final subscription = container.listen(
+        voiceDictationControllerProvider(scope),
+        (_, _) {},
+        fireImmediately: true,
+      );
+      addTearDown(subscription.close);
+      await Future<void>.delayed(Duration.zero);
+      final controller = container.read(
+        voiceDictationControllerProvider(scope).notifier,
+      );
+
+      expect(await controller.start(), isTrue);
+      await controller.stop();
+
+      expect(repository.transcriptionCalls, 1);
+      expect(
+        container.read(voiceDictationControllerProvider(scope)).completedText,
+        'Quiet but audible.',
+      );
+    },
+  );
+
+  test(
     'cancels an in-flight transcription without publishing its result',
     () async {
       final transcription = Completer<VoiceTranscription>();
@@ -246,12 +293,14 @@ class _FakeRecorderFactory implements VoiceRecorderFactory {
 }
 
 class _FakeRecorder implements VoiceRecorder {
-  _FakeRecorder({VoiceTake? take})
+  _FakeRecorder({VoiceTake? take, this.silenceThresholdRms = 0.008})
     : take =
           take ??
           VoiceTake(bytes: Uint8List(0), duration: Duration.zero, rms: 0);
 
   VoiceTake take;
+  @override
+  final double? silenceThresholdRms;
   final StreamController<double> _amplitudes =
       StreamController<double>.broadcast();
   final StreamController<void> _interruptions =

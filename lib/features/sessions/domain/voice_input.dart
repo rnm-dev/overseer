@@ -82,6 +82,10 @@ class VoiceTake {
 abstract interface class VoiceRecorder {
   bool get supported;
 
+  /// A platform-calibrated silence threshold, or `null` when recorder
+  /// metering is not reliable enough to reject a non-empty take locally.
+  double? get silenceThresholdRms;
+
   Stream<double> get amplitude;
 
   Stream<void> get interruptions;

@@ -96,8 +96,6 @@ class VoiceDictationController extends Notifier<VoiceDictationState> {
 
   static const _clientMaxDuration = Duration(seconds: 120);
   static const _minimumDuration = Duration(milliseconds: 300);
-  static const _minimumRms = 0.008;
-
   @override
   VoiceDictationState build() {
     final recorder = ref.read(voiceRecorderFactoryProvider).create();
@@ -225,7 +223,9 @@ class VoiceDictationController extends Notifier<VoiceDictationState> {
         );
         return;
       }
-      if (take.rms < _minimumRms || take.bytes.isEmpty) {
+      final silenceThreshold = _recorder!.silenceThresholdRms;
+      if (take.bytes.isEmpty ||
+          (silenceThreshold != null && take.rms < silenceThreshold)) {
         state = state.copyWith(
           phase: VoiceDictationPhase.idle,
           duration: Duration.zero,
@@ -386,6 +386,9 @@ class _UnavailableVoiceRecorderFactory implements VoiceRecorderFactory {
 
 class _UnavailableVoiceRecorder implements VoiceRecorder {
   const _UnavailableVoiceRecorder();
+
+  @override
+  double? get silenceThresholdRms => null;
 
   @override
   Stream<double> get amplitude => const Stream.empty();
