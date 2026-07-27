@@ -3,7 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
 import { useT } from "../i18n";
-import { Button, Card, GithubMark, LocaleSwitcher, Logo } from "../ui";
+import { GithubMark, LocaleSwitcher } from "../ui";
 
 // Opening an invite link lands here. Signed-out visitors get a "sign in to join"
 // button (the token is stashed and resumed after the GitHub round-trip); signed-in
@@ -53,39 +53,35 @@ export function Join() {
   const workspaceName = preview && preview !== "invalid" ? preview.workspaceName : "";
 
   return (
-    <div className="grid min-h-screen place-items-center px-4 py-10">
+    <div className="auth-scene">
       <LocaleSwitcher className="fixed right-4 top-4" />
-      <div className="reveal flex w-full max-w-sm flex-col items-center text-center">
-        <Logo size={150} />
-        <Card className="surface--lit mt-6 w-full p-8">
-          {preview === "invalid" ? (
-            <>
-              <p className="font-mono text-sm text-blood">{t("join.invalid")}</p>
-              <a href="/" className="btn-ghost mt-4 inline-block">
-                {t("join.backHome")}
-              </a>
-            </>
-          ) : preview === null ? (
-            <div className="flex flex-col items-center">
-              <div className="forge-spin" />
-            </div>
-          ) : user ? (
-            <div className="flex flex-col items-center gap-3">
-              <div className="forge-spin" />
-              <p className="rune text-xs text-bone-dim">{t("join.joining", { workspace: workspaceName })}</p>
-            </div>
-          ) : (
-            <>
-              <p className="text-sm text-bone-dim">{t("join.invited")}</p>
-              <p className="mt-1 font-display text-lg font-semibold text-fel-bright">{workspaceName}</p>
-              <Button type="button" className="mt-5 flex w-full items-center justify-center gap-2" onClick={signInToJoin}>
-                <GithubMark size={18} />
-                {t("join.signIn")}
-              </Button>
-            </>
-          )}
-          {error && <p className="mt-4 border-l-2 border-blood pl-3 text-left font-mono text-xs text-blood">{error}</p>}
-        </Card>
+      <div className="auth-stack">
+        <h1 className="auth-wordmark auth-wordmark--muted">{t("app.name")}</h1>
+        {preview === "invalid" ? (
+          <>
+            <p className="auth-error" role="alert">{t("join.invalid")}</p>
+            <a href="/" className="auth-link">{t("join.backHome")}</a>
+          </>
+        ) : preview === null ? (
+          <p className="auth-status" role="status">
+            <span className="auth-orbit" aria-hidden />
+          </p>
+        ) : user ? (
+          <p className="auth-status" role="status">
+            <span className="auth-orbit" aria-hidden />
+            {t("join.joining", { workspace: workspaceName })}
+          </p>
+        ) : (
+          <>
+            <p className="auth-lede">{t("join.invited")}</p>
+            <p className="auth-subject">{workspaceName}</p>
+            <button type="button" className="auth-cta" onClick={signInToJoin}>
+              <GithubMark size={17} />
+              {t("join.signIn")}
+            </button>
+          </>
+        )}
+        {error && <p className="auth-error" role="alert">{error}</p>}
       </div>
     </div>
   );

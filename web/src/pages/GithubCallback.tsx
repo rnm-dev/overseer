@@ -3,7 +3,6 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth";
 import { ApiError } from "../api";
 import { useT } from "../i18n";
-import { Card, Logo } from "../ui";
 
 // GitHub's shared frontend callback. It submits code + state to the API, which
 // either finishes web sign-in or tells the browser to open the native app.
@@ -42,24 +41,20 @@ export function GithubCallback() {
   }, [params, completeGithubCallback, navigate, t]);
 
   return (
-    <div className="grid min-h-screen place-items-center px-4 py-10">
-      <div className="reveal flex w-full max-w-sm flex-col items-center text-center">
-        <Logo size={140} />
-        <Card className="mt-6 w-full p-8">
-          {error ? (
-            <>
-              <p className="border-l-2 border-blood pl-3 text-left font-mono text-xs text-blood">{error}</p>
-              <a href="/login" className="btn-ghost mt-4 inline-block">
-                {t("login.backToLogin")}
-              </a>
-            </>
-          ) : (
-            <div className="flex flex-col items-center gap-4">
-              <div className="forge-spin" />
-              <p className="rune text-xs text-bone-dim">{t("login.callback")}</p>
-            </div>
-          )}
-        </Card>
+    <div className="auth-scene">
+      <div className="auth-stack">
+        <h1 className="auth-wordmark auth-wordmark--muted">{t("app.name")}</h1>
+        {error ? (
+          <>
+            <p className="auth-error" role="alert">{error}</p>
+            <a href="/login" className="auth-link">{t("login.backToLogin")}</a>
+          </>
+        ) : (
+          <p className="auth-status" role="status">
+            <span className="auth-orbit" aria-hidden />
+            {t("login.callback")}
+          </p>
+        )}
       </div>
     </div>
   );

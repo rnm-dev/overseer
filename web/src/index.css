@@ -920,6 +920,329 @@ html.peon-sidebar-resizing * {
 }
 
 /* ------------------------------------------------------------------ *
+ *  Auth screens (sign-in, GitHub callback, invite)                    *
+ * ------------------------------------------------------------------ *
+ * These three pages carry no chrome: no card, no logo plate. Identity
+ * is typographic and the page itself is the surface — a slow fel glow
+ * over the void, one CTA, nothing to frame it. */
+.auth-scene {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 100dvh;
+  overflow: hidden;
+  padding: max(2.5rem, env(safe-area-inset-top)) 1.5rem max(2.5rem, env(safe-area-inset-bottom));
+}
+
+/* The atmosphere: a fel dawn above, an ember rumour below. Both live on a
+   pseudo-element so the drift animates one compositor layer, not the text. */
+.auth-scene::before {
+  content: "";
+  position: absolute;
+  inset: -25%;
+  z-index: 0;
+  background:
+    radial-gradient(58% 42% at 50% 8%, rgba(134, 171, 99, 0.2), transparent 68%),
+    radial-gradient(46% 38% at 82% 96%, rgba(217, 148, 65, 0.09), transparent 72%),
+    radial-gradient(40% 34% at 12% 88%, rgba(134, 171, 99, 0.07), transparent 74%);
+  animation: auth-drift 24s ease-in-out infinite alternate;
+  pointer-events: none;
+}
+
+/* A horizon the content sits on — invisible as a line, felt as depth. */
+.auth-scene::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: radial-gradient(120% 80% at 50% 50%, transparent 42%, rgba(3, 5, 3, 0.72));
+  pointer-events: none;
+}
+
+.auth-stack {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  width: 100%;
+  max-width: 22rem;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.auth-stack > * {
+  animation: auth-rise 620ms cubic-bezier(0.16, 0.84, 0.24, 1) both;
+}
+.auth-stack > :nth-child(2) { animation-delay: 90ms; }
+.auth-stack > :nth-child(3) { animation-delay: 180ms; }
+.auth-stack > :nth-child(4) { animation-delay: 260ms; }
+
+.auth-wordmark {
+  margin: 0;
+  background: linear-gradient(176deg, #f4f3e8 6%, #cfd6b4 38%, var(--color-fel) 74%, var(--color-fel-deep) 100%);
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  /* text-shadow, not filter: a filter on a background-clip:text element glows
+     from its whole box and draws exactly the rectangle this page is meant to
+     be free of. The shadow follows the glyph outlines. */
+  text-shadow: 0 0 34px rgba(134, 171, 99, 0.3);
+  font-family: var(--font-display);
+  font-size: clamp(2.7rem, 13vw, 3.6rem);
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  line-height: 1;
+}
+
+.auth-wordmark--muted {
+  font-size: clamp(1.5rem, 7vw, 1.75rem);
+  letter-spacing: -0.02em;
+  opacity: 0.72;
+}
+
+/* Tagline flanked by rules that fade out — the only "frame" on the page. */
+.auth-tagline {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 0.85rem;
+  margin-top: 1.15rem;
+  color: var(--color-bone-faint);
+  font-family: var(--font-mono);
+  /* Tracked-out and unwrapped, so both locales' taglines have to fit a phone:
+     size and tracking give way before the line does. */
+  font-size: clamp(0.58rem, 2.6vw, 0.66rem);
+  letter-spacing: clamp(0.18em, 1.1vw, 0.34em);
+  text-indent: 0.3em; /* balances the trailing letter-space */
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.auth-rule {
+  height: 1px;
+  min-width: 1rem;
+  flex: 1;
+  background: linear-gradient(to right, transparent, rgba(134, 171, 99, 0.34));
+}
+.auth-rule:last-child {
+  background: linear-gradient(to left, transparent, rgba(134, 171, 99, 0.34));
+}
+
+.auth-lede {
+  margin-top: 1.6rem;
+  color: var(--color-bone-dim);
+  font-size: 0.85rem;
+  letter-spacing: 0.01em;
+}
+
+.auth-subject {
+  margin-top: 0.4rem;
+  color: var(--color-bone);
+  font-family: var(--font-display);
+  font-size: clamp(1.35rem, 7vw, 1.7rem);
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+/* The one solid thing on the page. Pill, fel gradient, a light that
+   travels across it on hover. */
+.auth-cta {
+  position: relative;
+  display: inline-flex;
+  width: 100%;
+  max-width: 17.5rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  overflow: hidden;
+  margin-top: 2.5rem;
+  border-radius: 999px;
+  background: linear-gradient(180deg, var(--color-fel-bright), var(--color-fel) 58%, #74975a);
+  padding: 0.85rem 1.5rem;
+  color: var(--color-fel-ink);
+  font-family: var(--font-display);
+  font-size: 0.83rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.28) inset,
+    0 14px 38px -16px rgba(134, 171, 99, 0.75);
+  transition: transform 160ms cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 200ms ease, filter 160ms ease;
+}
+
+.auth-cta::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -60%;
+  width: 45%;
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.42), transparent);
+  transform: skewX(-18deg);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.auth-cta:hover:not(:disabled) {
+  transform: translateY(-1px);
+  filter: saturate(1.06);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.34) inset,
+    0 20px 46px -16px rgba(134, 171, 99, 0.9);
+}
+
+.auth-cta:hover:not(:disabled)::after {
+  animation: auth-sheen 900ms ease-out;
+}
+
+.auth-cta:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.2) inset,
+    0 8px 22px -14px rgba(134, 171, 99, 0.7);
+}
+
+.auth-cta:focus-visible {
+  outline: none;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.28) inset,
+    0 0 0 2px var(--color-void),
+    0 0 0 4px var(--color-fel-bright),
+    0 14px 38px -16px rgba(134, 171, 99, 0.75);
+}
+
+.auth-cta:disabled {
+  cursor: not-allowed;
+  filter: grayscale(0.25);
+  opacity: 0.55;
+}
+
+/* Quiet secondary route out ("back to sign in", "go to Overseer"). */
+.auth-link {
+  margin-top: 1.5rem;
+  color: var(--color-bone-faint);
+  font-family: var(--font-display);
+  font-size: 0.74rem;
+  letter-spacing: 0.06em;
+  text-underline-offset: 4px;
+  transition: color 150ms ease;
+}
+.auth-link:hover {
+  color: var(--color-fel-bright);
+  text-decoration: underline;
+}
+
+.auth-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.7rem;
+  margin-top: 2rem;
+  color: var(--color-bone-dim);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+/* A thin arc instead of a boxed spinner. */
+.auth-orbit {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  border: 1.5px solid rgba(134, 171, 99, 0.18);
+  border-top-color: var(--color-fel-bright);
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+}
+
+.auth-error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  margin-top: 1.5rem;
+  color: var(--color-blood);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  line-height: 1.5;
+  text-wrap: balance;
+  animation: auth-rise 320ms ease-out both;
+}
+
+/* Borderless locale toggle — the auth pages are the only place it appears. */
+.locale-switch {
+  z-index: 2;
+  display: inline-flex;
+  gap: 0.15rem;
+}
+
+.locale-switch-item {
+  position: relative;
+  padding: 0.3rem 0.4rem;
+  color: var(--color-bone-faint);
+  font-family: var(--font-display);
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: color 150ms ease;
+}
+.locale-switch-item:hover {
+  color: var(--color-bone-dim);
+}
+.locale-switch-item[aria-pressed="true"] {
+  color: var(--color-fel-bright);
+}
+.locale-switch-item[aria-pressed="true"]::after {
+  content: "";
+  position: absolute;
+  bottom: 0.05rem;
+  left: 0.4rem;
+  right: 0.4rem;
+  height: 1px;
+  background: var(--color-fel);
+}
+.locale-switch-item:focus-visible {
+  outline: 1px solid var(--color-fel-deep);
+  outline-offset: 2px;
+}
+
+@keyframes auth-drift {
+  from { transform: translate3d(-2.5%, -1.5%, 0) scale(1); }
+  to { transform: translate3d(2.5%, 2%, 0) scale(1.08); }
+}
+
+@keyframes auth-sheen {
+  from { left: -60%; opacity: 0.9; }
+  to { left: 130%; opacity: 0; }
+}
+
+@keyframes auth-rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-scene::before,
+  .auth-stack > *,
+  .auth-error,
+  .auth-orbit {
+    animation: none !important;
+  }
+  .auth-cta:hover:not(:disabled)::after {
+    animation: none;
+  }
+}
+
+/* ------------------------------------------------------------------ *
  *  Motion                                                             *
  * ------------------------------------------------------------------ */
 .reveal {
