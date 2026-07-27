@@ -213,8 +213,13 @@ export async function listOperatorRecentSessions(opts: {
   // exactly the ordering the cut relies on.
   const { rows } = await query<OperatorRecentSessionRow>(
     `SELECT sessions.peon_id, sessions.session_id, sessions.status, sessions.title,
+            sessions.prompt_preview, sessions.preview,
             sessions.project_id, sessions.project_key, sessions.started_at, sessions.last_activity_at,
+            sessions.synced_at,
             MAX(a.requested_at) AS last_requested_at,
+            MAX(a.completed_at) AS last_completed_at,
+            MAX(a.read_at) AS last_read_at,
+            MAX(a.resolved_at) AS last_resolved_at,
             BOOL_OR(a.resolved_at IS NULL) AS has_outstanding_request,
             BOOL_OR(a.state = 'unread') AS attention_unread
        FROM sessions
@@ -223,7 +228,9 @@ export async function listOperatorRecentSessions(opts: {
         AND a.workspace_id=$1 AND a.user_id=$2${joinSql}
       WHERE sessions.peon_id IN (${peonPlaceholders.join(",")})${accessPredicate}
       GROUP BY sessions.peon_id, sessions.session_id, sessions.status, sessions.title,
-               sessions.project_id, sessions.project_key, sessions.started_at, sessions.last_activity_at
+               sessions.prompt_preview, sessions.preview,
+               sessions.project_id, sessions.project_key, sessions.started_at, sessions.last_activity_at,
+               sessions.synced_at
       ORDER BY sessions.last_activity_at DESC NULLS LAST, sessions.started_at DESC NULLS LAST, sessions.session_id ASC`,
     params,
   );
@@ -231,16 +238,31 @@ export async function listOperatorRecentSessions(opts: {
     const list = grouped.get(row.peon_id) ?? [];
     if (list.length >= limit) continue;
     list.push({
+      peonId: row.peon_id,
       sessionId: row.session_id,
       status: row.status,
       title: row.title,
+      // The same trimming the canonical session list applies, so a client can
+      // fall back title → promptPreview → preview without a second request.
+      promptPreview: row.prompt_preview?.slice(0, 200) ?? null,
+      preview: row.preview,
       projectId: row.project_id,
       projectKey: row.project_key,
       startedAt: row.started_at === null ? null : Number(row.started_at),
       lastActivityAt: row.last_activity_at === null ? null : Number(row.last_activity_at),
+      syncedAt: Number(row.synced_at ?? 0),
       lastRequestedAt: row.last_requested_at === null ? null : Number(row.last_requested_at),
       hasOutstandingRequest: row.has_outstanding_request === true,
       attentionUnread: row.attention_unread === true,
+      // Mirrors the workspace session list: the newest of this operator's own
+      // attention timestamps. GREATEST() is folded here rather than in SQL to
+      // stay inside the dialect pg-mem and PostgreSQL both run.
+      attentionUpdatedAt: Math.max(
+        Number(row.last_requested_at ?? 0),
+        Number(row.last_completed_at ?? 0),
+        Number(row.last_read_at ?? 0),
+        Number(row.last_resolved_at ?? 0),
+      ),
     });
     grouped.set(row.peon_id, list);
   }
@@ -252,11 +274,17 @@ interface OperatorRecentSessionRow {
   session_id: string;
   status: string | null;
   title: string | null;
+  prompt_preview: string | null;
+  preview: string | null;
   project_id: string | null;
   project_key: string | null;
   started_at: number | string | null;
   last_activity_at: number | string | null;
+  synced_at: number | string | null;
   last_requested_at: number | string | null;
+  last_completed_at: number | string | null;
+  last_read_at: number | string | null;
+  last_resolved_at: number | string | null;
   has_outstanding_request: boolean | null;
   attention_unread: boolean | null;
 }
