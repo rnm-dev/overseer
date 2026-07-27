@@ -12,6 +12,7 @@ import type { FcmServiceAccount } from "./pushConfig.js";
 
 export { createFcmSender, PushDeliveryError, type PushMessage, type PushSender } from "./fcm.js";
 export { resolvePushConfig, type PushConfig, type FcmServiceAccount } from "./pushConfig.js";
+export { plainText } from "./plainText.js";
 
 let sender: PushSender | null = null;
 let senderAccount: FcmServiceAccount | null = null;
