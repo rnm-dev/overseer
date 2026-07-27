@@ -44,3 +44,13 @@ export function nativeCallback(store: CallbackStore): string | null {
 export function forgetNativeCallback(store: CallbackStore): void {
   store.removeItem(NATIVE_CALLBACK_KEY);
 }
+
+// Where /login goes. A signed-in browser belongs on the dashboard, but a
+// signed-in *webview* does not: the app opened it to obtain a deep link, and
+// bouncing to the dashboard would render the whole of Overseer inside the app's
+// sign-in sheet with no way to finish. Native mode outranks the web session —
+// the flow is public and session-independent server-side, so the GitHub round
+// trip completes into overseer://oauth/github either way.
+export function loginRouteTarget(signedIn: boolean, store: CallbackStore): "dashboard" | "login" {
+  return signedIn && !nativeCallback(store) ? "dashboard" : "login";
+}

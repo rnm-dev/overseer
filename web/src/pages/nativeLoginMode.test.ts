@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   forgetNativeCallback,
+  loginRouteTarget,
   nativeCallback,
   rememberNativeCallback,
   type CallbackStore,
@@ -63,4 +64,28 @@ test("a finished web sign-in clears native mode", () => {
   rememberNativeCallback("?callback=overseer://oauth/github", s);
   forgetNativeCallback(s);
   assert.equal(nativeCallback(s), null);
+});
+
+test("a signed-in browser is sent from /login to the dashboard", () => {
+  assert.equal(loginRouteTarget(true, store()), "dashboard");
+});
+
+test("a signed-out visitor stays on /login", () => {
+  assert.equal(loginRouteTarget(false, store()), "login");
+});
+
+// The bug this guards: the app's sign-in sheet shares the browser session, so
+// the webview arrived already signed in and got the whole dashboard instead of
+// a deep link back to the app.
+test("a signed-in webview stays on /login to finish the native deep link", () => {
+  const s = store();
+  rememberNativeCallback("?callback=overseer://oauth/github", s);
+  assert.equal(loginRouteTarget(true, s), "login");
+});
+
+test("native mode survives the GitHub round trip for a signed-in webview", () => {
+  const s = store();
+  rememberNativeCallback("?callback=overseer-dev://oauth/github", s);
+  rememberNativeCallback("?code=gh-code&state=state-1", s);
+  assert.equal(loginRouteTarget(true, s), "login");
 });
