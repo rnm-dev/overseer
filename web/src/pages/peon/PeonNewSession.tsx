@@ -4,6 +4,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { api, ApiError, json } from "../../api";
 import { useT } from "../../i18n";
 import { playPeonSound } from "../../peonSounds";
+import { claimAudioFocus } from "../../audioFocus";
 import { useNotifications } from "../../notifications";
 import { Label } from "../../ui";
 import { usePeon } from "./context";
@@ -149,6 +150,9 @@ export function PeonNewSession() {
       });
       const id = res.id ?? res.session?.id;
       if (id) {
+        // Started from here, so this is the client the operator is using —
+        // take the sound from whatever else they left open.
+        claimAudioFocus();
         playPeonSound("start");
         setInput("");
         setFiles([]); // the attachments went with the session — don't leave them drafted here

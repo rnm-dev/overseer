@@ -13,6 +13,7 @@ import {
   SOUND_PACKS,
   WORKING_SOUND_PATHS,
 } from "../peonSounds";
+import { isAudioPrimary, onAudioPrimaryChange, setAudioPrimary } from "../audioFocus";
 
 test("sound pack selector exposes the requested packs and bundled semantic paths", () => {
   assert.deepEqual(SOUND_PACKS.map(({ id }) => id), ["peon", "peasant", "none", "dota2_axe", "sc_scv", "probe"]);
@@ -209,4 +210,53 @@ test("work ambience follows the pack and stays silent for packs without one", ()
   pack = "dota2_axe";
   player.play();
   assert.deepEqual(created, ["/sounds/probe/work-active-0.wav"]);
+});
+
+test("a client that does not own the operator's audio stays silent", () => {
+  let primary = true;
+  let plays = 0;
+  const play = createPeonSoundPlayer(() => ({
+    currentTime: 0,
+    preload: "none",
+    play: () => { plays += 1; },
+  }), () => "peon", () => 0, () => primary);
+  let ambiencePlays = 0;
+  const ambience = createWorkSoundPlayer(() => ({
+    currentTime: 0,
+    preload: "none",
+    onended: null,
+    pause: () => undefined,
+    play: () => { ambiencePlays += 1; },
+  }), () => "peon", () => 0, () => primary);
+
+  play("complete");
+  ambience.play();
+  assert.equal(plays, 1);
+  assert.equal(ambiencePlays, 1);
+  ambience.stop();
+
+  // The operator picked up another client; this one keeps working, silently.
+  primary = false;
+  play("complete");
+  ambience.play();
+  assert.equal(plays, 1);
+  assert.equal(ambiencePlays, 1);
+});
+
+test("audio ownership defaults to playing and notifies on every change", () => {
+  const seen: boolean[] = [];
+  const stop = onAudioPrimaryChange((primary) => seen.push(primary));
+  try {
+    // A lone client, or one talking to an overseer that never mentions audio,
+    // must never mute itself.
+    assert.equal(isAudioPrimary(), true);
+    setAudioPrimary(true);
+    setAudioPrimary(false);
+    setAudioPrimary(false);
+    setAudioPrimary(true);
+    assert.deepEqual(seen, [false, true]);
+  } finally {
+    stop();
+    setAudioPrimary(true);
+  }
 });

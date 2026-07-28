@@ -9,7 +9,19 @@ import { getIndexedSession } from "./sessionIndex.js";
 import { bus, latestCursor, oldestCursor, readEventsSince, type LiveEvent } from "./eventLog.js";
 import { callPeon, connOfRecord, streamPeonTo } from "./peonClient.js";
 import { eventVisible, peonVisible, projectVisible, refreshClientAccess, sessionVisible } from "./liveAccess.js";
-import { heartbeatPresence, listHeartbeatPresence, presenceBus, removePresence, touchPresence } from "./modules/presence/index.js";
+import {
+  audioFocusBus,
+  claimAudioFocus,
+  hasAudioFocus,
+  heartbeatPresence,
+  listHeartbeatPresence,
+  presenceBus,
+  promoteAudioFocus,
+  releaseAudioFocus,
+  removePresence,
+  setAudioFocusActive,
+  touchPresence,
+} from "./modules/presence/index.js";
 
 // The north-bound (overseer→client) transport: one authenticated WebSocket per
 // app, multiplexing presence + live session tails, resumable by cursor.
@@ -17,6 +29,15 @@ import { heartbeatPresence, listHeartbeatPresence, presenceBus, removePresence, 
 //   server → { type:"snapshot", presence, peonPresence, cursor } then replays events>cursor, then live
 //   client → { type:"subscribe"|"unsubscribe", peonId, sessionId }
 //   server → { type:"tail", sessionId, event, id, data }   (bridged from the peon SSE)
+//   client → { type:"audio:claim"|"audio:release" }   — operator is / is not here
+//   server → { type:"audio", primary }  — may this client play notification sound
+//
+// Audio ownership: an operator with a desktop window and a phone open must hear
+// a finished run once, on the app they last picked up. hello carries a clientId
+// (per browser tab, per install on a native app), the sockets of one client share
+// one entry in the operator's stack (modules/presence/audioFocus), and only the
+// top entry is told primary:true. A client that sends no clientId stays out of
+// the stack: it keeps the old always-play behavior and cannot mute anyone else.
 //
 // Live self-heal: the server periodically pushes { type:"sync", cursor } — the
 // latest cursor for the client's workspace. The client compares it to what it has
@@ -48,6 +69,12 @@ interface Client {
   // focused). A backgrounded tab keeps its place in the viewer list but must not
   // count as "seen" for session attention.
   presenceActive: boolean;
+  // The tab this socket belongs to, for audio ownership. Null until hello.
+  audioClientId: string | null;
+  // Last `primary` value sent, so a recompute only speaks when it has news.
+  audioPrimary: boolean | null;
+  // Publishes audio ownership to every socket of this client's operator.
+  syncAudio: () => void;
 }
 
 interface PresenceUser {
@@ -110,6 +137,18 @@ export function attachLiveSocket(server: Server): WebSocketServer {
   };
   server.on("upgrade", onUpgrade);
   const clients = new Set<Client>();
+  // Tell each of an operator's sockets whether its tab currently owns audio.
+  // Ownership is per operator, not per workspace, so this deliberately ignores
+  // which workspace a socket is looking at.
+  const syncAudio = (userId: string) => {
+    for (const c of clients) {
+      if (c.userId !== userId || !c.audioClientId) continue;
+      const primary = hasAudioFocus(userId, c.audioClientId);
+      if (primary === c.audioPrimary) continue;
+      c.audioPrimary = primary;
+      send(c.ws, { type: "audio", primary });
+    }
+  };
   // Latest appended (cursor>0) event cursor per workspace, kept in memory from the
   // bus. It's the yardstick the periodic sync hands each client so it can tell
   // whether it's caught up. Absent (process just booted, no events yet) ⇒ 0, which
@@ -145,6 +184,9 @@ export function attachLiveSocket(server: Server): WebSocketServer {
       client.location = null;
       clients.delete(client);
       if (workspaceId) removePresence(workspaceId, client.userId, client.presenceConnectionId);
+      // Popping this tab off the audio stack promotes whatever was underneath —
+      // the desktop window that stayed connected while the phone came and went.
+      if (client.audioClientId) releaseAudioFocus(client.userId, client.audioClientId, client.presenceConnectionId);
     });
     ws.on("error", () => {});
 
@@ -177,6 +219,9 @@ export function attachLiveSocket(server: Server): WebSocketServer {
         tails: new Map(),
         location: null,
         presenceActive: true,
+        audioClientId: null,
+        audioPrimary: null,
+        syncAudio: () => syncAudio(auth.userId),
       };
       clients.add(client);
       for (const raw of pending) enqueueMessage(client, raw, wsCursor);
@@ -203,6 +248,8 @@ export function attachLiveSocket(server: Server): WebSocketServer {
   bus.on("event", onBusEvent);
   const onPresenceChange = (workspaceId: string) => broadcastPresence(clients, workspaceId);
   presenceBus.on("changed", onPresenceChange);
+  const onAudioFocusChange = (userId: string) => syncAudio(userId);
+  audioFocusBus.on("changed", onAudioFocusChange);
 
   // Cursor sync — refresh high-water marks from Postgres, not only the local bus.
   // That makes self-heal work across multiple overseer processes and after any
@@ -260,6 +307,7 @@ export function attachLiveSocket(server: Server): WebSocketServer {
     clearInterval(ping);
     bus.off("event", onBusEvent);
     presenceBus.off("changed", onPresenceChange);
+    audioFocusBus.off("changed", onAudioFocusChange);
     server.off("upgrade", onUpgrade);
   });
   return wss;
@@ -285,7 +333,7 @@ function enqueueMessage(client: Client, raw: string, wsCursor: Map<string, numbe
 }
 
 async function onMessage(client: Client, raw: string, wsCursor: Map<string, number>): Promise<void> {
-  let msg: { type?: string; workspaceId?: string; cursor?: number; scope?: string; peonId?: string; sessionId?: string; lastEventId?: string };
+  let msg: { type?: string; workspaceId?: string; cursor?: number; scope?: string; peonId?: string; sessionId?: string; lastEventId?: string; clientId?: string };
   try {
     msg = JSON.parse(raw);
   } catch {
@@ -301,6 +349,17 @@ async function onMessage(client: Client, raw: string, wsCursor: Map<string, numb
     return;
   }
   if (msg.type === "hello") return hello(client, msg, wsCursor);
+  // "The operator is / is no longer in front of this client", decoupled from
+  // route presence. The browser derives it from tab visibility and deliberate
+  // gestures; a native app has foreground/background and nothing else.
+  if (msg.type === "audio:claim" || msg.type === "audio:release") {
+    if (client.audioClientId) {
+      if (msg.type === "audio:claim") promoteAudioFocus(client.userId, client.audioClientId);
+      else setAudioFocusActive(client.userId, client.audioClientId, false);
+      client.syncAudio();
+    }
+    return;
+  }
   if (!client.workspaceId) return; // everything else requires a workspace
   if (msg.type === "resume") return resume(client, msg.cursor, wsCursor);
   if (msg.type === "presence:set") return setPresence(client, msg);
@@ -308,7 +367,18 @@ async function onMessage(client: Client, raw: string, wsCursor: Map<string, numb
   if (msg.type === "unsubscribe" && msg.sessionId) unsubscribe(client, msg.sessionId);
 }
 
-async function hello(client: Client, msg: { workspaceId?: string }, wsCursor: Map<string, number>): Promise<void> {
+// One client, one audio identity — a browser tab's several sockets (the selected
+// workspace plus any fleet-dashboard ones) must not compete with each other.
+// Untrusted input, so bound it. An absent or unusable id keeps that connection
+// out of the stack entirely (see hello): a client that cannot be told to stay
+// quiet must not be able to silence one that can.
+function audioClientIdOf(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 && trimmed.length <= 128 ? trimmed : null;
+}
+
+async function hello(client: Client, msg: { workspaceId?: string; clientId?: string }, wsCursor: Map<string, number>): Promise<void> {
   const workspaceId = String(msg.workspaceId ?? "");
   const role = workspaceId ? await membership(workspaceId, client.userId) : null;
   if (!workspaceId || !role) {
@@ -326,9 +396,23 @@ async function hello(client: Client, msg: { workspaceId?: string }, wsCursor: Ma
   client.live = false;
   client.workspaceId = workspaceId;
   client.role = role;
+  // A client that does not identify itself keeps the pre-audio-ownership
+  // behaviour: it is never told to go quiet, and — just as important — it never
+  // takes the sound away from a client that does. Otherwise a reconnecting
+  // legacy client would look like a brand new one on every flap and would mute
+  // the desktop it cannot hear itself being outranked by.
+  const audioClientId = audioClientIdOf(msg.clientId);
+  if (client.audioClientId && client.audioClientId !== audioClientId) {
+    releaseAudioFocus(client.userId, client.audioClientId, client.presenceConnectionId);
+  }
+  client.audioClientId = audioClientId;
+  if (audioClientId) claimAudioFocus(client.userId, audioClientId, client.presenceConnectionId);
   await refreshClientAccess(client);
 
   await snapshotAndReplay(client, workspaceId, wsCursor);
+  // After the snapshot, so a reconnecting tab learns where it stands even when
+  // the stack did not move and the bus therefore stayed quiet.
+  client.syncAudio();
 }
 
 async function snapshotAndReplay(client: Client, workspaceId: string, wsCursor: Map<string, number>): Promise<void> {
@@ -408,6 +492,9 @@ async function setPresence(
 ): Promise<void> {
   if (!client.workspaceId) return;
   client.presenceActive = msg.active !== false;
+  // Returning to a machine is the strongest "play sound here" signal there is,
+  // and a tab that went hidden should not keep the sound in a pocket.
+  if (client.audioClientId) setAudioFocusActive(client.userId, client.audioClientId, client.presenceActive);
   let next: PresenceLocation;
   if (msg.scope === "workspace") {
     next = { scope: "workspace", peonId: null, sessionId: null, projectKey: null, projectId: null };
