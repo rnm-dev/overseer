@@ -130,8 +130,10 @@ height. The final message therefore remains fully visible at rest even when
 the composer grows to multiple lines.
 
 Text drafts are stored in `composer_drafts`, scoped by workspace, Peon, and
-session. Drafts render cache-first and are removed only after the message has
-been accepted for delivery or durable retry.
+session. Drafts render cache-first. On submit, the visible field clears
+immediately while the durable draft remains until the message has been
+accepted for delivery or durable retry; a rejected submission restores the
+visible text.
 
 The Peon screen's New session action opens this same detail surface with the
 reserved local draft scope `new-session`, an empty transcript, and no project

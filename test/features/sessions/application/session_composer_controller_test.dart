@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -348,6 +349,62 @@ void main() {
     },
   );
 
+  test(
+    'clears the visible draft while a follow-up is being submitted',
+    () async {
+      final submissionGate = Completer<void>();
+      final repository = _FakeFollowupRepository(
+        draft: 'send me',
+        pending: const [],
+        submissionGate: submissionGate,
+      );
+      final container = ProviderContainer(
+        overrides: [followupRepositoryProvider.overrideWithValue(repository)],
+      );
+      addTearDown(container.dispose);
+      final controller = container.read(
+        sessionComposerControllerProvider(scope).notifier,
+      );
+      await container.read(sessionComposerControllerProvider(scope).future);
+
+      final submission = controller.submit(running: false);
+      final submitting = container
+          .read(sessionComposerControllerProvider(scope))
+          .requireValue;
+      expect(submitting.draft, isEmpty);
+      expect(submitting.sending, isTrue);
+      expect(repository.savedDraft, isNull);
+
+      submissionGate.complete();
+      expect(await submission, isTrue);
+      expect(repository.savedDraft, isEmpty);
+    },
+  );
+
+  test('restores the visible draft when follow-up submission fails', () async {
+    final repository = _FakeFollowupRepository(
+      draft: 'do not lose me',
+      pending: const [],
+      submitErrors: const [FollowupException('not sent')],
+    );
+    final container = ProviderContainer(
+      overrides: [followupRepositoryProvider.overrideWithValue(repository)],
+    );
+    addTearDown(container.dispose);
+    final controller = container.read(
+      sessionComposerControllerProvider(scope).notifier,
+    );
+    await container.read(sessionComposerControllerProvider(scope).future);
+
+    expect(await controller.submit(running: false), isFalse);
+    final failed = container
+        .read(sessionComposerControllerProvider(scope))
+        .requireValue;
+    expect(failed.draft, 'do not lose me');
+    expect(failed.error, 'not sent');
+    expect(repository.savedDraft, isNull);
+  });
+
   test('edits an authoritative queued prompt in place', () async {
     final repository = _FakeFollowupRepository(
       draft: '',
@@ -384,6 +441,7 @@ class _FakeFollowupRepository implements FollowupRepository {
     this.refreshErrors = const [],
     this.submitErrors = const [],
     this.retryResults = const [],
+    this.submissionGate,
   });
 
   final String draft;
@@ -392,6 +450,7 @@ class _FakeFollowupRepository implements FollowupRepository {
   final List<Object?> refreshErrors;
   final List<FollowupException> submitErrors;
   final List<bool> retryResults;
+  final Completer<void>? submissionGate;
   final List<_SubmissionRecord> submissions = [];
   String? savedDraft;
   String? editedItemId;
@@ -467,6 +526,7 @@ class _FakeFollowupRepository implements FollowupRepository {
     if (submissions.length <= submitErrors.length) {
       throw submitErrors[submissions.length - 1];
     }
+    await submissionGate?.future;
     return FollowupDelivery.delivered;
   }
 

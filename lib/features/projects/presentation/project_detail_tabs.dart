@@ -127,13 +127,11 @@ class _CardHeader extends StatelessWidget {
     required this.icon,
     required this.title,
     required this.subtitle,
-    this.action,
   });
 
   final IconData icon;
   final String title;
   final String subtitle;
-  final Widget? action;
 
   @override
   Widget build(BuildContext context) {
@@ -182,34 +180,7 @@ class _CardHeader extends StatelessWidget {
               ],
             ),
           ),
-          ?action,
         ],
-      ),
-    );
-  }
-}
-
-class _SectionTitle extends StatelessWidget {
-  const _SectionTitle({required this.title});
-
-  final String title;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: AppColors.iron800)),
-      ),
-      child: Text(
-        title,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: AppTypography.display(
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-          color: AppColors.boneDim,
-        ),
       ),
     );
   }
@@ -392,17 +363,14 @@ class _MarkdownDocument extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
-      child: AppMarkdown(
-        data: source,
-        textStyle: AppTypography.body(
-          fontSize: 13,
-          color: AppColors.bone,
-          height: 1.5,
-        ),
-        onTapLink: onTapLink,
+    return AppMarkdown(
+      data: source,
+      textStyle: AppTypography.body(
+        fontSize: 13,
+        color: AppColors.bone,
+        height: 1.5,
       ),
+      onTapLink: onTapLink,
     );
   }
 }
@@ -578,20 +546,17 @@ class _DocumentationSkeleton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Padding(
-      padding: EdgeInsets.all(18),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _Skeleton(width: 150, height: 16),
-          SizedBox(height: 12),
-          _Skeleton(width: double.infinity, height: 9),
-          SizedBox(height: 8),
-          _Skeleton(width: 260, height: 9),
-          SizedBox(height: 8),
-          _Skeleton(width: 210, height: 9),
-        ],
-      ),
+    return const Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _Skeleton(width: 150, height: 16),
+        SizedBox(height: 12),
+        _Skeleton(width: double.infinity, height: 9),
+        SizedBox(height: 8),
+        _Skeleton(width: 260, height: 9),
+        SizedBox(height: 8),
+        _Skeleton(width: 210, height: 9),
+      ],
     );
   }
 }
