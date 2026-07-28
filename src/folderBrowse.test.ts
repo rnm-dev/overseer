@@ -44,6 +44,32 @@ test("folder browse lists directories only, sorted, over the folder-listing oper
   assert.deepEqual(calls, [{ path: "/" }]);
 });
 
+test("an overlapping listing waits for its turn instead of showing the operator a busy Peon", async () => {
+  // The picker's own superseded request, the docs panel or a second operator can
+  // hold the Peon's single folder-listing slot; the refusal is transient.
+  let call = 0;
+  const request = async (): Promise<FolderListResult> => {
+    call += 1;
+    if (call < 3) throw new PeonOperationError("SYNC_IN_PROGRESS", "another Peon operation is already in progress", 409);
+    return { path: "/", projectId: null, entries: [{ name: "srv", type: "directory" }] };
+  };
+  const waits: number[] = [];
+  const retry = { pause: async (ms: number) => { waits.push(ms); }, random: () => 0.5 };
+
+  assert.deepEqual(await browsePeonFolders("peon", { path: "/" }, undefined, request, retry), {
+    path: "/",
+    entries: [{ name: "srv", type: "directory" }],
+  });
+  assert.deepEqual(waits, [50, 100]);
+
+  // A Peon that stays busy still ends in a stated failure, not an endless wait.
+  const busy = async (): Promise<FolderListResult> => { throw new PeonOperationError("SYNC_IN_PROGRESS", "busy", 409); };
+  await assert.rejects(
+    browsePeonFolders("peon", { path: "/" }, undefined, busy, { attempts: 3, pause: async () => {}, random: () => 0.5 }),
+    (error: unknown) => error instanceof PeonOperationError && error.code === "SYNC_IN_PROGRESS",
+  );
+});
+
 test("folder browse surfaces the Peon's own failures unchanged", async () => {
   const fail = (error: PeonOperationError) => async (): Promise<FolderListResult> => { throw error; };
   await assert.rejects(
