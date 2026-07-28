@@ -95,6 +95,7 @@ void main() {
                 sessionId: 'markdown',
                 title: 'Markdown session',
                 preview: '**Fixed** with `code`\n\n- next',
+                lastActivityAt: 1,
                 syncedAt: 1,
               ),
             ]),
@@ -121,6 +122,15 @@ void main() {
       ),
     );
     expect(richText.text.toPlainText(), 'Fixed with code • next');
+    expect(
+      tester.widget<Text>(find.text('Markdown session')).style?.fontSize,
+      14,
+    );
+    expect(preview.style.fontSize, 10.6);
+    final activity = tester.widget<Text>(
+      find.byKey(const Key('session-activity-markdown')),
+    );
+    expect(activity.style?.fontSize, 10.6);
     expect(
       tester.getSize(find.byKey(const Key('session-markdown'))).height,
       48,

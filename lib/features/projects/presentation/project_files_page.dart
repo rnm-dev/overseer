@@ -175,12 +175,14 @@ class ProjectFileTreeView extends StatelessWidget {
     required this.onToggle,
     required this.onRetry,
     required this.onOpenFile,
+    this.padding = const EdgeInsets.fromLTRB(8, 8, 8, 24),
   });
 
   final ProjectFilesState state;
   final ValueChanged<String> onToggle;
   final ValueChanged<String> onRetry;
   final ValueChanged<String>? onOpenFile;
+  final EdgeInsetsGeometry padding;
 
   @override
   Widget build(BuildContext context) {
@@ -212,7 +214,7 @@ class ProjectFileTreeView extends StatelessWidget {
     _appendDirectory(rows, '', 0);
     return ListView(
       key: const Key('project-file-tree'),
-      padding: const EdgeInsets.fromLTRB(8, 8, 8, 24),
+      padding: padding,
       children: rows,
     );
   }

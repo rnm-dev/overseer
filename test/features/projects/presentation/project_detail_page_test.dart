@@ -43,10 +43,23 @@ void main() {
     expect(find.text('Overseer Mobile'), findsOneWidget);
     await tester.pumpAndSettle();
     expect(find.text('Project  ›  docs'), findsOneWidget);
+    expect(find.byType(CustomScrollView), findsOneWidget);
+    expect(find.byKey(const Key('project-overview-path-blur')), findsOneWidget);
+    expect(find.byKey(const Key('project-docs-refresh')), findsOneWidget);
     expect(repository.fileFetches, 1);
     expect(find.byKey(const Key('project-tab-sessions')), findsOneWidget);
     expect(find.byKey(const Key('project-tab-skills')), findsNothing);
     expect(find.byKey(const Key('project-tab-members')), findsNothing);
+
+    await tester.tap(find.byKey(const Key('project-tab-sessions')));
+    await tester.pump();
+    expect(find.byKey(const Key('project-sessions-pane')), findsOneWidget);
+    expect(find.text('SESSIONS'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('project-tab-files')));
+    await tester.pump();
+    expect(find.byKey(const Key('project-files-pane')), findsOneWidget);
+    expect(find.byKey(const Key('project-files-tab-refresh')), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('project-tab-settings')));
     await tester.pumpAndSettle();

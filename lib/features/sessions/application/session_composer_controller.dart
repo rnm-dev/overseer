@@ -261,6 +261,7 @@ class SessionComposerController extends AsyncNotifier<SessionComposerState> {
     _followupPayloadIdentity = payloadIdentity;
     state = AsyncData(
       current.copyWith(
+        draft: '',
         sending: true,
         clearError: true,
         clearFollowupProgress: true,
@@ -297,6 +298,7 @@ class SessionComposerController extends AsyncNotifier<SessionComposerState> {
       final latest = state.value ?? current;
       state = AsyncData(
         latest.copyWith(
+          draft: current.draft,
           sending: false,
           clearFollowupProgress: true,
           error: error.message,
@@ -317,6 +319,7 @@ class SessionComposerController extends AsyncNotifier<SessionComposerState> {
       final latest = state.value ?? current;
       state = AsyncData(
         latest.copyWith(
+          draft: current.draft,
           sending: false,
           clearFollowupProgress: true,
           error: 'Message could not be sent.',

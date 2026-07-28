@@ -39,10 +39,10 @@ class SessionWorkItem extends StatelessWidget {
     }
 
     final titleHeight = lineHeight(
-      AppTypography.display(fontSize: 12.8, fontWeight: FontWeight.w500),
+      AppTypography.display(fontSize: 14, fontWeight: FontWeight.w500),
     );
-    final detailHeight = lineHeight(AppTypography.body(fontSize: 9.6));
-    return math.max(48, 12 + math.max(20, titleHeight) + 2 + detailHeight);
+    final detailHeight = lineHeight(AppTypography.body(fontSize: 10.6));
+    return math.max(48, 12 + math.max(20, titleHeight) + detailHeight);
   }
 
   @override
@@ -127,7 +127,7 @@ class SessionWorkItem extends StatelessWidget {
                           overflow: TextOverflow.fade,
                           softWrap: false,
                           style: AppTypography.display(
-                            fontSize: 12.8,
+                            fontSize: 14,
                             fontWeight: FontWeight.w500,
                           ),
                         ),
@@ -147,7 +147,6 @@ class SessionWorkItem extends StatelessWidget {
                     ],
                   ),
                 ),
-                const SizedBox(height: 2),
                 Row(
                   children: [
                     if (session.projectKey?.trim().isNotEmpty == true) ...[
@@ -158,7 +157,7 @@ class SessionWorkItem extends StatelessWidget {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: AppTypography.body(
-                            fontSize: 9.6,
+                            fontSize: 10.6,
                             color: AppColors.forge.withValues(alpha: 0.8),
                           ),
                         ),
@@ -174,7 +173,7 @@ class SessionWorkItem extends StatelessWidget {
                           overflow: TextOverflow.fade,
                           softWrap: false,
                           style: AppTypography.body(
-                            fontSize: 9.6,
+                            fontSize: 10.6,
                             color: AppColors.boneFaint,
                           ),
                         ),
@@ -187,7 +186,7 @@ class SessionWorkItem extends StatelessWidget {
                         key: Key('session-activity-${session.sessionId}'),
                         activity,
                         style: AppTypography.body(
-                          fontSize: 9.6,
+                          fontSize: 10.6,
                           color: AppColors.boneFaint,
                         ),
                       ),
