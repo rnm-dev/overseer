@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState, type InputHTMLAttributes } from "react";
+import { useEffect, useMemo, useRef, useState, type InputHTMLAttributes } from "react";
 import { ChevronRight, Folder, FolderOpen } from "lucide-react";
 import { api, ApiError } from "../../api";
 import { useT } from "../../i18n";
 import { Button, Dialog, Input } from "../../ui";
+import { folderErrorKey, isAbortError, type FolderSource } from "./peonFolders";
 
 interface DirectoryEntry {
   name: string;
@@ -27,6 +28,9 @@ type PathInputProps = Omit<InputHTMLAttributes<HTMLInputElement>, "value" | "onC
   browseRoot?: string;
   browseBase?: string;
   browseLocations?: PathBrowseLocation[];
+  // When given, the picker browses the whole Peon filesystem through this
+  // source (the folder-listing WebSocket) instead of the HTTP file proxy.
+  folderSource?: FolderSource;
 };
 
 export function normalizeAbsolutePath(value: string): string {
@@ -79,7 +83,7 @@ export function virtualDirectoryNames(currentPath: string, locations: PathBrowse
 const encodePath = (value: string) => value.split("/").filter(Boolean).map(encodeURIComponent).join("/");
 const isDirectory = (entry: DirectoryEntry) => entry.type === "directory" || entry.type === "dir";
 
-export function PathInput({ base, value, onChange, browseRoot, browseBase, browseLocations, className = "", disabled, ...inputProps }: PathInputProps) {
+export function PathInput({ base, value, onChange, browseRoot, browseBase, browseLocations, folderSource, className = "", disabled, ...inputProps }: PathInputProps) {
   const t = useT();
   const [open, setOpen] = useState(false);
 
@@ -111,6 +115,7 @@ export function PathInput({ base, value, onChange, browseRoot, browseBase, brows
           browseRoot={browseRoot}
           browseBase={browseBase}
           browseLocations={browseLocations}
+          folderSource={folderSource}
           onSelect={onChange}
           onClose={() => setOpen(false)}
         />
@@ -125,6 +130,7 @@ function PathSelectorModal({
   browseRoot,
   browseBase,
   browseLocations,
+  folderSource,
   onSelect,
   onClose,
 }: {
@@ -133,6 +139,7 @@ function PathSelectorModal({
   browseRoot?: string;
   browseBase?: string;
   browseLocations?: PathBrowseLocation[];
+  folderSource?: FolderSource;
   onSelect: (value: string) => void;
   onClose: () => void;
 }) {
@@ -141,8 +148,42 @@ function PathSelectorModal({
   const [currentPath, setCurrentPath] = useState(() => normalizeAbsolutePath(initialValue || "/"));
   const [entries, setEntries] = useState<DirectoryEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // The opening directory may not exist yet (a suggested project folder), so the
+  // first listing resolves to the nearest ancestor; later ones must not.
+  const openedRef = useRef(false);
+
+  // Whole-filesystem browsing over the folder-listing WebSocket. Each navigation
+  // supersedes — and aborts — the listing before it; closing the picker or
+  // switching Peon unmounts this modal, which aborts too.
+  useEffect(() => {
+    if (!folderSource) return;
+    const controller = new AbortController();
+    let alive = true;
+    setEntries(null);
+    setError(null);
+    const opening = !openedRef.current;
+    const request = opening ? folderSource.resolve : folderSource.list;
+    request(currentPath, controller.signal)
+      .then((listing) => {
+        if (!alive) return;
+        openedRef.current = true;
+        if (opening && listing.path !== currentPath) return setCurrentPath(listing.path);
+        setEntries(listing.entries);
+      })
+      .catch((err) => {
+        if (!alive || isAbortError(err)) return;
+        openedRef.current = true;
+        setError(err instanceof ApiError ? t(folderErrorKey(err)) : t("error.loadFailed"));
+        setEntries([]);
+      });
+    return () => {
+      alive = false;
+      controller.abort();
+    };
+  }, [currentPath, folderSource, t]);
 
   useEffect(() => {
+    if (folderSource) return;
     let alive = true;
     const explicit = [...(browseLocations ?? []), ...(browseRoot && browseBase ? [{ root: browseRoot, base: browseBase }] : [])];
     if (explicit.length > 0) {
@@ -164,10 +205,10 @@ function PathSelectorModal({
         setError(err instanceof ApiError ? err.message : t("error.loadFailed"));
       });
     return () => { alive = false; };
-  }, [base, browseBase, browseLocations, browseRoot, initialValue, t]);
+  }, [base, browseBase, browseLocations, browseRoot, folderSource, initialValue, t]);
 
   useEffect(() => {
-    if (locations === null) return;
+    if (folderSource || locations === null) return;
     let alive = true;
     setEntries(null);
     setError(null);
@@ -190,17 +231,17 @@ function PathSelectorModal({
         setEntries([]);
       });
     return () => { alive = false; };
-  }, [currentPath, locations, t]);
+  }, [currentPath, folderSource, locations, t]);
 
   const crumbs = useMemo(() => currentPath.split("/").filter(Boolean), [currentPath]);
-  const selectedPath = locations === null ? "" : currentPath;
+  const selectedPath = folderSource || locations !== null ? currentPath : "";
 
   return (
     <Dialog title={t("pathSelector.title")} onClose={onClose} size="lg">
       <div className="surface surface--inset overflow-hidden">
         <div className="flex min-h-10 flex-wrap items-center gap-1 border-b border-iron-800 px-3 py-2 font-mono text-xs" title={selectedPath || undefined}>
           <button type="button" onClick={() => setCurrentPath("/")} className="text-bone-dim hover:text-fel-bright">/</button>
-          {locations === null && <span className="text-bone-dim">{t("app.loading")}</span>}
+          {locations === null && !folderSource && <span className="text-bone-dim">{t("app.loading")}</span>}
           {crumbs.map((segment, index) => (
             <span key={`${segment}-${index}`} className="flex min-w-0 items-center gap-1">
               <ChevronRight size={13} className="flex-none text-bone-faint" aria-hidden />
