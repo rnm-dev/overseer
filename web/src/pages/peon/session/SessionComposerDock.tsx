@@ -2,7 +2,7 @@ import type { Dispatch, SetStateAction } from "react";
 import { createPortal } from "react-dom";
 import { useT } from "../../../i18n";
 import { Composer, supportsDesktopComposerFocus } from "../Composer";
-import { ModelSelect, ReasoningEffortSelect, effortsForModel, modelLabel, type ModelProvider, type ModelsCatalog } from "../models";
+import { ModelSelect, ReasoningEffortSelect, defaultEffortIdFor, effortsForModel, inheritedModelId, modelLabel, optionMatches, type ModelProvider, type ModelsCatalog } from "../models";
 import { QueueList } from "./QueueList";
 import type { QueueItem } from "./queue";
 
@@ -48,6 +48,11 @@ export function SessionComposerDock(props: Props) {
     setOverrideReasoningEffort, sessionReasoningEffort,
   } = props;
   const t = useT();
+  // What the composer inherits when the session pinned nothing of its own.
+  const inheritedModel = inheritedModelId(catalog, sessionProvider, sessionModel);
+  const composerEfforts = effortsForModel(sessionProvider, overrideModel || sessionModel || null);
+  const inheritedEffortId = defaultEffortIdFor(composerEfforts);
+  const inheritedEffort = inheritedEffortId ? composerEfforts.find((effort) => optionMatches(effort, inheritedEffortId)) : undefined;
   return createPortal(
     <div ref={setComposerNode} className="session-composer fixed bottom-0 left-0 right-0 z-40 bg-gradient-to-t from-void via-void to-transparent pt-6 md:left-[var(--peon-sidebar-width)]">
       <div className="mx-auto max-w-[76rem] px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:px-6 sm:pb-[max(1rem,env(safe-area-inset-bottom))]">
@@ -93,10 +98,15 @@ export function SessionComposerDock(props: Props) {
               label={t("session.compose.model")}
               className="model-select-compact"
               defaultLabel={sessionModel ? modelLabel(catalog, sessionModel) ?? sessionModel : t("model.default")}
+              // A session that pinned nothing still runs on something — name the
+              // peon's pick in the menu rather than offering a bare "Default".
+              defaultOptionLabel={inheritedModel && !sessionModel
+                ? t("model.optionDefault", { name: modelLabel(catalog, inheritedModel) ?? inheritedModel })
+                : undefined}
               defaultId={sessionModel ?? undefined}
               allowClear={!sessionModel}
             />
-            {effortsForModel(sessionProvider, overrideModel || sessionModel || null).length > 0 && (
+            {composerEfforts.length > 0 && (
             <ReasoningEffortSelect
               key={`effort:${sessionKey}`}
               provider={sessionProvider}
@@ -106,6 +116,9 @@ export function SessionComposerDock(props: Props) {
               label={t("session.compose.reasoningEffort")}
               className="model-select-compact"
               defaultLabel={sessionReasoningEffort ? sessionProvider?.reasoningEfforts.find((effort) => effort.id === sessionReasoningEffort)?.label ?? sessionReasoningEffort : t("model.default")}
+              defaultOptionLabel={inheritedEffort && !sessionReasoningEffort
+                ? t("model.optionDefault", { name: inheritedEffort.label })
+                : undefined}
             />
             )}
           </>
