@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api, ApiError } from "../../api";
 import { Button, Dialog, Input, Label } from "../../ui";
 import { useT } from "../../i18n";
 import { PathInput } from "./PathInput";
+import { createPeonFolderSource } from "./peonFolders";
 import { createProject, projectMetadataValue, projectRoute } from "./peonApi";
 
 // author: Viktor
@@ -20,6 +21,8 @@ export function NewProjectDialog({ base, onClose }: { base: string; onClose: () 
   const [dirTouched, setDirTouched] = useState(false);
   const [suggestedKey, setSuggestedKey] = useState("");
   const [metadata, setMetadata] = useState("");
+  // Browse the Peon's whole filesystem from `/`, not just its file-transfer root.
+  const folderSource = useMemo(() => createPeonFolderSource(base), [base]);
 
   // Suggest key/dir from the label (debounced).
   useEffect(() => {
@@ -68,6 +71,7 @@ export function NewProjectDialog({ base, onClose }: { base: string; onClose: () 
           <Label>{t("newProject.dir")}</Label>
           <PathInput
             base={base}
+            folderSource={folderSource}
             value={dir}
             onChange={(next) => {
               setDir(next);

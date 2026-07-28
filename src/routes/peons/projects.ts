@@ -4,7 +4,7 @@ import { callPeon, connOfRecord, normalizePeonUrl, proxyFileDownload, proxyFileU
 import { reconcilePeon } from "../../sessionIndex.js";
 import { allowedProjects, canAccessProject, projectMemberCounts } from "../../access.js";
 import { ownerOnly, relay, restSegments, withWorkspacePeon } from "../helpers.js";
-import { streamProjectFileResponse } from "../../modules/projects/index.js";
+import { browsePeonFolders, folderBrowseSelector, streamProjectFileResponse } from "../../modules/projects/index.js";
 import { listProjectDocs } from "../../modules/projectDocs/index.js";
 import { PeonOperationError } from "../../peonOperationChannel.js";
 import {
@@ -111,6 +111,25 @@ export function registerProjectRoutes(router: express.Router): void {
     relay(await callPeon(connOfRecord(c.record), "GET", `/projects/suggest-dir${label ? `?label=${encodeURIComponent(label)}` : ""}`, { actor: c.operator.email }), res);
   }));
   router.post(`${wp}/projects`, withWorkspacePeon(async (req, res, c) => { if (!ownerOnly(res, c.role)) return; relay(await callPeon(connOfRecord(c.record), "POST", "/projects", { actor: c.operator.email, body: req.body }), res); }));
+  // Directory picker for new projects: folder data travels over the Peon's
+  // `folder-listing-v1` reverse WebSocket, so an owner can browse from `/`
+  // instead of being confined to the HTTP file-transfer root.
+  router.get(`${wp}/folders`, withWorkspacePeon(async (req, res, c) => {
+    if (!ownerOnly(res, c.role)) return;
+    const controller = new AbortController();
+    req.once("aborted", () => controller.abort());
+    res.once("close", () => controller.abort());
+    try {
+      const selector = folderBrowseSelector(req.query.path, req.query.limit);
+      res.json(await browsePeonFolders(c.record.peonId, selector, controller.signal));
+    } catch (error) {
+      if (controller.signal.aborted || res.headersSent || res.destroyed) return;
+      const typed = error instanceof PeonOperationError
+        ? error
+        : new PeonOperationError("FOLDER_LIST_FAILED", "the folder could not be listed", 502);
+      res.status(typed.status === 499 ? 502 : typed.status).json({ error: typed.message, code: typed.code });
+    }
+  }));
   router.get(`${wp}/projects/:projectId/docs`, withWorkspacePeon(async (req, res, c) => {
     const projectId = String(req.params.projectId);
     if (!(await canAccessProject(c.workspaceId, c.userId, c.role, c.record.peonId, "", projectId))) {
