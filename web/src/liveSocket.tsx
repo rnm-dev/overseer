@@ -4,6 +4,7 @@ import { useWorkspace } from "./workspace";
 import { useAuth } from "./auth";
 import { useLocation } from "react-router-dom";
 import { presenceLocationForPath } from "./presence";
+import { audioClientId, setAudioClaimSender, setAudioPrimary } from "./audioFocus";
 import { documentPresence } from "./pages/peon/sessionAttentionRead";
 import { parsePeonProjection, parsePeonProjections } from "./workspacePeons";
 
@@ -163,7 +164,9 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
         if (closed || sockRef.current !== ws || generation !== connectionGeneration) return ws.close();
         readyRef.current = false;
         lastRecvAt = Date.now();
-        ws.send(JSON.stringify({ type: "hello", workspaceId: wsId, cursor: cursorsRef.current.get(wsId) ?? 0 }));
+        // clientId travels with hello so every socket of this tab shares one
+        // entry in the operator's audio stack.
+        ws.send(JSON.stringify({ type: "hello", workspaceId: wsId, cursor: cursorsRef.current.get(wsId) ?? 0, clientId: audioClientId() }));
         // A fresh socket supersedes pending per-tail retries. Subscriptions are
         // flushed only after `snapshot`, which is the server's explicit proof that
         // authentication + workspace initialization completed.
@@ -314,6 +317,12 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
           setPresence((msg.presence as PresenceEntry[]) ?? []);
           break;
         }
+        case "audio": {
+          // The overseer's verdict on whether this is the client the operator is
+          // using. Everything else stays exactly as it is — only sound is gated.
+          setAudioPrimary(msg.primary !== false);
+          break;
+        }
         case "presenceRetry": {
           window.setTimeout(() => {
             if (readyRef.current && sockRef.current?.readyState === WebSocket.OPEN) {
@@ -421,10 +430,18 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
     window.addEventListener("pageshow", kick); // bfcache restore — timers were frozen
     document.addEventListener("visibilitychange", onVisible);
 
+    // A gesture on this page (starting or stopping a run) claims the sound for
+    // this client; the overseer moves it to the top of the operator's stack.
+    setAudioClaimSender(() => {
+      const ws = sockRef.current;
+      if (readyRef.current && ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "audio:claim" }));
+    });
+
     void connect();
     return () => {
       closed = true;
       readyRef.current = false;
+      setAudioClaimSender(null);
       window.clearInterval(heartbeat);
       window.removeEventListener("online", kick);
       window.removeEventListener("focus", kick);

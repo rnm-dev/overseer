@@ -1,3 +1,5 @@
+import { isAudioPrimary, onAudioPrimaryChange } from "./audioFocus";
+
 export type PeonSound = "start" | "stop" | "complete";
 
 export type SoundPack = "none" | "peon" | "peasant" | "dota2_axe" | "sc_scv" | "probe";
@@ -118,12 +120,14 @@ export function createPeonSoundPlayer(
   createAudio: CreateAudio,
   selectedPack: () => SoundPack = selectedSoundPack,
   random: () => number = Math.random,
+  audioPrimary: () => boolean = isAudioPrimary,
 ) {
   const players = new Map<string, AudioPlayer>();
 
   return (sound: PeonSound) => {
     const pack = selectedPack();
-    if (pack === "none") return;
+    // The operator hears a run finish once, on the client they last used.
+    if (pack === "none" || !audioPrimary()) return;
     try {
       const candidates = SOUND_PACK_PATHS[pack][sound];
       const src = candidates[Math.floor(random() * candidates.length)] ?? candidates[0];
@@ -156,13 +160,14 @@ export function createWorkSoundPlayer(
   createAudio: CreateWorkAudio,
   selectedPack: () => SoundPack = selectedSoundPack,
   random: () => number = Math.random,
+  audioPrimary: () => boolean = isAudioPrimary,
 ) {
   let current: WorkAudio | null = null;
   let previousIndex = -1;
 
   const play = () => {
     const pack = selectedPack();
-    const pool = pack === "none" ? undefined : WORKING_SOUND_PATHS[pack];
+    const pool = pack === "none" || !audioPrimary() ? undefined : WORKING_SOUND_PATHS[pack];
     if (!pool || current) return;
     let index = Math.floor(random() * pool.length);
     if (index === previousIndex && pool.length > 1) {
@@ -206,6 +211,12 @@ export function createWorkSoundPlayer(
 }
 
 const workSoundPlayer = createWorkSoundPlayer((src) => new Audio(src));
+
+// Losing the sound mid-turn (the operator picked up their phone) has to silence
+// the ambience already playing here, not merely the next one.
+onAudioPrimaryChange((primary) => {
+  if (!primary) workSoundPlayer.stop();
+});
 
 export const playWorkSound = () => workSoundPlayer.play();
 export const stopWorkSound = () => workSoundPlayer.stop();

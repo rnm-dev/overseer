@@ -11,6 +11,7 @@ import { consumeWebSocketTicket, issueDevice, issueWebSocketTicket, verifyDevice
 import { createWorkspace } from "./workspaces.js";
 import { registry } from "./registry.js";
 import { attachLiveSocket, parseSse } from "./liveSocket.js";
+import { resetAudioFocus } from "./modules/presence/index.js";
 import { listSessions, upsertSession } from "./sessionIndex.js";
 import { broadcast, readEventsSince } from "./eventLog.js";
 
@@ -355,6 +356,86 @@ test("presence is Overseer-only, route-based, ACL-filtered, and cleared on disco
       (afterDisconnect.presence as Array<{ userId: string }>).some((entry) => entry.userId === "presence-viewer"),
       false,
     );
+  } finally {
+    for (const ws of sockets) ws.terminate();
+    for (const client of wss.clients) client.terminate();
+    await new Promise<void>((resolve) => wss.close(() => resolve()));
+    await closeServer(appServer);
+  }
+});
+
+test("notification sound follows the client the operator picked up last", async () => {
+  const mem = newDb();
+  const adapter = mem.adapters.createPg();
+  await initDb(new adapter.Pool() as unknown as pg.Pool);
+  resetAudioFocus();
+  await query(`INSERT INTO users (id, email, created_at) VALUES ('audio-user', 'audio@example.test', $1)`, [Date.now()]);
+  const workspace = await createWorkspace("Audio", "audio-user");
+
+  const appServer = http.createServer();
+  const wss = attachLiveSocket(appServer);
+  const appPort = await listen(appServer);
+  const sockets: WebSocket[] = [];
+  async function connect(clientId: string | null) {
+    const { token } = await issueDevice("audio-user", "audio-test", { ip: null, userAgent: null });
+    const auth = await verifyDeviceToken(token);
+    assert.ok(auth);
+    const { ticket } = await issueWebSocketTicket(auth);
+    const ws = new WebSocket(`ws://127.0.0.1:${appPort}/api/ws?ticket=${encodeURIComponent(ticket)}`);
+    sockets.push(ws);
+    const collector = messageCollector(ws);
+    await once(ws, "open");
+    ws.send(JSON.stringify({ type: "hello", workspaceId: workspace.id, cursor: 0, ...(clientId ? { clientId } : {}) }));
+    await collector.waitFor((message) => message.type === "snapshot");
+    return { ws, collector };
+  }
+  const owns = (client: { collector: ReturnType<typeof messageCollector> }, primary: boolean) =>
+    client.collector.waitFor((message) => message.type === "audio" && message.primary === primary);
+
+  try {
+    const desktop = await connect("desktop-tab");
+    await owns(desktop, true);
+
+    // The phone joins: it is the client in the operator's hands now.
+    const phone = await connect("phone-tab");
+    await owns(phone, true);
+    await owns(desktop, false);
+
+    // A second socket of the same desktop tab (a fleet-dashboard workspace) is
+    // not a new client and must not take the sound back.
+    const dashboard = await connect("desktop-tab");
+    await owns(dashboard, false);
+    assert.equal(phone.collector.messages.filter((message) => message.type === "audio").at(-1)?.primary, true);
+
+    // Phone goes into a pocket — the tab hides — and the desktop speaks again.
+    phone.ws.send(JSON.stringify({ type: "presence:set", scope: "workspace", active: false }));
+    await owns(desktop, true);
+    await owns(phone, false);
+
+    // Closing the phone leaves the desktop as it was: still the one making noise.
+    phone.ws.terminate();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    assert.equal(desktop.collector.messages.filter((message) => message.type === "audio").at(-1)?.primary, true);
+
+    // An explicit gesture on the dashboard socket claims the sound for its tab.
+    dashboard.ws.send(JSON.stringify({ type: "audio:claim" }));
+    await owns(dashboard, true);
+
+    // A native app going to the background reports it without disconnecting.
+    const native = await connect("mobile-install");
+    await owns(native, true);
+    native.ws.send(JSON.stringify({ type: "audio:release" }));
+    await owns(desktop, true);
+    await owns(native, false);
+    native.ws.send(JSON.stringify({ type: "audio:claim" }));
+    await owns(native, true);
+
+    // A client that never identifies itself is told nothing and takes nothing:
+    // it cannot be silenced, so it must not silence a client that can be.
+    const legacy = await connect(null);
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    assert.deepEqual(legacy.collector.messages.filter((message) => message.type === "audio"), []);
+    assert.equal(native.collector.messages.filter((message) => message.type === "audio").at(-1)?.primary, true);
   } finally {
     for (const ws of sockets) ws.terminate();
     for (const client of wss.clients) client.terminate();

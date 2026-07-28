@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "./api";
+import { audioClientId } from "./audioFocus";
 import type { PresenceEntry } from "./liveSocket";
 import { useWorkspace } from "./workspace";
 import { parsePeonProjection, parsePeonProjections } from "./workspacePeons";
@@ -54,7 +55,9 @@ export function useWorkspaceLivePresence(workspaceId: string, enabled: boolean):
       socket = ws;
       ws.onopen = () => {
         lastReceivedAt = Date.now();
-        ws.send(JSON.stringify({ type: "hello", workspaceId, cursor }));
+        // Same clientId as the selected-workspace socket: these are extra sockets
+        // of one tab, not another client competing for the notification sound.
+        ws.send(JSON.stringify({ type: "hello", workspaceId, cursor, clientId: audioClientId() }));
       };
       ws.onmessage = (event) => {
         lastReceivedAt = Date.now();
