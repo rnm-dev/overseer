@@ -127,6 +127,24 @@ export function defaultEffortIdFor(options: CatalogOption[]): string | undefined
   return options.find((option) => option.default)?.id;
 }
 
+// What a session with nothing pinned actually runs on: its own model if it has
+// one, else the peon's pick for that provider. The top-level defaultModel is
+// only usable when it belongs to this provider — a peon whose default sits in
+// another agent says nothing about this one. Null ⇒ the peon named no default
+// (both Codex providers today), and the reset entry stays an unadorned
+// "Default" rather than a guess.
+export function inheritedModelId(
+  catalog: ModelsCatalog | null,
+  provider: ModelProvider | null,
+  sessionModel: string | null | undefined,
+): string | null {
+  if (sessionModel) return sessionModel;
+  const own = defaultModelId(provider);
+  if (own) return own;
+  const global = catalog?.defaultModel ?? null;
+  return global && provider?.models.some((model) => optionMatches(model, global)) ? global : null;
+}
+
 interface PickerProps {
   options: CatalogOption[];
   value: string;
@@ -134,6 +152,10 @@ interface PickerProps {
   // Only needed when allowClear is true — the label for the "reset" entry
   // and the text shown while nothing is explicitly selected.
   defaultLabel?: string;
+  // The reset entry when it can say more than the trigger has room for —
+  // typically the inherited pick named as "{model} (Default)". Falls back to
+  // defaultLabel, which keeps the trigger compact.
+  defaultOptionLabel?: string;
   label?: string;
   // Keep the accessible name while allowing forms to render a conventional
   // label above the trigger instead of repeating it inside the trigger.
@@ -144,7 +166,7 @@ interface PickerProps {
   allowClear?: boolean;
 }
 
-export function Picker({ options, value, onChange, defaultLabel, label, inlineLabel = true, className = "", allowClear = true }: PickerProps) {
+export function Picker({ options, value, onChange, defaultLabel, defaultOptionLabel, label, inlineLabel = true, className = "", allowClear = true }: PickerProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -220,7 +242,7 @@ export function Picker({ options, value, onChange, defaultLabel, label, inlineLa
         <div ref={menuRef} className="model-picker-menu model-picker-menu--floating" style={menuStyle} role="listbox">
           {allowClear && (
             <button type="button" className={`model-picker-option ${!value ? "is-active" : ""}`} onClick={() => choose("")} role="option" aria-selected={!value}>
-              {defaultLabel}
+              {defaultOptionLabel ?? defaultLabel}
             </button>
           )}
           {options.map((option) => {
