@@ -13,7 +13,7 @@ import { attachPeonTransferSocket, PEON_TRANSFER_SOCKET_PATH } from "./peonTrans
 import { registry, toView, type PeonRecord } from "./registry.js";
 import { encodePeonFileChunk, openPeonProjectFile, PeonFileStreamError } from "./peonFileStream.js";
 import { peonsRouter } from "./routes/peons.js";
-import { isolateProjectFileResponse, projectFileContentType, PROJECT_FILE_CSP } from "./modules/projects/index.js";
+import { isolateProjectFileResponse, projectFileContentType, projectFileReadChannel, PROJECT_FILE_CSP } from "./modules/projects/index.js";
 
 function listen(server: http.Server): Promise<number> {
   return new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve((server.address() as AddressInfo).port)));
@@ -315,4 +315,18 @@ test("project file responses sandbox active content away from the authenticated 
   assert.equal(headers.get("referrer-policy"), "no-referrer");
   assert.equal(headers.get("x-content-type-options"), "nosniff");
   assert.equal(headers.get("cache-control"), "no-store");
+});
+
+test("a project file read takes the socket, and the retiring HTTP proxy only covers what it cannot", () => {
+  // The Peon's HTTP API is going away, so the socket is the default read path.
+  assert.equal(projectFileReadChannel({ stat: true, transportReady: true, projectId: "p" }), "proxy");
+  assert.equal(projectFileReadChannel({ stat: false, transportReady: false, projectId: "p" }), "proxy");
+  assert.equal(projectFileReadChannel({ stat: false, transportReady: true, projectId: null }), "proxy");
+  assert.equal(projectFileReadChannel({ stat: false, transportReady: true, projectId: "p" }), "socket");
+});
+
+test("the project-key file route is the one that changes channel", () => {
+  const router = peonsRouter() as unknown as { stack: { route?: { path?: string; methods?: Record<string, boolean> } }[] };
+  const route = router.stack.find((layer) => layer.route?.path === "/workspaces/:wsId/peons/:id/projects/:key/files/{*rest}");
+  assert.equal(route?.route?.methods?.get, true);
 });

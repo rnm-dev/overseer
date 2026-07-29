@@ -37,6 +37,12 @@ export function getPeonTransferConnection(peonId: string, requiredCapability?: s
   return !requiredCapability || capabilities.get(socket)?.has(requiredCapability) ? socket : undefined;
 }
 
+// The Peon's HTTP file API is being retired: a read takes the socket whenever
+// the owning Peon holds one that negotiated the capability.
+export function hasProjectFileTransport(peonId: string): boolean {
+  return !!getPeonTransferConnection(peonId, PROJECT_FILE_READ_CAPABILITY);
+}
+
 export function evictPeonTransferConnection(peonId: string): boolean {
   const socket = connections.get(peonId);
   if (!socket) return false;

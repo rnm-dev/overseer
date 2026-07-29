@@ -76,6 +76,16 @@ export function requestedProjectFileRange(value: string | undefined): ProjectFil
   return { start, ...(end === undefined ? {} : { end }) };
 }
 
+// Which channel serves a project file request. The Peon's HTTP API is being
+// retired, so a read rides the transfer socket whenever one is available; the
+// proxy answers only for a directory listing (`?stat=1`, which has no socket
+// operation yet), for a project the catalog cannot name — the socket addresses
+// a file by project ID, never by key — and for a Peon old enough to hold no
+// transfer socket at all. Delete the fallback once the fleet has moved.
+export function projectFileReadChannel(input: { stat: boolean; transportReady: boolean; projectId: string | null }): "socket" | "proxy" {
+  return !input.stat && input.transportReady && input.projectId ? "socket" : "proxy";
+}
+
 export async function streamProjectFileResponse(input: {
   req: Request;
   res: Response;
