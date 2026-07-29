@@ -5,6 +5,7 @@ import { Markdown } from "../../components/RichText";
 import { useT } from "../../i18n";
 import { Card } from "../../ui";
 import { FileTypeIcon } from "./FileTypeIcon";
+import { fileApiPath } from "./fileLinks";
 
 export interface DocumentationEntry {
   name: string;
@@ -42,8 +43,7 @@ export function documentationListingPath(base: string, projectId: string): strin
 }
 
 export function documentationFilePath(base: string, projectId: string, path: string): string {
-  const encodedPath = path.split("/").map(encodeURIComponent).join("/");
-  return `${base}/projects/by-id/${encodeURIComponent(projectId)}/files/${encodedPath}`;
+  return fileApiPath({ kind: "projectById", base, projectId, path });
 }
 
 export function resolveDocumentationLink(currentPath: string, href: string): string | null {

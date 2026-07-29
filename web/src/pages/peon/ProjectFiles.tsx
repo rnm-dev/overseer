@@ -2,9 +2,12 @@ import { useCallback, useEffect, useRef, useState, type DragEvent } from "react"
 import { createPortal } from "react-dom";
 import { ChevronRight, Folder, FolderOpen, LoaderCircle, RefreshCw, X } from "lucide-react";
 import { api, ApiError } from "../../api";
-import { HighlightedCode, Markdown, languageForPath } from "../../components/RichText";
 import { useT } from "../../i18n";
 import { FileTypeIcon } from "./FileTypeIcon";
+import { FileView, useFileContent } from "./FileView";
+import { encodeFilePath, formatFileSize, type FileSource } from "./fileLinks";
+
+export { formatFileSize } from "./fileLinks";
 
 export interface ProjectFileEntry {
   name: string;
@@ -17,15 +20,6 @@ interface DirectoryState {
   loading: boolean;
   entries: ProjectFileEntry[];
   error?: string;
-}
-
-interface FilePreview {
-  path: string;
-  loading?: boolean;
-  text?: string;
-  image?: string;
-  pdf?: string;
-  note?: string;
 }
 
 interface UploadState {
@@ -42,13 +36,7 @@ interface MoveState {
   error?: string;
 }
 
-const MAX_VIEW_BYTES = 1_000_000;
-const TEXT_CAP = 400_000;
-export const encodeProjectPath = (path: string) => path.split("/").filter(Boolean).map(encodeURIComponent).join("/");
-export const formatFileSize = (size?: number) => typeof size !== "number" ? "" : size < 1024 ? `${size} B` : size < 1024 ** 2 ? `${(size / 1024).toFixed(0)} KB` : `${(size / 1024 ** 2).toFixed(1)} MB`;
 const isDirectory = (entry: ProjectFileEntry) => entry.type === "dir" || entry.type === "directory";
-const isImagePath = (path: string) => /\.(png|jpe?g|gif|webp|svg|bmp|ico)$/i.test(path);
-const isPdfPath = (path: string) => /\.pdf$/i.test(path);
 const sortEntries = (entries: ProjectFileEntry[]) => [...entries].sort((a, b) => isDirectory(a) === isDirectory(b) ? a.name.localeCompare(b.name) : isDirectory(a) ? -1 : 1);
 const sameEntries = (left: ProjectFileEntry[], right: ProjectFileEntry[]) => left.length === right.length && left.every((entry, index) => {
   const other = right[index];
@@ -82,7 +70,7 @@ export function ProjectFileTree({ filesBase, activePath, onOpenFile, onFileMoved
   const load = useCallback(async (path: string) => {
     setDirectories((current) => ({ ...current, [path]: { loading: true, entries: [] } }));
     try {
-      const result = await api<{ entries?: ProjectFileEntry[] }>(`${filesBase}/${encodeProjectPath(path)}?stat=1`);
+      const result = await api<{ entries?: ProjectFileEntry[] }>(`${filesBase}/${encodeFilePath(path)}?stat=1`);
       setDirectories((current) => ({
         ...current,
         [path]: {
@@ -103,7 +91,7 @@ export function ProjectFileTree({ filesBase, activePath, onOpenFile, onFileMoved
   // the tree never collapses or flashes its initial loading skeleton.
   const refreshDirectory = useCallback(async (path: string) => {
     try {
-      const result = await api<{ entries?: ProjectFileEntry[] }>(`${filesBase}/${encodeProjectPath(path)}?stat=1`);
+      const result = await api<{ entries?: ProjectFileEntry[] }>(`${filesBase}/${encodeFilePath(path)}?stat=1`);
       const entries = sortEntries(result.entries ?? []);
       setDirectories((current) => {
         const directory = current[path];
@@ -174,7 +162,7 @@ export function ProjectFileTree({ filesBase, activePath, onOpenFile, onFileMoved
       const name = !cleaned || cleaned === "." || cleaned === ".." ? "file" : cleaned;
       const destination = target ? `${target}/${name}` : name;
       try {
-        await api(`${filesBase}/${encodeProjectPath(destination)}`, {
+        await api(`${filesBase}/${encodeFilePath(destination)}`, {
           method: "PUT",
           body: file,
           headers: { "content-type": "application/octet-stream" },
@@ -209,7 +197,7 @@ export function ProjectFileTree({ filesBase, activePath, onOpenFile, onFileMoved
     setDropTarget(null);
     setMove({ source, destination, running: true });
     try {
-      await api(`${filesBase}/${encodeProjectPath(source)}`, {
+      await api(`${filesBase}/${encodeFilePath(source)}`, {
         method: "PATCH",
         body: JSON.stringify({ destination }),
       });
@@ -361,45 +349,12 @@ function FileTreeLoader({ depth, label }: { depth: number; label: string }) {
   );
 }
 
-export function ProjectFilePreviewModal({ filesBase, path, size, viewerUrl, onClose }: { filesBase: string; path: string; size?: number; viewerUrl?: string; onClose: () => void }) {
+export function ProjectFilePreviewModal({ source, path, size, viewerUrl, onClose }: { source: FileSource; path: string; size?: number; viewerUrl?: string; onClose: () => void }) {
   const t = useT();
-  const [preview, setPreview] = useState<FilePreview>({ path, loading: true });
-  const imageUrl = useRef<string | null>(null);
+  // An HTML file is shown by the tokenized web preview instead of being read
+  // back as source, so the shared reader stays idle for it.
   const browserHtml = !!viewerUrl && /\.html?$/i.test(path);
-
-  useEffect(() => {
-    const ctrl = new AbortController();
-    if (browserHtml) {
-      setPreview({ path });
-      return () => ctrl.abort();
-    }
-    if (!isImagePath(path) && !isPdfPath(path) && typeof size === "number" && size > MAX_VIEW_BYTES) {
-      setPreview({ path, note: t("proj.files.tooLarge", { size: formatFileSize(size) }) });
-      return () => ctrl.abort();
-    }
-    fetch(`/api${filesBase}/${encodeProjectPath(path)}`, { signal: ctrl.signal, credentials: "same-origin" })
-      .then(async (response) => {
-        if (!response.ok) throw new Error(t("error.loadFailed"));
-        const contentType = response.headers.get("content-type") || "";
-        if (contentType.includes("application/pdf") || isPdfPath(path)) {
-          const url = URL.createObjectURL(await response.blob());
-          imageUrl.current = url;
-          setPreview({ path, pdf: url });
-        } else if (contentType.startsWith("image/") || isImagePath(path)) {
-          const url = URL.createObjectURL(await response.blob());
-          imageUrl.current = url;
-          setPreview({ path, image: url });
-        } else {
-          const raw = await response.text();
-          setPreview({ path, text: raw.length > TEXT_CAP ? `${raw.slice(0, TEXT_CAP)}\n\n…truncated…` : raw });
-        }
-      })
-      .catch((error) => { if (!ctrl.signal.aborted) setPreview({ path, note: error instanceof Error ? error.message : t("error.loadFailed") }); });
-    return () => {
-      ctrl.abort();
-      if (imageUrl.current) URL.revokeObjectURL(imageUrl.current);
-    };
-  }, [browserHtml, filesBase, path, size, t]);
+  const content = useFileContent({ source, size, fallback: "text", enabled: !browserHtml });
 
   return createPortal(
     <div className="fixed inset-0 z-50 grid place-items-center bg-[radial-gradient(circle_at_50%_18%,rgba(149,201,103,0.08),transparent_38%),rgba(2,4,3,0.82)] p-4 backdrop-blur-md" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
@@ -411,13 +366,9 @@ export function ProjectFilePreviewModal({ filesBase, path, size, viewerUrl, onCl
           <button type="button" onClick={onClose} className="grid h-8 w-8 place-items-center rounded-lg border border-transparent text-bone-faint transition-colors hover:border-iron-700 hover:bg-iron-800 hover:text-bone" aria-label={t("session.preview.close")}><X size={18} /></button>
         </header>
         <div className="min-h-0 flex-1 overflow-auto">
-          {browserHtml ? <iframe sandbox="allow-scripts allow-forms allow-modals allow-downloads" src={viewerUrl} title={path} className="h-full min-h-[32rem] w-full border-0 bg-white" />
-            : preview.loading ? <div className="grid h-full place-items-center"><div className="forge-spin" /></div>
-            : preview.note ? <div className="grid h-full place-items-center p-6 font-mono text-xs text-bone-faint">{preview.note}</div>
-              : preview.pdf ? <iframe src={preview.pdf} title={path} className="h-full min-h-[32rem] w-full border-0 bg-white" />
-              : preview.image ? <div className="grid min-h-full place-items-center p-5"><img src={preview.image} alt="" className="max-h-full max-w-full rounded" /></div>
-                : languageForPath(path) === "markdown" ? <article className="mx-auto max-w-4xl p-6 text-sm leading-relaxed text-bone"><Markdown source={preview.text ?? ""} /></article>
-                  : <HighlightedCode source={preview.text ?? ""} language={languageForPath(path)} className="min-h-full rounded-none border-0" />}
+          {browserHtml
+            ? <iframe sandbox="allow-scripts allow-forms allow-modals allow-downloads" src={viewerUrl} title={path} className="h-full min-h-[32rem] w-full border-0 bg-white" />
+            : <FileView content={content} />}
         </div>
       </section>
     </div>,

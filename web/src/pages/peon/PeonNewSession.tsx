@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { api, ApiError, json } from "../../api";
+import { attachmentUploadPath } from "./fileLinks";
 import { useT } from "../../i18n";
 import { playPeonSound } from "../../peonSounds";
 import { claimAudioFocus } from "../../audioFocus";
@@ -127,7 +128,7 @@ export function PeonNewSession() {
     const buf = await f.arrayBuffer();
     const digest = await crypto.subtle.digest("SHA-256", buf);
     const hex = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
-    const res = await api<{ path?: string }>(`${base}/files/uploads/${encodeURIComponent(draftId)}/${encodeURIComponent(safe)}`, {
+    const res = await api<{ path?: string }>(attachmentUploadPath(base, draftId, safe), {
       method: "PUT",
       body: buf,
       headers: { "content-type": "application/octet-stream", "peon-content-sha256": hex },

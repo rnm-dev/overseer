@@ -4,6 +4,7 @@ import type { User } from "../../../auth";
 import type { Translate } from "../../../i18n";
 import { useNotifications } from "../../../notifications";
 import { composerDraftKey, useComposerDraft, useComposerDraftFiles } from "../drafts";
+import { attachmentUploadPath } from "../fileLinks";
 import type { ModelsCatalog } from "../models";
 import type { Ev } from "./parsing";
 import { createQueueReconciler, enqueueSessionFollowup, getSessionQueue, removeSessionQueueItem, removeWaitingQueueItem, sendSessionQueueItemNow, sendWaitingQueueItemNow, type QueueActivityTracker, type QueueItem } from "./queue";
@@ -107,7 +108,7 @@ export function useSessionComposer({
     const buf = await f.arrayBuffer();
     const digest = await crypto.subtle.digest("SHA-256", buf);
     const hex = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
-    const res = await api<{ path?: string }>(`${base}/files/uploads/${encodeURIComponent(sid)}/${encodeURIComponent(safe)}`, {
+    const res = await api<{ path?: string }>(attachmentUploadPath(base, sid, safe), {
       method: "PUT",
       body: buf,
       headers: { "content-type": "application/octet-stream", "peon-content-sha256": hex },

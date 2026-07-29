@@ -4,9 +4,11 @@ import { callPeon, connOfRecord, normalizePeonUrl, proxyFileDownload, proxyFileU
 import { reconcilePeon } from "../../sessionIndex.js";
 import { allowedProjects, canAccessProject, projectMemberCounts } from "../../access.js";
 import { ownerOnly, relay, restSegments, withWorkspacePeon } from "../helpers.js";
-import { browsePeonFolders, folderBrowseSelector, streamProjectFileResponse } from "../../modules/projects/index.js";
+import { browsePeonFolders, folderBrowseSelector, projectFileReadChannel, streamProjectFileResponse } from "../../modules/projects/index.js";
 import { listProjectDocs } from "../../modules/projectDocs/index.js";
 import { PeonOperationError } from "../../peonOperationChannel.js";
+import { FileSandboxError, resolveAttachmentPath, resolveSandboxSegments } from "../../peonFileSandbox.js";
+import { hasProjectFileTransport } from "../../peonTransferConnections.js";
 import {
   getIndexedProject,
   getProjectCatalogState,
@@ -257,15 +259,60 @@ export function registerProjectRoutes(router: express.Router): void {
   // Express's named wildcard does not match an empty path, so expose the root
   // listing explicitly for filesystem pickers before the nested transfer route.
   router.get(`${wp}/files`, withWorkspacePeon((req, res, c) => proxyFileDownload(connOfRecord(c.record), [], req, res, c.operator.email)));
-  router.get(`${wp}/files/{*rest}`, withWorkspacePeon((req, res, c) => proxyFileDownload(connOfRecord(c.record), restSegments(req), req, res, c.operator.email)));
+  // A transcript attachment carries the Peon's absolute path, so `/files/` can
+  // be asked for one (`/files//tmp/peon-files/...`). Resolve it against the
+  // Peon's file transfer root before proxying; see peonFileSandbox.ts.
+  router.get(`${wp}/files/{*rest}`, withWorkspacePeon(async (req, res, c) => {
+    const conn = connOfRecord(c.record);
+    let segments: string[];
+    try {
+      segments = await resolveSandboxSegments(conn, restSegments(req), c.operator.email);
+    } catch (err) {
+      if (!(err instanceof FileSandboxError)) throw err;
+      return res.status(err.status).json({ error: err.message, code: err.code });
+    }
+    return proxyFileDownload(conn, segments, req, res, c.operator.email);
+  }));
   router.put(`${wp}/files/{*rest}`, withWorkspacePeon((req, res, c) => proxyFileUpload(connOfRecord(c.record), restSegments(req), req, res, c.operator.email)));
+
+  // Read a message attachment by the path its transcript event carries. That
+  // path is absolute for every message a client did not just send itself, so
+  // this is the surface a client uses instead of guessing the sandbox layout.
+  router.get(`${wp}/attachments`, withWorkspacePeon(async (req, res, c) => {
+    const conn = connOfRecord(c.record);
+    let segments: string[];
+    try {
+      segments = await resolveAttachmentPath(conn, req.query.path, c.operator.email);
+    } catch (err) {
+      if (!(err instanceof FileSandboxError)) throw err;
+      return res.status(err.status).json({ error: err.message, code: err.code });
+    }
+    return proxyGet(conn, `/files/${segments.map(encodeURIComponent).join("/")}`, req, res, c.operator.email);
+  }));
 
   // Read-only project file browse — proxied to the peon's per-project files API
   // (sandboxed to the project dir). `?stat=1` ⇒ dir listing / metadata; else content.
-  router.get(`${wp}/projects/:key/files/{*rest}`, withWorkspaceProject((req, res, c) => {
-    const rest = restSegments(req).map(encodeURIComponent).join("/");
+  router.get(`${wp}/projects/:key/files/{*rest}`, withWorkspaceProject(async (req, res, c) => {
+    const key = String(req.params.key);
+    const segments = restSegments(req);
+    const stat = req.query.stat !== undefined;
+    const transportReady = hasProjectFileTransport(c.record.peonId);
+    // The catalog names the project the socket addresses; skip that lookup when
+    // the request is going to the proxy anyway.
+    const projectId = !stat && transportReady ? (await getIndexedProject(c.record.peonId, key))?.projectId ?? null : null;
+    if (projectFileReadChannel({ stat, transportReady, projectId }) === "socket") {
+      return streamProjectFileResponse({
+        req,
+        res,
+        peonId: c.record.peonId,
+        projectId: projectId!,
+        relativePath: segments.join("/"),
+        actor: { userId: c.userId, email: c.operator.email },
+      });
+    }
+    const rest = segments.map(encodeURIComponent).join("/");
     const qs = req.originalUrl.includes("?") ? req.originalUrl.slice(req.originalUrl.indexOf("?")) : "";
-    proxyGet(connOfRecord(c.record), `/projects/${encodeURIComponent(String(req.params.key))}/files/${rest}${qs}`, req, res, c.operator.email);
+    proxyGet(connOfRecord(c.record), `/projects/${encodeURIComponent(key)}/files/${rest}${qs}`, req, res, c.operator.email);
   }));
   router.put(`${wp}/projects/:key/files/{*rest}`, withWorkspaceProject((req, res, c) => {
     const rest = restSegments(req).map(encodeURIComponent).join("/");

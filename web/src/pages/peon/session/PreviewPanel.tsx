@@ -4,6 +4,7 @@ import { Check, Copy } from "lucide-react";
 import { ApiError } from "../../../api";
 import type { Translate } from "../../../i18n";
 import { HighlightedCode, Markdown, languageForPath } from "../../../components/RichText";
+import { fileApiPath } from "../fileLinks";
 
 export interface PreviewTarget {
   path: string;
@@ -85,8 +86,8 @@ export function PreviewPanel({ base, sessionId, target, pinned, onPinnedChange, 
   const isPdf = ext === "pdf";
   const isHtml = ext === "html";
   const isMarkdown = MARKDOWN_EXTENSIONS.has(ext);
-  const filePath = `${base}/sessions/${encodeURIComponent(sessionId)}/file?path=${encodeURIComponent(target.path)}`;
-  const rawPath = `${base}/sessions/${encodeURIComponent(sessionId)}/file/raw?path=${encodeURIComponent(target.path)}`;
+  const filePath = fileApiPath({ kind: "sessionFile", base, sessionId, path: target.path });
+  const rawPath = fileApiPath({ kind: "sessionFile", base, sessionId, path: target.path, raw: true });
   const webPath = `${base}/sessions/${encodeURIComponent(sessionId)}/web-preview`;
   const canCopy = !!file && !file.binary && file.content !== null;
 

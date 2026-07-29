@@ -77,7 +77,7 @@ export function SessionOverlays({
       )}
       {projectKey && projectFilePreview && (
         <ProjectFilePreviewModal
-          filesBase={`${base}/projects/${encodeURIComponent(projectKey)}/files`}
+          source={{ kind: "project", base, projectKey, path: projectFilePreview.path }}
           path={projectFilePreview.path}
           size={projectFilePreview.size}
           viewerUrl={projectFilePreview.viewerUrl}
