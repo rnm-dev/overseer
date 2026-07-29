@@ -13,7 +13,6 @@ secrets
 site
 docs
 infra
-CLAUDE.md
 README.md
-**/CLAUDE.md
+**/README.md
 **/PROTOCOL.md

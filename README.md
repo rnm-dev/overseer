@@ -4,7 +4,7 @@ Monorepo for the Overseer fleet control plane and the things that talk to it.
 
 | Path | Package | What it is |
 | --- | --- | --- |
-| `apps/server` | `@rnm/overseer-server` | Express API — the control plane. Its design notes are in [`apps/server/README.md`](apps/server/README.md) and [`apps/server/CLAUDE.md`](apps/server/CLAUDE.md). |
+| `apps/server` | `@rnm/overseer-server` | Express API — the control plane. Its design notes are in [docs/server-design.md](docs/server-design.md). |
 | `apps/web` | `@rnm/overseer-web` | React (Vite) operator dashboard |
 
 Directories are named for the role, package manifests for the product, so
@@ -27,7 +27,8 @@ npm run dev          # the API under tsx watch (the dashboard is a compose servi
 
 The dev stack — Postgres, the API, the dashboard and the instructions site —
 runs from `docker-compose.yml`; the shared dev image is `infra/dev/Dockerfile`.
-Operational detail for the box it runs on lives in [CLAUDE.md](CLAUDE.md).
+Operational detail for the box it runs on lives in
+[docs/dev-box.md](docs/dev-box.md).
 
 Production is one image built from `apps/server/Dockerfile` with the repository
 root as its Docker context, deployed with Kamal from `apps/server`. The runbook
