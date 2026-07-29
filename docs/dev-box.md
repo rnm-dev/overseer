@@ -1,8 +1,13 @@
-# overseer — deploy notes (nid-dev)
+# The dev box (nid-dev)
 
-This is the **deployment/ops** doc for the overseer stack on the `nid-dev` box.
-It is NOT the app design doc — that lives in `apps/server/CLAUDE.md` (copied from the
-repo). Read this before touching the running stack.
+How the Overseer stack is served, run and operated on the `nid-dev` box: ports,
+nginx, the compose services, the secrets it reads and the everyday commands.
+Read this before touching the running stack.
+
+It is not the design doc — the API's decisions and roadmap are in
+[server design notes](server-design.md), and its code-organisation rules are in
+[architecture](architecture.md). Production deployment is in
+[deploy runbook](deploy-runbook.md).
 
 ## Where things are
 
@@ -15,7 +20,6 @@ Host: **nid-dev** (`ssh NID-DEV`, root). Everything under `/rnm/overseer/`:
 ├── docker-compose.yml   # dev stack: postgres + app (API, tsx watch) + web (Vite HMR) + site
 ├── eslint.config.js     # one config for both workspaces
 ├── .env                 # secrets + auth config — NOT in git
-├── CLAUDE.md            # this file
 ├── apps/
 │   ├── server/          # @rnm/overseer-server — Express API, plus config/ and .kamal/
 │   └── web/             # @rnm/overseer-web — React (Vite+TS) dashboard
@@ -30,7 +34,7 @@ Host: **nid-dev** (`ssh NID-DEV`, root). Everything under `/rnm/overseer/`:
 
 Overseer is a full-stack app: **one Express backend** (the capable core — JSON
 API for web + mobile, peon control plane, soon WebSocket) and a **React SPA**
-that is just a client of it. See `apps/server/CLAUDE.md` for the design rationale (not
+that is just a client of it. See [server design notes](server-design.md) for the design rationale (not
 Next.js — keep the capable backend).
 
 - **`app` service** — Express API, `tsx watch` on container `:5000` → host
@@ -71,7 +75,7 @@ One compose file, dev-oriented. `docker compose up -d`:
 - Note: `/healthz` (API liveness) is only reachable on the container directly
   (`curl 127.0.0.1:4580/healthz`) — nginx sends non-`/fleet`,-`/agent` paths to Vite.
 
-## The two network faces (IMPORTANT — see apps/server/CLAUDE.md "Locked decisions")
+## The two network faces (IMPORTANT — see [server design notes](server-design.md), "Locked decisions")
 
 - **Operator/mobile API** (`/fleet/*` + WS) → public via nginx/Cloudflare. Done.
 - **Peon-facing API** (`/agent/v1/peons/*` register+heartbeat, and the
@@ -159,4 +163,4 @@ so a restart (which every reload is) keeps the schema in sync.
   (magic-link + OTP → device tokens), CORS for mobile.
 - Not yet done: Tailscale + tailnet binding; real email provider (Resend key);
   the resumable WebSocket + event log (roadmap step 3); APNs/FCM. See
-  `apps/server/CLAUDE.md` roadmap.
+  [server design notes](server-design.md) roadmap.

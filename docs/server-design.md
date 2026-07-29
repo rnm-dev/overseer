@@ -1,10 +1,15 @@
-# overseer — working notes for Claude
+# Overseer server — decisions, model and roadmap
 
-The **fleet control plane** for [peon](../peon). One always-on service that holds
-a registry of peons and drives many of them from a single place. Sibling repo to
-`peon`; the wire contract between them lives in
-[`PROTOCOL.md`](./PROTOCOL.md) — read it before touching anything
-protocol-shaped.
+Why the API is built the way it is: the decisions that are settled, the
+robustness model behind them, what exists today and what comes next. The rules
+for organising the code itself are in [architecture](architecture.md); the box
+it runs on is in [the dev box](dev-box.md).
+
+The **fleet control plane** for Peon. One always-on service that holds a
+registry of peons and drives many of them from a single place. Peon is still its
+own repository (`rnm-dev/peon`, arriving as `apps/peon` in OVSR-240); the wire
+contract between them lives in `apps/server/PROTOCOL.md` — read it before
+touching anything protocol-shaped.
 
 ## Locked decisions (2026-07-07)
 
