@@ -1,0 +1,4 @@
+interface:
+  display_name: "Run Overseer App"
+  short_description: "Choose a target and run the Flutter app"
+  default_prompt: "Use $run-overseer-app to run Overseer Mobile on my chosen device and flavor."

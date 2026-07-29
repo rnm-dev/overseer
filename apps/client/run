@@ -1,0 +1,281 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+cd "$(dirname "$0")"
+
+usage() {
+  cat <<'EOF'
+Run Overseer Mobile on a Flutter device.
+
+Usage:
+  ./run [options] [Flutter run options]
+
+Selections omitted in an interactive terminal are presented as a wizard.
+
+Options:
+  -p, --platform PLATFORM   android, ios, macos, windows, or linux
+  -d, --device-id ID       Flutter device ID
+      --flavor FLAVOR      dev or prod (Android, iOS, and macOS)
+      --no-pub             Skip "flutter pub get"
+      --dry-run            Print commands without running them
+  -h, --help               Show this help
+
+Examples:
+  ./run
+  ./run --platform android --flavor dev
+  ./run -p android -d DEVICE_ID --flavor prod --release
+  ./run -p macos --flavor dev
+  ./run -p linux --no-pub
+
+Unrecognized options are forwarded to "flutter run".
+EOF
+}
+
+fail() {
+  echo "Error: $*" >&2
+  exit 1
+}
+
+flutter_bin="${FLUTTER_BIN:-}"
+if [[ -z "$flutter_bin" ]]; then
+  if command -v flutter >/dev/null 2>&1; then
+    flutter_bin="$(command -v flutter)"
+  elif [[ -x /opt/homebrew/bin/flutter ]]; then
+    flutter_bin="/opt/homebrew/bin/flutter"
+  else
+    flutter_bin="flutter"
+  fi
+fi
+command -v "$flutter_bin" >/dev/null 2>&1 ||
+  fail "Flutter was not found. Add it to PATH or set FLUTTER_BIN."
+
+platform=""
+device_id=""
+flavor=""
+run_pub=true
+dry_run=false
+flutter_arguments=()
+
+while [[ "$#" -gt 0 ]]; do
+  case "$1" in
+    -p|--platform)
+      [[ "$#" -ge 2 ]] || fail "$1 requires a value."
+      platform="$2"
+      shift 2
+      ;;
+    --platform=*)
+      platform="${1#*=}"
+      shift
+      ;;
+    -d|--device-id)
+      [[ "$#" -ge 2 ]] || fail "$1 requires a value."
+      device_id="$2"
+      shift 2
+      ;;
+    --device-id=*)
+      device_id="${1#*=}"
+      shift
+      ;;
+    --flavor)
+      [[ "$#" -ge 2 ]] || fail "$1 requires a value."
+      flavor="$2"
+      shift 2
+      ;;
+    --flavor=*)
+      flavor="${1#*=}"
+      shift
+      ;;
+    --no-pub)
+      run_pub=false
+      shift
+      ;;
+    --dry-run)
+      dry_run=true
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    --)
+      shift
+      while [[ "$#" -gt 0 ]]; do
+        flutter_arguments+=("$1")
+        shift
+      done
+      ;;
+    *)
+      flutter_arguments+=("$1")
+      shift
+      ;;
+  esac
+done
+
+case "$platform" in
+  ""|android|ios|macos|windows|linux) ;;
+  *) fail "Unsupported platform '$platform'. Use android, ios, macos, windows, or linux." ;;
+esac
+case "$flavor" in
+  ""|dev|prod) ;;
+  *) fail "Unsupported flavor '$flavor'. Use dev or prod." ;;
+esac
+
+command -v python3 >/dev/null 2>&1 ||
+  fail "python3 is required to discover Flutter devices."
+
+devices_json="$("$flutter_bin" devices --machine)"
+device_rows="$(
+  printf '%s' "$devices_json" | python3 -c '
+import json
+import sys
+
+def platform_name(target):
+    if target.startswith("android"):
+        return "android"
+    if target.startswith("ios"):
+        return "ios"
+    if target in {"darwin", "macos"}:
+        return "macos"
+    if target == "windows-x64":
+        return "windows"
+    if target.startswith("linux"):
+        return "linux"
+    return ""
+
+for device in json.load(sys.stdin):
+    platform = platform_name(str(device.get("targetPlatform", "")))
+    if device.get("isSupported") and platform:
+        fields = (
+            platform,
+            str(device.get("id", "")),
+            str(device.get("name", "unknown")).replace("\t", " "),
+            str(device.get("targetPlatform", "unknown")).replace("\t", " "),
+        )
+        print("\t".join(fields))
+'
+)"
+
+interactive=false
+if [[ -t 0 && -t 1 ]]; then
+  interactive=true
+fi
+
+choose() {
+  local prompt="$1"
+  shift
+  local choices=("$@")
+  local answer=""
+  local index
+
+  echo "$prompt" >&2
+  for ((index = 0; index < ${#choices[@]}; index++)); do
+    printf '  %d) %s\n' "$((index + 1))" "${choices[$index]}" >&2
+  done
+  while true; do
+    printf '> ' >&2
+    IFS= read -r answer
+    if [[ "$answer" =~ ^[0-9]+$ ]] &&
+       ((answer >= 1 && answer <= ${#choices[@]})); then
+      printf '%s' "${choices[$((answer - 1))]}"
+      return
+    fi
+    echo "Enter a number from 1 to ${#choices[@]}." >&2
+  done
+}
+
+if [[ -n "$device_id" ]]; then
+  matched_platform="$(
+    printf '%s\n' "$device_rows" |
+      awk -F '\t' -v id="$device_id" '$2 == id { print $1; exit }'
+  )"
+  [[ -n "$matched_platform" ]] ||
+    fail "Device '$device_id' was not found. Check it with: flutter devices"
+  if [[ -n "$platform" && "$platform" != "$matched_platform" ]]; then
+    fail "Device '$device_id' belongs to '$matched_platform', not '$platform'."
+  fi
+  platform="$matched_platform"
+fi
+
+if [[ -z "$platform" ]]; then
+  [[ "$interactive" == true ]] ||
+    fail "Platform is required without a terminal. Pass --platform PLATFORM."
+  platform_choices=()
+  while IFS= read -r candidate; do
+    [[ -n "$candidate" ]] && platform_choices+=("$candidate")
+  done <<EOF
+$(printf '%s\n' "$device_rows" | awk -F '\t' '!seen[$1]++ { print $1 }')
+EOF
+  ((${#platform_choices[@]} > 0)) ||
+    fail "No supported Flutter devices were found."
+  platform="$(choose "Select a platform:" "${platform_choices[@]}")"
+fi
+
+if [[ -z "$device_id" ]]; then
+  device_ids=()
+  device_labels=()
+  while IFS=$'\t' read -r row_platform row_id row_name row_target; do
+    if [[ "$row_platform" == "$platform" ]]; then
+      device_ids+=("$row_id")
+      device_labels+=("$row_name ($row_id, $row_target)")
+    fi
+  done <<EOF
+$device_rows
+EOF
+
+  ((${#device_ids[@]} > 0)) ||
+    fail "No supported '$platform' device was found. Check: flutter devices"
+  if ((${#device_ids[@]} == 1)); then
+    device_id="${device_ids[0]}"
+    echo "Using ${device_labels[0]}"
+  elif [[ "$interactive" == true ]]; then
+    selected_label="$(choose "Select a device:" "${device_labels[@]}")"
+    for ((index = 0; index < ${#device_labels[@]}; index++)); do
+      if [[ "${device_labels[$index]}" == "$selected_label" ]]; then
+        device_id="${device_ids[$index]}"
+        break
+      fi
+    done
+  else
+    fail "Multiple '$platform' devices found. Pass --device-id ID."
+  fi
+fi
+
+supports_flavor=false
+case "$platform" in
+  android|ios|macos) supports_flavor=true ;;
+esac
+
+if [[ "$supports_flavor" == true && -z "$flavor" ]]; then
+  [[ "$interactive" == true ]] ||
+    fail "Flavor is required for '$platform' without a terminal. Pass --flavor dev or prod."
+  flavor="$(choose "Select a flavor:" dev prod)"
+elif [[ "$supports_flavor" == false && -n "$flavor" ]]; then
+  fail "Flutter desktop flavors are not supported for '$platform'; omit --flavor."
+fi
+
+command=("$flutter_bin" run -d "$device_id")
+if [[ -n "$flavor" ]]; then
+  command+=(--flavor "$flavor")
+fi
+if ((${#flutter_arguments[@]} > 0)); then
+  command+=("${flutter_arguments[@]}")
+fi
+
+print_command() {
+  printf '%q ' "$@"
+  printf '\n'
+}
+
+if [[ "$dry_run" == true ]]; then
+  if [[ "$run_pub" == true ]]; then
+    print_command "$flutter_bin" pub get
+  fi
+  print_command "${command[@]}"
+  exit 0
+fi
+
+if [[ "$run_pub" == true ]]; then
+  "$flutter_bin" pub get
+fi
+exec "${command[@]}"

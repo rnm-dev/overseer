@@ -2,7 +2,7 @@ node_modules/
 dist/
 !apps/peon/dist/
 !apps/peon/dist/**
-data/
+/data/
 *.log
 *.tsbuildinfo
 

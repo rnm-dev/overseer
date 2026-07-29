@@ -1,10 +1,10 @@
 # Monorepo
 
-Peon, the Overseer server, the web dashboard and the Flutter client move into a
+Peon, the Overseer server, the web dashboard and the Flutter client live in a
 single repository — the existing `rnm-dev/overseer`, so the remote, the Kamal
 config and the deployment paths survive the move. Planned as epic **Монорепо**
-(OVSR-237 … OVSR-241). The server, web dashboard and Peon now live here; the
-shared protocol package and Flutter client remain to be moved.
+(OVSR-237 … OVSR-241). The server, web dashboard, Peon and cross-platform
+Flutter client now live here; the shared protocol package remains to be moved.
 
 ## Why
 
@@ -81,7 +81,7 @@ rewrite of every path, remote and deploy reference, and does not earn it.
 
 GitHub Actions are not used here. `peon` and `overseer` have no `.github`
 directory at all; the only workflow in the picture is
-`overseer-app/.github/workflows/ci.yml`, and it is removed as part of OVSR-241.
+`overseer-app/.github/workflows/ci.yml`, and it was removed as part of OVSR-241.
 
 That means path filters are not a concern, and the client becomes the *easiest*
 directory to bring in rather than the hardest. It also means the protocol
@@ -90,7 +90,8 @@ command that runs everything:
 
 ```json
 "scripts": {
-  "verify": "npm run verify --workspaces --if-present && (cd apps/client && flutter analyze && flutter test)"
+  "verify": "npm run lint && npm run verify --workspaces --if-present && npm run verify:client",
+  "verify:client": "if command -v flutter >/dev/null 2>&1; then cd apps/client && flutter analyze && flutter test; else echo 'SKIPPED: Flutter client verification (flutter is not installed)'; fi"
 }
 ```
 
@@ -170,8 +171,9 @@ Each step leaves the tree working.
 3. **OVSR-240** — *Peon source is now in `apps/peon` as the `@rnm/peon`
    workspace.* Publishing `@rnm/protocol` and `@rnm/peon` remains; that is the
    risky part because it touches the fleet's live update channel.
-4. **OVSR-241** — bring the Flutter client in as `apps/client`, drop its
-   workflow, merge the two `docs/` trees.
+4. **OVSR-241** — *done locally.* The Flutter client is in `apps/client`, its
+   GitHub Actions workflow is gone, and its documentation lives under
+   `docs/client/`.
 
 Merging histories is cheap at this size — `.git` is 13 MB for overseer, 6.3 MB
 for peon, 8.4 MB for the client — so `git read-tree --prefix=` into subdirectories

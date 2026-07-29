@@ -1,5 +1,9 @@
 ## Project information
 
+The cross-platform Flutter operator client now lives in `apps/client` (iOS,
+Android, macOS, Windows and Linux). Its development and feature documentation
+starts at [client documentation](client/index.md).
+
 The mobile app signs in through a webview on the web login screen — see [mobile webview login](mobile-webview-login.md).
 
 Pluggable speech-to-text for the composer (Groq first, provider seam for open source): the server side is implemented — `POST /api/v1/voice/transcriptions` plus `GET /api/v1/voice/capabilities` — and stays disabled until `OVERSEER_VOICE` and a key are configured. Both dev and production are configured with the same Groq key and verified end to end (565 ms warm on dev, 775 ms through the public origin). They share a free-tier budget of 1000 requests/day and cannot see each other's spend, so it is split by `OVERSEER_VOICE_REQUESTS_PER_DAY`: 800 in production (`apps/server/config/deploy.yml`), 200 on dev. No client records audio yet. Configuration reference and the measured latencies are in [voice input](voice-input.md).
