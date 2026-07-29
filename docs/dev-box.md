@@ -134,13 +134,32 @@ curl -s http://127.0.0.1:4580/healthz
 
 ## Updating the code
 
-`apps/` holds the code, owned by `peon` (edit it in place). Both services mount
+`apps/` holds the code (edit it in place; see the ownership note below). Both services mount
 `./apps` plus the root manifests, with an anonymous volume masking the hoisted
 `/repo/node_modules`, so ANY changed file — src, index.html, vite.config,
 tsconfig — hot-reloads live (API tsx-watch restarts; Vite HMR, polling on via
 VITE_POLL). No recreate needed. The two services share one dev image
 (`infra/dev/Dockerfile`) and differ only in which workspace they run:
 `npm run dev -w @rnm/overseer-server` and `-w @rnm/overseer-web`.
+
+The checkout is not uniformly owned by `peon`: most of it, `apps/peon` included,
+is owned by `root` with group `rnm` and setgid group-writable directories, so the
+`peon` user edits files through the group. That is enough to write a file but not
+to `chmod`/`utimes` one, which is what any tool that rewrites an existing
+root-owned file trips over — `npm install` fails `EPERM` on the workspace bin
+(`apps/peon/dist/cli/peon.js`) and `@rnm/peon`'s `compile` fails `EPERM` copying
+into `apps/peon/dist`. Both were repaired on 2026-07-29 by handing `node_modules`
+and `apps/peon/dist` to `peon` (`docker run --rm -v /rnm/overseer:/repo node:22
+chown -R 1018 <path>` — there is no root shell here). If a root-run build takes
+those directories back, the same two failures return; hand them over again rather
+than working around them. Beware of a *partially* completed `compile`: it leaves
+committed artifacts damaged (the CLI keeps its dev `--import tsx` shebang because
+`fixCliShebang.mjs` never ran), so check `git status apps/peon` and restore before
+doing anything else.
+
+A completed `npm install` also rewrites `package-lock.json` with `"peer": true`
+annotations on esbuild's platform packages. That is npm correcting the committed
+lockfile, not version churn, and it comes back on every install.
 
 Dependency change (package.json/lock) or Dockerfile change — rebuild AND renew
 the anon node_modules volume with `-V`, else the container keeps the stale one:
