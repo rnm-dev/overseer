@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router";
 import { api, ApiError } from "../../api";
 import { Button, Dialog, Input, Label } from "../../ui";
 import { useT } from "../../i18n";

@@ -1,0 +1,309 @@
+#!/usr/bin/env node
+// Self-update, in one of two shapes depending on how peon is installed (see isGitCheckout):
+//
+//   - Source checkout (dev / `npm run dev`; the only shape that works on macOS,
+//     which has no systemd): `git fetch` + `git merge --ff-only` this checkout to origin/<branch>,
+//     without restarting the running daemon. The committed dist/ arrives with src/ in the same
+//     pull, so there's nothing to npm-install or stamp; the operator restarts the dev harness when
+//     it is safe for daemon changes to take effect.
+//     See gitCheckoutUpdate.
+//
+//   - Global install (production, systemd-managed): check no session is running -> resolve the
+//     latest global release from the configured Overseer -> stream its npm archive to a temporary
+//     file -> verify exact size and SHA-256 -> install it -> syntax-check compiled output -> restart
+//     both systemd services and wait for them. Before replacement, pack the current installation
+//     locally so either a failed sanity check or a failed restart can roll back without GitHub or
+//     network access. Overseer credentials already provisioned during enrollment authenticate the
+//     release metadata and archive download endpoints.
+//
+// Runnable two ways: spawned by POST /api/v1/control/update (plainly detached in checkout mode; via
+// systemd-run in global mode, so the restart doesn't kill this script along with the daemon's
+// cgroup), or directly by a human (`npm run update` / `tsx src/cli/update.ts`) — so it repeats the
+// session-guard check independently rather than trusting the caller already did it. In an installed
+// tree it runs as compiled JS (dist/cli/update.js) under plain node — no tsx at runtime.
+import { execFileSync } from "node:child_process";
+import { createWriteStream, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { Readable, Transform } from "node:stream";
+import { pipeline } from "node:stream/promises";
+import { fileURLToPath } from "node:url";
+import semver from "semver";
+import { settings } from "../daemon/settings/index.js";
+import { isGitCheckout } from "../shared/repo.js";
+import { fetchLatestRelease, releaseArchiveUrl, releaseHeaders, sha256File, type PeonRelease } from "../shared/releaseRegistry.js";
+
+const PACKAGE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+const CONTROL_API = `http://127.0.0.1:${process.env.ACA_CONTROL_PORT ?? "4570"}`;
+const DASHBOARD_URL = `http://127.0.0.1:${process.env.ACA_DASHBOARD_PORT ?? "4571"}`;
+const FORCE = process.env.FORCE === "1";
+
+// npm ships alongside node (…/bin/node → …/lib/node_modules/npm/bin/npm-cli.js).
+// Resolve it absolutely and run it through *this* node so the update never
+// depends on `npm` being on PATH — the daemon launches this in a `systemd-run
+// --user` transient unit whose PATH is the minimal /usr/bin default, which
+// excludes an nvm/volta/fnm bin dir. A bare `npm` throws `spawnSync npm ENOENT`
+// there before anything is pulled or restarted; even npm's own
+// `#!/usr/bin/env node` shebang would re-hit that empty PATH. Passing npm-cli.js
+// as a script arg to node.execPath sidesteps both lookups. (Node's dir is still
+// prepended to the child PATH so the `git` npm spawns for the clone, and any
+// node it re-invokes, resolve too — without assuming the caller's PATH had it.)
+const NODE_BIN_DIR = path.dirname(process.execPath);
+const NPM_CLI = path.resolve(NODE_BIN_DIR, "..", "lib", "node_modules", "npm", "bin", "npm-cli.js");
+
+function run(cmd: string, args: string[], cwd: string = PACKAGE_ROOT): void {
+  execFileSync(cmd, args, { cwd, stdio: "inherit" });
+}
+
+function npmInstallGlobal(spec: string): void {
+  const env = { ...process.env, PATH: `${NODE_BIN_DIR}${path.delimiter}${process.env.PATH ?? ""}` };
+  if (existsSync(NPM_CLI)) {
+    execFileSync(process.execPath, [NPM_CLI, "install", "-g", spec], { cwd: PACKAGE_ROOT, stdio: "inherit", env });
+  } else {
+    // Unusual layout (npm not beside node) — fall back to PATH resolution, now
+    // at least with node's own dir prepended.
+    execFileSync("npm", ["install", "-g", spec], { cwd: PACKAGE_ROOT, stdio: "inherit", env });
+  }
+}
+
+function npmPackCurrent(destination: string): string {
+  const env = { ...process.env, PATH: `${NODE_BIN_DIR}${path.delimiter}${process.env.PATH ?? ""}` };
+  const args = ["pack", "--json", "--pack-destination", destination, PACKAGE_ROOT];
+  try {
+    const stdout = existsSync(NPM_CLI)
+      ? execFileSync(process.execPath, [NPM_CLI, ...args], { cwd: PACKAGE_ROOT, encoding: "utf8", env })
+      : execFileSync("npm", args, { cwd: PACKAGE_ROOT, encoding: "utf8", env });
+    const packed = JSON.parse(stdout) as Array<{ filename?: unknown }>;
+    if (typeof packed[0]?.filename !== "string") throw new Error("npm pack did not return an archive filename");
+    return path.join(destination, packed[0].filename);
+  } catch (err) {
+    throw new Error("could not pack the current installation for rollback", { cause: err });
+  }
+}
+
+function installedVersion(): string {
+  const pkg = JSON.parse(readFileSync(path.join(PACKAGE_ROOT, "package.json"), "utf8")) as { version?: unknown };
+  if (typeof pkg.version !== "string" || !semver.valid(pkg.version)) throw new Error("installed package has an invalid version");
+  return pkg.version;
+}
+
+async function downloadRelease(release: PeonRelease, destination: string): Promise<void> {
+  const { overseerUrl, overseerToken } = settings.get();
+  const response = await fetch(releaseArchiveUrl(overseerUrl, release), { headers: releaseHeaders(overseerToken) });
+  if (!response.ok || !response.body) throw new Error(`release archive download failed (${response.status} ${response.statusText})`);
+  const contentLength = response.headers.get("content-length");
+  if (contentLength !== null && Number(contentLength) !== release.sizeBytes) {
+    throw new Error(`release archive size mismatch (metadata ${release.sizeBytes}, response ${contentLength})`);
+  }
+  let received = 0;
+  const limiter = new Transform({
+    transform(chunk: Buffer, _encoding, callback) {
+      received += chunk.length;
+      callback(received > release.sizeBytes ? new Error("release archive exceeded its declared size") : null, chunk);
+    },
+  });
+  await pipeline(Readable.fromWeb(response.body as never), limiter, createWriteStream(destination, { flags: "wx" }));
+  if (received !== release.sizeBytes) throw new Error(`release archive size mismatch (expected ${release.sizeBytes}, received ${received})`);
+  const digest = await sha256File(destination);
+  if (digest !== release.sha256) throw new Error(`release archive SHA-256 mismatch (expected ${release.sha256}, received ${digest})`);
+}
+
+function gitOut(args: string[]): string {
+  return execFileSync("git", args, { cwd: PACKAGE_ROOT, encoding: "utf8" }).trim();
+}
+
+// From-source update path (dev / `npm run dev`; the only path that can work on
+// macOS, which has no systemd): fast-forward this checkout to origin/<branch>. The committed
+// dist/ comes along with src/ in the same pull. The dev harness deliberately does not watch daemon
+// source, so the pull cannot interrupt an in-flight session; the operator restarts it manually when
+// safe. There is nothing to `npm install`, no install stamp, and no systemctl to call.
+async function gitCheckoutUpdate(): Promise<void> {
+  const branch = gitOut(["rev-parse", "--abbrev-ref", "HEAD"]);
+
+  console.log(`==> git fetch origin ${branch}`);
+  run("git", ["fetch", "origin", branch]);
+
+  const localSha = gitOut(["rev-parse", "HEAD"]);
+  const remoteSha = gitOut(["rev-parse", `origin/${branch}`]);
+  if (localSha === remoteSha && !FORCE) {
+    console.log(`==> already on the latest commit (${localSha}) — nothing to do (FORCE=1 to re-pull anyway)`);
+    return;
+  }
+
+  // --ff-only: only ever advance the checkout, never create a merge commit or clobber local work.
+  // If this checkout has diverged (local commits not on origin, or a dirty tree in the way), the
+  // pull fails loudly rather than silently rewriting a working tree someone may be developing in.
+  console.log(`==> git merge --ff-only origin/${branch} (${localSha.slice(0, 7)} -> ${remoteSha.slice(0, 7)})`);
+  run("git", ["merge", "--ff-only", `origin/${branch}`]);
+
+  console.log("==> source checkout updated — daemon kept running");
+  console.log("==> restart `npm run dev` manually when it is safe for daemon changes to take effect");
+}
+
+async function checkNoActiveSession(): Promise<void> {
+  console.log("==> checking for an active session");
+  let running = 0;
+  try {
+    const body = (await (await fetch(`${CONTROL_API}/api/v1/sessions`)).json()) as {
+      sessions?: Array<{ status: string }>;
+    };
+    running = body.sessions?.filter((s) => s.status === "running").length ?? 0;
+  } catch {
+    // control API unreachable — nothing to guard against, proceed
+  }
+  if (running > 0) {
+    if (!FORCE) {
+      console.error("refusing to update: a session is currently running (the restart below kills it)");
+      console.error("cancel it first (dashboard Stop button, or POST /api/v1/sessions/<id>/cancel), or re-run with FORCE=1");
+      process.exit(1);
+    }
+    console.warn("FORCE=1 set — updating anyway");
+  }
+}
+
+async function waitFor(label: string, url: string, budgetSec: number): Promise<boolean> {
+  for (let i = 0; i < budgetSec; i++) {
+    try {
+      const res = await fetch(url);
+      if (res.ok) return true;
+    } catch {
+      // not up yet
+    }
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+  console.error(`${label} did not come back within ${budgetSec}s`);
+  return false;
+}
+
+// All compiled Node entry points under dist/, except dist/dashboard/public — that's browser
+// JSX/JS (Babel-in-browser, no build step; see CLAUDE.md), not valid syntax to `node --check`.
+function listCompiledFiles(dir: string): string[] {
+  const skip = path.join(PACKAGE_ROOT, "dist", "dashboard", "public");
+  const out: string[] = [];
+  for (const entry of readdirSync(dir)) {
+    const full = path.join(dir, entry);
+    if (full === skip) continue;
+    if (statSync(full).isDirectory()) out.push(...listCompiledFiles(full));
+    else if (entry.endsWith(".js")) out.push(full);
+  }
+  return out;
+}
+
+// Not a typecheck — that needs typescript + @types/node/@types/express/@types/multer, none of
+// which a global install has (they're devDependencies, deliberately not shipped; see CLAUDE.md's
+// "the peon CLI bin is compiled" section). Confirmed by testing: `npx tsc` on a real global
+// install doesn't even resolve to the typescript package (there's an unrelated, unmaintained
+// "tsc" package squatting that exact bin name on the registry, and npx installs *that* instead),
+// and even disambiguating with `npx --package typescript` still fails immediately on every
+// `process`/`Buffer`/`node:*` reference without @types/node. Since dist/ is what actually runs, a
+// plain `node --check` (syntax only, zero extra dependencies) is what's actually meaningful here.
+function checkCompiledOutput(): void {
+  for (const file of listCompiledFiles(path.join(PACKAGE_ROOT, "dist"))) {
+    run(process.execPath, ["--check", file]);
+  }
+}
+
+// The updater packs the current global installation before replacing it. That archive is a
+// local, credential-free rollback source and remains valid even when Overseer is unavailable.
+function rollbackToDisk(previousArchive: string): void {
+  console.error("==> rolling back to the previous local Peon release");
+  try {
+    npmInstallGlobal(previousArchive);
+    console.error("rolled back the previous Peon release on disk");
+  } catch (rollbackErr) {
+    console.error("rollback itself failed — the disk install is left on the broken release:", rollbackErr);
+  }
+}
+
+async function main(): Promise<void> {
+  // Two update shapes (see isGitCheckout): a source checkout fast-forwards with git without
+  // restarting the daemon; a global install reinstalls with npm and restarts via systemd. The npm
+  // path below can't work from a checkout (npm install -g wouldn't touch the running tree) and
+  // can't work on macOS (no systemd) — so a checkout always takes the git path.
+  if (isGitCheckout(PACKAGE_ROOT)) {
+    await gitCheckoutUpdate();
+    return;
+  }
+
+  await checkNoActiveSession();
+
+  const { overseerUrl, overseerToken } = settings.get();
+  if (!overseerUrl.trim() || !overseerToken.trim()) throw new Error("Overseer credentials are required to update a global Peon install");
+  const currentVersion = installedVersion();
+  const release = await fetchLatestRelease({ baseUrl: overseerUrl, token: overseerToken });
+  if (!release) {
+    console.log("==> Overseer has no published Peon releases");
+    return;
+  }
+  if (!FORCE && !semver.gt(release.version, currentVersion)) {
+    console.log(`==> already up to date (${currentVersion}; latest ${release.version})`);
+    return;
+  }
+
+  const temporaryDir = mkdtempSync(path.join(os.tmpdir(), "peon-update-"));
+  try {
+    const previousArchive = npmPackCurrent(temporaryDir);
+    const releaseArchive = path.join(temporaryDir, `peon-${release.version}.tgz`);
+    console.log(`==> downloading Peon ${release.version} from Overseer`);
+    await downloadRelease(release, releaseArchive);
+    console.log(`==> installing verified Peon ${release.version}`);
+    try {
+      npmInstallGlobal(releaseArchive);
+      console.log("==> sanity-checking the compiled output");
+      checkCompiledOutput();
+    } catch (err) {
+      console.error("the new release failed installation or compiled-output validation:", err);
+      rollbackToDisk(previousArchive);
+      process.exitCode = 1;
+      return;
+    }
+
+    console.log("==> restarting peon-daemon.service and peon-dashboard.service");
+    try {
+      run("systemctl", ["--user", "restart", "peon-daemon.service", "peon-dashboard.service"]);
+    } catch (err) {
+      console.error("the new release could not restart the Peon services:", err);
+      rollbackToDisk(previousArchive);
+      try {
+        run("systemctl", ["--user", "restart", "peon-daemon.service", "peon-dashboard.service"]);
+      } catch (restartErr) {
+        console.error("restarting into the rolled-back release also failed:", restartErr);
+      }
+      process.exitCode = 1;
+      return;
+    }
+
+    console.log("==> waiting for both to come back");
+    const budgetSec = 90;
+    const [controlUp, dashboardUp] = await Promise.all([
+      waitFor("control API", `${CONTROL_API}/api/v1/status`, budgetSec),
+      waitFor("dashboard", DASHBOARD_URL, budgetSec),
+    ]);
+    if (!controlUp || !dashboardUp) {
+      try {
+        execFileSync("systemctl", ["--user", "status", "peon-daemon.service", "--no-pager"], { stdio: "inherit" });
+      } catch {
+        // Status exits non-zero for a failed unit; its output is still useful diagnostics.
+      }
+      console.error("==> the new release did not come back up — rolling back and restarting");
+      rollbackToDisk(previousArchive);
+      try {
+        run("systemctl", ["--user", "restart", "peon-daemon.service", "peon-dashboard.service"]);
+      } catch (err) {
+        console.error("restarting into the rolled-back release also failed:", err);
+      }
+      process.exitCode = 1;
+      return;
+    }
+
+    console.log("==> back up");
+    console.log(await (await fetch(`${CONTROL_API}/api/v1/status`)).json());
+  } finally {
+    rmSync(temporaryDir, { recursive: true, force: true });
+  }
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

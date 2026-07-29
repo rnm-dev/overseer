@@ -1,4 +1,4 @@
-import { Outlet } from "react-router-dom";
+import { Outlet } from "react-router";
 
 // author: Viktor
 // Thin authed shell: no chrome of its own — the fleet dashboard and the peon

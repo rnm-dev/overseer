@@ -1,5 +1,5 @@
 import { Check, ChevronDown } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { useT } from "../i18n";
 import { useWorkspacePeonPresence } from "../hooks/usePeonPresence";
 import { DropdownMenu, menuItemClass } from "../ui";

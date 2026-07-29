@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { MessageSquare, Server, Users } from "lucide-react";
 import { api } from "../api";
 import { Badge, Button } from "../ui";

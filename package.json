@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "description": "Overseer monorepo — fleet control plane, operator dashboard, and the Peon daemon",
+  "engines": {
+    "node": ">=22.22.0"
+  },
   "workspaces": [
     "apps/*",
     "packages/*"

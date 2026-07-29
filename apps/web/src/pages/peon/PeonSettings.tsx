@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router";
 import { api, ApiError } from "../../api";
 import { Badge, Button, Card, ConfirmationDialog, Input, Label } from "../../ui";
 import { useT } from "../../i18n";

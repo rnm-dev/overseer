@@ -1,4 +1,4 @@
-import { useOutletContext } from "react-router-dom";
+import { useOutletContext } from "react-router";
 import type { PresenceUser } from "../../liveSocket";
 import type { SessionLite } from "./sessionList";
 import type { ProjectLite } from "./projectList";

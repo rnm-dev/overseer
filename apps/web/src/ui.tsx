@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useRef, useState, type ButtonHTMLAttributes, type ReactNode, type InputHTMLAttributes, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { LOCALES, useI18n } from "./i18n";
 import { DIALOG_EXIT_MS, sheetDragProgress, shouldDismissSheet } from "./dialogMotion";
 

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router";
 import { api, ApiError, json } from "../../api";
 import { attachmentUploadPath } from "./fileLinks";
 import { useT } from "../../i18n";
