@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Navigate, useParams } from "react-router-dom";
+import { Navigate, useParams } from "react-router";
 import { Check, Users } from "lucide-react";
 import { api, json } from "../../api";
 import { useT } from "../../i18n";

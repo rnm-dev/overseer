@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { ArrowLeft } from "lucide-react";
-import { Link, Navigate, useParams } from "react-router-dom";
+import { Link, Navigate, useParams } from "react-router";
 import { WorkspaceSection } from "../components/WorkspaceSection";
 import { useT } from "../i18n";
 import { useWorkspace } from "../workspace";

@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from "react";
-import { Navigate, Route, Routes, useNavigate, useOutletContext, useParams } from "react-router-dom";
+import { Navigate, Route, Routes, useNavigate, useOutletContext, useParams } from "react-router";
 import { api } from "./api";
 import { useAuth } from "./auth";
 import { useT } from "./i18n";

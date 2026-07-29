@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Navigate, useNavigate, useParams } from "react-router-dom";
+import { Navigate, useNavigate, useParams } from "react-router";
 import { ApiError } from "../../api";
 import { Button, Card, Input, Label } from "../../ui";
 import { useT } from "../../i18n";

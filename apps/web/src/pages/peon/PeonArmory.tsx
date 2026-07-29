@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Cpu, ExternalLink, Package as PackageIcon, RefreshCw, Search } from "lucide-react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams } from "react-router";
 import { api, ApiError } from "../../api";
 import { Badge, Button, Card } from "../../ui";
 import { usePeon } from "./context";

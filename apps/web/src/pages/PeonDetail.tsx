@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BarChart3, Menu, Pickaxe, Settings, type LucideIcon } from "lucide-react";
-import { Link, NavLink, Outlet, useLocation, useNavigate, useParams } from "react-router-dom";
+import { Link, NavLink, Outlet, useLocation, useNavigate, useParams } from "react-router";
 import { api, ApiError } from "../api";
 import { useWorkspace } from "../workspace";
 import { usePeonPresence } from "../hooks/usePeonPresence";

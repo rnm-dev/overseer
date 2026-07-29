@@ -195,7 +195,7 @@ export function SessionHeader(props: Props) {
     };
   }, [menuOpen]);
 
-  const renderMenu = (ref: RefObject<HTMLDivElement>) => (
+  const renderMenu = (ref: RefObject<HTMLDivElement | null>) => (
     <div className="relative flex-none" ref={ref}>
       <button
         type="button"

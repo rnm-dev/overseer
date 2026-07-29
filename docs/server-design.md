@@ -6,8 +6,8 @@ for organising the code itself are in [architecture](architecture.md); the box
 it runs on is in [the dev box](dev-box.md).
 
 The **fleet control plane** for Peon. One always-on service that holds a
-registry of peons and drives many of them from a single place. Peon is still its
-own repository (`rnm-dev/peon`, arriving as `apps/peon` in OVSR-240); the wire
+registry of peons and drives many of them from a single place. Peon now lives in
+this repository at `apps/peon`; the wire
 contract between them lives in `apps/server/PROTOCOL.md` — read it before
 touching anything protocol-shaped.
 

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router";
 import { api, ApiError, isPeonNeedsUpdate } from "../../api";
 import { documentPresence } from "./sessionAttentionRead";
 import { useAuth } from "../../auth";

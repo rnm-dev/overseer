@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams } from "react-router";
 import { ContentHeaderIdentitySkeleton, ContentHeaderLayout, ContentHeaderTitle, FixedPaneHeader } from "../../ui";
 import { useT } from "../../i18n";
 import { getProjectSettings } from "./peonApi";

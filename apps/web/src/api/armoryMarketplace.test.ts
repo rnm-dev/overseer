@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter } from "react-router";
 import { ApiError } from "../api";
 import { ArmoryConfigurationPanel } from "../pages/peon/ArmoryConfigurationPanel";
 import { ArmoryMcpPanel } from "../pages/peon/ArmoryMcpPanel";
@@ -259,7 +259,7 @@ test("optional patterned text fields stay empty and opt out of URL and password-
   assert.match(markup, /autoComplete="off"/);
   assert.match(markup, /data-1p-ignore="true"/);
   assert.match(markup, /data-lpignore="true"/);
-  assert.match(markup, /readonly=""/);
+  assert.match(markup, /readOnly=""/);
   assert.match(markup, /value=""/);
   assert.match(markup, /pattern="\^\[0-9\]\{1,32\}\$"/);
   assert.doesNotMatch(markup, /value="http:\/\/peon-serik\.mesh\.rnm:4570"/);

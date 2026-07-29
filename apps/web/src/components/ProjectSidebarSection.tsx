@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ExternalLink, MoreHorizontal } from "lucide-react";
-import { NavLink } from "react-router-dom";
+import { NavLink } from "react-router";
 import { useT } from "../i18n";
 import { visibleProjects, type ProjectLite } from "../pages/peon/projectList";
 import { FadingTitle } from "./SessionSidebarList";

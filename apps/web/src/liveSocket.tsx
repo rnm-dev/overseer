@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState, type R
 import { api, json } from "./api";
 import { useWorkspace } from "./workspace";
 import { useAuth } from "./auth";
-import { useLocation } from "react-router-dom";
+import { useLocation } from "react-router";
 import { presenceLocationForPath } from "./presence";
 import { audioClientId, setAudioClaimSender, setAudioPrimary } from "./audioFocus";
 import { documentPresence } from "./pages/peon/sessionAttentionRead";

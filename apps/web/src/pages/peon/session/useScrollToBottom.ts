@@ -28,7 +28,7 @@ export function useScrollToBottom(
   stickToBottomRef: MutableRefObject<boolean>,
   history: unknown,
   live: unknown,
-  transcriptRef: RefObject<HTMLElement>,
+  transcriptRef: RefObject<HTMLElement | null>,
   sessionKey: string,
 ) {
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);

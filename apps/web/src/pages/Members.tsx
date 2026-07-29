@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { Link, Navigate, useParams } from "react-router-dom";
+import { Link, Navigate, useParams } from "react-router";
 import { ArrowLeft, Check, Clock3, Copy, ShieldCheck, Trash2, UserPlus, Users } from "lucide-react";
 import { api, json } from "../api";
 import { useT } from "../i18n";

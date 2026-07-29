@@ -1,0 +1,751 @@
+#!/usr/bin/env -S node --import tsx
+
+import { execFileSync } from "node:child_process";
+import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { buildDaemonUnit, buildDashboardUnit } from "./systemdUnits.js";
+import { buildLaunchAgent } from "./launchdUnits.js";
+
+const BASE = process.env.ACA_CONTROL_URL ?? "http://127.0.0.1:4570";
+const DASHBOARD_URL = process.env.ACA_DASHBOARD_URL ?? "http://127.0.0.1:4571";
+const PACKAGE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+const SYSTEMD_USER_DIR = path.join(os.homedir(), ".config", "systemd", "user");
+const LAUNCHD_USER_DIR = path.join(os.homedir(), "Library", "LaunchAgents");
+const STATE_DIR = path.join(
+  process.env.XDG_STATE_HOME ?? path.join(os.homedir(), ".local", "state"),
+  ".peon",
+);
+const IS_MACOS = process.platform === "darwin";
+// Where the daemon tees the detached updater's output — mirror the daemon's own
+// `path.join(stateDir(), "update.log")` (see xdgPaths.ts) so `peon update` can
+// read back what actually happened rather than reporting a blind success.
+const UPDATE_LOG = path.join(
+  process.env.XDG_STATE_HOME ?? path.join(os.homedir(), ".local", "state"),
+  ".peon",
+  "update.log",
+);
+
+function updateLogSize(): number {
+  try {
+    return statSync(UPDATE_LOG).size;
+  } catch {
+    return 0; // no log yet
+  }
+}
+
+// Only the bytes the updater appended after `offset` — i.e. this run's output,
+// not the accumulation of every prior `peon update` in the append-only log.
+function updateLogSince(offset: number): string {
+  try {
+    return readFileSync(UPDATE_LOG).subarray(offset).toString("utf8").trim();
+  } catch {
+    return "";
+  }
+}
+
+const USAGE = `peon — an autonomous Claude Code worker
+
+usage: peon <command>
+
+Service
+  start                        install and start the background service (auto-starts on boot/login)
+  stop                         stop the service
+  restart [--force]            restart the service (--force overrides the running-session guard)
+  status                       show running state and update status
+  update [--force]             update Peon (dev checkouts require a later manual restart)
+
+Runtime
+  pause                        stop polling for new tasks
+  resume                       resume polling
+  session stop [id]            stop the running session (or a specific one by id)
+
+Config
+  settings [set <key> <value>] show all settings, or set one
+Fleet
+  pair                                arm a one-time pairing phrase to connect this
+                                        peon to an overseer (or re-point it)
+
+Remote access
+  remote                              show bind host and public URLs
+  remote on [public-host] [--force]   accept remote connections and restart (bind 0.0.0.0)
+                                        public-host may be a full URL (https://host) for a
+                                        reverse proxy — no port is appended to the links then
+  remote off [--force]                loopback only and restart (default)
+
+Dashboard users
+  user list                    list dashboard users
+  user add <username>          create a dashboard user
+  user auth-link <username>    create a one-time login link for an existing user
+  user sessions <username>     list a user's login sessions
+  user revoke <username> [sessionId]
+                               log out one session, or all of them`;
+
+function coerce(value: string): string | number | boolean {
+  if (value === "true") return true;
+  if (value === "false") return false;
+  if (value.trim() !== "" && !Number.isNaN(Number(value))) return Number(value);
+  return value;
+}
+
+const DAEMON_UNIT = "peon-daemon.service";
+const DASHBOARD_UNIT = "peon-dashboard.service";
+const DAEMON_AGENT = "dev.peon.daemon";
+const DASHBOARD_AGENT = "dev.peon.dashboard";
+
+function launchdTarget(label: string): string {
+  return `gui/${os.userInfo().uid}/${label}`;
+}
+
+function serviceRestartHint(): string {
+  return IS_MACOS
+    ? `launchctl kickstart -k ${launchdTarget(DAEMON_AGENT)} && launchctl kickstart -k ${launchdTarget(DASHBOARD_AGENT)}`
+    : `systemctl --user restart ${DAEMON_UNIT} ${DASHBOARD_UNIT}`;
+}
+
+function serviceStatusHint(): string {
+  return IS_MACOS
+    ? `launchctl print ${launchdTarget(DAEMON_AGENT)}\n  logs: ${path.join(STATE_DIR, "daemon.stderr.log")}`
+    : `systemctl --user status ${DAEMON_UNIT}\n  journalctl --user -u ${DAEMON_UNIT} -e`;
+}
+
+function launchdLoaded(label: string): boolean {
+  try {
+    execFileSync("launchctl", ["print", launchdTarget(label)], { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function installLaunchAgent(label: string, plistPath: string): void {
+  if (launchdLoaded(label)) return;
+  execFileSync("launchctl", ["bootstrap", `gui/${os.userInfo().uid}`, plistPath], { stdio: "inherit" });
+  execFileSync("launchctl", ["enable", launchdTarget(label)], { stdio: "inherit" });
+}
+
+function restartBackgroundServices(): void {
+  if (IS_MACOS) {
+    execFileSync("launchctl", ["kickstart", "-k", launchdTarget(DAEMON_AGENT)], { stdio: "inherit" });
+    execFileSync("launchctl", ["kickstart", "-k", launchdTarget(DASHBOARD_AGENT)], { stdio: "inherit" });
+  } else {
+    execFileSync("systemctl", ["--user", "restart", DAEMON_UNIT, DASHBOARD_UNIT], { stdio: "inherit" });
+  }
+}
+
+function requireBinary(name: string, hint: string): void {
+  try {
+    execFileSync(name, ["--version"], { stdio: "ignore" });
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+      console.error(`peon start needs "${name}", which isn't on your PATH. ${hint}`);
+      process.exit(1);
+    }
+    // exists but --version failed for some other reason — fine, it's present
+  }
+}
+
+async function waitForUrl(url: string, budgetSec: number): Promise<boolean> {
+  for (let i = 0; i < budgetSec; i++) {
+    try {
+      const res = await fetch(url);
+      if (res.ok) return true;
+    } catch {
+      // not up yet
+    }
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+  return false;
+}
+
+async function startCommand(): Promise<void> {
+  if (IS_MACOS) {
+    requireBinary("launchctl", "launchd is required for a persistent Peon service on macOS.");
+    const pathEnv = process.env.PATH ?? "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin";
+    const daemonPlist = path.join(LAUNCHD_USER_DIR, `${DAEMON_AGENT}.plist`);
+    const dashboardPlist = path.join(LAUNCHD_USER_DIR, `${DASHBOARD_AGENT}.plist`);
+    mkdirSync(LAUNCHD_USER_DIR, { recursive: true });
+    mkdirSync(STATE_DIR, { recursive: true });
+    writeFileSync(daemonPlist, buildLaunchAgent({
+      label: DAEMON_AGENT,
+      description: "Peon daemon (control API)",
+      peonHome: PACKAGE_ROOT,
+      nodeBin: process.execPath,
+      script: path.join(PACKAGE_ROOT, "dist", "daemon", "index.js"),
+      pathEnv,
+      portName: "ACA_CONTROL_PORT",
+      port: 4570,
+      stdoutPath: path.join(STATE_DIR, "daemon.stdout.log"),
+      stderrPath: path.join(STATE_DIR, "daemon.stderr.log"),
+    }));
+    writeFileSync(dashboardPlist, buildLaunchAgent({
+      label: DASHBOARD_AGENT,
+      description: "Peon dashboard",
+      peonHome: PACKAGE_ROOT,
+      nodeBin: process.execPath,
+      script: path.join(PACKAGE_ROOT, "dist", "dashboard", "server.js"),
+      pathEnv,
+      portName: "ACA_DASHBOARD_PORT",
+      port: 4571,
+      stdoutPath: path.join(STATE_DIR, "dashboard.stdout.log"),
+      stderrPath: path.join(STATE_DIR, "dashboard.stderr.log"),
+    }));
+    console.log("Zug zug!");
+    console.log("==> installing launchd agents (auto-start at login, restart on failure)");
+    try {
+      installLaunchAgent(DAEMON_AGENT, daemonPlist);
+      installLaunchAgent(DASHBOARD_AGENT, dashboardPlist);
+    } catch {
+      console.error(`\nsomething went wrong enabling the service — check:\n  ${serviceStatusHint()}`);
+      process.exit(1);
+    }
+    console.log("==> waiting for it to come up (work work...)");
+    const up = await waitForUrl(`${BASE}/api/v1/status`, 30);
+    if (!up) {
+      console.error(`peon didn't come up within 30s — check:\n  ${serviceStatusHint()}`);
+      process.exit(1);
+    }
+    console.log(`\nWork work! peon is ready to work.\n\n  dashboard : ${DASHBOARD_URL}\n  control   : ${BASE}\n`);
+    return;
+  }
+
+  requireBinary("systemctl", "peon needs a systemd user session to run as a persistent service — this doesn't look like one.");
+  requireBinary("loginctl", "peon needs a systemd user session to run as a persistent service — this doesn't look like one.");
+
+  const unitOptions = {
+    peonHome: PACKAGE_ROOT,
+    nodeBin: process.execPath,
+    pathEnv: process.env.PATH ?? "/usr/local/bin:/usr/bin:/bin",
+  };
+
+  console.log("Zug zug!");
+  console.log("==> installing systemd user units");
+  mkdirSync(SYSTEMD_USER_DIR, { recursive: true });
+  writeFileSync(path.join(SYSTEMD_USER_DIR, DAEMON_UNIT), buildDaemonUnit(unitOptions));
+  writeFileSync(path.join(SYSTEMD_USER_DIR, DASHBOARD_UNIT), buildDashboardUnit(unitOptions));
+
+  console.log("==> starting peon (enabled to auto-start on boot/login)");
+  try {
+    execFileSync("systemctl", ["--user", "daemon-reload"], { stdio: "inherit" });
+    execFileSync("systemctl", ["--user", "enable", "--now", DAEMON_UNIT, DASHBOARD_UNIT], { stdio: "inherit" });
+    execFileSync("loginctl", ["enable-linger", os.userInfo().username], { stdio: "inherit" });
+  } catch {
+    console.error(`\nsomething went wrong enabling the service — check the output above, or run:\n  systemctl --user status ${DAEMON_UNIT}`);
+    process.exit(1);
+  }
+
+  console.log("==> waiting for it to come up (work work...)");
+  const up = await waitForUrl(`${BASE}/api/v1/status`, 30);
+  if (!up) {
+    console.error(`peon didn't come up within 30s — check:\n  systemctl --user status ${DAEMON_UNIT}\n  journalctl --user -u ${DAEMON_UNIT} -e`);
+    process.exit(1);
+  }
+
+  console.log(`
+Work work! peon is ready to work.
+
+  dashboard : ${DASHBOARD_URL}
+  control   : ${BASE}
+
+Create a project in the dashboard, then start a session when you're ready.
+`);
+}
+
+async function stopCommand(): Promise<void> {
+  if (IS_MACOS) {
+    console.log("==> stopping Peon launchd agents (no time for play...)");
+    for (const label of [DASHBOARD_AGENT, DAEMON_AGENT]) {
+      if (!launchdLoaded(label)) continue;
+      execFileSync("launchctl", ["bootout", launchdTarget(label)], { stdio: "inherit" });
+    }
+    console.log(`stopped — me rest now. It'll start again on next login. To disable that too, remove:\n  ${LAUNCHD_USER_DIR}/${DAEMON_AGENT}.plist\n  ${LAUNCHD_USER_DIR}/${DASHBOARD_AGENT}.plist`);
+    return;
+  }
+  console.log(`==> stopping ${DAEMON_UNIT} and ${DASHBOARD_UNIT} (no time for play...)`);
+  execFileSync("systemctl", ["--user", "stop", DAEMON_UNIT, DASHBOARD_UNIT], { stdio: "inherit" });
+  console.log(`stopped — me rest now. It'll still start again on next boot/login — to prevent that too:\n  systemctl --user disable ${DAEMON_UNIT} ${DASHBOARD_UNIT}`);
+}
+
+async function restartCommand(force: boolean): Promise<void> {
+  // Same busy-session guard `/api/v1/control/update` and `peon remote` apply — a
+  // restart SIGTERMs the whole cgroup, killing any in-flight `claude -p`
+  // session with no way to recover it. --force (or FORCE=1) overrides.
+  const RESTART_CMD = serviceRestartHint();
+  try {
+    const body = (await (await fetch(`${BASE}/api/v1/sessions`)).json()) as {
+      sessions?: Array<{ status: string }>;
+    };
+    if (body.sessions?.some((s) => s.status === "running") && !force) {
+      console.error(
+        `a session is currently running — restarting kills it. Restart once it's done, or re-run with --force:\n  peon restart --force`,
+      );
+      process.exit(1);
+    }
+  } catch {
+    // control API unreachable — fall through and let the service manager report its own error
+  }
+
+  console.log(`==> restarting ${DAEMON_UNIT} and ${DASHBOARD_UNIT} (work work...)`);
+  restartBackgroundServices();
+
+  console.log("==> waiting for it to come back");
+  const up = await waitForUrl(`${BASE}/api/v1/status`, 30);
+  if (!up) {
+    console.error(`peon didn't come back within 30s — check:\n  ${serviceStatusHint()}`);
+    process.exit(1);
+  }
+  console.log("Ready to work!");
+}
+
+function formatUptime(totalSec: number): string {
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
+}
+
+interface StatusResponse {
+  state: "idle" | "paused";
+  uptimeSec: number;
+  updateAvailable: boolean;
+  updateCurrentVersion: string | null;
+  updateLatestVersion: string | null;
+  updateCurrentRevision: string | null;
+  updateLatestRevision: string | null;
+  updateCheckError: string | null;
+}
+
+async function statusCommand(): Promise<void> {
+  let s: StatusResponse;
+  try {
+    const res = await fetch(`${BASE}/api/v1/status`);
+    if (!res.ok) {
+      console.error(`peon answered but with an error (${res.status} ${res.statusText})`);
+      process.exit(1);
+    }
+    s = (await res.json()) as StatusResponse;
+  } catch (err) {
+    console.error(`could not reach peon at ${BASE} — is it running?\n  try \`peon start\`, or check: ${serviceStatusHint()}`);
+    if (err instanceof Error) console.error(`  (${err.message})`);
+    process.exit(1);
+  }
+
+  console.log(
+    s.state === "paused"
+      ? `No time for play — peon is PAUSED, not polling for tasks (up ${formatUptime(s.uptimeSec)}). Resume with \`peon resume\`.`
+      : `Ready to work! peon is running — up ${formatUptime(s.uptimeSec)}`,
+  );
+
+  if (s.updateCheckError) {
+    console.log(`update check failed: ${s.updateCheckError}`);
+  } else if (s.updateAvailable) {
+    const current = s.updateCurrentVersion ?? s.updateCurrentRevision?.slice(0, 7) ?? "unknown";
+    const latest = s.updateLatestVersion ?? s.updateLatestRevision?.slice(0, 7) ?? "unknown";
+    console.log(
+      `update available (${current} → ${latest}) — run \`peon update\``,
+    );
+  } else {
+    console.log("up to date");
+  }
+}
+
+async function main() {
+  const [cmd, ...rest] = process.argv.slice(2);
+
+  switch (cmd) {
+    case "start": {
+      await startCommand();
+      break;
+    }
+    case "stop": {
+      await stopCommand();
+      break;
+    }
+    case "restart": {
+      await restartCommand(rest.includes("--force") || process.env.FORCE === "1");
+      break;
+    }
+    case "status": {
+      await statusCommand();
+      break;
+    }
+    case "settings": {
+      if (rest[0] === "set") {
+        const [key, value] = rest.slice(1);
+        const res = await fetch(`${BASE}/api/v1/settings`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ [key]: coerce(value) }),
+        });
+        console.log(await res.json());
+      } else {
+        console.log(await (await fetch(`${BASE}/api/v1/settings`)).json());
+      }
+      break;
+    }
+    case "pause": {
+      console.log("Me busy... no. Me rest now.");
+      console.log(await (await fetch(`${BASE}/api/v1/control/pause`, { method: "POST" })).json());
+      break;
+    }
+    case "resume": {
+      console.log("Zug zug! Back to work.");
+      console.log(await (await fetch(`${BASE}/api/v1/control/resume`, { method: "POST" })).json());
+      break;
+    }
+    case "update": {
+      const force = rest.includes("--force") || process.env.FORCE === "1";
+
+      // Baselines captured *before* kicking the update, so we can tell "the new
+      // version is actually running" from "the API merely answered":
+      //  - uptimeBefore: a global-install update restarts the daemon, so uptime
+      //    resets. A dropped uptime is the honest production success signal; without it the
+      //    poll returns the instant the API is reachable, which — when the
+      //    updater crashes before restarting anything — is immediately, so a
+      //    failed update reports success (this is exactly the npm-ENOENT bug).
+      //  - logOffset: byte length of the append-only update.log now, so we only
+      //    read back *this* run's output below.
+      let uptimeBefore = 0;
+      try {
+        const pre = (await (await fetch(`${BASE}/api/v1/status`)).json()) as { uptimeSec?: number };
+        uptimeBefore = pre.uptimeSec ?? 0;
+      } catch {
+        // daemon not up — any reachable status after this counts as "came up"
+      }
+      const logOffset = updateLogSize();
+
+      const res = await fetch(`${BASE}/api/v1/control/update`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ force }),
+      });
+      const body = (await res.json()) as { ok?: boolean; error?: string; message?: string };
+      if (!res.ok) {
+        console.error(`update failed to start: ${body.error ?? res.statusText}`);
+        process.exit(1);
+      }
+      console.log(body.message ?? "update started");
+      console.log("==> waiting for the new version to come up");
+
+      const budgetSec = 120; // npm install needs real time, same idiom as restart-daemon.sh's own poll
+      for (let i = 0; i < budgetSec; i++) {
+        await new Promise((r) => setTimeout(r, 1000));
+        const fresh = updateLogSince(logOffset);
+        try {
+          const statusRes = await fetch(`${BASE}/api/v1/status`);
+          if (statusRes.ok) {
+            const s = (await statusRes.json()) as { uptimeSec?: number };
+            if ((s.uptimeSec ?? Infinity) < uptimeBefore) {
+              console.log("==> back up on the new version");
+              console.log(s);
+              return;
+            }
+          }
+        } catch {
+          // control API unreachable mid-restart — keep polling
+        }
+        // Reachable but not restarted, and the updater logged that there was
+        // nothing to pull — a legit no-op, not a hang. Stop waiting for a
+        // restart that will never come.
+        if (/already on the latest commit|nothing to do/i.test(fresh)) {
+          console.log("==> already up to date — nothing to update");
+          return;
+        }
+        if (/source checkout updated — daemon kept running/i.test(fresh)) {
+          console.log("==> source checkout updated; daemon kept running");
+          console.log("restart `npm run dev` manually when it is safe for daemon changes to take effect");
+          return;
+        }
+      }
+
+      // Never saw a restart. Either the updater died before restarting anything
+      // (the common failure) or it's genuinely wedged — surface this run's log
+      // so the reason is visible instead of a phantom success.
+      const fresh = updateLogSince(logOffset);
+      console.error(`update did not complete within ${budgetSec}s. Recent ${UPDATE_LOG}:`);
+      console.error(fresh || "(updater produced no output — did it launch? check the daemon journal for `update:` lines)");
+      process.exit(1);
+    }
+    case "user": {
+      const sub = rest[0];
+      if (sub === "add") {
+        const username = rest[1];
+        if (!username) {
+          console.error("usage: peon user add <username>");
+          process.exit(1);
+        }
+        const res = await fetch(`${BASE}/api/v1/users/${encodeURIComponent(username)}`, { method: "POST" });
+        const body = (await res.json()) as { ok?: boolean; error?: string; username?: string; created?: boolean };
+        if (res.ok && body.ok) {
+          console.log(
+            body.created
+              ? `created user "${body.username}" — hand them a login link with \`peon user auth-link ${body.username}\``
+              : `user "${body.username}" already exists`,
+          );
+        } else {
+          console.error(`add failed: ${body.error ?? res.statusText}`);
+          process.exit(1);
+        }
+      } else if (sub === "auth-link") {
+        const username = rest[1];
+        if (!username) {
+          console.error("usage: peon user auth-link <username>");
+          process.exit(1);
+        }
+        const res = await fetch(`${BASE}/api/v1/users/${encodeURIComponent(username)}/auth-link`, { method: "POST" });
+        const body = (await res.json()) as { ok?: boolean; error?: string; username?: string; linkUrl?: string; expiresAt?: number };
+        if (res.ok && body.ok) {
+          console.log(`magic link for "${body.username}" (expires ${new Date(body.expiresAt ?? 0).toISOString()}):`);
+          console.log(body.linkUrl);
+        } else {
+          console.error(`auth-link failed: ${body.error ?? res.statusText}`);
+          process.exit(1);
+        }
+      } else if (sub === "list") {
+        console.log(await (await fetch(`${BASE}/api/v1/users`)).json());
+      } else if (sub === "sessions") {
+        const username = rest[1];
+        if (!username) {
+          console.error("usage: peon user sessions <username>");
+          process.exit(1);
+        }
+        console.log(await (await fetch(`${BASE}/api/v1/users/${encodeURIComponent(username)}/sessions`)).json());
+      } else if (sub === "revoke") {
+        const [username, sessionId] = rest.slice(1);
+        if (!username) {
+          console.error("usage: peon user revoke <username> [sessionId]");
+          process.exit(1);
+        }
+        const url = sessionId
+          ? `${BASE}/api/v1/users/${encodeURIComponent(username)}/sessions/${encodeURIComponent(sessionId)}`
+          : `${BASE}/api/v1/users/${encodeURIComponent(username)}/sessions`;
+        const res = await fetch(url, { method: "DELETE" });
+        const body = (await res.json()) as { ok?: boolean; error?: string; revokedCount?: number };
+        if (res.ok && body.ok) {
+          console.log(sessionId ? "revoked." : `revoked ${body.revokedCount ?? 0} session(s).`);
+        } else {
+          console.error(`revoke failed: ${body.error ?? res.statusText}`);
+          process.exit(1);
+        }
+      } else {
+        console.log("usage: peon user [add <username> | auth-link <username> | list | sessions <username> | revoke <username> [sessionId]]");
+      }
+      break;
+    }
+    case "session": {
+      const sub = rest[0];
+      if (sub === "stop") {
+        let id = rest[1];
+        if (!id) {
+          // Only one session can ever be running at a time, so a bare
+          // `peon session stop` finds it rather than making the caller look
+          // up its id first (via the dashboard or `GET /api/v1/sessions`).
+          const body = (await (await fetch(`${BASE}/api/v1/sessions`)).json()) as {
+            sessions?: Array<{ id: string; status: string }>;
+          };
+          const running = body.sessions?.find((s) => s.status === "running");
+          if (!running) {
+            console.error("no session is currently running");
+            process.exit(1);
+          }
+          id = running.id;
+        }
+        const res = await fetch(`${BASE}/api/v1/sessions/${encodeURIComponent(id)}/cancel`, { method: "POST" });
+        const respBody = (await res.json()) as { ok?: boolean; error?: string };
+        if (res.ok && respBody.ok) {
+          console.log(`stopped session ${id}.`);
+        } else {
+          console.error(`stop failed: ${respBody.error ?? res.statusText}`);
+          process.exit(1);
+        }
+      } else {
+        console.log("usage: peon session stop [id]");
+      }
+      break;
+    }
+    case "pair": {
+      const currentResponse = await fetch(`${BASE}/api/v1/settings`);
+      const current = (await currentResponse.json()) as {
+        bindHost?: string;
+        publicControlUrl?: string;
+      };
+      const res = await fetch(`${BASE}/api/v1/pairing/arm`, { method: "POST" });
+      const body = (await res.json()) as { ok?: boolean; error?: string; phrase?: string; expiresAt?: number };
+      if (!res.ok || !body.ok || !body.phrase) {
+        console.error(`pair failed: ${body.error ?? res.statusText}`);
+        process.exit(1);
+      }
+      const fallbackAddress = (() => {
+        try {
+          const port = new URL(BASE).port || "4570";
+          return `http://${os.hostname()}:${port}`;
+        } catch {
+          return `http://${os.hostname()}:4570`;
+        }
+      })();
+      const address = (() => {
+        try {
+          const url = new URL(current.publicControlUrl ?? "");
+          return ["http:", "https:"].includes(url.protocol) && url.hostname
+            ? url.toString().replace(/\/$/, "")
+            : fallbackAddress;
+        } catch {
+          return fallbackAddress;
+        }
+      })();
+      const mins = body.expiresAt ? Math.max(1, Math.round((body.expiresAt - Date.now()) / 60_000)) : null;
+      console.log("Zug zug! Give the operator this pairing phrase and this peon's address:\n");
+      console.log(`  phrase   : ${body.phrase}`);
+      console.log(`  address  : ${address}`);
+      if (mins) console.log(`  valid    : ~${mins} min`);
+      console.log('\nPaste the full address and phrase into the overseer\'s "Connect peon" form. Work work!');
+      // A phrase is useless if the overseer can't reach us — warn if the control
+      // API is still bound loopback-only. Recruitment needs the peon reachable on
+      // the tailnet (bind the Tailscale interface via `peon remote on <ip>`).
+      if (["127.0.0.1", "localhost", "::1", ""].includes(current.bindHost ?? "")) {
+        console.log(
+          `\n⚠  heads up — my control API binds ${current.bindHost || "127.0.0.1"} (loopback only), so the overseer` +
+            "\n   can't reach me yet. Expose me on the tailnet first: `peon remote on <my-tailscale-ip>`.",
+        );
+      }
+      try {
+        if (["127.0.0.1", "localhost", "::1"].includes(new URL(address).hostname)) {
+          console.log(
+            "\n⚠  the advertised address is still loopback-only. Set the domain or tailnet host first:" +
+              "\n   `peon remote on <public-host-or-domain>`, then run `peon pair` again.",
+          );
+        }
+      } catch {
+        // address already fell back to a valid local URL above
+      }
+      break;
+    }
+    case "remote": {
+      const sub = rest[0] ?? "status";
+      const current = (await (await fetch(`${BASE}/api/v1/settings`)).json()) as {
+        bindHost?: string;
+        publicControlUrl?: string;
+        publicDashboardUrl?: string;
+      };
+      const portOf = (url: string | undefined, fallback: string): string => {
+        try {
+          return new URL(url ?? "").port || fallback;
+        } catch {
+          return fallback;
+        }
+      };
+      const controlPort = portOf(current.publicControlUrl, new URL(BASE).port || "4570");
+      const dashboardPort = portOf(current.publicDashboardUrl, new URL(DASHBOARD_URL).port || "4571");
+      const isLoopbackHost = (host: string): boolean => ["127.0.0.1", "localhost", "::1"].includes(host);
+
+      const patchSettings = async (patch: Record<string, string>): Promise<void> => {
+        const res = await fetch(`${BASE}/api/v1/settings`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(patch),
+        });
+        if (!res.ok) {
+          console.error(`failed to update settings: ${res.status} ${res.statusText}`);
+          process.exit(1);
+        }
+      };
+
+      const RESTART_CMD = serviceRestartHint();
+
+      const hostnameOf = (url: string | undefined): string => {
+        try {
+          return new URL(url ?? "").hostname;
+        } catch {
+          return "";
+        }
+      };
+
+      // Mirrors the busy-session guard `/api/v1/control/update` applies before its own
+      // restart — restarting kills any in-flight session the same way a daemon update does.
+      const restartBothServices = async (force: boolean): Promise<void> => {
+        try {
+          const body = (await (await fetch(`${BASE}/api/v1/sessions`)).json()) as {
+            sessions?: Array<{ status: string }>;
+          };
+          if (body.sessions?.some((s) => s.status === "running") && !force) {
+            console.log(
+              `a session is currently running — restarting kills it. Restart once it's done, or re-run with --force:\n  ${RESTART_CMD}`,
+            );
+            return;
+          }
+        } catch {
+          // control API unreachable — fall through and let the service manager report its own error
+        }
+        try {
+          restartBackgroundServices();
+          console.log("restarted.");
+        } catch {
+          console.log(`couldn't restart automatically — do it by hand:\n  ${RESTART_CMD}`);
+        }
+      };
+
+      if (sub === "status") {
+        const host = current.bindHost ?? "127.0.0.1";
+        const loopbackOnly = isLoopbackHost(host);
+        console.log(`bind host          : ${host}  (${loopbackOnly ? "loopback only — no remote access" : "accepting remote connections"})`);
+        console.log(`publicControlUrl   : ${current.publicControlUrl}`);
+        console.log(`publicDashboardUrl : ${current.publicDashboardUrl}`);
+        if (!loopbackOnly && isLoopbackHost(hostnameOf(current.publicDashboardUrl))) {
+          console.log("warning: public URLs still point at loopback — magic links won't work remotely. Re-run `peon remote on <public-host>`.");
+        } else if (!loopbackOnly) {
+          console.log("remote users log in with a magic link: `peon user auth-link <username>`.");
+        }
+      } else if (sub === "on") {
+        const publicHost = rest[1] && !rest[1].startsWith("--") ? rest[1] : undefined;
+        const patch: Record<string, string> = { bindHost: "0.0.0.0" };
+        if (publicHost) {
+          if (/^https?:\/\//i.test(publicHost)) {
+            // A full URL means a reverse proxy fronts both the dashboard and the
+            // control API on one origin (served on 80/443, not our own ports) — use
+            // it verbatim for both so magic links come out portless
+            // (https://host/?token=...) instead of host:4571. api.js already routes
+            // /api/v1/* same-origin behind a proxy, so the two sharing one origin is fine.
+            const origin = new URL(publicHost).origin;
+            patch.publicControlUrl = origin;
+            patch.publicDashboardUrl = origin;
+          } else {
+            patch.publicControlUrl = `http://${publicHost}:${controlPort}`;
+            patch.publicDashboardUrl = `http://${publicHost}:${dashboardPort}`;
+          }
+        }
+        await patchSettings(patch);
+        console.log("remote access enabled — both processes will bind 0.0.0.0 after a restart.");
+        if (publicHost) {
+          console.log(`  control   : ${patch.publicControlUrl}`);
+          console.log(`  dashboard : ${patch.publicDashboardUrl}`);
+        } else {
+          console.log("next: set the public host so magic links resolve from other machines:");
+          console.log("  peon remote on <public-host-or-ip>");
+        }
+        await restartBothServices(rest.includes("--force"));
+        console.log("then give a teammate access with: `peon user add <name> && peon user auth-link <name>`");
+      } else if (sub === "off") {
+        await patchSettings({
+          bindHost: "127.0.0.1",
+          publicControlUrl: `http://127.0.0.1:${controlPort}`,
+          publicDashboardUrl: `http://127.0.0.1:${dashboardPort}`,
+        });
+        console.log("remote access disabled — loopback only.");
+        await restartBothServices(rest.includes("--force"));
+      } else {
+        console.log("usage: peon remote [status | on [public-host] [--force] | off [--force]]");
+      }
+      break;
+    }
+    default:
+      console.log(USAGE);
+  }
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

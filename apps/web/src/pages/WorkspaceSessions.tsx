@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Menu } from "lucide-react";
-import { NavLink, Outlet, useLocation, useNavigate, useParams } from "react-router-dom";
+import { NavLink, Outlet, useLocation, useNavigate, useParams } from "react-router";
 import { api } from "../api";
 import { PeonScopeSwitcher } from "../components/PeonScopeSwitcher";
 import { SessionSidebarList } from "../components/SessionSidebarList";

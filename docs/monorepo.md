@@ -3,7 +3,8 @@
 Peon, the Overseer server, the web dashboard and the Flutter client move into a
 single repository — the existing `rnm-dev/overseer`, so the remote, the Kamal
 config and the deployment paths survive the move. Planned as epic **Монорепо**
-(OVSR-237 … OVSR-241); nothing has been moved yet.
+(OVSR-237 … OVSR-241). The server, web dashboard and Peon now live here; the
+shared protocol package and Flutter client remain to be moved.
 
 ## Why
 
@@ -166,8 +167,9 @@ Each step leaves the tree working.
    workspaces, `apps/server` and `apps/web`, root `verify`, `infra/dev` image,
    rewritten compose mounts and Kamal build context.
 2. **OVSR-239** — `packages/protocol`; server and web move onto it.
-3. **OVSR-240** — publish `@rnm/protocol` and `@rnm/peon`, then bring peon in.
-   The only risky step: it touches the fleet's live update channel.
+3. **OVSR-240** — *Peon source is now in `apps/peon` as the `@rnm/peon`
+   workspace.* Publishing `@rnm/protocol` and `@rnm/peon` remains; that is the
+   risky part because it touches the fleet's live update channel.
 4. **OVSR-241** — bring the Flutter client in as `apps/client`, drop its
    workflow, merge the two `docs/` trees.
 

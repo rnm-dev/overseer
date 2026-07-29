@@ -1,4 +1,4 @@
-import { useParams } from "react-router-dom";
+import { useParams } from "react-router";
 import { RouteTabs, type RouteTab } from "../../components/RouteTabs";
 import { useT } from "../../i18n";
 import { usePeon } from "./context";

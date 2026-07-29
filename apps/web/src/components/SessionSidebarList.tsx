@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Pencil, Trash2 } from "lucide-react";
-import { NavLink } from "react-router-dom";
+import { NavLink } from "react-router";
 import { ApiError, isPeonNeedsUpdate } from "../api";
 import { useI18n, useT } from "../i18n";
 import type { PresenceUser } from "../liveSocket";
