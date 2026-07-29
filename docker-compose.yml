@@ -1,0 +1,126 @@
+# Overseer dev stack on nid-dev — single compose file, dev-oriented.
+# The app runs under `tsx watch` with the workspaces bind-mounted, so an edit
+# under apps/server/src makes tsx restart the process — no rebuild, no HMR
+# (it's an Express API, not a frontend). The app runs its own migrations on boot
+# (initDb() in src/db.ts).
+#
+#   Up:    docker compose up -d --build
+#   Logs:  docker compose logs -f app
+#   Down:  docker compose down            # keeps postgres/data (bind mount)
+#
+# Layout (this dir = /rnm/overseer = the repository root): apps/server + apps/web
+# are npm workspaces, infra/dev/Dockerfile is the shared dev image, postgres/data/
+# = PG data, .env = secrets. Operator API published on 127.0.0.1:4580; nginx
+# (overseer.rnm.dev) fronts it.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: overseer
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: overseer
+    volumes:
+      - ./postgres/data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U overseer"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build:
+      context: .
+      dockerfile: infra/dev/Dockerfile
+    # Keep files created through the bind mount writable by the shared rnm group.
+    command: sh -c 'umask 0002 && exec npm run dev -w @rnm/overseer-server'
+    restart: unless-stopped
+    ports:
+      # Localhost-only; nginx (overseer.rnm.dev) proxies to this.
+      - "127.0.0.1:4580:5000"
+    env_file:
+      # Canonical dev OAuth origin and GitHub App credentials. Kept separate
+      # from the shared legacy .env so production/cutover values stay untouched.
+      - .env.overseer-dev
+    environment:
+      NODE_ENV: development
+      # Native-Linux bind mounts usually propagate inotify fine; poll as a safety net.
+      CHOKIDAR_USEPOLLING: "true"
+      DATABASE_URL: postgresql://overseer:${POSTGRES_PASSWORD}@postgres:5432/overseer
+      OVERSEER_PORT: "5000"
+      OVERSEER_HOST: "0.0.0.0"
+      OVERSEER_FLEET_TOKEN: ${OVERSEER_FLEET_TOKEN}
+      OVERSEER_API_KEY: ${OVERSEER_API_KEY}
+      OVERSEER_OFFLINE_AFTER_MS: ${OVERSEER_OFFLINE_AFTER_MS:-45000}
+      OVERSEER_RECONCILE_INTERVAL_MS: ${OVERSEER_RECONCILE_INTERVAL_MS:-30000}
+      # Where recruited peons phone home. nginx routes /agent → this app, so the
+      # public origin works today; swap to the tailnet URL once Tailscale lands.
+      OVERSEER_PEON_CALLBACK_URL: ${OVERSEER_PEON_CALLBACK_URL:-https://overseer.rnm.dev}
+      # Operator/mobile auth (GitHub OAuth → device tokens)
+      # Wildcard DNS/TLS + nginx route for token.preview.overseer.rnm.dev.
+      OVERSEER_PREVIEW_DOMAIN: ${OVERSEER_PREVIEW_DOMAIN:-preview.overseer.rnm.dev}
+      OVERSEER_PREVIEW_TOKEN_TTL_MS: ${OVERSEER_PREVIEW_TOKEN_TTL_MS:-600000}
+      OVERSEER_RELEASE_TOKEN: ${OVERSEER_RELEASE_TOKEN}
+    volumes:
+      # Workspace sources + the root manifests that define them: every source or
+      # config file hot-reloads (tsx watch restarts). The anonymous volume keeps
+      # the image's hoisted node_modules from being shadowed.
+      - ./apps:/repo/apps
+      - ./package.json:/repo/package.json
+      - ./package-lock.json:/repo/package-lock.json
+      - /repo/node_modules
+      - releases:/data/releases
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # React dashboard — Vite dev server with HMR. nginx (overseer.rnm.dev) routes
+  # everything except /fleet + /agent here; those go to `app`. Source is
+  # bind-mounted so an edit/rsync hot-reloads the browser. HMR speaks wss:443
+  # (Cloudflare terminates TLS) — see web/vite.config.ts.
+  web:
+    build:
+      context: .
+      dockerfile: infra/dev/Dockerfile
+    # Keep files created through the bind mount writable by the shared rnm group.
+    command: sh -c 'umask 0002 && exec npm run dev -w @rnm/overseer-web'
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:4581:5173"
+    environment:
+      # Only used for pure-local dev; on the box nginx routes /fleet to `app`.
+      VITE_API_TARGET: http://app:5000
+      VITE_POLL: "1"
+    volumes:
+      # Same mounts as `app` — one dev image, one dependency tree, two commands.
+      - ./apps:/repo/apps
+      - ./package.json:/repo/package.json
+      - ./package-lock.json:/repo/package-lock.json
+      - /repo/node_modules
+    depends_on:
+      - app
+
+  # Instructions site — Vite + Tailwind v4 + Motion/Lenis. A separate product
+  # that does not join the monorepo: ./site is gitignored here and still has no
+  # repository of its own (OVSR-237). Production is a static build uploaded to
+  # Cloudflare Pages. This service is the dev server
+  # behind dev.ovrseer.org, with HMR over wss:443 (see site/vite.config.js).
+  site:
+    build:
+      context: ./site
+    # Keep files created through the bind mount writable by the shared rnm group.
+    command: sh -c 'umask 0002 && exec npm run dev'
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:4582:5173"
+    environment:
+      VITE_POLL: "1"
+    volumes:
+      # Whole-dir mount so every source/config file hot-reloads. The anonymous
+      # volume keeps the image's node_modules from being shadowed.
+      - ./site:/app
+      - /app/node_modules
+
+volumes:
+  releases:

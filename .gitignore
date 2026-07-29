@@ -3,6 +3,18 @@ dist/
 data/
 *.log
 *.tsbuildinfo
-.kamal/secrets
-.kamal/env/
-backups/
+
+# Kamal secrets live next to the app they deploy.
+**/.kamal/secrets
+**/.kamal/env/
+
+# Workspace state that is not source: the database bind mount, dumps, service
+# account keys, environment files, and the instructions site — a separate
+# product still waiting for its own repository (OVSR-237).
+/postgres/
+/backups/
+/secrets/
+/site/
+/.env
+/.env.*
+/.claude/

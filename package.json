@@ -1,39 +1,24 @@
 {
-  "name": "overseer",
+  "name": "@rnm/overseer",
   "version": "0.0.1",
   "private": true,
   "type": "module",
-  "description": "Fleet control plane for peons — registry + fan-out control over a Tailscale tailnet",
-  "bin": {
-    "overseer": "dist/index.js"
-  },
+  "description": "Overseer monorepo — fleet control plane, operator dashboard, and the Peon daemon",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
-    "dev": "tsx watch src/index.ts",
-    "start": "node dist/index.js",
-    "compile": "tsc -p tsconfig.json",
-    "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test \"src/**/*.test.ts\"",
-    "lint": "eslint src web/src web/vite.config.ts",
+    "dev": "npm run dev -w @rnm/overseer-server",
+    "lint": "eslint apps/server/src apps/web/src apps/web/vite.config.ts",
     "lint:fix": "npm run lint -- --fix",
-    "verify": "npm run lint && npm test && npm run typecheck && npm --prefix web test && npm --prefix web run build"
-  },
-  "dependencies": {
-    "express": "^5.1.0",
-    "pg": "^8.13.0",
-    "ws": "^8.18.0"
+    "verify": "npm run lint && npm run verify --workspaces --if-present"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@types/express": "^5.0.0",
-    "@types/node": "^22.0.0",
-    "@types/pg": "^8.11.0",
-    "@types/ws": "^8.5.12",
     "eslint": "^10.7.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "globals": "^17.7.0",
-    "pg-mem": "^3.0.5",
-    "tsx": "^4.19.0",
-    "typescript": "^5.6.0",
     "typescript-eslint": "^8.64.0"
   }
 }
