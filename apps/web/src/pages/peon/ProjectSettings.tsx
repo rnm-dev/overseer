@@ -1,14 +1,14 @@
 import { useEffect, useState } from "react";
 import { Navigate, useNavigate, useParams } from "react-router";
 import { ApiError } from "../../api";
-import { Button, Card, Input, Label } from "../../ui";
+import { Button, Card, ConfirmationDialog, Input, Label } from "../../ui";
 import { useT } from "../../i18n";
 import { usePeon } from "./context";
 import { PathInput } from "./PathInput";
 import { ProjectPageHeader } from "./ProjectPageHeader";
 import { ProjectQuickLinksEditor } from "./ProjectQuickLinks";
 import { ProjectTabs } from "./ProjectTabs";
-import { getProjectSettings, projectMetadataValue, projectRoute, updateProjectSettings, type ProjectSettings as Settings } from "./peonApi";
+import { deleteProject, getProjectSettings, projectMetadataValue, projectRoute, updateProjectSettings, type ProjectSettings as Settings } from "./peonApi";
 
 interface ProjectForm { key: string; name: string; dir: string; metadata: string }
 
@@ -23,6 +23,9 @@ export function ProjectSettings() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isOwner) return;
@@ -62,6 +65,23 @@ export function ProjectSettings() {
     }
   }
 
+  // The peon unregisters the project and the overseer drops its cached copy;
+  // the directory stays on disk. A peon busy running a session against it
+  // refuses with 409, and that refusal is what the operator is shown.
+  async function remove() {
+    if (deleting) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await deleteProject(base, key);
+      navigate(`/peons/${encodeURIComponent(peon.peonId)}/sessions`, { replace: true });
+    } catch (error) {
+      setDeleteError(error instanceof ApiError ? error.message : t("error.generic"));
+      setDeleting(false);
+      setConfirmDelete(false);
+    }
+  }
+
   return <div className="space-y-3">
     <ProjectPageHeader name={settings?.name} />
     <ProjectTabs />
@@ -92,5 +112,29 @@ export function ProjectSettings() {
         links={settings.quickLinks ?? []}
       />
     )}
+    <div className="pt-3">
+      <h3 className="mb-3 rune text-sm text-blood">{t("proj.danger")}</h3>
+      <Card className="flex flex-wrap items-center justify-between gap-4 border-blood/30 px-5 py-4">
+        <div className="min-w-0">
+          <p className="font-mono text-xs text-bone-dim">{t("proj.deleteHint")}</p>
+          {deleteError && <p role="alert" className="mt-2 font-mono text-xs text-blood">⚠ {deleteError}</p>}
+        </div>
+        <button
+          className="btn btn-sm !border-blood/50 !text-blood hover:!bg-blood/10 disabled:opacity-40"
+          disabled={!peon.online || deleting}
+          onClick={() => setConfirmDelete(true)}
+        >
+          {t("proj.delete")}
+        </button>
+      </Card>
+    </div>
+    {confirmDelete && <ConfirmationDialog
+      title={t("proj.deleteConfirm", { name: settings?.name || key })}
+      confirmLabel={t("proj.delete")}
+      pendingLabel={t("proj.deleting")}
+      pending={deleting}
+      onClose={() => setConfirmDelete(false)}
+      onConfirm={() => void remove()}
+    />}
   </div>;
 }

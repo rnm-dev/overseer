@@ -8,6 +8,7 @@ import {
   applySocketProjectSnapshot,
   claimProjectSyncGeneration,
   commitSnapshotCoveredProjectEvent,
+  forgetIndexedProject,
   hasCanonicalProjectCatalog,
   listIndexedProjects,
   normalizeProjectQuickLinks,
@@ -154,6 +155,46 @@ test("project durable events share the delivery inbox, deduplicate replays, and 
   await releaseProjectSyncGeneration("peon", generation);
   const state = await query<{ status: string }>(`SELECT status FROM peon_project_sync WHERE peon_id='peon'`);
   assert.equal(state.rows[0]?.status, "stale");
+});
+
+test("forgetting a deleted project evicts the projection, drops its grants, and leaves the catalog event idempotent", async () => {
+  const { generation } = await fixture();
+  await applySocketProjectSnapshot({
+    workspaceId: "ws", peonId: "peon", generation, catalogEpoch: "projects-1", barrierSeq: 0,
+    projects: [
+      { projectId: "project-1", key: "doomed", name: "Doomed", dir: "/work/doomed", metadata: null },
+      { projectId: "project-2", key: "kept", name: "Kept", dir: "/work/kept", metadata: null },
+    ],
+  });
+  await query(`INSERT INTO workspace_members (workspace_id,user_id,role,added_at) VALUES ('ws','member','member',1)`);
+  await query(
+    `INSERT INTO workspace_member_project_access (workspace_id,user_id,peon_id,project_key,granted_at,project_id)
+     VALUES ('ws','member','peon','doomed',1,'project-1'),
+            ('ws','member','peon','kept',1,'project-2')`,
+  );
+
+  await forgetIndexedProject({ workspaceId: "ws", peonId: "peon", key: "doomed" });
+
+  assert.deepEqual((await listIndexedProjects("peon")).map((project) => project.projectId), ["project-2"]);
+  const grants = await query<{ project_id: string | null }>(
+    `SELECT project_id FROM workspace_member_project_access WHERE workspace_id='ws' AND peon_id='peon'`,
+  );
+  assert.deepEqual(grants.rows.map((row) => row.project_id), ["project-2"]);
+  const deletion = await query<{ payload: unknown }>(`SELECT payload FROM events WHERE kind='project' ORDER BY cursor DESC LIMIT 1`);
+  const raw = deletion.rows[0]?.payload;
+  const payload = (typeof raw === "string" ? JSON.parse(raw) : raw) as { projectId?: string; deleted?: boolean };
+  assert.deepEqual({ projectId: payload.projectId, deleted: payload.deleted }, { projectId: "project-1", deleted: true });
+
+  // The Peon's own catalog event lands afterwards and must still advance.
+  const checkpoint = await applySocketProjectEvent({
+    workspaceId: "ws", peonId: "peon", generation,
+    catalogEpoch: "projects-1", seq: 1,
+    deliveryEpoch: "delivery-1", deliveryCursor: "cursor-1",
+    messageId: "00000000-0000-4000-8000-000000000011",
+    operation: "delete", projectId: "project-1",
+  });
+  assert.equal(checkpoint.catalog?.acknowledgedSeq, 1);
+  assert.deepEqual((await listIndexedProjects("peon")).map((project) => project.projectId), ["project-2"]);
 });
 
 test("project snapshot supersedes queued events from a retired catalog epoch", async () => {

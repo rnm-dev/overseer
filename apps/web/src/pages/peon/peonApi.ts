@@ -105,6 +105,12 @@ export function updateProjectSettings(base: string, key: string, input: UpdatePr
   return request<ProjectSettings>(`${base}/projects/${encodeURIComponent(key)}/settings`, { method: "PATCH", body: JSON.stringify(input) });
 }
 
+// Unregisters the project on the Peon and drops the Overseer's cached copy.
+// The project directory itself is left untouched on the Peon's disk.
+export function deleteProject(base: string, key: string, request: ApiRequest = api) {
+  return request<{ ok: true }>(`${base}/projects/${encodeURIComponent(key)}`, { method: "DELETE" });
+}
+
 export function getProjectQuickLinks(base: string, key: string, request: ApiRequest = api) {
   return request<ProjectQuickLinksResponse>(`${base}/projects/${encodeURIComponent(key)}/quick-links`);
 }

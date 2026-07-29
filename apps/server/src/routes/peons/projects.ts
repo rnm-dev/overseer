@@ -10,6 +10,7 @@ import { PeonOperationError } from "../../peonOperationChannel.js";
 import { FileSandboxError, resolveAttachmentPath, resolveSandboxSegments } from "../../peonFileSandbox.js";
 import { hasProjectFileTransport } from "../../peonTransferConnections.js";
 import {
+  forgetIndexedProject,
   getIndexedProject,
   getProjectCatalogState,
   hasCanonicalProjectCatalog,
@@ -216,7 +217,24 @@ export function registerProjectRoutes(router: express.Router): void {
     relay(await callPeon(connOfRecord(c.record), "GET", `${proj(String(req.params.key))}/settings`, { actor: c.operator.email }), res);
   }));
   router.patch(`${wp}/projects/:key/settings`, withWorkspaceProject(async (req, res, c) => { if (!ownerOnly(res, c.role)) return; relay(await callPeon(connOfRecord(c.record), "PATCH", `${proj(String(req.params.key))}/settings`, { actor: c.operator.email, body: req.body }), res); }));
-  router.delete(`${wp}/projects/:key`, withWorkspaceProject(async (req, res, c) => { if (!ownerOnly(res, c.role)) return; relay(await callPeon(connOfRecord(c.record), "DELETE", proj(String(req.params.key)), { actor: c.operator.email }), res); }));
+  // Deleting a project unregisters it on the Peon and drops the Overseer's copy
+  // of it. Neither side touches the project directory — the files stay on disk.
+  router.delete(`${wp}/projects/:key`, withWorkspaceProject(async (req, res, c) => {
+    if (!ownerOnly(res, c.role)) return;
+    const key = String(req.params.key);
+    const indexed = await getIndexedProject(c.record.peonId, key);
+    const result = await callPeon(connOfRecord(c.record), "DELETE", proj(key), { actor: c.operator.email });
+    if (result.ok) {
+      try {
+        await forgetIndexedProject({ workspaceId: c.workspaceId, peonId: c.record.peonId, key, projectId: indexed?.projectId ?? null });
+      } catch (error) {
+        // The Peon has already deleted it, so the catalog event still evicts the
+        // cached row; the client simply waits for that instead of failing.
+        console.warn("project cache eviction failed:", error instanceof Error ? error.message : String(error));
+      }
+    }
+    relay(result, res);
+  }));
   router.get(`${wp}/settings`, withWorkspacePeon(async (_req, res, c) => { if (!ownerOnly(res, c.role)) return; relay(await callPeon(connOfRecord(c.record), "GET", "/settings", { actor: c.operator.email }), res); }));
   router.patch(`${wp}/settings`, withWorkspacePeon(async (req, res, c) => {
     if (!ownerOnly(res, c.role)) return;
