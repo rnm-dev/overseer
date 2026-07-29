@@ -153,7 +153,7 @@ object has a precise lifecycle and responsibility.
 Frontend code follows the same feature-first rule:
 
 ```text
-web/src/
+apps/web/src/
   app/                    # routes and provider composition
   features/
     auth/

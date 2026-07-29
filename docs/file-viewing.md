@@ -3,8 +3,8 @@
 Every file the web client displays — a message attachment, a project file, a
 documentation page, a session artifact — is named by one `FileSource` and read
 through one reader. The rule for which route answers for which file lives in
-`web/src/pages/peon/fileLinks.ts`, and the fetch, the size caps, the type
-decision and the failure text live in `web/src/pages/peon/FileView.tsx`. A
+`apps/web/src/pages/peon/fileLinks.ts`, and the fetch, the size caps, the type
+decision and the failure text live in `apps/web/src/pages/peon/FileView.tsx`. A
 surface contributes chrome only: a modal (`ProjectFilePreviewModal`), a side
 pane (`ProjectFileBrowser`), a dialog (`AttachmentPreview`).
 

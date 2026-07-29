@@ -705,7 +705,7 @@ the same endpoint the web uses. The webview is only the login surface — see
 
 ## Module layout
 
-Following the repo's architecture doc (`app/docs/architecture.md`) — external
+Following the repo's architecture doc (`docs/architecture.md`) — external
 systems belong in `infrastructure`, product rules in a module:
 
 What shipped:
@@ -732,7 +732,7 @@ And `voiceService.ts` split into `voiceAccess`/`voiceQuota`, since with the
 glossary deferred to OVSR-190 the file would have been a `Service` suffix over
 two unrelated concerns — which the architecture doc asks us not to do.
 
-The client capture files (`web/src/voice/recorder.ts`, `useDictation.ts`) are
+The client capture files (`apps/web/src/voice/recorder.ts`, `useDictation.ts`) are
 not built; they belong to the composer work, not the endpoint.
 
 Tests follow the existing `node --test` style and touch no network. Fake

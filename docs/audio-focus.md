@@ -11,7 +11,7 @@ presence, push notifications and unread marks are untouched.
 
 ## The stack
 
-`app/src/modules/presence/audioFocus.ts` keeps, per user, an ordered list of that
+`apps/server/src/modules/presence/audioFocus.ts` keeps, per user, an ordered list of that
 user's clients — most recently picked up first.
 
 | Signal | Effect |
@@ -33,7 +33,7 @@ re-derives it from the reconnects.
 
 ## The wire
 
-Ownership rides the existing live socket (`/api/ws`, `app/src/liveSocket.ts`).
+Ownership rides the existing live socket (`/api/ws`, `apps/server/src/liveSocket.ts`).
 Four messages, all optional — a client that sends none of them behaves exactly as
 it did before this existed.
 
@@ -57,7 +57,7 @@ be looking at is irrelevant to which speaker should make a noise.
 has not connected, or one talking to an older overseer, must never mute itself
 waiting for permission.
 
-**Desktop web** — done, in `web/src/audioFocus.ts` and `web/src/liveSocket.tsx`.
+**Desktop web** — done, in `apps/web/src/audioFocus.ts` and `apps/web/src/liveSocket.tsx`.
 The tab id lives in `sessionStorage`, focus and visibility ride along with
 presence, and starting a session claims the sound outright.
 
@@ -83,15 +83,15 @@ does not steal it.
 
 ## The browser
 
-`web/src/audioFocus.ts` holds this tab's id and its current verdict.
-`web/src/peonSounds.ts` gates both the one-shot sounds and the working ambience
+`apps/web/src/audioFocus.ts` holds this tab's id and its current verdict.
+`apps/web/src/peonSounds.ts` gates both the one-shot sounds and the working ambience
 on it, and stops ambience already playing when the tab loses the sound mid-turn.
 
 **The default is to play.** A tab that has not connected yet, or one talking to
 an overseer that never mentions audio, must never end up silently muted.
 
 Starting a session claims the sound for the client it was started from
-(`claimAudioFocus()` in `web/src/pages/peon/PeonNewSession.tsx`), which both
+(`claimAudioFocus()` in `apps/web/src/pages/peon/PeonNewSession.tsx`), which both
 takes effect locally at once and tells the overseer to quiet the others.
 
 ## What this does not cover

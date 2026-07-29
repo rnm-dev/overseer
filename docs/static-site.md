@@ -2,8 +2,8 @@
 
 A two-page public site — a landing page and self-hosting documentation at
 `/docs/` — living at `/rnm/overseer/site/`. It is a **separate product** — not part
-of the Overseer application repo in `app/`, and it shares no code, build, or
-deployment path with it. No database, no API, no auth, no backend.
+of the Overseer monorepo it currently sits inside, and it shares no code, build,
+or deployment path with it. No database, no API, no auth, no backend.
 
 It has **no repository of its own yet**: `/rnm/overseer/site` is not a git
 checkout. OVSR-237 creates one and detaches the directory from this tree; the
@@ -13,7 +13,7 @@ site does not join the [monorepo](monorepo.md).
 
 - **Vite 8** — build and dev server
 - **Tailwind CSS v4** — CSS-first config; palette declared in `@theme` in
-  `src/styles.css`, mirroring the dashboard tokens in `app/web/src/index.css`
+  `src/styles.css`, mirroring the dashboard tokens in `apps/web/src/index.css`
 - **Golos Text Variable** — self-hosted via `@fontsource-variable/golos-text`,
   one 400–900 file with Latin and Cyrillic subsets. Self-hosted rather than
   Google-served so the CSP stays at `font-src 'self'`.
@@ -116,9 +116,9 @@ entries — and both pages share one CSS and one JS chunk.
 
 The documentation page covers requirements, every environment variable with its
 default, a compose file, GitHub OAuth setup, the operator/machine network split,
-operations and troubleshooting. **Its content is derived from `src/config.ts` in
-the Overseer application repo**, not written from memory; re-read that file
-before editing the configuration table.
+operations and troubleshooting. **Its content is derived from
+`apps/server/src/config.ts`**, not written from memory; re-read that file before
+editing the configuration table.
 
 ## Page structure
 
