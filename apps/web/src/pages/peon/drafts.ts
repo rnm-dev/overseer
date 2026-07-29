@@ -115,6 +115,20 @@ export function composerDraftKey(workspaceId: string, peonId: string, sessionId:
   return [DRAFT_PREFIX, workspaceId, peonId, scope].map(encodeURIComponent).join(":");
 }
 
+// Write a draft straight to storage instead of through the hooks below. Their
+// attachment half persists from an effect, which is fine while the composer
+// stays mounted — but a composer that navigates away on submit unmounts before
+// that effect could run, and a send that fails after the operator moved on has
+// no mounted composer at all.
+export function saveComposerDraft(key: string, value: string, files: File[]): void {
+  writeDraft(key, value);
+  void writeDraftFiles(key, files);
+}
+
+export function clearComposerDraft(key: string): void {
+  saveComposerDraft(key, "", NO_FILES);
+}
+
 export function useComposerDraft(key: string, initialValue?: string, persist = true): [string, (value: string) => void] {
   const [draft, setDraft] = useState(() => ({ key, value: initialValue ?? readDraft(key) }));
 
