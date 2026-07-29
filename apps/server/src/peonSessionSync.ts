@@ -46,6 +46,7 @@ interface DeliveryHello {
   epoch: string;
   earliestCursor: string | null;
   latestCursor: string | null;
+  acknowledgedCursor: string | null;
   pendingMessages: number;
 }
 
@@ -104,6 +105,7 @@ export class PeonCatalogSync {
   private projectTimer: NodeJS.Timeout | null = null;
   private disposed = false;
   private receivedDurableMessage = false;
+  private enforceAdvertisedEarliestCursor = true;
 
   constructor(
     private readonly record: PeonRecord,
@@ -124,6 +126,15 @@ export class PeonCatalogSync {
     const deliveryResume = this.checkpoint?.delivery?.epoch === this.delivery.epoch
       ? this.checkpoint.delivery
       : null;
+    // The hello describes Peon's outbox before it processes our hello_ack.
+    // When Overseer has committed farther than Peon's locally persisted
+    // acknowledgement, the ack below legitimately trims the advertised first
+    // message before Peon starts flushing. Its next cursor is opaque to us, so
+    // the pre-ack earliest cursor cannot be enforced on this connection.
+    this.enforceAdvertisedEarliestCursor = !(
+      deliveryResume?.acknowledgedCursor
+      && deliveryResume.acknowledgedCursor !== this.delivery.acknowledgedCursor
+    );
     this.projectCheckpoint = this.projectCatalog
       ? await claimProjectSyncGeneration(this.record.peonId, this.generation)
       : null;
@@ -373,7 +384,8 @@ export class PeonCatalogSync {
   private async receiveDurableMessage(message: Record<string, unknown>, frameBytes: number): Promise<void> {
     const event = this.parseDurableEvent(message);
     if (event.deliveryEpoch !== this.delivery.epoch) throw new SessionSyncProtocolError("durable delivery epoch mismatch");
-    if (!this.receivedDurableMessage && this.delivery.pendingMessages > 0
+    if (!this.receivedDurableMessage && this.enforceAdvertisedEarliestCursor
+      && this.delivery.pendingMessages > 0
       && event.deliveryCursor !== this.delivery.earliestCursor) {
       throw new SessionSyncProtocolError("durable delivery cursor gap");
     }
@@ -608,7 +620,7 @@ export function parseSessionCatalogHello(frame: Record<string, unknown>): {
   // Overseer accepts the advertised durable-delivery capability.
   requiredBoolean(d.negotiated, "negotiated");
   requiredBoolean(d.recoveredFromCorruption, "recoveredFromCorruption");
-  optionalString(d.acknowledgedCursor, "acknowledgedCursor", 2_000);
+  const acknowledgedCursor = optionalString(d.acknowledgedCursor, "acknowledgedCursor", 2_000);
   optionalString(d.lastError, "lastError", 2_000);
   const earliestCursor = optionalString(d.earliestCursor, "earliestCursor", 2_000);
   const latestCursor = optionalString(d.latestCursor, "latestCursor", 2_000);
@@ -643,6 +655,7 @@ export function parseSessionCatalogHello(frame: Record<string, unknown>): {
       epoch: requiredString(d.epoch, "delivery epoch", 256),
       earliestCursor,
       latestCursor,
+      acknowledgedCursor,
       pendingMessages,
     },
   };

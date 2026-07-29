@@ -262,8 +262,11 @@ test("canonical durable session catalogs snapshot, commit, acknowledge, and resu
     capabilities: ["session-catalog-v1", "durable-delivery-v1"],
     channels: { "session-catalog-v1": { epoch: "catalog-1", revision: 1, earliestSeq: 1, latestSeq: 1 } },
     delivery: {
-      epoch: "delivery-1", earliestCursor: null, latestCursor: null, acknowledgedCursor: "cursor-1",
-      pendingMessages: 0, pendingBytes: 0, maxMessages: 5_000, maxBytes: 33_554_432,
+      // Simulate a restart after Overseer committed cursor-1 but before Peon
+      // persisted that acknowledgement. Processing hello_ack removes cursor-1,
+      // so cursor-2 is correctly the first frame sent on this connection.
+      epoch: "delivery-1", earliestCursor: "cursor-1", latestCursor: "cursor-2", acknowledgedCursor: null,
+      pendingMessages: 2, pendingBytes: 512, maxMessages: 5_000, maxBytes: 33_554_432,
       backpressured: false, negotiated: true, recoveredFromCorruption: false, lastError: null,
     },
   }));
@@ -272,7 +275,7 @@ test("canonical durable session catalogs snapshot, commit, acknowledge, and resu
   assert.deepEqual(resumeAck.delivery, { epoch: "delivery-1", acknowledgedCursor: "cursor-1" });
   assert.equal(resumed.messages.some((message) => message.type === "session_catalog_snapshot_request"), false);
   second.send(JSON.stringify({
-    type: "durable_message", epoch: "delivery-1", cursor: "cursor-3",
+    type: "durable_message", epoch: "delivery-1", cursor: "cursor-2",
     messageId: "00000000-0000-4000-8000-000000000003", priority: "normal",
     payload: {
       type: "session_catalog_event", epoch: "catalog-1", seq: 3, revision: 3,
@@ -289,7 +292,7 @@ test("canonical durable session catalogs snapshot, commit, acknowledge, and resu
     ],
     nextCursor: null, hasMore: false,
   }));
-  await resumed.waitFor((message) => message.type === "durable_ack" && message.cursor === "cursor-3");
+  await resumed.waitFor((message) => message.type === "durable_ack" && message.cursor === "cursor-2");
   await resumed.waitFor((message) => message.type === "session_catalog_ack" && message.acknowledgedSeq === 3);
   assert.equal((await listSessions({ peonId: "sync-peon", limit: 10, offset: 0 })).sessions.some(
     (session) => session.sessionId === "must-not-commit"), false);
