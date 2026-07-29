@@ -93,11 +93,15 @@ services:
       VITE_API_TARGET: http://app:5000
       VITE_POLL: "1"
     volumes:
-      # Same mounts as `app` — one dev image, one dependency tree, two commands.
+      # The workspace has its own node_modules when npm must keep a package
+      # version separate from the root. Preserve both dependency locations:
+      # the ./apps bind mount would otherwise hide apps/web/node_modules from
+      # the image and leave Vite resolving whatever stale hoisted copy survived.
       - ./apps:/repo/apps
       - ./package.json:/repo/package.json
       - ./package-lock.json:/repo/package-lock.json
       - /repo/node_modules
+      - /repo/apps/web/node_modules
     depends_on:
       - app
 
