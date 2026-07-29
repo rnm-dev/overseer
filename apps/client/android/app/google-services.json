@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "982158645364",
+    "project_id": "overseer-9fe46",
+    "storage_bucket": "overseer-9fe46.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+          "mobilesdk_app_id": "1:982158645364:android:e208c9039c8b3ab5a41921",
+        "android_client_info": {
+          "package_name": "org.ovrseer.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAY-Eb2m2bWF-vg607y62Hz_Zjlf4q6wgw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

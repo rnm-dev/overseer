@@ -15,7 +15,8 @@
     "dev": "npm run dev -w @rnm/overseer-server",
     "lint": "eslint apps/server/src apps/web/src apps/web/vite.config.ts",
     "lint:fix": "npm run lint -- --fix",
-    "verify": "npm run lint && npm run verify --workspaces --if-present"
+    "verify:client": "if command -v flutter >/dev/null 2>&1; then cd apps/client && flutter analyze && flutter test; else echo 'SKIPPED: Flutter client verification (flutter is not installed)'; fi",
+    "verify": "npm run lint && npm run verify --workspaces --if-present && npm run verify:client"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
