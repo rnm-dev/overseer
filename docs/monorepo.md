@@ -162,7 +162,7 @@ Each step leaves the tree working.
 0. **OVSR-237** — give the instructions site a repository and detach it from
    compose and docs. Outside the monorepo; `site/` is gitignored until then, so
    this no longer blocks anything.
-1. **OVSR-238** — *done, on branch `monorepo`.* Flattened checkout root, npm
+1. **OVSR-238** — *done, merged to master, not yet deployed.* Flattened checkout root, npm
    workspaces, `apps/server` and `apps/web`, root `verify`, `infra/dev` image,
    rewritten compose mounts and Kamal build context.
 2. **OVSR-239** — `packages/protocol`; server and web move onto it.
