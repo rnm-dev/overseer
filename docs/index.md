@@ -41,7 +41,7 @@ compose: postgres (compose-net only, 5432 unpublished), app: 127.0.0.1:4580, web
 postgres: postgres:5432/overseer overseer/1701e037ee97028cc925d2925e7ec7b0 (not host-published; use docker compose exec postgres psql)
 seed: no seed script; schema self-migrates on boot (initDb/MIGRATIONS in apps/server/src/db.ts). No env-seeded admin — auth is now GitHub OAuth with open sign-up (ensureUserFromGithub in apps/server/src/auth.ts; OVERSEER_ADMIN_EMAIL no longer used anywhere), access gated by workspace membership
 
-Dev public origin is https://overseer-dev.rnm.dev. Cloudflare A record remains proxied to 94.247.128.101. Dev app configuration uses OVERSEER_PUBLIC_URL and OVERSEER_PEON_CALLBACK_URL = https://overseer-dev.rnm.dev. Native OAuth accepts both `overseer-dev://oauth/github` and `overseer://oauth/github` through OVERSEER_GITHUB_NATIVE_CALLBACKS so dev and prod mobile builds can be tested against the dev server. The dev database intentionally contains only Nova and its history; shared users/workspaces/devices remain available for login. The empty RNM workspace (1313b906-590b-4b07-b7a3-c37b0e9f14d0) was deleted from dev on 2026-07-20; production RNM was not changed. Pre-delete backup: /rnm/overseer/backups/dev-delete-rnm-20260720T1320Z/dev-before-delete-rnm.dump, SHA-256 761057b1aebb1d7df7734d276bb0cc8340e459e2a9d0960009f0e58443dd1bcd.
+Dev public origin is https://overseer-dev.rnm.dev. Cloudflare A record remains proxied to 94.247.128.101. Dev app configuration uses OVERSEER_PUBLIC_URL and OVERSEER_PEON_CALLBACK_URL = https://overseer-dev.rnm.dev. Native OAuth accepts both `overseer-dev://oauth/github` and `overseer://oauth/github` through OVERSEER_GITHUB_NATIVE_CALLBACKS so dev and prod mobile builds can be tested against the dev server. The dev database intentionally contains only Nova and its history; shared users/workspaces/devices remain available for login. The empty RNM workspace (1313b906-590b-4b07-b7a3-c37b0e9f14d0) was deleted from dev on 2026-07-20; production RNM was not changed. Its pre-delete dump (SHA-256 761057b1aebb1d7df7734d276bb0cc8340e459e2a9d0960009f0e58443dd1bcd) was the only copy and was deleted on 2026-07-29 with the rest of the dev box's `backups/`; that workspace was empty, so nothing recoverable was in it.
 
 ## Production deployment
 
@@ -68,12 +68,9 @@ Never remove/recreate these volumes during deploy or rollback. Kamal app deploys
 
 The production database contains Kanat, Marat, Neo, Thor and the historical Smoke record with their sessions/events/follow-up history. Nova and Nova's credential/history are excluded from production. The dev database contains only Nova with 150 sessions, 14,236 events and 416 follow-up commands.
 
-Final pre-cutover backups:
-- source: /rnm/overseer/backups/cutover-20260720T1301Z/overseer-final.dump
-- source releases: /rnm/overseer/backups/cutover-20260720T1301Z/overseer-releases.tgz
-- dump SHA-256: de40548406eb652706a36dad7e127f749a0f11d1204c4e74708ecdbdb9181231
-- release archive SHA-256: c53182c095e194883d859448d3956499708a362f50f398191d73e66c884d2c6d
-- remote dump: /backups/overseer-final-20260720T1301Z.dump inside overseer-postgres-backups
+The final pre-cutover database dump lives on nid-01 in the `overseer-postgres-backups` volume, twice: `/backups/overseer-final-20260720T1301Z.dump` and `/backups/overseer-final.dump`, both SHA-256 de40548406eb652706a36dad7e127f749a0f11d1204c4e74708ecdbdb9181231. The earlier aborted attempt is beside them as `/backups/overseer-final-20260720T1255Z.dump`. Read them with `docker run --rm -v overseer-postgres-backups:/b alpine:3 ls -la /b`.
+
+The dev box's copies of those dumps were deleted on 2026-07-29 after verifying the remote ones byte for byte; the volume is the only place they live now, and the deploy runbook already forbids removing it. The pre-cutover release archive (SHA-256 c53182c095e194883d859448d3956499708a362f50f398191d73e66c884d2c6d) went with them — it was a 127-byte tarball.
 
 Kanat is verified registered and heartbeating to production after cutover. During the first aborted split, an active Peon received 401 from the Nova-only dev DB and entered the Peon daemon's durable-in-memory derecruited state. Kanat was safely re-pointed without a daemon restart and recovered. Marat may need re-enrollment or daemon restart if it also observed that transient 401. Offline Neo/Thor will use the canonical production URL when they return.
 
