@@ -479,16 +479,16 @@ class _SessionDetailPageState extends _SessionDetailAttachmentHost
                                 composerState?.catalog?.defaultAgent,
                             model: composerState?.model,
                             reasoningEffort: composerState?.reasoningEffort,
-                            defaultModelLabel: _catalogLabel(
-                              modelProvider?.models,
-                              agentOverridden ? null : details?.model,
-                              fallback: 'Default',
-                            ),
-                            defaultReasoningEffortLabel: _catalogLabel(
-                              modelProvider?.reasoningEfforts,
-                              agentOverridden ? null : details?.reasoningEffort,
-                              fallback: 'Default',
-                            ),
+                            // What the composer falls back to with no override:
+                            // the session's own pick, unless the operator has
+                            // moved it to another agent, whose own default the
+                            // sheet resolves for itself.
+                            inheritedModel: agentOverridden
+                                ? null
+                                : details?.model,
+                            inheritedReasoningEffort: agentOverridden
+                                ? null
+                                : details?.reasoningEffort,
                             allowAgentSelection: isNewSession,
                             onAgentChanged: (agent) => ref
                                 .read(

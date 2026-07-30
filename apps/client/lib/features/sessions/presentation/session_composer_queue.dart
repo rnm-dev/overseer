@@ -825,8 +825,8 @@ class _ComposerCapabilityPicker extends StatefulWidget {
     required this.defaultAgent,
     required this.model,
     required this.reasoningEffort,
-    required this.defaultModelLabel,
-    required this.defaultReasoningEffortLabel,
+    required this.inheritedModel,
+    required this.inheritedReasoningEffort,
     required this.allowAgentSelection,
     required this.onAgentChanged,
     required this.onModelChanged,
@@ -838,8 +838,8 @@ class _ComposerCapabilityPicker extends StatefulWidget {
   final String? defaultAgent;
   final String? model;
   final String? reasoningEffort;
-  final String defaultModelLabel;
-  final String defaultReasoningEffortLabel;
+  final String? inheritedModel;
+  final String? inheritedReasoningEffort;
   final bool allowAgentSelection;
   final ValueChanged<String?>? onAgentChanged;
   final ValueChanged<String?>? onModelChanged;
@@ -861,18 +861,6 @@ class _ComposerCapabilityPickerState extends State<_ComposerCapabilityPicker> {
     );
   }
 
-  String _optionLabel(
-    List<ModelCatalogOption> options,
-    String? value,
-    String fallback,
-  ) {
-    if (value == null) return fallback;
-    for (final option in options) {
-      if (option.id == value || option.alias == value) return option.label;
-    }
-    return value;
-  }
-
   Future<void> _showPicker() async {
     if (_open) return;
     setState(() => _open = true);
@@ -889,20 +877,20 @@ class _ComposerCapabilityPickerState extends State<_ComposerCapabilityPicker> {
           );
           final initialAgent =
               widget.agent ?? widget.defaultAgent ?? _provider.agent;
+          // A session's own model and effort belong to the agent it runs on, so
+          // switching agent here leaves only the new provider's marked default.
           final switchedAgent =
               widget.allowAgentSelection && provider.agent != initialAgent;
-          String defaultLabel(
-            List<ModelCatalogOption> options,
-            String fallback,
-          ) {
-            if (!switchedAgent) {
-              return fallback == 'Default' ? fallback : 'Default · $fallback';
-            }
-            for (final option in options) {
-              if (option.isDefault) return 'Default · ${option.label}';
-            }
-            return 'Default';
-          }
+          final modelChoices = capabilityChoices(
+            provider.models,
+            model,
+            inherited: switchedAgent ? null : widget.inheritedModel,
+          );
+          final effortChoices = capabilityChoices(
+            provider.reasoningEfforts,
+            effort,
+            inherited: switchedAgent ? null : widget.inheritedReasoningEffort,
+          );
 
           return AppBottomSheet(
             title: widget.allowAgentSelection
@@ -921,12 +909,13 @@ class _ComposerCapabilityPickerState extends State<_ComposerCapabilityPicker> {
                       if (widget.allowAgentSelection)
                         _CapabilityRadioSection(
                           title: 'Agent',
-                          value: agent,
-                          options: [
+                          choices: [
                             for (final item in widget.providers)
-                              _CapabilityOption(
+                              CapabilityChoice(
                                 value: item.agent,
                                 label: item.label,
+                                name: item.label,
+                                selected: item.agent == agent,
                               ),
                           ],
                           onChanged: (value) {
@@ -940,21 +929,7 @@ class _ComposerCapabilityPickerState extends State<_ComposerCapabilityPicker> {
                         ),
                       _CapabilityRadioSection(
                         title: 'Model',
-                        value: model ?? '',
-                        options: [
-                          _CapabilityOption(
-                            value: '',
-                            label: defaultLabel(
-                              provider.models,
-                              widget.defaultModelLabel,
-                            ),
-                          ),
-                          for (final option in provider.models)
-                            _CapabilityOption(
-                              value: option.id,
-                              label: option.label,
-                            ),
-                        ],
+                        choices: modelChoices,
                         onChanged: (value) {
                           setSheetState(
                             () => model = value.isEmpty ? null : value,
@@ -967,21 +942,7 @@ class _ComposerCapabilityPickerState extends State<_ComposerCapabilityPicker> {
                       if (provider.reasoningEfforts.isNotEmpty)
                         _CapabilityRadioSection(
                           title: 'Effort',
-                          value: effort ?? '',
-                          options: [
-                            _CapabilityOption(
-                              value: '',
-                              label: defaultLabel(
-                                provider.reasoningEfforts,
-                                widget.defaultReasoningEffortLabel,
-                              ),
-                            ),
-                            for (final option in provider.reasoningEfforts)
-                              _CapabilityOption(
-                                value: option.id,
-                                label: option.label,
-                              ),
-                          ],
+                          choices: effortChoices,
                           onChanged: (value) {
                             setSheetState(
                               () => effort = value.isEmpty ? null : value,
@@ -1007,15 +968,15 @@ class _ComposerCapabilityPickerState extends State<_ComposerCapabilityPicker> {
   Widget build(BuildContext context) {
     final provider = _provider;
     final agentLabel = provider.label;
-    final modelLabel = _optionLabel(
+    final modelLabel = capabilityLabel(
       provider.models,
       widget.model,
-      widget.defaultModelLabel,
+      inherited: widget.inheritedModel,
     );
-    final effortLabel = _optionLabel(
+    final effortLabel = capabilityLabel(
       provider.reasoningEfforts,
       widget.reasoningEffort,
-      widget.defaultReasoningEffortLabel,
+      inherited: widget.inheritedReasoningEffort,
     );
     final label = '$agentLabel · $modelLabel · $effortLabel';
     return Semantics(
@@ -1069,25 +1030,25 @@ class _ComposerCapabilityPickerState extends State<_ComposerCapabilityPicker> {
   }
 }
 
-class _CapabilityOption {
-  const _CapabilityOption({required this.value, required this.label});
-
-  final String value;
-  final String label;
-}
-
 class _CapabilityRadioSection extends StatelessWidget {
   const _CapabilityRadioSection({
     required this.title,
-    required this.value,
-    required this.options,
+    required this.choices,
     required this.onChanged,
   });
 
   final String title;
-  final String value;
-  final List<_CapabilityOption> options;
+  final List<CapabilityChoice> choices;
   final ValueChanged<String> onChanged;
+
+  // Which row the choices themselves say is current — a value that names no
+  // listed option simply leaves the group unselected.
+  String? get _groupValue {
+    for (final choice in choices) {
+      if (choice.selected) return choice.value;
+    }
+    return null;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1107,21 +1068,21 @@ class _CapabilityRadioSection extends StatelessWidget {
             ),
           ),
           RadioGroup<String>(
-            groupValue: value,
+            groupValue: _groupValue,
             onChanged: (value) {
               if (value != null) onChanged(value);
             },
             child: Column(
               children: [
-                for (final option in options)
+                for (final choice in choices)
                   RadioListTile<String>(
                     key: ValueKey(
                       'session-capability-${title.toLowerCase()}-'
-                      '${option.value}',
+                      '${choice.name}',
                     ),
-                    value: option.value,
+                    value: choice.value,
                     title: Text(
-                      option.label,
+                      choice.label,
                       style: AppTypography.body(
                         fontSize: AppTypography.composerCapabilityTextSize,
                         color: AppColors.bone,

@@ -221,6 +221,17 @@ bottom sheet. It loads the Peon's provider capability catalog from `/models`,
 silently hides the control for Peons without the catalog, and retains overrides
 with a pending command across retries.
 
+That sheet lists one row per actual choice. Whatever an unset override falls
+back to — the model or effort the session itself pinned, or failing that the
+one the provider marks as its default — is listed once and marked
+`… · Default`, and picking it clears the override rather than pinning today's
+default. Only a provider that marks no default at all gets a separate plain
+`Default` row, because then there is nothing else to name. The rule lives in
+`capabilityChoices` (`lib/features/sessions/presentation/capability_choices.dart`)
+and mirrors the web dashboard's `pickerEntries`; both replaced surfaces that
+built the reset row and the option list independently and so offered the same
+model twice under two names.
+
 ## Authoritative queue
 
 Opening an existing session renders the cached queue and reconciles it with:

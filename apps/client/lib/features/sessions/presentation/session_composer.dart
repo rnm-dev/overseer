@@ -14,6 +14,7 @@ import '../../../shared/widgets/app_text_field.dart';
 import '../application/voice_dictation_controller.dart';
 import '../domain/followup_repository.dart';
 import '../domain/new_session_repository.dart';
+import 'capability_choices.dart';
 part 'session_composer_queue.dart';
 
 TextEditingValue insertVoiceTranscript(
@@ -72,8 +73,8 @@ class SessionComposer extends StatefulWidget {
     this.defaultAgent,
     this.model,
     this.reasoningEffort,
-    this.defaultModelLabel = 'Default',
-    this.defaultReasoningEffortLabel = 'Default',
+    this.inheritedModel,
+    this.inheritedReasoningEffort,
     this.allowAgentSelection = true,
     this.onAgentChanged,
     this.onModelChanged,
@@ -109,8 +110,10 @@ class SessionComposer extends StatefulWidget {
   final String? defaultAgent;
   final String? model;
   final String? reasoningEffort;
-  final String defaultModelLabel;
-  final String defaultReasoningEffortLabel;
+  /// What an unset override falls back to: the model and effort the session
+  /// itself pinned. Null lets the provider's own marked default stand in.
+  final String? inheritedModel;
+  final String? inheritedReasoningEffort;
   final bool allowAgentSelection;
   final ValueChanged<String?>? onAgentChanged;
   final ValueChanged<String?>? onModelChanged;
@@ -445,9 +448,9 @@ class _SessionComposerState extends State<SessionComposer> {
                             defaultAgent: widget.defaultAgent,
                             model: widget.model,
                             reasoningEffort: widget.reasoningEffort,
-                            defaultModelLabel: widget.defaultModelLabel,
-                            defaultReasoningEffortLabel:
-                                widget.defaultReasoningEffortLabel,
+                            inheritedModel: widget.inheritedModel,
+                            inheritedReasoningEffort:
+                                widget.inheritedReasoningEffort,
                             allowAgentSelection: widget.allowAgentSelection,
                             onAgentChanged: widget.onAgentChanged,
                             onModelChanged: widget.onModelChanged,

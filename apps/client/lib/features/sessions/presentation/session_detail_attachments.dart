@@ -455,23 +455,6 @@ ModelProvider? _modelProviderFor(
   return catalog.providers.first;
 }
 
-String _catalogLabel(
-  List<ModelCatalogOption>? options,
-  String? value, {
-  required String fallback,
-}) {
-  if (value == null) {
-    for (final option in options ?? const <ModelCatalogOption>[]) {
-      if (option.isDefault) return option.label;
-    }
-    return fallback;
-  }
-  for (final option in options ?? const <ModelCatalogOption>[]) {
-    if (option.id == value || option.alias == value) return option.label;
-  }
-  return value;
-}
-
 String? submissionLabel(SessionComposerState? state, {required bool running}) {
   final followup = state?.followupProgress;
   if (followup != null) {

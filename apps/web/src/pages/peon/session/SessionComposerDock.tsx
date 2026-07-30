@@ -53,8 +53,8 @@ export function SessionComposerDock(props: Props) {
   const composerEfforts = effortsForModel(sessionProvider, overrideModel || sessionModel || null);
   const inheritedEffortId = defaultEffortIdFor(composerEfforts);
   return createPortal(
-    <div ref={setComposerNode} className="session-composer fixed bottom-0 left-0 right-0 z-40 bg-gradient-to-t from-void via-void to-transparent pt-6 md:left-[var(--peon-sidebar-width)]">
-      <div className="mx-auto max-w-[76rem] px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:px-6 sm:pb-[max(1rem,env(safe-area-inset-bottom))]">
+    <div ref={setComposerNode} className="session-composer fixed bottom-0 left-0 right-0 z-40 bg-gradient-to-t from-void via-void to-transparent pt-4 md:left-[var(--peon-sidebar-width)]">
+      <div className="mx-auto max-w-[76rem] px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:px-6 sm:pb-[max(0.75rem,env(safe-area-inset-bottom))]">
     <QueueList
       items={queueItems}
       removing={removingQueueItems}
