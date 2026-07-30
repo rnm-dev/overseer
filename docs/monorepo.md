@@ -170,8 +170,9 @@ Each step leaves the tree working.
 2. **OVSR-239** — `packages/protocol`; server and web move onto it, then publish
    it as `@rnm-dev/protocol`.
 3. **OVSR-240** — *released.* Peon lives in `apps/peon` as the
-   `@rnm-dev/peon` workspace; public `0.11.2` was published to npm on
-   2026-07-30 and verified by a clean registry install. npm is the installation
+   `@rnm-dev/peon` workspace; public `0.11.3` was published to npm on
+   2026-07-30 and verified by a clean registry install and rollback pack/install
+   from the compiled-only distribution. npm is the installation
    channel only: enrolled fleet updates still use Overseer's authenticated,
    size- and SHA-256-verified release registry.
 4. **OVSR-241** — *done locally.* The Flutter client is in `apps/client`, its
