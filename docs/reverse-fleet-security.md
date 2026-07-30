@@ -25,10 +25,10 @@ This command is read-only apart from temporary test files and in-memory
 databases. It does not contact production, deploy, or restart a service.
 
 Reverse-only/public-boundary cutover is **not approved** by this document.
-OVSR-129 is in Code Review; OVSR-130, OVSR-210, OVSR-145, and OVSR-147 are
-unfinished. Their uncommitted semantics are listed under
-[Blocked suites](#blocked-suites). OVSR-248 and OVSR-249 are fixed in the
-working source; their deployment/review state remains part of the cutover gate.
+OVSR-129, OVSR-130, and OVSR-210 remain In Progress. OVSR-145, OVSR-147,
+OVSR-248, and OVSR-249 are in Code Review; review state is not deployment or
+operational evidence. The exact executable and blocked cells are listed under
+[Blocked suites](#blocked-suites).
 
 The mixed-version legacy credential is also deliberately recoverable plaintext
 in `peon_credentials.token` and `peons.token`, because Overseer still calls old
@@ -189,8 +189,8 @@ acceptance, heartbeat, status reconciliation, or durable ACKs.
 | Send result/acceptance from another Peon/generation | Fence and close/reject without resolving command | gateway/socket generation tests |
 | Steal/replay revoked credential | Upgrade/request rejected; both sockets evicted | transfer/socket credential tests |
 | Expose credential in view/error/preview | Sentinel absent from browser/API/close reason | security gate, settings and preview tests |
-| Claim or rotate with replayed proof | Fresh proof + semantic ID; nonce replay rejected | **blocked: OVSR-210/145/147** |
-| Race claim and legacy enrollment | One durable method lease; losing credential revoked | **blocked: OVSR-210/145/147** |
+| Claim or rotate with replayed proof | Fresh proof + semantic ID; nonce replay rejected | claim contract/client/service tests in the gate |
+| Race claim and legacy enrollment | One durable method lease; losing credential revoked | claim service tests in the gate; delayed-generation race remains blocked |
 
 ### P1: frame, durable stream, and resource abuse
 
@@ -226,20 +226,22 @@ running every unfinished claim/command test in the tree.
 Overseer coverage:
 
 - `apps/server/src/reverseFleetSecurity.test.ts`
+- claim contract tests; the monolithic service suite is not in the stable runner
+  because its known delayed-generation failure keeps the process open
 - reverse-command contract/gateway, control and transfer sockets
 - attachment sandbox, folder browse, project viewer, preview and ACL tests
 
 Peon coverage:
 
+- claim contract and implemented client persistence/proof/recovery tests
 - reverse-command channel/ledger characterization
 - socket and credential-generation replacement
 - project/sandbox file channels and folder listing
 - human-settings credential redaction
 
-The Peon command/gateway files are included as characterization against the
-released envelope and stable transport boundaries. A green run does **not**
-approve OVSR-129/130 persistence/fault semantics while those tasks are
-unfinished.
+The command and enrollment files are executable characterization against the
+current reviewed contract and implementations. A green run does **not** approve
+unfinished tasks, the excluded delayed-generation race, or operational rollout.
 
 Run one new cross-boundary file:
 
@@ -254,30 +256,32 @@ Run the complete stable security gate:
 node scripts/security/run-reverse-fleet-security.mjs
 ```
 
-The stable gate includes `proxyTrust.test.ts` for OVSR-248 and the
-cross-boundary sentinel regression for OVSR-249.
+The stable gate includes `proxyTrust.test.ts` for OVSR-248, the cross-boundary
+sentinel regression for OVSR-249, and the claim contract/client security cells.
+On 2026-07-30 an attempted expanded Overseer group reached 87/88 before
+one timing-sensitive gateway reconciliation assertion observed `accepted`
+instead of `terminal`; the exact test passed immediately in isolation. This is
+not recorded as a green complete-gate run.
 
 ## Blocked suites
 
-These suites must be implemented and enabled before OVSR-150 can move to Code
-Review.
+These cells must be green, reviewed, or backed by the stated operational
+evidence before OVSR-150 can move to Code Review.
 
 | Blocked suite | Owner/dependency | Exit condition |
 | --- | --- | --- |
-| Crash before/after Peon command admission, effect, result persistence, publish and ACK | OVSR-129 | Reviewed ledger/outbox implementation and deterministic fault hooks |
-| Overseer restart/disconnect at every send/accept/result/commit boundary; forged ACK/cursor/message collisions | OVSR-130 | Gateway task completes review and fault-injection surface is frozen |
-| Cross-workspace tests for every future reverse operation family | Operation tasks + OVSR-129/130 | Operation is shipped and uses the one gateway/ledger |
-| Claim brute force, real signature/origin/path binding, nonce replay, changed-body ID reuse, cleanup and restart | OVSR-210/145/147 | Frozen vectors and both runtime implementations complete |
-| Claim approval/denial/expiry/cancel/ACK races | OVSR-210/145/147 | Final state machine and cleanup ordering reviewed |
-| Recovery, rotation, retiring-credential upgrade refusal, grace eviction, revocation | OVSR-145/147 | Both socket registries consume final credential generations |
-| Claim-versus-legacy race in both directions and downgrade on every transport outcome | OVSR-145/147 | Durable attempt/method leases complete |
+| Full command crash matrix at admission/effect/result persistence/publish/ACK plus forged ACK/cursor/message collisions | OVSR-129/130 | Both tasks complete review and the executable fault matrix passes |
+| Gateway disconnect/restart convergence under the complete stable load | OVSR-130/150 | `disconnect boundaries and a fresh gateway reconcile with the same command ID` passes in the full gate, not only in isolation |
+| Cross-workspace tests for every shipped reverse operation family | Operation tasks + OVSR-129/130 | Registry-derived operation matrix proves denial before command creation/send |
+| Claim proof, nonce replay, changed-body ID reuse, cleanup/restart, approval/denial/expiry/cancel/ACK, rotation and revocation | OVSR-210/145/147 | Contract/client cells are in the stable runner; service cells pass before the delayed-generation failure but remain outside the stable count while the monolithic file cannot terminate cleanly |
+| Delayed old-generation hello versus current-generation control/transfer hello | OVSR-147 integration | `generation 2 hellos stay authoritative when delayed generation 1 hellos arrive` passes and terminates cleanly; it currently fails and leaves the test process open |
+| Claim-versus-legacy race and downgrade outcomes | OVSR-145/147 | **Partially executable:** committed-method race passes; complete transport-outcome downgrade matrix remains reviewed |
 | Transfer write checksum, atomic replace, post-completion write frames | OVSR-49/51/53 | Write protocol exists; no write operation exists today |
 | Public-origin proxy/TLS/slowloris and no-inbound soak | OVSR-148/149/151/152 | Deploy the reviewed trusted-IP config and make staging topology available |
 | Legacy credential plaintext removal | OVSR-211 | Mixed-version window ended and no callback credential remains |
 
-Tests in unfinished claim files may be run for development, but their green
-status must not be copied into this gate until the dependency moves through
-review and the test is re-read against the final contract.
+An excluded or TODO cell is never included in the pass count. Task review,
+source/config review and production operational evidence are separate gates.
 
 ## Findings and residual risks
 
@@ -375,8 +379,8 @@ These are operator actions, not automated assumptions.
 
 ### Suspected `pc1` bearer compromise
 
-The following endpoints and rotation behavior are provisional until
-OVSR-145/147 complete:
+The following endpoints and rotation behavior are implemented and in Code
+Review, but remain operationally provisional until deployment and exercise:
 
 1. Revoke the specific credential immediately when the Peon identity is still
    trusted; otherwise revoke the whole Peon.

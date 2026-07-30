@@ -277,7 +277,7 @@ test("terminal publication retries outbox pressure and cursor-bind persistence f
   }
 });
 
-test("manual validation matches actor, timestamp, and exactly-one-target schema constraints", async () => {
+test("manual validation matches actor, timestamp, and target schema constraints", async () => {
   const directory = mkdtempSync(path.join(os.tmpdir(), "peon-command-schema-"));
   let effects = 0;
   const sent: PeonSocketFrame[] = [];
@@ -303,7 +303,7 @@ test("manual validation matches actor, timestamp, and exactly-one-target schema 
     channel.receive({
       ...frame,
       commandId: "218f4f0c-9f30-7a61-bf1a-66d2582bdb4a",
-      target: { peonId, sessionId, projectId: "318f4f0c-9f30-7a61-bf1a-66d2582bdb4a" },
+      target: { peonId, packageId: "../invalid-package" },
     }, sender);
     await tick();
     assert.equal(effects, 0);

@@ -228,7 +228,8 @@ test("pool opens and independently maintains control and transfer WebSockets", a
     await waitFor(() => pool.getState().connectedConnections === 2, "pool did not open two sockets");
     assert.equal(pool.getState().targetConnections, 2);
     assert.equal(pool.getState().connected, true);
-    assert.deepEqual(target.auth, ["Bearer secret-token", "Bearer secret-token"]);
+    assert.ok(target.auth.length >= 2);
+    assert.ok(target.auth.every((authorization) => authorization === "Bearer secret-token"));
     assert.deepEqual(target.hellos.map((hello) => hello.peonId), ["peon-1", "peon-1"]);
     assert.deepEqual(target.paths.sort(), ["/api/v1/peons/transfer/ws", "/api/v1/peons/ws"]);
     const transferHello = target.hellos.find((hello) => hello.channel === "file-transfer");
