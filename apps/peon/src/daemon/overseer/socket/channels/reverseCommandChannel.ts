@@ -6,6 +6,7 @@ import {
 } from "../../../sessions/index.js";
 import type { PeonSocketChannel, PeonSocketFrame, PeonSocketSender } from "../peonSocketProtocol.js";
 import { ReverseCommandLedger, type ReverseCommandRecord } from "../reverseCommandLedger.js";
+import { sessionCommandHandlers } from "./sessionCommandHandlers.js";
 import { daemonConfigurationChannel } from "./daemonConfigurationChannel.js";
 
 export const REVERSE_COMMAND_CAPABILITY = "reverse-command-v1";
@@ -132,6 +133,7 @@ export class ReverseCommandChannel implements PeonSocketChannel {
     const sessionService = options.sessions ?? sessions;
     this.handlers = options.handlers ?? {
       "session.cancel": sessionCancelHandler(sessionService),
+      ...sessionCommandHandlers(),
       "daemon.configuration.patch": daemonConfigurationChannel.commandHandler(),
     };
     this.maxConcurrency = options.maxConcurrency ?? 16;

@@ -53,7 +53,7 @@
         "protocol": { "const": 1 },
         "capability": { "const": "reverse-command-v1" },
         "commandId": { "$ref": "#/$defs/uuid" },
-        "operation": { "type": "string", "enum": ["session.cancel"] },
+        "operation": { "type": "string", "enum": ["session.cancel", "session.start", "session.followup", "session.queue.list", "session.queue.add", "session.queue.edit", "session.queue.remove", "session.queue.send-now", "session.metadata.patch", "session.delete"] },
         "target": { "$ref": "#/$defs/target" },
         "actor": { "$ref": "#/$defs/actor" },
         "payload": {

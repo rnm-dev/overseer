@@ -1385,6 +1385,27 @@ request hash, complete validated work item, actor/target fence, lifecycle, and
 terminal result. Same-ID/same-body delivery replays the stored lifecycle;
 same-ID/different-body returns `COMMAND_ID_REUSED` without an effect.
 
+Session mutations are operations on that same ledger: `session.start`,
+`session.followup`, `session.queue.list`, `session.queue.add`,
+`session.queue.edit`, `session.queue.remove`, `session.queue.send-now`,
+`session.metadata.patch`, `session.cancel`, and `session.delete`. All except
+start require `target.sessionId`; queue item mutations additionally carry a
+UUID `payload.itemId`. Start uses the command ID as the session ID, and every
+user turn or queue item records the authenticated actor email plus the command
+ID. Consequently same-ID replay cannot create a second session, transcript
+turn, or queue item. A changed operation, target, actor, payload, or expected
+state under the same ID is the generic `COMMAND_ID_REUSED` conflict.
+
+The dispatcher serializes ordinary commands per session while retaining
+cross-session concurrency. Cancel keeps its reserved critical lane. Queue
+send-now persists the selected head before interrupting a running provider;
+restart recovery therefore retains the selected ordering. Delete is
+idempotent: an already absent session returns `noop/OK`, while a live session
+returns `SESSION_RUNNING`. Successful lifecycle and metadata results contain
+the canonical public session record; queue results contain only the scoped
+session/item view. Private pending system prompts and parent notification
+bookkeeping never enter a command result, and every result is capped at 48 KiB.
+
 An accepted record is resumed after restart. A record already marked `running`
 is never executed again after a crash; Peon records a safe terminal `INTERNAL`
 outcome and relies on operation-specific state reconciliation rather than risk a
