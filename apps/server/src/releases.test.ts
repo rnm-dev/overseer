@@ -85,6 +85,7 @@ test("publishes a global release and serves latest metadata and archive ranges t
   assert.equal(published.status, 201);
   assert.deepEqual(json(published).release, {
     version: "1.2.3",
+    revision: sha256,
     size: archive.length,
     sha256,
     createdAt: (json(published).release as { createdAt: number }).createdAt,

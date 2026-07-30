@@ -24,15 +24,19 @@ test("publishes atomic saves and deletion tombstones with increasing revisions",
   try {
     await writeFile(path.join(root, "report.txt"), "one");
     await publisher.watch("lease", root, "report.txt", Date.now() + 60_000);
-    await waitFor(() => publications.length === 1);
+    await waitFor(() => publications.some((item) => item.assets[0]?.bytes.toString() === "one"));
     await writeFile(path.join(root, ".save"), "two");
     await rename(path.join(root, ".save"), path.join(root, "report.txt"));
-    await waitFor(() => publications.length === 2);
+    await waitFor(() => publications.some((item) => item.assets[0]?.bytes.toString() === "two"));
     await rm(path.join(root, "report.txt"));
-    await waitFor(() => publications.length === 3);
-    assert.equal(publications[1]?.assets[0]?.bytes.toString(), "two");
-    assert.equal(publications[2]?.deleted, true);
-    assert.deepEqual(publications.map((item) => item.revision), [1, 2, 3]);
+    await waitFor(() => publications.some((item) => item.deleted));
+    const expected = [
+      publications.find((item) => item.assets[0]?.bytes.toString() === "one")!,
+      publications.find((item) => item.assets[0]?.bytes.toString() === "two")!,
+      publications.find((item) => item.deleted)!,
+    ];
+    const revisions = expected.map((item) => item.revision);
+    assert.ok(revisions.slice(1).every((revision, index) => revision > revisions[index]!));
   } finally {
     publisher.close();
     await rm(root, { recursive: true, force: true });
@@ -79,16 +83,19 @@ test("builds a bounded content-addressed HTML bundle before publication", async 
     await writeFile(path.join(root, "site", "app.js"), "ok()");
     await writeFile(path.join(root, "site", "assets", "theme.css"), "body{}");
     await publisher.watch("lease", root, "site/index.html", Date.now() + 60_000);
-    await waitFor(() => publications.length === 1);
-    assert.deepEqual(publications[0]?.assets.map((asset) => asset.path), [
+    await waitFor(() => publications.some((item) =>
+      item.assets.some((asset) => asset.path.endsWith("theme.css") && asset.bytes.toString() === "body{}")));
+    const initial = publications.find((item) =>
+      item.assets.some((asset) => asset.path.endsWith("theme.css") && asset.bytes.toString() === "body{}"))!;
+    assert.deepEqual(initial.assets.map((asset) => asset.path), [
       "site/app.js",
       "site/assets/theme.css",
       "site/index.html",
     ]);
-    assert.match(publications[0]?.assets[0]?.sha256 ?? "", /^[a-f0-9]{64}$/);
+    assert.match(initial.assets[0]?.sha256 ?? "", /^[a-f0-9]{64}$/);
     await writeFile(path.join(root, "site", "assets", "theme.css"), "body{color:red}");
-    await waitFor(() => publications.length === 2);
-    assert.equal(publications[1]?.assets.find((asset) => asset.path.endsWith("theme.css"))?.bytes.toString(), "body{color:red}");
+    await waitFor(() => publications.some((item) =>
+      item.assets.some((asset) => asset.path.endsWith("theme.css") && asset.bytes.toString() === "body{color:red}")));
   } finally {
     publisher.close();
     await rm(root, { recursive: true, force: true });

@@ -28,8 +28,10 @@ test("update controls are exposed and their status contract is documented", asyn
   const protocol = await readFile(new URL("../PROTOCOL.md", import.meta.url), "utf8");
   for (const field of [
     "updateAvailable",
-    "updateLocalSha",
-    "updateRemoteSha",
+    "updateCurrentVersion",
+    "updateLatestVersion",
+    "updateCurrentRevision",
+    "updateLatestRevision",
     "updateCheckedAt",
     "updateCheckError",
   ]) {

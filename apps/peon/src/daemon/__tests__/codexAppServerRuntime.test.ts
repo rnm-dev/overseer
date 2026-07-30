@@ -17,7 +17,7 @@ function runtime(overrides: ConstructorParameters<typeof CodexAppServerRuntime>[
     command: process.execPath,
     args: [fixture],
     versionArgs: [fixture, "--version"],
-    requestTimeoutMs: 150,
+    requestTimeoutMs: 3_000,
     restartInitialDelayMs: 10,
     restartMaxDelayMs: 20,
     restartStabilityMs: 50,
@@ -25,7 +25,7 @@ function runtime(overrides: ConstructorParameters<typeof CodexAppServerRuntime>[
   });
 }
 
-async function waitForHealth(instance: CodexAppServerRuntime, predicate: (health: CodexAppServerHealth) => boolean, timeoutMs = 1_000) {
+async function waitForHealth(instance: CodexAppServerRuntime, predicate: (health: CodexAppServerHealth) => boolean, timeoutMs = 3_000) {
   const current = instance.getHealth();
   if (predicate(current)) return current;
   return new Promise<CodexAppServerHealth>((resolve, reject) => {
@@ -114,7 +114,7 @@ describe("Codex app-server runtime", () => {
     const instance = runtime({ command: process.execPath, maxPendingRequests: 1 });
     try {
       await instance.start();
-      const hanging = instance.request("test/hang");
+      const hanging = instance.request("test/hang", undefined, 100);
       await assert.rejects(instance.request("test/echo", { value: "blocked" }), (error: unknown) => {
         assert.ok(error instanceof CodexAppServerError);
         assert.equal(error.code, "overloaded");

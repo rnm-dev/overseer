@@ -11,7 +11,8 @@ test("legacy integration routes are absent while current project and status rout
   );
   const root = "/workspaces/:wsId/peons/:id";
 
-  assert.equal(has(`${root}/status`, "patch"), true);
+  assert.equal(has(`${root}/status`, "get"), true);
+  assert.equal(has(`${root}/status`, "patch"), false);
   assert.equal(has(`${root}/integrations`, "get"), false);
   assert.equal(has(`${root}/integrations`, "post"), false);
   assert.equal(has(`${root}/integrations/:key`, "patch"), false);

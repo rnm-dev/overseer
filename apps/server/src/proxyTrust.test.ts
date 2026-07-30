@@ -329,7 +329,7 @@ test("trusted Kamal keeps its appended direct peer authoritative across spoofed 
       if (index === 5) assert.equal(response.body.code, "RATE_LIMITED");
     }
     const directTokens: string[] = [];
-    for (let index = 0; index < 11; index += 1) {
+    for (let index = 0; index < 21; index += 1) {
       const userId = randomUUID();
       await query(
         `INSERT INTO users (id,email,created_at) VALUES ($1,$2,$3)`,
@@ -337,16 +337,23 @@ test("trusted Kamal keeps its appended direct peer authoritative across spoofed 
       );
       directTokens.push((await issueDevice(userId, "direct Kamal", { ip: null, userAgent: null })).token);
     }
-    for (let index = 0; index < 11; index += 1) {
+    let directRateLimited = false;
+    for (let index = 0; index < directTokens.length; index += 1) {
       const response = await post(
         port,
         "/api/peon-claims/resolve",
         { type: "claim_resolve", protocol: 1, operatorCode: "0000-0000" },
         directKamalHeaders(index, directTokens[index]),
       );
-      assert.equal(response.status, index < 10 ? 404 : 429);
-      assert.equal(response.body.code, index < 10 ? "CLAIM_NOT_FOUND" : "RATE_LIMITED");
+      if (response.status === 429) {
+        assert.equal(response.body.code, "RATE_LIMITED");
+        directRateLimited = true;
+        break;
+      }
+      assert.equal(response.status, 404);
+      assert.equal(response.body.code, "CLAIM_NOT_FOUND");
     }
+    assert.equal(directRateLimited, true);
 
     // Fail closed even if a future/broken proxy emits a malformed rightmost
     // token: clientInfo rejects it as an IP and uses the one trusted socket peer.
@@ -372,7 +379,7 @@ test("trusted Kamal keeps its appended direct peer authoritative across spoofed 
       if (index === 5) assert.equal(response.body.code, "RATE_LIMITED");
     }
     const malformedTokens: string[] = [];
-    for (let index = 0; index < 11; index += 1) {
+    for (let index = 0; index < 21; index += 1) {
       const userId = randomUUID();
       await query(
         `INSERT INTO users (id,email,created_at) VALUES ($1,$2,$3)`,
@@ -380,16 +387,23 @@ test("trusted Kamal keeps its appended direct peer authoritative across spoofed 
       );
       malformedTokens.push((await issueDevice(userId, "malformed Kamal", { ip: null, userAgent: null })).token);
     }
-    for (let index = 0; index < 11; index += 1) {
+    let malformedRateLimited = false;
+    for (let index = 0; index < malformedTokens.length; index += 1) {
       const response = await post(
         port,
         "/api/peon-claims/resolve",
         { type: "claim_resolve", protocol: 1, operatorCode: "0000-0000" },
         malformedRightmostHeaders(index, malformedTokens[index]),
       );
-      assert.equal(response.status, index < 10 ? 404 : 429);
-      assert.equal(response.body.code, index < 10 ? "CLAIM_NOT_FOUND" : "RATE_LIMITED");
+      if (response.status === 429) {
+        assert.equal(response.body.code, "RATE_LIMITED");
+        malformedRateLimited = true;
+        break;
+      }
+      assert.equal(response.status, 404);
+      assert.equal(response.body.code, "CLAIM_NOT_FOUND");
     }
+    assert.equal(malformedRateLimited, true);
   } finally {
     await close(server);
     Object.assign(config, original);

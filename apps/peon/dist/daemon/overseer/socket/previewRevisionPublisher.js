@@ -235,6 +235,11 @@ export class PreviewRevisionPublisher {
     async refreshWatchers(key, publisher) {
         const resolved = await this.resolveContained(publisher.root, publisher.relativePath, true);
         const next = await this.installWatchers(key, resolved.root, resolved.absolute);
+        if (this.publishers.get(key) !== publisher) {
+            for (const watcher of next)
+                watcher.close();
+            return;
+        }
         const previous = publisher.watchers;
         publisher.watchers = next;
         for (const watcher of previous)

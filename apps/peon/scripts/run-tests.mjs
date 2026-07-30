@@ -9,23 +9,35 @@ const tests = readdirSync(testDir)
   .filter((name) => name.endsWith(".test.ts"))
   .sort()
   .map((name) => path.join(testDir, name));
+const serialTests = [
+  path.join(testDir, "previewRevisionPublisher.test.ts"),
+  path.join(testDir, "sessionLoad.test.ts"),
+];
+const regularTests = tests.filter((test) => !serialTests.includes(test));
 
 // npm appends `npm test -- <args>` after the script. Put those Node test-runner
 // flags before the positional files so filters such as --test-name-pattern
 // actually take effect instead of silently running the entire suite.
-const result = spawnSync(process.execPath, [
-  "--import",
-  "tsx",
-  "--import",
-  path.join(root, "scripts", "test-isolation.mjs"),
+const run = (selectedTests, concurrency) => spawnSync(process.execPath, [
+  "--import", "tsx",
+  "--import", path.join(root, "scripts", "test-isolation.mjs"),
   "--test",
+  `--test-concurrency=${concurrency}`,
+  "--test-timeout=60000",
   ...process.argv.slice(2),
-  ...tests,
+  ...selectedTests,
 ], {
   cwd: root,
   env: { ...process.env, NODE_ENV: "test", PEON_TEST_RUN: "1" },
   stdio: "inherit",
 });
 
-if (result.error) throw result.error;
-process.exit(result.status ?? 1);
+const regularResult = run(regularTests, 4);
+if (regularResult.error) throw regularResult.error;
+if (regularResult.status !== 0) process.exit(regularResult.status ?? 1);
+
+// Filesystem watch timing and the latency benchmark must be independent from
+// unrelated process workers so they measure Peon behavior, not suite contention.
+const serialResult = run(serialTests, 1);
+if (serialResult.error) throw serialResult.error;
+process.exit(serialResult.status ?? 1);

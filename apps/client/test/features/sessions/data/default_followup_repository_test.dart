@@ -203,7 +203,11 @@ void main() {
       expect(posts.first.headers['Peon-Request-Id'], 'followup-command');
       expect(posts.last.headers['Peon-Request-Id'], 'followup-command');
       expect(posts.last.data['attachments'], [
-        {'type': 'image', 'path': 'uploads/followup-command/screenshot.png'},
+        {
+          'type': 'image',
+          'path': 'uploads/followup-command/screenshot.png',
+          'size': 3,
+        },
       ]);
     },
   );

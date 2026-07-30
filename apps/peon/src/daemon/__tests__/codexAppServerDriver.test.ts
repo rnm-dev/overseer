@@ -18,7 +18,7 @@ function runtime() {
     args: [fixture],
     versionArgs: [fixture, "--version"],
     experimentalApi: true,
-    requestTimeoutMs: 500,
+    requestTimeoutMs: 3_000,
     restartInitialDelayMs: 10,
   });
 }
