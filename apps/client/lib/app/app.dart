@@ -279,6 +279,7 @@ class ForegroundNotificationSurface extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final current = notification;
+    final colors = Theme.of(context).colorScheme;
     return Stack(
       children: [
         child,
@@ -290,9 +291,9 @@ class ForegroundNotificationSurface extends StatelessWidget {
                 padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
                 child: Material(
                   key: const Key('foreground-notification'),
-                  color: const Color(0xFF202523),
+                  color: colors.surfaceContainerHighest,
                   elevation: 12,
-                  shadowColor: Colors.black54,
+                  shadowColor: colors.shadow.withValues(alpha: 0.54),
                   borderRadius: BorderRadius.circular(14),
                   clipBehavior: Clip.antiAlias,
                   child: InkWell(
@@ -303,9 +304,9 @@ class ForegroundNotificationSurface extends StatelessWidget {
                         padding: const EdgeInsets.fromLTRB(14, 11, 6, 11),
                         child: Row(
                           children: [
-                            const Icon(
+                            Icon(
                               Icons.notifications_active_outlined,
-                              color: Color(0xFF52F0B0),
+                              color: colors.primary,
                               size: 22,
                             ),
                             const SizedBox(width: 11),
@@ -318,8 +319,8 @@ class ForegroundNotificationSurface extends StatelessWidget {
                                     current.title,
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      color: Color(0xFFF4F1E8),
+                                    style: TextStyle(
+                                      color: colors.onSurface,
                                       fontWeight: FontWeight.w600,
                                       fontSize: 14,
                                     ),
@@ -329,8 +330,8 @@ class ForegroundNotificationSurface extends StatelessWidget {
                                     current.body,
                                     maxLines: 2,
                                     overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      color: Color(0xFFB8BBB5),
+                                    style: TextStyle(
+                                      color: colors.onSurfaceVariant,
                                       fontSize: 12,
                                       height: 1.25,
                                     ),
@@ -346,10 +347,10 @@ class ForegroundNotificationSurface extends StatelessWidget {
                                   'dismiss-foreground-notification',
                                 ),
                                 onPressed: onDismiss,
-                                icon: const Icon(
+                                icon: Icon(
                                   Icons.close,
                                   size: 18,
-                                  color: Color(0xFFB8BBB5),
+                                  color: colors.onSurfaceVariant,
                                 ),
                               ),
                             ),
