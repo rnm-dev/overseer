@@ -289,29 +289,38 @@ class _GeneralSettingsState extends ConsumerState<_GeneralSettings> {
         ),
         const SizedBox(height: 8),
         _SettingsCard(
-          title: 'Remove Peon',
+          title: 'Kick Peon',
           subtitle:
-              'Revoke its workspace credential and remove it from Overseer.',
+              'Disconnect it from the workspace and revoke its access. '
+              'The daemon and local data remain.',
           child: Align(
             alignment: Alignment.centerRight,
             child: AppButton(
-              key: const Key('peon-delete-action'),
+              key: const Key('peon-kick-action'),
               variant: AppButtonVariant.danger,
               loading: widget.state.deleting,
               onPressed: () async {
                 final confirmed = await showAppConfirmationBottomSheet(
                   context: context,
-                  title: 'Remove ${widget.peon.displayName}?',
+                  title: 'Kick ${widget.peon.displayName}?',
                   message:
-                      'This revokes the Peon credential and removes it from '
-                      'the workspace. This cannot be undone.',
-                  confirmLabel: 'Remove Peon',
+                      'This revokes the Peon access and disconnects it from '
+                      'the workspace. Active work will not be stopped. '
+                      'This cannot be undone.',
+                  confirmLabel: 'Kick Peon',
                   destructive: true,
                 );
                 if (!confirmed) return;
                 if (await controller.deletePeon()) widget.onDeleted();
               },
-              child: const Text('Remove Peon'),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(LucideIcons.sportShoe, size: 16),
+                  SizedBox(width: 7),
+                  Text('Kick Peon'),
+                ],
+              ),
             ),
           ),
         ),

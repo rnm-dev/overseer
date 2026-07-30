@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:overseer_mobile/features/fleet/domain/fleet_models.dart';
 import 'package:overseer_mobile/features/peon/application/peon_settings_controller.dart';
 import 'package:overseer_mobile/features/peon/application/peon_management_controller.dart';
@@ -54,6 +55,19 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('DANGER ZONE'), findsOneWidget);
+    expect(find.byKey(const Key('peon-kick-action')), findsOneWidget);
+    expect(find.byIcon(LucideIcons.sportShoe), findsOneWidget);
+    expect(find.text('Kick Peon'), findsNWidgets(2));
+
+    await tester.tap(find.byKey(const Key('peon-kick-action')));
+    await tester.pumpAndSettle();
+    expect(find.text('Kick Kanat?'), findsOneWidget);
+    expect(
+      find.textContaining('Active work will not be stopped.'),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const Key('confirmation-cancel')));
+    await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const Key('peon-settings-agent')));
     await tester.pumpAndSettle();
@@ -156,7 +170,7 @@ void main() {
         const Offset(0, -900),
       );
       await tester.pumpAndSettle();
-      expect(find.byKey(const Key('peon-delete-action')), findsOneWidget);
+      expect(find.byKey(const Key('peon-kick-action')), findsOneWidget);
       expect(find.text('General settings'), findsNothing);
     },
   );
