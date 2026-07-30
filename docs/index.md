@@ -24,6 +24,13 @@ The new-project directory picker browses the Peon's whole filesystem, starting a
 
 Overseer has one durable [reverse command gateway](reverse-command-gateway.md) for `reverse-command-v1`: it persists the canonical request and server-derived authenticated actor before send, fences acceptance/status/result by workspace, Peon and socket generation, reconciles the same Peon-scoped command ID after reconnect/restart, and commits an allowlisted terminal result + shared durable inbox/checkpoint + safe projection + audit + operator browser event before ACK. The status surface for a bounded HTTP wait is `GET /api/workspaces/:wsId/peons/:peonId/commands/:commandId`. The released v1 operation is session cancel; operation-specific route cutovers still choose either this gateway or legacy HTTP, never both.
 
+The remaining direct Peon HTTP/SSE control plane is inventoried and assigned in
+[remaining Peon HTTP control plane](remaining-peon-http-control-plane.md).
+The 2026-07-30 census finds 78 production call sites including legacy-only
+fallback branches; the design separates projections, bounded queries, durable
+commands and transfer streams, and maps every family to existing implementation
+tasks rather than creating duplicates.
+
 The public reverse-control cutover is gated by the durable
 [reverse fleet security threat model](reverse-fleet-security.md): it records
 assets and trust boundaries, prioritized abuse cases, the stable executable
