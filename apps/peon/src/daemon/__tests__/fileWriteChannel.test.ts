@@ -64,6 +64,8 @@ function uploadFrame(requestId: string, projectId: string, relativePath: string,
     type: "write_open",
     protocol: 1,
     requestId,
+    transferId: requestId,
+    commandId: requestId,
     operation: "upload",
     scope: "project",
     projectId,
@@ -84,6 +86,8 @@ function moveFrame(
     type: "write_open",
     protocol: 1,
     requestId,
+    transferId: requestId,
+    commandId: requestId,
     operation: "move",
     scope: "project",
     projectId,
@@ -176,6 +180,8 @@ test("file write channel streams by credit, commits atomically, and replays term
   const before = connection.frames.length;
   channel.receive(open, connection);
   assert.deepEqual(connection.frames[before], result, "same request ID and input replays the cached terminal result");
+  channel.receive({ ...open, commandId: randomUUID() }, connection);
+  assert.equal(connection.frames.at(-1)?.code, "REQUEST_ID_REUSE");
   channel.receive({ ...open, relativePath: "nested/other.bin" }, connection);
   assert.equal(connection.frames.at(-1)?.code, "REQUEST_ID_REUSE");
   assert.equal(connection.disconnects.length, 0);
@@ -222,6 +228,13 @@ test("file write channel enforces limits, credit, project containment, and sandb
   const connection = sender();
   channel.negotiated(true, {}, connection);
 
+  const correlationId = randomUUID();
+  channel.receive({
+    ...uploadFrame(correlationId, projectId, "correlation.bin", Buffer.alloc(1)),
+    transferId: randomUUID(),
+  }, connection);
+  assert.equal(connection.frames.find((frame) => frame.requestId === correlationId)?.code, "BAD_CORRELATION");
+
   const oversizedId = randomUUID();
   channel.receive({
     ...uploadFrame(oversizedId, projectId, "too-large.bin", Buffer.alloc(0)),
@@ -245,6 +258,8 @@ test("file write channel enforces limits, credit, project containment, and sandb
     type: "write_open",
     protocol: 1,
     requestId: sandboxId,
+    transferId: sandboxId,
+    commandId: sandboxId,
     operation: "upload",
     scope: "sandbox",
     path: "uploads/session/file.txt",
@@ -261,6 +276,8 @@ test("file write channel enforces limits, credit, project containment, and sandb
     type: "write_open",
     protocol: 1,
     requestId: attachmentLimitId,
+    transferId: attachmentLimitId,
+    commandId: attachmentLimitId,
     operation: "upload",
     scope: "sandbox",
     path: "uploads/session/large.bin",
@@ -290,6 +307,8 @@ test("project move is no-clobber, scoped to one project, and replay-safe", async
     type: "write_open",
     protocol: 1,
     requestId: occupiedId,
+    transferId: occupiedId,
+    commandId: occupiedId,
     operation: "move",
     scope: "project",
     projectId,
@@ -307,6 +326,8 @@ test("project move is no-clobber, scoped to one project, and replay-safe", async
     type: "write_open",
     protocol: 1,
     requestId: movedId,
+    transferId: movedId,
+    commandId: movedId,
     operation: "move",
     scope: "project",
     projectId,
@@ -323,7 +344,14 @@ test("project move is no-clobber, scoped to one project, and replay-safe", async
   assert.deepEqual(connection.frames.at(-1), first);
 
   const escapeId = randomUUID();
-  channel.receive({ ...move, requestId: escapeId, relativePath: "moved.txt", destination: "../outside.txt" }, connection);
+  channel.receive({
+    ...move,
+    requestId: escapeId,
+    transferId: escapeId,
+    commandId: escapeId,
+    relativePath: "moved.txt",
+    destination: "../outside.txt",
+  }, connection);
   await waitFor(() => connection.frames.some((frame) => frame.requestId === escapeId));
   assert.equal(connection.frames.find((frame) => frame.requestId === escapeId)?.code, "PATH_ESCAPE");
 });
@@ -341,6 +369,8 @@ test("project delete is regular-file-only and replay-safe", async (t) => {
     type: "write_open",
     protocol: 1,
     requestId,
+    transferId: requestId,
+    commandId: requestId,
     operation: "delete",
     scope: "project",
     projectId,
@@ -365,7 +395,13 @@ test("project delete is regular-file-only and replay-safe", async (t) => {
   assert.equal(connection.frames.at(-1)?.code, "REQUEST_ID_REUSE");
 
   const directoryId = randomUUID();
-  channel.receive({ ...frame, requestId: directoryId, relativePath: "directory" }, connection);
+  channel.receive({
+    ...frame,
+    requestId: directoryId,
+    transferId: directoryId,
+    commandId: directoryId,
+    relativePath: "directory",
+  }, connection);
   await waitFor(() => connection.frames.some((item) => item.requestId === directoryId));
   assert.equal(connection.frames.find((item) => item.requestId === directoryId)?.code, "INVALID_PATH");
   assert.equal(readdirSync(root).includes("directory"), true);
@@ -451,6 +487,8 @@ test("concurrent project moves racing for one destination never clobber either s
     type: "write_open",
     protocol: 1,
     requestId,
+    transferId: requestId,
+    commandId: requestId,
     operation: "move",
     scope: "project",
     projectId,
@@ -533,6 +571,8 @@ test("move work consumes the same admission bound until its native operation set
     type: "write_open",
     protocol: 1,
     requestId: moveId,
+    transferId: moveId,
+    commandId: moveId,
     operation: "move",
     scope: "project",
     projectId,

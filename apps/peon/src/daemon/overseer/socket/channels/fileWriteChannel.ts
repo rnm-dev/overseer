@@ -116,6 +116,8 @@ function claimedSha256(frame: PeonSocketFrame): string | null {
 
 function requestFingerprint(frame: PeonSocketFrame): string {
   return createHash("sha256").update(JSON.stringify({
+    transferId: frame.transferId,
+    commandId: frame.commandId,
     operation: frame.operation,
     scope: frame.scope,
     projectId: frame.projectId,
@@ -261,6 +263,15 @@ export class FileWriteChannel implements PeonSocketChannel {
 
     if (frame.protocol !== PROTOCOL_VERSION) {
       return this.sendError(sender, requestId, new FileWriteError(400, "BAD_PROTOCOL", "unsupported file write protocol version"));
+    }
+    const transferId = field(frame, "transferId", 36);
+    const commandId = field(frame, "commandId", 36);
+    if (transferId !== requestId || !commandId || !UUID.test(commandId)) {
+      return this.sendError(sender, requestId, new FileWriteError(
+        400,
+        "BAD_CORRELATION",
+        "file write transfer and command correlation is invalid",
+      ));
     }
     const fingerprint = requestFingerprint(frame);
     this.pruneCompleted();
