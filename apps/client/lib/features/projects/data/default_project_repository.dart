@@ -188,7 +188,7 @@ class DefaultProjectRepository implements ProjectRepository {
         'workspaces/${Uri.encodeComponent(workspaceId)}/peons/'
         '${Uri.encodeComponent(peonId)}/projects/'
         '${Uri.encodeComponent(projectKey)}/files/$encodedPath',
-        queryParameters: const {'stat': 1},
+        queryParameters: const {'stat': 1, 'directory': 1},
       );
       final payload = response.data;
       final rawEntries = payload?['entries'];

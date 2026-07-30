@@ -200,7 +200,7 @@ void main() {
       'workspaces/workspace%20one/peons/peon%2Fone/projects/'
       'mobile%20app/files/lib/widgets',
     );
-    expect(request?.queryParameters, {'stat': 1});
+    expect(request?.queryParameters, {'stat': 1, 'directory': 1});
     expect(directory.entries.map((entry) => entry.name), [
       'assets',
       'a.dart',
