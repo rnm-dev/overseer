@@ -54,13 +54,26 @@ post-update version attestation. Every dimension must be a fixed capability,
 phase, result code, or coarse version family; identifiers and content are
 forbidden.
 
-`reverseRolloutReadinessSnapshot()` is the current process-local diagnostic. It
-combines only the fixed-dimension selector and command-lifecycle counters and
-keeps every operational gate false. The real command-status route is wired
+`reverseRolloutReadinessSnapshot()` is the current process-local,
+machine-readable diagnostic. It combines only fixed-dimension selector,
+command-lifecycle and transfer counters with a reviewed evidence record.
+OVSR-151 conformance approval and its deterministic local soak are true, while
+`productionEvidence`, production telemetry, production no-inbound soak,
+production rollback and security approval remain false. The evaluator requires
+every gate simultaneously, so `reverseOnlyDefaultAllowed` remains false. The
+real command-status route is wired
 through accepted reverse reconciliation; operation-submission call sites are
 reported separately and remain false until every shipped family uses the
 selector. The diagnostic is not an operator API and contains no fleet or
 resource identifiers.
+
+Its dashboard definition has five fixed panels: transport selection, callback
+attempts, command lifecycle, transfer negotiation and production acceptance.
+The first four consume real process counters; production acceptance remains
+explicitly unavailable. Fixed-label blocker alerts cover missing production
+evidence, missing security approval and unwired submission, while any callback
+attempt after reverse capability becomes authoritative is critical. There are
+no dynamic resource labels or raw error strings.
 
 Transfer socket claims now contribute actual negotiated-capability and
 initial/replacement connection counts. Unknown capability names collapse to
@@ -121,11 +134,16 @@ the published window expires and fleet telemetry shows no supported legacy
 use. Tailscale remains part of legacy setup until the complete no-inbound soak
 and security gates pass.
 
-## Current blocked acceptance evidence
+## Current acceptance evidence and blockers
 
-As of 2026-07-30, `docs/reverse-fleet-security.md` does not approve cutover and
-`docs/protocol-conformance-harness.md` lists rollout, full reverse-command,
-claim, transcript and write extension cells as unfinished. The selector is not
-yet wired through all production call sites. Therefore no production cohort,
+As of 2026-07-30, OVSR-151 is independently approved at 49/49 conformance tests,
+75/75 focused real-Peon tests and a deterministic 60,000-tick local soak. The
+reviewed soak artifact explicitly says `productionEvidence: false`; it is local
+fault/load evidence, not a production observation.
+
+`docs/reverse-fleet-security.md` does not approve cutover, the selector is not
+yet wired through all production operation-submission call sites, and
+production telemetry, the sustained no-inbound soak and the accepted-command
+rollback exercise have not been recorded. Therefore no production cohort,
 callback-default change, support-window start, Tailscale removal, deployment,
 or completion claim is authorized.
