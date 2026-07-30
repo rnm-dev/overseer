@@ -33,11 +33,7 @@ void main() {
   });
 
   test("a session's own pick outranks the provider's marked default", () {
-    final choices = capabilityChoices(
-      models,
-      null,
-      inherited: 'gpt-5.6-terra',
-    );
+    final choices = capabilityChoices(models, null, inherited: 'gpt-5.6-terra');
     expect(choices.map((choice) => choice.label), [
       '5.6 Sol',
       '5.6 Terra · Default',

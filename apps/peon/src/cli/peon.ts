@@ -290,7 +290,7 @@ async function restartCommand(force: boolean): Promise<void> {
     // control API unreachable — fall through and let the service manager report its own error
   }
 
-  console.log(`==> restarting ${DAEMON_UNIT} and ${DASHBOARD_UNIT} (work work...)`);
+  console.log(`==> restarting ${DAEMON_UNIT} (work work...)`);
   restartBackgroundServices();
 
   console.log("==> waiting for it to come back");
@@ -473,72 +473,6 @@ async function main() {
       console.error(fresh || "(updater produced no output — did it launch? check the daemon journal for `update:` lines)");
       process.exit(1);
     }
-    case "user": {
-      const sub = rest[0];
-      if (sub === "add") {
-        const username = rest[1];
-        if (!username) {
-          console.error("usage: peon user add <username>");
-          process.exit(1);
-        }
-        const res = await fetch(`${BASE}/api/v1/users/${encodeURIComponent(username)}`, { method: "POST" });
-        const body = (await res.json()) as { ok?: boolean; error?: string; username?: string; created?: boolean };
-        if (res.ok && body.ok) {
-          console.log(
-            body.created
-              ? `created user "${body.username}" — hand them a login link with \`peon user auth-link ${body.username}\``
-              : `user "${body.username}" already exists`,
-          );
-        } else {
-          console.error(`add failed: ${body.error ?? res.statusText}`);
-          process.exit(1);
-        }
-      } else if (sub === "auth-link") {
-        const username = rest[1];
-        if (!username) {
-          console.error("usage: peon user auth-link <username>");
-          process.exit(1);
-        }
-        const res = await fetch(`${BASE}/api/v1/users/${encodeURIComponent(username)}/auth-link`, { method: "POST" });
-        const body = (await res.json()) as { ok?: boolean; error?: string; username?: string; linkUrl?: string; expiresAt?: number };
-        if (res.ok && body.ok) {
-          console.log(`magic link for "${body.username}" (expires ${new Date(body.expiresAt ?? 0).toISOString()}):`);
-          console.log(body.linkUrl);
-        } else {
-          console.error(`auth-link failed: ${body.error ?? res.statusText}`);
-          process.exit(1);
-        }
-      } else if (sub === "list") {
-        console.log(await (await fetch(`${BASE}/api/v1/users`)).json());
-      } else if (sub === "sessions") {
-        const username = rest[1];
-        if (!username) {
-          console.error("usage: peon user sessions <username>");
-          process.exit(1);
-        }
-        console.log(await (await fetch(`${BASE}/api/v1/users/${encodeURIComponent(username)}/sessions`)).json());
-      } else if (sub === "revoke") {
-        const [username, sessionId] = rest.slice(1);
-        if (!username) {
-          console.error("usage: peon user revoke <username> [sessionId]");
-          process.exit(1);
-        }
-        const url = sessionId
-          ? `${BASE}/api/v1/users/${encodeURIComponent(username)}/sessions/${encodeURIComponent(sessionId)}`
-          : `${BASE}/api/v1/users/${encodeURIComponent(username)}/sessions`;
-        const res = await fetch(url, { method: "DELETE" });
-        const body = (await res.json()) as { ok?: boolean; error?: string; revokedCount?: number };
-        if (res.ok && body.ok) {
-          console.log(sessionId ? "revoked." : `revoked ${body.revokedCount ?? 0} session(s).`);
-        } else {
-          console.error(`revoke failed: ${body.error ?? res.statusText}`);
-          process.exit(1);
-        }
-      } else {
-        console.log("usage: peon user [add <username> | auth-link <username> | list | sessions <username> | revoke <username> [sessionId]]");
-      }
-      break;
-    }
     case "session": {
       const sub = rest[0];
       if (sub === "stop") {
@@ -546,7 +480,7 @@ async function main() {
         if (!id) {
           // Only one session can ever be running at a time, so a bare
           // `peon session stop` finds it rather than making the caller look
-          // up its id first (via the dashboard or `GET /api/v1/sessions`).
+          // up its id first (via Overseer or `GET /api/v1/sessions`).
           const body = (await (await fetch(`${BASE}/api/v1/sessions`)).json()) as {
             sessions?: Array<{ id: string; status: string }>;
           };
@@ -665,7 +599,6 @@ async function main() {
         bindHost?: string;
         fleetMode?: "legacy-mesh" | "reverse-only";
         publicControlUrl?: string;
-        publicDashboardUrl?: string;
       };
       const portOf = (url: string | undefined, fallback: string): string => {
         try {
@@ -675,7 +608,6 @@ async function main() {
         }
       };
       const controlPort = portOf(current.publicControlUrl, new URL(BASE).port || "4570");
-      const dashboardPort = portOf(current.publicDashboardUrl, new URL(DASHBOARD_URL).port || "4571");
       const isLoopbackHost = (host: string): boolean => ["127.0.0.1", "localhost", "::1"].includes(host);
 
       const patchSettings = async (patch: Record<string, string>): Promise<void> => {
@@ -729,11 +661,8 @@ async function main() {
         const loopbackOnly = isLoopbackHost(host);
         console.log(`bind host          : ${host}  (${loopbackOnly ? "loopback only — no remote access" : "accepting remote connections"})`);
         console.log(`publicControlUrl   : ${current.publicControlUrl}`);
-        console.log(`publicDashboardUrl : ${current.publicDashboardUrl}`);
-        if (!loopbackOnly && isLoopbackHost(hostnameOf(current.publicDashboardUrl))) {
-          console.log("warning: public URLs still point at loopback — magic links won't work remotely. Re-run `peon remote on <public-host>`.");
-        } else if (!loopbackOnly) {
-          console.log("remote users log in with a magic link: `peon user auth-link <username>`.");
+        if (!loopbackOnly && isLoopbackHost(hostnameOf(current.publicControlUrl))) {
+          console.log("warning: publicControlUrl still points at loopback. Re-run `peon remote on <public-host>`.");
         }
       } else if (sub === "on") {
         if (current.fleetMode === "reverse-only") {
@@ -744,35 +673,25 @@ async function main() {
         const patch: Record<string, string> = { bindHost: "0.0.0.0" };
         if (publicHost) {
           if (/^https?:\/\//i.test(publicHost)) {
-            // A full URL means a reverse proxy fronts both the dashboard and the
-            // control API on one origin (served on 80/443, not our own ports) — use
-            // it verbatim for both so magic links come out portless
-            // (https://host/?token=...) instead of host:4571. api.js already routes
-            // /api/v1/* same-origin behind a proxy, so the two sharing one origin is fine.
             const origin = new URL(publicHost).origin;
             patch.publicControlUrl = origin;
-            patch.publicDashboardUrl = origin;
           } else {
             patch.publicControlUrl = `http://${publicHost}:${controlPort}`;
-            patch.publicDashboardUrl = `http://${publicHost}:${dashboardPort}`;
           }
         }
         await patchSettings(patch);
-        console.log("remote access enabled — both processes will bind 0.0.0.0 after a restart.");
+        console.log("legacy Fleet HTTP access enabled — the daemon will bind 0.0.0.0 after restart; local CLI routes remain loopback-only.");
         if (publicHost) {
           console.log(`  control   : ${patch.publicControlUrl}`);
-          console.log(`  dashboard : ${patch.publicDashboardUrl}`);
         } else {
-          console.log("next: set the public host so magic links resolve from other machines:");
+          console.log("next: set the public host used by Overseer:");
           console.log("  peon remote on <public-host-or-ip>");
         }
         await restartBothServices(rest.includes("--force"));
-        console.log("then give a teammate access with: `peon user add <name> && peon user auth-link <name>`");
       } else if (sub === "off") {
         await patchSettings({
           bindHost: "127.0.0.1",
           publicControlUrl: `http://127.0.0.1:${controlPort}`,
-          publicDashboardUrl: `http://127.0.0.1:${dashboardPort}`,
         });
         console.log("remote access disabled — loopback only.");
         await restartBothServices(rest.includes("--force"));

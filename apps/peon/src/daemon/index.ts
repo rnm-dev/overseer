@@ -14,11 +14,9 @@ import { peonClaimClient } from "./enrollment/index.js";
 
 const PORT = Number(process.env.ACA_CONTROL_PORT ?? 4570);
 
-// Interface to bind. Defaults to loopback-only (settings.bindHost === "127.0.0.1");
-// set it wider (0.0.0.0 or a specific interface IP) via `peon remote on` to accept
-// remote connections. Remote peers then go through per-user magic-link auth —
-// only genuine loopback connections are auto-trusted as admin (isLoopback() in
-// controlServer.ts keys off the real TCP socket address, which can't be spoofed).
+// Interface to bind. Defaults to loopback-only. A wider legacy-mesh bind exposes
+// only authenticated Fleet HTTP; CLI-shaped routes still enforce real loopback
+// at the request boundary.
 const configured = settings.get();
 const BIND_HOST = process.env.ACA_BIND_HOST ?? configured.bindHost;
 
@@ -78,29 +76,21 @@ const server = app.listen(PORT, BIND_HOST, () => {
     overseerToken: s.overseerToken ? "<set>" : "",
     pairingSecret: s.pairingSecret ? "<armed>" : "",
   });
-  const { publicControlUrl, publicDashboardUrl } = settings.get();
+  const { publicControlUrl } = settings.get();
   if (!LOOPBACK_HOSTS.includes(BIND_HOST)) {
-    // Bound wide on purpose — reachable from the network. This is the intended
-    // remote-access path (auth handles it), so make the exposure visible, not alarming.
     console.warn(
-      `NOTE: bound to ${BIND_HOST} — the control API and dashboard are reachable from the network. ` +
-        "Remote clients must authenticate with a magic link (`peon user auth-link <username>`); only loopback " +
-        "connections are auto-trusted as admin. Keep the ports firewalled to networks you trust.",
+      `NOTE: bound to ${BIND_HOST} for legacy Fleet HTTP compatibility. ` +
+        "Operator access remains local-only; use Overseer for all UI access.",
     );
-    if (isLoopbackHost(publicControlUrl) || isLoopbackHost(publicDashboardUrl)) {
+    if (isLoopbackHost(publicControlUrl)) {
       console.warn(
-        "  ...but publicControlUrl/publicDashboardUrl still point at 127.0.0.1/localhost, so magic links " +
-          "will be unusable from another machine. Fix with `peon remote on <public-host>`.",
+        "  ...but publicControlUrl still points at loopback. Fix with `peon remote on <public-host>`.",
       );
     }
-  } else if (!isLoopbackHost(publicControlUrl) || !isLoopbackHost(publicDashboardUrl)) {
+  } else if (!isLoopbackHost(publicControlUrl)) {
     console.warn(
-      "WARNING: publicControlUrl/publicDashboardUrl point away from 127.0.0.1/localhost, but this process " +
-        "still only binds 127.0.0.1. The only way a genuinely remote client can reach it is a tunnel or " +
-        "port-forward (e.g. `ssh -L`) terminating on this box — every request arriving through one looks like " +
-        "a loopback connection and BYPASSES per-user dashboard auth entirely. Only forward these ports over a " +
-        "channel you trust as much as a shell on this box. To accept remote connections directly (with auth), " +
-        "use `peon remote on` instead.",
+      "WARNING: publicControlUrl points away from loopback, but this process still binds loopback. " +
+        "Use the reverse sockets or explicitly enable legacy Fleet HTTP with `peon remote on`.",
     );
   }
   console.log("(task claim: milestone 1 only — claims + reports needs_human, does not implement yet)");
@@ -151,12 +141,11 @@ process.on("SIGTERM", () => {
   peonClaimClient.stop();
   peonRegistrar.stop();
   sessions.notifyShuttingDown();
-  // server.close() waits for every open connection to end — but SSE clients
-  // (dashboard tabs, live session streams) hold theirs open indefinitely,
+  // server.close() waits for every open connection to end — but local SSE clients
+  // can hold theirs open indefinitely,
   // and EventSource auto-reconnects the instant a connection is force-closed,
   // so even closeAllConnections() doesn't reliably win that race. Confirmed
-  // empirically: a restart with the dashboard open hung until systemd's
-  // stop-timeout force-killed it, repeatedly. Exit on a hard deadline
+  // so exit on a hard deadline
   // instead of waiting on client behavior we don't control.
   server.close();
   server.closeAllConnections();

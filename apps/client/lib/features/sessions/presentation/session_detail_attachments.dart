@@ -431,30 +431,6 @@ bool _isImageName(String name) {
   return const ['.png', '.jpg', '.jpeg', '.gif', '.webp'].any(lower.endsWith);
 }
 
-ModelProvider? _modelProviderFor(
-  ModelsCatalog? catalog, {
-  String? agent,
-  String? model,
-}) {
-  if (catalog == null || catalog.providers.isEmpty) return null;
-  for (final provider in catalog.providers) {
-    if (provider.agent == agent) return provider;
-  }
-  if (model != null) {
-    for (final provider in catalog.providers) {
-      if (provider.models.any(
-        (option) => option.id == model || option.alias == model,
-      )) {
-        return provider;
-      }
-    }
-  }
-  for (final provider in catalog.providers) {
-    if (provider.agent == catalog.defaultAgent) return provider;
-  }
-  return catalog.providers.first;
-}
-
 String? submissionLabel(SessionComposerState? state, {required bool running}) {
   final followup = state?.followupProgress;
   if (followup != null) {

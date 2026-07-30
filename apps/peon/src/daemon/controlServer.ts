@@ -4,9 +4,7 @@ import { eventLoopDelayStats } from "./eventLoopMonitor.js";
 import path from "node:path";
 import express from "express";
 import { settings } from "./settings/index.js";
-import { users, normalizeUsername, DEFAULT_ADMIN_USERNAME } from "./users.js";
-import { authSessions, AUTH_SESSION_COOKIE, SESSION_MAX_AGE_SEC, stripSecrets } from "./authSessions.js";
-import { sessionPresence, DASHBOARD_PRESENCE_KEY } from "./sessionPresence.js";
+import { sessionPresence } from "./sessionPresence.js";
 import {
   sessionArtifactInventory,
   SessionOrchestrationService,
@@ -57,50 +55,12 @@ function toSessionView(record: SessionRecord, viewerUsername: string | null) {
   return { ...toPublicSessionRecord(record), viewers, viewerCount: viewers.length };
 }
 
-function readCookies(req: express.Request): Record<string, string> {
-  const header = req.headers.cookie;
-  if (!header) return {};
-  return Object.fromEntries(
-    header.split(";").map((pair) => {
-      const i = pair.indexOf("=");
-      return [pair.slice(0, i).trim(), decodeURIComponent(pair.slice(i + 1).trim())];
-    }),
-  );
-}
-
-// The daemon/dashboard/CLI/scripts all talk to this API from the same box —
-// only a genuinely remote peer needs to authenticate. Uses the raw socket
-// address (not `req.ip`/X-Forwarded-For, which a client can set) so this
-// can't be spoofed by a request header.
 function isLoopback(req: express.Request): boolean {
   const addr = req.socket.remoteAddress;
   return addr === "127.0.0.1" || addr === "::1" || addr === "::ffff:127.0.0.1";
 }
 
-function clientInfo(req: express.Request) {
-  return { ip: req.socket.remoteAddress ?? null, userAgent: req.headers["user-agent"] ?? null };
-}
-
-// The username-only half of the auth-gate middleware's own lookup — shared
-// by /api/v1/auth/status and the session presence tracking below. Not used by
-// the auth gate itself, which needs the full AuthSessionRecord (for
-// shouldRenew/renew), not just the username.
-function resolveUsername(req: express.Request): string | null {
-  if (isLoopback(req)) return DEFAULT_ADMIN_USERNAME;
-  const token = readCookies(req)[AUTH_SESSION_COOKIE];
-  const record = token ? authSessions.verifySessionToken(token) : null;
-  return record?.username ?? null;
-}
-
-function setSessionCookie(req: express.Request, res: express.Response, compoundToken: string): void {
-  res.cookie(AUTH_SESSION_COOKIE, compoundToken, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: req.secure,
-    maxAge: SESSION_MAX_AGE_SEC * 1000,
-    path: "/",
-  });
-}
+const CLI_ACTOR = "local-cli";
 
 export interface ControlServerOptions {
   armoryInventory?: ArmoryInventoryReader;
@@ -149,8 +109,8 @@ export function createControlServer(options: ControlServerOptions = {}) {
     toSessionSummary,
     toPublicSessionRecord,
     toSessionView,
-    resolveSessionAuthor: (req) => resolveUsername(req) ?? undefined,
-    resolveSessionViewer: (req) => resolveUsername(req),
+    resolveSessionAuthor: () => CLI_ACTOR,
+    resolveSessionViewer: () => CLI_ACTOR,
     resolveDefaultAgent: () => settings.get().defaultAgent,
     listAgentsForNewSessionError: () => listAgentDrivers({ visible: true, available: true }).map((driver) => driver.id).join(", "),
     narrowNewSessionAgent: narrowNewSessionAgent,

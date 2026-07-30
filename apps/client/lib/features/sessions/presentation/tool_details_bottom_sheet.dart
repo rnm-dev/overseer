@@ -256,9 +256,7 @@ class _DiffRow extends StatelessWidget {
         Colors.transparent,
       ),
     };
-    final lineNumberStyle = AppTypography.monoCode(
-      color: AppColors.boneFaint,
-    );
+    final lineNumberStyle = AppTypography.monoCode(color: AppColors.boneFaint);
     return ColoredBox(
       key: Key('tool-details-diff-line-$index'),
       color: background,
@@ -299,10 +297,7 @@ class _DiffRow extends StatelessWidget {
             Expanded(
               child: SelectableText(
                 line.text.isEmpty ? ' ' : line.text,
-                style: AppTypography.monoCode(
-                  color: foreground,
-                  height: 1.35,
-                ),
+                style: AppTypography.monoCode(color: foreground, height: 1.35),
               ),
             ),
           ],

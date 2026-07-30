@@ -110,6 +110,7 @@ class SessionComposer extends StatefulWidget {
   final String? defaultAgent;
   final String? model;
   final String? reasoningEffort;
+
   /// What an unset override falls back to: the model and effort the session
   /// itself pinned. Null lets the provider's own marked default stand in.
   final String? inheritedModel;

@@ -1,10 +1,9 @@
 #!/usr/bin/env -S node --import tsx
-// Runs the daemon + dashboard together as a drop-in replacement for the
-// systemd units — same ports (4570/4571), same XDG config/state (so it's
+// Runs the daemon as a drop-in replacement for its systemd unit — same port
+// and XDG config/state (so it's
 // the same real settings/credentials/sessions, not a separate instance),
 // same restrictive PATH (no shell-profile inheritance) and Restart=always-
-// style auto-restart on crash. The dashboard server keeps tsx watch hot reload,
-// while the daemon intentionally runs without watch so deploying or editing
+// style auto-restart on crash. The daemon intentionally runs without watch so deploying or editing
 // source cannot interrupt an in-flight session. Restart the harness manually
 // after finishing work when daemon changes need to take effect.
 // Only ever run one of {this, the systemd services} at a time — both bind
@@ -20,9 +19,7 @@ const ROOT = path.join(__dirname, "..");
 const TSX_BIN = path.join(ROOT, "node_modules", ".bin", "tsx");
 const HOME = os.homedir();
 
-// Two long-lived harnesses can each win one of the daemon/dashboard ports,
-// leaving a mixed-version pair serving the same state directory. Take an
-// atomic per-user lock before spawning either child. A stale lock left by an
+// Take an atomic per-user lock before spawning the child. A stale lock left by an
 // ungraceful exit is reclaimed only when its recorded process no longer exists.
 const STATE_ROOT = path.join(process.env.XDG_STATE_HOME || path.join(HOME, ".local", "state"), ".peon");
 const HARNESS_LOCK = path.join(STATE_ROOT, "dev-harness.lock");
@@ -89,7 +86,6 @@ acquireHarnessLock();
 process.once("exit", releaseHarnessLock);
 
 const CONTROL_PORT = process.env.ACA_CONTROL_PORT ?? "4570";
-const DASHBOARD_PORT = process.env.ACA_DASHBOARD_PORT ?? "4571";
 
 // Mirrors the daemon unit's own `Environment=PATH=...` override — systemd
 // user services don't inherit a shell profile, so a dev run should hit the
@@ -128,7 +124,6 @@ interface ProcDef {
 
 const procs: ProcDef[] = [
   { name: "daemon", color: "36", script: "src/daemon/index.ts", watch: false, env: { ...sharedEnv, ACA_CONTROL_PORT: CONTROL_PORT } },
-  { name: "dashboard", color: "35", script: "src/dashboard/server.ts", watch: true, env: { ...sharedEnv, ACA_DASHBOARD_PORT: DASHBOARD_PORT } },
 ];
 
 const children = new Map<string, ChildProcess>();
@@ -171,14 +166,13 @@ process.on("SIGTERM", shutdown);
 for (const def of procs) launch(def);
 
 console.log(`
-peon dev harness — daemon + dashboard (dashboard server hot reloads on save).
-Drop-in replacement for the systemd units: same ports, same config/state,
+peon dev harness — daemon only; operator UI lives in Overseer.
+Drop-in replacement for the systemd unit: same port and config/state,
 same PATH restriction, Restart=always-style crash recovery. Don't run this
 at the same time as the systemd services — they'd fight over the same
-ports.
+port.
 
 Daemon source changes require a manual dev-harness restart to take effect.
 
-  daemon    : http://127.0.0.1:${CONTROL_PORT}
-  dashboard : http://127.0.0.1:${DASHBOARD_PORT}
+  daemon : http://127.0.0.1:${CONTROL_PORT}
 `);
