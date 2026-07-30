@@ -192,10 +192,7 @@ class _UserText extends StatelessWidget {
     return AppMarkdown(
       data: text,
       onTapLink: onOpenLink,
-      textStyle: AppTypography.chatMessage(
-        color: AppColors.bone,
-        height: 1.35,
-      ),
+      textStyle: AppTypography.chatMessage(color: AppColors.bone, height: 1.35),
     );
   }
 }
@@ -447,9 +444,9 @@ class _ThinkingRowState extends State<_ThinkingRow> {
                 padding: const EdgeInsets.symmetric(vertical: 2),
                 child: Text(
                   '✦ ${_thinkingLabel(widget.item.text)} ${open ? '▾' : '▸'}',
-                    style: AppTypography.monoCode(
-                      color: AppColors.boneFaint,
-                    ).copyWith(fontSize: 11),
+                  style: AppTypography.monoCode(
+                    color: AppColors.boneFaint,
+                  ).copyWith(fontSize: 11),
                 ),
               ),
             ),
@@ -464,13 +461,10 @@ class _ThinkingRowState extends State<_ThinkingRow> {
                 ),
                 child: Text(
                   widget.item.text,
-                    style: AppTypography.monoCode(
-                      color: AppColors.boneFaint,
-                      height: 1.45,
-                    ).copyWith(
-                      fontSize: 11,
-                      fontStyle: FontStyle.italic,
-                    ),
+                  style: AppTypography.monoCode(
+                    color: AppColors.boneFaint,
+                    height: 1.45,
+                  ).copyWith(fontSize: 11, fontStyle: FontStyle.italic),
                 ),
               ),
           ],
@@ -554,19 +548,18 @@ class _ToolRow extends StatelessWidget {
                 borderRadius: BorderRadius.circular(3),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 3),
-                child: Text(
-                  'Details',
-                style: AppTypography.monoCode(
-                  color: AppColors.boneFaint,
-                ).copyWith(
-                  fontSize: 11,
-                  decoration: TextDecoration.underline,
-                  decorationStyle: TextDecorationStyle.dotted,
-                  decorationColor: AppColors.boneFaint,
-                  decorationThickness: 1,
+                  child: Text(
+                    'Details',
+                    style: AppTypography.monoCode(color: AppColors.boneFaint)
+                        .copyWith(
+                          fontSize: 11,
+                          decoration: TextDecoration.underline,
+                          decorationStyle: TextDecorationStyle.dotted,
+                          decorationColor: AppColors.boneFaint,
+                          decorationThickness: 1,
+                        ),
+                  ),
                 ),
-              ),
-            ),
               ),
             ],
           ),
@@ -584,9 +577,9 @@ class _EditStats extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final base = AppTypography.monoCode(color: AppColors.boneFaint).copyWith(
-      fontSize: 11,
-    );
+    final base = AppTypography.monoCode(
+      color: AppColors.boneFaint,
+    ).copyWith(fontSize: 11);
     return Text.rich(
       TextSpan(
         style: base,
@@ -733,9 +726,7 @@ class _PreviewCard extends StatelessWidget {
                         filename,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: AppTypography.monoCode(
-                          color: AppColors.bone,
-                        ),
+                        style: AppTypography.monoCode(color: AppColors.bone),
                       ),
                       if (item.author != null || timestamp != null)
                         Text(

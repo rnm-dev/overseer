@@ -19,7 +19,6 @@ import '../../fleet/application/fleet_live_service.dart';
 import '../../../shared/design/colors.dart';
 import '../../../shared/design/motion.dart';
 import '../../../shared/design/typography.dart';
-import '../../../shared/models/ai_capabilities.dart';
 import '../../../shared/widgets/app_button.dart';
 import '../../../shared/widgets/app_bottom_sheet.dart';
 import '../../../shared/widgets/app_navigation_bar.dart';
@@ -296,11 +295,6 @@ class _SessionDetailPageState extends _SessionDetailAttachmentHost
                   )
                   .value ??
               _detailsFromTranscript(transcript?.value?.events);
-    final modelProvider = _modelProviderFor(
-      composerState?.catalog,
-      agent: composerState?.agent ?? details?.agent,
-      model: composerState?.model ?? details?.model,
-    );
     final agentOverridden = composerState?.agent != null;
     final viewers = currentSession == null
         ? const <PresenceViewer>[]
