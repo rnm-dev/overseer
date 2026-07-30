@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { projectStore } from "../../../projects/index.js";
 import { settings } from "../../../settings/index.js";
-import { ATTACHMENT_UPLOAD_MAX_BYTES, AtomicFileUpload, FileWriteError, PROJECT_UPLOAD_MAX_BYTES, fileWriteFsError, moveProjectFile, projectFileWriteTarget, sandboxFileWriteTarget, } from "../../../files/index.js";
+import { ATTACHMENT_UPLOAD_MAX_BYTES, AtomicFileUpload, deleteProjectFile, FileWriteError, PROJECT_UPLOAD_MAX_BYTES, fileWriteFsError, moveProjectFile, projectFileWriteTarget, sandboxFileWriteTarget, } from "../../../files/index.js";
 export const FILE_WRITE_CAPABILITY = "file-write-v1";
 export const FILE_WRITE_BINARY_HEADER_BYTES = 22;
 export const FILE_WRITE_MAX_CHUNK_BYTES = 64 * 1024 - FILE_WRITE_BINARY_HEADER_BYTES;
@@ -75,6 +75,7 @@ export class FileWriteChannel {
     idleLeaseMs;
     openAtomicUpload;
     moveAtomicFile;
+    deleteAtomicFile;
     accepted = false;
     currentSender = null;
     socketGeneration = 0;
@@ -89,6 +90,7 @@ export class FileWriteChannel {
         this.idleLeaseMs = options.idleLeaseMs ?? DEFAULT_IDLE_LEASE_MS;
         this.openAtomicUpload = options.openUpload ?? AtomicFileUpload.open;
         this.moveAtomicFile = options.moveFile ?? moveProjectFile;
+        this.deleteAtomicFile = options.deleteFile ?? deleteProjectFile;
     }
     helloState() {
         return {};
@@ -219,12 +221,12 @@ export class FileWriteChannel {
         }
         try {
             actor(frame);
-            if (frame.operation !== "upload" && frame.operation !== "move") {
+            if (frame.operation !== "upload" && frame.operation !== "move" && frame.operation !== "delete") {
                 throw new FileWriteError(400, "BAD_REQUEST", "unsupported file write operation");
             }
             const admission = this.admit(requestId, fingerprint, frame.operation, sender);
-            if (frame.operation === "move") {
-                void this.move(frame, requestId, admission);
+            if (frame.operation === "move" || frame.operation === "delete") {
+                void this.mutate(frame, requestId, admission);
                 return;
             }
             void this.openUpload(frame, requestId, admission);
@@ -303,23 +305,25 @@ export class FileWriteChannel {
             }
         }
     }
-    async move(frame, requestId, admission) {
+    async mutate(frame, requestId, admission) {
         const { fingerprint, sender } = admission;
         let terminal;
         try {
             if (frame.scope !== "project")
-                throw new FileWriteError(400, "BAD_REQUEST", "move is project-scoped");
+                throw new FileWriteError(400, "BAD_REQUEST", "file mutation is project-scoped");
             const projectId = field(frame, "projectId", 512);
             const source = field(frame, "relativePath", 4096);
-            const destination = field(frame, "destination", 4096);
             if (!projectId || projectId.includes("\0"))
                 throw new FileWriteError(400, "INVALID_PROJECT_ID", "a valid project ID is required");
-            if (!source || !destination)
-                throw new FileWriteError(400, "INVALID_PATH", "source and destination paths are required");
+            if (!source)
+                throw new FileWriteError(400, "INVALID_PATH", "a project-relative path is required");
             const project = this.projects.list().find((candidate) => candidate.projectId === projectId);
             if (!project)
                 throw new FileWriteError(404, "UNKNOWN_PROJECT", "unknown project");
-            const result = await this.moveAtomicFile(project, source, destination);
+            const result = frame.operation === "delete"
+                ? await this.deleteAtomicFile(project, source)
+                : await this.moveAtomicFile(project, source, field(frame, "destination", 4096)
+                    ?? (() => { throw new FileWriteError(400, "INVALID_PATH", "destination path is required"); })());
             terminal = { type: "write_result", requestId, status: 200, ...result };
         }
         catch (error) {
@@ -451,7 +455,7 @@ export class FileWriteChannel {
         // A move is a single non-cancellable native rename once dispatched. Keep
         // its request ownership even when nobody may receive the result anymore;
         // retries must observe the same pending effect until it settles.
-        if (admission.operation !== "move")
+        if (admission.operation === "upload")
             this.finishAdmission(requestId, admission);
     }
     finishWork(incarnation) {

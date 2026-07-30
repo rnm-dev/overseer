@@ -460,6 +460,81 @@ finally:
     os.close(source_parent_fd)
     os.close(destination_parent_fd)
 `;
+const NATIVE_PROJECT_DELETE = String.raw `
+import ctypes, errno, os, stat, sys
+parent_path, name = sys.argv[1:3]
+root_dev, root_ino = int(sys.argv[3]), int(sys.argv[4])
+directory_flags = os.O_RDONLY | os.O_DIRECTORY | getattr(os, "O_CLOEXEC", 0)
+
+def fail(code):
+    sys.exit(code)
+
+libc = ctypes.CDLL(None, use_errno=True)
+if sys.platform.startswith("linux"):
+    class OpenHow(ctypes.Structure):
+        _fields_ = [
+            ("flags", ctypes.c_ulonglong),
+            ("mode", ctypes.c_ulonglong),
+            ("resolve", ctypes.c_ulonglong),
+        ]
+    libc.syscall.restype = ctypes.c_long
+    how = OpenHow(directory_flags, 0, 0x08 | 0x02)
+    parent_fd = libc.syscall(437, 3, os.fsencode(parent_path or "."), ctypes.byref(how), ctypes.sizeof(how))
+    if parent_fd < 0:
+        value = ctypes.get_errno()
+        if value in (errno.ENOSYS, errno.EINVAL):
+            fail(95)
+        if value in (errno.EXDEV, errno.ELOOP):
+            fail(20)
+        if value in (errno.ENOENT, errno.ENOTDIR):
+            fail(23)
+        fail(74)
+elif sys.platform == "darwin":
+    try:
+        parent_fd = os.open(parent_path or ".", directory_flags, dir_fd=3)
+    except FileNotFoundError:
+        fail(23)
+    cursor = os.dup(parent_fd)
+    contained = False
+    try:
+        for _ in range(4096):
+            current = os.fstat(cursor)
+            if current.st_dev == root_dev and current.st_ino == root_ino:
+                contained = True
+                break
+            ancestor = os.open("..", directory_flags, dir_fd=cursor)
+            ancestor_stat = os.fstat(ancestor)
+            if ancestor_stat.st_dev == current.st_dev and ancestor_stat.st_ino == current.st_ino:
+                os.close(ancestor)
+                break
+            os.close(cursor)
+            cursor = ancestor
+    finally:
+        os.close(cursor)
+    if not contained:
+        os.close(parent_fd)
+        fail(20)
+else:
+    fail(95)
+try:
+    root = os.fstat(3)
+    if root.st_dev != root_dev or root.st_ino != root_ino or not stat.S_ISDIR(root.st_mode):
+        fail(20)
+    try:
+        before = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
+    except FileNotFoundError:
+        fail(21)
+    if not stat.S_ISREG(before.st_mode):
+        fail(22)
+    current = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
+    if current.st_dev != before.st_dev or current.st_ino != before.st_ino or not stat.S_ISREG(current.st_mode):
+        fail(18)
+    os.unlink(name, dir_fd=parent_fd)
+    os.fsync(parent_fd)
+    sys.stdout.write(str(before.st_size))
+finally:
+    os.close(parent_fd)
+`;
 function anchoredMoveSelection(sourcePath, destinationPath) {
     const source = relativeSegments(sourcePath);
     const destination = relativeSegments(destinationPath);
@@ -569,6 +644,14 @@ async function anchoredUnlink(parent, name) {
                 reject(new FileWriteError(500, "WRITE_FAILED", "native secure temporary cleanup failed"));
         });
     });
+}
+async function fsyncAnchoredDirectory(parent) {
+    try {
+        await parent.handle.sync();
+    }
+    catch (error) {
+        throw fileWriteFsError(error, "failed to persist destination directory");
+    }
 }
 const NATIVE_TEMP_WRITER = String.raw `
 import errno, os, sys
@@ -740,6 +823,7 @@ export class AtomicFileUpload {
             // pathname changes after this check.
             revalidateFileWriteTarget(this.target);
             await anchoredRename(this.parent, this.temporaryName, this.parent, this.target.name, false, writer.identity);
+            await fsyncAnchoredDirectory(this.parent);
             this.committed = true;
             return { path: this.target.relativePath, size: this.bytes, sha256 };
         }
@@ -791,6 +875,51 @@ export async function moveProjectFile(record, sourcePath, destinationPath, optio
     }
     catch (error) {
         throw fileWriteFsError(error, "safe project file move failed");
+    }
+    finally {
+        await root?.handle.close().catch(() => { });
+    }
+}
+export async function deleteProjectFile(record, relativePath) {
+    const parts = relativeSegments(relativePath);
+    const normalizedPath = parts.join("/");
+    let root = null;
+    try {
+        root = await openAnchoredProjectRoot(record);
+        const size = await new Promise((resolve, reject) => {
+            const child = spawn("/usr/bin/python3", [
+                "-c",
+                NATIVE_PROJECT_DELETE,
+                parts.slice(0, -1).join("/"),
+                parts.at(-1),
+                root.device.toString(),
+                root.inode.toString(),
+            ], { stdio: ["ignore", "pipe", "ignore", root.handle.fd] });
+            let output = "";
+            child.stdout?.on("data", (chunk) => { output = `${output}${String(chunk)}`.slice(-64); });
+            child.once("error", () => reject(new FileWriteError(501, "UNSUPPORTED_PLATFORM", "native secure project delete helper is unavailable")));
+            child.once("exit", (code) => {
+                if (code === 0 && /^\d+$/.test(output))
+                    return resolve(Number(output));
+                if (code === 18)
+                    return reject(new FileWriteError(409, "SOURCE_CHANGED", "delete target changed during commit"));
+                if (code === 20)
+                    return reject(new FileWriteError(400, "PATH_ESCAPE", "project delete left its anchored project root"));
+                if (code === 21)
+                    return reject(new FileWriteError(404, "NOT_FOUND", "file does not exist"));
+                if (code === 22)
+                    return reject(new FileWriteError(400, "INVALID_PATH", "delete target must be a regular file"));
+                if (code === 23)
+                    return reject(new FileWriteError(404, "PARENT_NOT_FOUND", "delete target parent directory does not exist"));
+                if (code === 95)
+                    return reject(new FileWriteError(501, "UNSUPPORTED_PLATFORM", "native contained delete is unavailable"));
+                reject(new FileWriteError(500, "WRITE_FAILED", "native contained project delete failed"));
+            });
+        });
+        return { path: normalizedPath, size };
+    }
+    catch (error) {
+        throw fileWriteFsError(error, "safe project file delete failed");
     }
     finally {
         await root?.handle.close().catch(() => { });
