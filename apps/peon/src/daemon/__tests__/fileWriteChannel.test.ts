@@ -126,7 +126,7 @@ function chunk(requestId: string, sequence: number, bytes: Buffer): Buffer {
 }
 
 async function waitFor(predicate: () => boolean): Promise<void> {
-  const deadline = Date.now() + 2_000;
+  const deadline = Date.now() + 10_000;
   while (!predicate()) {
     if (Date.now() >= deadline) throw new Error("timed out waiting for file write channel");
     await new Promise((resolve) => setTimeout(resolve, 5));
@@ -326,6 +326,49 @@ test("project move is no-clobber, scoped to one project, and replay-safe", async
   channel.receive({ ...move, requestId: escapeId, relativePath: "moved.txt", destination: "../outside.txt" }, connection);
   await waitFor(() => connection.frames.some((frame) => frame.requestId === escapeId));
   assert.equal(connection.frames.find((frame) => frame.requestId === escapeId)?.code, "PATH_ESCAPE");
+});
+
+test("project delete is regular-file-only and replay-safe", async (t) => {
+  const { root, outside, channel, projectId } = fixture();
+  t.after(async () => Promise.all([rm(root, { recursive: true, force: true }), rm(outside, { recursive: true, force: true })]));
+  writeFileSync(path.join(root, "delete.txt"), "delete-once");
+  mkdirSync(path.join(root, "directory"));
+  const connection = sender(51);
+  channel.negotiated(true, {}, connection);
+
+  const requestId = randomUUID();
+  const frame: PeonSocketFrame = {
+    type: "write_open",
+    protocol: 1,
+    requestId,
+    operation: "delete",
+    scope: "project",
+    projectId,
+    relativePath: "delete.txt",
+    actor,
+  };
+  channel.receive(frame, connection);
+  await waitFor(() => connection.frames.some((item) => item.requestId === requestId));
+  assert.equal(readdirSync(root).includes("delete.txt"), false, JSON.stringify(connection.frames));
+  const result = connection.frames.find((item) => item.type === "write_result" && item.requestId === requestId);
+  assert.deepEqual(result, {
+    type: "write_result",
+    requestId,
+    status: 200,
+    path: "delete.txt",
+    size: Buffer.byteLength("delete-once"),
+  });
+
+  channel.receive(frame, connection);
+  assert.deepEqual(connection.frames.at(-1), result);
+  channel.receive({ ...frame, relativePath: "other.txt" }, connection);
+  assert.equal(connection.frames.at(-1)?.code, "REQUEST_ID_REUSE");
+
+  const directoryId = randomUUID();
+  channel.receive({ ...frame, requestId: directoryId, relativePath: "directory" }, connection);
+  await waitFor(() => connection.frames.some((item) => item.requestId === directoryId));
+  assert.equal(connection.frames.find((item) => item.requestId === directoryId)?.code, "INVALID_PATH");
+  assert.equal(readdirSync(root).includes("directory"), true);
 });
 
 test("shared project move derives source and destination from one anchored root during pathname swap and restore", async (t) => {

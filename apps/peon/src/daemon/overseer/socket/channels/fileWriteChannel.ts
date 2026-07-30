@@ -5,6 +5,7 @@ import { settings } from "../../../settings/index.js";
 import {
   ATTACHMENT_UPLOAD_MAX_BYTES,
   AtomicFileUpload,
+  deleteProjectFile,
   FileWriteError,
   PROJECT_UPLOAD_MAX_BYTES,
   fileWriteFsError,
@@ -54,7 +55,7 @@ interface CompletedWrite {
 }
 
 interface Admission {
-  operation: "upload" | "move";
+  operation: "upload" | "move" | "delete";
   fingerprint: string;
   incarnation: string;
   sender: PeonSocketSender;
@@ -71,6 +72,7 @@ interface FileWriteChannelOptions {
   idleLeaseMs?: number;
   openUpload?: typeof AtomicFileUpload.open;
   moveFile?: typeof moveProjectFile;
+  deleteFile?: typeof deleteProjectFile;
 }
 
 function field(frame: PeonSocketFrame, name: string, max: number): string | null {
@@ -139,6 +141,7 @@ export class FileWriteChannel implements PeonSocketChannel {
   private readonly idleLeaseMs: number;
   private readonly openAtomicUpload: typeof AtomicFileUpload.open;
   private readonly moveAtomicFile: typeof moveProjectFile;
+  private readonly deleteAtomicFile: typeof deleteProjectFile;
   private accepted = false;
   private currentSender: PeonSocketSender | null = null;
   private socketGeneration = 0;
@@ -154,6 +157,7 @@ export class FileWriteChannel implements PeonSocketChannel {
     this.idleLeaseMs = options.idleLeaseMs ?? DEFAULT_IDLE_LEASE_MS;
     this.openAtomicUpload = options.openUpload ?? AtomicFileUpload.open;
     this.moveAtomicFile = options.moveFile ?? moveProjectFile;
+    this.deleteAtomicFile = options.deleteFile ?? deleteProjectFile;
   }
 
   helloState(): PeonSocketFrame {
@@ -287,12 +291,12 @@ export class FileWriteChannel implements PeonSocketChannel {
 
     try {
       actor(frame);
-      if (frame.operation !== "upload" && frame.operation !== "move") {
+      if (frame.operation !== "upload" && frame.operation !== "move" && frame.operation !== "delete") {
         throw new FileWriteError(400, "BAD_REQUEST", "unsupported file write operation");
       }
       const admission = this.admit(requestId, fingerprint, frame.operation, sender);
-      if (frame.operation === "move") {
-        void this.move(frame, requestId, admission);
+      if (frame.operation === "move" || frame.operation === "delete") {
+        void this.mutate(frame, requestId, admission);
         return;
       }
       void this.openUpload(frame, requestId, admission);
@@ -369,7 +373,7 @@ export class FileWriteChannel implements PeonSocketChannel {
     }
   }
 
-  private async move(
+  private async mutate(
     frame: PeonSocketFrame,
     requestId: string,
     admission: Admission,
@@ -377,15 +381,21 @@ export class FileWriteChannel implements PeonSocketChannel {
     const { fingerprint, sender } = admission;
     let terminal: PeonSocketFrame;
     try {
-      if (frame.scope !== "project") throw new FileWriteError(400, "BAD_REQUEST", "move is project-scoped");
+      if (frame.scope !== "project") throw new FileWriteError(400, "BAD_REQUEST", "file mutation is project-scoped");
       const projectId = field(frame, "projectId", 512);
       const source = field(frame, "relativePath", 4096);
-      const destination = field(frame, "destination", 4096);
       if (!projectId || projectId.includes("\0")) throw new FileWriteError(400, "INVALID_PROJECT_ID", "a valid project ID is required");
-      if (!source || !destination) throw new FileWriteError(400, "INVALID_PATH", "source and destination paths are required");
+      if (!source) throw new FileWriteError(400, "INVALID_PATH", "a project-relative path is required");
       const project = this.projects.list().find((candidate) => candidate.projectId === projectId);
       if (!project) throw new FileWriteError(404, "UNKNOWN_PROJECT", "unknown project");
-      const result = await this.moveAtomicFile(project, source, destination);
+      const result = frame.operation === "delete"
+        ? await this.deleteAtomicFile(project, source)
+        : await this.moveAtomicFile(
+          project,
+          source,
+          field(frame, "destination", 4096)
+            ?? (() => { throw new FileWriteError(400, "INVALID_PATH", "destination path is required"); })(),
+        );
       terminal = { type: "write_result", requestId, status: 200, ...result };
     } catch (error) {
       terminal = this.terminalErrorFrame(requestId, fileWriteFsError(error));
@@ -470,7 +480,7 @@ export class FileWriteChannel implements PeonSocketChannel {
   private admit(
     requestId: string,
     fingerprint: string,
-    operation: "upload" | "move",
+    operation: "upload" | "move" | "delete",
     sender: PeonSocketSender,
   ): Admission {
     const admission: Admission = {
@@ -516,7 +526,7 @@ export class FileWriteChannel implements PeonSocketChannel {
     // A move is a single non-cancellable native rename once dispatched. Keep
     // its request ownership even when nobody may receive the result anymore;
     // retries must observe the same pending effect until it settles.
-    if (admission.operation !== "move") this.finishAdmission(requestId, admission);
+    if (admission.operation === "upload") this.finishAdmission(requestId, admission);
   }
 
   private finishWork(incarnation: string): void {

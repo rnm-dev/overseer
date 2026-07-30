@@ -1,7 +1,7 @@
 import { FileAccessService } from "./service.js";
 import { MAX_VIEW_BYTES } from "./contracts.js";
 export { MAX_VIEW_BYTES, FileAccessService, };
-export { ATTACHMENT_UPLOAD_MAX_BYTES, AtomicFileUpload, FileWriteError, PROJECT_UPLOAD_MAX_BYTES, fileWriteFsError, moveProjectFile, projectFileWriteTarget, revalidateFileWriteTarget, sandboxFileWriteTarget, } from "./writes.js";
+export { ATTACHMENT_UPLOAD_MAX_BYTES, AtomicFileUpload, deleteProjectFile, FileWriteError, PROJECT_UPLOAD_MAX_BYTES, fileWriteFsError, moveProjectFile, projectFileWriteTarget, revalidateFileWriteTarget, sandboxFileWriteTarget, } from "./writes.js";
 const sharedFileAccessService = new FileAccessService();
 export function resolveWithinDir(baseDir, subpath) {
     return sharedFileAccessService.resolveWithinDir(baseDir, subpath);

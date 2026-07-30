@@ -23,6 +23,7 @@ export {
 export {
   ATTACHMENT_UPLOAD_MAX_BYTES,
   AtomicFileUpload,
+  deleteProjectFile,
   FileWriteError,
   PROJECT_UPLOAD_MAX_BYTES,
   fileWriteFsError,
