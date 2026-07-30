@@ -19,8 +19,8 @@ export class DaemonConfigurationChannel {
         this.configuration = configuration;
     }
     helloState() {
-        const { values: _values, updatedAt: _updatedAt, ...identity } = this.state.snapshot();
-        return identity;
+        const { epoch, revision, schemaVersion, digest } = this.state.snapshot();
+        return { epoch, revision, schemaVersion, digest };
     }
     started(_sender) {
         this.unsubscribe?.();

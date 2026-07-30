@@ -42,6 +42,14 @@ test("daemon configuration negotiates exact checkpoints and publishes only the s
   const transport = sender(frames);
   const snapshot = state.snapshot();
 
+  assert.deepEqual(channel.helloState(), {
+    epoch: snapshot.epoch,
+    revision: snapshot.revision,
+    schemaVersion: snapshot.schemaVersion,
+    digest: snapshot.digest,
+  });
+  assert.deepEqual(Object.keys(channel.helloState()).sort(), ["digest", "epoch", "revision", "schemaVersion"]);
+
   channel.negotiated(true, {
     capabilities: ["durable-delivery-v1", "daemon-configuration-v1"],
     channels: { "daemon-configuration-v1": {

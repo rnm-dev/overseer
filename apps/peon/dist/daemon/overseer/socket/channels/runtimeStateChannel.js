@@ -103,16 +103,26 @@ export class RuntimeStateChannel {
         const sender = this.sender;
         if (!this.accepted || !sender?.durable)
             return;
-        const state = this.readState();
-        if (hasForbiddenRuntimeKey(state)) {
+        const liveState = this.readState();
+        if (hasForbiddenRuntimeKey(liveState)) {
             sender.disconnect("runtime state contains a forbidden sensitive key");
             return;
         }
-        const encoded = canonical(state);
-        if (Buffer.byteLength(encoded, "utf8") > MAX_RUNTIME_STATE_BYTES) {
+        let state;
+        let serialized;
+        try {
+            serialized = JSON.stringify(liveState);
+            state = JSON.parse(serialized);
+        }
+        catch {
+            sender.disconnect("runtime state is not JSON serializable");
+            return;
+        }
+        if (Buffer.byteLength(serialized, "utf8") > MAX_RUNTIME_STATE_BYTES) {
             sender.disconnect("runtime state exceeds the negotiated payload bound");
             return;
         }
+        const encoded = canonical(state);
         const digest = createHash("sha256").update(encoded).digest("hex");
         if (!force && digest === this.digest)
             return;

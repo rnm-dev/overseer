@@ -1,7 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { createHash } from "node:crypto";
 import { RuntimeStateChannel } from "../overseer/socket/channels/runtimeStateChannel.js";
 import type { PeonSocketFrame, PeonSocketSender } from "../overseer/socket/peonSocketProtocol.js";
+
+function canonical(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
+  const record = value as Record<string, unknown>;
+  return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${canonical(record[key])}`).join(",")}}`;
+}
 
 function sender(sent: PeonSocketFrame[]): PeonSocketSender {
   return {
@@ -54,6 +62,31 @@ test("runtime-state-v1 advances revision after a relevant local settings change"
   changed?.();
   assert.ok(Number(frames.at(-1)!.revision) > initialRevision);
   assert.equal((frames.at(-1)!.state as PeonSocketFrame).paused, true);
+});
+
+test("runtime-state-v1 digests the same stable snapshot that durable delivery serializes", () => {
+  const frames: PeonSocketFrame[] = [];
+  let reads = 0;
+  const channel = new RuntimeStateChannel(() => ({
+    models: [{
+      get checkedAt() {
+        reads += 1;
+        return reads;
+      },
+    }],
+  }));
+  const transport = sender(frames);
+
+  channel.started(transport);
+  channel.negotiated(true, {}, transport);
+
+  const frame = frames.at(-1)!;
+  const state = frame.state as PeonSocketFrame;
+  assert.equal(
+    frame.digest,
+    createHash("sha256").update(canonical(state)).digest("hex"),
+  );
+  assert.equal(reads, 2);
 });
 
 test("runtime-state-v1 refuses an oversized projection before assigning a durable cursor", () => {

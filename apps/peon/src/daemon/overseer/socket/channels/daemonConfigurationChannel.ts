@@ -29,8 +29,8 @@ export class DaemonConfigurationChannel implements PeonSocketChannel {
   ) {}
 
   helloState(): PeonSocketFrame {
-    const { values: _values, updatedAt: _updatedAt, ...identity } = this.state.snapshot();
-    return identity;
+    const { epoch, revision, schemaVersion, digest } = this.state.snapshot();
+    return { epoch, revision, schemaVersion, digest };
   }
   started(_sender: PeonSocketSender): void {
     this.unsubscribe?.();
