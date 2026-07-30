@@ -616,3 +616,16 @@ export async function commitDurableReverseCommandResult(input: {
 export function reverseCommandRegistryActiveStates(): readonly string[] {
   return ACTIVE_STATES;
 }
+
+export async function hasActiveUpdateCommand(peonId: string): Promise<boolean> {
+  const { rows } = await query<{ present: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1 FROM reverse_commands
+        WHERE peon_id=$1
+          AND operation LIKE 'update.%'
+          AND state IN ('created','sent','accepted','running','unknown')
+     ) AS present`,
+    [peonId],
+  );
+  return rows[0]?.present === true;
+}
