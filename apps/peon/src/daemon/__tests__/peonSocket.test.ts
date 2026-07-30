@@ -9,6 +9,7 @@ import WebSocket, { WebSocketServer } from "ws";
 import type { PeonSocketChannel, PeonSocketFrame } from "../overseer/socket/peonSocketProtocol.js";
 import { PeonSocketOutbox } from "../overseer/socket/peonSocketOutbox.js";
 import { PeonSocketPool, PeonSocketSupervisor, peonSocketUrl } from "../overseer/socket/peonSocket.js";
+import { supportsFolderListing } from "../overseer/socket/channels/folderListingChannel.js";
 
 interface MutableConfig {
   overseerUrl: string;
@@ -124,8 +125,15 @@ test("default control hello advertises the folder listing capability", async () 
     await waitFor(() => supervisor.getState().connected, "default control socket did not connect");
     const hello = target.hellos[0]!;
     assert.match(String(hello.version), /^\d+\.\d+\.\d+$/);
-    assert.ok((hello.capabilities as string[]).includes("folder-listing-v1"));
-    assert.deepEqual((hello.channels as Record<string, unknown>)["folder-listing-v1"], { entryMetadata: "entry-metadata-v1" });
+    // Overseer selects a negotiated capability exclusively and never falls back
+    // to HTTP afterwards, so this hello may only claim folder listing where the
+    // anchored backend can actually serve it.
+    const advertised = (hello.capabilities as string[]).includes("folder-listing-v1");
+    assert.equal(advertised, supportsFolderListing());
+    assert.deepEqual(
+      (hello.channels as Record<string, unknown>)["folder-listing-v1"],
+      advertised ? { entryMetadata: "entry-metadata-v1" } : undefined,
+    );
   } finally {
     supervisor.stop();
     await closeServer(target.server, target.sockets);

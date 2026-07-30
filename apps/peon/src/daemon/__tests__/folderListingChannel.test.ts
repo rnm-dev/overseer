@@ -17,6 +17,7 @@ import {
   FOLDER_LISTING_ENTRY_METADATA,
   FOLDER_LISTING_MAX_PAGE_BYTES,
   FolderListingChannel,
+  supportsFolderListing,
 } from "../overseer/socket/channels/folderListingChannel.js";
 import { PEON_SOCKET_MAX_FRAME_BYTES, type PeonSocketFrame, type PeonSocketSender } from "../overseer/socket/peonSocketProtocol.js";
 import type { ProjectRecord } from "../projects/contracts.js";
@@ -280,6 +281,31 @@ test("fails closed when secure handle-relative traversal is unavailable", async 
   assert.equal(frame.type, "folder_list_error");
   assert.equal(frame.code, "UNSUPPORTED_PLATFORM");
   assert.equal(JSON.stringify(frame).includes("secret.txt"), false);
+});
+
+test("only Linux handle paths qualify a platform for folder listing", () => {
+  // Asserted by name rather than by the host's own platform so both branches
+  // are exercised wherever this suite runs.
+  assert.equal(supportsFolderListing("linux"), true);
+  for (const platform of ["darwin", "win32", "freebsd", "aix"] as const) {
+    assert.equal(supportsFolderListing(platform), false);
+  }
+});
+
+test("the advertised capability agrees with what the default backend can serve", async () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "peon-folder-agreement-"));
+  writeFileSync(path.join(root, "readable.txt"), "content");
+  const channel = new FolderListingChannel();
+  const output = capture();
+  channel.negotiated(true, {}, output.sender);
+
+  channel.receive({ type: "folder_list_request", requestId: "agreement", path: root }, output.sender);
+  const frame = await waitForFrame(output, (candidate) => candidate.requestId === "agreement");
+  // The regression this pins: the channel announced folder-listing-v1 on a
+  // platform where every request could only answer UNSUPPORTED_PLATFORM, and
+  // Overseer's exclusive selection then denied the working HTTP fallback.
+  assert.equal(frame.type === "folder_list_page", supportsFolderListing());
+  assert.equal(frame.code === "UNSUPPORTED_PLATFORM", !supportsFolderListing());
 });
 
 test("the default backend fails closed on platforms without Linux handle paths", async (t) => {

@@ -136,8 +136,23 @@ function requiredOpenFlags(): {
   };
 }
 
+// Every path this channel touches is anchored to an open directory handle
+// through the kernel's own view of that descriptor. Traversing
+// `/proc/self/fd/N` restarts the walk from the pinned inode, which is what
+// stops an ancestor from being swapped mid-listing. No other platform Peon
+// runs on exposes an equivalent — Darwin's `fcntl(F_GETPATH)` reconstructs a
+// path *string*, so reopening it is an ordinary racy lookup, not the same
+// guarantee — and Node exposes no `openat`.
 function defaultTrustedHandlePath(handle: FileHandle): string | null {
-  return process.platform === "linux" ? `/proc/self/fd/${handle.fd}` : null;
+  return supportsFolderListing() ? `/proc/self/fd/${handle.fd}` : null;
+}
+
+// Advertising a capability the platform can only ever answer with
+// UNSUPPORTED_PLATFORM is worse than not advertising it: Overseer selects the
+// socket exclusively, so the working HTTP path it would otherwise fall back to
+// never runs. Withdraw the channel instead and let that negotiation decide.
+export function supportsFolderListing(platform: NodeJS.Platform = process.platform): boolean {
+  return platform === "linux";
 }
 
 function anchoredPath(

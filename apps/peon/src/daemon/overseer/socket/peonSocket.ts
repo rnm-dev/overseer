@@ -20,7 +20,7 @@ import {
 import { SessionCatalogChannel } from "./channels/sessionCatalogChannel.js";
 import { SessionWarningChannel } from "./channels/sessionWarningChannel.js";
 import { ProjectCatalogChannel } from "./channels/projectCatalogChannel.js";
-import { FolderListingChannel } from "./channels/folderListingChannel.js";
+import { FolderListingChannel, supportsFolderListing } from "./channels/folderListingChannel.js";
 import { ProjectFileReadChannel, SandboxFileReadChannel, SessionArtifactReadChannel } from "./channels/projectFileReadChannel.js";
 import { ReverseCommandChannel } from "./channels/reverseCommandChannel.js";
 import type { ReverseCommandHandler } from "./channels/reverseCommandChannel.js";
@@ -196,7 +196,7 @@ export class PeonSocketSupervisor {
           new SessionCatalogChannel(),
           ...(hasDurableOutbox ? [new ProjectCatalogChannel()] : []),
           new SessionWarningChannel(),
-          new FolderListingChannel(),
+          ...(supportsFolderListing() ? [new FolderListingChannel()] : []),
           ...(hasDurableOutbox ? [new TranscriptChannel()] : []),
           ...(hasDurableOutbox ? [daemonConfigurationChannel] : []),
           ...(this.reverseCommandChannel ? [this.reverseCommandChannel] : []),
