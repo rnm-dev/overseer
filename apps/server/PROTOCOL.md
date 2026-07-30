@@ -1016,6 +1016,16 @@ credit Overseer grants after accepting the final chunk cannot tear down the
 shared socket after `file_end`. File frames are ephemeral and never enter durable
 delivery or the control socket.
 
+Stable pre-body `file_error` codes across the read capabilities are
+`BAD_PROTOCOL`, `DUPLICATE_REQUEST`, `TRANSFER_BUSY`, `INVALID_ACTOR`,
+`INVALID_PROJECT_ID`, `INVALID_PROJECT_PATH`, `INVALID_SESSION_ID`,
+`INVALID_PATH`, `INVALID_RANGE`, `UNKNOWN_PROJECT`, `UNKNOWN_SESSION`,
+`FILES_DISABLED`, `PATH_ESCAPE`, `NOT_FOUND`, `FORBIDDEN`, `IS_DIRECTORY`,
+`NOT_FILE`, `FILE_CHANGED`, `FILE_TOO_LARGE`, `RANGE_NOT_SATISFIABLE`, and
+`INTERNAL`. Invalid request IDs, credit, binary framing, sequence, or traffic
+sent before negotiation are connection-level protocol violations rather than
+`file_error` refusals.
+
 ### Sandbox file reads (`sandbox-file-read-v1`)
 
 This capability uses the same metadata, binary chunks, ranges, credit,
@@ -1128,10 +1138,14 @@ authoritative terminal result. Until settlement, identical retries remain
 duplicates and changed input remains request-ID reuse; afterward the result is
 replayed from the bounded cache.
 
-Stable Peon refusals include `FILES_DISABLED`, `PATH_ESCAPE`, `INVALID_PATH`,
-`UNKNOWN_PROJECT`, `PARENT_NOT_FOUND`, `FORBIDDEN`, `FILE_TOO_LARGE`,
-`CHECKSUM_MISMATCH`, `DESTINATION_EXISTS`, `SOURCE_CHANGED`, `TRANSFER_BUSY`,
-`TRANSFER_TIMEOUT`, `UNSUPPORTED_PLATFORM`, and `WRITE_FAILED`.
+Stable `write_error` refusals include `BAD_PROTOCOL`, `BAD_REQUEST`,
+`INVALID_ACTOR`, `INVALID_CHECKSUM`, `INVALID_LENGTH`, `INVALID_PATH`,
+`INVALID_PROJECT_ID`, `UNKNOWN_PROJECT`, `FILES_DISABLED`, `PATH_ESCAPE`,
+`NOT_FOUND`, `PARENT_NOT_FOUND`, `FORBIDDEN`, `FILE_TOO_LARGE`,
+`CHECKSUM_MISMATCH`, `LENGTH_MISMATCH`, `DESTINATION_EXISTS`,
+`SOURCE_CHANGED`, `TRANSFER_CLOSED`, `DUPLICATE_REQUEST`,
+`REQUEST_ID_REUSE`, `TRANSFER_BUSY`, `TRANSFER_TIMEOUT`,
+`UNSUPPORTED_PLATFORM`, and `WRITE_FAILED`.
 Once Overseer selects this negotiated capability, socket errors are final for
 that public request and never fall through to the legacy HTTP mutation.
 
