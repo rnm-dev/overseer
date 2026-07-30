@@ -82,7 +82,10 @@ export function evictPeonTransferConnection(peonId: string): boolean {
 export function evictPeonTransferConnectionsBelowGeneration(peonId: string, generation: number): boolean {
   const socket = connections.get(peonId);
   if (!socket || (credentialGenerations.get(socket) ?? 0) >= generation) return false;
-  connections.delete(peonId);
+  // Keep the claim until the close handler releases this exact socket and
+  // fails its pending transfers. `terminate()` immediately makes the socket
+  // unavailable to new callers; deleting it here would strand in-flight work
+  // until its independent timeout.
   socket.terminate();
   return true;
 }
@@ -90,7 +93,7 @@ export function evictPeonTransferConnectionsBelowGeneration(peonId: string, gene
 export function evictPeonTransferConnectionGeneration(peonId: string, generation: number): boolean {
   const socket = connections.get(peonId);
   if (!socket || (credentialGenerations.get(socket) ?? 0) !== generation) return false;
-  connections.delete(peonId);
+  // Close owns release and failure of every read/write fenced to this socket.
   socket.terminate();
   return true;
 }
