@@ -45,7 +45,9 @@ export function PeonNewSession() {
   const [reasoningEffort, setReasoningEffort] = useState("");
   const draftKey = composerDraftKey(wsId, peon.peonId, null);
   const [input, setInput] = useComposerDraft(draftKey);
-  const [files, setFiles] = useComposerDraftFiles(draftKey);
+  // A new session may retain its text draft, but attachments must originate
+  // from an explicit paste, picker, or drop in this instance of the composer.
+  const [files, setFiles] = useComposerDraftFiles(draftKey, false);
   const [filesEnabled, setFilesEnabled] = useState<boolean | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);

@@ -129,6 +129,14 @@ export function clearComposerDraft(key: string): void {
   saveComposerDraft(key, "", NO_FILES);
 }
 
+// A new-session form deliberately does not revive file attachments. Unlike
+// text, files are an explicit send-time choice: restoring them makes a prior
+// paste look like the browser has pasted the current system clipboard. Keep
+// this separate from clearComposerDraft so its text draft can still survive.
+export function clearComposerDraftFiles(key: string): void {
+  void writeDraftFiles(key, NO_FILES);
+}
+
 export function useComposerDraft(key: string, initialValue?: string, persist = true): [string, (value: string) => void] {
   const [draft, setDraft] = useState(() => ({ key, value: initialValue ?? readDraft(key) }));
 
@@ -150,12 +158,19 @@ export function useComposerDraft(key: string, initialValue?: string, persist = t
 // The attachment half of a draft, keyed exactly like the text half. Reads are
 // async (IndexedDB), so the composer starts empty and adopts the stored set once
 // it arrives — anything the operator attached in the meantime wins.
-export function useComposerDraftFiles(key: string): [File[], (files: SetStateAction<File[]>) => void] {
+export function useComposerDraftFiles(key: string, restore = true): [File[], (files: SetStateAction<File[]>) => void] {
   const [draft, setDraft] = useState(() => ({ key, files: NO_FILES, loaded: false }));
 
   useEffect(() => {
     let alive = true;
     setDraft((current) => (current.key === key ? current : { key, files: NO_FILES, loaded: false }));
+    if (!restore) {
+      clearComposerDraftFiles(key);
+      setDraft({ key, files: NO_FILES, loaded: true });
+      return () => {
+        alive = false;
+      };
+    }
     void readDraftFiles(key).then((files) => {
       if (!alive) return;
       setDraft((current) => (current.key === key && !current.loaded
@@ -165,7 +180,7 @@ export function useComposerDraftFiles(key: string): [File[], (files: SetStateAct
     return () => {
       alive = false;
     };
-  }, [key]);
+  }, [key, restore]);
 
   // Persist the committed set rather than writing inside the setter, so a
   // React 18 double-invoked updater cannot double-write. Held back until the

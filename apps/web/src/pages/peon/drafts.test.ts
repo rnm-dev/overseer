@@ -76,6 +76,19 @@ test("a text-only draft leaves no attachment record behind", async () => {
   assert.equal(records.has(key), false);
 });
 
+test("clearing attachment drafts preserves a new-session text draft", async () => {
+  const { clearComposerDraftFiles, composerDraftKey, saveComposerDraft } = await import("./drafts");
+  const key = composerDraftKey("ws", "peon", null);
+
+  saveComposerDraft(key, "keep this prompt", [new File(["x"], "pasted.png", { type: "image/png" })]);
+  await settled();
+  clearComposerDraftFiles(key);
+  await settled();
+
+  assert.equal(text.get(key), "keep this prompt");
+  assert.equal(records.has(key), false);
+});
+
 // The point of the imperative clear: a composer that navigates away on submit
 // unmounts before its persistence effect could run.
 test("clearComposerDraft removes the text and the attachments", async () => {
