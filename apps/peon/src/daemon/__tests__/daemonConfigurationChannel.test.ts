@@ -28,6 +28,12 @@ function sender(frames: PeonSocketFrame[]): PeonSocketSender {
   };
 }
 
+function isolatedConfiguration(root: string): SettingsService {
+  const service = new SettingsService(new SettingsStore(path.join(root, "settings.json")));
+  service.update(settings.get());
+  return service;
+}
+
 test("daemon configuration negotiates exact checkpoints and publishes only the safe document", () => {
   const root = mkdtempSync(path.join(os.tmpdir(), "peon-config-channel-"));
   const state = new DaemonConfigurationState(path.join(root, "state.json"), () => 123);
@@ -52,6 +58,68 @@ test("daemon configuration negotiates exact checkpoints and publishes only the s
     ["aiDefaultModel", "defaultAgent", "fileTransferRoot", "heartbeatIntervalMs", "name", "soul"]);
   assert.equal(JSON.stringify(payload).includes("overseerToken"), false);
   assert.equal((frames[0]!.options as PeonSocketFrame).capability, "daemon-configuration-v1");
+});
+
+test("daemon configuration publishes old and mismatched checkpoints but rejects a future revision", () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "peon-config-replay-"));
+  const configuration = isolatedConfiguration(root);
+  const state = new DaemonConfigurationState(path.join(root, "state.json"), () => 456, configuration);
+  const channel = new DaemonConfigurationChannel(state, configuration);
+  const frames: PeonSocketFrame[] = [];
+  const disconnects: string[] = [];
+  const transport = {
+    ...sender(frames),
+    disconnect: (reason: string) => { disconnects.push(reason); },
+  };
+  const snapshot = state.snapshot();
+
+  channel.negotiated(true, { channels: { "daemon-configuration-v1": {
+    epoch: snapshot.epoch, acknowledgedRevision: snapshot.revision - 1, digest: snapshot.digest,
+  } } }, transport);
+  channel.negotiated(true, { channels: { "daemon-configuration-v1": {
+    epoch: randomUUID(), acknowledgedRevision: snapshot.revision, digest: snapshot.digest,
+  } } }, transport);
+  channel.negotiated(true, { channels: { "daemon-configuration-v1": {
+    epoch: snapshot.epoch, acknowledgedRevision: snapshot.revision, digest: "0".repeat(64),
+  } } }, transport);
+  assert.equal(frames.length, 3);
+
+  channel.negotiated(true, { channels: { "daemon-configuration-v1": {
+    epoch: snapshot.epoch, acknowledgedRevision: snapshot.revision + 1, digest: snapshot.digest,
+  } } }, transport);
+  assert.deepEqual(disconnects, ["daemon configuration acknowledgement is from a future revision"]);
+  assert.deepEqual(state.snapshot(), snapshot);
+});
+
+test("local safe changes share a monotonic restart-stable identity while private changes and noops do not", () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "peon-config-local-"));
+  const configuration = isolatedConfiguration(root);
+  const statePath = path.join(root, "state.json");
+  const state = new DaemonConfigurationState(statePath, () => 100, configuration);
+  const channel = new DaemonConfigurationChannel(state, configuration);
+  const frames: PeonSocketFrame[] = [];
+  channel.started(sender(frames));
+  channel.negotiated(true, { channels: {} }, sender(frames));
+  frames.length = 0;
+  const before = state.snapshot();
+
+  configuration.update({ paused: !configuration.get().paused });
+  assert.equal(state.snapshot().revision, before.revision);
+  assert.equal(frames.length, 0);
+
+  configuration.update({ name: configuration.get().name });
+  assert.equal(state.snapshot().revision, before.revision);
+  assert.equal(frames.length, 0);
+
+  const name = before.values.name === "local-change" ? "local-change-2" : "local-change";
+  configuration.update({ name });
+  const changed = state.snapshot();
+  assert.equal(changed.revision, before.revision + 1);
+  assert.equal((frames.at(-1)?.frame as PeonSocketFrame).reason, "local_change");
+  assert.equal(JSON.stringify(frames.at(-1)).includes("overseerToken"), false);
+
+  const restarted = new DaemonConfigurationState(statePath, () => 200, configuration).snapshot();
+  assert.deepEqual(restarted, changed);
 });
 
 test("configuration patch handler applies, noops, conflicts, and rejects forbidden fields", async () => {
@@ -99,4 +167,23 @@ test("configuration patch handler applies, noops, conflicts, and rejects forbidd
     code: "INVALID_VALUE",
     result: { errors: [{ code: "INVALID_VALUE", message: "configuration patch rejected" }] },
   });
+
+  for (const forbidden of ["overseerToken", "pairingSecret", "peonId", "overseerUrl", "bindHost", "paused"]) {
+    assert.match(handler.validate({ patch: { [forbidden]: "secret" } }, base.expected)!, /forbidden/);
+  }
+  const invalidType = await handler.execute({
+    ...base,
+    commandId: randomUUID(),
+    expected: current,
+    payload: { patch: { name: { malicious: true } } },
+  });
+  assert.equal(invalidType.status, "rejected");
+  const oversized = await handler.execute({
+    ...base,
+    commandId: randomUUID(),
+    expected: current,
+    payload: { patch: { soul: "x".repeat((48 * 1024) + 1) } },
+  });
+  assert.equal(oversized.status, "rejected");
+  assert.equal(JSON.stringify(oversized).includes("x".repeat(128)), false);
 });
