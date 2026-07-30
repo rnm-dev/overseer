@@ -161,7 +161,15 @@ export const registry = {
 };
 
 export function baseUrl(record: PeonRecord): string {
+  const callbackUrl = legacyCallbackUrl(record);
+  if (!callbackUrl) throw new Error(`Peon ${record.peonId} has no legacy callback address`);
+  return callbackUrl;
+}
+
+export function legacyCallbackUrl(record: PeonRecord): string | null {
   if (record.publicUrl) return record.publicUrl;
+  if (!record.address || !Number.isInteger(record.controlPort)
+    || record.controlPort < 1 || record.controlPort > 65_535) return null;
   const host = record.address.includes(":") ? `[${record.address}]` : record.address;
   return `http://${host}:${record.controlPort}`;
 }

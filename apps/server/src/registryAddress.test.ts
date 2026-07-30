@@ -3,7 +3,7 @@ import { test } from "node:test";
 import type pg from "pg";
 import { newDb } from "pg-mem";
 import { initDb } from "./db.js";
-import { baseUrl, registry } from "./registry.js";
+import { baseUrl, legacyCallbackUrl, registry } from "./registry.js";
 
 async function freshDb(): Promise<void> {
   const db = newDb();
@@ -64,6 +64,24 @@ test("discovery-only Peon falls back to source IP and can be promoted by legacy 
   const legacy = await registry.register(registration({ hostname: "legacy-hostname", publicUrl: null }));
   assert.equal(baseUrl(legacy), "http://legacy-hostname:4570");
   assert.equal(legacy.addressSource, "advertised");
+});
+
+test("a reverse-only Peon may have no callback address and cannot synthesize one", () => {
+  const reverseOnly = registration({
+    hostname: null,
+    address: "",
+    controlPort: 0,
+    publicUrl: null,
+  });
+  const record = {
+    ...reverseOnly,
+    addressSource: "discovered" as const,
+    connectionPinned: false,
+    registeredAt: 1,
+    lastSeen: 1,
+  };
+  assert.equal(legacyCallbackUrl(record), null);
+  assert.throws(() => baseUrl(record), /has no legacy callback address/);
 });
 
 test("registration racing enrollment produces one row and preserves paired URL", async () => {
