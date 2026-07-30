@@ -12,6 +12,7 @@ import {
   ARMORY_SEARCH_DEBOUNCE_MS,
   ArmoryActionGate,
   activeArmoryCapabilities,
+  armoryOperationProgress,
   ArmoryRequestGate,
   clearAcceptedTransientValues,
   deleteArmoryConfiguration,
@@ -447,6 +448,14 @@ test("operation reads model queued, configure/verify progress, success, and stab
   assert.equal(operationActive(seen[3]), false);
   const failure = { ...operations[3], status: "failure" as const, errorCode: "VERIFY_FAILED", message: "Verification failed" };
   assert.equal(failure.errorCode, "VERIFY_FAILED");
+});
+
+test("operation progress rejects missing and non-finite wire values", () => {
+  assert.equal(armoryOperationProgress(undefined), null);
+  assert.equal(armoryOperationProgress(Number.NaN), null);
+  assert.equal(armoryOperationProgress(Number.POSITIVE_INFINITY), null);
+  assert.equal(armoryOperationProgress(-5), 0);
+  assert.equal(armoryOperationProgress(120), 100);
 });
 
 test("409 operation-in-progress propagates without modifying entered values", async () => {

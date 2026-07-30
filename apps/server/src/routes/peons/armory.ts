@@ -32,7 +32,7 @@ async function armoryCall(
       });
       const body = response.body;
       if (response.status >= 200 && response.status < 300 && body.state === "terminal") {
-        return { status: response.status, json: body.result };
+        return { status: response.status, json: normalizeArmoryResult(body.result) };
       }
       return { status: response.status, json: body };
     },
@@ -50,6 +50,18 @@ async function armoryCall(
 
 function record(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+
+export function normalizeArmoryResult(value: unknown): unknown {
+  const json = record(value);
+  const operation = record(json?.operation);
+  if (!json || !operation) return value;
+  const { percent, ...publicOperation } = operation;
+  const candidate = operation.progress ?? percent;
+  const progress = typeof candidate === "number" && Number.isFinite(candidate)
+    ? Math.max(0, Math.min(100, candidate))
+    : null;
+  return { ...json, operation: { ...publicOperation, progress } };
 }
 
 // Configuration failures and operation diagnostics cross a trust boundary from

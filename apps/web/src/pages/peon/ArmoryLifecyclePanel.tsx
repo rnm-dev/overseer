@@ -3,6 +3,7 @@ import { ApiError } from "../../api";
 import { Badge, Button, Card, Dialog } from "../../ui";
 import {
   ArmoryActionGate,
+  armoryOperationProgress,
   getArmoryOperation,
   installArmoryPackage,
   operationActive,
@@ -137,6 +138,7 @@ export function ArmoryLifecyclePanel({ base, packageId, installed, versions = []
 
   const apiError = error as Partial<ApiError> | null;
   const failed = operation?.status === "failure" || operation?.status === "needs_human";
+  const operationProgress = armoryOperationProgress(operation?.progress);
 
   return <Card className="p-5">
     <div className="flex flex-wrap items-start justify-between gap-4">
@@ -161,8 +163,8 @@ export function ArmoryLifecyclePanel({ base, packageId, installed, versions = []
     </dl>}
 
     {operation && <div className={`mt-4 border-l-2 px-3 py-2 text-sm ${failed ? "border-blood bg-blood/5 text-blood" : operation.status === "success" ? "border-fel bg-fel/5 text-fel-bright" : "border-forge bg-forge/5 text-ember"}`} role="status">
-      <div className="flex flex-wrap items-center justify-between gap-2"><span>{operationName(operation)}: {operation.status.replace(/_/g, " ")} · {operation.phase.replace(/_/g, " ")}</span>{operation.progress !== null && <span className="font-mono text-xs">{Math.max(0, Math.min(100, operation.progress))}%</span>}</div>
-      {operation.progress !== null && <div className="mt-2 h-1 overflow-hidden rounded bg-iron-800" aria-label={`${operationName(operation)} progress`} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.max(0, Math.min(100, operation.progress))}><div className="h-full bg-current transition-[width]" style={{ width: `${Math.max(0, Math.min(100, operation.progress))}%` }} /></div>}
+      <div className="flex flex-wrap items-center justify-between gap-2"><span>{operationName(operation)}: {operation.status.replace(/_/g, " ")} · {operation.phase.replace(/_/g, " ")}</span>{operationProgress !== null && <span className="font-mono text-xs">{operationProgress}%</span>}</div>
+      {operationProgress !== null && <div className="mt-2 h-1 overflow-hidden rounded bg-iron-800" aria-label={`${operationName(operation)} progress`} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={operationProgress}><div className="h-full bg-current transition-[width]" style={{ width: `${operationProgress}%` }} /></div>}
       {operation.message && <p className="mt-1 text-xs opacity-80">{operation.message}</p>}
       {operation.errorCode && <p className="mt-1 font-mono text-xs">{operation.errorCode}</p>}
     </div>}

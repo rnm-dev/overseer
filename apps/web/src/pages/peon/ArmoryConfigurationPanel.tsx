@@ -3,6 +3,7 @@ import { CheckCircle2, Pencil } from "lucide-react";
 import { ApiError, api } from "../../api";
 import { Badge, Button, Card, Dialog } from "../../ui";
 import {
+  armoryOperationProgress,
   clearAcceptedTransientValues,
   deleteArmoryConfiguration,
   getArmoryOperation,
@@ -98,7 +99,7 @@ function FieldControl({ packageId, field, value, error, configured, disabled, on
 }
 
 function OperationProgress({ operation, pollingError, onRetry }: { operation: ArmoryOperation; pollingError: unknown; onRetry: () => void }) {
-  const progress = operation.progress === null ? null : Math.max(0, Math.min(100, operation.progress));
+  const progress = armoryOperationProgress(operation.progress);
   const failed = operation.status === "failure" || operation.status === "needs_human";
   return (
     <Card className={`p-4 ${failed ? "border-blood/50" : ""}`}>

@@ -111,6 +111,12 @@ export interface ArmoryOperation {
 
 export interface ArmoryOperationResponse { operation: ArmoryOperation }
 
+export function armoryOperationProgress(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value)
+    ? Math.max(0, Math.min(100, value))
+    : null;
+}
+
 export interface ArmorySettings {
   registryUrl: string;
   effectiveRegistryUrl: string;

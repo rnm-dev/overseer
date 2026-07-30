@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { peonsRouter } from "./routes/peons.js";
-import { safeConfigurationResult } from "./routes/peons/armory.js";
+import { normalizeArmoryResult, safeConfigurationResult } from "./routes/peons/armory.js";
 
 test("Armory exposes discovery, configuration, and lifecycle mutation routes", () => {
   const router = peonsRouter() as unknown as { stack: Array<{ route?: { path?: string; methods?: Record<string, boolean> } }> };
@@ -40,5 +40,18 @@ test("Armory configuration relays suppress submitted values in errors and operat
   assert.doesNotMatch(JSON.stringify(operation), new RegExp(secret));
   assert.deepEqual((operation.json as { operation: { phase: string; message: string; errorCode: null } }).operation, {
     id: "op", kind: "configure", status: "failure", phase: "configuration", message: "", errorCode: null,
+  });
+});
+
+test("Armory reverse operations expose the public progress field without non-finite values", () => {
+  assert.deepEqual(normalizeArmoryResult({
+    operation: { id: "op", kind: "update", status: "running", phase: "health_check", percent: 94 },
+  }), {
+    operation: { id: "op", kind: "update", status: "running", phase: "health_check", progress: 94 },
+  });
+  assert.deepEqual(normalizeArmoryResult({
+    operation: { id: "op", kind: "update", status: "failure", phase: "failed", percent: Number.NaN },
+  }), {
+    operation: { id: "op", kind: "update", status: "failure", phase: "failed", progress: null },
   });
 });
