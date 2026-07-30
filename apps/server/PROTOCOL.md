@@ -937,7 +937,7 @@ The transfer connection identifies its channel and operations in its opening
 frame:
 
 ```json
-{ "type": "hello", "protocol": 1, "channel": "file-transfer", "peonId": "<stable Peon id>", "capabilities": ["project-file-read-v1", "sandbox-file-read-v1", "file-write-v1"] }
+{ "type": "hello", "protocol": 1, "channel": "file-transfer", "peonId": "<stable Peon id>", "capabilities": ["project-file-read-v1", "sandbox-file-read-v1", "session-artifact-v1", "file-write-v1"] }
 ```
 
 Each connection has an independent handshake, heartbeat, reconnect backoff, and
@@ -1045,6 +1045,51 @@ revalidates canonical containment itself; it returns `FILES_DISABLED` when no
 root is configured, `PATH_ESCAPE` when the target leaves it, and `NOT_FOUND`
 when the contained target does not exist. An absolute path is never trusted as
 an authorization decision made by Overseer.
+
+### Session artifact reads and base previews (`session-artifact-v1`)
+
+Session attachments, generated artifacts, downloads and preview assets use the
+same metadata-first response, binary chunks, byte credit, Range, cancellation,
+idle lease, request tombstones and connection-generation fencing as
+`project-file-read-v1`:
+
+```json
+{
+  "type": "file_open", "protocol": 1, "requestId": "<uuid>",
+  "scope": "session", "sessionId": "<stable session id>",
+  "path": "dist/report.pdf",
+  "actor": { "userId": "<stable user id>", "email": "operator@example.com" }
+}
+```
+
+Peon resolves the authoritative session record and requires a regular file
+beneath its working directory. A legacy preview event's absolute path is
+accepted only as containment input and is never a new authorization decision.
+Peon repeats containment and device/inode validation after opening, before
+publishing `file_meta`. Unknown sessions, traversal, escaping symlinks and file
+swaps therefore fail before any body byte is visible.
+
+Overseer chooses this route exclusively after negotiation. Browser cancellation,
+preview expiry, socket replacement and timeout release the handle
+deterministically. Base HTML preview assets share this bounded path; advanced
+revision leases and atomic multi-asset publication are separate capabilities.
+
+The small metadata and baseline refresh operations stay on the transfer socket
+but never carry file bodies in JSON:
+
+```jsonc
+{ "type": "artifact_request", "protocol": 1, "requestId": "<uuid>", "sessionId": "<id>", "operation": "view|list|preview", "path": "dist/report.pdf", "actor": { "userId": "<id>", "email": "operator@example.com" } }
+{ "type": "artifact_result", "requestId": "<uuid>", "status": 200, "code": "OK", "message": null, "body": {} }
+{ "type": "artifact_watch", "protocol": 1, "requestId": "<uuid>", "sessionId": "<id>", "path": "dist/report.pdf", "actor": { "userId": "<id>", "email": "operator@example.com" } }
+{ "type": "artifact_watching", "requestId": "<uuid>", "path": "dist/report.pdf" }
+{ "type": "artifact_changed", "requestId": "<uuid>", "path": "dist/report.pdf" }
+{ "type": "artifact_cancel", "protocol": 1, "requestId": "<uuid>" }
+```
+
+At most 16 watches exist on one Peon transfer generation. They are debounced,
+generation-owned and closed on browser cancellation, socket replacement,
+watch failure or disconnect. Refresh notifications contain only the contained
+session path; the browser refetches bytes through the credited reader.
 
 ### Attachment and project writes (`file-write-v1`)
 

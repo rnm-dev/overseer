@@ -189,7 +189,7 @@ test("default transfer hello advertises project and sandbox file reads", async (
     await waitFor(() => supervisor.getState().connected, "default transfer socket did not connect");
     assert.deepEqual(target.hellos[0], {
       type: "hello", protocol: 1, channel: "file-transfer", peonId: "peon-files",
-      capabilities: ["project-file-read-v1", "sandbox-file-read-v1", "file-write-v1"],
+      capabilities: ["project-file-read-v1", "sandbox-file-read-v1", "session-artifact-v1", "file-write-v1"],
     });
   } finally {
     supervisor.stop();

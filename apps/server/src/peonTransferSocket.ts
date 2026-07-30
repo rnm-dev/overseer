@@ -8,6 +8,7 @@ import {
   FILE_WRITE_CAPABILITY,
   PROJECT_FILE_READ_CAPABILITY,
   SANDBOX_FILE_READ_CAPABILITY,
+  SESSION_ARTIFACT_CAPABILITY,
   releasePeonTransferConnection,
 } from "./peonTransferConnections.js";
 import { toView, type PeonRecord } from "./registry.js";
@@ -103,7 +104,7 @@ export function attachPeonTransferSocket(server: Server, options: TransferSocket
         const advertised = Array.isArray(frame.capabilities)
           ? frame.capabilities.filter((value): value is string => typeof value === "string")
           : [];
-        const accepted = [PROJECT_FILE_READ_CAPABILITY, SANDBOX_FILE_READ_CAPABILITY, FILE_WRITE_CAPABILITY]
+        const accepted = [PROJECT_FILE_READ_CAPABILITY, SANDBOX_FILE_READ_CAPABILITY, SESSION_ARTIFACT_CAPABILITY, FILE_WRITE_CAPABILITY]
           .filter((capability) => advertised.includes(capability));
         clearTimeout(helloTimeout);
         client.ready = true;

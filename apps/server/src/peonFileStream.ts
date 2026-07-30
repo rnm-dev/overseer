@@ -7,6 +7,7 @@ import {
   FILE_WRITE_CAPABILITY,
   PROJECT_FILE_READ_CAPABILITY,
   SANDBOX_FILE_READ_CAPABILITY,
+  SESSION_ARTIFACT_CAPABILITY,
 } from "./peonTransferConnections.js";
 
 const META_TIMEOUT_MS = 15_000;
@@ -35,6 +36,15 @@ export interface ProjectFileStreamRequest {
 
 export interface SandboxFileStreamRequest {
   peonId: string;
+  path: string;
+  actor: ProjectFileActor;
+  range?: ProjectFileRange;
+  signal?: AbortSignal;
+}
+
+export interface SessionArtifactStreamRequest {
+  peonId: string;
+  sessionId: string;
   path: string;
   actor: ProjectFileActor;
   range?: ProjectFileRange;
@@ -98,8 +108,28 @@ interface PendingWrite {
   pumping: boolean;
 }
 
+interface PendingArtifactOperation {
+  requestId: string;
+  peonId: string;
+  socket: WebSocket;
+  resolve: (value: { status: number; body: unknown }) => void;
+  reject: (error: PeonFileStreamError) => void;
+  timer: NodeJS.Timeout;
+}
+
+interface PendingArtifactWatch {
+  requestId: string;
+  peonId: string;
+  socket: WebSocket;
+  onChange: (path: string) => void;
+  onError: (error: PeonFileStreamError) => void;
+  timer: NodeJS.Timeout;
+}
+
 const pending = new Map<string, Pending>();
 const pendingWrites = new Map<string, PendingWrite>();
+const pendingArtifactOperations = new Map<string, PendingArtifactOperation>();
+const pendingArtifactWatches = new Map<string, PendingArtifactWatch>();
 const recentlyClosed = new Map<string, number>();
 const keyOf = (peonId: string, requestId: string) => `${peonId}\0${requestId}`;
 
@@ -142,6 +172,8 @@ function countForPeon(peonId: string): number {
   let count = 0;
   for (const item of pending.values()) if (item.peonId === peonId) count += 1;
   for (const item of pendingWrites.values()) if (item.peonId === peonId) count += 1;
+  for (const item of pendingArtifactOperations.values()) if (item.peonId === peonId) count += 1;
+  for (const item of pendingArtifactWatches.values()) if (item.peonId === peonId) count += 1;
   return count;
 }
 
@@ -228,6 +260,21 @@ export async function openPeonSandboxFile(input: SandboxFileStreamRequest): Prom
   return openPeonFile(input, SANDBOX_FILE_READ_CAPABILITY, { scope: "sandbox", path: input.path });
 }
 
+export async function openPeonSessionArtifact(input: SessionArtifactStreamRequest): Promise<ProjectFileStream> {
+  if (!input.sessionId || input.sessionId.length > 512 || input.sessionId.includes("\0")) {
+    throw new PeonFileStreamError("INVALID_SESSION_ID", "a valid session ID is required", 400);
+  }
+  if (!input.path || input.path.length > 4096 || input.path.includes("\0") || input.path.includes("\\")
+    || input.path.split("/").some((part) => part === "..")) {
+    throw new PeonFileStreamError("INVALID_PATH", "a contained session artifact path is required", 400);
+  }
+  return openPeonFile(input, SESSION_ARTIFACT_CAPABILITY, {
+    scope: "session",
+    sessionId: input.sessionId,
+    path: input.path,
+  });
+}
+
 function stringField(frame: Record<string, unknown>, name: string, max = 1024): string | undefined {
   const value = frame[name];
   return typeof value === "string" && value.length <= max ? value : undefined;
@@ -241,6 +288,42 @@ function headerField(frame: Record<string, unknown>, name: string, max = 1024): 
 export function handlePeonFileJson(peonId: string, socket: WebSocket, frame: Record<string, unknown>): boolean {
   if (typeof frame.requestId !== "string" || !UUID.test(frame.requestId)) return false;
   const key = keyOf(peonId, frame.requestId);
+  const operation = pendingArtifactOperations.get(key);
+  if (operation) {
+    if (operation.socket !== socket || frame.type !== "artifact_result") return false;
+    clearTimeout(operation.timer);
+    pendingArtifactOperations.delete(key);
+    rememberClosed(key);
+    const status = Number.isInteger(frame.status) ? Number(frame.status) : 502;
+    if (status >= 200 && status < 300) operation.resolve({ status, body: frame.body });
+    else {
+      const code = stringField(frame, "code", 128) ?? "PEON_ARTIFACT_ERROR";
+      const message = stringField(frame, "message", 2048) ?? "Peon rejected the artifact operation";
+      operation.reject(new PeonFileStreamError(code, auditSafeFileErrorMessage(code, message), status));
+    }
+    return true;
+  }
+  const watch = pendingArtifactWatches.get(key);
+  if (watch) {
+    if (watch.socket !== socket) return false;
+    if (frame.type === "artifact_watching") {
+      clearTimeout(watch.timer);
+      return true;
+    }
+    if (frame.type === "artifact_changed") {
+      watch.onChange(stringField(frame, "path", 4096) ?? "");
+      return true;
+    }
+    if (frame.type === "artifact_result" && Number(frame.status) >= 400) {
+      clearTimeout(watch.timer);
+      pendingArtifactWatches.delete(key);
+      const code = stringField(frame, "code", 128) ?? "WATCH_FAILED";
+      const message = stringField(frame, "message", 2048) ?? "artifact watch failed";
+      watch.onError(new PeonFileStreamError(code, message, Number(frame.status) || 502));
+      return true;
+    }
+    return false;
+  }
   const write = pendingWrites.get(key);
   if (write) return handlePeonFileWriteJson(write, socket, frame);
   const item = pending.get(key);
@@ -340,6 +423,117 @@ export function failPeonFileTransfers(peonId: string, socket: WebSocket, code = 
       failWrite(item, new PeonFileStreamError(code, "Peon transfer connection closed", 502));
     }
   }
+  for (const item of [...pendingArtifactOperations.values()]) {
+    if (item.peonId !== peonId || item.socket !== socket) continue;
+    clearTimeout(item.timer);
+    pendingArtifactOperations.delete(keyOf(item.peonId, item.requestId));
+    item.reject(new PeonFileStreamError(code, "Peon transfer connection closed", 502));
+  }
+  for (const item of [...pendingArtifactWatches.values()]) {
+    if (item.peonId !== peonId || item.socket !== socket) continue;
+    clearTimeout(item.timer);
+    pendingArtifactWatches.delete(keyOf(item.peonId, item.requestId));
+    item.onError(new PeonFileStreamError(code, "Peon transfer connection closed", 502));
+  }
+}
+
+export function watchPeonSessionArtifact(input: {
+  peonId: string;
+  sessionId: string;
+  path: string;
+  actor: ProjectFileActor;
+  onChange(path: string): void;
+  onError(error: PeonFileStreamError): void;
+}): () => void {
+  if (countForPeon(input.peonId) >= MAX_REQUESTS_PER_PEON) {
+    throw new PeonFileStreamError("PEON_TRANSFER_BUSY", "too many active Peon file transfers", 429);
+  }
+  const socket = getPeonTransferConnection(input.peonId, SESSION_ARTIFACT_CAPABILITY);
+  if (!socket) throw new PeonFileStreamError("PEON_TRANSFER_UNAVAILABLE", "Peon transfer connection is unavailable", 503);
+  const requestId = randomUUID();
+  const key = keyOf(input.peonId, requestId);
+  const item: PendingArtifactWatch = {
+    requestId,
+    peonId: input.peonId,
+    socket,
+    onChange: input.onChange,
+    onError: input.onError,
+    timer: setTimeout(() => {
+      pendingArtifactWatches.delete(key);
+      input.onError(new PeonFileStreamError("PEON_TRANSFER_TIMEOUT", "Peon did not start the artifact watch", 504));
+    }, META_TIMEOUT_MS),
+  };
+  item.timer.unref();
+  pendingArtifactWatches.set(key, item);
+  send(socket, {
+    type: "artifact_watch",
+    protocol: 1,
+    requestId,
+    sessionId: input.sessionId,
+    path: input.path,
+    actor: input.actor,
+  });
+  return () => {
+    const current = pendingArtifactWatches.get(key);
+    if (current !== item) return;
+    clearTimeout(item.timer);
+    pendingArtifactWatches.delete(key);
+    rememberClosed(key);
+    if (socket.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify({ type: "artifact_cancel", protocol: 1, requestId }));
+    }
+  };
+}
+
+export async function requestPeonSessionArtifact(input: {
+  peonId: string;
+  sessionId: string;
+  operation: "list" | "view" | "preview";
+  path: string;
+  actor: ProjectFileActor;
+}): Promise<{ status: number; body: unknown }> {
+  if (pending.size + pendingWrites.size + pendingArtifactOperations.size + pendingArtifactWatches.size >= MAX_REQUESTS_GLOBAL
+    || countForPeon(input.peonId) >= MAX_REQUESTS_PER_PEON) {
+    throw new PeonFileStreamError("PEON_TRANSFER_BUSY", "too many active Peon file transfers", 429);
+  }
+  if (!input.sessionId || input.sessionId.length > 512 || input.sessionId.includes("\0")
+    || input.path.length > 4096 || input.path.includes("\0") || input.path.includes("\\")
+    || input.path.split("/").includes("..")) {
+    throw new PeonFileStreamError("INVALID_PATH", "invalid session artifact request", 400);
+  }
+  const socket = getPeonTransferConnection(input.peonId, SESSION_ARTIFACT_CAPABILITY);
+  if (!socket) throw new PeonFileStreamError("PEON_TRANSFER_UNAVAILABLE", "Peon transfer connection is unavailable", 503);
+  const requestId = randomUUID();
+  return new Promise((resolve, reject) => {
+    const item: PendingArtifactOperation = {
+      requestId,
+      peonId: input.peonId,
+      socket,
+      resolve,
+      reject,
+      timer: setTimeout(() => {
+        pendingArtifactOperations.delete(keyOf(input.peonId, requestId));
+        reject(new PeonFileStreamError("PEON_TRANSFER_TIMEOUT", "Peon artifact operation timed out", 504));
+      }, META_TIMEOUT_MS),
+    };
+    item.timer.unref();
+    pendingArtifactOperations.set(keyOf(input.peonId, requestId), item);
+    try {
+      send(socket, {
+        type: "artifact_request",
+        protocol: 1,
+        requestId,
+        sessionId: input.sessionId,
+        operation: input.operation,
+        path: input.path,
+        actor: input.actor,
+      });
+    } catch (error) {
+      clearTimeout(item.timer);
+      pendingArtifactOperations.delete(keyOf(input.peonId, requestId));
+      reject(error);
+    }
+  });
 }
 
 export interface PeonFileWriteResult {

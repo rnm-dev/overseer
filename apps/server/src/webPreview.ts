@@ -4,6 +4,9 @@ import type { NextFunction, Request, RequestHandler, Response } from "express";
 import { config } from "./config.js";
 import { connOfRecord, PEON_API_PATH } from "./peonClient.js";
 import { registry } from "./registry.js";
+import { hasSessionArtifactTransport } from "./peonTransferConnections.js";
+import { openPeonSessionArtifact } from "./peonFileStream.js";
+import { requestedProjectFileRange } from "./modules/projects/projectFileHttp.js";
 
 const SANDBOX = "sandbox allow-scripts allow-forms allow-modals allow-downloads";
 const MIN_TTL_MS = 30_000;
@@ -16,6 +19,7 @@ interface PreviewGrant {
   root: string;
   expiresAt: number;
   actor?: string | null;
+  userId?: string | null;
 }
 
 // Opaque grants intentionally live only in Overseer memory. A restart revokes
@@ -41,6 +45,7 @@ export function mintWebPreview(input: {
   sessionId: string;
   htmlPath: string;
   actor?: string | null;
+  userId?: string | null;
 }): { url: string; expiresAt: number } {
   if (!path.posix.isAbsolute(input.htmlPath) || path.posix.extname(input.htmlPath).toLowerCase() !== ".html") {
     throw new Error("an absolute .html preview path is required");
@@ -159,6 +164,41 @@ async function servePreview(req: Request, res: Response): Promise<void> {
   const conn = connOfRecord(record);
   const controller = new AbortController();
   res.on("close", () => controller.abort());
+  if (hasSessionArtifactTransport(grant.peonId) && grant.userId && grant.actor) {
+    try {
+      const file = await openPeonSessionArtifact({
+        peonId: grant.peonId,
+        sessionId: grant.sessionId,
+        path: asset,
+        actor: { userId: grant.userId, email: grant.actor },
+        range: requestedProjectFileRange(typeof req.headers.range === "string" ? req.headers.range : undefined),
+        signal: controller.signal,
+      });
+      res.status(file.status);
+      res.setHeader("Content-Type", mimeType(asset));
+      res.setHeader("Content-Length", String(file.contentLength));
+      if (file.contentRange) res.setHeader("Content-Range", file.contentRange);
+      if (file.acceptRanges) res.setHeader("Accept-Ranges", file.acceptRanges);
+      if (file.etag) res.setHeader("ETag", file.etag);
+      if (file.lastModified) res.setHeader("Last-Modified", file.lastModified);
+      res.setHeader("Access-Control-Expose-Headers", "Accept-Ranges,Content-Length,Content-Range,ETag,Last-Modified");
+      if (req.method === "HEAD") {
+        file.stream.destroy();
+        return void res.end();
+      }
+      for await (const chunk of file.stream) {
+        if (!res.write(chunk)) await new Promise<void>((resolve) => res.once("drain", resolve));
+      }
+      return void res.end();
+    } catch (err) {
+      if (!res.headersSent) {
+        const code = err && typeof err === "object" && "code" in err ? String(err.code) : "PREVIEW_UNAVAILABLE";
+        const status = err && typeof err === "object" && "status" in err ? Number(err.status) : 502;
+        return statePage(res, status, code, err instanceof Error ? err.message : "The preview file is unavailable.");
+      }
+      return void res.destroy(err instanceof Error ? err : undefined);
+    }
+  }
   const upstreamHeaders: Record<string, string> = {
     Authorization: `Bearer ${conn.token}`,
     "Peon-Protocol": "1",
