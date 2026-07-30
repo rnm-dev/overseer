@@ -300,13 +300,13 @@ export function PeonSettings() {
       <div>
         <h3 className="mb-3 rune text-sm text-blood">{t("peon.settings.danger")}</h3>
         <Card className="flex flex-wrap items-center justify-between gap-4 border-blood/30 px-5 py-4">
-          <p className="font-mono text-xs text-bone-dim">{t("peon.settings.deleteHint")}</p>
+          <p className="font-mono text-xs text-bone-dim">{t("peon.settings.kickHint")}</p>
           <button className="btn btn-sm !border-blood/50 !text-blood hover:!bg-blood/10" onClick={() => setConfirmDelete(true)}>
-            {t("peon.settings.delete")}
+            {t("peon.settings.kick")}
           </button>
         </Card>
       </div>
-      {confirmDelete && <ConfirmationDialog title={t("peon.settings.deleteConfirm")} confirmLabel={t("peon.settings.delete")} pendingLabel={t("peon.settings.deleting")} pending={deleting} onClose={() => setConfirmDelete(false)} onConfirm={() => void remove()} />}
+      {confirmDelete && <ConfirmationDialog title={t("peon.settings.kickConfirm")} confirmLabel={t("peon.settings.kick")} pendingLabel={t("peon.settings.kicking")} pending={deleting} onClose={() => setConfirmDelete(false)} onConfirm={() => void remove()} />}
       </>}
 
       {tab === "agent" && <>
