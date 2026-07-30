@@ -54,6 +54,14 @@ post-update version attestation. Every dimension must be a fixed capability,
 phase, result code, or coarse version family; identifiers and content are
 forbidden.
 
+`reverseRolloutReadinessSnapshot()` is the current process-local diagnostic. It
+combines only the fixed-dimension selector and command-lifecycle counters and
+keeps every operational gate false. The real command-status route is wired
+through accepted reverse reconciliation; operation-submission call sites are
+reported separately and remain false until every shipped family uses the
+selector. The diagnostic is not an operator API and contains no fleet or
+resource identifiers.
+
 ## Per-capability readiness record
 
 No family advances unless one evidence bundle names the exact capability and
