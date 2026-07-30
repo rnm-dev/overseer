@@ -29,6 +29,26 @@ function postJson(port: number, body: string): Promise<number> {
   });
 }
 
+function get(port: number, path: string, host: string): Promise<{ status: number; body: string }> {
+  return new Promise((resolve, reject) => {
+    const req = http.request({
+      hostname: "127.0.0.1",
+      port,
+      path,
+      headers: { Host: host },
+    }, (res) => {
+      let body = "";
+      res.setEncoding("utf8");
+      res.on("data", (chunk) => {
+        body += chunk;
+      });
+      res.on("end", () => resolve({ status: res.statusCode ?? 0, body }));
+    });
+    req.on("error", reject);
+    req.end();
+  });
+}
+
 test("JSON parser accepts composer-sized payloads beyond Express's default limit", async () => {
   const port = await listen(http.createServer(createServer()));
   const body = JSON.stringify({ prompt: "x".repeat(200_000) });
@@ -45,4 +65,19 @@ test("production host validation accepts only the configured operator origin", (
   assert.equal(isAllowedProductionHost("token.preview.overseer.rnm.dev", publicUrl), false);
   assert.equal(isAllowedProductionHost("unrelated.invalid", publicUrl), false);
   assert.equal(isAllowedProductionHost(undefined, publicUrl), false);
+});
+
+test("production liveness accepts an internal Host without exposing application routes", async () => {
+  const port = await listen(http.createServer(createServer({ production: true })));
+
+  const health = await get(port, "/healthz", "127.0.0.1:5000");
+  assert.equal(health.status, 200);
+  assert.deepEqual(JSON.parse(health.body), { ok: true });
+
+  const application = await get(port, "/api/account", "127.0.0.1:5000");
+  assert.equal(application.status, 421);
+  assert.deepEqual(JSON.parse(application.body), {
+    error: "request host is not served here",
+    code: "MISDIRECTED_REQUEST",
+  });
 });

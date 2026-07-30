@@ -30,7 +30,7 @@ export function isAllowedProductionHost(rawHost: string | undefined, publicUrl =
   return requestHost === publicHost;
 }
 
-export function createServer(): express.Express {
+export function createServer({ production = process.env.NODE_ENV === "production" }: { production?: boolean } = {}): express.Express {
   const app = express();
   // Express compiles and validates every named range/IP/CIDR here. The empty
   // array trusts nobody. Never use a hop count: a shorter direct-origin path
@@ -39,12 +39,19 @@ export function createServer(): express.Express {
   // Public, cookie-free preview origin. Host dispatch must happen before the
   // JSON parser and all operator routes so preview assets never touch the SPA.
   app.use(webPreviewHandler);
+  // Docker and kamal-proxy probe the container by its internal address, whose
+  // Host header cannot be the public authority. Keep this one body-free
+  // liveness route ahead of production host dispatch; every application route
+  // remains protected by the canonical-host check below.
+  app.get("/healthz", (_req, res) => {
+    res.json({ ok: true });
+  });
   // Production uses Overseer as the hostless fallback in the shared
   // kamal-proxy so dynamic preview subdomains can reach the same container.
   // Valid preview hosts have already been consumed above. Everything else,
   // including every public Peon claim route, must use the canonical authority
   // before any request body parser is allowed to run.
-  if (process.env.NODE_ENV === "production") {
+  if (production) {
     app.use((req, res, next) => {
       if (isAllowedProductionHost(req.headers.host)) return next();
       res.status(421).json({ error: "request host is not served here", code: "MISDIRECTED_REQUEST" });
@@ -64,12 +71,6 @@ export function createServer(): express.Express {
       (req as express.Request & { rawJsonBytes?: number }).rawJsonBytes = buffer.byteLength;
     },
   }));
-
-  // API liveness (the SPA is served from "/" in prod; in dev nginx routes "/"
-  // to the Vite server, so this stays reachable at /healthz either way).
-  app.get("/healthz", (_req, res) => {
-    res.json({ ok: true });
-  });
 
   // North-bound: peon registration + heartbeat + event push.
   app.use("/api/v1/peons", agentRouter());
