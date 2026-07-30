@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -83,6 +84,28 @@ test("sandbox channel reports disabled roots, escapes, external symlinks, and mi
   assert.deepEqual(output.frames.map((frame) => frame.code).sort(), [
     "FILES_DISABLED", "NOT_FOUND", "PATH_ESCAPE", "PATH_ESCAPE",
   ].sort());
+  assert.deepEqual(output.binary, []);
+  assert.deepEqual(output.disconnects, []);
+});
+
+test("sandbox channel rejects a contained FIFO without blocking its idle lease", async (t) => {
+  if (process.platform === "win32") return t.skip("named FIFO fixture requires POSIX mkfifo");
+  const root = mkdtempSync(path.join(os.tmpdir(), "peon-sandbox-fifo-"));
+  const fifo = path.join(root, "attachment.pipe");
+  try {
+    execFileSync("mkfifo", [fifo]);
+  } catch {
+    return t.skip("mkfifo is unavailable");
+  }
+  const output = capture();
+  const channel = new SandboxFileReadChannel({ sandboxRoot: () => root, idleLeaseMs: 1_000 });
+  channel.negotiated(true, {}, output.sender);
+  channel.receive({
+    type: "file_open", protocol: 1, requestId: REQUEST_ID, scope: "sandbox", path: fifo,
+    actor: { userId: "user", email: "user@example.com" },
+  }, output.sender);
+  await waitFor(() => output.frames.some((frame) => frame.type === "file_error"));
+  assert.equal(output.frames.find((frame) => frame.type === "file_error")?.code, "NOT_FILE");
   assert.deepEqual(output.binary, []);
   assert.deepEqual(output.disconnects, []);
 });

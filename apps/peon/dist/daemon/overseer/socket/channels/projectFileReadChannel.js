@@ -1,4 +1,4 @@
-import { promises as fs } from "node:fs";
+import { constants as fsConstants, promises as fs } from "node:fs";
 import path from "node:path";
 import { projectStore } from "../../../projects/index.js";
 import { resolveWithinDir } from "../../../files/index.js";
@@ -94,6 +94,8 @@ function filesystemError(error) {
         return new ProjectFileError(400, "IS_DIRECTORY", "path is a directory");
     if (code === "ENOTDIR" || code === "ELOOP" || code === "EINVAL")
         return new ProjectFileError(400, "INVALID_PROJECT_PATH", "project file path is invalid");
+    if (code === "ENXIO" || code === "ENODEV")
+        return new ProjectFileError(400, "NOT_FILE", "path is not a regular file");
     return new ProjectFileError(500, "INTERNAL", "failed to read project file");
 }
 function etag(stat) {
@@ -235,7 +237,10 @@ export class ProjectFileReadChannel {
             const absolute = this.resolvePath(base, filePath);
             if (!absolute)
                 throw new ProjectFileError(400, "PATH_ESCAPE", `file path escapes the ${this.sandboxRoot ? "file transfer root" : "project root"}`);
-            const handle = await this.fileSystem.open(absolute, "r");
+            // A blocking read-only open can wait forever on a contained FIFO before
+            // we get a handle to classify it. Nonblocking has no effect on regular
+            // files and lets the post-open fstat reject every special file promptly.
+            const handle = await this.fileSystem.open(absolute, fsConstants.O_RDONLY | fsConstants.O_NONBLOCK);
             if (!this.isCurrent(active)) {
                 await handle.close();
                 return;

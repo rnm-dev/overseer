@@ -1,4 +1,4 @@
-import { promises as fs, type Stats } from "node:fs";
+import { constants as fsConstants, promises as fs, type Stats } from "node:fs";
 import path from "node:path";
 import type { FileHandle } from "node:fs/promises";
 import type { PeonSocketChannel, PeonSocketFrame, PeonSocketSender } from "../peonSocketProtocol.js";
@@ -123,6 +123,7 @@ function filesystemError(error: unknown): ProjectFileError {
   if (code === "ENOENT") return new ProjectFileError(404, "NOT_FOUND", "file does not exist");
   if (code === "EACCES" || code === "EPERM") return new ProjectFileError(403, "FORBIDDEN", "file is not readable");
   if (code === "EISDIR") return new ProjectFileError(400, "IS_DIRECTORY", "path is a directory");
+  if (code === "ENXIO" || code === "ENODEV") return new ProjectFileError(400, "NOT_FILE", "path is not a regular file");
   if (code === "ENOTDIR" || code === "ELOOP" || code === "EINVAL") return new ProjectFileError(400, "INVALID_PROJECT_PATH", "project file path is invalid");
   return new ProjectFileError(500, "INTERNAL", "failed to read project file");
 }
@@ -264,7 +265,10 @@ export class ProjectFileReadChannel implements PeonSocketChannel {
       const base = project?.dir ?? root;
       const absolute = this.resolvePath(base, filePath);
       if (!absolute) throw new ProjectFileError(400, "PATH_ESCAPE", `file path escapes the ${this.sandboxRoot ? "file transfer root" : "project root"}`);
-      const handle = await this.fileSystem.open(absolute, "r");
+      // A blocking read-only open can wait forever on a contained FIFO before
+      // we get a handle to classify it. Nonblocking has no effect on regular
+      // files and lets the post-open fstat reject every special file promptly.
+      const handle = await this.fileSystem.open(absolute, fsConstants.O_RDONLY | fsConstants.O_NONBLOCK);
       if (!this.isCurrent(active)) {
         await handle.close();
         return;
