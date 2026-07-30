@@ -56,11 +56,11 @@ migration is partly done, and the split today is:
 | Traffic | Channel | What it needs to move |
 | --- | --- | --- |
 | Project file read by ID (docs, web preview) | socket, `project-file-read-v1` | — |
-| Project file read by key (file tree, browser, session pane) | socket, `project-file-read-v1` — Overseer resolves key → project ID through the catalog and falls back to the proxy only when the current transfer connection did not negotiate the capability | — |
-| Confirmed project directory listing (`?stat=1&directory=1`) | control socket, `folder-listing-v1`; HTTP fallback for an older Peon | entry metadata is negotiated additively; project-relative paths remain contained by immutable project ID |
+| Project file read by key (file tree, browser, session pane) | socket, `project-file-read-v1` — Overseer resolves key → project ID through the catalog and falls back to the proxy only when the current transfer connection did not negotiate the capability; a negotiated socket with temporarily missing identity fails closed | — |
+| Confirmed project directory listing (`?stat=1&directory=1`) | control socket, `folder-listing-v1`; HTTP fallback for an older Peon; a metadata-capable socket with temporarily missing identity fails closed | entry metadata is negotiated additively; project-relative paths remain contained by immutable project ID |
 | Project file metadata (`?stat=1`) | HTTP proxy only | retains `sha256`; never probes the folder socket first |
 | Attachment / sandbox file read | socket, `sandbox-file-read-v1`; HTTP fallback for an older Peon | — |
-| Attachment upload, project file `PUT`/`PATCH` | socket, `file-write-v1`; HTTP fallback for an older Peon | — |
+| Attachment upload, project file `PUT`/`PATCH`/`DELETE` | socket, `file-write-v1`; HTTP fallback for an older Peon | — |
 | Session artifact/download/preview bytes | socket, `session-artifact-v1`; HTTP fallback for an older Peon | advanced live-preview revision leases remain separate |
 
 `session-artifact-v1` addresses the authoritative session ID plus a contained

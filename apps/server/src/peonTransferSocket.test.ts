@@ -541,13 +541,13 @@ test("project HTTP fallback removes only the private directory marker from the r
   assert.equal(projectFileProxyQuery("/files/src?directory%ZZ=1&stat=1"), "?directory%ZZ=1&stat=1");
 });
 
-test("a project file read takes the socket, and the retiring HTTP proxy only covers what it cannot", () => {
+test("a project file read takes one authority and retains HTTP only for an older Peon", () => {
   // The Peon's HTTP API is going away, so the socket is the default read path.
   assert.equal(projectFileReadChannel({ transportReady: false, projectId: "p" }), "proxy");
-  assert.equal(projectFileReadChannel({ transportReady: true, projectId: null }), "proxy");
+  assert.equal(projectFileReadChannel({ transportReady: true, projectId: null }), "unavailable");
   assert.equal(projectFileReadChannel({ transportReady: true, projectId: "p" }), "socket");
   assert.equal(projectFolderReadChannel({ confirmedDirectory: true, metadataReady: false, projectId: "p" }), "proxy");
-  assert.equal(projectFolderReadChannel({ confirmedDirectory: true, metadataReady: true, projectId: null }), "proxy");
+  assert.equal(projectFolderReadChannel({ confirmedDirectory: true, metadataReady: true, projectId: null }), "unavailable");
   assert.equal(projectFolderReadChannel({ confirmedDirectory: false, metadataReady: true, projectId: "p" }), "proxy");
   assert.equal(projectFolderReadChannel({ confirmedDirectory: true, metadataReady: true, projectId: "p" }), "socket");
 });

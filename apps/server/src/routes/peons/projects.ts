@@ -394,7 +394,11 @@ export function registerProjectRoutes(router: express.Router): void {
     const projectId = transportReady || folderMetadataReady
       ? (await getIndexedProject(c.record.peonId, key))?.projectId ?? null
       : null;
-    if (stat && projectFolderReadChannel({ confirmedDirectory, metadataReady: folderMetadataReady, projectId }) === "socket") {
+    const folderChannel = projectFolderReadChannel({ confirmedDirectory, metadataReady: folderMetadataReady, projectId });
+    if (stat && folderChannel === "unavailable") {
+      return res.status(409).json({ error: "canonical project identity is temporarily unavailable", code: "PROJECT_IDENTITY_UNAVAILABLE" });
+    }
+    if (stat && folderChannel === "socket") {
       const controller = new AbortController();
       req.once("aborted", () => controller.abort());
       res.once("close", () => controller.abort());
@@ -416,7 +420,11 @@ export function registerProjectRoutes(router: express.Router): void {
         return res.status(typed.status === 499 ? 502 : typed.status).json({ error: typed.message, code: typed.code });
       }
     }
-    if (!stat && projectFileReadChannel({ transportReady, projectId }) === "socket") {
+    const readChannel = projectFileReadChannel({ transportReady, projectId });
+    if (!stat && readChannel === "unavailable") {
+      return res.status(409).json({ error: "canonical project identity is temporarily unavailable", code: "PROJECT_IDENTITY_UNAVAILABLE" });
+    }
+    if (!stat && readChannel === "socket") {
       return streamProjectFileResponse({
         req,
         res,

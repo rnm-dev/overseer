@@ -94,10 +94,12 @@ export function requestedProjectFileRange(value: string | undefined): ProjectFil
 }
 
 // Which channel serves a project file body. Directory listings are routed
-// separately through folder-listing-v1; the HTTP fallback here remains for a
-// project the catalog cannot name and for an older Peon with no transfer socket.
-export function projectFileReadChannel(input: { transportReady: boolean; projectId: string | null }): "socket" | "proxy" {
-  return input.transportReady && input.projectId ? "socket" : "proxy";
+// separately through folder-listing-v1. HTTP remains only for an older Peon
+// with no negotiated transfer capability; a modern peer whose catalog identity
+// is temporarily unavailable must not switch authorities.
+export function projectFileReadChannel(input: { transportReady: boolean; projectId: string | null }): "socket" | "proxy" | "unavailable" {
+  if (!input.transportReady) return "proxy";
+  return input.projectId ? "socket" : "unavailable";
 }
 
 export function projectFileWriteChannel(input: { capabilityReady: boolean; projectId: string | null }): "socket" | "proxy" | "unavailable" {
@@ -113,8 +115,9 @@ export function projectFolderReadChannel(input: {
   confirmedDirectory: boolean;
   metadataReady: boolean;
   projectId: string | null;
-}): "socket" | "proxy" {
-  return input.confirmedDirectory && input.metadataReady && input.projectId ? "socket" : "proxy";
+}): "socket" | "proxy" | "unavailable" {
+  if (!input.confirmedDirectory || !input.metadataReady) return "proxy";
+  return input.projectId ? "socket" : "unavailable";
 }
 
 // `directory=1` is an Overseer-private transport hint. Remove only parameters
