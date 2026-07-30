@@ -1065,6 +1065,12 @@ Peon repeats containment and device/inode validation after opening, before
 publishing `file_meta`. Unknown sessions, traversal, escaping symlinks and file
 swaps therefore fail before any body byte is visible.
 
+A single outgoing session artifact is limited to 1 GiB. Raw HTML, SVG,
+JavaScript and every other active or unknown type is advertised as
+`application/octet-stream`; only the allowlisted passive image formats and PDF
+retain an inline MIME type on this path. The isolated preview origin may assign
+asset MIME types separately when rendering an explicitly granted preview.
+
 Overseer chooses this route exclusively after negotiation. Browser cancellation,
 preview expiry, socket replacement and timeout release the handle
 deterministically. Base HTML preview assets share this bounded path; advanced

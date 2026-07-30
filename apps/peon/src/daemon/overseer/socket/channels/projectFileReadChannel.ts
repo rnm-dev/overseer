@@ -12,6 +12,7 @@ export const SESSION_ARTIFACT_CAPABILITY = "session-artifact-v1";
 export const PROJECT_FILE_BINARY_HEADER_BYTES = 22;
 export const PROJECT_FILE_MAX_CHUNK_BYTES = 64 * 1024 - PROJECT_FILE_BINARY_HEADER_BYTES;
 export const PROJECT_FILE_MAX_ACTIVE = 32;
+export const SESSION_ARTIFACT_MAX_BYTES = 1024 * 1024 * 1024;
 
 const PROTOCOL_VERSION = 1;
 const MAX_CREDIT_BYTES = 1024 * 1024;
@@ -43,6 +44,16 @@ const MIME_BY_EXTENSION: Record<string, string> = {
   ".wasm": "application/wasm",
   ".webp": "image/webp",
   ".xml": "application/xml; charset=utf-8",
+};
+
+const SESSION_ARTIFACT_SAFE_MIME_BY_EXTENSION: Record<string, string> = {
+  ".gif": "image/gif",
+  ".ico": "image/x-icon",
+  ".jpeg": "image/jpeg",
+  ".jpg": "image/jpeg",
+  ".pdf": "application/pdf",
+  ".png": "image/png",
+  ".webp": "image/webp",
 };
 
 interface ProjectLookup { list(): ProjectRecord[] }
@@ -309,6 +320,9 @@ export class ProjectFileReadChannel implements PeonSocketChannel {
       }
       if (!stat.isFile()) throw new ProjectFileError(400, stat.isDirectory() ? "IS_DIRECTORY" : "NOT_FILE", "path is not a regular file");
       if (!Number.isSafeInteger(stat.size) || stat.size < 0) throw new ProjectFileError(500, "FILE_TOO_LARGE", "file size cannot be represented safely");
+      if (this.sessions && stat.size > SESSION_ARTIFACT_MAX_BYTES) {
+        throw new ProjectFileError(413, "FILE_TOO_LARGE", "session artifact exceeds the 1GB transfer limit");
+      }
       if (!this.isCurrent(active)) return this.release(active);
 
       let start = 0;
@@ -327,7 +341,8 @@ export class ProjectFileReadChannel implements PeonSocketChannel {
       this.refreshLease(active);
       const meta: PeonSocketFrame = {
         type: "file_meta", requestId: active.requestId, status,
-        contentType: MIME_BY_EXTENSION[path.extname(absolute).toLowerCase()] ?? "application/octet-stream",
+        contentType: (this.sessions ? SESSION_ARTIFACT_SAFE_MIME_BY_EXTENSION : MIME_BY_EXTENSION)[path.extname(absolute).toLowerCase()]
+          ?? "application/octet-stream",
         contentLength, acceptRanges: "bytes", etag: etag(stat), lastModified: stat.mtime.toUTCString(),
         ...(status === 206 ? { contentRange: `bytes ${start}-${end}/${stat.size}` } : {}),
       };

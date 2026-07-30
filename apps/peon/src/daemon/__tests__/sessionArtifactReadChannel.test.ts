@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import {
   PROJECT_FILE_BINARY_HEADER_BYTES,
+  SESSION_ARTIFACT_MAX_BYTES,
   SESSION_ARTIFACT_CAPABILITY,
   SessionArtifactReadChannel,
 } from "../overseer/socket/channels/projectFileReadChannel.js";
@@ -96,4 +97,83 @@ test("disconnect releases a stalled session artifact read", async () => {
   channel.disconnected(false);
   channel.receive({ type: "file_credit", requestId: REQUEST_ID, bytes: 1024 }, output.sender);
   assert.equal(output.binary.length, 0);
+});
+
+test("session artifacts force active content to generic bytes and reject malformed ranges", async () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "peon-session-artifact-mime-"));
+  for (const name of ["index.html", "vector.svg", "script.js"]) writeFileSync(path.join(root, name), "active");
+  const output = capture();
+  const channel = new SessionArtifactReadChannel({ sessions: { get: () => record("session-1", root) } });
+  channel.negotiated(true, {}, output.sender);
+
+  for (const [index, name] of ["index.html", "vector.svg", "script.js"].entries()) {
+    channel.receive({
+      type: "file_open", protocol: 1, requestId: `123e4567-e89b-42d3-a456-42661417401${index}`,
+      scope: "session", sessionId: "session-1", path: name,
+      actor: { userId: "operator", email: "operator@example.com" },
+    }, output.sender);
+  }
+  for (const [index, range] of [{ start: -1 }, { start: 3, end: 2 }, { start: 1.5 }].entries()) {
+    channel.receive({
+      type: "file_open", protocol: 1, requestId: `123e4567-e89b-42d3-a456-42661417402${index}`,
+      scope: "session", sessionId: "session-1", path: "index.html", range,
+      actor: { userId: "operator", email: "operator@example.com" },
+    }, output.sender);
+  }
+  await waitFor(() => output.frames.filter((frame) => frame.type === "file_meta").length === 3);
+  assert.deepEqual(output.frames.filter((frame) => frame.type === "file_meta").map((frame) => frame.contentType), [
+    "application/octet-stream", "application/octet-stream", "application/octet-stream",
+  ]);
+  assert.deepEqual(output.frames.filter((frame) => frame.type === "file_error").map((frame) => frame.code), [
+    "INVALID_RANGE", "INVALID_RANGE", "INVALID_RANGE",
+  ]);
+});
+
+test("session artifact open rejects swaps, deletion, directories, and oversized files before metadata", async () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "peon-session-artifact-race-"));
+  const first = path.join(root, "first.txt");
+  const second = path.join(root, "second.txt");
+  writeFileSync(first, "first");
+  writeFileSync(second, "second");
+  mkdirSync(path.join(root, "directory"));
+  let resolves = 0;
+  const output = capture();
+  const channel = new SessionArtifactReadChannel({
+    sessions: { get: () => record("session-1", root) },
+    resolvePath: (_base, requested) => requested === "swapped.txt" ? (++resolves === 1 ? first : second) : path.join(root, requested),
+    fileSystem: {
+      open: async (file, flags) => {
+        if (String(file).endsWith("oversized.bin")) {
+          return {
+            stat: async () => ({ isFile: () => true, isDirectory: () => false, size: SESSION_ARTIFACT_MAX_BYTES + 1, dev: 1, ino: 1 }),
+            close: async () => {},
+          } as never;
+        }
+        return await import("node:fs/promises").then((module) => module.open(file, flags));
+      },
+      stat: async (file) => {
+        if (String(file).endsWith("deleted.txt")) {
+          const error = new Error("deleted") as NodeJS.ErrnoException;
+          error.code = "ENOENT";
+          throw error;
+        }
+        if (String(file).endsWith("oversized.bin")) return { dev: 1, ino: 1 } as never;
+        return await import("node:fs/promises").then((module) => module.stat(file));
+      },
+    },
+  });
+  channel.negotiated(true, {}, output.sender);
+  for (const [index, artifactPath] of ["swapped.txt", "deleted.txt", "directory", "oversized.bin"].entries()) {
+    if (artifactPath === "deleted.txt") writeFileSync(path.join(root, artifactPath), "gone");
+    channel.receive({
+      type: "file_open", protocol: 1, requestId: `123e4567-e89b-42d3-a456-42661417403${index}`,
+      scope: "session", sessionId: "session-1", path: artifactPath,
+      actor: { userId: "operator", email: "operator@example.com" },
+    }, output.sender);
+  }
+  await waitFor(() => output.frames.filter((frame) => frame.type === "file_error").length === 4);
+  assert.deepEqual(output.frames.filter((frame) => frame.type === "file_error").map((frame) => frame.code).sort(), [
+    "FILE_CHANGED", "FILE_TOO_LARGE", "IS_DIRECTORY", "NOT_FOUND",
+  ].sort());
+  assert.equal(output.frames.some((frame) => frame.type === "file_meta"), false);
 });
