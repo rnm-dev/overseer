@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import {
+  ProjectDocsError,
   ProjectService,
   ProjectServiceError,
   ProjectStore,
@@ -110,6 +111,55 @@ test("project command handlers preserve UTF-8 pagination and reject unsafe bound
     const result = first.result as { content: string; nextOffset: number | null };
     assert.equal(Buffer.byteLength(result.content), 8);
     assert.equal(result.nextOffset, 8);
+
+    writeFileSync(path.join(f.root, "alpha", "docs", "index.md"), "éclair");
+    const split = await handler.execute({
+      ...base,
+      payload: { path: "index.md", offset: 1, limit: 3 },
+    });
+    assert.equal(split.status, "applied");
+    assert.deepEqual(split.result && {
+      content: split.result.content,
+      offset: split.result.offset,
+      nextOffset: split.result.nextOffset,
+    }, { content: "cla", offset: 2, nextOffset: 5 });
+
+    const update = handlers["project.settings.update"]!;
+    assert.match(update.validate(
+      { name: "Changed" },
+      { digest: "not-a-canonical-digest" },
+      { ...base, operation: "project.settings.update", payload: { name: "Changed" } },
+    ) ?? "", /invalid/);
+  } finally {
+    rmSync(f.root, { recursive: true, force: true });
+  }
+});
+
+test("project documentation internal failures are terminal failures, not user rejections", async () => {
+  const f = fixture();
+  try {
+    const project = f.service.createRevisioned({ label: "Alpha", dir: path.join(f.root, "alpha") });
+    const failing = Object.create(f.service) as ProjectService;
+    failing.documentById = () => {
+      throw new ProjectDocsError(500, "INTERNAL", "sensitive local failure");
+    };
+    const handler = projectCommandHandlers(failing)["project.documentation.read"]!;
+    const execution = await handler.execute({
+      commandId: "00000000-0000-4000-8000-000000000001",
+      operation: "project.documentation.read",
+      target: {
+        peonId: "00000000-0000-4000-8000-000000000002",
+        projectId: project.projectId,
+      },
+      actor: {
+        userId: "00000000-0000-4000-8000-000000000003",
+        email: "operator@example.com",
+      },
+      payload: { path: "index.md" },
+      expected: null,
+      requestedAt: 1,
+    });
+    assert.deepEqual(execution, { status: "failed", code: "INTERNAL" });
   } finally {
     rmSync(f.root, { recursive: true, force: true });
   }

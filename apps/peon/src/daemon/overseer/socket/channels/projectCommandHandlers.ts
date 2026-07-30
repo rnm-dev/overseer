@@ -31,7 +31,11 @@ function failure(error: unknown): ReverseCommandExecution {
       code: error.kind,
     };
   }
-  if (error instanceof ProjectDocsError) return { status: "rejected", code: error.code };
+  if (error instanceof ProjectDocsError) {
+    return error.code === "INTERNAL"
+      ? { status: "failed", code: "INTERNAL" }
+      : { status: "rejected", code: error.code };
+  }
   return { status: "failed", code: "INTERNAL" };
 }
 
@@ -51,7 +55,8 @@ function sliceUtf8(content: string, offset: number, limit: number): {
   nextOffset: number | null;
 } {
   const bytes = Buffer.from(content);
-  const start = Math.min(offset, bytes.length);
+  let start = Math.min(offset, bytes.length);
+  while (start < bytes.length && (bytes[start]! & 0xc0) === 0x80) start += 1;
   let end = Math.min(start + limit, bytes.length);
   while (end > start && end < bytes.length && (bytes[end]! & 0xc0) === 0x80) end -= 1;
   return {
@@ -88,7 +93,8 @@ const empty: ReverseCommandHandler["validate"] = (payload, expected) =>
   strict(payload, []) && expected === null ? null : "operation requires an empty payload and no expected state";
 const id = (command: ValidCommand) => command.target.projectId!;
 const digest = (expected: PeonSocketFrame | null) =>
-  expected && strict(expected, ["digest"]) && typeof expected.digest === "string" ? expected.digest : null;
+  expected && strict(expected, ["digest"]) && typeof expected.digest === "string"
+    && /^[0-9a-f]{64}$/.test(expected.digest) ? expected.digest : null;
 
 export function projectCommandHandlers(projectService: ProjectService = service): Record<string, ReverseCommandHandler> {
   return {
