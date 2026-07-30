@@ -8,7 +8,7 @@ import WebSocket from "ws";
 import { bindPeon, mintCredential, revokeCredentialForPeon } from "./credentials.js";
 import { initDb, query } from "./db.js";
 import { attachPeonSocket } from "./peonSocket.js";
-import { isPeonTransferConnected } from "./peonTransferConnections.js";
+import { evictPeonTransferConnectionsBelowGeneration, isPeonTransferConnected } from "./peonTransferConnections.js";
 import { attachPeonTransferSocket, PEON_TRANSFER_SOCKET_PATH } from "./peonTransferSocket.js";
 import { registry, toView, type PeonRecord } from "./registry.js";
 import { encodePeonFileChunk, openPeonProjectFile, openPeonSandboxFile, PeonFileStreamError } from "./peonFileStream.js";
@@ -285,6 +285,37 @@ test("sandbox file service negotiates separately and sends absolute or relative 
 
   ws.close();
   await closed(ws);
+  await new Promise<void>((resolve) => transferWss.close(() => resolve()));
+  await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+});
+
+test("credential generation eviction immediately fails its in-flight sandbox read", async () => {
+  const { record, token } = await fixture("sandbox-generation-eviction");
+  const server = http.createServer();
+  const transferWss = attachPeonTransferSocket(server);
+  const port = await listen(server);
+  const ws = await open(`ws://127.0.0.1:${port}${PEON_TRANSFER_SOCKET_PATH}`, token);
+  await transferHello(ws, record.peonId, ["sandbox-file-read-v1"]);
+
+  const openFramePromise = message(ws);
+  const opened = openPeonSandboxFile({
+    peonId: record.peonId,
+    path: "uploads/session/attachment.png",
+    actor: { userId: "operator-id", email: "operator@example.com" },
+  });
+  assert.equal((await openFramePromise).type, "file_open");
+
+  const rejected = assert.rejects(
+    opened,
+    (error: unknown) => error instanceof PeonFileStreamError
+      && error.code === "PEON_TRANSFER_DISCONNECTED"
+      && error.status === 502,
+  );
+  const socketClosed = closed(ws);
+  assert.equal(evictPeonTransferConnectionsBelowGeneration(record.peonId, 1), true);
+  await Promise.all([socketClosed, rejected]);
+  assert.equal(isPeonTransferConnected(record.peonId), false);
+
   await new Promise<void>((resolve) => transferWss.close(() => resolve()));
   await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
 });
