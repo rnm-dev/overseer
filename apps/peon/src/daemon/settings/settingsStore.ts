@@ -96,6 +96,9 @@ export class SettingsStore {
     const fromFile = existsSync(this.settingsPath)
       ? JSON.parse(readFileSync(this.settingsPath, "utf8")) as Partial<DaemonSettings>
       : {};
+    // `codex` was the retired `codex exec --json` driver. Its model catalog is
+    // shared with app-server, so the configured model/effort remain valid.
+    if (fromFile.defaultAgent === "codex") fromFile.defaultAgent = "codex-app-server";
     return {
       ...DEFAULT_SETTINGS,
       ...fromFile,

@@ -6,6 +6,11 @@ belong to Overseer. The remaining local API is loopback-only for CLI use;
 reverse sockets and authenticated legacy Fleet HTTP remain machine-facing.
 The boundary and upgrade note are in [Peon is CLI-only](peon-cli-only.md).
 
+Codex execution now uses only the native `codex-app-server` driver. The former
+`codex exec --json` runtime and its selectable provider were removed; persisted
+`agent: "codex"` transcripts remain readable but cannot be resumed because
+their conversation identity is not compatible with app-server threads.
+
 The cross-platform Flutter operator client now lives in `apps/client` (iOS,
 Android, macOS, Windows and Linux). Its development and feature documentation
 starts at [client documentation](client/index.md).

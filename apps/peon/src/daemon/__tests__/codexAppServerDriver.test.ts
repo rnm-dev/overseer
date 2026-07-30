@@ -86,15 +86,14 @@ async function steer(run: AgentRun, input: AgentSteerInput): Promise<void> {
 }
 
 describe("Codex app-server driver", () => {
-  it("registers an explicit rollout driver alongside legacy Codex", () => {
-    assert.equal(getAgentDriver("codex")?.legacy, true);
-    assert.equal(getAgentDriver("codex")?.label, "Codex (legacy)");
+  it("registers app-server as the only Codex driver", () => {
+    assert.equal(getAgentDriver("codex"), undefined);
     assert.equal(getAgentDriver("codex-app-server")?.legacy, undefined);
     assert.equal(getAgentDriver("codex-app-server")?.label, "Codex");
     assert.equal(getAgentDriver("codex-app-server")?.visible, true);
     assert.ok(listAgentDrivers().some((driver) => driver.id === "codex-app-server"));
     assert.equal(narrowNewSessionAgent("codex-app-server"), "codex-app-server");
-    assert.equal(modelCatalog("codex", null).some((provider) => provider.agent === "codex-app-server"), true);
+    assert.equal(modelCatalog("codex-app-server", null).some((provider) => provider.agent === "codex-app-server"), true);
   });
 
   it("attributes usage to the resumed or rerouted native model", async () => {

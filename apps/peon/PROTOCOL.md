@@ -399,12 +399,12 @@ raster images and PDF use safe inline MIME types.
 overseer's per-peon model picker:
 
 ```jsonc
-{ "defaultAgent": "codex",
+{ "defaultAgent": "codex-app-server",
   "providers": [
     { "agent": "claude-code", "label": "Claude Code",
       "models": [ { "id": "claude-sonnet-5", "label": "Sonnet 5", "alias": "sonnet", "default": true }, … ],
       "reasoningEfforts": [ { "id": "high", "label": "High", "default": true }, … ] },
-    { "agent": "codex", "label": "Codex",
+    { "agent": "codex-app-server", "label": "Codex",
       "models": [ { "id": "gpt-5.6-sol", "label": "5.6 Sol", "default": true }, … ],
       "reasoningEfforts": [ { "id": "medium", "label": "Medium", "default": true }, … ] } ] }
 ```

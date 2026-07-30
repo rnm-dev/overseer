@@ -95,7 +95,7 @@ test("human and fleet APIs expose and select the app-server driver explicitly", 
   const catalogResponse = await fetch(`${base}/api/v1/models`);
   assert.equal(catalogResponse.status, 200);
   const catalog = (await catalogResponse.json()) as { providers: Array<{ agent: string; legacy?: boolean; status?: { status?: string } }> };
-  assert.equal(catalog.providers.find((provider) => provider.agent === "codex")?.legacy, true);
+  assert.equal(catalog.providers.some((provider) => provider.agent === "codex"), false);
   assert.equal(catalog.providers.find((provider) => provider.agent === "codex-app-server")?.status?.status, "stopped");
 
   const selected = await fetch(`${base}/api/v1/settings`, {

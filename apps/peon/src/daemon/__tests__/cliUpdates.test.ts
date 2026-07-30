@@ -28,14 +28,14 @@ test("persists checks and starts one durable update operation", async () => {
     },
     now: () => 1000,
   });
-  const checked = await manager.get("codex", true);
+  const checked = await manager.get("codex-app-server", true);
   assert.equal(checked.providers[0].updateAvailable, true);
-  const operation = await manager.start("codex");
+  const operation = await manager.start("codex-app-server");
   assert.equal(operation.status, "running");
   assert.equal(spawned.length, 1);
-  await assert.rejects(() => manager.start("codex"), (error: unknown) => error instanceof CliUpdateError && error.code === "UPDATE_IN_PROGRESS");
+  await assert.rejects(() => manager.start("codex-app-server"), (error: unknown) => error instanceof CliUpdateError && error.code === "UPDATE_IN_PROGRESS");
   const restored = new CliUpdateManager({ statePath: path.join(dir, "state.json"), now: () => 1001 });
-  assert.equal((await restored.get("codex")).providers[0].operation?.id, operation.id);
+  assert.equal((await restored.get("codex-app-server")).providers[0].operation?.id, operation.id);
 });
 
 test("does not launch an update when the installed CLI is current", async () => {

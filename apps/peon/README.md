@@ -176,7 +176,7 @@ View or change settings with `peon settings` / `peon settings set <key> <value>`
 | `taskTimeoutMs` | `1800000` (30 min) | max wall-clock time per task |
 | `maxBudgetUsd` | `3` | max `$` spend per task |
 | `agentCommand` | `claude` | Claude Code CLI binary used by default sessions and autonomous tasks |
-| `codexCommand` | `codex` | Codex CLI binary used by sessions created with `agent: "codex"` |
+| `codexCommand` | `codex` | Codex CLI binary used by `codex-app-server` sessions and provider probes |
 | `publicControlUrl` | `http://127.0.0.1:4570` | public URL of the control API |
 | `publicDashboardUrl` | `http://127.0.0.1:4571` | public URL of the dashboard |
 | `bindHost` | `127.0.0.1` | interface both servers bind (`0.0.0.0` for remote); prefer `peon remote on/off`. Read at startup — restart to apply |
