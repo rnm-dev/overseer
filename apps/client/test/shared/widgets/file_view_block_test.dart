@@ -34,6 +34,54 @@ void main() {
     expect(find.byType(HighlightView), findsOneWidget);
   });
 
+  testWidgets('renders unlabeled Markdown fences as plaintext', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.dark,
+        home: Scaffold(
+          body: FileViewBlock(
+            path: 'CONTRIBUTING.md',
+            bytes: Uint8List.fromList(
+              utf8.encode('## Runtime layout\n\n```\npackages/example\n```\n'),
+            ),
+            contentType: 'text/markdown',
+            mode: FileViewMode.preview,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final highlighter = tester.widget<HighlightView>(
+      find.byType(HighlightView),
+    );
+    expect(highlighter.language, 'plaintext');
+    expect(highlighter.source, contains('packages/example'));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('renders unknown file extensions as plaintext', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.dark,
+        home: Scaffold(
+          body: FileViewBlock(
+            path: 'example.unknown-language',
+            bytes: Uint8List.fromList(utf8.encode('plain content')),
+            mode: FileViewMode.source,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.widget<HighlightView>(find.byType(HighlightView)).language,
+      'plaintext',
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('exposes a reusable controlled mode switch', (tester) async {
     var selected = FileViewMode.preview;
     await tester.pumpWidget(

@@ -267,7 +267,7 @@ class _CodePreview extends StatelessWidget {
               child: SelectionArea(
                 child: HighlightView(
                   visible,
-                  language: _languageForPath(path),
+                  language: _languageForPath(path) ?? 'plaintext',
                   theme: atomOneDarkTheme,
                   padding: const EdgeInsets.all(16),
                   textStyle: AppTypography.mono(
@@ -297,7 +297,7 @@ class _CodeBlock extends StatelessWidget {
       scrollDirection: Axis.horizontal,
       child: HighlightView(
         source,
-        language: language,
+        language: language ?? 'plaintext',
         theme: atomOneDarkTheme,
         padding: const EdgeInsets.all(12),
         textStyle: AppTypography.mono(
