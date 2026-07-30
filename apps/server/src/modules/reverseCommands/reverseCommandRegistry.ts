@@ -1,5 +1,7 @@
 import { query, transaction, transactionWithAdvisoryLock, type Transaction } from "../../db.js";
 import { insertEvent, publishCommittedEvent, type LiveEvent } from "../../eventLog.js";
+import { normalizeSessionSummary } from "../sessions/sessionNormalization.js";
+import { bindAttachmentReceipts } from "../sessions/attachmentReceipts.js";
 import {
   assertSafeReverseCommandResult,
   canonicalJson,
@@ -85,6 +87,7 @@ export type ReverseCommandCreateResult =
   | { kind: "created"; record: ReverseCommandRecord }
   | { kind: "existing"; record: ReverseCommandRecord }
   | { kind: "reused"; record: ReverseCommandRecord }
+  | { kind: "conflict"; record: ReverseCommandRecord }
   | { kind: "overloaded"; scope: "user" | "peon" | "workspace" | "global" };
 
 const ACTIVE_STATES = ["created", "sent", "accepted", "running", "unknown"] as const;
@@ -190,6 +193,19 @@ export async function createOrGetReverseCommand(
     );
     const existing = await findWith(tx, input.workspaceId, input.peonId, input.commandId);
     if (existing) {
+      if (existing.requestHash === input.requestHash
+        && (input.operation === "session.start" || input.operation === "session.followup")) {
+        await bindAttachmentReceipts(tx, {
+          workspaceId: input.workspaceId,
+          peonId: input.peonId,
+          commandId: input.commandId,
+          requestHash: input.requestHash,
+          actor: input.actor,
+          targetSessionId: input.target.sessionId,
+          payload: input.payload,
+          now,
+        });
+      }
       return existing.requestHash === input.requestHash
         ? { kind: "existing", record: existing }
         : { kind: "reused", record: existing };
@@ -217,6 +233,19 @@ export async function createOrGetReverseCommand(
     if (exceeds(peon, input.requestBytes, limits.peonPending, limits.peonBytes)) return { kind: "overloaded", scope: "peon" };
     if (exceeds(workspace, input.requestBytes, limits.workspacePending, limits.workspaceBytes)) return { kind: "overloaded", scope: "workspace" };
     if (exceeds(global, input.requestBytes, limits.globalPending, limits.globalBytes)) return { kind: "overloaded", scope: "global" };
+
+    if (input.operation === "session.start" || input.operation === "session.followup") {
+      await bindAttachmentReceipts(tx, {
+        workspaceId: input.workspaceId,
+        peonId: input.peonId,
+        commandId: input.commandId,
+        requestHash: input.requestHash,
+        actor: input.actor,
+        targetSessionId: input.target.sessionId,
+        payload: input.payload,
+        now,
+      });
+    }
 
     const { rows } = await tx.query<ReverseCommandRow>(
       `INSERT INTO reverse_commands
@@ -439,27 +468,118 @@ async function applySafeProjection(
   tx: Transaction,
   record: ReverseCommandRecord,
   result: ReverseCommandResultFrame,
-): Promise<void> {
-  if ((result.status !== "applied" && result.status !== "noop") || !result.result) return;
+): Promise<LiveEvent | null> {
+  if (!result.result) return null;
+  if (record.operation === "daemon.configuration.patch") {
+    const detail = result.result;
+    const values = detail.values;
+    if (!values || typeof values !== "object" || Array.isArray(values)) return null;
+    const current = await tx.query<{ epoch: string; revision: string; digest: string }>(
+      `SELECT epoch,revision,digest FROM peon_daemon_configuration WHERE peon_id=$1`,
+      [record.peonId],
+    );
+    const existing = current.rows[0];
+    if (existing?.epoch === detail.epoch) {
+      if (Number(existing.revision) > Number(detail.revision)) return null;
+      if (Number(existing.revision) === Number(detail.revision) && existing.digest !== detail.digest) {
+        throw new Error("daemon configuration result revision digest collision");
+      }
+    } else if (existing && existing.epoch !== record.expected?.epoch) {
+      // A delayed replay from a retired configuration epoch remains a valid
+      // command outcome, but it must not replace a newer authoritative epoch.
+      return null;
+    }
+    const updatedAt = Number.isSafeInteger(detail.updatedAt) ? Number(detail.updatedAt) : result.completedAt;
+    await tx.query(
+      `INSERT INTO peon_daemon_configuration
+        (peon_id,workspace_id,epoch,revision,schema_version,digest,updated_at,values,last_command_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+       ON CONFLICT (peon_id) DO UPDATE SET workspace_id=EXCLUDED.workspace_id,epoch=EXCLUDED.epoch,
+         revision=EXCLUDED.revision,schema_version=EXCLUDED.schema_version,digest=EXCLUDED.digest,
+         updated_at=EXCLUDED.updated_at,values=EXCLUDED.values,last_command_id=EXCLUDED.last_command_id`,
+      [record.peonId, record.workspaceId, detail.epoch, detail.revision, detail.schemaVersion,
+        detail.digest, updatedAt, JSON.stringify(values), record.commandId],
+    );
+    return null;
+  }
+  if ((result.status !== "applied" && result.status !== "noop")) return null;
+  const projected = ["session.start", "session.followup", "session.metadata.patch"].includes(record.operation)
+    ? result.result
+    : (record.operation === "session.queue.add" || record.operation === "session.queue.edit")
+      && result.result.session && typeof result.result.session === "object"
+      && !Array.isArray(result.result.session)
+      ? result.result.session as JsonObject
+      : null;
+  if (projected) {
+    const summary = normalizeSessionSummary(projected as never);
+    const syncedAt = Date.now();
+    await tx.query(
+      `INSERT INTO sessions
+        (peon_id,session_id,status,project_key,project_id,title,prompt_preview,preview,author,outcome,
+         started_at,ended_at,last_activity_at,raw,synced_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+       ON CONFLICT (peon_id,session_id) DO UPDATE SET
+         status=EXCLUDED.status,project_key=EXCLUDED.project_key,project_id=EXCLUDED.project_id,
+         title=EXCLUDED.title,prompt_preview=EXCLUDED.prompt_preview,preview=EXCLUDED.preview,
+         author=EXCLUDED.author,outcome=EXCLUDED.outcome,started_at=EXCLUDED.started_at,
+         ended_at=EXCLUDED.ended_at,last_activity_at=EXCLUDED.last_activity_at,
+         raw=EXCLUDED.raw,synced_at=EXCLUDED.synced_at`,
+      [
+        record.peonId, summary.id, summary.status, summary.projectKey, summary.projectId,
+        summary.title, summary.promptPreview, summary.lastMessagePreview ?? summary.promptPreview,
+        summary.initiator, summary.outcome === null ? null : JSON.stringify(summary.outcome),
+        summary.startedAt, summary.endedAt, summary.lastActivityAt,
+        JSON.stringify(projected), syncedAt,
+      ],
+    );
+    return insertEvent(tx, {
+      workspaceId: record.workspaceId,
+      peonId: record.peonId,
+      sessionId: summary.id,
+      kind: "session",
+      payload: {
+        peonId: record.peonId, sessionId: summary.id, status: summary.status,
+        projectKey: summary.projectKey, projectId: summary.projectId, title: summary.title,
+        promptPreview: summary.promptPreview,
+        preview: summary.lastMessagePreview ?? summary.promptPreview,
+        author: summary.initiator, outcome: summary.outcome, startedAt: summary.startedAt,
+        endedAt: summary.endedAt, lastActivityAt: summary.lastActivityAt, syncedAt,
+      },
+    });
+  }
+  if (record.operation === "session.delete") {
+    const sessionId = record.target.sessionId!;
+    await tx.query(`DELETE FROM sessions WHERE peon_id=$1 AND session_id=$2`, [record.peonId, sessionId]);
+    return insertEvent(tx, {
+      workspaceId: record.workspaceId, peonId: record.peonId, sessionId,
+      kind: "session", payload: { peonId: record.peonId, sessionId, deleted: true, syncedAt: Date.now() },
+    });
+  }
   const sessionId = typeof result.result.sessionId === "string" ? result.result.sessionId : null;
   const status = typeof result.result.sessionStatus === "string" ? result.result.sessionStatus : null;
-  if (!sessionId || !status || sessionId !== record.target.sessionId) return;
+  if (!sessionId || !status || sessionId !== record.target.sessionId) return null;
   const existing = await tx.query<{ raw: JsonObject }>(
     `SELECT raw FROM sessions WHERE peon_id=$1 AND session_id=$2`,
     [record.peonId, sessionId],
   );
   const raw = existing.rows[0]?.raw;
-  if (!raw) return;
+  if (!raw) return null;
+  const syncedAt = Date.now();
   await tx.query(
     `UPDATE sessions SET status=$3,raw=$4,synced_at=$5 WHERE peon_id=$1 AND session_id=$2`,
-    [record.peonId, sessionId, status, JSON.stringify({ ...raw, status }), Date.now()],
+    [record.peonId, sessionId, status, JSON.stringify({ ...raw, status }), syncedAt],
   );
+  return insertEvent(tx, {
+    workspaceId: record.workspaceId, peonId: record.peonId, sessionId,
+    kind: "session", payload: { peonId: record.peonId, sessionId, status, syncedAt },
+  });
 }
 
 export interface CommittedReverseCommandResult {
   record: ReverseCommandRecord;
   delivery: { epoch: string; acknowledgedCursor: string };
   event: LiveEvent | null;
+  projectionEvent: LiveEvent | null;
 }
 
 export async function commitDurableReverseCommandResult(input: {
@@ -603,11 +723,17 @@ export async function commitDurableReverseCommandResult(input: {
       record: next,
       delivery: { epoch: delivery.delivery_epoch, acknowledgedCursor: delivery.acknowledged_cursor },
       event,
+      projectionEvent,
     };
   });
   if (committed.event) {
     await publishCommittedEvent(committed.event).catch((error) => {
       console.warn("reverse command event fan-out failed:", error instanceof Error ? error.message : String(error));
+    });
+  }
+  if (committed.projectionEvent) {
+    await publishCommittedEvent(committed.projectionEvent).catch((error) => {
+      console.warn("reverse command projection fan-out failed:", error instanceof Error ? error.message : String(error));
     });
   }
   return committed;

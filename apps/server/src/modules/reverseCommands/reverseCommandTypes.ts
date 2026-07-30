@@ -301,12 +301,21 @@ const SESSION_CANCEL_REJECTED_CODES = new Set([
 ]);
 const SESSION_CANCEL_FAILED_CODES = new Set(["INTERNAL", "PERSIST_FAILED"]);
 const SESSION_CANCEL_TERMINAL_STATES = new Set(["cancelled", "completed"]);
+const SESSION_OPERATIONS = new Set(REVERSE_COMMAND_OPERATIONS.filter((value) => value.startsWith("session.")));
+const SESSION_REJECTED_CODES = new Set([
+  "BAD_COMMAND", "COMMAND_EXPIRED", "COMMAND_LEDGER_FULL", "RESULT_TOO_LARGE",
+  "UNKNOWN_SESSION", "UNKNOWN_PROJECT", "UNKNOWN_QUEUE_ITEM", "INVALID_MODEL",
+  "INVALID_REASONING_EFFORT", "FILES_DISABLED", "PATH_ESCAPE",
+  "UNKNOWN_ATTACHMENT_PATH", "ATTACHMENT_CHANGED", "DIR_MISSING",
+  "SESSION_NOT_RUNNING",
+]);
+
 
 // The shared wire schema intentionally leaves result extensible. Overseer does
 // not: every enabled operation must reduce terminal detail to an explicit,
 // browser-safe shape before it can be persisted or published.
 export function assertSafeReverseCommandResult(
-  record: Pick<ReverseCommandRecord, "operation" | "target">,
+  record: Pick<ReverseCommandRecord, "operation" | "target"> & Partial<Pick<ReverseCommandRecord, "commandId">>,
   result: ReverseCommandResultFrame,
 ): void {
   if (result.operation !== record.operation) {
@@ -387,8 +396,55 @@ export function assertSafeReverseCommandResult(
   }
 }
 
+const PUBLIC_SESSION_FIELDS = [
+  "id", "prompt", "title", "followUpPrompts", "queuedFollowUps", "dir", "agent",
+  "backendSessionId", "backendTurnId", "backendRuntimeGeneration", "backendTurnStatus",
+  "model", "reasoningEffort", "projectId", "projectKey", "candidateProjectKeys",
+  "taskKey", "taskTitle", "initiator", "parentSessionId", "spawnDepth", "spawnRequestId",
+  "expectsOutcome", "status", "outcome", "startedAt", "endedAt", "turnCount", "turnBudget",
+  "usage", "usageByModel", "contextUsage", "autoResumeAttempts", "lastActivityAt",
+  "lastUserMessageAt", "lastMessagePreview", "eventCount",
+] as const;
+
+function assertPublicSession(value: unknown, sessionId: string): void {
+  const detail = object(value, "public session");
+  strict(detail, PUBLIC_SESSION_FIELDS, "public session");
+  if (detail.id !== sessionId || !isCanonicalUuid(detail.id)
+    || (detail.status !== "running" && detail.status !== "completed")) {
+    throw new ReverseCommandProtocolError("invalid public session identity");
+  }
+}
+
+function assertQueueItem(value: unknown, sessionId: string): void {
+  const item = object(value, "queue item");
+  strict(item, [
+    "id", "sessionId", "prompt", "attachments", "permissionMode", "author",
+    "model", "reasoningEffort", "commandId", "queuedAt",
+  ], "queue item");
+  if (!isCanonicalUuid(item.id) || item.sessionId !== sessionId
+    || !boundedString(item.prompt, 32 * 1024)
+    || !Array.isArray(item.attachments) || item.attachments.length > 20
+    || (item.permissionMode !== null && !boundedString(item.permissionMode, 64))
+    || (item.author !== null && !boundedString(item.author, 320))
+    || (item.model !== null && !boundedString(item.model, 200))
+    || (item.reasoningEffort !== null && !boundedString(item.reasoningEffort, 64))
+    || (item.commandId !== null && (!boundedString(item.commandId, 255) || item.commandId.length === 0))
+    || !Number.isSafeInteger(item.queuedAt) || Number(item.queuedAt) < 0) {
+    throw new ReverseCommandProtocolError("invalid queue item");
+  }
+  for (const attachment of item.attachments) {
+    const detail = object(attachment, "queue attachment");
+    strict(detail, ["originalName", "filename", "path", "size", "mimetype"], "queue attachment");
+    if (!boundedString(detail.originalName, 512) || !boundedString(detail.filename, 512)
+      || !boundedString(detail.path, 4_096) || !Number.isSafeInteger(detail.size)
+      || Number(detail.size) < 0 || !boundedString(detail.mimetype, 128)) {
+      throw new ReverseCommandProtocolError("invalid queue attachment");
+    }
+  }
+}
+
 function assertSafeSessionResult(
-  record: Pick<ReverseCommandRecord, "operation" | "target">,
+  record: Pick<ReverseCommandRecord, "operation" | "target"> & Partial<Pick<ReverseCommandRecord, "commandId">>,
   result: ReverseCommandResultFrame,
 ): void {
   if (result.message !== undefined
@@ -397,52 +453,58 @@ function assertSafeSessionResult(
   }
   if (result.result === null) {
     if (result.status === "rejected" && SESSION_REJECTED_CODES.has(result.code)) return;
-    if (result.status === "conflict"
-      && ["COMMAND_ID_REUSED", "RESUME_IN_PROGRESS", "SESSION_RUNNING"].includes(result.code)) return;
+    if (result.status === "conflict" && [
+      "COMMAND_ID_REUSED", "RESUME_IN_PROGRESS", "SESSION_RUNNING",
+    ].includes(result.code)) return;
     if (result.status === "failed" && ["INTERNAL", "PERSIST_FAILED"].includes(result.code)) return;
     throw new ReverseCommandProtocolError("invalid session result tuple");
   }
   if (!["applied", "noop"].includes(result.status) || result.code !== "OK") {
     throw new ReverseCommandProtocolError("invalid session result tuple");
   }
-  const detail = object(result.result, "session result");
-  if (record.operation === "session.start" || record.operation === "session.followup"
-    || record.operation === "session.metadata.patch") {
-    if (!isCanonicalUuid(detail.id)
-      || (record.operation !== "session.start" && detail.id !== record.target.sessionId)
-      || Object.keys(detail).some((key) => [
-        "pendingSystemPrompts", "parentCompletionNotifiedAt", "parentCompletionNotificationPending",
-      ].includes(key))) {
-      throw new ReverseCommandProtocolError("unsafe public session result");
-    }
+  const sessionId = record.operation === "session.start" ? record.commandId : record.target.sessionId;
+  if (!sessionId) throw new ReverseCommandProtocolError("missing session result identity");
+  if (["session.start", "session.followup", "session.metadata.patch"].includes(record.operation)) {
+    if (result.status !== "applied") throw new ReverseCommandProtocolError("invalid session result status");
+    assertPublicSession(result.result, sessionId);
     return;
   }
-  const expectedSessionId = record.target.sessionId;
-  if (!isCanonicalUuid(detail.sessionId) || detail.sessionId !== expectedSessionId) {
+  const detail = object(result.result, "session result");
+  if (detail.sessionId !== sessionId || !isCanonicalUuid(detail.sessionId)) {
     throw new ReverseCommandProtocolError("invalid session result identity");
   }
   if (record.operation === "session.queue.list") {
     strict(detail, ["sessionId", "items"], "queue list");
-    if (!Array.isArray(detail.items) || detail.items.length > 10_000) {
+    if (result.status !== "applied" || !Array.isArray(detail.items)
+      || Buffer.byteLength(JSON.stringify(detail.items), "utf8") > 48 * 1024) {
       throw new ReverseCommandProtocolError("invalid queue list");
     }
+    for (const item of detail.items) assertQueueItem(item, sessionId);
     return;
   }
-  if (record.operation === "session.queue.add") {
-    strict(detail, ["sessionId", "item"], "queue add");
-    if (detail.item !== null && (!detail.item || typeof detail.item !== "object" || Array.isArray(detail.item))) {
-      throw new ReverseCommandProtocolError("invalid queue item");
+  if (record.operation === "session.queue.add" || record.operation === "session.queue.edit") {
+    strict(detail, ["sessionId", "itemId", "session"], "queue mutation");
+    if (result.status !== "applied" || !isCanonicalUuid(detail.itemId)) {
+      throw new ReverseCommandProtocolError("invalid queue mutation");
+    }
+    assertPublicSession(detail.session, sessionId);
+    return;
+  }
+  if (record.operation === "session.queue.remove" || record.operation === "session.queue.send-now") {
+    strict(detail, ["sessionId", "itemId"], "queue mutation");
+    if (result.status !== "applied" || !isCanonicalUuid(detail.itemId)) {
+      throw new ReverseCommandProtocolError("invalid queue mutation");
     }
     return;
   }
   if (record.operation === "session.delete") {
-    strict(detail, ["sessionId", "deleted"], "session delete");
+    strict(detail, ["sessionId", "deleted"], "session deletion");
     if (detail.deleted !== true) throw new ReverseCommandProtocolError("invalid session deletion");
     return;
   }
-  strict(detail, ["sessionId", "itemId"], "queue mutation");
-  if (!isCanonicalUuid(detail.itemId)) throw new ReverseCommandProtocolError("invalid queue item identity");
+  throw new ReverseCommandProtocolError("unsupported session result operation");
 }
+
 
 function boundedString(value: unknown, maximum: number): value is string {
   return typeof value === "string" && Buffer.byteLength(value, "utf8") <= maximum;

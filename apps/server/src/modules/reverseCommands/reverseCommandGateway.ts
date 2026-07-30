@@ -69,6 +69,7 @@ export interface ReverseCommandHttpResult {
   status: number;
   body: Record<string, unknown>;
   record?: ReverseCommandRecord;
+  reused?: boolean;
 }
 
 export class ReverseCommandGatewayError extends Error {
@@ -90,8 +91,9 @@ interface ReverseCommandGatewayOptions {
   afterConnectionOwnershipCheck?: () => Promise<void>;
 }
 
-function strictObject(value: JsonObject, allowed: readonly string[], field: string): void {
-  if (Object.keys(value).some((key) => !allowed.includes(key))) {
+function strictObject(value: unknown, allowed: readonly string[], field: string): asserts value is JsonObject {
+  if (!value || typeof value !== "object" || Array.isArray(value)
+    || Object.keys(value).some((key) => !allowed.includes(key))) {
     throw new ReverseCommandGatewayError(400, "BAD_COMMAND", `${field} contains unsupported fields`);
   }
 }
@@ -186,7 +188,7 @@ export class ReverseCommandGateway {
           countReverseCommandMetric("error", input.operation, "COMMAND_ID_REUSED");
           throw new ReverseCommandGatewayError(409, "COMMAND_ID_REUSED", "command ID was already used for a different request");
         }
-        if (persisted.state === "terminal") return reverseCommandHttpResult(persisted);
+        if (persisted.state === "terminal") return { ...reverseCommandHttpResult(persisted), reused: true };
         const currentSocket = getPeonConnection(input.peonId);
         if (!currentSocket) return reverseCommandHttpResult(persisted);
       }
@@ -221,7 +223,10 @@ export class ReverseCommandGateway {
       } else if (record.connectionGeneration !== generation) {
         record = await this.reconcileOne(record, socket, generation);
       }
-      return await this.waitFor(record, input.waitMs ?? DEFAULT_WAIT_MS);
+      return {
+        ...await this.waitFor(record, input.waitMs ?? DEFAULT_WAIT_MS),
+        ...(created.kind === "existing" ? { reused: true } : {}),
+      };
     } catch (error) {
       if (error instanceof ReverseCommandGatewayError) return errorResult(error);
       throw error;
@@ -414,10 +419,10 @@ export class ReverseCommandGateway {
       "project.quick-links.update": ["id", "title", "url"],
       "project.quick-links.delete": ["id"],
       "session.cancel": [],
-      "session.start": ["prompt", "attachments", "permissionMode", "model", "reasoningEffort", "commandId", "title", "projectId", "dir", "expectsOutcome", "agent"],
-      "session.followup": ["prompt", "attachments", "permissionMode", "model", "reasoningEffort", "commandId"],
+      "session.start": ["prompt", "attachments", "permissionMode", "model", "reasoningEffort", "title", "projectId", "dir", "expectsOutcome", "agent"],
+      "session.followup": ["prompt", "attachments", "permissionMode", "model", "reasoningEffort"],
       "session.queue.list": [],
-      "session.queue.add": ["prompt", "attachments", "permissionMode", "model", "reasoningEffort", "commandId"],
+      "session.queue.add": ["prompt", "attachments", "permissionMode", "model", "reasoningEffort", "startNow"],
       "session.queue.edit": ["itemId", "prompt"],
       "session.queue.remove": ["itemId"],
       "session.queue.send-now": ["itemId"],
@@ -426,6 +431,64 @@ export class ReverseCommandGateway {
     };
     strictObject(payload, configuration ? ["patch"] : runtime || update || project || session ? payloadFields[input.operation] ?? []
       : armory ? ["q", "installedOnly", "limit", "cursor", "version", "values", "confirmHostWrites", "includeHost"] : [], "payload");
+    if (session) {
+      const bytes = (value: unknown, maximum: number, nullable = false): boolean =>
+        (nullable && value === null)
+        || (typeof value === "string" && value.trim().length > 0
+          && Buffer.byteLength(value, "utf8") <= maximum);
+      const turn = ["session.start", "session.followup", "session.queue.add"].includes(input.operation);
+      if (turn && (!bytes(payload.prompt, 32 * 1024)
+        || (payload.permissionMode !== undefined && payload.permissionMode !== "plan")
+        || (payload.model !== undefined && !bytes(payload.model, 200))
+        || (payload.reasoningEffort !== undefined && !bytes(payload.reasoningEffort, 64)))) {
+        throw new ReverseCommandGatewayError(400, "BAD_COMMAND", "invalid session turn payload");
+      }
+      if (turn && payload.attachments !== undefined) {
+        if (!Array.isArray(payload.attachments) || payload.attachments.length > 20) {
+          throw new ReverseCommandGatewayError(400, "BAD_COMMAND", "invalid session attachments");
+        }
+        for (const attachment of payload.attachments) {
+          strictObject(attachment, [
+            "type", "path", "transferId", "size", "sha256", "name",
+            "originalName", "filename", "mimetype",
+          ], "attachment");
+          if ((attachment.type !== undefined && attachment.type !== "file" && attachment.type !== "image")
+            || typeof attachment.path !== "string" || attachment.path.length > 4_096
+            || !Number.isSafeInteger(attachment.size) || Number(attachment.size) < 0
+            || (attachment.name !== undefined && (typeof attachment.name !== "string" || attachment.name.length > 512))
+            || (attachment.originalName !== undefined && (typeof attachment.originalName !== "string" || attachment.originalName.length > 512))
+            || (attachment.filename !== undefined && (typeof attachment.filename !== "string" || attachment.filename.length > 512))
+            || (attachment.mimetype !== undefined && (typeof attachment.mimetype !== "string" || attachment.mimetype.length > 128))
+            || (["session.start", "session.followup"].includes(input.operation)
+              && (typeof attachment.transferId !== "string"
+                || typeof attachment.sha256 !== "string"))) {
+            throw new ReverseCommandGatewayError(400, "BAD_COMMAND", "invalid session attachment");
+          }
+        }
+      }
+      if (input.operation === "session.start"
+        && ((payload.title !== undefined && !bytes(payload.title, 512, true))
+          || (payload.projectId !== undefined && !isCanonicalUuid(payload.projectId))
+          || (payload.dir !== undefined && (typeof payload.dir !== "string" || payload.dir.length > 4_096))
+          || (payload.expectsOutcome !== undefined && typeof payload.expectsOutcome !== "boolean")
+          || (payload.agent !== undefined && !bytes(payload.agent, 200)))) {
+        throw new ReverseCommandGatewayError(400, "BAD_COMMAND", "invalid session start payload");
+      }
+      if (input.operation === "session.queue.add"
+        && payload.startNow !== undefined && typeof payload.startNow !== "boolean") {
+        throw new ReverseCommandGatewayError(400, "BAD_COMMAND", "invalid queue startNow");
+      }
+      if (["session.queue.edit", "session.queue.remove", "session.queue.send-now"].includes(input.operation)
+        && !isCanonicalUuid(payload.itemId)) {
+        throw new ReverseCommandGatewayError(400, "BAD_COMMAND", "invalid queue item");
+      }
+      if (input.operation === "session.queue.edit" && !bytes(payload.prompt, 32 * 1024)) {
+        throw new ReverseCommandGatewayError(400, "BAD_COMMAND", "invalid queue prompt");
+      }
+      if (input.operation === "session.metadata.patch" && !bytes(payload.title, 512, true)) {
+        throw new ReverseCommandGatewayError(400, "BAD_COMMAND", "invalid session title");
+      }
+    }
     if (input.operation === "update.apply" && payload.force !== undefined && typeof payload.force !== "boolean") {
       throw new ReverseCommandGatewayError(400, "BAD_COMMAND", "update.apply force must be boolean");
     }
@@ -482,7 +545,11 @@ export class ReverseCommandGateway {
       throw new ReverseCommandGatewayError(400, "BAD_COMMAND", `${input.operation} requires target.sessionId`);
     }
     if (session && input.operation === "session.start" && target.sessionId !== undefined) {
-      throw new ReverseCommandGatewayError(400, "BAD_COMMAND", "session.start targets only the authenticated Peon");
+      throw new ReverseCommandGatewayError(400, "BAD_COMMAND", "session.start cannot target an existing session");
+    }
+    if (input.operation === "session.start"
+      && target.projectId !== (typeof payload.projectId === "string" ? payload.projectId : undefined)) {
+      throw new ReverseCommandGatewayError(400, "BAD_COMMAND", "session.start project identity mismatch");
     }
     if ((runtime || configuration || armory || update) && target.sessionId !== undefined) {
       throw new ReverseCommandGatewayError(400, "BAD_COMMAND", "operation targets only the Peon");

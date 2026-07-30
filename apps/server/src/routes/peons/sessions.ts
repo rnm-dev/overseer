@@ -1,4 +1,5 @@
 import express from "express";
+import { createHash } from "node:crypto";
 import type { PeonRecord } from "../../registry.js";
 import { callPeon, connOfRecord, proxyGet, proxyStream } from "../../peonClient.js";
 import {
@@ -28,7 +29,14 @@ import {
 } from "../../peonTranscriptSync.js";
 import type { Role } from "../../workspaces.js";
 import { hasRuntimeReverseRead } from "./runtimeReverseRead.js";
-import { reverseCommandGateway } from "../../modules/reverseCommands/index.js";
+import { getPeonConnection, peonConnectionSupports, peonConnectionSupportsCommand } from "../../peonConnections.js";
+import {
+  REVERSE_COMMAND_CAPABILITY,
+  reverseCommandGateway,
+  type JsonObject,
+  type ReverseCommandHttpResult,
+  type ReverseCommandOperation,
+} from "../../modules/reverseCommands/index.js";
 import { hasSessionArtifactTransport } from "../../peonTransferConnections.js";
 import { streamSessionArtifactResponse } from "../../modules/projects/index.js";
 import { PeonFileStreamError, requestPeonSessionArtifact, watchPeonSessionArtifact } from "../../peonFileStream.js";
@@ -55,8 +63,72 @@ export function transcriptQuery(query: express.Request["query"], supported: bool
   return suffix ? `?${suffix}` : "";
 }
 
+export function sessionReverseHttpResponse(
+  operation: ReverseCommandOperation,
+  result: ReverseCommandHttpResult,
+): { status: number; body: unknown } {
+  if (result.status !== 200 || (result.body.status !== "applied" && result.body.status !== "noop")) {
+    if (operation === "session.cancel" && result.body.code === "SESSION_NOT_RUNNING") {
+      return { status: 409, body: result.body };
+    }
+    if (operation === "session.delete" && result.status === 409 && result.body.code === "SESSION_RUNNING") {
+      return { status: 409, body: { ...result.body, code: "SESSION_NOT_RUNNING" } };
+    }
+    return {
+      status: result.status === 502 && result.body.code === "INTERNAL" ? 500 : result.status,
+      body: result.body,
+    };
+  }
+  const detail = result.body.result as Record<string, unknown>;
+  if (operation === "session.start") return { status: result.reused ? 200 : 201, body: detail };
+  if (operation === "session.followup") return { status: 201, body: detail };
+  if (operation === "session.queue.list") return { status: 200, body: { items: detail.items } };
+  if (operation === "session.queue.add") return { status: 201, body: detail.session };
+  if (operation === "session.queue.edit") return { status: 200, body: detail.session };
+  if (["session.queue.remove", "session.queue.send-now", "session.cancel", "session.delete"].includes(operation)) {
+    return { status: 200, body: { ok: true } };
+  }
+  return { status: 200, body: detail };
+}
+
 export function registerSessionRoutes(router: express.Router): void {
   const wp = "/workspaces/:wsId/peons/:id";
+  const stableCommandId = (peonId: string, userId: string, operation: string, value: string): string => {
+    const hex = createHash("sha256").update(`${peonId}\0${userId}\0${operation}\0${value}`).digest("hex");
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-8${hex.slice(13, 16)}-a${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+  };
+  const supportsReverseSession = (peonId: string, operation: ReverseCommandOperation): boolean => {
+    const socket = getPeonConnection(peonId);
+    return Boolean(socket && peonConnectionSupports(socket, REVERSE_COMMAND_CAPABILITY)
+      && peonConnectionSupportsCommand(socket, operation));
+  };
+  const reverseSession = (
+    req: express.Request,
+    c: Parameters<Parameters<typeof withWorkspacePeon>[0]>[2],
+    operation: ReverseCommandOperation,
+    target: { sessionId?: string; projectId?: string },
+    payload: JsonObject,
+    idempotencyKey?: string,
+  ): Promise<ReverseCommandHttpResult> => reverseCommandGateway.submit({
+    workspaceId: c.workspaceId,
+    peonId: c.record.peonId,
+    auth: req.user!,
+    operation,
+    target,
+    payload,
+    ...(idempotencyKey ? {
+      commandId: stableCommandId(c.record.peonId, c.userId, operation, idempotencyKey),
+    } : {}),
+    waitMs: 15_000,
+  });
+  const relayReverseSession = (
+    res: express.Response,
+    operation: ReverseCommandOperation,
+    result: ReverseCommandHttpResult,
+  ): void => {
+    const mapped = sessionReverseHttpResponse(operation, result);
+    res.status(mapped.status).json(mapped.body);
+  };
   const callSupportedPeonPath = async (
     record: PeonRecord,
     method: "GET" | "POST",
@@ -72,7 +144,7 @@ export function registerSessionRoutes(router: express.Router): void {
   };
   const withWorkspaceSession = (
     handler: Parameters<typeof withWorkspacePeon>[0],
-    options: { reverseTranscriptAcl?: boolean } = {},
+    options: { reverseTranscriptAcl?: boolean; reverseCommandOperation?: ReverseCommandOperation } = {},
   ) => withWorkspacePeon(async (req, res, c) => {
     if (c.role !== "owner") {
       const sid = String(req.params.sid);
@@ -80,9 +152,13 @@ export function registerSessionRoutes(router: express.Router): void {
       let projectKey = indexed?.projectKey ?? null;
       let projectId = indexed?.projectId ?? null;
       if (!indexed) {
-        const reverseAuthority = options.reverseTranscriptAcl
+        const socket = getPeonConnection(c.record.peonId);
+        const reverseAuthority = (options.reverseTranscriptAcl
           && ((await getTranscriptState(c.record.peonId, sid))?.epoch != null
-            || hasReverseTranscriptConnection(c.record.peonId));
+            || hasReverseTranscriptConnection(c.record.peonId)))
+          || (options.reverseCommandOperation !== undefined && Boolean(socket
+            && peonConnectionSupports(socket, REVERSE_COMMAND_CAPABILITY)
+            && peonConnectionSupportsCommand(socket, options.reverseCommandOperation)));
         if (reverseAuthority) {
           return res.status(404).json({ error: "unknown session", code: "UNKNOWN_SESSION" });
         }
@@ -242,6 +318,25 @@ export function registerSessionRoutes(router: express.Router): void {
           authState: blocked,
         });
       }
+      if (reverseSelected) {
+        const payload = { ...req.body } as Record<string, unknown>;
+        delete payload.projectKey;
+        if (projectId) payload.projectId = projectId;
+        const reverse = await reverseSession(
+          req, c, "session.start", projectId ? { projectId } : {}, payload as JsonObject,
+          typeof requestId === "string" ? requestId : undefined,
+        );
+        const sessionId = reverse.status === 200 && reverse.body.result && typeof reverse.body.result === "object"
+          ? (reverse.body.result as { id?: unknown }).id : null;
+        if (typeof sessionId === "string") {
+          await recordSessionRequest({
+            workspaceId: c.workspaceId, userId: c.userId, peonId: c.record.peonId, sessionId,
+            occurrenceKey: `create:${typeof requestId === "string" ? requestId : sessionId}`,
+          }).catch(() => undefined);
+        }
+        relayReverseSession(res, "session.start", reverse);
+        return;
+      }
       const result = await callPeon(connOfRecord(c.record), "POST", "/sessions", {
         actor: c.operator.email,
         body: req.body,
@@ -261,11 +356,32 @@ export function registerSessionRoutes(router: express.Router): void {
       relay(result, res);
     }),
   );
-  router.patch(`${wp}/sessions/:sid`, withWorkspaceSession(async (req, res, c) => relay(await callPeon(connOfRecord(c.record), "PATCH", `/sessions/${encodeURIComponent(String(req.params.sid))}`, { actor: c.operator.email, body: req.body }), res)));
+  router.patch(`${wp}/sessions/:sid`, withWorkspaceSession(async (req, res, c) => {
+    const sid = String(req.params.sid);
+    if (supportsReverseSession(c.record.peonId, "session.metadata.patch")) {
+      return relayReverseSession(res, "session.metadata.patch", await reverseSession(
+        req, c, "session.metadata.patch", { sessionId: sid }, req.body as JsonObject,
+      ));
+    }
+    relay(await callPeon(connOfRecord(c.record), "PATCH", `/sessions/${encodeURIComponent(sid)}`, { actor: c.operator.email, body: req.body }), res);
+  }, { reverseCommandOperation: "session.metadata.patch" }));
   router.post(`${wp}/sessions/:sid/followup`, withWorkspaceSession(async (req, res, c) => {
     const commandId = req.headers["peon-request-id"];
     if (!validCommandId(commandId)) return res.status(400).json({ error: "Peon-Request-Id must be a non-empty idempotency key of at most 255 characters", code: "BAD_REQUEST" });
     const sid = String(req.params.sid);
+    if (supportsReverseSession(c.record.peonId, "session.followup")) {
+      const payload = { ...req.body } as Record<string, unknown>;
+      delete payload.commandId;
+      const reverse = await reverseSession(req, c, "session.followup", { sessionId: sid }, payload as JsonObject, commandId);
+      if (reverse.status === 200) {
+        await recordSessionRequest({
+          workspaceId: c.workspaceId, userId: c.userId, peonId: c.record.peonId,
+          sessionId: sid, occurrenceKey: `followup:${commandId}`,
+        }).catch(() => undefined);
+      }
+      relayReverseSession(res, "session.followup", reverse);
+      return;
+    }
     const result = await runIdempotentFollowup(c.record.peonId, sid, commandId, req.body, () =>
       callPeon(connOfRecord(c.record), "POST", `/sessions/${encodeURIComponent(sid)}/followup`, { actor: c.operator.email, body: req.body, requestId: commandId }),
     );
@@ -280,25 +396,53 @@ export function registerSessionRoutes(router: express.Router): void {
     }
     await indexAcceptedSession(result, c.workspaceId, c.record.peonId);
     relay(result, res);
-  }));
+  }, { reverseCommandOperation: "session.followup" }));
   router.post(`${wp}/sessions/:sid/attention/read`, withWorkspaceSession(async (req, res, c) => {
     await markSessionAttentionRead(c.workspaceId, c.userId, c.record.peonId, String(req.params.sid));
     res.json({ ok: true });
   }));
   router.get(`${wp}/sessions/:sid/queue`, withWorkspaceSession(async (req, res, c) => {
+    const sid = String(req.params.sid);
+    if (supportsReverseSession(c.record.peonId, "session.queue.list")) {
+      return relayReverseSession(res, "session.queue.list", await reverseSession(
+        req, c, "session.queue.list", { sessionId: sid }, {},
+      ));
+    }
     relay(await callPeon(connOfRecord(c.record), "GET", `/sessions/${encodeURIComponent(String(req.params.sid))}/queue`, { actor: c.operator.email }), res);
-  }));
+  }, { reverseCommandOperation: "session.queue.list" }));
   router.post(`${wp}/sessions/:sid/queue`, withWorkspaceSession(async (req, res, c) => {
     const sid = String(req.params.sid);
-    const result = await callPeon(connOfRecord(c.record), "POST", `/sessions/${encodeURIComponent(sid)}/queue`, { actor: c.operator.email, body: req.body });
     const commandId = typeof req.body?.commandId === "string" ? req.body.commandId : null;
+    if (supportsReverseSession(c.record.peonId, "session.queue.add")) {
+      const payload = { ...req.body } as Record<string, unknown>;
+      delete payload.commandId;
+      const reverse = await reverseSession(
+        req, c, "session.queue.add", { sessionId: sid }, payload as JsonObject,
+        commandId ?? undefined,
+      );
+      if (reverse.status === 200 && commandId) {
+        await recordSessionRequest({
+          workspaceId: c.workspaceId, userId: c.userId, peonId: c.record.peonId,
+          sessionId: sid, occurrenceKey: `queue:${commandId}`,
+        }).catch(() => undefined);
+      }
+      relayReverseSession(res, "session.queue.add", reverse);
+      return;
+    }
+    const result = await callPeon(connOfRecord(c.record), "POST", `/sessions/${encodeURIComponent(sid)}/queue`, { actor: c.operator.email, body: req.body });
     if (result.ok && commandId) {
       await recordSessionRequest({ workspaceId: c.workspaceId, userId: c.userId, peonId: c.record.peonId, sessionId: sid, occurrenceKey: `queue:${commandId}` }).catch(() => undefined);
     }
     relay(result, res);
-  }));
+  }, { reverseCommandOperation: "session.queue.add" }));
   router.post(`${wp}/sessions/:sid/queue/:itemId/send`, withWorkspaceSession(async (req, res, c) => {
     const sid = String(req.params.sid);
+    const itemId = String(req.params.itemId);
+    if (supportsReverseSession(c.record.peonId, "session.queue.send-now")) {
+      return relayReverseSession(res, "session.queue.send-now", await reverseSession(
+        req, c, "session.queue.send-now", { sessionId: sid }, { itemId },
+      ));
+    }
     const result = await callPeon(
       connOfRecord(c.record),
       "POST",
@@ -321,10 +465,29 @@ export function registerSessionRoutes(router: express.Router): void {
       }
     }
     relay(result, res);
-  }));
+  }, { reverseCommandOperation: "session.queue.send-now" }));
+  router.patch(`${wp}/sessions/:sid/queue/:itemId`, withWorkspaceSession(async (req, res, c) => {
+    const sid = String(req.params.sid);
+    const itemId = String(req.params.itemId);
+    if (supportsReverseSession(c.record.peonId, "session.queue.edit")) {
+      return relayReverseSession(res, "session.queue.edit", await reverseSession(
+        req, c, "session.queue.edit", { sessionId: sid }, { itemId, prompt: req.body?.prompt } as JsonObject,
+      ));
+    }
+    relay(await callPeon(
+      connOfRecord(c.record), "PATCH",
+      `/sessions/${encodeURIComponent(sid)}/queue/${encodeURIComponent(itemId)}`,
+      { actor: c.operator.email, body: req.body },
+    ), res);
+  }, { reverseCommandOperation: "session.queue.edit" }));
   router.delete(`${wp}/sessions/:sid/queue/:itemId`, withWorkspaceSession(async (req, res, c) => {
     const sid = String(req.params.sid);
     const itemId = String(req.params.itemId);
+    if (supportsReverseSession(c.record.peonId, "session.queue.remove")) {
+      return relayReverseSession(res, "session.queue.remove", await reverseSession(
+        req, c, "session.queue.remove", { sessionId: sid }, { itemId },
+      ));
+    }
     const queue = await callPeon(connOfRecord(c.record), "GET", `/sessions/${encodeURIComponent(sid)}/queue`, { actor: c.operator.email });
     const items = queue.ok && queue.json && typeof queue.json === "object" && Array.isArray((queue.json as { items?: unknown }).items)
       ? (queue.json as { items: Array<{ id?: unknown; commandId?: unknown }> }).items
@@ -338,25 +501,35 @@ export function registerSessionRoutes(router: express.Router): void {
     );
     if (result.ok && typeof removedCommandId === "string") await cancelSessionRequest(c.record.peonId, sid, `queue:${removedCommandId}`).catch(() => undefined);
     relay(result, res);
-  }));
+  }, { reverseCommandOperation: "session.queue.remove" }));
   // Stop is self-healing: a 409 SESSION_NOT_RUNNING means the operator pressed
   // Stop on a run that had already ended, so republish the Peon's authoritative
   // record and let the stale "running" state clear everywhere.
   router.post(`${wp}/sessions/:sid/cancel`, withWorkspaceSession(async (req, res, c) => {
     const sid = String(req.params.sid);
+    if (supportsReverseSession(c.record.peonId, "session.cancel")) {
+      return relayReverseSession(res, "session.cancel", await reverseSession(
+        req, c, "session.cancel", { sessionId: sid }, {},
+      ));
+    }
     const result = await cancelSessionRun({
       cancel: () => callPeon(connOfRecord(c.record), "POST", `/sessions/${encodeURIComponent(sid)}/cancel`, { actor: c.operator.email }),
       snapshot: () => callPeon(connOfRecord(c.record), "GET", `/sessions/${encodeURIComponent(sid)}`, { actor: c.operator.email }),
       publish: (snapshot) => indexAcceptedSession(snapshot, c.workspaceId, c.record.peonId),
     });
     relay(result, res);
-  }));
+  }, { reverseCommandOperation: "session.cancel" }));
   router.delete(`${wp}/sessions/:sid`, withWorkspaceSession(async (req, res, c) => {
     const sid = String(req.params.sid);
+    if (supportsReverseSession(c.record.peonId, "session.delete")) {
+      return relayReverseSession(res, "session.delete", await reverseSession(
+        req, c, "session.delete", { sessionId: sid }, {},
+      ));
+    }
     const result = await callPeon(connOfRecord(c.record), "DELETE", `/sessions/${encodeURIComponent(sid)}`, { actor: c.operator.email });
     if (result.ok) await deleteIndexedSession(c.workspaceId, c.record.peonId, sid);
     relay(result, res);
-  }));
+  }, { reverseCommandOperation: "session.delete" }));
   router.post(`${wp}/control/pause`, withWorkspacePeon(async (_req, res, c) => { if (!ownerOnly(res, c.role)) return; relay(await callPeon(connOfRecord(c.record), "POST", "/control/pause", { actor: c.operator.email }), res); }));
   router.post(`${wp}/control/resume`, withWorkspacePeon(async (_req, res, c) => { if (!ownerOnly(res, c.role)) return; relay(await callPeon(connOfRecord(c.record), "POST", "/control/resume", { actor: c.operator.email }), res); }));
   router.post(`${wp}/control/check-update`, withWorkspacePeon(async (req, res, c) => {
