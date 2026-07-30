@@ -28,6 +28,11 @@ import {
   replaceTranscriptRequest,
   transcriptReconcileMode,
 } from "./transcriptReconciliation";
+import {
+  cachedTranscriptSnapshot,
+  preparedTranscriptSnapshot,
+  rememberTranscriptSnapshot,
+} from "./transcriptSnapshotCache";
 
 interface Args {
   base: string;
@@ -64,10 +69,17 @@ export function useSessionTranscript({
   onQueueChange,
   onPreview,
 }: Args) {
-  const [history, setHistory] = useState<Ev[] | null>(null);
+  const initialSnapshotRef = useRef(
+    cachedTranscriptSnapshot(base, sid, paginationSupported),
+  );
+  const [history, setHistory] = useState<Ev[] | null>(
+    () => initialSnapshotRef.current?.events ?? null,
+  );
   const [live, setLive] = useState<Ev[]>([]);
   const [showHistorySpinner, setShowHistorySpinner] = useState(false);
-  const [hasOlder, setHasOlder] = useState(false);
+  const [hasOlder, setHasOlder] = useState(
+    () => Boolean(initialSnapshotRef.current?.hasMore && initialSnapshotRef.current.nextCursor),
+  );
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [olderLoadError, setOlderLoadError] = useState(false);
   // null means the initial snapshot is not ready yet; a resolved boundary of null
@@ -76,11 +88,18 @@ export function useSessionTranscript({
   // `sid` changes one render before the reset effect runs, and a boundary handed
   // to the wrong session is unknown there, which makes Overseer replay the whole
   // transcript rather than resume.
-  const [tailStart, setTailStart] = useState<TailStart | null>(null);
-  const historyReadyRef = useRef(false);
-  const historyLengthRef = useRef(0);
-  const loadedTranscriptRef = useRef<LoadedTranscript | null>(null);
-  const historyEventIdsRef = useRef<Set<string>>(new Set());
+  const [tailStart, setTailStart] = useState<TailStart | null>(() => {
+    const page = initialSnapshotRef.current;
+    return page
+      ? { sessionKey, id: page.paginated && page.events.length ? eventId(page.events[page.events.length - 1]!) : null }
+      : null;
+  });
+  const historyReadyRef = useRef(initialSnapshotRef.current !== null);
+  const historyLengthRef = useRef(initialSnapshotRef.current?.paginated ? 0 : initialSnapshotRef.current?.events.length ?? 0);
+  const loadedTranscriptRef = useRef<LoadedTranscript | null>(initialSnapshotRef.current);
+  const historyEventIdsRef = useRef<Set<string>>(
+    new Set(initialSnapshotRef.current?.events.flatMap((event) => eventId(event) ?? []) ?? []),
+  );
   const seenTailIdsRef = useRef<Set<number>>(new Set());
   const seenTailEventIdsRef = useRef<Set<string>>(new Set());
   const seenRef = useRef<Set<string>>(new Set());
@@ -170,13 +189,14 @@ export function useSessionTranscript({
       ? reconcileDurableSnapshot(page.events, current)
       : reconcileAuthoritativeSnapshot(page.events, current)));
     const merged = mergeNewestPage(loadedTranscriptRef.current, page);
+    rememberTranscriptSnapshot(base, sid, paginationSupported, page);
     loadedTranscriptRef.current = merged;
     historyLengthRef.current = merged.paginated ? 0 : merged.events.length;
     historyEventIdsRef.current = new Set(merged.events.flatMap((event) => eventId(event) ?? []));
     for (const event of page.events) seenRef.current.add(sig(event));
     setHasOlder(merged.paginated && merged.hasMore && merged.nextCursor !== null);
     setHistory(merged.events);
-  }, []);
+  }, [base, paginationSupported, sid]);
 
   const fetchLatestTranscript = useCallback(async (signal?: AbortSignal): Promise<TranscriptPage> => {
     let page = parseTranscriptPage(await api<TranscriptResponse>(
@@ -219,12 +239,26 @@ export function useSessionTranscript({
     lastTailActivityAtRef.current = Date.now();
     tailUnhealthyRef.current = false;
     lastFallbackReconcileAtRef.current = null;
-    setHistory(null);
+    const cached = cachedTranscriptSnapshot(base, sid, paginationSupported);
+    if (cached) {
+      loadedTranscriptRef.current = cached;
+      historyLengthRef.current = cached.paginated ? 0 : cached.events.length;
+      historyEventIdsRef.current = new Set(cached.events.flatMap((event) => eventId(event) ?? []));
+      setHistory(cached.events);
+      setHasOlder(cached.paginated && cached.hasMore && cached.nextCursor !== null);
+      setTailStart({
+        sessionKey,
+        id: cached.paginated && cached.events.length ? eventId(cached.events[cached.events.length - 1]!) : null,
+      });
+      historyReadyRef.current = true;
+    } else {
+      setHistory(null);
+      setHasOlder(false);
+      setTailStart(null);
+    }
     setLive([]);
-    setHasOlder(false);
     setLoadingOlder(false);
     setOlderLoadError(false);
-    setTailStart(null);
     const ready = (page: TranscriptPage) => {
       applyAuthoritativeSnapshot(page);
       setTailStart({
@@ -243,7 +277,8 @@ export function useSessionTranscript({
       }
     };
     const controller = new AbortController();
-    fetchLatestTranscript(controller.signal)
+    const prepared = preparedTranscriptSnapshot(base, sid, paginationSupported);
+    (prepared ?? fetchLatestTranscript(controller.signal))
       .then((page) => alive && ready(page))
       .catch(() => alive && ready(parseTranscriptPage([])));
     return () => {
@@ -254,7 +289,7 @@ export function useSessionTranscript({
       olderLoadControllerRef.current?.abort();
       olderLoadControllerRef.current = null;
     };
-  }, [applyAuthoritativeSnapshot, fetchLatestTranscript, metadataStatusRef, onSnapshotRunning, openFreshPreview, pushFreshEvent, sessionKey]);
+  }, [applyAuthoritativeSnapshot, base, fetchLatestTranscript, metadataStatusRef, onSnapshotRunning, openFreshPreview, paginationSupported, pushFreshEvent, sessionKey, sid]);
 
   useEffect(() => {
     const boundary = tailResumeBoundary(tailStart, sessionKey);

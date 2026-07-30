@@ -12,6 +12,7 @@ import { useMobileDrawer } from "../hooks/useMobileDrawer";
 import type { PeonContext, PeonView } from "./peon/context";
 import { applyAttentionEvent, applyLocalSessionRunningChange, applySessionEvent, mergeSessions, sessionFromIndex, type IndexedSessionEvent, type IndexedSessionLite, type SessionLite } from "./peon/sessionList";
 import { nextSessionAfterDeletion } from "./peon/session/nextSession";
+import { prefetchTranscriptSnapshot } from "./peon/session/transcriptSnapshotCache";
 
 const SIDEBAR_WIDTH_KEY = "overseer.peon-sidebar-width";
 const DEFAULT_SIDEBAR_WIDTH = 256;
@@ -207,6 +208,14 @@ export function WorkspaceSessions() {
               peonIdFor={(session) => session.peonId ?? ""}
               peonNameFor={(session) => peonNames.get(session.peonId ?? "") ?? t("peons.unnamed")}
               viewersFor={viewersFor}
+              onNavigateIntent={(session) => {
+                const targetPeonId = session.peonId ?? "";
+                void prefetchTranscriptSnapshot(
+                  `/workspaces/${encodeURIComponent(workspaceId)}/peons/${encodeURIComponent(targetPeonId)}`,
+                  session.id,
+                  true,
+                ).catch(() => {});
+              }}
               onRename={async (session, title) => {
                 const targetPeonId = session.peonId ?? "";
                 await api(`/workspaces/${encodeURIComponent(workspaceId)}/peons/${encodeURIComponent(targetPeonId)}/sessions/${encodeURIComponent(session.id)}`, { method: "PATCH", body: JSON.stringify({ title }) });

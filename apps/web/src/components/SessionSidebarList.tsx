@@ -75,6 +75,7 @@ export function SessionSidebarList({
   viewersFor,
   onRename,
   onDelete,
+  onNavigateIntent,
   appearance = "sidebar",
 }: {
   sessions: SessionLite[];
@@ -84,6 +85,7 @@ export function SessionSidebarList({
   viewersFor: (peonId: string, sessionId: string) => PresenceUser[];
   onRename: (session: SessionLite, title: string | null) => Promise<void>;
   onDelete: (session: SessionLite) => Promise<void>;
+  onNavigateIntent?: (session: SessionLite) => void;
   appearance?: "sidebar" | "panel";
 }) {
   const t = useT();
@@ -231,6 +233,9 @@ export function SessionSidebarList({
           >
             <NavLink
               to={to(session)}
+              onPointerEnter={() => onNavigateIntent?.(session)}
+              onPointerDown={() => onNavigateIntent?.(session)}
+              onFocus={() => onNavigateIntent?.(session)}
               title={session.catalogStale ? t("session.catalogStaleTitle") : undefined}
               className={({ isActive }) => `relative block py-1.5 pl-3 pr-2 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-fel/60 ${session.catalogStale ? "opacity-70" : ""} ${isActive ? "bg-fel/10" : appearance === "panel" ? "hover:bg-iron-800/70" : "hover:bg-iron-900"}`}
             >

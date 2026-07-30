@@ -12,6 +12,7 @@ import { type ProjectDetail } from "./peonApi";
 import { ProjectDocumentation } from "./ProjectDocumentation";
 import { ProjectQuickLinksCard } from "./ProjectQuickLinks";
 import type { SessionLite } from "./sessionList";
+import { prefetchTranscriptSnapshot } from "./session/transcriptSnapshotCache";
 
 // author: Viktor
 
@@ -38,6 +39,8 @@ export function ProjectRecentSessions({
   viewersFor,
   onRename,
   onDelete,
+  base,
+  paginationSupported,
 }: {
   projectKey: string;
   peonId: string;
@@ -48,6 +51,8 @@ export function ProjectRecentSessions({
   viewersFor: (peonId: string, sessionId: string) => PresenceUser[];
   onRename: (session: SessionLite, title: string | null) => Promise<void>;
   onDelete: (session: SessionLite) => Promise<void>;
+  base?: string;
+  paginationSupported?: boolean;
 }) {
   const t = useT();
   const recent = recentProjectSessions(sessions, projectKey);
@@ -69,6 +74,9 @@ export function ProjectRecentSessions({
             to={(session) => `/peons/${encodeURIComponent(peonId)}/sessions/${encodeURIComponent(session.id)}`}
             peonIdFor={() => peonId}
             viewersFor={viewersFor}
+            onNavigateIntent={base ? (session) => {
+              void prefetchTranscriptSnapshot(base, session.id, paginationSupported ?? true).catch(() => {});
+            } : undefined}
             onRename={onRename}
             onDelete={onDelete}
           />
@@ -139,7 +147,7 @@ export function PeonProjectDetail() {
             <span className="forge-spin" role="status" aria-label={t("proj.docs.loading")} />
           </Card>
         )}
-        <ProjectRecentSessions
+      <ProjectRecentSessions
           projectKey={key}
           peonId={peon.peonId}
           newSessionTo={newSessionTo}
@@ -148,7 +156,9 @@ export function PeonProjectDetail() {
           error={sessionPageError}
           viewersFor={viewersFor}
           onRename={renameSession}
-          onDelete={deleteSession}
+        onDelete={deleteSession}
+        base={base}
+        paginationSupported={peon.capabilities.includes("transcript-pagination-v1")}
         />
       </div>
     </div>

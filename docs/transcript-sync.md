@@ -158,6 +158,13 @@ adds:
 }
 ```
 
+The web dashboard keeps a bounded in-memory cache of twelve recently opened
+newest pages and prefetches a transcript on pointer/focus intent. Switching
+back to a recent session paints that page immediately, subscribes from its
+cached `eventId` boundary and reconciles REST in the background. This is only a
+latency optimization: the authoritative page still replaces the cached page,
+and normal `eventId` deduplication covers overlap with the live tail.
+
 Pagination cursors are opaque, route/session-owned and epoch-bound. Browser
 WebSocket and HTTP SSE tails replay strictly after `lastEventId`, then consume
 committed event-log fan-out. Live events are held behind a bounded replay

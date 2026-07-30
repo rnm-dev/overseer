@@ -71,6 +71,12 @@ function storeFilePaneState(pageKey: string, open: boolean) {
 }
 
 export function PeonSessionDetail() {
+  const { peon } = usePeon();
+  const { sid = "" } = useParams();
+  return <PeonSessionDetailPage key={`${peon.peonId}:${sid}`} />;
+}
+
+function PeonSessionDetailPage() {
   const { locale, t } = useI18n();
   const { user } = useAuth();
   const COMPOSER_FOOTER_PADDING = 100;
