@@ -30,3 +30,7 @@ export {
   PeonCommandAdapter,
   ReverseCommandLifecycleHarness,
 } from "./reverseCommandLifecycle.js";
+export {
+  TranscriptHarnessError,
+  TranscriptSyncHarness,
+} from "./transcriptLifecycle.js";

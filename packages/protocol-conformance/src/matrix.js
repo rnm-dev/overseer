@@ -50,6 +50,9 @@ export function routeForSurface(surface, negotiated) {
       return transfer.has("sandbox-file-read-v1") ? "reverse-socket" : "legacy-http";
     case "session-cancel":
       return control.has("reverse-command-v1") ? "reverse-socket" : "legacy-http";
+    case "session-transcript":
+      return control.has("transcript-sync-v1") && CANONICAL_PAIR.every((capability) => control.has(capability))
+        ? "reverse-socket" : "legacy-http";
     default:
       return "unimplemented";
   }

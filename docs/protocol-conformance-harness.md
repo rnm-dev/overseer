@@ -39,12 +39,13 @@ negotiate `entry-metadata-v1`. Project and sandbox file reads independently
 downgrade to HTTP when their transfer capability is absent.
 
 The current×current cell also includes `session.cancel` through
-`reverse-command-v1` and runs through `NoInboundTopology` with the Peon
+`reverse-command-v1` and transcript history/live demand through
+`transcript-sync-v1`, and runs through `NoInboundTopology` with the Peon
 fleet port blocked. It opens only Peon-initiated control and file-transfer
 connections and fails immediately if a surface selects legacy HTTP or Overseer
 attempts to dial Peon. This proves the already stable socket/catalog/folder/
-file-read/session-cancel slice behind NAT; it is not yet proof of the epic's
-full fleet surface.
+file-read/session-cancel/transcript slice behind NAT; it is not yet proof of
+the epic's full fleet surface.
 
 ## Deterministic faults and diagnostics
 
@@ -98,15 +99,23 @@ commit boundaries, ACK/cancel reordering, delayed old-generation control and
 transfer hellos, and the claim-versus-legacy race. The app-level suites remain
 the executable endpoint/database adapters for those frozen outcomes.
 
+`transcript-sync-v1.json` is the shared canonical wire fixture for snapshot
+request/page, durable live event, cancellation and unsubscribe. Its adapters
+enforce the implementation's frozen epoch/revision/barrier, contiguous event
+sequence/revision, page and envelope limits, durable identity and pagination.
+The lifecycle harness stages snapshots until the complete barrier, shares one
+Peon demand across consumers, and models the atomic projection + durable inbox
++ ACL browser-event commit before ACK. Tests inject dropped and duplicate
+delivery, reordered gaps, ACK loss, Peon/Overseer restart, epoch mismatch,
+stale generation, cancellation, oversized and corrupt snapshots.
+Current×legacy and legacy×current select only HTTP; current×current selects
+only the reverse socket.
+
 ## Extension cells that must not report green
 
-The matrix reports reverse-command coverage separately and registers these
-unfinished families explicitly:
+The matrix reports reverse-command and transcript coverage separately and
+registers these unfinished families explicitly:
 
-- `transcript-sync-v1`: implementation work is landing concurrently, but the
-  shared golden adapter, projection/ACK and exclusive-fallback matrix cells,
-  and complete mixed-version failure scenarios are not yet stable here. See
-  [Peon transcript publication](transcript-sync.md).
 - writes: uploads and artifact writes remain HTTP-only; no reverse file-write
   operation is released.
 - rollout: update reconnect/attestation, fairness and latency SLOs,
