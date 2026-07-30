@@ -878,6 +878,94 @@ test("terminal cancel result erases local claim authentication material and expo
   assert.doesNotMatch(readFileSync(f.statePath, "utf8"), /7K3M-9Q2R|claimToken|claimNonce|startSemantic/);
 });
 
+test("a lost pending cancel response converges on the generic post-cleanup 401", async () => {
+  const f = fixture();
+  let cancelAttempts = 0;
+  const cancelNonces: string[] = [];
+  const fetchImpl: typeof fetch = async (input, init) => {
+    const url = new URL(String(input));
+    if (init?.method === "GET") return response(capabilities());
+    const body = JSON.parse(String(init?.body)) as ClaimTestBody;
+    if (url.pathname === "/api/v1/peon-claims") return response(claimCreated());
+    assert.equal(url.pathname, `/api/v1/peon-claims/${CLAIM_ID}/cancel`);
+    cancelAttempts += 1;
+    cancelNonces.push(body.proof.requestNonce);
+    if (cancelAttempts === 1) throw new TypeError("cancel response was lost");
+    return response({
+      type: "claim_error",
+      protocol: 1,
+      code: "UNAUTHENTICATED",
+      message: "authentication failed",
+      serverTime: SERVER_TIME,
+    }, 401);
+  };
+  const client = new PeonClaimClient({
+    stateStore: f.stateStore,
+    identityStore: f.identityStore,
+    settings: f.settings,
+    pairing: f.pairing,
+    fetch: fetchImpl,
+    now: () => SERVER_TIME,
+    schedule: false,
+  });
+  await client.begin("https://overseer.example.test");
+  await assert.rejects(client.cancel(), /claim request transport failed/);
+  assert.equal(f.stateStore.get().attempt?.cancelRequested, true);
+  const status = await client.cancel();
+  assert.equal(status.state, "cancelled");
+  assert.equal(cancelAttempts, 2);
+  assert.notEqual(cancelNonces[1], cancelNonces[0]);
+  assert.doesNotMatch(readFileSync(f.statePath, "utf8"), /claimToken|claimNonce|startSemantic/);
+});
+
+test("cancelling a parked server claim sends authenticated cancel instead of abandoning it locally", async () => {
+  const f = fixture();
+  let cancelRequests = 0;
+  const fetchImpl: typeof fetch = async (input, init) => {
+    const url = new URL(String(input));
+    if (init?.method === "GET") return response(capabilities());
+    if (url.pathname === "/api/v1/peon-claims") return response(claimCreated());
+    if (url.pathname.endsWith("/poll")) {
+      return response({
+        type: "claim_status",
+        protocol: 1,
+        claimId: "f02d0ce2-df3b-4e83-8da9-846bd17b5511",
+        state: "pending",
+        expiresAt: SERVER_TIME + 600_000,
+        pollAfterMs: 2000,
+        serverTime: SERVER_TIME,
+      });
+    }
+    assert.equal(url.pathname, `/api/v1/peon-claims/${CLAIM_ID}/cancel`);
+    cancelRequests += 1;
+    return response({
+      type: "claim_cancel_result",
+      protocol: 1,
+      claimId: CLAIM_ID,
+      state: "cancelled",
+      code: "CLAIM_CANCELLED",
+      changed: true,
+      terminalAt: SERVER_TIME,
+      serverTime: SERVER_TIME,
+    });
+  };
+  const client = new PeonClaimClient({
+    stateStore: f.stateStore,
+    identityStore: f.identityStore,
+    settings: f.settings,
+    pairing: f.pairing,
+    fetch: fetchImpl,
+    now: () => SERVER_TIME,
+    schedule: false,
+  });
+  await client.begin("https://overseer.example.test");
+  await assert.rejects(client.runOnce(), /claim status did not match/);
+  assert.equal(client.getStatus().state, "parked");
+  const status = await client.cancel();
+  assert.equal(status.state, "cancelled");
+  assert.equal(cancelRequests, 1);
+});
+
 test("ambiguous cancel keeps the persisted candidate until fresh ACK proves it revoked", async () => {
   const f = fixture();
   let claimNonce = "";

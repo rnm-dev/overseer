@@ -21,6 +21,8 @@ import { ProjectCatalogChannel } from "./channels/projectCatalogChannel.js";
 import { FolderListingChannel } from "./channels/folderListingChannel.js";
 import { ProjectFileReadChannel, SandboxFileReadChannel, SessionArtifactReadChannel } from "./channels/projectFileReadChannel.js";
 import { ReverseCommandChannel } from "./channels/reverseCommandChannel.js";
+import type { ReverseCommandHandler } from "./channels/reverseCommandChannel.js";
+import { RuntimeStateChannel } from "./channels/runtimeStateChannel.js";
 import { TranscriptChannel } from "./channels/transcriptChannel.js";
 import { FileWriteChannel } from "./channels/fileWriteChannel.js";
 import { SessionArtifactChannel } from "./channels/sessionArtifactChannel.js";
@@ -149,6 +151,7 @@ export class PeonSocketSupervisor {
     lastError: null,
     outbox: null,
   };
+  private readonly reverseCommandChannel: ReverseCommandChannel | null;
 
   constructor(options: PeonSocketOptions = {}) {
     this.socketChannel = options.socketChannel ?? "control";
@@ -174,6 +177,9 @@ export class PeonSocketSupervisor {
       throw new Error("file-transfer socket cannot own the control durable outbox");
     }
     const hasDurableOutbox = Boolean(options.outbox || options.outboxFactory);
+    this.reverseCommandChannel = this.socketChannel === "control" && hasDurableOutbox
+      ? new ReverseCommandChannel({ peonId: () => this.configured()?.peonId })
+      : null;
     const defaultChannels = this.socketChannel === "control"
       ? [
           new SessionCatalogChannel(),
@@ -182,7 +188,8 @@ export class PeonSocketSupervisor {
           new FolderListingChannel(),
           ...(hasDurableOutbox ? [new TranscriptChannel()] : []),
           ...(hasDurableOutbox ? [daemonConfigurationChannel] : []),
-          ...(hasDurableOutbox ? [new ReverseCommandChannel({ peonId: () => this.configured()?.peonId })] : []),
+          ...(this.reverseCommandChannel ? [this.reverseCommandChannel] : []),
+          ...(hasDurableOutbox ? [new RuntimeStateChannel()] : []),
         ]
       : [
           new ProjectFileReadChannel(),
@@ -194,6 +201,10 @@ export class PeonSocketSupervisor {
     this.multiplexer = new PeonSocketMultiplexer(options.channels ?? defaultChannels);
     this.outbox = options.outbox ?? null;
     this.outboxFactory = options.outboxFactory ?? null;
+  }
+
+  registerReverseCommandHandlers(handlers: Record<string, ReverseCommandHandler>): void {
+    this.reverseCommandChannel?.registerHandlers(handlers);
   }
 
   start(): void {
@@ -689,6 +700,9 @@ export class PeonSocketSupervisor {
     const pending = this.outbox.pending();
     const index = pending.findIndex((message) => message.cursor === cursor);
     const acknowledged = index < 0 ? [] : pending.slice(0, index + 1).map((message) => message.cursor);
+    for (const removedCursor of acknowledged) {
+      if (!this.multiplexer.durableAcknowledging(removedCursor)) return false;
+    }
     if (!this.outbox.acknowledge(epoch, cursor)) return false;
     for (const removedCursor of acknowledged) this.multiplexer.durableAcknowledged(removedCursor);
     return true;
@@ -792,6 +806,10 @@ export class PeonSocketPool {
       connectedConnections,
       connectingConnections,
     };
+  }
+
+  registerReverseCommandHandlers(handlers: Record<string, ReverseCommandHandler>): void {
+    for (const supervisor of this.supervisors) supervisor.registerReverseCommandHandlers(handlers);
   }
 }
 

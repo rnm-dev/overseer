@@ -1663,6 +1663,29 @@ starts compaction while a task is active. Repeated near-limit warnings are
 throttled per session/code/source; truncation notices are retained individually
 because each can reference a different full-output artifact.
 
+### Daemon configuration (`daemon-configuration-v1`)
+
+This capability requires both `durable-delivery-v1` and the generic
+`reverse-command-v1` operation `daemon.configuration.patch`. Its safe document
+contains exactly `name`, `defaultAgent`, `fileTransferRoot`,
+`heartbeatIntervalMs`, `aiDefaultModel`, and `soul`; identity, credentials,
+network-boundary settings, executable paths and `paused` are forbidden.
+
+Full configuration states use their own epoch, monotonic revision and canonical
+SHA-256 digest inside the shared durable envelope. Overseer commits the
+projection, inbox/checkpoint and an owner-only value-free browser event before
+ACK. Exact old transport replays return the current cumulative ACK, semantic
+same-revision/same-digest repeats do not emit another event, and identity or
+same-revision digest collisions fail closed.
+
+Remote patches use the shared command ledger and always carry expected
+`{epoch,revision,digest}`. Applied/noop/conflict/rejected terminal tuples,
+returned values, field errors and restart metadata are strictly bounded; the
+returned digest must match the complete safe document. A delayed terminal
+replay cannot regress a later revision or replace a newer epoch. Negotiated
+reads and writes never retry through HTTP; unnegotiated Peons retain the legacy
+settings routes.
+
 ## Enabling it on a peon
 
 ```
@@ -1675,3 +1698,16 @@ PATCH /api/v1/settings {
 
 Leave `overseerToken` empty on a standalone peon and bearer-authenticated fleet
 requests stay off; leave `overseerUrl` empty and it never phones home.
+
+## Reverse runtime state and queries (v1)
+
+`runtime-state-v1` requires `durable-delivery-v1`. Its durable payload is
+`{type:"runtime_state",protocol:1,epoch,revision,digest,generatedAt,state}`.
+It is committed with the shared inbox cursor before ACK and replaces the prior
+epoch/revision state. HTTP status/models reads use this projection when present
+and identify it as fresh, stale or offline.
+
+Quota, provider capabilities, stats and filtered analytics use the
+`runtime.quota`, `runtime.capabilities`, `runtime.stats` and
+`runtime.analytics` operations of `reverse-command-v1`; they do not introduce
+another ledger or lifecycle.

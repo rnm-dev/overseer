@@ -1,13 +1,14 @@
 import { createControlServer } from "./controlServer.js";
 import { settings } from "./settings/index.js";
 import { sdNotify } from "./sdNotify.js";
-import { peonRegistrar, peonSocket } from "./overseer/index.js";
+import { armoryCommandHandlers, peonRegistrar, peonSocket } from "./overseer/index.js";
 import { sessions } from "./sessions/index.js";
 import { updateChecker } from "./updateChecker.js";
 import { claudeCodeAuth } from "./claudeCodeAuth.js";
 import { configDir, stateDir } from "./xdgPaths.js";
 import { createDaemonCompositionRoot } from "./bootstrap/compositionRoot.js";
 import { recoverInterruptedArmoryOperations, recoverInterruptedArmoryUninstalls } from "./armory/index.js";
+import { armoryInventory } from "./armory/index.js";
 import { shutdownAgentDriverRuntimes } from "./agents/index.js";
 import { peonClaimClient } from "./enrollment/index.js";
 
@@ -18,7 +19,8 @@ const PORT = Number(process.env.ACA_CONTROL_PORT ?? 4570);
 // remote connections. Remote peers then go through per-user magic-link auth —
 // only genuine loopback connections are auto-trusted as admin (isLoopback() in
 // controlServer.ts keys off the real TCP socket address, which can't be spoofed).
-const BIND_HOST = process.env.ACA_BIND_HOST ?? settings.get().bindHost;
+const configured = settings.get();
+const BIND_HOST = process.env.ACA_BIND_HOST ?? configured.bindHost;
 
 const LOOPBACK_HOSTS = ["127.0.0.1", "localhost", "::1"];
 
@@ -30,9 +32,20 @@ function isLoopbackHost(url: string): boolean {
   }
 }
 
+if (configured.fleetMode === "reverse-only" && !LOOPBACK_HOSTS.includes(BIND_HOST)) {
+  throw new Error(
+    `reverse-only fleet mode refuses non-loopback ACA_BIND_HOST/bindHost (${BIND_HOST}); `
+      + "use 127.0.0.1 or ::1, or explicitly switch to legacy-mesh",
+  );
+}
+
 const composition = createDaemonCompositionRoot();
 const app = createControlServer(composition.controlServerOptions);
 const { armoryRuntime, armoryStores } = composition;
+peonSocket.registerReverseCommandHandlers(armoryCommandHandlers({
+  ...composition.armoryApi,
+  inventory: armoryInventory,
+} as Parameters<typeof armoryCommandHandlers>[0]));
 
 // Armory bindings are snapshotted when each agent turn starts. Finish the
 // initial reconciliation before accepting session requests so a session
@@ -50,13 +63,16 @@ try {
 }
 
 const server = app.listen(PORT, BIND_HOST, () => {
+  const s = settings.get();
   console.log(`peon daemon: control API listening on http://${BIND_HOST}:${PORT}`);
+  console.log(`fleet transport: ${s.fleetMode === "reverse-only"
+    ? "reverse-only (outbound WSS; inbound Fleet HTTP and callback heartbeat disabled)"
+    : "legacy-mesh compatibility (reverse capabilities with inbound Fleet HTTP fallback)"}`);
   console.log(`config dir: ${configDir()}`);
   console.log(`state dir: ${stateDir()}`);
   // Redact the two secrets so a routine settings dump never leaks them — the
   // pairing phrase in particular is meant to be printed exactly once, on
   // generation (below), and never again.
-  const s = settings.get();
   console.log("current settings:", {
     ...s,
     overseerToken: s.overseerToken ? "<set>" : "",
@@ -133,6 +149,7 @@ if (watchdogIntervalMs) {
 process.on("SIGTERM", () => {
   sdNotify.stopping();
   peonClaimClient.stop();
+  peonRegistrar.stop();
   sessions.notifyShuttingDown();
   // server.close() waits for every open connection to end — but SSE clients
   // (dashboard tabs, live session streams) hold theirs open indefinitely,

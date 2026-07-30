@@ -29,6 +29,7 @@ import {
 } from "../../peonTranscriptSync.js";
 import type { Role } from "../../workspaces.js";
 import { hasRuntimeReverseRead } from "./runtimeReverseRead.js";
+import { getRuntimeProjection, RUNTIME_STATE_CAPABILITY } from "../../modules/runtimeProjection.js";
 import { getPeonConnection, peonConnectionSupports, peonConnectionSupportsCommand } from "../../peonConnections.js";
 import {
   REVERSE_COMMAND_CAPABILITY,
@@ -41,6 +42,7 @@ import { hasSessionArtifactTransport } from "../../peonTransferConnections.js";
 import { streamSessionArtifactResponse } from "../../modules/projects/index.js";
 import { PeonFileStreamError, requestPeonSessionArtifact, watchPeonSessionArtifact } from "../../peonFileStream.js";
 import { latestRelease } from "../../releases.js";
+import { hasActiveUpdateCommand } from "../../modules/reverseCommands/reverseCommandRegistry.js";
 
 function acceptedSessionId(result: { ok: boolean; json: unknown }): string | null {
   if (!result.ok || !result.json || typeof result.json !== "object") return null;
@@ -176,7 +178,30 @@ export function registerSessionRoutes(router: express.Router): void {
     }
     return handler(req, res, c);
   });
-  router.get(`${wp}/status`, withWorkspacePeon(async (_req, res, c) => relay(await callPeon(connOfRecord(c.record), "GET", "/status", { actor: c.operator.email }), res)));
+  router.get(`${wp}/status`, withWorkspacePeon(async (_req, res, c) => {
+    const socket = getPeonConnection(c.record.peonId);
+    const negotiated = Boolean(socket && peonConnectionSupports(socket, RUNTIME_STATE_CAPABILITY));
+    const projection = await getRuntimeProjection(c.record.peonId);
+    if (negotiated && !projection) {
+      return res.status(503).json({ error: "Peon runtime state is still synchronizing", code: "RUNTIME_SYNCING" });
+    }
+    if ((negotiated || !socket) && projection) {
+      const state = projection.state;
+      return res.json({
+        protocol: 1,
+        name: state.name ?? null,
+        paused: state.paused,
+        filesEnabled: state.filesEnabled === true,
+        activeSessionCount: (state.capacity as { active?: unknown } | undefined)?.active ?? 0,
+        sessionCount: (state.capacity as { total?: unknown } | undefined)?.total ?? 0,
+        runtimeFreshness: projection.freshness,
+        runtimeGeneratedAt: projection.generatedAt,
+        runtimeRevision: projection.revision,
+        daemon: state.daemon,
+      });
+    }
+    relay(await callPeon(connOfRecord(c.record), "GET", "/status", { actor: c.operator.email }), res);
+  }));
   // Provider capabilities + the peon's global default feed the session pickers.
   // `agent`, `model`, and `reasoningEffort` already ride
   // the generic body passthrough, so this read is the only new proxy route needed.
@@ -185,6 +210,20 @@ export function registerSessionRoutes(router: express.Router): void {
   // and works). Degrade those to an empty catalog so the client silently hides the
   // picker instead of the browser logging a failed probe on every peon page.
   router.get(`${wp}/models`, withWorkspacePeon(async (_req, res, c) => {
+    const socket = getPeonConnection(c.record.peonId);
+    const negotiated = Boolean(socket && peonConnectionSupports(socket, RUNTIME_STATE_CAPABILITY));
+    const projection = await getRuntimeProjection(c.record.peonId);
+    if (negotiated && !projection) {
+      return res.status(503).json({ error: "Peon runtime state is still synchronizing", code: "RUNTIME_SYNCING" });
+    }
+    if ((negotiated || !socket) && projection) {
+      return res.json({
+        defaultAgent: projection.state.defaultAgent ?? null,
+        providers: projection.state.models ?? [],
+        freshness: projection.freshness,
+        generatedAt: projection.generatedAt,
+      });
+    }
     const r = await callPeon(connOfRecord(c.record), "GET", "/models", { actor: c.operator.email });
     if (r.status === 404 || r.status === 401) return res.json({ providers: [], defaultModel: null });
     relay(r, res);
@@ -228,6 +267,9 @@ export function registerSessionRoutes(router: express.Router): void {
   }));
   router.get(`${wp}/sessions/:sid/transcript`, withWorkspaceSession(async (req, res, c) => {
     const sid = String(req.params.sid);
+    if (!(await canAccessIndexedSessionNow(c.workspaceId, c.userId, c.record.peonId, sid))) {
+      return res.status(404).json({ error: "unknown session", code: "UNKNOWN_SESSION" });
+    }
     const storedState = await getTranscriptState(c.record.peonId, sid);
     if (storedState?.epoch || hasReverseTranscriptConnection(c.record.peonId)) {
       let release: (() => void) | null = null;
@@ -532,6 +574,9 @@ export function registerSessionRoutes(router: express.Router): void {
   }, { reverseCommandOperation: "session.delete" }));
   router.post(`${wp}/control/check-update`, withWorkspacePeon(async (req, res, c) => {
     if (!ownerOnly(res, c.role)) return;
+    if (await hasActiveUpdateCommand(c.record.peonId)) {
+      return res.status(409).json({ error: "Another update operation is still pending", code: "UPDATE_IN_PROGRESS" });
+    }
     if (!hasRuntimeReverseRead(c.record.peonId, "update.check")) {
       return relay(await callPeon(connOfRecord(c.record), "POST", "/control/check-update", { actor: c.operator.email }), res);
     }
@@ -544,6 +589,9 @@ export function registerSessionRoutes(router: express.Router): void {
   }));
   router.post(`${wp}/control/update`, withWorkspacePeon(async (req, res, c) => {
     if (!ownerOnly(res, c.role)) return;
+    if (await hasActiveUpdateCommand(c.record.peonId)) {
+      return res.status(409).json({ error: "Another update operation is still pending", code: "UPDATE_IN_PROGRESS" });
+    }
     if (!hasRuntimeReverseRead(c.record.peonId, "update.apply")) {
       return relay(await callPeon(connOfRecord(c.record), "POST", "/control/update", { actor: c.operator.email, body: req.body }), res);
     }
@@ -719,6 +767,10 @@ async function streamProjectedTranscript(
   try {
     if (!hasReverseTranscriptConnection(peonId)) {
       res.status(503).json({ error: "transcript stream is offline", code: "TRANSCRIPT_OFFLINE" });
+      return;
+    }
+    if (!(await canAccessIndexedSessionNow(access.workspaceId, access.userId, peonId, sessionId))) {
+      res.status(404).json({ error: "unknown session", code: "UNKNOWN_SESSION" });
       return;
     }
     release = await acquireTranscriptProjection(peonId, sessionId);

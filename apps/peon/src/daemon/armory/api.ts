@@ -12,6 +12,7 @@ import type { ArmoryPackageUninstallApi } from "./uninstaller.js";
 interface ConfigurationApi {
   schema(packageId: string): Promise<{ fields: unknown[]; configured: Record<string, boolean>; hostWrites: string[] }>;
   configure(packageId: string, values: Record<string, string>, options?: { confirmHostWrites?: boolean }): Promise<ArmoryOperation>;
+  verify(packageId: string): Promise<ArmoryOperation>;
   deleteConfiguration(packageId: string, options?: { includeHost?: boolean; confirmHostWrites?: boolean }): Promise<ArmoryOperation>;
 }
 
@@ -208,6 +209,14 @@ export function createArmoryReadRouter(
   }
 
   if (options.allowMutations) {
+    router.post("/packages/:id/configuration/verify", async (req, res) => {
+      try {
+        const operation = await configuration.verify(req.params.id);
+        res.status(202).json({ operation });
+      } catch (error) {
+        sendError(res, error);
+      }
+    });
     router.put("/packages/:id/configuration", async (req, res) => {
       try {
         const body = configurationBodySchema.parse(req.body);

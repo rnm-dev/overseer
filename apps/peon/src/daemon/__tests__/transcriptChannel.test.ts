@@ -6,7 +6,9 @@ import type { PeonSocketDurableOptions, PeonSocketFrame, PeonSocketSender } from
 import {
   MAX_ACTIVE_TRANSCRIPT_SNAPSHOTS,
   MAX_TRANSCRIPT_OUTSTANDING_PER_SESSION,
+  MAX_TRANSCRIPT_SUBSCRIPTIONS,
   TRANSCRIPT_SNAPSHOT_TTL_MS,
+  TRANSCRIPT_SUBSCRIPTION_TTL_MS,
   TranscriptChannel,
 } from "../overseer/socket/channels/transcriptChannel.js";
 import {
@@ -423,6 +425,173 @@ test("socket generation fences completion of an in-flight snapshot load", async 
   await settle();
   assert.equal(oldOutput.frames.some((frame) => frame.type === "transcript_snapshot_page"), false);
   assert.equal(nextOutput.frames.some((frame) => frame.type === "transcript_snapshot_page"), false);
+  channel.disconnected(true);
+});
+
+test("concurrent subscribe loads reserve the unique-session limit before repository reads finish", async () => {
+  const ids = Array.from({ length: MAX_TRANSCRIPT_SUBSCRIPTIONS + 3 }, (_, index) => `subscribe-${index}`);
+  const source = new Source(ids);
+  const gate = deferred<void>();
+  let reads = 0;
+  const repository = new TranscriptPublicationRepository({
+    source,
+    flush: async () => {},
+    readCommitted: async () => {
+      reads += 1;
+      await gate.promise;
+      return [];
+    },
+    subscribeCommits: () => () => {},
+  });
+  const channel = new TranscriptChannel({ repository });
+  const output = capture();
+  channel.negotiated(true, {}, output.sender);
+
+  for (const [index, sessionId] of ids.entries()) {
+    channel.receive({
+      type: "transcript_subscribe",
+      requestId: `subscribe-request-${index}`,
+      sessionId,
+      epoch: "not-the-loaded-epoch",
+      afterSeq: 0,
+    }, output.sender);
+  }
+  await settle();
+
+  assert.equal(reads, MAX_TRANSCRIPT_SUBSCRIPTIONS);
+  assert.equal(output.frames.filter((frame) => frame.type === "transcript_error"
+    && frame.code === "SUBSCRIPTION_LIMIT").length, 3);
+
+  gate.resolve(undefined);
+  await settle();
+  channel.disconnected(true);
+  repository.stop();
+});
+
+test("unsubscribe and lease expiry fence completion of deferred subscribe loads", async () => {
+  const source = new Source(["cancelled", "expired"]);
+  const gates = new Map([
+    ["cancelled", deferred<void>()],
+    ["expired", deferred<void>()],
+  ]);
+  let now = 10_000;
+  const repository = new TranscriptPublicationRepository({
+    source,
+    flush: async () => {},
+    readCommitted: async (sessionId) => {
+      await gates.get(sessionId)!.promise;
+      return [];
+    },
+    subscribeCommits: () => () => {},
+  });
+  const channel = new TranscriptChannel({ repository, now: () => now });
+  const output = capture();
+  channel.negotiated(true, {}, output.sender);
+
+  channel.receive({
+    type: "transcript_subscribe",
+    requestId: "cancelled-subscribe",
+    sessionId: "cancelled",
+    epoch: "epoch",
+    afterSeq: 0,
+  }, output.sender);
+  await settle();
+  channel.receive({
+    type: "transcript_unsubscribe",
+    requestId: "cancel-subscribe",
+    sessionId: "cancelled",
+  }, output.sender);
+  gates.get("cancelled")!.resolve(undefined);
+  await settle();
+  assert.equal(output.frames.some((frame) => frame.type === "transcript_subscribed"
+    && frame.sessionId === "cancelled"), false);
+
+  channel.receive({
+    type: "transcript_subscribe",
+    requestId: "expired-subscribe",
+    sessionId: "expired",
+    epoch: "epoch",
+    afterSeq: 0,
+  }, output.sender);
+  await settle();
+  now += TRANSCRIPT_SNAPSHOT_TTL_MS;
+  gates.get("expired")!.resolve(undefined);
+  await settle();
+  assert.equal(output.frames.some((frame) => frame.type === "transcript_subscribed"
+    && frame.sessionId === "expired"), false);
+  assert.equal(output.frames.at(-1)?.code, "CURSOR_UNAVAILABLE");
+  channel.disconnected(true);
+  repository.stop();
+});
+
+test("expired subscription cannot be revived by a live commit before maintenance runs", async () => {
+  const fixture = repositoryFixture(["s1"], { s1: [] });
+  let now = 20_000;
+  const channel = new TranscriptChannel({ repository: fixture.repository, now: () => now });
+  const output = capture();
+  channel.negotiated(true, {}, output.sender);
+  await snapshot(channel, output.sender, "subscription-lease", "s1");
+
+  now += TRANSCRIPT_SUBSCRIPTION_TTL_MS;
+  fixture.append("s1", entry("after-expiry", "result"));
+
+  assert.equal(output.durableFrames.length, 0);
+  channel.disconnected(true);
+});
+
+test("session deletion during deferred canonical load cannot materialize stale history", async () => {
+  const source = new Source(["s1"]);
+  const gate = deferred<void>();
+  const repository = new TranscriptPublicationRepository({
+    source,
+    flush: async () => {},
+    readCommitted: async () => {
+      await gate.promise;
+      return [entry("stale-event")];
+    },
+    subscribeCommits: () => () => {},
+  });
+  const channel = new TranscriptChannel({ repository });
+  const output = capture();
+  channel.negotiated(true, {}, output.sender);
+  channel.receive({
+    type: "transcript_snapshot_request",
+    requestId: "delete-during-load",
+    sessionId: "s1",
+    subscribe: true,
+  }, output.sender);
+  await settle();
+
+  source.remove("s1");
+  gate.resolve(undefined);
+  await settle();
+
+  assert.equal(output.frames.some((frame) => frame.type === "transcript_snapshot_page"), false);
+  assert.equal(output.frames.at(-1)?.code, "UNKNOWN_SESSION");
+  assert.equal(output.durableFrames.length, 0);
+  channel.disconnected(true);
+  repository.stop();
+});
+
+test("session deletion fences cached repository state before snapshot materialization", async () => {
+  const fixture = repositoryFixture(["s1"], { s1: [entry("cached-event")] });
+  await fixture.repository.state("s1");
+  const channel = new TranscriptChannel({ repository: fixture.repository });
+  const output = capture();
+  channel.negotiated(true, {}, output.sender);
+
+  channel.receive({
+    type: "transcript_snapshot_request",
+    requestId: "delete-cached-state",
+    sessionId: "s1",
+    subscribe: false,
+  }, output.sender);
+  fixture.source.remove("s1");
+  await settle();
+
+  assert.equal(output.frames.some((frame) => frame.type === "transcript_snapshot_page"), false);
+  assert.equal(output.frames.at(-1)?.code, "UNKNOWN_SESSION");
+  assert.equal(output.durableFrames.length, 0);
   channel.disconnected(true);
 });
 

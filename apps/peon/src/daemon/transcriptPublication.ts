@@ -359,6 +359,16 @@ export class TranscriptPublicationRepository {
     return loading;
   }
 
+  assertCurrent(sessionId: string, state: TranscriptPublicationState): void {
+    const record = this.source.get(sessionId);
+    if (!record || transcriptEpoch(record) !== state.epoch) {
+      throw new TranscriptPublicationError("UNKNOWN_SESSION", "session does not exist");
+    }
+    if (this.slots.get(sessionId)?.state !== state) {
+      throw new TranscriptPublicationError("TRANSCRIPT_UNAVAILABLE", "canonical transcript state was superseded");
+    }
+  }
+
   release(sessionId: string): void {
     this.slots.delete(sessionId);
   }
@@ -383,6 +393,13 @@ export class TranscriptPublicationRepository {
         throw new TranscriptPublicationError("SNAPSHOT_TOO_LARGE", error.message);
       }
       throw new TranscriptPublicationError("TRANSCRIPT_UNAVAILABLE", "canonical transcript could not be read");
+    }
+    const currentRecord = this.source.get(record.id);
+    if (!currentRecord || currentRecord.startedAt !== record.startedAt) {
+      throw new TranscriptPublicationError("UNKNOWN_SESSION", "session does not exist");
+    }
+    if (this.slots.get(record.id) !== slot) {
+      throw new TranscriptPublicationError("TRANSCRIPT_UNAVAILABLE", "canonical transcript load was superseded");
     }
     if (entries.length > this.maxSnapshotEvents) {
       throw new TranscriptPublicationError("SNAPSHOT_TOO_LARGE", "canonical transcript exceeds event limit");

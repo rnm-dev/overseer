@@ -6,6 +6,14 @@ starts at [client documentation](client/index.md).
 
 The mobile app signs in through a webview on the web login screen — see [mobile webview login](mobile-webview-login.md).
 
+Runtime status, capacity, daemon revision, provider availability, models and
+reasoning modes converge through the durable `runtime-state-v1` projection;
+quota, provider capability probes, fixed-period stats and filtered analytics
+use bounded `reverse-command-v1` operations rather than another request ledger.
+Stored state is explicitly fresh, stale or offline and legacy Peons retain the
+HTTP route. The field classification, redaction and query bounds are in
+[reverse runtime capabilities](runtime-capabilities.md).
+
 Pluggable speech-to-text for the composer (Groq first, provider seam for open source): the server side is implemented — `POST /api/v1/voice/transcriptions` plus `GET /api/v1/voice/capabilities` — and stays disabled until `OVERSEER_VOICE` and a key are configured. Both dev and production are configured with the same Groq key and verified end to end (565 ms warm on dev, 775 ms through the public origin). They share a free-tier budget of 1000 requests/day and cannot see each other's spend, so it is split by `OVERSEER_VOICE_REQUESTS_PER_DAY`: 800 in production (`apps/server/config/deploy.yml`), 200 on dev. No client records audio yet. Configuration reference and the measured latencies are in [voice input](voice-input.md).
 
 Push notifications fire on exactly one signal — a `session_attention` occurrence turning unread, meaning a turn the user initiated finished while they were not watching it — and deliver through Expo and, since 2026-07-27, FCM HTTP v1. Dev and production hold different Firebase projects (`overseer-dev-f24fe` and `overseer-9fe46`); both are live and verified against Google, and production has real Android and iOS device tokens registered. Expo is being retired as the transport in favour of native FCM tokens (OVSR-206). Credentials, encodings and the retirement rules for dead device tokens are in [push notifications](push-notifications.md).
@@ -23,6 +31,27 @@ A Peon carries a default reasoning effort next to its default model, settable fr
 The new-project directory picker browses the Peon's whole filesystem, starting at `/`, through the Peon's `folder-listing-v1` reverse WebSocket rather than the HTTP `/files?stat=1` proxy — that proxy could only see `fileTransferRoot`. The surface is `GET /api/workspaces/:wsId/peons/:id/folders?path=&limit=` (owner-only, directories only, `{ path, entries }`); it is a thin wrapper over `listFolder` in `apps/server/src/peonFolderListing.ts`, so pagination, cancellation, the 15 s timeout, listing bounds and capability negotiation are the operation's, not a second wire protocol. The same operation carries negotiated `size`/`mtimeMs` entry metadata and project-relative containment, so the web project file tree marks confirmed directory requests as `?stat=1&directory=1` and routes them over the control socket; plain individual-file `?stat=1` remains exclusively on HTTP for `sha256`, never probes both transports, and older Peons retain the HTTP directory fallback with only that private marker removed from the original query. Socket listings normalize back to the legacy public contract: contained symlinks keep their target `dir`/`file` type and metadata, while escaping/broken/special links are inert `other`. Peon enumerates and traverses from anchored Linux directory handles, fails closed with `UNSUPPORTED_PLATFORM` when secure handle-relative traversal is unavailable, and releases the listing slot only after every sibling in an aborted metadata batch settles. A Peon that does not negotiate `folder-listing-v1` gets `409 UNSUPPORTED_CAPABILITY` in the picker instead of falling back to a restricted listing. A Peon serves one folder listing at a time, so an overlapping reader is refused with `SYNC_IN_PROGRESS` — routine on open, since a superseded request's cancellation may not have landed yet; callers therefore wait through the shared bounded backoff in `apps/server/src/peonFolderRetry.ts` rather than reporting a busy Peon. Because a suggested project directory does not exist yet, the picker's *first* listing walks up to the nearest existing ancestor; explicit navigation never does, so a missing or unreadable folder is reported. Other pickers (project settings, new session, Peon settings) still browse through the file proxy.
 
 Overseer has one durable [reverse command gateway](reverse-command-gateway.md) for `reverse-command-v1`: it persists the canonical request and server-derived authenticated actor before send, fences acceptance/status/result by workspace, Peon and socket generation, reconciles the same Peon-scoped command ID after reconnect/restart, and commits an allowlisted terminal result + shared durable inbox/checkpoint + safe projection + audit + operator browser event before ACK. The status surface for a bounded HTTP wait is `GET /api/workspaces/:wsId/peons/:peonId/commands/:commandId`. The released v1 operation is session cancel; operation-specific route cutovers still choose either this gateway or legacy HTTP, never both.
+
+Armory inventory, settings, package/configuration/MCP reads and lifecycle
+mutations now use that same gateway on negotiated Peons, with exclusive HTTP
+fallback for older Peons. Results are bounded and explicitly redacted, while
+the Peon's existing package locks, transactional installer, operation store and
+restart recovery remain authoritative — see [Armory reverse commands](armory-reverse.md).
+
+Project administration and resources share that gateway: create,
+suggest-directory, stable-ID detail/settings/update/delete, bounded
+documentation reads, skill discovery and quick-link CRUD are typed
+`project.*` operations. Selected projects travel only as immutable
+`projectId`; mutations carry a canonical digest, are durably deduplicated by
+command ID, and publish through `project-catalog-v1`. Older Peons retain the
+exclusive HTTP compatibility route. The terminal allowlists and bounded cursor
+contract are in [project reverse commands](project-reverse-commands.md).
+
+Peon daemon settings use the same gateway: [reverse daemon configuration](daemon-configuration.md) projects only the six safe `daemon-configuration-v1` fields, revision-fences every owner patch, and selects projection/WSS or legacy HTTP exclusively after negotiation and initial state commit.
+
+Update checks and self-update use that dispatcher while retaining the
+authenticated, SHA-256-verified Overseer release channel and replacement
+process attestation; see [Peon update channel](peon-update-channel.md).
 
 The remaining direct Peon HTTP/SSE control plane is inventoried and assigned in
 [remaining Peon HTTP control plane](remaining-peon-http-control-plane.md).

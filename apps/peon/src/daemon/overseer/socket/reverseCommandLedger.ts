@@ -234,10 +234,11 @@ export class ReverseCommandLedger {
     return this.persist(next);
   }
 
-  recoverInterrupted(resultFactory: (record: ReverseCommandRecord) => PeonSocketFrame): ReverseCommandRecord[] {
+  recoverInterrupted(resultFactory: (record: ReverseCommandRecord) => PeonSocketFrame | null): ReverseCommandRecord[] {
     const interrupted = this.current.records.filter((record) => record.state === "running");
     for (const record of interrupted) {
-      this.markTerminal(record.commandId, record.authority, record.admittedGeneration, resultFactory(record));
+      const result = resultFactory(record);
+      if (result) this.markTerminal(record.commandId, record.authority, record.admittedGeneration, result);
     }
     return interrupted.map((record) => this.get(record.commandId)!).filter(Boolean);
   }

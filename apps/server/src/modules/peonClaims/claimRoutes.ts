@@ -22,7 +22,6 @@ import {
 import {
   acknowledgeClaim,
   acknowledgeRotation,
-  auditForbiddenRevocation,
   cancelClaim,
   claimError,
   decideClaim,
@@ -180,11 +179,15 @@ export function operatorPeonClaimRouter(): express.Router {
       }
       if (!(await revocationTargetExists("credential", workspaceId, peonId, credentialId))) return operatorError(res, "NOT_FOUND");
       const requestId = typeof req.headers["x-request-id"] === "string" ? req.headers["x-request-id"].slice(0, 128) : randomUUID();
-      if (await membership(workspaceId, req.user!.userId) !== "owner") {
-        await auditForbiddenRevocation("credential", workspaceId, peonId, req.user!.userId, requestId, credentialId);
-        return operatorError(res, "FORBIDDEN");
+      let result: Record<string, unknown> | null;
+      try {
+        result = await revokeClaimCredential(workspaceId, peonId, credentialId, req.user!.userId, requestId);
+      } catch (error) {
+        if (error instanceof ClaimServiceError && error.code === "FORBIDDEN") {
+          return operatorError(res, "FORBIDDEN");
+        }
+        throw error;
       }
-      const result = await revokeClaimCredential(workspaceId, peonId, credentialId, req.user!.userId, requestId);
       if (!result) return operatorError(res, "NOT_FOUND");
       res.json(result);
     }),
@@ -201,11 +204,15 @@ export function operatorPeonClaimRouter(): express.Router {
       }
       if (!(await revocationTargetExists("peon", workspaceId, peonId))) return operatorError(res, "NOT_FOUND");
       const requestId = typeof req.headers["x-request-id"] === "string" ? req.headers["x-request-id"].slice(0, 128) : randomUUID();
-      if (await membership(workspaceId, req.user!.userId) !== "owner") {
-        await auditForbiddenRevocation("peon", workspaceId, peonId, req.user!.userId, requestId);
-        return operatorError(res, "FORBIDDEN");
+      let result: Record<string, unknown> | null;
+      try {
+        result = await revokeClaimPeon(workspaceId, peonId, req.user!.userId, requestId);
+      } catch (error) {
+        if (error instanceof ClaimServiceError && error.code === "FORBIDDEN") {
+          return operatorError(res, "FORBIDDEN");
+        }
+        throw error;
       }
-      const result = await revokeClaimPeon(workspaceId, peonId, req.user!.userId, requestId);
       if (!result) return operatorError(res, "NOT_FOUND");
       res.json(result);
     }),

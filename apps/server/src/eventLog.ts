@@ -9,7 +9,7 @@ import { syncLiveActivitiesForEvent } from "./liveActivity.js";
 // appendEvent(): it writes a row, then emits it. liveSocket.ts is the consumer.
 // author: Viktor
 
-export type EventKind = "session" | "project" | "peon" | "attention" | "command" | "transcript";
+export type EventKind = "session" | "project" | "peon" | "attention" | "command" | "transcript" | "configuration";
 
 export interface LiveEvent {
   cursor: number;

@@ -11,6 +11,7 @@ const commandOperations = new WeakMap<WebSocket, ReadonlySet<string>>();
 const generations = new WeakMap<WebSocket, string>();
 const connectedAt = new WeakMap<WebSocket, number>();
 const credentialGenerations = new WeakMap<WebSocket, number>();
+const daemonConfigurationIdentities = new WeakMap<WebSocket, Readonly<{ epoch: string; revision: number; digest: string }>>();
 
 export interface PeonConnectionClaim {
   accepted: boolean;
@@ -81,6 +82,19 @@ export function peonConnectionSupportsCommand(socket: WebSocket, operation: stri
 
 export function peonConnectionGeneration(socket: WebSocket): string | null {
   return generations.get(socket) ?? null;
+}
+
+export function setPeonDaemonConfigurationIdentity(
+  socket: WebSocket,
+  identity: Readonly<{ epoch: string; revision: number; digest: string }>,
+): void {
+  daemonConfigurationIdentities.set(socket, identity);
+}
+
+export function peonDaemonConfigurationIdentity(
+  socket: WebSocket,
+): Readonly<{ epoch: string; revision: number; digest: string }> | null {
+  return daemonConfigurationIdentities.get(socket) ?? null;
 }
 
 export function isCurrentPeonConnection(

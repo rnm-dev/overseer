@@ -54,4 +54,7 @@ export class PeonSocketMultiplexer {
         for (const channel of this.channels)
             channel.durableAcknowledged?.(cursor);
     }
+    durableAcknowledging(cursor) {
+        return this.channels.every((channel) => channel.durableAcknowledging?.(cursor) !== false);
+    }
 }

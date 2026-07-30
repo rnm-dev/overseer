@@ -1,5 +1,8 @@
 # Remaining Peon HTTP control plane
 
+Peon's opt-in loopback topology and its deliberately unpassed cutover gates are
+documented in [reverse-only Peon mode](reverse-only-peon.md).
+
 This is the OVSR-236 design inventory, independently rechecked against the
 shared monorepo worktree on 2026-07-30, including the operation-family changes
 which were still uncommitted during the second pass. It describes the remaining

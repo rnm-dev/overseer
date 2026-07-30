@@ -265,6 +265,92 @@ directory or its sessions. A project already in the requested state returns `noo
 Each additional operation requires explicit support in both peers and entry in the capability
 matrix.
 
+## Project administration and resources
+
+Project administration uses `project.create`, `project.suggest-directory`,
+`project.detail`, `project.settings.get`, `project.settings.update`,
+`project.delete`, `project.documentation.index`, `project.documentation.read`,
+`project.skills.list`, and `project.quick-links.{list,create,update,delete}`.
+After creation/suggestion, every operation targets immutable
+`target.projectId`; mutable keys never identify a command target.
+
+Settings updates, deletion, and quick-link mutations require the lowercase
+SHA-256 `expected.digest` returned by a settings/detail read. A mismatch is
+`conflict/PROJECT_CONFLICT`, preventing key reuse or concurrent rename from
+redirecting an operation. The shared durable ledger supplies replay and
+deduplication, while successful mutations publish through
+`project-catalog-v1`.
+
+Documentation paths remain contained by `ProjectService` inside `docs/`.
+Individual page reads accept byte-based `offset` and `limit`, cap content chunks
+at 32 KiB, never split a UTF-8 sequence, and return the next byte offset in
+`nextOffset`. Negative offsets and limits outside `1..32768` are rejected before
+admission.
+
+The documentation index is a bounded snapshot (2 MiB aggregate maximum) split
+into UTF-8-safe pages. The first command carries an optional `limit`; later
+commands carry the opaque `cursor` returned as `nextCursor`. Each result contains
+`snapshotDigest`, `byteOffset`, `totalBytes`, `chunk`, `cursor`, and
+`nextCursor`. The cursor binds the offset to the complete snapshot digest:
+malformed cursors return `INVALID_CURSOR`, while a filesystem change invalidates
+the prior identity with `conflict/CURSOR_EXPIRED`. Each page is an ordinary
+deduplicated reverse command; there is no pagination ledger or frame dialect.
+
+## Peon update operations
+
+`update.check` takes an empty payload. `update.apply` requires
+`release: { version, revision, sha256 }` and accepts optional `force`; both
+target the authenticated Peon without a session. Overseer resolves that
+immutable identity before admission, so it is part of the canonical request
+hash and survives gateway restart/reconciliation.
+They reuse the shared durable admission, dedupe, reconciliation, and terminal
+result lifecycle. Apply persists a receipt across process replacement and
+returns `OK` only when the replacement daemon's running
+version/revision/SHA-256
+matches the expected release inputs.
+
+The release mechanism remains the authenticated Overseer registry with exact
+archive size and SHA-256 verification plus local rollback. The receipt and
+terminal result contain no credential, archive URL, or download grant.
+All three approved identity fields are rechecked after fetching metadata so a
+moving `latest` release cannot silently change the artifact. `OK` requires a daemon
+process different from the admitting process; files updated on disk do not
+count as reconnect attestation. Download, integrity, install, rollback,
+restart, timeout, and attestation failures have distinct stable codes.
+
+## Daemon configuration operation
+
+`daemon.configuration.patch` is owned by `daemon-configuration-v1` and is
+available only when that capability and `durable-delivery-v1` are negotiated.
+It targets the authenticated Peon, carries `{ "patch": { ... } }`, and requires
+an `expected` configuration epoch, revision, and digest. The operation reuses
+this protocol's admission, request hashing, ledger, status reconciliation, and
+durable terminal result. The typed result contains the complete safe
+configuration identity and values; no private setting may appear in it.
+
+## Armory operations
+
+`armory-command-v1` uses this dispatcher for inventory, settings, package,
+configuration, MCP and operation reads plus refresh, install, update, enable,
+disable, configure, verify, configuration deletion and uninstall. Package
+operations require exactly one `packageId`; operation reads require exactly one
+`operationId`; fleet-wide inventory, refresh and settings require neither.
+
+The durable command ID is the lifecycle idempotency key. A replay therefore
+returns the admitted operation/result from the shared reverse-command ledger
+and never invokes an install, hook, configuration write or uninstall twice.
+Armory's own package locks, transactional staging, recovery journals and
+rollback remain authoritative below the dispatcher.
+
+Results are capped at 48 KiB. Operation results expose only identity, kind,
+state, phase, percentage, stable error code and timestamps. Hook messages are
+blanked, and submitted configuration values, archive bodies, credentials and
+raw diagnostics never enter command results. Registry URLs fail closed unless
+they are credential-free HTTPS URLs. Armory package archives remain
+Peon-initiated authenticated downloads; the control socket carries metadata
+only. Running operations are recovered by the existing Armory journals after a
+Peon restart and reconciled through `armory.operation`.
+
 ## Fleet surface capability matrix
 
 `projection` means Overseer serves a committed local projection. `query` and `command` use the
@@ -341,6 +427,18 @@ No feature may open a third connection or introduce an HTTPS spool without a new
   soak tests.
 
 ## Machine-readable contract
+
+### Armory operation family
+
+Armory uses `target.packageId` (or `target.operationId` for operation reads).
+Read operations are `armory.inventory`, `armory.settings`, `armory.package`,
+`armory.configuration`, `armory.mcp`, and `armory.operation`; mutations are
+`armory.refresh`, `armory.install`, `armory.update`, `armory.enable`,
+`armory.disable`, `armory.configure`, `armory.verify`, `armory.configuration.delete`, and
+`armory.uninstall`. All share the normal durable admission, replay, status, and
+terminal-result lifecycle. Results are limited to 48 KiB and operation output
+is reduced to stable metadata; configuration values and hook messages are
+forbidden from terminal frames.
 
 The canonical schema and golden examples live under `protocol/reverse-command-v1/`. Overseer
 vendors the exact files and both repositories run a contract test over them. Any breaking envelope

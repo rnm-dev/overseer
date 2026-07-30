@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { createProjectService, projectStore, ProjectDocsError, ProjectServiceError, } from "../../../projects/index.js";
 import { sessions } from "../../../sessions/index.js";
 const service = createProjectService(projectStore, {
@@ -6,10 +7,22 @@ const service = createProjectService(projectStore, {
     start: (options) => sessions.start(options),
     rename: (id, title) => sessions.rename(id, title),
 });
+const DOCUMENTATION_INDEX_MAX_BYTES = 2 * 1024 * 1024;
+const DOCUMENTATION_INDEX_DEFAULT_PAGE_BYTES = 24 * 1024;
+class ProjectCommandError extends Error {
+    code;
+    constructor(code) {
+        super(code);
+        this.code = code;
+    }
+}
 function strict(value, keys) {
     return Object.keys(value).every((key) => keys.includes(key));
 }
 function failure(error) {
+    if (error instanceof ProjectCommandError) {
+        return { status: error.code === "CURSOR_EXPIRED" ? "conflict" : "rejected", code: error.code };
+    }
     if (error instanceof ProjectServiceError) {
         return {
             status: ["PROJECT_CONFLICT", "PROJECT_EXISTS", "PROJECT_RUNNING"].includes(error.kind) ? "conflict" : "rejected",
@@ -22,6 +35,31 @@ function failure(error) {
             : { status: "rejected", code: error.code };
     }
     return { status: "failed", code: "INTERNAL" };
+}
+function documentationCursor(digest, offset) {
+    const checksum = createHash("sha256")
+        .update(`project-doc-index-v1\0${digest}\0${offset}`)
+        .digest("hex");
+    return Buffer.from(JSON.stringify({ v: 1, d: digest, o: offset, c: checksum })).toString("base64url");
+}
+function parseDocumentationCursor(value) {
+    if (typeof value !== "string" || value.length < 1 || value.length > 512)
+        return null;
+    try {
+        const decoded = JSON.parse(Buffer.from(value, "base64url").toString("utf8"));
+        if (!strict(decoded, ["v", "d", "o", "c"]) || decoded.v !== 1
+            || typeof decoded.d !== "string" || !/^[0-9a-f]{64}$/.test(decoded.d)
+            || !Number.isSafeInteger(decoded.o) || Number(decoded.o) < 0
+            || typeof decoded.c !== "string" || !/^[0-9a-f]{64}$/.test(decoded.c))
+            return null;
+        const expected = createHash("sha256")
+            .update(`project-doc-index-v1\0${decoded.d}\0${decoded.o}`)
+            .digest("hex");
+        return expected === decoded.c ? { digest: decoded.d, offset: Number(decoded.o) } : null;
+    }
+    catch {
+        return null;
+    }
 }
 function bounded(result) {
     return Buffer.byteLength(JSON.stringify(result)) <= 48 * 1024
@@ -77,7 +115,33 @@ export function projectCommandHandlers(projectService = service) {
         "project.settings.get": define(empty, (command) => projectService.settingsById(id(command)), { projectTarget: true }),
         "project.settings.update": define((payload, expected) => strict(payload, ["key", "name", "dir"]) && Object.keys(payload).length > 0 && digest(expected) ? null : "invalid project update", (command) => projectService.updateSettingsById(id(command), command.payload, digest(command.expected)), { projectTarget: true }),
         "project.delete": define((payload, expected) => strict(payload, []) && digest(expected) ? null : "invalid project delete", (command) => projectService.removeById(id(command), digest(command.expected)), { projectTarget: true }),
-        "project.documentation.index": define(empty, (command) => projectService.documentationById(id(command)), { projectTarget: true }),
+        "project.documentation.index": define((payload, expected) => strict(payload, ["cursor", "limit"])
+            && (payload.cursor === undefined || typeof payload.cursor === "string")
+            && integerInRange(payload.limit, 1, 32 * 1024)
+            && expected === null ? null : "invalid documentation index request", (command) => {
+            const serialized = JSON.stringify(projectService.documentationById(id(command)));
+            const totalBytes = Buffer.byteLength(serialized);
+            if (totalBytes > DOCUMENTATION_INDEX_MAX_BYTES)
+                throw new ProjectCommandError("RESULT_TOO_LARGE");
+            const snapshotDigest = createHash("sha256").update(serialized).digest("hex");
+            const cursor = command.payload.cursor === undefined
+                ? { digest: snapshotDigest, offset: 0 }
+                : parseDocumentationCursor(command.payload.cursor);
+            if (!cursor)
+                throw new ProjectCommandError("INVALID_CURSOR");
+            if (cursor.digest !== snapshotDigest || cursor.offset > totalBytes) {
+                throw new ProjectCommandError("CURSOR_EXPIRED");
+            }
+            const page = sliceUtf8(serialized, cursor.offset, Number(command.payload.limit ?? DOCUMENTATION_INDEX_DEFAULT_PAGE_BYTES));
+            return {
+                snapshotDigest,
+                byteOffset: page.offset,
+                totalBytes,
+                chunk: page.content,
+                cursor: documentationCursor(snapshotDigest, page.offset),
+                nextCursor: page.nextOffset === null ? null : documentationCursor(snapshotDigest, page.nextOffset),
+            };
+        }, { projectTarget: true }),
         "project.documentation.read": define((payload, expected) => strict(payload, ["path", "offset", "limit"]) && typeof payload.path === "string"
             && integerInRange(payload.offset, 0, Number.MAX_SAFE_INTEGER)
             && integerInRange(payload.limit, 1, 32 * 1024) && expected === null ? null : "invalid documentation read", (command) => {

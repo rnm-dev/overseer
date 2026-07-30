@@ -281,6 +281,98 @@ test("terminal publication retries outbox pressure and cursor-bind persistence f
   }
 });
 
+test("terminal ledger persistence retries without executing the effect twice", async () => {
+  const directory = mkdtempSync(path.join(os.tmpdir(), "peon-command-terminal-retry-"));
+  const ledger = new ReverseCommandLedger({ fileBase: path.join(directory, "ledger") });
+  const markTerminal = ledger.markTerminal.bind(ledger);
+  let terminalAttempts = 0;
+  let effects = 0;
+  const durable: PeonSocketFrame[] = [];
+  ledger.markTerminal = (...args) => {
+    terminalAttempts += 1;
+    return terminalAttempts > 1 && markTerminal(...args);
+  };
+  const sender: PeonSocketSender = {
+    durable: true,
+    authority,
+    generation: 1,
+    send: () => true,
+    sendBinary: () => false,
+    sendDurable: (message) => {
+      durable.push(message);
+      return { accepted: true, epoch: "epoch", cursor: "cursor", messageId: "message" };
+    },
+    disconnect: (reason) => assert.fail(reason),
+  };
+  try {
+    const channel = new ReverseCommandChannel({
+      peonId: () => peonId,
+      ledger,
+      publicationRetryBaseMs: 1,
+      publicationRetryMaxMs: 2,
+      handlers: {
+        "test.effect": {
+          validate: () => null,
+          execute: () => {
+            effects += 1;
+            return { status: "applied", code: "OK" };
+          },
+        },
+      },
+    });
+    channel.started(sender);
+    channel.negotiated(true, {}, sender);
+    channel.receive(frame, sender);
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    assert.equal(effects, 1);
+    assert.ok(terminalAttempts >= 2);
+    assert.equal(ledger.get(commandId)?.state, "terminal");
+    assert.equal(durable.length, 1);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("invalid session.cancel handler tuples fail closed to schema-valid INTERNAL", async () => {
+  const directory = mkdtempSync(path.join(os.tmpdir(), "peon-command-result-contract-"));
+  const durable: PeonSocketFrame[] = [];
+  const sender: PeonSocketSender = {
+    durable: true,
+    authority,
+    generation: 1,
+    send: () => true,
+    sendBinary: () => false,
+    sendDurable: (message) => {
+      durable.push(message);
+      return { accepted: true, epoch: "epoch", cursor: "cursor", messageId: "message" };
+    },
+    disconnect: (reason) => assert.fail(reason),
+  };
+  try {
+    const channel = new ReverseCommandChannel({
+      peonId: () => peonId,
+      ledger: new ReverseCommandLedger({ fileBase: path.join(directory, "ledger") }),
+      handlers: {
+        "session.cancel": {
+          priority: "critical",
+          validate: () => null,
+          execute: () => ({ status: "applied", code: "OK", result: { sessionId, sessionStatus: "running" } }),
+        },
+      },
+    });
+    channel.started(sender);
+    channel.negotiated(true, {}, sender);
+    channel.receive({ ...frame, operation: "session.cancel" }, sender);
+    await tick();
+    assert.equal(durable.length, 1);
+    assert.equal(durable[0]?.status, "failed");
+    assert.equal(durable[0]?.code, "INTERNAL");
+    assert.equal(durable[0]?.result, null);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test("manual validation matches actor, timestamp, and target schema constraints", async () => {
   const directory = mkdtempSync(path.join(os.tmpdir(), "peon-command-schema-"));
   let effects = 0;

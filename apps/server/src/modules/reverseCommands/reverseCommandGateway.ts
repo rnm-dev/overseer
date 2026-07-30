@@ -39,7 +39,9 @@ import {
   REVERSE_COMMAND_CAPABILITY,
   REVERSE_COMMAND_MAX_FRAME_BYTES,
   reverseCommandFrame,
+  reverseCommandPayloadIsTransient,
   reverseCommandRequestHash,
+  safeReverseCommandTerminalFrame,
   safeReverseCommandView,
   type DurableReverseCommandResult,
   type JsonObject,
@@ -90,6 +92,8 @@ interface ReverseCommandGatewayOptions {
   id?: () => string;
   beforeSocketSend?: () => Promise<void>;
   afterConnectionOwnershipCheck?: () => Promise<void>;
+  afterWaiterRegistered?: () => Promise<void>;
+  afterTerminalObserved?: (record: ReverseCommandRecord) => Promise<void>;
 }
 
 function strictObject(value: unknown, allowed: readonly string[], field: string): asserts value is JsonObject {
@@ -99,24 +103,47 @@ function strictObject(value: unknown, allowed: readonly string[], field: string)
   }
 }
 
+export function validateDaemonConfigurationPatch(patch: JsonObject): void {
+  strictObject(patch, ["name", "defaultAgent", "fileTransferRoot", "heartbeatIntervalMs", "aiDefaultModel", "soul"], "patch");
+  const nullableStrings: Readonly<Record<string, number>> = {
+    name: 200,
+    fileTransferRoot: 4_096,
+    aiDefaultModel: 200,
+    soul: 48 * 1024,
+  };
+  for (const [field, limit] of Object.entries(nullableStrings)) {
+    if (!Object.hasOwn(patch, field)) continue;
+    const value = patch[field];
+    if (value !== null && (typeof value !== "string" || Buffer.byteLength(value, "utf8") > limit)) {
+      throw new ReverseCommandGatewayError(400, "BAD_COMMAND", `${field} has an invalid value`);
+    }
+  }
+  if (Object.hasOwn(patch, "defaultAgent")
+    && (typeof patch.defaultAgent !== "string" || !patch.defaultAgent
+      || Buffer.byteLength(patch.defaultAgent, "utf8") > 200)) {
+    throw new ReverseCommandGatewayError(400, "BAD_COMMAND", "defaultAgent has an invalid value");
+  }
+  if (Object.hasOwn(patch, "heartbeatIntervalMs")
+    && (!Number.isSafeInteger(patch.heartbeatIntervalMs)
+      || Number(patch.heartbeatIntervalMs) < 1_000 || Number(patch.heartbeatIntervalMs) > 60_000)) {
+    throw new ReverseCommandGatewayError(400, "BAD_COMMAND", "heartbeatIntervalMs has an invalid value");
+  }
+}
+
 function errorResult(error: ReverseCommandGatewayError): ReverseCommandHttpResult {
   return { status: error.status, body: { error: error.message, code: error.code } };
 }
 
 function terminalHttpStatus(record: ReverseCommandRecord): number {
-  if (!record.resultFrame) return 502;
-  try {
-    assertSafeReverseCommandResult(record, record.resultFrame);
-  } catch {
-    return 502;
-  }
-  if (record.terminalStatus === "applied" || record.terminalStatus === "noop") return 200;
-  if (record.terminalStatus === "conflict") return 409;
-  if (record.terminalStatus === "cancelled") return 409;
-  if (record.terminalStatus === "failed") return 502;
-  if (record.code?.startsWith("UNKNOWN_")) return 404;
-  if (record.code === "FORBIDDEN" || record.code === "UNAUTHORIZED") return 403;
-  if (record.code === "RATE_LIMITED" || record.code === "COMMAND_LEDGER_FULL") return 429;
+  const terminal = safeReverseCommandTerminalFrame(record);
+  if (!terminal) return 502;
+  if (terminal.status === "applied" || terminal.status === "noop") return 200;
+  if (terminal.status === "conflict" || terminal.status === "cancelled") return 409;
+  if (terminal.status === "failed") return 502;
+  if (terminal.code === "SESSION_NOT_RUNNING") return 409;
+  if (terminal.code.startsWith("UNKNOWN_")) return 404;
+  if (terminal.code === "FORBIDDEN" || terminal.code === "UNAUTHORIZED") return 403;
+  if (terminal.code === "RATE_LIMITED" || terminal.code === "COMMAND_LEDGER_FULL") return 429;
   return 400;
 }
 
@@ -170,6 +197,8 @@ export class ReverseCommandGateway {
   private readonly id: () => string;
   private readonly beforeSocketSend?: () => Promise<void>;
   private readonly afterConnectionOwnershipCheck?: () => Promise<void>;
+  private readonly afterWaiterRegistered?: () => Promise<void>;
+  private readonly afterTerminalObserved?: (record: ReverseCommandRecord) => Promise<void>;
   private readonly waiters = new Map<string, Set<() => void>>();
 
   constructor(options: ReverseCommandGatewayOptions = {}) {
@@ -178,6 +207,8 @@ export class ReverseCommandGateway {
     this.id = options.id ?? randomUUID;
     this.beforeSocketSend = options.beforeSocketSend;
     this.afterConnectionOwnershipCheck = options.afterConnectionOwnershipCheck;
+    this.afterWaiterRegistered = options.afterWaiterRegistered;
+    this.afterTerminalObserved = options.afterTerminalObserved;
   }
 
   async submit(input: SubmitReverseCommandInput): Promise<ReverseCommandHttpResult> {
@@ -332,9 +363,10 @@ export class ReverseCommandGateway {
       assertSafeReverseCommandResult(existing, status.result);
       record = await observeReverseCommandTerminal(workspaceId, peonId, generation, status.result, this.now());
       if (!record) throw new Error("reverse command status result changed");
+      await this.afterTerminalObserved?.(record);
       countReverseCommandMetric("completed", record.operation, record.code);
     } else if (status.state === "unknown") {
-      if (existing.state === "sent") {
+      if (existing.state === "sent" && !reverseCommandPayloadIsTransient(existing.operation)) {
         record = await this.sendCommand(existing, socket, generation, true);
       } else {
         record = await markReverseCommandUnknown(workspaceId, peonId, status.commandId, generation, this.now());
@@ -374,6 +406,16 @@ export class ReverseCommandGateway {
       syncGeneration: input.syncGeneration,
       durable: input.durable,
     });
+    if (committed.record.operation === "daemon.configuration.patch" && committed.record.result) {
+      const detail = committed.record.result;
+      if (typeof detail.epoch === "string" && Number.isSafeInteger(detail.revision) && typeof detail.digest === "string") {
+        setPeonDaemonConfigurationIdentity(input.socket, {
+          epoch: detail.epoch,
+          revision: Number(detail.revision),
+          digest: detail.digest,
+        });
+      }
+    }
     countReverseCommandMetric("completed", committed.record.operation, committed.record.code);
     this.notify(committed.record);
     return committed.delivery;
@@ -600,7 +642,7 @@ export class ReverseCommandGateway {
       requestHash,
       actor,
       target,
-      payload: wirePayload,
+      payload: reverseCommandPayloadIsTransient(input.operation) ? {} : wirePayload,
       ...(["session.start", "session.followup"].includes(input.operation)
         ? { attachmentPayload: payload }
         : {}),
@@ -728,8 +770,18 @@ export class ReverseCommandGateway {
       || !peonConnectionSupports(socket, REVERSE_COMMAND_CAPABILITY)
       || !peonConnectionSupportsCommand(socket, current.operation)
       || current.connectionGeneration !== generation) return current;
-    if (current.state === "created") return this.sendCommand(current, socket, generation);
-    if (current.state === "sent") return this.sendCommand(current, socket, generation, true);
+    if (current.state === "created") {
+      return reverseCommandPayloadIsTransient(current.operation)
+        ? current
+        : this.sendCommand(current, socket, generation);
+    }
+    if (current.state === "sent") {
+      if (reverseCommandPayloadIsTransient(current.operation)) {
+        this.sendFrame(socket, { type: "command_status_request", protocol: 1, commandId: current.commandId });
+        return current;
+      }
+      return this.sendCommand(current, socket, generation, true);
+    }
     if (current.state !== "accepted" && current.state !== "running" && current.state !== "unknown") return current;
     this.sendFrame(socket, { type: "command_status_request", protocol: 1, commandId: current.commandId });
     return current;
@@ -752,24 +804,64 @@ export class ReverseCommandGateway {
     const waitMs = Math.max(0, Math.min(Number.isFinite(requestedMs) ? requestedMs : DEFAULT_WAIT_MS, MAX_WAIT_MS));
     if (waitMs === 0) return reverseCommandHttpResult(initial);
     const key = `${initial.workspaceId}\0${initial.peonId}\0${initial.commandId}`;
-    await new Promise<void>((resolve) => {
+    let expired = false;
+    let wake!: () => void;
+    const waiting = new Promise<void>((resolve) => {
       const listeners = this.waiters.get(key) ?? new Set<() => void>();
-      const wake = () => {
+      wake = () => {
         clearTimeout(timer);
         listeners.delete(wake);
         if (listeners.size === 0) this.waiters.delete(key);
         resolve();
       };
-      const timer = setTimeout(wake, waitMs);
+      const timer = setTimeout(() => {
+        expired = true;
+        wake();
+      }, waitMs);
       timer.unref();
       listeners.add(wake);
       this.waiters.set(key, listeners);
     });
+    try {
+      await this.afterWaiterRegistered?.();
+      const observed = await getReverseCommand(initial.workspaceId, initial.peonId, initial.commandId);
+      if (!observed) throw new ReverseCommandGatewayError(500, "INTERNAL", "reverse command disappeared");
+      if (observed.state === "terminal" || observed.state === "send_failed" || observed.state === "unknown") wake();
+      await waiting;
+    } catch (error) {
+      wake();
+      throw error;
+    }
     const current = await getReverseCommand(initial.workspaceId, initial.peonId, initial.commandId);
     if (!current) throw new ReverseCommandGatewayError(500, "INTERNAL", "reverse command disappeared");
+    if (expired) this.requestStatusAfterTimeout(current);
     const timedOut = current.state === "created" || current.state === "sent";
     if (timedOut) countReverseCommandMetric("timeout", current.operation, "COMMAND_TIMEOUT");
     return reverseCommandHttpResult(current, timedOut);
+  }
+
+  private requestStatusAfterTimeout(record: ReverseCommandRecord): void {
+    if (record.state !== "sent" && record.state !== "accepted"
+      && record.state !== "running" && record.state !== "unknown") return;
+    const socket = getPeonConnection(record.peonId);
+    const generation = socket ? peonConnectionGeneration(socket) : null;
+    if (!socket || !generation || record.connectionGeneration !== generation
+      || !isCurrentPeonConnection(record.peonId, socket, generation)
+      || !peonConnectionSupports(socket, REVERSE_COMMAND_CAPABILITY)
+      || !peonConnectionSupportsCommand(socket, record.operation)) return;
+    try {
+      this.sendFrame(socket, {
+        type: "command_status_request",
+        protocol: 1,
+        commandId: record.commandId,
+      });
+    } catch (error) {
+      countReverseCommandMetric(
+        "error",
+        record.operation,
+        error instanceof ReverseCommandGatewayError ? error.code : "COMMAND_SEND_FAILED",
+      );
+    }
   }
 
   private notify(record: ReverseCommandRecord, force = false): void {

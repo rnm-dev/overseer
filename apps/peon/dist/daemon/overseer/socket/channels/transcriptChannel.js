@@ -38,6 +38,7 @@ export class TranscriptChannel {
     snapshots = new Map();
     pendingSnapshots = new Map();
     subscriptions = new Map();
+    pendingSubscriptions = new Map();
     pendingDeletions = new Map();
     unsubscribeUpdates = null;
     expiryTimer = null;
@@ -86,11 +87,15 @@ export class TranscriptChannel {
             const sessionIds = new Set([
                 ...[...this.snapshots.values()].map((snapshot) => snapshot.sessionId),
                 ...[...this.pendingSnapshots.values()].map((snapshot) => snapshot.sessionId),
+                ...this.pendingSubscriptions.keys(),
             ]);
             this.snapshots.clear();
             for (const pending of this.pendingSnapshots.values())
                 pending.cancelled = true;
             this.pendingSnapshots.clear();
+            for (const pending of this.pendingSubscriptions.values())
+                pending.cancelled = true;
+            this.pendingSubscriptions.clear();
             for (const sessionId of sessionIds)
                 this.releaseIfUnused(sessionId);
             this.scheduleExpiry();
@@ -194,6 +199,7 @@ export class TranscriptChannel {
                     this.dropPendingSnapshot(reservation, reservation.expiresAt <= this.now());
                     return;
                 }
+                this.repository.assertCurrent(sessionId, state);
                 const bytes = state.bytes;
                 if (state.entries.length > MAX_TRANSCRIPT_SNAPSHOT_EVENTS || bytes > MAX_TRANSCRIPT_SNAPSHOT_BYTES
                     || this.snapshotBytes() + bytes > MAX_ACTIVE_TRANSCRIPT_SNAPSHOT_BYTES) {
@@ -296,18 +302,38 @@ export class TranscriptChannel {
         if (!requestId || !sessionId || !epoch || !Number.isSafeInteger(afterSeq) || afterSeq < 0) {
             return this.error(sender, requestId, sessionId, "BAD_REQUEST", "requestId, sessionId, epoch and non-negative afterSeq are required");
         }
-        if (!this.subscriptions.has(sessionId) && this.subscriptions.size >= MAX_TRANSCRIPT_SUBSCRIPTIONS) {
+        this.expire();
+        if (this.pendingSubscriptions.has(sessionId)) {
+            return this.error(sender, requestId, sessionId, "BAD_REQUEST", "transcript subscription request is still loading");
+        }
+        if (!this.subscriptions.has(sessionId) && this.subscriptionSlots() >= MAX_TRANSCRIPT_SUBSCRIPTIONS) {
             return this.error(sender, requestId, sessionId, "SUBSCRIPTION_LIMIT", "too many transcript subscriptions are active");
         }
+        const reservation = {
+            requestId,
+            sessionId,
+            generation,
+            expiresAt: this.now() + TRANSCRIPT_SNAPSHOT_TTL_MS,
+            cancelled: false,
+        };
+        this.pendingSubscriptions.set(sessionId, reservation);
+        this.scheduleExpiry();
         try {
             const state = await this.repository.state(sessionId);
-            if (!this.current(sender, generation))
+            if (this.rejectExpiredPendingSubscription(reservation, sender))
                 return;
+            if (!this.pendingSubscriptionCurrent(reservation, sender)) {
+                this.dropPendingSubscription(reservation);
+                return;
+            }
+            this.repository.assertCurrent(sessionId, state);
             if (state.epoch !== epoch || afterSeq > state.revision) {
+                this.dropPendingSubscription(reservation);
                 return this.error(sender, requestId, sessionId, "CURSOR_UNAVAILABLE", "transcript cursor requires a fresh snapshot");
             }
             const catchup = state.entries.slice(afterSeq);
             if (catchup.length > MAX_TRANSCRIPT_CATCHUP_EVENTS || frameBytes(catchup) > MAX_TRANSCRIPT_CATCHUP_BYTES) {
+                this.dropPendingSubscription(reservation);
                 return this.error(sender, requestId, sessionId, "CURSOR_UNAVAILABLE", "transcript catch-up requires a fresh snapshot");
             }
             const subscription = {
@@ -318,6 +344,7 @@ export class TranscriptChannel {
                 buffered: [],
                 expiresAt: this.now() + TRANSCRIPT_SUBSCRIPTION_TTL_MS,
             };
+            this.pendingSubscriptions.delete(sessionId);
             this.subscriptions.set(sessionId, subscription);
             for (const event of catchup) {
                 if (!this.sendLive(event, subscription))
@@ -335,8 +362,13 @@ export class TranscriptChannel {
             this.scheduleExpiry();
         }
         catch (error) {
-            if (!this.current(sender, generation))
+            if (this.rejectExpiredPendingSubscription(reservation, sender))
                 return;
+            if (!this.pendingSubscriptionCurrent(reservation, sender)) {
+                this.dropPendingSubscription(reservation);
+                return;
+            }
+            this.dropPendingSubscription(reservation);
             if (error instanceof TranscriptPublicationError) {
                 return this.error(sender, requestId, sessionId, error.code, error.message);
             }
@@ -348,6 +380,11 @@ export class TranscriptChannel {
         const sessionId = stringField(frame, "sessionId");
         if (!requestId || !sessionId)
             return this.error(sender, requestId, sessionId, "BAD_REQUEST", "requestId and sessionId are required");
+        const pending = this.pendingSubscriptions.get(sessionId);
+        if (pending) {
+            pending.cancelled = true;
+            this.dropPendingSubscription(pending);
+        }
         this.subscriptions.delete(sessionId);
         this.releaseIfUnused(sessionId);
         if (!sender.send({ type: "transcript_unsubscribed", requestId, sessionId })) {
@@ -381,7 +418,7 @@ export class TranscriptChannel {
             return;
         }
         if (update.type === "deleted") {
-            const subscription = this.subscriptions.get(update.sessionId);
+            const subscription = this.activeSubscription(update.sessionId);
             if (!subscription)
                 return;
             const deletion = {
@@ -393,7 +430,7 @@ export class TranscriptChannel {
             this.admitDeletion(deletion);
             return;
         }
-        const subscription = this.subscriptions.get(update.event.sessionId);
+        const subscription = this.activeSubscription(update.event.sessionId);
         if (!subscription)
             return;
         if (!subscription.ready) {
@@ -410,6 +447,14 @@ export class TranscriptChannel {
     sendLive(event, subscription) {
         if (!this.sender)
             return false;
+        if (subscription.expiresAt <= this.now() && !this.pendingDeletions.has(event.sessionId)) {
+            if (this.subscriptions.get(event.sessionId) === subscription) {
+                this.subscriptions.delete(event.sessionId);
+                this.releaseIfUnused(event.sessionId);
+                this.scheduleExpiry();
+            }
+            return false;
+        }
         if (subscription.epoch !== event.epoch || event.seq !== subscription.lastSentSeq + 1) {
             if (event.epoch === subscription.epoch && event.seq <= subscription.lastSentSeq)
                 return true;
@@ -453,6 +498,11 @@ export class TranscriptChannel {
         this.trackOutstanding(result.cursor, deletion.sessionId);
         this.pendingDeletions.delete(deletion.sessionId);
         this.subscriptions.delete(deletion.sessionId);
+        const pendingSubscription = this.pendingSubscriptions.get(deletion.sessionId);
+        if (pendingSubscription) {
+            pendingSubscription.cancelled = true;
+            this.dropPendingSubscription(pendingSubscription);
+        }
         for (const [requestId, snapshot] of this.snapshots) {
             if (snapshot.sessionId === deletion.sessionId)
                 this.snapshots.delete(requestId);
@@ -517,6 +567,13 @@ export class TranscriptChannel {
             && reservation.expiresAt > this.now()
             && this.current(sender, reservation.generation);
     }
+    pendingSubscriptionCurrent(reservation, sender) {
+        return !reservation.cancelled
+            && this.pendingSubscriptions.get(reservation.sessionId) === reservation
+            && reservation.generation === this.generation
+            && reservation.expiresAt > this.now()
+            && this.current(sender, reservation.generation);
+    }
     rejectExpiredSnapshot(snapshot, sender) {
         if (snapshot.expiresAt > this.now())
             return false;
@@ -543,6 +600,19 @@ export class TranscriptChannel {
         }
         return true;
     }
+    rejectExpiredPendingSubscription(reservation, sender) {
+        if (reservation.expiresAt > this.now())
+            return false;
+        const notify = !reservation.cancelled
+            && this.pendingSubscriptions.get(reservation.sessionId) === reservation
+            && reservation.generation === this.generation
+            && this.current(sender, reservation.generation);
+        this.dropPendingSubscription(reservation);
+        if (notify) {
+            this.error(sender, reservation.requestId, reservation.sessionId, "CURSOR_UNAVAILABLE", "transcript subscription load expired");
+        }
+        return true;
+    }
     dropPendingSnapshot(reservation, removeProvisionalSubscription) {
         if (this.pendingSnapshots.get(reservation.requestId) !== reservation)
             return;
@@ -556,6 +626,29 @@ export class TranscriptChannel {
         }
         this.releaseIfUnused(reservation.sessionId);
         this.scheduleExpiry();
+    }
+    dropPendingSubscription(reservation) {
+        if (this.pendingSubscriptions.get(reservation.sessionId) !== reservation)
+            return;
+        reservation.cancelled = true;
+        this.pendingSubscriptions.delete(reservation.sessionId);
+        this.releaseIfUnused(reservation.sessionId);
+        this.scheduleExpiry();
+    }
+    activeSubscription(sessionId) {
+        const subscription = this.subscriptions.get(sessionId);
+        if (!subscription)
+            return null;
+        if (subscription.expiresAt > this.now() || this.pendingDeletions.has(sessionId))
+            return subscription;
+        this.subscriptions.delete(sessionId);
+        this.releaseIfUnused(sessionId);
+        this.scheduleExpiry();
+        return null;
+    }
+    subscriptionSlots() {
+        const sessionIds = new Set([...this.subscriptions.keys(), ...this.pendingSubscriptions.keys()]);
+        return sessionIds.size;
     }
     snapshotBytes() {
         let total = 0;
@@ -585,6 +678,13 @@ export class TranscriptChannel {
             this.subscriptions.delete(sessionId);
             released.add(sessionId);
         }
+        for (const pending of [...this.pendingSubscriptions.values()]) {
+            if (pending.expiresAt > now || this.pendingDeletions.has(pending.sessionId))
+                continue;
+            pending.cancelled = true;
+            this.dropPendingSubscription(pending);
+            released.add(pending.sessionId);
+        }
         for (const sessionId of released)
             this.releaseIfUnused(sessionId);
     }
@@ -594,6 +694,7 @@ export class TranscriptChannel {
         if (!this.accepted || (this.snapshots.size === 0
             && this.pendingSnapshots.size === 0
             && this.subscriptions.size === 0
+            && this.pendingSubscriptions.size === 0
             && this.pendingDeletions.size === 0)) {
             this.expiryTimer = null;
             return;
@@ -608,6 +709,8 @@ export class TranscriptChannel {
     }
     releaseIfUnused(sessionId) {
         if (this.subscriptions.has(sessionId))
+            return;
+        if (this.pendingSubscriptions.has(sessionId))
             return;
         if (this.pendingDeletions.has(sessionId))
             return;
@@ -630,6 +733,7 @@ export class TranscriptChannel {
                 ...this.subscriptions.keys(),
                 ...[...this.snapshots.values()].map((snapshot) => snapshot.sessionId),
                 ...[...this.pendingSnapshots.values()].map((snapshot) => snapshot.sessionId),
+                ...this.pendingSubscriptions.keys(),
                 ...this.pendingDeletions.keys(),
             ]);
             this.subscriptions.clear();
@@ -637,6 +741,9 @@ export class TranscriptChannel {
             for (const pending of this.pendingSnapshots.values())
                 pending.cancelled = true;
             this.pendingSnapshots.clear();
+            for (const pending of this.pendingSubscriptions.values())
+                pending.cancelled = true;
+            this.pendingSubscriptions.clear();
             this.pendingDeletions.clear();
             for (const sessionId of sessionIds)
                 this.repository.release(sessionId);

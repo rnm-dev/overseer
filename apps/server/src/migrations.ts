@@ -835,6 +835,41 @@ export const MIGRATIONS: { id: string; statements: string[] }[] = [
     ],
   },
   {
+    id: "029_daemon_configuration_projection",
+    statements: [
+      `CREATE TABLE IF NOT EXISTS peon_daemon_configuration (
+         peon_id         TEXT PRIMARY KEY,
+         workspace_id    TEXT NOT NULL,
+         epoch           TEXT NOT NULL,
+         revision        BIGINT NOT NULL,
+         schema_version  INTEGER NOT NULL,
+         digest          TEXT NOT NULL,
+         updated_at      BIGINT NOT NULL,
+         values          JSONB NOT NULL,
+         last_command_id TEXT
+       )`,
+      `CREATE INDEX IF NOT EXISTS peon_daemon_configuration_workspace_idx
+         ON peon_daemon_configuration (workspace_id, peon_id)`,
+    ],
+  },
+  {
+    id: "030_runtime_state_projection",
+    statements: [
+      `CREATE TABLE IF NOT EXISTS peon_runtime_state (
+         peon_id       TEXT PRIMARY KEY,
+         workspace_id  TEXT NOT NULL,
+         epoch         TEXT NOT NULL,
+         revision      BIGINT NOT NULL,
+         digest        TEXT NOT NULL,
+         generated_at  BIGINT NOT NULL,
+         received_at   BIGINT NOT NULL,
+         state         JSONB NOT NULL
+       )`,
+      `CREATE INDEX IF NOT EXISTS peon_runtime_state_workspace_idx
+         ON peon_runtime_state (workspace_id, peon_id)`,
+    ],
+  },
+  {
     // A session command may reference only a terminal file-write-v1 result.
     // Receipts are durable because the Peon's completed-write replay cache is
     // intentionally process-local and cannot prove a commit after restart.

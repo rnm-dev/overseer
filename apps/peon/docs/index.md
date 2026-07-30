@@ -27,6 +27,7 @@ documentation. Failure to start this optional session must not roll back project
 - [Session orchestration MCP](session-orchestration.md)
 - [Canonical token-usage analytics](token-usage-analytics.md)
 - [Reverse command protocol v1](reverse-command-protocol-v1.md)
+- [Reverse daemon configuration](../../../docs/daemon-configuration.md)
 - [Peon claim protocol v1](peon-claim-protocol-v1.md)
 - [Peon claim implementation](peon-claim-implementation.md)
 

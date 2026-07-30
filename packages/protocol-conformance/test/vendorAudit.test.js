@@ -33,7 +33,7 @@ test("shared schema and fixture vendors have an executable, content-free drift a
   assert.equal(report.find((entry) => entry.id === "peon-claim-v1-schema")?.identical, true);
   assert.equal(report.find((entry) => entry.id === "peon-claim-v1-fixtures")?.identical, true);
   assert.equal(report.find((entry) => entry.id === "peon-claim-v1-security-vectors")?.identical, true);
-  assert.equal(report.find((entry) => entry.id === "reverse-command-v1-schema")?.identical, false);
+  assert.equal(report.find((entry) => entry.id === "reverse-command-v1-schema")?.identical, true);
   assert.equal(report.find((entry) => entry.id === "reverse-command-v1-schema")?.jsonEquivalent, true);
   assert.equal(report.find((entry) => entry.id === "reverse-command-v1-fixtures")?.identical, true);
   assert.ok(report.every((entry) => entry.copies.every((copy) => /^[0-9a-f]{64}$/.test(copy.sha256))));

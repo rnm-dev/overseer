@@ -45,6 +45,7 @@ const DEFAULT_SETTINGS: DaemonSettings = {
   publicControlUrl: `http://127.0.0.1:${process.env.ACA_CONTROL_PORT ?? 4570}`,
   publicDashboardUrl: `http://127.0.0.1:${process.env.ACA_DASHBOARD_PORT ?? 4571}`,
   bindHost: "127.0.0.1",
+  fleetMode: "legacy-mesh",
   name: "",
   autoResumeInterrupted: true,
   overseerToken: "",

@@ -9,6 +9,9 @@ const PORT = Number(process.env.ACA_DASHBOARD_PORT ?? 4571);
 // reads the shared settings.json at startup. Loopback-only by default; widen
 // via `peon remote on`. Restart the dashboard for a change to take effect.
 const BIND_HOST = process.env.ACA_BIND_HOST ?? settings.get().bindHost;
+if (settings.get().fleetMode === "reverse-only" && !["127.0.0.1", "localhost", "::1"].includes(BIND_HOST)) {
+  throw new Error(`reverse-only fleet mode refuses non-loopback dashboard bind host ${BIND_HOST}`);
+}
 
 const app = express();
 // HTML previews run in a sandboxed iframe whose opaque origin is serialized as

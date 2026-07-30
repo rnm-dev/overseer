@@ -29,6 +29,11 @@ for that exact socket generation and reconcile pending rows. A submit in the
 hello gap therefore returns `CAPABILITY_UNAVAILABLE` before admission instead
 of creating a row that cannot be sent.
 
+Operation negotiation uses the intersection of Peon's bounded, well-formed
+advertisement and the operations this Overseer implements. A newer Peon may
+advertise later operation families without making an older Overseer reject the
+whole control connection; unimplemented operations remain inactive.
+
 No action uses both reverse WSS and legacy HTTP. A missing connection returns
 `PEON_OFFLINE`; a connected Peon that did not negotiate the operation returns
 `CAPABILITY_UNAVAILABLE`. Operation-specific rollout code may select legacy
@@ -66,6 +71,10 @@ current Peon access. A timeout before observed acceptance is
 is distinct from an accepted command whose result is still pending. Peon
 reporting `unknown` for something Overseer had already accepted records
 `UNKNOWN_OUTCOME`; Overseer does not create a replacement ID.
+When a bounded HTTP wait expires for a sent or admitted command, Overseer asks
+Peon for `command_status` with the same ID before returning the pending/timeout
+response. Waiter registration is followed by a durable-row recheck, so a result
+committed in the send-to-wait boundary cannot be missed until the full timeout.
 
 ## Bounds and observability
 

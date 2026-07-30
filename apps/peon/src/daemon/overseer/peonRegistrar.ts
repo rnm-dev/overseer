@@ -70,7 +70,8 @@ function capabilities(fileTransferRoot: string): string[] {
 
 export interface PeonRegistrar {
   start(): void;
-  getState(): RegistrarState & { publicUrl: string };
+  stop(): void;
+  getState(): RegistrarState & { publicUrl: string | null; mode: PeonRegistrarSettings["fleetMode"] };
 }
 
 async function readBoundedErrorBody(response: Response): Promise<string | null> {
@@ -158,6 +159,7 @@ export function createPeonRegistrar(options: PeonRegistrarOptions = {}): PeonReg
     lastError: null,
   };
   let timer: ReturnType<typeof setTimeout> | null = null;
+  let stopped = false;
   // Throttle identical connect errors to one log line — a overseer that's down
   // would otherwise spam the daemon log every heartbeat interval.
   let lastLoggedError: string | null = null;
@@ -206,6 +208,13 @@ export function createPeonRegistrar(options: PeonRegistrarOptions = {}): PeonReg
     ticking = true;
     try {
       const s = readSettings();
+      if (s.fleetMode === "reverse-only") {
+        state.enabled = false;
+        state.registered = false;
+        state.derecruited = false;
+        state.lastError = null;
+        return;
+      }
       const base = s.overseerUrl.trim();
       const token = s.overseerToken.trim();
       state.enabled = Boolean(base && token);
@@ -278,6 +287,7 @@ export function createPeonRegistrar(options: PeonRegistrarOptions = {}): PeonReg
   }
 
   function schedule(): void {
+    if (stopped) return;
     if (timer) clearTimeout(timer);
     const baseDelay = Math.max(1_000, readSettings().heartbeatIntervalMs);
     const delay = consecutiveAuthFailures > 0
@@ -293,6 +303,7 @@ export function createPeonRegistrar(options: PeonRegistrarOptions = {}): PeonReg
     // Fire one tick immediately (so a configured peon registers at startup rather
     // than after the first interval), then keep the heartbeat loop running.
     start(): void {
+      stopped = false;
       // A fresh /enroll (or a manual re-point) rewrites overseerUrl/overseerToken.
       // tick() itself notices the cred change and re-registers, but that would only
       // happen on the next heartbeat interval — fire one now so recruitment is
@@ -304,9 +315,15 @@ export function createPeonRegistrar(options: PeonRegistrarOptions = {}): PeonReg
       });
       void tick().then(schedule);
     },
+    stop(): void {
+      stopped = true;
+      if (timer) clearTimeout(timer);
+      timer = null;
+    },
 
-    getState(): RegistrarState & { publicUrl: string } {
-      return { ...state, publicUrl: peonPublicUrl() };
+    getState(): RegistrarState & { publicUrl: string | null; mode: PeonRegistrarSettings["fleetMode"] } {
+      const mode = readSettings().fleetMode;
+      return { ...state, mode, publicUrl: mode === "reverse-only" ? null : peonPublicUrl() };
     },
   };
 }

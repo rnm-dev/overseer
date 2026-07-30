@@ -166,11 +166,24 @@ async function insertNonce(
   nonce: string,
   now: number,
 ): Promise<boolean> {
-  const existing = await tx.query(
-    `SELECT 1 FROM peon_claim_request_nonces WHERE identity_key_id=$1 AND request_nonce=$2`,
+  // The 24-hour replay boundary is synchronous. A delayed cleanup worker must
+  // not extend nonce rejection beyond the normative `nonceAge <= 24h` window.
+  // Deleting and reinserting inside the caller's admission transaction also
+  // preserves the nonce/effect crash boundary.
+  const existing = (await tx.query<{ expires_at: number }>(
+    `SELECT expires_at FROM peon_claim_request_nonces
+     WHERE identity_key_id=$1 AND request_nonce=$2
+     FOR UPDATE`,
     [identity, nonce],
-  );
-  if (existing.rows.length > 0) return false;
+  )).rows[0];
+  if (existing && Number(existing.expires_at) >= now) return false;
+  if (existing) {
+    await tx.query(
+      `DELETE FROM peon_claim_request_nonces
+       WHERE identity_key_id=$1 AND request_nonce=$2`,
+      [identity, nonce],
+    );
+  }
   const inserted = await tx.query(
     `INSERT INTO peon_claim_request_nonces (identity_key_id, request_nonce, created_at, expires_at)
      VALUES ($1,$2,$3,$4) ON CONFLICT (identity_key_id, request_nonce) DO NOTHING
@@ -677,8 +690,9 @@ export async function decideClaim(
 ): Promise<Record<string, unknown>> {
   assertConfigured();
   await rateLimit("decision-user", actorUserId, 10, 600_000, now);
-  return transaction(async (tx) => {
-    const row = (await tx.query<ClaimRow>(
+  let committedError: ClaimServiceError | null = null;
+  const result = await transaction(async (tx) => {
+    let row = (await tx.query<ClaimRow>(
       `UPDATE peon_claims SET state=state WHERE claim_id=$1 RETURNING *`,
       [claimId],
     )).rows[0];
@@ -687,7 +701,6 @@ export async function decideClaim(
       `SELECT 1 FROM peon_claim_resolutions WHERE claim_id=$1 AND user_id=$2 AND expires_at>$3`,
       [claimId, actorUserId, now],
     )).rows.length > 0;
-    if (!resolution) throw claimError("CLAIM_NOT_FOUND");
     if (decision === "approve") {
       const role = (await tx.query<{ role: string }>(
         `SELECT role FROM workspace_members
@@ -697,24 +710,21 @@ export async function decideClaim(
       )).rows[0]?.role;
       if (role !== "owner") throw claimError("FORBIDDEN");
     }
-    if (row.state === "pending" && row.expires_at <= now) {
-      await tx.query(
-        `UPDATE peon_claims SET state='expired',operator_code_hash=NULL,operator_code_key_version=NULL,
-         operator_code_nonce=NULL,operator_code_ciphertext=NULL,operator_code_tag=NULL,terminal_at=$2
-         WHERE claim_id=$1`,
-        [claimId, now],
-      );
-      await tx.query(
-        `UPDATE peon_claim_attempts SET terminal_at=$2,tombstone_expires_at=$3 WHERE attempt_id=$1`,
-        [row.attempt_id, now, now + TOMBSTONE_MS],
-      );
+    if (
+      (row.state === "pending" && row.expires_at <= now)
+      || (row.state === "approved" && (row.delivery_expires_at ?? 0) <= now)
+    ) {
+      row = await expireClaimInTransaction(tx, row, now);
       await tx.query(
         `UPDATE peon_claim_resolutions SET expires_at=$3 WHERE claim_id=$1 AND user_id=$2`,
         [claimId, actorUserId, now + TERMINAL_RETENTION_MS],
       );
-      await tx.query(`DELETE FROM peon_enrollment_leases WHERE claim_id=$1`, [claimId]);
-      throw claimError("CLAIM_EXPIRED", { state: "expired" });
+      committedError = resolution
+        ? claimError("CLAIM_EXPIRED", { state: row.state, claimId })
+        : claimError("CLAIM_NOT_FOUND");
+      return null;
     }
+    if (!resolution) throw claimError("CLAIM_NOT_FOUND");
     if (row.decision) {
       if (row.decision !== decision) throw claimError("CLAIM_ALREADY_DECIDED", { state: row.state });
       if (decision === "deny") {
@@ -808,6 +818,9 @@ export async function decideClaim(
       serverTime: now, replayed: false,
     };
   });
+  if (committedError) throw committedError;
+  if (!result) throw claimError("PERSIST_FAILED");
+  return result;
 }
 
 export async function acknowledgeClaim(
@@ -1019,8 +1032,12 @@ export async function startRotation(
     || body.serverOrigin !== canonicalOrigin()) throw claimError("BAD_REQUEST");
   const parsed = parseBearer(bearer);
   if (!parsed || parsed.credentialId !== body.currentCredentialId) throw claimError("UNAUTHENTICATED");
-  const auth = (await query<ClaimCredentialRow & { public_jwk: PublicJwk; server_origin: string }>(
-    `SELECT c.*,b.public_jwk,$2 AS server_origin
+  const auth = (await query<Pick<
+    ClaimCredentialRow,
+    "id" | "verifier" | "pepper_version" | "state" | "generation" | "peon_id" | "identity_key_id"
+  > & { public_jwk: PublicJwk; server_origin: string }>(
+    `SELECT c.id,c.verifier,c.pepper_version,c.state,c.generation,c.peon_id,c.identity_key_id,
+            b.public_jwk,$2 AS server_origin
      FROM peon_claim_credentials c
      JOIN peon_identity_bindings b ON b.peon_id=c.peon_id AND b.identity_key_id=c.identity_key_id AND b.removed_at IS NULL
      WHERE c.id=$1`,
@@ -1036,7 +1053,6 @@ export async function startRotation(
     throw claimError("CREDENTIAL_GENERATION_MISMATCH");
   }
   const requestHash = semanticRequestHash(body, ["rotationId", "proof"]);
-  await rateLimit("rotation-peon", auth.peon_id, 3, 86_400_000, now);
   let committedError: ClaimServiceError | null = null;
   const nextId = randomUUID();
   const nextBearer = mintBearer(nextId);
@@ -1079,21 +1095,25 @@ export async function startRotation(
       committedError = claimError("ROTATION_ALREADY_ACTIVE");
       return null;
     }
+    // Charge only a newly admitted rotation, in the same transaction as its
+    // nonce and lifecycle row. Fresh-proof retries of a committed rotation
+    // must remain replayable even after several lost responses.
+    await rateLimit("rotation-peon", auth.peon_id, 3, 86_400_000, now, tx);
     await tx.query(
       `INSERT INTO peon_claim_credentials
        (id,workspace_id,peon_id,identity_key_id,generation,state,verifier,pepper_version,created_at)
        VALUES ($1,$2,$3,$4,$5,'pending',$6,1,$7)`,
-      [nextId, auth.workspace_id, auth.peon_id, auth.identity_key_id,
+      [nextId, currentCredential.workspace_id, auth.peon_id, auth.identity_key_id,
         auth.generation + 1, credentialVerifier(nextBearer), now],
     );
     const delivery = await createDelivery(tx, "rotation", String(body.rotationId), nextId,
-      auth.peon_id, auth.workspace_id, auth.identity_key_id, auth.generation + 1, nextBearer, now);
+      auth.peon_id, currentCredential.workspace_id, auth.identity_key_id, auth.generation + 1, nextBearer, now);
     await tx.query(
       `INSERT INTO peon_credential_rotations
        (rotation_id,request_hash,peon_id,workspace_id,identity_key_id,previous_credential_id,previous_generation,
         credential_id,delivery_id,state,created_at,expires_at,tombstone_expires_at)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'pending_ack',$10,$11,$12)`,
-      [body.rotationId, requestHash, auth.peon_id, auth.workspace_id, auth.identity_key_id,
+      [body.rotationId, requestHash, auth.peon_id, currentCredential.workspace_id, auth.identity_key_id,
         auth.id, auth.generation, nextId, delivery.deliveryId, now, delivery.expiresAt, null],
     );
     return (await tx.query<RotationRow>(`SELECT * FROM peon_credential_rotations WHERE rotation_id=$1`, [body.rotationId])).rows[0];
@@ -1272,6 +1292,7 @@ export async function revokeClaimCredential(
   requestId: string = randomUUID(),
   now = Date.now(),
 ): Promise<Record<string, unknown> | null> {
+  let forbidden = false;
   const result = await transactionWithAdvisoryLock(`peon-claim:revoke-credential:${credentialId}`, async (tx) => {
     const target = (await tx.query<ClaimCredentialRow>(
       `UPDATE peon_claim_credentials SET state=state
@@ -1279,6 +1300,21 @@ export async function revokeClaimCredential(
       [credentialId, workspaceId, peonId],
     )).rows[0];
     if (!target) return null;
+    const role = (await tx.query<{ role: string }>(
+      `SELECT role FROM workspace_members
+       WHERE workspace_id=$1 AND user_id=$2
+       FOR UPDATE`,
+      [workspaceId, actorUserId],
+    )).rows[0]?.role;
+    if (role !== "owner") {
+      await audit(tx, {
+        workspaceId, peonId, credentialId, actorUserId, requestId,
+        event: "credential.revoke_denied", scope: "credential",
+        outcome: "forbidden", stableCode: "FORBIDDEN",
+      });
+      forbidden = true;
+      return null;
+    }
     const changed = target.state !== "revoked";
     const revokedAt = target.revoked_at ?? now;
     if (changed) {
@@ -1313,6 +1349,7 @@ export async function revokeClaimCredential(
     });
     return { changed, revokedAt, generation: target.generation };
   });
+  if (forbidden) throw claimError("FORBIDDEN");
   if (!result) return null;
   const evictedSocketCount = result.changed
     ? Number(evictPeonConnectionGeneration(peonId, result.generation))
@@ -1333,12 +1370,30 @@ export async function revokeClaimPeon(
   requestId: string = randomUUID(),
   now = Date.now(),
 ): Promise<Record<string, unknown> | null> {
+  let forbidden = false;
   const result = await transactionWithAdvisoryLock(`peon-claim:revoke-peon:${peonId}`, async (tx) => {
     const binding = (await tx.query(
-      `SELECT 1 FROM peon_identity_bindings WHERE peon_id=$1 AND workspace_id=$2 AND removed_at IS NULL`,
+      `SELECT 1 FROM peon_identity_bindings
+       WHERE peon_id=$1 AND workspace_id=$2 AND removed_at IS NULL
+       FOR UPDATE`,
       [peonId, workspaceId],
     )).rows.length > 0;
     if (!binding) return null;
+    const role = (await tx.query<{ role: string }>(
+      `SELECT role FROM workspace_members
+       WHERE workspace_id=$1 AND user_id=$2
+       FOR UPDATE`,
+      [workspaceId, actorUserId],
+    )).rows[0]?.role;
+    if (role !== "owner") {
+      await audit(tx, {
+        workspaceId, peonId, actorUserId, requestId,
+        event: "peon.revoke_denied", scope: "peon",
+        outcome: "forbidden", stableCode: "FORBIDDEN",
+      });
+      forbidden = true;
+      return null;
+    }
     const current = (await tx.query<{ count: number; revoked_at: number | null }>(
       `SELECT COUNT(*) AS count,MIN(revoked_at) AS revoked_at FROM peon_claim_credentials
        WHERE peon_id=$1 AND workspace_id=$2 AND state<>'revoked'`,
@@ -1401,6 +1456,7 @@ export async function revokeClaimPeon(
     });
     return { changed, revokedAt, revokedCredentials };
   });
+  if (forbidden) throw claimError("FORBIDDEN");
   if (!result) return null;
   const evictedSocketCount = result.changed
     ? Number(evictPeonConnection(peonId)) + Number(evictPeonTransferConnection(peonId))
@@ -1482,20 +1538,6 @@ export async function revocationTargetExists(
     `SELECT 1 FROM peon_identity_bindings WHERE peon_id=$1 AND workspace_id=$2 AND removed_at IS NULL`,
     [peonId, workspaceId],
   )).rows.length > 0;
-}
-
-export async function auditForbiddenRevocation(
-  scope: "credential" | "peon",
-  workspaceId: string,
-  peonId: string,
-  actorUserId: string,
-  requestId: string,
-  credentialId?: string,
-): Promise<void> {
-  await transaction(async (tx) => audit(tx, {
-    workspaceId, peonId, credentialId, actorUserId, requestId, scope,
-    event: `${scope}.revoke_denied`, outcome: "forbidden", stableCode: "FORBIDDEN",
-  }));
 }
 
 export async function assertLegacyEnrollmentAllowed(peonId: string): Promise<void> {

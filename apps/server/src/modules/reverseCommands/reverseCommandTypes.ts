@@ -204,6 +204,10 @@ export function reverseCommandFrame(record: ReverseCommandRecord): ReverseComman
   };
 }
 
+export function reverseCommandPayloadIsTransient(operation: ReverseCommandOperation): boolean {
+  return operation === "armory.configure";
+}
+
 function object(value: unknown, field: string): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new ReverseCommandProtocolError(`invalid ${field}`);
@@ -238,14 +242,20 @@ export function parseReverseCommandHello(frame: Record<string, unknown>): Revers
   const channels = object(frame.channels, "channels");
   const channel = object(channels[REVERSE_COMMAND_CAPABILITY], REVERSE_COMMAND_CAPABILITY);
   strict(channel, ["protocol", "operations"], "reverse command hello");
-  if (channel.protocol !== 1 || !Array.isArray(channel.operations)) {
+  if (channel.protocol !== 1 || !Array.isArray(channel.operations) || channel.operations.length > 64) {
     throw new ReverseCommandProtocolError("invalid reverse command hello");
   }
-  const operations = channel.operations.map(operation);
-  if (new Set(operations).size !== operations.length) {
+  const advertised = channel.operations.map((value) => {
+    if (typeof value !== "string" || value.length < 1 || value.length > 80
+      || !/^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/.test(value)) {
+      throw new ReverseCommandProtocolError("invalid reverse command operation");
+    }
+    return value;
+  });
+  if (new Set(advertised).size !== advertised.length) {
     throw new ReverseCommandProtocolError("duplicate reverse command operation");
   }
-  return operations;
+  return advertised.filter(isReverseCommandOperation);
 }
 
 export function parseReverseCommandAccepted(value: Record<string, unknown>): ReverseCommandAcceptedFrame {
@@ -309,7 +319,36 @@ const SESSION_REJECTED_CODES = new Set([
   "UNKNOWN_ATTACHMENT_PATH", "ATTACHMENT_CHANGED", "DIR_MISSING",
   "SESSION_NOT_RUNNING",
 ]);
+const RUNTIME_FORBIDDEN_KEY = /(?:credential|secret|token|password|authorization|authresponse|environment|executablepath|filetransferroot)/i;
+const PROJECT_REJECTED_CODES = new Set([
+  "BAD_COMMAND", "COMMAND_EXPIRED", "COMMAND_LEDGER_FULL", "UNKNOWN_PROJECT",
+  "BAD_REQUEST", "UNKNOWN_QUICK_LINK", "INVALID_PATH", "PATH_ESCAPE", "NOT_FOUND",
+  "IS_DIRECTORY", "UNSUPPORTED_MEDIA_TYPE", "FORBIDDEN", "RESULT_TOO_LARGE",
+  "INVALID_CURSOR",
+]);
+const PROJECT_CONFLICT_CODES = new Set([
+  "COMMAND_ID_REUSED", "PROJECT_CONFLICT", "PROJECT_EXISTS", "PROJECT_RUNNING",
+  "CURSOR_EXPIRED",
+]);
 
+function assertSafeRuntimeValue(value: unknown, depth = 0): void {
+  if (depth > 12) throw new ReverseCommandProtocolError("runtime query result is too deeply nested");
+  if (value === null || typeof value === "string" || typeof value === "boolean"
+    || (typeof value === "number" && Number.isFinite(value))) return;
+  if (Array.isArray(value)) {
+    if (value.length > 10_000) throw new ReverseCommandProtocolError("runtime query result array is too large");
+    for (const item of value) assertSafeRuntimeValue(item, depth + 1);
+    return;
+  }
+  if (!value || typeof value !== "object") {
+    throw new ReverseCommandProtocolError("runtime query result contains an unsupported value");
+  }
+  const entries = Object.entries(value as Record<string, unknown>);
+  if (entries.length > 1_000 || entries.some(([key]) => RUNTIME_FORBIDDEN_KEY.test(key))) {
+    throw new ReverseCommandProtocolError("runtime query result contains a forbidden field");
+  }
+  for (const [, item] of entries) assertSafeRuntimeValue(item, depth + 1);
+}
 
 // The shared wire schema intentionally leaves result extensible. Overseer does
 // not: every enabled operation must reduce terminal detail to an explicit,
@@ -892,7 +931,10 @@ export function parseReverseCommandStatus(value: Record<string, unknown>): Rever
 }
 
 export function parseDurableReverseCommandResult(message: Record<string, unknown>): DurableReverseCommandResult {
-  if (message.capability !== REVERSE_COMMAND_CAPABILITY) {
+  strict(message, [
+    "type", "epoch", "cursor", "messageId", "priority", "capability", "payload",
+  ], "durable command result");
+  if (message.type !== "durable_message" || message.capability !== REVERSE_COMMAND_CAPABILITY) {
     throw new ReverseCommandProtocolError("invalid durable reverse command capability");
   }
   if (typeof message.epoch !== "string" || !message.epoch || message.epoch.length > 200
@@ -910,16 +952,30 @@ export function parseDurableReverseCommandResult(message: Record<string, unknown
   };
 }
 
-export function safeReverseCommandView(record: ReverseCommandRecord): Record<string, unknown> {
-  let terminalDetailSafe = record.state !== "terminal";
-  if (record.state === "terminal" && record.resultFrame) {
-    try {
-      assertSafeReverseCommandResult(record, record.resultFrame);
-      terminalDetailSafe = true;
-    } catch {
-      terminalDetailSafe = false;
-    }
+export function safeReverseCommandTerminalFrame(
+  record: ReverseCommandRecord,
+): ReverseCommandResultFrame | null {
+  if (record.state !== "terminal" || !record.resultFrame) return null;
+  try {
+    assertSafeReverseCommandResult(record, record.resultFrame);
+  } catch {
+    return null;
   }
+  const frame = record.resultFrame;
+  if (record.terminalStatus !== frame.status
+    || record.code !== frame.code
+    || record.message !== (frame.message ?? null)
+    || record.completedAt !== frame.completedAt
+    || canonicalJson((record.result ?? null) as JsonValue)
+      !== canonicalJson((frame.result ?? null) as JsonValue)) {
+    return null;
+  }
+  return frame;
+}
+
+export function safeReverseCommandView(record: ReverseCommandRecord): Record<string, unknown> {
+  const terminal = safeReverseCommandTerminalFrame(record);
+  const unsafeTerminal = record.state === "terminal" && !terminal;
   return {
     commandId: record.commandId,
     peonId: record.peonId,
@@ -928,11 +984,11 @@ export function safeReverseCommandView(record: ReverseCommandRecord): Record<str
     requestedAt: record.requestedAt,
     sentAt: record.sentAt,
     acceptedAt: record.acceptedAt,
-    completedAt: record.completedAt,
-    status: terminalDetailSafe ? record.terminalStatus : null,
-    code: terminalDetailSafe ? record.code ?? record.lastErrorCode : "UNSAFE_RESULT",
+    completedAt: terminal?.completedAt ?? null,
+    status: terminal?.status ?? null,
+    code: unsafeTerminal ? "UNSAFE_RESULT" : terminal?.code ?? record.lastErrorCode,
     message: null,
-    result: terminalDetailSafe ? record.result : null,
+    result: terminal?.result ?? null,
     replayed: record.replayed,
     committed: record.durableCommittedAt !== null,
   };

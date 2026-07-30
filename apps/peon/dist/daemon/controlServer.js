@@ -177,6 +177,12 @@ export function createControlServer(options = {}) {
             req.headers["peon-request-id"] !== undefined ||
             req.headers["peon-actor"] !== undefined;
         if (fleetRequest) {
+            if (settings.get().fleetMode === "reverse-only") {
+                return res.status(409).json({
+                    error: "inbound Fleet HTTP is disabled in reverse-only mode; use negotiated reverse capabilities",
+                    code: "REVERSE_ONLY",
+                });
+            }
             // Never let an authenticated Fleet-profile request fall through into
             // dashboard cookie auth when its route is unknown (notably when an
             // Overseer is newer than the Peon it controls). That used to turn a

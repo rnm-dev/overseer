@@ -418,6 +418,7 @@ test("handshake cumulative acknowledgement notifies channels for every removed c
   assert.equal(second.accepted, true);
   if (!first.accepted || !second.accepted) return;
   const acknowledged: string[] = [];
+  const acknowledging: string[] = [];
   const channel: PeonSocketChannel = {
     capability: "durable-test-v1",
     helloState: () => ({}),
@@ -427,6 +428,7 @@ test("handshake cumulative acknowledgement notifies channels for every removed c
     disconnected: () => {},
     handles: () => false,
     receive: () => {},
+    durableAcknowledging: (cursor) => { acknowledging.push(cursor); return true; },
     durableAcknowledged: (cursor) => acknowledged.push(cursor),
   };
   const server = http.createServer();
@@ -452,8 +454,58 @@ test("handshake cumulative acknowledgement notifies channels for every removed c
   try {
     supervisor.start();
     await waitFor(() => supervisor.getState().connected, "socket did not accept handshake acknowledgement");
+    assert.deepEqual(acknowledging, [first.cursor, second.cursor]);
     assert.deepEqual(acknowledged, [first.cursor, second.cursor]);
     assert.equal(outbox.status().pendingMessages, 0);
+  } finally {
+    supervisor.stop();
+    await closeServer(server, sockets);
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("durable acknowledgement leaves outbox intact when a channel cannot persist its cursor", async () => {
+  const directory = mkdtempSync(path.join(os.tmpdir(), "peon-socket-ack-fence-"));
+  const outbox = new PeonSocketOutbox({ fileBase: path.join(directory, "outbox") });
+  const message = outbox.enqueue({ type: "durable_test_event", value: 1 });
+  assert.equal(message.accepted, true);
+  if (!message.accepted) return;
+  let attempted = 0;
+  const channel: PeonSocketChannel = {
+    capability: "durable-test-v1",
+    helloState: () => ({}),
+    started: () => {},
+    connecting: () => {},
+    negotiated: () => {},
+    disconnected: () => {},
+    handles: () => false,
+    receive: () => {},
+    durableAcknowledging: () => { attempted += 1; return false; },
+  };
+  const server = http.createServer();
+  const wss = new WebSocketServer({ noServer: true });
+  const sockets = new Set<WebSocket>();
+  wss.on("connection", (socket) => {
+    sockets.add(socket);
+    socket.once("close", () => sockets.delete(socket));
+    socket.once("message", () => {
+      socket.send(JSON.stringify({
+        type: "hello_ack",
+        protocol: 1,
+        capabilities: ["durable-test-v1", "durable-delivery-v1"],
+        delivery: { epoch: message.epoch, acknowledgedCursor: message.cursor },
+      }));
+    });
+  });
+  server.on("upgrade", (request, socket, head) => {
+    wss.handleUpgrade(request, socket, head, (client) => wss.emit("connection", client, request));
+  });
+  const base = await listen(server);
+  const supervisor = testSupervisor({ overseerUrl: base, overseerToken: "token" }, () => () => {}, [channel], outbox);
+  try {
+    supervisor.start();
+    await waitFor(() => attempted === 1, "channel acknowledgement fence was not called");
+    assert.equal(outbox.status().pendingMessages, 1);
   } finally {
     supervisor.stop();
     await closeServer(server, sockets);

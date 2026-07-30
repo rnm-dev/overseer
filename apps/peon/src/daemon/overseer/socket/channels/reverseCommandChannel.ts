@@ -6,6 +6,8 @@ import {
 } from "../../../sessions/index.js";
 import type { PeonSocketChannel, PeonSocketFrame, PeonSocketSender } from "../peonSocketProtocol.js";
 import { ReverseCommandLedger, type ReverseCommandRecord } from "../reverseCommandLedger.js";
+import { runtimeQueryHandlers } from "./runtimeQueryHandlers.js";
+import { projectCommandHandlers } from "./projectCommandHandlers.js";
 import { sessionCommandHandlers, validSessionCommandExecution } from "./sessionCommandHandlers.js";
 import { daemonConfigurationChannel } from "./daemonConfigurationChannel.js";
 import {
@@ -28,14 +30,14 @@ export interface ReverseCommandExecution {
 export interface ReverseCommandHandler {
   maxConcurrency?: number;
   priority?: "critical" | "control" | "normal";
-  validate(payload: PeonSocketFrame, expected: PeonSocketFrame | null): string | null;
+  validate(payload: PeonSocketFrame, expected: PeonSocketFrame | null, command: ValidCommand): string | null;
   execute(command: ValidCommand): Promise<ReverseCommandExecution> | ReverseCommandExecution;
 }
 
 export interface ValidCommand {
   commandId: string;
   operation: string;
-  target: { peonId: string; sessionId?: string };
+  target: { peonId: string; sessionId?: string; projectId?: string; packageId?: string; operationId?: string };
   actor: { userId: string; email: string };
   payload: PeonSocketFrame;
   expected: PeonSocketFrame | null;
@@ -130,6 +132,13 @@ export class ReverseCommandChannel implements PeonSocketChannel {
     generation: number;
   }> = [];
   private queuedCommandIds = new Set<string>();
+  private terminalRetries = new Map<string, {
+    authority: string;
+    generation: number;
+    result: PeonSocketFrame;
+    attempt: number;
+    timer: ReturnType<typeof setTimeout>;
+  }>();
   private publicationRetryTimer: ReturnType<typeof setTimeout> | null = null;
   private publicationRetryAttempt = 0;
 
@@ -140,6 +149,8 @@ export class ReverseCommandChannel implements PeonSocketChannel {
       "session.cancel": sessionCancelHandler(sessionService),
       ...sessionCommandHandlers(),
       "daemon.configuration.patch": daemonConfigurationChannel.commandHandler(),
+      ...projectCommandHandlers(),
+      ...runtimeQueryHandlers(),
       ...updateCommandHandlers(),
     };
     this.maxConcurrency = options.maxConcurrency ?? 16;
@@ -257,7 +268,7 @@ export class ReverseCommandChannel implements PeonSocketChannel {
       return sender.disconnect("reverse command arrived without a fenced socket authority");
     }
     const handler = this.handlers[command.operation];
-    const validationError = handler?.validate(command.payload, command.expected);
+    const validationError = handler?.validate(command.payload, command.expected, command);
     if (!handler || validationError) {
       sender.send(commandResult(command, { status: "rejected", code: "BAD_COMMAND" }));
       return;
@@ -296,8 +307,11 @@ export class ReverseCommandChannel implements PeonSocketChannel {
     this.drain();
   }
 
-  durableAcknowledged(cursor: string): void {
-    this.ledger.acknowledgeCursor(cursor);
+  durableAcknowledging(cursor: string): boolean {
+    return this.ledger.acknowledgeCursor(cursor);
+  }
+
+  durableAcknowledged(_cursor: string): void {
     this.ledger.compact();
     this.publishPending();
   }
@@ -313,9 +327,11 @@ export class ReverseCommandChannel implements PeonSocketChannel {
       || !frame.payload || typeof frame.payload !== "object" || Array.isArray(frame.payload)) return { error: "invalid reverse command envelope" };
     const target = frame.target as PeonSocketFrame;
     const actor = frame.actor as PeonSocketFrame;
-    if (!strictKeys(target, ["peonId", "sessionId", "projectId"]) || typeof target.peonId !== "string" || !UUID.test(target.peonId)
+    if (!strictKeys(target, ["peonId", "sessionId", "projectId", "packageId", "operationId"]) || typeof target.peonId !== "string" || !UUID.test(target.peonId)
       || (target.sessionId !== undefined && (typeof target.sessionId !== "string" || !UUID.test(target.sessionId)))
       || (target.projectId !== undefined && (typeof target.projectId !== "string" || !UUID.test(target.projectId)))
+      || (target.packageId !== undefined && (typeof target.packageId !== "string" || !/^[a-z0-9][a-z0-9-]{0,62}$/.test(target.packageId)))
+      || (target.operationId !== undefined && (typeof target.operationId !== "string" || !UUID.test(target.operationId)))
       || !strictKeys(actor, ["userId", "email"]) || typeof actor.userId !== "string" || !UUID.test(actor.userId)
       || typeof actor.email !== "string" || actor.email.length < 3 || actor.email.length > 320
       || (frame.expected !== undefined && frame.expected !== null
@@ -330,13 +346,16 @@ export class ReverseCommandChannel implements PeonSocketChannel {
       && (target.sessionId === undefined || target.projectId !== undefined)) {
       return { error: `${frame.operation} requires only target.sessionId` };
     }
-    if (frame.operation === "daemon.configuration.patch" && (target.sessionId !== undefined || target.projectId !== undefined)) {
-      return { error: "daemon.configuration.patch targets only the authenticated Peon" };
-    }
     return { command: {
       commandId: frame.commandId,
       operation: frame.operation,
-      target: { peonId: target.peonId, ...(typeof target.sessionId === "string" ? { sessionId: target.sessionId } : {}) },
+      target: {
+        peonId: target.peonId,
+        ...(typeof target.sessionId === "string" ? { sessionId: target.sessionId } : {}),
+        ...(typeof target.projectId === "string" ? { projectId: target.projectId } : {}),
+        ...(typeof target.packageId === "string" ? { packageId: target.packageId } : {}),
+        ...(typeof target.operationId === "string" ? { operationId: target.operationId } : {}),
+      },
       actor: { userId: actor.userId, email: actor.email },
       payload: frame.payload as PeonSocketFrame,
       expected: frame.expected === undefined ? null : frame.expected as PeonSocketFrame,
@@ -405,14 +424,69 @@ export class ReverseCommandChannel implements PeonSocketChannel {
     } catch {
       execution = { status: "failed", code: "INTERNAL" };
     }
-    if (item.command.operation.startsWith("session.") && !validSessionCommandExecution(item.command, execution)) {
+    if (item.command.operation === "session.cancel" && !this.validSessionCancelExecution(item.command, execution)) {
+      execution = { status: "failed", code: "INTERNAL" };
+    } else if (item.command.operation.startsWith("session.") && item.command.operation !== "session.cancel"
+      && !validSessionCommandExecution(item.command, execution)) {
       execution = { status: "failed", code: "INTERNAL" };
     }
     const result = commandResult(item.command, execution);
-    if (!this.ledger.markTerminal(item.command.commandId, item.authority, item.generation, result)) return;
-    const record = this.ledger.get(item.command.commandId);
+    if (!this.ledger.markTerminal(item.command.commandId, item.authority, item.generation, result)) {
+      this.scheduleTerminalRetry(item.command.commandId, item.authority, item.generation, result);
+      return;
+    }
+    this.publishTerminal(item.command.commandId, item.authority);
+  }
+
+  private publishTerminal(commandId: string, authority: string): void {
+    const record = this.ledger.get(commandId);
     const sender = this.sender;
-    if (record && sender && this.senderAuthority(sender) === item.authority) this.publishStored(record, sender);
+    if (record && sender && this.senderAuthority(sender) === authority) this.publishStored(record, sender);
+  }
+
+  private scheduleTerminalRetry(commandId: string, authority: string, generation: number, result: PeonSocketFrame): void {
+    if (this.terminalRetries.has(commandId)) return;
+    const schedule = (attempt: number): void => {
+      const delay = Math.min(
+        this.publicationRetryMaxMs,
+        this.publicationRetryBaseMs * (2 ** Math.min(attempt, 10)),
+      );
+      const timer = setTimeout(() => {
+        const record = this.ledger.get(commandId);
+        if (!record || record.state !== "running" || record.authority !== authority
+          || record.admittedGeneration !== generation) {
+          this.terminalRetries.delete(commandId);
+          return;
+        }
+        if (this.ledger.markTerminal(commandId, authority, generation, result)) {
+          this.terminalRetries.delete(commandId);
+          this.publishTerminal(commandId, authority);
+          return;
+        }
+        schedule(attempt + 1);
+      }, delay);
+      timer.unref?.();
+      this.terminalRetries.set(commandId, { authority, generation, result, attempt, timer });
+    };
+    schedule(0);
+  }
+
+  private validSessionCancelExecution(command: ValidCommand, execution: ReverseCommandExecution): boolean {
+    if (execution.status === "applied" || execution.status === "noop") {
+      const result = execution.result;
+      return execution.code === "OK" && !!result
+        && strictKeys(result, ["sessionId", "sessionStatus"])
+        && result.sessionId === command.target.sessionId
+        && (result.sessionStatus === "completed" || result.sessionStatus === "cancelled");
+    }
+    if (execution.status === "rejected") {
+      return execution.result === undefined
+        && ["BAD_COMMAND", "COMMAND_EXPIRED", "COMMAND_LEDGER_FULL", "SESSION_NOT_RUNNING", "UNKNOWN_SESSION"].includes(execution.code);
+    }
+    if (execution.status === "conflict") return execution.code === "COMMAND_ID_REUSED" && execution.result === undefined;
+    return execution.status === "failed"
+      && (execution.code === "INTERNAL" || execution.code === "PERSIST_FAILED")
+      && execution.result === undefined;
   }
 
   private publishStored(record: ReverseCommandRecord, sender: PeonSocketSender): void {

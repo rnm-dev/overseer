@@ -53,7 +53,12 @@ lifecycle effect. Delivery ciphertext is not read or decrypted until that
 transaction commits.
 
 Claim/rotation access synchronously expires stale pending material before it can
-be used. A minute worker, separate from unauthenticated request admission,
+be used. Request-nonce admission also removes an expired matching nonce inside
+the lifecycle transaction, so the exact 24-hour replay boundary never depends
+on the cleanup worker. Rotation-start rate admission occurs only for a new
+rotation in that same transaction; fresh-proof replay of an existing
+`rotationId` neither consumes another daily slot nor loses its stable result.
+A minute worker, separate from unauthenticated request admission,
 expires at most 500 abandoned claims and rotations per pass, revokes their
 pending credentials, enforces at most 500 socket-grace deadlines and prunes at
 most 500 rows from each replay/rate/terminal category.
@@ -75,6 +80,9 @@ Cookie mutations retain the existing trusted-origin CSRF rule. Code resolution
 records a short-lived claim/user grant. Approval locks and rechecks the actor's
 owner membership inside the same transaction that binds the workspace and mints
 the credential, so a role removal cannot race an earlier route observation.
+Credential and Peon-wide revocation likewise re-resolve and lock the target,
+then recheck the owner membership row in the mutation/audit transaction; a
+route-level observation cannot authorize a later mutation after demotion.
 Browser-safe claim details omit the public key, claim nonce/token material,
 request proof, network source and every credential field.
 

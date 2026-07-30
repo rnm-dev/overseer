@@ -13,14 +13,14 @@ test("reverse command v1 fixtures stay aligned with the normative schema", () =>
   assert.equal(schema.$id, "https://peon.local/protocol/reverse-command-v1/schema.json");
   assert.equal(fixtures.contractVersion, 1);
   assert.equal(fixtures.capability, "reverse-command-v1");
-  assert.deepEqual(fixtures.enabledOperations, ["session.cancel"]);
+  assert.ok(fixtures.enabledOperations.includes("session.cancel"));
   assert.equal(fixtures.maxCommandFrameBytes, 60 * 1024);
 
   const { command, accepted, durableResult, statusRequest, terminalStatus } = fixtures.frames;
   assert.equal(command.capability, fixtures.capability);
   assert.equal(command.operation, "session.cancel");
   assert.deepEqual(command.payload, {});
-  assert.deepEqual(schema.$defs.target.required, ["peonId", "sessionId"]);
+  assert.deepEqual(schema.$defs.target.required, ["peonId"]);
   assert.match(command.commandId, UUID);
   assert.match(command.target.peonId, UUID);
   assert.match(command.target.sessionId, UUID);
@@ -44,6 +44,11 @@ test("reverse command v1 keeps remote daemon pause and resume disabled", () => {
   assert.ok(!schema.$defs.command.properties.operation.enum.includes("daemon.resume"));
 });
 
+test("reverse command v1 publishes update operations", () => {
+  assert.ok(schema.$defs.command.properties.operation.enum.includes("update.check"));
+  assert.ok(schema.$defs.command.properties.operation.enum.includes("update.apply"));
+});
+
 test("reverse command v1 publishes stable generic HTTP mappings", () => {
   assert.deepEqual(fixtures.httpMappings, {
     PEON_OFFLINE: 503,
@@ -52,6 +57,14 @@ test("reverse command v1 publishes stable generic HTTP mappings", () => {
     COMMAND_PENDING: 202,
     COMMAND_TIMEOUT: 504
   });
+});
+
+test("runtime status and models remain projection-only", () => {
+  const operations = schema.$defs.command.properties.operation.enum as string[];
+  assert.equal(operations.includes("runtime.status"), false);
+  assert.equal(operations.includes("runtime.models"), false);
+  assert.equal(operations.includes("runtime.stats"), true);
+  assert.equal(operations.includes("runtime.analytics"), true);
 });
 
 test("Peon and Overseer reverse-command-v1 vendors are byte-identical", () => {

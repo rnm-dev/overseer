@@ -244,11 +244,7 @@ export class PeonClaimClient {
     const state = this.stateStore.get();
     const attempt = state.attempt;
     if (!attempt || attempt.phase === "terminal") return this.getStatus();
-    if (attempt.phase === "parked") {
-      if (state.pendingCredential) return this.getStatus();
-      this.finishAttempt("cancelled", "CLAIM_CANCELLED");
-      return this.getStatus();
-    }
+    if (attempt.phase === "parked" && state.pendingCredential) return this.getStatus();
     if (state.pendingCredential && attempt.cancelRequested) {
       await this.ackClaim(state);
       return this.getStatus();
@@ -297,6 +293,17 @@ export class PeonClaimClient {
           error instanceof ClaimHttpError ? error.body?.code ?? `HTTP_${error.status}` : "TRANSPORT",
         );
         if (error instanceof ClaimHttpError && error.status === 401) return this.getStatus();
+      } else if (
+        error instanceof ClaimHttpError
+        && error.status === 401
+        && error.body?.code === "UNAUTHENTICATED"
+      ) {
+        // A cancel retry after the server committed cleanup cannot
+        // authenticate again. With no persisted candidate there is no valid
+        // enrollment to protect, so this generic post-cleanup response
+        // deterministically confirms local cancellation.
+        this.finishAttempt("cancelled", "CLAIM_CANCELLED");
+        return this.getStatus();
       }
       throw error;
     }

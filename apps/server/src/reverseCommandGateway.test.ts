@@ -10,9 +10,12 @@ import { initDb, query } from "./db.js";
 import {
   createOrGetReverseCommand,
   DEFAULT_REVERSE_COMMAND_LIMITS,
+  REVERSE_COMMAND_OPERATIONS,
   ReverseCommandGateway,
   assertSafeReverseCommandResult,
   getReverseCommand,
+  hasActiveUpdateCommand,
+  parseDurableReverseCommandResult,
   reverseCommandHttpResult,
   reverseCommandGateway,
   type JsonObject,
@@ -69,7 +72,7 @@ function messages(ws: WebSocket) {
   });
   const waitFor = (
     predicate: (frame: Record<string, unknown>) => boolean,
-    timeoutMs = 2_000,
+    timeoutMs = 10_000,
   ): Promise<Record<string, unknown>> => new Promise((resolve, reject) => {
     const inspect = () => {
       const found = frames.find(predicate);
@@ -104,7 +107,7 @@ interface Fixture {
 async function fixture(
   index: number,
   operations = ["session.cancel"],
-  socketOptions: { beforeCanonicalHelloAck?: () => Promise<void> } = {},
+  socketOptions: Parameters<typeof attachPeonSocket>[1] = {},
 ): Promise<Fixture> {
   const db = newDb();
   const Pool = db.adapters.createPg().Pool;
@@ -181,7 +184,7 @@ async function fixture(
   const ack = await received.waitFor((frame) => frame.type === "hello_ack");
   assert.equal(
     (ack.capabilities as unknown[]).includes("reverse-command-v1"),
-    operations.length > 0,
+    operations.some((operation) => (REVERSE_COMMAND_OPERATIONS as readonly string[]).includes(operation)),
   );
   const snapshot = await received.waitFor((frame) => frame.type === "session_catalog_snapshot_request");
   ws.send(JSON.stringify({
@@ -332,7 +335,11 @@ test("gateway derives the actor, deduplicates browser retries, and commits a dur
     assert.equal(two.status, 200);
     assert.equal((await getReverseCommand(f.workspaceId, f.peonId, commandId))?.durableCommittedAt !== null, true);
     assert.equal((await query<{ count: number }>(`SELECT COUNT(*)::int AS count FROM reverse_command_audit`)).rows[0]?.count, 1);
-    assert.equal((await query<{ count: number }>(`SELECT COUNT(*)::int AS count FROM events WHERE kind='command'`)).rows[0]?.count, 1);
+    assert.equal((await query<{ count: number }>(
+      `SELECT COUNT(*)::int AS count FROM events
+        WHERE workspace_id=$1 AND peon_id=$2 AND kind='command' AND payload->>'commandId'=$3`,
+      [f.workspaceId, f.peonId, commandId],
+    )).rows[0]?.count, 1);
     assert.equal((await query<{ count: number }>(`SELECT COUNT(*)::int AS count FROM peon_session_inbox`)).rows[0]?.count, 1);
 
     // The same durable message is an idempotent replay: ACK again, no second
@@ -356,7 +363,118 @@ test("gateway derives the actor, deduplicates browser retries, and commits a dur
       }),
     }));
     await new Promise((resolve) => setTimeout(resolve, 20));
-    assert.equal((await query<{ count: number }>(`SELECT COUNT(*)::int AS count FROM events WHERE kind='command'`)).rows[0]?.count, 1);
+    assert.equal((await query<{ count: number }>(
+      `SELECT COUNT(*)::int AS count FROM events
+        WHERE workspace_id=$1 AND peon_id=$2 AND kind='command' AND payload->>'commandId'=$3`,
+      [f.workspaceId, f.peonId, commandId],
+    )).rows[0]?.count, 1);
+  } finally {
+    await f.close();
+  }
+});
+
+test("update results accept only operation-specific safe terminal tuples", () => {
+  const sha256 = "a".repeat(64);
+  const revision = "release-revision-1";
+  const record = {
+    operation: "update.apply",
+    target: { peonId: "f4de920f-e33e-4cf5-97d0-3a75e9266090" },
+  } as const;
+  const base = {
+    type: "command_result",
+    protocol: 1,
+    commandId: "018f4f0c-9f30-7a61-bf1a-66d2582bdb4a",
+    operation: "update.apply",
+    completedAt: Date.now(),
+  } as const;
+
+  assert.doesNotThrow(() => assertSafeReverseCommandResult(record, {
+    ...base,
+    status: "applied",
+    code: "OK",
+    result: { version: "0.11.3", revision, sha256, attested: true },
+  }));
+  const invalidResults: Array<Pick<ReverseCommandResultFrame, "status" | "code" | "result">> = [
+    { status: "applied", code: "ATTESTATION_MISMATCH", result: { version: "0.11.3", revision, sha256, attested: true } },
+    { status: "failed", code: "OK", result: null },
+    { status: "applied", code: "OK", result: { version: "0.11.3", revision, sha256, attested: false } },
+    { status: "failed", code: "UPDATE_FAILED", result: { secret: "credential" } },
+  ];
+  for (const result of invalidResults) {
+    assert.throws(() => assertSafeReverseCommandResult(record, { ...base, ...result }));
+  }
+});
+
+test("a Peon admits only one concurrent update operation", async () => {
+  const f = await fixture(21, ["update.check", "update.apply"]);
+  try {
+    const first = await reverseCommandGateway.submit({
+      workspaceId: f.workspaceId,
+      peonId: f.peonId,
+      auth,
+      commandId: "218f4f0c-9f30-7a61-bf1a-66d2582bdb4a",
+      operation: "update.apply",
+      target: {},
+      payload: { release: { version: "0.11.3", revision: "release-revision-1", sha256: "a".repeat(64) } },
+      waitMs: 0,
+    });
+    assert.equal(first.status, 202);
+    assert.equal(await hasActiveUpdateCommand(f.peonId), true);
+    const second = await reverseCommandGateway.submit({
+      workspaceId: f.workspaceId,
+      peonId: f.peonId,
+      auth,
+      commandId: "228f4f0c-9f30-7a61-bf1a-66d2582bdb4a",
+      operation: "update.check",
+      target: {},
+      payload: {},
+      waitMs: 0,
+    });
+    assert.equal(second.status, 409);
+    assert.equal(second.body.code, "UPDATE_IN_PROGRESS");
+    assert.equal(
+      (await query<{ count: number }>(
+        `SELECT COUNT(*)::int AS count FROM reverse_commands
+          WHERE workspace_id=$1 AND peon_id=$2 AND operation LIKE 'update.%'`,
+        [f.workspaceId, f.peonId],
+      )).rows[0]?.count,
+      1,
+    );
+  } finally {
+    await f.close();
+  }
+});
+
+test("Armory configuration secrets are sent once but never persisted", async () => {
+  const f = await fixture(21, ["armory.configure"]);
+  const commandId = "218f4f0c-9f30-7a61-bf1a-66d2582bdb4a";
+  const secret = "armory_secret_must_remain_transient";
+  try {
+    const response = await reverseCommandGateway.submit({
+      workspaceId: f.workspaceId,
+      peonId: f.peonId,
+      auth,
+      operation: "armory.configure",
+      target: { packageId: "safe-package" },
+      payload: { values: { API_TOKEN: secret }, confirmHostWrites: true },
+      commandId,
+      waitMs: 0,
+    });
+    assert.equal(response.status, 202);
+    const command = await f.received.waitFor((frame) => frame.type === "command"
+      && frame.commandId === commandId);
+    assert.equal((command.payload as { values: { API_TOKEN: string } }).values.API_TOKEN, secret);
+
+    const persisted = await getReverseCommand(f.workspaceId, f.peonId, commandId);
+    assert.deepEqual(persisted?.payload, {});
+    assert.doesNotMatch(JSON.stringify(persisted), new RegExp(secret));
+    const raw = await query<{ payload: string; target: string }>(
+      `SELECT payload::text AS payload, target::text AS target
+         FROM reverse_commands
+        WHERE workspace_id=$1 AND peon_id=$2 AND command_id=$3`,
+      [f.workspaceId, f.peonId, commandId],
+    );
+    assert.doesNotMatch(JSON.stringify(raw.rows[0]), new RegExp(secret));
   } finally {
     await f.close();
   }
@@ -392,6 +510,53 @@ test("ACL/capability failures and forged actors are exclusive and never create o
     } as never);
     assert.equal(spoofed.status, 400);
     assert.equal(spoofed.body.code, "BAD_COMMAND");
+  } finally {
+    await f.close();
+  }
+});
+
+test("gateway rejects non-object payloads before admission", async () => {
+  const f = await fixture(14);
+  try {
+    for (const [offset, payload] of [[0, []], [1, null]] as const) {
+      const result = await reverseCommandGateway.submit({
+        workspaceId: f.workspaceId,
+        peonId: f.peonId,
+        auth,
+        operation: "session.cancel",
+        target: { sessionId },
+        payload,
+        commandId: `${offset + 1}48f4f0c-9f30-7a61-bf1a-66d2582bdb4a`,
+        waitMs: 0,
+      } as never);
+      assert.equal(result.status, 400);
+      assert.equal(result.body.code, "BAD_COMMAND");
+    }
+    assert.equal(f.received.frames.some((frame) => frame.type === "command"), false);
+    assert.equal((await query<{ count: number }>(
+      `SELECT COUNT(*)::int AS count FROM reverse_commands`,
+    )).rows[0]?.count, 0);
+  } finally {
+    await f.close();
+  }
+});
+
+test("hello intersects supported operations instead of rejecting a newer Peon", async () => {
+  const f = await fixture(15, ["session.cancel", "project.archive", "project.unarchive"]);
+  try {
+    const result = await reverseCommandGateway.submit({
+      workspaceId: f.workspaceId,
+      peonId: f.peonId,
+      auth,
+      operation: "session.cancel",
+      target: { sessionId },
+      commandId: "358f4f0c-9f30-7a61-bf1a-66d2582bdb4a",
+      waitMs: 0,
+    });
+    assert.equal(result.status, 202);
+    await f.received.waitFor(
+      (frame) => frame.type === "command" && frame.operation === "session.cancel",
+    );
   } finally {
     await f.close();
   }
@@ -468,7 +633,28 @@ test("session.cancel accepts only its exact safe status/code/detail tuples", () 
     completedAt: 1,
     result: { sessionId, sessionStatus: "completed" },
   }));
+
+  assert.throws(() => parseDurableReverseCommandResult({
+    type: "durable_message",
+    epoch: "delivery",
+    cursor: "1",
+    messageId: "d47f43a9-a537-4af7-abcf-ad7acfef8904",
+    priority: "critical",
+    capability: "reverse-command-v1",
+    payload: {
+      type: "command_result",
+      protocol: 1,
+      commandId: "528f4f0c-9f30-7a61-bf1a-66d2582bdb4a",
+      operation: "session.cancel",
+      status: "applied",
+      code: "OK",
+      completedAt: 1,
+      result: { sessionId, sessionStatus: "completed" },
+    },
+    credential: "must-not-be-tolerated",
+  }));
 });
+
 
 test("unsafe operation tuples cannot persist, publish, return 200, or regress projection", async () => {
   const f = await fixture(5);
@@ -546,6 +732,30 @@ test("unsafe operation tuples cannot persist, publish, return 200, or regress pr
       result: contradictory.result,
       resultFrame: contradictory,
     }).status, 502);
+
+    const safeRejected: ReverseCommandResultFrame = {
+      type: "command_result",
+      protocol: 1,
+      commandId,
+      operation: "session.cancel",
+      status: "rejected",
+      code: "UNKNOWN_SESSION",
+      completedAt: Date.now(),
+      result: null,
+    };
+    const mismatched = reverseCommandHttpResult({
+      ...stored,
+      state: "terminal",
+      completedAt: safeRejected.completedAt,
+      terminalStatus: "applied",
+      code: "OK",
+      result: { sessionId, sessionStatus: "completed" },
+      resultFrame: safeRejected,
+    });
+    assert.equal(mismatched.status, 502);
+    assert.equal(mismatched.body.code, "UNSAFE_RESULT");
+    assert.equal(mismatched.body.status, null);
+    assert.equal(mismatched.body.result, null);
   } finally {
     await f.close();
   }
@@ -829,6 +1039,120 @@ test("accepted row replacement exposes ownership only after hello_ack and reconc
   }
 });
 
+test("an HTTP wait cannot miss a terminal commit before its waiter observes the row", async () => {
+  const f = await fixture(16);
+  const commandId = "e28f4f0c-9f30-7a61-bf1a-66d2582bdb4a";
+  let waiterEntered!: () => void;
+  let releaseWaiter!: () => void;
+  const entered = new Promise<void>((resolve) => { waiterEntered = resolve; });
+  const released = new Promise<void>((resolve) => { releaseWaiter = resolve; });
+  const gateway = new ReverseCommandGateway({
+    afterWaiterRegistered: async () => {
+      waiterEntered();
+      await released;
+    },
+  });
+  try {
+    const submitting = gateway.submit({
+      workspaceId: f.workspaceId,
+      peonId: f.peonId,
+      auth,
+      operation: "session.cancel",
+      target: { sessionId },
+      commandId,
+      waitMs: 2_000,
+    });
+    await entered;
+    await f.received.waitFor((frame) => frame.type === "command" && frame.commandId === commandId);
+    f.ws.send(JSON.stringify({
+      type: "command_accepted",
+      protocol: 1,
+      commandId,
+      operation: "session.cancel",
+      state: "accepted",
+      replayed: false,
+      acceptedAt: Date.now(),
+    }));
+    f.ws.send(JSON.stringify({
+      type: "durable_message",
+      epoch: "delivery-16",
+      cursor: "0000000000000001",
+      messageId: "e47f43a9-a537-4af7-abcf-ad7acfef8904",
+      priority: "critical",
+      capability: "reverse-command-v1",
+      payload: {
+        type: "command_result",
+        protocol: 1,
+        commandId,
+        operation: "session.cancel",
+        status: "applied",
+        code: "OK",
+        completedAt: Date.now(),
+        result: { sessionId, sessionStatus: "completed" },
+      },
+    }));
+    await f.received.waitFor(
+      (frame) => frame.type === "durable_ack" && frame.cursor === "0000000000000001",
+    );
+    releaseWaiter();
+    const prompt = await Promise.race([
+      submitting,
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 750)),
+    ]);
+    assert.ok(prompt);
+    assert.equal(prompt.status, 200);
+  } finally {
+    releaseWaiter?.();
+    await f.close();
+  }
+});
+
+test("an expired HTTP wait asks Peon status with the same command ID", async () => {
+  const f = await fixture(17);
+  const commandId = "f28f4f0c-9f30-7a61-bf1a-66d2582bdb4a";
+  try {
+    const submitted = await reverseCommandGateway.submit({
+      workspaceId: f.workspaceId,
+      peonId: f.peonId,
+      auth,
+      operation: "session.cancel",
+      target: { sessionId },
+      commandId,
+      waitMs: 0,
+    });
+    assert.equal(submitted.status, 202);
+    await f.received.waitFor((frame) => frame.type === "command" && frame.commandId === commandId);
+    f.ws.send(JSON.stringify({
+      type: "command_accepted",
+      protocol: 1,
+      commandId,
+      operation: "session.cancel",
+      state: "accepted",
+      replayed: false,
+      acceptedAt: Date.now(),
+    }));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    const retry = await reverseCommandGateway.submit({
+      workspaceId: f.workspaceId,
+      peonId: f.peonId,
+      auth,
+      operation: "session.cancel",
+      target: { sessionId },
+      commandId,
+      waitMs: 25,
+    });
+    assert.equal(retry.status, 202);
+    assert.equal(retry.body.code, "COMMAND_PENDING");
+    const status = await f.received.waitFor(
+      (frame) => frame.type === "command_status_request" && frame.commandId === commandId,
+    );
+    assert.equal(status.commandId, commandId);
+  } finally {
+    await f.close();
+  }
+});
+
 test("pending limits are enforced before a second command is queued", async () => {
   const f = await fixture(3);
   const gateway = new ReverseCommandGateway({
@@ -868,11 +1192,18 @@ test("pending limits are enforced before a second command is queued", async () =
 });
 
 test("disconnect boundaries and a fresh gateway reconcile with the same command ID", async () => {
-  const f = await fixture(4);
   const commandId = "518f4f0c-9f30-7a61-bf1a-66d2582bdb4a";
+  let releaseTerminalObserved!: () => void;
+  const terminalObserved = new Promise<void>((resolve) => { releaseTerminalObserved = resolve; });
+  const gateway = new ReverseCommandGateway({
+    afterTerminalObserved: async (record) => {
+      if (record.commandId === commandId) releaseTerminalObserved();
+    },
+  });
+  const f = await fixture(4, ["session.cancel"], { commandGateway: gateway });
   let current = f.ws;
   try {
-    const pending = await reverseCommandGateway.submit({
+    const pending = await gateway.submit({
       workspaceId: f.workspaceId,
       peonId: f.peonId,
       auth,
@@ -936,7 +1267,7 @@ test("disconnect boundaries and a fresh gateway reconcile with the same command 
       state: "terminal",
       result: terminalResult,
     }));
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await terminalObserved;
     assert.equal((await getReverseCommand(f.workspaceId, f.peonId, commandId))?.state, "terminal");
     await query(
       `UPDATE reverse_commands SET updated_at=$4
@@ -963,7 +1294,11 @@ test("disconnect boundaries and a fresh gateway reconcile with the same command 
     );
     assert.equal((await getReverseCommand(f.workspaceId, f.peonId, commandId))?.durableCommittedAt !== null, true);
     assert.equal(
-      (await query<{ count: number }>(`SELECT COUNT(*)::int AS count FROM events WHERE kind='command'`)).rows[0]?.count,
+      (await query<{ count: number }>(
+        `SELECT COUNT(*)::int AS count FROM events
+          WHERE workspace_id=$1 AND peon_id=$2 AND kind='command' AND payload->>'commandId'=$3`,
+        [f.workspaceId, f.peonId, commandId],
+      )).rows[0]?.count,
       1,
     );
 

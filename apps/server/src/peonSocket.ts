@@ -7,6 +7,7 @@ import {
   claimPeonConnection,
   peonConnectionGeneration,
   releasePeonConnection,
+  setPeonDaemonConfigurationIdentity,
 } from "./peonConnections.js";
 import {
   FOLDER_LISTING_CAPABILITY,
@@ -34,8 +35,15 @@ import {
   REVERSE_COMMAND_CAPABILITY,
   ReverseCommandProtocolError,
   reverseCommandGateway,
+  type ReverseCommandGateway,
   type ReverseCommandOperation,
 } from "./modules/reverseCommands/index.js";
+import {
+  configurationHelloCheckpoint,
+  DAEMON_CONFIGURATION_CAPABILITY,
+  parseDaemonConfigurationHello,
+} from "./modules/daemonConfiguration.js";
+import { RUNTIME_STATE_CAPABILITY } from "./modules/runtimeProjection.js";
 
 const ENDPOINT = "/api/v1/peons/ws";
 const PROTOCOL = 1;
@@ -60,6 +68,7 @@ interface PeonClient {
 interface PeonSocketOptions {
   folderOperations?: typeof folderListingOperations;
   beforeCanonicalHelloAck?: () => Promise<void>;
+  commandGateway?: ReverseCommandGateway;
 }
 
 function publishPresence(record: PeonRecord): void {
@@ -70,6 +79,7 @@ function publishPresence(record: PeonRecord): void {
 // upgrade so invalid/revoked credentials never become accepted connections.
 export function attachPeonSocket(server: Server, options: PeonSocketOptions = {}): WebSocketServer {
   const folderOperations = options.folderOperations ?? folderListingOperations;
+  const commandGateway = options.commandGateway ?? reverseCommandGateway;
   const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_PAYLOAD_BYTES });
   const authenticated = new WeakMap<IncomingMessage, { record: PeonRecord; credentialGeneration: number }>();
   const clients = new Set<PeonClient>();
@@ -160,6 +170,8 @@ export function attachPeonSocket(server: Server, options: PeonSocketOptions = {}
           const advertisesFolderListing = advertised.includes(FOLDER_LISTING_CAPABILITY);
           const advertisesReverseCommands = advertised.includes(REVERSE_COMMAND_CAPABILITY);
           const advertisesTranscripts = advertised.includes(SESSION_TRANSCRIPT_CAPABILITY);
+          const advertisesRuntime = advertised.includes(RUNTIME_STATE_CAPABILITY);
+          const advertisesConfiguration = advertised.includes(DAEMON_CONFIGURATION_CAPABILITY);
           const advertisedChannels = frame.channels && typeof frame.channels === "object" && !Array.isArray(frame.channels)
             ? frame.channels as Record<string, unknown>
             : {};
@@ -193,10 +205,24 @@ export function attachPeonSocket(server: Server, options: PeonSocketOptions = {}
           const acceptsReverseCommands = supportsCanonical
             && advertisesReverseCommands
             && commandOperations.length > 0;
+          let configurationIdentity: ReturnType<typeof parseDaemonConfigurationHello> | null = null;
+          if (advertisesConfiguration) {
+            try {
+              configurationIdentity = parseDaemonConfigurationHello(advertisedChannels[DAEMON_CONFIGURATION_CAPABILITY]);
+            } catch (error) {
+              throw new SessionSyncProtocolError(error instanceof Error ? error.message : "invalid daemon configuration hello");
+            }
+          }
+          const acceptsConfiguration = supportsCanonical
+            && acceptsReverseCommands
+            && advertisesConfiguration
+            && commandOperations.includes("daemon.configuration.patch");
           const additionalCapabilities = [
             ...ephemeralCapabilities,
             ...(supportsCanonical && advertisesTranscripts ? [SESSION_TRANSCRIPT_CAPABILITY] : []),
+            ...(supportsCanonical && advertisesRuntime ? [RUNTIME_STATE_CAPABILITY] : []),
             ...(acceptsReverseCommands ? [REVERSE_COMMAND_CAPABILITY] : []),
+            ...(acceptsConfiguration ? [DAEMON_CONFIGURATION_CAPABILITY] : []),
           ];
           const negotiatedCapabilities = supportsCanonical
             ? [
@@ -224,6 +250,9 @@ export function attachPeonSocket(server: Server, options: PeonSocketOptions = {}
             ws.close(4001, "rejected stale credential generation");
             return;
           }
+          if (acceptsConfiguration && configurationIdentity) {
+            setPeonDaemonConfigurationIdentity(ws, configurationIdentity);
+          }
           const previous = claimed.previous;
           if (previous && previous.readyState !== WebSocket.CLOSED) {
             folderOperations.connectionClosed(record.peonId, previous, "CONNECTION_LOST");
@@ -242,6 +271,9 @@ export function attachPeonSocket(server: Server, options: PeonSocketOptions = {}
             if (frame.peonId !== record.peonId) throw new SessionSyncProtocolError("missing or invalid Peon identity");
             const hello = parseSessionCatalogHello(frame);
             if (advertisesProjects && !hello.projectCatalog) throw new SessionSyncProtocolError("missing project catalog channel state");
+            const configurationCheckpoint = acceptsConfiguration
+              ? await configurationHelloCheckpoint(record.peonId)
+              : null;
             client.sessionSync = new PeonCatalogSync(
               record,
               ws,
@@ -249,7 +281,12 @@ export function attachPeonSocket(server: Server, options: PeonSocketOptions = {}
               hello.delivery,
               advertisesProjects ? hello.projectCatalog : null,
               additionalCapabilities,
-              folderAcknowledgement,
+              {
+                ...folderAcknowledgement,
+                ...(configurationCheckpoint ? {
+                  [DAEMON_CONFIGURATION_CAPABILITY]: configurationCheckpoint,
+                } : {}),
+              },
               peonConnectionGeneration(ws) ?? undefined,
             );
             await client.sessionSync.start(options.beforeCanonicalHelloAck);
@@ -262,7 +299,7 @@ export function attachPeonSocket(server: Server, options: PeonSocketOptions = {}
                 REVERSE_COMMAND_CAPABILITY,
                 commandOperations,
               )) {
-              await reverseCommandGateway.connectionReady(record.workspaceId, record.peonId, ws);
+              await commandGateway.connectionReady(record.workspaceId, record.peonId, ws);
             }
           } else {
             // Capability dependency is all-or-nothing. Legacy Peons retain HTTP
@@ -276,7 +313,7 @@ export function attachPeonSocket(server: Server, options: PeonSocketOptions = {}
           }
           return;
         }
-        if (await reverseCommandGateway.handleEphemeralFrame(record.workspaceId, record.peonId, ws, frame)) return;
+        if (await commandGateway.handleEphemeralFrame(record.workspaceId, record.peonId, ws, frame)) return;
         if (folderOperations.handleFrame(record.peonId, ws, frame, frameBytes)) return;
         if (client.sessionSync && await client.sessionSync.handle(frame, frameBytes)) return;
         ws.close(1008, "unexpected Peon frame");
@@ -299,7 +336,7 @@ export function attachPeonSocket(server: Server, options: PeonSocketOptions = {}
       folderOperations.connectionClosed(record.peonId, ws);
       const commandGeneration = peonConnectionGeneration(ws);
       if (commandGeneration) {
-        void reverseCommandGateway.connectionClosed(
+        void commandGateway.connectionClosed(
           record.workspaceId,
           record.peonId,
           commandGeneration,

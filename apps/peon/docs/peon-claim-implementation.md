@@ -45,6 +45,14 @@ candidate; `CLAIM_NOT_FOUND` after ACK-result retention opens only the normal
 control socket with the candidate, and a matching authenticated `hello_ack`
 promotes it.
 
+A local cancel never abandons a known server claim merely because the client is
+parked after a protocol error: when claim authentication material exists it
+sends the signed cancel first. If a pending claim has no delivered candidate,
+a lost cancel response followed by the contract's generic post-cleanup
+`401 UNAUTHENTICATED` converges to local cancellation. The same response remains
+ambiguous when a candidate exists, so that path keeps the candidate and
+reconciles through fresh ACK as above.
+
 Rotation persists one next-generation candidate and acknowledges with that
 candidate. Promotion updates settings once, causing both control and transfer
 socket supervisors to replace their credential generation; their existing

@@ -892,7 +892,7 @@ remain inactive.
     "folder-listing-v1": { "entryMetadata": "entry-metadata-v1" },
     "reverse-command-v1": {
       "protocol": 1,
-      "operations": ["session.cancel", "project.archive", "project.unarchive"]
+      "operations": ["session.cancel", "project.archive", "project.unarchive", "update.check", "update.apply"]
     }
   },
   "delivery": {
@@ -1383,6 +1383,29 @@ Peon advertises this capability only on the control socket alongside
 reconciliation, retention, and `session.cancel` result contract are normative in
 [`docs/reverse-command-protocol-v1.md`](docs/reverse-command-protocol-v1.md).
 
+### Daemon configuration (`daemon-configuration-v1`)
+
+Peon advertises this control-socket capability only alongside
+`durable-delivery-v1`. Its hello channel state contains `epoch`, monotonic
+`revision`, `schemaVersion: 1`, and the lowercase SHA-256 `digest` of the
+canonical safe document. Overseer echoes its committed epoch,
+`acknowledgedRevision`, and digest. Anything other than an exact checkpoint
+causes Peon to durably publish a complete `daemon_configuration_state`.
+
+The safe document contains exactly `name`, `defaultAgent`, `fileTransferRoot`,
+`heartbeatIntervalMs`, `aiDefaultModel`, and `soul`. Credentials, enrollment
+identity, URLs, bind addresses, executable paths, and `paused` never cross this
+capability. Local settings changes and remote changes share the same persisted
+epoch/revision stream.
+
+Remote mutations use the generic `reverse-command-v1` operation
+`daemon.configuration.patch`, with a strict `{ patch }` payload and required
+`expected: { epoch, revision, digest }`. The generic dispatcher owns admission,
+deduplication, reconciliation, and durable terminal delivery; this capability
+does not create another command ledger. A stale base returns
+`REVISION_CONFLICT`, unless the normalized desired values already match, in
+which case it returns `noop`.
+
 The Peon dispatcher rejects command traffic before exact capability negotiation,
 strictly validates the 60 KiB command frame and authenticated Peon target, and
 fsyncs admission before sending `command_accepted`. A checksum-protected,
@@ -1681,11 +1704,36 @@ because each can reference a different full-output artifact.
 
 ```
 PATCH /api/v1/settings {
-  "overseerToken": "<shared secret>",         // inbound + outbound auth (empty => fleet profile off)
+  "fleetMode": "legacy-mesh",                 // explicit compatibility mode
   "fileTransferRoot": "/path/to/sandbox",         // empty => file transfer off
-  "overseerUrl": "http://overseer.ts.net:5000" // empty => this peon doesn't self-register
+  "overseerUrl": "https://overseer.example"   // outbound HTTPS/WSS origin
 }
 ```
 
 Leave `overseerToken` empty on a standalone peon and bearer-authenticated fleet
 requests stay off; leave `overseerUrl` empty and it never phones home.
+
+`fleetMode: "reverse-only"` is an opt-in topology policy. It forces the local
+daemon/dashboard listener to loopback, rejects the inbound bearer Fleet profile
+with `409 REVERSE_ONLY`, suppresses legacy `/register` and `/heartbeat`, and
+omits `publicUrl` from Fleet status. Local human/CLI HTTP remains available.
+Settings files without `fleetMode` migrate to `legacy-mesh`; widening the
+listener again requires explicitly selecting that compatibility mode first.
+The setting is not a capability-parity assertion: operator operations remain
+individually gated by the exact capabilities accepted for the current socket
+generation, and reverse-only must not become the default before the no-inbound
+conformance and rollout gates pass.
+
+## Reverse runtime state and queries (v1)
+
+`runtime-state-v1` requires `durable-delivery-v1`. Its durable payload is
+`{type:"runtime_state",protocol:1,epoch,revision,digest,generatedAt,state}`.
+It is a complete authoritative replacement and may coalesce only before a
+durable cursor is assigned. Status/capacity/version/provider/model fields are
+allowlisted; secrets, paths, environment and raw provider authentication data
+are forbidden.
+
+Quota, provider capabilities, stats and filtered analytics are the
+`runtime.quota`, `runtime.capabilities`, `runtime.stats` and
+`runtime.analytics` operations of `reverse-command-v1`. They use the shared
+command admission/result lifecycle and its 60 KiB frame bound.

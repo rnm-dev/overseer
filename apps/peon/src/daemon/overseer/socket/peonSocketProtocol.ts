@@ -39,6 +39,7 @@ export interface PeonSocketChannel {
   receive(frame: PeonSocketFrame, sender: PeonSocketSender): void;
   handlesBinary?(frame: Uint8Array): boolean;
   receiveBinary?(frame: Uint8Array, sender: PeonSocketSender): void;
+  durableAcknowledging?(cursor: string): boolean;
   durableAcknowledged?(cursor: string): void;
 }
 
@@ -94,5 +95,9 @@ export class PeonSocketMultiplexer {
 
   durableAcknowledged(cursor: string): void {
     for (const channel of this.channels) channel.durableAcknowledged?.(cursor);
+  }
+
+  durableAcknowledging(cursor: string): boolean {
+    return this.channels.every((channel) => channel.durableAcknowledging?.(cursor) !== false);
   }
 }

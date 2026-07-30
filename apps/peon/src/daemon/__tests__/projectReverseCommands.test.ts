@@ -164,3 +164,62 @@ test("project documentation internal failures are terminal failures, not user re
     rmSync(f.root, { recursive: true, force: true });
   }
 });
+
+test("project documentation index pages oversized snapshots with stable cursor identity", async () => {
+  const f = fixture();
+  try {
+    const project = f.service.createRevisioned({ label: "Alpha", dir: path.join(f.root, "alpha") });
+    const docs = path.join(f.root, "alpha", "docs");
+    for (let index = 0; index < 800; index += 1) {
+      writeFileSync(path.join(docs, `document-${String(index).padStart(4, "0")}.md`), `# Document ${index}\n`);
+    }
+    const handler = projectCommandHandlers(f.service)["project.documentation.index"]!;
+    const base: ValidCommand = {
+      commandId: "00000000-0000-4000-8000-000000000011",
+      operation: "project.documentation.index",
+      target: {
+        peonId: "00000000-0000-4000-8000-000000000012",
+        projectId: project.projectId,
+      },
+      actor: {
+        userId: "00000000-0000-4000-8000-000000000013",
+        email: "operator@example.com",
+      },
+      payload: { limit: 1024 },
+      expected: null,
+      requestedAt: 1,
+    };
+    assert.deepEqual(await handler.execute(base), await handler.execute(base));
+    const chunks: string[] = [];
+    let cursor: string | null = null;
+    let firstNextCursor: string | null = null;
+    do {
+      const page = await handler.execute({
+        ...base,
+        payload: { limit: 1024, ...(cursor ? { cursor } : {}) },
+      });
+      assert.equal(page.status, "applied");
+      const detail = page.result as { chunk: string; nextCursor: string | null; totalBytes: number };
+      assert.ok(detail.totalBytes > 48 * 1024);
+      chunks.push(detail.chunk);
+      firstNextCursor ??= detail.nextCursor;
+      cursor = detail.nextCursor;
+    } while (cursor);
+    const snapshot = JSON.parse(chunks.join("")) as { tree: unknown[] };
+    assert.equal(snapshot.tree.length, 801);
+
+    const tampered = `${firstNextCursor!.slice(0, -1)}${firstNextCursor!.endsWith("A") ? "B" : "A"}`;
+    assert.deepEqual(await handler.execute({ ...base, payload: { cursor: tampered, limit: 1024 } }), {
+      status: "rejected",
+      code: "INVALID_CURSOR",
+    });
+
+    writeFileSync(path.join(docs, "changed.md"), "# Changed\n");
+    assert.deepEqual(await handler.execute({ ...base, payload: { cursor: firstNextCursor!, limit: 1024 } }), {
+      status: "conflict",
+      code: "CURSOR_EXPIRED",
+    });
+  } finally {
+    rmSync(f.root, { recursive: true, force: true });
+  }
+});

@@ -131,6 +131,7 @@ export function createPeonRegistrar(options = {}) {
         lastError: null,
     };
     let timer = null;
+    let stopped = false;
     // Throttle identical connect errors to one log line — a overseer that's down
     // would otherwise spam the daemon log every heartbeat interval.
     let lastLoggedError = null;
@@ -179,6 +180,13 @@ export function createPeonRegistrar(options = {}) {
         ticking = true;
         try {
             const s = readSettings();
+            if (s.fleetMode === "reverse-only") {
+                state.enabled = false;
+                state.registered = false;
+                state.derecruited = false;
+                state.lastError = null;
+                return;
+            }
             const base = s.overseerUrl.trim();
             const token = s.overseerToken.trim();
             state.enabled = Boolean(base && token);
@@ -250,6 +258,8 @@ export function createPeonRegistrar(options = {}) {
         }
     }
     function schedule() {
+        if (stopped)
+            return;
         if (timer)
             clearTimeout(timer);
         const baseDelay = Math.max(1_000, readSettings().heartbeatIntervalMs);
@@ -265,6 +275,7 @@ export function createPeonRegistrar(options = {}) {
         // Fire one tick immediately (so a configured peon registers at startup rather
         // than after the first interval), then keep the heartbeat loop running.
         start() {
+            stopped = false;
             // A fresh /enroll (or a manual re-point) rewrites overseerUrl/overseerToken.
             // tick() itself notices the cred change and re-registers, but that would only
             // happen on the next heartbeat interval — fire one now so recruitment is
@@ -277,8 +288,15 @@ export function createPeonRegistrar(options = {}) {
             });
             void tick().then(schedule);
         },
+        stop() {
+            stopped = true;
+            if (timer)
+                clearTimeout(timer);
+            timer = null;
+        },
         getState() {
-            return { ...state, publicUrl: peonPublicUrl() };
+            const mode = readSettings().fleetMode;
+            return { ...state, mode, publicUrl: mode === "reverse-only" ? null : peonPublicUrl() };
         },
     };
 }

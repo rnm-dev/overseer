@@ -70,6 +70,14 @@ interface Subscription {
   provisionalRequestId?: string;
 }
 
+interface PendingSubscription {
+  requestId: string;
+  sessionId: string;
+  generation: number;
+  expiresAt: number;
+  cancelled: boolean;
+}
+
 interface PendingDeletion {
   sessionId: string;
   epoch: string;
@@ -102,6 +110,7 @@ export class TranscriptChannel implements PeonSocketChannel {
   private snapshots = new Map<string, Snapshot>();
   private pendingSnapshots = new Map<string, PendingSnapshot>();
   private subscriptions = new Map<string, Subscription>();
+  private pendingSubscriptions = new Map<string, PendingSubscription>();
   private pendingDeletions = new Map<string, PendingDeletion>();
   private unsubscribeUpdates: (() => void) | null = null;
   private expiryTimer: ReturnType<typeof setTimeout> | null = null;
@@ -155,10 +164,13 @@ export class TranscriptChannel implements PeonSocketChannel {
       const sessionIds = new Set([
         ...[...this.snapshots.values()].map((snapshot) => snapshot.sessionId),
         ...[...this.pendingSnapshots.values()].map((snapshot) => snapshot.sessionId),
+        ...this.pendingSubscriptions.keys(),
       ]);
       this.snapshots.clear();
       for (const pending of this.pendingSnapshots.values()) pending.cancelled = true;
       this.pendingSnapshots.clear();
+      for (const pending of this.pendingSubscriptions.values()) pending.cancelled = true;
+      this.pendingSubscriptions.clear();
       for (const sessionId of sessionIds) this.releaseIfUnused(sessionId);
       this.scheduleExpiry();
       return;
@@ -257,6 +269,7 @@ export class TranscriptChannel implements PeonSocketChannel {
           this.dropPendingSnapshot(reservation, reservation.expiresAt <= this.now());
           return;
         }
+        this.repository.assertCurrent(sessionId, state);
         const bytes = state.bytes;
         if (state.entries.length > MAX_TRANSCRIPT_SNAPSHOT_EVENTS || bytes > MAX_TRANSCRIPT_SNAPSHOT_BYTES
           || this.snapshotBytes() + bytes > MAX_ACTIVE_TRANSCRIPT_SNAPSHOT_BYTES) {
@@ -353,17 +366,37 @@ export class TranscriptChannel implements PeonSocketChannel {
     if (!requestId || !sessionId || !epoch || !Number.isSafeInteger(afterSeq) || (afterSeq as number) < 0) {
       return this.error(sender, requestId, sessionId, "BAD_REQUEST", "requestId, sessionId, epoch and non-negative afterSeq are required");
     }
-    if (!this.subscriptions.has(sessionId) && this.subscriptions.size >= MAX_TRANSCRIPT_SUBSCRIPTIONS) {
+    this.expire();
+    if (this.pendingSubscriptions.has(sessionId)) {
+      return this.error(sender, requestId, sessionId, "BAD_REQUEST", "transcript subscription request is still loading");
+    }
+    if (!this.subscriptions.has(sessionId) && this.subscriptionSlots() >= MAX_TRANSCRIPT_SUBSCRIPTIONS) {
       return this.error(sender, requestId, sessionId, "SUBSCRIPTION_LIMIT", "too many transcript subscriptions are active");
     }
+    const reservation: PendingSubscription = {
+      requestId,
+      sessionId,
+      generation,
+      expiresAt: this.now() + TRANSCRIPT_SNAPSHOT_TTL_MS,
+      cancelled: false,
+    };
+    this.pendingSubscriptions.set(sessionId, reservation);
+    this.scheduleExpiry();
     try {
       const state = await this.repository.state(sessionId);
-      if (!this.current(sender, generation)) return;
+      if (this.rejectExpiredPendingSubscription(reservation, sender)) return;
+      if (!this.pendingSubscriptionCurrent(reservation, sender)) {
+        this.dropPendingSubscription(reservation);
+        return;
+      }
+      this.repository.assertCurrent(sessionId, state);
       if (state.epoch !== epoch || (afterSeq as number) > state.revision) {
+        this.dropPendingSubscription(reservation);
         return this.error(sender, requestId, sessionId, "CURSOR_UNAVAILABLE", "transcript cursor requires a fresh snapshot");
       }
       const catchup = state.entries.slice(afterSeq as number);
       if (catchup.length > MAX_TRANSCRIPT_CATCHUP_EVENTS || frameBytes(catchup) > MAX_TRANSCRIPT_CATCHUP_BYTES) {
+        this.dropPendingSubscription(reservation);
         return this.error(sender, requestId, sessionId, "CURSOR_UNAVAILABLE", "transcript catch-up requires a fresh snapshot");
       }
       const subscription: Subscription = {
@@ -374,6 +407,7 @@ export class TranscriptChannel implements PeonSocketChannel {
         buffered: [],
         expiresAt: this.now() + TRANSCRIPT_SUBSCRIPTION_TTL_MS,
       };
+      this.pendingSubscriptions.delete(sessionId);
       this.subscriptions.set(sessionId, subscription);
       for (const event of catchup) {
         if (!this.sendLive(event, subscription)) return;
@@ -388,7 +422,12 @@ export class TranscriptChannel implements PeonSocketChannel {
       })) sender.disconnect("transcript subscription acknowledgement was backpressured");
       this.scheduleExpiry();
     } catch (error) {
-      if (!this.current(sender, generation)) return;
+      if (this.rejectExpiredPendingSubscription(reservation, sender)) return;
+      if (!this.pendingSubscriptionCurrent(reservation, sender)) {
+        this.dropPendingSubscription(reservation);
+        return;
+      }
+      this.dropPendingSubscription(reservation);
       if (error instanceof TranscriptPublicationError) {
         return this.error(sender, requestId, sessionId, error.code, error.message);
       }
@@ -400,6 +439,11 @@ export class TranscriptChannel implements PeonSocketChannel {
     const requestId = stringField(frame, "requestId", 200);
     const sessionId = stringField(frame, "sessionId");
     if (!requestId || !sessionId) return this.error(sender, requestId, sessionId, "BAD_REQUEST", "requestId and sessionId are required");
+    const pending = this.pendingSubscriptions.get(sessionId);
+    if (pending) {
+      pending.cancelled = true;
+      this.dropPendingSubscription(pending);
+    }
     this.subscriptions.delete(sessionId);
     this.releaseIfUnused(sessionId);
     if (!sender.send({ type: "transcript_unsubscribed", requestId, sessionId })) {
@@ -432,7 +476,7 @@ export class TranscriptChannel implements PeonSocketChannel {
       return;
     }
     if (update.type === "deleted") {
-      const subscription = this.subscriptions.get(update.sessionId);
+      const subscription = this.activeSubscription(update.sessionId);
       if (!subscription) return;
       const deletion = {
         sessionId: update.sessionId,
@@ -443,7 +487,7 @@ export class TranscriptChannel implements PeonSocketChannel {
       this.admitDeletion(deletion);
       return;
     }
-    const subscription = this.subscriptions.get(update.event.sessionId);
+    const subscription = this.activeSubscription(update.event.sessionId);
     if (!subscription) return;
     if (!subscription.ready) {
       if (subscription.buffered.length >= MAX_TRANSCRIPT_CATCHUP_EVENTS) {
@@ -458,6 +502,14 @@ export class TranscriptChannel implements PeonSocketChannel {
 
   private sendLive(event: PublishedTranscriptEvent, subscription: Subscription): boolean {
     if (!this.sender) return false;
+    if (subscription.expiresAt <= this.now() && !this.pendingDeletions.has(event.sessionId)) {
+      if (this.subscriptions.get(event.sessionId) === subscription) {
+        this.subscriptions.delete(event.sessionId);
+        this.releaseIfUnused(event.sessionId);
+        this.scheduleExpiry();
+      }
+      return false;
+    }
     if (subscription.epoch !== event.epoch || event.seq !== subscription.lastSentSeq + 1) {
       if (event.epoch === subscription.epoch && event.seq <= subscription.lastSentSeq) return true;
       this.requireResync(event.sessionId, "transcript event sequence gap");
@@ -500,6 +552,11 @@ export class TranscriptChannel implements PeonSocketChannel {
     this.trackOutstanding(result.cursor, deletion.sessionId);
     this.pendingDeletions.delete(deletion.sessionId);
     this.subscriptions.delete(deletion.sessionId);
+    const pendingSubscription = this.pendingSubscriptions.get(deletion.sessionId);
+    if (pendingSubscription) {
+      pendingSubscription.cancelled = true;
+      this.dropPendingSubscription(pendingSubscription);
+    }
     for (const [requestId, snapshot] of this.snapshots) {
       if (snapshot.sessionId === deletion.sessionId) this.snapshots.delete(requestId);
     }
@@ -572,6 +629,14 @@ export class TranscriptChannel implements PeonSocketChannel {
       && this.current(sender, reservation.generation);
   }
 
+  private pendingSubscriptionCurrent(reservation: PendingSubscription, sender: PeonSocketSender): boolean {
+    return !reservation.cancelled
+      && this.pendingSubscriptions.get(reservation.sessionId) === reservation
+      && reservation.generation === this.generation
+      && reservation.expiresAt > this.now()
+      && this.current(sender, reservation.generation);
+  }
+
   private rejectExpiredSnapshot(snapshot: Snapshot, sender: PeonSocketSender): boolean {
     if (snapshot.expiresAt > this.now()) return false;
     // Pending deletion intentionally retains bounded state until its terminal
@@ -598,6 +663,19 @@ export class TranscriptChannel implements PeonSocketChannel {
     return true;
   }
 
+  private rejectExpiredPendingSubscription(reservation: PendingSubscription, sender: PeonSocketSender): boolean {
+    if (reservation.expiresAt > this.now()) return false;
+    const notify = !reservation.cancelled
+      && this.pendingSubscriptions.get(reservation.sessionId) === reservation
+      && reservation.generation === this.generation
+      && this.current(sender, reservation.generation);
+    this.dropPendingSubscription(reservation);
+    if (notify) {
+      this.error(sender, reservation.requestId, reservation.sessionId, "CURSOR_UNAVAILABLE", "transcript subscription load expired");
+    }
+    return true;
+  }
+
   private dropPendingSnapshot(reservation: PendingSnapshot, removeProvisionalSubscription: boolean): void {
     if (this.pendingSnapshots.get(reservation.requestId) !== reservation) return;
     reservation.cancelled = true;
@@ -610,6 +688,29 @@ export class TranscriptChannel implements PeonSocketChannel {
     }
     this.releaseIfUnused(reservation.sessionId);
     this.scheduleExpiry();
+  }
+
+  private dropPendingSubscription(reservation: PendingSubscription): void {
+    if (this.pendingSubscriptions.get(reservation.sessionId) !== reservation) return;
+    reservation.cancelled = true;
+    this.pendingSubscriptions.delete(reservation.sessionId);
+    this.releaseIfUnused(reservation.sessionId);
+    this.scheduleExpiry();
+  }
+
+  private activeSubscription(sessionId: string): Subscription | null {
+    const subscription = this.subscriptions.get(sessionId);
+    if (!subscription) return null;
+    if (subscription.expiresAt > this.now() || this.pendingDeletions.has(sessionId)) return subscription;
+    this.subscriptions.delete(sessionId);
+    this.releaseIfUnused(sessionId);
+    this.scheduleExpiry();
+    return null;
+  }
+
+  private subscriptionSlots(): number {
+    const sessionIds = new Set([...this.subscriptions.keys(), ...this.pendingSubscriptions.keys()]);
+    return sessionIds.size;
   }
 
   private snapshotBytes(): number {
@@ -637,6 +738,12 @@ export class TranscriptChannel implements PeonSocketChannel {
       this.subscriptions.delete(sessionId);
       released.add(sessionId);
     }
+    for (const pending of [...this.pendingSubscriptions.values()]) {
+      if (pending.expiresAt > now || this.pendingDeletions.has(pending.sessionId)) continue;
+      pending.cancelled = true;
+      this.dropPendingSubscription(pending);
+      released.add(pending.sessionId);
+    }
     for (const sessionId of released) this.releaseIfUnused(sessionId);
   }
 
@@ -646,6 +753,7 @@ export class TranscriptChannel implements PeonSocketChannel {
       this.snapshots.size === 0
       && this.pendingSnapshots.size === 0
       && this.subscriptions.size === 0
+      && this.pendingSubscriptions.size === 0
       && this.pendingDeletions.size === 0
     )) {
       this.expiryTimer = null;
@@ -662,6 +770,7 @@ export class TranscriptChannel implements PeonSocketChannel {
 
   private releaseIfUnused(sessionId: string): void {
     if (this.subscriptions.has(sessionId)) return;
+    if (this.pendingSubscriptions.has(sessionId)) return;
     if (this.pendingDeletions.has(sessionId)) return;
     for (const snapshot of this.snapshots.values()) if (snapshot.sessionId === sessionId) return;
     for (const snapshot of this.pendingSnapshots.values()) if (snapshot.sessionId === sessionId) return;
@@ -678,12 +787,15 @@ export class TranscriptChannel implements PeonSocketChannel {
         ...this.subscriptions.keys(),
         ...[...this.snapshots.values()].map((snapshot) => snapshot.sessionId),
         ...[...this.pendingSnapshots.values()].map((snapshot) => snapshot.sessionId),
+        ...this.pendingSubscriptions.keys(),
         ...this.pendingDeletions.keys(),
       ]);
       this.subscriptions.clear();
       this.snapshots.clear();
       for (const pending of this.pendingSnapshots.values()) pending.cancelled = true;
       this.pendingSnapshots.clear();
+      for (const pending of this.pendingSubscriptions.values()) pending.cancelled = true;
+      this.pendingSubscriptions.clear();
       this.pendingDeletions.clear();
       for (const sessionId of sessionIds) this.repository.release(sessionId);
       this.unsubscribeUpdates?.();

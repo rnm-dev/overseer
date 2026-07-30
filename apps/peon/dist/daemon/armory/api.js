@@ -210,6 +210,15 @@ export function createArmoryReadRouter(inventory = armoryInventory, options = {}
         });
     }
     if (options.allowMutations) {
+        router.post("/packages/:id/configuration/verify", async (req, res) => {
+            try {
+                const operation = await configuration.verify(req.params.id);
+                res.status(202).json({ operation });
+            }
+            catch (error) {
+                sendError(res, error);
+            }
+        });
         router.put("/packages/:id/configuration", async (req, res) => {
             try {
                 const body = configurationBodySchema.parse(req.body);

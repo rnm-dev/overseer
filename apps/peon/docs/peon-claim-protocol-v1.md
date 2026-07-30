@@ -72,7 +72,7 @@ or redirect does not mean unsupported.
 | Method and path | Purpose |
 |---|---|
 | `POST /api/peon-claims/resolve` with `{ operatorCode }` | Resolves a code to browser-safe claim details. |
-| `POST /api/workspaces/:workspaceId/peon-claims/:claimId/decision` | An owner approves or denies the claim. |
+| `POST /api/workspaces/:workspaceId/peon-claims/:claimId/decision` | An owner approves; an authenticated operator holding the resolved code may deny. |
 | `POST /api/workspaces/:workspaceId/peons/:peonId/credentials/:credentialId/revoke` | Immediately revokes one credential. |
 | `POST /api/workspaces/:workspaceId/peons/:peonId/revoke` | Immediately revokes every credential and socket for the Peon. |
 
@@ -411,7 +411,11 @@ erases delivery/operator-code/lease material and the claim-token hash, and retur
 `claim_cancel_result { state:"cancelled", code:"CLAIM_CANCELLED", changed:true, terminalAt }`.
 There is intentionally no authenticated repeat after that cleanup: a lost cancel response followed
 by another cancel receives generic `401 UNAUTHENTICATED`. This response alone is ambiguous and
-must never make Peon discard a persisted candidate credential.
+must never make Peon discard a persisted candidate credential. If no candidate credential was ever
+persisted, however, a Peon that has durably recorded `cancelRequested` may treat that generic `401`
+as confirmation that no usable enrollment remains and finish local cancellation. A parked attempt
+that still names a server claim but has no candidate must send this signed cancel; it must not
+silently erase the attempt.
 
 For `denied` or `expired`, the verifier remains only until first terminal observation. A valid
 cancel during that window does not change state; it returns `claim_cancel_result` with the existing

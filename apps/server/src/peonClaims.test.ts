@@ -32,6 +32,8 @@ import {
   resolveClaim,
   resolvePc1Credential,
   revokeClaimCredential,
+  revokeClaimPeon,
+  revocationTargetExists,
   semanticRequestHash,
   sha256Base64url,
   startClaim,
@@ -48,7 +50,7 @@ import {
   evictPeonTransferConnectionsBelowGeneration,
 } from "./peonTransferConnections.js";
 import { attachPeonTransferSocket, PEON_TRANSFER_SOCKET_PATH } from "./peonTransferSocket.js";
-import { registry } from "./registry.js";
+import { registry, toView } from "./registry.js";
 import { createServer } from "./server.js";
 import { membership } from "./workspaces.js";
 
@@ -215,7 +217,6 @@ test("peon-claim-v1 is restart-safe, replay-safe, ACL-scoped, encrypted at rest,
     startClaim(nonceReplay, "192.0.2.10", now + 300),
     (error: unknown) => error instanceof Error && "code" in error && error.code === "REQUEST_REPLAYED",
   );
-
   const server = http.createServer(createServer());
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const port = (server.address() as AddressInfo).port;
@@ -335,6 +336,13 @@ test("peon-claim-v1 is restart-safe, replay-safe, ACL-scoped, encrypted at rest,
   const rotationReplay = await startRotation(rotationStart, bearer, now + 124_001);
   assert.equal(rotationReplay.replayed, true);
   assert.equal((rotationReplay.delivery as Record<string, unknown>).bearer, rotatedBearer);
+  for (let retry = 1; retry <= 4; retry += 1) {
+    proof(machine, rotationStart, "/api/v1/peon-credentials/rotations", null, now + 124_001 + retry);
+    assert.equal((await startRotation(rotationStart, bearer, now + 124_001 + retry)).replayed, true);
+  }
+  assert.equal(Number((await query<{ count: number }>(
+    `SELECT count FROM peon_claim_rate_limits WHERE scope='rotation-peon'`,
+  )).rows[0]?.count), 1);
   const rotationAck: Record<string, unknown> = {
     type: "credential_rotation_ack",
     protocol: 1,
@@ -444,6 +452,55 @@ test("peon-claim-v1 is restart-safe, replay-safe, ACL-scoped, encrypted at rest,
   assert.notEqual(semanticRequestHash(start, ["attemptId", "proof"]), "");
 });
 
+test("request nonce retention is exact at and after the 24-hour boundary without cleanup", async () => {
+  const db = newDb();
+  const adapter = db.adapters.createPg();
+  await initDb(new adapter.Pool() as unknown as pg.Pool);
+  config.publicUrl = "https://overseer.example.test";
+  config.peonClaimEnabled = true;
+  config.peonClaimCredentialPepper = randomBytes(32).toString("base64url");
+  config.peonClaimDeliveryKey = randomBytes(32).toString("base64url");
+  config.peonClaimOperatorCodeKey = randomBytes(32).toString("base64url");
+  const now = Date.now();
+  const machine = identity();
+  const start = claimStart(machine, now, randomBytes(32).toString("base64url"));
+  await startClaim(start, "198.51.100.210", now);
+  const admittedNonce = String((start.proof as Record<string, unknown>).requestNonce);
+
+  const atBoundary = structuredClone(start);
+  proof(
+    machine,
+    atBoundary,
+    "/api/v1/peon-claims",
+    String(atBoundary.claimNonce),
+    now + 86_400_000,
+    admittedNonce,
+  );
+  await assert.rejects(
+    startClaim(atBoundary, "198.51.100.210", now + 86_400_000),
+    (error: unknown) => error instanceof Error && "code" in error && error.code === "REQUEST_REPLAYED",
+  );
+
+  const afterBoundary = structuredClone(start);
+  proof(
+    machine,
+    afterBoundary,
+    "/api/v1/peon-claims",
+    String(afterBoundary.claimNonce),
+    now + 86_400_001,
+    admittedNonce,
+  );
+  await assert.rejects(
+    startClaim(afterBoundary, "198.51.100.210", now + 86_400_001),
+    (error: unknown) => error instanceof Error && "code" in error && error.code === "CLAIM_EXPIRED",
+  );
+  assert.equal((await query<{ created_at: number }>(
+    `SELECT created_at FROM peon_claim_request_nonces
+     WHERE identity_key_id=$1 AND request_nonce=$2`,
+    [machine.keyId, admittedNonce],
+  )).rows[0]?.created_at, now + 86_400_001);
+});
+
 test("credential generation fencing rejects delayed lower-generation control and transfer claims", () => {
   let newerControlTerminated = 0;
   let staleControlTerminated = 0;
@@ -515,6 +572,7 @@ test("generation 2 hellos stay authoritative when delayed generation 1 hellos ar
     token: "",
     load: null,
   });
+  assert.equal(toView((await registry.get(machine.peonId))!).baseUrl, null);
   const server = http.createServer();
   const controlWss = attachPeonSocket(server);
   const transferWss = attachPeonTransferSocket(server);
@@ -534,12 +592,17 @@ test("generation 2 hellos stay authoritative when delayed generation 1 hellos ar
   const closed = (socket: WebSocket) => new Promise<{ code: number; reason: string }>((resolve) => {
     socket.once("close", (code, reason) => resolve({ code, reason: reason.toString() }));
   });
+  const opened = new Set<WebSocket>();
   try {
     const staleControl = await openSocket("/api/v1/peons/ws", firstBearer);
+    opened.add(staleControl);
     const staleTransfer = await openSocket(PEON_TRANSFER_SOCKET_PATH, firstBearer);
+    opened.add(staleTransfer);
     await query(`UPDATE peons SET credential_id=$2 WHERE peon_id=$1`, [machine.peonId, secondId]);
     const newerControl = await openSocket("/api/v1/peons/ws", secondBearer);
+    opened.add(newerControl);
     const newerTransfer = await openSocket(PEON_TRANSFER_SOCKET_PATH, secondBearer);
+    opened.add(newerTransfer);
 
     const newerControlAck = message(newerControl);
     newerControl.send(JSON.stringify({ type: "hello", protocol: 1 }));
@@ -564,6 +627,7 @@ test("generation 2 hellos stay authoritative when delayed generation 1 hellos ar
     newerControl.close();
     newerTransfer.close();
   } finally {
+    for (const socket of opened) socket.terminate();
     await new Promise<void>((resolve) => controlWss.close(() => resolve()));
     await new Promise<void>((resolve) => transferWss.close(() => resolve()));
     await new Promise<void>((resolve) => server.close(() => resolve()));
@@ -810,6 +874,94 @@ test("cancellation, denial and expiry are durable terminal transitions with secr
     expiredAt,
   );
   assert.equal(expiredStatus.code, "CLAIM_EXPIRED");
+
+  const decisionExpiredMachine = identity();
+  const decisionExpiredStartAt = now + 10_000;
+  const decisionExpiredStart = claimStart(
+    decisionExpiredMachine,
+    decisionExpiredStartAt,
+    randomBytes(32).toString("base64url"),
+  );
+  const decisionExpiredCreated = await startClaim(
+    decisionExpiredStart,
+    "203.0.113.9",
+    decisionExpiredStartAt,
+  );
+  await resolveClaim({
+    type: "claim_resolve",
+    protocol: 1,
+    operatorCode: decisionExpiredCreated.operatorCode,
+  }, "203.0.113.9", userId, decisionExpiredStartAt + 100);
+  await assert.rejects(
+    decideClaim(
+      workspaceId,
+      String(decisionExpiredCreated.claimId),
+      "approve",
+      userId,
+      decisionExpiredStartAt + 600_000,
+    ),
+    (error: unknown) => error instanceof Error && "code" in error && error.code === "CLAIM_NOT_FOUND",
+  );
+  const decisionExpiredRow = (await query<{
+    state: string;
+    operator_code_hash: string | null;
+  }>(
+    `SELECT state,operator_code_hash FROM peon_claims WHERE claim_id=$1`,
+    [decisionExpiredCreated.claimId],
+  )).rows[0];
+  assert.deepEqual(decisionExpiredRow, { state: "expired", operator_code_hash: null });
+  assert.equal((await query(
+    `SELECT 1 FROM peon_enrollment_leases WHERE claim_id=$1`,
+    [decisionExpiredCreated.claimId],
+  )).rows.length, 0);
+
+  const deliveryExpiredMachine = identity();
+  const deliveryExpiredStartAt = now + 11_000;
+  const deliveryExpiredStart = claimStart(
+    deliveryExpiredMachine,
+    deliveryExpiredStartAt,
+    randomBytes(32).toString("base64url"),
+  );
+  const deliveryExpiredCreated = await startClaim(
+    deliveryExpiredStart,
+    "203.0.113.10",
+    deliveryExpiredStartAt,
+  );
+  await resolveClaim({
+    type: "claim_resolve",
+    protocol: 1,
+    operatorCode: deliveryExpiredCreated.operatorCode,
+  }, "203.0.113.10", userId, deliveryExpiredStartAt + 100);
+  const deliveryApproval = await decideClaim(
+    workspaceId,
+    String(deliveryExpiredCreated.claimId),
+    "approve",
+    userId,
+    deliveryExpiredStartAt + 200,
+  );
+  const deliveryExpiresAt = Number(deliveryApproval.deliveryExpiresAt);
+  await assert.rejects(
+    decideClaim(
+      workspaceId,
+      String(deliveryExpiredCreated.claimId),
+      "approve",
+      userId,
+      deliveryExpiresAt,
+    ),
+    (error: unknown) => error instanceof Error && "code" in error && error.code === "CLAIM_NOT_FOUND",
+  );
+  assert.equal((await query<{ state: string }>(
+    `SELECT state FROM peon_claims WHERE claim_id=$1`,
+    [deliveryExpiredCreated.claimId],
+  )).rows[0].state, "expired");
+  assert.equal((await query<{ state: string }>(
+    `SELECT state FROM peon_claim_credentials WHERE id=$1`,
+    [deliveryApproval.credentialId],
+  )).rows[0].state, "revoked");
+  assert.equal((await query(
+    `SELECT 1 FROM peon_claim_deliveries WHERE owner_id=$1`,
+    [deliveryExpiredCreated.claimId],
+  )).rows.length, 0);
 
   const race = async (offset: number) => {
     const raceMachine = identity();
@@ -1104,6 +1256,97 @@ test("approval transaction rejects an owner removed after the route-level observ
   );
   assert.equal((await query(`SELECT 1 FROM peon_claim_credentials WHERE peon_id=$1`, [machine.peonId])).rows.length, 0);
   assert.equal((await query(`SELECT 1 FROM peon_identity_bindings WHERE peon_id=$1`, [machine.peonId])).rows.length, 0);
+});
+
+test("revocation transactions recheck owner role after target concealment and before mutation", async () => {
+  const db = newDb();
+  const adapter = db.adapters.createPg();
+  await initDb(new adapter.Pool() as unknown as pg.Pool);
+  config.publicUrl = "https://overseer.example.test";
+  config.peonClaimEnabled = true;
+  config.peonClaimCredentialPepper = randomBytes(32).toString("base64url");
+  config.peonClaimDeliveryKey = randomBytes(32).toString("base64url");
+  config.peonClaimOperatorCodeKey = randomBytes(32).toString("base64url");
+  const now = Date.now();
+  const ownerId = randomUUID();
+  const workspaceId = randomUUID();
+  const machine = identity();
+  const credentialId = randomUUID();
+  const claimBearer = `pc1.${credentialId}.${randomBytes(32).toString("base64url")}`;
+  await query(`INSERT INTO users (id,email,created_at) VALUES ($1,'revocation-race@test',$2)`, [ownerId, now]);
+  await query(
+    `INSERT INTO workspaces (id,name,slug,created_by,created_at)
+     VALUES ($1,'Revocation race','revocation-race',$2,$3)`,
+    [workspaceId, ownerId, now],
+  );
+  await query(
+    `INSERT INTO workspace_members (workspace_id,user_id,role,added_at)
+     VALUES ($1,$2,'owner',$3)`,
+    [workspaceId, ownerId, now],
+  );
+  await query(
+    `INSERT INTO peon_identity_bindings
+     (peon_id,identity_key_id,public_jwk,workspace_id,method,created_at,removed_at)
+     VALUES ($1,$2,$3,$4,'claim',$5,NULL)`,
+    [machine.peonId, machine.keyId, JSON.stringify(machine.publicKey), workspaceId, now],
+  );
+  await query(
+    `INSERT INTO peon_claim_credentials
+     (id,workspace_id,peon_id,identity_key_id,generation,state,verifier,pepper_version,created_at,activated_at)
+     VALUES ($1,$2,$3,$4,1,'active',$5,1,$6,$6)`,
+    [credentialId, workspaceId, machine.peonId, machine.keyId, credentialVerifier(claimBearer), now],
+  );
+
+  assert.equal(
+    await revocationTargetExists("credential", workspaceId, machine.peonId, credentialId),
+    true,
+  );
+  assert.equal(await membership(workspaceId, ownerId), "owner");
+  await query(
+    `UPDATE workspace_members SET role='member' WHERE workspace_id=$1 AND user_id=$2`,
+    [workspaceId, ownerId],
+  );
+  await assert.rejects(
+    revokeClaimCredential(
+      workspaceId,
+      machine.peonId,
+      credentialId,
+      ownerId,
+      "credential-role-race",
+      now + 1,
+    ),
+    (error: unknown) => error instanceof Error && "code" in error && error.code === "FORBIDDEN",
+  );
+  assert.equal((await query<{ state: string }>(
+    `SELECT state FROM peon_claim_credentials WHERE id=$1`,
+    [credentialId],
+  )).rows[0].state, "active");
+
+  await query(
+    `UPDATE workspace_members SET role='owner' WHERE workspace_id=$1 AND user_id=$2`,
+    [workspaceId, ownerId],
+  );
+  assert.equal(await revocationTargetExists("peon", workspaceId, machine.peonId), true);
+  assert.equal(await membership(workspaceId, ownerId), "owner");
+  await query(
+    `UPDATE workspace_members SET role='member' WHERE workspace_id=$1 AND user_id=$2`,
+    [workspaceId, ownerId],
+  );
+  await assert.rejects(
+    revokeClaimPeon(workspaceId, machine.peonId, ownerId, "peon-role-race", now + 2),
+    (error: unknown) => error instanceof Error && "code" in error && error.code === "FORBIDDEN",
+  );
+  assert.equal((await query<{ state: string }>(
+    `SELECT state FROM peon_claim_credentials WHERE id=$1`,
+    [credentialId],
+  )).rows[0].state, "active");
+  const audits = (await query<{ scope: string; outcome: string; request_id: string }>(
+    `SELECT scope,outcome,request_id FROM peon_claim_audit ORDER BY request_id`,
+  )).rows;
+  assert.deepEqual(audits, [
+    { scope: "credential", outcome: "forbidden", request_id: "credential-role-race" },
+    { scope: "peon", outcome: "forbidden", request_id: "peon-role-race" },
+  ]);
 });
 
 test("fleet deletion atomically revokes legacy and pc1 credentials and blocks re-registration", async () => {

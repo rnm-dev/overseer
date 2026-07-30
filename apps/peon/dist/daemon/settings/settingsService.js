@@ -31,6 +31,7 @@ export class SettingsService extends EventEmitter {
         const s = this.get();
         return {
             name: s.name,
+            fleetMode: s.fleetMode,
             overseerUrl: s.overseerUrl,
             overseerToken: s.overseerToken,
             fileTransferRoot: s.fileTransferRoot || "",
@@ -241,6 +242,18 @@ export class SettingsService extends EventEmitter {
             this.throwBadRequest(`${managedCredential} is managed by enrollment and cannot be changed through general settings`);
         }
         const patch = { ...body };
+        if ("fleetMode" in body && body.fleetMode !== "legacy-mesh" && body.fleetMode !== "reverse-only") {
+            this.throwBadRequest("fleetMode must be legacy-mesh or reverse-only");
+        }
+        if (body.fleetMode === "reverse-only") {
+            patch.bindHost = "127.0.0.1";
+            patch.publicControlUrl = `http://127.0.0.1:${process.env.ACA_CONTROL_PORT ?? 4570}`;
+            patch.publicDashboardUrl = `http://127.0.0.1:${process.env.ACA_DASHBOARD_PORT ?? 4571}`;
+        }
+        else if (current.fleetMode === "reverse-only" && body.fleetMode !== "legacy-mesh"
+            && "bindHost" in body && body.bindHost !== "127.0.0.1" && body.bindHost !== "::1") {
+            this.throwBadRequest("switch fleetMode to legacy-mesh before enabling a non-loopback listener");
+        }
         const requestedAgent = "defaultAgent" in body ? narrowNewSessionAgent(body.defaultAgent) : current.defaultAgent;
         if (!requestedAgent) {
             this.throwBadRequest(`defaultAgent must be one of: ${this.listAgents()}`);

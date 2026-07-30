@@ -34,3 +34,7 @@ export {
   type ReverseCommandRecord,
   type ReverseCommandState,
 } from "./socket/reverseCommandLedger.js";
+export {
+  armoryCommandHandlers,
+  type ArmoryReverseServices,
+} from "./socket/channels/armoryCommandHandlers.js";
