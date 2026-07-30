@@ -527,7 +527,6 @@ export function registerProjectRoutes(router: express.Router): void {
           actor: { userId: c.userId, email: c.operator.email },
           signal: controller.signal,
           requestId: correlation.requestId,
-          commandId: correlation.requestId,
         });
         if (!res.destroyed) res.status(result.status).json({ path: result.path, size: result.size });
       } catch (error) {

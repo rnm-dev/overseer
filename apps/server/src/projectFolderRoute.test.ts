@@ -129,9 +129,15 @@ test("project-key file route selects one transport and preserves the legacy list
   const cookie = `${WEB_SESSION_COOKIE}=${device.token}`;
 
   const httpRequests: string[] = [];
+  const httpMethods: string[] = [];
   const fakePeon = http.createServer((req, res) => {
     httpRequests.push(req.url ?? "");
+    httpMethods.push(req.method ?? "");
     res.setHeader("Content-Type", "application/json");
+    if (req.method === "DELETE") {
+      res.end(JSON.stringify({ path: "legacy-delete.txt", size: 3 }));
+      return;
+    }
     if (req.url?.includes("README.md")) {
       res.end(JSON.stringify({ path: "README.md", size: 7, mtimeMs: 10, sha256: "abc" }));
       return;
@@ -427,6 +433,16 @@ test("project-key file route selects one transport and preserves the legacy list
     await query(`INSERT INTO projects (peon_id,project_id,project_key,name,dir,metadata,synced_at)
       VALUES ('route-peon','route-project','project-key','Route Project','/projects/route',NULL,2)`);
 
+    const legacyClosed = new Promise<void>((resolve) => legacyTransfer.once("close", () => resolve()));
+    legacyTransfer.terminate();
+    await legacyClosed;
+    assert.deepEqual(await mutate(appPort, "DELETE", `${base}/legacy-delete.txt`, cookie), {
+      status: 200,
+      body: { path: "legacy-delete.txt", size: 3 },
+    });
+    assert.equal(httpMethods.at(-1), "DELETE");
+    assert.equal(httpRequests.at(-1), "/api/v1/projects/project-key/files/legacy-delete.txt");
+
     const disconnectedResponse = get(appPort, `${base}/src?stat=1&directory=1`, cookie);
     await control.next((frame) => frame.type === "folder_list_request");
     ws.terminate();
@@ -434,8 +450,7 @@ test("project-key file route selects one transport and preserves the legacy list
       status: 502,
       body: { error: "Peon connection was lost", code: "CONNECTION_LOST" },
     });
-    assert.equal(httpRequests.length, 3, "a lost chosen socket must not fall through to HTTP");
-    legacyTransfer.terminate();
+    assert.equal(httpRequests.length, 4, "a lost chosen socket must not fall through to HTTP");
   } finally {
     ws.terminate();
     transfer.terminate();
