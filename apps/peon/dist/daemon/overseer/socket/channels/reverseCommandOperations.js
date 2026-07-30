@@ -1,7 +1,7 @@
 // This daemon's statement of the reverse-command-v1 operation set. Overseer
 // keeps the same list in its reverseCommandTypes.ts; packages/protocol
 // (OVSR-239) will collapse the two into one artifact, and until then
-// @rnm/protocol-conformance asserts that they still agree.
+// @rnm-dev/protocol-conformance asserts that they still agree.
 //
 // The keys of the handler tables are what helloState() advertises, so a handler
 // that is missing or misspelled does not fail loudly — it narrows the

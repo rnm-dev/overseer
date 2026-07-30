@@ -1,8 +1,22 @@
 {
-  "name": "@rnm/peon",
+  "name": "@rnm-dev/peon",
   "version": "0.11.2",
-  "private": true,
   "description": "peon — autonomous coding agent daemon + read-only dashboard",
+  "license": "MIT",
+  "author": "RNM Dev",
+  "homepage": "https://github.com/rnm-dev/overseer/tree/master/apps/peon#readme",
+  "bugs": {
+    "url": "https://github.com/rnm-dev/overseer/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rnm-dev/overseer.git",
+    "directory": "apps/peon"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "type": "module",
   "engines": {
     "node": ">=22"
@@ -12,9 +26,7 @@
   },
   "files": [
     "dist",
-    "src",
-    "assets",
-    "tsconfig.json"
+    "assets"
   ],
   "scripts": {
     "dev": "tsx scripts/dev.ts",
@@ -27,6 +39,8 @@
     "test:architecture-imports": "node --test scripts/check-architecture-imports.test.mjs",
     "benchmark:transcript-pagination": "node --expose-gc --import tsx scripts/benchmark-transcript-pagination.ts",
     "compile": "tsc -p tsconfig.json && node scripts/clean-obsolete-dist.mjs && node scripts/copyPublic.mjs && node scripts/fixCliShebang.mjs",
+    "prepack": "npm run compile",
+    "prepublishOnly": "npm run typecheck && npm test",
     "verify": "npm run typecheck && npm test && npm run compile",
     "repair:transcript-timestamps": "node scripts/repair-transcript-timestamps.mjs",
     "restart:daemon": "bash scripts/restart-daemon.sh",

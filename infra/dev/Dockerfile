@@ -17,4 +17,4 @@ COPY apps/server/package.json ./apps/server/
 COPY apps/web/package.json ./apps/web/
 RUN npm ci
 
-CMD ["npm", "run", "dev", "-w", "@rnm/overseer-server"]
+CMD ["npm", "run", "dev", "-w", "@rnm-dev/overseer-server"]

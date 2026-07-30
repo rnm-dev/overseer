@@ -15,8 +15,8 @@ RUN npm ci
 
 COPY apps/server ./apps/server
 COPY apps/web ./apps/web
-RUN npm run compile -w @rnm/overseer-server
-RUN npm run build -w @rnm/overseer-web
+RUN npm run compile -w @rnm-dev/overseer-server
+RUN npm run build -w @rnm-dev/overseer-web
 
 FROM node:22-alpine AS runtime
 
@@ -29,7 +29,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 COPY apps/server/package.json ./apps/server/
 COPY apps/web/package.json ./apps/web/
-RUN npm ci --omit=dev --workspace @rnm/overseer-server --include-workspace-root \
+RUN npm ci --omit=dev --workspace @rnm-dev/overseer-server --include-workspace-root \
     && npm cache clean --force
 
 # The server resolves its static assets as path.resolve("web/dist") against the

@@ -1,5 +1,5 @@
 {
-  "name": "@rnm/overseer",
+  "name": "@rnm-dev/overseer",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -12,7 +12,7 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "npm run dev -w @rnm/overseer-server",
+    "dev": "npm run dev -w @rnm-dev/overseer-server",
     "lint": "eslint apps/server/src apps/web/src apps/web/vite.config.ts",
     "lint:fix": "npm run lint -- --fix",
     "verify:client": "if command -v flutter >/dev/null 2>&1; then cd apps/client && flutter analyze && flutter test; else echo 'SKIPPED: Flutter client verification (flutter is not installed)'; fi",

@@ -1,5 +1,5 @@
 {
-  "name": "@rnm/overseer-server",
+  "name": "@rnm-dev/overseer-server",
   "version": "0.0.1",
   "private": true,
   "type": "module",

@@ -9,7 +9,7 @@ matrix, transport faults and topology assertions that those adapters can reuse.
 Run the focused suite with:
 
 ```sh
-npm test -w @rnm/protocol-conformance
+npm test -w @rnm-dev/protocol-conformance
 ```
 
 ## Stable executable slice
@@ -209,7 +209,7 @@ The local readiness criteria are:
 Run the configurable local/CI soak with:
 
 ```sh
-npm run soak -w @rnm/protocol-conformance -- --duration-ms 60000
+npm run soak -w @rnm-dev/protocol-conformance -- --duration-ms 60000
 ```
 
 `CONFORMANCE_SOAK_DURATION_MS` sets the same duration non-interactively. The

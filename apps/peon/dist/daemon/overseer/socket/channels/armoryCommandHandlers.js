@@ -11,7 +11,7 @@ function safeOperation(value) {
         kind: String(operation.kind ?? ""),
         status: String(operation.status ?? ""),
         phase: String(operation.phase ?? ""),
-        percent: typeof operation.percent === "number" ? operation.percent : 0,
+        percent: typeof operation.progress === "number" ? operation.progress : 0,
         message: "",
         errorCode: typeof operation.errorCode === "string" ? operation.errorCode : null,
         startedAt: typeof operation.startedAt === "number" ? operation.startedAt : null,

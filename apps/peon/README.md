@@ -11,13 +11,11 @@ A read-only dashboard shows what it's doing, over the same local API the CLI use
 
 ## Install
 
-Requirements: Linux with systemd or macOS with launchd, `git`, `node >= 22`, `npm`, the Claude Code CLI
-(`claude`) installed, on `PATH`, and authenticated — that's the actual agent peon spawns
-per task — and SSH access to `rnm-dev/peon` already set up. It's a private repo, so it's
-not on the npm registry — you install straight from GitHub.
+Requirements: Linux with systemd or macOS with launchd, `git`, `node >= 22`, `npm`, and a
+supported coding-agent CLI installed, on `PATH`, and authenticated.
 
 ```sh
-npm install -g git+ssh://git@github.com/rnm-dev/peon.git
+npm install -g @rnm-dev/peon
 ```
 
 ```sh

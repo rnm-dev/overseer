@@ -1,7 +1,7 @@
 (function () {
   const { useState } = React;
 
-  const INSTALL_COMMAND = "npm install -g git+ssh://git@github.com/rnm-dev/peon.git";
+  const INSTALL_COMMAND = "npm install -g @rnm-dev/peon";
 
   function Landing() {
     const [copied, setCopied] = useState(false);
@@ -21,7 +21,7 @@
         <nav className="flex items-center justify-between border-b border-slate-800 px-4 py-3">
           <a href="/" className="text-sm font-medium text-slate-100">peon</a>
           <div className="flex items-center gap-4 text-xs">
-            <a className="text-slate-500 hover:text-slate-200" href="https://github.com/rnm-dev/peon">GitHub</a>
+            <a className="text-slate-500 hover:text-slate-200" href="https://github.com/rnm-dev/overseer/tree/master/apps/peon">GitHub</a>
             <a className="rounded-sm border border-slate-700 px-3 py-1.5 text-slate-200 hover:border-slate-500" href="/home">Dashboard</a>
           </div>
         </nav>

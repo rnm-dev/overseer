@@ -17,4 +17,4 @@ if (!existsSync(src)) {
 }
 
 cpSync(src, dest, { recursive: true });
-console.log(`copyPublic: ${src} -> ${dest}`);
+console.error(`copyPublic: ${src} -> ${dest}`);

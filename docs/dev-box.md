@@ -21,8 +21,8 @@ Host: **nid-dev** (`ssh NID-DEV`, root). Everything under `/rnm/overseer/`:
 ├── eslint.config.js     # one config for both workspaces
 ├── .env                 # secrets + auth config — NOT in git
 ├── apps/
-│   ├── server/          # @rnm/overseer-server — Express API, plus config/ and .kamal/
-│   └── web/             # @rnm/overseer-web — React (Vite+TS) dashboard
+│   ├── server/          # @rnm-dev/overseer-server — Express API, plus config/ and .kamal/
+│   └── web/             # @rnm-dev/overseer-web — React (Vite+TS) dashboard
 ├── infra/dev/Dockerfile # the shared dev image for both workspaces
 ├── docs/                # project documentation hub (docs/index.md)
 ├── site/                # instructions site — separate product, gitignored (OVSR-237)
@@ -140,14 +140,14 @@ curl -s http://127.0.0.1:4580/healthz
 tsconfig — hot-reloads live (API tsx-watch restarts; Vite HMR, polling on via
 VITE_POLL). No recreate needed. The two services share one dev image
 (`infra/dev/Dockerfile`) and differ only in which workspace they run:
-`npm run dev -w @rnm/overseer-server` and `-w @rnm/overseer-web`.
+`npm run dev -w @rnm-dev/overseer-server` and `-w @rnm-dev/overseer-web`.
 
 The checkout is not uniformly owned by `peon`: most of it, `apps/peon` included,
 is owned by `root` with group `rnm` and setgid group-writable directories, so the
 `peon` user edits files through the group. That is enough to write a file but not
 to `chmod`/`utimes` one, which is what any tool that rewrites an existing
 root-owned file trips over — `npm install` fails `EPERM` on the workspace bin
-(`apps/peon/dist/cli/peon.js`) and `@rnm/peon`'s `compile` fails `EPERM` copying
+(`apps/peon/dist/cli/peon.js`) and `@rnm-dev/peon`'s `compile` fails `EPERM` copying
 into `apps/peon/dist`. Both were repaired on 2026-07-29 by handing `node_modules`
 and `apps/peon/dist` to `peon` (`docker run --rm -v /rnm/overseer:/repo node:22
 chown -R 1018 <path>` — there is no root shell here). If a root-run build takes

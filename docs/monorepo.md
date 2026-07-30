@@ -57,21 +57,21 @@ Directories name the **role**, package manifests name the **product**:
 
 | Directory | Package name | What it is |
 | --- | --- | --- |
-| `apps/server` | `@rnm/overseer-server` | Express API |
-| `apps/web` | `@rnm/overseer-web` | React SPA |
+| `apps/server` | `@rnm-dev/overseer-server` | Express API |
+| `apps/web` | `@rnm-dev/overseer-web` | React SPA |
 | `apps/client` | `overseer_mobile` (pubspec) | Flutter, all platforms |
-| `apps/peon` | `@rnm/peon` | daemon + CLI |
-| `packages/protocol` | `@rnm/protocol` | the wire contract |
+| `apps/peon` | `@rnm-dev/peon` | daemon + CLI |
+| `packages/protocol` | `@rnm-dev/protocol` | the wire contract |
 
 Two rules behind that table:
 
 - **Inside the repo we say "server", "web", "client", "peon".** Without this,
   `overseer` names three different things — the product, the repository and the
   backend — and "look in overseer" stops being an unambiguous sentence.
-- **Every package is scoped `@rnm/`, including the private ones.** npm takes a
+- **Every package is scoped `@rnm-dev/`, including the private ones.** npm takes a
   workspace's name from its `package.json`, not from its directory, so a mix of
   scoped and unscoped names would leave `npm test -w overseer-web` sitting next
-  to `npm test -w @rnm/peon`.
+  to `npm test -w @rnm-dev/peon`.
 
 `rnm-dev/overseer` staying the repository root is formally imprecise — it will
 contain `apps/peon`, which ships as its own product. A neutral name would cost a
@@ -102,13 +102,15 @@ Each of these was checked against the actual tooling, not assumed.
 **`workspace:` is not usable.** On npm 10.8.2 `npm install` fails with
 `EUNSUPPORTEDPROTOCOL: Unsupported URL Type "workspace:"`, and `npm pack` leaves
 the literal `"workspace:^"` in the published manifest. Declare workspace
-dependencies as ordinary semver ranges (`"@rnm/protocol": "^1.0.0"`) — npm links
+dependencies as ordinary semver ranges (`"@rnm-dev/protocol": "^1.0.0"`) — npm links
 the local package by symlink and publishes a valid range. This is why
-`@rnm/protocol` must be published publicly alongside `@rnm/peon` rather than kept
+`@rnm-dev/protocol` must be published publicly alongside `@rnm-dev/peon` rather than kept
 private.
 
-**The npm name `peon` is taken** (version 0.1.0, maintainer `tpisto`). `@rnm/peon`
-is free.
+**The npm name `peon` is taken** (version 0.1.0, maintainer `tpisto`), and the
+`@rnm` npm scope was unavailable. The npm organisation is `rnm-dev`; the
+`rnmdev` account owns it with 2FA enabled. Public packages therefore use the
+`@rnm-dev/` scope, matching the GitHub organisation.
 
 **Peon's release channel must not change.** In production a Peon is installed
 from an npm archive served by Overseer itself, verified by exact size and
@@ -121,15 +123,13 @@ onboarding* channel; Overseer stays the *update* channel for an enrolled fleet.
 `PACKAGE_ROOT` and `isGitCheckout` need to be separated once the package sits in
 `apps/peon`, or `git merge --ff-only` self-update breaks silently.
 
-**Publishing peon publishes its source.** `files: [dist, src, assets,
-tsconfig.json]` ships the whole tree (1.7 MB `src`, 1.3 MB `dist`, 960 KB
-`assets`). A sweep found no credentials — the only internal reference is a
-comment naming `peon-serik.mesh.rnm` in
-`src/dashboard/public/components/OverseerCard.jsx`, and the "secrets" a grep
-turns up are fake tokens in `src/daemon/__tests__/*`. The tests do not belong in
-the tarball. Whether the source should be public at all is a product decision,
-not a technical one, and the daemon's default bind addresses and auth deserve a
-review before strangers can install it.
+**The public Peon package is compiled distribution, not the source tree.**
+`files: [dist, assets]` plus npm's automatic README, LICENSE and manifest keeps
+tests, fixtures, TypeScript sources and build configuration out of the tarball.
+Peon is MIT licensed. `prepack` always rebuilds `dist`; release verification
+installs and exercises that exact archive before publication. The daemon and
+dashboard bind to loopback by default. Wider binding remains an explicit
+operator action and is rejected in reverse-only fleet mode.
 
 **The client is Flutter, not React Native.** Flutter 3.44.8, Dart SDK `^3.12.2`,
 Riverpod 3, go_router, dio, drift, freezed, firebase_messaging, and desktop
@@ -167,10 +167,12 @@ Each step leaves the tree working.
 1. **OVSR-238** — *done, merged to master, not yet deployed.* Flattened checkout root, npm
    workspaces, `apps/server` and `apps/web`, root `verify`, `infra/dev` image,
    rewritten compose mounts and Kamal build context.
-2. **OVSR-239** — `packages/protocol`; server and web move onto it.
-3. **OVSR-240** — *Peon source is now in `apps/peon` as the `@rnm/peon`
-   workspace.* Publishing `@rnm/protocol` and `@rnm/peon` remains; that is the
-   risky part because it touches the fleet's live update channel.
+2. **OVSR-239** — `packages/protocol`; server and web move onto it, then publish
+   it as `@rnm-dev/protocol`.
+3. **OVSR-240** — *Peon source is now in `apps/peon` as the `@rnm-dev/peon`
+   workspace.* Publish Peon independently before it depends on the future
+   protocol package. This is the risky part because it touches the fleet's live
+   update channel.
 4. **OVSR-241** — *done locally.* The Flutter client is in `apps/client`, its
    GitHub Actions workflow is gone, and its documentation lives under
    `docs/client/`.

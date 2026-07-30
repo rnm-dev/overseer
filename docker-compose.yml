@@ -34,7 +34,7 @@ services:
       context: .
       dockerfile: infra/dev/Dockerfile
     # Keep files created through the bind mount writable by the shared rnm group.
-    command: sh -c 'umask 0002 && exec npm run dev -w @rnm/overseer-server'
+    command: sh -c 'umask 0002 && exec npm run dev -w @rnm-dev/overseer-server'
     restart: unless-stopped
     ports:
       # Localhost-only; nginx (overseer.rnm.dev) proxies to this.
@@ -87,7 +87,7 @@ services:
       context: .
       dockerfile: infra/dev/Dockerfile
     # Keep files created through the bind mount writable by the shared rnm group.
-    command: sh -c 'umask 0002 && exec npm run dev -w @rnm/overseer-web'
+    command: sh -c 'umask 0002 && exec npm run dev -w @rnm-dev/overseer-web'
     restart: unless-stopped
     ports:
       - "127.0.0.1:4581:5173"

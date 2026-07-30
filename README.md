@@ -4,9 +4,9 @@ Monorepo for the Overseer fleet control plane and the things that talk to it.
 
 | Path | Package | What it is |
 | --- | --- | --- |
-| `apps/server` | `@rnm/overseer-server` | Express API — the control plane. Its design notes are in [docs/server-design.md](docs/server-design.md). |
-| `apps/web` | `@rnm/overseer-web` | React (Vite) operator dashboard |
-| `apps/peon` | `@rnm/peon` | Daemon, CLI and local dashboard |
+| `apps/server` | `@rnm-dev/overseer-server` | Express API — the control plane. Its design notes are in [docs/server-design.md](docs/server-design.md). |
+| `apps/web` | `@rnm-dev/overseer-web` | React (Vite) operator dashboard |
+| `apps/peon` | `@rnm-dev/peon` | Daemon, CLI and local dashboard |
 
 Directories are named for the role, package manifests for the product, so
 "overseer" names the product and this repository rather than also naming the

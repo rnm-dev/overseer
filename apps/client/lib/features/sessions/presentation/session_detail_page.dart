@@ -381,7 +381,7 @@ class _SessionDetailPageState extends _SessionDetailAttachmentHost
                   else
                     _TranscriptBody(
                       transcript: transcript!,
-                      ghost: _visibleGhost(composerState, transcript!.value),
+                      ghost: _visibleGhost(composerState, transcript.value),
                       operator: ref.watch(authControllerProvider).session?.user,
                       viewers: viewers,
                       bottomPadding: math.max(24, _composerHeight + 4),

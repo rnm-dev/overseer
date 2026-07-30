@@ -45,7 +45,7 @@ test("the deferred and Peon-only lists stay on the right side of the union", () 
   assert.equal(new Set(REVERSE_COMMAND_OPERATIONS).size, REVERSE_COMMAND_OPERATIONS.length);
 });
 
-// That this list matches Overseer's is asserted by @rnm/protocol-conformance,
+// That this list matches Overseer's is asserted by @rnm-dev/protocol-conformance,
 // which reads both declarations; the two workspaces do not depend on each other.
 test("no operation is advertised without a handler behind it", () => {
   const advertised = new Set<string>([
