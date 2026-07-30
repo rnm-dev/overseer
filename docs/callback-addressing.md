@@ -25,3 +25,7 @@ reason. In particular, `reverse-capability-authoritative` must remain zero;
 tests also assert that the legacy closure is never evaluated on that path.
 These counters are diagnostic groundwork for rollout telemetry, not a durable
 fleet ledger.
+
+The capability-specific stages, rollback procedure, evidence checklist and
+not-yet-started support window are documented in
+[reverse-only rollout controls and gates](reverse-rollout.md).
