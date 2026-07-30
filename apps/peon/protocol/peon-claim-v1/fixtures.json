@@ -1,0 +1,1059 @@
+{
+  "contractVersion": 1,
+  "capability": "peon-claim-v1",
+  "transport": "https-short-poll",
+  "canonicalization": "RFC8785",
+  "signatureAlgorithm": "Ed25519",
+  "limits": {
+    "pollAfterMs": 2000,
+    "claimTtlMs": 600000,
+    "deliveryTtlMs": 600000,
+    "oldSocketGraceMs": 300000,
+    "clockSkewMs": 120000,
+    "maxBodyBytes": 16384,
+    "terminalRetentionMs": 86400000,
+    "idempotencyTombstoneMs": 604800000
+  },
+  "credential": {
+    "prefix": "pc1",
+    "secretBytes": 32,
+    "verifier": "HMAC-SHA-256",
+    "pendingEncryption": "AES-256-GCM"
+  },
+  "endpoints": {
+    "capabilities": "GET /api/v1/peon-claims/capabilities",
+    "start": "POST /api/v1/peon-claims",
+    "poll": "POST /api/v1/peon-claims/:claimId/poll",
+    "cancel": "POST /api/v1/peon-claims/:claimId/cancel",
+    "ack": "POST /api/v1/peon-claims/:claimId/ack",
+    "resolve": "POST /api/peon-claims/resolve",
+    "decision": "POST /api/workspaces/:workspaceId/peon-claims/:claimId/decision",
+    "revokeCredential": "POST /api/workspaces/:workspaceId/peons/:peonId/credentials/:credentialId/revoke",
+    "revokePeon": "POST /api/workspaces/:workspaceId/peons/:peonId/revoke",
+    "rotate": "POST /api/v1/peon-credentials/rotations",
+    "rotationStatus": "POST /api/v1/peon-credentials/rotations/:rotationId/poll",
+    "rotationAck": "POST /api/v1/peon-credentials/rotations/:rotationId/ack"
+  },
+  "frames": {
+    "capabilities": {
+      "schemaRef": "claimCapabilities",
+      "payload": {
+        "type": "claim_capabilities",
+        "protocol": 1,
+        "capability": "peon-claim-v1",
+        "transport": "https-short-poll",
+        "pollAfterMs": 2000,
+        "claimTtlMs": 600000,
+        "deliveryTtlMs": 600000,
+        "clockSkewMs": 120000,
+        "maxBodyBytes": 16384,
+        "serverTime": 1785427200000
+      }
+    },
+    "claimStart": {
+      "schemaRef": "claimStart",
+      "payload": {
+        "type": "claim_start",
+        "protocol": 1,
+        "capability": "peon-claim-v1",
+        "attemptId": "018f4f0c-9f30-7a61-bf1a-66d2582bdb4a",
+        "peonId": "f4de920f-e33e-4cf5-97d0-3a75e9266090",
+        "serverOrigin": "https://overseer.example.test",
+        "claimNonce": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "claimTokenHash": "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD",
+        "identity": {
+          "algorithm": "Ed25519",
+          "keyId": "ed25519:kPrK_qmxVWaYVA9wwBF6Iuo3vVzz7TxHCTwXBygrS4k",
+          "publicKey": {
+            "kty": "OKP",
+            "crv": "Ed25519",
+            "x": "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo"
+          }
+        },
+        "display": {
+          "name": "Nova",
+          "platform": "darwin",
+          "architecture": "arm64",
+          "daemonVersion": "0.11.2"
+        },
+        "proof": {
+          "issuedAt": 1785427200000,
+          "requestNonce": "BBBBBBBBBBBBBBBBBBBBBB",
+          "signature": "9U_hKjx4ncXfxUN909UWYqTMyf5bFrhARi_8WB2JeE3TFdvuO0m7HO6fXPRpdX89bVnD6Ir3UwH9HxZ55Y7WBg"
+        }
+      }
+    },
+    "claimCreated": {
+      "schemaRef": "claimCreated",
+      "payload": {
+        "type": "claim_created",
+        "protocol": 1,
+        "claimId": "7dc41f36-cf8a-4de2-a8f1-34581e223f31",
+        "operatorCode": "7K3M-9Q2R",
+        "operatorUrl": "https://overseer.example.test/claim/7K3M-9Q2R",
+        "state": "pending",
+        "createdAt": 1785427200010,
+        "expiresAt": 1785427800010,
+        "pollAfterMs": 2000,
+        "serverTime": 1785427200010,
+        "replayed": false
+      }
+    },
+    "claimCreatedReplay": {
+      "schemaRef": "claimCreated",
+      "payload": {
+        "type": "claim_created",
+        "protocol": 1,
+        "claimId": "7dc41f36-cf8a-4de2-a8f1-34581e223f31",
+        "operatorCode": "7K3M-9Q2R",
+        "operatorUrl": "https://overseer.example.test/claim/7K3M-9Q2R",
+        "state": "pending",
+        "createdAt": 1785427200010,
+        "expiresAt": 1785427800010,
+        "pollAfterMs": 2000,
+        "serverTime": 1785427202010,
+        "replayed": true
+      }
+    },
+    "claimPoll": {
+      "schemaRef": "claimPoll",
+      "payload": {
+        "type": "claim_poll",
+        "protocol": 1,
+        "claimId": "7dc41f36-cf8a-4de2-a8f1-34581e223f31",
+        "proof": {
+          "issuedAt": 1785427212000,
+          "requestNonce": "RRRRRRRRRRRRRRRRRRRRRR",
+          "signature": "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC"
+        }
+      }
+    },
+    "claimPollAgain": {
+      "schemaRef": "claimPoll",
+      "payload": {
+        "type": "claim_poll",
+        "protocol": 1,
+        "claimId": "7dc41f36-cf8a-4de2-a8f1-34581e223f31",
+        "proof": {
+          "issuedAt": 1785427214000,
+          "requestNonce": "SSSSSSSSSSSSSSSSSSSSSS",
+          "signature": "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC"
+        }
+      }
+    },
+    "claimCancel": {
+      "schemaRef": "claimCancel",
+      "payload": {
+        "type": "claim_cancel",
+        "protocol": 1,
+        "claimId": "7dc41f36-cf8a-4de2-a8f1-34581e223f31",
+        "proof": {
+          "issuedAt": 1785427212000,
+          "requestNonce": "TTTTTTTTTTTTTTTTTTTTTT",
+          "signature": "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC"
+        }
+      }
+    },
+    "claimResolve": {
+      "schemaRef": "claimResolve",
+      "payload": {
+        "type": "claim_resolve",
+        "protocol": 1,
+        "operatorCode": "7K3M-9Q2R"
+      }
+    },
+    "claimDetails": {
+      "schemaRef": "claimDetails",
+      "payload": {
+        "type": "claim_details",
+        "protocol": 1,
+        "claimId": "7dc41f36-cf8a-4de2-a8f1-34581e223f31",
+        "state": "pending",
+        "peonId": "f4de920f-e33e-4cf5-97d0-3a75e9266090",
+        "identityKeyId": "ed25519:kPrK_qmxVWaYVA9wwBF6Iuo3vVzz7TxHCTwXBygrS4k",
+        "display": {
+          "name": "Nova",
+          "platform": "darwin",
+          "architecture": "arm64",
+          "daemonVersion": "0.11.2"
+        },
+        "createdAt": 1785427200010,
+        "expiresAt": 1785427800010,
+        "serverTime": 1785427210000
+      }
+    },
+    "approval": {
+      "schemaRef": "claimDecision",
+      "payload": {
+        "type": "claim_decision",
+        "protocol": 1,
+        "claimId": "7dc41f36-cf8a-4de2-a8f1-34581e223f31",
+        "decision": "approve"
+      }
+    },
+    "approvalResult": {
+      "schemaRef": "claimDecisionResult",
+      "payload": {
+        "type": "claim_decision_result",
+        "protocol": 1,
+        "claimId": "7dc41f36-cf8a-4de2-a8f1-34581e223f31",
+        "state": "approved",
+        "mode": "new",
+        "peonId": "f4de920f-e33e-4cf5-97d0-3a75e9266090",
+        "workspaceId": "b169219d-45f6-4f42-b78f-3fb931dac7ee",
+        "credentialId": "6a379713-f4ca-4ca4-b4a8-9a3fbfea80d5",
+        "deliveryExpiresAt": 1785427810020,
+        "serverTime": 1785427210020,
+        "replayed": false
+      }
+    },
+    "recoveryApprovalResult": {
+      "schemaRef": "claimDecisionResult",
+      "payload": {
+        "type": "claim_decision_result",
+        "protocol": 1,
+        "claimId": "7dc41f36-cf8a-4de2-a8f1-34581e223f31",
+        "state": "approved",
+        "mode": "recover",
+        "peonId": "f4de920f-e33e-4cf5-97d0-3a75e9266090",
+        "workspaceId": "b169219d-45f6-4f42-b78f-3fb931dac7ee",
+        "credentialId": "95e95c93-26eb-493f-a2ac-05365186bf3a",
+        "deliveryExpiresAt": 1785427810020,
+        "serverTime": 1785427210020,
+        "replayed": false
+      }
+    },
+    "recoveryApprovedStatus": {
+      "schemaRef": "claimStatus",
+      "payload": {
+        "type": "claim_status",
+        "protocol": 1,
+        "claimId": "7dc41f36-cf8a-4de2-a8f1-34581e223f31",
+        "state": "approved",
+        "mode": "recover",
+        "workspaceId": "b169219d-45f6-4f42-b78f-3fb931dac7ee",
+        "delivery": {
+          "deliveryId": "11cb934d-38dd-48fe-9e52-509f1b027d2b",
+          "credentialId": "95e95c93-26eb-493f-a2ac-05365186bf3a",
+          "generation": 3,
+          "bearer": "pc1.95e95c93-26eb-493f-a2ac-05365186bf3a.DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD",
+          "expiresAt": 1785427810020
+        },
+        "serverTime": 1785427212100,
+        "replayed": false
+      }
+    },
+    "recoveryClaimAck": {
+      "schemaRef": "claimAck",
+      "payload": {
+        "type": "claim_ack",
+        "protocol": 1,
+        "claimId": "7dc41f36-cf8a-4de2-a8f1-34581e223f31",
+        "deliveryId": "11cb934d-38dd-48fe-9e52-509f1b027d2b",
+        "credentialId": "95e95c93-26eb-493f-a2ac-05365186bf3a",
+        "generation": 3,
+        "proof": {
+          "issuedAt": 1785427215000,
+          "requestNonce": "PPPPPPPPPPPPPPPPPPPPPP",
+          "signature": "QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQ"
+        }
+      }
+    },
+    "recoveryCompleted": {
+      "schemaRef": "claimCompleted",
+      "payload": {
+        "type": "claim_completed",
+        "protocol": 1,
+        "claimId": "7dc41f36-cf8a-4de2-a8f1-34581e223f31",
+        "state": "completed",
+        "peonId": "f4de920f-e33e-4cf5-97d0-3a75e9266090",
+        "workspaceId": "b169219d-45f6-4f42-b78f-3fb931dac7ee",
+        "credentialId": "95e95c93-26eb-493f-a2ac-05365186bf3a",
+        "generation": 3,
+        "completedAt": 1785427215010,
+        "serverTime": 1785427215010,
+        "replayed": false
+      }
+    },
+    "approvedStatus": {
+      "schemaRef": "claimStatus",
+      "payload": {
+        "type": "claim_status",
+        "protocol": 1,
+        "claimId": "7dc41f36-cf8a-4de2-a8f1-34581e223f31",
+        "state": "approved",
+        "mode": "new",
+        "workspaceId": "b169219d-45f6-4f42-b78f-3fb931dac7ee",
+        "delivery": {
+          "deliveryId": "b47f43a9-a537-4af7-abcf-ad7acfef8904",
+          "credentialId": "6a379713-f4ca-4ca4-b4a8-9a3fbfea80d5",
+          "generation": 1,
+          "bearer": "pc1.6a379713-f4ca-4ca4-b4a8-9a3fbfea80d5.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          "expiresAt": 1785427810020
+        },
+        "serverTime": 1785427212100,
+        "replayed": false
+      }
+    },
+    "approvedStatusReplay": {
+      "schemaRef": "claimStatus",
+      "payload": {
+        "type": "claim_status",
+        "protocol": 1,
+        "claimId": "7dc41f36-cf8a-4de2-a8f1-34581e223f31",
+        "state": "approved",
+        "mode": "new",
+        "workspaceId": "b169219d-45f6-4f42-b78f-3fb931dac7ee",
+        "delivery": {
+          "deliveryId": "b47f43a9-a537-4af7-abcf-ad7acfef8904",
+          "credentialId": "6a379713-f4ca-4ca4-b4a8-9a3fbfea80d5",
+          "generation": 1,
+          "bearer": "pc1.6a379713-f4ca-4ca4-b4a8-9a3fbfea80d5.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          "expiresAt": 1785427810020
+        },
+        "serverTime": 1785427214200,
+        "replayed": true
+      }
+    },
+    "claimAck": {
+      "schemaRef": "claimAck",
+      "payload": {
+        "type": "claim_ack",
+        "protocol": 1,
+        "claimId": "7dc41f36-cf8a-4de2-a8f1-34581e223f31",
+        "deliveryId": "b47f43a9-a537-4af7-abcf-ad7acfef8904",
+        "credentialId": "6a379713-f4ca-4ca4-b4a8-9a3fbfea80d5",
+        "generation": 1,
+        "proof": {
+          "issuedAt": 1785427215000,
+          "requestNonce": "HHHHHHHHHHHHHHHHHHHHHH",
+          "signature": "GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG"
+        }
+      }
+    },
+    "claimCompleted": {
+      "schemaRef": "claimCompleted",
+      "payload": {
+        "type": "claim_completed",
+        "protocol": 1,
+        "claimId": "7dc41f36-cf8a-4de2-a8f1-34581e223f31",
+        "state": "completed",
+        "peonId": "f4de920f-e33e-4cf5-97d0-3a75e9266090",
+        "workspaceId": "b169219d-45f6-4f42-b78f-3fb931dac7ee",
+        "credentialId": "6a379713-f4ca-4ca4-b4a8-9a3fbfea80d5",
+        "generation": 1,
+        "completedAt": 1785427215010,
+        "serverTime": 1785427215010,
+        "replayed": false
+      }
+    },
+    "denial": {
+      "schemaRef": "claimDecision",
+      "payload": {
+        "type": "claim_decision",
+        "protocol": 1,
+        "claimId": "7dc41f36-cf8a-4de2-a8f1-34581e223f31",
+        "decision": "deny"
+      }
+    },
+    "denialResult": {
+      "schemaRef": "claimDecisionResult",
+      "payload": {
+        "type": "claim_decision_result",
+        "protocol": 1,
+        "claimId": "7dc41f36-cf8a-4de2-a8f1-34581e223f31",
+        "state": "denied",
+        "serverTime": 1785427210020,
+        "replayed": false
+      }
+    },
+    "deniedStatus": {
+      "schemaRef": "claimStatus",
+      "payload": {
+        "type": "claim_status",
+        "protocol": 1,
+        "claimId": "7dc41f36-cf8a-4de2-a8f1-34581e223f31",
+        "state": "denied",
+        "code": "CLAIM_DENIED",
+        "serverTime": 1785427212100
+      }
+    },
+    "cancelled": {
+      "schemaRef": "claimCancelResult",
+      "payload": {
+        "type": "claim_cancel_result",
+        "protocol": 1,
+        "claimId": "7dc41f36-cf8a-4de2-a8f1-34581e223f31",
+        "state": "cancelled",
+        "code": "CLAIM_CANCELLED",
+        "changed": true,
+        "terminalAt": 1785427212100,
+        "serverTime": 1785427212100
+      }
+    },
+    "cancelDeniedResult": {
+      "schemaRef": "claimCancelResult",
+      "payload": {
+        "type": "claim_cancel_result",
+        "protocol": 1,
+        "claimId": "7dc41f36-cf8a-4de2-a8f1-34581e223f31",
+        "state": "denied",
+        "code": "CLAIM_DENIED",
+        "changed": false,
+        "terminalAt": 1785427210020,
+        "serverTime": 1785427212100
+      }
+    },
+    "cancelledStatus": {
+      "schemaRef": "claimStatus",
+      "payload": {
+        "type": "claim_status",
+        "protocol": 1,
+        "claimId": "7dc41f36-cf8a-4de2-a8f1-34581e223f31",
+        "state": "cancelled",
+        "code": "CLAIM_CANCELLED",
+        "serverTime": 1785427212200
+      }
+    },
+    "expiredStatus": {
+      "schemaRef": "claimStatus",
+      "payload": {
+        "type": "claim_status",
+        "protocol": 1,
+        "claimId": "7dc41f36-cf8a-4de2-a8f1-34581e223f31",
+        "state": "expired",
+        "code": "CLAIM_EXPIRED",
+        "serverTime": 1785427810021
+      }
+    },
+    "badSignatureError": {
+      "schemaRef": "claimError",
+      "payload": {
+        "type": "claim_error",
+        "protocol": 1,
+        "code": "BAD_SIGNATURE",
+        "message": "request proof was not accepted",
+        "serverTime": 1785427200020
+      }
+    },
+    "requestReplayedError": {
+      "schemaRef": "claimError",
+      "payload": {
+        "type": "claim_error",
+        "protocol": 1,
+        "code": "REQUEST_REPLAYED",
+        "message": "request nonce was already used",
+        "serverTime": 1785427202020
+      }
+    },
+    "attemptReusedError": {
+      "schemaRef": "claimError",
+      "payload": {
+        "type": "claim_error",
+        "protocol": 1,
+        "code": "ATTEMPT_ID_REUSED",
+        "message": "attemptId was used with different request data",
+        "serverTime": 1785427202030
+      }
+    },
+    "methodLockedError": {
+      "schemaRef": "claimError",
+      "payload": {
+        "type": "claim_error",
+        "protocol": 1,
+        "code": "ENROLLMENT_METHOD_LOCKED",
+        "message": "this enrollment attempt already selected peon-claim-v1",
+        "serverTime": 1785427202040,
+        "state": "pending",
+        "claimId": "7dc41f36-cf8a-4de2-a8f1-34581e223f31",
+        "expiresAt": 1785427800010
+      }
+    },
+    "rotationStart": {
+      "schemaRef": "credentialRotationStart",
+      "payload": {
+        "type": "credential_rotation_start",
+        "protocol": 1,
+        "capability": "peon-claim-v1",
+        "rotationId": "eb67fb2f-8e95-48e7-aaf7-0a424801636b",
+        "peonId": "f4de920f-e33e-4cf5-97d0-3a75e9266090",
+        "identityKeyId": "ed25519:kPrK_qmxVWaYVA9wwBF6Iuo3vVzz7TxHCTwXBygrS4k",
+        "currentCredentialId": "6a379713-f4ca-4ca4-b4a8-9a3fbfea80d5",
+        "currentGeneration": 1,
+        "serverOrigin": "https://overseer.example.test",
+        "proof": {
+          "issuedAt": 1785513600000,
+          "requestNonce": "JJJJJJJJJJJJJJJJJJJJJJ",
+          "signature": "KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK"
+        }
+      }
+    },
+    "rotationPoll": {
+      "schemaRef": "credentialRotationPoll",
+      "payload": {
+        "type": "credential_rotation_poll",
+        "protocol": 1,
+        "rotationId": "eb67fb2f-8e95-48e7-aaf7-0a424801636b",
+        "proof": {
+          "issuedAt": 1785514200011,
+          "requestNonce": "VVVVVVVVVVVVVVVVVVVVVV",
+          "signature": "KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK"
+        }
+      }
+    },
+    "rotationDelivery": {
+      "schemaRef": "credentialRotationDelivery",
+      "payload": {
+        "type": "credential_rotation_delivery",
+        "protocol": 1,
+        "rotationId": "eb67fb2f-8e95-48e7-aaf7-0a424801636b",
+        "state": "pending_ack",
+        "peonId": "f4de920f-e33e-4cf5-97d0-3a75e9266090",
+        "previousCredentialId": "6a379713-f4ca-4ca4-b4a8-9a3fbfea80d5",
+        "previousGeneration": 1,
+        "delivery": {
+          "deliveryId": "11cb934d-38dd-48fe-9e52-509f1b027d2b",
+          "credentialId": "95e95c93-26eb-493f-a2ac-05365186bf3a",
+          "generation": 2,
+          "bearer": "pc1.95e95c93-26eb-493f-a2ac-05365186bf3a.DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD",
+          "expiresAt": 1785514200010
+        },
+        "serverTime": 1785513600010,
+        "replayed": false
+      }
+    },
+    "rotationAck": {
+      "schemaRef": "credentialRotationAck",
+      "payload": {
+        "type": "credential_rotation_ack",
+        "protocol": 1,
+        "rotationId": "eb67fb2f-8e95-48e7-aaf7-0a424801636b",
+        "deliveryId": "11cb934d-38dd-48fe-9e52-509f1b027d2b",
+        "credentialId": "95e95c93-26eb-493f-a2ac-05365186bf3a",
+        "generation": 2,
+        "proof": {
+          "issuedAt": 1785513602000,
+          "requestNonce": "MMMMMMMMMMMMMMMMMMMMMM",
+          "signature": "NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN"
+        }
+      }
+    },
+    "rotationCompleted": {
+      "schemaRef": "credentialRotationCompleted",
+      "payload": {
+        "type": "credential_rotation_completed",
+        "protocol": 1,
+        "rotationId": "eb67fb2f-8e95-48e7-aaf7-0a424801636b",
+        "state": "completed",
+        "peonId": "f4de920f-e33e-4cf5-97d0-3a75e9266090",
+        "credentialId": "95e95c93-26eb-493f-a2ac-05365186bf3a",
+        "generation": 2,
+        "previousCredentialId": "6a379713-f4ca-4ca4-b4a8-9a3fbfea80d5",
+        "oldSocketGraceEndsAt": 1785513902010,
+        "completedAt": 1785513602010,
+        "serverTime": 1785513602010,
+        "replayed": false
+      }
+    },
+    "rotationExpiredError": {
+      "schemaRef": "claimError",
+      "payload": {
+        "type": "claim_error",
+        "protocol": 1,
+        "code": "ROTATION_EXPIRED",
+        "message": "credential rotation delivery expired",
+        "serverTime": 1785514200011
+      }
+    },
+    "claimCompletedReplay": {
+      "schemaRef": "claimCompleted",
+      "payload": {
+        "type": "claim_completed",
+        "protocol": 1,
+        "claimId": "7dc41f36-cf8a-4de2-a8f1-34581e223f31",
+        "state": "completed",
+        "peonId": "f4de920f-e33e-4cf5-97d0-3a75e9266090",
+        "workspaceId": "b169219d-45f6-4f42-b78f-3fb931dac7ee",
+        "credentialId": "6a379713-f4ca-4ca4-b4a8-9a3fbfea80d5",
+        "generation": 1,
+        "completedAt": 1785427215010,
+        "serverTime": 1785427219000,
+        "replayed": true
+      }
+    },
+    "claimAlreadyCompletedError": {
+      "schemaRef": "claimError",
+      "payload": {
+        "type": "claim_error",
+        "protocol": 1,
+        "code": "CLAIM_ALREADY_DECIDED",
+        "message": "claim acknowledgement already completed",
+        "serverTime": 1785427217000,
+        "state": "completed",
+        "claimId": "7dc41f36-cf8a-4de2-a8f1-34581e223f31"
+      }
+    },
+    "candidateRevokedError": {
+      "schemaRef": "claimError",
+      "payload": {
+        "type": "claim_error",
+        "protocol": 1,
+        "code": "CREDENTIAL_REVOKED",
+        "message": "candidate credential was revoked by claim cancellation",
+        "serverTime": 1785427219000,
+        "state": "cancelled",
+        "claimId": "7dc41f36-cf8a-4de2-a8f1-34581e223f31"
+      }
+    },
+    "attemptRetiredError": {
+      "schemaRef": "claimError",
+      "payload": {
+        "type": "claim_error",
+        "protocol": 1,
+        "code": "ATTEMPT_RETIRED",
+        "message": "claim attempt response material is no longer retained",
+        "serverTime": 1786291812101
+      }
+    },
+    "startReplayApprovedConflict": {
+      "schemaRef": "claimError",
+      "payload": {
+        "type": "claim_error",
+        "protocol": 1,
+        "code": "CLAIM_ALREADY_ACTIVE",
+        "message": "claim is approved and awaiting acknowledgement",
+        "serverTime": 1785427212100,
+        "state": "approved",
+        "claimId": "7dc41f36-cf8a-4de2-a8f1-34581e223f31",
+        "expiresAt": 1785427810020
+      }
+    },
+    "startReplayExpiredResult": {
+      "schemaRef": "claimError",
+      "payload": {
+        "type": "claim_error",
+        "protocol": 1,
+        "code": "CLAIM_EXPIRED",
+        "message": "claim or candidate delivery expired",
+        "serverTime": 1785427810020,
+        "state": "expired",
+        "claimId": "7dc41f36-cf8a-4de2-a8f1-34581e223f31"
+      }
+    },
+    "credentialRevocationRequest": {
+      "schemaRef": "revocationRequest",
+      "payload": {
+        "type": "credential_revocation",
+        "protocol": 1,
+        "credentialId": "6a379713-f4ca-4ca4-b4a8-9a3fbfea80d5"
+      }
+    },
+    "peonRevocationRequest": {
+      "schemaRef": "revocationRequest",
+      "payload": {
+        "type": "peon_revocation",
+        "protocol": 1,
+        "peonId": "f4de920f-e33e-4cf5-97d0-3a75e9266090"
+      }
+    },
+    "credentialRevocationResult": {
+      "schemaRef": "revocationResult",
+      "payload": {
+        "type": "revocation_result",
+        "protocol": 1,
+        "scope": "credential",
+        "code": "CREDENTIAL_REVOKED",
+        "workspaceId": "b169219d-45f6-4f42-b78f-3fb931dac7ee",
+        "peonId": "f4de920f-e33e-4cf5-97d0-3a75e9266090",
+        "credentialId": "6a379713-f4ca-4ca4-b4a8-9a3fbfea80d5",
+        "changed": true,
+        "revokedCredentialCount": 1,
+        "evictedSocketCount": 2,
+        "revokedAt": 1785427220000,
+        "serverTime": 1785427220000
+      }
+    },
+    "credentialRevocationReplay": {
+      "schemaRef": "revocationResult",
+      "payload": {
+        "type": "revocation_result",
+        "protocol": 1,
+        "scope": "credential",
+        "code": "CREDENTIAL_REVOKED",
+        "workspaceId": "b169219d-45f6-4f42-b78f-3fb931dac7ee",
+        "peonId": "f4de920f-e33e-4cf5-97d0-3a75e9266090",
+        "credentialId": "6a379713-f4ca-4ca4-b4a8-9a3fbfea80d5",
+        "changed": false,
+        "revokedCredentialCount": 0,
+        "evictedSocketCount": 0,
+        "revokedAt": 1785427220000,
+        "serverTime": 1785427225000
+      }
+    },
+    "peonRevocationResult": {
+      "schemaRef": "revocationResult",
+      "payload": {
+        "type": "revocation_result",
+        "protocol": 1,
+        "scope": "peon",
+        "code": "PEON_REVOKED",
+        "workspaceId": "b169219d-45f6-4f42-b78f-3fb931dac7ee",
+        "peonId": "f4de920f-e33e-4cf5-97d0-3a75e9266090",
+        "changed": true,
+        "revokedCredentialCount": 3,
+        "evictedSocketCount": 4,
+        "revokedAt": 1785427220000,
+        "serverTime": 1785427220000
+      }
+    },
+    "credentialRevocationForbidden": {
+      "schemaRef": "operatorError",
+      "payload": {
+        "type": "operator_error",
+        "protocol": 1,
+        "code": "FORBIDDEN",
+        "message": "workspace owner role required",
+        "serverTime": 1785427220000
+      }
+    },
+    "peonRevocationForbidden": {
+      "schemaRef": "operatorError",
+      "payload": {
+        "type": "operator_error",
+        "protocol": 1,
+        "code": "FORBIDDEN",
+        "message": "workspace owner role required",
+        "serverTime": 1785427220000
+      }
+    },
+    "revocationCsrfDenied": {
+      "schemaRef": "operatorError",
+      "payload": {
+        "type": "operator_error",
+        "protocol": 1,
+        "code": "CSRF_ORIGIN",
+        "message": "trusted request origin required",
+        "serverTime": 1785427220000
+      }
+    },
+    "revocationUnauthenticated": {
+      "schemaRef": "operatorError",
+      "payload": {
+        "type": "operator_error",
+        "protocol": 1,
+        "code": "UNAUTHENTICATED",
+        "message": "authentication required",
+        "serverTime": 1785427220000
+      }
+    },
+    "credentialRevocationNotFound": {
+      "schemaRef": "operatorError",
+      "payload": {
+        "type": "operator_error",
+        "protocol": 1,
+        "code": "NOT_FOUND",
+        "message": "revocation target not found",
+        "serverTime": 1785427220000
+      }
+    },
+    "peonRevocationNotFound": {
+      "schemaRef": "operatorError",
+      "payload": {
+        "type": "operator_error",
+        "protocol": 1,
+        "code": "NOT_FOUND",
+        "message": "revocation target not found",
+        "serverTime": 1785427220000
+      }
+    }
+  },
+  "sequences": {
+    "success": [
+      "capabilities",
+      "claimStart",
+      "claimCreated",
+      "claimResolve",
+      "claimDetails",
+      "approval",
+      "approvalResult",
+      "claimPoll",
+      "approvedStatus",
+      "claimPollAgain",
+      "approvedStatusReplay",
+      "claimAck",
+      "claimCompleted"
+    ],
+    "denial": [
+      "claimStart",
+      "claimCreated",
+      "claimResolve",
+      "claimDetails",
+      "denial",
+      "denialResult",
+      "claimPoll",
+      "deniedStatus"
+    ],
+    "terminalCancelObservation": [
+      "claimStart",
+      "claimCreated",
+      "denial",
+      "denialResult",
+      "claimCancel",
+      "cancelDeniedResult"
+    ],
+    "cancellation": [
+      "claimStart",
+      "claimCreated",
+      "claimCancel",
+      "cancelled"
+    ],
+    "expiry": [
+      "claimStart",
+      "claimCreated",
+      "claimPoll",
+      "expiredStatus"
+    ],
+    "replay": [
+      "claimStart",
+      "claimCreated",
+      "claimStart",
+      "claimCreatedReplay",
+      "requestReplayedError",
+      "attemptReusedError"
+    ],
+    "startReplayLifecycleBoundaries": [
+      "claimStart",
+      "claimCreated",
+      "approval",
+      "approvalResult",
+      "claimStart",
+      "startReplayApprovedConflict",
+      "claimStart",
+      "startReplayExpiredResult",
+      "claimStart",
+      "attemptRetiredError"
+    ],
+    "legacyConflict": [
+      "claimStart",
+      "claimCreated",
+      "methodLockedError"
+    ],
+    "recovery": [
+      "claimStart",
+      "claimCreated",
+      "recoveryApprovalResult",
+      "claimPoll",
+      "recoveryApprovedStatus",
+      "recoveryClaimAck",
+      "recoveryCompleted"
+    ],
+    "rotation": [
+      "rotationStart",
+      "rotationDelivery",
+      "rotationAck",
+      "rotationCompleted"
+    ],
+    "rotationTimeout": [
+      "rotationStart",
+      "rotationDelivery",
+      "rotationPoll",
+      "rotationExpiredError"
+    ],
+    "ackWinsCancelRace": [
+      "approvedStatus",
+      "claimAck",
+      "claimCompleted",
+      "claimCancel",
+      "claimAlreadyCompletedError",
+      "claimAck",
+      "claimCompletedReplay"
+    ],
+    "cancelWinsAckRace": [
+      "approvedStatus",
+      "claimCancel",
+      "cancelled",
+      "claimAck",
+      "candidateRevokedError"
+    ],
+    "credentialRevocation": [
+      "credentialRevocationRequest",
+      "credentialRevocationResult",
+      "credentialRevocationRequest",
+      "credentialRevocationReplay"
+    ],
+    "peonRevocation": [
+      "peonRevocationRequest",
+      "peonRevocationResult"
+    ]
+  },
+  "invalidFrames": [
+    {
+      "name": "unknown claim_start property",
+      "schemaRef": "claimStart",
+      "payload": {
+        "type": "claim_start",
+        "protocol": 1,
+        "capability": "peon-claim-v1",
+        "attemptId": "018f4f0c-9f30-7a61-bf1a-66d2582bdb4a",
+        "peonId": "f4de920f-e33e-4cf5-97d0-3a75e9266090",
+        "serverOrigin": "https://overseer.example.test",
+        "claimNonce": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "claimTokenHash": "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD",
+        "identity": {
+          "algorithm": "Ed25519",
+          "keyId": "ed25519:kPrK_qmxVWaYVA9wwBF6Iuo3vVzz7TxHCTwXBygrS4k",
+          "publicKey": {
+            "kty": "OKP",
+            "crv": "Ed25519",
+            "x": "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo"
+          }
+        },
+        "display": {
+          "name": "Nova",
+          "platform": "darwin",
+          "architecture": "arm64",
+          "daemonVersion": "0.11.2"
+        },
+        "proof": {
+          "issuedAt": 1785427200000,
+          "requestNonce": "BBBBBBBBBBBBBBBBBBBBBB",
+          "signature": "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC"
+        },
+        "workspaceId": "b169219d-45f6-4f42-b78f-3fb931dac7ee"
+      }
+    },
+    {
+      "name": "credential secret has the wrong size",
+      "schemaRef": "claimStatus",
+      "payload": {
+        "type": "claim_status",
+        "protocol": 1,
+        "claimId": "7dc41f36-cf8a-4de2-a8f1-34581e223f31",
+        "state": "approved",
+        "mode": "new",
+        "workspaceId": "b169219d-45f6-4f42-b78f-3fb931dac7ee",
+        "delivery": {
+          "deliveryId": "b47f43a9-a537-4af7-abcf-ad7acfef8904",
+          "credentialId": "6a379713-f4ca-4ca4-b4a8-9a3fbfea80d5",
+          "generation": 1,
+          "bearer": "pc1.6a379713-f4ca-4ca4-b4a8-9a3fbfea80d5.too-short",
+          "expiresAt": 1785427810020
+        },
+        "serverTime": 1785427212100,
+        "replayed": false
+      }
+    },
+    {
+      "name": "terminal state and stable code disagree",
+      "schemaRef": "claimStatus",
+      "payload": {
+        "type": "claim_status",
+        "protocol": 1,
+        "claimId": "7dc41f36-cf8a-4de2-a8f1-34581e223f31",
+        "state": "denied",
+        "code": "CLAIM_EXPIRED",
+        "serverTime": 1785427810021
+      }
+    },
+    {
+      "name": "cancel terminal state code and changed flag disagree",
+      "schemaRef": "claimCancelResult",
+      "payload": {
+        "type": "claim_cancel_result",
+        "protocol": 1,
+        "claimId": "7dc41f36-cf8a-4de2-a8f1-34581e223f31",
+        "state": "denied",
+        "code": "CLAIM_EXPIRED",
+        "changed": true,
+        "terminalAt": 1785427212040,
+        "serverTime": 1785427212040
+      }
+    },
+    {
+      "name": "Peon cannot nominate a workspace in rotation",
+      "schemaRef": "credentialRotationStart",
+      "payload": {
+        "type": "credential_rotation_start",
+        "protocol": 1,
+        "capability": "peon-claim-v1",
+        "rotationId": "eb67fb2f-8e95-48e7-aaf7-0a424801636b",
+        "peonId": "f4de920f-e33e-4cf5-97d0-3a75e9266090",
+        "identityKeyId": "ed25519:EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE",
+        "currentCredentialId": "6a379713-f4ca-4ca4-b4a8-9a3fbfea80d5",
+        "currentGeneration": 1,
+        "serverOrigin": "https://overseer.example.test",
+        "workspaceId": "b169219d-45f6-4f42-b78f-3fb931dac7ee",
+        "proof": {
+          "issuedAt": 1785513600000,
+          "requestNonce": "JJJJJJJJJJJJJJJJJJJJJJ",
+          "signature": "KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK"
+        }
+      }
+    }
+  ],
+  "httpStatusByError": {
+    "BAD_REQUEST": 400,
+    "UNSUPPORTED_CAPABILITY": 400,
+    "UNSUPPORTED_PROTOCOL": 400,
+    "INVALID_IDENTITY": 400,
+    "BAD_SIGNATURE": 401,
+    "CLOCK_SKEW": 401,
+    "UNAUTHENTICATED": 401,
+    "FORBIDDEN": 403,
+    "REQUEST_REPLAYED": 409,
+    "ATTEMPT_ID_REUSED": 409,
+    "ATTEMPT_RETIRED": 410,
+    "ROTATION_ID_REUSED": 409,
+    "CLAIM_ACK_MISMATCH": 409,
+    "ROTATION_ACK_MISMATCH": 409,
+    "CLAIM_NOT_FOUND": 404,
+    "CLAIM_ALREADY_ACTIVE": 409,
+    "CLAIM_ALREADY_DECIDED": 409,
+    "CLAIM_DENIED": 409,
+    "CLAIM_CANCELLED": 409,
+    "CLAIM_EXPIRED": 410,
+    "IDENTITY_KEY_MISMATCH": 409,
+    "PEON_ALREADY_CLAIMED": 409,
+    "WORKSPACE_MISMATCH": 409,
+    "ENROLLMENT_METHOD_LOCKED": 409,
+    "CREDENTIAL_INVALID": 401,
+    "CREDENTIAL_REVOKED": 401,
+    "CREDENTIAL_RETIRED": 401,
+    "CREDENTIAL_GENERATION_MISMATCH": 409,
+    "ROTATION_ALREADY_ACTIVE": 409,
+    "ROTATION_EXPIRED": 410,
+    "RATE_LIMITED": 429,
+    "CLAIM_CAPACITY_EXCEEDED": 503,
+    "PERSIST_FAILED": 503,
+    "INTERNAL": 500
+  },
+  "operatorHttpStatusByError": {
+    "UNAUTHENTICATED": 401,
+    "CSRF_ORIGIN": 403,
+    "FORBIDDEN": 403,
+    "NOT_FOUND": 404
+  },
+  "secretFieldNames": [
+    "claimToken",
+    "bearer",
+    "identityPrivateKey",
+    "credentialVerifier",
+    "credentialPepper",
+    "deliveryKey",
+    "deliveryCiphertext",
+    "operatorCodeKey",
+    "operatorCodeCiphertext"
+  ],
+  "browserForbiddenFieldNames": [
+    "claimToken",
+    "claimTokenHash",
+    "claimNonce",
+    "publicKey",
+    "proof",
+    "bearer",
+    "credentialVerifier",
+    "deliveryCiphertext",
+    "operatorCodeCiphertext",
+    "sourceIp"
+  ]
+}

@@ -1,5 +1,6 @@
 import { callPeon } from "./peonClient.js";
 import type { PeonConn } from "./modules/peonClient/peonClientTypes.js";
+import { PATH_ESCAPE_PUBLIC_MESSAGE } from "./fileErrorSafety.js";
 
 // The file-transfer API is rooted at the Peon's `fileTransferRoot`, so every
 // path under `/files/...` is sandbox-relative. A message attachment, however,
@@ -94,7 +95,7 @@ export async function resolveAttachmentPath(
   if (path.startsWith("/")) return resolveAbsolute(conn, absolutePathOf(path.split("/")), actor, fetchRoot);
   const segments = path.split("/").filter((segment) => segment !== "");
   if (segments.some((segment) => segment === "..")) {
-    throw new FileSandboxError(400, "PATH_ESCAPE", "attachment path escapes the Peon file transfer root");
+    throw new FileSandboxError(400, "PATH_ESCAPE", PATH_ESCAPE_PUBLIC_MESSAGE);
   }
   if (segments.length === 0) throw new FileSandboxError(400, "BAD_REQUEST", "path query parameter is required");
   return segments;
@@ -104,7 +105,7 @@ async function resolveAbsolute(conn: PeonConn, absolutePath: string, actor: stri
   const root = await fetchRoot(conn, actor);
   const resolved = sandboxSegmentsOf(root, absolutePath);
   if (!resolved) {
-    throw new FileSandboxError(400, "PATH_ESCAPE", `this file is outside the Peon file transfer root (${root.replace(/\/+$/, "")})`);
+    throw new FileSandboxError(400, "PATH_ESCAPE", PATH_ESCAPE_PUBLIC_MESSAGE);
   }
   return resolved;
 }

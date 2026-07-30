@@ -1,0 +1,99 @@
+# Protocol conformance and failure-injection harness
+
+OVSR-151 owns the reusable cross-version test foundation under
+`packages/protocol-conformance`. It is a private npm workspace and joins the
+root `npm run verify` command through its `verify` script. It does not replace
+the Peon and Overseer implementation tests; it supplies the shared frames,
+matrix, transport faults and topology assertions that those adapters can reuse.
+
+Run the focused suite with:
+
+```sh
+npm test -w @rnm/protocol-conformance
+```
+
+## Stable executable slice
+
+`fixtures/stable-v1.json` is the shared golden-frame document. Its runner checks
+the released control and transfer socket handshakes, the durable envelope,
+session and project snapshots/events/acknowledgements, folder requests/pages/
+cancellation/errors, and project/sandbox file open/metadata/credit/end/errors.
+Positive and negative frames share the same adapters. Complete serialized frame
+sizes are checked against the control, durable, catalog-page, folder-page and
+transfer-JSON limits, and error frames accept only their stable code allowlists.
+
+`fixtures/capability-matrix-v1.json` defines three Peon profiles and three
+Overseer profiles:
+
+| Peon \ Overseer | legacy | stable-v1 | current |
+| --- | --- | --- | --- |
+| legacy-http | green: legacy fallback | green: exclusive downgrade | green: exclusive downgrade |
+| stable-v1 | green: exclusive downgrade | green: stable reverse slice | green: mixed reverse slice |
+| current | green: exclusive downgrade | green: mixed reverse slice | green: current reverse slice |
+
+Every cell asserts one route per surface: `reverse-socket`, `legacy-http`, or
+`unavailable`. The session catalog and durable delivery capabilities are
+all-or-nothing; project catalog depends on that pair. Folder listing negotiates
+independently. Project directory metadata stays on HTTP unless both sides
+negotiate `entry-metadata-v1`. Project and sandbox file reads independently
+downgrade to HTTP when their transfer capability is absent.
+
+The current×current cell also runs through `NoInboundTopology` with the Peon
+fleet port blocked. It opens only Peon-initiated control and file-transfer
+connections and fails immediately if a surface selects legacy HTTP or Overseer
+attempts to dial Peon. This proves the already stable socket/catalog/folder/
+file-read slice behind NAT; it is not yet proof of the epic's full fleet
+surface.
+
+## Deterministic faults and diagnostics
+
+`DeterministicTransport` injects `drop`, `duplicate`, `hold` plus FIFO/reverse
+release, disconnect, reconnect and Peon/Overseer restart. Every frame carries a
+harness generation, so a held frame from a replaced connection is rejected.
+`DeterministicDeliveryHarness` adds a bounded durable journal, ordered receiver
+checkpoint, message-ID deduplication, cumulative acknowledgement and
+restart-preserved sender/receiver state. Tests cover dropped data, dropped ACK,
+duplicate delivery, out-of-order gap detection, stale-generation delivery and
+eventual one-effect convergence.
+
+Fault queues, frames, journals and convergence steps are bounded and fail with
+stable harness codes such as `QUEUE_FULL`, `FRAME_TOO_LARGE`, `OUTBOX_FULL` and
+`CONVERGENCE_TIMEOUT`. `BoundedDiagnostics` produces a JSON-safe artifact with
+entry and byte ceilings. It redacts authorization, cookies, tokens, credentials,
+pairing material, prompts, transcripts, actor email and sensitive paths; raw
+frames are not included in the golden-run report.
+
+`auditVendoredContracts` compares contract copies by byte count, exact SHA-256
+and canonical-JSON SHA-256 without placing schema or fixture bodies in
+diagnostics. The claim schema and fixtures are currently identical between Peon
+and Overseer. The reverse-command fixtures are identical; the schemas are
+JSON-equivalent but not byte-identical because one copy is expanded formatting.
+This drift remains visible without treating formatting as a released lifecycle
+test.
+
+## Extension cells that must not report green
+
+The matrix registers these unfinished families explicitly:
+
+- `reverse-command-v1`: the current schema difference is formatting-only and
+  both fixtures release `session.cancel`, but complete accepted/result/status
+  lifecycle crash-point adapters are not attached.
+- `peon-claim-v1`: the shared contract is frozen, but enrollment,
+  recovery/rotation/revocation and restart scenarios depend on unfinished
+  OVSR-145/147 implementation work. See
+  [Peon-initiated enrollment](peon-claim-v1.md).
+- `transcript-sync-v1`: implementation work is landing concurrently, but the
+  shared golden adapter, projection/ACK and exclusive-fallback matrix cells,
+  and complete mixed-version failure scenarios are not yet stable here. See
+  [Peon transcript publication](transcript-sync.md).
+- writes: uploads and artifact writes remain HTTP-only; no reverse file-write
+  operation is released.
+- rollout: update reconnect/attestation, fairness and latency SLOs,
+  production-like soak artifacts and staged fleet rollout remain unfinished.
+
+To extend the harness, add a version profile and expected route cell, add golden
+frames with a named adapter passed through
+`executeGoldenFrames(document, { adapters })`, then attach the real Peon and
+Overseer endpoint adapters to the deterministic transport. A family moves from
+`extensions` into the required matrix only after its capability, limits, stable
+errors and downgrade authority are frozen.

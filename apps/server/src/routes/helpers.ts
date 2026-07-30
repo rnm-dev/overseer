@@ -1,3 +1,4 @@
+import { isIP } from "node:net";
 import express from "express";
 import { registry, type PeonRecord } from "../registry.js";
 import { membership, type Role } from "../workspaces.js";
@@ -17,7 +18,7 @@ declare global {
     interface Request {
       user?: AuthContext; // set by operatorAuth
       authTransport?: "bearer" | "cookie"; // set by operatorAuth
-      peonCred?: { id: string; workspaceId: string; boundPeonId: string | null }; // set by credentialAuth
+      peonCred?: { id: string; workspaceId: string; boundPeonId: string | null; method: "legacy" | "claim"; generation: number | null }; // set by credentialAuth
     }
   }
 }
@@ -36,11 +37,16 @@ export function sourceAddress(req: express.Request): string {
   return raw.startsWith("::ffff:") ? raw.slice(7) : raw;
 }
 
-// Best-effort client fingerprint recorded on a freshly issued device — honours
-// X-Forwarded-For since the app reaches us through nginx/Cloudflare.
+// Client identity for security attribution and IP-scoped abuse limits.
+// req.ip consults X-Forwarded-For only through the validated proxy ranges set
+// on the Express app. CF-Connecting-IP is deliberately not read here: nginx
+// accepts it only from Cloudflare networks, then overwrites X-Forwarded-For
+// with one canonical address. Direct callers therefore cannot select this IP.
 export function clientInfo(req: express.Request): { ip: string | null; userAgent: string | null } {
-  const fwd = req.headers["x-forwarded-for"];
-  const ip = (typeof fwd === "string" ? fwd.split(",")[0]?.trim() : null) || sourceAddress(req) || null;
+  const forwarded = req.ip;
+  // proxy-addr stops at malformed XFF entries but returns that entry as req.ip.
+  // Never turn arbitrary strings into independent rate-limit identities.
+  const ip = (forwarded && isIP(forwarded) ? forwarded.replace(/^::ffff:/, "") : sourceAddress(req)) || null;
   const ua = typeof req.headers["user-agent"] === "string" ? req.headers["user-agent"] : null;
   return { ip, userAgent: ua };
 }
@@ -51,7 +57,13 @@ export const credentialAuth: express.RequestHandler = (req, res, next) => {
   void (async () => {
     const cred = await resolveCredential(bearer(req));
     if (!cred) return res.status(401).json({ error: "invalid or revoked peon credential", code: "UNAUTHENTICATED" });
-    req.peonCred = { id: cred.id, workspaceId: cred.workspaceId, boundPeonId: cred.boundPeonId };
+    req.peonCred = {
+      id: cred.id,
+      workspaceId: cred.workspaceId,
+      boundPeonId: cred.boundPeonId,
+      method: cred.method,
+      generation: cred.generation,
+    };
     next();
   })().catch(next);
 };

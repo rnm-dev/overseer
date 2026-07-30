@@ -17,6 +17,13 @@ The shared `reverse-command-v1` schema and golden frames are vendored under
 Daemon pause/resume is intentionally local-only: Overseer may display paused
 state but must not change it.
 
+The frozen `peon-claim-v1` schema, golden lifecycle fixtures, and executable
+cryptographic/security vectors are vendored under `protocol/peon-claim-v1/`.
+The canonical normative prose is
+`apps/peon/docs/peon-claim-protocol-v1.md` in the monorepo. It chooses
+Peon-initiated HTTPS short polling and treats the `/enroll` section below only as
+the legacy mixed-version path.
+
 ## Topology
 
 - **Transport:** HTTP/JSON over a **Tailscale** tailnet. NAT (office desktops
@@ -41,13 +48,13 @@ Peon/workspace binding checks.
 After the HTTP upgrade, Peon must send:
 
 ```json
-{ "type": "hello", "protocol": 1, "channel": "file-transfer", "peonId": "optional-stable-id", "capabilities": ["project-file-read-v1"] }
+{ "type": "hello", "protocol": 1, "channel": "file-transfer", "peonId": "optional-stable-id", "capabilities": ["project-file-read-v1", "sandbox-file-read-v1", "file-write-v1"] }
 ```
 
 Overseer answers:
 
 ```json
-{ "type": "hello_ack", "protocol": 1, "channel": "file-transfer", "capabilities": ["project-file-read-v1"] }
+{ "type": "hello_ack", "protocol": 1, "channel": "file-transfer", "capabilities": ["project-file-read-v1", "sandbox-file-read-v1", "file-write-v1"] }
 ```
 
 At most one ready transfer connection is current per Peon; a newer successful
@@ -57,8 +64,9 @@ WebSocket ping frames every 30 seconds and terminates a connection that misses a
 pong round. Credential revocation evicts both channels.
 
 Overseer echoes only implemented transfer capabilities. A connected Peon that
-does not negotiate `project-file-read-v1` is lifecycle-ready but unavailable to
-the project file stream service; Overseer never sends it `file_open`.
+does not negotiate an exact operation capability is lifecycle-ready but
+unavailable to that file service; Overseer never probes an unsupported
+operation and uses the legacy HTTP route for that older Peon.
 
 The first data-plane operation is a project-relative file read. Its authenticated
 browser surface uses stable project identity:
@@ -86,6 +94,36 @@ symlink, permission, and file checks. It answers exactly one pre-body outcome:
 ```json
 { "type": "file_error", "requestId": "uuid", "status": 404, "code": "NOT_FOUND", "message": "file does not exist" }
 ```
+
+`file-write-v1` adds bounded attachment and project uploads plus same-project
+rename. Overseer sends `write_open`, waits for `write_ready`, and sends
+client-to-Peon binary frames only within `write_credit`. Binary frame type byte
+`2` distinguishes write chunks from read chunks; both use the same UUID,
+sequence and 64 KiB frame bounds. `write_end` asks Peon to checksum, flush,
+revalidate and atomically commit; `write_cancel` cleans the temporary file.
+Attachment uploads are limited to 25 MiB and ten references per message;
+project/other sandbox writes are limited to 100 MiB.
+
+Project and sandbox paths remain Peon-authoritative and symlink-contained.
+Peon validates and anchors the destination parent before creating the
+exclusive temporary file relative to that directory handle. Streaming,
+commit, cancellation and failure cleanup retain the same parent inode, so a
+pathname swap during temp creation cannot redirect or strand bytes outside the
+authorized root; unsupported fd-relative primitives fail closed.
+Project uploads and moves address the immutable project ID. A move is
+derived from one resolved, opened and identity-validated project-root handle
+for both source and destination, never from two independent resolutions of the
+configured project pathname. It is same-project and no-clobber: a destination
+race returns `DESTINATION_EXISTS`. Peon retains a bounded process-local terminal result per
+request ID for retry/reconnect replay and rejects request-ID reuse with different
+input. A non-cancellable move retains request ownership through cancel, lease
+expiry, and socket replacement, then caches its authoritative outcome even
+when the original generation is stale. Once the socket route is selected,
+failure returns to the caller and never executes the HTTP fallback. If the
+capability is negotiated but the canonical project identity is missing or
+stale, Overseer returns transient
+`PROJECT_IDENTITY_UNAVAILABLE` and likewise never probes HTTP. Peons without
+`file-write-v1` keep the existing proxied `PUT`/`PATCH` behavior.
 
 or:
 
@@ -197,6 +235,83 @@ once migration-018 `catalog_epoch` exists, HTTP authority never resumes.
 Its top-level `catalogs` array exposes each visible Peon's `online`,
 `legacy|fallback|syncing|ready|stale|offline` state, stale flag, checkpoint
 freshness timestamp, committed catalog revision, and delivery-commit presence.
+
+### Reverse-connected transcript publication
+
+`transcript-sync-v1` is an optional control-socket capability which requires
+`durable-delivery-v1`. It is independent of reverse command admission and
+Peon-initiated enrollment. Peon publishes only canonical JSONL rows, and a live
+event becomes eligible only after its local JSONL append succeeds.
+
+Overseer requests
+`transcript_snapshot_request {requestId,sessionId,limit,cursor?,subscribe?}`.
+Peon answers with frozen
+`transcript_snapshot_page {requestId,sessionId,epoch,revision,barrierSeq,events,
+nextCursor,hasMore}` pages. Every event carries the same session/epoch plus its
+exact `seq`, `eventId`, `createdAt`, provider-neutral `eventType`, `author`,
+`usage`, canonical bounded `event`, artifact references, and optional
+reverse-transport truncation metadata. Opaque cursors are request- and
+session-bound; unavailable cursors require a fresh snapshot.
+
+`subscribe:true` arms demand before the barrier is captured. Canonical commits
+after that barrier enter the shared durable outbox as
+`transcript_live_event`; snapshot-covered and replayed events dedupe by session,
+transcript epoch, sequence, and event ID. `result` and `transcript_deleted`
+payloads are critical, warnings are control priority, and all durable payloads
+still retain global cursor order.
+
+Peon reserves each of its four snapshot slots before canonical I/O and fences
+late completion by request cancellation, the 30-second lease, and socket
+generation. It checks the lease synchronously before every continuation and
+after repository load rather than relying on timer scheduling. Its 192 KiB
+event bound applies to the complete durable wire
+envelope, including usage and artifact metadata. A deletion rejected by
+temporary outbox capacity or persistence pressure remains pending across
+reconnect and is retried before Peon releases the corresponding demand state.
+
+A small reconnect gap may use
+`transcript_subscribe {requestId,sessionId,epoch,afterSeq}`; Peon returns
+`CURSOR_UNAVAILABLE` when the epoch/sequence cannot be resumed within its
+bounded catch-up. `transcript_unsubscribe` and snapshot cancellation release
+demand. A per-session outstanding limit turns a noisy transcript into
+`RESYNC_REQUIRED` without suppressing other sessions. Exact Peon limits and
+error codes are normative in the `transcript-sync-v1` section of
+`apps/peon/PROTOCOL.md`.
+
+Overseer checks workspace/session/project access before creating demand and
+again through an authoritative current database ACL read immediately before
+each WS/SSE replay or live delivery. It stages all pages in memory and
+publishes no partial snapshot. The frozen envelopes must repeat the requested
+session and epoch and form the contiguous range `1..barrierSeq`; a sparse
+snapshot cannot acknowledge a gap. The final page atomically replaces one
+session's bounded projection and checkpoint. A live event transaction commits
+the canonical event, per-session checkpoint, shared durable inbox/cursor, and
+ACL-carrying browser event before cumulative `durable_ack`; replay is silent.
+A durable event covered by the snapshot barrier must match the projected row
+at the same epoch/sequence by event ID and canonical normalized payload before
+its inbox/cursor commit. Socket generation guards reject late snapshot, event,
+deletion, and ACK work.
+
+Browser WebSocket and HTTP SSE tails replay the committed projection after
+`lastEventId`, then consume committed event-log fan-out. Demand is shared per
+Peon/session, so several browsers do not create several Peon subscriptions.
+The last authorized consumer unsubscribes and cancels demand-only snapshot
+work. Gap recovery needed to advance an already durable cursor completes even
+without a browser.
+
+The transcript channel limit block is negotiated exactly, including 64 unique
+active-or-pending subscriptions per Peon connection. Overseer reserves one slot
+per session before sending snapshot or subscribe work, rejects excess demand
+without a frame, and clears correlated pending state on response, error,
+release, timeout, socket replacement, and disposal. A non-responsive
+subscription request closes the connection after its bounded wait.
+
+Once a reverse snapshot commits, the projection remains the exclusive history
+authority and reports `ready|syncing|stale|offline|gap|evicted` freshness.
+Before that point, a Peon without an active negotiated reverse channel retains
+the legacy HTTP/SSE route. Whole-session least-recently-used eviction bounds
+central storage; the next authorized demand deterministically rebuilds the
+session from Peon's canonical transcript.
 
 ### Reverse-connected project catalog
 
@@ -513,12 +628,11 @@ PATCH /api/settings {
 Leave `overseerToken` empty on a standalone peon and the entire `/agent`
 surface stays off; leave `overseerUrl` empty and it never phones home.
 
-## Recruitment (overseer-driven enrollment) — PEON-SIDE CHANGES NEEDED
+## Legacy recruitment (overseer-driven `/enroll`)
 
-> **Status:** implemented on the overseer; **not yet on the peon.** This section is
-> the spec for the peon side. Until it lands, recruitment works in *manual* mode
-> (an operator sets `overseerUrl` + the minted token by hand, per "Enabling it"
-> above). The two changes below unlock *zero-touch* recruitment.
+> **Compatibility status:** this describes the existing mixed-version `/enroll`
+> path. It is not an alternative framing of `peon-claim-v1`; a durable enrollment
+> attempt must select only one path, as defined by the claim contract.
 
 The overseer no longer uses one shared fleet secret. It mints a **per-peon,
 workspace-scoped token** and the peon presents that as its `overseerToken`. From

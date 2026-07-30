@@ -13,14 +13,14 @@ test("reverse command v1 fixtures stay aligned with the normative schema", () =>
   assert.equal(schema.$id, "https://peon.local/protocol/reverse-command-v1/schema.json");
   assert.equal(fixtures.contractVersion, 1);
   assert.equal(fixtures.capability, "reverse-command-v1");
-  assert.deepEqual(fixtures.enabledOperations, ["session.cancel", "project.archive", "project.unarchive"]);
+  assert.deepEqual(fixtures.enabledOperations, ["session.cancel"]);
   assert.equal(fixtures.maxCommandFrameBytes, 60 * 1024);
 
   const { command, accepted, durableResult, statusRequest, terminalStatus } = fixtures.frames;
   assert.equal(command.capability, fixtures.capability);
   assert.equal(command.operation, "session.cancel");
   assert.deepEqual(command.payload, {});
-  assert.deepEqual(schema.$defs.target.required, ["peonId"]);
+  assert.deepEqual(schema.$defs.target.required, ["peonId", "sessionId"]);
   assert.match(command.commandId, UUID);
   assert.match(command.target.peonId, UUID);
   assert.match(command.target.sessionId, UUID);
@@ -52,4 +52,16 @@ test("reverse command v1 publishes stable generic HTTP mappings", () => {
     COMMAND_PENDING: 202,
     COMMAND_TIMEOUT: 504
   });
+});
+
+test("Peon and Overseer reverse-command-v1 vendors are byte-identical", () => {
+  const overseerRoot = path.resolve(root, "..");
+  assert.equal(
+    readFileSync(path.join(root, "protocol/reverse-command-v1/schema.json"), "utf8"),
+    readFileSync(path.join(overseerRoot, "server/protocol/reverse-command-v1/schema.json"), "utf8"),
+  );
+  assert.equal(
+    readFileSync(path.join(root, "protocol/reverse-command-v1/fixtures.json"), "utf8"),
+    readFileSync(path.join(overseerRoot, "server/protocol/reverse-command-v1/fixtures.json"), "utf8"),
+  );
 });

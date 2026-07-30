@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, unlinkSync } from "node:fs";
 import path from "node:path";
 import multer from "multer";
 import { attachmentsDir } from "./sessions/index.js";
-export const ATTACHMENTS_MAX_FILE_BYTES = 100 * 1024 * 1024; // 100MB/file
+export const ATTACHMENTS_MAX_FILE_BYTES = 25 * 1024 * 1024; // 25MB/file
 export const ATTACHMENTS_MAX_COUNT = 10;
 // path.basename() strips any directory component the client claims a
 // filename has (path-traversal defense); the charset restriction handles

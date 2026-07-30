@@ -57,14 +57,60 @@ migration is partly done, and the split today is:
 | --- | --- | --- |
 | Project file read by ID (docs, web preview) | socket, `project-file-read-v1` | — |
 | Project file read by key (file tree, browser, session pane) | socket, `project-file-read-v1` — Overseer resolves key → project ID through the catalog and falls back to the proxy only for a Peon that holds no transfer socket | — |
-| Project directory listing (`?stat=1`) | HTTP proxy | `folder-listing-v1` entries are `{ name, type }` only; the tree shows sizes, so the listing needs `size`/`mtimeMs` before it can move |
-| Attachment / sandbox file read | HTTP proxy | a sandbox scope — `file_open` addresses a file by `projectId` + project-relative path, and an attachment lives in `fileTransferRoot`, outside every project |
-| Attachment upload, project file `PUT`/`PATCH` | HTTP proxy | the socket has no write operation at all |
+| Confirmed project directory listing (`?stat=1&directory=1`) | control socket, `folder-listing-v1`; HTTP fallback for an older Peon | entry metadata is negotiated additively; project-relative paths remain contained by immutable project ID |
+| Project file metadata (`?stat=1`) | HTTP proxy only | retains `sha256`; never probes the folder socket first |
+| Attachment / sandbox file read | socket, `sandbox-file-read-v1`; HTTP fallback for an older Peon | — |
+| Attachment upload, project file `PUT`/`PATCH` | socket, `file-write-v1`; HTTP fallback for an older Peon | — |
 
-`projectFileReadChannel` (`src/modules/projects/projectFileHttp.ts`) is the one
-place that decides, so each surface leaves the proxy by deleting a branch there
-rather than by rewriting a route. The Peon-side channels are tracked as their
-own tasks; until they land, the fallbacks are what keep an older Peon working.
+`projectFileReadChannel`, `projectFileWriteChannel`,
+`sandboxFileWriteChannel`, and `projectFolderReadChannel`
+(`src/modules/projects/projectFileHttp.ts`) decide independently: file bodies
+need the transfer socket, while a caller-confirmed directory listing needs a
+control socket whose `folder-listing-v1` hello negotiated
+`entry-metadata-v1`. The web tree adds the additive `directory=1` marker; plain
+`?stat=1` remains exclusively on HTTP and is never used to probe both
+transports. Overseer strips the marker if it must fall back to an older Peon's
+HTTP route while retaining every other raw query parameter, including repeated
+or encoded values. A chosen socket failure, including `SYNC_IN_PROGRESS`,
+`CONNECTION_LOST`, or `NOT_DIRECTORY`, is returned directly rather than
+falling through to HTTP.
+
+Writes follow the same exclusive choice. A Peon that negotiated
+`file-write-v1` receives attachment and project bodies as bounded 64 KiB
+client-to-Peon frames under Peon-issued byte credit. It verifies the optional
+`Peon-Content-Sha256`, anchors and validates the destination parent before
+creating the exclusive temporary file relative to that handle, flushes the
+same temp fd, revalidates containment and commits through the same anchored
+directory inode using the platform's native atomic rename primitive. Cleanup
+also stays fd-relative, so an open-time parent-path swap cannot create or leave
+bytes outside the authorized root. Browser cancellation, socket disconnect,
+limits and checksum failures remove the temporary file. Attachment
+paths under `uploads/` are capped at 25 MiB and session submission retains the
+ten-attachment cap; project uploads retain the 100 MiB cap. Project `PATCH`
+addresses immutable project identity and performs a no-clobber same-project
+move. Peon resolves and anchors the immutable project root once per move, then
+derives and validates both source and destination beneath that exact root
+device/inode; it never independently re-resolves the mutable configured root
+pathname for each side. Admitted, opening, active and move work share one leased bound and are
+fenced by socket generation and unique incarnation. Because a dispatched move
+cannot be cancelled, its request-ID tombstone survives cancellation, timeout,
+disconnect and generation replacement until the move settles; its outcome is
+cached for replay even when stale-generation publication is suppressed. A
+missing/stale canonical identity after capability negotiation returns
+`PROJECT_IDENTITY_UNAVAILABLE`.
+A socket refusal or disconnect is returned directly—Overseer never
+replays the same mutation through HTTP. Only a Peon that did not advertise the
+capability uses `proxyFileUpload`/`proxyUpload` and the legacy `PATCH`.
+
+The public listing body retains the legacy project-file shape:
+directories are `type: "dir"` (the wire channel's `"directory"` is normalized
+at the route), files retain their size and modification time, and contained
+symlinks retain the target's directory/file type and metadata. Escaping,
+broken, or special links are inert `type: "other"` rows with null metadata.
+Peon enumerates and traverses from anchored Linux directory handles rather than
+the mutable pathname; unsupported platforms fail closed. It holds its single
+listing slot until every sibling in an aborted in-flight metadata batch has
+settled.
 
 ## Display policy
 

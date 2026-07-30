@@ -12,6 +12,7 @@ import { webPreviewHandler } from "./webPreview.js";
 import { peonReleasesRouter, releasePublisherRouter } from "./routes/releases.js";
 import { projectViewerRouter } from "./routes/projectViewer.js";
 import { voiceRouter } from "./routes/voice.js";
+import { operatorPeonClaimRouter, publicPeonClaimRouter } from "./modules/peonClaims/index.js";
 
 // The overseer's two-sided HTTP surface:
 //
@@ -31,31 +32,44 @@ export function isAllowedProductionHost(rawHost: string | undefined, publicUrl =
 
 export function createServer(): express.Express {
   const app = express();
+  // Express compiles and validates every named range/IP/CIDR here. The empty
+  // array trusts nobody. Never use a hop count: a shorter direct-origin path
+  // would let a caller move into a trusted position.
+  app.set("trust proxy", config.trustedProxies);
   // Public, cookie-free preview origin. Host dispatch must happen before the
   // JSON parser and all operator routes so preview assets never touch the SPA.
   app.use(webPreviewHandler);
-  // Composer prompts can include large pasted logs or source files. Express's
-  // 100 KB default rejected those before they reached the session routes, even
-  // though the textarea itself has no character limit. Keep a finite ceiling,
-  // but allow roughly ten times the default payload size.
-  app.use(express.json({ limit: "1mb" }));
-
-  // API liveness (the SPA is served from "/" in prod; in dev nginx routes "/"
-  // to the Vite server, so this stays reachable at /healthz either way).
-  app.get("/healthz", (_req, res) => {
-    res.json({ ok: true });
-  });
-
   // Production uses Overseer as the hostless fallback in the shared
   // kamal-proxy so dynamic preview subdomains can reach the same container.
-  // nginx constrains public ingress, and this second boundary prevents direct
-  // access to kamal-proxy:8080 with an unrelated Host from exposing the SPA/API.
+  // Valid preview hosts have already been consumed above. Everything else,
+  // including every public Peon claim route, must use the canonical authority
+  // before any request body parser is allowed to run.
   if (process.env.NODE_ENV === "production") {
     app.use((req, res, next) => {
       if (isAllowedProductionHost(req.headers.host)) return next();
       res.status(421).json({ error: "request host is not served here", code: "MISDIRECTED_REQUEST" });
     });
   }
+  // peon-claim-v1 owns a much smaller, strict public JSON boundary. Mount it
+  // before the application-wide parser so malformed or oversized claim frames
+  // never consume the 1 MiB allowance or escape as Express HTML errors.
+  app.use("/api/v1", publicPeonClaimRouter());
+  // Composer prompts can include large pasted logs or source files. Express's
+  // 100 KB default rejected those before they reached the session routes, even
+  // though the textarea itself has no character limit. Keep a finite ceiling,
+  // but allow roughly ten times the default payload size.
+  app.use(express.json({
+    limit: "1mb",
+    verify: (req, _res, buffer) => {
+      (req as express.Request & { rawJsonBytes?: number }).rawJsonBytes = buffer.byteLength;
+    },
+  }));
+
+  // API liveness (the SPA is served from "/" in prod; in dev nginx routes "/"
+  // to the Vite server, so this stays reachable at /healthz either way).
+  app.get("/healthz", (_req, res) => {
+    res.json({ ok: true });
+  });
 
   // North-bound: peon registration + heartbeat + event push.
   app.use("/api/v1/peons", agentRouter());
@@ -90,6 +104,7 @@ export function createServer(): express.Express {
   api.use(releasePublisherRouter());
 
   // The operator auth guard — everything below requires a device token.
+  api.use(operatorPeonClaimRouter());
   api.use(operatorAuth);
   api.use(accountRouter());
   api.use(pushRouter());

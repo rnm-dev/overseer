@@ -1,0 +1,188 @@
+{
+  "formatVersion": 1,
+  "profiles": {
+    "peon": {
+      "legacy-http": {
+        "controlCapabilities": [],
+        "transferCapabilities": []
+      },
+      "stable-v1": {
+        "controlCapabilities": ["session-catalog-v1", "durable-delivery-v1", "project-catalog-v1", "folder-listing-v1"],
+        "transferCapabilities": ["project-file-read-v1"],
+        "channelFeatures": {}
+      },
+      "current": {
+        "controlCapabilities": ["session-catalog-v1", "durable-delivery-v1", "project-catalog-v1", "folder-listing-v1"],
+        "transferCapabilities": ["project-file-read-v1", "sandbox-file-read-v1"],
+        "channelFeatures": { "folder-listing-v1": ["entry-metadata-v1"] }
+      }
+    },
+    "overseer": {
+      "legacy": {
+        "controlCapabilities": [],
+        "transferCapabilities": []
+      },
+      "stable-v1": {
+        "controlCapabilities": ["session-catalog-v1", "durable-delivery-v1", "project-catalog-v1", "folder-listing-v1"],
+        "transferCapabilities": ["project-file-read-v1"],
+        "channelFeatures": {}
+      },
+      "current": {
+        "controlCapabilities": ["session-catalog-v1", "durable-delivery-v1", "project-catalog-v1", "folder-listing-v1"],
+        "transferCapabilities": ["project-file-read-v1", "sandbox-file-read-v1"],
+        "channelFeatures": { "folder-listing-v1": ["entry-metadata-v1"] }
+      }
+    }
+  },
+  "cells": [
+    {
+      "peon": "legacy-http",
+      "overseer": "legacy",
+      "routes": {
+        "socket-presence": "reverse-socket",
+        "session-catalog": "legacy-http",
+        "project-catalog": "legacy-http",
+        "absolute-folder-picker": "unavailable",
+        "project-directory": "legacy-http",
+        "project-file-read": "legacy-http",
+        "sandbox-file-read": "legacy-http"
+      }
+    },
+    {
+      "peon": "legacy-http",
+      "overseer": "stable-v1",
+      "routes": {
+        "socket-presence": "reverse-socket",
+        "session-catalog": "legacy-http",
+        "project-catalog": "legacy-http",
+        "absolute-folder-picker": "unavailable",
+        "project-directory": "legacy-http",
+        "project-file-read": "legacy-http",
+        "sandbox-file-read": "legacy-http"
+      }
+    },
+    {
+      "peon": "legacy-http",
+      "overseer": "current",
+      "routes": {
+        "socket-presence": "reverse-socket",
+        "session-catalog": "legacy-http",
+        "project-catalog": "legacy-http",
+        "absolute-folder-picker": "unavailable",
+        "project-directory": "legacy-http",
+        "project-file-read": "legacy-http",
+        "sandbox-file-read": "legacy-http"
+      }
+    },
+    {
+      "peon": "stable-v1",
+      "overseer": "legacy",
+      "routes": {
+        "socket-presence": "reverse-socket",
+        "session-catalog": "legacy-http",
+        "project-catalog": "legacy-http",
+        "absolute-folder-picker": "unavailable",
+        "project-directory": "legacy-http",
+        "project-file-read": "legacy-http",
+        "sandbox-file-read": "legacy-http"
+      }
+    },
+    {
+      "peon": "stable-v1",
+      "overseer": "stable-v1",
+      "routes": {
+        "socket-presence": "reverse-socket",
+        "session-catalog": "reverse-socket",
+        "project-catalog": "reverse-socket",
+        "absolute-folder-picker": "reverse-socket",
+        "project-directory": "legacy-http",
+        "project-file-read": "reverse-socket",
+        "sandbox-file-read": "legacy-http"
+      }
+    },
+    {
+      "peon": "stable-v1",
+      "overseer": "current",
+      "routes": {
+        "socket-presence": "reverse-socket",
+        "session-catalog": "reverse-socket",
+        "project-catalog": "reverse-socket",
+        "absolute-folder-picker": "reverse-socket",
+        "project-directory": "legacy-http",
+        "project-file-read": "reverse-socket",
+        "sandbox-file-read": "legacy-http"
+      }
+    },
+    {
+      "peon": "current",
+      "overseer": "legacy",
+      "routes": {
+        "socket-presence": "reverse-socket",
+        "session-catalog": "legacy-http",
+        "project-catalog": "legacy-http",
+        "absolute-folder-picker": "unavailable",
+        "project-directory": "legacy-http",
+        "project-file-read": "legacy-http",
+        "sandbox-file-read": "legacy-http"
+      }
+    },
+    {
+      "peon": "current",
+      "overseer": "stable-v1",
+      "routes": {
+        "socket-presence": "reverse-socket",
+        "session-catalog": "reverse-socket",
+        "project-catalog": "reverse-socket",
+        "absolute-folder-picker": "reverse-socket",
+        "project-directory": "legacy-http",
+        "project-file-read": "reverse-socket",
+        "sandbox-file-read": "legacy-http"
+      }
+    },
+    {
+      "peon": "current",
+      "overseer": "current",
+      "routes": {
+        "socket-presence": "reverse-socket",
+        "session-catalog": "reverse-socket",
+        "project-catalog": "reverse-socket",
+        "absolute-folder-picker": "reverse-socket",
+        "project-directory": "reverse-socket",
+        "project-file-read": "reverse-socket",
+        "sandbox-file-read": "reverse-socket"
+      }
+    }
+  ],
+  "extensions": [
+    {
+      "id": "reverse-command",
+      "capability": "reverse-command-v1",
+      "status": "blocked",
+      "blockedBy": "The vendored schemas are not byte-identical (the current diff is formatting-only), and the accepted/result/status lifecycle crash-point adapters are not yet attached."
+    },
+    {
+      "id": "enrollment",
+      "capability": "peon-claim-v1",
+      "status": "blocked",
+      "blockedBy": "The contract fixtures are frozen, but OVSR-145/147 implementation and rotation/revocation restart scenarios are unfinished."
+    },
+    {
+      "id": "transcripts",
+      "capability": "transcript-sync-v1",
+      "status": "blocked",
+      "blockedBy": "Transcript implementation is landing concurrently, but the shared golden adapter, exclusive-fallback matrix cells and failure scenarios are not yet stabilized in this harness."
+    },
+    {
+      "id": "writes",
+      "capability": "project-file-write-v1",
+      "status": "blocked",
+      "blockedBy": "Uploads and artifact writes remain on HTTP; no reverse write operation is released."
+    },
+    {
+      "id": "rollout",
+      "capability": "fleet-rollout-v1",
+      "status": "blocked",
+      "blockedBy": "Update reconnect/attestation, soak SLOs and staged fleet rollout belong to unfinished rollout work."
+    }
+  ]
+}

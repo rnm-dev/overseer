@@ -8,6 +8,11 @@ auth-gate in `controlServer.ts`.
 
 The normative correlated command lifecycle and fleet-surface migration matrix are
 defined in [`docs/reverse-command-protocol-v1.md`](docs/reverse-command-protocol-v1.md).
+The frozen Peon-initiated enrollment and credential lifecycle is defined separately
+in [`docs/peon-claim-protocol-v1.md`](docs/peon-claim-protocol-v1.md). It uses
+outbound HTTPS short polling and does not inherit the tailnet reachability assumptions
+of the legacy recruitment flow below. Its strict schema, lifecycle fixtures, and
+executable cryptographic/security vectors live under `protocol/peon-claim-v1/`.
 Remote daemon pause/resume is intentionally local-only and is not part of the
 reverse command surface.
 
@@ -46,9 +51,13 @@ Errors are always `{ "error": "<human message>", "code": "<STABLE_CODE>" }` —
 indicates that an authenticated caller selected a host path the Peon process
 cannot read, or a path a project-file policy intentionally excludes.
 
-## Recruitment
+## Legacy recruitment (`/enroll`)
 
-How a peon gets its `overseerToken` in the first place (zero-touch). The overseer
+This is the mixed-version compatibility path. A `peon-claim-v1` attempt and this
+legacy `/enroll` path are mutually exclusive under the downgrade and attempt-lock
+rules in the normative claim contract.
+
+How a legacy peon gets its `overseerToken` in the first place (zero-touch). The overseer
 mints a per-peon, workspace-scoped credential (`pn_…`) and hands it over through
 `/enroll`. That's chicken-and-egg — `/enroll` needs auth, but a never-recruited
 peon holds no overseer credential yet — so a **one-time pairing phrase** bootstraps
@@ -700,11 +709,13 @@ about the escaped target is disclosed. Without `?stat=1` the file body streams
 with `Range:` support (206 + `Content-Range` + `Accept-Ranges`, exactly like
 the file-transfer routes below); a directory without `?stat=1` is `400
 IS_DIRECTORY` ("use ?stat=1 to list it"). `PUT` streams a raw
-`application/octet-stream` body to a temporary file in the existing destination
-directory, computes SHA-256, flushes it, and atomically renames it only after the
-optional `Peon-Content-Sha256` matches. It never creates parent directories and
-uses the shared 100 MB per-file limit. Failed, oversized, mismatched, and aborted
-uploads remove their temporary file. Existing regular files may be replaced;
+`application/octet-stream` body to a temporary file created relative to an
+already validated open handle for the existing destination directory, computes
+SHA-256, flushes it, and atomically renames it only after the optional
+`Peon-Content-Sha256` matches. The writer, commit and cleanup retain that same
+directory inode even if its pathname is swapped. It never creates parent
+directories and uses the shared 100 MB per-file limit. Failed, oversized,
+mismatched, and aborted uploads remove their temporary file. Existing regular files may be replaced;
 directories, symlinks, and other non-regular destinations are rejected.
 `PATCH` atomically renames one existing regular file to a relative destination
 inside the same project. The destination parent must already exist, and an
@@ -854,7 +865,7 @@ remain inactive.
   "type": "hello",
   "protocol": 1,
   "peonId": "<stable Peon id>",
-  "capabilities": ["session-catalog-v1", "project-catalog-v1", "folder-listing-v1", "session-warning-v1", "reverse-command-v1", "durable-delivery-v1"],
+  "capabilities": ["session-catalog-v1", "project-catalog-v1", "transcript-sync-v1", "folder-listing-v1", "session-warning-v1", "reverse-command-v1", "durable-delivery-v1", "project-file-read-v1", "sandbox-file-read-v1"],
   "channels": {
     "session-catalog-v1": {
       "epoch": "<boot uuid>",
@@ -868,7 +879,17 @@ remain inactive.
       "earliestSeq": 8,
       "latestSeq": 12
     },
-    "folder-listing-v1": {},
+    "transcript-sync-v1": {
+      "snapshotPageEvents": 100,
+      "snapshotPageBytes": 786432,
+      "snapshotEvents": 20000,
+      "snapshotBytes": 16777216,
+      "activeSnapshots": 4,
+      "subscriptions": 64,
+      "subscriptionTtlMs": 300000,
+      "eventBytes": 196608
+    },
+    "folder-listing-v1": { "entryMetadata": "entry-metadata-v1" },
     "reverse-command-v1": {
       "protocol": 1,
       "operations": ["session.cancel", "project.archive", "project.unarchive"]
@@ -889,7 +910,7 @@ remain inactive.
 {
   "type": "hello_ack",
   "protocol": 1,
-  "capabilities": ["session-catalog-v1", "project-catalog-v1", "folder-listing-v1", "session-warning-v1", "reverse-command-v1", "durable-delivery-v1"],
+  "capabilities": ["session-catalog-v1", "project-catalog-v1", "transcript-sync-v1", "folder-listing-v1", "session-warning-v1", "reverse-command-v1", "durable-delivery-v1"],
   "channels": {
     "session-catalog-v1": {
       "epoch": "<last accepted boot uuid>",
@@ -898,7 +919,8 @@ remain inactive.
     "project-catalog-v1": {
       "epoch": "<last accepted project catalog uuid>",
       "acknowledgedSeq": 11
-    }
+    },
+    "folder-listing-v1": { "entryMetadata": "entry-metadata-v1" }
   },
   "delivery": {
     "epoch": "<durable outbox epoch>",
@@ -911,7 +933,7 @@ The transfer connection identifies its channel and operations in its opening
 frame:
 
 ```json
-{ "type": "hello", "protocol": 1, "channel": "file-transfer", "peonId": "<stable Peon id>", "capabilities": ["project-file-read-v1"] }
+{ "type": "hello", "protocol": 1, "channel": "file-transfer", "peonId": "<stable Peon id>", "capabilities": ["project-file-read-v1", "sandbox-file-read-v1", "file-write-v1"] }
 ```
 
 Each connection has an independent handshake, heartbeat, reconnect backoff, and
@@ -989,6 +1011,125 @@ Recently completed request IDs remain as bounded 30-second tombstones so the
 credit Overseer grants after accepting the final chunk cannot tear down the
 shared socket after `file_end`. File frames are ephemeral and never enter durable
 delivery or the control socket.
+
+### Sandbox file reads (`sandbox-file-read-v1`)
+
+This capability uses the same metadata, binary chunks, ranges, credit,
+cancellation, limits and lifecycle as `project-file-read-v1`, but addresses a
+file inside the configured `fileTransferRoot`:
+
+```json
+{
+  "type": "file_open", "protocol": 1, "requestId": "<uuid>",
+  "scope": "sandbox", "path": "/tmp/peon-files/uploads/session/file.png",
+  "actor": { "userId": "<stable user id>", "email": "operator@example.com" }
+}
+```
+
+`path` may be absolute or relative to `fileTransferRoot`. Peon resolves and
+revalidates canonical containment itself; it returns `FILES_DISABLED` when no
+root is configured, `PATH_ESCAPE` when the target leaves it, and `NOT_FOUND`
+when the contained target does not exist. An absolute path is never trusted as
+an authorization decision made by Overseer.
+
+### Attachment and project writes (`file-write-v1`)
+
+The write capability shares the transfer connection, request correlation,
+generation fencing, cancellation and bounded resource accounting of file reads.
+It handles attachment/sandbox uploads, project uploads, and scoped project
+renames; it never enters the control socket or durable outbox.
+
+```jsonc
+// Project upload: mutable keys never cross the wire.
+{
+  "type": "write_open", "protocol": 1, "requestId": "<uuid>",
+  "operation": "upload", "scope": "project",
+  "projectId": "<immutable uuid>", "relativePath": "dist/app.js",
+  "contentLength": 1234, // optional for a chunked HTTP request
+  "sha256": "<optional lowercase SHA-256>",
+  "actor": { "userId": "<stable user id>", "email": "operator@example.com" }
+}
+// Attachment upload: path is relative to fileTransferRoot.
+{
+  "type": "write_open", "protocol": 1, "requestId": "<uuid>",
+  "operation": "upload", "scope": "sandbox",
+  "path": "uploads/<session>/<filename>",
+  "contentLength": 1234, "sha256": "<optional lowercase SHA-256>",
+  "actor": { "userId": "<stable user id>", "email": "operator@example.com" }
+}
+
+{ "type": "write_ready", "requestId": "<uuid>", "maxBytes": 26214400, "credit": 65514 }
+{ "type": "write_credit", "requestId": "<uuid>", "bytes": 65514 }
+{ "type": "write_end", "requestId": "<uuid>" }
+{ "type": "write_cancel", "requestId": "<uuid>", "reason": "TRANSFER_CANCELLED" }
+{ "type": "write_result", "requestId": "<uuid>", "status": 201, "path": "uploads/session/file", "size": 1234, "sha256": "<digest>" }
+{ "type": "write_error", "requestId": "<uuid>", "status": 409, "code": "CHECKSUM_MISMATCH", "message": "safe detail" }
+```
+
+Upload bytes use the read frame's 22-byte header with frame type byte `2` and a
+per-request sequence starting at zero. A frame remains at most 64 KiB and cannot
+exceed credit Peon granted after the preceding chunk reached its temporary file.
+Peon admits at most 16 writes across admitted, opening, active and move work.
+Every admission is leased and fenced by socket generation plus a unique
+incarnation. Cancellation or replacement cleans cancellable upload work and a
+late open cannot become ready. A dispatched project move is not cancellable:
+its capacity token and request-ID tombstone remain until the native operation
+settles. Peon expires idle/opening work after 60 seconds, limits
+attachment paths under `uploads/` to 25 MiB, and limits other
+sandbox/project uploads to 100 MiB. Session validation still enforces at most
+ten attachments per message.
+
+Peon opens and validates the destination parent first, then creates the
+exclusive temporary file relative to that anchored directory handle. The
+streaming temp fd, commit and cleanup all retain the same directory inode;
+none reopen the mutable parent pathname. Peon hashes while streaming, flushes
+and closes the temporary file, verifies the optional checksum and declared
+length, revalidates the canonical parent device/inode and destination type, and
+only then atomically replaces the regular-file destination. Cancellation, limit
+failure, checksum mismatch, disconnect and process error remove the temporary
+file through that same anchor. Project and sandbox parents are independently
+contained; traversals, absolute paths, escaping symlinks and parent swaps cannot
+select another root. Platforms without the required fd-relative primitives
+fail closed.
+
+Project rename is the no-body form:
+
+```json
+{
+  "type": "write_open", "protocol": 1, "requestId": "<uuid>",
+  "operation": "move", "scope": "project",
+  "projectId": "<immutable uuid>", "relativePath": "old/name.txt",
+  "destination": "new/name.txt",
+  "actor": { "userId": "<stable user id>", "email": "operator@example.com" }
+}
+```
+
+Source and destination are contained in the same immutable project. The move
+resolves, opens and device/inode-validates the immutable project root exactly
+once. Source preflight, destination preflight and commit then resolve only
+relative to that one root handle, and independently verify that their opened
+parents remain descendants of its exact identity. The commit uses a native
+atomic no-replace rename (`renameat2` on Linux or `renameatx_np` on macOS), so a
+destination race returns `DESTINATION_EXISTS` without changing either
+pre-existing file. The shared root handle, descendant checks and expected
+source inode fence project-root, parent and source swaps; platforms without
+the required contained/open-at or rename primitive fail closed. Terminal
+results and refusals are retained in a bounded five-minute, 512-entry
+process-local replay cache. Reopening the same request ID with equivalent
+admission data replays the outcome; different data returns `REQUEST_ID_REUSE`.
+An active duplicate returns `DUPLICATE_REQUEST`. Cancel, lease expiry,
+disconnect, and socket-generation replacement suppress publication to the
+stale caller but do not release a move's request ownership or discard its
+authoritative terminal result. Until settlement, identical retries remain
+duplicates and changed input remains request-ID reuse; afterward the result is
+replayed from the bounded cache.
+
+Stable Peon refusals include `FILES_DISABLED`, `PATH_ESCAPE`, `INVALID_PATH`,
+`UNKNOWN_PROJECT`, `PARENT_NOT_FOUND`, `FORBIDDEN`, `FILE_TOO_LARGE`,
+`CHECKSUM_MISMATCH`, `DESTINATION_EXISTS`, `SOURCE_CHANGED`, `TRANSFER_BUSY`,
+`TRANSFER_TIMEOUT`, `UNSUPPORTED_PLATFORM`, and `WRITE_FAILED`.
+Once Overseer selects this negotiated capability, socket errors are final for
+that public request and never fall through to the legacy HTTP mutation.
 
 Peon reconnects indefinitely after transient DNS, TCP, TLS, upgrade, handshake,
 heartbeat, and close failures using exponential backoff with jitter (250 ms up
@@ -1073,6 +1214,102 @@ Durable cursor order is never changed by priority. Critical/control ephemeral
 frames (acknowledgements, cancellation, heartbeat) can bypass bulk replay on the
 socket; durable messages themselves remain strictly ordered. If an acknowledgement
 does not arrive, Peon retries unacknowledged cursors after 10 seconds.
+
+### Transcript snapshots and live events (`transcript-sync-v1`)
+
+This control-socket capability requires `durable-delivery-v1`. It publishes only
+the canonical Peon JSONL transcript; provider state is never used to reconstruct
+history. A transcript event becomes eligible for publication only after its
+JSONL row has appended successfully.
+
+Overseer starts a bounded, session-owned snapshot:
+
+```jsonc
+// subscribe:true atomically arms demand before the barrier is captured.
+{ "type": "transcript_snapshot_request", "requestId": "uuid", "sessionId": "session-id", "limit": 50, "cursor": "optional", "subscribe": true }
+{
+  "type": "transcript_snapshot_page",
+  "requestId": "uuid", "sessionId": "session-id",
+  "epoch": "stable transcript epoch", "revision": 42, "barrierSeq": 42,
+  "events": [{
+    "sessionId": "session-id", "epoch": "stable transcript epoch",
+    "revision": 42, "seq": 42, "eventId": "canonical event id",
+    "createdAt": 1785400000000, "eventType": "result", "author": null,
+    "usage": { "input_tokens": 10 }, "event": { "type": "result" },
+    "artifactRefs": []
+  }],
+  "nextCursor": "opaque-or-null", "hasMore": false
+}
+```
+
+Every page for one request freezes the same epoch, revision, barrier, event
+identities and order. Cursors are opaque, request- and session-bound, and expire
+with the snapshot after 30 seconds. In-flight requests reserve one of the four
+snapshot slots before canonical I/O begins; cancellation, lease expiry, and
+socket-generation replacement fence any late completion. Lease validity is
+checked synchronously before every continuation page and after repository load;
+the maintenance timer is cleanup, not the correctness boundary.
+`transcript_snapshot_cancel` releases it. A missing,
+cross-session, or expired cursor returns `CURSOR_UNAVAILABLE`/`BAD_CURSOR`; the
+caller starts a fresh snapshot rather than asking Peon to infer history.
+
+With `subscribe:true`, commits through `barrierSeq` are covered by the frozen
+snapshot and commits after it are buffered or published in exact sequence as
+durable payloads:
+
+```jsonc
+{
+  "type": "durable_message", "capability": "transcript-sync-v1",
+  "priority": "normal|control|critical",
+  "payload": {
+    "type": "transcript_live_event",
+    "sessionId": "session-id", "epoch": "stable transcript epoch",
+    "revision": 43, "seq": 43, "eventId": "canonical event id",
+    "createdAt": 1785400000123, "eventType": "assistant",
+    "author": null, "usage": null, "event": { "type": "assistant" },
+    "artifactRefs": []
+  }
+}
+```
+
+`result` events and `transcript_deleted` use critical priority; warnings use
+control priority. Priority never changes durable cursor order. Dedupe identity is
+the transcript epoch, session, sequence and canonical event ID. Cumulative
+`durable_ack` is the only live-event acknowledgement.
+
+A reconnect may renew demand without a full snapshot using
+`transcript_subscribe {requestId,sessionId,epoch,afterSeq}`. Peon replays at most
+64 events / 4 MiB from canonical history, then answers
+`transcript_subscribed`; a wrong epoch, future sequence or larger catch-up
+returns `CURSOR_UNAVAILABLE`. `transcript_unsubscribe` releases demand.
+Subscriptions expire after five minutes unless renewed, and a Peon process
+restart intentionally forgets them; Overseer resubscribes or snapshots after
+each new process or configuration authority.
+
+Limits are 100 events and 768 KiB per page, 20,000 events / 16 MiB per snapshot,
+four concurrent snapshots / 32 MiB aggregate staging, 64 subscriptions, and
+192 KiB for the complete durable event envelope, including delivery metadata,
+usage, author and artifact references. Canonical JSONL snapshot reads use fixed
+buffers and stop at 64 MiB of source, 16 MiB per physical row, or 20,000 valid
+events before a whole unbounded transcript can be materialized. Oversized
+canonical events remain intact locally; the wire copy carries complete-envelope
+original/retained byte counts plus the canonical session/event artifact
+identity. Snapshot and event bodies, prompts, credentials and sensitive paths
+are never written to routine logs or metrics.
+
+If `transcript_deleted` cannot enter the durable outbox because it is full or
+temporarily cannot persist, Peon retains the bounded subscription and snapshot
+state and retries on durable acknowledgement, reconnect, and its maintenance
+timer. State is released only after the deletion frame is durably admitted, so
+a transient outbox failure cannot silently lose deletion convergence.
+
+At most 64 unacknowledged transcript events are admitted per session and 1,024
+across the channel. A noisy session that crosses its bound loses only its own
+demand and receives `RESYNC_REQUIRED`; other sessions and critical control
+frames remain serviceable. Stable errors include `BAD_REQUEST`, `BAD_CURSOR`,
+`UNKNOWN_SESSION`, `TRANSCRIPT_UNAVAILABLE`, `CURSOR_UNAVAILABLE`,
+`SNAPSHOT_LIMIT`, `SUBSCRIPTION_LIMIT`, `SNAPSHOT_TOO_LARGE`,
+`RESYNC_REQUIRED`, and `INTERNAL`.
 
 ### Reverse commands (`reverse-command-v1`)
 
@@ -1239,15 +1476,20 @@ This ephemeral control-socket channel lists one directory's immediate children.
 It never enters durable delivery and does not recursively walk the tree.
 
 ```jsonc
-// Absolute path, or omit path and select the project root by immutable ID.
+// Absolute path, or omit path and select a project directory by immutable ID.
 { "type": "folder_list_request", "requestId": "...", "path": "/absolute/path", "projectId": "optional", "limit": 200 }
+{ "type": "folder_list_request", "requestId": "...", "projectId": "<uuid>", "relativePath": "src/lib", "limit": 200 }
 { "type": "folder_list_request", "requestId": "...", "cursor": "<opaque>", "limit": 200 }
 {
   "type": "folder_list_page",
   "requestId": "...",
   "path": "/resolved/absolute/path",
   "projectId": "<uuid>|null",
-  "entries": [{ "name": "src", "type": "directory" }, { "name": "package.json", "type": "file" }],
+  "entries": [
+    { "name": "src", "type": "directory", "size": null, "mtimeMs": 1785400000000 },
+    { "name": "package.json", "type": "file", "size": 1832, "mtimeMs": 1785400000123 },
+    { "name": "outside-link", "type": "other", "size": null, "mtimeMs": null }
+  ],
   "nextCursor": "<opaque>|null",
   "hasMore": false
 }
@@ -1257,21 +1499,44 @@ It never enters durable delivery and does not recursively walk the tree.
 ```
 
 An absolute `path` is authoritative even when `projectId` is also present and
-produces `projectId: null`. With no path, Peon resolves the immutable project ID
-and lists its configured root. Relative paths and requests with neither selector
-are rejected. Absolute browsing is limited by the Peon process's OS permissions,
-not by project or transfer roots. Hidden entries are included; accessible file
-and directory symlinks are classified by target, while broken/cyclic links and
-special entries are omitted. Directories sort before files, then by name.
+produces `projectId: null`; it cannot be combined with `relativePath`. With no
+path, Peon resolves the immutable project ID and lists its configured root or
+the supplied project-relative child. Project-relative selector traversal that
+resolves outside the project is rejected with `PATH_ESCAPE`. The selected
+directory and project root are anchored by open handles. Enumeration and child
+opens use Linux `/proc/self/fd/<fd>` handle-relative paths, never the mutable
+selected pathname. A platform without the required `O_DIRECTORY`,
+`O_NOFOLLOW`, and traversable handle path fails closed with
+`UNSUPPORTED_PLATFORM`; it does not use pathname enumeration. Requests with
+neither selector are rejected. Absolute browsing is limited by the Peon
+process's OS permissions, not by project or transfer roots. Hidden entries are
+included. A symlink whose opened target remains inside the anchored project
+root is reported as its target `directory`/`file` with metadata. Escaping,
+broken/cyclic, inaccessible, changed, and special entries are returned as
+inert `other` rows with null metadata.
+Directories sort before files, then `other`, then by name. A file carries its
+byte `size`; directories carry `size: null`; both carry target `mtimeMs`.
+
+Entry metadata is an additive, explicitly negotiated extension of
+`folder-listing-v1`. Peon advertises
+`channels.folder-listing-v1.entryMetadata: "entry-metadata-v1"` and includes
+`size`/`mtimeMs` and inert `other` rows only when Overseer echoes that value in
+`hello_ack`. A new Peon therefore omits `other` and keeps sending legacy
+`{ name, type }` entries to an older Overseer, while a new Overseer accepts
+legacy entries from an older Peon.
 
 `limit` defaults to 200 and clamps to 500. A first request freezes the sorted
 listing for cursor-stable pages. Only one listing is active per control
 connection; it expires after 30 seconds and is released on completion,
-cancellation, or disconnect. One snapshot is limited to 20,000 entries and 16
-MiB, and each complete page to 900 KiB. Stable errors include `BAD_REQUEST`,
+cancellation, or disconnect. Metadata traversal runs in batches of at most 64.
+Cancellation aborts further batches, waits with all-settled semantics for every
+sibling in the current batch, then sends `folder_list_cancelled` and releases
+the slot, so a restarted listing cannot overlap the cancelled scan. One
+snapshot is limited to 20,000 entries and 16 MiB, and each complete page to 900
+KiB. Stable errors include `BAD_REQUEST`,
 `BAD_CURSOR`, `SYNC_IN_PROGRESS`, `UNKNOWN_PROJECT`, `NOT_FOUND`,
-`NOT_DIRECTORY`, `FORBIDDEN`, `INVALID_PATH`, `LISTING_TOO_LARGE`, and
-`INTERNAL`.
+`NOT_DIRECTORY`, `FORBIDDEN`, `INVALID_PATH`, `PATH_ESCAPE`,
+`UNSUPPORTED_PLATFORM`, `LISTING_TOO_LARGE`, and `INTERNAL`.
 
 ### Session warnings (`session-warning-v1`)
 

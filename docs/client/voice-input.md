@@ -60,9 +60,11 @@ attempting another silent request. Voice errors never add or remove rows inside
 the composer, so its geometry remains stable.
 
 Recording temporarily configures the shared audio session for measured
-speech/voice communication. Stop, cancel, interruption, disposal, and failure
-all deactivate it and restore the previous configuration (or the music default
-when no configuration existed).
+speech/voice communication without stopping audio from another app. iOS mixes
+the recording session with other audio, while Android requests transient focus
+that permits the other player to continue at a reduced volume. Stop, cancel,
+interruption, disposal, and failure all deactivate it and restore the previous
+configuration (or the music default when no configuration existed).
 
 Incoming audio interruptions and any app lifecycle transition away from
 `resumed` cancel the recording and discard the temporary file. Recording never

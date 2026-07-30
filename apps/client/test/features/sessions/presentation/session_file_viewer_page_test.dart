@@ -97,6 +97,7 @@ class _FileRepository implements SessionFileRepository {
   Future<SessionFilePreview> fetchAttachment({
     required String workspaceId,
     required String peonId,
+    required String sessionId,
     required String path,
     required String name,
     String? type,

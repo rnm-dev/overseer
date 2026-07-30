@@ -1,7 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { PassThrough, type Readable } from "node:stream";
 import { WebSocket } from "ws";
-import { getPeonTransferConnection, PROJECT_FILE_READ_CAPABILITY } from "./peonTransferConnections.js";
+import { auditSafeFileErrorMessage } from "./fileErrorSafety.js";
+import {
+  getPeonTransferConnection,
+  FILE_WRITE_CAPABILITY,
+  PROJECT_FILE_READ_CAPABILITY,
+  SANDBOX_FILE_READ_CAPABILITY,
+} from "./peonTransferConnections.js";
 
 const META_TIMEOUT_MS = 15_000;
 const STREAM_HIGH_WATER_MARK = 256 * 1024;
@@ -17,6 +23,14 @@ export interface ProjectFileStreamRequest {
   peonId: string;
   projectId: string;
   relativePath: string;
+  actor: ProjectFileActor;
+  range?: ProjectFileRange;
+  signal?: AbortSignal;
+}
+
+export interface SandboxFileStreamRequest {
+  peonId: string;
+  path: string;
   actor: ProjectFileActor;
   range?: ProjectFileRange;
   signal?: AbortSignal;
@@ -56,7 +70,27 @@ interface Pending {
   withheldCredit: number;
 }
 
+interface PendingWrite {
+  requestId: string;
+  peonId: string;
+  socket: WebSocket;
+  source: Readable | null;
+  resolve: (value: PeonFileWriteResult) => void;
+  reject: (error: PeonFileStreamError) => void;
+  timer: NodeJS.Timeout;
+  abort?: () => void;
+  state: "opening" | "streaming" | "ending";
+  credit: number;
+  wakeCredit: (() => void) | null;
+  sequence: number;
+  sentBytes: number;
+  expectedBytes: number | undefined;
+  maxBytes: number;
+  pumping: boolean;
+}
+
 const pending = new Map<string, Pending>();
+const pendingWrites = new Map<string, PendingWrite>();
 const recentlyClosed = new Map<string, number>();
 const keyOf = (peonId: string, requestId: string) => `${peonId}\0${requestId}`;
 
@@ -98,6 +132,7 @@ function validateRequest(input: ProjectFileStreamRequest): void {
 function countForPeon(peonId: string): number {
   let count = 0;
   for (const item of pending.values()) if (item.peonId === peonId) count += 1;
+  for (const item of pendingWrites.values()) if (item.peonId === peonId) count += 1;
   return count;
 }
 
@@ -130,12 +165,15 @@ function grant(item: Pending, bytes: number): void {
   item.socket.send(JSON.stringify({ type: "file_credit", requestId: item.requestId, bytes }));
 }
 
-export async function openPeonProjectFile(input: ProjectFileStreamRequest): Promise<ProjectFileStream> {
-  validateRequest(input);
+async function openPeonFile(
+  input: ProjectFileStreamRequest | SandboxFileStreamRequest,
+  capability: string,
+  frame: Record<string, unknown>,
+): Promise<ProjectFileStream> {
   if (pending.size >= MAX_REQUESTS_GLOBAL || countForPeon(input.peonId) >= MAX_REQUESTS_PER_PEON) {
     throw new PeonFileStreamError("PEON_TRANSFER_BUSY", "too many active Peon file transfers", 429);
   }
-  const socket = getPeonTransferConnection(input.peonId, PROJECT_FILE_READ_CAPABILITY);
+  const socket = getPeonTransferConnection(input.peonId, capability);
   if (!socket) throw new PeonFileStreamError("PEON_TRANSFER_UNAVAILABLE", "Peon transfer connection is unavailable", 503);
   if (input.signal?.aborted) throw new PeonFileStreamError("TRANSFER_CANCELLED", "file transfer was cancelled", 499);
 
@@ -157,14 +195,28 @@ export async function openPeonProjectFile(input: ProjectFileStreamRequest): Prom
     pending.set(keyOf(input.peonId, requestId), item);
     try {
       send(socket, {
-        type: "file_open", protocol: 1, requestId, projectId: input.projectId,
-        relativePath: input.relativePath, actor: input.actor,
+        type: "file_open", protocol: 1, requestId, ...frame, actor: input.actor,
         ...(input.range ? { range: input.range } : {}),
       });
     } catch (error) {
       fail(item, error instanceof PeonFileStreamError ? error : new PeonFileStreamError("PEON_TRANSFER_UNAVAILABLE", "Peon transfer connection is unavailable", 503));
     }
   });
+}
+
+export async function openPeonProjectFile(input: ProjectFileStreamRequest): Promise<ProjectFileStream> {
+  validateRequest(input);
+  return openPeonFile(input, PROJECT_FILE_READ_CAPABILITY, {
+    projectId: input.projectId,
+    relativePath: input.relativePath,
+  });
+}
+
+export async function openPeonSandboxFile(input: SandboxFileStreamRequest): Promise<ProjectFileStream> {
+  if (!input.path || input.path.length > 4096 || input.path.includes("\0")) {
+    throw new PeonFileStreamError("INVALID_PATH", "a non-empty sandbox file path is required", 400);
+  }
+  return openPeonFile(input, SANDBOX_FILE_READ_CAPABILITY, { scope: "sandbox", path: input.path });
 }
 
 function stringField(frame: Record<string, unknown>, name: string, max = 1024): string | undefined {
@@ -180,12 +232,16 @@ function headerField(frame: Record<string, unknown>, name: string, max = 1024): 
 export function handlePeonFileJson(peonId: string, socket: WebSocket, frame: Record<string, unknown>): boolean {
   if (typeof frame.requestId !== "string" || !UUID.test(frame.requestId)) return false;
   const key = keyOf(peonId, frame.requestId);
+  const write = pendingWrites.get(key);
+  if (write) return handlePeonFileWriteJson(write, socket, frame);
   const item = pending.get(key);
   if (!item) return wasRecentlyClosed(key);
   if (item.socket !== socket) return false;
   if (frame.type === "file_error") {
     const status = Number.isInteger(frame.status) && Number(frame.status) >= 400 && Number(frame.status) <= 599 ? Number(frame.status) : 502;
-    fail(item, new PeonFileStreamError(stringField(frame, "code", 128) ?? "PEON_FILE_ERROR", stringField(frame, "message", 2048) ?? "Peon could not open the file", status));
+    const code = stringField(frame, "code", 128) ?? "PEON_FILE_ERROR";
+    const message = stringField(frame, "message", 2048) ?? "Peon could not open the file";
+    fail(item, new PeonFileStreamError(code, auditSafeFileErrorMessage(code, message), status));
     return true;
   }
   if (frame.type === "file_meta" && !item.stream) {
@@ -270,4 +326,325 @@ export function failPeonFileTransfers(peonId: string, socket: WebSocket, code = 
   for (const item of [...pending.values()]) {
     if (item.peonId === peonId && item.socket === socket) fail(item, new PeonFileStreamError(code, "Peon transfer connection closed", 502));
   }
+  for (const item of [...pendingWrites.values()]) {
+    if (item.peonId === peonId && item.socket === socket) {
+      failWrite(item, new PeonFileStreamError(code, "Peon transfer connection closed", 502));
+    }
+  }
+}
+
+export interface PeonFileWriteResult {
+  status: number;
+  path: string;
+  size: number;
+  sha256?: string;
+}
+
+export interface PeonFileWriteBase {
+  peonId: string;
+  actor: ProjectFileActor;
+  signal?: AbortSignal;
+  requestId?: string;
+}
+
+export interface PeonProjectFileUploadRequest extends PeonFileWriteBase {
+  projectId: string;
+  relativePath: string;
+  source: Readable;
+  contentLength?: number;
+  sha256?: string;
+  maxBytes: number;
+}
+
+export interface PeonSandboxFileUploadRequest extends PeonFileWriteBase {
+  path: string;
+  source: Readable;
+  contentLength?: number;
+  sha256?: string;
+  maxBytes: number;
+}
+
+export interface PeonProjectFileMoveRequest extends PeonFileWriteBase {
+  projectId: string;
+  relativePath: string;
+  destination: string;
+}
+
+function resetWriteTimer(item: PendingWrite): void {
+  clearTimeout(item.timer);
+  item.timer = setTimeout(() => {
+    failWrite(item, new PeonFileStreamError("PEON_TRANSFER_TIMEOUT", "Peon file write timed out", 504), true);
+  }, 5 * 60_000);
+  item.timer.unref();
+}
+
+function cleanupWrite(item: PendingWrite): void {
+  clearTimeout(item.timer);
+  item.abort?.();
+  item.wakeCredit?.();
+  item.wakeCredit = null;
+  const key = keyOf(item.peonId, item.requestId);
+  pendingWrites.delete(key);
+  rememberClosed(key);
+}
+
+function failWrite(item: PendingWrite, error: PeonFileStreamError, notifyPeon = false): void {
+  if (!pendingWrites.has(keyOf(item.peonId, item.requestId))) return;
+  if (notifyPeon && item.socket.readyState === WebSocket.OPEN) {
+    item.socket.send(JSON.stringify({ type: "write_cancel", requestId: item.requestId, reason: error.code }));
+  }
+  cleanupWrite(item);
+  item.reject(error);
+}
+
+function completeWrite(item: PendingWrite, result: PeonFileWriteResult): void {
+  if (!pendingWrites.has(keyOf(item.peonId, item.requestId))) return;
+  cleanupWrite(item);
+  item.resolve(result);
+}
+
+function encodePeonFileWriteChunk(requestId: string, sequence: number, data: Uint8Array): Buffer {
+  if (!Number.isInteger(sequence) || sequence < 0 || sequence > 0xffffffff || data.byteLength > MAX_FILE_CHUNK_BYTES) {
+    throw new Error("invalid file write chunk");
+  }
+  const frame = Buffer.allocUnsafe(BINARY_HEADER_BYTES + data.byteLength);
+  frame[0] = 1;
+  frame[1] = 2;
+  uuidBytes(requestId).copy(frame, 2);
+  frame.writeUInt32BE(sequence, 18);
+  Buffer.from(data).copy(frame, BINARY_HEADER_BYTES);
+  return frame;
+}
+
+async function waitForWriteCredit(item: PendingWrite): Promise<void> {
+  while (item.credit <= 0) {
+    if (!pendingWrites.has(keyOf(item.peonId, item.requestId))) {
+      throw new PeonFileStreamError("TRANSFER_CANCELLED", "file write was cancelled", 499);
+    }
+    await new Promise<void>((resolve) => {
+      item.wakeCredit = resolve;
+    });
+    item.wakeCredit = null;
+  }
+}
+
+async function pumpWrite(item: PendingWrite): Promise<void> {
+  if (!item.source || item.pumping) return;
+  item.pumping = true;
+  try {
+    for await (const value of item.source) {
+      const chunk = Buffer.isBuffer(value) ? value : Buffer.from(value);
+      let offset = 0;
+      while (offset < chunk.length) {
+        await waitForWriteCredit(item);
+        const bytes = Math.min(chunk.length - offset, item.credit, MAX_FILE_CHUNK_BYTES);
+        if (item.sentBytes + bytes > item.maxBytes) {
+          throw new PeonFileStreamError("FILE_TOO_LARGE", `file exceeds ${item.maxBytes / (1024 * 1024)}MB limit`, 413);
+        }
+        if (item.socket.readyState !== WebSocket.OPEN) {
+          throw new PeonFileStreamError("PEON_TRANSFER_DISCONNECTED", "Peon transfer connection closed", 502);
+        }
+        item.socket.send(encodePeonFileWriteChunk(item.requestId, item.sequence, chunk.subarray(offset, offset + bytes)));
+        item.sequence += 1;
+        item.credit -= bytes;
+        item.sentBytes += bytes;
+        offset += bytes;
+      }
+    }
+    if (!pendingWrites.has(keyOf(item.peonId, item.requestId))) return;
+    if (item.expectedBytes !== undefined && item.sentBytes !== item.expectedBytes) {
+      throw new PeonFileStreamError("LENGTH_MISMATCH", "request body length does not match Content-Length", 400);
+    }
+    item.state = "ending";
+    resetWriteTimer(item);
+    send(item.socket, { type: "write_end", requestId: item.requestId });
+  } catch (error) {
+    const failure = error instanceof PeonFileStreamError
+      ? error
+      : new PeonFileStreamError("UPLOAD_FAILED", error instanceof Error ? error.message : "file upload failed", 502);
+    failWrite(item, failure, true);
+  }
+}
+
+function handlePeonFileWriteJson(item: PendingWrite, socket: WebSocket, frame: Record<string, unknown>): boolean {
+  if (item.socket !== socket) return false;
+  if (frame.type === "write_error") {
+    const status = Number.isInteger(frame.status) && Number(frame.status) >= 400 && Number(frame.status) <= 599 ? Number(frame.status) : 502;
+    const code = stringField(frame, "code", 128) ?? "PEON_FILE_ERROR";
+    const message = stringField(frame, "message", 2048) ?? "Peon refused the file write";
+    failWrite(item, new PeonFileStreamError(code, auditSafeFileErrorMessage(code, message), status));
+    return true;
+  }
+  if (frame.type === "write_ready" && item.state === "opening" && item.source) {
+    const credit = frame.credit;
+    const maxBytes = frame.maxBytes;
+    if (
+      !Number.isSafeInteger(credit) || Number(credit) <= 0 || Number(credit) > 1024 * 1024
+      || !Number.isSafeInteger(maxBytes) || Number(maxBytes) <= 0
+    ) return false;
+    item.credit = Number(credit);
+    item.maxBytes = Math.min(item.maxBytes, Number(maxBytes));
+    if (item.expectedBytes !== undefined && item.expectedBytes > item.maxBytes) {
+      failWrite(item, new PeonFileStreamError("FILE_TOO_LARGE", `file exceeds ${item.maxBytes / (1024 * 1024)}MB limit`, 413), true);
+      return true;
+    }
+    item.state = "streaming";
+    resetWriteTimer(item);
+    void pumpWrite(item);
+    return true;
+  }
+  if (frame.type === "write_credit" && item.state === "streaming") {
+    const bytes = frame.bytes;
+    if (!Number.isSafeInteger(bytes) || Number(bytes) <= 0 || item.credit + Number(bytes) > 1024 * 1024) return false;
+    item.credit += Number(bytes);
+    resetWriteTimer(item);
+    item.wakeCredit?.();
+    return true;
+  }
+  if (frame.type === "write_result" && (item.state === "ending" || !item.source)) {
+    const status = Number(frame.status);
+    const path = stringField(frame, "path", 4096);
+    const size = frame.size;
+    const sha256 = stringField(frame, "sha256", 64);
+    if (
+      !Number.isInteger(status) || status < 200 || status > 299
+      || path === undefined || !Number.isSafeInteger(size) || Number(size) < 0
+      || sha256 !== undefined && !/^[0-9a-f]{64}$/.test(sha256)
+    ) return false;
+    completeWrite(item, { status, path, size: Number(size), ...(sha256 ? { sha256 } : {}) });
+    return true;
+  }
+  return false;
+}
+
+function validateWriteBase(input: PeonFileWriteBase): void {
+  if (!input.actor.userId || input.actor.userId.length > 512 || !input.actor.email || input.actor.email.length > 512) {
+    throw new PeonFileStreamError("INVALID_ACTOR", "trusted actor is invalid", 400);
+  }
+}
+
+function openPeonWrite(
+  input: PeonFileWriteBase,
+  source: Readable | null,
+  maxBytes: number,
+  expectedBytes: number | undefined,
+  frame: Record<string, unknown>,
+): Promise<PeonFileWriteResult> {
+  validateWriteBase(input);
+  if (pending.size + pendingWrites.size >= MAX_REQUESTS_GLOBAL || countForPeon(input.peonId) >= MAX_REQUESTS_PER_PEON) {
+    throw new PeonFileStreamError("PEON_TRANSFER_BUSY", "too many active Peon file transfers", 429);
+  }
+  const socket = getPeonTransferConnection(input.peonId, FILE_WRITE_CAPABILITY);
+  if (!socket) throw new PeonFileStreamError("PEON_TRANSFER_UNAVAILABLE", "Peon transfer connection is unavailable", 503);
+  if (input.signal?.aborted) throw new PeonFileStreamError("TRANSFER_CANCELLED", "file write was cancelled", 499);
+  const requestId = input.requestId && UUID.test(input.requestId) ? input.requestId : randomUUID();
+  const key = keyOf(input.peonId, requestId);
+  if (pendingWrites.has(key) || pending.has(key)) throw new PeonFileStreamError("DUPLICATE_REQUEST", "file request is already active", 409);
+
+  return new Promise<PeonFileWriteResult>((resolve, reject) => {
+    const item: PendingWrite = {
+      requestId,
+      peonId: input.peonId,
+      socket,
+      source,
+      resolve,
+      reject,
+      timer: setTimeout(() => {}, META_TIMEOUT_MS),
+      state: "opening",
+      credit: 0,
+      wakeCredit: null,
+      sequence: 0,
+      sentBytes: 0,
+      expectedBytes,
+      maxBytes,
+      pumping: false,
+    };
+    clearTimeout(item.timer);
+    item.timer = setTimeout(() => {
+      failWrite(item, new PeonFileStreamError("PEON_TRANSFER_TIMEOUT", "Peon did not accept the file write in time", 504), true);
+    }, META_TIMEOUT_MS);
+    item.timer.unref();
+    if (input.signal) {
+      const onAbort = () => failWrite(item, new PeonFileStreamError("TRANSFER_CANCELLED", "file write was cancelled", 499), true);
+      input.signal.addEventListener("abort", onAbort, { once: true });
+      item.abort = () => input.signal?.removeEventListener("abort", onAbort);
+    }
+    pendingWrites.set(key, item);
+    try {
+      send(socket, {
+        type: "write_open",
+        protocol: 1,
+        requestId,
+        ...frame,
+        actor: input.actor,
+        ...(expectedBytes === undefined ? {} : { contentLength: expectedBytes }),
+      });
+      if (!source) item.state = "ending";
+    } catch (error) {
+      failWrite(item, error instanceof PeonFileStreamError
+        ? error
+        : new PeonFileStreamError("PEON_TRANSFER_UNAVAILABLE", "Peon transfer connection is unavailable", 503));
+    }
+  });
+}
+
+export function uploadPeonProjectFile(input: PeonProjectFileUploadRequest): Promise<PeonFileWriteResult> {
+  validateRequest({
+    peonId: input.peonId,
+    projectId: input.projectId,
+    relativePath: input.relativePath,
+    actor: input.actor,
+  });
+  if (!Number.isSafeInteger(input.maxBytes) || input.maxBytes <= 0) {
+    throw new PeonFileStreamError("INVALID_LIMIT", "file write limit is invalid", 500);
+  }
+  if (input.contentLength !== undefined && (!Number.isSafeInteger(input.contentLength) || input.contentLength < 0)) {
+    throw new PeonFileStreamError("INVALID_LENGTH", "content length is invalid", 400);
+  }
+  if (input.sha256 !== undefined && !/^[0-9a-f]{64}$/.test(input.sha256)) {
+    throw new PeonFileStreamError("INVALID_CHECKSUM", "sha256 must be a lowercase hexadecimal digest", 400);
+  }
+  return openPeonWrite(input, input.source, input.maxBytes, input.contentLength, {
+    operation: "upload",
+    scope: "project",
+    projectId: input.projectId,
+    relativePath: input.relativePath,
+    ...(input.sha256 ? { sha256: input.sha256 } : {}),
+  });
+}
+
+export function uploadPeonSandboxFile(input: PeonSandboxFileUploadRequest): Promise<PeonFileWriteResult> {
+  validateRelativePath(input.path);
+  if (!Number.isSafeInteger(input.maxBytes) || input.maxBytes <= 0) {
+    throw new PeonFileStreamError("INVALID_LIMIT", "file write limit is invalid", 500);
+  }
+  if (input.contentLength !== undefined && (!Number.isSafeInteger(input.contentLength) || input.contentLength < 0)) {
+    throw new PeonFileStreamError("INVALID_LENGTH", "content length is invalid", 400);
+  }
+  if (input.sha256 !== undefined && !/^[0-9a-f]{64}$/.test(input.sha256)) {
+    throw new PeonFileStreamError("INVALID_CHECKSUM", "sha256 must be a lowercase hexadecimal digest", 400);
+  }
+  return openPeonWrite(input, input.source, input.maxBytes, input.contentLength, {
+    operation: "upload",
+    scope: "sandbox",
+    path: input.path,
+    ...(input.sha256 ? { sha256: input.sha256 } : {}),
+  });
+}
+
+export function movePeonProjectFile(input: PeonProjectFileMoveRequest): Promise<PeonFileWriteResult> {
+  validateRequest({
+    peonId: input.peonId,
+    projectId: input.projectId,
+    relativePath: input.relativePath,
+    actor: input.actor,
+  });
+  validateRelativePath(input.destination);
+  return openPeonWrite(input, null, 1, undefined, {
+    operation: "move",
+    scope: "project",
+    projectId: input.projectId,
+    relativePath: input.relativePath,
+    destination: input.destination,
+  });
 }

@@ -7,6 +7,32 @@ import 'package:overseer_mobile/shared/design/theme.dart';
 import 'package:overseer_mobile/shared/widgets/app_markdown.dart';
 
 void main() {
+  test('decodes durable Peon attachment metadata from another operator', () {
+    final items = flattenTranscriptEvents([
+      _event('other-user-file', 0, {
+        'type': 'user_message',
+        'text': 'Review this',
+        'author': 'other@example.com',
+        'attachments': [
+          {
+            'originalName': 'design.png',
+            'filename': 'design-1.png',
+            'path': '/var/lib/peon/uploads/command/design-1.png',
+            'size': 2048,
+            'mimetype': 'image/png',
+          },
+        ],
+      }),
+    ]);
+
+    final message = items.single as TranscriptUserItem;
+    final attachment = message.attachments.single;
+    expect(attachment.name, 'design.png');
+    expect(attachment.type, 'image');
+    expect(attachment.size, 2048);
+    expect(attachment.path, '/var/lib/peon/uploads/command/design-1.png');
+  });
+
   test('flattens assistant blocks and pairs a later tool result', () {
     final items = flattenTranscriptEvents([
       _event('user-message', 0, {

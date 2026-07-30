@@ -92,13 +92,16 @@ class RecordVoiceRecorder implements VoiceRecorder {
     await session.configure(
       const AudioSessionConfiguration(
         avAudioSessionCategory: AVAudioSessionCategory.playAndRecord,
+        avAudioSessionCategoryOptions:
+            AVAudioSessionCategoryOptions.mixWithOthers,
         avAudioSessionMode: AVAudioSessionMode.measurement,
         androidAudioAttributes: AndroidAudioAttributes(
           contentType: AndroidAudioContentType.speech,
           usage: AndroidAudioUsage.voiceCommunication,
         ),
-        androidAudioFocusGainType: AndroidAudioFocusGainType.gainTransient,
-        androidWillPauseWhenDucked: true,
+        androidAudioFocusGainType:
+            AndroidAudioFocusGainType.gainTransientMayDuck,
+        androidWillPauseWhenDucked: false,
       ),
     );
     if (!await session.setActive(true)) {

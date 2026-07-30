@@ -18,8 +18,15 @@ export {
 } from "./service.js";
 export { toPublicSessionRecord, type PublicSessionRecord } from "./publicView.js";
 export {
+  flushTranscript,
   previewText,
+  readCommittedTranscriptEntries,
+  readCommittedTranscriptEntriesBounded,
   sessionArtifactInventory,
+  subscribeTranscriptCommits,
+  CommittedTranscriptLimitError,
+  type CommittedTranscriptRead,
+  type CommittedTranscriptReadLimits,
   type SessionArtifactInventory,
   type TranscriptEntry,
 } from "./sessionArtifacts.js";

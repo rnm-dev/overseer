@@ -20,6 +20,21 @@ export {
   type FileView,
   type FilesystemError,
 } from "./contracts.js";
+export {
+  ATTACHMENT_UPLOAD_MAX_BYTES,
+  AtomicFileUpload,
+  FileWriteError,
+  PROJECT_UPLOAD_MAX_BYTES,
+  fileWriteFsError,
+  moveProjectFile,
+  projectFileWriteTarget,
+  revalidateFileWriteTarget,
+  sandboxFileWriteTarget,
+  type AtomicFileUploadOpenOptions,
+  type FileWriteResult,
+  type FileWriteTarget,
+  type ProjectFileRecord,
+} from "./writes.js";
 
 const sharedFileAccessService = new FileAccessService();
 

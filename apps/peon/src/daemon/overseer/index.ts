@@ -21,7 +21,6 @@ export {
   REVERSE_COMMAND_CAPABILITY,
   REVERSE_COMMAND_MAX_BYTES,
   ReverseCommandChannel,
-  projectArchiveHandler,
   sessionCancelHandler,
   type ReverseCommandChannelOptions,
   type ReverseCommandExecution,

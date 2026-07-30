@@ -5,10 +5,11 @@ Project rows on the Peon page open a cached-first project surface.
 ## Navigation and access
 
 The mobile header shows the cached project name immediately and starts a new
-session with the current project key. The top-level tabs are Overview,
-Sessions, Files, and Settings. Settings contains a second-level navigation for
-General, Skills, and Members. Skills is available to every operator with
-project access; General and Members are owner-only and are omitted for members.
+session with the current project key. The top-level tabs are Sessions,
+Documents, Files, and Settings, with Sessions selected by default. Settings
+contains a second-level navigation for General, Skills, and Members. Skills is
+available to every operator with project access; General and Members are
+owner-only and are omitted for members.
 
 The peon online flag controls remote actions. Offline project detail keeps the
 cached project identity visible, disables New session, and explains that live
@@ -40,14 +41,14 @@ key rename cannot redirect an in-flight read to another project.
 
 ## Tabs
 
-### Overview
+### Documents
 
-Overview lists the project documentation root and automatically renders
+Documents lists the project documentation root and automatically renders
 `docs/index.md` when present. Documentation is limited to 512 KB. Missing,
 offline, loading, and retry states stay inside the web-style documentation card
 without discarding the cached project header. Markdown links are interactive:
 web and email links open externally, links to other files under `docs/` stay in
-the Overview reader, and other relative project links open the shared file
+the Documents reader, and other relative project links open the shared file
 viewer.
 
 ### Sessions
@@ -94,5 +95,5 @@ grants. Canonical project identity is preferred over the mutable key.
 Repository tests cover endpoint paths and decoding. Widget tests cover
 cached-first rendering, project session filtering, owner settings sections,
 lazy loads, and offline/member access. Real-device validation should exercise
-Overview, Sessions, a text or Markdown file preview, and every available
+Sessions, Documents, a text or Markdown file preview, and every available
 Settings section without saving user data.

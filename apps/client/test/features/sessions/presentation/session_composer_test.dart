@@ -7,6 +7,7 @@ import 'package:overseer_mobile/features/sessions/domain/new_session_repository.
 import 'package:overseer_mobile/features/sessions/application/voice_dictation_controller.dart';
 import 'package:overseer_mobile/features/sessions/presentation/session_composer.dart';
 import 'package:overseer_mobile/shared/design/colors.dart';
+import 'package:overseer_mobile/shared/design/spacing.dart';
 import 'package:overseer_mobile/shared/design/theme.dart';
 import 'package:overseer_mobile/shared/design/typography.dart';
 import 'package:overseer_mobile/shared/models/ai_capabilities.dart';
@@ -285,6 +286,62 @@ void main() {
     );
     final decoration = shell.foregroundDecoration! as BoxDecoration;
     expect(decoration.border, Border.all(color: AppColors.felBright));
+  });
+
+  testWidgets('keeps equal gaps between adjacent composer controls', (
+    tester,
+  ) async {
+    final controller = TextEditingController(text: 'Follow up');
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.dark,
+        home: Scaffold(
+          body: Align(
+            alignment: Alignment.bottomCenter,
+            child: SessionComposer(
+              controller: controller,
+              running: true,
+              dictation: const VoiceDictationState(
+                phase: VoiceDictationPhase.idle,
+                enabled: true,
+              ),
+              providers: const [
+                ModelProvider(
+                  agent: 'codex',
+                  label: 'Codex',
+                  models: [],
+                  reasoningEfforts: [],
+                ),
+              ],
+              onSubmit: () {},
+              onStopAndRun: () {},
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final attach = tester.getRect(
+      find.byKey(const Key('session-composer-attach-visual')),
+    );
+    final voice = tester.getRect(
+      find.byKey(const Key('session-composer-voice-visual')),
+    );
+    final capability = tester.getRect(
+      find.byKey(const Key('session-composer-capabilities-visual')),
+    );
+    final sendNow = tester.getRect(
+      find.byKey(const Key('session-composer-stop-and-run-visual')),
+    );
+    final queue = tester.getRect(
+      find.byKey(const Key('session-composer-submit-visual')),
+    );
+
+    expect(voice.left - attach.right, AppSpacing.xxs + 2);
+    expect(capability.left - voice.right, AppSpacing.xxs + 2);
+    expect(queue.left - sendNow.right, AppSpacing.xxs + 2);
   });
 
   testWidgets('combines agent, model, and effort in one radio sheet', (

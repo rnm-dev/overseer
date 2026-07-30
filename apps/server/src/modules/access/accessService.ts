@@ -85,6 +85,55 @@ export async function canAccessProject(
   return rows.length > 0;
 }
 
+// Authoritative projected-session gate for transcript replay/live delivery.
+// Unlike a browser socket's cached access snapshot, this reads membership,
+// Peon grant, current indexed session scope and project grant together. Call it
+// immediately before delivering projected transcript data.
+export async function canAccessIndexedSessionNow(
+  workspaceId: string,
+  userId: string,
+  peonId: string,
+  sessionId: string,
+): Promise<boolean> {
+  const { rows } = await query<{
+    role: Role;
+    project_key: string | null;
+    project_id: string | null;
+    peon_allowed: boolean;
+    project_allowed: boolean;
+  }>(
+    `SELECT member.role,
+            session.project_key,
+            session.project_id,
+            (peon_access.peon_id IS NOT NULL) AS peon_allowed,
+            (project_access.peon_id IS NOT NULL) AS project_allowed
+       FROM workspace_members member
+       JOIN sessions session
+         ON session.peon_id=$3 AND session.session_id=$4
+       LEFT JOIN workspace_member_peon_access peon_access
+         ON peon_access.workspace_id=$1
+        AND peon_access.user_id=$2
+        AND peon_access.peon_id=$3
+       LEFT JOIN workspace_member_project_access project_access
+         ON project_access.workspace_id=$1
+        AND project_access.user_id=$2
+        AND project_access.peon_id=$3
+        AND (
+          (session.project_id IS NOT NULL AND project_access.project_id=session.project_id)
+          OR (
+            session.project_id IS NULL
+            AND project_access.project_id IS NULL
+            AND project_access.project_key=session.project_key
+          )
+        )
+      WHERE member.workspace_id=$1 AND member.user_id=$2`,
+    [workspaceId, userId, peonId, sessionId],
+  );
+  return rows.some((row) =>
+    row.role === "owner"
+    || (row.peon_allowed && ((!row.project_key && !row.project_id) || row.project_allowed)));
+}
+
 export async function allowedProjects(
   workspaceId: string,
   userId: string,

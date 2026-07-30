@@ -7,7 +7,11 @@ import { newDb } from "pg-mem";
 import WebSocket from "ws";
 import { bindPeon, mintCredential } from "./credentials.js";
 import { initDb, query } from "./db.js";
-import { createFolderListingOperations } from "./peonFolderListing.js";
+import {
+  createFolderListingOperations,
+  FOLDER_LISTING_ENTRY_METADATA_FEATURE,
+} from "./peonFolderListing.js";
+import { getPeonConnection, peonConnectionSupports } from "./peonConnections.js";
 import { PeonOperationError } from "./peonOperationChannel.js";
 import { attachPeonSocket } from "./peonSocket.js";
 import { registry } from "./registry.js";
@@ -72,8 +76,14 @@ async function fixture(suffix: string, timeoutMs = 500) {
   return { peonId, token, operations, server, wss, ws, received, url: `ws://127.0.0.1:${port}/api/v1/peons/ws` };
 }
 
-async function hello(ws: WebSocket, received: ReturnType<typeof collector>, peonId: string, capabilities = ["folder-listing-v1"]): Promise<Record<string, unknown>> {
-  ws.send(JSON.stringify({ type: "hello", protocol: 1, peonId, capabilities }));
+async function hello(
+  ws: WebSocket,
+  received: ReturnType<typeof collector>,
+  peonId: string,
+  capabilities = ["folder-listing-v1"],
+  channels?: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  ws.send(JSON.stringify({ type: "hello", protocol: 1, peonId, capabilities, ...(channels ? { channels } : {}) }));
   return received.next((frame) => frame.type === "hello_ack");
 }
 
@@ -86,7 +96,17 @@ async function shutdown(value: Awaited<ReturnType<typeof fixture>>): Promise<voi
 test("negotiates folder listing independently and accumulates correlated pages in Peon order", async () => {
   const f = await fixture("pages");
   try {
-    assert.deepEqual(await hello(f.ws, f.received, f.peonId), { type: "hello_ack", protocol: 1, capabilities: ["folder-listing-v1"] });
+    assert.deepEqual(await hello(f.ws, f.received, f.peonId, ["folder-listing-v1"], {
+      "folder-listing-v1": { entryMetadata: "entry-metadata-v1" },
+    }), {
+      type: "hello_ack",
+      protocol: 1,
+      capabilities: ["folder-listing-v1"],
+      channels: { "folder-listing-v1": { entryMetadata: "entry-metadata-v1" } },
+    });
+    const connection = getPeonConnection(f.peonId);
+    assert.ok(connection);
+    assert.equal(peonConnectionSupports(connection, FOLDER_LISTING_ENTRY_METADATA_FEATURE), true);
     const result = f.operations.request(f.peonId, { path: "/srv/work", projectId: "ignored", limit: 999 });
     const first = await f.received.next((frame) => frame.type === "folder_list_request");
     assert.equal(first.path, "/srv/work");
@@ -94,17 +114,27 @@ test("negotiates folder listing independently and accumulates correlated pages i
     assert.equal(first.limit, 500);
     f.ws.send(JSON.stringify({
       type: "folder_list_page", requestId: first.requestId, path: "/srv/work", projectId: null,
-      entries: [{ name: "z-dir", type: "directory" }, { name: ".hidden", type: "file" }], nextCursor: "opaque-1", hasMore: true,
+      entries: [
+        { name: "z-dir", type: "directory", size: null, mtimeMs: 101 },
+        { name: ".hidden", type: "file", size: 6, mtimeMs: 102 },
+        { name: "outside-link", type: "other", size: null, mtimeMs: null },
+      ],
+      nextCursor: "opaque-1", hasMore: true,
     }));
     const next = await f.received.next((frame) => frame.type === "folder_list_request" && frame.cursor === "opaque-1");
     assert.deepEqual(next, { type: "folder_list_request", requestId: first.requestId, cursor: "opaque-1", limit: 500 });
     f.ws.send(JSON.stringify({
       type: "folder_list_page", requestId: first.requestId, path: "/srv/work", projectId: null,
-      entries: [{ name: "a.txt", type: "file" }], nextCursor: null, hasMore: false,
+      entries: [{ name: "a.txt", type: "file", size: 12, mtimeMs: 103 }], nextCursor: null, hasMore: false,
     }));
     assert.deepEqual(await result, {
       path: "/srv/work", projectId: null,
-      entries: [{ name: "z-dir", type: "directory" }, { name: ".hidden", type: "file" }, { name: "a.txt", type: "file" }],
+      entries: [
+        { name: "z-dir", type: "directory", size: null, mtimeMs: 101 },
+        { name: ".hidden", type: "file", size: 6, mtimeMs: 102 },
+        { name: "outside-link", type: "other", size: null, mtimeMs: null },
+        { name: "a.txt", type: "file", size: 12, mtimeMs: 103 },
+      ],
     });
     assert.equal(f.received.frames.some((frame) => frame.type === "durable_message"), false);
 
@@ -118,6 +148,20 @@ test("negotiates folder listing independently and accumulates correlated pages i
     }));
     assert.deepEqual(await projectResult, { path: "/projects/stable", projectId: "stable-project", entries: [] });
 
+    const nestedResult = f.operations.request(f.peonId, { projectId: "stable-project", relativePath: "src/lib" });
+    const nestedRequest = await f.received.next((frame) => frame.type === "folder_list_request");
+    assert.equal(nestedRequest.projectId, "stable-project");
+    assert.equal(nestedRequest.relativePath, "src/lib");
+    f.ws.send(JSON.stringify({
+      type: "folder_list_page", requestId: nestedRequest.requestId, path: "/projects/stable/src/lib", projectId: "stable-project",
+      entries: [{ name: "index.ts", type: "file" }], nextCursor: null, hasMore: false,
+    }));
+    assert.deepEqual(await nestedResult, {
+      path: "/projects/stable/src/lib",
+      projectId: "stable-project",
+      entries: [{ name: "index.ts", type: "file", size: null, mtimeMs: null }],
+    });
+
     await assert.rejects(f.operations.request(f.peonId, { path: "relative/path" }),
       (error: unknown) => error instanceof PeonOperationError && error.code === "INVALID_PATH");
     const injectedFrameFields = { path: "/tmp", type: "durable_message", requestId: "attacker-controlled" };
@@ -125,6 +169,8 @@ test("negotiates folder listing independently and accumulates correlated pages i
       (error: unknown) => error instanceof PeonOperationError && error.code === "BAD_REQUEST");
     await assert.rejects(f.operations.request(f.peonId, { path: "/tmp", projectId: 42 } as unknown as { path: string }),
       (error: unknown) => error instanceof PeonOperationError && error.code === "BAD_REQUEST");
+    await assert.rejects(f.operations.request(f.peonId, { projectId: "stable-project", relativePath: "/absolute" }),
+      (error: unknown) => error instanceof PeonOperationError && error.code === "INVALID_PATH");
     assert.equal(f.received.frames.some((frame) => frame.type === "durable_message" || frame.requestId === "attacker-controlled"), false);
 
     const closed = new Promise<number>((resolve) => f.ws.once("close", resolve));
@@ -147,6 +193,17 @@ test("preserves Peon errors and releases concurrency on abort and timeout", asyn
     f.ws.send(JSON.stringify({ type: "folder_list_error", requestId: errorRequest.requestId, code: "UNKNOWN_PROJECT", error: "project was removed" }));
     await assert.rejects(errored, (error: unknown) => error instanceof PeonOperationError
       && error.code === "UNKNOWN_PROJECT" && error.message === "project was removed" && error.status === 404);
+
+    const unsupported = f.operations.request(f.peonId, { path: "/tmp" });
+    const unsupportedRequest = await f.received.next((frame) => frame.type === "folder_list_request");
+    f.ws.send(JSON.stringify({
+      type: "folder_list_error",
+      requestId: unsupportedRequest.requestId,
+      code: "UNSUPPORTED_PLATFORM",
+      error: "secure handle-relative folder listing is unavailable on this platform",
+    }));
+    await assert.rejects(unsupported, (error: unknown) => error instanceof PeonOperationError
+      && error.code === "UNSUPPORTED_PLATFORM" && error.status === 501);
 
     const controller = new AbortController();
     const cancelled = f.operations.request(f.peonId, { path: "/tmp" }, controller.signal);
@@ -226,6 +283,9 @@ test("older Peons are capability-fenced and disconnects settle only their own ge
     await assert.rejects(f.operations.request(f.peonId, { path: "/tmp" }),
       (error: unknown) => error instanceof PeonOperationError && error.code === "PEON_OFFLINE");
     assert.deepEqual(await hello(f.ws, f.received, f.peonId, []), { type: "hello_ack", protocol: 1, capabilities: [] });
+    const legacyConnection = getPeonConnection(f.peonId);
+    assert.ok(legacyConnection);
+    assert.equal(peonConnectionSupports(legacyConnection, FOLDER_LISTING_ENTRY_METADATA_FEATURE), false);
     await assert.rejects(f.operations.request(f.peonId, { path: "/tmp" }),
       (error: unknown) => error instanceof PeonOperationError && error.code === "UNSUPPORTED_CAPABILITY");
 

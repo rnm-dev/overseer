@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
 
+import 'non_interrupting_sound_audio_context.dart';
 import '../domain/sound_pack.dart';
 import '../domain/work_sound_player.dart';
 
@@ -34,6 +35,7 @@ class AudioplayersWorkSoundPlayer implements WorkSoundPlayer {
     final asset = _selector.begin(pack, _random.nextDouble());
     if (asset == null) return;
     try {
+      await _player.setAudioContext(nonInterruptingSoundAudioContext());
       await _player.play(AssetSource(asset));
     } catch (error) {
       _selector.finish();
@@ -48,6 +50,7 @@ class AudioplayersWorkSoundPlayer implements WorkSoundPlayer {
     final asset = _cueSelector.select(pack, cue, _random.nextDouble());
     if (asset == null) return;
     try {
+      await _cuePlayer.setAudioContext(nonInterruptingSoundAudioContext());
       await _cuePlayer.play(AssetSource(asset));
     } catch (error) {
       debugPrint(

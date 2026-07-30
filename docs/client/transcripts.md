@@ -107,14 +107,21 @@ flattens them into the same semantic rows as the web client:
 - Completion cues play only for successful results received after the mounted
   transcript has caught up to its opening snapshot. Tail events replayed while
   opening a session, including unread results, remain silent.
+- Work clips, completion cues, and sound-pack previews mix with audio from
+  other apps. They do not claim Android audio focus or interrupt an active iOS
+  music session.
 
 Transcript attachment pills with a committed `path` open a dedicated
 full-screen attachment detail surface. Transcript `preview` cards open the
 same surface in artifact mode. Both are read-only and reuse the shared file
 renderer for images, PDFs, Markdown, HTML, and syntax-highlighted source. The
 viewer fetches sent attachments through the Peon files endpoint and preview
-artifacts through the session file endpoints; failures retain an explicit
-Retry action.
+artifacts through the session file endpoints. Durable Peon transcript events
+may contain resolved absolute attachment paths; those are read through the
+session-scoped file endpoint, while relative upload paths continue to use the
+transfer-root files endpoint. Both current and legacy Peon attachment metadata
+(`name`/`type` and `originalName`/`mimetype`) is accepted. Failures retain an
+explicit Retry action.
 
 ## Composer
 
@@ -189,6 +196,10 @@ server-owned queue endpoint and include the same ID as `commandId`; the
 secondary lightning action also passes `startNow: true`. Overseer durably
 deduplicates that `commandId`, so retrying after a lost response cannot enqueue
 the same turn twice.
+
+The composer shows upload progress while attachments are transferring. During
+the final follow-up or queue request, only the send action's spinner indicates
+that work is in progress; no second status label appears in the voice strip.
 
 After an immediate submission is accepted, the mounted transcript requests a
 fresh authoritative newest page instead of depending solely on the live tail.

@@ -817,10 +817,16 @@ List<TranscriptAttachment> _attachments(Object? raw) {
   return raw
       .whereType<Map>()
       .map((attachment) {
+        final mimetype = _string(attachment['mimetype']);
         return TranscriptAttachment(
-          type: _string(attachment['type']),
+          type:
+              _string(attachment['type']) ??
+              (mimetype?.startsWith('image/') == true ? 'image' : 'file'),
           path: _string(attachment['path']),
-          name: _string(attachment['name']),
+          name:
+              _string(attachment['name']) ??
+              _string(attachment['originalName']) ??
+              _string(attachment['filename']),
           size: _number(attachment['size'])?.round(),
         );
       })

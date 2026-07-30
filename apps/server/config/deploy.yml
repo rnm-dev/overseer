@@ -1,8 +1,13 @@
 # Overseer production deployment on nid-01.
-# Cloudflare and host nginx terminate public TLS. The shared kamal-proxy listens
-# on host ports 8080/8443, so this service must not boot or reconfigure the proxy.
+# Cloudflare and host nginx terminate public TLS. This checked-in target
+# publishes the shared kamal-proxy on loopback-only 8080/8443 so nginx can
+# reach it but the Internet cannot bypass nginx. Production remains wildcard
+# host-bound on both ports until an explicitly approved proxy reboot applies
+# this run state; only 8080 was independently verified Internet-reachable. An
+# ordinary app deploy does not authorize that shared-host mutation.
 service: overseer
 image: vibze/overseer
+minimum_version: 2.12.0
 
 servers:
   web:
@@ -15,6 +20,16 @@ proxy:
   ssl: false
   app_port: 5000
   forward_headers: true
+  # Shared proxy boot state. Version/bind are pinned so a future approved
+  # `kamal proxy reboot` cannot silently restore public 0.0.0.0 listeners.
+  run:
+    repository: basecamp/kamal-proxy
+    version: v0.9.2
+    http_port: 8080
+    https_port: 8443
+    publish: true
+    bind_ips:
+      - 127.0.0.1
   response_timeout: 3600
   healthcheck:
     path: /healthz
@@ -42,6 +57,9 @@ env:
     OVERSEER_PORT: 5000
     OVERSEER_PUBLIC_URL: https://overseer.rnm.dev
     OVERSEER_PEON_CALLBACK_URL: https://overseer.rnm.dev
+    # Only controlled nginx/Kamal/Docker peers may supply X-Forwarded-For.
+    # Public client addresses remain untrusted and stop the right-to-left walk.
+    OVERSEER_TRUSTED_PROXIES: loopback,linklocal,uniquelocal
     OVERSEER_PREVIEW_DOMAIN: preview.overseer.rnm.dev
     OVERSEER_PREVIEW_TOKEN_TTL_MS: 600000
     OVERSEER_OFFLINE_AFTER_MS: 45000

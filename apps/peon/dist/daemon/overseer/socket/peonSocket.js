@@ -7,9 +7,12 @@ import { SessionCatalogChannel } from "./channels/sessionCatalogChannel.js";
 import { SessionWarningChannel } from "./channels/sessionWarningChannel.js";
 import { ProjectCatalogChannel } from "./channels/projectCatalogChannel.js";
 import { FolderListingChannel } from "./channels/folderListingChannel.js";
-import { ProjectFileReadChannel } from "./channels/projectFileReadChannel.js";
+import { ProjectFileReadChannel, SandboxFileReadChannel } from "./channels/projectFileReadChannel.js";
 import { ReverseCommandChannel } from "./channels/reverseCommandChannel.js";
+import { TranscriptChannel } from "./channels/transcriptChannel.js";
+import { FileWriteChannel } from "./channels/fileWriteChannel.js";
 import { settings } from "../../settings/index.js";
+import { peonClaimClient } from "../../enrollment/index.js";
 const DEFAULT_RETRY_BASE_MS = 250;
 const DEFAULT_RETRY_MAX_MS = 30_000;
 const DEFAULT_STABLE_MS = 30_000;
@@ -88,7 +91,15 @@ export class PeonSocketSupervisor {
         outbox: null,
     };
     constructor(options = {}) {
-        this.readSettings = options.readSettings ?? (() => settings.getPeonSocketSettings());
+        this.socketChannel = options.socketChannel ?? "control";
+        this.readSettings = options.readSettings ?? (() => {
+            if (this.socketChannel === "control") {
+                const candidate = peonClaimClient.getSocketCredentialOverride();
+                if (candidate)
+                    return candidate;
+            }
+            return settings.getPeonSocketSettings();
+        });
         this.subscribe = options.subscribe ?? defaultSubscribe;
         this.random = options.random ?? Math.random;
         this.retryBaseMs = options.retryBaseMs ?? DEFAULT_RETRY_BASE_MS;
@@ -98,7 +109,6 @@ export class PeonSocketSupervisor {
         this.pingIntervalMs = options.pingIntervalMs ?? DEFAULT_PING_INTERVAL_MS;
         this.pongTimeoutMs = options.pongTimeoutMs ?? DEFAULT_PONG_TIMEOUT_MS;
         this.maintenanceIntervalMs = options.maintenanceIntervalMs ?? DEFAULT_MAINTENANCE_INTERVAL_MS;
-        this.socketChannel = options.socketChannel ?? "control";
         this.maxFrameBytes = this.socketChannel === "control" ? PEON_SOCKET_MAX_FRAME_BYTES : TRANSFER_MAX_FRAME_BYTES;
         this.maxBufferedBytes = this.socketChannel === "control" ? CONTROL_MAX_BUFFERED_BYTES : TRANSFER_MAX_BUFFERED_BYTES;
         if (this.socketChannel === "file-transfer" && (options.outbox || options.outboxFactory)) {
@@ -111,9 +121,14 @@ export class PeonSocketSupervisor {
                 ...(hasDurableOutbox ? [new ProjectCatalogChannel()] : []),
                 new SessionWarningChannel(),
                 new FolderListingChannel(),
+                ...(hasDurableOutbox ? [new TranscriptChannel()] : []),
                 ...(hasDurableOutbox ? [new ReverseCommandChannel({ peonId: () => this.configured()?.peonId })] : []),
             ]
-            : [new ProjectFileReadChannel()];
+            : [
+                new ProjectFileReadChannel(),
+                new SandboxFileReadChannel({ sandboxRoot: () => settings.get().fileTransferRoot }),
+                new FileWriteChannel({ sandboxRoot: () => settings.get().fileTransferRoot }),
+            ];
         this.multiplexer = new PeonSocketMultiplexer(options.channels ?? defaultChannels);
         this.outbox = options.outbox ?? null;
         this.outboxFactory = options.outboxFactory ?? null;
@@ -131,6 +146,11 @@ export class PeonSocketSupervisor {
         const supervisor = this;
         const offlineSender = {
             get durable() { return supervisor.outbox?.status().negotiated === true; },
+            get authority() {
+                const configured = supervisor.configured();
+                return configured ? supervisor.destinationHash(configured) : null;
+            },
+            get generation() { return supervisor.generation; },
             send: () => false,
             sendBinary: () => false,
             sendDurable: (frame, options) => supervisor.enqueueDurable(frame, options),
@@ -258,8 +278,11 @@ export class PeonSocketSupervisor {
             }, this.handshakeTimeoutMs);
         });
         let durableAccepted = false;
+        const socketSupervisor = this;
         const sender = {
             get durable() { return durableAccepted; },
+            get authority() { return socketSupervisor.destinationHash(config); },
+            get generation() { return generation; },
             send: (frame) => this.sendFrame(socket, current, frame),
             sendBinary: (frame) => this.sendBinaryFrame(socket, current, frame),
             sendDurable: (frame, options) => this.sendDurable(socket, current, frame, options),
@@ -273,8 +296,12 @@ export class PeonSocketSupervisor {
         socket.on("message", (data, isBinary) => {
             if (!current())
                 return;
-            if (isBinary)
-                return sender.disconnect("binary Peon socket frames are unsupported");
+            if (isBinary) {
+                if (!this.state.connected || !this.multiplexer.receiveBinary(Buffer.from(data), sender)) {
+                    sender.disconnect("unsupported binary Peon socket frame");
+                }
+                return;
+            }
             let frame;
             try {
                 const parsed = JSON.parse(data.toString());
@@ -308,6 +335,9 @@ export class PeonSocketSupervisor {
             this.state.derecruited = false;
             this.state.connectedAt = Date.now();
             this.state.lastError = null;
+            if (this.socketChannel === "control") {
+                peonClaimClient.confirmCandidateFromSocket(config.token, config.peonId);
+            }
             durableAccepted = Array.isArray(frame.capabilities) && frame.capabilities.includes(PEON_SOCKET_DURABLE_DELIVERY_CAPABILITY);
             this.acceptedCapabilities = new Set(Array.isArray(frame.capabilities)
                 ? frame.capabilities.filter((value) => typeof value === "string")
@@ -319,7 +349,9 @@ export class PeonSocketSupervisor {
                 const acknowledgedEpoch = acknowledgement?.epoch;
                 const acknowledgedCursor = acknowledgement?.acknowledgedCursor;
                 if (acknowledgedEpoch === this.outbox.status().epoch && typeof acknowledgedCursor === "string") {
-                    this.outbox.acknowledge(acknowledgedEpoch, acknowledgedCursor);
+                    if (!this.acknowledgeOutbox(acknowledgedEpoch, acknowledgedCursor)) {
+                        this.state.lastError = "invalid durable socket handshake acknowledgement";
+                    }
                 }
             }
             this.multiplexer.negotiated(frame, sender);
@@ -333,6 +365,32 @@ export class PeonSocketSupervisor {
             }, this.stableMs);
         });
         socket.once("unexpected-response", (_request, response) => {
+            const responseChunks = [];
+            let responseBytes = 0;
+            response.on("data", (chunk) => {
+                if (responseBytes > 16 * 1024)
+                    return;
+                const value = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+                responseBytes += value.length;
+                if (responseBytes <= 16 * 1024)
+                    responseChunks.push(value);
+            });
+            response.once("end", () => {
+                if (response.statusCode !== 401 || responseBytes > 16 * 1024)
+                    return;
+                try {
+                    const body = JSON.parse(Buffer.concat(responseChunks).toString("utf8"));
+                    if (body.code === "CREDENTIAL_REVOKED"
+                        || body.code === "CREDENTIAL_INVALID"
+                        || body.code === "CREDENTIAL_RETIRED") {
+                        peonClaimClient.recordCredentialRejection(config.token, body.code);
+                    }
+                }
+                catch {
+                    // A generic/non-JSON 401 is deliberately ambiguous and never erases
+                    // a persisted candidate credential.
+                }
+            });
             response.resume();
             if (!current())
                 return;
@@ -557,26 +615,29 @@ export class PeonSocketSupervisor {
         }
     }
     handleOutboxAck(frame, socket, current) {
-        const acknowledged = this.outbox && typeof frame.cursor === "string"
-            ? (() => {
-                const pending = this.outbox.pending();
-                const index = pending.findIndex((message) => message.cursor === frame.cursor);
-                return index < 0 ? [] : pending.slice(0, index + 1).map((message) => message.cursor);
-            })()
-            : [];
         if (!this.outbox || typeof frame.epoch !== "string" || typeof frame.cursor !== "string"
-            || !this.outbox.acknowledge(frame.epoch, frame.cursor)) {
+            || !this.acknowledgeOutbox(frame.epoch, frame.cursor)) {
             this.state.lastError = "invalid durable socket acknowledgement";
             return;
         }
-        for (const cursor of acknowledged)
-            this.multiplexer.durableAcknowledged(cursor);
         const pending = new Set(this.outbox.pending().map((message) => message.cursor));
         this.sentOutboxCursors = new Set([...this.sentOutboxCursors].filter((cursor) => pending.has(cursor)));
         if (this.outboxAckTimer)
             clearTimeout(this.outboxAckTimer);
         this.outboxAckTimer = null;
         this.flushOutbox(socket, current);
+    }
+    acknowledgeOutbox(epoch, cursor) {
+        if (!this.outbox)
+            return false;
+        const pending = this.outbox.pending();
+        const index = pending.findIndex((message) => message.cursor === cursor);
+        const acknowledged = index < 0 ? [] : pending.slice(0, index + 1).map((message) => message.cursor);
+        if (!this.outbox.acknowledge(epoch, cursor))
+            return false;
+        for (const removedCursor of acknowledged)
+            this.multiplexer.durableAcknowledged(removedCursor);
+        return true;
     }
     clearOutboxTimers() {
         if (this.outboxFlushTimer)

@@ -209,7 +209,7 @@ const SESSION_TOOLS: Tool[] = [
   },
   {
     name: "spawn_sessions",
-    description: "Start independent child sessions without a count cap. Each prompt must be self-contained. Children cannot spawn sessions. After each child first finishes all initial queued work, Peon coalesces one hidden completion trigger into this parent's next turn; later follow-up completions do not auto-trigger the parent.",
+    description: "Start independent child sessions without a count cap. Each prompt must be self-contained. Children cannot spawn sessions. The initial child turn and every later turn initiated with send_session_followup each enqueue one hidden completion trigger into this parent's next turn.",
     inputSchema: {
       type: "object",
       properties: {
@@ -299,7 +299,7 @@ const SESSION_TOOLS: Tool[] = [
   },
   {
     name: "send_session_followup",
-    description: "Send a follow-up to any existing Peon session, including the caller. There is no count cap. A running target may be steered or interrupted according to normal Peon follow-up semantics.",
+    description: "Send a follow-up to any existing Peon session, including the caller. There is no count cap. A running target may be steered or interrupted according to normal Peon follow-up semantics. When the target is this caller's child, completion enqueues a new hidden trigger for the caller.",
     inputSchema: {
       type: "object",
       properties: {

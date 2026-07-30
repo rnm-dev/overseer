@@ -290,7 +290,7 @@ available to Overseer.
 | `POST /projects/:key/archive` | command | `reverse-command-v1` | yes | `project.archive`; stable project ID |
 | `DELETE /projects/:key/archive` | command | `reverse-command-v1` | yes | `project.unarchive`; stable project ID |
 | `DELETE /projects/:key` | command | `project-command-v1` | yes | Stable project ID; catalog tombstone confirms |
-| project file list/read | query/transfer | `folder-listing-v1`, `project-file-read-v1` | yes | Reverse channels already available |
+| project file list/read | query/transfer | `folder-listing-v1`, `project-file-read-v1` | yes | Project-scoped listings use negotiated entry metadata; reverse channels available |
 | project file put/patch/delete | command/transfer | `project-file-write-v1` | yes | Atomic write and exclusive route |
 | `GET /settings` | projection | `daemon-configuration-v1` | no | Safe allowlist only |
 | `PATCH /settings` | command | `daemon-configuration-v1` | yes | `paused` is forbidden remotely |

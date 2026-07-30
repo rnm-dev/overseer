@@ -515,4 +515,323 @@ export const MIGRATIONS: { id: string; statements: string[] }[] = [
       `CREATE INDEX IF NOT EXISTS session_attention_outstanding_idx ON session_attention (peon_id, session_id, resolved_at, requested_at)`,
     ],
   },
+  {
+    // Shared Overseer-side half of reverse-command-v1. The command row is the
+    // restart-safe correlation/pending registry; terminal audit is separate so
+    // command compaction can never erase who requested an effect. Durable
+    // result messages continue to use the one Peon-wide inbox/checkpoint.
+    id: "024_reverse_commands",
+    statements: [
+      `CREATE TABLE IF NOT EXISTS reverse_commands (
+         workspace_id          TEXT NOT NULL,
+         peon_id               TEXT NOT NULL,
+         command_id            TEXT NOT NULL,
+         operation             TEXT NOT NULL,
+         request_hash          TEXT NOT NULL,
+         actor_user_id         TEXT NOT NULL,
+         actor_email           TEXT NOT NULL,
+         target                JSONB NOT NULL,
+         payload               JSONB NOT NULL,
+         expected              JSONB,
+         request_bytes         BIGINT NOT NULL,
+         state                 TEXT NOT NULL,
+         connection_generation TEXT,
+         requested_at          BIGINT NOT NULL,
+         sent_at               BIGINT,
+         accepted_at           BIGINT,
+         completed_at          BIGINT,
+         updated_at            BIGINT NOT NULL,
+         terminal_status       TEXT,
+         result_code           TEXT,
+         result_message        TEXT,
+         terminal_result       JSONB,
+         result_frame          JSONB,
+         replayed              BOOLEAN NOT NULL DEFAULT FALSE,
+         attempt_count         INTEGER NOT NULL DEFAULT 0,
+         last_error_code       TEXT,
+         durable_committed_at  BIGINT,
+         PRIMARY KEY (workspace_id, peon_id, command_id)
+       )`,
+      `CREATE INDEX IF NOT EXISTS reverse_commands_pending_idx ON reverse_commands (workspace_id, peon_id, state, updated_at)`,
+      `CREATE INDEX IF NOT EXISTS reverse_commands_actor_idx ON reverse_commands (workspace_id, actor_user_id, state)`,
+      `CREATE TABLE IF NOT EXISTS reverse_command_audit (
+         workspace_id TEXT NOT NULL,
+         peon_id      TEXT NOT NULL,
+         command_id   TEXT NOT NULL,
+         user_id      TEXT NOT NULL,
+         operation    TEXT NOT NULL,
+         event        TEXT NOT NULL,
+         result_status TEXT,
+         result_code  TEXT,
+         created_at   BIGINT NOT NULL,
+         PRIMARY KEY (workspace_id, peon_id, command_id, event)
+      )`,
+      `CREATE INDEX IF NOT EXISTS reverse_command_audit_peon_idx ON reverse_command_audit (workspace_id, peon_id, created_at)`,
+    ],
+  },
+  {
+    // peon-claim-v1 separates stable machine identity, one-time encrypted
+    // delivery and long-lived keyed credential verification. No raw pc1 bearer
+    // is stored in either the registry or the normal credential row.
+    id: "025_peon_claim_v1",
+    statements: [
+      `CREATE TABLE IF NOT EXISTS peon_identity_bindings (
+         peon_id        TEXT PRIMARY KEY,
+         identity_key_id TEXT NOT NULL,
+         public_jwk     JSONB NOT NULL,
+         workspace_id   TEXT NOT NULL,
+         method         TEXT NOT NULL,
+         created_at     BIGINT NOT NULL,
+         removed_at     BIGINT
+       )`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS peon_identity_key_idx ON peon_identity_bindings (identity_key_id)`,
+      `CREATE TABLE IF NOT EXISTS peon_enrollment_leases (
+         peon_id         TEXT PRIMARY KEY,
+         identity_key_id TEXT NOT NULL,
+         method          TEXT NOT NULL,
+         claim_id        TEXT,
+         created_at      BIGINT NOT NULL,
+         expires_at      BIGINT
+       )`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS peon_enrollment_identity_lease_idx ON peon_enrollment_leases (identity_key_id)`,
+      `CREATE TABLE IF NOT EXISTS peon_claims (
+         claim_id          TEXT PRIMARY KEY,
+         attempt_id        TEXT NOT NULL UNIQUE,
+         request_hash      TEXT NOT NULL,
+         peon_id           TEXT NOT NULL,
+         identity_key_id   TEXT NOT NULL,
+         public_jwk        JSONB NOT NULL,
+         claim_nonce       TEXT NOT NULL,
+         server_origin     TEXT NOT NULL,
+         claim_token_hash  TEXT,
+         operator_code_hash TEXT UNIQUE,
+         operator_code_key_version INTEGER,
+         operator_code_nonce TEXT,
+         operator_code_ciphertext TEXT,
+         operator_code_tag TEXT,
+         display           JSONB NOT NULL,
+         state             TEXT NOT NULL,
+         mode              TEXT,
+         workspace_id      TEXT,
+         decided_by        TEXT,
+         decision          TEXT,
+         credential_id     TEXT,
+         delivery_id       TEXT,
+         created_at        BIGINT NOT NULL,
+         expires_at        BIGINT NOT NULL,
+         delivery_expires_at BIGINT,
+         delivered_at      BIGINT,
+         terminal_at       BIGINT,
+         terminal_polled_at BIGINT,
+         completed_at      BIGINT,
+         ack_request_hash  TEXT,
+         ack_result_expires_at BIGINT
+       )`,
+      `CREATE INDEX IF NOT EXISTS peon_claims_identity_state_idx ON peon_claims (peon_id, identity_key_id, state)`,
+      `CREATE INDEX IF NOT EXISTS peon_claims_expiry_idx ON peon_claims (state, expires_at, delivery_expires_at)`,
+      `CREATE TABLE IF NOT EXISTS peon_claim_resolutions (
+         claim_id    TEXT NOT NULL,
+         user_id     TEXT NOT NULL,
+         resolved_at BIGINT NOT NULL,
+         expires_at  BIGINT NOT NULL,
+         PRIMARY KEY (claim_id, user_id)
+       )`,
+      `CREATE TABLE IF NOT EXISTS peon_claim_attempts (
+         attempt_id       TEXT PRIMARY KEY,
+         request_hash     TEXT NOT NULL,
+         claim_id         TEXT NOT NULL,
+         terminal_at      BIGINT,
+         tombstone_expires_at BIGINT
+       )`,
+      `CREATE INDEX IF NOT EXISTS peon_claim_attempts_expiry_idx ON peon_claim_attempts (tombstone_expires_at)`,
+      `CREATE TABLE IF NOT EXISTS peon_claim_credentials (
+         id               TEXT PRIMARY KEY,
+         workspace_id     TEXT NOT NULL,
+         peon_id          TEXT NOT NULL,
+         identity_key_id  TEXT NOT NULL,
+         generation       INTEGER NOT NULL,
+         state            TEXT NOT NULL,
+         verifier         TEXT NOT NULL,
+         pepper_version   INTEGER NOT NULL,
+         created_by       TEXT,
+         created_at       BIGINT NOT NULL,
+         activated_at     BIGINT,
+         retiring_at      BIGINT,
+         old_socket_grace_ends_at BIGINT,
+         revoked_at       BIGINT
+       )`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS peon_claim_credentials_generation_idx ON peon_claim_credentials (peon_id, generation)`,
+      `CREATE INDEX IF NOT EXISTS peon_claim_credentials_active_idx ON peon_claim_credentials (workspace_id, peon_id, state)`,
+      `CREATE TABLE IF NOT EXISTS peon_claim_deliveries (
+         delivery_id      TEXT PRIMARY KEY,
+         owner_type       TEXT NOT NULL,
+         owner_id         TEXT NOT NULL UNIQUE,
+         credential_id    TEXT NOT NULL,
+         peon_id          TEXT NOT NULL,
+         workspace_id     TEXT NOT NULL,
+         identity_key_id  TEXT NOT NULL,
+         generation       INTEGER NOT NULL,
+         key_version      INTEGER NOT NULL,
+         nonce            TEXT NOT NULL,
+         ciphertext       TEXT NOT NULL,
+         tag               TEXT NOT NULL,
+         created_at       BIGINT NOT NULL,
+         expires_at       BIGINT NOT NULL
+       )`,
+      `CREATE INDEX IF NOT EXISTS peon_claim_deliveries_expiry_idx ON peon_claim_deliveries (expires_at)`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS peon_claim_delivery_nonce_idx ON peon_claim_deliveries (key_version, nonce)`,
+      `CREATE TABLE IF NOT EXISTS peon_credential_rotations (
+         rotation_id       TEXT PRIMARY KEY,
+         request_hash      TEXT NOT NULL,
+         peon_id           TEXT NOT NULL,
+         workspace_id      TEXT NOT NULL,
+         identity_key_id   TEXT NOT NULL,
+         previous_credential_id TEXT NOT NULL,
+         previous_generation INTEGER NOT NULL,
+         credential_id     TEXT NOT NULL,
+         delivery_id       TEXT NOT NULL,
+         state             TEXT NOT NULL,
+         created_at        BIGINT NOT NULL,
+         expires_at        BIGINT NOT NULL,
+         delivered_at      BIGINT,
+         completed_at      BIGINT,
+         old_socket_grace_ends_at BIGINT,
+         terminal_at       BIGINT,
+         ack_request_hash  TEXT,
+         ack_result_expires_at BIGINT,
+         tombstone_expires_at BIGINT
+       )`,
+      `CREATE INDEX IF NOT EXISTS peon_rotations_active_idx ON peon_credential_rotations (peon_id, state)`,
+      `CREATE TABLE IF NOT EXISTS peon_claim_request_nonces (
+         identity_key_id TEXT NOT NULL,
+         request_nonce   TEXT NOT NULL,
+         created_at      BIGINT NOT NULL,
+         expires_at      BIGINT NOT NULL,
+         PRIMARY KEY (identity_key_id, request_nonce)
+       )`,
+      `CREATE INDEX IF NOT EXISTS peon_claim_nonces_expiry_idx ON peon_claim_request_nonces (expires_at)`,
+      `CREATE TABLE IF NOT EXISTS peon_claim_rate_limits (
+         scope        TEXT NOT NULL,
+         subject_hash TEXT NOT NULL,
+         window_start BIGINT NOT NULL,
+         count        INTEGER NOT NULL,
+         PRIMARY KEY (scope, subject_hash, window_start)
+       )`,
+      `CREATE TABLE IF NOT EXISTS peon_claim_audit (
+         id           TEXT PRIMARY KEY,
+         workspace_id TEXT,
+         peon_id      TEXT,
+         claim_id     TEXT,
+         credential_id TEXT,
+         actor_user_id TEXT,
+         event        TEXT NOT NULL,
+         stable_code  TEXT,
+         request_id   TEXT,
+         scope        TEXT,
+         outcome      TEXT,
+         revoked_at   BIGINT,
+         created_at   BIGINT NOT NULL
+       )`,
+      `CREATE INDEX IF NOT EXISTS peon_claim_audit_workspace_idx ON peon_claim_audit (workspace_id, created_at)`,
+    ],
+  },
+  {
+    // OVSR-131 scopes command IDs to a Peon. Re-key installations where the
+    // initial unreleased migration used the broader workspace-only identity.
+    id: "026_reverse_commands_peon_scope",
+    statements: [
+      `ALTER TABLE reverse_commands DROP CONSTRAINT IF EXISTS reverse_commands_pkey`,
+      `ALTER TABLE reverse_commands ADD PRIMARY KEY (workspace_id, peon_id, command_id)`,
+      `ALTER TABLE reverse_command_audit DROP CONSTRAINT IF EXISTS reverse_command_audit_pkey`,
+      `ALTER TABLE reverse_command_audit ADD PRIMARY KEY (workspace_id, peon_id, command_id, event)`,
+    ],
+  },
+  {
+    // Reverse transcript history is a rebuildable, session-scoped projection.
+    // A snapshot replaces one whole session atomically; live rows and the
+    // shared durable-delivery checkpoint commit in the same transaction.
+    id: "027_transcript_projection",
+    statements: [
+      `CREATE TABLE IF NOT EXISTS peon_transcript_sync (
+         peon_id          TEXT NOT NULL,
+         session_id       TEXT NOT NULL,
+         workspace_id     TEXT NOT NULL,
+         transcript_epoch TEXT,
+         acknowledged_seq BIGINT,
+         revision          BIGINT,
+         barrier_seq       BIGINT,
+         status            TEXT NOT NULL,
+         generation        TEXT,
+         event_count       INTEGER NOT NULL DEFAULT 0,
+         body_bytes        BIGINT NOT NULL DEFAULT 0,
+         updated_at        BIGINT NOT NULL,
+         last_accessed_at  BIGINT NOT NULL,
+         PRIMARY KEY (peon_id, session_id)
+       )`,
+      `CREATE INDEX IF NOT EXISTS peon_transcript_sync_retention_idx
+         ON peon_transcript_sync (status, last_accessed_at)`,
+      `CREATE TABLE IF NOT EXISTS transcript_events (
+         peon_id          TEXT NOT NULL,
+         session_id       TEXT NOT NULL,
+         transcript_epoch TEXT NOT NULL,
+         seq               BIGINT NOT NULL,
+         event_id          TEXT NOT NULL,
+         payload           JSONB NOT NULL,
+         body_bytes        BIGINT NOT NULL,
+         created_at        BIGINT NOT NULL,
+         PRIMARY KEY (peon_id, session_id, transcript_epoch, seq)
+       )`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS transcript_events_identity_idx
+         ON transcript_events (peon_id, session_id, event_id)`,
+      `CREATE INDEX IF NOT EXISTS transcript_events_page_idx
+         ON transcript_events (peon_id, session_id, seq)`,
+    ],
+  },
+  {
+    // Final frozen peon-claim-v1 adds separately sealed operator-code replay,
+    // semantic ACK retention, exact terminal/tombstone boundaries and
+    // revocation audit outcomes. This remains additive for any development
+    // database that observed the provisional migration.
+    id: "028_peon_claim_final_contract",
+    statements: [
+      `ALTER TABLE peon_claims ADD COLUMN IF NOT EXISTS server_origin TEXT`,
+      `ALTER TABLE peon_claims ADD COLUMN IF NOT EXISTS operator_code_key_version INTEGER`,
+      `ALTER TABLE peon_claims ADD COLUMN IF NOT EXISTS operator_code_nonce TEXT`,
+      `ALTER TABLE peon_claims ADD COLUMN IF NOT EXISTS operator_code_ciphertext TEXT`,
+      `ALTER TABLE peon_claims ADD COLUMN IF NOT EXISTS operator_code_tag TEXT`,
+      `ALTER TABLE peon_claims ADD COLUMN IF NOT EXISTS ack_request_hash TEXT`,
+      `ALTER TABLE peon_claims ADD COLUMN IF NOT EXISTS ack_result_expires_at BIGINT`,
+      `ALTER TABLE peon_claim_attempts ADD COLUMN IF NOT EXISTS terminal_at BIGINT`,
+      `ALTER TABLE peon_claim_attempts ALTER COLUMN tombstone_expires_at DROP NOT NULL`,
+      `ALTER TABLE peon_credential_rotations ADD COLUMN IF NOT EXISTS terminal_at BIGINT`,
+      `ALTER TABLE peon_credential_rotations ADD COLUMN IF NOT EXISTS ack_request_hash TEXT`,
+      `ALTER TABLE peon_credential_rotations ADD COLUMN IF NOT EXISTS ack_result_expires_at BIGINT`,
+      `ALTER TABLE peon_credential_rotations ALTER COLUMN tombstone_expires_at DROP NOT NULL`,
+      `ALTER TABLE peon_claim_audit ADD COLUMN IF NOT EXISTS request_id TEXT`,
+      `ALTER TABLE peon_claim_audit ADD COLUMN IF NOT EXISTS scope TEXT`,
+      `ALTER TABLE peon_claim_audit ADD COLUMN IF NOT EXISTS outcome TEXT`,
+      `ALTER TABLE peon_claim_audit ADD COLUMN IF NOT EXISTS revoked_at BIGINT`,
+      `CREATE TABLE IF NOT EXISTS peon_claim_ack_auth (
+         claim_id       TEXT PRIMARY KEY,
+         delivery_id    TEXT NOT NULL,
+         credential_id  TEXT NOT NULL,
+         peon_id        TEXT NOT NULL,
+         identity_key_id TEXT NOT NULL,
+         public_jwk     JSONB NOT NULL,
+         claim_nonce    TEXT NOT NULL,
+         server_origin  TEXT NOT NULL,
+         generation     INTEGER NOT NULL,
+         expires_at     BIGINT NOT NULL
+       )`,
+      `CREATE INDEX IF NOT EXISTS peon_claim_ack_auth_expiry_idx ON peon_claim_ack_auth (expires_at)`,
+      `CREATE TABLE IF NOT EXISTS peon_claim_peon_revocations (
+         peon_id      TEXT PRIMARY KEY,
+         workspace_id TEXT NOT NULL,
+         revoked_at   BIGINT NOT NULL
+       )`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS peon_claim_delivery_nonce_idx ON peon_claim_deliveries (key_version, nonce)`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS peon_claim_operator_code_nonce_idx ON peon_claims (operator_code_key_version, operator_code_nonce)`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS peon_enrollment_identity_lease_idx ON peon_enrollment_leases (identity_key_id)`,
+    ],
+  },
 ];

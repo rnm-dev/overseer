@@ -7,9 +7,8 @@ import {
   commitSnapshotCoveredSessionEvent,
   markSessionSyncing,
   releaseSessionSyncGeneration,
-  type PeonSession,
-  type SessionSyncCheckpoint,
-} from "./sessionIndex.js";
+} from "./modules/sessions/sessionProjection.js";
+import type { PeonSession, SessionSyncCheckpoint } from "./modules/sessions/sessionTypes.js";
 import {
   applySocketProjectEvent,
   applySocketProjectSnapshot,
@@ -22,6 +21,18 @@ import {
   type ProjectSyncCheckpoint,
 } from "./projectIndex.js";
 import type { PeonRecord } from "./registry.js";
+import {
+  parseDurableReverseCommandResult,
+  REVERSE_COMMAND_CAPABILITY,
+  ReverseCommandProtocolError,
+  reverseCommandGateway,
+  type DurableReverseCommandResult,
+} from "./modules/reverseCommands/index.js";
+import {
+  PeonTranscriptSync,
+  SESSION_TRANSCRIPT_CAPABILITY,
+  type DurableTranscriptMessage,
+} from "./peonTranscriptSync.js";
 
 export const SESSION_CATALOG_CAPABILITY = "session-catalog-v1";
 export const PROJECT_CATALOG_CAPABILITY = "project-catalog-v1";
@@ -64,6 +75,8 @@ interface DurableCatalogEvent {
   projectId?: string;
 }
 
+type DurableDeliveryEvent = DurableCatalogEvent | DurableReverseCommandResult | DurableTranscriptMessage;
+
 interface SnapshotState {
   requestId: string;
   epoch: string | null;
@@ -94,18 +107,18 @@ export class SessionSyncProtocolError extends Error {}
 // durable delivery frontier and dispatches typed payloads to independent
 // session/project catalog projections.
 export class PeonCatalogSync {
-  private readonly generation = randomUUID();
   private snapshot: SnapshotState | null = null;
   private projectSnapshot: ProjectSnapshotState | null = null;
   private checkpoint: SessionSyncCheckpoint | null = null;
   private projectCheckpoint: ProjectSyncCheckpoint | null = null;
-  private bufferedEvents: DurableCatalogEvent[] = [];
+  private bufferedEvents: DurableDeliveryEvent[] = [];
   private bufferedBytes = 0;
   private sessionTimer: NodeJS.Timeout | null = null;
   private projectTimer: NodeJS.Timeout | null = null;
   private disposed = false;
   private receivedDurableMessage = false;
   private enforceAdvertisedEarliestCursor = true;
+  private readonly transcriptSync: PeonTranscriptSync | null;
 
   constructor(
     private readonly record: PeonRecord,
@@ -114,9 +127,15 @@ export class PeonCatalogSync {
     private readonly delivery: DeliveryHello,
     private readonly projectCatalog: CatalogHello | null = null,
     private readonly additionalCapabilities: readonly string[] = [],
-  ) {}
+    private readonly additionalChannels: Readonly<Record<string, unknown>> = {},
+    private readonly generation: string = randomUUID(),
+  ) {
+    this.transcriptSync = additionalCapabilities.includes(SESSION_TRANSCRIPT_CAPABILITY)
+      ? new PeonTranscriptSync(record, ws, this.generation)
+      : null;
+  }
 
-  async start(): Promise<void> {
+  async start(beforeHelloAck?: () => Promise<void>): Promise<void> {
     this.checkpoint = await claimSessionSyncGeneration(this.record.peonId, this.generation);
     const catalogResume = this.checkpoint?.catalog?.epoch === this.catalog.epoch
       && this.checkpoint.catalog.acknowledgedSeq >= this.catalog.earliestSeq - 1
@@ -145,7 +164,7 @@ export class PeonCatalogSync {
       ? this.projectCheckpoint.catalog
       : null;
 
-    const channels: Record<string, unknown> = {};
+    const channels: Record<string, unknown> = { ...this.additionalChannels };
     if (catalogResume) channels[SESSION_CATALOG_CAPABILITY] = {
       epoch: catalogResume.epoch,
       acknowledgedSeq: catalogResume.acknowledgedSeq,
@@ -155,6 +174,7 @@ export class PeonCatalogSync {
       acknowledgedSeq: projectResume.acknowledgedSeq,
     };
 
+    await beforeHelloAck?.();
     this.send({
       type: "hello_ack",
       protocol: 1,
@@ -170,6 +190,7 @@ export class PeonCatalogSync {
         acknowledgedCursor: deliveryResume.acknowledgedCursor,
       } : undefined,
     });
+    this.transcriptSync?.start();
 
     // Both resume domains must match. A mismatch is fenced by a fresh catalog
     // snapshot; no stale acknowledgement is reused across either epoch.
@@ -193,6 +214,15 @@ export class PeonCatalogSync {
         return true;
       case "durable_message":
         await this.receiveDurableMessage(message, frameBytes);
+        return true;
+      case "transcript_snapshot_page":
+      case "transcript_snapshot_cancelled":
+      case "transcript_error":
+      case "transcript_subscribed":
+      case "transcript_unsubscribed":
+        if (!this.transcriptSync) throw new SessionSyncProtocolError("transcript capability not negotiated");
+        await this.transcriptSync.handle(message, frameBytes);
+        await this.maybeDrainBuffered();
         return true;
       case "session_catalog_snapshot_cancelled":
         this.requireActiveRequest(message);
@@ -219,6 +249,7 @@ export class PeonCatalogSync {
     this.snapshot = null;
     this.projectSnapshot = null;
     this.bufferedEvents = [];
+    this.transcriptSync?.dispose();
     void releaseSessionSyncGeneration(this.record.peonId, this.generation).catch(() => undefined);
     if (this.projectCatalog) void releaseProjectSyncGeneration(this.record.peonId, this.generation).catch(() => undefined);
   }
@@ -390,17 +421,32 @@ export class PeonCatalogSync {
       throw new SessionSyncProtocolError("durable delivery cursor gap");
     }
     this.receivedDurableMessage = true;
-    if (this.snapshot || this.projectSnapshot) {
+    if (this.snapshot || this.projectSnapshot || this.transcriptSync?.hasActiveSnapshots()) {
       this.bufferEvent(event, frameBytes);
       return;
     }
-    const checkpoint = event.channel === "session" ? this.checkpoint?.catalog : this.projectCheckpoint?.catalog;
-    if (!checkpoint) throw new SessionSyncProtocolError(`${event.channel} catalog event arrived before snapshot`);
+    if (event.channel === "transcript" && this.transcriptSync && !(await this.transcriptSync.prepareDurable(event))) {
+      this.bufferEvent(event, frameBytes);
+      return;
+    }
+    if (event.channel === "transcript") {
+      await this.applyEvent(event);
+      return;
+    }
+    const checkpoint = event.channel === "session"
+      ? this.checkpoint?.catalog
+      : event.channel === "project" ? this.projectCheckpoint?.catalog : null;
+    if (event.channel !== "command" && !checkpoint) {
+      throw new SessionSyncProtocolError(`${event.channel} catalog event arrived before snapshot`);
+    }
     // Peon may coalesce replaceable summaries before their durable cursor is
     // sent. That intentionally preserves the delivery frontier while skipping
     // one or more catalog sequence numbers. Fence the queued event behind a
     // fresh authoritative snapshot instead of poisoning every reconnect.
-    if (checkpoint.epoch === event.catalogEpoch && event.seq > checkpoint.acknowledgedSeq + 1) {
+    if (event.channel !== "command"
+      && checkpoint
+      && checkpoint.epoch === event.catalogEpoch
+      && event.seq > checkpoint.acknowledgedSeq + 1) {
       this.bufferEvent(event, frameBytes);
       if (event.channel === "session") {
         await markSessionSyncing(this.record.peonId, this.generation);
@@ -414,14 +460,38 @@ export class PeonCatalogSync {
     await this.applyEvent(event);
   }
 
-  private bufferEvent(event: DurableCatalogEvent, frameBytes: number): void {
+  private bufferEvent(event: DurableDeliveryEvent, frameBytes: number): void {
     this.bufferedBytes += frameBytes;
     if (this.bufferedBytes > MAX_SNAPSHOT_BYTES) throw new SessionSyncProtocolError("catalog snapshot byte limit exceeded");
     if (this.bufferedEvents.length >= MAX_BUFFERED_EVENTS) throw new SessionSyncProtocolError("too many events during catalog snapshots");
     this.bufferedEvents.push(event);
   }
 
-  private async applyEvent(event: DurableCatalogEvent): Promise<void> {
+  private async applyEvent(event: DurableDeliveryEvent): Promise<void> {
+    if (event.channel === "command") {
+      const delivery = await reverseCommandGateway.commitDurableResult({
+        workspaceId: this.record.workspaceId,
+        peonId: this.record.peonId,
+        socket: this.ws,
+        syncGeneration: this.generation,
+        durable: event,
+      });
+      if (this.checkpoint) this.checkpoint = { ...this.checkpoint, delivery };
+      this.send({ type: "durable_ack", epoch: delivery.epoch, cursor: delivery.acknowledgedCursor });
+      return;
+    }
+    if (event.channel === "transcript") {
+      if (!this.transcriptSync) throw new SessionSyncProtocolError("transcript capability not negotiated");
+      let committed;
+      try {
+        committed = await this.transcriptSync.commitDurable(event);
+      } catch (error) {
+        throw new SessionSyncProtocolError(error instanceof Error ? error.message : "transcript commit failed");
+      }
+      if (this.checkpoint) this.checkpoint = { ...this.checkpoint, delivery: committed.delivery };
+      this.send({ type: "durable_ack", epoch: committed.delivery.epoch, cursor: committed.delivery.acknowledgedCursor });
+      return;
+    }
     const checkpoint = event.channel === "session" ? this.checkpoint?.catalog : this.projectCheckpoint?.catalog;
     // A catalog can be rebuilt independently of the shared durable outbox. In
     // that case the outbox may still contain events from the retired catalog
@@ -471,11 +541,25 @@ export class PeonCatalogSync {
   }
 
   private async maybeDrainBuffered(): Promise<void> {
-    if (this.snapshot || this.projectSnapshot) return;
+    if (this.snapshot || this.projectSnapshot || this.transcriptSync?.hasActiveSnapshots()) return;
     const events = this.bufferedEvents;
     this.bufferedEvents = [];
     this.bufferedBytes = 0;
-    for (const event of events) {
+    for (let index = 0; index < events.length; index += 1) {
+      const event = events[index]!;
+      if (event.channel === "command") {
+        await this.applyEvent(event);
+        continue;
+      }
+      if (event.channel === "transcript") {
+        if (!this.transcriptSync) throw new SessionSyncProtocolError("transcript capability not negotiated");
+        if (!(await this.transcriptSync.prepareDurable(event))) {
+          for (const pending of events.slice(index)) this.bufferEvent(pending, 0);
+          return;
+        }
+        await this.applyEvent(event);
+        continue;
+      }
       const checkpoint = event.channel === "session" ? this.checkpoint?.catalog : this.projectCheckpoint?.catalog;
       if (!checkpoint) throw new SessionSyncProtocolError(`${event.channel} catalog event arrived before snapshot`);
       if (checkpoint.epoch === event.catalogEpoch && event.seq > checkpoint.acknowledgedSeq) {
@@ -509,7 +593,21 @@ export class PeonCatalogSync {
     this.sendCommittedAcks(event.channel, committed);
   }
 
-  private parseDurableEvent(message: Record<string, unknown>): DurableCatalogEvent {
+  private parseDurableEvent(message: Record<string, unknown>): DurableDeliveryEvent {
+    if (message.capability === REVERSE_COMMAND_CAPABILITY) {
+      if (!this.additionalCapabilities.includes(REVERSE_COMMAND_CAPABILITY)) {
+        throw new SessionSyncProtocolError("reverse command capability not negotiated");
+      }
+      try {
+        return parseDurableReverseCommandResult(message);
+      } catch (error) {
+        throw new SessionSyncProtocolError(
+          error instanceof ReverseCommandProtocolError ? error.message : "invalid durable reverse command result",
+        );
+      }
+    }
+    const transcript = this.transcriptSync?.parseDurable(message);
+    if (transcript) return transcript;
     const deliveryEpoch = requiredString(message.epoch, "epoch", 256);
     const deliveryCursor = requiredString(message.cursor, "cursor", 2_000);
     const messageId = requiredUuid(message.messageId, "messageId");

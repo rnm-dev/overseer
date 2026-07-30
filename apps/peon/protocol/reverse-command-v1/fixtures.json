@@ -2,7 +2,7 @@
   "contractVersion": 1,
   "capability": "reverse-command-v1",
   "maxCommandFrameBytes": 61440,
-  "enabledOperations": ["session.cancel", "project.archive", "project.unarchive"],
+  "enabledOperations": ["session.cancel"],
   "frames": {
     "command": {
       "type": "command",

@@ -1,10 +1,20 @@
 import assert from "node:assert/strict";
-import { chmodSync, mkdtempSync, mkdirSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdtempSync,
+  mkdirSync,
+  realpathSync,
+  renameSync,
+  symlinkSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import {
   FOLDER_LISTING_CAPABILITY,
+  FOLDER_LISTING_ENTRY_METADATA,
   FOLDER_LISTING_MAX_PAGE_BYTES,
   FolderListingChannel,
 } from "../overseer/socket/channels/folderListingChannel.js";
@@ -38,12 +48,34 @@ async function waitForFrame(output: ReturnType<typeof capture>, predicate: (fram
   throw new Error(`timed out waiting for frame: ${JSON.stringify(output.frames)}`);
 }
 
+async function waitFor(predicate: () => boolean, description: string): Promise<void> {
+  const deadline = Date.now() + 2_000;
+  while (Date.now() < deadline) {
+    if (predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  throw new Error(`timed out waiting for ${description}`);
+}
+
 function project(projectId: string, dir: string): ProjectRecord {
   return { projectId, key: "project-key", label: "Project", dir, lastSyncedAt: 1 };
 }
 
+type FolderListingChannelOptions = NonNullable<ConstructorParameters<typeof FolderListingChannel>[0]>;
+
+function folderChannel(options: FolderListingChannelOptions = {}): FolderListingChannel {
+  return new FolderListingChannel({
+    // macOS has no traversable /proc/self/fd directory path. Most tests use
+    // stable paths as a filesystem test double; dedicated tests below exercise
+    // both temporary handle-relative swaps and the fail-closed default.
+    trustedHandlePath: (_handle, openedPath) => openedPath,
+    ...options,
+  });
+}
+
 test("lists a project root by immutable ID with deterministic file and directory entries", async () => {
   const root = mkdtempSync(path.join(os.tmpdir(), "peon-folder-listing-"));
+  const outside = mkdtempSync(path.join(os.tmpdir(), "peon-folder-listing-outside-"));
   mkdirSync(path.join(root, "Beta"));
   mkdirSync(path.join(root, "alpha"));
   writeFileSync(path.join(root, "z.txt"), "z");
@@ -51,17 +83,40 @@ test("lists a project root by immutable ID with deterministic file and directory
   symlinkSync(path.join(root, "alpha"), path.join(root, "directory-link"));
   symlinkSync(path.join(root, "z.txt"), path.join(root, "file-link"));
   symlinkSync(path.join(root, "missing"), path.join(root, "broken-link"));
-  const channel = new FolderListingChannel({ projects: { list: () => [project("project-id", root)] } });
+  symlinkSync(outside, path.join(root, "escaping-link"));
+  const channel = folderChannel({ projects: { list: () => [project("project-id", root)] } });
   const output = capture();
 
   assert.equal(channel.capability, FOLDER_LISTING_CAPABILITY);
-  channel.negotiated(true, {}, output.sender);
+  assert.deepEqual(channel.helloState(), { entryMetadata: FOLDER_LISTING_ENTRY_METADATA });
+  channel.negotiated(true, {
+    channels: { [FOLDER_LISTING_CAPABILITY]: { entryMetadata: FOLDER_LISTING_ENTRY_METADATA } },
+  }, output.sender);
   channel.receive({ type: "folder_list_request", requestId: "project-root", projectId: "project-id" }, output.sender);
   const frame = await waitForFrame(output, (candidate) => candidate.type === "folder_list_page");
 
-  assert.equal(frame.path, root);
+  assert.equal(frame.path, realpathSync(root));
   assert.equal(frame.projectId, "project-id");
-  assert.deepEqual(frame.entries, [
+  const entries = frame.entries as Array<Record<string, unknown>>;
+  assert.deepEqual(entries.map(({ name, type, size }) => ({ name, type, size })), [
+    { name: "alpha", type: "directory", size: null },
+    { name: "Beta", type: "directory", size: null },
+    { name: "directory-link", type: "directory", size: null },
+    { name: ".hidden", type: "file", size: 6 },
+    { name: "file-link", type: "file", size: 1 },
+    { name: "z.txt", type: "file", size: 1 },
+    { name: "broken-link", type: "other", size: null },
+    { name: "escaping-link", type: "other", size: null },
+  ]);
+  assert.equal(entries.filter((entry) => entry.type !== "other").every((entry) => typeof entry.mtimeMs === "number"), true);
+  assert.equal(entries.filter((entry) => entry.type === "other").every((entry) => entry.mtimeMs === null), true);
+  assert.equal(frame.hasMore, false);
+  assert.deepEqual(output.durableFrames, [], "folder listings must remain ephemeral");
+
+  channel.negotiated(true, {}, output.sender);
+  channel.receive({ type: "folder_list_request", requestId: "legacy-project-root", projectId: "project-id" }, output.sender);
+  const legacy = await waitForFrame(output, (candidate) => candidate.requestId === "legacy-project-root");
+  assert.deepEqual(legacy.entries, [
     { name: "alpha", type: "directory" },
     { name: "Beta", type: "directory" },
     { name: "directory-link", type: "directory" },
@@ -69,15 +124,13 @@ test("lists a project root by immutable ID with deterministic file and directory
     { name: "file-link", type: "file" },
     { name: "z.txt", type: "file" },
   ]);
-  assert.equal(frame.hasMore, false);
-  assert.deepEqual(output.durableFrames, [], "folder listings must remain ephemeral");
 });
 
 test("absolute paths take precedence and invalid selectors return stable errors", async () => {
   const root = mkdtempSync(path.join(os.tmpdir(), "peon-folder-selection-"));
   const file = path.join(root, "file.txt");
   writeFileSync(file, "file");
-  const channel = new FolderListingChannel({ projects: { list: () => [] } });
+  const channel = folderChannel({ projects: { list: () => [] } });
   const output = capture();
   channel.negotiated(true, {}, output.sender);
 
@@ -111,11 +164,143 @@ test("absolute paths take precedence and invalid selectors return stable errors"
   });
 });
 
+test("project-relative paths stay contained by the immutable project scope", async () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "peon-folder-project-scope-"));
+  const outside = mkdtempSync(path.join(os.tmpdir(), "peon-folder-project-outside-"));
+  mkdirSync(path.join(root, "src"));
+  writeFileSync(path.join(root, "src", "main.ts"), "source");
+  symlinkSync(outside, path.join(root, "escape"));
+  const channel = folderChannel({ projects: { list: () => [project("project-id", root)] } });
+  const output = capture();
+  channel.negotiated(true, {}, output.sender);
+
+  channel.receive({
+    type: "folder_list_request", requestId: "nested", projectId: "project-id", relativePath: "src",
+  }, output.sender);
+  const nested = await waitForFrame(output, (frame) => frame.requestId === "nested");
+  assert.equal(nested.type, "folder_list_page");
+  assert.equal(nested.projectId, "project-id");
+  assert.equal(nested.path, realpathSync(path.join(root, "src")));
+  assert.deepEqual(nested.entries, [{ name: "main.ts", type: "file" }]);
+
+  channel.receive({
+    type: "folder_list_request", requestId: "escape", projectId: "project-id", relativePath: "escape",
+  }, output.sender);
+  const escaped = await waitForFrame(output, (frame) => frame.requestId === "escape");
+  assert.equal(escaped.code, "PATH_ESCAPE");
+
+  channel.receive({
+    type: "folder_list_request", requestId: "absolute-relative", projectId: "project-id", relativePath: "/etc",
+  }, output.sender);
+  assert.equal(output.frames.at(-1)?.code, "INVALID_PATH");
+});
+
+test("enumerates through the anchored handle during a temporary pathname swap", async () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "peon-folder-swap-root-"));
+  const selected = path.join(root, "selected");
+  const parked = path.join(root, "selected-parked");
+  const outside = mkdtempSync(path.join(os.tmpdir(), "peon-folder-swap-outside-"));
+  mkdirSync(selected);
+  writeFileSync(path.join(selected, "inside.txt"), "inside");
+  writeFileSync(path.join(outside, "outside-secret.txt"), "secret");
+  let swapped = false;
+  const channel = folderChannel({
+    projects: { list: () => [project("project-id", root)] },
+    trustedHandlePath: (_handle, openedPath) => path.basename(openedPath) === "selected" && swapped ? parked : openedPath,
+    afterDirectoryOpen: () => {
+      swapped = true;
+      renameSync(selected, parked);
+      symlinkSync(outside, selected, "dir");
+    },
+    afterDirectoryRead: () => {
+      unlinkSync(selected);
+      renameSync(parked, selected);
+      swapped = false;
+    },
+  });
+  const output = capture();
+  channel.negotiated(true, {
+    channels: { [FOLDER_LISTING_CAPABILITY]: { entryMetadata: FOLDER_LISTING_ENTRY_METADATA } },
+  }, output.sender);
+
+  channel.receive({
+    type: "folder_list_request", requestId: "selected-swap", projectId: "project-id", relativePath: "selected",
+  }, output.sender);
+  const frame = await waitForFrame(output, (candidate) => candidate.requestId === "selected-swap");
+  assert.equal(frame.type, "folder_list_page", JSON.stringify(frame));
+  const entries = frame.entries as Array<Record<string, unknown>>;
+  assert.equal(entries.length, 1);
+  assert.equal(entries[0]?.name, "inside.txt");
+  assert.equal(entries[0]?.type, "file");
+  assert.equal(JSON.stringify(output.frames).includes("outside-secret.txt"), false);
+});
+
+test("child metadata remains relative to the selected handle after its pathname is replaced", async () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "peon-folder-child-swap-root-"));
+  const selected = path.join(root, "selected");
+  const parked = path.join(root, "selected-parked");
+  const outside = mkdtempSync(path.join(os.tmpdir(), "peon-folder-child-swap-outside-"));
+  mkdirSync(selected);
+  writeFileSync(path.join(selected, "inside.txt"), "inside");
+  writeFileSync(path.join(outside, "outside-secret.txt"), "secret");
+  let swapped = false;
+  const channel = folderChannel({
+    projects: { list: () => [project("project-id", root)] },
+    trustedHandlePath: (_handle, openedPath) => path.basename(openedPath) === "selected" && swapped ? parked : openedPath,
+    beforeEntryMetadata: () => {
+      if (swapped) return;
+      swapped = true;
+      renameSync(selected, parked);
+      symlinkSync(outside, selected, "dir");
+    },
+  });
+  const output = capture();
+  channel.negotiated(true, {
+    channels: { [FOLDER_LISTING_CAPABILITY]: { entryMetadata: FOLDER_LISTING_ENTRY_METADATA } },
+  }, output.sender);
+
+  channel.receive({
+    type: "folder_list_request", requestId: "child-swap", projectId: "project-id", relativePath: "selected",
+  }, output.sender);
+  const frame = await waitForFrame(output, (candidate) => candidate.requestId === "child-swap");
+  assert.equal(frame.type, "folder_list_page", JSON.stringify(frame));
+  assert.equal((frame.entries as Array<Record<string, unknown>>)[0]?.name, "inside.txt");
+  assert.equal(JSON.stringify(output.frames).includes("outside-secret.txt"), false);
+});
+
+test("fails closed when secure handle-relative traversal is unavailable", async () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "peon-folder-unsupported-"));
+  writeFileSync(path.join(root, "secret.txt"), "secret");
+  const channel = folderChannel({ trustedHandlePath: () => null });
+  const output = capture();
+  channel.negotiated(true, {}, output.sender);
+
+  channel.receive({ type: "folder_list_request", requestId: "unsupported", path: root }, output.sender);
+  const frame = await waitForFrame(output, (candidate) => candidate.requestId === "unsupported");
+  assert.equal(frame.type, "folder_list_error");
+  assert.equal(frame.code, "UNSUPPORTED_PLATFORM");
+  assert.equal(JSON.stringify(frame).includes("secret.txt"), false);
+});
+
+test("the default backend fails closed on platforms without Linux handle paths", async (t) => {
+  if (process.platform === "linux") return t.skip("Linux provides /proc/self/fd traversal");
+  const root = mkdtempSync(path.join(os.tmpdir(), "peon-folder-platform-"));
+  writeFileSync(path.join(root, "secret.txt"), "secret");
+  const channel = new FolderListingChannel();
+  const output = capture();
+  channel.negotiated(true, {}, output.sender);
+
+  channel.receive({ type: "folder_list_request", requestId: "platform", path: root }, output.sender);
+  const frame = await waitForFrame(output, (candidate) => candidate.requestId === "platform");
+  assert.equal(frame.code, "UNSUPPORTED_PLATFORM");
+  assert.equal(JSON.stringify(frame).includes("secret.txt"), false);
+});
+
 test("unreadable target directories return FORBIDDEN", async (t) => {
   if (process.platform === "win32" || (typeof process.getuid === "function" && process.getuid() === 0)) return t.skip();
   const root = mkdtempSync(path.join(os.tmpdir(), "peon-folder-forbidden-"));
   chmodSync(root, 0o000);
-  const channel = new FolderListingChannel();
+  const channel = folderChannel();
   const output = capture();
   channel.negotiated(true, {}, output.sender);
   try {
@@ -130,7 +315,7 @@ test("unreadable target directories return FORBIDDEN", async (t) => {
 test("pages a frozen listing with request-scoped cursors and supports cancellation", async () => {
   const root = mkdtempSync(path.join(os.tmpdir(), "peon-folder-pages-"));
   for (const name of ["a", "b", "c"]) writeFileSync(path.join(root, name), name);
-  const channel = new FolderListingChannel();
+  const channel = folderChannel();
   const output = capture();
   channel.negotiated(true, {}, output.sender);
 
@@ -155,10 +340,94 @@ test("pages a frozen listing with request-scoped cursors and supports cancellati
   await waitForFrame(output, (frame) => frame.type === "folder_list_page" && frame.requestId === "after-cancel");
 });
 
+test("cancellation awaits the bounded metadata batch before releasing the listing slot", async () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "peon-folder-cancel-scan-"));
+  for (let index = 0; index < 130; index += 1) writeFileSync(path.join(root, `file-${index}`), "x");
+  let releaseBatch: (() => void) | null = null;
+  let calls = 0;
+  let active = 0;
+  let maxActive = 0;
+  let gate = new Promise<void>((resolve) => { releaseBatch = resolve; });
+  const channel = folderChannel({
+    beforeEntryMetadata: async () => {
+      calls += 1;
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      try {
+        await gate;
+      } finally {
+        active -= 1;
+      }
+    },
+  });
+  const output = capture();
+  channel.negotiated(true, {
+    channels: { [FOLDER_LISTING_CAPABILITY]: { entryMetadata: FOLDER_LISTING_ENTRY_METADATA } },
+  }, output.sender);
+
+  for (let round = 0; round < 3; round += 1) {
+    calls = 0;
+    gate = new Promise<void>((resolve) => { releaseBatch = resolve; });
+    const requestId = `cancel-${round}`;
+    channel.receive({ type: "folder_list_request", requestId, path: root }, output.sender);
+    await waitFor(() => calls === 64, `first metadata batch for ${requestId}`);
+    channel.receive({ type: "folder_list_cancel", requestId }, output.sender);
+    assert.equal(output.frames.some((frame) => frame.type === "folder_list_cancelled" && frame.requestId === requestId), false);
+
+    const competingId = `competing-${round}`;
+    channel.receive({ type: "folder_list_request", requestId: competingId, path: root }, output.sender);
+    assert.equal(output.frames.at(-1)?.code, "SYNC_IN_PROGRESS");
+    assert.equal(calls, 64, "cancellation must not start a second metadata batch");
+
+    releaseBatch!();
+    await waitForFrame(output, (frame) => frame.type === "folder_list_cancelled" && frame.requestId === requestId);
+    assert.equal(active, 0);
+    assert.equal(calls, 64);
+  }
+  assert.equal(maxActive, 64, "metadata concurrency must stay bounded across cancel/restart cycles");
+});
+
+test("cancellation waits for every independently staggered sibling in the active batch", async () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "peon-folder-cancel-staggered-"));
+  writeFileSync(path.join(root, "first"), "x");
+  writeFileSync(path.join(root, "second"), "x");
+  const releases = new Map<string, () => void>();
+  const entered = new Set<string>();
+  const gates = new Map(["first", "second"].map((name) => [
+    name,
+    new Promise<void>((resolve) => { releases.set(name, resolve); }),
+  ]));
+  const channel = folderChannel({
+    beforeEntryMetadata: async (_directory, name) => {
+      entered.add(name);
+      await gates.get(name);
+    },
+  });
+  const output = capture();
+  channel.negotiated(true, {
+    channels: { [FOLDER_LISTING_CAPABILITY]: { entryMetadata: FOLDER_LISTING_ENTRY_METADATA } },
+  }, output.sender);
+
+  channel.receive({ type: "folder_list_request", requestId: "staggered", path: root }, output.sender);
+  await waitFor(() => entered.size === 2, "both staggered metadata siblings");
+  channel.receive({ type: "folder_list_cancel", requestId: "staggered" }, output.sender);
+  releases.get("first")!();
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(output.frames.some((frame) => frame.type === "folder_list_cancelled" && frame.requestId === "staggered"), false);
+
+  channel.receive({ type: "folder_list_request", requestId: "still-busy", path: root }, output.sender);
+  assert.equal(output.frames.at(-1)?.code, "SYNC_IN_PROGRESS");
+  releases.get("second")!();
+  await waitForFrame(output, (frame) => frame.type === "folder_list_cancelled" && frame.requestId === "staggered");
+
+  channel.receive({ type: "folder_list_request", requestId: "after-staggered", path: root }, output.sender);
+  await waitForFrame(output, (frame) => frame.type === "folder_list_page" && frame.requestId === "after-staggered");
+});
+
 test("expiry and disconnect release active listings and unnegotiated traffic disconnects", async () => {
   const root = mkdtempSync(path.join(os.tmpdir(), "peon-folder-lease-"));
   for (const name of ["a", "b"]) writeFileSync(path.join(root, name), name);
-  const channel = new FolderListingChannel({ leaseMs: 15 });
+  const channel = folderChannel({ leaseMs: 200 });
   const output = capture();
 
   channel.receive({ type: "folder_list_request", requestId: "early", path: root }, output.sender);
@@ -166,7 +435,7 @@ test("expiry and disconnect release active listings and unnegotiated traffic dis
   channel.negotiated(true, {}, output.sender);
   channel.receive({ type: "folder_list_request", requestId: "expires", path: root, limit: 1 }, output.sender);
   await waitForFrame(output, (frame) => frame.requestId === "expires" && frame.type === "folder_list_page");
-  await new Promise((resolve) => setTimeout(resolve, 30));
+  await new Promise((resolve) => setTimeout(resolve, 250));
   channel.receive({ type: "folder_list_request", requestId: "after-expiry", path: root }, output.sender);
   await waitForFrame(output, (frame) => frame.requestId === "after-expiry" && frame.type === "folder_list_page");
 
@@ -180,7 +449,7 @@ test("socket and listing limits leave bounded headroom and backpressure disconne
   assert.ok(FOLDER_LISTING_MAX_PAGE_BYTES < PEON_SOCKET_MAX_FRAME_BYTES);
   const root = mkdtempSync(path.join(os.tmpdir(), "peon-folder-pressure-"));
   writeFileSync(path.join(root, "file"), "file");
-  const channel = new FolderListingChannel();
+  const channel = folderChannel();
   const output = capture(false);
   channel.negotiated(true, {}, output.sender);
   channel.receive({ type: "folder_list_request", requestId: "pressure", path: root }, output.sender);

@@ -15,9 +15,18 @@ The root request keeps the trailing slash after `files`. Each path segment is
 encoded independently. Responses contain an `entries` array whose items have a
 `name`, `type`, and optional `size` and `mtimeMs`.
 
-The client sorts directories before files, then sorts each group by
-case-insensitive name. Both `dir` and `directory` are accepted as directory
-types for compatibility with the web client and server responses.
+Plain `?stat=1` remains an HTTP request. The web tree adds `directory=1` when
+it already knows the target is a directory; Overseer may then serve that
+listing through the Peon's project-scoped `folder-listing-v1` control-socket
+operation when `entry-metadata-v1` was negotiated. Older Peons keep the HTTP
+fallback, with the marker stripped. Individual-file `?stat=1` stays exclusively
+on HTTP because that response includes `sha256`.
+
+The public response remains the legacy shape: directories are `dir`, regular
+files are `file`, contained symlinks use their target's `dir`/`file` shape, and
+escaping, broken, or special links are inert `other` rows. The client sorts
+directories before files, then sorts each group by case-insensitive name.
+`directory` is still accepted defensively for older or direct responses.
 
 ## Presentation
 

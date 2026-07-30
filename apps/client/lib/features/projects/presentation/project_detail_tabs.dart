@@ -598,7 +598,7 @@ class _ErrorPane extends StatelessWidget {
 }
 
 String _labelFor(ProjectDetailTab tab) => switch (tab) {
-  ProjectDetailTab.overview => 'Overview',
+  ProjectDetailTab.overview => 'Documents',
   ProjectDetailTab.sessions => 'Sessions',
   ProjectDetailTab.files => 'Files',
   ProjectDetailTab.settings => 'Settings',

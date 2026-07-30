@@ -20,9 +20,7 @@ void main() {
     syncedAt: 1,
   );
 
-  testWidgets('renders cached overview then loads every owner tab', (
-    tester,
-  ) async {
+  testWidgets('opens sessions first and loads every owner tab', (tester) async {
     final repository = _FakeProjectDetailRepository(project);
     await tester.pumpWidget(
       ProviderScope(
@@ -42,6 +40,16 @@ void main() {
     );
     expect(find.text('Overseer Mobile'), findsOneWidget);
     await tester.pumpAndSettle();
+    expect(find.byKey(const Key('project-sessions-pane')), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.byKey(const Key('project-tab-sessions'))).dx,
+      lessThan(
+        tester.getTopLeft(find.byKey(const Key('project-tab-overview'))).dx,
+      ),
+    );
+    expect(find.text('Documents'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('project-tab-overview')));
+    await tester.pump();
     expect(find.text('Project  ›  docs'), findsOneWidget);
     expect(find.byType(CustomScrollView), findsOneWidget);
     expect(find.byKey(const Key('project-overview-path-blur')), findsOneWidget);
@@ -54,7 +62,7 @@ void main() {
     await tester.tap(find.byKey(const Key('project-tab-sessions')));
     await tester.pump();
     expect(find.byKey(const Key('project-sessions-pane')), findsOneWidget);
-    expect(find.text('SESSIONS'), findsOneWidget);
+    expect(find.text('SESSIONS'), findsNothing);
 
     await tester.tap(find.byKey(const Key('project-tab-files')));
     await tester.pump();
@@ -73,6 +81,62 @@ void main() {
     await tester.tap(find.byKey(const Key('project-settings-section-members')));
     await tester.pumpAndSettle();
     expect(find.text('@member'), findsOneWidget);
+  });
+
+  testWidgets('sessions pane is full bleed and new session opens the project', (
+    tester,
+  ) async {
+    String? openedProjectKey;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          projectDetailRepositoryProvider.overrideWithValue(
+            _FakeProjectDetailRepository(project),
+          ),
+        ],
+        child: MaterialApp(
+          home: ProjectDetailPage(
+            workspaceId: 'workspace',
+            peonId: 'peon',
+            project: project,
+            online: true,
+            isOwner: true,
+            onNewSession:
+                (
+                  _, {
+                  required workspaceId,
+                  required peonId,
+                  required projectKey,
+                }) {
+                  openedProjectKey = projectKey;
+                },
+            sessionListBuilder:
+                (
+                  _, {
+                  required workspaceId,
+                  required peonId,
+                  required projectId,
+                  required projectKey,
+                }) => const SizedBox(
+                  key: Key('project-session-list'),
+                  height: 80,
+                ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('project-new-session')));
+    expect(openedProjectKey, 'overseer-mobile');
+
+    await tester.tap(find.byKey(const Key('project-tab-sessions')));
+    await tester.pump();
+    expect(find.text('SESSIONS'), findsNothing);
+    expect(
+      tester.getTopLeft(find.byKey(const Key('project-session-list'))),
+      tester.getTopLeft(find.byKey(const Key('project-sessions-pane'))),
+    );
   });
 
   testWidgets('hides owner tabs and keeps cached content while offline', (
@@ -156,6 +220,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await tester.tap(find.byKey(const Key('project-tab-overview')));
+    await tester.pump();
     await tester.tap(find.text('Website'));
     await tester.pump();
     expect(launched, [Uri.parse('https://example.com')]);

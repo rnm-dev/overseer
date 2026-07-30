@@ -1,4 +1,4 @@
-import { listFolder, type FolderListInput } from "../../peonFolderListing.js";
+import { listFolder, type FolderListEntry, type FolderListInput } from "../../peonFolderListing.js";
 import { listFolderReliably, type FolderLister, type RetryOptions } from "../../peonFolderRetry.js";
 import { PeonOperationError } from "../../peonOperationChannel.js";
 
@@ -9,7 +9,14 @@ import { PeonOperationError } from "../../peonOperationChannel.js";
 
 export interface BrowsedFolder {
   path: string;
-  entries: { name: string; type: "directory" }[];
+  entries: Array<FolderListEntry | { name: string; type: "directory" }>;
+}
+
+export interface ProjectFolderEntry {
+  name: string;
+  type: "dir" | "file" | "other";
+  size: number | null;
+  mtimeMs: number | null;
 }
 
 export const DEFAULT_BROWSE_PATH = "/";
@@ -34,6 +41,22 @@ export function folderBrowseSelector(path: unknown, limit: unknown): FolderListI
   return selector;
 }
 
+export function projectFolderBrowseSelector(projectId: string, segments: readonly string[]): FolderListInput {
+  return { projectId, relativePath: segments.join("/") };
+}
+
+// The socket protocol calls directories "directory"; the long-standing HTTP
+// project-file API calls them "dir". Keep that protocol detail behind the
+// route boundary so existing web and API consumers see the exact old shape.
+export function projectFolderEntries(entries: readonly FolderListEntry[]): ProjectFolderEntry[] {
+  return entries.map((entry) => ({
+    name: entry.name,
+    type: entry.type === "directory" ? "dir" : entry.type,
+    size: entry.size,
+    mtimeMs: entry.mtimeMs,
+  }));
+}
+
 // A Peon serves one listing at a time, so an overlapping reader — a superseded
 // picker request still being cancelled, the docs panel, another operator — is
 // refused with SYNC_IN_PROGRESS. Wait for the turn instead of telling the
@@ -44,11 +67,14 @@ export async function browsePeonFolders(
   signal?: AbortSignal,
   request: FolderLister = listFolder,
   retry: RetryOptions = {},
+  includeFiles = false,
 ): Promise<BrowsedFolder> {
   const listing = await listFolderReliably(peonId, selector, signal, request, retry);
-  const entries = listing.entries
-    .filter((entry) => entry.type === "directory")
-    .map((entry) => ({ name: entry.name, type: "directory" as const }))
-    .sort((a, b) => a.name.localeCompare(b.name));
+  const entries = includeFiles
+    ? listing.entries
+    : listing.entries
+      .filter((entry) => entry.type === "directory")
+      .map((entry) => ({ name: entry.name, type: "directory" as const }))
+      .sort((a, b) => a.name.localeCompare(b.name));
   return { path: listing.path, entries };
 }
