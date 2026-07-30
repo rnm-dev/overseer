@@ -56,6 +56,7 @@ export function routeForSurface(surface, negotiated) {
     case "project-file-upload":
     case "attachment-upload":
     case "project-file-move":
+    case "project-file-delete":
       return transfer.has("file-write-v1") ? "reverse-socket" : "legacy-http";
     default:
       return "unimplemented";

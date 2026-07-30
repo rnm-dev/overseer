@@ -29,7 +29,8 @@ export class FileWriteLifecycleHarness {
     this.temps = new Set();
   }
 
-  open(frame) {
+  open(frame, generation = this.transport.generation) {
+    if (generation !== this.transport.generation) return false;
     const hash = fingerprint(frame);
     const replay = this.completed.get(frame.requestId);
     if (replay) {
@@ -46,6 +47,7 @@ export class FileWriteLifecycleHarness {
       throw new FileWriteHarnessError("FILE_TOO_LARGE", "declared body exceeds limit");
     }
     if (frame.operation === "move") return this.#move(frame, hash);
+    if (frame.operation === "delete") return this.#delete(frame, hash);
     const temp = `.tmp-${frame.requestId}`;
     this.temps.add(temp);
     this.active.set(frame.requestId, {
@@ -115,6 +117,12 @@ export class FileWriteLifecycleHarness {
     for (const requestId of [...this.active.keys()]) this.cancel(requestId);
   }
 
+  processRestart() {
+    this.reconnect();
+    this.completed.clear();
+    this.tombstones.clear();
+  }
+
   #fail(item, code) {
     this.active.delete(item.frame.requestId);
     this.temps.delete(item.temp);
@@ -132,6 +140,19 @@ export class FileWriteLifecycleHarness {
     this.files.delete(frame.relativePath);
     this.files.set(frame.destination, body);
     const result = { type: "write_result", requestId: frame.requestId, status: 200, path: frame.destination, size: body.length };
+    this.completed.set(frame.requestId, { hash, result });
+    this.tombstones.add(frame.requestId);
+    return structuredClone(result);
+  }
+
+  #delete(frame, hash) {
+    if (frame.scope !== "project" || frame.destination !== undefined) {
+      throw new FileWriteHarnessError("BAD_REQUEST", "delete is project-scoped and bodyless");
+    }
+    const body = this.files.get(frame.relativePath);
+    if (!Buffer.isBuffer(body)) throw new FileWriteHarnessError("INVALID_PATH", "delete target must be one regular file");
+    this.files.delete(frame.relativePath);
+    const result = { type: "write_result", requestId: frame.requestId, status: 200, path: frame.relativePath, size: body.length };
     this.completed.set(frame.requestId, { hash, result });
     this.tombstones.add(frame.requestId);
     return structuredClone(result);

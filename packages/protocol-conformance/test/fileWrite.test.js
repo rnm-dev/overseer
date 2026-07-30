@@ -10,13 +10,13 @@ import {
 const fixture = loadFixture("file-write-v1.json");
 const projectOpen = fixture.frames[0].frame;
 const moveOpen = fixture.frames[2].frame;
+const deleteOpen = fixture.frames[3].frame;
 
 test("file-write-v1 canonical JSON and binary descriptors match released adapters", () => {
   const report = executeGoldenFrames(fixture);
   assert.equal(report.failed, 0, report.cases.filter((entry) => !entry.passed).map((entry) => entry.errors).join("\n"));
   assert.equal(report.passed, fixture.frames.length);
   assert.deepEqual(fixture.blockedCells, [
-    "public DELETE cutover coverage",
     "optimistic revision fences",
     "durable cross-daemon-restart destructive receipts",
   ]);
@@ -100,4 +100,48 @@ test("same-project move is atomic no-clobber and traversal never reaches a tempo
   assert.throws(() => harness.open({ ...projectOpen, requestId: "00000000-0000-4000-8000-000000000242", transferId: "00000000-0000-4000-8000-000000000229" }),
     (error) => error.code === "BAD_CORRELATION");
   assert.equal(harness.temps.size, 0);
+});
+
+test("project DELETE is one regular-file effect with replay, generation and process-local boundaries", () => {
+  const harness = new FileWriteLifecycleHarness({
+    files: [["obsolete.txt", Buffer.from("delete-once")], ["directory", { kind: "directory" }]],
+  });
+  const result = harness.open(deleteOpen);
+  assert.deepEqual(result, {
+    type: "write_result",
+    requestId: deleteOpen.requestId,
+    status: 200,
+    path: "obsolete.txt",
+    size: 11,
+  });
+  assert.equal(harness.files.has("obsolete.txt"), false);
+  assert.deepEqual(harness.open(deleteOpen), result, "same-process replay cannot delete twice");
+  assert.throws(() => harness.open({ ...deleteOpen, relativePath: "other.txt" }),
+    (error) => error.code === "REQUEST_ID_REUSE");
+
+  const staleGeneration = harness.transport.generation;
+  harness.reconnect();
+  const staleId = "00000000-0000-4000-8000-000000000249";
+  harness.files.set("stale.txt", Buffer.from("preserved"));
+  assert.equal(harness.open({
+    ...deleteOpen, requestId: staleId, transferId: staleId, commandId: staleId, relativePath: "stale.txt",
+  }, staleGeneration), false);
+  assert.equal(harness.files.get("stale.txt").toString(), "preserved", "stale socket generation has no delete effect");
+  assert.deepEqual(harness.open(deleteOpen), result, "socket replacement retains the process-local receipt");
+  harness.processRestart();
+  assert.throws(() => harness.open(deleteOpen),
+    (error) => error.code === "INVALID_PATH",
+    "daemon restart intentionally loses the v1 receipt; the missing file still prevents a second effect");
+
+  const constrained = new FileWriteLifecycleHarness({
+    files: [["directory", { kind: "directory" }], ["symlink", { kind: "symlink" }]],
+  });
+  for (const relativePath of ["directory", "symlink", "../escape"]) {
+    const requestId = `00000000-0000-4000-8000-0000000002${relativePath === "directory" ? "50" : relativePath === "symlink" ? "51" : "52"}`;
+    assert.throws(() => constrained.open({
+      ...deleteOpen, requestId, transferId: requestId, commandId: requestId, relativePath,
+    }), (error) => ["INVALID_PATH", "PATH_ESCAPE"].includes(error.code));
+  }
+  assert.equal(constrained.files.has("directory"), true);
+  assert.equal(constrained.files.has("symlink"), true);
 });

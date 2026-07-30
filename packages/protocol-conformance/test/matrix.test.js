@@ -42,7 +42,7 @@ test("file write transport is pre-selected exclusively and never falls back afte
     { controlCapabilities: [], transferCapabilities: ["file-write-v1"] },
     { controlCapabilities: [], transferCapabilities: ["file-write-v1"] },
   );
-  for (const surface of ["project-file-upload", "attachment-upload", "project-file-move"]) {
+  for (const surface of ["project-file-upload", "attachment-upload", "project-file-move", "project-file-delete"]) {
     assert.equal(routeForSurface(surface, reverse), "reverse-socket");
     // Runtime socket failure cannot alter the already selected route.
     assert.equal(routeForSurface(surface, reverse), "reverse-socket");

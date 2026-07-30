@@ -242,12 +242,16 @@ function validateWriteOpen(frame, errors) {
   if (frame.type !== "write_open" || frame.protocol !== 1 || !uuid(frame.requestId)) errors.push("invalid write_open identity");
   if (frame.transferId !== frame.requestId || !uuid(frame.commandId)) errors.push("invalid transfer/command correlation");
   if (!actor(frame.actor)) errors.push("actor must be server-derived");
-  if (!["upload", "move"].includes(frame.operation) || !["project", "sandbox"].includes(frame.scope)) errors.push("invalid write operation/scope");
+  if (!["upload", "move", "delete"].includes(frame.operation) || !["project", "sandbox"].includes(frame.scope)) errors.push("invalid write operation/scope");
   if (frame.operation === "upload" && frame.scope === "project"
     && (!uuid(frame.projectId) || typeof frame.relativePath !== "string")) errors.push("invalid project upload selector");
   if (frame.operation === "upload" && frame.scope === "sandbox" && typeof frame.path !== "string") errors.push("invalid sandbox upload selector");
   if (frame.operation === "move" && (frame.scope !== "project" || !uuid(frame.projectId)
     || typeof frame.relativePath !== "string" || typeof frame.destination !== "string")) errors.push("invalid project move selector");
+  if (frame.operation === "delete" && (frame.scope !== "project" || !uuid(frame.projectId)
+    || typeof frame.relativePath !== "string" || frame.destination !== undefined
+    || frame.contentLength !== undefined || frame.sha256 !== undefined
+    || frame.commandId !== frame.requestId)) errors.push("invalid project delete selector");
   for (const pathValue of [frame.relativePath, frame.destination, frame.path].filter((value) => value !== undefined)) {
     if (!pathValue || pathValue.startsWith("/") || pathValue.split("/").includes("..")) errors.push("write path must be contained");
   }

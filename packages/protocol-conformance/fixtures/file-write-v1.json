@@ -15,6 +15,10 @@
       "name": "same-project no-clobber move", "surface": "file-write", "schema": "write.open", "limit": "transferJson",
       "frame": { "type": "write_open", "protocol": 1, "requestId": "00000000-0000-4000-8000-000000000231", "transferId": "00000000-0000-4000-8000-000000000231", "commandId": "00000000-0000-4000-8000-000000000231", "operation": "move", "scope": "project", "projectId": "00000000-0000-4000-8000-000000000020", "relativePath": "old.txt", "destination": "new.txt", "actor": { "userId": "00000000-0000-4000-8000-000000000001", "email": "operator@example.com" } }
     },
+    {
+      "name": "project regular-file delete", "surface": "file-write", "schema": "write.open", "limit": "transferJson",
+      "frame": { "type": "write_open", "protocol": 1, "requestId": "00000000-0000-4000-8000-000000000233", "transferId": "00000000-0000-4000-8000-000000000233", "commandId": "00000000-0000-4000-8000-000000000233", "operation": "delete", "scope": "project", "projectId": "00000000-0000-4000-8000-000000000020", "relativePath": "obsolete.txt", "actor": { "userId": "00000000-0000-4000-8000-000000000001", "email": "operator@example.com" } }
+    },
     { "name": "receiver acceptance", "surface": "file-write", "schema": "write.ready", "limit": "transferJson", "frame": { "type": "write_ready", "requestId": "00000000-0000-4000-8000-000000000229", "maxBytes": 104857600, "credit": 65514 } },
     { "name": "binary credited chunk", "surface": "file-write", "schema": "write.chunk", "limit": "binary", "frame": { "protocol": 1, "frameType": 2, "requestId": "00000000-0000-4000-8000-000000000229", "sequence": 0, "payloadBytes": 5, "totalBytes": 27 } },
     { "name": "credit replenishment", "surface": "file-write", "schema": "write.credit", "limit": "transferJson", "frame": { "type": "write_credit", "requestId": "00000000-0000-4000-8000-000000000229", "bytes": 5 } },
@@ -25,7 +29,6 @@
     { "name": "traversal rejected", "surface": "file-write", "schema": "write.open", "limit": "transferJson", "valid": false, "frame": { "type": "write_open", "protocol": 1, "requestId": "00000000-0000-4000-8000-000000000232", "transferId": "00000000-0000-4000-8000-000000000232", "commandId": "00000000-0000-4000-8000-000000000232", "operation": "upload", "scope": "project", "projectId": "00000000-0000-4000-8000-000000000020", "relativePath": "../escape", "actor": { "userId": "00000000-0000-4000-8000-000000000001", "email": "operator@example.com" } } }
   ],
   "blockedCells": [
-    "public DELETE cutover coverage",
     "optimistic revision fences",
     "durable cross-daemon-restart destructive receipts"
   ]

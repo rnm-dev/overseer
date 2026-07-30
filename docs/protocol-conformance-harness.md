@@ -111,17 +111,21 @@ stale generation, cancellation, oversized and corrupt snapshots.
 Current×legacy and legacy×current select only HTTP; current×current selects
 only the reverse socket.
 
-`file-write-v1.json` covers the released project/attachment upload and
-same-project no-clobber move dialect: correlated `write_open`, `write_ready`,
-credit, the exact 22-byte-header binary chunk shape, `write_end`, terminal
-result and cancellation. Its lifecycle adapter exercises slow credited
-producer/consumer progress, bounded backpressure, size/length/checksum
-refusals, cancellation and temporary cleanup, stale generations, duplicate and
-reused IDs, terminal replay, disconnect/reconnect tombstones, atomic visibility,
-no-clobber move, traversal and parent/symlink-swap failure. Matrix selection is
-reverse-only for current×current and HTTP-only for mixed versions; once the
-socket route is selected, failure never retries through HTTP. The NAT guard
-exercises all three write surfaces with no Overseer→Peon dial.
+`file-write-v1.json` covers the released project/attachment upload,
+same-project no-clobber move and project regular-file DELETE dialect:
+correlated `write_open`, `write_ready`, credit, the exact 22-byte-header binary
+chunk shape, `write_end`, terminal result and cancellation. Its lifecycle
+adapter exercises slow credited producer/consumer progress, bounded
+backpressure, size/length/checksum refusals, cancellation and temporary
+cleanup, stale generations, duplicate and reused IDs, terminal replay,
+disconnect/reconnect tombstones, atomic visibility, no-clobber move, one-effect
+DELETE replay, traversal and parent/symlink-swap failure. DELETE additionally
+records the released process-local boundary: reconnect retains a receipt,
+whereas daemon restart loses it and a missing regular-file target still fails
+closed. Matrix selection is reverse-only for current×current and HTTP-only for
+mixed versions; once the socket route is selected, failure never retries
+through HTTP. The NAT guard exercises all four write surfaces with no
+Overseer→Peon dial.
 
 ## Extension cells that must not report green
 
@@ -136,11 +140,11 @@ NAT/TLS exercise, a production-like mixed-fleet soak, and legacy removal after
 the published compatibility window. Contract conformance must not turn those
 cells green.
 
-File-write coverage deliberately does not turn future semantics green. Public
-DELETE cutover coverage, optimistic revision fences and durable destructive
-receipts across a Peon daemon restart remain explicit blocked cells. The v1
-receiver's five-minute replay cache is process-local, so the harness does not
-claim durable restart deduplication.
+File-write coverage deliberately does not turn future semantics green.
+Optimistic revision fences and durable destructive receipts across a Peon
+daemon restart remain explicit blocked cells. The v1 receiver's five-minute
+replay cache is process-local, so the harness does not claim durable restart
+deduplication.
 
 `reverse-command-v1` is covered for the released `session.cancel` operation.
 The vendored schemas are canonical-JSON equivalent; byte-formatting differences

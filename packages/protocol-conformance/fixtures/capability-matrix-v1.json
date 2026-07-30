@@ -50,7 +50,8 @@
         "session-transcript": "legacy-http",
         "project-file-upload": "legacy-http",
         "attachment-upload": "legacy-http",
-        "project-file-move": "legacy-http"
+        "project-file-move": "legacy-http",
+        "project-file-delete": "legacy-http"
       }
     },
     {
@@ -68,7 +69,8 @@
         "session-transcript": "legacy-http",
         "project-file-upload": "legacy-http",
         "attachment-upload": "legacy-http",
-        "project-file-move": "legacy-http"
+        "project-file-move": "legacy-http",
+        "project-file-delete": "legacy-http"
       }
     },
     {
@@ -86,7 +88,8 @@
         "session-transcript": "legacy-http",
         "project-file-upload": "legacy-http",
         "attachment-upload": "legacy-http",
-        "project-file-move": "legacy-http"
+        "project-file-move": "legacy-http",
+        "project-file-delete": "legacy-http"
       }
     },
     {
@@ -104,7 +107,8 @@
         "session-transcript": "legacy-http",
         "project-file-upload": "legacy-http",
         "attachment-upload": "legacy-http",
-        "project-file-move": "legacy-http"
+        "project-file-move": "legacy-http",
+        "project-file-delete": "legacy-http"
       }
     },
     {
@@ -122,7 +126,8 @@
         "session-transcript": "legacy-http",
         "project-file-upload": "legacy-http",
         "attachment-upload": "legacy-http",
-        "project-file-move": "legacy-http"
+        "project-file-move": "legacy-http",
+        "project-file-delete": "legacy-http"
       }
     },
     {
@@ -140,7 +145,8 @@
         "session-transcript": "legacy-http",
         "project-file-upload": "legacy-http",
         "attachment-upload": "legacy-http",
-        "project-file-move": "legacy-http"
+        "project-file-move": "legacy-http",
+        "project-file-delete": "legacy-http"
       }
     },
     {
@@ -158,7 +164,8 @@
         "session-transcript": "legacy-http",
         "project-file-upload": "legacy-http",
         "attachment-upload": "legacy-http",
-        "project-file-move": "legacy-http"
+        "project-file-move": "legacy-http",
+        "project-file-delete": "legacy-http"
       }
     },
     {
@@ -176,7 +183,8 @@
         "session-transcript": "legacy-http",
         "project-file-upload": "legacy-http",
         "attachment-upload": "legacy-http",
-        "project-file-move": "legacy-http"
+        "project-file-move": "legacy-http",
+        "project-file-delete": "legacy-http"
       }
     },
     {
@@ -194,7 +202,8 @@
         "session-transcript": "reverse-socket",
         "project-file-upload": "reverse-socket",
         "attachment-upload": "reverse-socket",
-        "project-file-move": "reverse-socket"
+        "project-file-move": "reverse-socket",
+        "project-file-delete": "reverse-socket"
       }
     }
   ],
@@ -221,8 +230,8 @@
       "id": "writes",
       "capability": "file-write-v1",
       "status": "covered",
-      "coverage": "project and attachment upload plus same-project no-clobber move; credited binary chunks, atomic temp commit/cleanup, bounds, correlation, cancellation, replay, generation fencing and exclusive fallback",
-      "blockedCells": ["public DELETE cutover coverage", "optimistic revision fences", "durable cross-daemon-restart destructive receipts"]
+      "coverage": "project and attachment upload plus same-project no-clobber move and regular-file DELETE; credited binary chunks, atomic temp commit/cleanup, bounds, correlation, cancellation, replay, generation fencing and exclusive fallback",
+      "blockedCells": ["optimistic revision fences", "durable cross-daemon-restart destructive receipts"]
     },
     {
       "id": "rollout",
