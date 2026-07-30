@@ -59,6 +59,44 @@ export class SettingsService extends EventEmitter {
             soul: s.ai.soul || null,
         };
     }
+    getDaemonConfigurationView(settings = this.get()) {
+        return {
+            name: settings.name || null,
+            defaultAgent: settings.defaultAgent,
+            fileTransferRoot: settings.fileTransferRoot || null,
+            heartbeatIntervalMs: settings.heartbeatIntervalMs,
+            aiDefaultModel: settings.ai.defaultModel ?? null,
+            soul: settings.ai.soul || null,
+        };
+    }
+    patchDaemonConfiguration(body) {
+        const value = this.ensureRecord(body);
+        const allowed = new Set([
+            "name", "defaultAgent", "fileTransferRoot", "heartbeatIntervalMs", "aiDefaultModel", "soul",
+        ]);
+        const unknown = Object.keys(value).find((key) => !allowed.has(key));
+        if (unknown)
+            this.throwBadRequest(`${unknown} is not remotely manageable`);
+        if (Object.keys(value).length === 0)
+            return { settings: this.get(), view: this.getDaemonConfigurationView() };
+        if (typeof value.name === "string" && Buffer.byteLength(value.name) > 200) {
+            this.throwBadRequest("name exceeds 200 UTF-8 bytes");
+        }
+        if (typeof value.fileTransferRoot === "string" && Buffer.byteLength(value.fileTransferRoot) > 4096) {
+            this.throwBadRequest("fileTransferRoot exceeds 4096 UTF-8 bytes");
+        }
+        if (typeof value.soul === "string" && Buffer.byteLength(value.soul) > 48 * 1024) {
+            this.throwBadRequest("soul exceeds 49152 UTF-8 bytes");
+        }
+        const normalized = { ...value };
+        for (const nullable of ["name", "fileTransferRoot", "soul"]) {
+            if (nullable in normalized && normalized[nullable] === null)
+                normalized[nullable] = "";
+        }
+        const patch = this.validateAndNormalizeFleetPatch(normalized, this.get());
+        const updated = this.update(patch);
+        return { settings: updated, view: this.getDaemonConfigurationView(updated) };
+    }
     getControlSettingsView(s = this.get()) {
         // Never hand durable credentials to a browser. Besides exposing a full-admin
         // secret, the old response let a stale Settings tab send an obsolete token
