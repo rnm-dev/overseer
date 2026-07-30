@@ -4,9 +4,7 @@ import { eventLoopDelayStats } from "./eventLoopMonitor.js";
 import path from "node:path";
 import express from "express";
 import { settings } from "./settings/index.js";
-import { users, normalizeUsername, DEFAULT_ADMIN_USERNAME } from "./users.js";
-import { authSessions, AUTH_SESSION_COOKIE, SESSION_MAX_AGE_SEC, stripSecrets } from "./authSessions.js";
-import { sessionPresence, DASHBOARD_PRESENCE_KEY } from "./sessionPresence.js";
+import { sessionPresence } from "./sessionPresence.js";
 import {
   sessionArtifactInventory,
   SessionOrchestrationService,
@@ -57,50 +55,12 @@ function toSessionView(record: SessionRecord, viewerUsername: string | null) {
   return { ...toPublicSessionRecord(record), viewers, viewerCount: viewers.length };
 }
 
-function readCookies(req: express.Request): Record<string, string> {
-  const header = req.headers.cookie;
-  if (!header) return {};
-  return Object.fromEntries(
-    header.split(";").map((pair) => {
-      const i = pair.indexOf("=");
-      return [pair.slice(0, i).trim(), decodeURIComponent(pair.slice(i + 1).trim())];
-    }),
-  );
-}
-
-// The daemon/dashboard/CLI/scripts all talk to this API from the same box —
-// only a genuinely remote peer needs to authenticate. Uses the raw socket
-// address (not `req.ip`/X-Forwarded-For, which a client can set) so this
-// can't be spoofed by a request header.
 function isLoopback(req: express.Request): boolean {
   const addr = req.socket.remoteAddress;
   return addr === "127.0.0.1" || addr === "::1" || addr === "::ffff:127.0.0.1";
 }
 
-function clientInfo(req: express.Request) {
-  return { ip: req.socket.remoteAddress ?? null, userAgent: req.headers["user-agent"] ?? null };
-}
-
-// The username-only half of the auth-gate middleware's own lookup — shared
-// by /api/v1/auth/status and the session presence tracking below. Not used by
-// the auth gate itself, which needs the full AuthSessionRecord (for
-// shouldRenew/renew), not just the username.
-function resolveUsername(req: express.Request): string | null {
-  if (isLoopback(req)) return DEFAULT_ADMIN_USERNAME;
-  const token = readCookies(req)[AUTH_SESSION_COOKIE];
-  const record = token ? authSessions.verifySessionToken(token) : null;
-  return record?.username ?? null;
-}
-
-function setSessionCookie(req: express.Request, res: express.Response, compoundToken: string): void {
-  res.cookie(AUTH_SESSION_COOKIE, compoundToken, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: req.secure,
-    maxAge: SESSION_MAX_AGE_SEC * 1000,
-    path: "/",
-  });
-}
+const CLI_ACTOR = "local-cli";
 
 export interface ControlServerOptions {
   armoryInventory?: ArmoryInventoryReader;
@@ -149,8 +109,8 @@ export function createControlServer(options: ControlServerOptions = {}) {
     toSessionSummary,
     toPublicSessionRecord,
     toSessionView,
-    resolveSessionAuthor: (req) => resolveUsername(req) ?? undefined,
-    resolveSessionViewer: (req) => resolveUsername(req),
+    resolveSessionAuthor: () => CLI_ACTOR,
+    resolveSessionViewer: () => CLI_ACTOR,
     resolveDefaultAgent: () => settings.get().defaultAgent,
     listAgentsForNewSessionError: () => listAgentDrivers({ visible: true, available: true }).map((driver) => driver.id).join(", "),
     narrowNewSessionAgent: narrowNewSessionAgent,
@@ -159,30 +119,7 @@ export function createControlServer(options: ControlServerOptions = {}) {
   };
   app.use(express.json());
 
-  const dashboardPort = process.env.ACA_DASHBOARD_PORT ?? "4571";
-  const staticAllowedOrigins = new Set([`http://127.0.0.1:${dashboardPort}`, `http://localhost:${dashboardPort}`]);
-
-  // When the dashboard is reached remotely it loads from publicDashboardUrl, so
-  // credentialed cross-origin calls to this API arrive with that Origin — allow it
-  // too. Read per-request (not captured once) so `peon remote on` takes effect on
-  // the next request without a control-API restart. Loopback origins stay allowed
-  // regardless, for the same-box browser/CLI.
-  function isAllowedOrigin(origin: string): boolean {
-    // Sandboxed HTML previews intentionally have an opaque origin, serialized
-    // by browsers as `null`. Their fetch/XHR calls should behave like the page
-    // would when served normally; the iframe/CSP sandbox still isolates DOM,
-    // storage, navigation, and parent access.
-    if (origin === "null") return true;
-    if (staticAllowedOrigins.has(origin)) return true;
-    return origin === settings.get().publicDashboardUrl.replace(/\/$/, "");
-  }
-
   app.use((req, res, next) => {
-    const origin = req.headers.origin;
-    if (origin && isAllowedOrigin(origin)) {
-      res.header("Access-Control-Allow-Origin", origin);
-      res.header("Access-Control-Allow-Credentials", "true");
-    }
     res.header("Access-Control-Allow-Methods", "GET,PATCH,POST,DELETE");
     res.header(
       "Access-Control-Allow-Headers",
@@ -238,92 +175,18 @@ export function createControlServer(options: ControlServerOptions = {}) {
   // its own: genuine loopback, no browser Origin, and a loopback Host header.
   app.use("/mcp", createScopedMcpRouter({ armoryRuntime, projectService, sessionOrchestration }));
 
-  // The magic link itself points at the dashboard (a `?token=` on its own origin, not
-  // this API) — the dashboard page reads the token client-side and POSTs it here itself,
-  // a plain cross-origin fetch like every other dashboard->API call (see isAllowedOrigin
-  // above). That's also why this is a POST despite never being submitted via a form: it's
-  // no longer a browser-navigated link, and consuming a token is a mutating action.
-  app.post("/api/v1/auth/consume", (req, res) => {
-    const token = typeof req.body?.token === "string" ? req.body.token : "";
-    const result = token ? authSessions.consumeLink(token, clientInfo(req)) : null;
-    if (!result) {
-      return res.status(401).json({ ok: false, error: "This link is invalid, expired, or has already been used." });
-    }
-    setSessionCookie(req, res, `${result.record.id}.${result.rawSessionToken}`);
-    res.json({ ok: true });
-  });
-
-  app.post("/api/v1/auth/logout", (req, res) => {
-    const token = readCookies(req)[AUTH_SESSION_COOKIE];
-    const record = token ? authSessions.verifySessionToken(token) : null;
-    if (record) authSessions.revoke(record.id);
-    res.clearCookie(AUTH_SESSION_COOKIE, { path: "/" });
-    res.json({ ok: true });
-  });
-
-  app.get("/api/v1/auth/status", (req, res) => {
-    const username = resolveUsername(req);
-    res.json({ authenticated: username !== null, username });
-  });
-
   app.use((req, res, next) => {
     if (isLoopback(req)) return next();
-    const token = readCookies(req)[AUTH_SESSION_COOKIE];
-    const record = token ? authSessions.verifySessionToken(token) : null;
-    if (!record) return res.status(401).json({ error: "not authenticated" });
-    if (authSessions.shouldRenew(record)) {
-      authSessions.renew(record, clientInfo(req));
-      setSessionCookie(req, res, token);
-    }
-    next();
+    return res.status(403).json({
+      error: "Peon local API is CLI-only; use Overseer for operator access",
+      code: "LOCAL_ONLY",
+    });
   });
 
   app.use("/api/v1/armory", createArmoryReadRouter(options.armoryInventory, {
     ...armoryApi,
     allowMutations: true,
   }));
-
-  app.post("/api/v1/users/:username", (req, res) => {
-    const username = normalizeUsername(req.params.username);
-    if (!username) return res.status(400).json({ error: "invalid username" });
-    const { record, created } = users.create(username);
-    res.status(created ? 201 : 200).json({ ok: true, username: record.username, created });
-  });
-
-  app.post("/api/v1/users/:username/auth-link", (req, res) => {
-    const username = normalizeUsername(req.params.username);
-    if (!username) return res.status(400).json({ error: "invalid username" });
-    if (!users.get(username)) return res.status(404).json({ error: "unknown user — create it first with `peon user add`" });
-    const { record, rawLinkToken } = authSessions.issueLink(username);
-    const linkUrl = `${settings.get().publicDashboardUrl.replace(/\/$/, "")}/?token=${record.id}.${rawLinkToken}`;
-    res.status(201).json({ ok: true, username, linkUrl, expiresAt: record.linkExpiresAt });
-  });
-
-  app.get("/api/v1/users", (_req, res) => {
-    res.json({ users: users.list() });
-  });
-
-  app.get("/api/v1/users/:username/sessions", (req, res) => {
-    const username = normalizeUsername(req.params.username);
-    if (!username || !users.get(username)) return res.status(404).json({ error: "unknown user" });
-    res.json({ sessions: authSessions.listByUsername(username).map(stripSecrets) });
-  });
-
-  app.delete("/api/v1/users/:username/sessions", (req, res) => {
-    const username = normalizeUsername(req.params.username);
-    if (!username || !users.get(username)) return res.status(404).json({ error: "unknown user" });
-    res.json({ ok: true, revokedCount: authSessions.revokeAllForUser(username) });
-  });
-
-  app.delete("/api/v1/users/:username/sessions/:id", (req, res) => {
-    const username = normalizeUsername(req.params.username);
-    const record = authSessions.get(req.params.id);
-    if (!username || !record || record.username !== username) {
-      return res.status(404).json({ error: "unknown session" });
-    }
-    authSessions.revoke(record.id);
-    res.json({ ok: true });
-  });
 
   app.get("/api/v1/status", (_req, res) => {
     const updateState = updateChecker.getState();
@@ -338,10 +201,6 @@ export function createControlServer(options: ControlServerOptions = {}) {
       updateLatestRevision: updateState.latestRevision,
       updateCheckedAt: updateState.checkedAt,
       updateCheckError: updateState.error,
-      // Seeds the dashboard's active-users list before its "presence" SSE
-      // stream (GET /api/v1/presence/stream) delivers its own snapshot — same
-      // pattern as toSessionView's `viewers` seeding a session's own list.
-      activeUsers: sessionPresence.list(DASHBOARD_PRESENCE_KEY),
       // Cheap piggyback so the sidebar can render its "AI" warning dot off
       // the poll it's already subscribed to — full detail lives in
       // GET /api/v1/ai/claude-code/status.
@@ -357,7 +216,7 @@ export function createControlServer(options: ControlServerOptions = {}) {
 
   app.use("/api/v1", createHumanProjectsRouter({
     projectService,
-    resolveCreateActor: (req) => resolveUsername(req) ?? undefined,
+    resolveCreateActor: () => CLI_ACTOR,
   }));
 
   app.use("/api/v1", createHumanSessionsRouter({
@@ -606,7 +465,7 @@ export function createControlServer(options: ControlServerOptions = {}) {
     try {
       const absPath = fileAccessService.resolveFromDir(record.dir, requestedPath);
       if (!statSync(absPath).isFile()) return res.status(400).json({ error: "not a file" });
-      res.status(201).json({ event: sessions.preview(record.id, absPath, resolveUsername(req) ?? undefined) });
+      res.status(201).json({ event: sessions.preview(record.id, absPath, CLI_ACTOR) });
     } catch (err) {
       const { status, message } = fileAccessService.fileErrorResponse(err);
       res.status(status).json({ error: message });
@@ -756,8 +615,7 @@ export function createControlServer(options: ControlServerOptions = {}) {
     // Defensive — this route already sits behind the global auth-gate
     // middleware, which 401s before this handler ever runs, so this
     // shouldn't trigger in practice.
-    const username = resolveUsername(req);
-    if (!username) return res.status(401).json({ error: "not authenticated" });
+    const username = CLI_ACTOR;
     let resumeEventId: string | undefined;
     try {
       const lastEventIdHeader = req.headers["last-event-id"];
@@ -842,36 +700,6 @@ export function createControlServer(options: ControlServerOptions = {}) {
       sessions.off("change", onChange);
       sessionPresence.off("change", onPresenceChange);
       sessionPresence.leave(req.params.id, username);
-    });
-  });
-
-  // Dashboard-wide presence — who currently has the dashboard open at all,
-  // on any page, not just a specific session's detail view. Reuses the same
-  // sessionPresence store under a fixed pseudo-session key; opened once for
-  // the lifetime of the app shell (see app.jsx) rather than per-view.
-  app.get("/api/v1/presence/stream", (req, res) => {
-    const username = resolveUsername(req);
-    if (!username) return res.status(401).json({ error: "not authenticated" });
-
-    res.writeHead(200, {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      Connection: "keep-alive",
-    });
-    const send = (event: string, data: unknown) => {
-      res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
-    };
-
-    sessionPresence.join(DASHBOARD_PRESENCE_KEY, username);
-    send("presence", { users: sessionPresence.list(DASHBOARD_PRESENCE_KEY) });
-    const onPresenceChange = (payload: { sessionId: string; viewers: string[] }) => {
-      if (payload.sessionId === DASHBOARD_PRESENCE_KEY) send("presence", { users: payload.viewers });
-    };
-    sessionPresence.on("change", onPresenceChange);
-
-    req.on("close", () => {
-      sessionPresence.off("change", onPresenceChange);
-      sessionPresence.leave(DASHBOARD_PRESENCE_KEY, username);
     });
   });
 

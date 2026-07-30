@@ -3,7 +3,6 @@ import { storedTimestampMetadata } from "../agentEventMetadata.js";
 import { claudeCodeAuth } from "../claudeCodeAuth.js";
 import { CODEX_OUTCOME_SCHEMA, OUTCOME_SCHEMA } from "../sessionPrompts.js";
 import { normalizeClaudeCodeEvent, runClaudeCode } from "./claudeCode.js";
-import { runCodex } from "./codex.js";
 import { codexAppServerHealth, reconcileCodexAppServerTurn, runCodexAppServer, shutdownCodexAppServerRuntime } from "./codexAppServer.js";
 import { getClaudeQuota, getCodexQuota } from "../providerQuota.js";
 import { getClaudeCapabilities, getCodexCapabilities } from "../providerCapabilities.js";
@@ -138,20 +137,6 @@ registerAgentDriver({
     },
 });
 registerAgentDriver({
-    id: "codex", label: "Codex (legacy)", available: () => true, visible: true, legacy: true, models: codexModels,
-    reasoningEfforts: effort(["low", "medium", "high", "xhigh", "max", "ultra"], "medium"),
-    canonicalModel: (value) => fromCatalog(codexModels, value),
-    reasoningEffort: (value, model) => modelEffort(codexModels, value, model),
-    command: (current) => current.codexCommand,
-    conversation: { initialBackendId: () => null, recoverBackendId: (_id, persisted) => persisted },
-    outcomeSchema: (expects) => expects ? CODEX_OUTCOME_SCHEMA : undefined, normalizeOutcome: (value) => normalizeOutcome(value, true),
-    normalizeStoredEvent: canonicalStored, run: runCodex,
-    interrupt: (run) => run.kill(), shutdown: (run) => run.kill(),
-    auth: { observeSuccess() { }, observeFailure() { } },
-    capabilities: { steering: false, cancellation: true, recovery: true, quota: true, status: false, cliUpdate: true },
-    services: { quota: getCodexQuota, capabilities: getCodexCapabilities, cliUpdate: { packageName: "@openai/codex" } },
-});
-registerAgentDriver({
     id: "codex-app-server", label: "Codex", available: () => true, visible: true, models: codexModels,
     reasoningEfforts: effort(["low", "medium", "high", "xhigh", "max", "ultra"], "medium"),
     canonicalModel: (value) => fromCatalog(codexModels, value),
@@ -173,8 +158,11 @@ registerAgentDriver({
     interrupt: (run) => run.kill(), shutdown: (run) => run.kill(),
     shutdownRuntime: shutdownCodexAppServerRuntime,
     auth: { observeSuccess() { }, observeFailure() { } },
-    capabilities: { steering: true, cancellation: true, recovery: true, quota: false, status: true, cliUpdate: false },
-    services: { status: () => codexAppServerHealth() },
+    capabilities: { steering: true, cancellation: true, recovery: true, quota: true, status: true, cliUpdate: true },
+    services: {
+        status: () => codexAppServerHealth(), quota: getCodexQuota,
+        capabilities: getCodexCapabilities, cliUpdate: { packageName: "@openai/codex" },
+    },
 });
 export async function shutdownAgentDriverRuntimes() {
     await Promise.all(listAgentDrivers().flatMap((driver) => driver.shutdownRuntime ? [driver.shutdownRuntime()] : []));

@@ -28,22 +28,3 @@ Environment="PATH=${opts.pathEnv}"
 WantedBy=default.target
 `;
 }
-export function buildDashboardUnit(opts) {
-    const dashboardPort = opts.dashboardPort ?? 4571;
-    return `[Unit]
-Description=peon dashboard (read-only web UI)
-After=network-online.target peon-daemon.service
-Wants=network-online.target
-
-[Service]
-Type=simple
-WorkingDirectory=${opts.peonHome}
-ExecStart=${opts.nodeBin} dist/dashboard/server.js
-Restart=always
-RestartSec=2
-Environment=ACA_DASHBOARD_PORT=${dashboardPort}
-
-[Install]
-WantedBy=default.target
-`;
-}

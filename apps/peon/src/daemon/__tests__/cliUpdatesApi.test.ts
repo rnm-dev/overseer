@@ -14,8 +14,8 @@ const operation = {
   fromVersion: "1.0.0", toVersion: null, error: null, logPath: "/tmp/op-1.log",
 };
 const service = {
-  async get(provider?: "codex" | "claude-code", refresh?: boolean) {
-    const providers = (provider ? [provider] : ["codex", "claude-code"] as const).map((item) => ({
+  async get(provider?: "codex-app-server" | "claude-code", refresh?: boolean) {
+    const providers = (provider ? [provider] : ["codex-app-server", "claude-code"] as const).map((item) => ({
       provider: item, currentVersion: "1.0.0", latestVersion: "1.1.0", updateAvailable: true,
       checkedAt: refresh ? 20 : 10, checkError: null, operation: null,
     }));
@@ -35,9 +35,9 @@ test("CLI update API exposes aggregate, provider, action, and validation contrac
   assert.equal(aggregate.status, 200);
   assert.equal(((await aggregate.json()) as { providers: unknown[] }).providers.length, 2);
 
-  const provider = await fetch(`${base}/api/v1/ai/cli-updates/codex`);
+  const provider = await fetch(`${base}/api/v1/ai/cli-updates/codex-app-server`);
   assert.equal(provider.status, 200);
-  assert.equal(((await provider.json()) as { provider: string }).provider, "codex");
+  assert.equal(((await provider.json()) as { provider: string }).provider, "codex-app-server");
 
   const started = await fetch(`${base}/api/v1/ai/cli-updates/claude-code`, { method: "POST" });
   assert.equal(started.status, 202);

@@ -1,7 +1,7 @@
 # Overseer ↔ Peon protocol (`/api/v1`)
 
 The machine-facing API a **overseer** (fleet control plane) uses to drive many
-peons. It shares the `/api/v1` namespace with the human dashboard surface but
+peons. It shares the `/api/v1` namespace with the loopback-only CLI surface but
 has its own bearer auth, representations, and no human presence bookkeeping. Implemented in
 `src/daemon/agentApi.ts`, mounted at `/api/v1` ahead of the human cookie
 auth-gate in `controlServer.ts`.
@@ -343,7 +343,7 @@ carry an `id:`, since a client already has current state from `GET
 half-open connection through an idle-timing proxy gets noticed. All listeners
 and the heartbeat timer are torn down the moment the request closes.
 
-The dashboard's human-authenticated stream also accepts `afterEventId` as its
+The legacy loopback session stream also accepts `afterEventId` as its
 initial snapshot boundary because browser `EventSource` cannot set a custom
 header on the first connection. Once connected, `Last-Event-ID` takes
 precedence on automatic reconnects. Resume ids are bounded and validated before
@@ -399,12 +399,12 @@ raster images and PDF use safe inline MIME types.
 overseer's per-peon model picker:
 
 ```jsonc
-{ "defaultAgent": "codex",
+{ "defaultAgent": "codex-app-server",
   "providers": [
     { "agent": "claude-code", "label": "Claude Code",
       "models": [ { "id": "claude-sonnet-5", "label": "Sonnet 5", "alias": "sonnet", "default": true }, … ],
       "reasoningEfforts": [ { "id": "high", "label": "High", "default": true }, … ] },
-    { "agent": "codex", "label": "Codex",
+    { "agent": "codex-app-server", "label": "Codex",
       "models": [ { "id": "gpt-5.6-sol", "label": "5.6 Sol", "default": true }, … ],
       "reasoningEfforts": [ { "id": "medium", "label": "Medium", "default": true }, … ] } ] }
 ```

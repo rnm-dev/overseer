@@ -72,25 +72,19 @@ const server = app.listen(PORT, BIND_HOST, () => {
         overseerToken: s.overseerToken ? "<set>" : "",
         pairingSecret: s.pairingSecret ? "<armed>" : "",
     });
-    const { publicControlUrl, publicDashboardUrl } = settings.get();
+    const { publicControlUrl } = settings.get();
     if (!LOOPBACK_HOSTS.includes(BIND_HOST)) {
         // Bound wide on purpose — reachable from the network. This is the intended
         // remote-access path (auth handles it), so make the exposure visible, not alarming.
-        console.warn(`NOTE: bound to ${BIND_HOST} — the control API and dashboard are reachable from the network. ` +
-            "Remote clients must authenticate with a magic link (`peon user auth-link <username>`); only loopback " +
-            "connections are auto-trusted as admin. Keep the ports firewalled to networks you trust.");
-        if (isLoopbackHost(publicControlUrl) || isLoopbackHost(publicDashboardUrl)) {
-            console.warn("  ...but publicControlUrl/publicDashboardUrl still point at 127.0.0.1/localhost, so magic links " +
-                "will be unusable from another machine. Fix with `peon remote on <public-host>`.");
+        console.warn(`NOTE: bound to ${BIND_HOST} for authenticated legacy Fleet HTTP. ` +
+            "Local CLI routes still require a real loopback peer; operator access belongs in Overseer.");
+        if (isLoopbackHost(publicControlUrl)) {
+            console.warn("  ...but publicControlUrl still points at loopback. Fix with `peon remote on <public-host>`.");
         }
     }
-    else if (!isLoopbackHost(publicControlUrl) || !isLoopbackHost(publicDashboardUrl)) {
-        console.warn("WARNING: publicControlUrl/publicDashboardUrl point away from 127.0.0.1/localhost, but this process " +
-            "still only binds 127.0.0.1. The only way a genuinely remote client can reach it is a tunnel or " +
-            "port-forward (e.g. `ssh -L`) terminating on this box — every request arriving through one looks like " +
-            "a loopback connection and BYPASSES per-user dashboard auth entirely. Only forward these ports over a " +
-            "channel you trust as much as a shell on this box. To accept remote connections directly (with auth), " +
-            "use `peon remote on` instead.");
+    else if (!isLoopbackHost(publicControlUrl)) {
+        console.warn("WARNING: publicControlUrl is remote but the daemon still binds loopback. " +
+            "Use reverse sockets or explicitly enable legacy Fleet HTTP.");
     }
     console.log("(task claim: milestone 1 only — claims + reports needs_human, does not implement yet)");
     // A fresh Peon now initiates peon-claim-v1 outbound. Legacy pairing remains

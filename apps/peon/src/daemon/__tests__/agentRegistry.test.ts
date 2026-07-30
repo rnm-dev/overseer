@@ -16,7 +16,7 @@ import { parseSessionAnalyticsQuery } from "../sessionAnalytics.js";
 describe("agent driver registry", () => {
   it("owns built-in discovery, model validation and canonical lifecycle behavior", () => {
     const claude = requireAgentDriver("claude-code");
-    const codex = requireAgentDriver("codex");
+    const codex = requireAgentDriver("codex-app-server");
     assert.equal(claude.canonicalModel("sonnet"), "claude-sonnet-5");
     assert.equal(codex.reasoningEffort("ultra", "gpt-5.6-sol"), "ultra");
     assert.equal(codex.reasoningEffort("max", "gpt-5.5"), undefined);
@@ -24,6 +24,7 @@ describe("agent driver registry", () => {
     assert.equal(claude.conversation.initialBackendId("session-1"), "session-1");
     assert.equal(codex.conversation.initialBackendId("session-1"), null);
     assert.deepEqual(codex.normalizeOutcome({ result: "success", summary: "done" }), { result: "success", summary: "done", previewPath: null });
+    assert.equal(getAgentDriver("codex"), undefined);
   });
 
   it("keeps hidden legacy drivers usable for existing sessions but out of new-session discovery", () => {

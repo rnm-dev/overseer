@@ -1,6 +1,5 @@
 #!/usr/bin/env -S node --import tsx
-// Runs the daemon + dashboard together as a drop-in replacement for the
-// systemd units — same ports (4570/4571), same XDG config/state (so it's
+// Runs the daemon as a drop-in replacement for its systemd unit — same port and XDG config/state (so it's
 // the same real settings/credentials/sessions, not a separate instance),
 // same restrictive PATH (no shell-profile inheritance) and Restart=always-
 // style auto-restart on crash. The dashboard server keeps tsx watch hot reload,
@@ -89,7 +88,6 @@ acquireHarnessLock();
 process.once("exit", releaseHarnessLock);
 
 const CONTROL_PORT = process.env.ACA_CONTROL_PORT ?? "4570";
-const DASHBOARD_PORT = process.env.ACA_DASHBOARD_PORT ?? "4571";
 
 // Mirrors the daemon unit's own `Environment=PATH=...` override — systemd
 // user services don't inherit a shell profile, so a dev run should hit the
@@ -128,7 +126,6 @@ interface ProcDef {
 
 const procs: ProcDef[] = [
   { name: "daemon", color: "36", script: "src/daemon/index.ts", watch: false, env: { ...sharedEnv, ACA_CONTROL_PORT: CONTROL_PORT } },
-  { name: "dashboard", color: "35", script: "src/dashboard/server.ts", watch: true, env: { ...sharedEnv, ACA_DASHBOARD_PORT: DASHBOARD_PORT } },
 ];
 
 const children = new Map<string, ChildProcess>();
@@ -171,8 +168,8 @@ process.on("SIGTERM", shutdown);
 for (const def of procs) launch(def);
 
 console.log(`
-peon dev harness — daemon + dashboard (dashboard server hot reloads on save).
-Drop-in replacement for the systemd units: same ports, same config/state,
+peon dev harness — daemon only; operator UI lives in Overseer.
+Drop-in replacement for the systemd unit: same port and config/state,
 same PATH restriction, Restart=always-style crash recovery. Don't run this
 at the same time as the systemd services — they'd fight over the same
 ports.
@@ -180,5 +177,4 @@ ports.
 Daemon source changes require a manual dev-harness restart to take effect.
 
   daemon    : http://127.0.0.1:${CONTROL_PORT}
-  dashboard : http://127.0.0.1:${DASHBOARD_PORT}
 `);

@@ -347,10 +347,10 @@ void main() {
     );
 
     final edit = tester.widget<Text>(find.text('Edit'));
-    expect(edit.style?.fontSize, 10);
+    expect(edit.style?.fontSize, 11);
     expect(find.text('(+2,−1)', findRichText: true), findsOneWidget);
     final details = tester.widget<Text>(find.text('Details'));
-    expect(details.style?.fontSize, 10);
+    expect(details.style?.fontSize, 11);
     expect(details.style?.decoration, TextDecoration.underline);
     expect(details.style?.decorationStyle, TextDecorationStyle.dotted);
 

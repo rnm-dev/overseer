@@ -93,9 +93,7 @@ class _QueuedFollowupList extends StatelessWidget {
                             AppMarkdownPreview(
                               key: Key('session-queue-markdown-${item.id}'),
                               data: item.prompt,
-                              style: AppTypography.chatMessage(
-                                height: 1.35,
-                              ),
+                              style: AppTypography.chatMessage(height: 1.35),
                               maxLines: 3,
                               overflow: TextOverflow.ellipsis,
                               softWrap: true,
@@ -300,9 +298,7 @@ class _QueuedFollowupDialogState extends State<_QueuedFollowupDialog> {
                         AppMarkdown(
                           key: const Key('session-queue-dialog-markdown'),
                           data: widget.item.prompt,
-                          textStyle: AppTypography.chatMessage(
-                            height: 1.5,
-                          ),
+                          textStyle: AppTypography.chatMessage(height: 1.5),
                         ),
                       if (widget.item.attachments.isNotEmpty) ...[
                         const SizedBox(height: 14),

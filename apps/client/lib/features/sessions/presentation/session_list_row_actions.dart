@@ -119,7 +119,7 @@ class SessionWorkItem extends StatelessWidget {
                 SizedBox(
                   height: 20,
                   child: Row(
-                children: [
+                    children: [
                       Expanded(
                         child: Text(
                           session.displayTitle,

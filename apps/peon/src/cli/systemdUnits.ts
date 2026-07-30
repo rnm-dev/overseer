@@ -12,7 +12,6 @@ export interface UnitOptions {
   /** PATH to bake into the daemon unit, normally the PATH `peon start` itself saw. */
   pathEnv: string;
   controlPort?: number;
-  dashboardPort?: number;
 }
 
 export function buildDaemonUnit(opts: UnitOptions): string {
@@ -35,26 +34,6 @@ Environment=ACA_CONTROL_PORT=${controlPort}
 # PATH \`peon start\` itself saw so it resolves the same way a login shell would, regardless
 # of nvm/volta/homebrew/etc.
 Environment="PATH=${opts.pathEnv}"
-
-[Install]
-WantedBy=default.target
-`;
-}
-
-export function buildDashboardUnit(opts: UnitOptions): string {
-  const dashboardPort = opts.dashboardPort ?? 4571;
-  return `[Unit]
-Description=peon dashboard (read-only web UI)
-After=network-online.target peon-daemon.service
-Wants=network-online.target
-
-[Service]
-Type=simple
-WorkingDirectory=${opts.peonHome}
-ExecStart=${opts.nodeBin} dist/dashboard/server.js
-Restart=always
-RestartSec=2
-Environment=ACA_DASHBOARD_PORT=${dashboardPort}
 
 [Install]
 WantedBy=default.target

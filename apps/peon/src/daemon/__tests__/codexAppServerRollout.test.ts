@@ -74,7 +74,7 @@ test("configured rollout uses app-server end to end while persisted sessions rem
     startedAt: null,
   });
 
-  settings.update({ defaultAgent: "codex" });
+  settings.update({ defaultAgent: "claude-code" });
   const followedUp = await fetch(`${base}/api/v1/sessions/${initial.id}/followup`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
