@@ -11,6 +11,7 @@ import {
 import { listConfiguredAgents, narrowModel, narrowReasoningEffort, type CodingAgent } from "../../../modelCatalog.js";
 import type { PeonSocketFrame } from "../peonSocketProtocol.js";
 import type { ReverseCommandExecution, ReverseCommandHandler, ValidCommand } from "./reverseCommandChannel.js";
+import type { ReverseCommandHandlersFor } from "./reverseCommandOperations.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const MAX_PROMPT_BYTES = 32 * 1024;
@@ -227,9 +228,27 @@ export function validSessionCommandExecution(command: ValidCommand, execution: R
 export function sessionCommandHandlers(
   service: SessionJsonService = sessions,
   options: { fileTransferRoot?: () => string | undefined } = {},
-): Record<string, ReverseCommandHandler> {
+): Omit<ReverseCommandHandlersFor<"session">, "session.cancel"> {
   const sessionRequired = (payload: PeonSocketFrame, expected: PeonSocketFrame | null) =>
     expected === null ? null : "operation requires no expected state";
+  // Both queue-item commands differ only in the service call they make. They are
+  // spelled out as literal keys rather than generated, because a key produced by
+  // Object.fromEntries is invisible to the operation union that types this table
+  // — the two commands were covered, but nothing could prove it.
+  const queueItemHandler = (
+    act: (sessionId: string, itemId: string) => "sent" | "removed" | "not_found" | "unknown_session",
+  ): ReverseCommandHandler => ({
+    validate: (payload, expected) =>
+      sessionRequired(payload, expected) ?? (strict(payload, ["itemId"]) && typeof payload.itemId === "string"
+        && UUID.test(payload.itemId) ? null : "invalid queue item"),
+    execute: (command) => {
+      const itemId = command.payload.itemId as string;
+      const result = act(targetSession(command)!, itemId);
+      if (result === "unknown_session") return rejected("UNKNOWN_SESSION");
+      if (result === "not_found") return rejected("UNKNOWN_QUEUE_ITEM");
+      return publicResult({ sessionId: targetSession(command)!, itemId });
+    },
+  });
   return {
     "session.detail": {
       validate: (payload, expected) =>
@@ -314,18 +333,8 @@ export function sessionCommandHandlers(
         });
       },
     },
-    ...Object.fromEntries(["remove", "send-now"].map((action) => [`session.queue.${action}`, {
-      validate: (payload: PeonSocketFrame, expected: PeonSocketFrame | null) =>
-        sessionRequired(payload, expected) ?? (strict(payload, ["itemId"]) && typeof payload.itemId === "string" && UUID.test(payload.itemId) ? null : "invalid queue item"),
-      execute: (command: ValidCommand) => {
-        const result = action === "remove"
-          ? service.removeQueued(targetSession(command)!, command.payload.itemId as string)
-          : service.sendQueuedNow(targetSession(command)!, command.payload.itemId as string);
-        if (result === "unknown_session") return rejected("UNKNOWN_SESSION");
-        if (result === "not_found") return rejected("UNKNOWN_QUEUE_ITEM");
-        return publicResult({ sessionId: targetSession(command)!, itemId: command.payload.itemId as string });
-      },
-    } satisfies ReverseCommandHandler])),
+    "session.queue.remove": queueItemHandler((sessionId, itemId) => service.removeQueued(sessionId, itemId)),
+    "session.queue.send-now": queueItemHandler((sessionId, itemId) => service.sendQueuedNow(sessionId, itemId)),
     "session.metadata.patch": {
       validate: (payload, expected) => sessionRequired(payload, expected)
         ?? (strict(payload, ["title"]) && boundedText(payload.title, MAX_TITLE_BYTES, true) ? null : "invalid metadata patch"),

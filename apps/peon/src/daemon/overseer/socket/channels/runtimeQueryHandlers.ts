@@ -3,6 +3,7 @@ import { analyticsForSessions, parseSessionAnalyticsQuery, SessionAnalyticsQuery
 import { sessions } from "../../../sessions/index.js";
 import type { PeonSocketFrame } from "../peonSocketProtocol.js";
 import type { ReverseCommandExecution, ReverseCommandHandler, ValidCommand } from "./reverseCommandChannel.js";
+import type { ReverseCommandHandlersFor } from "./reverseCommandOperations.js";
 
 const PERIODS = new Set(["day", "yesterday", "week", "month"]);
 const PROVIDERS = new Set(["claude-code", "codex"]);
@@ -42,7 +43,7 @@ function handler(execute: (command: ValidCommand) => Promise<ReverseCommandExecu
   };
 }
 
-export function runtimeQueryHandlers(): Record<string, ReverseCommandHandler> {
+export function runtimeQueryHandlers(): ReverseCommandHandlersFor<"runtime"> {
   return {
     "runtime.stats": handler((command) => {
       const period = payload(command).period;

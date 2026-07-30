@@ -240,6 +240,23 @@ export function validSessionCommandExecution(command, execution) {
 }
 export function sessionCommandHandlers(service = sessions, options = {}) {
     const sessionRequired = (payload, expected) => expected === null ? null : "operation requires no expected state";
+    // Both queue-item commands differ only in the service call they make. They are
+    // spelled out as literal keys rather than generated, because a key produced by
+    // Object.fromEntries is invisible to the operation union that types this table
+    // — the two commands were covered, but nothing could prove it.
+    const queueItemHandler = (act) => ({
+        validate: (payload, expected) => sessionRequired(payload, expected) ?? (strict(payload, ["itemId"]) && typeof payload.itemId === "string"
+            && UUID.test(payload.itemId) ? null : "invalid queue item"),
+        execute: (command) => {
+            const itemId = command.payload.itemId;
+            const result = act(targetSession(command), itemId);
+            if (result === "unknown_session")
+                return rejected("UNKNOWN_SESSION");
+            if (result === "not_found")
+                return rejected("UNKNOWN_QUEUE_ITEM");
+            return publicResult({ sessionId: targetSession(command), itemId });
+        },
+    });
     return {
         "session.detail": {
             validate: (payload, expected) => sessionRequired(payload, expected) ?? (strict(payload, []) ? null : "session detail requires an empty payload"),
@@ -324,19 +341,8 @@ export function sessionCommandHandlers(service = sessions, options = {}) {
                 });
             },
         },
-        ...Object.fromEntries(["remove", "send-now"].map((action) => [`session.queue.${action}`, {
-                validate: (payload, expected) => sessionRequired(payload, expected) ?? (strict(payload, ["itemId"]) && typeof payload.itemId === "string" && UUID.test(payload.itemId) ? null : "invalid queue item"),
-                execute: (command) => {
-                    const result = action === "remove"
-                        ? service.removeQueued(targetSession(command), command.payload.itemId)
-                        : service.sendQueuedNow(targetSession(command), command.payload.itemId);
-                    if (result === "unknown_session")
-                        return rejected("UNKNOWN_SESSION");
-                    if (result === "not_found")
-                        return rejected("UNKNOWN_QUEUE_ITEM");
-                    return publicResult({ sessionId: targetSession(command), itemId: command.payload.itemId });
-                },
-            }])),
+        "session.queue.remove": queueItemHandler((sessionId, itemId) => service.removeQueued(sessionId, itemId)),
+        "session.queue.send-now": queueItemHandler((sessionId, itemId) => service.sendQueuedNow(sessionId, itemId)),
         "session.metadata.patch": {
             validate: (payload, expected) => sessionRequired(payload, expected)
                 ?? (strict(payload, ["title"]) && boundedText(payload.title, MAX_TITLE_BYTES, true) ? null : "invalid metadata patch"),

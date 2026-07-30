@@ -2,6 +2,7 @@ import type { ArmoryApiServices, ArmoryInventoryReader } from "../../../armory/i
 import { ArmoryOperationError } from "../../../armory/index.js";
 import type { PeonSocketFrame } from "../peonSocketProtocol.js";
 import type { ReverseCommandExecution, ReverseCommandHandler, ValidCommand } from "./reverseCommandChannel.js";
+import type { ReverseCommandHandlersFor } from "./reverseCommandOperations.js";
 
 const MAX_RESULT_BYTES = 48 * 1024;
 
@@ -93,7 +94,7 @@ function handler(
   };
 }
 
-export function armoryCommandHandlers(services: ArmoryReverseServices): Record<string, ReverseCommandHandler> {
+export function armoryCommandHandlers(services: ArmoryReverseServices): ReverseCommandHandlersFor<"armory"> {
   const packageCommand = (run: (id: string) => Promise<unknown>) => handler(packageTarget, async (command) => ({
     operation: safeOperation(await run(packageId(command))),
   }));

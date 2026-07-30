@@ -10,6 +10,7 @@ import {
 } from "../../../updateRuntimeIdentity.js";
 import { updateChecker } from "../../../updateChecker.js";
 import type { ReverseCommandExecution, ReverseCommandHandler } from "./reverseCommandChannel.js";
+import type { ReverseCommandHandlersFor } from "./reverseCommandOperations.js";
 
 const PACKAGE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "..");
 
@@ -81,7 +82,7 @@ export async function waitForUpdateReplacement(
   return { status: "failed", code: "RESTART_TIMEOUT" };
 }
 
-export function updateCommandHandlers(): Record<string, ReverseCommandHandler> {
+export function updateCommandHandlers(): ReverseCommandHandlersFor<"update"> {
   return {
     "update.check": {
       priority: "control", maxConcurrency: 1,

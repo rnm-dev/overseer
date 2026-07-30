@@ -13,6 +13,7 @@ import type {
   ValidCommand,
 } from "./reverseCommandChannel.js";
 import type { PeonSocketFrame } from "../peonSocketProtocol.js";
+import type { ReverseCommandHandlersFor } from "./reverseCommandOperations.js";
 
 const service = createProjectService(projectStore, {
   list: () => sessions.list(),
@@ -162,7 +163,7 @@ function archiveHandler(projectService: ProjectService, archived: boolean): Reve
   };
 }
 
-export function projectCommandHandlers(projectService: ProjectService = service): Record<string, ReverseCommandHandler> {
+export function projectCommandHandlers(projectService: ProjectService = service): ReverseCommandHandlersFor<"project"> {
   return {
     "project.create": define(
       (payload, expected) => strict(payload, ["label", "dir"]) && typeof payload.label === "string"
