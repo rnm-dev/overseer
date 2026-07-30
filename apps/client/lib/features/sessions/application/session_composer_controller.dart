@@ -27,6 +27,50 @@ final sessionComposerControllerProvider = AsyncNotifierProvider.autoDispose
 
 enum QueuedFollowupAction { editing, removing, sending }
 
+/// A committed turn that never reaches the transcript must not leave the ghost
+/// hovering under it forever.
+const _ghostMaxLifetime = Duration(seconds: 60);
+
+/// An attachment the operator sent, as far as the ghost needs to describe it.
+/// The bytes are deliberately not retained.
+class ComposerGhostAttachment {
+  const ComposerGhostAttachment({
+    required this.name,
+    required this.type,
+    this.size,
+  });
+
+  final String name;
+  final String type;
+  final int? size;
+}
+
+/// The message the operator has sent that Peon has not committed back yet.
+///
+/// It is deliberately not a transcript row: the transcript stays Peon's alone,
+/// and this is a single placeholder rendered after it. It retires as soon as the
+/// transcript shows more user messages than [baselineUserMessages] did when the
+/// send started. Counting is deliberate — Overseer derives its own command id
+/// for a follow-up, so a client cannot recognise its own message in the
+/// transcript, and matching one by payload is a guess. A count cannot mistake
+/// one message for another; at worst two operators send at once and this ghost
+/// retires on the other's row, one beat before its own arrives.
+class ComposerGhost {
+  const ComposerGhost({
+    required this.text,
+    required this.attachments,
+    required this.createdAt,
+    required this.baselineUserMessages,
+  });
+
+  final String text;
+  final List<ComposerGhostAttachment> attachments;
+  final double createdAt;
+  final int baselineUserMessages;
+
+  bool visibleAgainst(int userMessages) => userMessages <= baselineUserMessages;
+}
+
 class SessionComposerState {
   const SessionComposerState({
     required this.draft,
@@ -38,6 +82,7 @@ class SessionComposerState {
     this.model,
     this.reasoningEffort,
     this.sending = false,
+    this.ghost,
     this.submissionProgress,
     this.followupProgress,
     this.error,
@@ -53,6 +98,7 @@ class SessionComposerState {
   final String? model;
   final String? reasoningEffort;
   final bool sending;
+  final ComposerGhost? ghost;
   final NewSessionSubmissionProgress? submissionProgress;
   final FollowupSubmissionProgress? followupProgress;
   final String? error;
@@ -71,6 +117,8 @@ class SessionComposerState {
     bool clearModel = false,
     bool clearReasoningEffort = false,
     bool? sending,
+    ComposerGhost? ghost,
+    bool clearGhost = false,
     NewSessionSubmissionProgress? submissionProgress,
     bool clearSubmissionProgress = false,
     FollowupSubmissionProgress? followupProgress,
@@ -92,6 +140,7 @@ class SessionComposerState {
           ? null
           : reasoningEffort ?? this.reasoningEffort,
       sending: sending ?? this.sending,
+      ghost: clearGhost ? null : ghost ?? this.ghost,
       submissionProgress: clearSubmissionProgress
           ? null
           : submissionProgress ?? this.submissionProgress,
@@ -121,7 +170,9 @@ class SessionComposerController extends AsyncNotifier<SessionComposerState> {
   bool _queueRefreshAgain = false;
   bool _queueAvailable = true;
   late AppScheduler _scheduler;
+  late AppClock _clock;
   late AppDiagnostics _diagnostics;
+  ScheduledTask? _ghostTimer;
 
   bool get _supportsQueue =>
       scope.sessionId != 'new-session' && _queueAvailable;
@@ -129,6 +180,7 @@ class SessionComposerController extends AsyncNotifier<SessionComposerState> {
   @override
   Future<SessionComposerState> build() async {
     _scheduler = ref.read(appSchedulerProvider);
+    _clock = ref.read(appClockProvider);
     _diagnostics = ref.read(appDiagnosticsProvider);
     final repository = ref.read(followupRepositoryProvider);
     final results = await Future.wait<Object?>([
@@ -173,6 +225,7 @@ class SessionComposerController extends AsyncNotifier<SessionComposerState> {
       _queueSubscription?.cancel();
       _retryTimer?.cancel();
       _queuePollTimer?.cancel();
+      _ghostTimer?.cancel();
     });
     return SessionComposerState(
       draft: draft,
@@ -236,8 +289,18 @@ class SessionComposerController extends AsyncNotifier<SessionComposerState> {
     );
   }
 
+  void _scheduleGhostExpiry() {
+    _ghostTimer?.cancel();
+    _ghostTimer = _scheduler.schedule(_ghostMaxLifetime, () {
+      final latest = state.value;
+      if (latest?.ghost == null) return;
+      state = AsyncData(latest!.copyWith(clearGhost: true));
+    });
+  }
+
   Future<bool> submit({
     required bool running,
+    required int transcriptUserMessages,
     bool startNow = false,
     List<NewSessionAttachment> attachments = const [],
   }) async {
@@ -259,14 +322,34 @@ class SessionComposerController extends AsyncNotifier<SessionComposerState> {
     }
     _followupRequestId ??= _commandId();
     _followupPayloadIdentity = payloadIdentity;
+    // A queued follow-up is Peon's to pop when it is ready, and the queue widget
+    // already shows it. Only a turn that starts now gets a ghost.
+    final ghost = running && !startNow
+        ? null
+        : ComposerGhost(
+            text: prompt.isEmpty ? '(see attachments)' : prompt,
+            attachments: [
+              for (final attachment in attachments)
+                ComposerGhostAttachment(
+                  name: attachment.name,
+                  type: attachment.type,
+                  size: attachment.bytes.length,
+                ),
+            ],
+            createdAt: _clock.now().millisecondsSinceEpoch.toDouble(),
+            baselineUserMessages: transcriptUserMessages,
+          );
     state = AsyncData(
       current.copyWith(
         draft: '',
         sending: true,
+        ghost: ghost,
+        clearGhost: ghost == null,
         clearError: true,
         clearFollowupProgress: true,
       ),
     );
+    if (ghost != null) _scheduleGhostExpiry();
     try {
       final result = await ref
           .read(followupRepositoryProvider)
@@ -300,6 +383,7 @@ class SessionComposerController extends AsyncNotifier<SessionComposerState> {
         latest.copyWith(
           draft: current.draft,
           sending: false,
+          clearGhost: true,
           clearFollowupProgress: true,
           error: error.message,
         ),
@@ -321,6 +405,7 @@ class SessionComposerController extends AsyncNotifier<SessionComposerState> {
         latest.copyWith(
           draft: current.draft,
           sending: false,
+          clearGhost: true,
           clearFollowupProgress: true,
           error: 'Message could not be sent.',
         ),

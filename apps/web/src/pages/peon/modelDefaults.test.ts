@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { inheritedModelId, type ModelsCatalog } from "./models";
+import { inheritedModelId, pickerEntries, type CatalogOption, type ModelsCatalog } from "./models";
 
 const catalog = (defaultModel: string | null): ModelsCatalog => ({
   defaultAgent: "claude-code",
@@ -52,4 +52,50 @@ test("the fleet-wide default model only speaks for the provider it belongs to", 
   const plain = { ...providerOf(c, "claude-code")!, models: [{ id: "claude-sonnet-5", label: "Sonnet 5", alias: "sonnet" }] };
   assert.equal(inheritedModelId(c, plain, null), "claude-sonnet-5");
   assert.equal(inheritedModelId(c, { ...plain, models: [{ id: "claude-sonnet-5", label: "Sonnet 5", alias: "sonnet" }] }, "opus"), "opus");
+});
+
+const models: CatalogOption[] = [
+  { id: "gpt-5.6-sol", label: "5.6 Sol" },
+  { id: "gpt-5.6-terra", label: "5.6 Terra" },
+];
+const entries = (value: string, opts: { defaultId?: string; allowClear?: boolean } = {}) =>
+  pickerEntries(models, value, {
+    defaultId: opts.defaultId,
+    defaultLabel: "Default",
+    allowClear: opts.allowClear ?? true,
+    markDefault: (name) => `${name} (Default)`,
+  });
+
+test("the inherited option is listed once rather than as a reset entry beside itself", () => {
+  assert.deepEqual(entries("", { defaultId: "gpt-5.6-sol" }).map((e) => e.label), ["5.6 Sol (Default)", "5.6 Terra"]);
+});
+
+test("an empty value selects the inherited option, and picking it stays uncommitted", () => {
+  const [inherited, other] = entries("", { defaultId: "gpt-5.6-sol" });
+  assert.deepEqual([inherited.active, other.active], [true, false]);
+  assert.equal(inherited.name, "5.6 Sol");
+  assert.equal(inherited.value, "");
+  assert.equal(other.value, "gpt-5.6-terra");
+});
+
+test("a picker with nothing to reset to pins the default it marks", () => {
+  const [inherited] = entries("", { defaultId: "gpt-5.6-sol", allowClear: false });
+  assert.equal(inherited.value, "gpt-5.6-sol");
+});
+
+test("an explicit value wins over the inherited option", () => {
+  assert.deepEqual(entries("gpt-5.6-terra", { defaultId: "gpt-5.6-sol" }).map((e) => e.active), [false, true]);
+});
+
+test("a picker with no known default keeps its plain reset entry", () => {
+  const rows = entries("");
+  assert.deepEqual(rows.map((e) => e.label), ["Default", "5.6 Sol", "5.6 Terra"]);
+  assert.deepEqual([rows[0].value, rows[0].active], ["", true]);
+  assert.deepEqual(entries("", { allowClear: false }).map((e) => e.label), ["5.6 Sol", "5.6 Terra"]);
+});
+
+test("an alias names the same default as the id", () => {
+  const aliased: CatalogOption[] = [{ id: "claude-opus-5", label: "Opus 5", alias: "opus" }];
+  const rows = pickerEntries(aliased, "", { defaultId: "opus", defaultLabel: "Default", allowClear: true, markDefault: (n) => `${n} (Default)` });
+  assert.deepEqual(rows.map((e) => e.label), ["Opus 5 (Default)"]);
 });

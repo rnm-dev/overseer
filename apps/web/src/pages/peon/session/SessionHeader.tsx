@@ -53,24 +53,39 @@ interface SessionHeaderIdentityProps {
   cancelRename: () => void;
 }
 
+// What the session index already knows about a session, which is everything the
+// sidebar row renders without a round trip.
+export interface IndexedSessionIdentity {
+  title?: string | null;
+  promptPreview?: string | null;
+  projectKey?: string | null;
+}
+
 export function sessionHeaderIdentityData(
   loadedMetadataKey: string | null,
   sessionKey: string,
   title: string | null,
   openingMessage: string | null,
-  indexedTitle: string | null | undefined,
+  projectKey: string | null,
+  indexed: IndexedSessionIdentity | undefined,
 ): {
   title: string | null;
   openingMessage: string | null;
+  projectKey: string | null;
   draft: string;
   metadataLoading: boolean;
 } {
   const metadataCurrent = loadedMetadataKey === sessionKey;
-  const displayTitle = metadataCurrent ? title : indexedTitle ?? null;
-  const displayOpeningMessage = metadataCurrent ? openingMessage : null;
+  // Name the session from the index rather than waiting for its record: the row
+  // the operator just clicked carries the same identity, and the record only
+  // corrects it. The skeleton is left for a session nothing has indexed yet.
+  const displayTitle = metadataCurrent ? title : indexed?.title ?? null;
+  const displayOpeningMessage = metadataCurrent ? openingMessage : indexed?.promptPreview?.trim() || null;
+  const displayProjectKey = metadataCurrent ? projectKey : indexed?.projectKey ?? null;
   return {
     title: displayTitle,
     openingMessage: displayOpeningMessage,
+    projectKey: displayProjectKey,
     draft: displayTitle ?? "",
     metadataLoading: !displayTitle && !displayOpeningMessage,
   };

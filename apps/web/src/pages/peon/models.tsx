@@ -8,9 +8,6 @@ import { useT } from "../../i18n";
 export interface CatalogOption {
   id: string;
   label: string;
-  // Optional shorter text for the closed trigger; menus can retain context
-  // such as the "(Default)" marker without making the toolbar wider.
-  triggerLabel?: string;
   alias?: string;
   // The peon marks its own pick within each provider's list (e.g. the model/
   // effort used when a session doesn't specify one) — this is the reliable
@@ -145,17 +142,56 @@ export function inheritedModelId(
   return global && provider?.models.some((model) => optionMatches(model, global)) ? global : null;
 }
 
+export interface PickerEntry {
+  // The plain option name, which is what the closed trigger shows.
+  name: string;
+  // The menu text, which marks the inherited option as the default.
+  label: string;
+  // What onChange receives when this entry is picked.
+  value: string;
+  active: boolean;
+}
+
+// One entry per actual choice. The option an empty value falls back to is
+// listed once and marked, rather than appearing both as a reset entry and again
+// in the list — those were the same choice under two names.
+export function pickerEntries(
+  options: CatalogOption[],
+  value: string,
+  { defaultId, defaultLabel = "", allowClear, markDefault }: {
+    defaultId?: string;
+    defaultLabel?: string;
+    allowClear: boolean;
+    markDefault: (name: string) => string;
+  },
+): PickerEntry[] {
+  const fallback = defaultId ? options.find((option) => optionMatches(option, defaultId)) : undefined;
+  const selected = value ? options.find((option) => optionMatches(option, value)) : fallback;
+  const entries = options.map((option) => ({
+    name: option.label,
+    label: option === fallback ? markDefault(option.label) : option.label,
+    // Picking the inherited option means "nothing of my own" wherever that is
+    // expressible, so the caller keeps following the peon instead of pinning
+    // whatever the default happens to be today.
+    value: option === fallback && allowClear ? "" : option.id,
+    active: option === selected,
+  }));
+  // Only a picker whose fallback isn't among the options needs a reset row.
+  if (allowClear && !fallback) entries.unshift({ name: defaultLabel, label: defaultLabel, value: "", active: !value });
+  return entries;
+}
+
 interface PickerProps {
   options: CatalogOption[];
   value: string;
   onChange: (v: string) => void;
-  // Only needed when allowClear is true — the label for the "reset" entry
-  // and the text shown while nothing is explicitly selected.
+  // The text shown while nothing is selected and nothing is known to be
+  // inherited — also the label of the reset entry in that case.
   defaultLabel?: string;
-  // The reset entry when it can say more than the trigger has room for —
-  // typically the inherited pick named as "{model} (Default)". Falls back to
-  // defaultLabel, which keeps the trigger compact.
-  defaultOptionLabel?: string;
+  // The option an empty value actually resolves to. It is listed once, marked
+  // "(Default)" and shown as selected while the value is empty, instead of a
+  // separate reset entry repeating it.
+  defaultId?: string;
   label?: string;
   // Keep the accessible name while allowing forms to render a conventional
   // label above the trigger instead of repeating it inside the trigger.
@@ -166,13 +202,19 @@ interface PickerProps {
   allowClear?: boolean;
 }
 
-export function Picker({ options, value, onChange, defaultLabel, defaultOptionLabel, label, inlineLabel = true, className = "", allowClear = true }: PickerProps) {
+export function Picker({ options, value, onChange, defaultLabel, defaultId, label, inlineLabel = true, className = "", allowClear = true }: PickerProps) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const [menuStyle, setMenuStyle] = useState<CSSProperties>({ visibility: "hidden" });
-  const selected = value ? options.find((option) => optionMatches(option, value)) : undefined;
-  const current = value ? selected?.triggerLabel ?? selected?.label ?? value : defaultLabel ?? value;
+  const entries = pickerEntries(options, value, {
+    defaultId,
+    defaultLabel,
+    allowClear,
+    markDefault: (name) => t("model.optionDefault", { name }),
+  });
+  const current = entries.find((entry) => entry.active)?.name ?? (value || defaultLabel);
 
   // The picker is used in a wrapping toolbar near the viewport edges. Portal
   // its menu and clamp it to the viewport instead of positioning it against a
@@ -240,19 +282,18 @@ export function Picker({ options, value, onChange, defaultLabel, defaultOptionLa
       </button>
       {open && createPortal(
         <div ref={menuRef} className="model-picker-menu model-picker-menu--floating" style={menuStyle} role="listbox">
-          {allowClear && (
-            <button type="button" className={`model-picker-option ${!value ? "is-active" : ""}`} onClick={() => choose("")} role="option" aria-selected={!value}>
-              {defaultOptionLabel ?? defaultLabel}
+          {entries.map((entry) => (
+            <button
+              key={entry.label}
+              type="button"
+              className={`model-picker-option ${entry.active ? "is-active" : ""}`}
+              onClick={() => choose(entry.value)}
+              role="option"
+              aria-selected={entry.active}
+            >
+              {entry.label}
             </button>
-          )}
-          {options.map((option) => {
-            const active = optionMatches(option, value);
-            return (
-              <button key={option.id} type="button" className={`model-picker-option ${active ? "is-active" : ""}`} onClick={() => choose(option.id)} role="option" aria-selected={active}>
-                {option.label}
-              </button>
-            );
-          })}
+          ))}
         </div>,
         document.body,
       )}
@@ -262,38 +303,21 @@ export function Picker({ options, value, onChange, defaultLabel, defaultOptionLa
 
 type CapabilityPickerProps = Omit<PickerProps, "options">;
 
-export function AgentSelect({ catalog, allowClear: _allowClear, ...props }: CapabilityPickerProps & { catalog: ModelsCatalog }) {
-  const t = useT();
-  // The peon always resolves to some agent when none is chosen, so a separate
-  // "reset to default" entry would just duplicate whichever provider that is.
-  // Mark that provider's own option instead of listing it twice. Prefer the
-  // peon-reported defaultAgent (settings.defaultAgent); older peons that omit
-  // it fall back to the defaultModel/providers[0] heuristic.
+export function AgentSelect({ catalog, allowClear: _allowClear, defaultId: _defaultId, ...props }: CapabilityPickerProps & { catalog: ModelsCatalog }) {
+  // A session always lands on some agent, so the peon's own pick is the
+  // default. Prefer the reported defaultAgent (settings.defaultAgent); older
+  // peons that omit it fall back to the defaultModel/providers[0] heuristic.
   const defaultAgent = catalog.defaultAgent ?? (providerForModel(catalog, catalog.defaultModel) ?? catalog.providers[0])?.agent;
-  const options = catalog.providers.map((p) => ({
-    id: p.agent,
-    label: p.agent === defaultAgent ? t("model.optionDefault", { name: p.label }) : p.label,
-    triggerLabel: p.label,
-  }));
-  return <Picker {...props} options={options} allowClear={false} />;
+  const options = catalog.providers.map((p) => ({ id: p.agent, label: p.label }));
+  return <Picker {...props} options={options} defaultId={defaultAgent} allowClear={false} />;
 }
 
-// defaultId, when it names one of the listed options, gets its label marked
-// "(Default)" instead of the caller showing a separate, redundant reset entry
-// (see AgentSelect). Omit it to keep the plain allowClear/defaultLabel reset
-// row — used where "reset" means something other than the peon-wide default
-// (e.g. a per-turn override falling back to the session's own default).
-export function ModelSelect({ provider, defaultId, ...props }: CapabilityPickerProps & { provider: ModelProvider | null; defaultId?: string }) {
-  const t = useT();
-  const options = (provider?.models ?? []).map((m) => (defaultId && (m.id === defaultId || m.alias === defaultId) ? { ...m, label: t("model.optionDefault", { name: m.label }), triggerLabel: m.label } : m));
-  return <Picker {...props} options={options} />;
+export function ModelSelect({ provider, ...props }: CapabilityPickerProps & { provider: ModelProvider | null }) {
+  return <Picker {...props} options={provider?.models ?? []} />;
 }
 
 // `model` scopes the options to what that model accepts on peons that advertise
 // efforts per model; omit it to offer the provider's whole list.
-export function ReasoningEffortSelect({ provider, defaultId, model, ...props }: CapabilityPickerProps & { provider: ModelProvider | null; defaultId?: string; model?: string | null }) {
-  const t = useT();
-  const options = (model !== undefined ? effortsForModel(provider, model) : provider?.reasoningEfforts ?? [])
-    .map((o) => (o.id === defaultId ? { ...o, label: t("model.optionDefault", { name: o.label }), triggerLabel: o.label } : o));
-  return <Picker {...props} options={options} />;
+export function ReasoningEffortSelect({ provider, model, ...props }: CapabilityPickerProps & { provider: ModelProvider | null; model?: string | null }) {
+  return <Picker {...props} options={model !== undefined ? effortsForModel(provider, model) : provider?.reasoningEfforts ?? []} />;
 }

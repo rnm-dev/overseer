@@ -381,6 +381,7 @@ class _SessionDetailPageState extends _SessionDetailAttachmentHost
                   else
                     _TranscriptBody(
                       transcript: transcript!,
+                      ghost: _visibleGhost(composerState, transcript!.value),
                       operator: ref.watch(authControllerProvider).session?.user,
                       viewers: viewers,
                       bottomPadding: math.max(24, _composerHeight + 4),
@@ -596,6 +597,23 @@ class _SessionDetailPageState extends _SessionDetailAttachmentHost
     setState(() => _composerHeight = height);
   }
 
+  static int _userMessageCount(List<TranscriptEvent>? events) =>
+      events?.where((event) => event.isUserMessage).length ?? 0;
+
+  /// The ghost is shown until the transcript grows past the count its send
+  /// captured. Nothing is matched by payload: the row that retires it need not
+  /// be the ghost's own, and it is never rendered as a transcript row.
+  static ComposerGhost? _visibleGhost(
+    SessionComposerState? composer,
+    TranscriptState? transcript,
+  ) {
+    final ghost = composer?.ghost;
+    if (ghost == null) return null;
+    return ghost.visibleAgainst(_userMessageCount(transcript?.events))
+        ? ghost
+        : null;
+  }
+
   void _insertDictation(String transcript) {
     if (!mounted || transcript.trim().isEmpty) return;
     _composerController.value = insertVoiceTranscript(
@@ -648,6 +666,9 @@ class _SessionDetailPageState extends _SessionDetailAttachmentHost
           running: running,
           startNow: startNow,
           attachments: _composerAttachments,
+          transcriptUserMessages: _userMessageCount(
+            ref.read(transcriptControllerProvider(transcriptScope)).value?.events,
+          ),
         );
     if (submitted && (!running || startNow)) {
       unawaited(

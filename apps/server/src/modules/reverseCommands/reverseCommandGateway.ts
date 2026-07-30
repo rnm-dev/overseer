@@ -56,6 +56,61 @@ const DEFAULT_WAIT_MS = 15_000;
 const MAX_WAIT_MS = 30_000;
 const MAX_SOCKET_BUFFER_BYTES = 4 * 1024 * 1024;
 
+// One entry per operation, keyed by the operation union so the compiler refuses
+// a command that never declared its payload. There is deliberately no fallback:
+// a missing entry must fail the build, not silently admit an empty payload.
+const PAYLOAD_FIELDS: Record<ReverseCommandOperation, readonly string[]> = {
+  "runtime.stats": ["period"],
+  "runtime.analytics": ["query"],
+  "runtime.quota": ["provider", "refresh"],
+  "runtime.capabilities": ["provider", "refresh"],
+  "daemon.configuration.patch": ["patch"],
+  "update.check": [],
+  "update.apply": ["force", "release"],
+  "project.create": ["label", "dir"],
+  "project.suggest-directory": ["label"],
+  "project.detail": [],
+  "project.settings.get": [],
+  "project.settings.update": ["key", "name", "dir"],
+  "project.delete": [],
+  "project.documentation.index": ["cursor", "limit"],
+  "project.documentation.read": ["path", "offset", "limit"],
+  "project.skills.list": [],
+  "project.quick-links.list": [],
+  "project.quick-links.create": ["title", "url"],
+  "project.quick-links.update": ["id", "title", "url"],
+  "project.quick-links.delete": ["id"],
+  "session.detail": [],
+  "session.cancel": [],
+  "session.start": ["prompt", "attachments", "permissionMode", "model", "reasoningEffort", "title", "projectId", "dir", "expectsOutcome", "agent"],
+  "session.followup": ["prompt", "attachments", "permissionMode", "model", "reasoningEffort"],
+  "session.queue.list": [],
+  "session.queue.add": ["prompt", "attachments", "permissionMode", "model", "reasoningEffort", "startNow"],
+  "session.queue.edit": ["itemId", "prompt"],
+  "session.queue.remove": ["itemId"],
+  "session.queue.send-now": ["itemId"],
+  "session.metadata.patch": ["title"],
+  "session.delete": [],
+  // Mirrors the per-operation contract Peon already enforces in
+  // armoryCommandHandlers.ts; the previous shared union admitted fields the
+  // daemon rejects, such as values on a lifecycle command.
+  "armory.inventory": ["q", "installedOnly", "limit", "cursor"],
+  "armory.refresh": [],
+  "armory.settings": [],
+  "armory.install": ["version"],
+  "armory.update": ["version"],
+  "armory.enable": [],
+  "armory.disable": [],
+  "armory.uninstall": [],
+  "armory.configure": ["values", "confirmHostWrites"],
+  "armory.verify": [],
+  "armory.configuration.delete": ["includeHost", "confirmHostWrites"],
+  "armory.package": [],
+  "armory.configuration": [],
+  "armory.mcp": [],
+  "armory.operation": [],
+};
+
 export interface SubmitReverseCommandInput {
   workspaceId: string;
   peonId: string;
@@ -444,40 +499,7 @@ export class ReverseCommandGateway {
     const armory = input.operation.startsWith("armory.");
     const update = input.operation.startsWith("update.");
     const project = input.operation.startsWith("project.");
-    const payloadFields: Record<string, readonly string[]> = {
-      "runtime.stats": ["period"],
-      "runtime.analytics": ["query"],
-      "runtime.quota": ["provider", "refresh"],
-      "runtime.capabilities": ["provider", "refresh"],
-      "update.check": [],
-      "update.apply": ["force", "release"],
-      "project.create": ["label", "dir"],
-      "project.suggest-directory": ["label"],
-      "project.detail": [],
-      "project.settings.get": [],
-      "project.settings.update": ["key", "name", "dir"],
-      "project.delete": [],
-      "project.documentation.index": ["cursor", "limit"],
-      "project.documentation.read": ["path", "offset", "limit"],
-      "project.skills.list": [],
-      "project.quick-links.list": [],
-      "project.quick-links.create": ["title", "url"],
-      "project.quick-links.update": ["id", "title", "url"],
-      "project.quick-links.delete": ["id"],
-      "session.detail": [],
-      "session.cancel": [],
-      "session.start": ["prompt", "attachments", "permissionMode", "model", "reasoningEffort", "title", "projectId", "dir", "expectsOutcome", "agent"],
-      "session.followup": ["prompt", "attachments", "permissionMode", "model", "reasoningEffort"],
-      "session.queue.list": [],
-      "session.queue.add": ["prompt", "attachments", "permissionMode", "model", "reasoningEffort", "startNow"],
-      "session.queue.edit": ["itemId", "prompt"],
-      "session.queue.remove": ["itemId"],
-      "session.queue.send-now": ["itemId"],
-      "session.metadata.patch": ["title"],
-      "session.delete": [],
-    };
-    strictObject(payload, configuration ? ["patch"] : runtime || update || project || session ? payloadFields[input.operation] ?? []
-      : armory ? ["q", "installedOnly", "limit", "cursor", "version", "values", "confirmHostWrites", "includeHost"] : [], "payload");
+    strictObject(payload, PAYLOAD_FIELDS[input.operation], "payload");
     if (session) {
       const bytes = (value: unknown, maximum: number, nullable = false): boolean =>
         (nullable && value === null)

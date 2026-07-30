@@ -37,13 +37,10 @@ export interface Ev {
   attachments?: MessageAttachment[];
   // Durable pagination identity on capable Peons. Legacy transcripts omit it.
   eventId?: string;
-  // Client-only reconciliation metadata. These fields are never sent back to
-  // Peon and flattenEvents intentionally ignores them.
+  // Client-only reconciliation metadata: where the live tail delivered this row.
+  // Never sent back to Peon, and flattenEvents intentionally ignores it.
   _tailEventId?: string;
   _tailId?: number;
-  _clientId?: string;
-  _optimistic?: boolean;
-  _baselineTailId?: number | null;
   [k: string]: unknown;
 }
 

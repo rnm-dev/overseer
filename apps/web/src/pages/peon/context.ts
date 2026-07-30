@@ -42,7 +42,9 @@ export interface PeonContext {
   viewersFor?: (peonId: string, sessionId: string) => PresenceUser[];
   renameSession?: (session: SessionLite, title: string | null) => Promise<void>;
   deleteSession?: (session: SessionLite) => Promise<void>;
-  selectedSessionTitle?: string | null;
+  // The indexed row for the session currently open, so its page can name it
+  // without waiting for the session record.
+  selectedSession?: SessionLite;
   sessionHref?: (peonId: string, sessionId: string) => string;
   sessionsHomeHref?: string;
   onSessionDeleted?: (peonId: string, sessionId: string) => void;

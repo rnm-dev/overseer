@@ -309,21 +309,37 @@ void main() {
       );
       await container.read(sessionComposerControllerProvider(scope).future);
 
-      expect(await controller.submit(running: true), isFalse);
-      expect(await controller.submit(running: true), isFalse);
+      expect(
+        await controller.submit(running: true, transcriptUserMessages: 0),
+        isFalse,
+      );
+      expect(
+        await controller.submit(running: true, transcriptUserMessages: 0),
+        isFalse,
+      );
       expect(
         repository.submissions[0].commandId,
         repository.submissions[1].commandId,
       );
 
       controller.selectModel('gpt-5');
-      expect(await controller.submit(running: true), isFalse);
+      expect(
+        await controller.submit(running: true, transcriptUserMessages: 0),
+        isFalse,
+      );
       expect(
         repository.submissions[2].commandId,
         isNot(repository.submissions[1].commandId),
       );
 
-      expect(await controller.submit(running: true, startNow: true), isFalse);
+      expect(
+        await controller.submit(
+          running: true,
+          startNow: true,
+          transcriptUserMessages: 0,
+        ),
+        isFalse,
+      );
       expect(
         repository.submissions[3].commandId,
         isNot(repository.submissions[2].commandId),
@@ -338,6 +354,7 @@ void main() {
         await controller.submit(
           running: true,
           startNow: true,
+          transcriptUserMessages: 0,
           attachments: [attachment],
         ),
         isFalse,
@@ -367,7 +384,10 @@ void main() {
       );
       await container.read(sessionComposerControllerProvider(scope).future);
 
-      final submission = controller.submit(running: false);
+      final submission = controller.submit(
+        running: false,
+        transcriptUserMessages: 0,
+      );
       final submitting = container
           .read(sessionComposerControllerProvider(scope))
           .requireValue;
@@ -396,7 +416,10 @@ void main() {
     );
     await container.read(sessionComposerControllerProvider(scope).future);
 
-    expect(await controller.submit(running: false), isFalse);
+    expect(
+      await controller.submit(running: false, transcriptUserMessages: 0),
+      isFalse,
+    );
     final failed = container
         .read(sessionComposerControllerProvider(scope))
         .requireValue;

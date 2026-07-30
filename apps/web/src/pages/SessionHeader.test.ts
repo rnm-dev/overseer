@@ -49,20 +49,41 @@ test("session identity reveals the project and title after metadata loads", () =
   assert.doesNotMatch(loaded, /aria-busy="true"/);
 });
 
-test("session identity uses the indexed title immediately without leaking previous metadata", () => {
+test("session identity uses the indexed row immediately without leaking previous metadata", () => {
   assert.deepEqual(
-    sessionHeaderIdentityData("peon-1:old", "peon-1:new", "Old title", "Old opening", "Indexed title"),
+    sessionHeaderIdentityData("peon-1:old", "peon-1:new", "Old title", "Old opening", "old-project", {
+      title: "Indexed title",
+      promptPreview: "Indexed opening",
+      projectKey: "overseer",
+    }),
     {
       title: "Indexed title",
-      openingMessage: null,
+      openingMessage: "Indexed opening",
+      projectKey: "overseer",
       draft: "Indexed title",
       metadataLoading: false,
     },
   );
-  assert.equal(sessionHeaderIdentityData("peon-1:old", "peon-1:new", "Old title", "Old opening", undefined).metadataLoading, true);
-  assert.equal(sessionHeaderIdentityData("peon-1:new", "peon-1:new", null, null, "Stale indexed title").metadataLoading, true);
-  assert.equal(sessionHeaderIdentityData("peon-1:new", "peon-1:new", "Named session", null, undefined).metadataLoading, false);
-  assert.equal(sessionHeaderIdentityData("peon-1:new", "peon-1:new", null, "Opening request", undefined).metadataLoading, false);
+  // An untitled session is named by its indexed opening message, so it shows
+  // the same thing the sidebar row does instead of a shimmer.
+  assert.deepEqual(
+    sessionHeaderIdentityData("peon-1:old", "peon-1:new", "Old title", "Old opening", "old-project", { promptPreview: "  Fix the header  " }),
+    {
+      title: null,
+      openingMessage: "Fix the header",
+      projectKey: null,
+      draft: "",
+      metadataLoading: false,
+    },
+  );
+  assert.equal(sessionHeaderIdentityData("peon-1:old", "peon-1:new", "Old title", "Old opening", "old-project", undefined).metadataLoading, true);
+  assert.equal(sessionHeaderIdentityData("peon-1:old", "peon-1:new", "Old title", "Old opening", "old-project", {}).metadataLoading, true);
+  assert.equal(sessionHeaderIdentityData("peon-1:new", "peon-1:new", null, null, "overseer", { title: "Stale indexed title" }).metadataLoading, true);
+  assert.equal(sessionHeaderIdentityData("peon-1:new", "peon-1:new", "Named session", null, null, undefined).metadataLoading, false);
+  assert.equal(sessionHeaderIdentityData("peon-1:new", "peon-1:new", null, "Opening request", null, undefined).metadataLoading, false);
+  // Once the record is loaded it is the only source — a stale indexed project
+  // never survives a session whose record no longer carries one.
+  assert.equal(sessionHeaderIdentityData("peon-1:new", "peon-1:new", "Named session", null, null, { projectKey: "overseer" }).projectKey, null);
 
   const waitingForDisplayTitle = renderToStaticMarkup(React.createElement(
     I18nProvider,

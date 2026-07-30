@@ -3,9 +3,9 @@ import { createPortal } from "react-dom";
 import { useNavigate, useParams } from "react-router";
 import { api, ApiError, isPeonNeedsUpdate } from "../../api";
 import { documentPresence } from "./sessionAttentionRead";
-import { useAuth } from "../../auth";
 import { useI18n } from "../../i18n";
 import { useLiveSocket } from "../../liveSocket";
+import { useAuth } from "../../auth";
 import { usePeon } from "./context";
 import { defaultModelId, modelLabel, optionMatches, providerForAgent, providerForModel, reasoningEffortLabel, useModels } from "./models";
 import {
@@ -16,7 +16,7 @@ import {
   workingActivity,
   type MessageAttachment,
 } from "./session/parsing";
-import { ItemView, Working } from "./session/messageParts";
+import { ItemView, UserBubble, Working } from "./session/messageParts";
 import { createQueueActivityTracker, createQueueReconciler } from "./session/queue";
 import { combineVisibleTranscriptEvents } from "./session/transcriptMerge";
 import { shouldAutoLoadOlder } from "./session/transcriptPagination";
@@ -59,7 +59,7 @@ function storeFilePaneState(pageKey: string, open: boolean) {
 export function PeonSessionDetail() {
   const { locale, t } = useI18n();
   const { user } = useAuth();
-  const { peon, base, wsId, orderedSessionIds, selectedSessionTitle, sessionHref, sessionsHomeHref, onSessionDeleted, onSessionRunningChange } = usePeon();
+  const { peon, base, wsId, orderedSessionIds, selectedSession, sessionHref, sessionsHomeHref, onSessionDeleted, onSessionRunningChange } = usePeon();
   const { sid = "" } = useParams();
   const { subscribe, viewersFor } = useLiveSocket();
   const navigate = useNavigate();
@@ -108,11 +108,12 @@ export function PeonSessionDetail() {
   // Sidebar mutations update the shared indexed summary immediately. Mirror a
   // renamed selected session into the header without waiting for the next
   // metadata refresh or durable catalog event.
+  const indexedTitle = selectedSession?.title;
   useEffect(() => {
-    if (selectedSessionTitle === undefined) return;
-    setTitle(selectedSessionTitle);
-    if (!editing) setDraft(selectedSessionTitle ?? "");
-  }, [editing, selectedSessionTitle, sessionKey]);
+    if (indexedTitle === undefined) return;
+    setTitle(indexedTitle);
+    if (!editing) setDraft(indexedTitle ?? "");
+  }, [editing, indexedTitle, sessionKey]);
 
 
   // Session default model (null ⇒ follows the peon's global default). Comes
@@ -287,10 +288,6 @@ export function PeonSessionDetail() {
     loadingOlder,
     olderLoadError,
     loadOlder,
-    setLive,
-    pendingEchoesRef,
-    historyReadyRef,
-    tailHighWaterRef,
   } = useSessionTranscript({
     base,
     sid,
@@ -342,8 +339,17 @@ export function PeonSessionDetail() {
   }, [handleLoadOlder, hasOlder]);
 
   const transcriptRef = useRef<HTMLDivElement>(null);
+  const visibleEvents = useMemo(
+    () => combineVisibleTranscriptEvents(history ?? [], orderedLive),
+    [history, orderedLive],
+  );
+  // The composer's ghost retires as soon as this grows past what it captured.
+  const userMessageCount = useMemo(
+    () => visibleEvents.reduce((count, event) => count + (event.type === "user_message" ? 1 : 0), 0),
+    [visibleEvents],
+  );
   const {
-    input, setInput, files, setFiles, sending, sendError, setSendError,
+    input, setInput, files, setFiles, sending, sendError, setSendError, ghost,
     queueItems, removingQueueItems, sendingQueueItems, filesEnabled, send, enqueue, removeQueuedItem, sendQueuedItemNow,
   } = useSessionComposer({
     base,
@@ -351,7 +357,6 @@ export function PeonSessionDetail() {
     sessionKey,
     wsId,
     peonId: peon.peonId,
-    user,
     t,
     running,
     runningModel,
@@ -366,11 +371,8 @@ export function PeonSessionDetail() {
     currentSessionKeyRef,
     queueReconcilerRef,
     queueActivity: queueActivityRef.current,
-    pendingEchoesRef,
-    historyReadyRef,
-    tailHighWaterRef,
+    userMessageCount,
     stickToBottomRef,
-    setLive,
     setRunning,
     setRunningSelection,
     setStopNote,
@@ -494,10 +496,6 @@ export function PeonSessionDetail() {
 
   const { showScrollToBottom, scrollToBottom } = useScrollToBottom(stickToBottomRef, history, live, transcriptRef, sessionKey);
   // What the agent is doing right now, from the freshest event (live wins over history).
-  const visibleEvents = useMemo(
-    () => combineVisibleTranscriptEvents(history ?? [], orderedLive),
-    [history, orderedLive],
-  );
   const lastEvent = visibleEvents.length ? visibleEvents[visibleEvents.length - 1] : undefined;
   const working = workingActivity(lastEvent);
   const workingStepKey = lastEvent
@@ -563,7 +561,8 @@ export function PeonSessionDetail() {
     sessionKey,
     title,
     openingMessage,
-    selectedSessionTitle,
+    projectKey,
+    selectedSession,
   );
 
   return (
@@ -571,7 +570,7 @@ export function PeonSessionDetail() {
       <SessionHeader
         peonId={peon.peonId}
         metadataLoading={headerIdentity.metadataLoading}
-        projectKey={loadedMetadataKey === sessionKey ? projectKey : null}
+        projectKey={headerIdentity.projectKey}
         title={headerIdentity.title}
         draft={loadedMetadataKey === sessionKey ? draft : headerIdentity.draft}
         setDraft={setDraft}
@@ -640,10 +639,25 @@ export function PeonSessionDetail() {
                 />
               </div>
             ))}
+            {ghost && (
+              <div
+                data-session-ghost-row
+                className={`${items.length === 0 ? "" : gapClass(items[items.length - 1].kind === "user", true)} session-ghost`}
+              >
+                <UserBubble
+                  text={ghost.text}
+                  authorEmail={user?.email}
+                  authorGithubLogin={user?.githubLogin ?? undefined}
+                  authorAvatarUrl={user?.avatarUrl ?? undefined}
+                  attachments={ghost.attachments}
+                  createdAt={ghost.createdAt}
+                />
+              </div>
+            )}
             {liveWork && (
               <div
                 data-session-running-row
-                className={items.length === 0 ? "" : gapClass(items[items.length - 1].kind === "user", false)}
+                className={items.length === 0 && !ghost ? "" : gapClass(ghost ? true : items[items.length - 1].kind === "user", false)}
               >
                 <Working
                   key={workingStepKey}

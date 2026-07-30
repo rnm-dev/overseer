@@ -161,7 +161,7 @@ export function WorkspaceSessions() {
     reload: reloadActivePeon,
     isOwner,
     orderedSessionIds: activePeonSessionIds,
-    selectedSessionTitle: sessions.find((session) => session.peonId === peonId && session.id === sid)?.title,
+    selectedSession: sessions.find((session) => session.peonId === peonId && session.id === sid),
     sessionHref: (nextPeonId, sessionId) => `/workspaces/${encodeURIComponent(workspaceId)}/sessions/${encodeURIComponent(nextPeonId)}/${encodeURIComponent(sessionId)}`,
     sessionsHomeHref: `/workspaces/${encodeURIComponent(workspaceId)}/sessions`,
     onSessionDeleted: (deletedPeonId, sessionId) => {

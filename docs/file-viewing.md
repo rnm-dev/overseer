@@ -26,8 +26,8 @@ follows it cannot drift apart.
 The Peon's file transfer API is rooted at `fileTransferRoot`, so every path
 under `/files/...` is relative to that sandbox. A transcript, however, carries
 the *absolute* path the agent reads (`AttachmentInfo.path`) — which is all a
-client has for any message it did not just send itself, its own optimistic echo
-being the only place the relative upload path survives. Joining that absolute
+client ever has, because no surface renders a message before Peon commits it, so
+the relative upload path never survives into a rendered row. Joining that absolute
 path onto `/files/` produced `/files//tmp/peon-files/...`, which the Peon
 resolved inside the root a second time and answered `404`; the symptom was that
 attachments from other participants never opened.

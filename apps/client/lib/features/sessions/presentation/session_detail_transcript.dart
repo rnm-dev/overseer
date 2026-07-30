@@ -3,6 +3,7 @@ part of 'session_detail_page.dart';
 class _TranscriptBody extends StatefulWidget {
   const _TranscriptBody({
     required this.transcript,
+    required this.ghost,
     required this.operator,
     required this.viewers,
     required this.bottomPadding,
@@ -18,6 +19,7 @@ class _TranscriptBody extends StatefulWidget {
   });
 
   final AsyncValue<TranscriptState> transcript;
+  final ComposerGhost? ghost;
   final OperatorIdentity? operator;
   final List<PresenceViewer> viewers;
   final double bottomPadding;
@@ -71,6 +73,7 @@ class _TranscriptBodyState extends State<_TranscriptBody> {
     super.didUpdateWidget(oldWidget);
     final transcriptChanged =
         oldWidget.transcript.value != widget.transcript.value ||
+        oldWidget.ghost != widget.ghost ||
         oldWidget.showWorking != widget.showWorking;
     if (!transcriptChanged || !_scrollController.hasClients) return;
 
@@ -129,7 +132,9 @@ class _TranscriptBodyState extends State<_TranscriptBody> {
             if (state.events.isEmpty && state.isRefreshing) {
               return const SizedBox.expand();
             }
-            if (state.events.isEmpty && !widget.showWorking) {
+            if (state.events.isEmpty &&
+                !widget.showWorking &&
+                widget.ghost == null) {
               return _TranscriptEmpty(
                 message: state.message,
                 onRetry: widget.onRefresh,
@@ -138,13 +143,17 @@ class _TranscriptBodyState extends State<_TranscriptBody> {
             final items = flattenTranscriptEvents(state.events);
             final hasTopControl = state.hasOlder || state.message != null;
             final hasWorking = widget.showWorking;
+            final ghost = widget.ghost;
+            // The list is reversed, so leading indices are the newest rows: the
+            // working indicator sits below the ghost, which sits below the last
+            // committed message.
+            final leading = (hasWorking ? 1 : 0) + (ghost != null ? 1 : 0);
             return ListView.builder(
               key: const Key('transcript-list'),
               controller: _scrollController,
               reverse: true,
               padding: EdgeInsets.fromLTRB(16, 16, 12, widget.bottomPadding),
-              itemCount:
-                  items.length + (hasTopControl ? 1 : 0) + (hasWorking ? 1 : 0),
+              itemCount: items.length + (hasTopControl ? 1 : 0) + leading,
               itemBuilder: (context, index) {
                 if (hasWorking && index == 0) {
                   return Padding(
@@ -155,7 +164,14 @@ class _TranscriptBodyState extends State<_TranscriptBody> {
                     child: _workingContent(state.events.lastOrNull),
                   );
                 }
-                final dataIndex = index - (hasWorking ? 1 : 0);
+                if (ghost != null && index == (hasWorking ? 1 : 0)) {
+                  return _TranscriptGhost(
+                    ghost: ghost,
+                    operator: widget.operator,
+                    topGap: items.isEmpty ? 0 : 16,
+                  );
+                }
+                final dataIndex = index - leading;
                 if (dataIndex == items.length) {
                   return _TranscriptHistoryControl(
                     state: state,
@@ -541,6 +557,70 @@ class _TranscriptHistoryControl extends StatelessWidget {
           child: Text(state.hasOlder ? 'Load older events' : 'Retry'),
         ),
       ],
+    );
+  }
+}
+
+/// The operator's own message, shown before Peon has committed it back. It
+/// reuses the ordinary user bubble so the row it is replaced by looks the same,
+/// and says it is not committed by being dimmed and breathing.
+class _TranscriptGhost extends StatefulWidget {
+  const _TranscriptGhost({
+    required this.ghost,
+    required this.operator,
+    required this.topGap,
+  });
+
+  final ComposerGhost ghost;
+  final OperatorIdentity? operator;
+  final double topGap;
+
+  @override
+  State<_TranscriptGhost> createState() => _TranscriptGhostState();
+}
+
+class _TranscriptGhostState extends State<_TranscriptGhost>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _breath = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _breath.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final item = TranscriptUserItem(
+      key: 'composer-ghost',
+      text: widget.ghost.text,
+      authorEmail: widget.operator?.email,
+      authorGithubLogin: widget.operator?.githubLogin,
+      authorAvatarUrl: widget.operator?.avatarUrl,
+      attachments: [
+        for (final attachment in widget.ghost.attachments)
+          TranscriptAttachment(
+            type: attachment.type,
+            path: null,
+            name: attachment.name,
+            size: attachment.size,
+          ),
+      ],
+      createdAt: widget.ghost.createdAt,
+    );
+    return Padding(
+      key: const Key('transcript-ghost'),
+      padding: EdgeInsets.only(top: widget.topGap),
+      child: FadeTransition(
+        opacity: Tween<double>(
+          begin: 0.42,
+          end: 0.68,
+        ).animate(CurvedAnimation(parent: _breath, curve: Curves.easeInOut)),
+        child: TranscriptItemView(item: item, operator: widget.operator),
+      ),
     );
   }
 }

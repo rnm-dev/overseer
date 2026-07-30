@@ -4,12 +4,10 @@ import type { TailFrame } from "../../../liveSocket";
 import { isAgentWorkUpdate } from "../../../peonSounds";
 import { latestRunSignal, runSignalFromEvent, sig, type Ev } from "./parsing";
 import {
-  canLiveCommitPending,
   numericTailId,
   orderLiveEvents,
   reconcileAuthoritativeSnapshot,
   reconcileDurableSnapshot,
-  type PendingEcho,
 } from "./transcriptMerge";
 import type { PreviewTarget } from "./PreviewPanel";
 import {
@@ -76,15 +74,13 @@ export function useSessionTranscript({
   // means the snapshot has no durable one. Waiting closes the fetch→tail race
   // without replaying history. The boundary carries the session it was read from:
   // `sid` changes one render before the reset effect runs, and a boundary handed
-  // to the wrong session is unknown there, which makes Overseer replay a window
-  // this session never asked for.
+  // to the wrong session is unknown there, which makes Overseer replay the whole
+  // transcript rather than resume.
   const [tailStart, setTailStart] = useState<TailStart | null>(null);
-  const pendingEchoesRef = useRef<PendingEcho[]>([]);
   const historyReadyRef = useRef(false);
   const historyLengthRef = useRef(0);
   const loadedTranscriptRef = useRef<LoadedTranscript | null>(null);
   const historyEventIdsRef = useRef<Set<string>>(new Set());
-  const tailHighWaterRef = useRef(0);
   const seenTailIdsRef = useRef<Set<number>>(new Set());
   const seenTailEventIdsRef = useRef<Set<string>>(new Set());
   const seenRef = useRef<Set<string>>(new Set());
@@ -105,18 +101,16 @@ export function useSessionTranscript({
 
   if (reconciliationSessionRef.current !== sessionKey) {
     // Effects run after paint. Reset synchronously so an immediate submit on a
-    // new route cannot inherit the previous session's tail position or echoes.
+    // new route cannot inherit the previous session's tail position.
     reconciliationSessionRef.current = sessionKey;
     historyReadyRef.current = false;
     historyLengthRef.current = 0;
     loadedTranscriptRef.current = null;
     historyEventIdsRef.current = new Set();
-    tailHighWaterRef.current = 0;
     seenTailIdsRef.current = new Set();
     seenTailEventIdsRef.current = new Set();
     seenRef.current = new Set();
     pendingLiveRef.current = [];
-    pendingEchoesRef.current = [];
     lastTailActivityAtRef.current = Date.now();
     tailUnhealthyRef.current = false;
     lastFallbackReconcileAtRef.current = null;
@@ -126,67 +120,40 @@ export function useSessionTranscript({
     olderLoadControllerRef.current = null;
   }
 
-  const consumeOptimisticEcho = useCallback((event: Ev, tailId: number | null, tailEventId: string | null): boolean => {
-    const index = pendingEchoesRef.current.findIndex((pending) => canLiveCommitPending(event, pending, tailId, tailEventId));
-    if (index < 0) return false;
-    const pending = pendingEchoesRef.current[index]!;
-    pendingEchoesRef.current.splice(index, 1);
-    if (tailId !== null) seenTailIdsRef.current.add(tailId);
-    if (tailEventId !== null) seenTailEventIdsRef.current.add(tailEventId);
-    setLive((previous) => previous.map((current) => current._clientId === pending.clientId ? {
-      ...event,
-      author: event.authorEmail ?? current.authorEmail ?? event.author ?? current.author,
-      authorEmail: event.authorEmail ?? current.authorEmail,
-      authorGithubLogin: event.authorGithubLogin ?? current.authorGithubLogin,
-      authorAvatarUrl: event.authorAvatarUrl ?? current.authorAvatarUrl,
-      commandId: event.commandId ?? current.commandId,
-      createdAt: typeof event.createdAt === "number" ? event.createdAt : current.createdAt,
-      attachments: event.attachments ?? current.attachments,
-      _tailId: tailId ?? undefined,
-      _tailEventId: tailEventId ?? undefined,
-      _clientId: pending.clientId,
-      _optimistic: true,
-      _baselineTailId: pending.baselineTailId,
-    } : current));
-    return true;
+  // One freshness gate for every inbound frame: a reconnect replays frames this
+  // browser has already rendered, and a run signal or a sound must not fire for
+  // a turn that already happened.
+  const alreadyDelivered = useCallback((event: Ev, tailId: number | null, tailEventId: string | null): boolean => {
+    if (tailEventId !== null) return historyEventIdsRef.current.has(tailEventId) || seenTailEventIdsRef.current.has(tailEventId);
+    if (tailId !== null) return tailId <= historyLengthRef.current || seenTailIdsRef.current.has(tailId);
+    return seenRef.current.has(sig(event));
   }, []);
 
-  const pushLive = useCallback((event: Ev, tailId: number | null, tailEventId: string | null): boolean => {
-    if (tailEventId !== null) {
-      if (historyEventIdsRef.current.has(tailEventId) || seenTailEventIdsRef.current.has(tailEventId)) return false;
-      seenTailEventIdsRef.current.add(tailEventId);
-      setLive((previous) => [...previous, {
-        ...event,
-        _tailEventId: tailEventId,
-        createdAt: event.type === "user_message" && typeof event.createdAt !== "number" ? Date.now() : event.createdAt,
-      }]);
-      return true;
-    }
-    if (tailId !== null) {
-      if (tailId <= historyLengthRef.current || seenTailIdsRef.current.has(tailId)) return false;
-      seenTailIdsRef.current.add(tailId);
-      setLive((previous) => [...previous, {
-        ...event,
-        _tailId: tailId,
-        createdAt: event.type === "user_message" && typeof event.createdAt !== "number" ? Date.now() : event.createdAt,
-      }]);
-      return true;
-    }
-    const signature = sig(event);
-    if (seenRef.current.has(signature)) return false;
-    seenRef.current.add(signature);
-    setLive((previous) => [...previous, event]);
-    return true;
+  const markDelivered = useCallback((event: Ev, tailId: number | null, tailEventId: string | null): void => {
+    if (tailEventId !== null) seenTailEventIdsRef.current.add(tailEventId);
+    else if (tailId !== null) seenTailIdsRef.current.add(tailId);
+    else seenRef.current.add(sig(event));
+  }, []);
+
+  const appendLive = useCallback((event: Ev, tailId: number | null, tailEventId: string | null): void => {
+    setLive((previous) => [...previous, {
+      ...event,
+      ...(tailEventId !== null ? { _tailEventId: tailEventId } : {}),
+      ...(tailId !== null ? { _tailId: tailId } : {}),
+      createdAt: event.type === "user_message" && typeof event.createdAt !== "number" ? Date.now() : event.createdAt,
+    }]);
   }, []);
 
   const pushFreshEvent = useCallback((event: Ev, tailId: number | null = null, tailEventId: string | null = null): boolean => {
-    if (consumeOptimisticEcho(event, tailId, tailEventId) || !pushLive(event, tailId, tailEventId)) return false;
+    if (alreadyDelivered(event, tailId, tailEventId)) return false;
+    markDelivered(event, tailId, tailEventId);
+    appendLive(event, tailId, tailEventId);
     const signal = runSignalFromEvent(event);
     if (signal === "running") onRunningChange(true);
     else if (signal === "idle") onRunFinished(event);
     if (isAgentWorkUpdate(event)) onAgentUpdate(event);
     return true;
-  }, [consumeOptimisticEcho, onAgentUpdate, onRunFinished, onRunningChange, pushLive]);
+  }, [alreadyDelivered, appendLive, markDelivered, onAgentUpdate, onRunFinished, onRunningChange]);
 
   const openFreshPreview = useCallback((event: Ev) => {
     if (event.type !== "preview" || typeof event.path !== "string" || !event.path || previewPinnedRef.current) return;
@@ -199,19 +166,13 @@ export function useSessionTranscript({
 
   const applyAuthoritativeSnapshot = useCallback((page: TranscriptPage) => {
     if (!page.paginated && page.events.length < historyLengthRef.current) return;
-    const pending = pendingEchoesRef.current;
-    const match = page.paginated
-      ? reconcileDurableSnapshot(page.events, [], pending)
-      : reconcileAuthoritativeSnapshot(page.events, [], pending);
-    pendingEchoesRef.current = match.pending;
     setLive((current) => (page.paginated
-      ? reconcileDurableSnapshot(page.events, current, pending)
-      : reconcileAuthoritativeSnapshot(page.events, current, pending)).live);
+      ? reconcileDurableSnapshot(page.events, current)
+      : reconcileAuthoritativeSnapshot(page.events, current)));
     const merged = mergeNewestPage(loadedTranscriptRef.current, page);
     loadedTranscriptRef.current = merged;
     historyLengthRef.current = merged.paginated ? 0 : merged.events.length;
     historyEventIdsRef.current = new Set(merged.events.flatMap((event) => eventId(event) ?? []));
-    if (!merged.paginated) tailHighWaterRef.current = Math.max(tailHighWaterRef.current, merged.events.length);
     for (const event of page.events) seenRef.current.add(sig(event));
     setHasOlder(merged.paginated && merged.hasMore && merged.nextCursor !== null);
     setHistory(merged.events);
@@ -246,12 +207,10 @@ export function useSessionTranscript({
     historyLengthRef.current = 0;
     loadedTranscriptRef.current = null;
     historyEventIdsRef.current = new Set();
-    tailHighWaterRef.current = 0;
     seenTailIdsRef.current = new Set();
     seenTailEventIdsRef.current = new Set();
     seenRef.current = new Set();
     pendingLiveRef.current = [];
-    pendingEchoesRef.current = [];
     olderLoadInFlightRef.current = false;
     latestReconcileControllerRef.current?.abort();
     latestReconcileControllerRef.current = null;
@@ -320,7 +279,6 @@ export function useSessionTranscript({
     }
     const tailEventId = paginationSupported && frame.id ? frame.id : null;
     const tailId = paginationSupported ? null : numericTailId(frame.id);
-    if (tailId !== null) tailHighWaterRef.current = Math.max(tailHighWaterRef.current, tailId);
     if (!historyReadyRef.current) {
       pendingLiveRef.current.push({ event, tailId, tailEventId });
       return;
@@ -419,9 +377,5 @@ export function useSessionTranscript({
     loadingOlder,
     olderLoadError,
     loadOlder,
-    setLive,
-    pendingEchoesRef,
-    historyReadyRef,
-    tailHighWaterRef,
   };
 }
