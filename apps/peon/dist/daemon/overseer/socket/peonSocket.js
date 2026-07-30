@@ -10,6 +10,7 @@ import { FolderListingChannel } from "./channels/folderListingChannel.js";
 import { ProjectFileReadChannel } from "./channels/projectFileReadChannel.js";
 import { ReverseCommandChannel } from "./channels/reverseCommandChannel.js";
 import { settings } from "../../settings/index.js";
+import { daemonConfigurationChannel } from "./channels/daemonConfigurationChannel.js";
 const DEFAULT_RETRY_BASE_MS = 250;
 const DEFAULT_RETRY_MAX_MS = 30_000;
 const DEFAULT_STABLE_MS = 30_000;
@@ -111,6 +112,7 @@ export class PeonSocketSupervisor {
                 ...(hasDurableOutbox ? [new ProjectCatalogChannel()] : []),
                 new SessionWarningChannel(),
                 new FolderListingChannel(),
+                ...(hasDurableOutbox ? [daemonConfigurationChannel] : []),
                 ...(hasDurableOutbox ? [new ReverseCommandChannel({ peonId: () => this.configured()?.peonId })] : []),
             ]
             : [new ProjectFileReadChannel()];

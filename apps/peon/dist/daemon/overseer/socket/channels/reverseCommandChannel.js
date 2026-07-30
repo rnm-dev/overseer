@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { sessions, } from "../../../sessions/index.js";
 import { createProjectService, projectStore, ProjectServiceError, } from "../../../projects/index.js";
 import { ReverseCommandLedger } from "../reverseCommandLedger.js";
+import { daemonConfigurationChannel } from "./daemonConfigurationChannel.js";
 export const REVERSE_COMMAND_CAPABILITY = "reverse-command-v1";
 export const REVERSE_COMMAND_MAX_BYTES = 60 * 1024;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -108,6 +109,7 @@ export class ReverseCommandChannel {
         const projectService = options.projects ?? createProjectService(projectStore, sessions);
         this.handlers = options.handlers ?? {
             "session.cancel": sessionCancelHandler(sessionService),
+            "daemon.configuration.patch": daemonConfigurationChannel.commandHandler(),
             "project.archive": projectArchiveHandler(projectService, true),
             "project.unarchive": projectArchiveHandler(projectService, false),
         };
@@ -241,6 +243,9 @@ export class ReverseCommandChannel {
             return { error: "session.cancel requires target.sessionId" };
         if ((frame.operation === "project.archive" || frame.operation === "project.unarchive") && target.projectId === undefined) {
             return { error: `${frame.operation} requires target.projectId` };
+        }
+        if (frame.operation === "daemon.configuration.patch" && (target.sessionId !== undefined || target.projectId !== undefined)) {
+            return { error: "daemon.configuration.patch targets only the authenticated Peon" };
         }
         return { command: {
                 commandId: frame.commandId,
