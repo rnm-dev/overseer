@@ -58,28 +58,6 @@ export function PeonSettings() {
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [updateError, setUpdateError] = useState<string | null>(null);
 
-  // Optional legacy callback compatibility metadata. Reverse-capable operations
-  // use the authenticated outbound socket and never evaluate this address.
-  const [address, setAddress] = useState(peon.baseUrl ?? "");
-  const [connSaving, setConnSaving] = useState(false);
-  const [connSaved, setConnSaved] = useState(false);
-  const [connError, setConnError] = useState<string | null>(null);
-
-  async function saveConnection() {
-    setConnSaving(true);
-    setConnSaved(false);
-    setConnError(null);
-    try {
-      await api(base, { method: "PATCH", body: JSON.stringify({ publicUrl: address.trim() }) });
-      setConnSaved(true);
-      reload();
-    } catch (err) {
-      setConnError(err instanceof ApiError ? err.message : t("error.generic"));
-    } finally {
-      setConnSaving(false);
-    }
-  }
-
   useEffect(() => {
     if (!peon.online) return;
     let alive = true;
@@ -291,27 +269,6 @@ export function PeonSettings() {
         </Card>
       )}
       <CliUpdatesPanel base={base} online={peon.online} />
-      <Card className="space-y-5 px-5 py-5">
-        <div>
-          <h3 className="font-display text-sm font-bold text-bone">{t("peon.conn.title")}</h3>
-          <p className="mt-1 font-mono text-xs text-bone-dim">{t("peon.conn.hint")}</p>
-        </div>
-        <div className="space-y-1.5">
-          <Label>{t("peon.conn.address")}</Label>
-          <Input value={address} onChange={(e) => { setAddress(e.target.value); setConnSaved(false); }} placeholder="http://peon.example:4570" />
-        </div>
-        <div className="font-mono text-xs text-bone-faint">
-          {t("peon.conn.reaches")}: {peon.baseUrl ?? t("peon.conn.none")}
-          {(peon.addressSource === "paired" || peon.addressSource === "manual") && <span className="ml-2 text-fel">⌾ {t("peon.conn.pinned")}</span>}
-        </div>
-        <div className="flex items-center gap-3">
-          <Button onClick={saveConnection} disabled={connSaving || !address.trim()}>
-            {connSaving ? t("peon.settings.saving") : t("peon.settings.save")}
-          </Button>
-          {connSaved && <span className="font-mono text-xs text-fel-bright">⚡ {t("peon.settings.saved")}</span>}
-          {connError && <span className="font-mono text-xs text-blood">⚠ {connError}</span>}
-        </div>
-      </Card>
 
       {peon.online && !unsupported && form && (
         <Card className="space-y-5 px-5 py-5">

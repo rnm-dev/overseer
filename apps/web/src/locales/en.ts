@@ -298,13 +298,6 @@ export const en: Record<string, string> = {
   "peon.capabilities.partial": "Partial inventory",
   "peon.capabilities.empty": "None discovered.",
 
-  "peon.conn.title": "Legacy callback compatibility",
-  "peon.conn.hint": "Optional address used only by legacy HTTP operations. Negotiated reverse operations use the authenticated outbound connection and never dial this address.",
-  "peon.conn.address": "Legacy callback address",
-  "peon.conn.port": "Control port",
-  "peon.conn.reaches": "Configured callback",
-  "peon.conn.none": "not configured",
-  "peon.conn.pinned": "pinned",
 
   "peon.dash.recentSessions": "Recent sessions",
   "peon.dash.projects": "Projects",

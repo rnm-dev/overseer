@@ -298,13 +298,6 @@ export const ru: Record<string, string> = {
   "peon.capabilities.partial": "Частичная инвентаризация",
   "peon.capabilities.empty": "Ничего не обнаружено.",
 
-  "peon.conn.title": "Совместимость с legacy callback",
-  "peon.conn.hint": "Необязательный адрес только для старых HTTP-операций. Согласованные reverse-операции используют исходящее аутентифицированное соединение и никогда не обращаются к этому адресу.",
-  "peon.conn.address": "Адрес legacy callback",
-  "peon.conn.port": "Порт управления",
-  "peon.conn.reaches": "Настроенный callback",
-  "peon.conn.none": "не настроен",
-  "peon.conn.pinned": "закреплено",
 
   "peon.dash.recentSessions": "Недавние сессии",
   "peon.dash.projects": "Проекты",
