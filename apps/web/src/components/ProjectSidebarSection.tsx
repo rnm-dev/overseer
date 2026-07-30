@@ -176,7 +176,7 @@ export function ProjectSidebarSection({ projects, error = false, to, onNew }: Pr
                         {/* Counts read as one sentence: the total first, then only
                             the states that need attention — running in fel green,
                             unread in forge orange, matching the row edge colours. */}
-                        <div className="mt-0.5 flex items-center gap-1.5 font-body text-[0.6rem] text-bone-faint">
+                        <div className="mt-0.5 flex items-center gap-1.5 font-body text-[0.6875rem] text-bone-faint">
                           <span className="flex-none">{t("peon.projects.sessions", { n: project.sessionCount ?? 0 })}</span>
                           {(project.activeCount ?? 0) > 0 && (
                             <>

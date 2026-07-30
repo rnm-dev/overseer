@@ -246,7 +246,7 @@ export function SessionSidebarList({
                 </span>
                 <SessionPresence viewers={viewersFor(peonId, session.id)} size="sm" />
               </div>
-              <div className="mt-0.5 flex items-center gap-2 font-body text-[0.6rem] text-bone-faint">
+              <div className="mt-0.5 flex items-center gap-2 font-body text-[0.6875rem] text-bone-faint">
                 {peonName && <span className="max-w-[35%] flex-none truncate text-bone-dim">{peonName}</span>}
                 {session.projectKey && <span className="max-w-[30%] flex-none truncate font-body text-forge/80">{session.projectKey}</span>}
                 {session.catalogStale && (

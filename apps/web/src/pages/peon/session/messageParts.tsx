@@ -140,14 +140,14 @@ function ToolRow({ name, input, result, t }: { name?: string; input?: unknown; r
   const stats = isEdit ? editStatsFromInput(input) : null;
   return (
     <div className="flex justify-start">
-      <div className={`flex min-w-0 max-w-[85%] items-center gap-1.5 py-0.5 font-mono text-xs ${failed ? "text-blood" : ""}`}>
+      <div className={`flex min-w-0 max-w-[85%] items-center gap-1.5 py-0.5 typo-code-snippet ${failed ? "text-blood" : ""}`}>
         <span className={`flex shrink-0 items-center gap-1 ${failed ? "text-blood" : "text-fel-bright"}`}>
           {operation === "Create" ? <FilePlus size={13} aria-hidden /> : operation === "Delete" ? <FileX size={13} aria-hidden /> : isEdit ? <Pencil size={13} aria-hidden /> : <Terminal size={13} aria-hidden />}
           {operation ?? name ?? t("session.chat.tool")}
           {stats && <EditStats operation={operation ?? "Edit"} stats={stats} />}
         </span>
         <span className="min-w-0 flex-1 truncate text-bone-faint">{command}</span>
-        <button onClick={() => setOpen(true)} className="shrink-0 font-mono text-[0.7rem] text-bone-faint underline decoration-dotted underline-offset-2 transition-colors hover:text-fel-bright">
+        <button onClick={() => setOpen(true)} className="shrink-0 typo-code-snippet text-bone-faint underline decoration-dotted underline-offset-2 transition-colors hover:text-fel-bright">
           {t("session.chat.details")}
         </button>
       </div>
@@ -285,7 +285,7 @@ export function editStatsFromInput(input: unknown): { added: number; removed: nu
 
 function EditStats({ operation, stats }: { operation: EditOperation; stats: { added: number; removed: number } }) {
   return (
-    <span className="ml-0.5 font-mono text-[0.7rem] font-normal">
+    <span className="ml-0.5 typo-code-snippet font-normal">
       ({operation !== "Delete" && <span className="text-fel-bright">+{stats.added}</span>}
       {operation === "Edit" && ","}
       {operation !== "Create" && <span className="text-blood">−{stats.removed}</span>})
@@ -419,14 +419,14 @@ function ToolDetailsModal({ name, input, command, result, t, onClose }: { name?:
     <span className="flex min-w-0 items-center gap-2.5">
       {isEdit ? <Pencil size={18} className="shrink-0 text-fel-bright" aria-hidden /> : <Terminal size={18} className="shrink-0 text-fel-bright" aria-hidden />}
       <span className="truncate">{modalName || t("session.chat.tool")}</span>
-      {stats && <span className="shrink-0 font-mono text-sm font-normal tracking-normal">(<span className="text-blood">−{stats.removed}</span>,<span className="text-fel-bright">+{stats.added}</span>)</span>}
+  {stats && <span className="shrink-0 typo-code-snippet font-normal tracking-normal">(<span className="text-blood">−{stats.removed}</span>,<span className="text-fel-bright">+{stats.added}</span>)</span>}
     </span>
   );
   return (
     <Dialog title={title} onClose={onClose} size="lg">
       <div className="space-y-3">
         {diff ? (
-          <div className="-mx-5 max-h-[min(32rem,65vh)] overflow-auto py-1 font-mono text-xs md:-mx-6" aria-label={t("session.chat.changes")}>
+          <div className="-mx-5 max-h-[min(32rem,65vh)] overflow-auto py-1 typo-code-snippet md:-mx-6" aria-label={t("session.chat.changes")}>
               {diff.map((line, index) => (
                 <div
                   key={index}
@@ -444,7 +444,7 @@ function ToolDetailsModal({ name, input, command, result, t, onClose }: { name?:
             <div className="flex items-center gap-2 border-b border-iron-800 bg-iron-900/70 px-3.5 py-2.5 font-display text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-bone-dim">
               <span className="text-fel-bright" aria-hidden>›_</span>{t("session.chat.command")}
             </div>
-            <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words p-3.5 font-mono text-xs leading-relaxed text-bone-dim">{inputText || "—"}</pre>
+            <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words p-3.5 typo-code-snippet leading-relaxed text-bone-dim">{inputText || "—"}</pre>
           </section>
         )}
         {toolHasOutputSection(name) && <section className={`surface surface--inset overflow-hidden ${result?.error ? "border-blood/35" : ""}`}>
@@ -455,12 +455,12 @@ function ToolDetailsModal({ name, input, command, result, t, onClose }: { name?:
             <HighlightedCode
               source={jsonOutput}
               language="json"
-              className="max-h-72 !rounded-none !border-0 !bg-transparent !p-3.5 !text-xs"
+              className="max-h-72 !rounded-none !border-0 !bg-transparent !p-3.5 !text-[0.75rem]"
             />
           ) : (
-            <pre className={`max-h-72 overflow-auto whitespace-pre-wrap break-words p-3.5 font-mono text-xs leading-relaxed ${result?.error ? "text-blood" : "text-bone-dim"}`}>
-              {result?.text?.trim() ? result.text : t("session.chat.noOutput")}
-            </pre>
+              <pre className={`max-h-72 overflow-auto whitespace-pre-wrap break-words p-3.5 typo-code-snippet leading-relaxed ${result?.error ? "text-blood" : "text-bone-dim"}`}>
+                {result?.text?.trim() ? result.text : t("session.chat.noOutput")}
+              </pre>
           )}
         </section>}
       </div>
@@ -474,8 +474,8 @@ function ActionResult({ text, error, t }: { text: string; error?: boolean; t: T 
   const shown = open || !long ? text : text.slice(0, 300) + "…";
   if (!text.trim()) return null;
   return (
-    <div className="flex justify-start">
-      <div className={`max-w-[85%] border-l-2 pl-3 font-mono text-xs ${error ? "border-blood/60 text-blood" : "border-iron-700 text-bone-faint"}`}>
+      <div className="flex justify-start">
+      <div className={`max-w-[85%] border-l-2 pl-3 typo-code-snippet ${error ? "border-blood/60 text-blood" : "border-iron-700 text-bone-faint"}`}>
         <pre className="whitespace-pre-wrap break-words">{shown}</pre>
         {long && (
           <button onClick={() => setOpen(!open)} className="mt-1 text-bone-dim transition-colors hover:text-fel-bright">
@@ -490,9 +490,9 @@ function ActionResult({ text, error, t }: { text: string; error?: boolean; t: T 
 function Thinking({ text }: { text: string }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className="flex justify-start">
-      <div className="max-w-[85%] text-xs">
-        <button onClick={() => setOpen(!open)} className="font-mono text-bone-faint transition-colors hover:text-bone-dim">
+      <div className="flex justify-start">
+      <div className="max-w-[85%] typo-code-snippet">
+        <button onClick={() => setOpen(!open)} className="text-bone-faint transition-colors hover:text-bone-dim">
           ✦ {orcishThinkingLabel(`chat-thinking:${text}`)} {open ? "▾" : "▸"}
         </button>
         {open && <pre className="mt-1 whitespace-pre-wrap break-words border-l-2 border-iron-800 pl-3 italic text-bone-faint">{text}</pre>}
@@ -548,17 +548,17 @@ export function ItemView({ item, t, locale = "en", yesterdayLabel = "Yesterday",
           <div className="flex min-w-0 max-w-[85%] items-center gap-2 rounded-md border border-fel-deep/50 bg-fel/[0.07] px-3 py-2">
             <span aria-hidden className="text-fel-bright">▣</span>
             <div className="min-w-0 flex-1">
-              <div className="truncate font-mono text-xs text-bone" title={item.path}>{item.path.split(/[\\/]/).pop() || item.path}</div>
-              <div className="font-mono text-[0.68rem] text-bone-faint">{item.author ? `${item.author} · ` : ""}{item.createdAt ? new Date(item.createdAt).toLocaleString() : ""}</div>
+              <div className="truncate typo-code-snippet text-bone" title={item.path}>{item.path.split(/[\\/]/).pop() || item.path}</div>
+              <div className="typo-code-snippet text-bone-faint">{item.author ? `${item.author} · ` : ""}{item.createdAt ? new Date(item.createdAt).toLocaleString() : ""}</div>
             </div>
-            <button type="button" className="shrink-0 font-mono text-xs text-fel-bright underline decoration-dotted underline-offset-2 hover:text-bone" onClick={() => onOpenPreview?.(item)}>
+            <button type="button" className="shrink-0 typo-code-snippet text-fel-bright underline decoration-dotted underline-offset-2 hover:text-bone" onClick={() => onOpenPreview?.(item)}>
               {t("session.preview.open")}
             </button>
           </div>
         </div>
       );
     case "raw":
-      return item.text ? <div className="whitespace-pre-wrap break-words font-mono text-xs text-bone-faint">{item.text}</div> : null;
+      return item.text ? <div className="whitespace-pre-wrap break-words typo-code-snippet text-bone-faint">{item.text}</div> : null;
   }
 }
 
@@ -594,7 +594,7 @@ export function Working({
     : fallbackStartedAt.current;
   const duration = formatStepDuration(now - effectiveStartedAt);
   return (
-    <div className="reveal flex items-center justify-start gap-2 font-mono text-xs text-bone-faint">
+    <div className="reveal flex items-center justify-start gap-2 typo-code-snippet text-bone-faint">
       <span className="thinking-dots" aria-hidden>
         <span />
         <span />

@@ -78,6 +78,21 @@ class AppTypography {
     );
   }
 
+  static TextStyle monoCode({
+    Color? color,
+    FontWeight? fontWeight,
+    double? height,
+    double? letterSpacing,
+  }) {
+    return mono(
+      fontSize: 12,
+      fontWeight: fontWeight,
+      color: color,
+      height: height,
+      letterSpacing: letterSpacing,
+    );
+  }
+
   // Semantic product roles. Keep feature widgets free of font-size literals so
   // the visual hierarchy can be tuned from one place.
   static TextStyle sectionTitle({Color? color}) {

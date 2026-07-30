@@ -447,10 +447,9 @@ class _ThinkingRowState extends State<_ThinkingRow> {
                 padding: const EdgeInsets.symmetric(vertical: 2),
                 child: Text(
                   '✦ ${_thinkingLabel(widget.item.text)} ${open ? '▾' : '▸'}',
-                  style: AppTypography.mono(
-                    fontSize: 12,
-                    color: AppColors.boneFaint,
-                  ),
+                    style: AppTypography.monoCode(
+                      color: AppColors.boneFaint,
+                    ),
                 ),
               ),
             ),
@@ -465,11 +464,10 @@ class _ThinkingRowState extends State<_ThinkingRow> {
                 ),
                 child: Text(
                   widget.item.text,
-                  style: AppTypography.mono(
-                    fontSize: 12,
-                    color: AppColors.boneFaint,
-                    height: 1.45,
-                  ).copyWith(fontStyle: FontStyle.italic),
+                    style: AppTypography.monoCode(
+                      color: AppColors.boneFaint,
+                      height: 1.45,
+                    ).copyWith(fontStyle: FontStyle.italic),
                 ),
               ),
           ],
@@ -524,8 +522,7 @@ class _ToolRow extends StatelessWidget {
               const SizedBox(width: 4),
               Text(
                 label,
-                style: AppTypography.mono(
-                  fontSize: 10,
+                style: AppTypography.monoCode(
                   color: failed ? AppColors.blood : AppColors.felBright,
                 ),
               ),
@@ -540,8 +537,7 @@ class _ToolRow extends StatelessWidget {
                     summary,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: AppTypography.mono(
-                      fontSize: 10,
+                    style: AppTypography.monoCode(
                       color: failed ? AppColors.blood : AppColors.boneFaint,
                     ),
                   ),
@@ -555,20 +551,18 @@ class _ToolRow extends StatelessWidget {
                 borderRadius: BorderRadius.circular(3),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 3),
-                  child: Text(
-                    'Details',
-                    style:
-                        AppTypography.mono(
-                          fontSize: 10,
-                          color: AppColors.boneFaint,
-                        ).copyWith(
-                          decoration: TextDecoration.underline,
-                          decorationStyle: TextDecorationStyle.dotted,
-                          decorationColor: AppColors.boneFaint,
-                          decorationThickness: 1,
-                        ),
-                  ),
+              child: Text(
+                'Details',
+                style: AppTypography.monoCode(
+                  color: AppColors.boneFaint,
+                ).copyWith(
+                  decoration: TextDecoration.underline,
+                  decorationStyle: TextDecorationStyle.dotted,
+                  decorationColor: AppColors.boneFaint,
+                  decorationThickness: 1,
                 ),
+              ),
+            ),
               ),
             ],
           ),
@@ -586,7 +580,7 @@ class _EditStats extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final base = AppTypography.mono(fontSize: 10, color: AppColors.boneFaint);
+    final base = AppTypography.monoCode(color: AppColors.boneFaint);
     return Text.rich(
       TextSpan(
         style: base,
@@ -645,8 +639,7 @@ class _ActionResultState extends State<_ActionResult> {
           children: [
             Text(
               shown,
-              style: AppTypography.mono(
-                fontSize: 12,
+              style: AppTypography.monoCode(
                 color: AppColors.boneFaint,
                 height: 1.4,
               ),
@@ -658,8 +651,7 @@ class _ActionResultState extends State<_ActionResult> {
                   padding: const EdgeInsets.only(top: 4),
                   child: Text(
                     open ? 'Less' : 'More',
-                    style: AppTypography.mono(
-                      fontSize: 11,
+                    style: AppTypography.monoCode(
                       color: AppColors.boneDim,
                     ),
                   ),
@@ -735,12 +727,14 @@ class _PreviewCard extends StatelessWidget {
                         filename,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: AppTypography.mono(fontSize: 12),
+                        style: AppTypography.monoCode(
+                          color: AppColors.bone,
+                        ),
                       ),
                       if (item.author != null || timestamp != null)
                         Text(
                           [?item.author, ?timestamp].join(' · '),
-                          style: AppTypography.mono(
+                          style: AppTypography.body(
                             fontSize: 10,
                             color: AppColors.boneFaint,
                           ),
@@ -766,8 +760,7 @@ class _RawText extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(
       item.text,
-      style: AppTypography.mono(
-        fontSize: 12,
+      style: AppTypography.monoCode(
         color: AppColors.boneFaint,
         height: 1.4,
       ),

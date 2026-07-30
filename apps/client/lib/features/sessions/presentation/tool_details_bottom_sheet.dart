@@ -98,7 +98,7 @@ class _DetailStats extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final base = AppTypography.mono(fontSize: 12, color: AppColors.boneFaint);
+    final base = AppTypography.monoCode(color: AppColors.boneFaint);
     return Text.rich(
       key: const Key('tool-details-stats'),
       TextSpan(
@@ -163,8 +163,7 @@ class _DetailSection extends StatelessWidget {
               children: [
                 Text(
                   marker,
-                  style: AppTypography.mono(
-                    fontSize: 11,
+                  style: AppTypography.monoCode(
                     color: markerColor,
                     fontWeight: FontWeight.w700,
                   ),
@@ -188,8 +187,7 @@ class _DetailSection extends StatelessWidget {
               padding: const EdgeInsets.all(14),
               child: SelectableText(
                 text,
-                style: AppTypography.mono(
-                  fontSize: 11,
+                style: AppTypography.monoCode(
                   color: error ? AppColors.blood : AppColors.boneDim,
                   height: 1.5,
                 ),
@@ -258,8 +256,7 @@ class _DiffRow extends StatelessWidget {
         Colors.transparent,
       ),
     };
-    final lineNumberStyle = AppTypography.mono(
-      fontSize: 10,
+    final lineNumberStyle = AppTypography.monoCode(
       color: AppColors.boneFaint,
     );
     return ColoredBox(
@@ -275,7 +272,10 @@ class _DiffRow extends StatelessWidget {
               child: Text(
                 marker,
                 textAlign: TextAlign.center,
-                style: AppTypography.mono(fontSize: 11, color: foreground),
+                style: AppTypography.monoCode(
+                  color: foreground,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
             SizedBox(
@@ -299,8 +299,7 @@ class _DiffRow extends StatelessWidget {
             Expanded(
               child: SelectableText(
                 line.text.isEmpty ? ' ' : line.text,
-                style: AppTypography.mono(
-                  fontSize: 11,
+                style: AppTypography.monoCode(
                   color: foreground,
                   height: 1.35,
                 ),
