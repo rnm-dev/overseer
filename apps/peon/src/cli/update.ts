@@ -40,6 +40,7 @@ import {
   writeUpdateRuntimeIdentity,
   type UpdateReleaseIdentity,
 } from "../daemon/updateRuntimeIdentity.js";
+import { globalInstallArgs, rollbackPackArgs } from "./npmGlobalInstall.js";
 
 const PACKAGE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const CONTROL_API = `http://127.0.0.1:${process.env.ACA_CONTROL_PORT ?? "4570"}`;
@@ -85,18 +86,19 @@ function run(cmd: string, args: string[], cwd: string = PACKAGE_ROOT): void {
 
 function npmInstallGlobal(spec: string): void {
   const env = { ...process.env, PATH: `${NODE_BIN_DIR}${path.delimiter}${process.env.PATH ?? ""}` };
+  const args = globalInstallArgs(PACKAGE_ROOT, spec);
   if (existsSync(NPM_CLI)) {
-    execFileSync(process.execPath, [NPM_CLI, "install", "-g", spec], { cwd: PACKAGE_ROOT, stdio: "inherit", env });
+    execFileSync(process.execPath, [NPM_CLI, ...args], { cwd: PACKAGE_ROOT, stdio: "inherit", env });
   } else {
     // Unusual layout (npm not beside node) — fall back to PATH resolution, now
     // at least with node's own dir prepended.
-    execFileSync("npm", ["install", "-g", spec], { cwd: PACKAGE_ROOT, stdio: "inherit", env });
+    execFileSync("npm", args, { cwd: PACKAGE_ROOT, stdio: "inherit", env });
   }
 }
 
 function npmPackCurrent(destination: string): string {
   const env = { ...process.env, PATH: `${NODE_BIN_DIR}${path.delimiter}${process.env.PATH ?? ""}` };
-  const args = ["pack", "--json", "--pack-destination", destination, PACKAGE_ROOT];
+  const args = rollbackPackArgs(PACKAGE_ROOT, destination);
   try {
     const stdout = existsSync(NPM_CLI)
       ? execFileSync(process.execPath, [NPM_CLI, ...args], { cwd: PACKAGE_ROOT, encoding: "utf8", env })
