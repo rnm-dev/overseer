@@ -1,16 +1,17 @@
 # Remaining Peon HTTP control plane
 
-This is the OVSR-236 design inventory, refreshed against the shared monorepo
-worktree on 2026-07-30. It describes the remaining Overseer-to-Peon fleet HTTP
-and SSE dependency; it does not cover the Peon's local human dashboard/CLI HTTP
-API, which remains.
+This is the OVSR-236 design inventory, independently rechecked against the
+shared monorepo worktree on 2026-07-30, including the operation-family changes
+which were still uncommitted during the second pass. It describes the remaining
+Overseer-to-Peon fleet HTTP and SSE dependency; it does not cover the Peon's
+local human dashboard/CLI HTTP API, which remains.
 
 ## Census
 
-The original task quoted 79 call sites. The current production source has **78
-HTTP-dependent syntactic call sites**:
+The original task quoted 79 call sites. The second-pass production source has
+**79 HTTP-dependent syntactic call sites**:
 
-- 68 `callPeon(...)`;
+- 69 `callPeon(...)`;
 - 3 direct `proxyGet(...)`, 2 direct `proxyStream(...)`, and 1 direct
   `proxyUpload(...)`;
 - 2 `proxyFileDownload(...)`, 1 `proxyFileUpload(...)`, and 1
@@ -25,14 +26,14 @@ try several historical paths. The source distribution is:
 | Source | Call sites | What remains |
 | --- | ---: | --- |
 | `routes/peons/sessions.ts` | 29 `callPeon`, 3 proxies | status/models, session reads and mutations, queue, update controls, transcript fallback, artifact metadata/bytes and preview |
-| `routes/peons/projects.ts` | 20 `callPeon`, 6 proxies/wrappers | catalog fallbacks, project resources/mutations, settings/runtime queries, sandbox/project file fallbacks |
+| `routes/peons/projects.ts` | 21 `callPeon`, 6 proxies/wrappers | catalog fallbacks, project resources/mutations, settings/runtime/analytics queries, sandbox/project file fallbacks |
 | `routes/peons/armory.ts` | 13 | inventory, configuration, lifecycle and operation polling |
 | `routes/peons/fleet.ts` | 3 | enrollment/status probes and legacy reconciliation |
 | `liveSocket.ts` | 1 `callPeon`, 1 SSE wrapper | session detail fallback and the browser-tail path |
 | `modules/sessions/sessionProjection.ts` | 1 | legacy session catalog reconciliation |
 | `peonFileSandbox.ts` | 1 | legacy `/settings` lookup for `fileTransferRoot` |
 
-The 78 sites are a code-maintenance number, not 78 protocol operations.
+The 79 sites are a code-maintenance number, not 79 protocol operations.
 Capability selectors already make several families exclusive:
 
 - `session-catalog-v1` and `project-catalog-v1` serve canonical list/basic
@@ -58,7 +59,7 @@ Fallback is only a capability/version decision made before dispatch.
 | Armory | inventory/settings/configuration, refresh/install/update/remove/enable/disable/restart, operation polling | Safe projection for inventory/config summaries; durable commands and shared command-status reconciliation for effects/long operations | Armory state/operation capability + `reverse-command-v1` | OVSR-140, OVSR-141 |
 | Update control | pause/resume/check-update/update and AI CLI update aliases | Durable commands; update result remains pending across process replacement and completes only after reconnect attestation | update capability + `reverse-command-v1` | OVSR-142, OVSR-143 |
 | Session artifacts/previews | session file metadata/raw/stream, preview handoff, attachments | Bounded transfer stream plus control metadata/lease; no Peon SSE | `session-artifact-v1` and existing transfer primitives | OVSR-144, OVSR-146; live watched revisions stay OVSR-50/52 |
-| Project/sandbox files | generic `/files`, project file read/write/move fallbacks | Existing reverse read/write/list operations; retain HTTP only for older Peons | `folder-listing-v1`, `project-file-read-v1`, `sandbox-file-read-v1`, `file-write-v1` | OVSR-49/51/53 and released read/list slices |
+| Project/sandbox files | generic `/files`, project file read/write/move fallbacks | Existing reverse read/write/list operations; retain HTTP only for older Peons | `folder-listing-v1`, `project-file-read-v1`, `sandbox-file-read-v1`, `file-write-v1` | OVSR-228/229/230/232/234; residual OVSR-49/51/53; proxy/API retirement OVSR-231/235 |
 | Enrollment/reconciliation | `/enroll`, status probes, callback address | Peon-initiated claim, socket presence and projections; no outbound dial | `peon-claim-v1` and family capabilities | OVSR-210, OVSR-145, OVSR-147, OVSR-148, OVSR-149 |
 
 Read-only request/response operations may use the shared correlated gateway but
@@ -125,14 +126,25 @@ tunnel and no per-browser Peon subscription.
 3. Finish configuration (OVSR-86/87).
 4. Finish projects and runtime/provider state (OVSR-136–139).
 5. Finish Armory and update control (OVSR-140–143).
-6. Finish base session artifacts/previews (OVSR-144/146) and the remaining
-   file-write routing tasks (OVSR-49/51/53). Advanced live preview remains a
-   later consumer, not a prerequisite for baseline callback removal.
-7. Complete outbound enrollment (OVSR-210, OVSR-145/147), then loopback-only
-   Peon and callback-address retirement (OVSR-148/149).
-8. Extend security/conformance coverage (OVSR-150/151), canary and soak through
-   OVSR-152, and delete legacy HTTP only after the mixed-version support window
-   in OVSR-211.
+6. Land the reviewed OVSR-229 base `file-write-v1`, finish base session
+   artifacts/previews (OVSR-144/146), then complete only the residual
+   file-write scope in OVSR-49/51/53. Advanced live preview remains a later
+   consumer, not a prerequisite for baseline callback removal.
+7. Complete outbound enrollment (OVSR-210, OVSR-145/147) and operation parity,
+   then make the Peon loopback-only capable in OVSR-148 and make callback
+   addressing optional/exclusively routed in OVSR-149.
+8. Extend security/conformance coverage (OVSR-150/151). OVSR-152 then owns the
+   canary, no-inbound soak, rollback exercise, default-disable decision and the
+   start of the published mixed-version support window.
+9. Only after OVSR-152 and that support window completes may OVSR-211 delete
+   callback routes, enrollment/heartbeat compatibility and obsolete stored
+   addressing/credentials. OVSR-148/149/152 must not absorb this deletion.
+
+File-specific retirement has an additional inner sequence: land and review
+OVSR-228/229/230/232/234, remove Overseer's file proxy fallbacks in OVSR-231
+after the fleet capability check, then remove Peon's remote file HTTP routes in
+OVSR-235. OVSR-211 remains the broader final callback/enrollment/address
+retirement and must not run before the global support-window gate.
 
 Each slice advertises its exact capability only after both implementations
 support the complete contract. During the support window an older Peon uses
@@ -160,6 +172,37 @@ socket generation.
 - Conformance coverage must assert a NAT-only run fails on every attempted
   Overseer-to-Peon dial and must include command, transcript, transfer and
   reconnect boundaries before OVSR-152 can make reverse-only the default.
+- OVSR-248 (trusted proxy attribution) is a public-claim/reverse-cutover
+  security gate, and OVSR-249 closes a browser-visible filesystem-root leak in
+  the legacy attachment fallback. Both are in review and must be verified
+  before their affected public/fallback paths are declared safe.
+
+### File-write task boundary
+
+OVSR-229 is not a fourth competing design. It is the reviewed base transport
+and current implementation of `file-write-v1`:
+
+- it covers the OVSR-51 base coordinator (bounded client-to-Peon frames,
+  Peon-issued credit, checksum/length, cancellation, timeout and generation
+  fencing);
+- it covers the OVSR-53 base receiver for attachment/sandbox and project
+  uploads plus same-project atomic no-clobber rename;
+- it covers the OVSR-49 compatibility routing for attachment PUT and project
+  PUT/PATCH with immutable `projectId` and exclusive capability selection.
+
+The older tasks remain only for their explicitly unshipped residual scope:
+OVSR-49 owns project DELETE and remaining route/audit/conflict behavior;
+OVSR-51 owns any required durable restart lifecycle, broader quotas,
+observability and command/transfer coupling; OVSR-53 owns Peon project DELETE,
+restart cleanup/replay, optimistic fences and missing filesystem fault
+coverage. They must extend the same `file-write-v1` transport and must be
+re-scoped or closed by OVSR-152 when their residual acceptance criteria are
+satisfied. No second write socket, lifecycle or command dialect is permitted.
+
+OVSR-231 and OVSR-235, not OVSR-49/51/53, own deletion of the remaining file
+proxy and Peon remote file HTTP API after the capability rollout. OVSR-234 owns
+the shared transfer-channel documentation; implementation tasks should update
+that one contract instead of creating task-local protocol descriptions.
 
 No new implementation tasks are needed: the existing task pairs above cover
 every inventoried family and the final deletion. Creating another family task

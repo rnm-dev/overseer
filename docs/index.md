@@ -26,10 +26,13 @@ Overseer has one durable [reverse command gateway](reverse-command-gateway.md) f
 
 The remaining direct Peon HTTP/SSE control plane is inventoried and assigned in
 [remaining Peon HTTP control plane](remaining-peon-http-control-plane.md).
-The 2026-07-30 census finds 78 production call sites including legacy-only
+The independent second-pass 2026-07-30 census finds 79 production call sites
+including legacy-only
 fallback branches; the design separates projections, bounded queries, durable
 commands and transfer streams, and maps every family to existing implementation
-tasks rather than creating duplicates.
+tasks rather than creating duplicates. OVSR-229 is the reviewed base
+`file-write-v1` implementation; OVSR-49/51/53 retain only their explicit
+residual scope.
 
 The public reverse-control cutover is gated by the durable
 [reverse fleet security threat model](reverse-fleet-security.md): it records
