@@ -30,6 +30,7 @@ interface WorkspaceState {
   current: Workspace | null;
   ready: boolean;
   groups: PeonGroup[];
+  peonInventoryReady: boolean;
   workspaceIdOfPeon: (peonId: string) => string | undefined;
   updatePeon: (workspaceId: string, peon: PeonProjection) => void;
   setCurrent: (id: string) => void;
@@ -45,6 +46,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [currentId, setCurrentId] = useState<string | null>(() => localStorage.getItem(CURRENT_KEY));
   const [ready, setReady] = useState(false);
   const [peonsByWs, setPeonsByWs] = useState<Record<string, PeonLite[]>>({});
+  const [hydratedPeonWsIds, setHydratedPeonWsIds] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     const r = await api<{ workspaces: Workspace[] }>("/workspaces");
@@ -79,6 +81,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         setPeonsByWs((current) => Object.fromEntries(entries.map(([workspaceId, peons]) => {
           return [workspaceId, mergePeonInventory(current[workspaceId] ?? [], peons)];
         })));
+        setHydratedPeonWsIds(wsIds);
       }
     };
     pull();
@@ -109,9 +112,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const current = workspaces.find((w) => w.id === currentId) ?? null;
 
   const groups = useMemo<PeonGroup[]>(() => workspaces.map((w) => ({ workspace: w, peons: peonsByWs[w.id] ?? [] })), [workspaces, peonsByWs]);
+  const peonInventoryReady = !wsIds || hydratedPeonWsIds === wsIds;
   const workspaceIdOfPeon = useCallback((peonId: string) => Object.keys(peonsByWs).find((id) => peonsByWs[id].some((p) => p.peonId === peonId)), [peonsByWs]);
 
-  return <Ctx.Provider value={{ workspaces, current, ready, groups, workspaceIdOfPeon, updatePeon, setCurrent, create, refresh }}>{children}</Ctx.Provider>;
+  return <Ctx.Provider value={{ workspaces, current, ready, groups, peonInventoryReady, workspaceIdOfPeon, updatePeon, setCurrent, create, refresh }}>{children}</Ctx.Provider>;
 }
 
 export function useWorkspace(): WorkspaceState {

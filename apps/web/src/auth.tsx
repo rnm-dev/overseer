@@ -1,5 +1,6 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { api, getToken, json, migrateLegacyWebSession, setToken } from "./api";
+import { getOrStartAuthBootstrap } from "./authBootstrap";
 import { forgetNativeCallback, nativeCallback } from "./nativeLoginMode";
 import { serverApprovedNativeRedirect } from "./nativeOauthRedirect";
 
@@ -41,28 +42,38 @@ interface AuthState {
 
 const Ctx = createContext<AuthState | null>(null);
 
+async function loadInitialUser(): Promise<User | null> {
+  try {
+    const legacyToken = getToken();
+    if (legacyToken) {
+      await migrateLegacyWebSession(legacyToken);
+      setToken(null);
+    }
+    const me = await api<{ user?: User }>("/auth/me");
+    return me.user ?? null;
+  } catch {
+    setToken(null);
+    return null;
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [ready, setReady] = useState(false);
+  const bootstrapRef = useRef<Promise<User | null>>(null);
 
   // One-release migration: exchange a legacy localStorage bearer for an
   // HttpOnly cookie, then erase the JavaScript-readable credential.
   useEffect(() => {
-    (async () => {
-      try {
-        const legacyToken = getToken();
-        if (legacyToken) {
-          await migrateLegacyWebSession(legacyToken);
-          setToken(null);
-        }
-        const me = await api<{ user?: User }>("/auth/me");
-        if (me.user) setUser(me.user);
-      } catch {
-        setToken(null);
-      } finally {
-        setReady(true);
-      }
-    })();
+    let active = true;
+    void getOrStartAuthBootstrap(bootstrapRef, loadInitialUser).then((initialUser) => {
+      if (!active) return;
+      if (initialUser) setUser(initialUser);
+      setReady(true);
+    });
+    return () => {
+      active = false;
+    };
   }, []);
 
   const value: AuthState = {

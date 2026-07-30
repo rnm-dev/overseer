@@ -6,6 +6,7 @@ import { useLocation } from "react-router";
 import { presenceLocationForPath, presenceLocationKey, reconcileLocalPresence } from "./presence";
 import { audioClientId, setAudioClaimSender, setAudioPrimary } from "./audioFocus";
 import { documentPresence } from "./pages/peon/sessionAttentionRead";
+import { socketWorkspaceForPath } from "./socketWorkspace";
 import { parsePeonProjection, parsePeonProjections } from "./workspacePeons";
 
 // The selected workspace transport: resumable live events, presence, and session
@@ -72,10 +73,18 @@ interface LiveSocketValue {
 const Ctx = createContext<LiveSocketValue | null>(null);
 
 export function LiveSocketProvider({ children }: { children: ReactNode }) {
-  const { current, updatePeon } = useWorkspace();
+  const { current, workspaces, peonInventoryReady, workspaceIdOfPeon, updatePeon } = useWorkspace();
   const { user } = useAuth();
+  const userEmail = user?.email;
   const { pathname } = useLocation();
-  const wsId = current?.id;
+  const knownWorkspaceIds = useMemo(() => new Set(workspaces.map((workspace) => workspace.id)), [workspaces]);
+  const wsId = socketWorkspaceForPath(
+    pathname,
+    current?.id,
+    knownWorkspaceIds,
+    peonInventoryReady,
+    workspaceIdOfPeon,
+  );
   const [presence, setPresence] = useState<PresenceEntry[]>([]);
   const [acknowledgedPresenceVersion, setAcknowledgedPresenceVersion] = useState(-1);
 
@@ -125,7 +134,7 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
       setPresence([]);
       return;
     }
-    if (!user) {
+    if (!userEmail) {
       readyRef.current = false;
       setPresence([]);
       return;
@@ -149,7 +158,7 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
       setPresence(next);
       const desired = desiredPresenceRef.current;
       if (next.some((entry) =>
-        entry.email.toLowerCase() === user.email.toLowerCase()
+        entry.email.toLowerCase() === userEmail.toLowerCase()
         && entry.scope === desired.scope
         && entry.peonId === (desired.peonId ?? null)
         && entry.sessionId === (desired.sessionId ?? null))) {
@@ -476,7 +485,7 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
       sockRef.current?.close();
       sockRef.current = null;
     };
-  }, [wsId, user, updatePeon]);
+  }, [wsId, userEmail, updatePeon]);
 
   useEffect(() => {
     const ws = sockRef.current;
@@ -553,7 +562,7 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
         matchesLocal,
         acknowledgedPresenceVersion !== desiredPresenceVersionRef.current.version,
       );
-  }, [acknowledgedPresenceVersion, desiredPresence, user]);
+  }, [acknowledgedPresenceVersion, user]);
 
   const viewersFor = useMemo(() => (peonId: string, sessionId: string) => withLocalUser(
     presence.filter((entry) => entry.scope === "session" && entry.peonId === peonId && entry.sessionId === sessionId),
