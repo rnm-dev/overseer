@@ -5,11 +5,14 @@ import { broadcast } from "./eventLog.js";
 import { authenticatePeonUpgrade } from "./peonSocketAuth.js";
 import {
   claimPeonTransferConnection,
+  FILE_WRITE_CAPABILITY,
   PROJECT_FILE_READ_CAPABILITY,
+  SANDBOX_FILE_READ_CAPABILITY,
   releasePeonTransferConnection,
 } from "./peonTransferConnections.js";
 import { toView, type PeonRecord } from "./registry.js";
 import { failPeonFileTransfers, handlePeonFileBinary, handlePeonFileJson } from "./peonFileStream.js";
+import { evictPeonConnectionsBelowGeneration } from "./peonConnections.js";
 
 export const PEON_TRANSFER_SOCKET_PATH = "/api/v1/peons/transfer/ws";
 
@@ -41,7 +44,7 @@ export function attachPeonTransferSocket(server: Server, options: TransferSocket
   const connectionCheckMs = options.connectionCheckMs ?? DEFAULT_CONNECTION_CHECK_MS;
   const helloTimeoutMs = options.helloTimeoutMs ?? DEFAULT_HELLO_TIMEOUT_MS;
   const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_PAYLOAD_BYTES });
-  const authenticated = new WeakMap<IncomingMessage, PeonRecord>();
+  const authenticated = new WeakMap<IncomingMessage, { record: PeonRecord; credentialGeneration: number }>();
   const clients = new Set<TransferClient>();
 
   const onUpgrade = (req: IncomingMessage, socket: Duplex, head: Buffer) => {
@@ -50,17 +53,18 @@ export function attachPeonTransferSocket(server: Server, options: TransferSocket
     socket.on("error", () => {});
 
     void (async () => {
-      const record = await authenticatePeonUpgrade(req, socket);
-      if (!record || socket.destroyed) return;
-      authenticated.set(req, record);
+      const auth = await authenticatePeonUpgrade(req, socket);
+      if (!auth || socket.destroyed) return;
+      authenticated.set(req, auth);
       wss.handleUpgrade(req, socket, head, (ws) => wss.emit("connection", ws, req));
     })();
   };
   server.on("upgrade", onUpgrade);
 
   wss.on("connection", (ws, req) => {
-    const record = authenticated.get(req);
-    if (!record) return ws.close(1011, "authentication state unavailable");
+    const auth = authenticated.get(req);
+    if (!auth) return ws.close(1011, "authentication state unavailable");
+    const { record, credentialGeneration } = auth;
 
     const client: TransferClient = { ws, record, alive: true, ready: false };
     clients.add(client);
@@ -99,13 +103,22 @@ export function attachPeonTransferSocket(server: Server, options: TransferSocket
         const advertised = Array.isArray(frame.capabilities)
           ? frame.capabilities.filter((value): value is string => typeof value === "string")
           : [];
-        const accepted = advertised.includes(PROJECT_FILE_READ_CAPABILITY) ? [PROJECT_FILE_READ_CAPABILITY] : [];
+        const accepted = [PROJECT_FILE_READ_CAPABILITY, SANDBOX_FILE_READ_CAPABILITY, FILE_WRITE_CAPABILITY]
+          .filter((capability) => advertised.includes(capability));
         clearTimeout(helloTimeout);
         client.ready = true;
-        const previous = claimPeonTransferConnection(record.peonId, ws, accepted);
+        const claimed = claimPeonTransferConnection(record.peonId, ws, accepted, credentialGeneration);
+        if (!claimed.accepted) {
+          ws.close(4001, "rejected stale credential generation");
+          return;
+        }
+        const previous = claimed.previous;
         if (previous && previous.readyState !== WebSocket.CLOSED) {
           failPeonFileTransfers(record.peonId, previous, "PEON_TRANSFER_REPLACED");
           previous.close(4001, "replaced by a newer transfer connection");
+        }
+        if (credentialGeneration > 0) {
+          evictPeonConnectionsBelowGeneration(record.peonId, credentialGeneration);
         }
         publishPresence(record);
         ws.send(JSON.stringify({ type: "hello_ack", protocol: PROTOCOL, channel: CHANNEL, capabilities: accepted }));

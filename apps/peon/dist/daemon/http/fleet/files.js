@@ -1,8 +1,8 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { createReadStream, lstatSync, realpathSync, statSync } from "node:fs";
 import { promises as fsPromises } from "node:fs";
 import path from "node:path";
-import { ATTACHMENTS_MAX_FILE_BYTES } from "../../uploads.js";
+import { AtomicFileUpload, FileWriteError, PROJECT_UPLOAD_MAX_BYTES, moveProjectFile, projectFileWriteTarget, } from "../../files/index.js";
 import { fail } from "./error.js";
 class ProjectUploadError extends Error {
     status;
@@ -116,9 +116,6 @@ function projectFileTarget(record, requested) {
         relativePath: parts.join("/"),
     };
 }
-function projectUploadTarget(record, req) {
-    return projectFileTarget(record, segmentsPath(req));
-}
 function revalidateProjectUploadTarget(record, target) {
     let root;
     let parentReal;
@@ -154,7 +151,7 @@ function segmentsPath(req) {
     return (req.params.rest ?? []).join("/");
 }
 export function attachFleetProjectFileRoutes(router, options) {
-    const { fileAccessService, projectReader, failWorkspaceRead: failWorkspaceReadOverride, } = options;
+    const { fileAccessService, projectReader, failWorkspaceRead: failWorkspaceReadOverride, openProjectUpload = AtomicFileUpload.open, moveProject = moveProjectFile, } = options;
     const respondProjectRead = failWorkspaceReadOverride ?? failWorkspaceRead;
     // Validate raw project URLs before Express decodes wildcard parameters. Its
     // default malformed-percent behavior is a connection-level URIError, while
@@ -216,80 +213,37 @@ export function attachFleetProjectFileRoutes(router, options) {
             return fail(res, 404, "UNKNOWN_PROJECT", "unknown project");
         let target;
         try {
-            target = projectUploadTarget(record, req);
+            target = projectFileWriteTarget(record, segmentsPath(req));
         }
         catch (err) {
-            const failure = err instanceof ProjectUploadError ? err : uploadFsError(err);
+            const failure = err instanceof FileWriteError ? err : uploadFsError(err);
             return fail(res, failure.status, failure.code, failure.message);
         }
         const claimed = typeof req.headers["peon-content-sha256"] === "string"
             ? req.headers["peon-content-sha256"].trim().toLowerCase()
             : null;
         const contentLength = Number(req.headers["content-length"]);
-        if (Number.isFinite(contentLength) && contentLength > ATTACHMENTS_MAX_FILE_BYTES) {
-            return fail(res, 413, "FILE_TOO_LARGE", `file exceeds ${ATTACHMENTS_MAX_FILE_BYTES / (1024 * 1024)}MB limit`);
+        if (Number.isFinite(contentLength) && contentLength > PROJECT_UPLOAD_MAX_BYTES) {
+            return fail(res, 413, "FILE_TOO_LARGE", `file exceeds ${PROJECT_UPLOAD_MAX_BYTES / (1024 * 1024)}MB limit`);
         }
-        const tmp = path.join(target.parentReal, `.${path.basename(target.absPath)}.peon-upload-${randomUUID()}`);
-        let handle = null;
-        let committed = false;
-        let bytes = 0;
-        const hash = createHash("sha256");
+        let upload = null;
         try {
-            handle = await fsPromises.open(tmp, "wx", 0o666);
+            upload = await openProjectUpload(target, PROJECT_UPLOAD_MAX_BYTES, claimed);
             for await (const value of req) {
                 const chunk = Buffer.isBuffer(value) ? value : Buffer.from(value);
-                bytes += chunk.length;
-                if (bytes > ATTACHMENTS_MAX_FILE_BYTES) {
-                    throw new ProjectUploadError(413, "FILE_TOO_LARGE", `file exceeds ${ATTACHMENTS_MAX_FILE_BYTES / (1024 * 1024)}MB limit`);
-                }
-                hash.update(chunk);
-                let offset = 0;
-                while (offset < chunk.length) {
-                    const { bytesWritten } = await handle.write(chunk, offset, chunk.length - offset, null);
-                    if (bytesWritten === 0)
-                        throw new Error("zero-byte write");
-                    offset += bytesWritten;
-                }
+                await upload.write(chunk);
             }
             if (req.aborted)
-                throw new Error("request aborted before upload completed");
-            await handle.sync();
-            await handle.close();
-            handle = null;
-            const sha256 = hash.digest("hex");
-            if (claimed && claimed !== sha256) {
-                throw new ProjectUploadError(409, "CHECKSUM_MISMATCH", `body sha256 ${sha256} does not match Peon-Content-Sha256 ${claimed}`);
-            }
-            revalidateProjectUploadTarget(record, target);
-            await fsPromises.rename(tmp, target.absPath);
-            committed = true;
-            res.status(201).json({ path: target.relativePath, size: bytes, sha256 });
+                throw new FileWriteError(400, "BAD_REQUEST", "request aborted before upload completed");
+            const result = await upload.complete(Number.isFinite(contentLength) ? contentLength : undefined);
+            upload = null;
+            res.status(201).json(result);
         }
         catch (err) {
-            if (handle) {
-                try {
-                    await handle.close();
-                }
-                catch { /* cleanup below is authoritative */ }
-                handle = null;
-            }
-            if (!committed) {
-                try {
-                    await fsPromises.unlink(tmp);
-                }
-                catch { /* final cleanup retries */ }
-            }
+            await upload?.cancel();
             if (!req.aborted && !res.headersSent && !res.destroyed) {
-                const failure = err instanceof ProjectUploadError ? err : uploadFsError(err);
+                const failure = err instanceof FileWriteError ? err : uploadFsError(err);
                 fail(res, failure.status, failure.code, failure.message);
-            }
-        }
-        finally {
-            if (!committed) {
-                try {
-                    await fsPromises.unlink(tmp);
-                }
-                catch { /* absent temp is already clean */ }
             }
         }
     });
@@ -299,51 +253,10 @@ export function attachFleetProjectFileRoutes(router, options) {
             return fail(res, 404, "UNKNOWN_PROJECT", "unknown project");
         const destination = typeof req.body?.destination === "string" ? req.body.destination : "";
         try {
-            const source = projectFileTarget(record, segmentsPath(req));
-            const destinationTarget = projectFileTarget(record, destination);
-            if (source.absPath === destinationTarget.absPath) {
-                throw new ProjectUploadError(400, "INVALID_PATH", "source and destination must differ");
-            }
-            const sourceStat = lstatSync(source.absPath);
-            if (!sourceStat.isFile()) {
-                throw new ProjectUploadError(400, "INVALID_PATH", "source must be a regular file");
-            }
-            try {
-                lstatSync(destinationTarget.absPath);
-                throw new ProjectUploadError(409, "DESTINATION_EXISTS", "destination already exists");
-            }
-            catch (err) {
-                if (err instanceof ProjectUploadError)
-                    throw err;
-                if (err.code !== "ENOENT")
-                    throw err;
-            }
-            revalidateProjectUploadTarget(record, source);
-            revalidateProjectUploadTarget(record, destinationTarget);
-            const currentSource = lstatSync(source.absPath);
-            if (currentSource.dev !== sourceStat.dev || currentSource.ino !== sourceStat.ino || !currentSource.isFile()) {
-                throw new ProjectUploadError(500, "WRITE_FAILED", "source changed while preparing move");
-            }
-            // validateProjectUploadTarget permits an absent destination; reject a
-            // late arrival immediately before the atomic rename.
-            try {
-                lstatSync(destinationTarget.absPath);
-                throw new ProjectUploadError(409, "DESTINATION_EXISTS", "destination already exists");
-            }
-            catch (err) {
-                if (err instanceof ProjectUploadError)
-                    throw err;
-                if (err.code !== "ENOENT")
-                    throw err;
-            }
-            await fsPromises.rename(source.absPath, destinationTarget.absPath);
-            res.json({ path: destinationTarget.relativePath, size: sourceStat.size });
+            res.json(await moveProject(record, segmentsPath(req), destination));
         }
         catch (err) {
-            if (err.code === "ENOENT") {
-                return fail(res, 404, "NOT_FOUND", "source file does not exist");
-            }
-            const failure = err instanceof ProjectUploadError ? err : uploadFsError(err, "safe project file move failed");
+            const failure = err instanceof FileWriteError ? err : uploadFsError(err, "safe project file move failed");
             fail(res, failure.status, failure.code, failure.message);
         }
     });

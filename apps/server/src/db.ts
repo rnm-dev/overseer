@@ -72,6 +72,21 @@ export async function transaction<T>(work: (tx: Transaction) => Promise<T>): Pro
   }
 }
 
+// Serialize a transactional invariant across app replicas. Tests use pg-mem,
+// which has no advisory-lock functions; their single injected pool executes
+// the same transaction body without the production-only lock statement.
+export async function transactionWithAdvisoryLock<T>(
+  name: string,
+  work: (tx: Transaction) => Promise<T>,
+): Promise<T> {
+  return transaction(async (tx) => {
+    if (advisoryLocksAvailable) {
+      await tx.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [name]);
+    }
+    return work(tx);
+  });
+}
+
 // Run a process-wide job once across every app replica. Tests use an injected
 // pg-mem pool and simply execute the callback because advisory locks are a
 // PostgreSQL runtime facility, not part of the behavior under test.

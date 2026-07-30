@@ -67,12 +67,32 @@ class DioSessionFileRepository implements SessionFileRepository {
   Future<SessionFilePreview> fetchAttachment({
     required String workspaceId,
     required String peonId,
+    required String sessionId,
     required String path,
     required String name,
     String? type,
   }) async {
+    // Peon persists resolved absolute attachment paths in durable transcript
+    // events. Those paths cannot be read through the transfer-root `/files`
+    // endpoint, but the session-scoped file API intentionally accepts them.
+    if (_isAbsolutePath(path)) {
+      final preview = await fetchArtifact(
+        workspaceId: workspaceId,
+        peonId: peonId,
+        sessionId: sessionId,
+        path: path,
+      );
+      return SessionFilePreview(
+        path: name,
+        bytes: preview.bytes,
+        contentType:
+            preview.contentType ??
+            (type == 'image' ? 'image/*' : _contentTypeForPath(name)),
+        truncated: preview.truncated,
+      );
+    }
     final encoded = path
-        .split('/')
+        .split(RegExp(r'[/\\]'))
         .where((segment) => segment.isNotEmpty)
         .map(Uri.encodeComponent)
         .join('/');
@@ -101,6 +121,11 @@ class DioSessionFileRepository implements SessionFileRepository {
       '${Uri.encodeComponent(peonId)}/sessions/'
       '${Uri.encodeComponent(sessionId)}';
 }
+
+bool _isAbsolutePath(String path) =>
+    path.startsWith('/') ||
+    path.startsWith(r'\\') ||
+    RegExp(r'^[A-Za-z]:[/\\]').hasMatch(path);
 
 bool _isMediaPath(String path) => RegExp(
   r'\.(?:png|jpe?g|gif|webp|avif|bmp|svg|ico|pdf)$',

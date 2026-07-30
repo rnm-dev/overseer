@@ -364,7 +364,8 @@ test("session MCP route requires a bound capability and exposes orchestration to
     await client.connect(new StreamableHTTPClientTransport(url, {
       requestInit: { headers: { [SESSION_MCP_HEADER]: sessionMcpCredential("parent-session") } },
     }));
-    assert.deepEqual((await client.listTools()).tools.map((tool) => tool.name), [
+    const sessionTools = (await client.listTools()).tools;
+    assert.deepEqual(sessionTools.map((tool) => tool.name), [
       "list_session_options",
       "spawn_sessions",
       "get_child_sessions",
@@ -372,6 +373,14 @@ test("session MCP route requires a bound capability and exposes orchestration to
       "get_child_transcript",
       "send_session_followup",
     ]);
+    assert.match(
+      sessionTools.find((tool) => tool.name === "spawn_sessions")?.description ?? "",
+      /every later turn initiated with send_session_followup each enqueue one hidden completion trigger/,
+    );
+    assert.match(
+      sessionTools.find((tool) => tool.name === "send_session_followup")?.description ?? "",
+      /completion enqueues a new hidden trigger for the caller/,
+    );
     await client.callTool({
       name: "spawn_sessions",
       arguments: { sessions: [{ requestId: "one", name: "Named child", prompt: "work", projectKey: "peon", agent: "codex-app-server" }] },

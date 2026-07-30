@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import WebSocket, { WebSocketServer } from "ws";
-import type { PeonSocketChannel } from "../overseer/socket/peonSocketProtocol.js";
+import type { PeonSocketChannel, PeonSocketFrame } from "../overseer/socket/peonSocketProtocol.js";
 import { PeonSocketOutbox } from "../overseer/socket/peonSocketOutbox.js";
 import { PeonSocketPool, PeonSocketSupervisor, peonSocketUrl } from "../overseer/socket/peonSocket.js";
 
@@ -124,14 +124,54 @@ test("default control hello advertises the folder listing capability", async () 
     await waitFor(() => supervisor.getState().connected, "default control socket did not connect");
     const hello = target.hellos[0]!;
     assert.ok((hello.capabilities as string[]).includes("folder-listing-v1"));
-    assert.deepEqual((hello.channels as Record<string, unknown>)["folder-listing-v1"], {});
+    assert.deepEqual((hello.channels as Record<string, unknown>)["folder-listing-v1"], { entryMetadata: "entry-metadata-v1" });
   } finally {
     supervisor.stop();
     await closeServer(target.server, target.sockets);
   }
 });
 
-test("default transfer hello advertises project file reads", async () => {
+test("durable control hello advertises bounded transcript synchronization", async () => {
+  const directory = mkdtempSync(path.join(os.tmpdir(), "peon-transcript-hello-"));
+  const target = acceptingServer();
+  const base = await listen(target.server);
+  const config = { overseerUrl: base, overseerToken: "secret-token", peonId: "peon-transcript" };
+  const supervisor = new PeonSocketSupervisor({
+    readSettings: () => config,
+    subscribe: () => () => {},
+    outbox: new PeonSocketOutbox({ fileBase: path.join(directory, "outbox") }),
+    random: () => 0.5,
+    retryBaseMs: 10,
+    retryMaxMs: 40,
+    stableMs: 25,
+    handshakeTimeoutMs: 25,
+    pingIntervalMs: 20,
+    pongTimeoutMs: 15,
+    maintenanceIntervalMs: 10,
+  });
+  try {
+    supervisor.start();
+    await waitFor(() => supervisor.getState().connected, "durable control socket did not connect");
+    const hello = target.hellos[0]!;
+    assert.ok((hello.capabilities as string[]).includes("transcript-sync-v1"));
+    assert.deepEqual((hello.channels as Record<string, PeonSocketFrame>)["transcript-sync-v1"], {
+      snapshotPageEvents: 100,
+      snapshotPageBytes: 768 * 1024,
+      snapshotEvents: 20_000,
+      snapshotBytes: 16 * 1024 * 1024,
+      activeSnapshots: 4,
+      subscriptions: 64,
+      subscriptionTtlMs: 5 * 60_000,
+      eventBytes: 192 * 1024,
+    });
+  } finally {
+    supervisor.stop();
+    await closeServer(target.server, target.sockets);
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("default transfer hello advertises project and sandbox file reads", async () => {
   const target = acceptingServer();
   const base = await listen(target.server);
   const config = { overseerUrl: base, overseerToken: "secret-token", peonId: "peon-files" };
@@ -149,7 +189,7 @@ test("default transfer hello advertises project file reads", async () => {
     await waitFor(() => supervisor.getState().connected, "default transfer socket did not connect");
     assert.deepEqual(target.hellos[0], {
       type: "hello", protocol: 1, channel: "file-transfer", peonId: "peon-files",
-      capabilities: ["project-file-read-v1"],
+      capabilities: ["project-file-read-v1", "sandbox-file-read-v1", "file-write-v1"],
     });
   } finally {
     supervisor.stop();
@@ -361,6 +401,58 @@ test("replays one durable message after disconnect until its cumulative acknowle
     assert.equal(deliveries[0]?.messageId, deliveries[1]?.messageId);
     assert.equal(deliveries[0]?.cursor, deliveries[1]?.cursor);
     assert.deepEqual(deliveries[1]?.payload, { type: "durable_test_event", value: 7 });
+  } finally {
+    supervisor.stop();
+    await closeServer(server, sockets);
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("handshake cumulative acknowledgement notifies channels for every removed cursor", async () => {
+  const directory = mkdtempSync(path.join(os.tmpdir(), "peon-socket-handshake-ack-"));
+  const outbox = new PeonSocketOutbox({ fileBase: path.join(directory, "outbox") });
+  const first = outbox.enqueue({ type: "durable_test_event", value: 1 });
+  const second = outbox.enqueue({ type: "durable_test_event", value: 2 });
+  assert.equal(first.accepted, true);
+  assert.equal(second.accepted, true);
+  if (!first.accepted || !second.accepted) return;
+  const acknowledged: string[] = [];
+  const channel: PeonSocketChannel = {
+    capability: "durable-test-v1",
+    helloState: () => ({}),
+    started: () => {},
+    connecting: () => {},
+    negotiated: () => {},
+    disconnected: () => {},
+    handles: () => false,
+    receive: () => {},
+    durableAcknowledged: (cursor) => acknowledged.push(cursor),
+  };
+  const server = http.createServer();
+  const wss = new WebSocketServer({ noServer: true });
+  const sockets = new Set<WebSocket>();
+  wss.on("connection", (socket) => {
+    sockets.add(socket);
+    socket.once("close", () => sockets.delete(socket));
+    socket.once("message", () => {
+      socket.send(JSON.stringify({
+        type: "hello_ack",
+        protocol: 1,
+        capabilities: ["durable-test-v1", "durable-delivery-v1"],
+        delivery: { epoch: second.epoch, acknowledgedCursor: second.cursor },
+      }));
+    });
+  });
+  server.on("upgrade", (request, socket, head) => {
+    wss.handleUpgrade(request, socket, head, (client) => wss.emit("connection", client, request));
+  });
+  const base = await listen(server);
+  const supervisor = testSupervisor({ overseerUrl: base, overseerToken: "token" }, () => () => {}, [channel], outbox);
+  try {
+    supervisor.start();
+    await waitFor(() => supervisor.getState().connected, "socket did not accept handshake acknowledgement");
+    assert.deepEqual(acknowledged, [first.cursor, second.cursor]);
+    assert.equal(outbox.status().pendingMessages, 0);
   } finally {
     supervisor.stop();
     await closeServer(server, sockets);

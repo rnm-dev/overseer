@@ -80,7 +80,7 @@ class ProjectDetailPage extends ConsumerStatefulWidget {
 }
 
 class _ProjectDetailPageState extends ConsumerState<ProjectDetailPage> {
-  ProjectDetailTab _tab = ProjectDetailTab.overview;
+  ProjectDetailTab _tab = ProjectDetailTab.sessions;
 
   ProjectDetailScope get _scope => ProjectDetailScope(
     project: widget.project,
@@ -109,8 +109,8 @@ class _ProjectDetailPageState extends ConsumerState<ProjectDetailPage> {
     final state = detail.value;
     final project = state?.project ?? widget.project;
     final tabs = <ProjectDetailTab>[
-      ProjectDetailTab.overview,
       ProjectDetailTab.sessions,
+      ProjectDetailTab.overview,
       ProjectDetailTab.files,
       ProjectDetailTab.settings,
     ];
@@ -361,27 +361,19 @@ class _ProjectSessionsPane extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return CustomScrollView(
+    return SingleChildScrollView(
       key: const Key('project-sessions-pane'),
-      slivers: [
-        const _ProjectPaneHeader(title: 'SESSIONS'),
-        SliverPadding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 12, 28),
-          sliver: SliverToBoxAdapter(
-            child: sessionListBuilder == null
-                ? const _ProjectSessionsEmptyFallback(
-                    message: 'Session list unavailable in this context.',
-                  )
-                : sessionListBuilder!(
-                    context,
-                    workspaceId: workspaceId,
-                    peonId: peonId,
-                    projectId: project.projectId,
-                    projectKey: project.key,
-                  ),
-          ),
-        ),
-      ],
+      child: sessionListBuilder == null
+          ? const _ProjectSessionsEmptyFallback(
+              message: 'Session list unavailable in this context.',
+            )
+          : sessionListBuilder!(
+              context,
+              workspaceId: workspaceId,
+              peonId: peonId,
+              projectId: project.projectId,
+              projectKey: project.key,
+            ),
     );
   }
 }

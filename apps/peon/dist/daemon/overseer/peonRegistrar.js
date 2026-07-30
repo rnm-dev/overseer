@@ -4,6 +4,7 @@ import { sessions } from "../sessions/index.js";
 import { PROTOCOL_VERSION } from "../protocol.js";
 import { ensurePeonId } from "../peonIdentity.js";
 import { peonPublicUrl } from "../peonAddress.js";
+import { peonClaimClient } from "../enrollment/index.js";
 // The outbound half of the overseer protocol: this peon announcing *itself* to
 // a central overseer (fleet control plane), so the registry self-populates and
 // a NAT'd box (no inbound reachability) is still discoverable. It is the mirror
@@ -16,13 +17,21 @@ import { peonPublicUrl } from "../peonAddress.js";
 // overseer presents to command this peon is what this peon presents as its
 // own bearer to register — one secret per peon<->overseer pair.
 const CONTROL_PORT = Number(process.env.ACA_CONTROL_PORT ?? 4570);
+const MAX_ERROR_BODY_BYTES = 16 * 1024;
+const CREDENTIAL_VERDICTS = new Set([
+    "CREDENTIAL_INVALID",
+    "CREDENTIAL_REVOKED",
+    "CREDENTIAL_RETIRED",
+]);
 // Carries the HTTP status of a non-ok north-bound response so tick() can branch
 // (401 de-recruit vs 404 re-register vs transient) without string-matching.
-class NorthError extends Error {
+export class NorthError extends Error {
     status;
-    constructor(status, message) {
+    code;
+    constructor(status, code, message) {
         super(message);
         this.status = status;
+        this.code = code;
     }
 }
 const defaultReadSettings = () => settings.getPeonRegistrarSettings();
@@ -36,28 +45,50 @@ function capabilities(fileTransferRoot) {
         caps.push("files");
     return caps;
 }
-async function northError(operation, response) {
-    let detail = "";
+async function readBoundedErrorBody(response) {
+    const declaredLength = Number(response.headers.get("content-length") ?? "0");
+    if (Number.isFinite(declaredLength) && declaredLength > MAX_ERROR_BODY_BYTES) {
+        await response.body?.cancel();
+        return null;
+    }
+    if (!response.body)
+        return "";
+    const reader = response.body.getReader();
+    const chunks = [];
+    let total = 0;
+    while (true) {
+        const { done, value } = await reader.read();
+        if (done)
+            break;
+        total += value.byteLength;
+        if (total > MAX_ERROR_BODY_BYTES) {
+            await reader.cancel();
+            return null;
+        }
+        chunks.push(value);
+    }
+    return Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))).toString("utf8");
+}
+export async function northError(operation, response) {
+    let stableCode = "";
     try {
-        const raw = await response.text();
+        const raw = await readBoundedErrorBody(response);
         if (raw) {
             try {
                 const body = JSON.parse(raw);
                 const code = typeof body.code === "string" ? body.code : "";
-                const message = typeof body.error === "string" ? body.error : "";
-                detail = [code, message].filter(Boolean).join(": ");
+                if (CREDENTIAL_VERDICTS.has(code))
+                    stableCode = code;
             }
             catch {
-                // A proxy may return a short plain-text error. Keep it useful without
-                // allowing an arbitrarily large HTML response into status/log output.
-                detail = raw.replace(/\s+/g, " ").trim().slice(0, 300);
+                // Bodies are never copied into state or logs.
             }
         }
     }
     catch {
         // Reading an error body is best-effort; status alone is still meaningful.
     }
-    return new NorthError(response.status, `${operation} -> ${response.status}${detail ? `: ${detail}` : ""}`);
+    return new NorthError(response.status, stableCode, `${operation} -> ${response.status}`);
 }
 async function post(base, token, pathname, body) {
     return fetch(`${base.replace(/\/$/, "")}${pathname}`, {
@@ -184,6 +215,12 @@ export function createPeonRegistrar(options = {}) {
             catch (err) {
                 state.registered = false;
                 if (err instanceof NorthError && err.status === 401) {
+                    // Only an explicit stable revocation verdict is authoritative enough
+                    // to erase the locally active credential. A bare/stale 401 keeps the
+                    // established bounded retry behavior.
+                    if (["CREDENTIAL_REVOKED", "CREDENTIAL_INVALID", "CREDENTIAL_RETIRED"].includes(err.code)) {
+                        peonClaimClient.recordCredentialRejection(token, err.code);
+                    }
                     // One 401 is not enough to prove a durable revocation. A recovering
                     // deployment can briefly authenticate against stale or unavailable
                     // credential state. Mark the degraded state, but keep probing with

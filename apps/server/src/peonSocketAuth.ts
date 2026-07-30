@@ -3,6 +3,11 @@ import type { Duplex } from "node:stream";
 import { resolveCredential } from "./credentials.js";
 import { registry, type PeonRecord } from "./registry.js";
 
+export interface AuthenticatedPeonUpgrade {
+  record: PeonRecord;
+  credentialGeneration: number;
+}
+
 function bearer(req: IncomingMessage): string {
   const value = req.headers.authorization ?? "";
   return value.startsWith("Bearer ") ? value.slice(7).trim() : "";
@@ -17,7 +22,7 @@ function rejectUpgrade(socket: Duplex, status: 401 | 404 | 503, reason: string):
 // Shared authentication boundary for every Peon-initiated WebSocket channel.
 // Authentication completes before upgrade, so revoked, unbound, or cross-
 // workspace credentials never become accepted WebSocket connections.
-export async function authenticatePeonUpgrade(req: IncomingMessage, socket: Duplex): Promise<PeonRecord | null> {
+export async function authenticatePeonUpgrade(req: IncomingMessage, socket: Duplex): Promise<AuthenticatedPeonUpgrade | null> {
   try {
     const credential = await resolveCredential(bearer(req));
     if (!credential?.boundPeonId) {
@@ -29,7 +34,7 @@ export async function authenticatePeonUpgrade(req: IncomingMessage, socket: Dupl
       rejectUpgrade(socket, 404, "Not Found");
       return null;
     }
-    return record;
+    return { record, credentialGeneration: credential.generation ?? 0 };
   } catch {
     rejectUpgrade(socket, 503, "Service Unavailable");
     return null;

@@ -4,5 +4,5 @@ export { createPeonRegistrar, peonRegistrar, registrationPayload, } from "./peon
 export { PeonSocketMultiplexer } from "./socket/peonSocketProtocol.js";
 export { PEON_SOCKET_MAX_FRAME_BYTES } from "./socket/peonSocketProtocol.js";
 export { PEON_SOCKET_DURABLE_DELIVERY_CAPABILITY } from "./socket/peonSocketOutbox.js";
-export { REVERSE_COMMAND_CAPABILITY, REVERSE_COMMAND_MAX_BYTES, ReverseCommandChannel, projectArchiveHandler, sessionCancelHandler, } from "./socket/channels/reverseCommandChannel.js";
+export { REVERSE_COMMAND_CAPABILITY, REVERSE_COMMAND_MAX_BYTES, ReverseCommandChannel, sessionCancelHandler, } from "./socket/channels/reverseCommandChannel.js";
 export { ReverseCommandLedger, } from "./socket/reverseCommandLedger.js";

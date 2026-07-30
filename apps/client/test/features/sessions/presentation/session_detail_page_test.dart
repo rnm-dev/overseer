@@ -28,6 +28,17 @@ import 'package:overseer_mobile/shared/widgets/app_navigation_bar.dart';
 import 'package:overseer_mobile/shared/widgets/presence_stack.dart';
 
 void main() {
+  test('uses only the send-button spinner while submitting a follow-up', () {
+    const state = SessionComposerState(
+      draft: 'Hello',
+      sending: true,
+      followupProgress: FollowupSubmissionProgress.submitting(),
+    );
+
+    expect(submissionLabel(state, running: false), isNull);
+    expect(submissionLabel(state, running: true), isNull);
+  });
+
   testWidgets('centers a short project selection in the available space', (
     tester,
   ) async {

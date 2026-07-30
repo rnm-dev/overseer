@@ -2,16 +2,18 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
-  renameSync,
   rmdirSync,
   statSync,
-  unlinkSync,
-  writeFileSync,
 } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { DaemonSettings } from "./settingsTypes.js";
 import { configDir } from "../xdgPaths.js";
+import {
+  ensurePrivateDirectory,
+  secureExistingPrivateFile,
+  writePrivateFileDurably,
+} from "../durablePrivateFile.js";
 
 const SETTINGS_PATH = path.join(configDir(), "settings.json");
 
@@ -69,25 +71,27 @@ export class SettingsStore {
 
   update(patch: Partial<DaemonSettings>): DaemonSettings {
     assertTestWriteIsIsolated(this.settingsPath);
-    mkdirSync(path.dirname(this.settingsPath), { recursive: true });
+    ensurePrivateDirectory(path.dirname(this.settingsPath));
     this.withWriteLock(() => {
       // Another daemon may have enrolled and persisted a fresh credential since
       // this instance was constructed. Merge the patch into the latest durable
       // value, never this process's potentially stale in-memory snapshot.
       const latest = this.read();
-      this.current = {
+      const next = {
         ...latest,
         ...patch,
         // Deep-merge the one nested setting so a partial `{ ai: { ... } }` patch
         // keeps sibling ai fields rather than replacing the whole object.
         ...(patch.ai ? { ai: { ...latest.ai, ...patch.ai } } : {}),
       };
-      this.writeAtomically(this.current);
+      this.writeAtomically(next);
+      this.current = next;
     });
     return this.current;
   }
 
   private read(): DaemonSettings {
+    secureExistingPrivateFile(this.settingsPath);
     const fromFile = existsSync(this.settingsPath)
       ? JSON.parse(readFileSync(this.settingsPath, "utf8")) as Partial<DaemonSettings>
       : {};
@@ -102,17 +106,7 @@ export class SettingsStore {
   }
 
   private writeAtomically(value: DaemonSettings): void {
-    const temporary = `${this.settingsPath}.${process.pid}.${Date.now()}.tmp`;
-    try {
-      writeFileSync(temporary, JSON.stringify(value, null, 2), { flag: "wx", mode: 0o600 });
-      renameSync(temporary, this.settingsPath);
-    } finally {
-      try {
-        unlinkSync(temporary);
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-      }
-    }
+    writePrivateFileDurably(this.settingsPath, JSON.stringify(value, null, 2));
   }
 
   private withWriteLock<T>(operation: () => T): T {
@@ -142,8 +136,9 @@ export class SettingsStore {
     } finally {
       try {
         rmdirSync(lockPath);
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      } catch {
+        // Lock cleanup is best effort and must not mask the settings write
+        // result that controls credential handoff ordering.
       }
     }
   }

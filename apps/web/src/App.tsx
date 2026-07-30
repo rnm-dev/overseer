@@ -15,6 +15,7 @@ const Login = lazy(() => import("./pages/Login").then((m) => ({ default: m.Login
 const Dashboard = lazy(() => import("./pages/Dashboard").then((m) => ({ default: m.Dashboard })));
 const GithubCallback = lazy(() => import("./pages/GithubCallback").then((m) => ({ default: m.GithubCallback })));
 const Join = lazy(() => import("./pages/Join").then((m) => ({ default: m.Join })));
+const PeonClaim = lazy(() => import("./pages/PeonClaim").then((m) => ({ default: m.PeonClaim })));
 const PeonDetail = lazy(() => import("./pages/PeonDetail").then((m) => ({ default: m.PeonDetail })));
 const PeonNewSession = lazy(() => import("./pages/peon/PeonNewSession").then((m) => ({ default: m.PeonNewSession })));
 const PeonSessionDetail = lazy(() => import("./pages/peon/PeonSessionDetail").then((m) => ({ default: m.PeonSessionDetail })));
@@ -101,6 +102,8 @@ export function App() {
       {/* Public: GitHub returns web and native OAuth here; invite links also work signed-out. */}
       <Route path="/auth/github/callback" element={<GithubCallback />} />
       <Route path="/join/:token" element={<Join />} />
+      <Route path="/claim" element={<PeonClaim />} />
+      <Route path="/claim/:operatorCode" element={<PeonClaim />} />
 
       {/* Authed shell: workspace context + shared chrome, one <Outlet/> for every page. */}
       <Route

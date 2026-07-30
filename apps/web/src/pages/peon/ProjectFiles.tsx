@@ -5,7 +5,7 @@ import { api, ApiError } from "../../api";
 import { useT } from "../../i18n";
 import { FileTypeIcon } from "./FileTypeIcon";
 import { FileView, useFileContent } from "./FileView";
-import { encodeFilePath, formatFileSize, type FileSource } from "./fileLinks";
+import { encodeFilePath, formatFileSize, projectDirectoryListingPath, type FileSource } from "./fileLinks";
 
 export { formatFileSize } from "./fileLinks";
 
@@ -70,7 +70,7 @@ export function ProjectFileTree({ filesBase, activePath, onOpenFile, onFileMoved
   const load = useCallback(async (path: string) => {
     setDirectories((current) => ({ ...current, [path]: { loading: true, entries: [] } }));
     try {
-      const result = await api<{ entries?: ProjectFileEntry[] }>(`${filesBase}/${encodeFilePath(path)}?stat=1`);
+      const result = await api<{ entries?: ProjectFileEntry[] }>(projectDirectoryListingPath(filesBase, path));
       setDirectories((current) => ({
         ...current,
         [path]: {
@@ -91,7 +91,7 @@ export function ProjectFileTree({ filesBase, activePath, onOpenFile, onFileMoved
   // the tree never collapses or flashes its initial loading skeleton.
   const refreshDirectory = useCallback(async (path: string) => {
     try {
-      const result = await api<{ entries?: ProjectFileEntry[] }>(`${filesBase}/${encodeFilePath(path)}?stat=1`);
+      const result = await api<{ entries?: ProjectFileEntry[] }>(projectDirectoryListingPath(filesBase, path));
       const entries = sortEntries(result.entries ?? []);
       setDirectories((current) => {
         const directory = current[path];

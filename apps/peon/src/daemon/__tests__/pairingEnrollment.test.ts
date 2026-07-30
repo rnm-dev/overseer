@@ -102,3 +102,35 @@ test("enrollment failures tell the operator how to recover", async () => {
   assert.equal(expired.status, 401);
   assert.match(((await expired.json()) as { error: string }).error, /expired or already used/);
 });
+
+test("an active outbound claim locks legacy enrollment before accepting a credential", async () => {
+  const lockedApp = express();
+  lockedApp.use(express.json());
+  lockedApp.use("/api/v1", createAgentRouter({ legacyEnrollmentBlocked: () => true }));
+  const lockedApi: Server = lockedApp.listen(0, "127.0.0.1");
+  await new Promise<void>((resolve) => lockedApi.once("listening", resolve));
+  const lockedAddress = lockedApi.address();
+  assert(lockedAddress && typeof lockedAddress === "object");
+  try {
+    const response = await fetch(`http://127.0.0.1:${lockedAddress.port}/api/v1/enroll`, {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer attacker-supplied-legacy-secret",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        overseerUrl: "https://wrong-overseer.example.test",
+        overseerToken: "pn_must_not_persist",
+      }),
+    });
+    assert.equal(response.status, 409);
+    assert.deepEqual(await response.json(), {
+      code: "ENROLLMENT_METHOD_LOCKED",
+      error: "this enrollment attempt already selected peon-claim-v1",
+    });
+    assert.notEqual(settings.get().overseerToken, "pn_must_not_persist");
+  } finally {
+    lockedApi.closeAllConnections();
+    await new Promise<void>((resolve) => lockedApi.close(() => resolve()));
+  }
+});

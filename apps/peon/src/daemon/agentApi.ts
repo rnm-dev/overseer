@@ -24,7 +24,7 @@ import { startSelfUpdate } from "./selfUpdate.js";
 import { updateChecker } from "./updateChecker.js";
 import type { QuotaProvider } from "./providerQuota.js";
 import { createArmoryReadRouter, type ArmoryApiServices, type ArmoryInventoryReader } from "./armory/index.js";
-import { type FileAccessContract, FileAccessService } from "./files/index.js";
+import { AtomicFileUpload, type FileAccessContract, FileAccessService, moveProjectFile } from "./files/index.js";
 import { parseTranscriptPageRequest, parseTranscriptResumeEventId, transcriptResumeIndex, TranscriptPaginationError } from "./transcriptPagination.js";
 import { analyticsForSessions, parseSessionAnalyticsQuery, SessionAnalyticsQueryError } from "./sessionAnalytics.js";
 import { attachProjectRoutes, type SessionProjectReader } from "./http/fleet/projects.js";
@@ -32,6 +32,7 @@ import { attachSessionRoutes, type FleetSessionService, type FleetSessionRouterD
 import { attachFleetProjectFileRoutes, type FleetProjectFileReader } from "./http/fleet/files.js";
 import { attachFleetSessionFileRoutes } from "./http/fleet/sessionFiles.js";
 import { PROTOCOL_VERSION } from "./protocol.js";
+import { peonClaimClient } from "./enrollment/index.js";
 
 // The machine-facing control surface a "overseer" (fleet control plane) uses
 // to drive this peon — see PROTOCOL.md. It is deliberately a *separate* router
@@ -84,6 +85,7 @@ type ErrorCode =
   | "WRITE_FAILED"
   | "RANGE_NOT_SATISFIABLE"
   | "RATE_LIMITED"
+  | "ENROLLMENT_METHOD_LOCKED"
   | "UNKNOWN_PROJECT"
   | "UNKNOWN_QUICK_LINK"
   | "PROJECT_EXISTS"
@@ -242,6 +244,9 @@ export interface AgentRouterOptions {
   getFileTransferRoot?: FleetSessionRouterDeps["getFileTransferRoot"];
   defaultAgent?: FleetSessionRouterDeps["defaultAgent"];
   sessionFiles?: SessionFilesContract;
+  legacyEnrollmentBlocked?: () => boolean;
+  openProjectUpload?: typeof AtomicFileUpload.open;
+  moveProjectFile?: typeof moveProjectFile;
 }
 
 export function createAgentRouter(options: AgentRouterOptions = {}): express.Router {
@@ -307,6 +312,18 @@ export function createAgentRouter(options: AgentRouterOptions = {}): express.Rou
     const reqId = req.headers["peon-request-id"];
     if (typeof reqId === "string" && reqId) res.setHeader("Peon-Request-Id", reqId);
 
+    // peon-claim-v1 and legacy recruitment are mutually exclusive for one
+    // durable attempt. Reject before reading or accepting a legacy credential,
+    // so a racing callback cannot mint a second enrollment identity.
+    if ((options.legacyEnrollmentBlocked ?? (() => peonClaimClient.legacyEnrollmentBlocked()))()) {
+      return fail(
+        res,
+        409,
+        "ENROLLMENT_METHOD_LOCKED",
+        "this enrollment attempt already selected peon-claim-v1",
+      );
+    }
+
     const authorization = req.headers.authorization?.trim() ?? "";
     const bearer = authorization.match(/^Bearer\s+(.+)$/i);
     if (!bearer) {
@@ -347,6 +364,7 @@ export function createAgentRouter(options: AgentRouterOptions = {}): express.Rou
     // Single-use: burn the phrase so it can't be replayed. A token-authed
     // re-point leaves no phrase to burn.
     if (byPairing) pairing.burn();
+    peonClaimClient.completeLegacyEnrollment();
 
     // publicUrl lets the overseer retain a configured DNS/reverse-proxy address
     // immediately. The URL entered by the operator remains authoritative; this
@@ -485,6 +503,8 @@ export function createAgentRouter(options: AgentRouterOptions = {}): express.Rou
   attachFleetProjectFileRoutes(router, {
     fileAccessService,
     projectReader: projectFileReader,
+    openProjectUpload: options.openProjectUpload,
+    moveProject: options.moveProjectFile,
   });
 
   // --- settings (operator-facing subset only) ------------------------------

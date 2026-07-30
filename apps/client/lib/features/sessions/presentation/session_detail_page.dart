@@ -428,7 +428,7 @@ class _SessionDetailPageState extends _SessionDetailAttachmentHost
                                 ? 'Reading files…'
                                 : _startingSession
                                 ? 'Starting session…'
-                                : _submissionLabel(
+                                : submissionLabel(
                                     composerState,
                                     running: isRunning,
                                   ),

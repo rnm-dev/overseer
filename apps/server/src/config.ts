@@ -31,6 +31,9 @@ export interface Config {
   githubNativeCallbacks: string[];
   // How long an issued device token lives.
   deviceTokenTtlMs: number;
+  // Addresses/CIDRs of reverse proxies that may contribute
+  // X-Forwarded-For. Empty means forwarded addresses are ignored.
+  trustedProxies: string[];
 
   // Isolated HTML artifact previews are served from a sibling wildcard domain.
   // Each iframe gets an opaque, short-lived subdomain token; no Peon connection
@@ -43,6 +46,15 @@ export interface Config {
   releaseToken: string;
   releaseDirectory: string;
   releaseMaxBytes: number;
+
+  // Peon-initiated enrollment keeps credential verifiers and recoverable
+  // pending deliveries and replayable operator codes under separate,
+  // versioned deployment keys. All are base64url-encoded 32-byte values and
+  // never live in Postgres.
+  peonClaimEnabled: boolean;
+  peonClaimCredentialPepper: string;
+  peonClaimDeliveryKey: string;
+  peonClaimOperatorCodeKey: string;
 
   // Voice dictation. The resolution rules (presets, per-stage overrides, which
   // stage counts as configured) live with the provider seam in
@@ -60,6 +72,19 @@ function num(name: string, fallback: number): number {
   if (!raw) return fallback;
   const n = Number(raw);
   return Number.isFinite(n) ? n : fallback;
+}
+
+function csv(name: string): string[] {
+  return (process.env[name] ?? "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
+function canonicalClaimKey(value: string): string | null {
+  if (!/^[A-Za-z0-9_-]{43}$/.test(value)) return null;
+  const decoded = Buffer.from(value, "base64url");
+  return decoded.length === 32 && decoded.toString("base64url") === value ? value : null;
 }
 
 const publicUrl = (process.env.OVERSEER_PUBLIC_URL ?? "https://overseer.rnm.dev").replace(/\/+$/, "");
@@ -80,11 +105,16 @@ export const config: Config = {
   githubNativeCallbacks: (process.env.OVERSEER_GITHUB_NATIVE_CALLBACKS ?? "overseer://oauth/github")
     .split(",").map((value) => value.trim()).filter(Boolean),
   deviceTokenTtlMs: num("OVERSEER_DEVICE_TOKEN_TTL_MS", 90 * 24 * 60 * 60_000),
+  trustedProxies: csv("OVERSEER_TRUSTED_PROXIES"),
   previewDomain: (process.env.OVERSEER_PREVIEW_DOMAIN ?? "preview.overseer.rnm.dev").toLowerCase().replace(/^\.+|\.+$/g, ""),
   previewTokenTtlMs: num("OVERSEER_PREVIEW_TOKEN_TTL_MS", 10 * 60_000),
   releaseToken: process.env.OVERSEER_RELEASE_TOKEN ?? "",
   releaseDirectory: process.env.OVERSEER_RELEASE_DIRECTORY ?? "/data/releases",
   releaseMaxBytes: num("OVERSEER_RELEASE_MAX_BYTES", 512 * 1024 * 1024),
+  peonClaimEnabled: process.env.OVERSEER_PEON_CLAIM_V1 === "1",
+  peonClaimCredentialPepper: process.env.OVERSEER_PEON_CREDENTIAL_PEPPER ?? "",
+  peonClaimDeliveryKey: process.env.OVERSEER_PEON_DELIVERY_KEY ?? "",
+  peonClaimOperatorCodeKey: process.env.OVERSEER_PEON_OPERATOR_CODE_KEY ?? "",
   voice: resolveVoiceConfig(process.env),
   push: resolvePushConfig(process.env),
 };
@@ -97,8 +127,22 @@ export function configWarnings(): string[] {
     w.push("OVERSEER_PEON_CALLBACK_URL is empty — recruitment can't tell a peon where to phone home, so no peon can be connected until it's set.");
   if (!config.githubClientId || !config.githubClientSecret)
     w.push("OVERSEER_GITHUB_CLIENT_ID / OVERSEER_GITHUB_CLIENT_SECRET are not both set — GitHub sign-in is disabled, so nobody can log in.");
+  if (process.env.NODE_ENV === "production" && config.trustedProxies.length === 0)
+    w.push("OVERSEER_TRUSTED_PROXIES is empty — forwarded client addresses are ignored and public abuse limits use the socket peer.");
   if (!config.releaseToken)
     w.push("OVERSEER_RELEASE_TOKEN is empty — Peon release publishing is disabled.");
+  if (!config.peonClaimEnabled)
+    w.push("OVERSEER_PEON_CLAIM_V1 is not enabled — peon-claim-v1 is not advertised.");
+  else {
+    const claimKeys = [
+      canonicalClaimKey(config.peonClaimCredentialPepper),
+      canonicalClaimKey(config.peonClaimDeliveryKey),
+      canonicalClaimKey(config.peonClaimOperatorCodeKey),
+    ];
+    if (claimKeys.some((key) => key === null) || new Set(claimKeys).size !== claimKeys.length) {
+      w.push("OVERSEER_PEON_CREDENTIAL_PEPPER / OVERSEER_PEON_DELIVERY_KEY / OVERSEER_PEON_OPERATOR_CODE_KEY must all be set to independent 32-byte base64url keys — peon-claim-v1 is disabled.");
+    }
+  }
   // An unconfigured or half-configured voice stage is a boot-time warning, not
   // a request-time failure: clients read /api/v1/voice/capabilities and simply
   // hide the mic button on an instance with no provider.

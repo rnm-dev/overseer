@@ -681,6 +681,7 @@ class _VoiceDictationButton extends StatelessWidget {
           ? onStop
           : onStart,
       padding: EdgeInsets.zero,
+      alignment: Alignment.centerLeft,
       constraints: const BoxConstraints.tightFor(width: 38, height: 44),
       style: IconButton.styleFrom(
         minimumSize: const Size(38, 44),
@@ -1032,6 +1033,7 @@ class _ComposerCapabilityPickerState extends State<_ComposerCapabilityPicker> {
           child: Align(
             alignment: Alignment.centerLeft,
             child: Container(
+              key: const Key('session-composer-capabilities-visual'),
               height: 32,
               padding: const EdgeInsets.symmetric(horizontal: 8),
               decoration: BoxDecoration(

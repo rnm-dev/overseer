@@ -22,6 +22,16 @@ import {
   setAudioFocusActive,
   touchPresence,
 } from "./modules/presence/index.js";
+import {
+  getTranscriptState,
+  readTranscriptAfter,
+} from "./modules/sessions/index.js";
+import {
+  acquireTranscriptProjection,
+  hasReverseTranscriptConnection,
+  transcriptConnectionBus,
+} from "./peonTranscriptSync.js";
+import { canAccessIndexedSessionNow } from "./access.js";
 
 // The north-bound (overseer→client) transport: one authenticated WebSocket per
 // app, multiplexing presence + live session tails, resumable by cursor.
@@ -103,8 +113,23 @@ const MAX_PENDING_AUTH_MESSAGES = 32;
 const MAX_QUEUED_MESSAGES = 256;
 const REPLAY_PAGE_SIZE = 1000;
 const MAX_SSE_FRAME_BYTES = 1024 * 1024;
+const MAX_PENDING_TRANSCRIPT_EVENTS = 1_000;
+const MAX_PENDING_TRANSCRIPT_BYTES = 8 * 1024 * 1024;
 
-const send = (ws: WebSocket, msg: unknown): boolean => {
+interface ReverseTailState {
+  peonId: string;
+  sessionId: string;
+  ready: boolean;
+  pending: LiveEvent[];
+  pendingBytes: number;
+  seen: Set<string>;
+  release: (() => void) | null;
+  delivery: Promise<void>;
+}
+
+const reverseTails = new WeakMap<AbortController, ReverseTailState>();
+
+export const send = (ws: WebSocket, msg: unknown): boolean => {
   if (ws.readyState !== WebSocket.OPEN) return false;
   // A slow/backgrounded browser must not turn an unbounded tail into server-side
   // memory growth. Terminating is safe: durable state resumes by cursor and the
@@ -240,6 +265,36 @@ export function attachLiveSocket(server: Server): WebSocketServer {
       // connect/disconnect in that window cannot be lost. Durable events remain
       // gated until snapshotAndReplay establishes its cursor barrier.
       const presenceDuringSnapshot = e.cursor === 0 && e.kind === "peon";
+      if (e.kind === "transcript") {
+        if (!c.live || c.workspaceId !== e.workspaceId || !e.sessionId) continue;
+        const controller = c.tails.get(e.sessionId);
+        const tail = controller ? reverseTails.get(controller) : null;
+        if (!tail || tail.peonId !== e.peonId) continue;
+        if (!tail.ready) {
+          const bytes = Buffer.byteLength(JSON.stringify(e.payload));
+          if (tail.pending.length >= MAX_PENDING_TRANSCRIPT_EVENTS
+            || tail.pendingBytes + bytes > MAX_PENDING_TRANSCRIPT_BYTES) {
+            controller!.abort();
+            c.tails.delete(e.sessionId);
+            send(c.ws, {
+              type: "tailError",
+              peonId: e.peonId,
+              sessionId: e.sessionId,
+              error: "transcript browser buffer exceeded",
+            });
+            continue;
+          }
+          tail.pending.push(e);
+          tail.pendingBytes += bytes;
+          continue;
+        }
+        tail.delivery = tail.delivery
+          .then(async () => {
+            await deliverProjectedTail(c, controller!, tail, e);
+          })
+          .catch(() => closeRevokedTail(c, controller!, tail));
+        continue;
+      }
       if ((c.live || presenceDuringSnapshot) && c.workspaceId === e.workspaceId && eventVisible(c, e)) {
         send(c.ws, { type: e.kind, cursor: e.cursor, payload: e.payload });
       }
@@ -250,6 +305,24 @@ export function attachLiveSocket(server: Server): WebSocketServer {
   presenceBus.on("changed", onPresenceChange);
   const onAudioFocusChange = (userId: string) => syncAudio(userId);
   audioFocusBus.on("changed", onAudioFocusChange);
+  const onTranscriptConnection = (peonId: string, connected: boolean) => {
+    if (connected) return;
+    for (const client of clients) {
+      for (const [sessionId, controller] of client.tails) {
+        const tail = reverseTails.get(controller);
+        if (!tail || tail.peonId !== peonId) continue;
+        controller.abort();
+        client.tails.delete(sessionId);
+        send(client.ws, {
+          type: "tailError",
+          peonId,
+          sessionId,
+          error: "reverse transcript connection closed",
+        });
+      }
+    }
+  };
+  transcriptConnectionBus.on("changed", onTranscriptConnection);
 
   // Cursor sync — refresh high-water marks from Postgres, not only the local bus.
   // That makes self-heal work across multiple overseer processes and after any
@@ -308,6 +381,7 @@ export function attachLiveSocket(server: Server): WebSocketServer {
     bus.off("event", onBusEvent);
     presenceBus.off("changed", onPresenceChange);
     audioFocusBus.off("changed", onAudioFocusChange);
+    transcriptConnectionBus.off("changed", onTranscriptConnection);
     server.off("upgrade", onUpgrade);
   });
   return wss;
@@ -479,6 +553,7 @@ async function replayWindow(client: Client, workspaceId: string, from: number, t
     if (page.length === 0) break;
     for (const e of page) {
       if (client.closed || client.workspaceId !== workspaceId) return;
+      if (e.kind === "transcript") continue;
       if (eventVisible(client, e)) send(client.ws, { type: e.kind, cursor: e.cursor, payload: e.payload });
     }
     cursor = page[page.length - 1]!.cursor;
@@ -563,19 +638,101 @@ async function subscribe(client: Client, peonId: string, sessionId: string, requ
     send(client.ws, { type: "tailError", peonId, sessionId, error: "unknown peon", retryable: false });
     return;
   }
+  const indexed = await getIndexedSession(peonId, sessionId);
+  const transcriptState = await getTranscriptState(peonId, sessionId);
+  const reverseAuthority = transcriptState?.epoch != null || hasReverseTranscriptConnection(peonId);
   if (client.role !== "owner") {
-    const detail = await callPeon(connOfRecord(record), "GET", `/sessions/${encodeURIComponent(sessionId)}`, { actor: client.actor });
-    const projectKey = detail.ok && detail.json && typeof detail.json === "object" && typeof (detail.json as { projectKey?: unknown }).projectKey === "string"
-      ? (detail.json as { projectKey: string }).projectKey
-      : null;
-    const projectId = detail.ok && detail.json && typeof detail.json === "object" && typeof (detail.json as { projectId?: unknown }).projectId === "string"
-      ? (detail.json as { projectId: string }).projectId
-      : null;
-    if (!detail.ok || (projectKey && !projectVisible(client, peonId, projectKey, projectId))) {
+    let projectKey = indexed?.projectKey ?? null;
+    let projectId = indexed?.projectId ?? null;
+    let found = indexed !== null;
+    if (!found && !reverseAuthority) {
+      const detail = await callPeon(connOfRecord(record), "GET", `/sessions/${encodeURIComponent(sessionId)}`, { actor: client.actor });
+      found = detail.ok;
+      projectKey = detail.ok && detail.json && typeof detail.json === "object" && typeof (detail.json as { projectKey?: unknown }).projectKey === "string"
+        ? (detail.json as { projectKey: string }).projectKey
+        : null;
+      projectId = detail.ok && detail.json && typeof detail.json === "object" && typeof (detail.json as { projectId?: unknown }).projectId === "string"
+        ? (detail.json as { projectId: string }).projectId
+        : null;
+    }
+    if (!found || (projectKey && !projectVisible(client, peonId, projectKey, projectId))) {
       if (client.tails.get(sessionId) === ctrl) client.tails.delete(sessionId);
       send(client.ws, { type: "tailError", peonId, sessionId, error: "unknown session", retryable: false });
       return;
     }
+  }
+
+  if (reverseAuthority) {
+    if (!hasReverseTranscriptConnection(peonId)) {
+      if (client.tails.get(sessionId) === ctrl) client.tails.delete(sessionId);
+      send(client.ws, { type: "tailError", peonId, sessionId, error: "transcript stream is offline" });
+      return;
+    }
+    const tail: ReverseTailState = {
+      peonId,
+      sessionId,
+      ready: false,
+      pending: [],
+      pendingBytes: 0,
+      seen: new Set(),
+      release: null,
+      delivery: Promise.resolve(),
+    };
+    reverseTails.set(ctrl, tail);
+    ctrl.signal.addEventListener("abort", () => tail.release?.(), { once: true });
+    try {
+      // The cached socket ACL above is useful for rejecting obvious bad input,
+      // but it must never be the gate that creates Peon-side transcript demand.
+      // Re-read the current membership/session/project grants before acquire can
+      // emit transcript_subscribe or transcript_snapshot_request.
+      if (!(await currentTranscriptAccess(client, peonId, sessionId))) {
+        closeRevokedTail(client, ctrl, tail);
+        return;
+      }
+      if (client.closed || ctrl.signal.aborted || client.tails.get(sessionId) !== ctrl) return;
+      tail.release = await acquireTranscriptProjection(peonId, sessionId);
+      if (ctrl.signal.aborted || client.tails.get(sessionId) !== ctrl) {
+        tail.release();
+        tail.release = null;
+        return;
+      }
+      if (!(await currentTranscriptAccess(client, peonId, sessionId))) {
+        closeRevokedTail(client, ctrl, tail);
+        return;
+      }
+      const lastEventId = typeof requestedLastEventId === "string"
+        && requestedLastEventId.length > 0
+        && requestedLastEventId.length <= 512
+        && !/[\r\n]/.test(requestedLastEventId)
+        ? requestedLastEventId
+        : null;
+      const replay = await readTranscriptAfter({ peonId, sessionId, lastEventId });
+      for (const event of replay) {
+        if (!(await currentTranscriptAccess(client, peonId, sessionId))) {
+          closeRevokedTail(client, ctrl, tail);
+          return;
+        }
+        sendProjectedEvent(client, tail, event);
+      }
+      while (tail.pending.length > 0) {
+        const pending = tail.pending.splice(0).sort((left, right) => left.cursor - right.cursor);
+        tail.pendingBytes = 0;
+        for (const live of pending) {
+          if (!(await deliverProjectedTail(client, ctrl, tail, live))) return;
+        }
+      }
+      tail.ready = true;
+    } catch (error) {
+      if (client.tails.get(sessionId) === ctrl) client.tails.delete(sessionId);
+      ctrl.abort();
+      send(client.ws, {
+        type: "tailError",
+        peonId,
+        sessionId,
+        error: error instanceof Error ? error.message : "transcript stream unavailable",
+      });
+    }
+    return;
   }
 
   let buf = "";
@@ -635,6 +792,69 @@ async function subscribe(client: Client, peonId: string, sessionId: string, requ
 function unsubscribe(client: Client, sessionId: string): void {
   client.tails.get(sessionId)?.abort();
   client.tails.delete(sessionId);
+}
+
+function sendProjectedTail(client: Client, tail: ReverseTailState, live: LiveEvent): void {
+  const payload = live.payload && typeof live.payload === "object"
+    ? live.payload as { event?: unknown }
+    : null;
+  if (!payload?.event || typeof payload.event !== "object" || Array.isArray(payload.event)) return;
+  sendProjectedEvent(client, tail, payload.event as Record<string, unknown>);
+}
+
+async function currentTranscriptAccess(client: Client, peonId: string, sessionId: string): Promise<boolean> {
+  if (!client.workspaceId) return false;
+  return canAccessIndexedSessionNow(client.workspaceId, client.userId, peonId, sessionId);
+}
+
+function closeRevokedTail(client: Client, controller: AbortController, tail: ReverseTailState): void {
+  if (client.tails.get(tail.sessionId) !== controller) return;
+  controller.abort();
+  client.tails.delete(tail.sessionId);
+  send(client.ws, {
+    type: "tailError",
+    peonId: tail.peonId,
+    sessionId: tail.sessionId,
+    error: "unknown session",
+    retryable: false,
+  });
+}
+
+async function deliverProjectedTail(
+  client: Client,
+  controller: AbortController,
+  tail: ReverseTailState,
+  live: LiveEvent,
+): Promise<boolean> {
+  if (client.tails.get(tail.sessionId) !== controller || controller.signal.aborted) return false;
+  if (!(await currentTranscriptAccess(client, tail.peonId, tail.sessionId))) {
+    closeRevokedTail(client, controller, tail);
+    return false;
+  }
+  if (client.tails.get(tail.sessionId) !== controller || controller.signal.aborted) return false;
+  if (live.payload && typeof live.payload === "object"
+    && (live.payload as { deleted?: unknown }).deleted === true) {
+    controller.abort();
+    client.tails.delete(tail.sessionId);
+    send(client.ws, { type: "tailEnd", peonId: tail.peonId, sessionId: tail.sessionId });
+    return false;
+  }
+  sendProjectedTail(client, tail, live);
+  return true;
+}
+
+function sendProjectedEvent(client: Client, tail: ReverseTailState, event: Record<string, unknown>): void {
+  const eventId = typeof event.eventId === "string" ? event.eventId : null;
+  if (!eventId || tail.seen.has(eventId)) return;
+  tail.seen.add(eventId);
+  send(client.ws, {
+    type: "tail",
+    peonId: tail.peonId,
+    sessionId: tail.sessionId,
+    event: "event",
+    id: eventId,
+    data: JSON.stringify(event),
+  });
 }
 
 function broadcastPresence(clients: Set<Client>, workspaceId: string): void {

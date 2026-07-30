@@ -1,0 +1,402 @@
+{
+  "formatVersion": 1,
+  "description": "Shared stable control, catalog, folder-listing and file-read golden frames.",
+  "limits": {
+    "control": 1048576,
+    "durable": 1048576,
+    "catalogPage": 61440,
+    "folderPage": 921600,
+    "transferJson": 65536
+  },
+  "frames": [
+    {
+      "name": "presence-only control hello remains valid",
+      "surface": "socket",
+      "schema": "socket.control.hello",
+      "limit": "control",
+      "frame": { "type": "hello", "protocol": 1, "peonId": "00000000-0000-4000-8000-000000000001" }
+    },
+    {
+      "name": "current control hello advertises stable channels",
+      "surface": "socket",
+      "schema": "socket.control.hello",
+      "limit": "control",
+      "frame": {
+        "type": "hello",
+        "protocol": 1,
+        "peonId": "00000000-0000-4000-8000-000000000001",
+        "capabilities": ["session-catalog-v1", "durable-delivery-v1", "project-catalog-v1", "folder-listing-v1"],
+        "channels": {
+          "session-catalog-v1": { "epoch": "sessions-a", "revision": 4, "earliestSeq": 1, "latestSeq": 4 },
+          "project-catalog-v1": { "epoch": "projects-a", "revision": 2, "earliestSeq": 1, "latestSeq": 2 },
+          "folder-listing-v1": { "entryMetadata": "entry-metadata-v1" }
+        }
+      }
+    },
+    {
+      "name": "current control hello acknowledgement",
+      "surface": "socket",
+      "schema": "socket.control.hello_ack",
+      "limit": "control",
+      "frame": {
+        "type": "hello_ack",
+        "protocol": 1,
+        "capabilities": ["session-catalog-v1", "durable-delivery-v1", "project-catalog-v1", "folder-listing-v1"],
+        "channels": {
+          "session-catalog-v1": { "epoch": "sessions-a", "acknowledgedSeq": 3 },
+          "project-catalog-v1": { "epoch": "projects-a", "acknowledgedSeq": 1 },
+          "folder-listing-v1": { "entryMetadata": "entry-metadata-v1" }
+        }
+      }
+    },
+    {
+      "name": "partial canonical negotiation is invalid",
+      "surface": "socket",
+      "schema": "socket.control.hello_ack",
+      "limit": "control",
+      "valid": false,
+      "frame": { "type": "hello_ack", "protocol": 1, "capabilities": ["session-catalog-v1"] }
+    },
+    {
+      "name": "transfer hello advertises both stable reads",
+      "surface": "socket",
+      "schema": "socket.transfer.hello",
+      "limit": "transferJson",
+      "frame": {
+        "type": "hello",
+        "protocol": 1,
+        "channel": "file-transfer",
+        "peonId": "00000000-0000-4000-8000-000000000001",
+        "capabilities": ["project-file-read-v1", "sandbox-file-read-v1"]
+      }
+    },
+    {
+      "name": "transfer acknowledgement is channel-fenced",
+      "surface": "socket",
+      "schema": "socket.transfer.hello_ack",
+      "limit": "transferJson",
+      "frame": {
+        "type": "hello_ack",
+        "protocol": 1,
+        "channel": "file-transfer",
+        "capabilities": ["project-file-read-v1", "sandbox-file-read-v1"]
+      }
+    },
+    {
+      "name": "durable session event envelope",
+      "surface": "catalog",
+      "schema": "delivery.message",
+      "limit": "durable",
+      "frame": {
+        "type": "durable_message",
+        "epoch": "delivery-a",
+        "cursor": "4",
+        "messageId": "00000000-0000-4000-8000-000000000004",
+        "priority": "normal",
+        "capability": "session-catalog-v1",
+        "payload": {
+          "type": "session_catalog_event",
+          "epoch": "sessions-a",
+          "seq": 4,
+          "revision": 4,
+          "session": { "id": "session-a", "status": "running" }
+        }
+      }
+    },
+    {
+      "name": "session snapshot request",
+      "surface": "catalog",
+      "schema": "catalog.session.snapshot_request",
+      "limit": "control",
+      "frame": {
+        "type": "session_catalog_snapshot_request",
+        "requestId": "00000000-0000-4000-8000-000000000010",
+        "limit": 100
+      }
+    },
+    {
+      "name": "session snapshot page",
+      "surface": "catalog",
+      "schema": "catalog.session.snapshot_page",
+      "limit": "catalogPage",
+      "frame": {
+        "type": "session_catalog_snapshot_page",
+        "requestId": "00000000-0000-4000-8000-000000000010",
+        "epoch": "sessions-a",
+        "revision": 4,
+        "barrierSeq": 4,
+        "sessions": [{ "id": "session-a", "status": "running" }],
+        "nextCursor": null,
+        "hasMore": false
+      }
+    },
+    {
+      "name": "session upsert event",
+      "surface": "catalog",
+      "schema": "catalog.session.event",
+      "limit": "catalogPage",
+      "frame": {
+        "type": "session_catalog_event",
+        "epoch": "sessions-a",
+        "seq": 5,
+        "revision": 5,
+        "session": { "id": "session-a", "status": "completed" }
+      }
+    },
+    {
+      "name": "session acknowledgement",
+      "surface": "catalog",
+      "schema": "catalog.session.ack",
+      "limit": "control",
+      "frame": { "type": "session_catalog_ack", "epoch": "sessions-a", "acknowledgedSeq": 5 }
+    },
+    {
+      "name": "project snapshot request",
+      "surface": "catalog",
+      "schema": "catalog.project.snapshot_request",
+      "limit": "control",
+      "frame": {
+        "type": "project_catalog_snapshot_request",
+        "requestId": "00000000-0000-4000-8000-000000000011",
+        "limit": 100
+      }
+    },
+    {
+      "name": "project snapshot page",
+      "surface": "catalog",
+      "schema": "catalog.project.snapshot_page",
+      "limit": "catalogPage",
+      "frame": {
+        "type": "project_catalog_snapshot_page",
+        "requestId": "00000000-0000-4000-8000-000000000011",
+        "epoch": "projects-a",
+        "revision": 2,
+        "barrierSeq": 2,
+        "projects": [{ "projectId": "00000000-0000-4000-8000-000000000020", "key": "alpha", "label": "Alpha", "dir": "/srv/alpha" }],
+        "nextCursor": null,
+        "hasMore": false
+      }
+    },
+    {
+      "name": "project deletion event",
+      "surface": "catalog",
+      "schema": "catalog.project.event",
+      "limit": "catalogPage",
+      "frame": {
+        "type": "project_catalog_event",
+        "epoch": "projects-a",
+        "seq": 3,
+        "revision": 3,
+        "deletedProjectId": "00000000-0000-4000-8000-000000000020"
+      }
+    },
+    {
+      "name": "project acknowledgement",
+      "surface": "catalog",
+      "schema": "catalog.project.ack",
+      "limit": "control",
+      "frame": { "type": "project_catalog_ack", "epoch": "projects-a", "acknowledgedSeq": 3 }
+    },
+    {
+      "name": "absolute folder request",
+      "surface": "folder-listing",
+      "schema": "folder.request",
+      "limit": "control",
+      "frame": {
+        "type": "folder_list_request",
+        "requestId": "00000000-0000-4000-8000-000000000030",
+        "path": "/srv",
+        "limit": 200
+      }
+    },
+    {
+      "name": "project-relative folder request",
+      "surface": "folder-listing",
+      "schema": "folder.request",
+      "limit": "control",
+      "frame": {
+        "type": "folder_list_request",
+        "requestId": "00000000-0000-4000-8000-000000000031",
+        "projectId": "00000000-0000-4000-8000-000000000020",
+        "relativePath": "src/lib",
+        "limit": 200
+      }
+    },
+    {
+      "name": "metadata folder page",
+      "surface": "folder-listing",
+      "schema": "folder.page",
+      "limit": "folderPage",
+      "frame": {
+        "type": "folder_list_page",
+        "requestId": "00000000-0000-4000-8000-000000000031",
+        "path": "/srv/alpha/src/lib",
+        "projectId": "00000000-0000-4000-8000-000000000020",
+        "entries": [
+          { "name": "nested", "type": "directory", "size": null, "mtimeMs": 1785400000000 },
+          { "name": "index.ts", "type": "file", "size": 1832, "mtimeMs": 1785400000123 }
+        ],
+        "nextCursor": null,
+        "hasMore": false
+      }
+    },
+    {
+      "name": "legacy folder page remains valid",
+      "surface": "folder-listing",
+      "schema": "folder.page",
+      "limit": "folderPage",
+      "frame": {
+        "type": "folder_list_page",
+        "requestId": "00000000-0000-4000-8000-000000000031",
+        "path": "/srv/alpha/src/lib",
+        "projectId": "00000000-0000-4000-8000-000000000020",
+        "entries": [{ "name": "nested", "type": "directory" }, { "name": "index.ts", "type": "file" }],
+        "nextCursor": null,
+        "hasMore": false
+      }
+    },
+    {
+      "name": "legacy other entry is invalid",
+      "surface": "folder-listing",
+      "schema": "folder.page",
+      "limit": "folderPage",
+      "valid": false,
+      "frame": {
+        "type": "folder_list_page",
+        "requestId": "00000000-0000-4000-8000-000000000031",
+        "path": "/srv/alpha/src/lib",
+        "projectId": "00000000-0000-4000-8000-000000000020",
+        "entries": [{ "name": "socket", "type": "other" }],
+        "nextCursor": null,
+        "hasMore": false
+      }
+    },
+    {
+      "name": "folder cancellation",
+      "surface": "folder-listing",
+      "schema": "folder.cancel",
+      "limit": "control",
+      "frame": { "type": "folder_list_cancel", "requestId": "00000000-0000-4000-8000-000000000031" }
+    },
+    {
+      "name": "folder cancellation acknowledgement",
+      "surface": "folder-listing",
+      "schema": "folder.cancelled",
+      "limit": "control",
+      "frame": { "type": "folder_list_cancelled", "requestId": "00000000-0000-4000-8000-000000000031" }
+    },
+    {
+      "name": "folder stable error",
+      "surface": "folder-listing",
+      "schema": "folder.error",
+      "limit": "control",
+      "frame": {
+        "type": "folder_list_error",
+        "requestId": "00000000-0000-4000-8000-000000000031",
+        "code": "PATH_ESCAPE",
+        "error": "project-relative path leaves the root"
+      }
+    },
+    {
+      "name": "project file open",
+      "surface": "file-read",
+      "schema": "file.project.open",
+      "limit": "transferJson",
+      "frame": {
+        "type": "file_open",
+        "protocol": 1,
+        "requestId": "00000000-0000-4000-8000-000000000040",
+        "projectId": "00000000-0000-4000-8000-000000000020",
+        "relativePath": "dist/index.html",
+        "actor": { "userId": "00000000-0000-4000-8000-000000000050", "email": "operator@example.com" },
+        "range": { "start": 0, "end": 1023 }
+      }
+    },
+    {
+      "name": "sandbox file open",
+      "surface": "file-read",
+      "schema": "file.sandbox.open",
+      "limit": "transferJson",
+      "frame": {
+        "type": "file_open",
+        "protocol": 1,
+        "requestId": "00000000-0000-4000-8000-000000000041",
+        "scope": "sandbox",
+        "path": "/srv/transfer/attachment.png",
+        "actor": { "userId": "00000000-0000-4000-8000-000000000050", "email": "operator@example.com" }
+      }
+    },
+    {
+      "name": "project file traversal is invalid",
+      "surface": "file-read",
+      "schema": "file.project.open",
+      "limit": "transferJson",
+      "valid": false,
+      "frame": {
+        "type": "file_open",
+        "protocol": 1,
+        "requestId": "00000000-0000-4000-8000-000000000040",
+        "projectId": "00000000-0000-4000-8000-000000000020",
+        "relativePath": "../secret",
+        "actor": { "userId": "00000000-0000-4000-8000-000000000050", "email": "operator@example.com" }
+      }
+    },
+    {
+      "name": "partial file metadata",
+      "surface": "file-read",
+      "schema": "file.meta",
+      "limit": "transferJson",
+      "frame": {
+        "type": "file_meta",
+        "requestId": "00000000-0000-4000-8000-000000000040",
+        "status": 206,
+        "contentType": "application/octet-stream",
+        "contentLength": 1024,
+        "acceptRanges": "bytes",
+        "contentRange": "bytes 0-1023/4096"
+      }
+    },
+    {
+      "name": "partial metadata without range is invalid",
+      "surface": "file-read",
+      "schema": "file.meta",
+      "limit": "transferJson",
+      "valid": false,
+      "frame": {
+        "type": "file_meta",
+        "requestId": "00000000-0000-4000-8000-000000000040",
+        "status": 206,
+        "contentType": "application/octet-stream",
+        "contentLength": 1024,
+        "acceptRanges": "bytes"
+      }
+    },
+    {
+      "name": "bounded file credit",
+      "surface": "file-read",
+      "schema": "file.credit",
+      "limit": "transferJson",
+      "frame": { "type": "file_credit", "requestId": "00000000-0000-4000-8000-000000000040", "bytes": 262144 }
+    },
+    {
+      "name": "file completion",
+      "surface": "file-read",
+      "schema": "file.end",
+      "limit": "transferJson",
+      "frame": { "type": "file_end", "requestId": "00000000-0000-4000-8000-000000000040" }
+    },
+    {
+      "name": "file stable error",
+      "surface": "file-read",
+      "schema": "file.error",
+      "limit": "transferJson",
+      "frame": {
+        "type": "file_error",
+        "requestId": "00000000-0000-4000-8000-000000000040",
+        "status": 404,
+        "code": "NOT_FOUND",
+        "message": "file does not exist"
+      }
+    }
+  ]
+}

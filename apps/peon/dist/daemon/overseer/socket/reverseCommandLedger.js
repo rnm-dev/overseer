@@ -16,6 +16,10 @@ function validRecord(value) {
         && typeof record.operation === "string"
         && typeof record.peonId === "string"
         && typeof record.actorUserId === "string"
+        && typeof record.authority === "string"
+        && record.authority.length > 0
+        && Number.isSafeInteger(record.admittedGeneration)
+        && (record.admittedGeneration ?? -1) >= 0
         && (record.command === undefined || (Boolean(record.command) && typeof record.command === "object" && !Array.isArray(record.command)))
         && ["accepted", "running", "terminal"].includes(record.state)
         && typeof record.acceptedAt === "number"
@@ -53,6 +57,7 @@ export class ReverseCommandLedger {
     current;
     lastError = null;
     recoveredFromCorruption = false;
+    recoveryBlocked = false;
     constructor(options = {}) {
         this.fileBase = options.fileBase ?? path.join(stateDir(), "overseer-reverse-command-ledger");
         this.slots = [`${this.fileBase}.a.json`, `${this.fileBase}.b.json`];
@@ -68,6 +73,7 @@ export class ReverseCommandLedger {
             records: this.current.records.length,
             bytes: Buffer.byteLength(JSON.stringify(this.current)),
             recoveredFromCorruption: this.recoveredFromCorruption,
+            recoveryBlocked: this.recoveryBlocked,
             lastError: this.lastError,
         };
     }
@@ -79,9 +85,12 @@ export class ReverseCommandLedger {
         return this.current.records.map((record) => structuredClone(record));
     }
     admit(input) {
+        if (this.recoveryBlocked) {
+            return { kind: "persist_failed", error: this.lastError ?? "reverse command ledger recovery is blocked" };
+        }
         const duplicate = this.current.records.find((record) => record.commandId === input.commandId);
         if (duplicate) {
-            return duplicate.requestHash === input.requestHash
+            return duplicate.requestHash === input.requestHash && duplicate.authority === input.authority
                 ? { kind: "replayed", record: structuredClone(duplicate) }
                 : { kind: "reused", record: structuredClone(duplicate) };
         }
@@ -100,21 +109,34 @@ export class ReverseCommandLedger {
             return { kind: "persist_failed", error: this.lastError ?? "unable to persist command admission" };
         return { kind: "accepted", record: structuredClone(record) };
     }
-    markRunning(commandId) {
-        return this.update(commandId, (record) => ({ ...record, state: "running", updatedAt: this.now() }));
+    rebindAcceptedGeneration(commandId, authority, generation) {
+        return this.transition(commandId, "accepted", (record) => {
+            if (record.authority !== authority)
+                return null;
+            return { ...record, admittedGeneration: generation, updatedAt: this.now() };
+        });
     }
-    markTerminal(commandId, result) {
+    markRunning(commandId, authority, generation) {
+        return this.transition(commandId, "accepted", (record) => (record.authority === authority && record.admittedGeneration === generation
+            ? { ...record, state: "running", updatedAt: this.now() }
+            : null));
+    }
+    markTerminal(commandId, authority, generation, result) {
         const completedAt = this.now();
-        return this.update(commandId, (record) => ({
-            ...record,
-            state: "terminal",
-            result: structuredClone(result),
-            completedAt,
-            updatedAt: completedAt,
-        }));
+        return this.transition(commandId, "running", (record) => (record.authority === authority && record.admittedGeneration === generation
+            ? {
+                ...record,
+                state: "terminal",
+                result: structuredClone(result),
+                completedAt,
+                updatedAt: completedAt,
+            }
+            : null));
     }
-    bindResultCursor(commandId, cursor) {
-        return this.update(commandId, (record) => ({ ...record, resultCursor: cursor, updatedAt: this.now() }));
+    bindResultCursor(commandId, authority, cursor) {
+        return this.transition(commandId, "terminal", (record) => (record.authority === authority
+            ? { ...record, resultCursor: cursor, updatedAt: this.now() }
+            : null));
     }
     acknowledgeCursor(cursor) {
         const matches = this.current.records.filter((record) => record.resultCursor === cursor && !record.resultAcknowledgedAt);
@@ -131,8 +153,9 @@ export class ReverseCommandLedger {
     }
     recoverInterrupted(resultFactory) {
         const interrupted = this.current.records.filter((record) => record.state === "running");
-        for (const record of interrupted)
-            this.markTerminal(record.commandId, resultFactory(record));
+        for (const record of interrupted) {
+            this.markTerminal(record.commandId, record.authority, record.admittedGeneration, resultFactory(record));
+        }
         return interrupted.map((record) => this.get(record.commandId)).filter(Boolean);
     }
     compact() {
@@ -160,13 +183,21 @@ export class ReverseCommandLedger {
         next.tombstones = next.tombstones.filter((item) => now - item.expiredAt < this.tombstoneRetentionMs);
         return next;
     }
-    update(commandId, mutate) {
+    transition(commandId, expected, mutate) {
+        if (this.recoveryBlocked)
+            return false;
         const index = this.current.records.findIndex((record) => record.commandId === commandId);
         if (index < 0)
             return false;
+        const current = this.current.records[index];
+        if (current.state !== expected)
+            return false;
+        const replacement = mutate(current);
+        if (!replacement)
+            return false;
         const next = structuredClone(this.current);
         next.generation += 1;
-        next.records[index] = mutate(next.records[index]);
+        next.records[index] = replacement;
         return this.persist(next);
     }
     persist(next) {
@@ -214,10 +245,21 @@ export class ReverseCommandLedger {
                 this.recoveredFromCorruption = true;
             }
         }
+        const generations = candidates.map((candidate) => candidate.generation).sort((a, b) => b - a);
+        const missingRequiredPeer = candidates.length === 1 && generations[0] >= 2;
+        const generationGap = generations.length === 2 && generations[0] - generations[1] !== 1;
+        if (this.recoveredFromCorruption || missingRequiredPeer || generationGap) {
+            this.recoveryBlocked = true;
+            this.lastError = "reverse command ledger recovery blocked: corrupt, missing, or gapped durable generation";
+            return candidates.sort((a, b) => b.generation - a.generation)[0]
+                ?? { version: 1, generation: 0, records: [], tombstones: [] };
+        }
         if (candidates.length > 0)
             return candidates.sort((a, b) => b.generation - a.generation)[0];
-        if (sawFile)
-            this.lastError = "reverse command ledger was corrupt; recovered with an empty fenced ledger";
+        if (sawFile) {
+            this.recoveryBlocked = true;
+            this.lastError = "reverse command ledger recovery blocked: no valid durable generation";
+        }
         return { version: 1, generation: 0, records: [], tombstones: [] };
     }
 }

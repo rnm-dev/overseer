@@ -64,8 +64,10 @@ Runtime
 Config
   settings [set <key> <value>] show all settings, or set one
 Fleet
-  pair                                arm a one-time pairing phrase to connect this
-                                        peon to an overseer (or re-point it)
+  pair <overseer-origin>              start outbound peon-claim-v1 enrollment
+  pair --retry                       retry a parked enrollment after local recovery
+  pair --legacy                       explicitly arm legacy inbound pairing
+  credential rotate                   rotate an active peon-claim-v1 credential
 
 Remote access
   remote                              show bind host and public URLs
@@ -566,61 +568,93 @@ async function main() {
       }
       break;
     }
+    case "credential": {
+      if (rest[0] !== "rotate") {
+        console.error("usage: peon credential rotate");
+        process.exit(1);
+      }
+      const res = await fetch(`${BASE}/api/v1/enrollment/credential/rotate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      });
+      const body = (await res.json()) as {
+        error?: string;
+        credential?: { credentialId: string; generation: number };
+        rotation?: { state: string };
+      };
+      if (!res.ok) {
+        console.error(`credential rotation failed: ${body.error ?? res.statusText}`);
+        process.exit(1);
+      }
+      console.log(
+        body.rotation
+          ? `credential rotation ${body.rotation.state}; Peon will finish it automatically`
+          : body.credential
+            ? `credential rotation complete: generation ${body.credential.generation} (${body.credential.credentialId})`
+            : "credential rotation started",
+      );
+      break;
+    }
     case "pair": {
       const currentResponse = await fetch(`${BASE}/api/v1/settings`);
       const current = (await currentResponse.json()) as {
-        bindHost?: string;
-        publicControlUrl?: string;
+        overseerUrl?: string;
       };
-      const res = await fetch(`${BASE}/api/v1/pairing/arm`, { method: "POST" });
-      const body = (await res.json()) as { ok?: boolean; error?: string; phrase?: string; expiresAt?: number };
-      if (!res.ok || !body.ok || !body.phrase) {
+      const explicitLegacy = rest[0] === "--legacy";
+      const retryParked = rest[0] === "--retry";
+      const endpoint = explicitLegacy
+        ? "/api/v1/pairing/arm"
+        : retryParked
+          ? "/api/v1/enrollment/retry"
+          : "/api/v1/enrollment/claim";
+      const serverOrigin = explicitLegacy ? "" : (rest[0] ?? current.overseerUrl ?? "").trim();
+      if (!explicitLegacy && !retryParked && !serverOrigin) {
+        console.error("usage: peon pair <https://overseer-origin> (or `peon pair --retry` / `peon pair --legacy`)");
+        process.exit(1);
+      }
+      const res = await fetch(`${BASE}${endpoint}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(explicitLegacy || retryParked ? {} : { serverOrigin }),
+      });
+      const body = (await res.json()) as {
+        ok?: boolean;
+        error?: string;
+        state?: string;
+        operatorCode?: string;
+        operatorUrl?: string;
+        expiresAt?: number;
+        legacyPhrase?: string;
+        legacyExpiresAt?: number;
+        phrase?: string;
+      };
+      if (!res.ok) {
         console.error(`pair failed: ${body.error ?? res.statusText}`);
         process.exit(1);
       }
-      const fallbackAddress = (() => {
-        try {
-          const port = new URL(BASE).port || "4570";
-          return `http://${os.hostname()}:${port}`;
-        } catch {
-          return `http://${os.hostname()}:4570`;
-        }
-      })();
-      const address = (() => {
-        try {
-          const url = new URL(current.publicControlUrl ?? "");
-          return ["http:", "https:"].includes(url.protocol) && url.hostname
-            ? url.toString().replace(/\/$/, "")
-            : fallbackAddress;
-        } catch {
-          return fallbackAddress;
-        }
-      })();
-      const mins = body.expiresAt ? Math.max(1, Math.round((body.expiresAt - Date.now()) / 60_000)) : null;
-      console.log("Zug zug! Give the operator this pairing phrase and this peon's address:\n");
-      console.log(`  phrase   : ${body.phrase}`);
-      console.log(`  address  : ${address}`);
-      if (mins) console.log(`  valid    : ~${mins} min`);
-      console.log('\nPaste the full address and phrase into the overseer\'s "Connect peon" form. Work work!');
-      // A phrase is useless if the overseer can't reach us — warn if the control
-      // API is still bound loopback-only. Recruitment needs the peon reachable on
-      // the tailnet (bind the Tailscale interface via `peon remote on <ip>`).
-      if (["127.0.0.1", "localhost", "::1", ""].includes(current.bindHost ?? "")) {
-        console.log(
-          `\n⚠  heads up — my control API binds ${current.bindHost || "127.0.0.1"} (loopback only), so the overseer` +
-            "\n   can't reach me yet. Expose me on the tailnet first: `peon remote on <my-tailscale-ip>`.",
-        );
+      if (retryParked) {
+        console.log(`enrollment retry requested; current state: ${body.state ?? "idle"}`);
+        break;
       }
-      try {
-        if (["127.0.0.1", "localhost", "::1"].includes(new URL(address).hostname)) {
-          console.log(
-            "\n⚠  the advertised address is still loopback-only. Set the domain or tailnet host first:" +
-              "\n   `peon remote on <public-host-or-domain>`, then run `peon pair` again.",
-          );
-        }
-      } catch {
-        // address already fell back to a valid local URL above
+      const phrase = body.legacyPhrase ?? body.phrase;
+      if (phrase) {
+        const expiresAt = body.legacyExpiresAt ?? body.expiresAt;
+        const mins = expiresAt ? Math.max(1, Math.round((expiresAt - Date.now()) / 60_000)) : null;
+        console.log("This Overseer does not support peon-claim-v1; explicit legacy pairing is armed:\n");
+        console.log(`  phrase   : ${phrase}`);
+        if (mins) console.log(`  valid    : ~${mins} min`);
+        console.log("\nLegacy mode requires the Overseer to reach this Peon's control API.");
+        break;
       }
+      console.log("Outbound enrollment claim created. Give the operator this code or URL:\n");
+      if (body.operatorCode) console.log(`  code     : ${body.operatorCode}`);
+      if (body.operatorUrl) console.log(`  URL      : ${body.operatorUrl}`);
+      if (body.expiresAt) {
+        const mins = Math.max(1, Math.round((body.expiresAt - Date.now()) / 60_000));
+        console.log(`  valid    : ~${mins} min`);
+      }
+      console.log("\nPeon will poll securely and connect automatically after owner approval.");
       break;
     }
     case "remote": {

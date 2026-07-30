@@ -472,15 +472,14 @@ String _catalogLabel(
   return value;
 }
 
-String? _submissionLabel(SessionComposerState? state, {required bool running}) {
+String? submissionLabel(SessionComposerState? state, {required bool running}) {
   final followup = state?.followupProgress;
   if (followup != null) {
     return switch (followup.stage) {
       FollowupSubmissionStage.uploading =>
         'Uploading ${followup.current} of ${followup.total}: '
             '${followup.fileName}',
-      FollowupSubmissionStage.submitting =>
-        running ? 'Adding to queue…' : 'Sending message…',
+      FollowupSubmissionStage.submitting => null,
     };
   }
   final initial = state?.submissionProgress;

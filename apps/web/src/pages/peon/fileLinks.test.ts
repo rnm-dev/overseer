@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { attachmentUploadPath, fileApiPath, fileKind, fileUrl } from "./fileLinks";
+import {
+  attachmentUploadPath,
+  fileApiPath,
+  fileKind,
+  fileUrl,
+  projectDirectoryListingPath,
+} from "./fileLinks";
 
 const base = "/workspaces/ws/peons/nova";
 
@@ -20,6 +26,14 @@ test("every file source names the route that answers for it", () => {
   assert.equal(fileApiPath({ kind: "sessionFile", base, sessionId: "s1", path: "out/report.html", raw: true }), `${base}/sessions/s1/file/raw?path=out%2Freport.html`);
   assert.equal(attachmentUploadPath(base, "session id", "notes.md"), `${base}/files/uploads/session%20id/notes.md`);
   assert.equal(fileUrl({ kind: "attachment", base, path: "a.png" }), `/api${base}/attachments?path=a.png`);
+  assert.equal(
+    projectDirectoryListingPath(`${base}/projects/OVSR/files`, "src/a b"),
+    `${base}/projects/OVSR/files/src/a%20b?stat=1&directory=1`,
+  );
+  assert.equal(
+    projectDirectoryListingPath(`${base}/projects/OVSR/files`, ""),
+    `${base}/projects/OVSR/files/?stat=1&directory=1`,
+  );
 });
 
 test("the sandbox serves uploads as octet-stream, so name and sender hint decide the display", () => {

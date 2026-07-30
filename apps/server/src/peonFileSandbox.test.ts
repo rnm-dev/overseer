@@ -8,6 +8,7 @@ import {
   resolveSandboxSegments,
   sandboxSegmentsOf,
 } from "./peonFileSandbox.js";
+import { PATH_ESCAPE_PUBLIC_MESSAGE } from "./fileErrorSafety.js";
 import { peonsRouter } from "./routes/peons.js";
 
 const conn = { baseUrl: "http://peon.mesh.rnm:4570", token: "t" };
@@ -53,10 +54,14 @@ test("the attachment surface accepts both path forms a transcript can carry", as
   assert.deepEqual(await resolveAttachmentPath(conn, "uploads/s/a.png", null, rootIs("/tmp/peon-files")), ["uploads", "s", "a.png"]);
 });
 
-test("a refused attachment read names why, so the operator is not left with a bare status", async () => {
-  const outside = await resolveAttachmentPath(conn, "/etc/shadow", null, rootIs("/tmp/peon-files")).catch((err: unknown) => err);
+test("a refused attachment read is actionable without disclosing its root or rejected path", async () => {
+  const sentinelRoot = "/srv/__OVSR249_ROOT_SENTINEL__/transfer";
+  const sentinelPath = "/srv/__OVSR249_REJECTED_PATH_SENTINEL__/secret";
+  const outside = await resolveAttachmentPath(conn, sentinelPath, null, rootIs(sentinelRoot)).catch((err: unknown) => err);
   assert.ok(outside instanceof FileSandboxError && outside.status === 400 && outside.code === "PATH_ESCAPE");
-  assert.match((outside as FileSandboxError).message, /\/tmp\/peon-files/);
+  assert.equal((outside as FileSandboxError).message, PATH_ESCAPE_PUBLIC_MESSAGE);
+  assert.doesNotMatch((outside as FileSandboxError).message, new RegExp(sentinelRoot));
+  assert.doesNotMatch((outside as FileSandboxError).message, new RegExp(sentinelPath));
 
   for (const bad of [undefined, "", "   ", 42, ["/a", "/b"]]) {
     const error = await resolveAttachmentPath(conn, bad, null, rootIs("/tmp/peon-files")).catch((err: unknown) => err);

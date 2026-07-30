@@ -6,6 +6,7 @@ import { projectStore, type ProjectRecord } from "../../../projects/index.js";
 import { resolveWithinDir } from "../../../files/index.js";
 
 export const PROJECT_FILE_READ_CAPABILITY = "project-file-read-v1";
+export const SANDBOX_FILE_READ_CAPABILITY = "sandbox-file-read-v1";
 export const PROJECT_FILE_BINARY_HEADER_BYTES = 22;
 export const PROJECT_FILE_MAX_CHUNK_BYTES = 64 * 1024 - PROJECT_FILE_BINARY_HEADER_BYTES;
 export const PROJECT_FILE_MAX_ACTIVE = 32;
@@ -69,6 +70,8 @@ interface ProjectFileReadOptions {
   idleLeaseMs?: number;
   fileSystem?: Pick<typeof fs, "open" | "stat">;
   resolvePath?: typeof resolveWithinDir;
+  capability?: typeof PROJECT_FILE_READ_CAPABILITY | typeof SANDBOX_FILE_READ_CAPABILITY;
+  sandboxRoot?: () => string;
 }
 
 class ProjectFileError extends Error {
@@ -139,12 +142,13 @@ function encodeChunk(requestId: string, sequence: number, data: Uint8Array): Buf
 }
 
 export class ProjectFileReadChannel implements PeonSocketChannel {
-  readonly capability = PROJECT_FILE_READ_CAPABILITY;
+  readonly capability: typeof PROJECT_FILE_READ_CAPABILITY | typeof SANDBOX_FILE_READ_CAPABILITY;
   private readonly projects: ProjectLookup;
   private readonly maxActive: number;
   private readonly idleLeaseMs: number;
   private readonly fileSystem: Pick<typeof fs, "open" | "stat">;
   private readonly resolvePath: typeof resolveWithinDir;
+  private readonly sandboxRoot: (() => string) | null;
   private accepted = false;
   private readonly active = new Map<string, ActiveRead>();
   private readonly recentlyClosed = new Map<string, number>();
@@ -155,6 +159,8 @@ export class ProjectFileReadChannel implements PeonSocketChannel {
     this.idleLeaseMs = options.idleLeaseMs ?? DEFAULT_IDLE_LEASE_MS;
     this.fileSystem = options.fileSystem ?? fs;
     this.resolvePath = options.resolvePath ?? resolveWithinDir;
+    this.capability = options.capability ?? PROJECT_FILE_READ_CAPABILITY;
+    this.sandboxRoot = options.sandboxRoot ?? null;
   }
 
   helloState(): PeonSocketFrame { return {}; }
@@ -172,7 +178,12 @@ export class ProjectFileReadChannel implements PeonSocketChannel {
   }
 
   handles(frame: PeonSocketFrame): boolean {
-    return typeof frame.type === "string" && FRAME_TYPES.has(frame.type);
+    if (typeof frame.type !== "string" || !FRAME_TYPES.has(frame.type)) return false;
+    if (frame.type === "file_open") {
+      return this.sandboxRoot ? frame.scope === "sandbox" : frame.scope === undefined || frame.scope === "project";
+    }
+    const requestId = typeof frame.requestId === "string" ? frame.requestId : "";
+    return this.active.has(requestId) || this.wasRecentlyClosed(requestId);
   }
 
   receive(frame: PeonSocketFrame, sender: PeonSocketSender): void {
@@ -212,13 +223,21 @@ export class ProjectFileReadChannel implements PeonSocketChannel {
     if (this.active.has(requestId)) return this.error(sender, requestId, 409, "DUPLICATE_REQUEST", "file request is already active");
     if (this.active.size >= this.maxActive) return this.error(sender, requestId, 429, "TRANSFER_BUSY", "too many active file reads");
 
-    let projectId: string | null;
-    let relativePath: string;
+    let projectId: string | null = null;
+    let filePath: string;
     let range: FileRange | null;
     try {
-      projectId = stringField(frame, "projectId", 512);
-      if (!projectId || projectId.includes("\0")) throw new ProjectFileError(400, "INVALID_PROJECT_ID", "a valid project ID is required");
-      relativePath = relativeFilePath(frame);
+      if (this.sandboxRoot) {
+        const value = stringField(frame, "path", 4096);
+        if (!value || value.includes("\0")) {
+          throw new ProjectFileError(400, "INVALID_PATH", "a non-empty sandbox file path is required");
+        }
+        filePath = value;
+      } else {
+        projectId = stringField(frame, "projectId", 512);
+        if (!projectId || projectId.includes("\0")) throw new ProjectFileError(400, "INVALID_PROJECT_ID", "a valid project ID is required");
+        filePath = relativeFilePath(frame);
+      }
       range = requestedRange(frame.range);
       validateActor(frame.actor);
     } catch (error) {
@@ -233,15 +252,18 @@ export class ProjectFileReadChannel implements PeonSocketChannel {
     };
     this.active.set(requestId, active);
     active.lease = this.createLease(active);
-    void this.open(active, projectId, relativePath, range);
+    void this.open(active, projectId, filePath, range);
   }
 
-  private async open(active: ActiveRead, projectId: string, relativePath: string, range: FileRange | null): Promise<void> {
+  private async open(active: ActiveRead, projectId: string | null, filePath: string, range: FileRange | null): Promise<void> {
     try {
-      const project = this.projects.list().find((candidate) => candidate.projectId === projectId);
-      if (!project) throw new ProjectFileError(404, "UNKNOWN_PROJECT", "unknown project");
-      const absolute = this.resolvePath(project.dir, relativePath);
-      if (!absolute) throw new ProjectFileError(400, "PATH_ESCAPE", "file path escapes the project root");
+      const root = this.sandboxRoot ? this.sandboxRoot().trim() : "";
+      const project = this.sandboxRoot ? null : this.projects.list().find((candidate) => candidate.projectId === projectId);
+      if (!this.sandboxRoot && !project) throw new ProjectFileError(404, "UNKNOWN_PROJECT", "unknown project");
+      if (this.sandboxRoot && !root) throw new ProjectFileError(503, "FILES_DISABLED", "file transfer is disabled — set fileTransferRoot to enable it");
+      const base = project?.dir ?? root;
+      const absolute = this.resolvePath(base, filePath);
+      if (!absolute) throw new ProjectFileError(400, "PATH_ESCAPE", `file path escapes the ${this.sandboxRoot ? "file transfer root" : "project root"}`);
       const handle = await this.fileSystem.open(absolute, "r");
       if (!this.isCurrent(active)) {
         await handle.close();
@@ -253,8 +275,8 @@ export class ProjectFileReadChannel implements PeonSocketChannel {
       // opening and compare the opened inode with the currently-contained
       // target so a concurrent directory/symlink swap cannot redirect the
       // stream outside the project root.
-      const revalidated = this.resolvePath(project.dir, relativePath);
-      if (!revalidated) throw new ProjectFileError(400, "PATH_ESCAPE", "file path escapes the project root");
+      const revalidated = this.resolvePath(base, filePath);
+      if (!revalidated) throw new ProjectFileError(400, "PATH_ESCAPE", `file path escapes the ${this.sandboxRoot ? "file transfer root" : "project root"}`);
       const targetStat = await this.fileSystem.stat(revalidated);
       if (targetStat.dev !== stat.dev || targetStat.ino !== stat.ino) {
         throw new ProjectFileError(409, "FILE_CHANGED", "file changed while it was being opened");
@@ -413,5 +435,11 @@ export class ProjectFileReadChannel implements PeonSocketChannel {
     if (!sender.send({ type: "file_error", requestId, status, code, message })) {
       sender.disconnect("project file error backpressure limit exceeded");
     }
+  }
+}
+
+export class SandboxFileReadChannel extends ProjectFileReadChannel {
+  constructor(options: Omit<ProjectFileReadOptions, "capability"> & { sandboxRoot: () => string }) {
+    super({ ...options, capability: SANDBOX_FILE_READ_CAPABILITY });
   }
 }

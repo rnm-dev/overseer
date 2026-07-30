@@ -1,7 +1,8 @@
 import type { Request, Response } from "express";
 import path from "node:path";
 import { pipeline } from "node:stream/promises";
-import { openPeonProjectFile, PeonFileStreamError, type ProjectFileRange } from "../../peonFileStream.js";
+import { auditSafeFileErrorBody } from "../../fileErrorSafety.js";
+import { openPeonProjectFile, openPeonSandboxFile, PeonFileStreamError, type ProjectFileRange } from "../../peonFileStream.js";
 
 export const PROJECT_FILE_CSP = "sandbox allow-scripts allow-forms allow-modals allow-downloads";
 
@@ -76,40 +77,66 @@ export function requestedProjectFileRange(value: string | undefined): ProjectFil
   return { start, ...(end === undefined ? {} : { end }) };
 }
 
-// Which channel serves a project file request. The Peon's HTTP API is being
-// retired, so a read rides the transfer socket whenever one is available; the
-// proxy answers only for a directory listing (`?stat=1`, which has no socket
-// operation yet), for a project the catalog cannot name — the socket addresses
-// a file by project ID, never by key — and for a Peon old enough to hold no
-// transfer socket at all. Delete the fallback once the fleet has moved.
-export function projectFileReadChannel(input: { stat: boolean; transportReady: boolean; projectId: string | null }): "socket" | "proxy" {
-  return !input.stat && input.transportReady && input.projectId ? "socket" : "proxy";
+// Which channel serves a project file body. Directory listings are routed
+// separately through folder-listing-v1; the HTTP fallback here remains for a
+// project the catalog cannot name and for an older Peon with no transfer socket.
+export function projectFileReadChannel(input: { transportReady: boolean; projectId: string | null }): "socket" | "proxy" {
+  return input.transportReady && input.projectId ? "socket" : "proxy";
 }
 
-export async function streamProjectFileResponse(input: {
+export function projectFileWriteChannel(input: { capabilityReady: boolean; projectId: string | null }): "socket" | "proxy" | "unavailable" {
+  if (!input.capabilityReady) return "proxy";
+  return input.projectId ? "socket" : "unavailable";
+}
+
+export function sandboxFileWriteChannel(input: { capabilityReady: boolean }): "socket" | "proxy" {
+  return input.capabilityReady ? "socket" : "proxy";
+}
+
+export function projectFolderReadChannel(input: {
+  confirmedDirectory: boolean;
+  metadataReady: boolean;
+  projectId: string | null;
+}): "socket" | "proxy" {
+  return input.confirmedDirectory && input.metadataReady && input.projectId ? "socket" : "proxy";
+}
+
+// `directory=1` is an Overseer-private transport hint. Remove only parameters
+// whose decoded name is exactly `directory`, retaining the original spelling,
+// ordering, repetition, encoding, and empty values of every other parameter.
+export function projectFileProxyQuery(originalUrl: string): string {
+  const marker = originalUrl.indexOf("?");
+  if (marker < 0) return "";
+  const raw = originalUrl.slice(marker + 1);
+  const kept = raw.split("&").filter((part) => {
+    const rawName = part.slice(0, part.indexOf("=") < 0 ? part.length : part.indexOf("="));
+    try {
+      return decodeURIComponent(rawName.replace(/\+/g, " ")) !== "directory";
+    } catch {
+      return true;
+    }
+  });
+  return kept.length && kept.some((part) => part.length > 0) ? `?${kept.join("&")}` : "";
+}
+
+interface StreamFileResponseInput {
   req: Request;
   res: Response;
-  peonId: string;
-  projectId: string;
-  relativePath: string;
-  actor: { userId: string; email: string };
-}): Promise<void> {
+  displayPath: string;
+  failureMessage: string;
+  open(signal: AbortSignal): ReturnType<typeof openPeonProjectFile>;
+}
+
+async function streamFileResponse(input: StreamFileResponseInput): Promise<void> {
   const { req, res } = input;
   const controller = new AbortController();
   req.once("aborted", () => controller.abort());
   res.once("close", () => controller.abort());
   try {
-    const file = await openPeonProjectFile({
-      peonId: input.peonId,
-      projectId: input.projectId,
-      relativePath: input.relativePath,
-      actor: input.actor,
-      range: requestedProjectFileRange(typeof req.headers.range === "string" ? req.headers.range : undefined),
-      signal: controller.signal,
-    });
+    const file = await input.open(controller.signal);
     isolateProjectFileResponse(res);
     res.status(file.status);
-    res.setHeader("Content-Type", projectFileContentType(input.relativePath, file.contentType));
+    res.setHeader("Content-Type", projectFileContentType(input.displayPath, file.contentType));
     res.setHeader("Content-Disposition", "inline");
     res.setHeader("Content-Length", String(file.contentLength));
     if (file.contentRange) res.setHeader("Content-Range", file.contentRange);
@@ -124,7 +151,53 @@ export async function streamProjectFileResponse(input: {
     }
     const typed = error instanceof PeonFileStreamError
       ? error
-      : new PeonFileStreamError("PEON_FILE_STREAM_FAILED", "project file stream failed", 502);
-    res.status(typed.status === 499 ? 502 : typed.status).json({ error: typed.message, code: typed.code });
+      : new PeonFileStreamError("PEON_FILE_STREAM_FAILED", input.failureMessage, 502);
+    res.status(typed.status === 499 ? 502 : typed.status).json(auditSafeFileErrorBody(typed));
   }
+}
+
+export async function streamProjectFileResponse(input: {
+  req: Request;
+  res: Response;
+  peonId: string;
+  projectId: string;
+  relativePath: string;
+  actor: { userId: string; email: string };
+}): Promise<void> {
+  return streamFileResponse({
+    req: input.req,
+    res: input.res,
+    displayPath: input.relativePath,
+    failureMessage: "project file stream failed",
+    open: (signal) => openPeonProjectFile({
+      peonId: input.peonId,
+      projectId: input.projectId,
+      relativePath: input.relativePath,
+      actor: input.actor,
+      range: requestedProjectFileRange(typeof input.req.headers.range === "string" ? input.req.headers.range : undefined),
+      signal,
+    }),
+  });
+}
+
+export async function streamSandboxFileResponse(input: {
+  req: Request;
+  res: Response;
+  peonId: string;
+  path: string;
+  actor: { userId: string; email: string };
+}): Promise<void> {
+  return streamFileResponse({
+    req: input.req,
+    res: input.res,
+    displayPath: input.path,
+    failureMessage: "sandbox file stream failed",
+    open: (signal) => openPeonSandboxFile({
+      peonId: input.peonId,
+      path: input.path,
+      actor: input.actor,
+      range: requestedProjectFileRange(typeof input.req.headers.range === "string" ? input.req.headers.range : undefined),
+      signal,
+    }),
+  });
 }

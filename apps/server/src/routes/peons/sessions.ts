@@ -1,16 +1,32 @@
 import express from "express";
 import type { PeonRecord } from "../../registry.js";
 import { callPeon, connOfRecord, proxyGet, proxyStream } from "../../peonClient.js";
-import { allowedProjects, canAccessProject } from "../../access.js";
+import {
+  allowedProjects,
+  canAccessIndexedSessionNow,
+  canAccessProject,
+} from "../../access.js";
 import { ownerOnly, relay, withWorkspacePeon } from "../helpers.js";
 import { mintWebPreview } from "../../webPreview.js";
 import { runIdempotentFollowup, validCommandId } from "../../followupIdempotency.js";
 import { enrichTranscriptMetadata } from "../../transcriptTimestamps.js";
 import { indexAcceptedSession } from "../../modules/acceptedSession/index.js";
 import { cancelSessionRun } from "../../modules/sessionCancel/index.js";
-import { deleteIndexedSession } from "../../sessionIndex.js";
+import { deleteIndexedSession, getIndexedSession } from "../../sessionIndex.js";
 import { cancelSessionRequest, markSessionAttentionRead, recordSessionRequest } from "../../sessionAttention.js";
 import { getIndexedProject, getIndexedProjectById } from "../../projectIndex.js";
+import { bus, type LiveEvent } from "../../eventLog.js";
+import {
+  getTranscriptState,
+  readTranscriptAfter,
+  readTranscriptPage,
+  TranscriptProjectionError,
+} from "../../modules/sessions/index.js";
+import {
+  acquireTranscriptProjection,
+  hasReverseTranscriptConnection,
+} from "../../peonTranscriptSync.js";
+import type { Role } from "../../workspaces.js";
 
 function acceptedSessionId(result: { ok: boolean; json: unknown }): string | null {
   if (!result.ok || !result.json || typeof result.json !== "object") return null;
@@ -47,16 +63,31 @@ export function registerSessionRoutes(router: express.Router): void {
     }
     return result;
   };
-  const withWorkspaceSession = (handler: Parameters<typeof withWorkspacePeon>[0]) => withWorkspacePeon(async (req, res, c) => {
+  const withWorkspaceSession = (
+    handler: Parameters<typeof withWorkspacePeon>[0],
+    options: { reverseTranscriptAcl?: boolean } = {},
+  ) => withWorkspacePeon(async (req, res, c) => {
     if (c.role !== "owner") {
-      const lookup = await callPeon(connOfRecord(c.record), "GET", `/sessions/${encodeURIComponent(String(req.params.sid))}`, { actor: c.operator.email });
-      if (!lookup.ok) return relay(lookup, res);
-      const projectKey = lookup.json && typeof lookup.json === "object" && typeof (lookup.json as { projectKey?: unknown }).projectKey === "string"
-        ? (lookup.json as { projectKey: string }).projectKey
-        : null;
-      const projectId = lookup.json && typeof lookup.json === "object" && typeof (lookup.json as { projectId?: unknown }).projectId === "string"
-        ? (lookup.json as { projectId: string }).projectId
-        : null;
+      const sid = String(req.params.sid);
+      const indexed = await getIndexedSession(c.record.peonId, sid);
+      let projectKey = indexed?.projectKey ?? null;
+      let projectId = indexed?.projectId ?? null;
+      if (!indexed) {
+        const reverseAuthority = options.reverseTranscriptAcl
+          && ((await getTranscriptState(c.record.peonId, sid))?.epoch != null
+            || hasReverseTranscriptConnection(c.record.peonId));
+        if (reverseAuthority) {
+          return res.status(404).json({ error: "unknown session", code: "UNKNOWN_SESSION" });
+        }
+        const lookup = await callPeon(connOfRecord(c.record), "GET", `/sessions/${encodeURIComponent(sid)}`, { actor: c.operator.email });
+        if (!lookup.ok) return relay(lookup, res);
+        projectKey = lookup.json && typeof lookup.json === "object" && typeof (lookup.json as { projectKey?: unknown }).projectKey === "string"
+          ? (lookup.json as { projectKey: string }).projectKey
+          : null;
+        projectId = lookup.json && typeof lookup.json === "object" && typeof (lookup.json as { projectId?: unknown }).projectId === "string"
+          ? (lookup.json as { projectId: string }).projectId
+          : null;
+      }
       if (projectKey && !(await canAccessProject(c.workspaceId, c.userId, c.role, c.record.peonId, projectKey, projectId))) {
         return res.status(404).json({ error: "unknown session", code: "UNKNOWN_SESSION" });
       }
@@ -118,8 +149,45 @@ export function registerSessionRoutes(router: express.Router): void {
     });
   }));
   router.get(`${wp}/sessions/:sid/transcript`, withWorkspaceSession(async (req, res, c) => {
+    const sid = String(req.params.sid);
+    const storedState = await getTranscriptState(c.record.peonId, sid);
+    if (storedState?.epoch || hasReverseTranscriptConnection(c.record.peonId)) {
+      let release: (() => void) | null = null;
+      try {
+        if (hasReverseTranscriptConnection(c.record.peonId)) {
+          release = await acquireTranscriptProjection(c.record.peonId, sid);
+        }
+        const rawLimit = typeof req.query.limit === "string" && /^\d+$/.test(req.query.limit)
+          ? Number(req.query.limit)
+          : 50;
+        const page = await readTranscriptPage({
+          peonId: c.record.peonId,
+          sessionId: sid,
+          limit: rawLimit,
+          cursor: typeof req.query.cursor === "string" ? req.query.cursor : undefined,
+          online: hasReverseTranscriptConnection(c.record.peonId),
+        });
+        if (page) return res.json(page);
+        return res.status(503).json({
+          error: "transcript projection is not ready",
+          code: "TRANSCRIPT_SYNCING",
+          freshness: { state: hasReverseTranscriptConnection(c.record.peonId) ? "syncing" : "offline" },
+        });
+      } catch (error) {
+        if (error instanceof TranscriptProjectionError && error.code === "BAD_CURSOR") {
+          return res.status(400).json({ error: error.message, code: "BAD_CURSOR" });
+        }
+        return res.status(503).json({
+          error: error instanceof Error ? error.message : "transcript projection unavailable",
+          code: "TRANSCRIPT_UNAVAILABLE",
+          freshness: { state: hasReverseTranscriptConnection(c.record.peonId) ? "syncing" : "offline" },
+        });
+      } finally {
+        release?.();
+      }
+    }
     const query = transcriptQuery(req.query, c.record.capabilities.includes("transcript-pagination-v1"));
-    const r = await callPeon(connOfRecord(c.record), "GET", `/sessions/${encodeURIComponent(String(req.params.sid))}/transcript${query}`, { actor: c.operator.email });
+    const r = await callPeon(connOfRecord(c.record), "GET", `/sessions/${encodeURIComponent(sid)}/transcript${query}`, { actor: c.operator.email });
     const raw = r.json && typeof r.json === "object" ? (r.json as { raw?: unknown }).raw : undefined;
     // Some peon builds fail the whole transcript endpoint when one JSONL row is corrupt.
     // Keep the session page usable; live tail and session metadata still render.
@@ -128,7 +196,7 @@ export function registerSessionRoutes(router: express.Router): void {
       const body = r.json as { events?: unknown };
       if (Array.isArray(body.events)) {
         try {
-          const events = await enrichTranscriptMetadata(c.record.peonId, String(req.params.sid), body.events);
+          const events = await enrichTranscriptMetadata(c.record.peonId, sid, body.events);
           return res.status(r.status).json({ ...body, events });
         } catch {
           // Local metadata enrichment is best-effort; never hide a valid transcript
@@ -137,7 +205,7 @@ export function registerSessionRoutes(router: express.Router): void {
       }
     }
     relay(r, res);
-  }));
+  }, { reverseTranscriptAcl: true }));
   router.post(
     `${wp}/sessions`,
     withWorkspacePeon(async (req, res, c) => {
@@ -309,7 +377,18 @@ export function registerSessionRoutes(router: express.Router): void {
     ];
     relay(await callSupportedPeonPath(c.record, "POST", paths, c.operator.email, req.body), res);
   }));
-  router.get(`${wp}/sessions/:sid/stream`, withWorkspaceSession((req, res, c) => proxyStream(connOfRecord(c.record), `/sessions/${encodeURIComponent(String(req.params.sid))}/stream`, res, c.operator.email)));
+  router.get(`${wp}/sessions/:sid/stream`, withWorkspaceSession(async (req, res, c) => {
+    const sid = String(req.params.sid);
+    const state = await getTranscriptState(c.record.peonId, sid);
+    if (state?.epoch || hasReverseTranscriptConnection(c.record.peonId)) {
+      return streamProjectedTranscript(req, res, c.record.peonId, sid, {
+        workspaceId: c.workspaceId,
+        userId: c.userId,
+        role: c.role,
+      });
+    }
+    return proxyStream(connOfRecord(c.record), `/sessions/${encodeURIComponent(sid)}/stream`, res, c.operator.email);
+  }, { reverseTranscriptAcl: true }));
 
   // First-class session artifact previews. These deliberately mirror Peon's
   // session-scoped API instead of reusing the transfer sandbox: preview paths
@@ -345,6 +424,130 @@ export function registerSessionRoutes(router: express.Router): void {
       res.status(400).json({ error: err instanceof Error ? err.message : "invalid HTML preview path", code: "BAD_PREVIEW_PATH" });
     }
   }));
+}
+
+async function streamProjectedTranscript(
+  req: express.Request,
+  res: express.Response,
+  peonId: string,
+  sessionId: string,
+  access: {
+    workspaceId: string;
+    userId: string;
+    role: Role;
+  },
+): Promise<void> {
+  let release: () => void;
+  try {
+    if (!hasReverseTranscriptConnection(peonId)) {
+      res.status(503).json({ error: "transcript stream is offline", code: "TRANSCRIPT_OFFLINE" });
+      return;
+    }
+    release = await acquireTranscriptProjection(peonId, sessionId);
+    if (!(await canAccessIndexedSessionNow(access.workspaceId, access.userId, peonId, sessionId))) {
+      release();
+      res.status(404).json({ error: "unknown session", code: "UNKNOWN_SESSION" });
+      return;
+    }
+  } catch (error) {
+    res.status(503).json({
+      error: error instanceof Error ? error.message : "transcript stream unavailable",
+      code: "TRANSCRIPT_UNAVAILABLE",
+    });
+    return;
+  }
+  res.status(200);
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache, no-transform");
+  res.setHeader("Connection", "keep-alive");
+  res.flushHeaders();
+  const seen = new Set<string>();
+  const writeEvent = (event: Record<string, unknown>): boolean =>
+    writeProjectedTranscriptSseEvent(res, event, seen);
+  let ready = false;
+  let pendingBytes = 0;
+  const pending: LiveEvent[] = [];
+  let delivery = Promise.resolve();
+  const deliver = async (live: LiveEvent): Promise<void> => {
+    if (res.writableEnded || !live.payload || typeof live.payload !== "object") return;
+    const payload = live.payload as {
+      deleted?: unknown;
+      event?: unknown;
+      projectKey?: unknown;
+      projectId?: unknown;
+    };
+    if (!(await canAccessIndexedSessionNow(access.workspaceId, access.userId, peonId, sessionId))) {
+      res.end();
+      return;
+    }
+    if (payload.deleted === true) {
+      res.end();
+      return;
+    }
+    if (payload.event && typeof payload.event === "object" && !Array.isArray(payload.event)) {
+      writeEvent(payload.event as Record<string, unknown>);
+    }
+  };
+  const enqueue = (live: LiveEvent): void => {
+    delivery = delivery.then(() => deliver(live)).catch(() => {
+      if (!res.writableEnded) res.end();
+    });
+  };
+  const onEvent = (live: LiveEvent) => {
+    if (live.kind !== "transcript" || live.peonId !== peonId || live.sessionId !== sessionId) return;
+    if (!ready) {
+      const bytes = Buffer.byteLength(JSON.stringify(live.payload));
+      if (pending.length >= 1_000 || pendingBytes + bytes > 8 * 1024 * 1024) {
+        res.end();
+        return;
+      }
+      pending.push(live);
+      pendingBytes += bytes;
+      return;
+    }
+    enqueue(live);
+  };
+  bus.on("event", onEvent);
+  try {
+    const lastEventId = typeof req.headers["last-event-id"] === "string" ? req.headers["last-event-id"] : null;
+    const replay = await readTranscriptAfter({ peonId, sessionId, lastEventId });
+    for (const event of replay) {
+      if (!(await canAccessIndexedSessionNow(access.workspaceId, access.userId, peonId, sessionId))) {
+        res.end();
+        break;
+      }
+      if (!writeEvent(event)) break;
+    }
+    for (const live of pending.sort((left, right) => left.cursor - right.cursor)) enqueue(live);
+    pending.length = 0;
+    pendingBytes = 0;
+    ready = true;
+    await new Promise<void>((resolve) => {
+      req.once("close", resolve);
+      res.once("close", resolve);
+    });
+  } finally {
+    bus.off("event", onEvent);
+    release();
+  }
+}
+
+export function writeProjectedTranscriptSseEvent(
+  res: Pick<express.Response, "writableEnded" | "writableLength" | "write" | "end">,
+  event: Record<string, unknown>,
+  seen: Set<string>,
+): boolean {
+  const eventId = typeof event.eventId === "string" ? event.eventId : null;
+  if (!eventId || res.writableEnded) return false;
+  if (seen.has(eventId)) return true;
+  seen.add(eventId);
+  if (res.writableLength > 8 * 1024 * 1024) {
+    res.end();
+    return false;
+  }
+  const accepted = res.write(`event: event\nid: ${eventId}\ndata: ${JSON.stringify(event)}\n\n`);
+  if (!accepted) res.end();
+  return accepted;
 }
 
 // Ask a peon's /status whether its legacy/default Claude CLI is usable. Explicit

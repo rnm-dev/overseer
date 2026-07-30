@@ -10,6 +10,7 @@ import type {
   SessionIndexRow,
   SessionSyncCheckpoint,
 } from "./sessionTypes.js";
+import { markTranscriptDeleted } from "./transcriptProjection.js";
 
 // The aggregated session index — a materialized view of every peon's sessions,
 // so "all sessions across every peon" is one local Postgres query instead of a
@@ -170,6 +171,7 @@ async function deleteSession(
     params,
   );
   if (!deleted.rows[0]) return { event: null };
+  await markTranscriptDeleted(tx, peonId, sessionId);
 
   const event = await insertEvent(tx, {
     workspaceId,

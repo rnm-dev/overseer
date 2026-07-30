@@ -9,6 +9,7 @@ import '../features/fleet/application/fleet_controller.dart';
 import '../features/projects/application/projects_controller.dart';
 import '../features/projects/domain/project_models.dart';
 import '../features/projects/presentation/project_detail_page.dart';
+import '../features/sessions/presentation/session_detail_page.dart';
 import '../features/sessions/presentation/session_list.dart';
 import '../features/projects/presentation/project_file_viewer_page.dart';
 import '../features/shell/shell.dart';
@@ -94,13 +95,14 @@ class ProjectDetailRoutePage extends ConsumerWidget {
     required String peonId,
     required String projectKey,
   }) {
-    context.pushNamed(
-      'session',
-      queryParameters: {
-        'workspaceId': workspaceId,
-        'peonId': peonId,
-        'projectKey': projectKey,
-      },
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => SessionDetailPage.newSession(
+          workspaceId: workspaceId,
+          peonId: peonId,
+          projectKey: projectKey,
+        ),
+      ),
     );
   }
 

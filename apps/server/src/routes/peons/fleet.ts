@@ -3,10 +3,11 @@ import { config } from "../../config.js";
 import { registry, toView, type PeonRecord } from "../../registry.js";
 import { callPeon, connOfRecord, normalizePeonUrl, PROTOCOL } from "../../peonClient.js";
 import { clampRecentSessionsLimit, getSessionCatalogStates, listOperatorRecentSessions, listSessions } from "../../sessionIndex.js";
-import { bindPeon, mintCredential, revokeCredential, revokeCredentialForPeon } from "../../credentials.js";
+import { deRecruitPeon, mintCredential, revokeCredential } from "../../credentials.js";
 import { ownerOnly, withWorkspace } from "../helpers.js";
 import { canAccessPeon, listMemberAccess } from "../../access.js";
 import { sessionAttentionStates } from "../../sessionAttention.js";
+import { bindLegacyCredentialWithClaimLock, ClaimServiceError } from "../../modules/peonClaims/index.js";
 
 function enrollmentFallback(status: number, code: string): string {
   if (code === "DNS_FAILURE") return "the Peon domain could not be resolved";
@@ -82,9 +83,17 @@ export function registerFleetRoutes(router: express.Router): void {
       let registered = false;
       if (typeof peonId === "string" && peonId.trim()) {
         const id = peonId.trim();
-        if (!(await bindPeon(credential.id, id))) {
+        try {
+          if (!(await bindLegacyCredentialWithClaimLock(ctx.workspaceId, credential.id, id))) {
+            await revokeCredential(ctx.workspaceId, credential.id);
+            return res.status(409).json({ error: "the minted credential was bound to a different Peon", code: "PEON_ID_MISMATCH" });
+          }
+        } catch (error) {
           await revokeCredential(ctx.workspaceId, credential.id);
-          return res.status(409).json({ error: "the minted credential was bound to a different Peon", code: "PEON_ID_MISMATCH" });
+          if (error instanceof ClaimServiceError && error.code === "ENROLLMENT_METHOD_LOCKED") {
+            return res.status(409).json({ error: error.message, code: error.code });
+          }
+          throw error;
         }
         const record = await registry.confirmPairing({ peonId: id, credentialId: credential.id, workspaceId: ctx.workspaceId, token, publicUrl: baseUrl, name: label });
         registered = record.lastSeen > 0;
@@ -114,8 +123,9 @@ export function registerFleetRoutes(router: express.Router): void {
       const id = String(req.params.id);
       const record = await registry.get(id);
       if (!record || record.workspaceId !== ctx.workspaceId) return res.status(404).json({ error: "unknown peon", code: "UNKNOWN_PEON" });
-      await revokeCredentialForPeon(ctx.workspaceId, id);
-      await registry.remove(id);
+      if (!(await deRecruitPeon(ctx.workspaceId, id))) {
+        return res.status(404).json({ error: "unknown peon", code: "UNKNOWN_PEON" });
+      }
       res.json({ ok: true });
     }),
   );

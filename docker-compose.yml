@@ -50,6 +50,9 @@ services:
       DATABASE_URL: postgresql://overseer:${POSTGRES_PASSWORD}@postgres:5432/overseer
       OVERSEER_PORT: "5000"
       OVERSEER_HOST: "0.0.0.0"
+      # Docker NAT/host nginx is the only forwarding path into the app port.
+      # nginx overwrites inbound XFF after validating CF-Connecting-IP.
+      OVERSEER_TRUSTED_PROXIES: ${OVERSEER_TRUSTED_PROXIES:-loopback,linklocal,uniquelocal}
       OVERSEER_FLEET_TOKEN: ${OVERSEER_FLEET_TOKEN}
       OVERSEER_API_KEY: ${OVERSEER_API_KEY}
       OVERSEER_OFFLINE_AFTER_MS: ${OVERSEER_OFFLINE_AFTER_MS:-45000}

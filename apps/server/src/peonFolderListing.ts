@@ -2,6 +2,8 @@ import path from "node:path";
 import { PeonOperationChannel, PeonOperationError, type PeonOperationChannelOptions, type PeonOperationFrame, type PeonOperationProtocol } from "./peonOperationChannel.js";
 
 export const FOLDER_LISTING_CAPABILITY = "folder-listing-v1";
+export const FOLDER_LISTING_ENTRY_METADATA = "entry-metadata-v1";
+export const FOLDER_LISTING_ENTRY_METADATA_FEATURE = `${FOLDER_LISTING_CAPABILITY}:${FOLDER_LISTING_ENTRY_METADATA}`;
 const MAX_PAGE_BYTES = 900 * 1024;
 const MAX_ENTRIES = 20_000;
 const MAX_LISTING_BYTES = 16 * 1024 * 1024;
@@ -9,18 +11,21 @@ const MAX_LIMIT = 500;
 
 const PEON_ERROR_CODES = new Set([
   "BAD_REQUEST", "BAD_CURSOR", "SYNC_IN_PROGRESS", "UNKNOWN_PROJECT", "NOT_FOUND", "NOT_DIRECTORY",
-  "FORBIDDEN", "INVALID_PATH", "LISTING_TOO_LARGE", "INTERNAL",
+  "FORBIDDEN", "INVALID_PATH", "PATH_ESCAPE", "UNSUPPORTED_PLATFORM", "LISTING_TOO_LARGE", "INTERNAL",
 ]);
 
 export interface FolderListInput {
   projectId?: string;
   path?: string;
+  relativePath?: string;
   limit?: number;
 }
 
 export interface FolderListEntry {
   name: string;
-  type: "directory" | "file";
+  type: "directory" | "file" | "other";
+  size: number | null;
+  mtimeMs: number | null;
 }
 
 export interface FolderListResult {
@@ -60,7 +65,7 @@ function normalizeInput(input: FolderListInput): FolderListInput {
   if (!input || typeof input !== "object" || Array.isArray(input)) {
     throw new PeonOperationError("BAD_REQUEST", "folder selector is required", 400);
   }
-  if (Object.keys(input).some((key) => key !== "projectId" && key !== "path" && key !== "limit")) {
+  if (Object.keys(input).some((key) => key !== "projectId" && key !== "path" && key !== "relativePath" && key !== "limit")) {
     throw new PeonOperationError("BAD_REQUEST", "folder selector contains unsupported fields", 400);
   }
   if (input.projectId !== undefined
@@ -71,8 +76,16 @@ function normalizeInput(input: FolderListInput): FolderListInput {
     if (typeof input.path !== "string" || !input.path || input.path.length > 16_384 || input.path.includes("\0") || !absolutePath(input.path)) {
       throw new PeonOperationError("INVALID_PATH", "path must be absolute", 400);
     }
+    if (input.relativePath !== undefined) {
+      throw new PeonOperationError("BAD_REQUEST", "relativePath requires projectId without path", 400);
+    }
   } else if (input.projectId === undefined) {
     throw new PeonOperationError("BAD_REQUEST", "an absolute path or projectId is required", 400);
+  }
+  if (input.relativePath !== undefined
+    && (typeof input.relativePath !== "string" || input.relativePath.length > 16_384 || input.relativePath.includes("\0")
+      || absolutePath(input.relativePath))) {
+    throw new PeonOperationError("INVALID_PATH", "relativePath must stay relative to the project root", 400);
   }
   if (input.limit !== undefined && (typeof input.limit !== "number" || !Number.isSafeInteger(input.limit) || input.limit <= 0)) {
     throw new PeonOperationError("BAD_REQUEST", "limit must be a positive integer", 400);
@@ -80,6 +93,7 @@ function normalizeInput(input: FolderListInput): FolderListInput {
   return {
     ...(input.projectId === undefined ? {} : { projectId: input.projectId }),
     ...(input.path === undefined ? {} : { path: input.path }),
+    ...(input.relativePath === undefined ? {} : { relativePath: input.relativePath }),
     ...(input.limit === undefined ? {} : { limit: Math.min(input.limit, MAX_LIMIT) }),
   };
 }
@@ -87,12 +101,32 @@ function normalizeInput(input: FolderListInput): FolderListInput {
 function parseEntry(value: unknown): FolderListEntry {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw operationError("invalid folder listing entry");
   const entry = value as Record<string, unknown>;
-  if (Object.keys(entry).some((key) => key !== "name" && key !== "type")
+  if (Object.keys(entry).some((key) => key !== "name" && key !== "type" && key !== "size" && key !== "mtimeMs")
     || typeof entry.name !== "string" || !entry.name || entry.name.length > 4_096 || entry.name.includes("\0")
-    || (entry.type !== "directory" && entry.type !== "file")) {
+    || (entry.type !== "directory" && entry.type !== "file" && entry.type !== "other")) {
     throw operationError("invalid folder listing entry");
   }
-  return { name: entry.name, type: entry.type };
+  const legacy = entry.size === undefined && entry.mtimeMs === undefined;
+  if (!legacy) {
+    const validSize = entry.type === "directory"
+      ? entry.size === null
+      : entry.type === "file"
+        ? typeof entry.size === "number" && Number.isSafeInteger(entry.size) && entry.size >= 0
+        : entry.size === null;
+    const validMtime = entry.type === "other"
+      ? entry.mtimeMs === null
+      : typeof entry.mtimeMs === "number" && Number.isFinite(entry.mtimeMs);
+    if (!validSize || !validMtime) {
+      throw operationError("invalid folder listing entry metadata");
+    }
+  }
+  if (legacy && entry.type === "other") throw operationError("legacy folder listing cannot contain other entries");
+  return {
+    name: entry.name,
+    type: entry.type,
+    size: legacy ? null : entry.size as number | null,
+    mtimeMs: legacy ? null : entry.mtimeMs as number | null,
+  };
 }
 
 function peonError(frame: PeonOperationFrame): PeonOperationError {
@@ -103,6 +137,7 @@ function peonError(frame: PeonOperationFrame): PeonOperationError {
   const status = frame.code === "FORBIDDEN" ? 403
     : frame.code === "NOT_FOUND" || frame.code === "UNKNOWN_PROJECT" ? 404
       : frame.code === "SYNC_IN_PROGRESS" ? 409
+        : frame.code === "UNSUPPORTED_PLATFORM" ? 501
         : frame.code === "INTERNAL" ? 502 : 400;
   return new PeonOperationError(frame.code, frame.error, status);
 }

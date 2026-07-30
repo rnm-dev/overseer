@@ -17,6 +17,12 @@ export type FileSource =
 
 export const encodeFilePath = (path: string) => path.split("/").filter(Boolean).map(encodeURIComponent).join("/");
 
+// The project tree has already classified this target as a directory. Mark
+// that fact explicitly so Overseer can select the folder socket without first
+// probing it for an individual-file metadata request.
+export const projectDirectoryListingPath = (filesBase: string, path: string): string =>
+  `${filesBase}/${encodeFilePath(path)}?stat=1&directory=1`;
+
 // The API path, for the `api()` helper and for composing a fetch URL.
 export function fileApiPath(source: FileSource): string {
   switch (source.kind) {

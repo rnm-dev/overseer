@@ -4,8 +4,10 @@ import path from "node:path";
 import test from "node:test";
 
 const root = path.resolve(import.meta.dirname, "..");
-const schema = JSON.parse(readFileSync(path.join(root, "protocol/reverse-command-v1/schema.json"), "utf8"));
-const fixtures = JSON.parse(readFileSync(path.join(root, "protocol/reverse-command-v1/fixtures.json"), "utf8"));
+const schemaRaw = readFileSync(path.join(root, "protocol/reverse-command-v1/schema.json"), "utf8");
+const fixturesRaw = readFileSync(path.join(root, "protocol/reverse-command-v1/fixtures.json"), "utf8");
+const schema = JSON.parse(schemaRaw);
+const fixtures = JSON.parse(fixturesRaw);
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
@@ -47,4 +49,10 @@ test("reverse command v1 publishes stable generic HTTP mappings", () => {
     COMMAND_PENDING: 202,
     COMMAND_TIMEOUT: 504
   });
+});
+
+test("the released v1 contract rejects unreleased project operations", () => {
+  assert.deepEqual(schema.$defs.command.properties.operation.enum, ["session.cancel"]);
+  assert.equal(schema.$defs.commandAccepted.properties.operation.const, "session.cancel");
+  assert.equal(schema.$defs.commandResult.properties.operation.const, "session.cancel");
 });

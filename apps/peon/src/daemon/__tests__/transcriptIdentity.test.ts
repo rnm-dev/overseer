@@ -8,11 +8,15 @@ process.env.XDG_STATE_HOME = mkdtempSync(path.join(os.tmpdir(), "peon-transcript
 
 const {
   appendTranscriptEvent,
+  CommittedTranscriptLimitError,
   discardTranscript,
   flushTranscript,
   forgetTranscript,
+  readCommittedTranscriptEntries,
+  readCommittedTranscriptEntriesBounded,
   readTranscriptEntries,
   sessionsDir,
+  subscribeTranscriptCommits,
   transcriptPath,
 } = await import("../sessions/sessionArtifacts.js");
 const { paginateTranscript } = await import("../transcriptPagination.js");
@@ -59,6 +63,59 @@ test("append snapshots nested event data and deletion wins over queued persisten
 
   await discardTranscript(id);
   assert.equal(existsSync(transcriptPath(id)), false);
+});
+
+test("reverse publication notification crosses only after the canonical JSONL append", async () => {
+  const id = "commit-boundary";
+  const committed: string[] = [];
+  const unsubscribe = subscribeTranscriptCommits((payload) => {
+    if (payload.sessionId === id) committed.push(payload.entry.id);
+  });
+  try {
+    const appended = appendTranscriptEvent(id, { type: "user_message", text: "durable first" }, () => 456);
+    assert.deepEqual(committed, []);
+    await flushTranscript(id);
+    assert.deepEqual(committed, [appended.id]);
+    assert.deepEqual(readCommittedTranscriptEntries(id, "claude-code").map((item) => item.id), [appended.id]);
+  } finally {
+    unsubscribe();
+  }
+});
+
+test("bounded committed reader stops oversized canonical transcripts by bytes, line, and event count", () => {
+  const id = "bounded-committed-reader";
+  mkdirSync(sessionsDir, { recursive: true });
+  const rows = [
+    JSON.stringify({ type: "user_message", text: "a".repeat(256), _peonEventId: "bounded-1" }),
+    JSON.stringify({ type: "assistant", message: { content: "b".repeat(256) }, _peonEventId: "bounded-2" }),
+    JSON.stringify({ type: "result", usage: { nested: "c".repeat(256) }, _peonEventId: "bounded-3" }),
+  ];
+  writeFileSync(transcriptPath(id), `${rows.join("\n")}\n`);
+
+  assert.throws(
+    () => readCommittedTranscriptEntriesBounded(id, "claude-code", {
+      maxEvents: 2,
+      maxSourceBytes: 8 * 1024,
+      maxLineBytes: 2 * 1024,
+    }),
+    (error: unknown) => error instanceof CommittedTranscriptLimitError && error.limit === "events",
+  );
+  assert.throws(
+    () => readCommittedTranscriptEntriesBounded(id, "claude-code", {
+      maxEvents: 10,
+      maxSourceBytes: 128,
+      maxLineBytes: 2 * 1024,
+    }),
+    (error: unknown) => error instanceof CommittedTranscriptLimitError && error.limit === "source_bytes",
+  );
+  assert.throws(
+    () => readCommittedTranscriptEntriesBounded(id, "claude-code", {
+      maxEvents: 10,
+      maxSourceBytes: 8 * 1024,
+      maxLineBytes: 128,
+    }),
+    (error: unknown) => error instanceof CommittedTranscriptLimitError && error.limit === "line_bytes",
+  );
 });
 
 test("unsafe persisted event ids are replaced with deterministic safe identities", () => {

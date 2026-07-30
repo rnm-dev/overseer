@@ -68,6 +68,7 @@ final sessionFileControllerProvider = FutureProvider.autoDispose
         SessionFileSource.attachment => repository.fetchAttachment(
           workspaceId: scope.workspaceId,
           peonId: scope.peonId,
+          sessionId: scope.sessionId,
           path: scope.path,
           name: scope.name ?? scope.path,
           type: scope.type,

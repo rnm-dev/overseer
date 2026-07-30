@@ -4,11 +4,37 @@ import { callPeon, connOfRecord, normalizePeonUrl, proxyFileDownload, proxyFileU
 import { reconcilePeon } from "../../sessionIndex.js";
 import { allowedProjects, canAccessProject, projectMemberCounts } from "../../access.js";
 import { ownerOnly, relay, restSegments, withWorkspacePeon } from "../helpers.js";
-import { browsePeonFolders, folderBrowseSelector, projectFileReadChannel, streamProjectFileResponse } from "../../modules/projects/index.js";
+import {
+  browsePeonFolders,
+  folderBrowseSelector,
+  projectFileReadChannel,
+  projectFileWriteChannel,
+  projectFileProxyQuery,
+  projectFolderBrowseSelector,
+  projectFolderEntries,
+  projectFolderReadChannel,
+  streamProjectFileResponse,
+  streamSandboxFileResponse,
+  sandboxFileWriteChannel,
+} from "../../modules/projects/index.js";
 import { listProjectDocs } from "../../modules/projectDocs/index.js";
 import { PeonOperationError } from "../../peonOperationChannel.js";
+import { getPeonConnection, peonConnectionSupports } from "../../peonConnections.js";
+import {
+  FOLDER_LISTING_CAPABILITY,
+  FOLDER_LISTING_ENTRY_METADATA_FEATURE,
+  type FolderListEntry,
+} from "../../peonFolderListing.js";
+import { auditSafeFileErrorBody } from "../../fileErrorSafety.js";
 import { FileSandboxError, resolveAttachmentPath, resolveSandboxSegments } from "../../peonFileSandbox.js";
-import { hasProjectFileTransport } from "../../peonTransferConnections.js";
+import { hasProjectFileTransport, hasSandboxFileTransport } from "../../peonTransferConnections.js";
+import { hasFileWriteTransport } from "../../peonTransferConnections.js";
+import {
+  movePeonProjectFile,
+  PeonFileStreamError,
+  uploadPeonProjectFile,
+  uploadPeonSandboxFile,
+} from "../../peonFileStream.js";
 import {
   getIndexedProject,
   getProjectCatalogState,
@@ -19,6 +45,28 @@ import {
 
 export function registerProjectRoutes(router: express.Router): void {
   const wp = "/workspaces/:wsId/peons/:id";
+  const attachmentUploadMaxBytes = 25 * 1024 * 1024;
+  const projectUploadMaxBytes = 100 * 1024 * 1024;
+  const uploadHeaders = (req: express.Request) => {
+    const rawLength = req.headers["content-length"];
+    const contentLength = typeof rawLength === "string" && /^\d+$/.test(rawLength) ? Number(rawLength) : undefined;
+    const rawSha256 = req.headers["peon-content-sha256"];
+    const sha256 = typeof rawSha256 === "string" ? rawSha256.trim().toLowerCase() : undefined;
+    const rawRequestId = req.headers["peon-request-id"];
+    const requestId = typeof rawRequestId === "string" ? rawRequestId.trim() : undefined;
+    return { contentLength, sha256, requestId };
+  };
+  const replyFileWriteError = (res: express.Response, error: unknown) => {
+    const typed = error instanceof PeonFileStreamError
+      ? error
+      : new PeonFileStreamError("PEON_FILE_ERROR", "Peon could not complete the file write", 502);
+    if (!res.headersSent && !res.destroyed) {
+      res.status(typed.status === 499 ? 502 : typed.status).json({
+        error: auditSafeFileErrorBody(typed).error,
+        code: typed.code,
+      });
+    }
+  };
   // Peon detail page — registry view (no fan-out) + proxied projects/settings.
   router.get(wp, withWorkspacePeon(async (_req, res, c) => res.json(toView(c.record))));
 
@@ -269,38 +317,104 @@ export function registerProjectRoutes(router: express.Router): void {
       segments = await resolveSandboxSegments(conn, restSegments(req), c.operator.email);
     } catch (err) {
       if (!(err instanceof FileSandboxError)) throw err;
-      return res.status(err.status).json({ error: err.message, code: err.code });
+      return res.status(err.status).json(auditSafeFileErrorBody(err));
     }
     return proxyFileDownload(conn, segments, req, res, c.operator.email);
   }));
-  router.put(`${wp}/files/{*rest}`, withWorkspacePeon((req, res, c) => proxyFileUpload(connOfRecord(c.record), restSegments(req), req, res, c.operator.email)));
+  router.put(`${wp}/files/{*rest}`, withWorkspacePeon(async (req, res, c) => {
+    const segments = restSegments(req);
+    if (sandboxFileWriteChannel({ capabilityReady: hasFileWriteTransport(c.record.peonId) }) === "proxy") {
+      return proxyFileUpload(connOfRecord(c.record), segments, req, res, c.operator.email);
+    }
+    const path = segments.join("/");
+    const controller = new AbortController();
+    req.once("aborted", () => controller.abort());
+    res.once("close", () => {
+      if (!res.writableEnded) controller.abort();
+    });
+    try {
+      const result = await uploadPeonSandboxFile({
+        peonId: c.record.peonId,
+        path,
+        source: req,
+        actor: { userId: c.userId, email: c.operator.email },
+        signal: controller.signal,
+        maxBytes: path.startsWith("uploads/") ? attachmentUploadMaxBytes : projectUploadMaxBytes,
+        ...uploadHeaders(req),
+      });
+      if (!res.destroyed) res.status(result.status).json({ path: result.path, size: result.size, sha256: result.sha256 });
+    } catch (error) {
+      replyFileWriteError(res, error);
+    }
+  }));
 
   // Read a message attachment by the path its transcript event carries. That
   // path is absolute for every message a client did not just send itself, so
   // this is the surface a client uses instead of guessing the sandbox layout.
   router.get(`${wp}/attachments`, withWorkspacePeon(async (req, res, c) => {
     const conn = connOfRecord(c.record);
+    const rawPath = typeof req.query.path === "string" ? req.query.path.trim() : "";
+    if (!rawPath) return res.status(400).json({ error: "path query parameter is required", code: "BAD_REQUEST" });
+    if (hasSandboxFileTransport(c.record.peonId)) {
+      return streamSandboxFileResponse({
+        req,
+        res,
+        peonId: c.record.peonId,
+        path: rawPath,
+        actor: { userId: c.userId, email: c.operator.email },
+      });
+    }
     let segments: string[];
     try {
       segments = await resolveAttachmentPath(conn, req.query.path, c.operator.email);
     } catch (err) {
       if (!(err instanceof FileSandboxError)) throw err;
-      return res.status(err.status).json({ error: err.message, code: err.code });
+      return res.status(err.status).json(auditSafeFileErrorBody(err));
     }
     return proxyGet(conn, `/files/${segments.map(encodeURIComponent).join("/")}`, req, res, c.operator.email);
   }));
 
-  // Read-only project file browse — proxied to the peon's per-project files API
-  // (sandboxed to the project dir). `?stat=1` ⇒ dir listing / metadata; else content.
+  // Read-only project file browse. Directory listings use the project-scoped
+  // folder-listing operation when its additive entry metadata was negotiated;
+  // file bodies use the transfer socket. Older Peons retain the HTTP proxy.
   router.get(`${wp}/projects/:key/files/{*rest}`, withWorkspaceProject(async (req, res, c) => {
     const key = String(req.params.key);
     const segments = restSegments(req);
     const stat = req.query.stat !== undefined;
+    const confirmedDirectory = req.query.directory === "1";
     const transportReady = hasProjectFileTransport(c.record.peonId);
-    // The catalog names the project the socket addresses; skip that lookup when
-    // the request is going to the proxy anyway.
-    const projectId = !stat && transportReady ? (await getIndexedProject(c.record.peonId, key))?.projectId ?? null : null;
-    if (projectFileReadChannel({ stat, transportReady, projectId }) === "socket") {
+    const controlSocket = getPeonConnection(c.record.peonId);
+    const folderMetadataReady = Boolean(controlSocket
+      && peonConnectionSupports(controlSocket, FOLDER_LISTING_CAPABILITY)
+      && peonConnectionSupports(controlSocket, FOLDER_LISTING_ENTRY_METADATA_FEATURE));
+    // Both reverse operations address the immutable catalog identity. Skip the
+    // lookup only when neither socket can answer.
+    const projectId = transportReady || folderMetadataReady
+      ? (await getIndexedProject(c.record.peonId, key))?.projectId ?? null
+      : null;
+    if (stat && projectFolderReadChannel({ confirmedDirectory, metadataReady: folderMetadataReady, projectId }) === "socket") {
+      const controller = new AbortController();
+      req.once("aborted", () => controller.abort());
+      res.once("close", () => controller.abort());
+      try {
+        const listing = await browsePeonFolders(
+          c.record.peonId,
+          projectFolderBrowseSelector(projectId!, segments),
+          controller.signal,
+          undefined,
+          {},
+          true,
+        );
+        return res.json({ path: segments.join("/"), entries: projectFolderEntries(listing.entries as FolderListEntry[]) });
+      } catch (error) {
+        if (controller.signal.aborted || res.headersSent || res.destroyed) return;
+        const typed = error instanceof PeonOperationError
+          ? error
+          : new PeonOperationError("FOLDER_LIST_FAILED", "the project folder could not be listed", 502);
+        return res.status(typed.status === 499 ? 502 : typed.status).json({ error: typed.message, code: typed.code });
+      }
+    }
+    if (!stat && projectFileReadChannel({ transportReady, projectId }) === "socket") {
       return streamProjectFileResponse({
         req,
         res,
@@ -311,14 +425,76 @@ export function registerProjectRoutes(router: express.Router): void {
       });
     }
     const rest = segments.map(encodeURIComponent).join("/");
-    const qs = req.originalUrl.includes("?") ? req.originalUrl.slice(req.originalUrl.indexOf("?")) : "";
+    const qs = projectFileProxyQuery(req.originalUrl);
     proxyGet(connOfRecord(c.record), `/projects/${encodeURIComponent(key)}/files/${rest}${qs}`, req, res, c.operator.email);
   }));
-  router.put(`${wp}/projects/:key/files/{*rest}`, withWorkspaceProject((req, res, c) => {
+  router.put(`${wp}/projects/:key/files/{*rest}`, withWorkspaceProject(async (req, res, c) => {
+    const writeReady = hasFileWriteTransport(c.record.peonId);
+    const projectId = writeReady
+      ? (await getIndexedProject(c.record.peonId, String(req.params.key)))?.projectId ?? null
+      : null;
+    const writeChannel = projectFileWriteChannel({ capabilityReady: writeReady, projectId });
+    if (writeChannel === "unavailable") {
+      return res.status(409).json({ error: "canonical project identity is temporarily unavailable", code: "PROJECT_IDENTITY_UNAVAILABLE" });
+    }
+    if (writeChannel === "socket") {
+      const controller = new AbortController();
+      req.once("aborted", () => controller.abort());
+      res.once("close", () => {
+        if (!res.writableEnded) controller.abort();
+      });
+      try {
+        const result = await uploadPeonProjectFile({
+          peonId: c.record.peonId,
+          projectId: projectId!,
+          relativePath: restSegments(req).join("/"),
+          source: req,
+          actor: { userId: c.userId, email: c.operator.email },
+          signal: controller.signal,
+          maxBytes: projectUploadMaxBytes,
+          ...uploadHeaders(req),
+        });
+        if (!res.destroyed) res.status(result.status).json({ path: result.path, size: result.size, sha256: result.sha256 });
+      } catch (error) {
+        replyFileWriteError(res, error);
+      }
+      return;
+    }
     const rest = restSegments(req).map(encodeURIComponent).join("/");
-    proxyUpload(connOfRecord(c.record), `/projects/${encodeURIComponent(String(req.params.key))}/files/${rest}`, req, res, c.operator.email);
+    return proxyUpload(connOfRecord(c.record), `/projects/${encodeURIComponent(String(req.params.key))}/files/${rest}`, req, res, c.operator.email);
   }));
   router.patch(`${wp}/projects/:key/files/{*rest}`, withWorkspaceProject(async (req, res, c) => {
+    const writeReady = hasFileWriteTransport(c.record.peonId);
+    const projectId = writeReady
+      ? (await getIndexedProject(c.record.peonId, String(req.params.key)))?.projectId ?? null
+      : null;
+    const writeChannel = projectFileWriteChannel({ capabilityReady: writeReady, projectId });
+    if (writeChannel === "unavailable") {
+      return res.status(409).json({ error: "canonical project identity is temporarily unavailable", code: "PROJECT_IDENTITY_UNAVAILABLE" });
+    }
+    if (writeChannel === "socket") {
+      const controller = new AbortController();
+      req.once("aborted", () => controller.abort());
+      res.once("close", () => {
+        if (!res.writableEnded) controller.abort();
+      });
+      try {
+        const destination = typeof req.body?.destination === "string" ? req.body.destination : "";
+        const result = await movePeonProjectFile({
+          peonId: c.record.peonId,
+          projectId: projectId!,
+          relativePath: restSegments(req).join("/"),
+          destination,
+          actor: { userId: c.userId, email: c.operator.email },
+          signal: controller.signal,
+          requestId: uploadHeaders(req).requestId,
+        });
+        if (!res.destroyed) res.status(result.status).json({ path: result.path, size: result.size });
+      } catch (error) {
+        replyFileWriteError(res, error);
+      }
+      return;
+    }
     const rest = restSegments(req).map(encodeURIComponent).join("/");
     relay(await callPeon(connOfRecord(c.record), "PATCH", `/projects/${encodeURIComponent(String(req.params.key))}/files/${rest}`, { actor: c.operator.email, body: req.body }), res);
   }));

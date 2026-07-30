@@ -13,33 +13,48 @@ test("project docs listing resolves docs from an immutable project root", async 
       return {
         path: "/work/demo",
         projectId: input.projectId,
-        entries: [{ name: "src", type: "directory" }, { name: "docs", type: "directory" }],
+        entries: [
+          { name: "src", type: "directory", size: null, mtimeMs: 1 },
+          { name: "docs", type: "directory", size: null, mtimeMs: 2 },
+        ],
       };
     }
     return {
       path: "/work/demo/docs",
       projectId: null,
-      entries: [{ name: "index.md", type: "file" }, { name: "guide.md", type: "file" }],
+      entries: [
+        { name: "index.md", type: "file", size: 100, mtimeMs: 3 },
+        { name: "guide.md", type: "file", size: 200, mtimeMs: 4 },
+      ],
     };
   };
 
   assert.deepEqual(await listProjectDocs("peon", "stable-project", undefined, request), {
     exists: true,
-    entries: [{ name: "index.md", type: "file" }, { name: "guide.md", type: "file" }],
+    entries: [
+      { name: "index.md", type: "file", size: 100, mtimeMs: 3 },
+      { name: "guide.md", type: "file", size: 200, mtimeMs: 4 },
+    ],
   });
   assert.deepEqual(calls, [{ projectId: "stable-project" }, { path: "/work/demo/docs" }]);
 });
 
 test("project docs listing returns an empty contract when docs is absent or removed", async () => {
   const absent = async (): Promise<FolderListResult> => ({
-    path: "/work/demo", projectId: "stable-project", entries: [{ name: "docs", type: "file" }],
+    path: "/work/demo", projectId: "stable-project", entries: [{ name: "docs", type: "file", size: 12, mtimeMs: 1 }],
   });
   assert.deepEqual(await listProjectDocs("peon", "stable-project", undefined, absent), { exists: false, entries: [] });
 
   let call = 0;
   const removed = async (): Promise<FolderListResult> => {
     call += 1;
-    if (call === 1) return { path: "/work/demo", projectId: "stable-project", entries: [{ name: "docs", type: "directory" }] };
+    if (call === 1) {
+      return {
+        path: "/work/demo",
+        projectId: "stable-project",
+        entries: [{ name: "docs", type: "directory", size: null, mtimeMs: 1 }],
+      };
+    }
     throw new PeonOperationError("NOT_FOUND", "gone", 404);
   };
   assert.deepEqual(await listProjectDocs("peon", "stable-project", undefined, removed), { exists: false, entries: [] });

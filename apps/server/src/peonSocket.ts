@@ -2,8 +2,18 @@ import type { IncomingMessage, Server } from "node:http";
 import type { Duplex } from "node:stream";
 import { WebSocket, WebSocketServer } from "ws";
 import { broadcast } from "./eventLog.js";
-import { claimPeonConnection, releasePeonConnection } from "./peonConnections.js";
-import { FOLDER_LISTING_CAPABILITY, folderListingOperations } from "./peonFolderListing.js";
+import {
+  activatePeonCommandConnection,
+  claimPeonConnection,
+  peonConnectionGeneration,
+  releasePeonConnection,
+} from "./peonConnections.js";
+import {
+  FOLDER_LISTING_CAPABILITY,
+  FOLDER_LISTING_ENTRY_METADATA,
+  FOLDER_LISTING_ENTRY_METADATA_FEATURE,
+  folderListingOperations,
+} from "./peonFolderListing.js";
 import { authenticatePeonUpgrade } from "./peonSocketAuth.js";
 import {
   DURABLE_DELIVERY_CAPABILITY,
@@ -13,7 +23,19 @@ import {
   SessionSyncProtocolError,
   parseSessionCatalogHello,
 } from "./peonSessionSync.js";
+import {
+  SESSION_TRANSCRIPT_CAPABILITY,
+  validTranscriptChannelHello,
+} from "./peonTranscriptSync.js";
 import { toView, type PeonRecord } from "./registry.js";
+import { evictPeonTransferConnectionsBelowGeneration } from "./peonTransferConnections.js";
+import {
+  parseReverseCommandHello,
+  REVERSE_COMMAND_CAPABILITY,
+  ReverseCommandProtocolError,
+  reverseCommandGateway,
+  type ReverseCommandOperation,
+} from "./modules/reverseCommands/index.js";
 
 const ENDPOINT = "/api/v1/peons/ws";
 const PROTOCOL = 1;
@@ -37,6 +59,7 @@ interface PeonClient {
 
 interface PeonSocketOptions {
   folderOperations?: typeof folderListingOperations;
+  beforeCanonicalHelloAck?: () => Promise<void>;
 }
 
 function publishPresence(record: PeonRecord): void {
@@ -48,7 +71,7 @@ function publishPresence(record: PeonRecord): void {
 export function attachPeonSocket(server: Server, options: PeonSocketOptions = {}): WebSocketServer {
   const folderOperations = options.folderOperations ?? folderListingOperations;
   const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_PAYLOAD_BYTES });
-  const authenticated = new WeakMap<IncomingMessage, PeonRecord>();
+  const authenticated = new WeakMap<IncomingMessage, { record: PeonRecord; credentialGeneration: number }>();
   const clients = new Set<PeonClient>();
   let globalQueuedBytes = 0;
 
@@ -58,17 +81,18 @@ export function attachPeonSocket(server: Server, options: PeonSocketOptions = {}
     socket.on("error", () => {});
 
     void (async () => {
-      const record = await authenticatePeonUpgrade(req, socket);
-      if (!record || socket.destroyed) return;
-      authenticated.set(req, record);
+      const auth = await authenticatePeonUpgrade(req, socket);
+      if (!auth || socket.destroyed) return;
+      authenticated.set(req, auth);
       wss.handleUpgrade(req, socket, head, (ws) => wss.emit("connection", ws, req));
     })();
   };
   server.on("upgrade", onUpgrade);
 
   wss.on("connection", (ws, req) => {
-    const record = authenticated.get(req);
-    if (!record) return ws.close(1011, "authentication state unavailable");
+    const auth = authenticated.get(req);
+    if (!auth) return ws.close(1011, "authentication state unavailable");
+    const { record, credentialGeneration } = auth;
 
     const client: PeonClient = {
       ws, record, alive: true, ready: false, sessionSync: null, messages: Promise.resolve(), queuedMessages: 0, queuedBytes: 0,
@@ -134,14 +158,81 @@ export function attachPeonSocket(server: Server, options: PeonSocketOptions = {}
           const advertisesDelivery = advertised.includes(DURABLE_DELIVERY_CAPABILITY);
           const advertisesProjects = advertised.includes(PROJECT_CATALOG_CAPABILITY);
           const advertisesFolderListing = advertised.includes(FOLDER_LISTING_CAPABILITY);
+          const advertisesReverseCommands = advertised.includes(REVERSE_COMMAND_CAPABILITY);
+          const advertisesTranscripts = advertised.includes(SESSION_TRANSCRIPT_CAPABILITY);
+          const advertisedChannels = frame.channels && typeof frame.channels === "object" && !Array.isArray(frame.channels)
+            ? frame.channels as Record<string, unknown>
+            : {};
+          const folderChannel = advertisedChannels[FOLDER_LISTING_CAPABILITY];
+          const advertisesFolderEntryMetadata = advertisesFolderListing
+            && Boolean(folderChannel && typeof folderChannel === "object" && !Array.isArray(folderChannel)
+              && (folderChannel as Record<string, unknown>).entryMetadata === FOLDER_LISTING_ENTRY_METADATA);
           const ephemeralCapabilities = advertisesFolderListing ? [FOLDER_LISTING_CAPABILITY] : [];
-          const previous = claimPeonConnection(record.peonId, ws, ephemeralCapabilities);
+          const folderAcknowledgement = advertisesFolderEntryMetadata
+            ? { [FOLDER_LISTING_CAPABILITY]: { entryMetadata: FOLDER_LISTING_ENTRY_METADATA } }
+            : {};
+          const supportsCanonical = advertisesCatalog && advertisesDelivery;
+          if (supportsCanonical
+            && advertisesTranscripts
+            && !validTranscriptChannelHello(advertisedChannels[SESSION_TRANSCRIPT_CAPABILITY])) {
+            throw new SessionSyncProtocolError("invalid transcript channel state");
+          }
+          let commandOperations: ReverseCommandOperation[] = [];
+          if (advertisesReverseCommands && advertisesDelivery) {
+            try {
+              commandOperations = parseReverseCommandHello(frame);
+            } catch (error) {
+              throw new SessionSyncProtocolError(
+                error instanceof ReverseCommandProtocolError ? error.message : "invalid reverse command hello",
+              );
+            }
+          }
+          // reverse-command-v1 terminal results share the same durable frontier.
+          // Until that coordinator is independent of catalogs, echo it only on
+          // the canonical durable control connection that can commit the ACK.
+          const acceptsReverseCommands = supportsCanonical
+            && advertisesReverseCommands
+            && commandOperations.length > 0;
+          const additionalCapabilities = [
+            ...ephemeralCapabilities,
+            ...(supportsCanonical && advertisesTranscripts ? [SESSION_TRANSCRIPT_CAPABILITY] : []),
+            ...(acceptsReverseCommands ? [REVERSE_COMMAND_CAPABILITY] : []),
+          ];
+          const negotiatedCapabilities = supportsCanonical
+            ? [
+                SESSION_CATALOG_CAPABILITY,
+                DURABLE_DELIVERY_CAPABILITY,
+                ...(advertisesProjects ? [PROJECT_CATALOG_CAPABILITY] : []),
+                ...additionalCapabilities,
+              ]
+            : ephemeralCapabilities;
+          const acceptedConnectionFeatures = [
+            ...negotiatedCapabilities,
+            ...(advertisesFolderEntryMetadata ? [FOLDER_LISTING_ENTRY_METADATA_FEATURE] : []),
+          ];
+          const stagedConnectionFeatures = acceptedConnectionFeatures.filter(
+            (feature) => feature !== REVERSE_COMMAND_CAPABILITY,
+          );
+          const claimed = claimPeonConnection(
+            record.peonId,
+            ws,
+            stagedConnectionFeatures,
+            [],
+            credentialGeneration,
+          );
+          if (!claimed.accepted) {
+            ws.close(4001, "rejected stale credential generation");
+            return;
+          }
+          const previous = claimed.previous;
           if (previous && previous.readyState !== WebSocket.CLOSED) {
             folderOperations.connectionClosed(record.peonId, previous, "CONNECTION_LOST");
             previous.close(4001, "replaced by a newer connection");
           }
+          if (credentialGeneration > 0) {
+            evictPeonTransferConnectionsBelowGeneration(record.peonId, credentialGeneration);
+          }
           publishPresence(record);
-          const supportsCanonical = advertisesCatalog && advertisesDelivery;
           console.info(
             `overseer: Peon socket ${record.peonId} canonical session sync ${supportsCanonical
               ? "negotiated"
@@ -157,16 +248,35 @@ export function attachPeonSocket(server: Server, options: PeonSocketOptions = {}
               hello.catalog,
               hello.delivery,
               advertisesProjects ? hello.projectCatalog : null,
-              ephemeralCapabilities,
+              additionalCapabilities,
+              folderAcknowledgement,
+              peonConnectionGeneration(ws) ?? undefined,
             );
-            await client.sessionSync.start();
+            await client.sessionSync.start(options.beforeCanonicalHelloAck);
+            const generation = peonConnectionGeneration(ws);
+            if (acceptsReverseCommands && generation
+              && activatePeonCommandConnection(
+                record.peonId,
+                ws,
+                generation,
+                REVERSE_COMMAND_CAPABILITY,
+                commandOperations,
+              )) {
+              await reverseCommandGateway.connectionReady(record.workspaceId, record.peonId, ws);
+            }
           } else {
             // Capability dependency is all-or-nothing. Legacy Peons retain HTTP
             // reconciliation and are never given a partial canonical contract.
-            ws.send(JSON.stringify({ type: "hello_ack", protocol: PROTOCOL, capabilities: ephemeralCapabilities }));
+            ws.send(JSON.stringify({
+              type: "hello_ack",
+              protocol: PROTOCOL,
+              capabilities: negotiatedCapabilities,
+              ...(advertisesFolderEntryMetadata ? { channels: folderAcknowledgement } : {}),
+            }));
           }
           return;
         }
+        if (await reverseCommandGateway.handleEphemeralFrame(record.workspaceId, record.peonId, ws, frame)) return;
         if (folderOperations.handleFrame(record.peonId, ws, frame, frameBytes)) return;
         if (client.sessionSync && await client.sessionSync.handle(frame, frameBytes)) return;
         ws.close(1008, "unexpected Peon frame");
@@ -187,6 +297,14 @@ export function attachPeonSocket(server: Server, options: PeonSocketOptions = {}
       clearTimeout(helloTimeout);
       client.sessionSync?.dispose();
       folderOperations.connectionClosed(record.peonId, ws);
+      const commandGeneration = peonConnectionGeneration(ws);
+      if (commandGeneration) {
+        void reverseCommandGateway.connectionClosed(
+          record.workspaceId,
+          record.peonId,
+          commandGeneration,
+        ).catch(() => undefined);
+      }
       clients.delete(client);
       if (client.ready) {
         releasePeonConnection(record.peonId, ws);

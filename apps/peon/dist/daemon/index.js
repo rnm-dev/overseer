@@ -5,11 +5,11 @@ import { peonRegistrar, peonSocket } from "./overseer/index.js";
 import { sessions } from "./sessions/index.js";
 import { updateChecker } from "./updateChecker.js";
 import { claudeCodeAuth } from "./claudeCodeAuth.js";
-import { pairing } from "./pairing.js";
 import { configDir, stateDir } from "./xdgPaths.js";
 import { createDaemonCompositionRoot } from "./bootstrap/compositionRoot.js";
 import { recoverInterruptedArmoryOperations, recoverInterruptedArmoryUninstalls } from "./armory/index.js";
 import { shutdownAgentDriverRuntimes } from "./agents/index.js";
+import { peonClaimClient } from "./enrollment/index.js";
 const PORT = Number(process.env.ACA_CONTROL_PORT ?? 4570);
 // Interface to bind. Defaults to loopback-only (settings.bindHost === "127.0.0.1");
 // set it wider (0.0.0.0 or a specific interface IP) via `peon remote on` to accept
@@ -80,23 +80,21 @@ const server = app.listen(PORT, BIND_HOST, () => {
             "use `peon remote on` instead.");
     }
     console.log("(task claim: milestone 1 only — claims + reports needs_human, does not implement yet)");
-    // A never-recruited peon (no overseerToken) arms a one-time pairing phrase at
-    // boot so an operator can connect it to an overseer. Printed once, here, on
-    // generation — never logged again (redacted from the settings dump above).
-    // Done before peonRegistrar.start() so arming (a settings write) doesn't race
-    // its settings-change subscription.
+    // A fresh Peon now initiates peon-claim-v1 outbound. Legacy pairing remains
+    // available only after an explicit unsupported capability response (or an
+    // explicit local legacy arm), so startup must not silently choose it.
     if (!settings.get().overseerToken.trim()) {
-        const { phrase, expiresAt } = pairing.arm();
-        const mins = Math.max(1, Math.round((expiresAt - Date.now()) / 60_000));
         const rule = "═".repeat(60);
         console.log(`\n${rule}`);
-        console.log(`  peon is unrecruited — pairing phrase (valid ~${mins} min):\n`);
-        console.log(`      ${phrase}\n`);
-        console.log("  Give this phrase + this peon's tailnet address to an operator");
-        console.log('  to connect it from the overseer\'s "Connect peon" form.');
-        console.log("  Re-arm anytime with `peon pair`.");
+        console.log("  peon is unrecruited — start an outbound claim with:\n");
+        console.log("      peon pair https://your-overseer.example\n");
+        console.log("  No inbound address, callback, or Tailscale reachability is required.");
         console.log(`${rule}\n`);
     }
+    // Restores a persisted start, poll, delivery acknowledgement, or rotation
+    // before opening sockets. Any newly installed credential updates settings,
+    // which then generation-replaces both socket supervisors.
+    peonClaimClient.start();
     // Outbound: if an overseerUrl+token are configured, announce this peon to the
     // fleet control plane and heartbeat it; a no-op (idle loop) otherwise.
     peonRegistrar.start();
@@ -124,6 +122,7 @@ if (watchdogIntervalMs) {
 }
 process.on("SIGTERM", () => {
     sdNotify.stopping();
+    peonClaimClient.stop();
     sessions.notifyShuttingDown();
     // server.close() waits for every open connection to end — but SSE clients
     // (dashboard tabs, live session streams) hold theirs open indefinitely,

@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { browsePeonFolders, folderBrowseSelector } from "./modules/projects/index.js";
+import {
+  browsePeonFolders,
+  folderBrowseSelector,
+  projectFolderBrowseSelector,
+  projectFolderEntries,
+} from "./modules/projects/index.js";
 import { PeonOperationError } from "./peonOperationChannel.js";
 import type { FolderListInput, FolderListResult } from "./peonFolderListing.js";
 import { peonsRouter } from "./routes/peons.js";
@@ -17,21 +22,28 @@ test("folder browse selector defaults to the filesystem root and bounds the page
   }
   assert.throws(() => folderBrowseSelector(["/", "/etc"], undefined), (error: unknown) =>
     error instanceof PeonOperationError && error.code === "BAD_REQUEST");
+  assert.deepEqual(projectFolderBrowseSelector("project-id", []), { projectId: "project-id", relativePath: "" });
+  assert.deepEqual(projectFolderBrowseSelector("project-id", ["src", "lib"]), {
+    projectId: "project-id",
+    relativePath: "src/lib",
+  });
 });
 
 test("folder browse lists directories only, sorted, over the folder-listing operation", async () => {
   const calls: FolderListInput[] = [];
   const request = async (peonId: string, input: FolderListInput, signal?: AbortSignal): Promise<FolderListResult> => {
     assert.equal(peonId, "peon");
-    assert.equal(signal?.aborted, false);
+    if (signal) assert.equal(signal.aborted, false);
     calls.push(input);
     return {
       path: "/",
       projectId: null,
       entries: [
-        { name: "srv", type: "directory" },
-        { name: "swapfile", type: "file" },
-        { name: "etc", type: "directory" },
+        { name: "srv", type: "directory", size: null, mtimeMs: 1 },
+        { name: "swapfile", type: "file", size: 4096, mtimeMs: 2 },
+        { name: "etc", type: "directory", size: null, mtimeMs: 3 },
+        { name: "contained-directory-link", type: "directory", size: null, mtimeMs: 4 },
+        { name: "outside-link", type: "other", size: null, mtimeMs: null },
       ],
     };
   };
@@ -39,9 +51,39 @@ test("folder browse lists directories only, sorted, over the folder-listing oper
   const controller = new AbortController();
   assert.deepEqual(await browsePeonFolders("peon", { path: "/" }, controller.signal, request), {
     path: "/",
-    entries: [{ name: "etc", type: "directory" }, { name: "srv", type: "directory" }],
+    entries: [
+      { name: "contained-directory-link", type: "directory" },
+      { name: "etc", type: "directory" },
+      { name: "srv", type: "directory" },
+    ],
   });
   assert.deepEqual(calls, [{ path: "/" }]);
+
+  assert.deepEqual(await browsePeonFolders(
+    "peon",
+    { projectId: "project-id", relativePath: "src" },
+    undefined,
+    request,
+    {},
+    true,
+  ), {
+    path: "/",
+    entries: [
+      { name: "srv", type: "directory", size: null, mtimeMs: 1 },
+      { name: "swapfile", type: "file", size: 4096, mtimeMs: 2 },
+      { name: "etc", type: "directory", size: null, mtimeMs: 3 },
+      { name: "contained-directory-link", type: "directory", size: null, mtimeMs: 4 },
+      { name: "outside-link", type: "other", size: null, mtimeMs: null },
+    ],
+  });
+  assert.deepEqual(calls.at(-1), { projectId: "project-id", relativePath: "src" });
+  assert.deepEqual(projectFolderEntries((await request("peon", { path: "/" })).entries), [
+    { name: "srv", type: "dir", size: null, mtimeMs: 1 },
+    { name: "swapfile", type: "file", size: 4096, mtimeMs: 2 },
+    { name: "etc", type: "dir", size: null, mtimeMs: 3 },
+    { name: "contained-directory-link", type: "dir", size: null, mtimeMs: 4 },
+    { name: "outside-link", type: "other", size: null, mtimeMs: null },
+  ]);
 });
 
 test("an overlapping listing waits for its turn instead of showing the operator a busy Peon", async () => {
@@ -51,7 +93,7 @@ test("an overlapping listing waits for its turn instead of showing the operator 
   const request = async (): Promise<FolderListResult> => {
     call += 1;
     if (call < 3) throw new PeonOperationError("SYNC_IN_PROGRESS", "another Peon operation is already in progress", 409);
-    return { path: "/", projectId: null, entries: [{ name: "srv", type: "directory" }] };
+    return { path: "/", projectId: null, entries: [{ name: "srv", type: "directory", size: null, mtimeMs: 1 }] };
   };
   const waits: number[] = [];
   const retry = { pause: async (ms: number) => { waits.push(ms); }, random: () => 0.5 };

@@ -23,6 +23,8 @@ export interface ReverseCommandRecord {
   peonId: string;
   sessionId?: string;
   actorUserId: string;
+  authority: string;
+  admittedGeneration: number;
   command?: PeonSocketFrame;
   state: ReverseCommandState;
   acceptedAt: number;
@@ -84,6 +86,10 @@ function validRecord(value: unknown): value is ReverseCommandRecord {
     && typeof record!.operation === "string"
     && typeof record!.peonId === "string"
     && typeof record!.actorUserId === "string"
+    && typeof record!.authority === "string"
+    && record!.authority.length > 0
+    && Number.isSafeInteger(record!.admittedGeneration)
+    && (record!.admittedGeneration ?? -1) >= 0
     && (record!.command === undefined || (Boolean(record!.command) && typeof record!.command === "object" && !Array.isArray(record!.command)))
     && ["accepted", "running", "terminal"].includes(record!.state as string)
     && typeof record!.acceptedAt === "number"
@@ -120,6 +126,7 @@ export class ReverseCommandLedger {
   private current: LedgerState;
   private lastError: string | null = null;
   private recoveredFromCorruption = false;
+  private recoveryBlocked = false;
 
   constructor(options: ReverseCommandLedgerOptions = {}) {
     this.fileBase = options.fileBase ?? path.join(stateDir(), "overseer-reverse-command-ledger");
@@ -132,11 +139,12 @@ export class ReverseCommandLedger {
     this.current = this.load();
   }
 
-  status(): { records: number; bytes: number; recoveredFromCorruption: boolean; lastError: string | null } {
+  status(): { records: number; bytes: number; recoveredFromCorruption: boolean; recoveryBlocked: boolean; lastError: string | null } {
     return {
       records: this.current.records.length,
       bytes: Buffer.byteLength(JSON.stringify(this.current)),
       recoveredFromCorruption: this.recoveredFromCorruption,
+      recoveryBlocked: this.recoveryBlocked,
       lastError: this.lastError,
     };
   }
@@ -151,9 +159,12 @@ export class ReverseCommandLedger {
   }
 
   admit(input: Omit<ReverseCommandRecord, "state" | "acceptedAt" | "updatedAt">): ReverseCommandAdmission {
+    if (this.recoveryBlocked) {
+      return { kind: "persist_failed", error: this.lastError ?? "reverse command ledger recovery is blocked" };
+    }
     const duplicate = this.current.records.find((record) => record.commandId === input.commandId);
     if (duplicate) {
-      return duplicate.requestHash === input.requestHash
+      return duplicate.requestHash === input.requestHash && duplicate.authority === input.authority
         ? { kind: "replayed", record: structuredClone(duplicate) }
         : { kind: "reused", record: structuredClone(duplicate) };
     }
@@ -172,23 +183,42 @@ export class ReverseCommandLedger {
     return { kind: "accepted", record: structuredClone(record) };
   }
 
-  markRunning(commandId: string): boolean {
-    return this.update(commandId, (record) => ({ ...record, state: "running", updatedAt: this.now() }));
+  rebindAcceptedGeneration(commandId: string, authority: string, generation: number): boolean {
+    return this.transition(commandId, "accepted", (record) => {
+      if (record.authority !== authority) return null;
+      return { ...record, admittedGeneration: generation, updatedAt: this.now() };
+    });
   }
 
-  markTerminal(commandId: string, result: PeonSocketFrame): boolean {
+  markRunning(commandId: string, authority: string, generation: number): boolean {
+    return this.transition(commandId, "accepted", (record) => (
+      record.authority === authority && record.admittedGeneration === generation
+        ? { ...record, state: "running", updatedAt: this.now() }
+        : null
+    ));
+  }
+
+  markTerminal(commandId: string, authority: string, generation: number, result: PeonSocketFrame): boolean {
     const completedAt = this.now();
-    return this.update(commandId, (record) => ({
-      ...record,
-      state: "terminal",
-      result: structuredClone(result),
-      completedAt,
-      updatedAt: completedAt,
-    }));
+    return this.transition(commandId, "running", (record) => (
+      record.authority === authority && record.admittedGeneration === generation
+        ? {
+            ...record,
+            state: "terminal",
+            result: structuredClone(result),
+            completedAt,
+            updatedAt: completedAt,
+          }
+        : null
+    ));
   }
 
-  bindResultCursor(commandId: string, cursor: string): boolean {
-    return this.update(commandId, (record) => ({ ...record, resultCursor: cursor, updatedAt: this.now() }));
+  bindResultCursor(commandId: string, authority: string, cursor: string): boolean {
+    return this.transition(commandId, "terminal", (record) => (
+      record.authority === authority
+        ? { ...record, resultCursor: cursor, updatedAt: this.now() }
+        : null
+    ));
   }
 
   acknowledgeCursor(cursor: string): boolean {
@@ -206,7 +236,9 @@ export class ReverseCommandLedger {
 
   recoverInterrupted(resultFactory: (record: ReverseCommandRecord) => PeonSocketFrame): ReverseCommandRecord[] {
     const interrupted = this.current.records.filter((record) => record.state === "running");
-    for (const record of interrupted) this.markTerminal(record.commandId, resultFactory(record));
+    for (const record of interrupted) {
+      this.markTerminal(record.commandId, record.authority, record.admittedGeneration, resultFactory(record));
+    }
     return interrupted.map((record) => this.get(record.commandId)!).filter(Boolean);
   }
 
@@ -234,12 +266,21 @@ export class ReverseCommandLedger {
     return next;
   }
 
-  private update(commandId: string, mutate: (record: ReverseCommandRecord) => ReverseCommandRecord): boolean {
+  private transition(
+    commandId: string,
+    expected: ReverseCommandState,
+    mutate: (record: ReverseCommandRecord) => ReverseCommandRecord | null,
+  ): boolean {
+    if (this.recoveryBlocked) return false;
     const index = this.current.records.findIndex((record) => record.commandId === commandId);
     if (index < 0) return false;
+    const current = this.current.records[index]!;
+    if (current.state !== expected) return false;
+    const replacement = mutate(current);
+    if (!replacement) return false;
     const next = structuredClone(this.current);
     next.generation += 1;
-    next.records[index] = mutate(next.records[index]!);
+    next.records[index] = replacement;
     return this.persist(next);
   }
 
@@ -281,8 +322,20 @@ export class ReverseCommandLedger {
         this.recoveredFromCorruption = true;
       }
     }
+    const generations = candidates.map((candidate) => candidate.generation).sort((a, b) => b - a);
+    const missingRequiredPeer = candidates.length === 1 && generations[0]! >= 2;
+    const generationGap = generations.length === 2 && generations[0]! - generations[1]! !== 1;
+    if (this.recoveredFromCorruption || missingRequiredPeer || generationGap) {
+      this.recoveryBlocked = true;
+      this.lastError = "reverse command ledger recovery blocked: corrupt, missing, or gapped durable generation";
+      return candidates.sort((a, b) => b.generation - a.generation)[0]
+        ?? { version: 1, generation: 0, records: [], tombstones: [] };
+    }
     if (candidates.length > 0) return candidates.sort((a, b) => b.generation - a.generation)[0]!;
-    if (sawFile) this.lastError = "reverse command ledger was corrupt; recovered with an empty fenced ledger";
+    if (sawFile) {
+      this.recoveryBlocked = true;
+      this.lastError = "reverse command ledger recovery blocked: no valid durable generation";
+    }
     return { version: 1, generation: 0, records: [], tombstones: [] };
   }
 }

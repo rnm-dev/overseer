@@ -6,7 +6,13 @@
   // states peonRegistrar.ts can be in: off (no creds), auth rejected (401),
   // registered (heartbeating), or mid-connect. `dot` is a full literal class so
   // the Tailwind CDN's DOM scan picks it up (constructed class names wouldn't).
-  function linkStatus(ov) {
+  function linkStatus(ov, enrollment) {
+    if (["starting", "polling", "approved", "acknowledging"].includes(enrollment?.state)) {
+      return { tone: "amber", label: "claim pending", dot: "bg-amber-500", pulse: true };
+    }
+    if (enrollment?.state === "parked") {
+      return { tone: "red", label: "claim needs attention", dot: "bg-red-500", pulse: false };
+    }
     if (!ov || !ov.enabled) return { tone: "slate", label: "standalone", dot: "bg-slate-500", pulse: false };
     if (ov.derecruited) return { tone: "amber", label: "auth rejected", dot: "bg-amber-500", pulse: true };
     if (ov.registered) return { tone: "green", label: "connected", dot: "bg-emerald-500", pulse: true };
@@ -90,12 +96,15 @@
   function OverseerCard({ status }) {
     const [peonId, setPeonId] = useState(null);
     const [arming, setArming] = useState(false);
-    const [pairing, setPairing] = useState(null); // { phrase, expiresAt } from the last arm
+    const [serverOrigin, setServerOrigin] = useState("");
+    const [claim, setClaim] = useState(null);
+    const [pairing, setPairing] = useState(null);
     const [pairingError, setPairingError] = useState("");
 
     const load = useCallback(async () => {
       const { body } = await apiGet("/api/v1/settings");
       setPeonId(body?.peonId ?? "");
+      setServerOrigin(body?.overseerUrl ?? "");
     }, []);
 
     useEffect(() => {
@@ -105,22 +114,50 @@
       return () => events.close();
     }, [load]);
 
-    const armPairing = async () => {
+    const startClaim = async () => {
+      setArming(true);
+      setPairingError("");
+      try {
+        const { ok, body } = await apiPost("/api/v1/enrollment/claim", { serverOrigin });
+        if (ok) {
+          setClaim(body);
+          if (body?.legacyPhrase) setPairing({ phrase: body.legacyPhrase, expiresAt: body.legacyExpiresAt });
+        } else setPairingError(body?.error || "Could not start the outbound claim.");
+      } catch (error) {
+        setPairingError(error instanceof Error ? error.message : "Could not reach the daemon.");
+      } finally {
+        setArming(false);
+      }
+    };
+
+    const armLegacy = async () => {
       setArming(true);
       setPairingError("");
       try {
         const { ok, body } = await apiPost("/api/v1/pairing/arm");
         if (ok) setPairing(body);
-        else setPairingError(body?.error || "Could not arm a pairing phrase. Check the daemon and try again.");
-      } catch (error) {
-        setPairingError(error instanceof Error ? error.message : "Could not reach the daemon. Try again.");
+        else setPairingError(body?.error || "Could not arm legacy pairing.");
+      } finally {
+        setArming(false);
+      }
+    };
+
+    const retryParked = async () => {
+      setArming(true);
+      setPairingError("");
+      try {
+        const { ok, body } = await apiPost("/api/v1/enrollment/retry");
+        if (ok) setClaim(body);
+        else setPairingError(body?.error || "Could not retry the parked enrollment.");
       } finally {
         setArming(false);
       }
     };
 
     const ov = status?.overseer;
-    const link = linkStatus(ov);
+    const enrollment = status?.enrollment;
+    const liveClaim = enrollment?.state && enrollment.state !== "idle" ? enrollment : claim;
+    const link = linkStatus(ov, liveClaim);
     const pairingLive = pairing && pairing.expiresAt > Date.now();
 
     return (
@@ -160,25 +197,44 @@
           )}
         </Panel>
 
-        {/* Zero-touch pairing — the only way to connect. The overseer calls
-            /api/v1/enroll with the phrase and gets handed this peon's creds
-            (url + token both persisted automatically), so there's nothing to
-            type by hand. */}
         <Panel className="space-y-3">
           <div>
-            <h3 className="mb-1 text-sm font-semibold text-slate-300">Pairing</h3>
+            <h3 className="mb-1 text-sm font-semibold text-slate-300">Outbound enrollment</h3>
             <p className="text-sm text-slate-500">
-              Arm a single-use, time-limited pairing phrase, then hand it to the overseer operator. The overseer calls{" "}
-              <code className="text-xs">/api/v1/enroll</code> with the phrase and this peon is issued its credentials
-              automatically.
+              Enter the canonical Overseer origin. Peon creates a stable machine identity, starts a signed outbound
+              claim, and keeps polling until an owner approves it. No inbound address is required.
             </p>
           </div>
+          <input
+            value={serverOrigin}
+            onChange={(event) => setServerOrigin(event.target.value)}
+            placeholder="https://overseer.example"
+            className="w-full rounded bg-slate-950 px-3 py-2 text-sm text-slate-200 ring-1 ring-inset ring-slate-700"
+          />
           <div className="flex flex-wrap items-center gap-3">
-            <Button onClick={armPairing} disabled={arming}>
-              {arming ? "Arming…" : "Arm pairing phrase"}
+            <Button onClick={startClaim} disabled={arming || !serverOrigin.trim()}>
+              {arming ? "Starting…" : "Start outbound claim"}
             </Button>
+            {liveClaim?.state === "parked" && (
+              <Button onClick={retryParked} disabled={arming}>
+                Retry after recovery
+              </Button>
+            )}
+            {liveClaim?.operatorCode && <Copyable value={liveClaim.operatorCode} className="text-brand-300" />}
+            {liveClaim?.operatorUrl && <Copyable value={liveClaim.operatorUrl} className="max-w-full text-brand-300" />}
+          </div>
+          {liveClaim?.state === "parked" && (
+            <p className="rounded bg-amber-950/50 px-3 py-2 text-xs text-amber-300 ring-1 ring-inset ring-amber-900">
+              Automatic retries stopped after a permanent protocol outcome
+              {liveClaim.lastErrorCode ? ` (${liveClaim.lastErrorCode})` : ""}. Correct the condition, then retry explicitly.
+            </p>
+          )}
+          <div className="border-t border-slate-800 pt-3">
+            <button type="button" onClick={armLegacy} disabled={arming} className="text-xs text-slate-500 hover:text-slate-300">
+              Arm legacy inbound pairing instead
+            </button>
             {pairingLive && (
-              <div className="flex flex-wrap items-center gap-2 text-sm">
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
                 <Copyable value={pairing.phrase} className="text-brand-300" />
                 <span className="text-slate-500">expires {new Date(pairing.expiresAt).toLocaleTimeString()}</span>
               </div>

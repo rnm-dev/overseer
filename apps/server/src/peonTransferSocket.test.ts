@@ -11,9 +11,17 @@ import { attachPeonSocket } from "./peonSocket.js";
 import { isPeonTransferConnected } from "./peonTransferConnections.js";
 import { attachPeonTransferSocket, PEON_TRANSFER_SOCKET_PATH } from "./peonTransferSocket.js";
 import { registry, toView, type PeonRecord } from "./registry.js";
-import { encodePeonFileChunk, openPeonProjectFile, PeonFileStreamError } from "./peonFileStream.js";
+import { encodePeonFileChunk, openPeonProjectFile, openPeonSandboxFile, PeonFileStreamError } from "./peonFileStream.js";
+import { PATH_ESCAPE_PUBLIC_MESSAGE } from "./fileErrorSafety.js";
 import { peonsRouter } from "./routes/peons.js";
-import { isolateProjectFileResponse, projectFileContentType, projectFileReadChannel, PROJECT_FILE_CSP } from "./modules/projects/index.js";
+import {
+  isolateProjectFileResponse,
+  projectFileContentType,
+  projectFileProxyQuery,
+  projectFileReadChannel,
+  projectFolderReadChannel,
+  PROJECT_FILE_CSP,
+} from "./modules/projects/index.js";
 
 function listen(server: http.Server): Promise<number> {
   return new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve((server.address() as AddressInfo).port)));
@@ -215,6 +223,72 @@ test("project file service opens by stable project ID and streams correlated bin
   await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
 });
 
+test("sandbox file service negotiates separately and sends absolute or relative sandbox paths", async () => {
+  const { record, token } = await fixture("sandbox-file-stream");
+  const server = http.createServer();
+  const transferWss = attachPeonTransferSocket(server);
+  const port = await listen(server);
+  const ws = await open(`ws://127.0.0.1:${port}${PEON_TRANSFER_SOCKET_PATH}`, token);
+  await transferHello(ws, record.peonId, ["project-file-read-v1", "sandbox-file-read-v1"]);
+
+  const openFramePromise = message(ws);
+  const openedPromise = openPeonSandboxFile({
+    peonId: record.peonId,
+    path: "/tmp/peon-files/uploads/session/attachment.png",
+    actor: { userId: "operator-id", email: "operator@example.com" },
+  });
+  const openFrame = await openFramePromise;
+  assert.equal(openFrame.type, "file_open");
+  assert.equal(openFrame.scope, "sandbox");
+  assert.equal(openFrame.path, "/tmp/peon-files/uploads/session/attachment.png");
+  assert.equal(openFrame.projectId, undefined);
+  const requestId = String(openFrame.requestId);
+
+  const creditPromise = message(ws);
+  ws.send(JSON.stringify({
+    type: "file_meta", requestId, status: 200, contentType: "image/png",
+    contentLength: 3, acceptRanges: "bytes",
+  }));
+  const opened = await openedPromise;
+  assert.equal(opened.contentType, "image/png");
+  assert.deepEqual(await creditPromise, { type: "file_credit", requestId, bytes: 262_144 });
+  const replenishedCredit = message(ws);
+  ws.send(encodePeonFileChunk(requestId, 0, Buffer.from("png")));
+  ws.send(JSON.stringify({ type: "file_end", requestId }));
+  const chunks: Buffer[] = [];
+  for await (const chunk of opened.stream) chunks.push(Buffer.from(chunk));
+  assert.equal(Buffer.concat(chunks).toString(), "png");
+  assert.deepEqual(await replenishedCredit, { type: "file_credit", requestId, bytes: 3 });
+
+  const sentinelRoot = "/srv/__OVSR249_SOCKET_ROOT_SENTINEL__/transfer";
+  const sentinelPath = "/srv/__OVSR249_SOCKET_PATH_SENTINEL__/secret";
+  const rejectedFramePromise = message(ws);
+  const rejected = openPeonSandboxFile({
+    peonId: record.peonId,
+    path: sentinelPath,
+    actor: { userId: "operator-id", email: "operator@example.com" },
+  });
+  const rejectedRequestId = String((await rejectedFramePromise).requestId);
+  ws.send(JSON.stringify({
+    type: "file_error",
+    requestId: rejectedRequestId,
+    status: 400,
+    code: "PATH_ESCAPE",
+    message: `${sentinelPath} is outside ${sentinelRoot}`,
+  }));
+  await assert.rejects(rejected, (error: unknown) => error instanceof PeonFileStreamError
+    && error.status === 400
+    && error.code === "PATH_ESCAPE"
+    && error.message === PATH_ESCAPE_PUBLIC_MESSAGE
+    && !error.message.includes(sentinelRoot)
+    && !error.message.includes(sentinelPath));
+
+  ws.close();
+  await closed(ws);
+  await new Promise<void>((resolve) => transferWss.close(() => resolve()));
+  await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+});
+
 test("browser viewer infers inline MIME types when Peon reports generic bytes", () => {
   assert.equal(projectFileContentType("dist/index.html", "application/octet-stream"), "text/html; charset=utf-8");
   assert.equal(projectFileContentType("assets/app.js", "application/octet-stream"), "text/javascript; charset=utf-8");
@@ -299,6 +373,30 @@ test("project file service requires the negotiated project-file-read capability"
   await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
 });
 
+test("sandbox file service requires its own negotiated capability", async () => {
+  const { record, token } = await fixture("sandbox-capability");
+  const server = http.createServer();
+  const transferWss = attachPeonTransferSocket(server);
+  const port = await listen(server);
+  const ws = await open(`ws://127.0.0.1:${port}${PEON_TRANSFER_SOCKET_PATH}`, token);
+  await transferHello(ws, record.peonId, ["project-file-read-v1"]);
+  await assert.rejects(
+    openPeonSandboxFile({
+      peonId: record.peonId,
+      path: "uploads/session/file.txt",
+      actor: { userId: "u", email: "u@example.com" },
+    }),
+    (error: unknown) => error instanceof PeonFileStreamError
+      && error.code === "PEON_TRANSFER_UNAVAILABLE"
+      && error.status === 503,
+  );
+  assert.equal(ws.readyState, WebSocket.OPEN);
+  ws.close();
+  await closed(ws);
+  await new Promise<void>((resolve) => transferWss.close(() => resolve()));
+  await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+});
+
 test("stable project-ID file route is registered separately from project-key routes", () => {
   const router = peonsRouter() as unknown as { stack: { route?: { path?: string; methods?: Record<string, boolean> } }[] };
   const route = router.stack.find((layer) => layer.route?.path === "/workspaces/:wsId/peons/:id/projects/by-id/:projectId/files/{*rest}");
@@ -317,12 +415,28 @@ test("project file responses sandbox active content away from the authenticated 
   assert.equal(headers.get("cache-control"), "no-store");
 });
 
+test("project HTTP fallback removes only the private directory marker from the raw query", () => {
+  assert.equal(
+    projectFileProxyQuery("/files/src?stat=1&stat=2&encoded=a%2Bb&array%5B%5D=x&directory=1&array%5B%5D=y"),
+    "?stat=1&stat=2&encoded=a%2Bb&array%5B%5D=x&array%5B%5D=y",
+  );
+  assert.equal(
+    projectFileProxyQuery("/files/src?%64irectory=1&value=%2520&flag&directory=2"),
+    "?value=%2520&flag",
+  );
+  assert.equal(projectFileProxyQuery("/files/src?directory=1"), "");
+  assert.equal(projectFileProxyQuery("/files/src?directory%ZZ=1&stat=1"), "?directory%ZZ=1&stat=1");
+});
+
 test("a project file read takes the socket, and the retiring HTTP proxy only covers what it cannot", () => {
   // The Peon's HTTP API is going away, so the socket is the default read path.
-  assert.equal(projectFileReadChannel({ stat: true, transportReady: true, projectId: "p" }), "proxy");
-  assert.equal(projectFileReadChannel({ stat: false, transportReady: false, projectId: "p" }), "proxy");
-  assert.equal(projectFileReadChannel({ stat: false, transportReady: true, projectId: null }), "proxy");
-  assert.equal(projectFileReadChannel({ stat: false, transportReady: true, projectId: "p" }), "socket");
+  assert.equal(projectFileReadChannel({ transportReady: false, projectId: "p" }), "proxy");
+  assert.equal(projectFileReadChannel({ transportReady: true, projectId: null }), "proxy");
+  assert.equal(projectFileReadChannel({ transportReady: true, projectId: "p" }), "socket");
+  assert.equal(projectFolderReadChannel({ confirmedDirectory: true, metadataReady: false, projectId: "p" }), "proxy");
+  assert.equal(projectFolderReadChannel({ confirmedDirectory: true, metadataReady: true, projectId: null }), "proxy");
+  assert.equal(projectFolderReadChannel({ confirmedDirectory: false, metadataReady: true, projectId: "p" }), "proxy");
+  assert.equal(projectFolderReadChannel({ confirmedDirectory: true, metadataReady: true, projectId: "p" }), "socket");
 });
 
 test("the project-key file route is the one that changes channel", () => {

@@ -26,11 +26,7 @@
     "target": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["peonId"],
-      "oneOf": [
-        { "required": ["sessionId"] },
-        { "required": ["projectId"] }
-      ],
+      "required": ["peonId", "sessionId"],
       "properties": {
         "peonId": { "$ref": "#/$defs/uuid" },
         "sessionId": { "$ref": "#/$defs/uuid" },
@@ -57,10 +53,7 @@
         "protocol": { "const": 1 },
         "capability": { "const": "reverse-command-v1" },
         "commandId": { "$ref": "#/$defs/uuid" },
-        "operation": {
-          "type": "string",
-          "enum": ["session.cancel", "project.archive", "project.unarchive"]
-        },
+        "operation": { "type": "string", "enum": ["session.cancel"] },
         "target": { "$ref": "#/$defs/target" },
         "actor": { "$ref": "#/$defs/actor" },
         "payload": {
@@ -94,7 +87,7 @@
         "type": { "const": "command_accepted" },
         "protocol": { "const": 1 },
         "commandId": { "$ref": "#/$defs/uuid" },
-        "operation": { "enum": ["session.cancel", "project.archive", "project.unarchive"] },
+        "operation": { "const": "session.cancel" },
         "state": { "enum": ["accepted", "running"] },
         "replayed": { "type": "boolean" },
         "acceptedAt": { "type": "integer", "minimum": 0 }
@@ -117,7 +110,7 @@
         "type": { "const": "command_result" },
         "protocol": { "const": 1 },
         "commandId": { "$ref": "#/$defs/uuid" },
-        "operation": { "enum": ["session.cancel", "project.archive", "project.unarchive"] },
+        "operation": { "const": "session.cancel" },
         "status": {
           "enum": ["applied", "noop", "rejected", "conflict", "cancelled", "failed"]
         },

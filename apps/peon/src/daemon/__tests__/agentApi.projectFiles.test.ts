@@ -7,7 +7,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdtempSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync, symlinkSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync, symlinkSync, unlinkSync } from "node:fs";
 import { request } from "node:http";
 import os from "node:os";
 import path from "node:path";
@@ -22,13 +22,23 @@ process.env.XDG_STATE_HOME = stateHome;
 const { settings } = await import("../settings/index.js");
 const { projectStore } = await import("../projects/contracts.js");
 const { createAgentRouter } = await import("../agentApi.js");
+const { AtomicFileUpload, moveProjectFile: moveProjectFileAtomic } = await import("../files/index.js");
+let uploadOpenOptions: Parameters<typeof AtomicFileUpload.open>[3] = {};
+let projectMoveOptions: Parameters<typeof moveProjectFileAtomic>[3] = {};
 
 const TOKEN = "test-bearer-token";
 settings.update({ overseerToken: TOKEN });
 
 const app = express();
 app.use(express.json());
-app.use("/api/v1", createAgentRouter());
+app.use("/api/v1", createAgentRouter({
+  openProjectUpload: (target, maxBytes, claimedSha256) => (
+    AtomicFileUpload.open(target, maxBytes, claimedSha256, uploadOpenOptions)
+  ),
+  moveProjectFile: (record, source, destination) => (
+    moveProjectFileAtomic(record, source, destination, projectMoveOptions)
+  ),
+}));
 const server: Server = app.listen(0);
 await new Promise<void>((resolve) => server.once("listening", resolve));
 const port = (server.address() as { port: number }).port;
@@ -287,6 +297,94 @@ test("replacement remains atomic while a slow upload is in flight", async () => 
   assert.deepEqual(uploadTemps(projectDir), []);
 });
 
+test("legacy HTTP upload fails closed if its destination parent is swapped before commit", async () => {
+  const parent = path.join(projectDir, "http-swap-parent");
+  const anchored = path.join(projectDir, "http-swap-parent-held");
+  mkdirSync(parent);
+  const body = "parent-swap-body";
+  let continueUpload!: () => void;
+  const paused = new Promise<void>((resolve) => { continueUpload = resolve; });
+  let firstHalfSent!: () => void;
+  const firstHalf = new Promise<void>((resolve) => { firstHalfSent = resolve; });
+  const requestDone = rawUpload(
+    "/projects/proj1/files/http-swap-parent/result.txt",
+    Buffer.byteLength(body),
+    async (req) => {
+      req.write(body.slice(0, 4));
+      firstHalfSent();
+      await paused;
+      req.end(body.slice(4));
+    },
+  );
+  await firstHalf;
+  await new Promise((resolve) => setTimeout(resolve, 25));
+  renameSync(parent, anchored);
+  symlinkSync(outsideDir, parent);
+  continueUpload();
+  const response = await requestDone;
+  assert.equal(response.status, 400);
+  assert.equal(JSON.parse(response.body).code, "PATH_ESCAPE");
+  assert.equal(readdirSync(outsideDir).includes("result.txt"), false);
+  assert.equal(readdirSync(anchored).includes("result.txt"), false);
+  assert.deepEqual(uploadTemps(anchored), []);
+});
+
+test("legacy HTTP temp creation stays in its anchored parent when the pathname is swapped during open", async () => {
+  const parent = path.join(projectDir, "http-open-swap-parent");
+  const anchored = path.join(projectDir, "http-open-swap-parent-held");
+  mkdirSync(parent);
+  uploadOpenOptions = {
+    beforeTemporaryOpen: () => {
+      renameSync(parent, anchored);
+      symlinkSync(outsideDir, parent);
+    },
+    afterTemporaryOpen: () => {
+      assert.equal(uploadTemps(outsideDir).length, 0);
+      assert.equal(uploadTemps(anchored).length, 1);
+    },
+  };
+  try {
+    const response = await upload("/projects/proj1/files/http-open-swap-parent/result.txt", "anchored-http-open");
+    assert.equal(response.status, 400);
+    assert.equal((await response.json() as { code: string }).code, "PATH_ESCAPE");
+    assert.equal(readdirSync(outsideDir).includes("result.txt"), false);
+    assert.equal(readdirSync(anchored).includes("result.txt"), false);
+    assert.deepEqual(uploadTemps(outsideDir), []);
+    assert.deepEqual(uploadTemps(anchored), []);
+  } finally {
+    uploadOpenOptions = {};
+  }
+});
+
+test("legacy HTTP upload commits after its pathname-swapped anchored parent is restored during open", async () => {
+  const parent = path.join(projectDir, "http-open-restore-parent");
+  const anchored = path.join(projectDir, "http-open-restore-parent-held");
+  mkdirSync(parent);
+  uploadOpenOptions = {
+    beforeTemporaryOpen: () => {
+      renameSync(parent, anchored);
+      symlinkSync(outsideDir, parent);
+    },
+    afterTemporaryOpen: () => {
+      assert.equal(uploadTemps(outsideDir).length, 0);
+      assert.equal(uploadTemps(anchored).length, 1);
+      unlinkSync(parent);
+      renameSync(anchored, parent);
+    },
+  };
+  try {
+    const body = "restored-http-parent";
+    const response = await upload("/projects/proj1/files/http-open-restore-parent/result.txt", body);
+    assert.equal(response.status, 201);
+    assert.equal(readFileSync(path.join(parent, "result.txt"), "utf8"), body);
+    assert.equal(readdirSync(outsideDir).includes("result.txt"), false);
+    assert.deepEqual(uploadTemps(outsideDir), []);
+    assert.deepEqual(uploadTemps(parent), []);
+  } finally {
+    uploadOpenOptions = {};
+  }
+});
+
 test("accepts a correct checksum and rejects a mismatch without replacing the destination", async () => {
   const content = "checksum content";
   const digest = createHash("sha256").update(content).digest("hex");
@@ -313,7 +411,10 @@ test("an aborted upload leaves neither a destination nor a temporary file", asyn
     req.write(Buffer.alloc(32 * 1024, 1));
     setTimeout(() => req.destroy(), 10);
   });
-  await new Promise((resolve) => setTimeout(resolve, 75));
+  const cleanupDeadline = Date.now() + 2_000;
+  while (uploadTemps(projectDir).length > 0 && Date.now() < cleanupDeadline) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
   assert.equal(readdirSync(projectDir).includes(path.basename(destination)), false);
   assert.deepEqual(uploadTemps(projectDir), []);
 });
@@ -380,6 +481,41 @@ test("move refuses an existing destination without modifying either file", async
   assert.equal((await res.json() as { code: string }).code, "DESTINATION_EXISTS");
   assert.equal(readFileSync(path.join(projectDir, "move-source.txt"), "utf8"), "source");
   assert.equal(readFileSync(path.join(projectDir, "move-destination.txt"), "utf8"), "destination");
+});
+
+test("legacy HTTP PATCH derives both move paths from one anchored project root during pathname swap and restore", async () => {
+  const heldRoot = `${projectDir}-http-move-held`;
+  const sourceName = "http-root-swap-source.txt";
+  const destinationName = "http-root-swap-destination.txt";
+  writeFileSync(path.join(projectDir, sourceName), "authorized-http-source");
+  writeFileSync(path.join(outsideDir, sourceName), "outside-http-source");
+  projectMoveOptions = {
+    afterProjectRootOpen: () => {
+      renameSync(projectDir, heldRoot);
+      symlinkSync(outsideDir, projectDir);
+    },
+    beforeCommit: () => {
+      assert.equal(readdirSync(outsideDir).includes(destinationName), false);
+      unlinkSync(projectDir);
+      renameSync(heldRoot, projectDir);
+    },
+  };
+  try {
+    const response = await move(`/projects/proj1/files/${sourceName}`, destinationName);
+    assert.equal(response.status, 200);
+    assert.equal(readFileSync(path.join(projectDir, destinationName), "utf8"), "authorized-http-source");
+    assert.equal(readdirSync(projectDir).includes(sourceName), false);
+    assert.equal(readFileSync(path.join(outsideDir, sourceName), "utf8"), "outside-http-source");
+    assert.equal(readdirSync(outsideDir).includes(destinationName), false);
+  } finally {
+    projectMoveOptions = {};
+    if (readdirSync(path.dirname(projectDir)).includes(path.basename(heldRoot))) {
+      try {
+        unlinkSync(projectDir);
+      } catch { /* the root pathname was already restored */ }
+      renameSync(heldRoot, projectDir);
+    }
+  }
 });
 
 test("move rejects invalid sources and sandbox escapes with stable errors", async () => {

@@ -1,0 +1,15 @@
+{
+  "name": "@rnm/protocol-conformance",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Cross-version protocol conformance and deterministic failure-injection harness",
+  "exports": "./src/index.js",
+  "scripts": {
+    "test": "node --test",
+    "verify": "npm test"
+  },
+  "engines": {
+    "node": ">=22.22.0"
+  }
+}

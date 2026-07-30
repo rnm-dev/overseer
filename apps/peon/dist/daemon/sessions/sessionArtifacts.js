@@ -1,4 +1,4 @@
-import { createReadStream, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { closeSync, createReadStream, existsSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, renameSync, rmSync, writeFileSync, } from "node:fs";
 import { createHash, randomUUID } from "node:crypto";
 import { appendFile, mkdir, open, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -17,6 +17,7 @@ const transcriptCache = new Map();
 const appendQueues = new Map();
 const appendErrors = new Map();
 const discardedTranscripts = new Set();
+const transcriptCommitListeners = new Set();
 const TRANSCRIPT_INDEX_VERSION = 1;
 const TRANSCRIPT_INDEX_READ_CHUNK = 64 * 1024;
 const TRANSCRIPT_INDEX_CACHE_LIMIT = 256;
@@ -24,6 +25,26 @@ let transcriptReadObserver = null;
 const warmTranscriptIndexes = new Map();
 export function observeTranscriptReads(observer) {
     transcriptReadObserver = observer;
+}
+/**
+ * Subscribe at the canonical durability boundary. Unlike the existing live
+ * session emitter, this fires only after the JSONL row has been appended.
+ * Listener failures cannot make an already-durable transcript append fail.
+ */
+export function subscribeTranscriptCommits(listener) {
+    transcriptCommitListeners.add(listener);
+    return () => transcriptCommitListeners.delete(listener);
+}
+function publishTranscriptCommit(sessionId, entry) {
+    for (const listener of transcriptCommitListeners) {
+        try {
+            listener({ sessionId, entry: structuredClone(entry) });
+        }
+        catch (error) {
+            // Transcript bodies are deliberately excluded from routine logs.
+            console.error(`transcript commit listener failed for session ${sessionId}: ${error instanceof Error ? error.message : String(error)}`);
+        }
+    }
 }
 export function summaryPath(id) {
     return path.join(sessionsDir, `${id}.summary.json`);
@@ -170,6 +191,7 @@ export function appendTranscriptEvent(id, event, now = Date.now) {
         // physical row before committing the next event so the valid append never
         // becomes part of the malformed payload and disappear after restart.
         await appendFile(file, `${needsSeparator ? "\n" : ""}${row}`);
+        publishTranscriptCommit(id, entry);
         if (!needsSeparator)
             await appendTranscriptIndexRecord(id, beforeBytes, beforeMtimeMs, Buffer.byteLength(row) - 1, entry.id);
     });
@@ -372,42 +394,125 @@ async function ensureTranscriptIndex(id, agent) {
     const recovered = existsSync(transcriptIndexPath(id)) || existsSync(transcriptIndexMetaPath(id));
     return { meta: await rebuildTranscriptIndex(id, agent), rebuilt: true, recovered };
 }
-export function readTranscriptEntries(id, agent) {
-    const cached = transcriptCache.get(id);
-    if (cached)
-        return cached.map((entry) => ({ ...entry }));
+function parseTranscriptLine(id, agent, line, lineNumber, seen) {
+    if (!line)
+        return null;
+    try {
+        const raw = JSON.parse(line);
+        const { [TRANSCRIPT_EVENT_ID_FIELD]: _persistedEventId, ...eventFields } = raw;
+        const event = normalizeStoredAgentEvent(agent, eventFields);
+        if (!event)
+            return null;
+        const persistedId = typeof raw[TRANSCRIPT_EVENT_ID_FIELD] === "string" && SAFE_TRANSCRIPT_EVENT_ID.test(raw[TRANSCRIPT_EVENT_ID_FIELD])
+            ? raw[TRANSCRIPT_EVENT_ID_FIELD]
+            : null;
+        const candidate = persistedId ?? legacyEventId(id, line, lineNumber);
+        // A copied JSONL row must not make two distinct positions share an id.
+        const fallback = legacyEventId(id, line, lineNumber);
+        let eventId = candidate;
+        for (let duplicate = 1; seen.has(eventId); duplicate += 1) {
+            eventId = `${fallback}_${duplicate}`;
+        }
+        seen.add(eventId);
+        return { id: eventId, event };
+    }
+    catch {
+        // A malformed historical/partial row is invisible but does not make the
+        // remaining durable identities shift: legacy ids include physical line.
+        return null;
+    }
+}
+function readTranscriptEntriesFromDisk(id, agent) {
     const file = transcriptPath(id);
     if (!existsSync(file))
         return [];
     const entries = [];
     const seen = new Set();
     for (const [lineNumber, line] of readFileSync(file, "utf8").split("\n").entries()) {
-        if (!line)
-            continue;
-        try {
-            const raw = JSON.parse(line);
-            const { [TRANSCRIPT_EVENT_ID_FIELD]: _persistedEventId, ...eventFields } = raw;
-            const event = normalizeStoredAgentEvent(agent, eventFields);
-            if (!event)
-                continue;
-            const persistedId = typeof raw[TRANSCRIPT_EVENT_ID_FIELD] === "string" && SAFE_TRANSCRIPT_EVENT_ID.test(raw[TRANSCRIPT_EVENT_ID_FIELD])
-                ? raw[TRANSCRIPT_EVENT_ID_FIELD]
-                : null;
-            const candidate = persistedId ?? legacyEventId(id, line, lineNumber);
-            // A copied JSONL row must not make two distinct positions share an id.
-            const fallback = legacyEventId(id, line, lineNumber);
-            let eventId = candidate;
-            for (let duplicate = 1; seen.has(eventId); duplicate += 1) {
-                eventId = `${fallback}_${duplicate}`;
-            }
-            seen.add(eventId);
-            entries.push({ id: eventId, event });
-        }
-        catch {
-            // A malformed historical/partial row is invisible but does not make the
-            // remaining durable identities shift: legacy ids include physical line.
-        }
+        const entry = parseTranscriptLine(id, agent, line, lineNumber, seen);
+        if (entry)
+            entries.push(entry);
     }
+    return entries;
+}
+export class CommittedTranscriptLimitError extends Error {
+    limit;
+    constructor(limit) {
+        super(`canonical transcript exceeds ${limit.replaceAll("_", " ")} limit`);
+        this.limit = limit;
+    }
+}
+/**
+ * Read only rows which crossed the JSONL append boundary. The normal transcript
+ * reader intentionally includes accepted-but-not-yet-flushed cache entries;
+ * reverse publication must not expose those as durable history.
+ */
+export function readCommittedTranscriptEntries(id, agent) {
+    return readTranscriptEntriesFromDisk(id, agent).map((entry) => ({ ...entry }));
+}
+/**
+ * Stream the canonical JSONL through fixed buffers for reverse publication.
+ * Bounds are enforced while bytes and physical lines are read, before the
+ * complete transcript can be materialized in memory.
+ */
+export function readCommittedTranscriptEntriesBounded(id, agent, limits) {
+    const file = transcriptPath(id);
+    if (!existsSync(file))
+        return { entries: [], sourceBytes: 0 };
+    const handle = openSync(file, "r");
+    const entries = [];
+    const seen = new Set();
+    const chunk = Buffer.alloc(64 * 1024);
+    let carry = Buffer.alloc(0);
+    let sourceBytes = 0;
+    let lineNumber = 0;
+    const accept = (lineBytes) => {
+        if (lineBytes.length > limits.maxLineBytes)
+            throw new CommittedTranscriptLimitError("line_bytes");
+        const entry = parseTranscriptLine(id, agent, lineBytes.toString("utf8"), lineNumber, seen);
+        lineNumber += 1;
+        if (!entry)
+            return;
+        if (entries.length >= limits.maxEvents)
+            throw new CommittedTranscriptLimitError("events");
+        entries.push(entry);
+    };
+    try {
+        for (;;) {
+            const bytesRead = readSync(handle, chunk, 0, chunk.length, null);
+            if (bytesRead === 0)
+                break;
+            sourceBytes += bytesRead;
+            if (sourceBytes > limits.maxSourceBytes)
+                throw new CommittedTranscriptLimitError("source_bytes");
+            const combined = carry.length > 0
+                ? Buffer.concat([carry, chunk.subarray(0, bytesRead)])
+                : Buffer.from(chunk.subarray(0, bytesRead));
+            let start = 0;
+            for (;;) {
+                const newline = combined.indexOf(0x0a, start);
+                if (newline < 0)
+                    break;
+                accept(combined.subarray(start, newline));
+                start = newline + 1;
+            }
+            carry = Buffer.from(combined.subarray(start));
+            if (carry.length > limits.maxLineBytes)
+                throw new CommittedTranscriptLimitError("line_bytes");
+        }
+        if (carry.length > 0)
+            accept(carry);
+        return { entries, sourceBytes };
+    }
+    finally {
+        closeSync(handle);
+    }
+}
+export function readTranscriptEntries(id, agent) {
+    const cached = transcriptCache.get(id);
+    if (cached)
+        return cached.map((entry) => ({ ...entry }));
+    const entries = readTranscriptEntriesFromDisk(id, agent);
     transcriptCache.set(id, entries);
     return entries.map((entry) => ({ ...entry }));
 }
