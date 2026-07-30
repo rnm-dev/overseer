@@ -144,14 +144,17 @@ daemon.
 
 ## Extension cells that must not report green
 
-The matrix reports reverse-command and transcript coverage separately and
-registers these unfinished families explicitly:
+The matrix reports reverse-command, transcript and update lifecycle coverage
+separately and registers unfinished families explicitly. Update coverage now
+executes approved version/revision/SHA command binding and canonical
+fingerprinting, `RELEASE_CHANGED` download TOCTOU rejection, one installer
+effect, durable receipt replay, PID replacement and exact
+version/revision/SHA attestation, generation fencing, bounded results and
+exclusive legacy fallback.
 
-- updates: the released updater binds its TOCTOU check to approved version and
-  validates the downloaded archive SHA-256, while its durable receipt and
-  replacement-process attestation carry version/revision but no SHA. Approved
-  release revision/SHA TOCTOU binding and replacement runtime SHA attestation
-  therefore remain blocked rather than being simulated by the harness.
+- updates: the base `reverse-command-v1:update.apply` lifecycle is covered;
+  production-like soak and staged fleet rollout remain separate operational
+  work.
 - rollout: fairness and latency SLOs, production-like soak artifacts and staged
   fleet rollout remain unfinished operational cells.
 

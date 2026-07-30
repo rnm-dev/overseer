@@ -245,8 +245,8 @@
     {
       "id": "updates",
       "capability": "reverse-command-v1:update.apply",
-      "status": "blocked",
-      "blockedBy": "Released admission, replay, archive integrity, PID plus version/revision attestation and failure outcomes are covered; approved release revision/SHA TOCTOU binding and replacement runtime SHA attestation are not implemented."
+      "status": "covered",
+      "coverage": "approved version/revision/SHA command binding and canonical fingerprint, RELEASE_CHANGED download TOCTOU rejection, one installer effect, durable receipt replay across reconnect/restart, PID replacement plus exact version/revision/SHA attestation, generation fencing, bounded terminal results, stable failure codes and exclusive legacy fallback"
     },
     {
       "id": "rollout",

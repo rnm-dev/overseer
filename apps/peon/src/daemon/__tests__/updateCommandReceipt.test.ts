@@ -91,7 +91,7 @@ test("the launching daemon never attests a ready receipt before process replacem
   }
 });
 
-test("updated files cannot attest until a replacement process is running", () => {
+test("updated files cannot attest without a complete approved identity", () => {
   const directory = mkdtempSync(path.join(os.tmpdir(), "peon-update-command-"));
   const previous = process.env.XDG_STATE_HOME;
   process.env.XDG_STATE_HOME = directory;
@@ -108,7 +108,9 @@ test("updated files cannot attest until a replacement process is running", () =>
       updatedAt: 1,
     });
     assert.equal(attestUpdateCommand(commandId, { runningPid: 4242 }), null);
-    assert.equal(attestUpdateCommand(commandId, { runningPid: 4243 })?.status, "applied");
+    const replacement = attestUpdateCommand(commandId, { runningPid: 4243 });
+    assert.equal(replacement?.status, "failed");
+    assert.equal(replacement?.code, "ATTESTATION_MISMATCH");
   } finally {
     if (previous === undefined) delete process.env.XDG_STATE_HOME;
     else process.env.XDG_STATE_HOME = previous;

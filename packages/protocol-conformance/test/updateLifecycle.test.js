@@ -20,10 +20,7 @@ const adapters = Object.fromEntries(
 test("update.apply golden frames match released reverse-command and attestation seams", () => {
   const report = executeGoldenFrames(fixture, { adapters });
   assert.equal(report.failed, 0, report.cases.filter((entry) => !entry.passed).map((entry) => entry.errors).join("\n"));
-  assert.deepEqual(fixture.blockedCells, [
-    "approved release revision/SHA TOCTOU binding",
-    "replacement runtime SHA attestation",
-  ]);
+  assert.deepEqual(fixture.blockedCells, []);
 });
 
 test("durable admission, restart attestation and ACK loss converge to one install", () => {
@@ -33,12 +30,12 @@ test("durable admission, restart attestation and ACK loss converge to one instal
   assert.equal(harness.status(command.commandId).state, "running");
   assert.equal(harness.install(command.commandId, release), null);
   assert.equal(harness.attest(command.commandId, {
-    pid: 4242, version: release.version, revision: release.revision,
+    pid: 4242, version: release.version, revision: release.revision, sha256: release.sha256,
   }), null, "the initiating process cannot attest files it just replaced");
   assert.equal(harness.status(command.commandId).state, "running");
 
   const cursor = harness.attest(command.commandId, {
-    pid: 4243, version: release.version, revision: release.revision,
+    pid: 4243, version: release.version, revision: release.revision, sha256: release.sha256,
   });
   assert.equal(harness.deliverResult(cursor, "duplicate", "drop"), true);
   harness.reconnect("overseer");
@@ -58,10 +55,18 @@ test("durable admission, restart attestation and ACK loss converge to one instal
 test("release changes, integrity failures, stale generations and corrupt receipts fail closed", () => {
   const changed = new UpdateLifecycleHarness();
   changed.admit(command, release);
-  const changedCursor = changed.install(command.commandId, { ...release, version: "0.11.4" });
-  assert.equal(changed.peon.ledger.get(command.commandId).result.code, "RELEASE_CHANGED");
-  assert.equal(changed.deliverResult(changedCursor), true);
-  assert.equal(changed.installerLaunches.size, 0);
+  for (const fetched of [
+    { ...release, version: "0.11.4" },
+    { ...release, revision: "f".repeat(40) },
+    { ...release, sha256: "e".repeat(64) },
+  ]) {
+    const isolated = new UpdateLifecycleHarness();
+    isolated.admit(command, release);
+    const changedCursor = isolated.install(command.commandId, fetched);
+    assert.equal(isolated.peon.ledger.get(command.commandId).result.code, "RELEASE_CHANGED");
+    assert.equal(isolated.deliverResult(changedCursor), true);
+    assert.equal(isolated.installerLaunches.size, 0);
+  }
 
   const integrity = new UpdateLifecycleHarness();
   const integrityCommand = { ...command, commandId: "118f4f0c-9f30-7a61-bf1a-66d2582bdb4a" };
@@ -87,7 +92,7 @@ test("release changes, integrity failures, stale generations and corrupt receipt
   corrupt.recoverReceipts();
   assert.equal(corrupt.receipts.has(corruptCommand.commandId), false);
   assert.equal(corrupt.attest(corruptCommand.commandId, {
-    pid: 4243, version: release.version, revision: release.revision,
+    pid: 4243, version: release.version, revision: release.revision, sha256: release.sha256,
   }), null);
 });
 
@@ -114,7 +119,7 @@ test("stable rollback, restart and attestation failures remain bounded safe resu
   mismatch.admit(mismatchCommand, release);
   mismatch.install(mismatchCommand.commandId, release);
   const cursor = mismatch.attest(mismatchCommand.commandId, {
-    pid: 4243, version: "0.11.4", revision: release.revision,
+    pid: 4243, version: "0.11.4", revision: release.revision, sha256: release.sha256,
   });
   assert.equal(mismatch.peon.ledger.get(mismatchCommand.commandId).result.code, "ATTESTATION_MISMATCH");
   assert.equal(mismatch.deliverResult(cursor), true);

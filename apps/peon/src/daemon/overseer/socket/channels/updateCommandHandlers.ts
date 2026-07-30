@@ -47,12 +47,14 @@ export function attestUpdateCommand(
   // one that admitted/launched the update may attest the new running code.
   if (receipt.initiatorPid === (options.runningPid ?? process.pid)) return null;
   const running = options.runningIdentity ?? attestation();
-  const matches = (receipt.expectedVersion === null || receipt.expectedVersion === running.version)
-    && (receipt.expectedRevision === null || receipt.expectedRevision === running.revision);
-  const identityMatches = matches
-    && (receipt.expectedSha256 === null || receipt.expectedSha256 === running.sha256);
+  const hasExactExpectation = receipt.expectedVersion !== null
+    && receipt.expectedRevision !== null
+    && receipt.expectedSha256 !== null;
+  const matches = hasExactExpectation
+    && receipt.expectedVersion === running.version
+    && receipt.expectedRevision === running.revision
+    && receipt.expectedSha256 === running.sha256;
   return matches
-    && identityMatches
     ? { status: "applied", code: "OK", result: { ...running, attested: true } }
     : { status: "failed", code: "ATTESTATION_MISMATCH", result: { ...running, attested: false } };
 }

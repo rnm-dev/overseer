@@ -73,7 +73,10 @@ test("covered contracts are distinguished from explicitly blocked extension cell
   const writes = report.extensions.find((entry) => entry.id === "writes");
   assert.equal(writes?.passed, true);
   assert.equal(writes?.blocked, false);
+  const updates = report.extensions.find((entry) => entry.id === "updates");
+  assert.equal(updates?.passed, true);
+  assert.equal(updates?.blocked, false);
   const blocked = report.extensions.filter((entry) => entry.blocked);
-  assert.deepEqual(blocked.map((entry) => entry.id), ["updates", "rollout"]);
+  assert.deepEqual(blocked.map((entry) => entry.id), ["rollout"]);
   assert.ok(blocked.every((entry) => !entry.passed && entry.blockedBy.length > 20));
 });
