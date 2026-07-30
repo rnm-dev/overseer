@@ -5,16 +5,10 @@ import { api, ApiError } from "../../api";
 import { useT } from "../../i18n";
 import { FileTypeIcon } from "./FileTypeIcon";
 import { FileView, useFileContent } from "./FileView";
-import { encodeFilePath, formatFileSize, projectDirectoryListingPath, type FileSource } from "./fileLinks";
+import { encodeFilePath, formatFileSize, type FileSource } from "./fileLinks";
+import { requestProjectDirectory, type ProjectFileEntry } from "./projectDirectoryListing";
 
 export { formatFileSize } from "./fileLinks";
-
-export interface ProjectFileEntry {
-  name: string;
-  type?: string;
-  size?: number;
-  mtimeMs?: number;
-}
 
 interface DirectoryState {
   loading: boolean;
@@ -70,12 +64,12 @@ export function ProjectFileTree({ filesBase, activePath, onOpenFile, onFileMoved
   const load = useCallback(async (path: string) => {
     setDirectories((current) => ({ ...current, [path]: { loading: true, entries: [] } }));
     try {
-      const result = await api<{ entries?: ProjectFileEntry[] }>(projectDirectoryListingPath(filesBase, path));
+      const entries = await requestProjectDirectory(filesBase, path);
       setDirectories((current) => ({
         ...current,
         [path]: {
           loading: false,
-          entries: sortEntries(result.entries ?? []),
+          entries: sortEntries(entries),
         },
       }));
     } catch (error) {
@@ -86,13 +80,11 @@ export function ProjectFileTree({ filesBase, activePath, onOpenFile, onFileMoved
     }
   }, [filesBase, t]);
 
-  // Project files can change underneath Overseer while an agent is working.
-  // Refresh only directories the operator has expanded, and do it silently so
-  // the tree never collapses or flashes its initial loading skeleton.
+  // A manual refresh updates only directories the operator has expanded and
+  // does so silently, without collapsing the tree or flashing its loader.
   const refreshDirectory = useCallback(async (path: string) => {
     try {
-      const result = await api<{ entries?: ProjectFileEntry[] }>(projectDirectoryListingPath(filesBase, path));
-      const entries = sortEntries(result.entries ?? []);
+      const entries = sortEntries(await requestProjectDirectory(filesBase, path));
       setDirectories((current) => {
         const directory = current[path];
         if (!directory || directory.loading || sameEntries(directory.entries, entries)) return current;
@@ -114,27 +106,17 @@ export function ProjectFileTree({ filesBase, activePath, onOpenFile, onFileMoved
     load("");
   }, [filesBase, load]);
 
-  const refreshExpanded = useCallback(async (manual = false) => {
-    if (refreshingRef.current || (!manual && document.visibilityState === "hidden")) return;
+  const refreshExpanded = useCallback(async () => {
+    if (refreshingRef.current) return;
     refreshingRef.current = true;
-    if (manual) setRefreshing(true);
+    setRefreshing(true);
     try {
       await Promise.all([...expanded].map(refreshDirectory));
     } finally {
       refreshingRef.current = false;
-      if (manual) setRefreshing(false);
+      setRefreshing(false);
     }
   }, [expanded, refreshDirectory]);
-
-  useEffect(() => {
-    const timer = window.setInterval(() => void refreshExpanded(), 3_000);
-    const onVisibility = () => { if (document.visibilityState === "visible") void refreshExpanded(); };
-    document.addEventListener("visibilitychange", onVisibility);
-    return () => {
-      window.clearInterval(timer);
-      document.removeEventListener("visibilitychange", onVisibility);
-    };
-  }, [refreshExpanded]);
 
   const toggle = async (path: string) => {
     if (expanded.has(path)) {
@@ -304,7 +286,7 @@ export function ProjectFileTree({ filesBase, activePath, onOpenFile, onFileMoved
     >
       <button
         type="button"
-        onClick={() => void refreshExpanded(true)}
+        onClick={() => void refreshExpanded()}
         disabled={refreshing}
         className="absolute right-2 top-2 z-10 grid size-7 place-items-center rounded-md bg-iron-950/85 text-bone-faint opacity-70 shadow-sm backdrop-blur transition-[opacity,color,background-color] hover:bg-iron-800 hover:text-fel-bright hover:opacity-100 focus-visible:opacity-100 disabled:cursor-wait"
         title={t("proj.files.refresh")}

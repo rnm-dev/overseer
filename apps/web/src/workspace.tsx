@@ -57,8 +57,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     refresh().catch(() => setReady(true));
   }, [refresh]);
 
-  // HTTP owns Peon inventory only. Socket snapshots/events are the sole source
-  // of online state, so list polling always preserves the current projection.
+  // Hydrate Peon inventory once. The resumable workspace sockets own subsequent
+  // projection changes, including connectivity, without a parallel HTTP poll.
   const wsIds = workspaces.map((w) => w.id).join(",");
   useEffect(() => {
     if (!wsIds) return;
@@ -82,10 +82,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       }
     };
     pull();
-    const timer = window.setInterval(pull, 10000);
     return () => {
       alive = false;
-      window.clearInterval(timer);
     };
   }, [wsIds]);
 

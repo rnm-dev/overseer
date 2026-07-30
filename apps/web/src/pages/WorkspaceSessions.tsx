@@ -110,9 +110,6 @@ export function WorkspaceSessions() {
 
   useEffect(() => {
     reloadActivePeon();
-    if (!peonId) return;
-    const timer = window.setInterval(reloadActivePeon, 5000);
-    return () => window.clearInterval(timer);
   }, [peonId, reloadActivePeon]);
 
   useEffect(() => setDrawerOpen(false), [location.pathname, setDrawerOpen]);

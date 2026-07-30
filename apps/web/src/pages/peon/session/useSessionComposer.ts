@@ -71,7 +71,7 @@ interface Args {
   queueReconcilerRef: MutableRefObject<ReturnType<typeof createQueueReconciler> | null>;
   queueActivity: QueueActivityTracker;
   userMessageCount: number;
-  stickToBottomRef: MutableRefObject<boolean>;
+  onGhostCreated: () => void;
   setRunning: (running: boolean) => void;
   setRunningSelection: (model: string | null, reasoningEffort: string | null) => void;
   setStopNote: Dispatch<SetStateAction<string | null>>;
@@ -84,7 +84,7 @@ export function useSessionComposer({
   sessionPermissionMode, overrideModel,
   overrideReasoningEffort, catalog, currentSessionKeyRef, queueReconcilerRef,
   queueActivity, userMessageCount,
-  stickToBottomRef,
+  onGhostCreated,
   setRunning, setRunningSelection, setStopNote, onWorkStarted,
 }: Args) {
   const { notifyError } = useNotifications();
@@ -200,13 +200,15 @@ export function useSessionComposer({
       sessionKey, prompt, overrideModel, overrideReasoningEffort,
       pending.map((f) => [f.name, f.size, f.lastModified]),
     ]));
+    // Let the transcript freeze its current viewport before the new row enters.
+    // It will scroll only after Virtuoso has measured the committed ghost.
+    onGhostCreated();
     setGhost({
       text: prompt,
       attachments: pending.map((f) => ({ type: isImage(f) ? "image" : "file", name: f.name, size: f.size })),
       createdAt: Date.now(),
       baselineUserMessages: userMessageCountRef.current,
     });
-    stickToBottomRef.current = true; // sending always jumps back to the bottom, even if scrolled up reading history
     setRunning(true);
     setRunningSelection(
       overrideModel || sessionModel || (!sessionAgent ? catalog?.defaultModel : null) || null,

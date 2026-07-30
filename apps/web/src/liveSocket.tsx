@@ -1,9 +1,9 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { api, json } from "./api";
+import { api } from "./api";
 import { useWorkspace } from "./workspace";
 import { useAuth } from "./auth";
 import { useLocation } from "react-router";
-import { presenceLocationForPath } from "./presence";
+import { presenceLocationForPath, presenceLocationKey, reconcileLocalPresence } from "./presence";
 import { audioClientId, setAudioClaimSender, setAudioPrimary } from "./audioFocus";
 import { documentPresence } from "./pages/peon/sessionAttentionRead";
 import { parsePeonProjection, parsePeonProjections } from "./workspacePeons";
@@ -77,6 +77,7 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
   const { pathname } = useLocation();
   const wsId = current?.id;
   const [presence, setPresence] = useState<PresenceEntry[]>([]);
+  const [acknowledgedPresenceVersion, setAcknowledgedPresenceVersion] = useState(-1);
 
   const sockRef = useRef<WebSocket | null>(null);
   const readyRef = useRef(false); // authenticated workspace snapshot received
@@ -107,6 +108,14 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
     };
   }, []);
   const desiredPresence = useMemo(() => ({ ...routePresence, active: presenceActive }), [routePresence, presenceActive]);
+  const desiredPresenceKey = presenceLocationKey(desiredPresence);
+  const desiredPresenceVersionRef = useRef({ key: desiredPresenceKey, version: 0 });
+  if (desiredPresenceVersionRef.current.key !== desiredPresenceKey) {
+    desiredPresenceVersionRef.current = {
+      key: desiredPresenceKey,
+      version: desiredPresenceVersionRef.current.version + 1,
+    };
+  }
   const desiredPresenceRef = useRef(desiredPresence);
   desiredPresenceRef.current = desiredPresence;
 
@@ -134,6 +143,19 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
     // Fresh workspace ⇒ clear the view until its snapshot lands.
     readyRef.current = false;
     setPresence([]);
+    setAcknowledgedPresenceVersion(-1);
+
+    const acceptPresence = (next: PresenceEntry[]) => {
+      setPresence(next);
+      const desired = desiredPresenceRef.current;
+      if (next.some((entry) =>
+        entry.email.toLowerCase() === user.email.toLowerCase()
+        && entry.scope === desired.scope
+        && entry.peonId === (desired.peonId ?? null)
+        && entry.sessionId === (desired.sessionId ?? null))) {
+        setAcknowledgedPresenceVersion(desiredPresenceVersionRef.current.version);
+      }
+    };
 
     const connect = async () => {
       if (closed || ticketPending) return;
@@ -260,7 +282,7 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
           // after the full application handshake succeeds.
           backoff = 1000;
           const presence = (msg.presence as PresenceEntry[]) ?? [];
-          setPresence(presence);
+          acceptPresence(presence);
           for (const peon of parsePeonProjections(msg.peonPresence)) updatePeon(wsId, peon);
           cursorsRef.current.set(wsId, Number(msg.cursor) || 0);
           // `snapshot` is the handshake-ready barrier. Sending subscriptions here
@@ -314,7 +336,7 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
           break;
         }
         case "presence": {
-          setPresence((msg.presence as PresenceEntry[]) ?? []);
+          acceptPresence((msg.presence as PresenceEntry[]) ?? []);
           break;
         }
         case "audio": {
@@ -463,37 +485,10 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
     }
   }, [desiredPresence]);
 
-  // Independent route heartbeat: keeps presence accurate when a browser/proxy
-  // has a wedged WebSocket but ordinary authenticated HTTP still works.
-  useEffect(() => {
-    if (!wsId || !user) return;
-    const connectionId = crypto.randomUUID();
-    let stopped = false;
-    const beat = () => {
-      if (stopped) return;
-      void api<{ presence: PresenceEntry[] }>(`/workspaces/${wsId}/presence`, json({ connectionId, ...desiredPresence }))
-        .then((result) => {
-          if (!stopped) setPresence(result.presence ?? []);
-        })
-        .catch(() => undefined);
-    };
-    const clear = () => {
-      void api(`/workspaces/${wsId}/presence`, { ...json({ connectionId }), method: "DELETE", keepalive: true }).catch(() => undefined);
-    };
-    beat();
-    const timer = window.setInterval(beat, 10_000);
-    window.addEventListener("focus", beat);
-    window.addEventListener("pagehide", clear);
-    document.addEventListener("visibilitychange", beat);
-    return () => {
-      stopped = true;
-      window.clearInterval(timer);
-      window.removeEventListener("focus", beat);
-      window.removeEventListener("pagehide", clear);
-      document.removeEventListener("visibilitychange", beat);
-      clear();
-    };
-  }, [desiredPresence, user, wsId]);
+  // Route presence belongs to this socket. Publishing the same route through an
+  // independent HTTP heartbeat creates a second server-side connectionId; while
+  // navigating, those two entries can briefly point at the old and new sessions.
+  // The socket heartbeat above already keeps this authoritative entry alive.
 
   const subscribe = useMemo(
     () => (peonId: string, sessionId: string, onFrame: (f: TailFrame) => void, lastEventId?: string | null) => {
@@ -544,11 +539,21 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
     return () => attentionHandlers.current.delete(onAttention);
   }, []);
 
-  const withLocalUser = useMemo(() => (entries: PresenceUser[], matchesLocal: boolean): PresenceUser[] => {
-    const viewers = uniqueUsers(entries);
-    if (!user || !matchesLocal || viewers.some((viewer) => viewer.email === user.email)) return viewers;
-    return [{ userId: `self:${user.email}`, email: user.email, githubLogin: user.githubLogin ?? null, avatarUrl: user.avatarUrl ?? null }, ...viewers];
-  }, [user]);
+  const withLocalUser = useMemo(() => {
+    const localUser: PresenceUser | null = user ? {
+      userId: `self:${user.email}`,
+      email: user.email,
+      githubLogin: user.githubLogin ?? null,
+      avatarUrl: user.avatarUrl ?? null,
+    } : null;
+    return (entries: PresenceUser[], matchesLocal: boolean): PresenceUser[] =>
+      reconcileLocalPresence(
+        entries,
+        localUser,
+        matchesLocal,
+        acknowledgedPresenceVersion !== desiredPresenceVersionRef.current.version,
+      );
+  }, [acknowledgedPresenceVersion, desiredPresence, user]);
 
   const viewersFor = useMemo(() => (peonId: string, sessionId: string) => withLocalUser(
     presence.filter((entry) => entry.scope === "session" && entry.peonId === peonId && entry.sessionId === sessionId),
@@ -565,15 +570,6 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
   const viewersForWorkspace = useMemo(() => () => withLocalUser(presence, true), [presence, withLocalUser]);
 
   return <Ctx.Provider value={{ viewersFor, viewersForPeon, viewersForWorkspace, subscribe, subscribeSessions, subscribeProjects, subscribeAttention }}>{children}</Ctx.Provider>;
-}
-
-function uniqueUsers(entries: PresenceUser[]): PresenceUser[] {
-  const users = new Map<string, PresenceUser>();
-  for (const entry of entries) {
-    const key = entry.email.toLowerCase();
-    if (!users.has(key)) users.set(key, entry);
-  }
-  return [...users.values()].sort((a, b) => (a.githubLogin || a.email).localeCompare(b.githubLogin || b.email));
 }
 
 export function useLiveSocket(): LiveSocketValue {

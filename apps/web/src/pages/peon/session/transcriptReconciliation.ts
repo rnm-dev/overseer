@@ -1,5 +1,5 @@
 export const TAIL_FALLBACK_CHECK_MS = 5_000;
-export const TAIL_FALLBACK_SILENCE_MS = 15_000;
+export const TAIL_FALLBACK_SILENCE_MS = 30_000;
 
 export interface TranscriptFallbackState {
   now: number;

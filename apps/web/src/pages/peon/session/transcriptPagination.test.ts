@@ -4,11 +4,11 @@ import {
   mergeNewestPage,
   parseTranscriptPage,
   prependOlderPage,
-  shouldAutoLoadOlder,
   tailResumeBoundary,
   transcriptPageUrl,
 } from "./transcriptPagination";
 import type { Ev } from "./parsing";
+import { flattenEvents } from "./parsing";
 
 const ev = (eventId: string, text: string): Ev => ({ type: "assistant", eventId, text });
 
@@ -20,8 +20,8 @@ test("capability gating leaves legacy Peon requests and responses unchanged", ()
 });
 
 test("new Peons use opaque server cursors without deriving offsets", () => {
-  assert.equal(transcriptPageUrl("/peon", "a/b", true), "/peon/sessions/a%2Fb/transcript?limit=50");
-  assert.equal(transcriptPageUrl("/peon", "a/b", true, "opaque+/="), "/peon/sessions/a%2Fb/transcript?limit=50&cursor=opaque%2B%2F%3D");
+  assert.equal(transcriptPageUrl("/peon", "a/b", true), "/peon/sessions/a%2Fb/transcript?limit=100");
+  assert.equal(transcriptPageUrl("/peon", "a/b", true, "opaque+/="), "/peon/sessions/a%2Fb/transcript?limit=100&cursor=opaque%2B%2F%3D");
   assert.deepEqual(parseTranscriptPage({ events: [ev("2", "two")], nextCursor: "before-2", hasMore: true }), {
     events: [ev("2", "two")], paginated: true, nextCursor: "before-2", hasMore: true,
   });
@@ -52,9 +52,19 @@ test("a tail never resumes from another session's boundary", () => {
   assert.deepEqual(tailResumeBoundary({ sessionKey: "peon:a", id: null }, "peon:a"), { subscribe: true, lastEventId: null });
 });
 
-test("older history is prefetched only for an operator who left the live end", () => {
-  assert.equal(shouldAutoLoadOlder({ intersecting: true, pinnedToBottom: false }), true);
-  // A transcript shorter than the window keeps the sentinel in view forever.
-  assert.equal(shouldAutoLoadOlder({ intersecting: true, pinnedToBottom: true }), false);
-  assert.equal(shouldAutoLoadOlder({ intersecting: false, pinnedToBottom: false }), false);
+test("durable rows keep their DOM identity when older history prepends", () => {
+  const current: Ev = {
+    type: "assistant",
+    eventId: "newer",
+    message: { content: [{ type: "text", text: "newer" }] },
+  };
+  const older: Ev = {
+    type: "assistant",
+    eventId: "older",
+    message: { content: [{ type: "text", text: "older" }] },
+  };
+  const t = ((key: string) => key) as Parameters<typeof flattenEvents>[1];
+
+  assert.equal(flattenEvents([current], t)[0]?.key, "event:newer:0");
+  assert.equal(flattenEvents([older, current], t)[1]?.key, "event:newer:0");
 });

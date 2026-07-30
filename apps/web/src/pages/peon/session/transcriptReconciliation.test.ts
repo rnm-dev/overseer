@@ -15,6 +15,10 @@ const base = {
   lastReconcileAt: null,
 };
 
+test("the healthy-tail status watchdog is bounded to one read per thirty seconds", () => {
+  assert.equal(TAIL_FALLBACK_SILENCE_MS, 30_000);
+});
+
 test("healthy live tails suppress full transcript polling", () => {
   assert.equal(transcriptReconcileMode(base), "none");
   assert.equal(transcriptReconcileMode({

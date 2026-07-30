@@ -126,13 +126,15 @@ html.peon-sidebar-resizing * {
   }
 
   html.session-files-open .session-composer,
-  html.session-files-open .session-scroll-control {
+  html.session-files-open .session-scroll-control,
+  html.session-files-open .session-transcript-pane {
     right: var(--session-files-pane-width);
   }
 
   .peon-main-pane,
   .session-composer,
-  .session-scroll-control {
+  .session-scroll-control,
+  .session-transcript-pane {
     transition: margin-right 160ms ease, right 160ms ease;
   }
 }

@@ -22,10 +22,12 @@ import {
   readTranscriptAfter,
   readTranscriptPage,
   TranscriptProjectionError,
+  type TranscriptState,
 } from "../../modules/sessions/index.js";
 import {
   acquireTranscriptProjection,
   hasReverseTranscriptConnection,
+  reverseTranscriptGeneration,
 } from "../../peonTranscriptSync.js";
 import type { Role } from "../../workspaces.js";
 import { getRuntimeProjection, RUNTIME_STATE_CAPABILITY } from "../../modules/runtimeProjection.js";
@@ -62,6 +64,16 @@ export function transcriptQuery(query: express.Request["query"], supported: bool
   if (typeof cursor === "string" && cursor) params.set("cursor", cursor);
   const suffix = params.toString();
   return suffix ? `?${suffix}` : "";
+}
+
+export function transcriptProjectionNeedsDemand(
+  state: Pick<TranscriptState, "epoch" | "status" | "generation"> | null,
+  activeGeneration: string | null,
+): boolean {
+  if (!activeGeneration) return false;
+  return !state?.epoch
+    || state.status !== "ready"
+    || state.generation !== activeGeneration;
 }
 
 export function sessionReverseHttpResponse(
@@ -325,10 +337,20 @@ export function registerSessionRoutes(router: express.Router): void {
       return res.status(404).json({ error: "unknown session", code: "UNKNOWN_SESSION" });
     }
     const storedState = await getTranscriptState(c.record.peonId, sid);
-    if (storedState?.epoch || hasReverseTranscriptConnection(c.record.peonId)) {
+    const activeTranscriptGeneration = reverseTranscriptGeneration(c.record.peonId);
+    const reverseConnected = activeTranscriptGeneration !== null;
+    if (storedState?.epoch || reverseConnected) {
       let release: (() => void) | null = null;
       try {
-        if (hasReverseTranscriptConnection(c.record.peonId)) {
+        // A retained projection is already a bounded opening snapshot. Return
+        // it immediately; the browser starts its durable tail from the page's
+        // lastEventId and catches up anything committed after this read. Taking
+        // temporary demand here would add a Peon subscribe round trip, release
+        // it as soon as this response is built, then make the browser subscribe
+        // to the same session again. Only states that cannot be trusted as a
+        // resume boundary still need a synchronous rebuild/catch-up.
+        const needsDemand = transcriptProjectionNeedsDemand(storedState, activeTranscriptGeneration);
+        if (needsDemand) {
           release = await acquireTranscriptProjection(c.record.peonId, sid);
         }
         const rawLimit = typeof req.query.limit === "string" && /^\d+$/.test(req.query.limit)
@@ -339,13 +361,13 @@ export function registerSessionRoutes(router: express.Router): void {
           sessionId: sid,
           limit: rawLimit,
           cursor: typeof req.query.cursor === "string" ? req.query.cursor : undefined,
-          online: hasReverseTranscriptConnection(c.record.peonId),
+          online: reverseConnected,
         });
         if (page) return res.json(page);
         return res.status(503).json({
           error: "transcript projection is not ready",
           code: "TRANSCRIPT_SYNCING",
-          freshness: { state: hasReverseTranscriptConnection(c.record.peonId) ? "syncing" : "offline" },
+          freshness: { state: reverseConnected ? "syncing" : "offline" },
         });
       } catch (error) {
         if (error instanceof TranscriptProjectionError && error.code === "BAD_CURSOR") {
@@ -354,7 +376,7 @@ export function registerSessionRoutes(router: express.Router): void {
         return res.status(503).json({
           error: error instanceof Error ? error.message : "transcript projection unavailable",
           code: "TRANSCRIPT_UNAVAILABLE",
-          freshness: { state: hasReverseTranscriptConnection(c.record.peonId) ? "syncing" : "offline" },
+          freshness: { state: reverseConnected ? "syncing" : "offline" },
         });
       } finally {
         release?.();

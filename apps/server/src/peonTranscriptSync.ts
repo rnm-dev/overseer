@@ -102,6 +102,11 @@ export function hasReverseTranscriptConnection(peonId: string): boolean {
   return active.get(peonId)?.connected === true;
 }
 
+export function reverseTranscriptGeneration(peonId: string): string | null {
+  const sync = active.get(peonId);
+  return sync?.connected ? sync.generation : null;
+}
+
 export async function acquireTranscriptProjection(
   peonId: string,
   sessionId: string,

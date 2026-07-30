@@ -46,10 +46,8 @@ export function WorkspaceSection({ workspace }: { workspace: Workspace }) {
         .then((r) => alive && setStatus(Object.fromEntries((r.peons ?? []).map((p) => [p.peonId, p]))))
         .catch(() => {});
     pull();
-    const timer = window.setInterval(pull, 5000);
     return () => {
       alive = false;
-      window.clearInterval(timer);
     };
   }, [wsId]);
 

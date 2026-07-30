@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { memo, useEffect, useRef, useState, type ReactNode } from "react";
 import { Dialog } from "../../../ui";
 import { HighlightedCode, Markdown } from "../../../components/RichText";
-import { orcishThinkingLabel, prettyJsonOutput, toolHasOutputSection, toolSummary, type Item, type MessageAttachment, type T } from "./parsing";
+import { gapClass, orcishThinkingLabel, prettyJsonOutput, toolHasOutputSection, toolSummary, type Item, type MessageAttachment, type T } from "./parsing";
 import { Avatar } from "../../../components/Avatar";
 import { FilePlus, FileX, ImageIcon, Paperclip, Pencil, Terminal } from "lucide-react";
 import { projectViewerHref, projectViewerRelativePath, type ProjectViewerContext } from "./projectViewerLink";
@@ -565,6 +565,49 @@ export function ItemView({ item, t, locale = "en", yesterdayLabel = "Yesterday",
       return item.text ? <div className="whitespace-pre-wrap break-words typo-chat-system-message text-bone-faint">{item.text}</div> : null;
   }
 }
+
+/**
+ * The whole transcript row list as one memoized unit, so the page component's
+ * unrelated state (composer input, model pickers, preview panes) can re-render
+ * freely without walking every row. Effective only as long as callers keep the
+ * callback/object props referentially stable (useCallback/useMemo).
+ */
+export const TranscriptItemList = memo(function TranscriptItemList({
+  items, forgedItemKey, t, locale, yesterdayLabel, onOpenPreview, onOpenAttachment, onOpenProjectFile, projectViewer,
+}: {
+  items: Item[];
+  forgedItemKey: string | null;
+  t: T;
+  locale?: Locale;
+  yesterdayLabel?: string;
+  onOpenPreview?: (preview: PreviewRequest) => void;
+  onOpenAttachment?: (attachment: MessageAttachment) => void;
+  onOpenProjectFile?: (path: string, viewerUrl: string) => void;
+  projectViewer?: ProjectViewerContext | null;
+}) {
+  return (
+    <>
+      {items.map((item, i) => (
+        <div
+          key={item.key}
+          data-transcript-row
+          className={`${i === 0 ? "" : gapClass(items[i - 1].kind === "user", item.kind === "user")}${item.key === forgedItemKey ? " forge-cooling" : ""}`}
+        >
+          <ItemView
+            item={item}
+            t={t}
+            locale={locale}
+            yesterdayLabel={yesterdayLabel}
+            onOpenPreview={onOpenPreview}
+            onOpenAttachment={onOpenAttachment}
+            onOpenProjectFile={onOpenProjectFile}
+            projectViewer={projectViewer}
+          />
+        </div>
+      ))}
+    </>
+  );
+});
 
 export function Working({
   label,

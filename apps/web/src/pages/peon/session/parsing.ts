@@ -207,19 +207,25 @@ export type Item =
   | { kind: "preview"; key: string; path: string; author?: string; createdAt?: number }
   | { kind: "raw"; key: string; text: string };
 
+function renderEventKey(event: Ev, index: number): string {
+  const durableId = event.eventId ?? event._tailEventId ?? event._tailId;
+  return durableId === undefined || durableId === null ? `index:${index}` : `event:${durableId}`;
+}
+
 export function flattenEvents(events: Ev[], t: T): Item[] {
   const items: Item[] = [];
   const toolIndex = new Map<string, number>(); // tool_use id -> index in items, for pairing its later result
 
   events.forEach((ev, ei) => {
+    const eventKey = renderEventKey(ev, ei);
     switch (ev.type) {
       case "user_message":
-        items.push({ kind: "user", key: `${ei}`, text: ev.text || "", author: ev.author, authorEmail: ev.authorEmail, authorGithubLogin: ev.authorGithubLogin, authorAvatarUrl: ev.authorAvatarUrl, attachments: ev.attachments, createdAt: ev.createdAt });
+        items.push({ kind: "user", key: eventKey, text: ev.text || "", author: ev.author, authorEmail: ev.authorEmail, authorGithubLogin: ev.authorGithubLogin, authorAvatarUrl: ev.authorAvatarUrl, attachments: ev.attachments, createdAt: ev.createdAt });
         return;
       case "assistant": {
         const blocks = Array.isArray(ev.message?.content) ? (ev.message!.content as Block[]) : [];
         blocks.forEach((b, bi) => {
-          const key = `${ei}-${bi}`;
+          const key = `${eventKey}:${bi}`;
           if (b.type === "text" && b.text?.trim()) items.push({ kind: "text", key, text: b.text, createdAt: ev.createdAt });
           else if (b.type === "thinking" && b.thinking?.trim()) items.push({ kind: "thinking", key, text: b.thinking });
           else if (b.type === "tool_use") {
@@ -233,7 +239,7 @@ export function flattenEvents(events: Ev[], t: T): Item[] {
         // Tool results are fed back as a user-role message per the Anthropic API.
         const blocks = Array.isArray(ev.message?.content) ? (ev.message!.content as Block[]) : [];
         blocks.forEach((b, bi) => {
-          const key = `${ei}-${bi}`;
+          const key = `${eventKey}:${bi}`;
           if (b.type === "tool_result") {
             const result = { text: textFromContent(b.content), error: !!b.is_error };
             const idx = b.tool_use_id ? toolIndex.get(b.tool_use_id) : undefined;
@@ -266,21 +272,21 @@ export function flattenEvents(events: Ev[], t: T): Item[] {
             }
           }
           if (lastText) lastText.resultMeta = resultMeta;
-          else items.push({ kind: "notice", key: `${ei}`, ...resultMeta });
+          else items.push({ kind: "notice", key: eventKey, ...resultMeta });
         }
         return;
       }
       case "rate_limit_event":
         return;
       case "preview":
-        if (typeof ev.path === "string" && ev.path) items.push({ kind: "preview", key: `${ei}`, path: ev.path, author: ev.author, createdAt: ev.createdAt });
+        if (typeof ev.path === "string" && ev.path) items.push({ kind: "preview", key: eventKey, path: ev.path, author: ev.author, createdAt: ev.createdAt });
         return;
       case "_raw":
-        items.push({ kind: "raw", key: `${ei}`, text: ev.text || "" });
+        items.push({ kind: "raw", key: eventKey, text: ev.text || "" });
         return;
       default: {
         const text = ev.text ?? textFromContent(ev.content);
-        if (text) items.push({ kind: "raw", key: `${ei}`, text });
+        if (text) items.push({ kind: "raw", key: eventKey, text });
       }
     }
   });
@@ -294,6 +300,15 @@ export function gapClass(prevIsUser: boolean, isUser: boolean): string {
   if (prevIsUser && isUser) return "mt-1";
   if (prevIsUser !== isUser) return "mt-6";
   return "mt-2.5";
+}
+
+// Virtuoso measures each row independently, so its spacing belongs inside the
+// row rather than in a collapsing outer margin. Keep these as literal Tailwind
+// classes: constructing `pt-*` at runtime means Tailwind never emits them.
+export function gapPaddingClass(prevIsUser: boolean, isUser: boolean): string {
+  if (prevIsUser && isUser) return "pt-1";
+  if (prevIsUser !== isUser) return "pt-6";
+  return "pt-2.5";
 }
 
 // Contextual "agent is working" label from the freshest transcript event — so the

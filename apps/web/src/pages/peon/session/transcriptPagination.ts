@@ -3,7 +3,7 @@ import type { Ev } from "./parsing";
 // Tool-result events can be hundreds of KiB even though their output is folded
 // in the UI. Keep the initial render bounded; older history remains available
 // through the existing opaque-cursor pagination control.
-export const TRANSCRIPT_PAGE_SIZE = 50;
+export const TRANSCRIPT_PAGE_SIZE = 100;
 
 export type TranscriptResponse = Ev[] | {
   events?: Ev[];
@@ -87,18 +87,6 @@ export function tailResumeBoundary(
 ): { subscribe: false } | { subscribe: true; lastEventId: string | null } {
   if (!tailStart || tailStart.sessionKey !== sessionKey) return { subscribe: false };
   return { subscribe: true, lastEventId: tailStart.id };
-}
-
-/**
- * The "load older" sentinel sits above the first rendered row, so a transcript
- * shorter than the window keeps it permanently in view — and every prepended
- * page that still does not fill the window leaves it there. Prefetching then
- * has no operator intent behind it and walks the whole history one page at a
- * time. Auto-loading is therefore reserved for an operator who scrolled away
- * from the live end; from the bottom, the visible button is the way further back.
- */
-export function shouldAutoLoadOlder(input: { intersecting: boolean; pinnedToBottom: boolean }): boolean {
-  return input.intersecting && !input.pinnedToBottom;
 }
 
 export function transcriptPageUrl(base: string, sid: string, supported: boolean, cursor?: string): string {

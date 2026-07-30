@@ -95,6 +95,17 @@ subscription, not one each. The last authorized consumer sends
 to unblock an already durable Peon message completes even without a browser,
 then releases demand.
 
+Opening history does not itself create temporary demand when a retained
+projection is `ready`, has an epoch and belongs to the active socket generation.
+`GET .../transcript` returns that bounded Postgres page immediately, including
+its freshness, and the browser subsequently starts the durable tail after the
+page's last `eventId`. The tail catch-up closes the read-to-subscribe race. A
+missing, non-ready or previous-generation projection still acquires demand
+synchronously and waits for catch-up or a snapshot before the history response;
+this is the rebuild path, not the ordinary session-switch path. With no reverse
+connection, the retained projection remains readable as `offline` without
+trying to create demand.
+
 The transcript channel hello is an exact fixed contract, including
 `subscriptions: 64`; a different or missing limit is a protocol error when the
 canonical catalog+durable dependencies are present. Overseer counts each unique

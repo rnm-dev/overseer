@@ -121,10 +121,8 @@ function WorkspaceCard({ workspace }: { workspace: Workspace }) {
       })
       .catch(() => undefined);
     void pull();
-    const timer = window.setInterval(pull, 5000);
     return () => {
       active = false;
-      window.clearInterval(timer);
     };
   }, [workspace.id]);
 

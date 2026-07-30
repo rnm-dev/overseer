@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate, useParams } from "react-router";
+import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { api, ApiError, isPeonNeedsUpdate } from "../../api";
-import { documentPresence } from "./sessionAttentionRead";
+import { shouldAcknowledgeAttention } from "./sessionAttentionRead";
 import { useI18n } from "../../i18n";
 import { useLiveSocket } from "../../liveSocket";
 import { useAuth } from "../../auth";
@@ -10,25 +11,28 @@ import { usePeon } from "./context";
 import { defaultModelId, modelLabel, optionMatches, providerForAgent, providerForModel, reasoningEffortLabel, useModels } from "./models";
 import {
   flattenEvents,
-  gapClass,
+  gapPaddingClass,
   usageBreakdown,
   usageFromEvent,
   workingActivity,
+  type Item,
   type MessageAttachment,
 } from "./session/parsing";
 import { ItemView, UserBubble, Working } from "./session/messageParts";
 import { createQueueActivityTracker, createQueueReconciler } from "./session/queue";
 import { combineVisibleTranscriptEvents } from "./session/transcriptMerge";
-import { shouldAutoLoadOlder } from "./session/transcriptPagination";
 import type { PreviewTarget } from "./session/PreviewPanel";
 import { useSessionTranscript } from "./session/useSessionTranscript";
-import { useSessionComposer } from "./session/useSessionComposer";
+import { useSessionComposer, type ComposerGhost } from "./session/useSessionComposer";
 import { SessionHeader, sessionHeaderIdentityData } from "./session/SessionHeader";
 import { SessionComposerDock } from "./session/SessionComposerDock";
 import { SessionOverlays } from "./session/SessionOverlays";
-import { useScrollToBottom } from "./session/useScrollToBottom";
 import { nextSessionAfterDeletion } from "./session/nextSession";
 import { stopOutcome } from "./session/stopOutcome";
+import {
+  createTranscriptVirtualWindow,
+  updateTranscriptVirtualWindow,
+} from "./session/transcriptVirtualization";
 import { isSuccessfulRunResult, onSelectedSoundPackChange, playPeonSound, playWorkSound, stopWorkSound } from "../../peonSounds";
 
 // author: Viktor
@@ -36,6 +40,16 @@ import { isSuccessfulRunResult, onSelectedSoundPackChange, playPeonSound, playWo
 // page shell: data loading, the live tail, and the composer.
 
 const FILE_PANES_STORAGE_KEY = "overseer.open-session-file-panes";
+
+type VirtualTranscriptRow =
+  | { key: string; kind: "item"; item: Item; paddingClass: string }
+  | { key: string; kind: "ghost"; ghost: ComposerGhost; paddingClass: string }
+  | { key: string; kind: "working"; paddingClass: string }
+  | { key: string; kind: "footer"; height: number };
+
+function TranscriptListHeader() {
+  return <div className="h-12" aria-hidden="true" />;
+}
 
 function storedOpenFilePanes(): Set<string> {
   try {
@@ -59,6 +73,7 @@ function storeFilePaneState(pageKey: string, open: boolean) {
 export function PeonSessionDetail() {
   const { locale, t } = useI18n();
   const { user } = useAuth();
+  const COMPOSER_FOOTER_PADDING = 100;
   const { peon, base, wsId, orderedSessionIds, selectedSession, sessionHref, sessionsHomeHref, onSessionDeleted, onSessionRunningChange } = usePeon();
   const { sid = "" } = useParams();
   const { subscribe, viewersFor } = useLiveSocket();
@@ -68,6 +83,7 @@ export function PeonSessionDetail() {
   const transcriptPaginationSupported = peon.capabilities.includes("transcript-pagination-v1");
   const filePanePageKey = `${wsId}:${sessionKey}`;
   const currentSessionKeyRef = useRef(sessionKey);
+  const attentionReadInFlightRef = useRef<string | null>(null);
   // Update during render, not in an effect: a request from the previous route can
   // settle in the small render→effect window and must not mutate the new session.
   currentSessionKeyRef.current = sessionKey;
@@ -76,9 +92,17 @@ export function PeonSessionDetail() {
   // while the tab is actually in front of them; otherwise wait until it is, so a
   // run that finishes in a backgrounded tab keeps its amber edge.
   const markAttentionRead = useCallback(() => {
-    if (!sid || !documentPresence(document)) return;
-    void api(`${base}/sessions/${encodeURIComponent(sid)}/attention/read`, { method: "POST" }).catch(() => undefined);
-  }, [base, sid]);
+    if (!sid || !shouldAcknowledgeAttention(selectedSession?.attentionUnread, document.visibilityState, document.hasFocus())) return;
+    if (attentionReadInFlightRef.current === sessionKey) return;
+    attentionReadInFlightRef.current = sessionKey;
+    void api(`${base}/sessions/${encodeURIComponent(sid)}/attention/read`, { method: "POST" }).catch(() => {
+      if (attentionReadInFlightRef.current === sessionKey) attentionReadInFlightRef.current = null;
+    });
+  }, [base, selectedSession?.attentionUnread, sessionKey, sid]);
+
+  useEffect(() => {
+    if (selectedSession?.attentionUnread !== true) attentionReadInFlightRef.current = null;
+  }, [selectedSession?.attentionUnread, sessionKey]);
 
   useEffect(() => {
     markAttentionRead();
@@ -226,7 +250,7 @@ export function PeonSessionDetail() {
   const previewPinnedRef = useRef(false);
   useEffect(() => { previewPinnedRef.current = previewPinned; }, [previewPinned]);
   const [composerNode, setComposerNode] = useState<HTMLDivElement | null>(null);
-  const [composerHeight, setComposerHeight] = useState(112);
+  const [composerHeight, setComposerHeight] = useState(COMPOSER_FOOTER_PADDING);
   const sessionProvider = providerForAgent(catalog, sessionAgent) ?? (!sessionAgent ? (providerForAgent(catalog, catalog?.defaultAgent) ?? providerForModel(catalog, sessionModel ?? catalog?.defaultModel)) : null);
   // Capabilities can change after a peon update or provider settings change.
   // Never keep displaying (and later submit) a stale value that is no longer in
@@ -238,7 +262,7 @@ export function PeonSessionDetail() {
   }, [sessionProvider]);
   useEffect(() => {
     if (!composerNode) return;
-    const measure = () => setComposerHeight(composerNode.getBoundingClientRect().height);
+    const measure = () => setComposerHeight(Math.min(composerNode.getBoundingClientRect().height, COMPOSER_FOOTER_PADDING));
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(composerNode);
@@ -307,38 +331,77 @@ export function PeonSessionDetail() {
   });
 
   const stickToBottomRef = useRef(true);
-  const prependAnchorRef = useRef<{ sessionKey: string; height: number; scrollY: number } | null>(null);
-  const historySentinelRef = useRef<HTMLDivElement>(null);
-  const oldestHistoryEventId = history?.[0]?.eventId;
-  const handleLoadOlder = useCallback(async () => {
-    if (prependAnchorRef.current?.sessionKey === sessionKey) return;
-    prependAnchorRef.current = { sessionKey, height: document.documentElement.scrollHeight, scrollY: window.scrollY };
-    const loaded = await loadOlder();
-    if (!loaded && prependAnchorRef.current?.sessionKey === sessionKey) prependAnchorRef.current = null;
-  }, [loadOlder, sessionKey]);
-  useLayoutEffect(() => {
-    const anchor = prependAnchorRef.current;
-    if (!anchor || anchor.sessionKey !== sessionKey) return;
-    const addedHeight = document.documentElement.scrollHeight - anchor.height;
-    window.scrollTo({ top: anchor.scrollY + Math.max(0, addedHeight) });
-    prependAnchorRef.current = null;
-  }, [oldestHistoryEventId, sessionKey]);
-  // One observer for as long as there is older history: re-creating it on every
-  // load would replay an initial observation the sentinel never left, which is
-  // what turned a single approach to the top edge into a walk through the whole
-  // transcript. One entry into the zone stays one request.
-  useEffect(() => {
-    const sentinel = historySentinelRef.current;
-    if (!sentinel || !hasOlder || typeof IntersectionObserver === "undefined") return;
-    const observer = new IntersectionObserver((entries) => {
-      const intersecting = entries.some((entry) => entry.isIntersecting);
-      if (shouldAutoLoadOlder({ intersecting, pinnedToBottom: stickToBottomRef.current })) void handleLoadOlder();
-    }, { rootMargin: "400px 0px 0px" });
-    observer.observe(sentinel);
-    return () => observer.disconnect();
-  }, [handleLoadOlder, hasOlder]);
+  const sendScrollPendingRef = useRef(false);
+  const followScrollPendingRef = useRef(false);
+  const followScrollLeftBottomRef = useRef(false);
+  const followScrollTimerRef = useRef<number | null>(null);
+  const virtuosoRef = useRef<VirtuosoHandle>(null);
+  const virtuosoScrollerRef = useRef<HTMLElement | null>(null);
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+  const updateScrollToBottomVisibility = useCallback(() => {
+    if (sendScrollPendingRef.current || followScrollPendingRef.current) return;
+    const scroller = virtuosoScrollerRef.current;
+    if (!scroller) return;
+    const distanceFromBottom = scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop;
+    setShowScrollToBottom(distanceFromBottom >= scroller.clientHeight);
+  }, []);
+  const handleScrollerRef = useCallback((ref: HTMLElement | Window | null) => {
+    const previous = virtuosoScrollerRef.current;
+    if (previous) previous.removeEventListener("scroll", updateScrollToBottomVisibility);
+    const scroller = ref instanceof HTMLElement ? ref : null;
+    virtuosoScrollerRef.current = scroller;
+    if (scroller) scroller.addEventListener("scroll", updateScrollToBottomVisibility, { passive: true });
+  }, [updateScrollToBottomVisibility]);
+  const handleStartReached = useCallback(() => {
+    // useSessionTranscript owns the synchronous single-flight guard. If a
+    // short page still leaves the viewport at the top, Virtuoso may request
+    // the following cursor after it settles; that is pagination, not a
+    // duplicate request.
+    if (hasOlder) void loadOlder();
+  }, [hasOlder, loadOlder]);
+  const handleAtBottomChange = useCallback((atBottom: boolean) => {
+    if (sendScrollPendingRef.current) return;
+    if (followScrollPendingRef.current) {
+      if (!atBottom) {
+        followScrollLeftBottomRef.current = true;
+      } else if (followScrollLeftBottomRef.current) {
+        followScrollPendingRef.current = false;
+        followScrollLeftBottomRef.current = false;
+        if (followScrollTimerRef.current !== null) window.clearTimeout(followScrollTimerRef.current);
+        followScrollTimerRef.current = null;
+        stickToBottomRef.current = true;
+        setShowScrollToBottom(false);
+      }
+      return;
+    }
+    stickToBottomRef.current = atBottom;
+    if (atBottom) setShowScrollToBottom(false);
+    else updateScrollToBottomVisibility();
+  }, [updateScrollToBottomVisibility]);
+  const handleFollowOutput = useCallback((): "auto" | "smooth" | false => {
+    if (!stickToBottomRef.current) return false;
+    followScrollPendingRef.current = true;
+    followScrollLeftBottomRef.current = false;
+    if (followScrollTimerRef.current !== null) window.clearTimeout(followScrollTimerRef.current);
+    followScrollTimerRef.current = window.setTimeout(() => {
+      followScrollPendingRef.current = false;
+      followScrollLeftBottomRef.current = false;
+      followScrollTimerRef.current = null;
+      const scroller = virtuosoScrollerRef.current;
+      if (!scroller) return;
+      const atBottom = scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop <= 2;
+      stickToBottomRef.current = atBottom;
+      updateScrollToBottomVisibility();
+    }, 800);
+    return window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+  }, [updateScrollToBottomVisibility]);
+  const handleGhostCreated = useCallback(() => {
+    // Keep the current canvas for the first painted frame. followOutput must
+    // stay disabled until Virtuoso has measured the ghost and working rows.
+    sendScrollPendingRef.current = true;
+    stickToBottomRef.current = false;
+  }, []);
 
-  const transcriptRef = useRef<HTMLDivElement>(null);
   const visibleEvents = useMemo(
     () => combineVisibleTranscriptEvents(history ?? [], orderedLive),
     [history, orderedLive],
@@ -372,7 +435,7 @@ export function PeonSessionDetail() {
     queueReconcilerRef,
     queueActivity: queueActivityRef.current,
     userMessageCount,
-    stickToBottomRef,
+    onGhostCreated: handleGhostCreated,
     setRunning,
     setRunningSelection,
     setStopNote,
@@ -494,7 +557,6 @@ export function PeonSessionDetail() {
     }
   }
 
-  const { showScrollToBottom, scrollToBottom } = useScrollToBottom(stickToBottomRef, history, live, transcriptRef, sessionKey);
   // What the agent is doing right now, from the freshest event (live wins over history).
   const lastEvent = visibleEvents.length ? visibleEvents[visibleEvents.length - 1] : undefined;
   const working = workingActivity(lastEvent);
@@ -504,6 +566,24 @@ export function PeonSessionDetail() {
   // Flattened render list — pairs each tool_use with its later tool_result so it
   // renders as a single row (see flattenEvents).
   const items = useMemo(() => flattenEvents(visibleEvents, t), [t, visibleEvents]);
+  const yesterdayLabelText = t("peon.stats.period.yesterday");
+  // Stable identity for the props below, so TranscriptItemList's memo can skip
+  // re-rendering the whole transcript on unrelated state changes (e.g. every
+  // composer keystroke, which lives in this same page component).
+  const onOpenPreviewItem = useCallback(
+    (p: { path: string; author?: string; createdAt?: number }) => setArtifactPreview({ path: p.path, author: p.author, createdAt: p.createdAt }),
+    [],
+  );
+  const onOpenProjectFileItem = useCallback(
+    (path: string, viewerUrl: string) => setProjectFilePreview({ path, viewerUrl }),
+    [],
+  );
+  const projectViewer = useMemo(
+    () => (loadedMetadataKey === sessionKey && projectId && projectRoot
+      ? { peonId: peon.peonId, projectId, projectRoot, currentOrigin: window.location.origin }
+      : null),
+    [loadedMetadataKey, sessionKey, projectId, projectRoot, peon.peonId],
+  );
   // Forge glow: a row pushed into an open transcript comes out hot and cools.
   // The live tail only grows when the peon (or this composer) pushes something,
   // so it is the one signal that never fires for loaded history — the newest row
@@ -523,8 +603,7 @@ export function PeonSessionDetail() {
     const newest = items[items.length - 1];
     if (newest && newest.kind !== "user") setForgedItemKey(newest.key);
   }, [items, liveCount]);
-  // Item keys are positional, so drop the anchor once it has cooled — otherwise
-  // loading older history could shift it onto an unrelated row and reheat it.
+  // The glow is transient even though its durable row key remains stable.
   useEffect(() => {
     if (!forgedItemKey) return;
     const id = window.setTimeout(() => setForgedItemKey(null), 3_000);
@@ -548,6 +627,81 @@ export function PeonSessionDetail() {
     }
     return null;
   }, [sessionUsage, visibleEvents]);
+  const virtualRows = useMemo<VirtualTranscriptRow[]>(() => {
+    const rows: VirtualTranscriptRow[] = items.map((item, index) => ({
+      key: `item:${item.key}`,
+      kind: "item",
+      item,
+      paddingClass: index === 0 ? "" : gapPaddingClass(items[index - 1]!.kind === "user", item.kind === "user"),
+    }));
+    if (ghost) {
+      rows.push({
+        key: "session-ghost",
+        kind: "ghost",
+        ghost,
+        paddingClass: items.length === 0 ? "" : gapPaddingClass(items[items.length - 1]!.kind === "user", true),
+      });
+    }
+    if (liveWork) {
+      const previousIsUser = ghost || (items.length > 0 && items[items.length - 1]!.kind === "user");
+      rows.push({
+        key: "session-working",
+        kind: "working",
+        paddingClass: items.length === 0 && !ghost ? "" : gapPaddingClass(Boolean(previousIsUser), false),
+      });
+    }
+    rows.push({ key: "session-footer", kind: "footer", height: composerHeight + 40 });
+    return rows;
+  }, [composerHeight, ghost, items, liveWork]);
+  const [virtualWindow, setVirtualWindow] = useState(() => createTranscriptVirtualWindow(sessionKey, virtualRows));
+  let displayedVirtualWindow = virtualWindow;
+  if (virtualWindow.sessionKey !== sessionKey || virtualWindow.rows !== virtualRows) {
+    displayedVirtualWindow = updateTranscriptVirtualWindow(virtualWindow, sessionKey, virtualRows);
+    setVirtualWindow(displayedVirtualWindow);
+  }
+  const scrollToBottom = useCallback(() => {
+    stickToBottomRef.current = true;
+    setShowScrollToBottom(false);
+    const lastIndex = displayedVirtualWindow.firstItemIndex + displayedVirtualWindow.rows.length - 1;
+    virtuosoRef.current?.scrollToIndex({ index: lastIndex, align: "end", behavior: "smooth" });
+  }, [displayedVirtualWindow]);
+  useEffect(() => {
+    if (!ghost || !sendScrollPendingRef.current) return;
+    let secondFrame = 0;
+    const firstFrame = window.requestAnimationFrame(() => {
+      secondFrame = window.requestAnimationFrame(() => {
+        if (!sendScrollPendingRef.current) return;
+        sendScrollPendingRef.current = false;
+        stickToBottomRef.current = true;
+        setShowScrollToBottom(false);
+        const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        const lastIndex = displayedVirtualWindow.firstItemIndex + displayedVirtualWindow.rows.length - 1;
+        virtuosoRef.current?.scrollToIndex({
+          index: lastIndex,
+          align: "end",
+          behavior: reduceMotion ? "auto" : "smooth",
+        });
+      });
+    });
+    return () => {
+      window.cancelAnimationFrame(firstFrame);
+      if (secondFrame) window.cancelAnimationFrame(secondFrame);
+    };
+  }, [displayedVirtualWindow.firstItemIndex, displayedVirtualWindow.rows.length, ghost]);
+  useEffect(() => {
+    sendScrollPendingRef.current = false;
+    followScrollPendingRef.current = false;
+    followScrollLeftBottomRef.current = false;
+    if (followScrollTimerRef.current !== null) window.clearTimeout(followScrollTimerRef.current);
+    followScrollTimerRef.current = null;
+    return () => {
+      if (followScrollTimerRef.current !== null) window.clearTimeout(followScrollTimerRef.current);
+    };
+  }, [sessionKey]);
+  useEffect(() => () => {
+    const scroller = virtuosoScrollerRef.current;
+    if (scroller) scroller.removeEventListener("scroll", updateScrollToBottomVisibility);
+  }, [updateScrollToBottomVisibility]);
   const cancelRename = () => {
     setDraft(title ?? "");
     setRenameNote(null);
@@ -566,119 +720,124 @@ export function PeonSessionDetail() {
   );
 
   return (
-    <div className="min-w-0">
-      <SessionHeader
-        peonId={peon.peonId}
-        metadataLoading={headerIdentity.metadataLoading}
-        projectKey={headerIdentity.projectKey}
-        title={headerIdentity.title}
-        draft={loadedMetadataKey === sessionKey ? draft : headerIdentity.draft}
-        setDraft={setDraft}
-        editing={editing}
-        setEditing={setEditing}
-        savingName={savingName}
-        renameNote={renameNote}
-        setRenameNote={setRenameNote}
-        openingMessage={headerIdentity.openingMessage}
-        turnTotal={turnTotal}
-        usageSummary={usageSummary}
-        filesOpen={filesOpen}
-        changeFilesOpen={changeFilesOpen}
-        confirmDelete={confirmDelete}
-        setConfirmDelete={setConfirmDelete}
-        deleting={deleting}
-        deleteNote={deleteNote}
-        setDeleteNote={setDeleteNote}
-        stopNote={stopNote}
-        saveName={saveName}
-        cancelRename={cancelRename}
-        remove={remove}
-        viewers={viewersFor(peon.peonId, sid)}
-      />
-      {/* transcript — flows into the page; the body scrolls it */}
-      <div ref={transcriptRef} className="min-w-0 overflow-x-hidden pt-4" style={{ paddingBottom: composerHeight }}>
+    <div className="session-transcript-pane fixed bottom-0 left-0 right-0 top-12 z-10 min-w-0 overflow-hidden md:left-[var(--peon-sidebar-width)] md:top-[var(--fixed-pane-header-height,3.25rem)]">
+      <div className="pointer-events-none absolute inset-x-0 top-0 z-20">
+        <SessionHeader
+          peonId={peon.peonId}
+          metadataLoading={headerIdentity.metadataLoading}
+          projectKey={headerIdentity.projectKey}
+          title={headerIdentity.title}
+          draft={loadedMetadataKey === sessionKey ? draft : headerIdentity.draft}
+          setDraft={setDraft}
+          editing={editing}
+          setEditing={setEditing}
+          savingName={savingName}
+          renameNote={renameNote}
+          setRenameNote={setRenameNote}
+          openingMessage={headerIdentity.openingMessage}
+          turnTotal={turnTotal}
+          usageSummary={usageSummary}
+          filesOpen={filesOpen}
+          changeFilesOpen={changeFilesOpen}
+          confirmDelete={confirmDelete}
+          setConfirmDelete={setConfirmDelete}
+          deleting={deleting}
+          deleteNote={deleteNote}
+          setDeleteNote={setDeleteNote}
+          stopNote={stopNote}
+          saveName={saveName}
+          cancelRename={cancelRename}
+          remove={remove}
+          viewers={viewersFor(peon.peonId, sid)}
+        />
+      </div>
+      <div
+        className="pointer-events-none absolute left-0 right-0 top-2 z-20 grid h-8 place-items-center"
+        aria-live="polite"
+      >
+        {(loadingOlder || olderLoadError) && (
+          <p className={`whitespace-nowrap rounded-full border border-white/10 bg-iron-950/75 px-3 py-1.5 font-mono text-xs shadow-lg shadow-black/30 backdrop-blur-xl ${olderLoadError ? "text-red-300" : "text-bone-muted"}`}>
+            {olderLoadError ? t("session.history.failed") : t("session.history.loading")}
+          </p>
+        )}
+      </div>
+      <div className="h-full min-w-0 overflow-hidden">
         {history === null ? (
           showHistorySpinner && (
-            <div className="grid min-h-[40vh] place-items-center">
+            <div className="grid h-full place-items-center pt-12">
               <div className="forge-spin" />
             </div>
           )
         ) : history.length === 0 && live.length === 0 && !liveWork ? (
-          <p className="text-center font-mono text-sm text-bone-faint">{t("session.empty")}</p>
+          <p className="grid h-full place-items-center pt-12 text-center font-mono text-sm text-bone-faint">{t("session.empty")}</p>
         ) : (
-          <div>
-            {hasOlder && (
-              <div ref={historySentinelRef} className="mb-5 flex flex-col items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => void handleLoadOlder()}
-                  disabled={loadingOlder}
-                  className="rounded border border-iron-700 bg-iron-950 px-3 py-2 font-mono text-xs text-bone-muted transition-colors hover:border-ember/60 hover:text-bone disabled:cursor-wait disabled:opacity-60"
-                >
-                  {loadingOlder ? t("session.history.loading") : t("session.history.loadOlder")}
-                </button>
-                {olderLoadError && <p className="font-mono text-xs text-red-300">{t("session.history.failed")}</p>}
-              </div>
-            )}
-            {items.map((item, i) => (
-              <div
-                key={item.key}
-                className={`${i === 0 ? "" : gapClass(items[i - 1].kind === "user", item.kind === "user")}${item.key === forgedItemKey ? " forge-cooling" : ""}`}
-              >
-                <ItemView
-                  item={item}
-                  t={t}
-                  locale={locale}
-                  yesterdayLabel={t("peon.stats.period.yesterday")}
-                  onOpenPreview={(p) => setArtifactPreview({ path: p.path, author: p.author, createdAt: p.createdAt })}
-                  onOpenAttachment={setSentAttachmentPreview}
-                  onOpenProjectFile={(path, viewerUrl) => setProjectFilePreview({ path, viewerUrl })}
-                  projectViewer={loadedMetadataKey === sessionKey && projectId && projectRoot
-                    ? { peonId: peon.peonId, projectId, projectRoot, currentOrigin: window.location.origin }
-                    : null}
-                />
-              </div>
-            ))}
-            {ghost && (
-              <div
-                data-session-ghost-row
-                className={`${items.length === 0 ? "" : gapClass(items[items.length - 1].kind === "user", true)} session-ghost`}
-              >
-                <UserBubble
-                  text={ghost.text}
-                  authorEmail={user?.email}
-                  authorGithubLogin={user?.githubLogin ?? undefined}
-                  authorAvatarUrl={user?.avatarUrl ?? undefined}
-                  attachments={ghost.attachments}
-                  createdAt={ghost.createdAt}
-                />
-              </div>
-            )}
-            {liveWork && (
-              <div
-                data-session-running-row
-                className={items.length === 0 && !ghost ? "" : gapClass(ghost ? true : items[items.length - 1].kind === "user", false)}
-              >
-                <Working
-                  key={workingStepKey}
-                  label={
-                    working.key === "session.working.thinking"
-                      ? null
-                      : t(working.key, working.name ? { name: working.name } : undefined)
-                  }
-                  startedAt={typeof lastEvent?.createdAt === "number" ? lastEvent.createdAt : undefined}
-                  model={modelLabel(catalog, runningModel ?? sessionModel ?? defaultModelId(sessionProvider))}
-                  effort={reasoningEffortLabel(sessionProvider, runningReasoningEffort ?? sessionReasoningEffort)}
-                  onStop={stop}
-                  stopping={stopping}
-                  stopLabel={t("session.stop")}
-                  stoppingLabel={t("session.stop.stopping")}
-                />
-              </div>
-            )}
-          </div>
+          <Virtuoso
+            key={sessionKey}
+            ref={virtuosoRef}
+            scrollerRef={handleScrollerRef}
+            className="h-full overflow-x-hidden"
+            data={displayedVirtualWindow.rows}
+            firstItemIndex={displayedVirtualWindow.firstItemIndex}
+            initialTopMostItemIndex={displayedVirtualWindow.rows.length - 1}
+            alignToBottom
+            increaseViewportBy={{ top: 600, bottom: 400 }}
+            components={{ Header: TranscriptListHeader }}
+            computeItemKey={(_index, row) => row.key}
+            startReached={handleStartReached}
+            atBottomStateChange={handleAtBottomChange}
+            followOutput={handleFollowOutput}
+            itemContent={(_index, row) => {
+              if (row.kind === "footer") return <div style={{ height: row.height }} aria-hidden="true" />;
+              if (row.kind === "item") {
+                return (
+                  <div data-transcript-row className={`mx-auto w-full max-w-6xl px-3 sm:px-6 ${row.paddingClass}${row.item.key === forgedItemKey ? " forge-cooling" : ""}`}>
+                    <ItemView
+                      item={row.item}
+                      t={t}
+                      locale={locale}
+                      yesterdayLabel={yesterdayLabelText}
+                      onOpenPreview={onOpenPreviewItem}
+                      onOpenAttachment={setSentAttachmentPreview}
+                      onOpenProjectFile={onOpenProjectFileItem}
+                      projectViewer={projectViewer}
+                    />
+                  </div>
+                );
+              }
+              if (row.kind === "ghost") return (
+                <div data-session-ghost-row className={`session-ghost mx-auto w-full max-w-6xl px-3 sm:px-6 ${row.paddingClass}`}>
+                  <UserBubble
+                    text={row.ghost.text}
+                    authorEmail={user?.email}
+                    authorGithubLogin={user?.githubLogin ?? undefined}
+                    authorAvatarUrl={user?.avatarUrl ?? undefined}
+                    attachments={row.ghost.attachments}
+                    createdAt={row.ghost.createdAt}
+                  />
+                </div>
+              );
+              return (
+                <div data-session-running-row className={`mx-auto w-full max-w-6xl px-3 sm:px-6 ${row.paddingClass}`}>
+                  <Working
+                    key={workingStepKey}
+                    label={
+                      working.key === "session.working.thinking"
+                        ? null
+                        : t(working.key, working.name ? { name: working.name } : undefined)
+                    }
+                    startedAt={typeof lastEvent?.createdAt === "number" ? lastEvent.createdAt : undefined}
+                    model={modelLabel(catalog, runningModel ?? sessionModel ?? defaultModelId(sessionProvider))}
+                    effort={reasoningEffortLabel(sessionProvider, runningReasoningEffort ?? sessionReasoningEffort)}
+                    onStop={stop}
+                    stopping={stopping}
+                    stopLabel={t("session.stop")}
+                    stoppingLabel={t("session.stop.stopping")}
+                  />
+                </div>
+              );
+            }}
+          />
         )}
-        <div className="h-2 sm:h-5" aria-hidden="true" />
       </div>
 
       {showScrollToBottom &&

@@ -13,3 +13,11 @@ export function documentPresence(doc?: Pick<Document, "visibilityState" | "hasFo
   if (!doc) return true;
   return shouldMarkAttentionRead(doc.visibilityState, doc.hasFocus());
 }
+
+export function shouldAcknowledgeAttention(
+  unread: boolean | undefined,
+  visibility: string | undefined,
+  focused = true,
+): boolean {
+  return unread === true && shouldMarkAttentionRead(visibility, focused);
+}

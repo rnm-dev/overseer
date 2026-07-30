@@ -14,7 +14,7 @@ test("Peon projections update online state immediately without disturbing other 
   assert.equal(updated.two, original.two);
 });
 
-test("a live projection can populate a Peon before the polling fallback runs", () => {
+test("a live projection can populate a Peon before HTTP inventory hydration", () => {
   const updated = applyPeonProjection({}, "one", { peonId: "p1", name: "One", online: true });
   assert.deepEqual(updated.one, [{ peonId: "p1", name: "One", online: true }]);
 });

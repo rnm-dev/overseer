@@ -150,8 +150,6 @@ export function PeonDetail() {
 
   useEffect(() => {
     reload();
-    const timer = window.setInterval(reload, 5000);
-    return () => window.clearInterval(timer);
   }, [reload]);
 
   const loadProjects = useCallback(async () => {
@@ -170,8 +168,6 @@ export function PeonDetail() {
     setProjects(null);
     setProjectError(false);
     void loadProjects();
-    const timer = window.setInterval(loadProjects, 5000);
-    return () => window.clearInterval(timer);
   }, [loadProjects]);
 
   useEffect(() => subscribeProjects((event) => {
@@ -228,35 +224,6 @@ export function PeonDetail() {
     };
   }, [loadNextSessions, wsId]);
 
-  // Refresh the newest page while online as a correctness backstop for an old
-  // Peon or a temporarily disconnected workspace socket. Loaded older pages are
-  // retained, and duplicates are merged by session id.
-  useEffect(() => {
-    if (!sessionSidebarCanLoad(wsId)) return;
-    const refresh = async () => {
-      const epoch = sessionLoadEpoch.current;
-      try {
-        const result = await api<{ sessions: IndexedSessionLite[]; total: number }>(
-          `/workspaces/${wsId}/sessions?peonId=${encodeURIComponent(peonId)}&limit=${SESSION_PAGE_SIZE}&offset=0`,
-        );
-        if (sessionLoadEpoch.current !== epoch) return;
-        const page = (result.sessions ?? []).map(sessionFromIndex);
-        if (nextSessionOffset.current === 0) {
-          nextSessionOffset.current = page.length === 0 ? result.total : page.length;
-          setSessionOffset(nextSessionOffset.current);
-        }
-        setSessionTotal(result.total);
-        setSessionPageError(false);
-        setSessions((current) => mergeSessions(current, page));
-      } catch {
-        // Live events and already-loaded pages remain usable during a transient
-        // refresh failure. Explicit load-more failures have their own retry UI.
-      }
-    };
-    const timer = window.setInterval(refresh, 5000);
-    return () => window.clearInterval(timer);
-  }, [peonId, wsId]);
-
   const hasMoreSessions = sessionTotal !== null && sessionOffset < sessionTotal;
   useEffect(() => {
     const root = sessionScrollNode.current;
@@ -272,9 +239,8 @@ export function PeonDetail() {
     return () => observer.disconnect();
   }, [hasMoreSessions, loadNextSessions, sessionPageError, sessionsLoading]);
 
-  // Session summaries already arrive over the workspace socket. Apply them to
-  // the sidebar immediately; the 5s pull remains a correctness backstop for an
-  // old Peon or a temporarily disconnected socket.
+  // Session summaries arrive over the resumable workspace socket after the
+  // initial indexed page is hydrated.
   useEffect(() => subscribeSessions((event: SessionLiveEvent) => {
     if (event.peonId !== peonId || typeof event.sessionId !== "string" || !event.sessionId) return;
     // Keep the Peon-qualified identity used by indexed HTTP summaries. Omitting
@@ -522,7 +488,7 @@ export function PeonDetail() {
             </>
           </MobilePaneIdentity>
         </div>
-        <div className={`mx-auto w-full px-3 py-4 reveal sm:px-6 sm:py-7 ${projectPageActive ? "max-w-none" : "max-w-6xl"}`}>
+        <div className={`mx-auto w-full px-3 py-4 sm:px-6 sm:py-7 ${sid ? "" : "reveal"} ${projectPageActive ? "max-w-none" : "max-w-6xl"}`}>
           <Outlet context={ctx} />
         </div>
       </main>
