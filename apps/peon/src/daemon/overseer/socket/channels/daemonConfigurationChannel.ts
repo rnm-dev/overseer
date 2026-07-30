@@ -93,7 +93,15 @@ export class DaemonConfigurationChannel implements PeonSocketChannel {
     const before = this.state.snapshot();
     const expected = command.expected!;
     const patch = command.payload.patch as PeonSocketFrame;
-    const alreadyMatches = Object.entries(patch).every(([key, value]) => (before.values as unknown as PeonSocketFrame)[key] === value);
+    let desired: DaemonConfigurationSnapshot["values"];
+    try {
+      desired = this.configuration.previewDaemonConfiguration(patch);
+    } catch {
+      return { status: "rejected", code: "INVALID_VALUE",
+        result: { errors: [{ code: "INVALID_VALUE", message: "configuration patch rejected" }] } };
+    }
+    const alreadyMatches = PATCH_KEYS.every((key) =>
+      (before.values as unknown as PeonSocketFrame)[key] === (desired as unknown as PeonSocketFrame)[key]);
     if (!(expected.epoch === before.epoch && expected.revision === before.revision && expected.digest === before.digest)) {
       return alreadyMatches ? { status: "noop", code: "OK", result: publicResult(before, before.revision, []) }
         : { status: "conflict", code: "REVISION_CONFLICT", result: publicResult(before, before.revision, []) };

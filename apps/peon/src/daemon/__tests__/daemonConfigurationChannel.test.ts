@@ -156,10 +156,29 @@ test("configuration patch handler applies, noops, conflicts, and rejects forbidd
   assert.equal(state.snapshot().values.name, desired);
 
   const current = state.snapshot();
-  const rejected = await handler.execute({
+  const cleared = await handler.execute({
     ...base,
     commandId: randomUUID(),
     expected: { epoch: current.epoch, revision: current.revision, digest: current.digest },
+    payload: { patch: { name: null } },
+  });
+  assert.equal(cleared.status, "applied");
+  assert.equal(state.snapshot().values.name, null);
+
+  const afterClear = state.snapshot();
+  const normalizedStaleNoop = await handler.execute({
+    ...base,
+    commandId: randomUUID(),
+    expected: { epoch: before.epoch, revision: before.revision, digest: before.digest },
+    payload: { patch: { name: "" } },
+  });
+  assert.equal(normalizedStaleNoop.status, "noop");
+  assert.equal(state.snapshot().revision, afterClear.revision);
+
+  const rejected = await handler.execute({
+    ...base,
+    commandId: randomUUID(),
+    expected: { epoch: afterClear.epoch, revision: afterClear.revision, digest: afterClear.digest },
     payload: { patch: { heartbeatIntervalMs: 1 } },
   });
   assert.deepEqual(rejected, {
@@ -174,14 +193,14 @@ test("configuration patch handler applies, noops, conflicts, and rejects forbidd
   const invalidType = await handler.execute({
     ...base,
     commandId: randomUUID(),
-    expected: current,
+    expected: afterClear,
     payload: { patch: { name: { malicious: true } } },
   });
   assert.equal(invalidType.status, "rejected");
   const oversized = await handler.execute({
     ...base,
     commandId: randomUUID(),
-    expected: current,
+    expected: afterClear,
     payload: { patch: { soul: "x".repeat((48 * 1024) + 1) } },
   });
   assert.equal(oversized.status, "rejected");

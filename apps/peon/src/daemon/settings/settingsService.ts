@@ -161,13 +161,31 @@ export class SettingsService extends EventEmitter implements SettingsServiceCont
   }
 
   patchDaemonConfiguration(body: unknown): { settings: DaemonSettings; view: DaemonConfigurationView } {
+    const current = this.get();
+    const patch = this.normalizeDaemonConfigurationPatch(body, current);
+    if (Object.keys(patch).length === 0) return { settings: current, view: this.getDaemonConfigurationView(current) };
+    const updated = this.update(patch);
+    return { settings: updated, view: this.getDaemonConfigurationView(updated) };
+  }
+
+  previewDaemonConfiguration(body: unknown): DaemonConfigurationView {
+    const current = this.get();
+    const patch = this.normalizeDaemonConfigurationPatch(body, current);
+    return this.getDaemonConfigurationView({
+      ...current,
+      ...patch,
+      ...(patch.ai ? { ai: { ...current.ai, ...patch.ai } } : {}),
+    });
+  }
+
+  private normalizeDaemonConfigurationPatch(body: unknown, current: DaemonSettings): Partial<DaemonSettings> {
     const value = this.ensureRecord(body);
     const allowed = new Set([
       "name", "defaultAgent", "fileTransferRoot", "heartbeatIntervalMs", "aiDefaultModel", "soul",
     ]);
     const unknown = Object.keys(value).find((key) => !allowed.has(key));
     if (unknown) this.throwBadRequest(`${unknown} is not remotely manageable`);
-    if (Object.keys(value).length === 0) return { settings: this.get(), view: this.getDaemonConfigurationView() };
+    if (Object.keys(value).length === 0) return {};
     if (typeof value.name === "string" && Buffer.byteLength(value.name) > 200) {
       this.throwBadRequest("name exceeds 200 UTF-8 bytes");
     }
@@ -182,9 +200,13 @@ export class SettingsService extends EventEmitter implements SettingsServiceCont
     for (const nullable of ["name", "fileTransferRoot", "soul"]) {
       if (nullable in normalized && normalized[nullable] === null) normalized[nullable] = "";
     }
-    const patch = this.validateAndNormalizeFleetPatch(normalized, this.get());
-    const updated = this.update(patch);
-    return { settings: updated, view: this.getDaemonConfigurationView(updated) };
+    const { name, ...fleetValues } = normalized;
+    const patch = this.validateAndNormalizeFleetPatch(fleetValues, current);
+    if ("name" in normalized) {
+      if (typeof name !== "string") this.throwBadRequest("name must be a string or null");
+      patch.name = name;
+    }
+    return patch;
   }
 
   getControlSettingsView(s = this.get()): ControlSettingsView {

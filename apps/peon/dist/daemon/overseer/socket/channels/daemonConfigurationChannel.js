@@ -85,7 +85,15 @@ export class DaemonConfigurationChannel {
         const before = this.state.snapshot();
         const expected = command.expected;
         const patch = command.payload.patch;
-        const alreadyMatches = Object.entries(patch).every(([key, value]) => before.values[key] === value);
+        let desired;
+        try {
+            desired = this.configuration.previewDaemonConfiguration(patch);
+        }
+        catch {
+            return { status: "rejected", code: "INVALID_VALUE",
+                result: { errors: [{ code: "INVALID_VALUE", message: "configuration patch rejected" }] } };
+        }
+        const alreadyMatches = PATCH_KEYS.every((key) => before.values[key] === desired[key]);
         if (!(expected.epoch === before.epoch && expected.revision === before.revision && expected.digest === before.digest)) {
             return alreadyMatches ? { status: "noop", code: "OK", result: publicResult(before, before.revision, []) }
                 : { status: "conflict", code: "REVISION_CONFLICT", result: publicResult(before, before.revision, []) };
