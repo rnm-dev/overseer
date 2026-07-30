@@ -142,8 +142,15 @@ committed event-log fan-out. Live events are held behind a bounded replay
 barrier and deduplicated by `eventId`, so a commit racing the replay cannot
 overtake or duplicate itself. Current membership and project ACL are queried
 again before every replay and live delivery on both transports; revocation
-closes an existing tail. Missing retained boundaries replay the complete
-retained authoritative snapshot.
+closes an existing tail. A `lastEventId` this projection does not hold — evicted,
+or belonging to another session because a caller crossed its own wires — cannot
+prove a suffix, so it replays one bounded newest window of 50 events rather than
+the complete retained transcript. That re-anchors a caller whose boundary was
+merely evicted, is dropped row by row through the `eventId` deduplication above
+when the caller already holds that page, and keeps a client defect from costing
+megabytes per subscribe; older history stays reachable through pagination. A tail
+that asks for no boundary at all is stating it has no snapshot, and still
+replays the complete retained transcript.
 
 Resource limits:
 

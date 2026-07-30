@@ -21,6 +21,7 @@ import {
   readTranscriptAfter,
   readTranscriptPage,
   releaseTranscriptGeneration,
+  TRANSCRIPT_UNKNOWN_BOUNDARY_REPLAY,
   TranscriptProjectionError,
 } from "./modules/sessions/index.js";
 
@@ -466,6 +467,36 @@ test("a restarted connection resumes the committed transcript and a stale genera
       .map((event) => event.eventId),
     ["event-2"],
   );
+});
+
+test("a resume boundary this projection does not hold replays one bounded newest window", async () => {
+  await database();
+  await claim("p1", "s1", "generation-1");
+  const total = TRANSCRIPT_UNKNOWN_BOUNDARY_REPLAY + 12;
+  await commitTranscriptSnapshot({
+    workspaceId: "ws",
+    peonId: "p1",
+    sessionId: "s1",
+    generation: "generation-1",
+    epoch: "epoch-1",
+    revision: total,
+    barrierSeq: total,
+    events: Array.from({ length: total }, (_, index) => envelope(index + 1)),
+  });
+  // The boundary of another session is exactly as unknown here as an evicted
+  // one, and that is the case that used to replay the whole transcript.
+  const replay = await readTranscriptAfter({ peonId: "p1", sessionId: "s1", lastEventId: "event-of-another-session" });
+  assert.equal(replay.length, TRANSCRIPT_UNKNOWN_BOUNDARY_REPLAY);
+  assert.equal(replay[0]!.eventId, `event-${total - TRANSCRIPT_UNKNOWN_BOUNDARY_REPLAY + 1}`);
+  assert.equal(replay[replay.length - 1]!.eventId, `event-${total}`);
+  // A known boundary still resumes strictly after it, and no boundary at all
+  // keeps replaying the retained transcript.
+  assert.deepEqual(
+    (await readTranscriptAfter({ peonId: "p1", sessionId: "s1", lastEventId: `event-${total - 2}` }))
+      .map((event) => event.eventId),
+    [`event-${total - 1}`, `event-${total}`],
+  );
+  assert.equal((await readTranscriptAfter({ peonId: "p1", sessionId: "s1" })).length, total);
 });
 
 test("bounded retention evicts complete least-recently-used transcripts and deterministically rebuilds on demand", async () => {

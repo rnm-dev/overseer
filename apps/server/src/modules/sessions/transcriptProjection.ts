@@ -695,6 +695,23 @@ export async function readTranscriptPage(input: {
   };
 }
 
+// One transcript page's worth, matching what a client's opening snapshot holds.
+export const TRANSCRIPT_UNKNOWN_BOUNDARY_REPLAY = 50;
+
+async function newestTranscriptWindow(
+  peonId: string,
+  sessionId: string,
+  epoch: string,
+): Promise<Record<string, unknown>[]> {
+  const rows = await query<{ payload: Record<string, unknown> }>(
+    `SELECT payload FROM transcript_events
+     WHERE peon_id=$1 AND session_id=$2 AND transcript_epoch=$3
+     ORDER BY seq DESC LIMIT $4`,
+    [peonId, sessionId, epoch, TRANSCRIPT_UNKNOWN_BOUNDARY_REPLAY],
+  );
+  return rows.rows.reverse().map((row) => row.payload);
+}
+
 export async function readTranscriptAfter(input: {
   peonId: string;
   sessionId: string;
@@ -708,9 +725,15 @@ export async function readTranscriptAfter(input: {
       `SELECT seq FROM transcript_events WHERE peon_id=$1 AND session_id=$2 AND event_id=$3`,
       [input.peonId, input.sessionId, input.lastEventId],
     );
-    // An evicted/unknown boundary cannot prove a suffix. Replay the complete
-    // retained authoritative snapshot; clients merge by eventId.
-    afterSeq = found.rows[0] ? Number(found.rows[0].seq) : -1;
+    // A boundary this projection does not hold cannot prove a suffix — it may
+    // have been evicted, or belong to another session entirely. Replaying the
+    // whole retained transcript to find out costs megabytes and re-delivers
+    // history the caller already reads in bounded pages, so answer with a
+    // bounded newest window instead: it re-anchors a caller whose boundary was
+    // merely evicted, and one that already holds that page drops every row by
+    // eventId. Older history stays reachable through transcript pagination.
+    if (!found.rows[0]) return await newestTranscriptWindow(input.peonId, input.sessionId, state.epoch);
+    afterSeq = Number(found.rows[0].seq);
   }
   const rows = await query<{ payload: Record<string, unknown> }>(
     `SELECT payload FROM transcript_events
