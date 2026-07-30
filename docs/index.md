@@ -49,6 +49,12 @@ contract are in [project reverse commands](project-reverse-commands.md).
 
 Peon daemon settings use the same gateway: [reverse daemon configuration](daemon-configuration.md) projects only the six safe `daemon-configuration-v1` fields, revision-fences every owner patch, and selects projection/WSS or legacy HTTP exclusively after negotiation and initial state commit.
 
+If a Peon does not return after a restart, follow the short
+[Peon restart recovery](peon-restart-recovery.md) checklist. Preserve its
+config/state, inspect the native service's first startup error, and do not
+restore connectivity by exposing the local listener or re-enabling VPN
+callbacks.
+
 Update checks and self-update use that dispatcher while retaining the
 authenticated, SHA-256-verified Overseer release channel and replacement
 process attestation; see [Peon update channel](peon-update-channel.md).
