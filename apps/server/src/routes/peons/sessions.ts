@@ -276,7 +276,29 @@ export function registerSessionRoutes(router: express.Router): void {
     res.status(result.status).json({ ...body, sessions });
   }));
   router.get(`${wp}/sessions/:sid`, withWorkspaceSession(async (req, res, c) => {
-    const result = await callPeon(connOfRecord(c.record), "GET", `/sessions/${encodeURIComponent(String(req.params.sid))}`, { actor: c.operator.email });
+    const sid = String(req.params.sid);
+    const transport = await selectSessionTransport(req, res, c, "session.detail");
+    if (transport === "unavailable") return;
+    if (transport === "reverse") {
+      const reverse = await reverseSession(req, c, "session.detail", { sessionId: sid }, {});
+      const mapped = sessionReverseHttpResponse("session.detail", reverse);
+      if (mapped.status !== 200 || !mapped.body || typeof mapped.body !== "object") {
+        return res.status(mapped.status).json(mapped.body);
+      }
+      const body = mapped.body as Record<string, unknown>;
+      await indexAcceptedSession({ ok: true, json: body }, c.workspaceId, c.record.peonId);
+      const projectId = typeof body.projectId === "string" ? body.projectId : null;
+      const projectKey = typeof body.projectKey === "string" ? body.projectKey : null;
+      const project = projectId
+        ? await getIndexedProjectById(c.record.peonId, projectId)
+        : projectKey ? await getIndexedProject(c.record.peonId, projectKey) : null;
+      return res.json({
+        ...body,
+        projectId: projectId ?? project?.projectId ?? null,
+        projectRoot: project?.dir ?? null,
+      });
+    }
+    const result = await callPeon(connOfRecord(c.record), "GET", `/sessions/${encodeURIComponent(sid)}`, { actor: c.operator.email });
     // Reading a session is a reconcile point: opening one — and the client's
     // run watchdog polling this same route — republishes the Peon's authoritative
     // record, so a "running" row left behind by a Peon that died mid-run heals
@@ -296,7 +318,7 @@ export function registerSessionRoutes(router: express.Router): void {
       projectId: projectId ?? project?.projectId ?? null,
       projectRoot: project?.dir ?? null,
     });
-  }));
+  }, { reverseCommandOperation: "session.detail" }));
   router.get(`${wp}/sessions/:sid/transcript`, withWorkspaceSession(async (req, res, c) => {
     const sid = String(req.params.sid);
     if (!(await canAccessIndexedSessionNow(c.workspaceId, c.userId, c.record.peonId, sid))) {

@@ -4,7 +4,7 @@ export const REVERSE_COMMAND_CAPABILITY = "reverse-command-v1";
 export const REVERSE_COMMAND_MAX_FRAME_BYTES = 60 * 1024;
 
 export const REVERSE_COMMAND_OPERATIONS = [
-  "session.cancel", "session.start", "session.followup",
+  "session.detail", "session.cancel", "session.start", "session.followup",
   "session.queue.list", "session.queue.add", "session.queue.edit",
   "session.queue.remove", "session.queue.send-now",
   "session.metadata.patch", "session.delete",
@@ -503,7 +503,7 @@ function assertSafeSessionResult(
   }
   const sessionId = record.operation === "session.start" ? record.commandId : record.target.sessionId;
   if (!sessionId) throw new ReverseCommandProtocolError("missing session result identity");
-  if (["session.start", "session.followup", "session.metadata.patch"].includes(record.operation)) {
+  if (["session.detail", "session.start", "session.followup", "session.metadata.patch"].includes(record.operation)) {
     if (result.status !== "applied") throw new ReverseCommandProtocolError("invalid session result status");
     assertPublicSession(result.result, sessionId);
     return;

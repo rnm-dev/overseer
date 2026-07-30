@@ -29,7 +29,7 @@ function frame(operation: ReverseCommandOperation, result: JsonObject | null): R
 
 test("Overseer publishes every released Peon session operation", () => {
   assert.deepEqual(REVERSE_COMMAND_OPERATIONS.filter((operation) => operation.startsWith("session.")), [
-    "session.cancel", "session.start", "session.followup", "session.queue.list",
+    "session.detail", "session.cancel", "session.start", "session.followup", "session.queue.list",
     "session.queue.add", "session.queue.edit", "session.queue.remove",
     "session.queue.send-now", "session.metadata.patch", "session.delete",
   ]);
@@ -37,6 +37,7 @@ test("Overseer publishes every released Peon session operation", () => {
 
 test("each released session operation accepts only its canonical success shape", () => {
   const cases: Array<[ReverseCommandOperation, JsonObject]> = [
+    ["session.detail", publicSession],
     ["session.start", { ...publicSession, id: commandId }],
     ["session.followup", publicSession],
     ["session.queue.list", { sessionId, items: [] }],

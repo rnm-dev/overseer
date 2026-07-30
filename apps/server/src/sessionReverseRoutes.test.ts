@@ -11,7 +11,7 @@ const applied = (result: Record<string, unknown>, reused = false): ReverseComman
   reused,
 });
 
-test("every released session mutation has its public workspace route", () => {
+test("every released session operation has its public workspace route", () => {
   const router = peonsRouter() as unknown as {
     stack: Array<{ route?: { path?: string; methods?: Record<string, boolean> } }>;
   };
@@ -21,6 +21,7 @@ test("every released session mutation has its public workspace route", () => {
   const base = "/workspaces/:wsId/peons/:id/sessions";
   const sessionBase = `${base}/:sid`;
   assert.equal(has(base, "post"), true);
+  assert.equal(has(sessionBase, "get"), true);
   assert.equal(has(sessionBase, "patch"), true);
   assert.equal(has(sessionBase, "delete"), true);
   assert.equal(has(`${sessionBase}/followup`, "post"), true);
@@ -35,6 +36,7 @@ test("every released session mutation has its public workspace route", () => {
 test("reverse terminal results preserve legacy session HTTP response shapes", () => {
   const itemId = "7d83d995-d4aa-46b7-93d9-a8ece76fa68d";
   const cases: Array<[ReverseCommandOperation, ReverseCommandHttpResult, number, unknown]> = [
+    ["session.detail", applied(session), 200, session],
     ["session.start", applied(session), 201, session],
     ["session.start", applied(session, true), 200, session],
     ["session.followup", applied(session), 201, session],

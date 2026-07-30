@@ -464,6 +464,7 @@ export class ReverseCommandGateway {
       "project.quick-links.create": ["title", "url"],
       "project.quick-links.update": ["id", "title", "url"],
       "project.quick-links.delete": ["id"],
+      "session.detail": [],
       "session.cancel": [],
       "session.start": ["prompt", "attachments", "permissionMode", "model", "reasoningEffort", "title", "projectId", "dir", "expectsOutcome", "agent"],
       "session.followup": ["prompt", "attachments", "permissionMode", "model", "reasoningEffort"],

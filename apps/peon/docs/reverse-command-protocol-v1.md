@@ -2,7 +2,7 @@
 
 Status: normative design contract for implementation  
 Capability: `reverse-command-v1`  
-Operations include `session.cancel`, `project.archive`, `project.unarchive`,
+Operations include `session.detail`, `session.cancel`, `project.archive`, `project.unarchive`,
 `daemon.configuration.patch`, `update.check`, and `update.apply`
 
 This document defines the common command lifecycle used when Overseer controls a Peon through

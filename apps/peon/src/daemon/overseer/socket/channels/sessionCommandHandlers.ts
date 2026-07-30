@@ -187,7 +187,7 @@ export function validSessionCommandExecution(command: ValidCommand, execution: R
       && execution.result.sessionId === sessionId
       && (execution.result.sessionStatus === "completed" || execution.result.sessionStatus === "cancelled");
   }
-  if (["session.start", "session.followup", "session.metadata.patch"].includes(command.operation)) {
+  if (["session.detail", "session.start", "session.followup", "session.metadata.patch"].includes(command.operation)) {
     return execution.status === "applied" && publicSession(execution.result, sessionId);
   }
   if (command.operation === "session.queue.list") {
@@ -231,6 +231,16 @@ export function sessionCommandHandlers(
   const sessionRequired = (payload: PeonSocketFrame, expected: PeonSocketFrame | null) =>
     expected === null ? null : "operation requires no expected state";
   return {
+    "session.detail": {
+      validate: (payload, expected) =>
+        sessionRequired(payload, expected) ?? (strict(payload, []) ? null : "session detail requires an empty payload"),
+      execute: (command) => {
+        const record = service.get(targetSession(command)!);
+        return record
+          ? publicResult(toPublicSessionRecord(record) as unknown as PeonSocketFrame)
+          : rejected("UNKNOWN_SESSION");
+      },
+    },
     "session.start": {
       validate: (payload, expected) => validateTurn(payload, expected, "start"),
       execute: (command) => safeExecute(() => {

@@ -202,7 +202,7 @@ export function validSessionCommandExecution(command, execution) {
             && execution.result.sessionId === sessionId
             && (execution.result.sessionStatus === "completed" || execution.result.sessionStatus === "cancelled");
     }
-    if (["session.start", "session.followup", "session.metadata.patch"].includes(command.operation)) {
+    if (["session.detail", "session.start", "session.followup", "session.metadata.patch"].includes(command.operation)) {
         return execution.status === "applied" && publicSession(execution.result, sessionId);
     }
     if (command.operation === "session.queue.list") {
@@ -241,6 +241,15 @@ export function validSessionCommandExecution(command, execution) {
 export function sessionCommandHandlers(service = sessions, options = {}) {
     const sessionRequired = (payload, expected) => expected === null ? null : "operation requires no expected state";
     return {
+        "session.detail": {
+            validate: (payload, expected) => sessionRequired(payload, expected) ?? (strict(payload, []) ? null : "session detail requires an empty payload"),
+            execute: (command) => {
+                const record = service.get(targetSession(command));
+                return record
+                    ? publicResult(toPublicSessionRecord(record))
+                    : rejected("UNKNOWN_SESSION");
+            },
+        },
         "session.start": {
             validate: (payload, expected) => validateTurn(payload, expected, "start"),
             execute: (command) => safeExecute(() => {

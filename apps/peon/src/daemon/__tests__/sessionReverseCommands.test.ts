@@ -20,7 +20,7 @@ const USER = "22222222-2222-4222-8222-222222222222";
 const SESSION = "33333333-3333-4333-8333-333333333333";
 const ITEM = "44444444-4444-4444-8444-444444444444";
 const SESSION_OPERATIONS = [
-  "session.start", "session.followup", "session.queue.list", "session.queue.add",
+  "session.detail", "session.start", "session.followup", "session.queue.list", "session.queue.add",
   "session.queue.edit", "session.queue.remove", "session.queue.send-now",
   "session.metadata.patch", "session.cancel", "session.delete",
 ];
@@ -115,6 +115,19 @@ test("session handlers preserve canonical actor and command identity on follow-u
   assert.equal((await handlers[queued.operation]!.execute(queued)).code, "OK");
   assert.equal(state.current()!.queuedFollowUps[0]!.author, "trusted@example.com");
   assert.equal(state.current()!.queuedFollowUps[0]!.commandId, queued.commandId);
+});
+
+test("session detail returns the public record over the negotiated channel", async () => {
+  const state = harness();
+  const handlers = sessionCommandHandlers(state.service);
+  const detail = command("session.detail");
+  assert.equal(handlers[detail.operation]!.validate(detail.payload, null, detail), null);
+  const result = await handlers[detail.operation]!.execute(detail);
+  assert.equal(result.status, "applied");
+  assert.equal(result.code, "OK");
+  assert.equal(result.result?.id, SESSION);
+  assert.equal(Object.hasOwn(result.result as object, "pendingSystemPrompts"), false);
+  assert.equal(validSessionCommandExecution(detail, result), true);
 });
 
 test("queue conflicts are session scoped and deterministic", async () => {
