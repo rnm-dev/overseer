@@ -19,6 +19,7 @@ import {
 import { ItemView, Working } from "./session/messageParts";
 import { createQueueActivityTracker, createQueueReconciler } from "./session/queue";
 import { combineVisibleTranscriptEvents } from "./session/transcriptMerge";
+import { shouldAutoLoadOlder } from "./session/transcriptPagination";
 import type { PreviewTarget } from "./session/PreviewPanel";
 import { useSessionTranscript } from "./session/useSessionTranscript";
 import { useSessionComposer } from "./session/useSessionComposer";
@@ -162,10 +163,16 @@ export function PeonSessionDetail() {
   // resurrecting the indicator we just cleared. So the refusal outranks the
   // record until the session produces live work again.
   const refutedRunRef = useRef<Set<string>>(new Set());
+  // A run this page only inferred from the transcript, with nothing having
+  // confirmed it. The inference reads "the newest event is not a result", which
+  // is also true of a turn whose process vanished, so it must never outlive the
+  // record read that was supposed to settle it.
+  const unconfirmedRunRef = useRef<Set<string>>(new Set());
   const setRunning = useCallback((next: boolean) => {
     // Only a live signal — a sent follow-up or a tail frame — turns a run back
     // on, and that is exactly what makes the Peon's record trustworthy again.
     if (next) refutedRunRef.current.delete(sessionKey);
+    unconfirmedRunRef.current.delete(sessionKey);
     runRevisionRef.current.set(sessionKey, (runRevisionRef.current.get(sessionKey) ?? 0) + 1);
     setActiveRun((previous) => ({
       sessionKey,
@@ -240,6 +247,7 @@ export function PeonSessionDetail() {
     // A transcript whose last event is a run signal describes the same stuck
     // record the Peon already refuted; it is not evidence of live work.
     if (refutedRunRef.current.has(sessionKey)) return;
+    unconfirmedRunRef.current.add(sessionKey);
     setActiveRun((previous) => ({
       sessionKey,
       running: true,
@@ -301,6 +309,7 @@ export function PeonSessionDetail() {
     onPreview,
   });
 
+  const stickToBottomRef = useRef(true);
   const prependAnchorRef = useRef<{ sessionKey: string; height: number; scrollY: number } | null>(null);
   const historySentinelRef = useRef<HTMLDivElement>(null);
   const oldestHistoryEventId = history?.[0]?.eventId;
@@ -317,17 +326,21 @@ export function PeonSessionDetail() {
     window.scrollTo({ top: anchor.scrollY + Math.max(0, addedHeight) });
     prependAnchorRef.current = null;
   }, [oldestHistoryEventId, sessionKey]);
+  // One observer for as long as there is older history: re-creating it on every
+  // load would replay an initial observation the sentinel never left, which is
+  // what turned a single approach to the top edge into a walk through the whole
+  // transcript. One entry into the zone stays one request.
   useEffect(() => {
     const sentinel = historySentinelRef.current;
-    if (!sentinel || !hasOlder || loadingOlder || typeof IntersectionObserver === "undefined") return;
+    if (!sentinel || !hasOlder || typeof IntersectionObserver === "undefined") return;
     const observer = new IntersectionObserver((entries) => {
-      if (entries.some((entry) => entry.isIntersecting)) void handleLoadOlder();
+      const intersecting = entries.some((entry) => entry.isIntersecting);
+      if (shouldAutoLoadOlder({ intersecting, pinnedToBottom: stickToBottomRef.current })) void handleLoadOlder();
     }, { rootMargin: "400px 0px 0px" });
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [handleLoadOlder, hasOlder, loadingOlder]);
+  }, [handleLoadOlder, hasOlder]);
 
-  const stickToBottomRef = useRef(true);
   const transcriptRef = useRef<HTMLDivElement>(null);
   const {
     input, setInput, files, setFiles, sending, sendError, setSendError,
@@ -397,7 +410,17 @@ export function PeonSessionDetail() {
         setSessionModel(s.model ?? null);
         setLoadedMetadataKey(sessionKey);
       })
-      .catch(() => {});
+      .catch(() => {
+        if (!alive) return;
+        // The record could not be read at all — a Peon this Overseer can no
+        // longer reach over HTTP answers nothing here. Silence is not evidence
+        // of live work, so withdraw a run only the transcript implied instead of
+        // leaving an indicator and a Stop button that can never succeed. Record
+        // the absent status too, so a snapshot landing later stays quiet.
+        metadataStatusRef.current.set(sessionKey, null);
+        if ((runRevisionRef.current.get(sessionKey) ?? 0) !== runRevision) return;
+        if (unconfirmedRunRef.current.has(sessionKey)) setRunning(false);
+      });
     return () => {
       alive = false;
     };

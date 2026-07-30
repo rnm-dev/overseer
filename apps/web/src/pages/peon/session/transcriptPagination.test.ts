@@ -4,6 +4,8 @@ import {
   mergeNewestPage,
   parseTranscriptPage,
   prependOlderPage,
+  shouldAutoLoadOlder,
+  tailResumeBoundary,
   transcriptPageUrl,
 } from "./transcriptPagination";
 import type { Ev } from "./parsing";
@@ -40,4 +42,19 @@ test("older pages prepend once and advance only to their server cursor", () => {
   assert.deepEqual(merged.events.map((event) => event.eventId), ["1", "2", "3", "4"]);
   assert.equal(merged.hasMore, false);
   assert.equal(merged.nextCursor, null);
+});
+
+test("a tail never resumes from another session's boundary", () => {
+  assert.deepEqual(tailResumeBoundary(null, "peon:a"), { subscribe: false });
+  assert.deepEqual(tailResumeBoundary({ sessionKey: "peon:a", id: "ev-9" }, "peon:b"), { subscribe: false });
+  assert.deepEqual(tailResumeBoundary({ sessionKey: "peon:a", id: "ev-9" }, "peon:a"), { subscribe: true, lastEventId: "ev-9" });
+  // A snapshot with no durable boundary still subscribes; it just cannot resume.
+  assert.deepEqual(tailResumeBoundary({ sessionKey: "peon:a", id: null }, "peon:a"), { subscribe: true, lastEventId: null });
+});
+
+test("older history is prefetched only for an operator who left the live end", () => {
+  assert.equal(shouldAutoLoadOlder({ intersecting: true, pinnedToBottom: false }), true);
+  // A transcript shorter than the window keeps the sentinel in view forever.
+  assert.equal(shouldAutoLoadOlder({ intersecting: true, pinnedToBottom: true }), false);
+  assert.equal(shouldAutoLoadOlder({ intersecting: false, pinnedToBottom: false }), false);
 });

@@ -18,7 +18,9 @@ import {
   pagesOverlap,
   parseTranscriptPage,
   prependOlderPage,
+  tailResumeBoundary,
   transcriptPageUrl,
+  type TailStart,
   type LoadedTranscript,
   type TranscriptPage,
   type TranscriptResponse,
@@ -70,9 +72,13 @@ export function useSessionTranscript({
   const [hasOlder, setHasOlder] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [olderLoadError, setOlderLoadError] = useState(false);
-  // undefined means the initial snapshot is not ready yet; null means it has no
-  // durable boundary. Waiting closes the fetch→tail race without replaying history.
-  const [tailStartId, setTailStartId] = useState<string | null | undefined>(undefined);
+  // null means the initial snapshot is not ready yet; a resolved boundary of null
+  // means the snapshot has no durable one. Waiting closes the fetch→tail race
+  // without replaying history. The boundary carries the session it was read from:
+  // `sid` changes one render before the reset effect runs, and a boundary handed
+  // to the wrong session is unknown there, which makes Overseer replay a window
+  // this session never asked for.
+  const [tailStart, setTailStart] = useState<TailStart | null>(null);
   const pendingEchoesRef = useRef<PendingEcho[]>([]);
   const historyReadyRef = useRef(false);
   const historyLengthRef = useRef(0);
@@ -259,10 +265,13 @@ export function useSessionTranscript({
     setHasOlder(false);
     setLoadingOlder(false);
     setOlderLoadError(false);
-    setTailStartId(undefined);
+    setTailStart(null);
     const ready = (page: TranscriptPage) => {
       applyAuthoritativeSnapshot(page);
-      setTailStartId(page.paginated && page.events.length ? eventId(page.events[page.events.length - 1]!) : null);
+      setTailStart({
+        sessionKey,
+        id: page.paginated && page.events.length ? eventId(page.events[page.events.length - 1]!) : null,
+      });
       historyReadyRef.current = true;
       lastTailActivityAtRef.current = Date.now();
       tailUnhealthyRef.current = false;
@@ -289,7 +298,8 @@ export function useSessionTranscript({
   }, [applyAuthoritativeSnapshot, fetchLatestTranscript, metadataStatusRef, onSnapshotRunning, openFreshPreview, pushFreshEvent, sessionKey]);
 
   useEffect(() => {
-    if (tailStartId === undefined) return;
+    const boundary = tailResumeBoundary(tailStart, sessionKey);
+    if (!boundary.subscribe) return;
     return subscribe(peonId, sid, (frame) => {
     if (frame.event === "tailEnd" || frame.event === "tailError") {
       tailUnhealthyRef.current = true;
@@ -316,8 +326,8 @@ export function useSessionTranscript({
       return;
     }
     if (pushFreshEvent(event, tailId, tailEventId)) openFreshPreview(event);
-    }, paginationSupported ? tailStartId : undefined);
-  }, [onQueueChange, openFreshPreview, paginationSupported, peonId, pushFreshEvent, sid, subscribe, tailStartId]);
+    }, paginationSupported ? boundary.lastEventId : undefined);
+  }, [onQueueChange, openFreshPreview, paginationSupported, peonId, pushFreshEvent, sessionKey, sid, subscribe, tailStart]);
 
   useEffect(() => {
     if (!running) return;

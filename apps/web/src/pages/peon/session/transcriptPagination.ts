@@ -69,6 +69,38 @@ export function pagesOverlap(events: Ev[], knownIds: Set<string>): boolean {
   });
 }
 
+export interface TailStart {
+  sessionKey: string;
+  id: string | null;
+}
+
+/**
+ * A tail resumes strictly after the bounded snapshot the page already rendered.
+ * The route can change one render before the snapshot state is reset, so the
+ * boundary carries the session it was read from: handing another session's
+ * event id to Overseer is not a resume but an unknown boundary, and Overseer
+ * answers one by replaying a window this session never asked for.
+ */
+export function tailResumeBoundary(
+  tailStart: TailStart | null,
+  sessionKey: string,
+): { subscribe: false } | { subscribe: true; lastEventId: string | null } {
+  if (!tailStart || tailStart.sessionKey !== sessionKey) return { subscribe: false };
+  return { subscribe: true, lastEventId: tailStart.id };
+}
+
+/**
+ * The "load older" sentinel sits above the first rendered row, so a transcript
+ * shorter than the window keeps it permanently in view — and every prepended
+ * page that still does not fill the window leaves it there. Prefetching then
+ * has no operator intent behind it and walks the whole history one page at a
+ * time. Auto-loading is therefore reserved for an operator who scrolled away
+ * from the live end; from the bottom, the visible button is the way further back.
+ */
+export function shouldAutoLoadOlder(input: { intersecting: boolean; pinnedToBottom: boolean }): boolean {
+  return input.intersecting && !input.pinnedToBottom;
+}
+
 export function transcriptPageUrl(base: string, sid: string, supported: boolean, cursor?: string): string {
   const path = `${base}/sessions/${encodeURIComponent(sid)}/transcript`;
   if (!supported) return path;
