@@ -157,6 +157,10 @@ const OPERATIONS = new Set<string>(REVERSE_COMMAND_OPERATIONS);
 
 export class ReverseCommandProtocolError extends Error {}
 
+// Valid acknowledgements can arrive after a command was rebound to a newer
+// socket generation. That is stale correlation noise, not a wire violation.
+export class ReverseCommandCorrelationError extends Error {}
+
 export function isCanonicalUuid(value: unknown): value is string {
   return typeof value === "string" && UUID.test(value);
 }

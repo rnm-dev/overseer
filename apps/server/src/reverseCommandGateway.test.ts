@@ -1313,3 +1313,72 @@ test("disconnect boundaries and a fresh gateway reconcile with the same command 
     await f.close();
   }
 });
+
+test("disconnect before acceptance wakes an HTTP wait as pending, not a false timeout", async () => {
+  const commandId = "558f4f0c-9f30-7a61-bf1a-66d2582bdb4a";
+  const gateway = new ReverseCommandGateway();
+  const f = await fixture(30, ["session.cancel"], { commandGateway: gateway });
+  try {
+    const submitting = gateway.submit({
+      workspaceId: f.workspaceId,
+      peonId: f.peonId,
+      auth,
+      operation: "session.cancel",
+      target: { sessionId },
+      commandId,
+      waitMs: 5_000,
+    });
+    await f.received.waitFor((frame) => frame.type === "command" && frame.commandId === commandId);
+    f.ws.close();
+
+    const result = await submitting;
+    assert.equal(result.status, 202);
+    assert.equal(result.body.code, "COMMAND_PENDING");
+    assert.equal(result.record?.state, "sent");
+    assert.equal(result.record?.lastErrorCode, "CONNECTION_LOST");
+  } finally {
+    await f.close();
+  }
+});
+
+test("an actually expired wait still returns COMMAND_TIMEOUT", async () => {
+  const commandId = "608f4f0c-9f30-7a61-bf1a-66d2582bdb4a";
+  const gateway = new ReverseCommandGateway();
+  const f = await fixture(32, ["session.cancel"], { commandGateway: gateway });
+  try {
+    const result = await gateway.submit({
+      workspaceId: f.workspaceId,
+      peonId: f.peonId,
+      auth,
+      operation: "session.cancel",
+      target: { sessionId },
+      commandId,
+      waitMs: 25,
+    });
+
+    assert.equal(result.status, 504);
+    assert.equal(result.body.code, "COMMAND_TIMEOUT");
+  } finally {
+    await f.close();
+  }
+});
+
+test("a stale correlated frame is ignored without closing the current control socket", async () => {
+  const f = await fixture(31);
+  try {
+    f.ws.send(JSON.stringify({
+      type: "command_accepted",
+      protocol: 1,
+      commandId: "658f4f0c-9f30-7a61-bf1a-66d2582bdb4a",
+      operation: "session.cancel",
+      state: "accepted",
+      replayed: true,
+      acceptedAt: Date.now(),
+    }));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    assert.equal(f.ws.readyState, WebSocket.OPEN);
+  } finally {
+    await f.close();
+  }
+});

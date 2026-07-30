@@ -33,6 +33,7 @@ import { evictPeonTransferConnectionsBelowGeneration } from "./peonTransferConne
 import {
   parseReverseCommandHello,
   REVERSE_COMMAND_CAPABILITY,
+  ReverseCommandCorrelationError,
   ReverseCommandProtocolError,
   reverseCommandGateway,
   type ReverseCommandGateway,
@@ -93,6 +94,15 @@ function transcriptFailureContext(
     eventId: typeof payload.eventId === "string" ? payload.eventId : null,
     cursor: typeof frame.cursor === "string" ? frame.cursor : null,
   };
+}
+
+function safeControlFailure(error: unknown, fallback: string): string {
+  const raw = error instanceof Error && error.message ? error.message : fallback;
+  const printable = Array.from(raw, (character) => {
+    const code = character.codePointAt(0) ?? 0;
+    return code < 0x20 || code === 0x7f ? " " : character;
+  }).join("");
+  return printable.slice(0, 300) || fallback;
 }
 
 // North-bound Peon transport. Authentication happens before the WebSocket
@@ -346,8 +356,18 @@ export function attachPeonSocket(server: Server, options: PeonSocketOptions = {}
         ws.close(1008, "unexpected Peon frame");
       }).catch((error) => {
         if (ws.readyState !== WebSocket.OPEN) return;
-        const protocolError = error instanceof SessionSyncProtocolError;
-        const reason = protocolError ? error.message : "session sync failed";
+        if (error instanceof ReverseCommandCorrelationError) {
+          console.warn(
+            `overseer: Peon socket ${record.peonId} ignored recoverable command frame: ${safeControlFailure(error, "stale command frame")}`,
+          );
+          return;
+        }
+        const protocolError = error instanceof SessionSyncProtocolError
+          || error instanceof ReverseCommandProtocolError;
+        const reason = safeControlFailure(
+          error,
+          protocolError ? "invalid control frame" : "session sync failed",
+        );
         console.warn(
           `overseer: Peon socket ${record.peonId} failed: ${reason}`,
           ...(projectionFailureContext ? [JSON.stringify(projectionFailureContext)] : []),

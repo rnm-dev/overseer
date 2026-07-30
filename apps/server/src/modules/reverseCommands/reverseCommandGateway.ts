@@ -38,6 +38,7 @@ import {
   parseReverseCommandStatus,
   REVERSE_COMMAND_CAPABILITY,
   REVERSE_COMMAND_MAX_FRAME_BYTES,
+  ReverseCommandCorrelationError,
   reverseCommandFrame,
   reverseCommandPayloadIsTransient,
   reverseCommandRequestHash,
@@ -404,7 +405,7 @@ export class ReverseCommandGateway {
         replayed: accepted.replayed,
         acceptedAt: accepted.acceptedAt,
       });
-      if (!record) throw new Error("uncorrelated reverse command acceptance");
+      if (!record) throw new ReverseCommandCorrelationError("stale reverse command acceptance");
       countReverseCommandMetric("accepted", record.operation);
       if (accepted.replayed) countReverseCommandMetric("replayed", record.operation);
       this.notify(record);
@@ -414,7 +415,7 @@ export class ReverseCommandGateway {
     const status = parseReverseCommandStatus(frame);
     const existing = await getReverseCommand(workspaceId, peonId, status.commandId);
     if (!existing || existing.peonId !== peonId || existing.connectionGeneration !== generation) {
-      throw new Error("uncorrelated reverse command status");
+      throw new ReverseCommandCorrelationError("stale reverse command status");
     }
     let record: ReverseCommandRecord | null;
     if (status.state === "terminal") {
@@ -865,7 +866,7 @@ export class ReverseCommandGateway {
     const current = await getReverseCommand(initial.workspaceId, initial.peonId, initial.commandId);
     if (!current) throw new ReverseCommandGatewayError(500, "INTERNAL", "reverse command disappeared");
     if (expired) this.requestStatusAfterTimeout(current);
-    const timedOut = current.state === "created" || current.state === "sent";
+    const timedOut = expired && (current.state === "created" || current.state === "sent");
     if (timedOut) countReverseCommandMetric("timeout", current.operation, "COMMAND_TIMEOUT");
     return reverseCommandHttpResult(current, timedOut);
   }
