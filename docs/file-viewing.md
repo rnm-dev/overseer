@@ -61,6 +61,15 @@ migration is partly done, and the split today is:
 | Project file metadata (`?stat=1`) | HTTP proxy only | retains `sha256`; never probes the folder socket first |
 | Attachment / sandbox file read | socket, `sandbox-file-read-v1`; HTTP fallback for an older Peon | — |
 | Attachment upload, project file `PUT`/`PATCH` | socket, `file-write-v1`; HTTP fallback for an older Peon | — |
+| Session artifact/download/preview bytes | socket, `session-artifact-v1`; HTTP fallback for an older Peon | advanced live-preview revision leases remain separate |
+
+`session-artifact-v1` addresses the authoritative session ID plus a contained
+path and reuses the project reader's metadata-first result, Range, byte credit,
+cancellation, timeout, reconnect fencing and request tombstones. It also carries
+tokenized HTML preview assets, so a reverse-capable Peon needs no inbound
+callback for base previews. Legacy transcript events may still name an absolute
+path; Peon treats it only as containment input and does not publish it as new
+wire metadata.
 
 `projectFileReadChannel`, `projectFileWriteChannel`,
 `sandboxFileWriteChannel`, and `projectFolderReadChannel`

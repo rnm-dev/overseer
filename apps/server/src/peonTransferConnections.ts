@@ -10,6 +10,7 @@ const credentialGenerations = new WeakMap<WebSocket, number>();
 export const PROJECT_FILE_READ_CAPABILITY = "project-file-read-v1";
 export const SANDBOX_FILE_READ_CAPABILITY = "sandbox-file-read-v1";
 export const FILE_WRITE_CAPABILITY = "file-write-v1";
+export const SESSION_ARTIFACT_CAPABILITY = "session-artifact-v1";
 
 export interface PeonTransferConnectionClaim {
   accepted: boolean;
@@ -67,6 +68,10 @@ export function hasSandboxFileTransport(peonId: string): boolean {
 
 export function hasFileWriteTransport(peonId: string): boolean {
   return !!getPeonTransferConnection(peonId, FILE_WRITE_CAPABILITY);
+}
+
+export function hasSessionArtifactTransport(peonId: string): boolean {
+  return !!getPeonTransferConnection(peonId, SESSION_ARTIFACT_CAPABILITY);
 }
 
 export function evictPeonTransferConnection(peonId: string): boolean {

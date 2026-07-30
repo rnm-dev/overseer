@@ -19,10 +19,11 @@ import { SessionCatalogChannel } from "./channels/sessionCatalogChannel.js";
 import { SessionWarningChannel } from "./channels/sessionWarningChannel.js";
 import { ProjectCatalogChannel } from "./channels/projectCatalogChannel.js";
 import { FolderListingChannel } from "./channels/folderListingChannel.js";
-import { ProjectFileReadChannel, SandboxFileReadChannel } from "./channels/projectFileReadChannel.js";
+import { ProjectFileReadChannel, SandboxFileReadChannel, SessionArtifactReadChannel } from "./channels/projectFileReadChannel.js";
 import { ReverseCommandChannel } from "./channels/reverseCommandChannel.js";
 import { TranscriptChannel } from "./channels/transcriptChannel.js";
 import { FileWriteChannel } from "./channels/fileWriteChannel.js";
+import { SessionArtifactChannel } from "./channels/sessionArtifactChannel.js";
 import { settings, type PeonSocketSettings } from "../../settings/index.js";
 import { peonClaimClient } from "../../enrollment/index.js";
 import { daemonConfigurationChannel } from "./channels/daemonConfigurationChannel.js";
@@ -186,6 +187,8 @@ export class PeonSocketSupervisor {
       : [
           new ProjectFileReadChannel(),
           new SandboxFileReadChannel({ sandboxRoot: () => settings.get().fileTransferRoot }),
+          new SessionArtifactReadChannel(),
+          new SessionArtifactChannel(),
           new FileWriteChannel({ sandboxRoot: () => settings.get().fileTransferRoot }),
         ];
     this.multiplexer = new PeonSocketMultiplexer(options.channels ?? defaultChannels);

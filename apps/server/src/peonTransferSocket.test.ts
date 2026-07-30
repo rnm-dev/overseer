@@ -11,7 +11,7 @@ import { attachPeonSocket } from "./peonSocket.js";
 import { evictPeonTransferConnectionsBelowGeneration, isPeonTransferConnected } from "./peonTransferConnections.js";
 import { attachPeonTransferSocket, PEON_TRANSFER_SOCKET_PATH } from "./peonTransferSocket.js";
 import { registry, toView, type PeonRecord } from "./registry.js";
-import { encodePeonFileChunk, openPeonProjectFile, openPeonSandboxFile, PeonFileStreamError } from "./peonFileStream.js";
+import { encodePeonFileChunk, openPeonProjectFile, openPeonSandboxFile, openPeonSessionArtifact, PeonFileStreamError, requestPeonSessionArtifact } from "./peonFileStream.js";
 import { PATH_ESCAPE_PUBLIC_MESSAGE } from "./fileErrorSafety.js";
 import { peonsRouter } from "./routes/peons.js";
 import {
@@ -282,6 +282,88 @@ test("sandbox file service negotiates separately and sends absolute or relative 
     && error.message === PATH_ESCAPE_PUBLIC_MESSAGE
     && !error.message.includes(sentinelRoot)
     && !error.message.includes(sentinelPath));
+
+  ws.close();
+  await closed(ws);
+  await new Promise<void>((resolve) => transferWss.close(() => resolve()));
+  await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+});
+
+test("session artifact service routes stable session identity and contained path over transfer", async () => {
+  const { record, token } = await fixture("session-artifact-stream");
+  const server = http.createServer();
+  const transferWss = attachPeonTransferSocket(server);
+  const port = await listen(server);
+  const ws = await open(`ws://127.0.0.1:${port}${PEON_TRANSFER_SOCKET_PATH}`, token);
+  await transferHello(ws, record.peonId, ["session-artifact-v1"]);
+
+  const openFramePromise = message(ws);
+  const openedPromise = openPeonSessionArtifact({
+    peonId: record.peonId,
+    sessionId: "session-1",
+    path: "dist/report.pdf",
+    actor: { userId: "operator-id", email: "operator@example.com" },
+  });
+  const openFrame = await openFramePromise;
+  assert.equal(openFrame.type, "file_open");
+  assert.equal(openFrame.scope, "session");
+  assert.equal(openFrame.sessionId, "session-1");
+  assert.equal(openFrame.path, "dist/report.pdf");
+  const requestId = String(openFrame.requestId);
+
+  const creditPromise = message(ws);
+  ws.send(JSON.stringify({
+    type: "file_meta", requestId, status: 200, contentType: "application/pdf",
+    contentLength: 3, acceptRanges: "bytes",
+  }));
+  const opened = await openedPromise;
+  assert.equal(opened.contentType, "application/pdf");
+  assert.deepEqual(await creditPromise, { type: "file_credit", requestId, bytes: 262_144 });
+  ws.send(encodePeonFileChunk(requestId, 0, Buffer.from("pdf")));
+  ws.send(JSON.stringify({ type: "file_end", requestId }));
+  const chunks: Buffer[] = [];
+  for await (const chunk of opened.stream) chunks.push(Buffer.from(chunk));
+  assert.equal(Buffer.concat(chunks).toString(), "pdf");
+
+  ws.close();
+  await closed(ws);
+  await new Promise<void>((resolve) => transferWss.close(() => resolve()));
+  await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+});
+
+test("session artifact metadata and preview handoff stay correlated on transfer", async () => {
+  const { record, token } = await fixture("session-artifact-operation");
+  const server = http.createServer();
+  const transferWss = attachPeonTransferSocket(server);
+  const port = await listen(server);
+  const ws = await open(`ws://127.0.0.1:${port}${PEON_TRANSFER_SOCKET_PATH}`, token);
+  await transferHello(ws, record.peonId, ["session-artifact-v1"]);
+
+  const requestFramePromise = message(ws);
+  const resultPromise = requestPeonSessionArtifact({
+    peonId: record.peonId,
+    sessionId: "session-1",
+    operation: "preview",
+    path: "dist/report.pdf",
+    actor: { userId: "operator-id", email: "operator@example.com" },
+  });
+  const requestFrame = await requestFramePromise;
+  assert.equal(requestFrame.type, "artifact_request");
+  assert.equal(requestFrame.sessionId, "session-1");
+  assert.equal(requestFrame.operation, "preview");
+  assert.equal(requestFrame.path, "dist/report.pdf");
+  ws.send(JSON.stringify({
+    type: "artifact_result",
+    requestId: requestFrame.requestId,
+    status: 201,
+    code: "OK",
+    message: null,
+    body: { event: { type: "preview", name: "report.pdf" } },
+  }));
+  assert.deepEqual(await resultPromise, {
+    status: 201,
+    body: { event: { type: "preview", name: "report.pdf" } },
+  });
 
   ws.close();
   await closed(ws);

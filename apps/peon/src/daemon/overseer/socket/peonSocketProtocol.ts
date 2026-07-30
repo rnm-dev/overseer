@@ -47,11 +47,12 @@ export class PeonSocketMultiplexer {
 
   hello(protocol: number, identity: PeonSocketFrame = {}): PeonSocketFrame {
     if (this.channels.length === 0) return { type: "hello", protocol, ...identity };
+    const capabilities = [...new Set(this.channels.map((channel) => channel.capability))];
     return {
       type: "hello",
       protocol,
       ...identity,
-      capabilities: this.channels.map((channel) => channel.capability),
+      capabilities,
       channels: Object.fromEntries(this.channels.map((channel) => [channel.capability, channel.helloState()])),
     };
   }

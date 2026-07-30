@@ -73,6 +73,14 @@ transcripts.
 
 Every file the web client shows — a message attachment, a project file, a documentation page, a session artifact — is named by one `FileSource` (`apps/web/src/pages/peon/fileLinks.ts`) and read by one reader/renderer (`apps/web/src/pages/peon/FileView.tsx`); a surface contributes only its chrome. Message attachments have their own route, `GET /api/workspaces/:wsId/peons/:id/attachments?path=`, because a transcript names an attachment by the Peon's *absolute* path while `/files/...` is relative to `fileTransferRoot` — Overseer maps one to the other in `apps/server/src/peonFileSandbox.ts` and answers `400 PATH_ESCAPE` / `503 FILES_DISABLED` with a sentence the viewer shows. Details, including why the path travels as a query parameter, are in [showing a file](file-viewing.md). File traffic is moving off the Peon's HTTP API: project file bodies take `project-file-read-v1` on the transfer socket, project directory listings take project-scoped `folder-listing-v1` on the control socket, attachment reads take `sandbox-file-read-v1`, and attachment/project uploads plus scoped project rename take `file-write-v1`. Every operation keeps an exclusive HTTP fallback only for an older Peon that did not negotiate its capability; a selected socket failure never retries the mutation over HTTP.
 
+Session artifacts and base previews take `session-artifact-v1` on that same
+outbound transfer socket: authoritative session ID plus a contained path for
+metadata, Range/download bytes, preview handoff and debounced refresh watches.
+They reuse the file reader's credit, backpressure, cancellation, tombstone and
+generation fencing, so a negotiated Peon needs no inbound callback for these
+flows. Advanced push-on-change preview leases and atomic multi-asset revisions
+remain outside this base capability.
+
 An iOS Live Activity server surface shipped on 2026-07-27 (`/api/push/live-activities*`, tables `live_activity_tokens` and `live_activity_claims`): one aggregate per operator per device connection, keyed by (user, device, connection). Registration takes a `connectionId` and never a `workspaceId`/`peonId`/`sessionId`, and the content state is `runningCount`/`completedCount`/`oldestStartedAt`/`updatedAt` — the contract is in [push notifications](push-notifications.md#ios-live-activities), and `apps/server/src/liveActivity.test.ts` holds start/update/end to it. It is dormant in production until an iOS client registers ActivityKit tokens — no tokens, no pushes, and behaviour on a real handset is still unverified.
 
 A separate product — the instructions site — lives in `site/` (Vite + Tailwind v4 + Motion/Lenis), runs on 127.0.0.1:4582, is published for dev at https://dev.ovrseer.org and is destined for Cloudflare Pages — see [instructions site](static-site.md). It is not under version control at all yet; OVSR-237 gives it a repository and detaches it from this tree, and it does not join the monorepo.

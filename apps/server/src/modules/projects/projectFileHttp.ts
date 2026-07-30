@@ -2,7 +2,7 @@ import type { Request, Response } from "express";
 import path from "node:path";
 import { pipeline } from "node:stream/promises";
 import { auditSafeFileErrorBody } from "../../fileErrorSafety.js";
-import { openPeonProjectFile, openPeonSandboxFile, PeonFileStreamError, type ProjectFileRange } from "../../peonFileStream.js";
+import { openPeonProjectFile, openPeonSandboxFile, openPeonSessionArtifact, PeonFileStreamError, type ProjectFileRange } from "../../peonFileStream.js";
 
 export const PROJECT_FILE_CSP = "sandbox allow-scripts allow-forms allow-modals allow-downloads";
 
@@ -54,6 +54,22 @@ export function projectFileContentType(relativePath: string, upstreamType: strin
   const inferred = INLINE_MIME_BY_EXTENSION[path.posix.extname(relativePath).toLowerCase()];
   const generic = upstreamType.split(";", 1)[0]?.trim().toLowerCase() === "application/octet-stream";
   return inferred && generic ? inferred : upstreamType;
+}
+
+const SESSION_ARTIFACT_INLINE_MIME_BY_EXTENSION: Record<string, string> = {
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+  ".bmp": "image/bmp",
+  ".ico": "image/x-icon",
+  ".pdf": "application/pdf",
+};
+
+export function sessionArtifactContentType(filePath: string): string {
+  return SESSION_ARTIFACT_INLINE_MIME_BY_EXTENSION[path.posix.extname(filePath).toLowerCase()]
+    ?? "application/octet-stream";
 }
 
 export function isolateProjectFileResponse(res: Pick<Response, "setHeader">): void {
@@ -124,6 +140,7 @@ interface StreamFileResponseInput {
   res: Response;
   displayPath: string;
   failureMessage: string;
+  contentType?: string;
   open(signal: AbortSignal): ReturnType<typeof openPeonProjectFile>;
 }
 
@@ -136,7 +153,7 @@ async function streamFileResponse(input: StreamFileResponseInput): Promise<void>
     const file = await input.open(controller.signal);
     isolateProjectFileResponse(res);
     res.status(file.status);
-    res.setHeader("Content-Type", projectFileContentType(input.displayPath, file.contentType));
+    res.setHeader("Content-Type", input.contentType ?? projectFileContentType(input.displayPath, file.contentType));
     res.setHeader("Content-Disposition", "inline");
     res.setHeader("Content-Length", String(file.contentLength));
     if (file.contentRange) res.setHeader("Content-Range", file.contentRange);
@@ -199,5 +216,30 @@ export async function streamSandboxFileResponse(input: {
       range: requestedProjectFileRange(typeof input.req.headers.range === "string" ? input.req.headers.range : undefined),
       signal,
     }),
+  });
+}
+
+export async function streamSessionArtifactResponse(input: {
+  req: Request;
+  res: Response;
+  peonId: string;
+  sessionId: string;
+  path: string;
+  actor: { userId: string; email: string };
+}): Promise<void> {
+  return streamFileResponse({
+    req: input.req,
+    res: input.res,
+    displayPath: input.path,
+    failureMessage: "session artifact stream failed",
+    open: (signal) => openPeonSessionArtifact({
+      peonId: input.peonId,
+      sessionId: input.sessionId,
+      path: input.path,
+      actor: input.actor,
+      range: requestedProjectFileRange(typeof input.req.headers.range === "string" ? input.req.headers.range : undefined),
+      signal,
+    }),
+    contentType: sessionArtifactContentType(input.path),
   });
 }

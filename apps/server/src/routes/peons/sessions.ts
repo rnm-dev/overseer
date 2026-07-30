@@ -27,6 +27,9 @@ import {
   hasReverseTranscriptConnection,
 } from "../../peonTranscriptSync.js";
 import type { Role } from "../../workspaces.js";
+import { hasSessionArtifactTransport } from "../../peonTransferConnections.js";
+import { streamSessionArtifactResponse } from "../../modules/projects/index.js";
+import { PeonFileStreamError, requestPeonSessionArtifact, watchPeonSessionArtifact } from "../../peonFileStream.js";
 
 function acceptedSessionId(result: { ok: boolean; json: unknown }): string | null {
   if (!result.ok || !result.json || typeof result.json !== "object") return null;
@@ -395,17 +398,90 @@ export function registerSessionRoutes(router: express.Router): void {
   // may be absolute and Peon owns all path/session validation.
   router.get(`${wp}/sessions/:sid/file`, withWorkspaceSession(async (req, res, c) => {
     const path = typeof req.query.path === "string" ? req.query.path : "";
+    if (hasSessionArtifactTransport(c.record.peonId)) {
+      try {
+        const result = await requestPeonSessionArtifact({
+          peonId: c.record.peonId,
+          sessionId: String(req.params.sid),
+          operation: "view",
+          path,
+          actor: { userId: c.userId, email: c.operator.email },
+        });
+        return res.status(result.status).json(result.body);
+      } catch (error) {
+        const typed = error instanceof PeonFileStreamError
+          ? error
+          : new PeonFileStreamError("PEON_ARTIFACT_ERROR", "session artifact operation failed", 502);
+        return res.status(typed.status).json({ error: typed.message, code: typed.code });
+      }
+    }
     relay(await callPeon(connOfRecord(c.record), "GET", `/sessions/${encodeURIComponent(String(req.params.sid))}/file?path=${encodeURIComponent(path)}`, { actor: c.operator.email }), res);
   }));
   router.get(`${wp}/sessions/:sid/file/raw`, withWorkspaceSession((req, res, c) => {
     const path = typeof req.query.path === "string" ? req.query.path : "";
+    if (hasSessionArtifactTransport(c.record.peonId)) {
+      return streamSessionArtifactResponse({
+        req,
+        res,
+        peonId: c.record.peonId,
+        sessionId: String(req.params.sid),
+        path,
+        actor: { userId: c.userId, email: c.operator.email },
+      });
+    }
     proxyGet(connOfRecord(c.record), `/sessions/${encodeURIComponent(String(req.params.sid))}/file/raw?path=${encodeURIComponent(path)}`, req, res, c.operator.email);
   }));
   router.get(`${wp}/sessions/:sid/file/stream`, withWorkspaceSession((req, res, c) => {
     const path = typeof req.query.path === "string" ? req.query.path : "";
+    if (hasSessionArtifactTransport(c.record.peonId)) {
+      res.writeHead(200, {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+      });
+      let release: (() => void) | null = null;
+      try {
+        release = watchPeonSessionArtifact({
+          peonId: c.record.peonId,
+          sessionId: String(req.params.sid),
+          path,
+          actor: { userId: c.userId, email: c.operator.email },
+          onChange: (changed) => res.write(`event: changed\ndata: ${JSON.stringify({ path: changed })}\n\n`),
+          onError: (error) => {
+            if (!res.destroyed) {
+              res.write(`event: failed\ndata: ${JSON.stringify({ error: error.message, code: error.code })}\n\n`);
+              res.end();
+            }
+          },
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "artifact watch failed";
+        res.write(`event: failed\ndata: ${JSON.stringify({ error: message })}\n\n`);
+        res.end();
+      }
+      req.once("close", () => release?.());
+      return;
+    }
     proxyStream(connOfRecord(c.record), `/sessions/${encodeURIComponent(String(req.params.sid))}/file/stream?path=${encodeURIComponent(path)}`, res, c.operator.email);
   }));
   router.post(`${wp}/sessions/:sid/preview`, withWorkspaceSession(async (req, res, c) => {
+    if (hasSessionArtifactTransport(c.record.peonId)) {
+      try {
+        const result = await requestPeonSessionArtifact({
+          peonId: c.record.peonId,
+          sessionId: String(req.params.sid),
+          operation: "preview",
+          path: typeof req.body?.path === "string" ? req.body.path : "",
+          actor: { userId: c.userId, email: c.operator.email },
+        });
+        return res.status(result.status).json(result.body);
+      } catch (error) {
+        const typed = error instanceof PeonFileStreamError
+          ? error
+          : new PeonFileStreamError("PEON_ARTIFACT_ERROR", "session preview handoff failed", 502);
+        return res.status(typed.status).json({ error: typed.message, code: typed.code });
+      }
+    }
     // callPeon maps the signed-in operator to Peon-Actor. The Peon persists and
     // broadcasts the returned normalized preview event.
     relay(await callPeon(connOfRecord(c.record), "POST", `/sessions/${encodeURIComponent(String(req.params.sid))}/preview`, { actor: c.operator.email, body: req.body }), res);
@@ -419,6 +495,7 @@ export function registerSessionRoutes(router: express.Router): void {
         sessionId: String(req.params.sid),
         htmlPath,
         actor: c.operator.email,
+        userId: c.userId,
       }));
     } catch (err) {
       res.status(400).json({ error: err instanceof Error ? err.message : "invalid HTML preview path", code: "BAD_PREVIEW_PATH" });

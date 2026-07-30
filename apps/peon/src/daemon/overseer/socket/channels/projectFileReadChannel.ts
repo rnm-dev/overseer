@@ -4,9 +4,11 @@ import type { FileHandle } from "node:fs/promises";
 import type { PeonSocketChannel, PeonSocketFrame, PeonSocketSender } from "../peonSocketProtocol.js";
 import { projectStore, type ProjectRecord } from "../../../projects/index.js";
 import { resolveWithinDir } from "../../../files/index.js";
+import { sessions, type SessionRecord } from "../../../sessions/index.js";
 
 export const PROJECT_FILE_READ_CAPABILITY = "project-file-read-v1";
 export const SANDBOX_FILE_READ_CAPABILITY = "sandbox-file-read-v1";
+export const SESSION_ARTIFACT_CAPABILITY = "session-artifact-v1";
 export const PROJECT_FILE_BINARY_HEADER_BYTES = 22;
 export const PROJECT_FILE_MAX_CHUNK_BYTES = 64 * 1024 - PROJECT_FILE_BINARY_HEADER_BYTES;
 export const PROJECT_FILE_MAX_ACTIVE = 32;
@@ -44,11 +46,13 @@ const MIME_BY_EXTENSION: Record<string, string> = {
 };
 
 interface ProjectLookup { list(): ProjectRecord[] }
+interface SessionLookup { get(id: string): SessionRecord | undefined }
 
 interface FileRange { start: number; end?: number }
 
 interface ActiveRead {
   requestId: string;
+  resourceId: string | null;
   sender: PeonSocketSender;
   handle: FileHandle | null;
   phase: "opening" | "streaming" | "ending";
@@ -70,8 +74,9 @@ interface ProjectFileReadOptions {
   idleLeaseMs?: number;
   fileSystem?: Pick<typeof fs, "open" | "stat">;
   resolvePath?: typeof resolveWithinDir;
-  capability?: typeof PROJECT_FILE_READ_CAPABILITY | typeof SANDBOX_FILE_READ_CAPABILITY;
+  capability?: typeof PROJECT_FILE_READ_CAPABILITY | typeof SANDBOX_FILE_READ_CAPABILITY | typeof SESSION_ARTIFACT_CAPABILITY;
   sandboxRoot?: () => string;
+  sessions?: SessionLookup;
 }
 
 class ProjectFileError extends Error {
@@ -143,13 +148,14 @@ function encodeChunk(requestId: string, sequence: number, data: Uint8Array): Buf
 }
 
 export class ProjectFileReadChannel implements PeonSocketChannel {
-  readonly capability: typeof PROJECT_FILE_READ_CAPABILITY | typeof SANDBOX_FILE_READ_CAPABILITY;
+  readonly capability: typeof PROJECT_FILE_READ_CAPABILITY | typeof SANDBOX_FILE_READ_CAPABILITY | typeof SESSION_ARTIFACT_CAPABILITY;
   private readonly projects: ProjectLookup;
   private readonly maxActive: number;
   private readonly idleLeaseMs: number;
   private readonly fileSystem: Pick<typeof fs, "open" | "stat">;
   private readonly resolvePath: typeof resolveWithinDir;
   private readonly sandboxRoot: (() => string) | null;
+  private readonly sessions: SessionLookup | null;
   private accepted = false;
   private readonly active = new Map<string, ActiveRead>();
   private readonly recentlyClosed = new Map<string, number>();
@@ -162,6 +168,7 @@ export class ProjectFileReadChannel implements PeonSocketChannel {
     this.resolvePath = options.resolvePath ?? resolveWithinDir;
     this.capability = options.capability ?? PROJECT_FILE_READ_CAPABILITY;
     this.sandboxRoot = options.sandboxRoot ?? null;
+    this.sessions = options.sessions ?? null;
   }
 
   helloState(): PeonSocketFrame { return {}; }
@@ -181,6 +188,7 @@ export class ProjectFileReadChannel implements PeonSocketChannel {
   handles(frame: PeonSocketFrame): boolean {
     if (typeof frame.type !== "string" || !FRAME_TYPES.has(frame.type)) return false;
     if (frame.type === "file_open") {
+      if (this.sessions) return frame.scope === "session";
       return this.sandboxRoot ? frame.scope === "sandbox" : frame.scope === undefined || frame.scope === "project";
     }
     const requestId = typeof frame.requestId === "string" ? frame.requestId : "";
@@ -224,47 +232,61 @@ export class ProjectFileReadChannel implements PeonSocketChannel {
     if (this.active.has(requestId)) return this.error(sender, requestId, 409, "DUPLICATE_REQUEST", "file request is already active");
     if (this.active.size >= this.maxActive) return this.error(sender, requestId, 429, "TRANSFER_BUSY", "too many active file reads");
 
-    let projectId: string | null = null;
+    let resourceId: string | null = null;
     let filePath: string;
     let range: FileRange | null;
     try {
-      if (this.sandboxRoot) {
+      if (this.sessions) {
+        resourceId = stringField(frame, "sessionId", 512);
+        if (!resourceId || resourceId.includes("\0")) throw new ProjectFileError(400, "INVALID_SESSION_ID", "a valid session ID is required");
+        filePath = stringField(frame, "path", 4096) ?? "";
+        if (!filePath || filePath.includes("\0") || filePath.includes("\\")
+          || filePath.split("/").some((part) => part === "..")) {
+          throw new ProjectFileError(400, "INVALID_PATH", "a contained session artifact path is required");
+        }
+      } else if (this.sandboxRoot) {
         const value = stringField(frame, "path", 4096);
         if (!value || value.includes("\0")) {
           throw new ProjectFileError(400, "INVALID_PATH", "a non-empty sandbox file path is required");
         }
         filePath = value;
       } else {
-        projectId = stringField(frame, "projectId", 512);
-        if (!projectId || projectId.includes("\0")) throw new ProjectFileError(400, "INVALID_PROJECT_ID", "a valid project ID is required");
+        resourceId = stringField(frame, "projectId", 512);
+        if (!resourceId || resourceId.includes("\0")) throw new ProjectFileError(400, "INVALID_PROJECT_ID", "a valid project ID is required");
         filePath = relativeFilePath(frame);
       }
       range = requestedRange(frame.range);
       validateActor(frame.actor);
+      if (this.sessions && [...this.active.values()].filter((item) => item.resourceId === resourceId).length >= 8) {
+        throw new ProjectFileError(429, "TRANSFER_BUSY", "too many active reads for this session");
+      }
     } catch (error) {
       const failure = filesystemError(error);
       return this.error(sender, requestId, failure.status, failure.code, failure.message);
     }
 
     const active: ActiveRead = {
-      requestId, sender, handle: null, phase: "opening", offset: 0, remaining: 0,
+      requestId, resourceId, sender, handle: null, phase: "opening", offset: 0, remaining: 0,
       credit: 0, sequence: 0, pendingFrame: null, pumping: false, retry: null,
       retryDelayMs: RETRY_DELAY_MS, lease: null, cancelled: false,
     };
     this.active.set(requestId, active);
     active.lease = this.createLease(active);
-    void this.open(active, projectId, filePath, range);
+    void this.open(active, resourceId, filePath, range);
   }
 
-  private async open(active: ActiveRead, projectId: string | null, filePath: string, range: FileRange | null): Promise<void> {
+  private async open(active: ActiveRead, resourceId: string | null, filePath: string, range: FileRange | null): Promise<void> {
     try {
       const root = this.sandboxRoot ? this.sandboxRoot().trim() : "";
-      const project = this.sandboxRoot ? null : this.projects.list().find((candidate) => candidate.projectId === projectId);
-      if (!this.sandboxRoot && !project) throw new ProjectFileError(404, "UNKNOWN_PROJECT", "unknown project");
+      const session = this.sessions ? this.sessions.get(resourceId ?? "") : null;
+      const project = this.sandboxRoot || this.sessions ? null : this.projects.list().find((candidate) => candidate.projectId === resourceId);
+      if (this.sessions && !session) throw new ProjectFileError(404, "UNKNOWN_SESSION", "unknown session");
+      if (!this.sandboxRoot && !this.sessions && !project) throw new ProjectFileError(404, "UNKNOWN_PROJECT", "unknown project");
       if (this.sandboxRoot && !root) throw new ProjectFileError(503, "FILES_DISABLED", "file transfer is disabled — set fileTransferRoot to enable it");
-      const base = project?.dir ?? root;
+      const base = session?.dir ?? project?.dir ?? root;
       const absolute = this.resolvePath(base, filePath);
-      if (!absolute) throw new ProjectFileError(400, "PATH_ESCAPE", `file path escapes the ${this.sandboxRoot ? "file transfer root" : "project root"}`);
+      const scopeName = this.sessions ? "session root" : this.sandboxRoot ? "file transfer root" : "project root";
+      if (!absolute) throw new ProjectFileError(400, "PATH_ESCAPE", `file path escapes the ${scopeName}`);
       // A blocking read-only open can wait forever on a contained FIFO before
       // we get a handle to classify it. Nonblocking has no effect on regular
       // files and lets the post-open fstat reject every special file promptly.
@@ -280,7 +302,7 @@ export class ProjectFileReadChannel implements PeonSocketChannel {
       // target so a concurrent directory/symlink swap cannot redirect the
       // stream outside the project root.
       const revalidated = this.resolvePath(base, filePath);
-      if (!revalidated) throw new ProjectFileError(400, "PATH_ESCAPE", `file path escapes the ${this.sandboxRoot ? "file transfer root" : "project root"}`);
+      if (!revalidated) throw new ProjectFileError(400, "PATH_ESCAPE", `file path escapes the ${scopeName}`);
       const targetStat = await this.fileSystem.stat(revalidated);
       if (targetStat.dev !== stat.dev || targetStat.ino !== stat.ino) {
         throw new ProjectFileError(409, "FILE_CHANGED", "file changed while it was being opened");
@@ -445,5 +467,11 @@ export class ProjectFileReadChannel implements PeonSocketChannel {
 export class SandboxFileReadChannel extends ProjectFileReadChannel {
   constructor(options: Omit<ProjectFileReadOptions, "capability"> & { sandboxRoot: () => string }) {
     super({ ...options, capability: SANDBOX_FILE_READ_CAPABILITY });
+  }
+}
+
+export class SessionArtifactReadChannel extends ProjectFileReadChannel {
+  constructor(options: Omit<ProjectFileReadOptions, "capability" | "sessions"> & { sessions?: SessionLookup } = {}) {
+    super({ ...options, capability: SESSION_ARTIFACT_CAPABILITY, sessions: options.sessions ?? sessions });
   }
 }

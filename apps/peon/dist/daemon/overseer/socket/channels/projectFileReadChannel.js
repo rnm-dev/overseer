@@ -2,8 +2,10 @@ import { constants as fsConstants, promises as fs } from "node:fs";
 import path from "node:path";
 import { projectStore } from "../../../projects/index.js";
 import { resolveWithinDir } from "../../../files/index.js";
+import { sessions } from "../../../sessions/index.js";
 export const PROJECT_FILE_READ_CAPABILITY = "project-file-read-v1";
 export const SANDBOX_FILE_READ_CAPABILITY = "sandbox-file-read-v1";
+export const SESSION_ARTIFACT_CAPABILITY = "session-artifact-v1";
 export const PROJECT_FILE_BINARY_HEADER_BYTES = 22;
 export const PROJECT_FILE_MAX_CHUNK_BYTES = 64 * 1024 - PROJECT_FILE_BINARY_HEADER_BYTES;
 export const PROJECT_FILE_MAX_ACTIVE = 32;
@@ -92,10 +94,10 @@ function filesystemError(error) {
         return new ProjectFileError(403, "FORBIDDEN", "file is not readable");
     if (code === "EISDIR")
         return new ProjectFileError(400, "IS_DIRECTORY", "path is a directory");
-    if (code === "ENOTDIR" || code === "ELOOP" || code === "EINVAL")
-        return new ProjectFileError(400, "INVALID_PROJECT_PATH", "project file path is invalid");
     if (code === "ENXIO" || code === "ENODEV")
         return new ProjectFileError(400, "NOT_FILE", "path is not a regular file");
+    if (code === "ENOTDIR" || code === "ELOOP" || code === "EINVAL")
+        return new ProjectFileError(400, "INVALID_PROJECT_PATH", "project file path is invalid");
     return new ProjectFileError(500, "INTERNAL", "failed to read project file");
 }
 function etag(stat) {
@@ -118,6 +120,7 @@ export class ProjectFileReadChannel {
     fileSystem;
     resolvePath;
     sandboxRoot;
+    sessions;
     accepted = false;
     active = new Map();
     recentlyClosed = new Map();
@@ -129,6 +132,7 @@ export class ProjectFileReadChannel {
         this.resolvePath = options.resolvePath ?? resolveWithinDir;
         this.capability = options.capability ?? PROJECT_FILE_READ_CAPABILITY;
         this.sandboxRoot = options.sandboxRoot ?? null;
+        this.sessions = options.sessions ?? null;
     }
     helloState() { return {}; }
     started(_sender) { }
@@ -146,6 +150,8 @@ export class ProjectFileReadChannel {
         if (typeof frame.type !== "string" || !FRAME_TYPES.has(frame.type))
             return false;
         if (frame.type === "file_open") {
+            if (this.sessions)
+                return frame.scope === "session";
             return this.sandboxRoot ? frame.scope === "sandbox" : frame.scope === undefined || frame.scope === "project";
         }
         const requestId = typeof frame.requestId === "string" ? frame.requestId : "";
@@ -192,11 +198,21 @@ export class ProjectFileReadChannel {
             return this.error(sender, requestId, 409, "DUPLICATE_REQUEST", "file request is already active");
         if (this.active.size >= this.maxActive)
             return this.error(sender, requestId, 429, "TRANSFER_BUSY", "too many active file reads");
-        let projectId = null;
+        let resourceId = null;
         let filePath;
         let range;
         try {
-            if (this.sandboxRoot) {
+            if (this.sessions) {
+                resourceId = stringField(frame, "sessionId", 512);
+                if (!resourceId || resourceId.includes("\0"))
+                    throw new ProjectFileError(400, "INVALID_SESSION_ID", "a valid session ID is required");
+                filePath = stringField(frame, "path", 4096) ?? "";
+                if (!filePath || filePath.includes("\0") || filePath.includes("\\")
+                    || filePath.split("/").some((part) => part === "..")) {
+                    throw new ProjectFileError(400, "INVALID_PATH", "a contained session artifact path is required");
+                }
+            }
+            else if (this.sandboxRoot) {
                 const value = stringField(frame, "path", 4096);
                 if (!value || value.includes("\0")) {
                     throw new ProjectFileError(400, "INVALID_PATH", "a non-empty sandbox file path is required");
@@ -204,39 +220,46 @@ export class ProjectFileReadChannel {
                 filePath = value;
             }
             else {
-                projectId = stringField(frame, "projectId", 512);
-                if (!projectId || projectId.includes("\0"))
+                resourceId = stringField(frame, "projectId", 512);
+                if (!resourceId || resourceId.includes("\0"))
                     throw new ProjectFileError(400, "INVALID_PROJECT_ID", "a valid project ID is required");
                 filePath = relativeFilePath(frame);
             }
             range = requestedRange(frame.range);
             validateActor(frame.actor);
+            if (this.sessions && [...this.active.values()].filter((item) => item.resourceId === resourceId).length >= 8) {
+                throw new ProjectFileError(429, "TRANSFER_BUSY", "too many active reads for this session");
+            }
         }
         catch (error) {
             const failure = filesystemError(error);
             return this.error(sender, requestId, failure.status, failure.code, failure.message);
         }
         const active = {
-            requestId, sender, handle: null, phase: "opening", offset: 0, remaining: 0,
+            requestId, resourceId, sender, handle: null, phase: "opening", offset: 0, remaining: 0,
             credit: 0, sequence: 0, pendingFrame: null, pumping: false, retry: null,
             retryDelayMs: RETRY_DELAY_MS, lease: null, cancelled: false,
         };
         this.active.set(requestId, active);
         active.lease = this.createLease(active);
-        void this.open(active, projectId, filePath, range);
+        void this.open(active, resourceId, filePath, range);
     }
-    async open(active, projectId, filePath, range) {
+    async open(active, resourceId, filePath, range) {
         try {
             const root = this.sandboxRoot ? this.sandboxRoot().trim() : "";
-            const project = this.sandboxRoot ? null : this.projects.list().find((candidate) => candidate.projectId === projectId);
-            if (!this.sandboxRoot && !project)
+            const session = this.sessions ? this.sessions.get(resourceId ?? "") : null;
+            const project = this.sandboxRoot || this.sessions ? null : this.projects.list().find((candidate) => candidate.projectId === resourceId);
+            if (this.sessions && !session)
+                throw new ProjectFileError(404, "UNKNOWN_SESSION", "unknown session");
+            if (!this.sandboxRoot && !this.sessions && !project)
                 throw new ProjectFileError(404, "UNKNOWN_PROJECT", "unknown project");
             if (this.sandboxRoot && !root)
                 throw new ProjectFileError(503, "FILES_DISABLED", "file transfer is disabled — set fileTransferRoot to enable it");
-            const base = project?.dir ?? root;
+            const base = session?.dir ?? project?.dir ?? root;
             const absolute = this.resolvePath(base, filePath);
+            const scopeName = this.sessions ? "session root" : this.sandboxRoot ? "file transfer root" : "project root";
             if (!absolute)
-                throw new ProjectFileError(400, "PATH_ESCAPE", `file path escapes the ${this.sandboxRoot ? "file transfer root" : "project root"}`);
+                throw new ProjectFileError(400, "PATH_ESCAPE", `file path escapes the ${scopeName}`);
             // A blocking read-only open can wait forever on a contained FIFO before
             // we get a handle to classify it. Nonblocking has no effect on regular
             // files and lets the post-open fstat reject every special file promptly.
@@ -253,7 +276,7 @@ export class ProjectFileReadChannel {
             // stream outside the project root.
             const revalidated = this.resolvePath(base, filePath);
             if (!revalidated)
-                throw new ProjectFileError(400, "PATH_ESCAPE", `file path escapes the ${this.sandboxRoot ? "file transfer root" : "project root"}`);
+                throw new ProjectFileError(400, "PATH_ESCAPE", `file path escapes the ${scopeName}`);
             const targetStat = await this.fileSystem.stat(revalidated);
             if (targetStat.dev !== stat.dev || targetStat.ino !== stat.ino) {
                 throw new ProjectFileError(409, "FILE_CHANGED", "file changed while it was being opened");
@@ -433,5 +456,10 @@ export class ProjectFileReadChannel {
 export class SandboxFileReadChannel extends ProjectFileReadChannel {
     constructor(options) {
         super({ ...options, capability: SANDBOX_FILE_READ_CAPABILITY });
+    }
+}
+export class SessionArtifactReadChannel extends ProjectFileReadChannel {
+    constructor(options = {}) {
+        super({ ...options, capability: SESSION_ARTIFACT_CAPABILITY, sessions: options.sessions ?? sessions });
     }
 }
