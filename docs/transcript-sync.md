@@ -69,6 +69,17 @@ Publication metadata that does not already live in the event — epoch, revision
 sequence, event type, author, timestamp, usage, artifact references and reverse
 transport truncation — is retained under `reverseTranscript`.
 
+Before byte accounting, snapshot/live persistence, replay comparison and
+browser publication, Overseer recursively normalizes the event object. An
+actual U+0000 in any string value or object key becomes U+FFFD; arrays and
+nested objects use the same rule. The ordinary six-character text `\u0000`
+remains unchanged. This happens on values before JSON serialization, so escaped
+source text cannot be mistaken for a binary NUL and PostgreSQL's `jsonb` input
+never receives the forbidden code point. If transcript projection nevertheless
+fails, the control-socket diagnostic may name only the Peon, session, event and
+delivery cursor; it does not log the transcript payload. The event is not ACKed
+or discarded.
+
 ## Gaps, reconnects and restart
 
 Events received during a snapshot remain behind the Peon-wide ordered durable

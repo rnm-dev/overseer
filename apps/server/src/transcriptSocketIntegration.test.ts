@@ -117,7 +117,7 @@ async function authFor(userId: string, email: string): Promise<{ ticket: string;
   return { ticket: (await issueWebSocketTicket({ ...auth, email })).ticket, token: device.token };
 }
 
-function published(seq: number) {
+function published(seq: number): Record<string, unknown> & { event: Record<string, unknown> } {
   return {
     sessionId: "session-1",
     epoch: "transcript-epoch",
@@ -284,6 +284,13 @@ test("reverse transcript snapshot/live/replay reaches authorized browsers once a
   owner.send(JSON.stringify({ type: "subscribe", peonId: "peon-1", sessionId: "session-1" }));
   const snapshot = await peonFrames.waitFor((frame) => frame.type === "transcript_snapshot_request");
   assert.equal(snapshot.subscribe, true);
+  const literalNulEscape = String.raw`\u0000`;
+  const poisonedSnapshot = published(1);
+  poisonedSnapshot.event = {
+    ...poisonedSnapshot.event,
+    text: "snapshot\0text",
+    metadata: { ["snapshot\0key"]: ["nested\0value", literalNulEscape] },
+  };
   peon.send(JSON.stringify({
     type: "transcript_snapshot_page",
     requestId: snapshot.requestId,
@@ -291,13 +298,18 @@ test("reverse transcript snapshot/live/replay reaches authorized browsers once a
     epoch: "transcript-epoch",
     revision: 1,
     barrierSeq: 1,
-    events: [published(1)],
+    events: [poisonedSnapshot],
     nextCursor: null,
     hasMore: false,
   }));
   const first = await ownerFrames.waitFor((frame) =>
     frame.type === "tail" && frame.sessionId === "session-1" && frame.id === "event-1");
-  assert.equal(JSON.parse(String(first.data)).reverseTranscript.seq, 1);
+  const firstEvent = JSON.parse(String(first.data)) as Record<string, unknown>;
+  assert.equal((firstEvent.reverseTranscript as { seq?: number }).seq, 1);
+  assert.equal(firstEvent.text, "snapshot\uFFFDtext");
+  assert.deepEqual(firstEvent.metadata, {
+    ["snapshot\uFFFDkey"]: ["nested\uFFFDvalue", literalNulEscape],
+  });
   owner.send(JSON.stringify({ type: "unsubscribe", sessionId: "session-1" }));
   await peonFrames.waitFor((frame) =>
     frame.type === "transcript_unsubscribe" && frame.sessionId === "session-1");
@@ -362,6 +374,12 @@ test("reverse transcript snapshot/live/replay reaches authorized browsers once a
     expiresAt: Date.now() + 300_000,
   }));
 
+  const poisonedLive = published(2);
+  poisonedLive.event = {
+    ...poisonedLive.event,
+    text: "live\0text",
+    metadata: { deep: { value: "\0", literalNulEscape } },
+  };
   const live = {
     type: "durable_message",
     capability: "transcript-sync-v1",
@@ -369,14 +387,47 @@ test("reverse transcript snapshot/live/replay reaches authorized browsers once a
     cursor: "cursor-2",
     messageId: "00000000-0000-4000-8000-000000000002",
     priority: "critical",
-    payload: { type: "transcript_live_event", ...published(2) },
+    payload: { type: "transcript_live_event", ...poisonedLive },
   };
   peon.send(JSON.stringify(live));
   await peonFrames.waitFor((frame) => frame.type === "durable_ack" && frame.cursor === "cursor-2");
-  await ownerFrames.waitFor((frame) => frame.type === "tail" && frame.id === "event-2");
+  const second = await ownerFrames.waitFor((frame) => frame.type === "tail" && frame.id === "event-2");
+  const secondEvent = JSON.parse(String(second.data)) as Record<string, unknown>;
+  assert.equal(secondEvent.text, "live\uFFFDtext");
+  assert.deepEqual(secondEvent.metadata, {
+    deep: { value: "\uFFFD", literalNulEscape },
+  });
   peon.send(JSON.stringify(live));
   await new Promise((resolve) => setTimeout(resolve, 30));
   assert.equal(ownerFrames.frames.filter((frame) => frame.type === "tail" && frame.id === "event-2").length, 1);
+
+  peon.send(JSON.stringify({
+    ...live,
+    cursor: "cursor-3",
+    messageId: "00000000-0000-4000-8000-000000000003",
+    payload: { type: "transcript_live_event", ...published(3) },
+  }));
+  await peonFrames.waitFor((frame) => frame.type === "durable_ack" && frame.cursor === "cursor-3");
+  await ownerFrames.waitFor((frame) => frame.type === "tail" && frame.id === "event-3");
+  const [storedTranscript, transcriptState, deliveryState] = await Promise.all([
+    query<{ seq: number; payload: Record<string, unknown> }>(
+      `SELECT seq,payload FROM transcript_events
+       WHERE peon_id='peon-1' AND session_id='session-1' ORDER BY seq`,
+    ),
+    query<{ acknowledged_seq: number }>(
+      `SELECT acknowledged_seq FROM peon_transcript_sync
+       WHERE peon_id='peon-1' AND session_id='session-1'`,
+    ),
+    query<{ acknowledged_cursor: string }>(
+      `SELECT acknowledged_cursor FROM peon_session_sync WHERE peon_id='peon-1'`,
+    ),
+  ]);
+  assert.equal(JSON.stringify(storedTranscript.rows).includes("\0"), false);
+  assert.equal(storedTranscript.rows[0]?.payload.text, "snapshot\uFFFDtext");
+  assert.equal(storedTranscript.rows[1]?.payload.text, "live\uFFFDtext");
+  assert.equal(transcriptState.rows[0]?.acknowledged_seq, 3);
+  assert.equal(deliveryState.rows[0]?.acknowledged_cursor, "cursor-3");
+  assert.equal(peon.readyState, WebSocket.OPEN, "a sanitized transcript event must not close the control socket");
 
   const requestsBeforeDenied = peonFrames.frames.filter((frame) => frame.type === "transcript_snapshot_request").length;
   const memberAuth = await authFor("member", "member@example.test");
@@ -465,17 +516,17 @@ test("reverse transcript snapshot/live/replay reaches authorized browsers once a
   );
   peon.send(JSON.stringify({
     ...live,
-    cursor: "cursor-3",
-    messageId: "00000000-0000-4000-8000-000000000003",
-    payload: { type: "transcript_live_event", ...published(3) },
+    cursor: "cursor-4",
+    messageId: "00000000-0000-4000-8000-000000000004",
+    payload: { type: "transcript_live_event", ...published(4) },
   }));
-  await peonFrames.waitFor((frame) => frame.type === "durable_ack" && frame.cursor === "cursor-3");
+  await peonFrames.waitFor((frame) => frame.type === "durable_ack" && frame.cursor === "cursor-4");
   const revoked = await allowedMemberFrames.waitFor((frame) =>
     frame.type === "tailError" && frame.sessionId === "session-1");
   assert.equal(revoked.retryable, false);
   assert.equal(allowedMemberFrames.frames.some((frame) =>
-    frame.type === "tail" && frame.id === "event-3"), false);
-  assert.doesNotMatch(await stream.waitForEnd(), /id: event-3/);
+    frame.type === "tail" && frame.id === "event-4"), false);
+  assert.doesNotMatch(await stream.waitForEnd(), /id: event-4/);
   assert.equal(legacyRequests, 0, "a negotiated reverse transcript route must never probe legacy HTTP");
 });
 

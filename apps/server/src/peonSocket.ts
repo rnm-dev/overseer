@@ -75,6 +75,26 @@ function publishPresence(record: PeonRecord): void {
   broadcast({ workspaceId: record.workspaceId, peonId: record.peonId, kind: "peon", payload: toView(record) });
 }
 
+function transcriptFailureContext(
+  peonId: string,
+  frame: Record<string, unknown>,
+): { peonId: string; sessionId: string | null; eventId: string | null; cursor: string | null } | null {
+  if (frame.type !== "durable_message"
+    || frame.capability !== SESSION_TRANSCRIPT_CAPABILITY
+    || !frame.payload
+    || typeof frame.payload !== "object"
+    || Array.isArray(frame.payload)) {
+    return null;
+  }
+  const payload = frame.payload as Record<string, unknown>;
+  return {
+    peonId,
+    sessionId: typeof payload.sessionId === "string" ? payload.sessionId : null,
+    eventId: typeof payload.eventId === "string" ? payload.eventId : null,
+    cursor: typeof frame.cursor === "string" ? frame.cursor : null,
+  };
+}
+
 // North-bound Peon transport. Authentication happens before the WebSocket
 // upgrade so invalid/revoked credentials never become accepted connections.
 export function attachPeonSocket(server: Server, options: PeonSocketOptions = {}): WebSocketServer {
@@ -131,6 +151,7 @@ export function attachPeonSocket(server: Server, options: PeonSocketOptions = {}
       client.queuedMessages += 1;
       client.queuedBytes += frameBytes;
       globalQueuedBytes += frameBytes;
+      let projectionFailureContext: ReturnType<typeof transcriptFailureContext> = null;
       client.messages = client.messages.then(async () => {
         if (ws.readyState !== WebSocket.OPEN) return;
         let message: unknown;
@@ -145,6 +166,7 @@ export function attachPeonSocket(server: Server, options: PeonSocketOptions = {}
           return;
         }
         const frame = message as Record<string, unknown>;
+        projectionFailureContext = transcriptFailureContext(record.peonId, frame);
         if (!client.ready) {
           if (frame.type !== "hello" || frame.protocol !== PROTOCOL) {
             ws.close(1002, "expected hello protocol 1");
@@ -326,7 +348,10 @@ export function attachPeonSocket(server: Server, options: PeonSocketOptions = {}
         if (ws.readyState !== WebSocket.OPEN) return;
         const protocolError = error instanceof SessionSyncProtocolError;
         const reason = protocolError ? error.message : "session sync failed";
-        console.warn(`overseer: Peon socket ${record.peonId} failed: ${reason}`);
+        console.warn(
+          `overseer: Peon socket ${record.peonId} failed: ${reason}`,
+          ...(projectionFailureContext ? [JSON.stringify(projectionFailureContext)] : []),
+        );
         ws.close(protocolError ? 1002 : 1011, reason);
       }).finally(() => {
         client.queuedMessages -= 1;

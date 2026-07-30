@@ -201,7 +201,22 @@ function normalizedEvent(envelope: TranscriptEnvelope): Record<string, unknown> 
   if (existing !== undefined && existing !== envelope.eventId) {
     throw new TranscriptProjectionError("REPLAY_MISMATCH", "transcript event identity mismatch");
   }
-  return { ...envelope.event, eventId: envelope.eventId };
+  return normalizeTranscriptValue({
+    ...envelope.event,
+    eventId: envelope.eventId,
+  }) as Record<string, unknown>;
+}
+
+function normalizeTranscriptValue(value: unknown): unknown {
+  if (typeof value === "string") return value.replaceAll("\0", "\uFFFD");
+  if (Array.isArray(value)) return value.map(normalizeTranscriptValue);
+  if (value === null || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.entries(value).map(([key, nested]) => [
+      key.replaceAll("\0", "\uFFFD"),
+      normalizeTranscriptValue(nested),
+    ]),
+  );
 }
 
 function eventBytes(event: Record<string, unknown>): number {

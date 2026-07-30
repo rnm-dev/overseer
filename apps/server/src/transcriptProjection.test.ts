@@ -202,6 +202,88 @@ test("live transcript commit, browser event, inbox cursor, replay dedupe, and ga
   assert.equal((await getTranscriptState("p1", "s1"))?.acknowledgedSeq, 3);
 });
 
+test("snapshot and live transcript events recursively replace NUL without changing literal escape text", async () => {
+  await database();
+  await claim("p1", "s1", "generation-1");
+  const poisonedKey = "nested\0key";
+  const literalEscape = String.raw`\u0000`;
+  await commitTranscriptSnapshot({
+    workspaceId: "ws",
+    peonId: "p1",
+    sessionId: "s1",
+    generation: "generation-1",
+    epoch: "epoch-1",
+    revision: 1,
+    barrierSeq: 1,
+    events: [{
+      ...envelope(1),
+      event: {
+        ...envelope(1).event,
+        text: "snapshot\0text",
+        metadata: {
+          [poisonedKey]: ["array\0value", { literalEscape }],
+        },
+      },
+    }],
+  });
+  await commitTranscriptEvent({
+    workspaceId: "ws",
+    peonId: "p1",
+    sessionId: "s1",
+    generation: "generation-1",
+    transcriptEpoch: "epoch-1",
+    seq: 2,
+    revision: 2,
+    eventId: "event-2",
+    event: {
+      ...envelope(2).event,
+      text: "live\0text",
+      metadata: { deep: { value: "\0", literalEscape } },
+    },
+    deliveryEpoch: "delivery",
+    deliveryCursor: "cursor-2",
+    messageId: "00000000-0000-4000-8000-000000000002",
+  });
+  await commitTranscriptEvent({
+    workspaceId: "ws",
+    peonId: "p1",
+    sessionId: "s1",
+    generation: "generation-1",
+    transcriptEpoch: "epoch-1",
+    seq: 3,
+    revision: 3,
+    eventId: "event-3",
+    event: envelope(3).event,
+    deliveryEpoch: "delivery",
+    deliveryCursor: "cursor-3",
+    messageId: "00000000-0000-4000-8000-000000000003",
+  });
+
+  const stored = await query<{ seq: number; payload: Record<string, unknown> }>(
+    `SELECT seq,payload FROM transcript_events
+     WHERE peon_id='p1' AND session_id='s1' ORDER BY seq`,
+  );
+  assert.equal(JSON.stringify(stored.rows).includes("\0"), false);
+  assert.equal(stored.rows[0]?.payload.text, "snapshot\uFFFDtext");
+  const snapshotMetadata = stored.rows[0]?.payload.metadata as Record<string, unknown>;
+  assert.deepEqual(snapshotMetadata["nested\uFFFDkey"], [
+    "array\uFFFDvalue",
+    { literalEscape },
+  ]);
+  assert.equal(stored.rows[1]?.payload.text, "live\uFFFDtext");
+  assert.deepEqual(stored.rows[1]?.payload.metadata, {
+    deep: { value: "\uFFFD", literalEscape },
+  });
+  assert.equal((await getTranscriptState("p1", "s1"))?.acknowledgedSeq, 3);
+  assert.equal((await query<{ acknowledged_cursor: string }>(
+    `SELECT acknowledged_cursor FROM peon_session_sync WHERE peon_id='p1'`,
+  )).rows[0]?.acknowledged_cursor, "cursor-3");
+  assert.deepEqual(
+    (await readTranscriptAfter({ peonId: "p1", sessionId: "s1" })).map((event) => event.eventId),
+    ["event-1", "event-2", "event-3"],
+  );
+});
+
 test("durable replay requires the projected row and compares canonical normalized payloads", async () => {
   await database();
   await claim("p1", "s1", "generation-1");
