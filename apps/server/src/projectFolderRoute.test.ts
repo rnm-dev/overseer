@@ -61,6 +61,27 @@ function get(port: number, path: string, cookie: string): Promise<{ status: numb
   });
 }
 
+function getRaw(
+  port: number,
+  path: string,
+  cookie: string,
+  headers: Record<string, string> = {},
+): Promise<{ status: number; body: Buffer; headers: http.IncomingHttpHeaders }> {
+  return new Promise((resolve, reject) => {
+    const req = http.request({ hostname: "127.0.0.1", port, path, headers: { cookie, ...headers } }, (res) => {
+      const chunks: Buffer[] = [];
+      res.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+      res.on("end", () => resolve({
+        status: res.statusCode ?? 0,
+        body: Buffer.concat(chunks),
+        headers: res.headers,
+      }));
+    });
+    req.on("error", reject);
+    req.end();
+  });
+}
+
 function mutate(
   port: number,
   method: "PUT" | "PATCH",
@@ -172,12 +193,63 @@ test("project-key file route selects one transport and preserves the legacy list
     protocol: 1,
     channel: "file-transfer",
     peonId: "route-peon",
-    capabilities: ["file-write-v1"],
+    capabilities: ["project-file-read-v1", "file-write-v1"],
   }));
   await transferControl.next((frame) => frame.type === "hello_ack");
 
   const base = "/api/workspaces/route-workspace/peons/route-peon/projects/project-key/files";
   try {
+    const fileResponse = getRaw(appPort, `${base}/README.md`, cookie, { range: "bytes=2-5" });
+    const fileRequest = await transferControl.next((frame) => frame.type === "file_open");
+    assert.equal(fileRequest.projectId, "route-project", "the mutable project key must resolve to its stable catalog ID");
+    assert.equal(fileRequest.relativePath, "README.md");
+    assert.deepEqual(fileRequest.range, { start: 2, end: 5 });
+    assert.deepEqual(fileRequest.actor, { userId: "route-owner", email: "route-owner@test" });
+    const fileRequestId = String(fileRequest.requestId);
+    transfer.send(JSON.stringify({
+      type: "file_meta",
+      requestId: fileRequestId,
+      status: 206,
+      contentType: "application/octet-stream",
+      contentLength: 4,
+      contentRange: "bytes 2-5/7",
+      acceptRanges: "bytes",
+    }));
+    await transferControl.next((frame) => frame.type === "file_credit" && frame.requestId === fileRequestId);
+    const requestIdBytes = Buffer.from(fileRequestId.replaceAll("-", ""), "hex");
+    const chunk = Buffer.alloc(26);
+    chunk[0] = 1;
+    chunk[1] = 1;
+    requestIdBytes.copy(chunk, 2);
+    chunk.writeUInt32BE(0, 18);
+    chunk.write("cket", 22);
+    transfer.send(chunk);
+    transfer.send(JSON.stringify({ type: "file_end", requestId: fileRequestId }));
+    const streamed = await fileResponse;
+    assert.equal(streamed.status, 206);
+    assert.equal(streamed.body.toString(), "cket");
+    assert.equal(streamed.headers["content-type"], "text/markdown; charset=utf-8");
+    assert.equal(streamed.headers["content-range"], "bytes 2-5/7");
+    assert.equal(streamed.headers["content-security-policy"], "sandbox allow-scripts allow-forms allow-modals allow-downloads");
+    assert.equal(streamed.headers["referrer-policy"], "no-referrer");
+    assert.equal(streamed.headers["x-content-type-options"], "nosniff");
+    assert.equal(streamed.headers["cache-control"], "no-store");
+    assert.deepEqual(httpRequests, [], "a selected socket read must not probe legacy HTTP");
+
+    const failedFileResponse = getRaw(appPort, `${base}/missing.txt`, cookie);
+    const failedFileRequest = await transferControl.next((frame) => frame.type === "file_open");
+    transfer.send(JSON.stringify({
+      type: "file_error",
+      requestId: failedFileRequest.requestId,
+      status: 404,
+      code: "NOT_FOUND",
+      message: "file does not exist",
+    }));
+    const failedFile = await failedFileResponse;
+    assert.equal(failedFile.status, 404);
+    assert.deepEqual(JSON.parse(failedFile.body.toString()), { error: "file does not exist", code: "NOT_FOUND" });
+    assert.deepEqual(httpRequests, [], "a socket file error must never fall through to HTTP");
+
     const directoryResponse = get(appPort, `${base}/src?stat=1&directory=1`, cookie);
     const directoryRequest = await control.next((frame) => frame.type === "folder_list_request");
     assert.equal(directoryRequest.projectId, "route-project");
@@ -263,6 +335,28 @@ test("project-key file route selects one transport and preserves the legacy list
     });
     assert.equal(httpRequests.length, 2, "a confirmed socket request must never probe HTTP");
 
+    const legacyTransfer = new WebSocket(`ws://127.0.0.1:${appPort}${PEON_TRANSFER_SOCKET_PATH}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    await new Promise<void>((resolve, reject) => {
+      legacyTransfer.once("open", resolve);
+      legacyTransfer.once("error", reject);
+    });
+    const legacyTransferControl = collect(legacyTransfer);
+    transfer.once("close", () => {});
+    legacyTransfer.send(JSON.stringify({
+      type: "hello",
+      protocol: 1,
+      channel: "file-transfer",
+      peonId: "route-peon",
+      capabilities: ["file-write-v1"],
+    }));
+    await legacyTransferControl.next((frame) => frame.type === "hello_ack");
+    const legacyRead = await getRaw(appPort, `${base}/README.md`, cookie);
+    assert.equal(legacyRead.status, 200);
+    assert.deepEqual(JSON.parse(legacyRead.body.toString()), { path: "README.md", size: 7, mtimeMs: 10, sha256: "abc" });
+    assert.equal(httpRequests.length, 3, "a Peon without project-file-read-v1 must retain the HTTP fallback");
+
     await query(`DELETE FROM projects WHERE peon_id='route-peon'`);
     const beforeIdentityRefusals = httpRequests.length;
     assert.deepEqual(await mutate(appPort, "PUT", `${base}/missing.txt`, cookie), {
@@ -294,7 +388,8 @@ test("project-key file route selects one transport and preserves the legacy list
       status: 502,
       body: { error: "Peon connection was lost", code: "CONNECTION_LOST" },
     });
-    assert.equal(httpRequests.length, 2, "a lost chosen socket must not fall through to HTTP");
+    assert.equal(httpRequests.length, 3, "a lost chosen socket must not fall through to HTTP");
+    legacyTransfer.terminate();
   } finally {
     ws.terminate();
     transfer.terminate();
