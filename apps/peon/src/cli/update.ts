@@ -44,7 +44,6 @@ import { globalInstallArgs, rollbackPackArgs } from "./npmGlobalInstall.js";
 
 const PACKAGE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const CONTROL_API = `http://127.0.0.1:${process.env.ACA_CONTROL_PORT ?? "4570"}`;
-const DASHBOARD_URL = `http://127.0.0.1:${process.env.ACA_DASHBOARD_PORT ?? "4571"}`;
 const FORCE = process.env.FORCE === "1";
 const UPDATE_COMMAND_ID = process.env.PEON_UPDATE_COMMAND_ID || null;
 const EXPECTED_VERSION = process.env.PEON_UPDATE_EXPECTED_VERSION || null;
@@ -184,7 +183,7 @@ async function checkNoActiveSession(): Promise<void> {
   if (running > 0) {
     if (!FORCE) {
       console.error("refusing to update: a session is currently running (the restart below kills it)");
-      console.error("cancel it first (dashboard Stop button, or POST /api/v1/sessions/<id>/cancel), or re-run with FORCE=1");
+      console.error("cancel it first in Overseer (or POST /api/v1/sessions/<id>/cancel), or re-run with FORCE=1");
       process.exit(1);
     }
     console.warn("FORCE=1 set — updating anyway");
@@ -205,14 +204,11 @@ async function waitFor(label: string, url: string, budgetSec: number): Promise<b
   return false;
 }
 
-// All compiled Node entry points under dist/, except dist/dashboard/public — that's browser
-// JSX/JS (Babel-in-browser, no build step; see CLAUDE.md), not valid syntax to `node --check`.
+// All compiled Node entry points under dist/ must parse as Node modules.
 function listCompiledFiles(dir: string): string[] {
-  const skip = path.join(PACKAGE_ROOT, "dist", "dashboard", "public");
   const out: string[] = [];
   for (const entry of readdirSync(dir)) {
     const full = path.join(dir, entry);
-    if (full === skip) continue;
     if (statSync(full).isDirectory()) out.push(...listCompiledFiles(full));
     else if (entry.endsWith(".js")) out.push(full);
   }
@@ -330,15 +326,15 @@ async function main(): Promise<void> {
     // The replacement daemon verifies these expected attestation inputs against
     // its own running package before it completes the durable command.
     commandReceipt("ready_to_attest");
-    console.log("==> restarting peon-daemon.service and peon-dashboard.service");
+    console.log("==> restarting peon-daemon.service");
     try {
-      run("systemctl", ["--user", "restart", "peon-daemon.service", "peon-dashboard.service"]);
+      run("systemctl", ["--user", "restart", "peon-daemon.service"]);
     } catch (err) {
       console.error("the new release could not restart the Peon services:", err);
       const rolledBack = rollbackToDisk(previousArchive, previousIdentity);
       let rollbackRestarted = false;
       try {
-        run("systemctl", ["--user", "restart", "peon-daemon.service", "peon-dashboard.service"]);
+        run("systemctl", ["--user", "restart", "peon-daemon.service"]);
         rollbackRestarted = true;
       } catch (restartErr) {
         console.error("restarting into the rolled-back release also failed:", restartErr);
@@ -350,13 +346,10 @@ async function main(): Promise<void> {
       return;
     }
 
-    console.log("==> waiting for both to come back");
+    console.log("==> waiting for the daemon to come back");
     const budgetSec = 90;
-    const [controlUp, dashboardUp] = await Promise.all([
-      waitFor("control API", `${CONTROL_API}/api/v1/status`, budgetSec),
-      waitFor("dashboard", DASHBOARD_URL, budgetSec),
-    ]);
-    if (!controlUp || !dashboardUp) {
+    const controlUp = await waitFor("control API", `${CONTROL_API}/api/v1/status`, budgetSec);
+    if (!controlUp) {
       try {
         execFileSync("systemctl", ["--user", "status", "peon-daemon.service", "--no-pager"], { stdio: "inherit" });
       } catch {
@@ -366,7 +359,7 @@ async function main(): Promise<void> {
       const rolledBack = rollbackToDisk(previousArchive, previousIdentity);
       let rollbackRestarted = false;
       try {
-        run("systemctl", ["--user", "restart", "peon-daemon.service", "peon-dashboard.service"]);
+        run("systemctl", ["--user", "restart", "peon-daemon.service"]);
         rollbackRestarted = true;
       } catch (err) {
         console.error("restarting into the rolled-back release also failed:", err);

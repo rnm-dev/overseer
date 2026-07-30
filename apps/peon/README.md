@@ -7,7 +7,8 @@
 A background daemon that watches Heroboard for tasks assigned to a bot account, implements
 them with a coding agent CLI, verifies the result, commits, and moves the task forward.
 
-A read-only dashboard shows what it's doing, over the same local API the CLI uses.
+Peon is a CLI-only managed daemon. Use Overseer for every operator UI,
+authentication and authorization flow; Peon has no local dashboard or users.
 
 ## Install
 
@@ -24,7 +25,7 @@ peon start
 
 That's it. `peon start` installs a native per-user background service (systemd on Linux,
 launchd on macOS). It restarts itself if it crashes and starts automatically on boot/login,
-then prints the dashboard and API URLs once it's up. Temporary network failures do not
+then prints the local control API URL once it's up. Temporary network failures do not
 require a restart: the Overseer connection keeps retrying with bounded backoff.
 
 ### If `npm install -g` fails with a permission error
@@ -47,7 +48,7 @@ whatever `PATH` your shell had at that moment into the systemd unit
 (`Environment=PATH=...`); installing `claude` afterward doesn't retroactively update an
 already-running service. Confirm it resolves (`which claude`), then either re-run
 `peon start` (regenerates the unit with your current `PATH`) or restart both services
-(`systemctl --user restart peon-daemon.service peon-dashboard.service`). If `claude` lives
+(`systemctl --user restart peon-daemon.service`). If `claude` lives
 somewhere you'd rather not add to `PATH`, point `agentCommand` at its full path instead:
 `peon settings set agentCommand /full/path/to/claude`.
 
@@ -92,7 +93,7 @@ peon stop
 This stops it now, but it'll start again on the next reboot/login. To turn that off too:
 
 ```sh
-systemctl --user disable peon-daemon.service peon-dashboard.service
+systemctl --user disable peon-daemon.service
 ```
 
 On macOS, remove `~/Library/LaunchAgents/dev.peon.daemon.plist` and

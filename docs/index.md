@@ -1,5 +1,11 @@
 ## Project information
 
+Peon is now a CLI-only managed daemon: its local dashboard, magic-link users
+and login sessions have been removed, and all operator authentication and UI
+belong to Overseer. The remaining local API is loopback-only for CLI use;
+reverse sockets and authenticated legacy Fleet HTTP remain machine-facing.
+The boundary and upgrade note are in [Peon is CLI-only](peon-cli-only.md).
+
 The cross-platform Flutter operator client now lives in `apps/client` (iOS,
 Android, macOS, Windows and Linux). Its development and feature documentation
 starts at [client documentation](client/index.md).

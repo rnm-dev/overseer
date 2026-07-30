@@ -5,11 +5,10 @@ import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildDaemonUnit, buildDashboardUnit } from "./systemdUnits.js";
+import { buildDaemonUnit } from "./systemdUnits.js";
 import { buildLaunchAgent } from "./launchdUnits.js";
 
 const BASE = process.env.ACA_CONTROL_URL ?? "http://127.0.0.1:4570";
-const DASHBOARD_URL = process.env.ACA_DASHBOARD_URL ?? "http://127.0.0.1:4571";
 const PACKAGE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const SYSTEMD_USER_DIR = path.join(os.homedir(), ".config", "systemd", "user");
 const LAUNCHD_USER_DIR = path.join(os.homedir(), "Library", "LaunchAgents");
@@ -78,13 +77,7 @@ Remote access
                                         reverse proxy — no port is appended to the links then
   remote off [--force]                loopback only and restart (default)
 
-Dashboard users
-  user list                    list dashboard users
-  user add <username>          create a dashboard user
-  user auth-link <username>    create a one-time login link for an existing user
-  user sessions <username>     list a user's login sessions
-  user revoke <username> [sessionId]
-                               log out one session, or all of them`;
+`;
 
 function coerce(value: string): string | number | boolean {
   if (value === "true") return true;
@@ -94,9 +87,7 @@ function coerce(value: string): string | number | boolean {
 }
 
 const DAEMON_UNIT = "peon-daemon.service";
-const DASHBOARD_UNIT = "peon-dashboard.service";
 const DAEMON_AGENT = "dev.peon.daemon";
-const DASHBOARD_AGENT = "dev.peon.dashboard";
 
 function launchdTarget(label: string): string {
   return `gui/${os.userInfo().uid}/${label}`;
@@ -104,8 +95,8 @@ function launchdTarget(label: string): string {
 
 function serviceRestartHint(): string {
   return IS_MACOS
-    ? `launchctl kickstart -k ${launchdTarget(DAEMON_AGENT)} && launchctl kickstart -k ${launchdTarget(DASHBOARD_AGENT)}`
-    : `systemctl --user restart ${DAEMON_UNIT} ${DASHBOARD_UNIT}`;
+    ? `launchctl kickstart -k ${launchdTarget(DAEMON_AGENT)}`
+    : `systemctl --user restart ${DAEMON_UNIT}`;
 }
 
 function serviceStatusHint(): string {
@@ -132,9 +123,8 @@ function installLaunchAgent(label: string, plistPath: string): void {
 function restartBackgroundServices(): void {
   if (IS_MACOS) {
     execFileSync("launchctl", ["kickstart", "-k", launchdTarget(DAEMON_AGENT)], { stdio: "inherit" });
-    execFileSync("launchctl", ["kickstart", "-k", launchdTarget(DASHBOARD_AGENT)], { stdio: "inherit" });
   } else {
-    execFileSync("systemctl", ["--user", "restart", DAEMON_UNIT, DASHBOARD_UNIT], { stdio: "inherit" });
+    execFileSync("systemctl", ["--user", "restart", DAEMON_UNIT], { stdio: "inherit" });
   }
 }
 
@@ -168,7 +158,6 @@ async function startCommand(): Promise<void> {
     requireBinary("launchctl", "launchd is required for a persistent Peon service on macOS.");
     const pathEnv = process.env.PATH ?? "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin";
     const daemonPlist = path.join(LAUNCHD_USER_DIR, `${DAEMON_AGENT}.plist`);
-    const dashboardPlist = path.join(LAUNCHD_USER_DIR, `${DASHBOARD_AGENT}.plist`);
     mkdirSync(LAUNCHD_USER_DIR, { recursive: true });
     mkdirSync(STATE_DIR, { recursive: true });
     writeFileSync(daemonPlist, buildLaunchAgent({
@@ -183,23 +172,10 @@ async function startCommand(): Promise<void> {
       stdoutPath: path.join(STATE_DIR, "daemon.stdout.log"),
       stderrPath: path.join(STATE_DIR, "daemon.stderr.log"),
     }));
-    writeFileSync(dashboardPlist, buildLaunchAgent({
-      label: DASHBOARD_AGENT,
-      description: "Peon dashboard",
-      peonHome: PACKAGE_ROOT,
-      nodeBin: process.execPath,
-      script: path.join(PACKAGE_ROOT, "dist", "dashboard", "server.js"),
-      pathEnv,
-      portName: "ACA_DASHBOARD_PORT",
-      port: 4571,
-      stdoutPath: path.join(STATE_DIR, "dashboard.stdout.log"),
-      stderrPath: path.join(STATE_DIR, "dashboard.stderr.log"),
-    }));
     console.log("Zug zug!");
     console.log("==> installing launchd agents (auto-start at login, restart on failure)");
     try {
       installLaunchAgent(DAEMON_AGENT, daemonPlist);
-      installLaunchAgent(DASHBOARD_AGENT, dashboardPlist);
     } catch {
       console.error(`\nsomething went wrong enabling the service — check:\n  ${serviceStatusHint()}`);
       process.exit(1);
@@ -210,7 +186,7 @@ async function startCommand(): Promise<void> {
       console.error(`peon didn't come up within 30s — check:\n  ${serviceStatusHint()}`);
       process.exit(1);
     }
-    console.log(`\nWork work! peon is ready to work.\n\n  dashboard : ${DASHBOARD_URL}\n  control   : ${BASE}\n`);
+    console.log(`\nWork work! peon is ready.\n\n  control : ${BASE}\n  UI      : use Overseer\n`);
     return;
   }
 
@@ -227,12 +203,11 @@ async function startCommand(): Promise<void> {
   console.log("==> installing systemd user units");
   mkdirSync(SYSTEMD_USER_DIR, { recursive: true });
   writeFileSync(path.join(SYSTEMD_USER_DIR, DAEMON_UNIT), buildDaemonUnit(unitOptions));
-  writeFileSync(path.join(SYSTEMD_USER_DIR, DASHBOARD_UNIT), buildDashboardUnit(unitOptions));
 
   console.log("==> starting peon (enabled to auto-start on boot/login)");
   try {
     execFileSync("systemctl", ["--user", "daemon-reload"], { stdio: "inherit" });
-    execFileSync("systemctl", ["--user", "enable", "--now", DAEMON_UNIT, DASHBOARD_UNIT], { stdio: "inherit" });
+    execFileSync("systemctl", ["--user", "enable", "--now", DAEMON_UNIT], { stdio: "inherit" });
     execFileSync("loginctl", ["enable-linger", os.userInfo().username], { stdio: "inherit" });
   } catch {
     console.error(`\nsomething went wrong enabling the service — check the output above, or run:\n  systemctl --user status ${DAEMON_UNIT}`);
@@ -249,26 +224,24 @@ async function startCommand(): Promise<void> {
   console.log(`
 Work work! peon is ready to work.
 
-  dashboard : ${DASHBOARD_URL}
-  control   : ${BASE}
-
-Create a project in the dashboard, then start a session when you're ready.
+  control : ${BASE}
+  UI      : use Overseer
 `);
 }
 
 async function stopCommand(): Promise<void> {
   if (IS_MACOS) {
     console.log("==> stopping Peon launchd agents (no time for play...)");
-    for (const label of [DASHBOARD_AGENT, DAEMON_AGENT]) {
+    for (const label of [DAEMON_AGENT]) {
       if (!launchdLoaded(label)) continue;
       execFileSync("launchctl", ["bootout", launchdTarget(label)], { stdio: "inherit" });
     }
-    console.log(`stopped — me rest now. It'll start again on next login. To disable that too, remove:\n  ${LAUNCHD_USER_DIR}/${DAEMON_AGENT}.plist\n  ${LAUNCHD_USER_DIR}/${DASHBOARD_AGENT}.plist`);
+    console.log(`stopped — me rest now. It'll start again on next login. To disable that too, remove:\n  ${LAUNCHD_USER_DIR}/${DAEMON_AGENT}.plist`);
     return;
   }
-  console.log(`==> stopping ${DAEMON_UNIT} and ${DASHBOARD_UNIT} (no time for play...)`);
-  execFileSync("systemctl", ["--user", "stop", DAEMON_UNIT, DASHBOARD_UNIT], { stdio: "inherit" });
-  console.log(`stopped — me rest now. It'll still start again on next boot/login — to prevent that too:\n  systemctl --user disable ${DAEMON_UNIT} ${DASHBOARD_UNIT}`);
+  console.log(`==> stopping ${DAEMON_UNIT} (no time for play...)`);
+  execFileSync("systemctl", ["--user", "stop", DAEMON_UNIT], { stdio: "inherit" });
+  console.log(`stopped — me rest now. It'll still start again on next boot/login — to prevent that too:\n  systemctl --user disable ${DAEMON_UNIT}`);
 }
 
 async function restartCommand(force: boolean): Promise<void> {
@@ -290,7 +263,7 @@ async function restartCommand(force: boolean): Promise<void> {
     // control API unreachable — fall through and let the service manager report its own error
   }
 
-  console.log(`==> restarting ${DAEMON_UNIT} and ${DASHBOARD_UNIT} (work work...)`);
+  console.log(`==> restarting ${DAEMON_UNIT} (work work...)`);
   restartBackgroundServices();
 
   console.log("==> waiting for it to come back");
@@ -473,72 +446,6 @@ async function main() {
       console.error(fresh || "(updater produced no output — did it launch? check the daemon journal for `update:` lines)");
       process.exit(1);
     }
-    case "user": {
-      const sub = rest[0];
-      if (sub === "add") {
-        const username = rest[1];
-        if (!username) {
-          console.error("usage: peon user add <username>");
-          process.exit(1);
-        }
-        const res = await fetch(`${BASE}/api/v1/users/${encodeURIComponent(username)}`, { method: "POST" });
-        const body = (await res.json()) as { ok?: boolean; error?: string; username?: string; created?: boolean };
-        if (res.ok && body.ok) {
-          console.log(
-            body.created
-              ? `created user "${body.username}" — hand them a login link with \`peon user auth-link ${body.username}\``
-              : `user "${body.username}" already exists`,
-          );
-        } else {
-          console.error(`add failed: ${body.error ?? res.statusText}`);
-          process.exit(1);
-        }
-      } else if (sub === "auth-link") {
-        const username = rest[1];
-        if (!username) {
-          console.error("usage: peon user auth-link <username>");
-          process.exit(1);
-        }
-        const res = await fetch(`${BASE}/api/v1/users/${encodeURIComponent(username)}/auth-link`, { method: "POST" });
-        const body = (await res.json()) as { ok?: boolean; error?: string; username?: string; linkUrl?: string; expiresAt?: number };
-        if (res.ok && body.ok) {
-          console.log(`magic link for "${body.username}" (expires ${new Date(body.expiresAt ?? 0).toISOString()}):`);
-          console.log(body.linkUrl);
-        } else {
-          console.error(`auth-link failed: ${body.error ?? res.statusText}`);
-          process.exit(1);
-        }
-      } else if (sub === "list") {
-        console.log(await (await fetch(`${BASE}/api/v1/users`)).json());
-      } else if (sub === "sessions") {
-        const username = rest[1];
-        if (!username) {
-          console.error("usage: peon user sessions <username>");
-          process.exit(1);
-        }
-        console.log(await (await fetch(`${BASE}/api/v1/users/${encodeURIComponent(username)}/sessions`)).json());
-      } else if (sub === "revoke") {
-        const [username, sessionId] = rest.slice(1);
-        if (!username) {
-          console.error("usage: peon user revoke <username> [sessionId]");
-          process.exit(1);
-        }
-        const url = sessionId
-          ? `${BASE}/api/v1/users/${encodeURIComponent(username)}/sessions/${encodeURIComponent(sessionId)}`
-          : `${BASE}/api/v1/users/${encodeURIComponent(username)}/sessions`;
-        const res = await fetch(url, { method: "DELETE" });
-        const body = (await res.json()) as { ok?: boolean; error?: string; revokedCount?: number };
-        if (res.ok && body.ok) {
-          console.log(sessionId ? "revoked." : `revoked ${body.revokedCount ?? 0} session(s).`);
-        } else {
-          console.error(`revoke failed: ${body.error ?? res.statusText}`);
-          process.exit(1);
-        }
-      } else {
-        console.log("usage: peon user [add <username> | auth-link <username> | list | sessions <username> | revoke <username> [sessionId]]");
-      }
-      break;
-    }
     case "session": {
       const sub = rest[0];
       if (sub === "stop") {
@@ -546,7 +453,7 @@ async function main() {
         if (!id) {
           // Only one session can ever be running at a time, so a bare
           // `peon session stop` finds it rather than making the caller look
-          // up its id first (via the dashboard or `GET /api/v1/sessions`).
+          // up its id first (via Overseer or `GET /api/v1/sessions`).
           const body = (await (await fetch(`${BASE}/api/v1/sessions`)).json()) as {
             sessions?: Array<{ id: string; status: string }>;
           };
@@ -665,7 +572,6 @@ async function main() {
         bindHost?: string;
         fleetMode?: "legacy-mesh" | "reverse-only";
         publicControlUrl?: string;
-        publicDashboardUrl?: string;
       };
       const portOf = (url: string | undefined, fallback: string): string => {
         try {
@@ -675,7 +581,6 @@ async function main() {
         }
       };
       const controlPort = portOf(current.publicControlUrl, new URL(BASE).port || "4570");
-      const dashboardPort = portOf(current.publicDashboardUrl, new URL(DASHBOARD_URL).port || "4571");
       const isLoopbackHost = (host: string): boolean => ["127.0.0.1", "localhost", "::1"].includes(host);
 
       const patchSettings = async (patch: Record<string, string>): Promise<void> => {
@@ -729,12 +634,6 @@ async function main() {
         const loopbackOnly = isLoopbackHost(host);
         console.log(`bind host          : ${host}  (${loopbackOnly ? "loopback only — no remote access" : "accepting remote connections"})`);
         console.log(`publicControlUrl   : ${current.publicControlUrl}`);
-        console.log(`publicDashboardUrl : ${current.publicDashboardUrl}`);
-        if (!loopbackOnly && isLoopbackHost(hostnameOf(current.publicDashboardUrl))) {
-          console.log("warning: public URLs still point at loopback — magic links won't work remotely. Re-run `peon remote on <public-host>`.");
-        } else if (!loopbackOnly) {
-          console.log("remote users log in with a magic link: `peon user auth-link <username>`.");
-        }
       } else if (sub === "on") {
         if (current.fleetMode === "reverse-only") {
           console.error("remote access is locked in reverse-only mode; run `peon fleet mode legacy-mesh` first");
@@ -751,28 +650,23 @@ async function main() {
             // /api/v1/* same-origin behind a proxy, so the two sharing one origin is fine.
             const origin = new URL(publicHost).origin;
             patch.publicControlUrl = origin;
-            patch.publicDashboardUrl = origin;
           } else {
             patch.publicControlUrl = `http://${publicHost}:${controlPort}`;
-            patch.publicDashboardUrl = `http://${publicHost}:${dashboardPort}`;
           }
         }
         await patchSettings(patch);
         console.log("remote access enabled — both processes will bind 0.0.0.0 after a restart.");
         if (publicHost) {
           console.log(`  control   : ${patch.publicControlUrl}`);
-          console.log(`  dashboard : ${patch.publicDashboardUrl}`);
         } else {
           console.log("next: set the public host so magic links resolve from other machines:");
           console.log("  peon remote on <public-host-or-ip>");
         }
         await restartBothServices(rest.includes("--force"));
-        console.log("then give a teammate access with: `peon user add <name> && peon user auth-link <name>`");
       } else if (sub === "off") {
         await patchSettings({
           bindHost: "127.0.0.1",
           publicControlUrl: `http://127.0.0.1:${controlPort}`,
-          publicDashboardUrl: `http://127.0.0.1:${dashboardPort}`,
         });
         console.log("remote access disabled — loopback only.");
         await restartBothServices(rest.includes("--force"));
