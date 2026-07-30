@@ -58,8 +58,8 @@ export function PeonSettings() {
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [updateError, setUpdateError] = useState<string | null>(null);
 
-  // Connectivity — overseer-side registry data (how the overseer dials this peon).
-  // Editable regardless of online state; that's exactly when a bad address is fixed.
+  // Optional legacy callback compatibility metadata. Reverse-capable operations
+  // use the authenticated outbound socket and never evaluate this address.
   const [address, setAddress] = useState(peon.baseUrl ?? "");
   const [connSaving, setConnSaving] = useState(false);
   const [connSaved, setConnSaved] = useState(false);
@@ -301,7 +301,7 @@ export function PeonSettings() {
           <Input value={address} onChange={(e) => { setAddress(e.target.value); setConnSaved(false); }} placeholder="http://peon.example:4570" />
         </div>
         <div className="font-mono text-xs text-bone-faint">
-          {t("peon.conn.reaches")}: {peon.baseUrl}
+          {t("peon.conn.reaches")}: {peon.baseUrl ?? t("peon.conn.none")}
           {(peon.addressSource === "paired" || peon.addressSource === "manual") && <span className="ml-2 text-fel">⌾ {t("peon.conn.pinned")}</span>}
         </div>
         <div className="flex items-center gap-3">

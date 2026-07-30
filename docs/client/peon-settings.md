@@ -9,8 +9,9 @@ cached fleet identity has rendered. It provides:
 
 - Peon self-update status, manual update checks, installation, and restart
   polling;
-- the Overseer-side callback address, editable while the Peon is
-  offline;
+- optional legacy callback compatibility metadata, editable while the Peon is
+  offline; negotiated reverse operations use the authenticated outbound socket
+  and do not require or evaluate this address;
 - Peon name, file-transfer root, and heartbeat interval;
 - owner-confirmed Peon removal.
 

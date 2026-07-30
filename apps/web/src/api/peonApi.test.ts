@@ -8,7 +8,6 @@ import {
   getProjectSettings,
   getProjectSkills,
   getPeonSoul,
-  setPeonPaused,
   savePeonSoul,
   soulExcerpt,
   projectMetadataValue,
@@ -29,16 +28,6 @@ function recorder(response: unknown = {}): { calls: Array<{ path: string; option
     },
   };
 }
-
-test("Peon pause API uses the expected endpoint and payload", async () => {
-  const fake = recorder();
-  await setPeonPaused("/peon", true, fake.request);
-
-  assert.deepEqual(fake.calls.map(({ path, options }) => [path, options?.method]), [
-    ["/peon/status", "PATCH"],
-  ]);
-  assert.deepEqual(JSON.parse(String(fake.calls[0].options?.body)), { paused: true });
-});
 
 test("loads a configured Peon soul from settings", async () => {
   const fake = recorder({ name: "worker", soul: "# Steadfast\n\nAlways verify." });

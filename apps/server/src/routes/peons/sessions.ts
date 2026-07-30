@@ -177,10 +177,6 @@ export function registerSessionRoutes(router: express.Router): void {
     return handler(req, res, c);
   });
   router.get(`${wp}/status`, withWorkspacePeon(async (_req, res, c) => relay(await callPeon(connOfRecord(c.record), "GET", "/status", { actor: c.operator.email }), res)));
-  router.patch(`${wp}/status`, withWorkspacePeon(async (req, res, c) => {
-    if (!ownerOnly(res, c.role)) return;
-    relay(await callPeon(connOfRecord(c.record), "PATCH", "/status", { actor: c.operator.email, body: req.body }), res);
-  }));
   // Provider capabilities + the peon's global default feed the session pickers.
   // `agent`, `model`, and `reasoningEffort` already ride
   // the generic body passthrough, so this read is the only new proxy route needed.
@@ -534,8 +530,6 @@ export function registerSessionRoutes(router: express.Router): void {
     if (result.ok) await deleteIndexedSession(c.workspaceId, c.record.peonId, sid);
     relay(result, res);
   }, { reverseCommandOperation: "session.delete" }));
-  router.post(`${wp}/control/pause`, withWorkspacePeon(async (_req, res, c) => { if (!ownerOnly(res, c.role)) return; relay(await callPeon(connOfRecord(c.record), "POST", "/control/pause", { actor: c.operator.email }), res); }));
-  router.post(`${wp}/control/resume`, withWorkspacePeon(async (_req, res, c) => { if (!ownerOnly(res, c.role)) return; relay(await callPeon(connOfRecord(c.record), "POST", "/control/resume", { actor: c.operator.email }), res); }));
   router.post(`${wp}/control/check-update`, withWorkspacePeon(async (req, res, c) => {
     if (!ownerOnly(res, c.role)) return;
     if (!hasRuntimeReverseRead(c.record.peonId, "update.check")) {

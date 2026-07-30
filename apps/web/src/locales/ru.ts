@@ -293,11 +293,12 @@ export const ru: Record<string, string> = {
   "peon.capabilities.partial": "Частичная инвентаризация",
   "peon.capabilities.empty": "Ничего не обнаружено.",
 
-  "peon.conn.title": "Подключение",
-  "peon.conn.hint": "Как overseer связывается с этим peon. Измените, если он недоступен или указан неверный адрес — ваше значение закреплено и не будет перезаписано при повторном подключении peon.",
-  "peon.conn.address": "Адрес",
+  "peon.conn.title": "Совместимость с legacy callback",
+  "peon.conn.hint": "Необязательный адрес только для старых HTTP-операций. Согласованные reverse-операции используют исходящее аутентифицированное соединение и никогда не обращаются к этому адресу.",
+  "peon.conn.address": "Адрес legacy callback",
   "peon.conn.port": "Порт управления",
-  "peon.conn.reaches": "Overseer вызывает",
+  "peon.conn.reaches": "Настроенный callback",
+  "peon.conn.none": "не настроен",
   "peon.conn.pinned": "закреплено",
 
   "peon.dash.recentSessions": "Недавние сессии",

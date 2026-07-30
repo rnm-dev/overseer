@@ -132,7 +132,3 @@ export function deleteProjectQuickLink(base: string, key: string, id: string, re
 export function getProjectSkills(base: string, key: string, request: ApiRequest = api) {
   return request<ProjectSkillsResponse>(`${base}/projects/${encodeURIComponent(key)}/skills`, { cache: "no-store" });
 }
-
-export function setPeonPaused(base: string, paused: boolean, request: ApiRequest = api) {
-  return request(`${base}/status`, { method: "PATCH", body: JSON.stringify({ paused }) });
-}

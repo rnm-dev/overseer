@@ -293,11 +293,12 @@ export const en: Record<string, string> = {
   "peon.capabilities.partial": "Partial inventory",
   "peon.capabilities.empty": "None discovered.",
 
-  "peon.conn.title": "Connectivity",
-  "peon.conn.hint": "How the overseer reaches this peon. Edit if it's unreachable or mis-addressed — your value is pinned and won't be overwritten when the peon reconnects.",
-  "peon.conn.address": "Address",
+  "peon.conn.title": "Legacy callback compatibility",
+  "peon.conn.hint": "Optional address used only by legacy HTTP operations. Negotiated reverse operations use the authenticated outbound connection and never dial this address.",
+  "peon.conn.address": "Legacy callback address",
   "peon.conn.port": "Control port",
-  "peon.conn.reaches": "Overseer calls",
+  "peon.conn.reaches": "Configured callback",
+  "peon.conn.none": "not configured",
   "peon.conn.pinned": "pinned",
 
   "peon.dash.recentSessions": "Recent sessions",
