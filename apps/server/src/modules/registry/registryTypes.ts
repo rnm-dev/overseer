@@ -36,7 +36,7 @@ export type PeonView = Omit<PeonRecord, "token"> & {
   transferConnected: boolean;
   controlConnectedAt: number | null;
   transferConnectedAt: number | null;
-  baseUrl: string;
+  baseUrl: string | null;
 };
 
 export interface RegisterInput {

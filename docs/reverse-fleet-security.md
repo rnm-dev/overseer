@@ -226,8 +226,7 @@ running every unfinished claim/command test in the tree.
 Overseer coverage:
 
 - `apps/server/src/reverseFleetSecurity.test.ts`
-- claim contract tests; the monolithic service suite is not in the stable runner
-  because its known delayed-generation failure keeps the process open
+- claim contract and service proof/replay/race/rotation/revocation tests
 - reverse-command contract/gateway, control and transfer sockets
 - attachment sandbox, folder browse, project viewer, preview and ACL tests
 
@@ -241,7 +240,7 @@ Peon coverage:
 
 The command and enrollment files are executable characterization against the
 current reviewed contract and implementations. A green run does **not** approve
-unfinished tasks, the excluded delayed-generation race, or operational rollout.
+unfinished tasks or operational rollout.
 
 Run one new cross-boundary file:
 
@@ -257,11 +256,19 @@ node scripts/security/run-reverse-fleet-security.mjs
 ```
 
 The stable gate includes `proxyTrust.test.ts` for OVSR-248, the cross-boundary
-sentinel regression for OVSR-249, and the claim contract/client security cells.
-On 2026-07-30 an attempted expanded Overseer group reached 87/88 before
-one timing-sensitive gateway reconciliation assertion observed `accepted`
-instead of `terminal`; the exact test passed immediately in isolation. This is
-not recorded as a green complete-gate run.
+sentinel regression for OVSR-249, and the claim contract/client/service
+security cells. The former claim-generation failure was an outbound-only view
+defect: presence publication required a legacy callback URL and closed the
+generation-2 socket with `1011`. `PeonView.baseUrl` is now nullable, and the
+delayed generation-1 control/transfer regression passes repeatedly.
+
+The two gateway intermittents were test synchronization defects, not observed
+duplicate command effects. Terminal status was followed by a fixed sleep
+instead of an explicit persistence barrier, and event assertions counted every
+process event rather than the tested command ID. The gateway is injectable at
+the socket boundary for deterministic lifecycle tests; the regression waits
+for the exact terminal observation and correlates event counts by workspace,
+Peon and command.
 
 ## Blocked suites
 
@@ -271,10 +278,8 @@ evidence before OVSR-150 can move to Code Review.
 | Blocked suite | Owner/dependency | Exit condition |
 | --- | --- | --- |
 | Full command crash matrix at admission/effect/result persistence/publish/ACK plus forged ACK/cursor/message collisions | OVSR-129/130 | Both tasks complete review and the executable fault matrix passes |
-| Gateway disconnect/restart convergence under the complete stable load | OVSR-130/150 | `disconnect boundaries and a fresh gateway reconcile with the same command ID` passes in the full gate, not only in isolation |
 | Cross-workspace tests for every shipped reverse operation family | Operation tasks + OVSR-129/130 | Registry-derived operation matrix proves denial before command creation/send |
-| Claim proof, nonce replay, changed-body ID reuse, cleanup/restart, approval/denial/expiry/cancel/ACK, rotation and revocation | OVSR-210/145/147 | Contract/client cells are in the stable runner; service cells pass before the delayed-generation failure but remain outside the stable count while the monolithic file cannot terminate cleanly |
-| Delayed old-generation hello versus current-generation control/transfer hello | OVSR-147 integration | `generation 2 hellos stay authoritative when delayed generation 1 hellos arrive` passes and terminates cleanly; it currently fails and leaves the test process open |
+| Claim proof, nonce replay, changed-body ID reuse, cleanup/restart, approval/denial/expiry/cancel/ACK, rotation and revocation | OVSR-210/145/147 | **Executable:** contract, client and service suites are in the stable runner |
 | Claim-versus-legacy race and downgrade outcomes | OVSR-145/147 | **Partially executable:** committed-method race passes; complete transport-outcome downgrade matrix remains reviewed |
 | Transfer write checksum, atomic replace, post-completion write frames | OVSR-49/51/53 | Write protocol exists; no write operation exists today |
 | Public-origin proxy/TLS/slowloris and no-inbound soak | OVSR-148/149/151/152 | Deploy the reviewed trusted-IP config and make staging topology available |

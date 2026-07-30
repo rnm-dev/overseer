@@ -15,7 +15,7 @@ export interface PeonView {
   publicUrl: string | null;
   addressSource: "paired" | "manual" | "advertised" | "discovered";
   connectionPinned: boolean;
-  baseUrl: string;
+  baseUrl: string | null;
   online: boolean;
   controlConnected?: boolean;
   transferConnected?: boolean;

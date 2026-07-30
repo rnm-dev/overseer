@@ -194,6 +194,6 @@ export function toView(record: PeonRecord): PeonView {
     transferConnected: isPeonTransferConnected(record.peonId),
     controlConnectedAt: controlConnected ? peonConnectionStartedAt(record.peonId) : null,
     transferConnectedAt: peonTransferConnectionStartedAt(record.peonId),
-    baseUrl: baseUrl(record),
+    baseUrl: legacyCallbackUrl(record),
   };
 }

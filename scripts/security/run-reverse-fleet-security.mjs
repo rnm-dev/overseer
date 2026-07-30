@@ -8,6 +8,7 @@ const peonRoot = path.join(repositoryRoot, "apps", "peon");
 const stableServerTests = [
   "apps/server/src/reverseFleetSecurity.test.ts",
   "apps/server/src/peonClaimProtocolContract.test.ts",
+  "apps/server/src/peonClaims.test.ts",
   "apps/server/src/proxyTrust.test.ts",
   "apps/server/src/reverseCommandProtocolContract.test.ts",
   "apps/server/src/reverseCommandGateway.test.ts",

@@ -60,7 +60,7 @@ export function PeonSettings() {
 
   // Connectivity — overseer-side registry data (how the overseer dials this peon).
   // Editable regardless of online state; that's exactly when a bad address is fixed.
-  const [address, setAddress] = useState(peon.baseUrl);
+  const [address, setAddress] = useState(peon.baseUrl ?? "");
   const [connSaving, setConnSaving] = useState(false);
   const [connSaved, setConnSaved] = useState(false);
   const [connError, setConnError] = useState<string | null>(null);
