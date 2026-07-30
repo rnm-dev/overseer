@@ -1,5 +1,14 @@
 import { effortsForModel, optionMatches, type ModelProvider } from "./models";
 
+const SETTINGS_PATCH_FIELDS = [
+  "name",
+  "defaultAgent",
+  "fileTransferRoot",
+  "heartbeatIntervalMs",
+  "aiDefaultModel",
+  "aiDefaultReasoningEffort",
+] as const;
+
 // Settings always show a concrete model. Keep the submitted value aligned with
 // that visible selection when the operator switches to another provider.
 export function resolveDefaultModel(provider: ModelProvider | null, current: string | null | undefined): string | null {
@@ -29,7 +38,16 @@ export function buildSettingsPayload<T extends { aiDefaultModel?: string | null;
   provider: ModelProvider | null,
   catalogLoaded: boolean,
 ): T {
-  const payload = { ...form };
+  // GET adds projection metadata (`sync`) and PATCH adds command metadata
+  // (`commandId`, `restart`). Form state may therefore contain response-only
+  // properties at runtime even though its TypeScript view is narrower. Build
+  // the mutation from the editable allowlist instead of echoing a response.
+  const source = form as Record<string, unknown>;
+  const payload = Object.fromEntries(
+    SETTINGS_PATCH_FIELDS
+      .filter((key) => Object.hasOwn(source, key))
+      .map((key) => [key, source[key]]),
+  ) as T;
   // GET uses null for settings which have never been configured, while PATCH
   // validates values that are present (for example, name must be a non-empty
   // string and fileTransferRoot must be a string). PATCH is partial, so do not

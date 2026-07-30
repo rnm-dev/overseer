@@ -57,6 +57,19 @@ test("settings save preserves the original payload before the catalog loads", ()
   assert.deepEqual(buildSettingsPayload(form, null, false), form);
 });
 
+test("settings save never echoes projection or command metadata", () => {
+  assert.deepEqual(
+    buildSettingsPayload({
+      defaultAgent: "codex",
+      aiDefaultModel: "gpt-5.4",
+      sync: { status: "current", revision: 7 },
+      commandId: "00000000-0000-4000-8000-000000000001",
+      restart: { required: false, components: [] },
+    }, codex, true),
+    { defaultAgent: "codex", aiDefaultModel: "gpt-5.4" },
+  );
+});
+
 test("new peon settings omit unset null fields from the partial PATCH", () => {
   const claude: ModelProvider = {
     agent: "claude-code",
