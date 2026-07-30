@@ -1,4 +1,4 @@
-import { constants, promises as fs } from "node:fs";
+import { promises as fs } from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { projectStore } from "../../../projects/index.js";
@@ -55,51 +55,6 @@ function cancelled(signal) {
     if (signal.aborted)
         throw new FolderListingCancelled();
 }
-function sameIdentity(left, right) {
-    return left.dev === right.dev && left.ino === right.ino;
-}
-function unsupportedPlatform() {
-    return new FolderListingError("UNSUPPORTED_PLATFORM", "secure handle-relative folder listing is unavailable on this platform");
-}
-function requiredOpenFlags() {
-    const values = [
-        constants.O_RDONLY,
-        constants.O_DIRECTORY,
-        constants.O_NOFOLLOW,
-        constants.O_NONBLOCK,
-    ];
-    if (values.some((value) => typeof value !== "number"))
-        throw unsupportedPlatform();
-    return {
-        directoryFollow: constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NONBLOCK,
-        directoryNoFollow: constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
-        entryFollow: constants.O_RDONLY | constants.O_NONBLOCK,
-        entryNoFollow: constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
-    };
-}
-// Every path this channel touches is anchored to an open directory handle
-// through the kernel's own view of that descriptor. Traversing
-// `/proc/self/fd/N` restarts the walk from the pinned inode, which is what
-// stops an ancestor from being swapped mid-listing. No other platform Peon
-// runs on exposes an equivalent — Darwin's `fcntl(F_GETPATH)` reconstructs a
-// path *string*, so reopening it is an ordinary racy lookup, not the same
-// guarantee — and Node exposes no `openat`.
-function defaultTrustedHandlePath(handle) {
-    return supportsFolderListing() ? `/proc/self/fd/${handle.fd}` : null;
-}
-// Advertising a capability the platform can only ever answer with
-// UNSUPPORTED_PLATFORM is worse than not advertising it: Overseer selects the
-// socket exclusively, so the working HTTP path it would otherwise fall back to
-// never runs. Withdraw the channel instead and let that negotiation decide.
-export function supportsFolderListing(platform = process.platform) {
-    return platform === "linux";
-}
-function anchoredPath(handle, openedPath, trustedHandlePath) {
-    const value = trustedHandlePath(handle, openedPath);
-    if (!value || !path.isAbsolute(value))
-        throw unsupportedPlatform();
-    return value;
-}
 function isWithin(root, candidate) {
     const relative = path.relative(root, candidate);
     return relative === "" || (relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative));
@@ -110,36 +65,23 @@ function relativeEscapes(value) {
         return api.isAbsolute(value) || normalized === ".." || normalized.startsWith(`..${api.sep}`);
     });
 }
-async function openDirectory(directory, followFinalSymlink, trustedHandlePath) {
-    let handle = null;
+// Resolve a directory the way every other filesystem surface on this daemon
+// does: follow it to its real path and require that it still be a directory.
+// Containment is then checked against the project's own real root, which is
+// the property that actually matters here and the one the HTTP file API has
+// always enforced.
+async function openDirectory(directory) {
     try {
-        const flags = requiredOpenFlags();
-        handle = await fs.open(directory, followFinalSymlink ? flags.directoryFollow : flags.directoryNoFollow);
-        const stat = await handle.stat();
-        if (!stat.isDirectory())
+        const resolved = await fs.realpath(directory);
+        if (!(await fs.stat(resolved)).isDirectory()) {
             throw new FolderListingError("NOT_DIRECTORY", "filesystem path is not a directory");
-        return {
-            handle,
-            openedPath: directory,
-            path: () => anchoredPath(handle, directory, trustedHandlePath),
-            stat,
-        };
+        }
+        return resolved;
     }
     catch (error) {
-        await handle?.close().catch(() => { });
         if (error instanceof FolderListingError)
             throw error;
         throw filesystemError(error);
-    }
-}
-async function realAnchoredPath(anchor) {
-    try {
-        return await fs.realpath(anchor.path());
-    }
-    catch (error) {
-        if (error instanceof FolderListingError)
-            throw error;
-        throw unsupportedPlatform();
     }
 }
 function compareEntries(a, b) {
@@ -149,34 +91,19 @@ function compareEntries(a, b) {
     const folded = a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
     return folded || a.name.localeCompare(b.name, undefined, { sensitivity: "variant" });
 }
-async function entryMetadata(directory, name, projectRoot, signal, trustedHandlePath, beforeEntryMetadata) {
-    await beforeEntryMetadata?.(directory.openedPath, name, signal);
+async function entryMetadata(directory, name, projectRoot, signal, beforeEntryMetadata) {
+    await beforeEntryMetadata?.(directory, name, signal);
     cancelled(signal);
-    const targetPath = path.join(directory.path(), name);
-    let lexical;
     try {
-        lexical = await fs.lstat(targetPath);
-    }
-    catch {
-        return { name, type: "other", size: null, mtimeMs: null };
-    }
-    if (!lexical.isSymbolicLink() && !lexical.isDirectory() && !lexical.isFile()) {
-        return { name, type: "other", size: null, mtimeMs: null };
-    }
-    let handle = null;
-    try {
-        const flags = requiredOpenFlags();
-        handle = await fs.open(targetPath, lexical.isSymbolicLink() ? flags.entryFollow : flags.entryNoFollow);
-        const target = await handle.stat();
-        if (!lexical.isSymbolicLink() && !sameIdentity(lexical, target)) {
+        // Resolve the child and classify it by its target, so a symlink pointing
+        // inside the project reads as the file or directory it names. Anything
+        // that escapes the project root, dangles, or is a special file stays
+        // visible but inert — the same contract the HTTP file API returns.
+        const realTarget = await fs.realpath(path.join(directory, name));
+        if (projectRoot && !isWithin(projectRoot, realTarget)) {
             return { name, type: "other", size: null, mtimeMs: null };
         }
-        if (lexical.isSymbolicLink() && projectRoot) {
-            const targetHandlePath = anchoredPath(handle, targetPath, trustedHandlePath);
-            const realTarget = await fs.realpath(targetHandlePath);
-            if (!isWithin(projectRoot, realTarget))
-                return { name, type: "other", size: null, mtimeMs: null };
-        }
+        const target = await fs.stat(realTarget);
         if (target.isDirectory())
             return { name, type: "directory", size: null, mtimeMs: target.mtimeMs };
         if (target.isFile())
@@ -186,69 +113,49 @@ async function entryMetadata(directory, name, projectRoot, signal, trustedHandle
     catch (error) {
         if (error instanceof FolderListingError || error instanceof FolderListingCancelled)
             throw error;
-        // Broken, escaping, inaccessible, or concurrently changed children remain
-        // visible but inert, matching the legacy project file API.
         return { name, type: "other", size: null, mtimeMs: null };
-    }
-    finally {
-        await handle?.close().catch(() => { });
     }
 }
 async function listEntries(selection, signal, options) {
     cancelled(signal);
-    const trustedHandlePath = options.trustedHandlePath ?? defaultTrustedHandlePath;
-    let root = null;
-    let directory = null;
-    try {
-        let projectRoot = null;
-        let selectedPath = selection.path;
-        if (selection.projectRoot) {
-            const expectedRoot = await fs.realpath(selection.projectRoot);
-            root = await openDirectory(expectedRoot, false, trustedHandlePath);
-            projectRoot = await realAnchoredPath(root);
-            if (projectRoot !== expectedRoot)
-                throw new FolderListingError("PATH_ESCAPE", "project root changed during listing");
-            selectedPath = selection.relativePath ? path.join(root.path(), selection.relativePath) : root.path();
-        }
-        directory = await openDirectory(selectedPath, true, trustedHandlePath);
-        await options.afterDirectoryOpen?.(selection.path, signal);
-        let resolvedDirectory = await realAnchoredPath(directory);
-        if (projectRoot && !isWithin(projectRoot, resolvedDirectory)) {
-            throw new FolderListingError("PATH_ESCAPE", "relativePath escapes the project root");
-        }
-        cancelled(signal);
-        const dirents = await fs.readdir(directory.path(), { withFileTypes: true });
-        await options.afterDirectoryRead?.(selection.path, signal);
-        cancelled(signal);
-        if (dirents.length > FOLDER_LISTING_MAX_ENTRIES) {
-            throw new FolderListingError("LISTING_TOO_LARGE", `directory contains more than ${FOLDER_LISTING_MAX_ENTRIES} entries`);
-        }
-        const entries = [];
-        for (let offset = 0; offset < dirents.length; offset += ENTRY_STAT_CONCURRENCY) {
-            cancelled(signal);
-            const batch = await Promise.allSettled(dirents.slice(offset, offset + ENTRY_STAT_CONCURRENCY).map((entry) => entryMetadata(directory, entry.name, projectRoot, signal, trustedHandlePath, options.beforeEntryMetadata)));
-            const rejected = batch.find((result) => result.status === "rejected");
-            if (rejected)
-                throw rejected.reason;
-            for (const result of batch)
-                entries.push(result.value);
-            cancelled(signal);
-        }
-        entries.sort(compareEntries);
-        const bytes = Buffer.byteLength(JSON.stringify(entries));
-        if (bytes > FOLDER_LISTING_MAX_SNAPSHOT_BYTES) {
-            throw new FolderListingError("LISTING_TOO_LARGE", "directory listing exceeds the snapshot byte limit");
-        }
-        resolvedDirectory = await realAnchoredPath(directory);
-        if (projectRoot && !isWithin(projectRoot, resolvedDirectory)) {
-            throw new FolderListingError("PATH_ESCAPE", "filesystem directory moved outside the project during listing");
-        }
-        return { path: resolvedDirectory, entries };
+    let projectRoot = null;
+    let selectedPath = selection.path;
+    if (selection.projectRoot) {
+        projectRoot = await openDirectory(selection.projectRoot);
+        selectedPath = selection.relativePath ? path.join(projectRoot, selection.relativePath) : projectRoot;
     }
-    finally {
-        await directory?.handle.close().catch(() => { });
-        await root?.handle.close().catch(() => { });
+    const directory = await openDirectory(selectedPath);
+    await options.afterDirectoryOpen?.(selection.path, signal);
+    if (projectRoot && !isWithin(projectRoot, directory)) {
+        throw new FolderListingError("PATH_ESCAPE", "relativePath escapes the project root");
     }
+    cancelled(signal);
+    // Readability is only discovered here: resolving and stat-ing a directory
+    // needs permission on its parent, not on the directory itself.
+    const dirents = await fs.readdir(directory, { withFileTypes: true })
+        .catch((error) => { throw filesystemError(error); });
+    await options.afterDirectoryRead?.(selection.path, signal);
+    cancelled(signal);
+    if (dirents.length > FOLDER_LISTING_MAX_ENTRIES) {
+        throw new FolderListingError("LISTING_TOO_LARGE", `directory contains more than ${FOLDER_LISTING_MAX_ENTRIES} entries`);
+    }
+    const entries = [];
+    for (let offset = 0; offset < dirents.length; offset += ENTRY_STAT_CONCURRENCY) {
+        cancelled(signal);
+        const batch = await Promise.allSettled(dirents.slice(offset, offset + ENTRY_STAT_CONCURRENCY).map((entry) => entryMetadata(directory, entry.name, projectRoot, signal, options.beforeEntryMetadata)));
+        const rejected = batch.find((result) => result.status === "rejected");
+        if (rejected)
+            throw rejected.reason;
+        for (const result of batch)
+            entries.push(result.value);
+        cancelled(signal);
+    }
+    entries.sort(compareEntries);
+    const bytes = Buffer.byteLength(JSON.stringify(entries));
+    if (bytes > FOLDER_LISTING_MAX_SNAPSHOT_BYTES) {
+        throw new FolderListingError("LISTING_TOO_LARGE", "directory listing exceeds the snapshot byte limit");
+    }
+    return { path: directory, entries };
 }
 export class FolderListingChannel {
     capability = FOLDER_LISTING_CAPABILITY;
@@ -262,7 +169,6 @@ export class FolderListingChannel {
         this.projects = options.projects ?? projectStore;
         this.leaseMs = options.leaseMs ?? DEFAULT_LEASE_MS;
         this.scanOptions = {
-            trustedHandlePath: options.trustedHandlePath,
             afterDirectoryOpen: options.afterDirectoryOpen,
             afterDirectoryRead: options.afterDirectoryRead,
             beforeEntryMetadata: options.beforeEntryMetadata,

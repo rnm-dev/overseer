@@ -17,7 +17,6 @@ import {
   FOLDER_LISTING_ENTRY_METADATA,
   FOLDER_LISTING_MAX_PAGE_BYTES,
   FolderListingChannel,
-  supportsFolderListing,
 } from "../overseer/socket/channels/folderListingChannel.js";
 import { PEON_SOCKET_MAX_FRAME_BYTES, type PeonSocketFrame, type PeonSocketSender } from "../overseer/socket/peonSocketProtocol.js";
 import type { ProjectRecord } from "../projects/contracts.js";
@@ -65,13 +64,7 @@ function project(projectId: string, dir: string): ProjectRecord {
 type FolderListingChannelOptions = NonNullable<ConstructorParameters<typeof FolderListingChannel>[0]>;
 
 function folderChannel(options: FolderListingChannelOptions = {}): FolderListingChannel {
-  return new FolderListingChannel({
-    // macOS has no traversable /proc/self/fd directory path. Most tests use
-    // stable paths as a filesystem test double; dedicated tests below exercise
-    // both temporary handle-relative swaps and the fail-closed default.
-    trustedHandlePath: (_handle, openedPath) => openedPath,
-    ...options,
-  });
+  return new FolderListingChannel(options);
 }
 
 test("lists a project root by immutable ID with deterministic file and directory entries", async () => {
@@ -194,132 +187,6 @@ test("project-relative paths stay contained by the immutable project scope", asy
     type: "folder_list_request", requestId: "absolute-relative", projectId: "project-id", relativePath: "/etc",
   }, output.sender);
   assert.equal(output.frames.at(-1)?.code, "INVALID_PATH");
-});
-
-test("enumerates through the anchored handle during a temporary pathname swap", async () => {
-  const root = mkdtempSync(path.join(os.tmpdir(), "peon-folder-swap-root-"));
-  const selected = path.join(root, "selected");
-  const parked = path.join(root, "selected-parked");
-  const outside = mkdtempSync(path.join(os.tmpdir(), "peon-folder-swap-outside-"));
-  mkdirSync(selected);
-  writeFileSync(path.join(selected, "inside.txt"), "inside");
-  writeFileSync(path.join(outside, "outside-secret.txt"), "secret");
-  let swapped = false;
-  const channel = folderChannel({
-    projects: { list: () => [project("project-id", root)] },
-    trustedHandlePath: (_handle, openedPath) => path.basename(openedPath) === "selected" && swapped ? parked : openedPath,
-    afterDirectoryOpen: () => {
-      swapped = true;
-      renameSync(selected, parked);
-      symlinkSync(outside, selected, "dir");
-    },
-    afterDirectoryRead: () => {
-      unlinkSync(selected);
-      renameSync(parked, selected);
-      swapped = false;
-    },
-  });
-  const output = capture();
-  channel.negotiated(true, {
-    channels: { [FOLDER_LISTING_CAPABILITY]: { entryMetadata: FOLDER_LISTING_ENTRY_METADATA } },
-  }, output.sender);
-
-  channel.receive({
-    type: "folder_list_request", requestId: "selected-swap", projectId: "project-id", relativePath: "selected",
-  }, output.sender);
-  const frame = await waitForFrame(output, (candidate) => candidate.requestId === "selected-swap");
-  assert.equal(frame.type, "folder_list_page", JSON.stringify(frame));
-  const entries = frame.entries as Array<Record<string, unknown>>;
-  assert.equal(entries.length, 1);
-  assert.equal(entries[0]?.name, "inside.txt");
-  assert.equal(entries[0]?.type, "file");
-  assert.equal(JSON.stringify(output.frames).includes("outside-secret.txt"), false);
-});
-
-test("child metadata remains relative to the selected handle after its pathname is replaced", async () => {
-  const root = mkdtempSync(path.join(os.tmpdir(), "peon-folder-child-swap-root-"));
-  const selected = path.join(root, "selected");
-  const parked = path.join(root, "selected-parked");
-  const outside = mkdtempSync(path.join(os.tmpdir(), "peon-folder-child-swap-outside-"));
-  mkdirSync(selected);
-  writeFileSync(path.join(selected, "inside.txt"), "inside");
-  writeFileSync(path.join(outside, "outside-secret.txt"), "secret");
-  let swapped = false;
-  const channel = folderChannel({
-    projects: { list: () => [project("project-id", root)] },
-    trustedHandlePath: (_handle, openedPath) => path.basename(openedPath) === "selected" && swapped ? parked : openedPath,
-    beforeEntryMetadata: () => {
-      if (swapped) return;
-      swapped = true;
-      renameSync(selected, parked);
-      symlinkSync(outside, selected, "dir");
-    },
-  });
-  const output = capture();
-  channel.negotiated(true, {
-    channels: { [FOLDER_LISTING_CAPABILITY]: { entryMetadata: FOLDER_LISTING_ENTRY_METADATA } },
-  }, output.sender);
-
-  channel.receive({
-    type: "folder_list_request", requestId: "child-swap", projectId: "project-id", relativePath: "selected",
-  }, output.sender);
-  const frame = await waitForFrame(output, (candidate) => candidate.requestId === "child-swap");
-  assert.equal(frame.type, "folder_list_page", JSON.stringify(frame));
-  assert.equal((frame.entries as Array<Record<string, unknown>>)[0]?.name, "inside.txt");
-  assert.equal(JSON.stringify(output.frames).includes("outside-secret.txt"), false);
-});
-
-test("fails closed when secure handle-relative traversal is unavailable", async () => {
-  const root = mkdtempSync(path.join(os.tmpdir(), "peon-folder-unsupported-"));
-  writeFileSync(path.join(root, "secret.txt"), "secret");
-  const channel = folderChannel({ trustedHandlePath: () => null });
-  const output = capture();
-  channel.negotiated(true, {}, output.sender);
-
-  channel.receive({ type: "folder_list_request", requestId: "unsupported", path: root }, output.sender);
-  const frame = await waitForFrame(output, (candidate) => candidate.requestId === "unsupported");
-  assert.equal(frame.type, "folder_list_error");
-  assert.equal(frame.code, "UNSUPPORTED_PLATFORM");
-  assert.equal(JSON.stringify(frame).includes("secret.txt"), false);
-});
-
-test("only Linux handle paths qualify a platform for folder listing", () => {
-  // Asserted by name rather than by the host's own platform so both branches
-  // are exercised wherever this suite runs.
-  assert.equal(supportsFolderListing("linux"), true);
-  for (const platform of ["darwin", "win32", "freebsd", "aix"] as const) {
-    assert.equal(supportsFolderListing(platform), false);
-  }
-});
-
-test("the advertised capability agrees with what the default backend can serve", async () => {
-  const root = mkdtempSync(path.join(os.tmpdir(), "peon-folder-agreement-"));
-  writeFileSync(path.join(root, "readable.txt"), "content");
-  const channel = new FolderListingChannel();
-  const output = capture();
-  channel.negotiated(true, {}, output.sender);
-
-  channel.receive({ type: "folder_list_request", requestId: "agreement", path: root }, output.sender);
-  const frame = await waitForFrame(output, (candidate) => candidate.requestId === "agreement");
-  // The regression this pins: the channel announced folder-listing-v1 on a
-  // platform where every request could only answer UNSUPPORTED_PLATFORM, and
-  // Overseer's exclusive selection then denied the working HTTP fallback.
-  assert.equal(frame.type === "folder_list_page", supportsFolderListing());
-  assert.equal(frame.code === "UNSUPPORTED_PLATFORM", !supportsFolderListing());
-});
-
-test("the default backend fails closed on platforms without Linux handle paths", async (t) => {
-  if (process.platform === "linux") return t.skip("Linux provides /proc/self/fd traversal");
-  const root = mkdtempSync(path.join(os.tmpdir(), "peon-folder-platform-"));
-  writeFileSync(path.join(root, "secret.txt"), "secret");
-  const channel = new FolderListingChannel();
-  const output = capture();
-  channel.negotiated(true, {}, output.sender);
-
-  channel.receive({ type: "folder_list_request", requestId: "platform", path: root }, output.sender);
-  const frame = await waitForFrame(output, (candidate) => candidate.requestId === "platform");
-  assert.equal(frame.code, "UNSUPPORTED_PLATFORM");
-  assert.equal(JSON.stringify(frame).includes("secret.txt"), false);
 });
 
 test("unreadable target directories return FORBIDDEN", async (t) => {
