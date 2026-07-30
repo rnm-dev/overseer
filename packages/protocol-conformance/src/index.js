@@ -38,3 +38,7 @@ export {
   FileWriteHarnessError,
   FileWriteLifecycleHarness,
 } from "./fileWriteLifecycle.js";
+export {
+  UpdateLifecycleHarness,
+  validateUpdateFrame,
+} from "./updateLifecycle.js";

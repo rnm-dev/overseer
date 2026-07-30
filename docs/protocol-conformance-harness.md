@@ -40,8 +40,9 @@ downgrade to HTTP when their transfer capability is absent.
 
 The current×current cell also includes `session.cancel` through
 `reverse-command-v1` and transcript history/live demand through
-`transcript-sync-v1`, and runs through `NoInboundTopology` with the Peon
-fleet port blocked. It opens only Peon-initiated control and file-transfer
+`transcript-sync-v1`, plus update check/apply route selection through the
+shared reverse-command dispatcher, and runs through `NoInboundTopology` with
+the Peon fleet port blocked. It opens only Peon-initiated control and file-transfer
 connections and fails immediately if a surface selects legacy HTTP or Overseer
 attempts to dial Peon. This proves the already stable socket/catalog/folder/
 file-read/session-cancel/transcript slice behind NAT; it is not yet proof of
@@ -127,13 +128,32 @@ mixed versions; once the socket route is selected, failure never retries
 through HTTP. The NAT guard exercises all four write surfaces with no
 Overseer→Peon dial.
 
+`update-lifecycle-v1.json` attaches the shipped update model to the shared
+reverse-command lifecycle. Its adapters cover durable admission before
+acceptance, same-command replay without a second installer launch, bounded
+release metadata, downloaded archive size/SHA-256 verification, the
+version-fenced `RELEASE_CHANGED` outcome, process replacement, durable receipt
+recovery/corrupt-receipt rejection, and the rule that a command stays running
+until a different PID attests the expected running version and revision.
+Dropped ACK/result, reconnect, durable terminal replay, stale socket generation
+and the stable download/install/rollback/restart/attestation failure codes reuse
+the command harness's commit-before-ACK path. Matrix routing is reverse-only for
+current×current, exclusively HTTP for mixed versions, and is included in the
+NAT/no-dial assertion. These tests never invoke the real installer or restart a
+daemon.
+
 ## Extension cells that must not report green
 
 The matrix reports reverse-command and transcript coverage separately and
 registers these unfinished families explicitly:
 
-- rollout: update reconnect/attestation, fairness and latency SLOs,
-  production-like soak artifacts and staged fleet rollout remain unfinished.
+- updates: the released updater binds its TOCTOU check to approved version and
+  validates the downloaded archive SHA-256, while its durable receipt and
+  replacement-process attestation carry version/revision but no SHA. Approved
+  release revision/SHA TOCTOU binding and replacement runtime SHA attestation
+  therefore remain blocked rather than being simulated by the harness.
+- rollout: fairness and latency SLOs, production-like soak artifacts and staged
+  fleet rollout remain unfinished operational cells.
 
 Enrollment operational evidence remains blocked separately: a real-machine
 NAT/TLS exercise, a production-like mixed-fleet soak, and legacy removal after

@@ -51,7 +51,8 @@
         "project-file-upload": "legacy-http",
         "attachment-upload": "legacy-http",
         "project-file-move": "legacy-http",
-        "project-file-delete": "legacy-http"
+        "project-file-delete": "legacy-http",
+        "peon-update": "legacy-http"
       }
     },
     {
@@ -70,7 +71,8 @@
         "project-file-upload": "legacy-http",
         "attachment-upload": "legacy-http",
         "project-file-move": "legacy-http",
-        "project-file-delete": "legacy-http"
+        "project-file-delete": "legacy-http",
+        "peon-update": "legacy-http"
       }
     },
     {
@@ -89,7 +91,8 @@
         "project-file-upload": "legacy-http",
         "attachment-upload": "legacy-http",
         "project-file-move": "legacy-http",
-        "project-file-delete": "legacy-http"
+        "project-file-delete": "legacy-http",
+        "peon-update": "legacy-http"
       }
     },
     {
@@ -108,7 +111,8 @@
         "project-file-upload": "legacy-http",
         "attachment-upload": "legacy-http",
         "project-file-move": "legacy-http",
-        "project-file-delete": "legacy-http"
+        "project-file-delete": "legacy-http",
+        "peon-update": "legacy-http"
       }
     },
     {
@@ -127,7 +131,8 @@
         "project-file-upload": "legacy-http",
         "attachment-upload": "legacy-http",
         "project-file-move": "legacy-http",
-        "project-file-delete": "legacy-http"
+        "project-file-delete": "legacy-http",
+        "peon-update": "legacy-http"
       }
     },
     {
@@ -146,7 +151,8 @@
         "project-file-upload": "legacy-http",
         "attachment-upload": "legacy-http",
         "project-file-move": "legacy-http",
-        "project-file-delete": "legacy-http"
+        "project-file-delete": "legacy-http",
+        "peon-update": "legacy-http"
       }
     },
     {
@@ -165,7 +171,8 @@
         "project-file-upload": "legacy-http",
         "attachment-upload": "legacy-http",
         "project-file-move": "legacy-http",
-        "project-file-delete": "legacy-http"
+        "project-file-delete": "legacy-http",
+        "peon-update": "legacy-http"
       }
     },
     {
@@ -184,7 +191,8 @@
         "project-file-upload": "legacy-http",
         "attachment-upload": "legacy-http",
         "project-file-move": "legacy-http",
-        "project-file-delete": "legacy-http"
+        "project-file-delete": "legacy-http",
+        "peon-update": "legacy-http"
       }
     },
     {
@@ -203,7 +211,8 @@
         "project-file-upload": "reverse-socket",
         "attachment-upload": "reverse-socket",
         "project-file-move": "reverse-socket",
-        "project-file-delete": "reverse-socket"
+        "project-file-delete": "reverse-socket",
+        "peon-update": "reverse-socket"
       }
     }
   ],
@@ -234,10 +243,16 @@
       "blockedCells": ["optimistic revision fences", "durable cross-daemon-restart destructive receipts"]
     },
     {
+      "id": "updates",
+      "capability": "reverse-command-v1:update.apply",
+      "status": "blocked",
+      "blockedBy": "Released admission, replay, archive integrity, PID plus version/revision attestation and failure outcomes are covered; approved release revision/SHA TOCTOU binding and replacement runtime SHA attestation are not implemented."
+    },
+    {
       "id": "rollout",
       "capability": "fleet-rollout-v1",
       "status": "blocked",
-      "blockedBy": "Update reconnect/attestation, soak SLOs and staged fleet rollout belong to unfinished rollout work."
+      "blockedBy": "Production-like soak, fairness/latency SLOs and staged fleet rollout remain unfinished operational work."
     }
   ]
 }

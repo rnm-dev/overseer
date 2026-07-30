@@ -50,6 +50,18 @@ test("file write transport is pre-selected exclusively and never falls back afte
   assert.equal(routeForSurface("project-file-upload", { control: [], transfer: [], channelFeatures: {} }), "legacy-http");
 });
 
+test("update transport is current-only reverse and remains exclusive after selection", () => {
+  const current = negotiateCapabilities(
+    { controlCapabilities: ["reverse-command-v1"], transferCapabilities: [] },
+    { controlCapabilities: ["reverse-command-v1"], transferCapabilities: [] },
+  );
+  assert.equal(routeForSurface("peon-update", current), "reverse-socket");
+  assert.equal(routeForSurface("peon-update", current), "reverse-socket");
+  assert.equal(routeForSurface("peon-update", {
+    control: [], transfer: [], channelFeatures: {},
+  }), "legacy-http");
+});
+
 test("covered contracts are distinguished from explicitly blocked extension cells", () => {
   const report = runCapabilityMatrix(loadFixture("capability-matrix-v1.json"));
   const reverseCommand = report.extensions.find((entry) => entry.id === "reverse-command");
@@ -62,6 +74,6 @@ test("covered contracts are distinguished from explicitly blocked extension cell
   assert.equal(writes?.passed, true);
   assert.equal(writes?.blocked, false);
   const blocked = report.extensions.filter((entry) => entry.blocked);
-  assert.deepEqual(blocked.map((entry) => entry.id), ["rollout"]);
+  assert.deepEqual(blocked.map((entry) => entry.id), ["updates", "rollout"]);
   assert.ok(blocked.every((entry) => !entry.passed && entry.blockedBy.length > 20));
 });
