@@ -599,6 +599,11 @@ export interface PeonProjectFileMoveRequest extends PeonFileWriteBase {
   destination: string;
 }
 
+export interface PeonProjectFileDeleteRequest extends PeonFileWriteBase {
+  projectId: string;
+  relativePath: string;
+}
+
 function resetWriteTimer(item: PendingWrite): void {
   clearTimeout(item.timer);
   item.timer = setTimeout(() => {
@@ -926,5 +931,20 @@ export function movePeonProjectFile(input: PeonProjectFileMoveRequest): Promise<
     projectId: input.projectId,
     relativePath: input.relativePath,
     destination: input.destination,
+  });
+}
+
+export function deletePeonProjectFile(input: PeonProjectFileDeleteRequest): Promise<PeonFileWriteResult> {
+  validateRequest({
+    peonId: input.peonId,
+    projectId: input.projectId,
+    relativePath: input.relativePath,
+    actor: input.actor,
+  });
+  return openPeonWrite(input, null, 1, undefined, {
+    operation: "delete",
+    scope: "project",
+    projectId: input.projectId,
+    relativePath: input.relativePath,
   });
 }

@@ -84,10 +84,11 @@ function getRaw(
 
 function mutate(
   port: number,
-  method: "PUT" | "PATCH",
+  method: "PUT" | "PATCH" | "DELETE",
   path: string,
   cookie: string,
   body?: Record<string, unknown>,
+  headers: Record<string, string> = {},
 ): Promise<{ status: number; body: Record<string, unknown> }> {
   const encoded = body ? Buffer.from(JSON.stringify(body)) : Buffer.alloc(0);
   return new Promise((resolve, reject) => {
@@ -99,6 +100,7 @@ function mutate(
       headers: {
         cookie,
         origin: "https://overseer.rnm.dev",
+        ...headers,
         ...(body ? { "content-type": "application/json", "content-length": String(encoded.length) } : {}),
       },
     }, (res) => {
@@ -357,6 +359,43 @@ test("project-key file route selects one transport and preserves the legacy list
     assert.deepEqual(JSON.parse(legacyRead.body.toString()), { path: "README.md", size: 7, mtimeMs: 10, sha256: "abc" });
     assert.equal(httpRequests.length, 3, "a Peon without project-file-read-v1 must retain the HTTP fallback");
 
+    const deleteId = "ecce5b66-bfe8-4c29-b746-bc0df76c0a35";
+    const deleting = mutate(appPort, "DELETE", `${base}/obsolete.txt`, cookie, undefined, {
+      "peon-request-id": deleteId,
+    });
+    const deleteOpen = await legacyTransferControl.next((frame) => frame.type === "write_open");
+    assert.deepEqual({
+      operation: deleteOpen.operation,
+      scope: deleteOpen.scope,
+      projectId: deleteOpen.projectId,
+      relativePath: deleteOpen.relativePath,
+      requestId: deleteOpen.requestId,
+      transferId: deleteOpen.transferId,
+      commandId: deleteOpen.commandId,
+      actor: deleteOpen.actor,
+    }, {
+      operation: "delete",
+      scope: "project",
+      projectId: "route-project",
+      relativePath: "obsolete.txt",
+      requestId: deleteId,
+      transferId: deleteId,
+      commandId: deleteId,
+      actor: { userId: "route-owner", email: "route-owner@test" },
+    });
+    legacyTransfer.send(JSON.stringify({
+      type: "write_result",
+      requestId: deleteId,
+      status: 200,
+      path: "obsolete.txt",
+      size: 7,
+    }));
+    assert.deepEqual(await deleting, {
+      status: 200,
+      body: { path: "obsolete.txt", size: 7 },
+    });
+    assert.equal(httpRequests.length, 3, "a selected socket delete must never probe legacy HTTP");
+
     await query(`DELETE FROM projects WHERE peon_id='route-peon'`);
     const beforeIdentityRefusals = httpRequests.length;
     assert.deepEqual(await mutate(appPort, "PUT", `${base}/missing.txt`, cookie), {
@@ -367,6 +406,13 @@ test("project-key file route selects one transport and preserves the legacy list
       },
     });
     assert.deepEqual(await mutate(appPort, "PATCH", `${base}/README.md`, cookie, { destination: "renamed.md" }), {
+      status: 409,
+      body: {
+        error: "canonical project identity is temporarily unavailable",
+        code: "PROJECT_IDENTITY_UNAVAILABLE",
+      },
+    });
+    assert.deepEqual(await mutate(appPort, "DELETE", `${base}/README.md`, cookie), {
       status: 409,
       body: {
         error: "canonical project identity is temporarily unavailable",

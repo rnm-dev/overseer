@@ -3,6 +3,7 @@ import { PassThrough, Readable } from "node:stream";
 import test from "node:test";
 import { WebSocket } from "ws";
 import {
+  deletePeonProjectFile,
   failPeonFileTransfers,
   getPeonFileWriteCoordinatorSnapshot,
   handlePeonFileJson,
@@ -171,6 +172,50 @@ test("Overseer propagates checksum refusals and cancels on browser abort or tran
   failPeonFileTransfers(peonId, ws);
   await assert.rejects(disconnected, (error: unknown) => error instanceof PeonFileStreamError
     && error.code === "PEON_TRANSFER_DISCONNECTED");
+});
+
+test("Overseer project delete carries stable command/transfer correlation and replays the public result", async (t) => {
+  const peonId = "delete-peon";
+  const ws = socket();
+  claimPeonTransferConnection(peonId, ws, [FILE_WRITE_CAPABILITY]);
+  t.after(() => releasePeonTransferConnection(peonId, ws));
+  const requestId = "ecce5b66-bfe8-4c29-b746-bc0df76c0a35";
+
+  const deleted = deletePeonProjectFile({
+    peonId,
+    workspaceId: "workspace",
+    projectId: "project-id",
+    relativePath: "nested/file.txt",
+    actor: { userId: "operator", email: "operator@example.com" },
+    requestId,
+    commandId: requestId,
+  });
+  const open = jsonFrames(ws).at(-1)!;
+  assert.deepEqual({
+    operation: open.operation,
+    scope: open.scope,
+    projectId: open.projectId,
+    relativePath: open.relativePath,
+    requestId: open.requestId,
+    transferId: open.transferId,
+    commandId: open.commandId,
+  }, {
+    operation: "delete",
+    scope: "project",
+    projectId: "project-id",
+    relativePath: "nested/file.txt",
+    requestId,
+    transferId: requestId,
+    commandId: requestId,
+  });
+  assert.equal(handlePeonFileJson(peonId, ws, {
+    type: "write_result",
+    requestId,
+    status: 200,
+    path: "nested/file.txt",
+    size: 12,
+  }), true);
+  assert.deepEqual(await deleted, { status: 200, path: "nested/file.txt", size: 12 });
 });
 
 test("write routing is capability-gated, mixed-version compatible, and exclusive once selected", () => {

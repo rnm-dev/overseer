@@ -30,6 +30,7 @@ import { FileSandboxError, resolveAttachmentPath, resolveSandboxSegments } from 
 import { hasProjectFileTransport, hasSandboxFileTransport } from "../../peonTransferConnections.js";
 import { hasFileWriteTransport } from "../../peonTransferConnections.js";
 import {
+  deletePeonProjectFile,
   movePeonProjectFile,
   PeonFileStreamError,
   uploadPeonProjectFile,
@@ -500,5 +501,41 @@ export function registerProjectRoutes(router: express.Router): void {
     }
     const rest = restSegments(req).map(encodeURIComponent).join("/");
     relay(await callPeon(connOfRecord(c.record), "PATCH", `/projects/${encodeURIComponent(String(req.params.key))}/files/${rest}`, { actor: c.operator.email, body: req.body }), res);
+  }));
+  router.delete(`${wp}/projects/:key/files/{*rest}`, withWorkspaceProject(async (req, res, c) => {
+    const writeReady = hasFileWriteTransport(c.record.peonId);
+    const projectId = writeReady
+      ? (await getIndexedProject(c.record.peonId, String(req.params.key)))?.projectId ?? null
+      : null;
+    const writeChannel = projectFileWriteChannel({ capabilityReady: writeReady, projectId });
+    if (writeChannel === "unavailable") {
+      return res.status(409).json({ error: "canonical project identity is temporarily unavailable", code: "PROJECT_IDENTITY_UNAVAILABLE" });
+    }
+    if (writeChannel === "socket") {
+      const controller = new AbortController();
+      req.once("aborted", () => controller.abort());
+      res.once("close", () => {
+        if (!res.writableEnded) controller.abort();
+      });
+      try {
+        const correlation = uploadHeaders(req);
+        const result = await deletePeonProjectFile({
+          peonId: c.record.peonId,
+          workspaceId: c.workspaceId,
+          projectId: projectId!,
+          relativePath: restSegments(req).join("/"),
+          actor: { userId: c.userId, email: c.operator.email },
+          signal: controller.signal,
+          requestId: correlation.requestId,
+          commandId: correlation.requestId,
+        });
+        if (!res.destroyed) res.status(result.status).json({ path: result.path, size: result.size });
+      } catch (error) {
+        replyFileWriteError(res, error);
+      }
+      return;
+    }
+    const rest = restSegments(req).map(encodeURIComponent).join("/");
+    relay(await callPeon(connOfRecord(c.record), "DELETE", `/projects/${encodeURIComponent(String(req.params.key))}/files/${rest}`, { actor: c.operator.email }), res);
   }));
 }
