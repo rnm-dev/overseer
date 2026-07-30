@@ -37,6 +37,19 @@ test("canonical catalog dependencies are all-or-nothing and fallback is exclusiv
   assert.equal(routeForSurface("absolute-folder-picker", negotiated), "reverse-socket");
 });
 
+test("file write transport is pre-selected exclusively and never falls back after socket selection", () => {
+  const reverse = negotiateCapabilities(
+    { controlCapabilities: [], transferCapabilities: ["file-write-v1"] },
+    { controlCapabilities: [], transferCapabilities: ["file-write-v1"] },
+  );
+  for (const surface of ["project-file-upload", "attachment-upload", "project-file-move"]) {
+    assert.equal(routeForSurface(surface, reverse), "reverse-socket");
+    // Runtime socket failure cannot alter the already selected route.
+    assert.equal(routeForSurface(surface, reverse), "reverse-socket");
+  }
+  assert.equal(routeForSurface("project-file-upload", { control: [], transfer: [], channelFeatures: {} }), "legacy-http");
+});
+
 test("covered contracts are distinguished from explicitly blocked extension cells", () => {
   const report = runCapabilityMatrix(loadFixture("capability-matrix-v1.json"));
   const reverseCommand = report.extensions.find((entry) => entry.id === "reverse-command");
@@ -45,7 +58,10 @@ test("covered contracts are distinguished from explicitly blocked extension cell
   const transcripts = report.extensions.find((entry) => entry.id === "transcripts");
   assert.equal(transcripts?.passed, true);
   assert.equal(transcripts?.blocked, false);
+  const writes = report.extensions.find((entry) => entry.id === "writes");
+  assert.equal(writes?.passed, true);
+  assert.equal(writes?.blocked, false);
   const blocked = report.extensions.filter((entry) => entry.blocked);
-  assert.deepEqual(blocked.map((entry) => entry.id), ["writes", "rollout"]);
+  assert.deepEqual(blocked.map((entry) => entry.id), ["rollout"]);
   assert.ok(blocked.every((entry) => !entry.passed && entry.blockedBy.length > 20));
 });

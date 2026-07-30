@@ -34,3 +34,7 @@ export {
   TranscriptHarnessError,
   TranscriptSyncHarness,
 } from "./transcriptLifecycle.js";
+export {
+  FileWriteHarnessError,
+  FileWriteLifecycleHarness,
+} from "./fileWriteLifecycle.js";

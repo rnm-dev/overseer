@@ -1,0 +1,32 @@
+{
+  "formatVersion": 1,
+  "capability": "file-write-v1",
+  "limits": { "transferJson": 65536, "binary": 65536 },
+  "frames": [
+    {
+      "name": "project upload admission", "surface": "file-write", "schema": "write.open", "limit": "transferJson",
+      "frame": { "type": "write_open", "protocol": 1, "requestId": "00000000-0000-4000-8000-000000000229", "transferId": "00000000-0000-4000-8000-000000000229", "commandId": "00000000-0000-4000-8000-000000000229", "operation": "upload", "scope": "project", "projectId": "00000000-0000-4000-8000-000000000020", "relativePath": "dist/app.js", "contentLength": 5, "sha256": "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824", "actor": { "userId": "00000000-0000-4000-8000-000000000001", "email": "operator@example.com" } }
+    },
+    {
+      "name": "attachment upload admission", "surface": "file-write", "schema": "write.open", "limit": "transferJson",
+      "frame": { "type": "write_open", "protocol": 1, "requestId": "00000000-0000-4000-8000-000000000230", "transferId": "00000000-0000-4000-8000-000000000230", "commandId": "00000000-0000-4000-8000-000000000230", "operation": "upload", "scope": "sandbox", "path": "uploads/session/file.txt", "contentLength": 5, "actor": { "userId": "00000000-0000-4000-8000-000000000001", "email": "operator@example.com" } }
+    },
+    {
+      "name": "same-project no-clobber move", "surface": "file-write", "schema": "write.open", "limit": "transferJson",
+      "frame": { "type": "write_open", "protocol": 1, "requestId": "00000000-0000-4000-8000-000000000231", "transferId": "00000000-0000-4000-8000-000000000231", "commandId": "00000000-0000-4000-8000-000000000231", "operation": "move", "scope": "project", "projectId": "00000000-0000-4000-8000-000000000020", "relativePath": "old.txt", "destination": "new.txt", "actor": { "userId": "00000000-0000-4000-8000-000000000001", "email": "operator@example.com" } }
+    },
+    { "name": "receiver acceptance", "surface": "file-write", "schema": "write.ready", "limit": "transferJson", "frame": { "type": "write_ready", "requestId": "00000000-0000-4000-8000-000000000229", "maxBytes": 104857600, "credit": 65514 } },
+    { "name": "binary credited chunk", "surface": "file-write", "schema": "write.chunk", "limit": "binary", "frame": { "protocol": 1, "frameType": 2, "requestId": "00000000-0000-4000-8000-000000000229", "sequence": 0, "payloadBytes": 5, "totalBytes": 27 } },
+    { "name": "credit replenishment", "surface": "file-write", "schema": "write.credit", "limit": "transferJson", "frame": { "type": "write_credit", "requestId": "00000000-0000-4000-8000-000000000229", "bytes": 5 } },
+    { "name": "sender body end", "surface": "file-write", "schema": "write.end", "limit": "transferJson", "frame": { "type": "write_end", "requestId": "00000000-0000-4000-8000-000000000229" } },
+    { "name": "atomic upload result", "surface": "file-write", "schema": "write.result", "limit": "transferJson", "frame": { "type": "write_result", "requestId": "00000000-0000-4000-8000-000000000229", "status": 201, "path": "dist/app.js", "size": 5, "sha256": "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824" } },
+    { "name": "bounded cancellation", "surface": "file-write", "schema": "write.cancel", "limit": "transferJson", "frame": { "type": "write_cancel", "requestId": "00000000-0000-4000-8000-000000000229", "reason": "TRANSFER_CANCELLED" } },
+    { "name": "oversize chunk rejected", "surface": "file-write", "schema": "write.chunk", "limit": "binary", "valid": false, "frame": { "protocol": 1, "frameType": 2, "requestId": "00000000-0000-4000-8000-000000000229", "sequence": 0, "payloadBytes": 65515, "totalBytes": 65537 } },
+    { "name": "traversal rejected", "surface": "file-write", "schema": "write.open", "limit": "transferJson", "valid": false, "frame": { "type": "write_open", "protocol": 1, "requestId": "00000000-0000-4000-8000-000000000232", "transferId": "00000000-0000-4000-8000-000000000232", "commandId": "00000000-0000-4000-8000-000000000232", "operation": "upload", "scope": "project", "projectId": "00000000-0000-4000-8000-000000000020", "relativePath": "../escape", "actor": { "userId": "00000000-0000-4000-8000-000000000001", "email": "operator@example.com" } } }
+  ],
+  "blockedCells": [
+    "public DELETE cutover coverage",
+    "optimistic revision fences",
+    "durable cross-daemon-restart destructive receipts"
+  ]
+}

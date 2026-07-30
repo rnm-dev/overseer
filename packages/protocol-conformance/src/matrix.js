@@ -53,6 +53,10 @@ export function routeForSurface(surface, negotiated) {
     case "session-transcript":
       return control.has("transcript-sync-v1") && CANONICAL_PAIR.every((capability) => control.has(capability))
         ? "reverse-socket" : "legacy-http";
+    case "project-file-upload":
+    case "attachment-upload":
+    case "project-file-move":
+      return transfer.has("file-write-v1") ? "reverse-socket" : "legacy-http";
     default:
       return "unimplemented";
   }

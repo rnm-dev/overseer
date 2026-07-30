@@ -238,6 +238,43 @@ function validateFileSimple(frame, errors, kind) {
   }
 }
 
+function validateWriteOpen(frame, errors) {
+  if (frame.type !== "write_open" || frame.protocol !== 1 || !uuid(frame.requestId)) errors.push("invalid write_open identity");
+  if (frame.transferId !== frame.requestId || !uuid(frame.commandId)) errors.push("invalid transfer/command correlation");
+  if (!actor(frame.actor)) errors.push("actor must be server-derived");
+  if (!["upload", "move"].includes(frame.operation) || !["project", "sandbox"].includes(frame.scope)) errors.push("invalid write operation/scope");
+  if (frame.operation === "upload" && frame.scope === "project"
+    && (!uuid(frame.projectId) || typeof frame.relativePath !== "string")) errors.push("invalid project upload selector");
+  if (frame.operation === "upload" && frame.scope === "sandbox" && typeof frame.path !== "string") errors.push("invalid sandbox upload selector");
+  if (frame.operation === "move" && (frame.scope !== "project" || !uuid(frame.projectId)
+    || typeof frame.relativePath !== "string" || typeof frame.destination !== "string")) errors.push("invalid project move selector");
+  for (const pathValue of [frame.relativePath, frame.destination, frame.path].filter((value) => value !== undefined)) {
+    if (!pathValue || pathValue.startsWith("/") || pathValue.split("/").includes("..")) errors.push("write path must be contained");
+  }
+  if (frame.contentLength !== undefined && !integer(frame.contentLength)) errors.push("invalid contentLength");
+  if (frame.sha256 !== undefined && !/^[0-9a-f]{64}$/.test(frame.sha256)) errors.push("invalid sha256");
+}
+
+function validateWriteFlow(frame, errors, type) {
+  if (frame.type !== type || !uuid(frame.requestId)) errors.push(`invalid ${type}`);
+  if (type === "write_ready" && (!integer(frame.maxBytes, 1) || !integer(frame.credit, 1) || frame.credit > 65514)) errors.push("invalid initial write credit");
+  if (type === "write_credit" && (!integer(frame.bytes, 1) || frame.bytes > 65514)) errors.push("invalid write credit");
+  if (type === "write_result" && (
+    !integer(frame.status, 200) || frame.status > 299
+    || typeof frame.path !== "string" || !integer(frame.size)
+    || (frame.sha256 !== undefined && !/^[0-9a-f]{64}$/.test(frame.sha256))
+  )) errors.push("invalid write result");
+  if (type === "write_cancel" && typeof frame.reason !== "string") errors.push("invalid write cancellation");
+}
+
+function validateWriteChunk(frame, errors) {
+  if (frame.protocol !== 1 || frame.frameType !== 2 || !uuid(frame.requestId)
+    || !integer(frame.sequence) || !integer(frame.payloadBytes, 1)
+    || frame.payloadBytes > 65514 || frame.totalBytes !== frame.payloadBytes + 22) {
+    errors.push("invalid binary write chunk");
+  }
+}
+
 const validators = {
   "socket.control.hello": validateControlHello,
   "socket.control.hello_ack": validateControlHelloAck,
@@ -268,6 +305,13 @@ const validators = {
   "file.credit": (frame, errors) => validateFileSimple(frame, errors, "credit"),
   "file.end": (frame, errors) => validateFileSimple(frame, errors, "end"),
   "file.error": (frame, errors) => validateFileSimple(frame, errors, "error"),
+  "write.open": validateWriteOpen,
+  "write.ready": (frame, errors) => validateWriteFlow(frame, errors, "write_ready"),
+  "write.credit": (frame, errors) => validateWriteFlow(frame, errors, "write_credit"),
+  "write.chunk": validateWriteChunk,
+  "write.end": (frame, errors) => validateWriteFlow(frame, errors, "write_end"),
+  "write.result": (frame, errors) => validateWriteFlow(frame, errors, "write_result"),
+  "write.cancel": (frame, errors) => validateWriteFlow(frame, errors, "write_cancel"),
 };
 
 export function loadFixture(name) {

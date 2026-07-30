@@ -13,7 +13,7 @@
       },
       "current": {
         "controlCapabilities": ["session-catalog-v1", "durable-delivery-v1", "project-catalog-v1", "folder-listing-v1", "reverse-command-v1", "transcript-sync-v1"],
-        "transferCapabilities": ["project-file-read-v1", "sandbox-file-read-v1"],
+        "transferCapabilities": ["project-file-read-v1", "sandbox-file-read-v1", "file-write-v1"],
         "channelFeatures": { "folder-listing-v1": ["entry-metadata-v1"] }
       }
     },
@@ -29,7 +29,7 @@
       },
       "current": {
         "controlCapabilities": ["session-catalog-v1", "durable-delivery-v1", "project-catalog-v1", "folder-listing-v1", "reverse-command-v1", "transcript-sync-v1"],
-        "transferCapabilities": ["project-file-read-v1", "sandbox-file-read-v1"],
+        "transferCapabilities": ["project-file-read-v1", "sandbox-file-read-v1", "file-write-v1"],
         "channelFeatures": { "folder-listing-v1": ["entry-metadata-v1"] }
       }
     }
@@ -47,7 +47,10 @@
         "project-file-read": "legacy-http",
         "sandbox-file-read": "legacy-http",
         "session-cancel": "legacy-http",
-        "session-transcript": "legacy-http"
+        "session-transcript": "legacy-http",
+        "project-file-upload": "legacy-http",
+        "attachment-upload": "legacy-http",
+        "project-file-move": "legacy-http"
       }
     },
     {
@@ -62,7 +65,10 @@
         "project-file-read": "legacy-http",
         "sandbox-file-read": "legacy-http",
         "session-cancel": "legacy-http",
-        "session-transcript": "legacy-http"
+        "session-transcript": "legacy-http",
+        "project-file-upload": "legacy-http",
+        "attachment-upload": "legacy-http",
+        "project-file-move": "legacy-http"
       }
     },
     {
@@ -77,7 +83,10 @@
         "project-file-read": "legacy-http",
         "sandbox-file-read": "legacy-http",
         "session-cancel": "legacy-http",
-        "session-transcript": "legacy-http"
+        "session-transcript": "legacy-http",
+        "project-file-upload": "legacy-http",
+        "attachment-upload": "legacy-http",
+        "project-file-move": "legacy-http"
       }
     },
     {
@@ -92,7 +101,10 @@
         "project-file-read": "legacy-http",
         "sandbox-file-read": "legacy-http",
         "session-cancel": "legacy-http",
-        "session-transcript": "legacy-http"
+        "session-transcript": "legacy-http",
+        "project-file-upload": "legacy-http",
+        "attachment-upload": "legacy-http",
+        "project-file-move": "legacy-http"
       }
     },
     {
@@ -107,7 +119,10 @@
         "project-file-read": "reverse-socket",
         "sandbox-file-read": "legacy-http",
         "session-cancel": "legacy-http",
-        "session-transcript": "legacy-http"
+        "session-transcript": "legacy-http",
+        "project-file-upload": "legacy-http",
+        "attachment-upload": "legacy-http",
+        "project-file-move": "legacy-http"
       }
     },
     {
@@ -122,7 +137,10 @@
         "project-file-read": "reverse-socket",
         "sandbox-file-read": "legacy-http",
         "session-cancel": "legacy-http",
-        "session-transcript": "legacy-http"
+        "session-transcript": "legacy-http",
+        "project-file-upload": "legacy-http",
+        "attachment-upload": "legacy-http",
+        "project-file-move": "legacy-http"
       }
     },
     {
@@ -137,7 +155,10 @@
         "project-file-read": "legacy-http",
         "sandbox-file-read": "legacy-http",
         "session-cancel": "legacy-http",
-        "session-transcript": "legacy-http"
+        "session-transcript": "legacy-http",
+        "project-file-upload": "legacy-http",
+        "attachment-upload": "legacy-http",
+        "project-file-move": "legacy-http"
       }
     },
     {
@@ -152,7 +173,10 @@
         "project-file-read": "reverse-socket",
         "sandbox-file-read": "legacy-http",
         "session-cancel": "legacy-http",
-        "session-transcript": "legacy-http"
+        "session-transcript": "legacy-http",
+        "project-file-upload": "legacy-http",
+        "attachment-upload": "legacy-http",
+        "project-file-move": "legacy-http"
       }
     },
     {
@@ -167,7 +191,10 @@
         "project-file-read": "reverse-socket",
         "sandbox-file-read": "reverse-socket",
         "session-cancel": "reverse-socket",
-        "session-transcript": "reverse-socket"
+        "session-transcript": "reverse-socket",
+        "project-file-upload": "reverse-socket",
+        "attachment-upload": "reverse-socket",
+        "project-file-move": "reverse-socket"
       }
     }
   ],
@@ -192,9 +219,10 @@
     },
     {
       "id": "writes",
-      "capability": "project-file-write-v1",
-      "status": "blocked",
-      "blockedBy": "Uploads and artifact writes remain on HTTP; no reverse write operation is released."
+      "capability": "file-write-v1",
+      "status": "covered",
+      "coverage": "project and attachment upload plus same-project no-clobber move; credited binary chunks, atomic temp commit/cleanup, bounds, correlation, cancellation, replay, generation fencing and exclusive fallback",
+      "blockedCells": ["public DELETE cutover coverage", "optimistic revision fences", "durable cross-daemon-restart destructive receipts"]
     },
     {
       "id": "rollout",
