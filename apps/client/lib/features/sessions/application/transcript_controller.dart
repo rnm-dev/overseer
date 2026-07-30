@@ -106,6 +106,9 @@ class TranscriptController extends AsyncNotifier<TranscriptState> {
   bool _suppressNextCompletionSound = false;
   bool _initialSoundSnapshotReceived = false;
   bool _initialSoundCatchUpComplete = false;
+  var _visibleEventLimit = _pageSize;
+  var _cachedEvents = const <TranscriptEvent>[];
+  var _serverHasOlder = false;
   String? _initialTailBoundary;
   String? _initialSoundBoundary;
   final List<(String, Map<String, dynamic>)> _pendingInitialSounds = [];
@@ -132,6 +135,8 @@ class TranscriptController extends AsyncNotifier<TranscriptState> {
       peonId: scope.peonId,
       sessionId: scope.sessionId,
     );
+    _cachedEvents = cached.events;
+    _serverHasOlder = cached.hasOlder;
     _subscription = repository
         .watchTranscript(
           workspaceId: scope.workspaceId,
@@ -162,9 +167,9 @@ class TranscriptController extends AsyncNotifier<TranscriptState> {
       await refresh();
     });
     return TranscriptState(
-      events: cached.events,
+      events: _visibleCachedEvents,
       isRunning: _running,
-      hasOlder: cached.hasOlder,
+      hasOlder: _hasOlder,
     );
   }
 
@@ -205,6 +210,7 @@ class TranscriptController extends AsyncNotifier<TranscriptState> {
         _running = runningSignal ?? _running;
       }
       _nextCursor = page.nextCursor;
+      _serverHasOlder = page.hasMore;
       if (!_initialSoundSnapshotReceived) {
         _soundedEventIds.addAll(page.events.map((event) => event.eventId));
       }
@@ -215,7 +221,7 @@ class TranscriptController extends AsyncNotifier<TranscriptState> {
         latest.copyWith(
           isRefreshing: false,
           isRunning: _running,
-          hasOlder: page.hasMore,
+          hasOlder: _hasOlder,
           clearMessage: true,
         ),
       );
@@ -534,6 +540,11 @@ class TranscriptController extends AsyncNotifier<TranscriptState> {
         !current.hasOlder) {
       return;
     }
+    if (_cachedEvents.length > _visibleEventLimit) {
+      _visibleEventLimit += _pageSize;
+      _applyVisibleCachedEvents(current);
+      return;
+    }
     if (_nextCursor == null) {
       await refresh();
       current = state.value;
@@ -562,12 +573,15 @@ class TranscriptController extends AsyncNotifier<TranscriptState> {
               limit: _pageSize,
             );
         _nextCursor = page.nextCursor;
+        _serverHasOlder = page.hasMore;
         if (page.insertedCount > 0 || !page.hasMore) {
+          _visibleEventLimit += _pageSize;
           final latest = state.value ?? current;
           state = AsyncData(
             latest.copyWith(
+              events: _visibleCachedEvents,
               isLoadingOlder: false,
-              hasOlder: page.hasMore,
+              hasOlder: _hasOlder,
               clearMessage: true,
             ),
           );
@@ -591,9 +605,27 @@ class TranscriptController extends AsyncNotifier<TranscriptState> {
   }
 
   void _applyCachedEvents(List<TranscriptEvent> events) {
+    _cachedEvents = events;
     final current = state.value;
     if (current == null) return;
-    state = AsyncData(current.copyWith(events: events));
+    _applyVisibleCachedEvents(current);
+  }
+
+  List<TranscriptEvent> get _visibleCachedEvents {
+    final start = (_cachedEvents.length - _visibleEventLimit).clamp(
+      0,
+      _cachedEvents.length,
+    );
+    return _cachedEvents.sublist(start);
+  }
+
+  bool get _hasOlder =>
+      _cachedEvents.length > _visibleEventLimit || _serverHasOlder;
+
+  void _applyVisibleCachedEvents(TranscriptState current) {
+    state = AsyncData(
+      current.copyWith(events: _visibleCachedEvents, hasOlder: _hasOlder),
+    );
   }
 
   bool? _runningSignal(List<TranscriptEvent> events) {

@@ -18,7 +18,7 @@ test("capability gating leaves legacy Peon requests and responses unchanged", ()
 });
 
 test("new Peons use opaque server cursors without deriving offsets", () => {
-  assert.equal(transcriptPageUrl("/peon", "a/b", true), "/peon/sessions/a%2Fb/transcript?limit=150");
+  assert.equal(transcriptPageUrl("/peon", "a/b", true), "/peon/sessions/a%2Fb/transcript?limit=50");
   assert.equal(transcriptPageUrl("/peon", "a/b", true, "opaque+/="), "/peon/sessions/a%2Fb/transcript?limit=50&cursor=opaque%2B%2F%3D");
   assert.deepEqual(parseTranscriptPage({ events: [ev("2", "two")], nextCursor: "before-2", hasMore: true }), {
     events: [ev("2", "two")], paginated: true, nextCursor: "before-2", hasMore: true,

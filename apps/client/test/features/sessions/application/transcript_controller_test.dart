@@ -30,6 +30,60 @@ void main() {
   );
 
   test(
+    'opens only the newest cached page and reveals older cache on demand',
+    () async {
+      final repository = _FakeSessionRepository(
+        cached: TranscriptCache(
+          events: [
+            for (var index = 0; index < 75; index++)
+              TranscriptEvent(
+                eventId: 'cached-$index',
+                orderKey: index,
+                payload: const {'type': 'assistant'},
+              ),
+          ],
+          hasOlder: false,
+        ),
+      );
+      final container = ProviderContainer(
+        overrides: [sessionRepositoryProvider.overrideWithValue(repository)],
+      );
+      addTearDown(container.dispose);
+      final subscription = container.listen(
+        transcriptControllerProvider(scope),
+        (_, _) {},
+        fireImmediately: true,
+      );
+      addTearDown(subscription.close);
+
+      final opened = await container.read(
+        transcriptControllerProvider(scope).future,
+      );
+      expect(opened.events, hasLength(50));
+      expect(opened.events.first.eventId, 'cached-25');
+      expect(opened.hasOlder, isTrue);
+
+      while (container
+              .read(transcriptControllerProvider(scope))
+              .value
+              ?.isRefreshing ==
+          true) {
+        await Future<void>.delayed(Duration.zero);
+      }
+      await container
+          .read(transcriptControllerProvider(scope).notifier)
+          .loadOlder();
+
+      final expanded = container
+          .read(transcriptControllerProvider(scope))
+          .requireValue;
+      expect(expanded.events, hasLength(75));
+      expect(expanded.events.first.eventId, 'cached-0');
+      expect(expanded.hasOlder, isFalse);
+    },
+  );
+
+  test(
     'coalesces an authoritative post-submit refresh behind an opening refresh',
     () async {
       final opening = Completer<TranscriptPage>();

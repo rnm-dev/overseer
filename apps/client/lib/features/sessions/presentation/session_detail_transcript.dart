@@ -37,8 +37,34 @@ class _TranscriptBody extends StatefulWidget {
 
 class _TranscriptBodyState extends State<_TranscriptBody> {
   static const _bottomThreshold = 24.0;
+  static const _historyThreshold = 400.0;
 
   final ScrollController _scrollController = ScrollController();
+  var _requestingOlder = false;
+  var _historyEdgeArmed = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_loadOlderNearHistoryEdge);
+  }
+
+  void _loadOlderNearHistoryEdge() {
+    if (_requestingOlder || !_scrollController.hasClients) return;
+    final state = widget.transcript.value;
+    if (state == null || !state.hasOlder || state.isLoadingOlder) return;
+    final position = _scrollController.position;
+    if (position.pixels < position.maxScrollExtent - _historyThreshold) {
+      _historyEdgeArmed = true;
+      return;
+    }
+    if (!_historyEdgeArmed) return;
+    _historyEdgeArmed = false;
+    _requestingOlder = true;
+    widget.onLoadOlder().whenComplete(() {
+      if (mounted) _requestingOlder = false;
+    });
+  }
 
   @override
   void didUpdateWidget(covariant _TranscriptBody oldWidget) {

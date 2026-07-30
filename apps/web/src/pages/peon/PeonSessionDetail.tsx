@@ -301,8 +301,10 @@ export function PeonSessionDetail() {
   });
 
   const prependAnchorRef = useRef<{ sessionKey: string; height: number; scrollY: number } | null>(null);
+  const historySentinelRef = useRef<HTMLDivElement>(null);
   const oldestHistoryEventId = history?.[0]?.eventId;
   const handleLoadOlder = useCallback(async () => {
+    if (prependAnchorRef.current?.sessionKey === sessionKey) return;
     prependAnchorRef.current = { sessionKey, height: document.documentElement.scrollHeight, scrollY: window.scrollY };
     const loaded = await loadOlder();
     if (!loaded && prependAnchorRef.current?.sessionKey === sessionKey) prependAnchorRef.current = null;
@@ -314,6 +316,15 @@ export function PeonSessionDetail() {
     window.scrollTo({ top: anchor.scrollY + Math.max(0, addedHeight) });
     prependAnchorRef.current = null;
   }, [oldestHistoryEventId, sessionKey]);
+  useEffect(() => {
+    const sentinel = historySentinelRef.current;
+    if (!sentinel || !hasOlder || loadingOlder || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) void handleLoadOlder();
+    }, { rootMargin: "400px 0px 0px" });
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [handleLoadOlder, hasOlder, loadingOlder]);
 
   const stickToBottomRef = useRef(true);
   const transcriptRef = useRef<HTMLDivElement>(null);
@@ -571,7 +582,7 @@ export function PeonSessionDetail() {
         ) : (
           <div>
             {hasOlder && (
-              <div className="mb-5 flex flex-col items-center gap-2">
+              <div ref={historySentinelRef} className="mb-5 flex flex-col items-center gap-2">
                 <button
                   type="button"
                   onClick={() => void handleLoadOlder()}

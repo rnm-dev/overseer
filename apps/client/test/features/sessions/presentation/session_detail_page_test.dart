@@ -963,6 +963,52 @@ void main() {
     expect(find.text('Load older events'), findsOneWidget);
   });
 
+  testWidgets('loads older transcript when scrolling near the history edge', (
+    tester,
+  ) async {
+    final controller = _TestTranscriptController(
+      const TranscriptScope(
+        workspaceId: 'workspace',
+        peonId: 'peon',
+        sessionId: 'session',
+      ),
+      TranscriptState(hasOlder: true, events: _transcriptEvents(30)),
+    );
+    await tester.binding.setSurfaceSize(const Size(400, 600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          sessionDetailsProvider.overrideWith(
+            (ref, scope) async => const SessionDetails(turnCount: 1),
+          ),
+          transcriptControllerProvider.overrideWith2((scope) => controller),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.dark,
+          home: const SessionDetailPage(
+            session: SessionSummary(
+              workspaceId: 'workspace',
+              peonId: 'peon',
+              sessionId: 'session',
+              title: 'Paginated transcript',
+              syncedAt: 1,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final list = tester.widget<ListView>(
+      find.byKey(const Key('transcript-list')),
+    );
+    list.controller!.jumpTo(list.controller!.position.maxScrollExtent);
+    await tester.pumpAndSettle();
+
+    expect(controller.loadOlderCalls, 1);
+  });
+
   testWidgets('only follows transcript updates while already at the bottom', (
     tester,
   ) async {
@@ -1321,6 +1367,7 @@ class _TestTranscriptController extends TranscriptController {
   _TestTranscriptController(super.scope, this.initial);
 
   final TranscriptState initial;
+  var loadOlderCalls = 0;
 
   @override
   Future<TranscriptState> build() async => initial;
@@ -1332,7 +1379,9 @@ class _TestTranscriptController extends TranscriptController {
   Future<void> refreshAfterSubmission() async {}
 
   @override
-  Future<void> loadOlder() async {}
+  Future<void> loadOlder() async {
+    loadOlderCalls += 1;
+  }
 
   void emit(TranscriptState next) {
     state = AsyncData(next);
