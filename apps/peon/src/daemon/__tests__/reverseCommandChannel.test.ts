@@ -32,6 +32,15 @@ async function tick(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 10));
 }
 
+// The channel unrefs its retry timers so a daemon is never held alive by a
+// pending republication alone. A test that awaits such a retry has nothing else
+// keeping the loop open, so the runner would see it drain mid-await and cancel
+// the test; this holds the loop for exactly as long as the wait.
+function holdEventLoop(): () => void {
+  const timer = setInterval(() => {}, 5);
+  return () => clearInterval(timer);
+}
+
 function deferred(): { promise: Promise<void>; resolve: () => void } {
   let resolve!: () => void;
   const promise = new Promise<void>((done) => { resolve = done; });
@@ -261,6 +270,7 @@ test("terminal publication retries outbox pressure and cursor-bind persistence f
     },
     disconnect: (reason) => assert.fail(reason),
   };
+  const release = holdEventLoop();
   try {
     const channel = new ReverseCommandChannel({
       peonId: () => peonId,
@@ -277,6 +287,7 @@ test("terminal publication retries outbox pressure and cursor-bind persistence f
     assert.ok(bindAttempts >= 2);
     assert.equal(ledger.get(commandId)?.resultCursor, "cursor");
   } finally {
+    release();
     rmSync(directory, { recursive: true, force: true });
   }
 });
