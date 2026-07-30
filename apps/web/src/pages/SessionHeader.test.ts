@@ -4,7 +4,7 @@ import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router";
 import { I18nProvider } from "../i18n";
-import { sessionHeaderMetadataLoading, SessionHeaderIdentity, SessionHeaderStats } from "./peon/session/SessionHeader";
+import { sessionHeaderIdentityData, SessionHeaderIdentity, SessionHeaderStats } from "./peon/session/SessionHeader";
 import { MobilePaneIdentity, MOBILE_CONTENT_HEADER_ID } from "./peon/session/mobileHeader";
 import { ProjectHeaderLayout, ProjectMobileHeader } from "./peon/ProjectPageHeader";
 
@@ -49,11 +49,20 @@ test("session identity reveals the project and title after metadata loads", () =
   assert.doesNotMatch(loaded, /aria-busy="true"/);
 });
 
-test("session identity waits for a title or the authoritative conversation opening", () => {
-  assert.equal(sessionHeaderMetadataLoading("peon-1:old", "peon-1:new", "Old title", "Old opening"), true);
-  assert.equal(sessionHeaderMetadataLoading("peon-1:new", "peon-1:new", null, null), true);
-  assert.equal(sessionHeaderMetadataLoading("peon-1:new", "peon-1:new", "Named session", null), false);
-  assert.equal(sessionHeaderMetadataLoading("peon-1:new", "peon-1:new", null, "Opening request"), false);
+test("session identity uses the indexed title immediately without leaking previous metadata", () => {
+  assert.deepEqual(
+    sessionHeaderIdentityData("peon-1:old", "peon-1:new", "Old title", "Old opening", "Indexed title"),
+    {
+      title: "Indexed title",
+      openingMessage: null,
+      draft: "Indexed title",
+      metadataLoading: false,
+    },
+  );
+  assert.equal(sessionHeaderIdentityData("peon-1:old", "peon-1:new", "Old title", "Old opening", undefined).metadataLoading, true);
+  assert.equal(sessionHeaderIdentityData("peon-1:new", "peon-1:new", null, null, "Stale indexed title").metadataLoading, true);
+  assert.equal(sessionHeaderIdentityData("peon-1:new", "peon-1:new", "Named session", null, undefined).metadataLoading, false);
+  assert.equal(sessionHeaderIdentityData("peon-1:new", "peon-1:new", null, "Opening request", undefined).metadataLoading, false);
 
   const waitingForDisplayTitle = renderToStaticMarkup(React.createElement(
     I18nProvider,

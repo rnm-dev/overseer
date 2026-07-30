@@ -21,7 +21,7 @@ import { createQueueActivityTracker, createQueueReconciler } from "./session/que
 import type { PreviewTarget } from "./session/PreviewPanel";
 import { useSessionTranscript } from "./session/useSessionTranscript";
 import { useSessionComposer } from "./session/useSessionComposer";
-import { SessionHeader, sessionHeaderMetadataLoading } from "./session/SessionHeader";
+import { SessionHeader, sessionHeaderIdentityData } from "./session/SessionHeader";
 import { SessionComposerDock } from "./session/SessionComposerDock";
 import { SessionOverlays } from "./session/SessionOverlays";
 import { useScrollToBottom } from "./session/useScrollToBottom";
@@ -520,23 +520,29 @@ export function PeonSessionDetail() {
   // The metadata prompt is the opening message of the whole conversation. Do
   // not derive header identity from the currently loaded transcript page: for
   // long sessions that page is only a recent batch and can start mid-thread.
-  const headerMetadataLoading = sessionHeaderMetadataLoading(loadedMetadataKey, sessionKey, title, openingMessage);
+  const headerIdentity = sessionHeaderIdentityData(
+    loadedMetadataKey,
+    sessionKey,
+    title,
+    openingMessage,
+    selectedSessionTitle,
+  );
 
   return (
     <div className="min-w-0">
       <SessionHeader
         peonId={peon.peonId}
-        metadataLoading={headerMetadataLoading}
-        projectKey={projectKey}
-        title={title}
-        draft={draft}
+        metadataLoading={headerIdentity.metadataLoading}
+        projectKey={loadedMetadataKey === sessionKey ? projectKey : null}
+        title={headerIdentity.title}
+        draft={loadedMetadataKey === sessionKey ? draft : headerIdentity.draft}
         setDraft={setDraft}
         editing={editing}
         setEditing={setEditing}
         savingName={savingName}
         renameNote={renameNote}
         setRenameNote={setRenameNote}
-        openingMessage={openingMessage}
+        openingMessage={headerIdentity.openingMessage}
         turnTotal={turnTotal}
         usageSummary={usageSummary}
         filesOpen={filesOpen}

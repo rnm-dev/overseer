@@ -53,13 +53,27 @@ interface SessionHeaderIdentityProps {
   cancelRename: () => void;
 }
 
-export function sessionHeaderMetadataLoading(
+export function sessionHeaderIdentityData(
   loadedMetadataKey: string | null,
   sessionKey: string,
   title: string | null,
   openingMessage: string | null,
-): boolean {
-  return loadedMetadataKey !== sessionKey || (!title && !openingMessage);
+  indexedTitle: string | null | undefined,
+): {
+  title: string | null;
+  openingMessage: string | null;
+  draft: string;
+  metadataLoading: boolean;
+} {
+  const metadataCurrent = loadedMetadataKey === sessionKey;
+  const displayTitle = metadataCurrent ? title : indexedTitle ?? null;
+  const displayOpeningMessage = metadataCurrent ? openingMessage : null;
+  return {
+    title: displayTitle,
+    openingMessage: displayOpeningMessage,
+    draft: displayTitle ?? "",
+    metadataLoading: !displayTitle && !displayOpeningMessage,
+  };
 }
 
 export function SessionHeaderStats({ turnTotal, usageSummary }: { turnTotal: number; usageSummary: UsageBreakdown | null }) {
