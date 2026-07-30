@@ -7,16 +7,21 @@ and may begin only after all of the following evidence exists:
 | Gate | Required evidence | Audit result |
 | --- | --- | --- |
 | OVSR-152 | Heroboard status is Released, with its acceptance evidence | Blocked: In Progress |
+| Security clearance | OVSR-150 Released, no unresolved critical/high cutover finding, approved public-boundary suite | Blocked: OVSR-150 In Progress |
+| Conformance clearance | OVSR-151 Released, complete supported-version matrix and all operation-family NAT/fault cells green | Blocked: OVSR-151 In Progress |
 | Production no-inbound soak | Dated production cohort, duration, blocked Peon ingress, operation-family coverage, telemetry result | Missing |
 | Rollback exercise | Dated production-like exercise showing fallback and accepted-command reconciliation without duplicate effects | Missing |
 | Mixed-version support window | Published start/end, supported versions and operator migration notice | Missing |
-| Window completion | Audit date is on or after the published end and telemetry shows no supported callback users | Cannot start until the window is published |
+| Window completion | Audit date is on or after the published end | Cannot start until the window is published |
+| Post-window telemetry | Dated zero callback selections and attempts for every supported version and operation family | Missing |
 
 The executable record is
 `packages/protocol-conformance/fixtures/legacy-callback-retirement-gate-v1.json`.
 Its conformance test fails if the decision is changed to `ready` without
-evidence for every gate or before the support-window end. While blocked, it
-also protects representative compatibility anchors from accidental deletion.
+evidence for every gate, with invalid window dates, or before the support-window
+end. While blocked, it also protects representative compatibility anchors,
+legacy schema declarations and local dashboard/CLI control anchors from
+accidental deletion.
 
 ## Removal inventory
 
@@ -65,7 +70,12 @@ Before code or schema deletion:
    the documented rollback interval.
 
 The exact unblock condition is: OVSR-152 is Released; dated production
-no-inbound soak and rollback evidence are attached; the public mixed-version
-window has a start and end; that end has passed; and post-window telemetry
-shows zero callback selection/attempts for every supported version and
-operation family.
+no-inbound soak and rollback evidence are attached; OVSR-150 and OVSR-151 are
+Released with their full security and conformance acceptance evidence; the
+public mixed-version window has a start and end; that end has passed; and
+post-window telemetry shows zero callback selection/attempts for every
+supported version and operation family. The current rollout evidence and
+explicitly unfinished cells are recorded in
+[reverse-only rollout](reverse-rollout.md),
+[reverse fleet security](reverse-fleet-security.md), and the
+[protocol conformance harness](protocol-conformance-harness.md).
