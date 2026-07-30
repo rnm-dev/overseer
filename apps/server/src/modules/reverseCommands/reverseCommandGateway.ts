@@ -551,9 +551,8 @@ export class ReverseCommandGateway {
     if (session && input.operation === "session.start" && target.sessionId !== undefined) {
       throw new ReverseCommandGatewayError(400, "BAD_COMMAND", "session.start cannot target an existing session");
     }
-    if (input.operation === "session.start"
-      && target.projectId !== (typeof payload.projectId === "string" ? payload.projectId : undefined)) {
-      throw new ReverseCommandGatewayError(400, "BAD_COMMAND", "session.start project identity mismatch");
+    if (input.operation === "session.start" && target.projectId !== undefined) {
+      throw new ReverseCommandGatewayError(400, "BAD_COMMAND", "session.start targets only the authenticated Peon");
     }
     if ((runtime || configuration || armory || update) && target.sessionId !== undefined) {
       throw new ReverseCommandGatewayError(400, "BAD_COMMAND", "operation targets only the Peon");

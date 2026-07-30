@@ -50,7 +50,6 @@ function acceptedSessionId(result: { ok: boolean; json: unknown }): string | nul
     ? String((body.session as Record<string, unknown>).id)
     : null;
 }
-import { hasActiveUpdateCommand } from "../../modules/reverseCommands/reverseCommandRegistry.js";
 
 export function transcriptQuery(query: express.Request["query"], supported: boolean): string {
   if (!supported) return "";
@@ -293,8 +292,13 @@ export function registerSessionRoutes(router: express.Router): void {
     `${wp}/sessions`,
     withWorkspacePeon(async (req, res, c) => {
       const projectKey = typeof req.body?.projectKey === "string" ? req.body.projectKey : null;
-      let projectId: string | null = null;
-      if (projectKey && c.role !== "owner") {
+      const reverseSelected = supportsReverseSession(c.record.peonId, "session.start");
+      const indexedProject = projectKey ? await getIndexedProject(c.record.peonId, projectKey) : null;
+      let projectId: string | null = indexedProject?.projectId ?? null;
+      if (projectKey && !projectId && reverseSelected) {
+        return res.status(404).json({ error: "unknown project", code: "UNKNOWN_PROJECT" });
+      }
+      if (projectKey && !projectId && c.role !== "owner") {
         const project = await callPeon(connOfRecord(c.record), "GET", `/projects/${encodeURIComponent(projectKey)}`, { actor: c.operator.email });
         projectId = project.ok && project.json && typeof project.json === "object" && typeof (project.json as { projectId?: unknown }).projectId === "string"
           ? (project.json as { projectId: string }).projectId
@@ -323,7 +327,7 @@ export function registerSessionRoutes(router: express.Router): void {
         delete payload.projectKey;
         if (projectId) payload.projectId = projectId;
         const reverse = await reverseSession(
-          req, c, "session.start", projectId ? { projectId } : {}, payload as JsonObject,
+          req, c, "session.start", {}, payload as JsonObject,
           typeof requestId === "string" ? requestId : undefined,
         );
         const sessionId = reverse.status === 200 && reverse.body.result && typeof reverse.body.result === "object"
@@ -749,9 +753,6 @@ async function streamProjectedTranscript(
   const pending: LiveEvent[] = [];
   let delivery = Promise.resolve();
   const deliver = async (live: LiveEvent): Promise<void> => {
-    if (await hasActiveUpdateCommand(c.record.peonId)) {
-      return res.status(409).json({ error: "Another update operation is still pending", code: "UPDATE_IN_PROGRESS" });
-    }
     if (res.writableEnded || !live.payload || typeof live.payload !== "object") return;
     const payload = live.payload as {
       deleted?: unknown;
@@ -764,9 +765,6 @@ async function streamProjectedTranscript(
       return;
     }
     if (payload.deleted === true) {
-    if (await hasActiveUpdateCommand(c.record.peonId)) {
-      return res.status(409).json({ error: "Another update operation is still pending", code: "UPDATE_IN_PROGRESS" });
-    }
       res.end();
       return;
     }

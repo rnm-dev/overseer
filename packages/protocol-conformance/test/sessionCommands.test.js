@@ -34,3 +34,15 @@ test("session mutation transport selection is exclusive before admission", () =>
     assert.equal(select({ connected: false, operations }, operation), "legacy");
   }
 });
+
+test("session.start carries stable project identity in payload, never in the Peon target", async () => {
+  const [peonHandler, overseerRoute, overseerGateway] = await Promise.all([
+    readFile(new URL("../../../apps/peon/src/daemon/overseer/socket/channels/reverseCommandChannel.ts", import.meta.url), "utf8"),
+    readFile(new URL("../../../apps/server/src/routes/peons/sessions.ts", import.meta.url), "utf8"),
+    readFile(new URL("../../../apps/server/src/modules/reverseCommands/reverseCommandGateway.ts", import.meta.url), "utf8"),
+  ]);
+  assert.match(peonHandler, /session\.start" && \(target\.sessionId !== undefined \|\| target\.projectId !== undefined\)/);
+  assert.match(overseerRoute, /"session\.start", \{\}, payload as JsonObject/);
+  assert.match(overseerGateway, /session\.start" && target\.projectId !== undefined/);
+  assert.doesNotMatch(overseerRoute, /"session\.start", projectId \? \{ projectId \}/);
+});

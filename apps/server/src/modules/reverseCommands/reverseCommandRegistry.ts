@@ -664,7 +664,7 @@ export async function commitDurableReverseCommandResult(input: {
     );
     if (!updated.rows[0]) throw new Error("reverse command result lost its generation fence");
     const next = rowToRecord(updated.rows[0]);
-    await applySafeProjection(tx, next, input.durable.result);
+    const projectionEvent = await applySafeProjection(tx, next, input.durable.result);
 
     const audit = await tx.query(
       `INSERT INTO reverse_command_audit
