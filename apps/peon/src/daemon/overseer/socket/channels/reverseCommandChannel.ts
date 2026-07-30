@@ -6,6 +6,7 @@ import {
 } from "../../../sessions/index.js";
 import type { PeonSocketChannel, PeonSocketFrame, PeonSocketSender } from "../peonSocketProtocol.js";
 import { ReverseCommandLedger, type ReverseCommandRecord } from "../reverseCommandLedger.js";
+import { daemonConfigurationChannel } from "./daemonConfigurationChannel.js";
 
 export const REVERSE_COMMAND_CAPABILITY = "reverse-command-v1";
 export const REVERSE_COMMAND_MAX_BYTES = 60 * 1024;
@@ -28,7 +29,7 @@ export interface ReverseCommandHandler {
 export interface ValidCommand {
   commandId: string;
   operation: string;
-  target: { peonId: string; sessionId: string };
+  target: { peonId: string; sessionId?: string };
   actor: { userId: string; email: string };
   payload: PeonSocketFrame;
   expected: PeonSocketFrame | null;
@@ -131,6 +132,7 @@ export class ReverseCommandChannel implements PeonSocketChannel {
     const sessionService = options.sessions ?? sessions;
     this.handlers = options.handlers ?? {
       "session.cancel": sessionCancelHandler(sessionService),
+      "daemon.configuration.patch": daemonConfigurationChannel.commandHandler(),
     };
     this.maxConcurrency = options.maxConcurrency ?? 16;
     this.perSessionConcurrency = options.perSessionConcurrency ?? 1;
@@ -290,13 +292,16 @@ export class ReverseCommandChannel implements PeonSocketChannel {
       return { error: "invalid reverse command identity or payload" };
     }
     if (target.peonId !== this.options.peonId()) return { error: "reverse command target Peon does not match authenticated socket", disconnect: true };
-    if (target.sessionId === undefined || target.projectId !== undefined) {
+    if (frame.operation === "session.cancel" && (target.sessionId === undefined || target.projectId !== undefined)) {
       return { error: "session.cancel requires only target.sessionId" };
+    }
+    if (frame.operation === "daemon.configuration.patch" && (target.sessionId !== undefined || target.projectId !== undefined)) {
+      return { error: "daemon.configuration.patch targets only the authenticated Peon" };
     }
     return { command: {
       commandId: frame.commandId,
       operation: frame.operation,
-      target: { peonId: target.peonId, sessionId: target.sessionId as string },
+      target: { peonId: target.peonId, ...(typeof target.sessionId === "string" ? { sessionId: target.sessionId } : {}) },
       actor: { userId: actor.userId, email: actor.email },
       payload: frame.payload as PeonSocketFrame,
       expected: frame.expected === undefined ? null : frame.expected as PeonSocketFrame,

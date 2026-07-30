@@ -13,6 +13,7 @@ import { TranscriptChannel } from "./channels/transcriptChannel.js";
 import { FileWriteChannel } from "./channels/fileWriteChannel.js";
 import { settings } from "../../settings/index.js";
 import { peonClaimClient } from "../../enrollment/index.js";
+import { daemonConfigurationChannel } from "./channels/daemonConfigurationChannel.js";
 const DEFAULT_RETRY_BASE_MS = 250;
 const DEFAULT_RETRY_MAX_MS = 30_000;
 const DEFAULT_STABLE_MS = 30_000;
@@ -122,6 +123,7 @@ export class PeonSocketSupervisor {
                 new SessionWarningChannel(),
                 new FolderListingChannel(),
                 ...(hasDurableOutbox ? [new TranscriptChannel()] : []),
+                ...(hasDurableOutbox ? [daemonConfigurationChannel] : []),
                 ...(hasDurableOutbox ? [new ReverseCommandChannel({ peonId: () => this.configured()?.peonId })] : []),
             ]
             : [
