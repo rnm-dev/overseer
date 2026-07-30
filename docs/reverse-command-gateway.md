@@ -97,3 +97,31 @@ unknown codes, non-terminal cancellation states, extra fields, and detail on
 non-success results are rejected before terminal persistence, projection,
 browser publication, or a success HTTP response. Remote daemon pause/resume
 remains local-only and is not a reverse command.
+
+Terminal HTTP/status views use the validated canonical `result_frame` and
+require its duplicated registry columns to match. A corrupt or legacy
+inconsistent row is reported as `UNSAFE_RESULT`; it cannot regain a success
+mapping through stale `terminal_status`, code, or detail columns.
+
+## Update orchestration
+
+`update.check` and `update.apply` use this registry; they do not create another
+pending-command ledger. Admission is serialized and permits only one active
+`update.*` command per Peon. A conflicting check or apply returns
+`409 UPDATE_IN_PROGRESS` without inserting or sending a second command.
+
+An accepted apply remains pending across the expected socket loss. The daemon
+that launched the updater may publish a pre-restart failure, but it never
+attests a `ready_to_attest` receipt: only the replacement daemon, during command
+ledger recovery, compares its running package version/revision with the
+persisted expectation. Source checkouts are rejected with `UPDATE_BLOCKED`
+because their updater changes files without proving process replacement.
+
+Update terminal results have operation-specific tuple and field allowlists.
+Successful apply requires `applied + OK` and exactly
+`{ version, revision, sha256, attested: true }`; an attestation mismatch requires
+`failed + ATTESTATION_MISMATCH` with the same bounded fields and
+`attested: false`. Failure/rollback codes carry no detail. Check/no-update
+results expose only the bounded update status fields. Contradictory
+status/code combinations, extra fields, messages, and credential-like detail
+are rejected before persistence or browser/API publication.

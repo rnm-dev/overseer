@@ -26,40 +26,70 @@
     "target": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["peonId", "sessionId"],
+      "required": ["peonId"],
       "properties": {
         "peonId": { "$ref": "#/$defs/uuid" },
         "sessionId": { "$ref": "#/$defs/uuid" },
         "projectId": { "$ref": "#/$defs/uuid" },
-        "transferId": { "$ref": "#/$defs/uuid" }
+        "transferId": { "$ref": "#/$defs/uuid" },
+        "packageId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,62}$" },
+        "operationId": { "$ref": "#/$defs/uuid" }
       }
     },
     "command": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["type", "protocol", "capability", "commandId", "operation", "target", "actor", "payload", "requestedAt"],
+      "required": [
+        "type",
+        "protocol",
+        "capability",
+        "commandId",
+        "operation",
+        "target",
+        "actor",
+        "payload",
+        "requestedAt"
+      ],
       "properties": {
         "type": { "const": "command" },
         "protocol": { "const": 1 },
         "capability": { "const": "reverse-command-v1" },
         "commandId": { "$ref": "#/$defs/uuid" },
-        "operation": { "type": "string", "enum": ["session.cancel", "session.start", "session.followup", "session.queue.list", "session.queue.add", "session.queue.edit", "session.queue.remove", "session.queue.send-now", "session.metadata.patch", "session.delete"] },
+        "operation": { "type": "string", "enum": ["session.cancel", "session.start", "session.followup", "session.queue.list", "session.queue.add", "session.queue.edit", "session.queue.remove", "session.queue.send-now", "session.metadata.patch", "session.delete", "daemon.configuration.patch", "project.create", "project.suggest-directory", "project.detail", "project.settings.get", "project.settings.update", "project.delete", "project.documentation.index", "project.documentation.read", "project.skills.list", "project.quick-links.list", "project.quick-links.create", "project.quick-links.update", "project.quick-links.delete", "update.check", "update.apply", "runtime.stats", "runtime.analytics", "runtime.quota", "runtime.capabilities", "armory.inventory", "armory.settings", "armory.refresh", "armory.install", "armory.update", "armory.enable", "armory.disable", "armory.uninstall", "armory.configure", "armory.verify", "armory.configuration.delete", "armory.package", "armory.configuration", "armory.mcp", "armory.operation"] },
         "target": { "$ref": "#/$defs/target" },
         "actor": { "$ref": "#/$defs/actor" },
-        "payload": { "type": "object", "additionalProperties": false, "maxProperties": 0 },
-        "expected": { "type": ["object", "null"], "additionalProperties": true },
-        "requestedAt": { "type": "integer", "minimum": 0 }
+        "payload": {
+          "type": "object",
+          "additionalProperties": true,
+          "maxProperties": 16
+        },
+        "expected": {
+          "type": ["object", "null"],
+          "additionalProperties": true
+        },
+        "requestedAt": {
+          "type": "integer",
+          "minimum": 0
+        }
       }
     },
     "commandAccepted": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["type", "protocol", "commandId", "operation", "state", "replayed", "acceptedAt"],
+      "required": [
+        "type",
+        "protocol",
+        "commandId",
+        "operation",
+        "state",
+        "replayed",
+        "acceptedAt"
+      ],
       "properties": {
         "type": { "const": "command_accepted" },
         "protocol": { "const": 1 },
         "commandId": { "$ref": "#/$defs/uuid" },
-        "operation": { "const": "session.cancel" },
+        "operation": { "enum": ["session.cancel", "session.start", "session.followup", "session.queue.list", "session.queue.add", "session.queue.edit", "session.queue.remove", "session.queue.send-now", "session.metadata.patch", "session.delete", "daemon.configuration.patch", "project.create", "project.suggest-directory", "project.detail", "project.settings.get", "project.settings.update", "project.delete", "project.documentation.index", "project.documentation.read", "project.skills.list", "project.quick-links.list", "project.quick-links.create", "project.quick-links.update", "project.quick-links.delete", "update.check", "update.apply", "runtime.stats", "runtime.analytics", "runtime.quota", "runtime.capabilities", "armory.inventory", "armory.settings", "armory.refresh", "armory.install", "armory.update", "armory.enable", "armory.disable", "armory.uninstall", "armory.configure", "armory.verify", "armory.configuration.delete", "armory.package", "armory.configuration", "armory.mcp", "armory.operation"] },
         "state": { "enum": ["accepted", "running"] },
         "replayed": { "type": "boolean" },
         "acceptedAt": { "type": "integer", "minimum": 0 }
@@ -68,13 +98,24 @@
     "commandResult": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["type", "protocol", "commandId", "operation", "status", "code", "completedAt", "result"],
+      "required": [
+        "type",
+        "protocol",
+        "commandId",
+        "operation",
+        "status",
+        "code",
+        "completedAt",
+        "result"
+      ],
       "properties": {
         "type": { "const": "command_result" },
         "protocol": { "const": 1 },
         "commandId": { "$ref": "#/$defs/uuid" },
-        "operation": { "const": "session.cancel" },
-        "status": { "enum": ["applied", "noop", "rejected", "conflict", "cancelled", "failed"] },
+        "operation": { "enum": ["session.cancel", "session.start", "session.followup", "session.queue.list", "session.queue.add", "session.queue.edit", "session.queue.remove", "session.queue.send-now", "session.metadata.patch", "session.delete", "daemon.configuration.patch", "project.create", "project.suggest-directory", "project.detail", "project.settings.get", "project.settings.update", "project.delete", "project.documentation.index", "project.documentation.read", "project.skills.list", "project.quick-links.list", "project.quick-links.create", "project.quick-links.update", "project.quick-links.delete", "update.check", "update.apply", "runtime.stats", "runtime.analytics", "runtime.quota", "runtime.capabilities", "armory.inventory", "armory.settings", "armory.refresh", "armory.install", "armory.update", "armory.enable", "armory.disable", "armory.uninstall", "armory.configure", "armory.verify", "armory.configuration.delete", "armory.package", "armory.configuration", "armory.mcp", "armory.operation"] },
+        "status": {
+          "enum": ["applied", "noop", "rejected", "conflict", "cancelled", "failed"]
+        },
         "code": { "type": "string", "minLength": 2, "maxLength": 80 },
         "message": { "type": "string", "maxLength": 1000 },
         "completedAt": { "type": "integer", "minimum": 0 },
@@ -84,7 +125,15 @@
     "durableCommandResult": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["type", "epoch", "cursor", "messageId", "priority", "capability", "payload"],
+      "required": [
+        "type",
+        "epoch",
+        "cursor",
+        "messageId",
+        "priority",
+        "capability",
+        "payload"
+      ],
       "properties": {
         "type": { "const": "durable_message" },
         "epoch": { "type": "string", "minLength": 1, "maxLength": 200 },

@@ -10,6 +10,7 @@ export function parsePeonRelease(value) {
     const record = value;
     const version = nonEmpty(record.version);
     const id = nonEmpty(record.id) ?? version;
+    const revision = nonEmpty(record.revision);
     const sha256 = nonEmpty(record.sha256)?.toLowerCase() ?? null;
     const sizeBytes = record.sizeBytes ?? record.size;
     const rawCreatedAt = record.createdAt ?? record.publishedAt;
@@ -20,13 +21,15 @@ export function parsePeonRelease(value) {
         throw new Error("release metadata has no version");
     if (!id)
         throw new Error("release metadata has no id");
+    if (!revision || !/^[0-9A-Za-z._:+-]{1,128}$/.test(revision))
+        throw new Error("release metadata has an invalid revision");
     if (!sha256 || !/^[0-9a-f]{64}$/.test(sha256))
         throw new Error("release metadata has an invalid sha256");
     if (!Number.isSafeInteger(sizeBytes) || sizeBytes <= 0)
         throw new Error("release metadata has an invalid sizeBytes");
     if (!createdAt || Number.isNaN(Date.parse(createdAt)))
         throw new Error("release metadata has an invalid createdAt");
-    return { id, version, sha256, sizeBytes: sizeBytes, createdAt };
+    return { id, version, revision, sha256, sizeBytes: sizeBytes, createdAt };
 }
 function endpoint(baseUrl, pathname) {
     const base = new URL(baseUrl);

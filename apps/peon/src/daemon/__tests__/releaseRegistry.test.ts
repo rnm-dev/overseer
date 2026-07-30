@@ -9,6 +9,7 @@ import { fetchLatestRelease, parsePeonRelease, releaseArchiveUrl, sha256File } f
 const valid = {
   id: "release-123",
   version: "1.2.3",
+  revision: "immutable-revision-123",
   sha256: "a".repeat(64),
   sizeBytes: 42,
   createdAt: "2026-07-18T00:00:00.000Z",
@@ -38,6 +39,7 @@ test("latest release rejects unrelated errors and validates successful metadata"
   const productionEnvelope: typeof fetch = async () => new Response(JSON.stringify({
     release: {
       version: "0.2.0",
+      revision: "b".repeat(64),
       size: 1_492_034,
       sha256: "b".repeat(64),
       createdAt: 1_784_613_768_312,
@@ -47,6 +49,7 @@ test("latest release rejects unrelated errors and validates successful metadata"
   assert.deepEqual(await fetchLatestRelease({ baseUrl: "https://overseer.example", token: "secret" }, productionEnvelope), {
     id: "0.2.0",
     version: "0.2.0",
+    revision: "b".repeat(64),
     sizeBytes: 1_492_034,
     sha256: "b".repeat(64),
     createdAt: "2026-07-21T06:02:48.312Z",

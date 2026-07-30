@@ -32,11 +32,39 @@ import semver from "semver";
 import { settings } from "../daemon/settings/index.js";
 import { isGitCheckout } from "../shared/repo.js";
 import { fetchLatestRelease, releaseArchiveUrl, releaseHeaders, sha256File, type PeonRelease } from "../shared/releaseRegistry.js";
+import { readUpdateCommandReceipt, writeUpdateCommandReceipt } from "../daemon/updateCommandReceipt.js";
+import {
+  readUpdateRuntimeIdentity,
+  sameUpdateReleaseIdentity,
+  updateRuntimeIdentityPath,
+  writeUpdateRuntimeIdentity,
+  type UpdateReleaseIdentity,
+} from "../daemon/updateRuntimeIdentity.js";
 
 const PACKAGE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const CONTROL_API = `http://127.0.0.1:${process.env.ACA_CONTROL_PORT ?? "4570"}`;
 const DASHBOARD_URL = `http://127.0.0.1:${process.env.ACA_DASHBOARD_PORT ?? "4571"}`;
 const FORCE = process.env.FORCE === "1";
+const UPDATE_COMMAND_ID = process.env.PEON_UPDATE_COMMAND_ID || null;
+const EXPECTED_VERSION = process.env.PEON_UPDATE_EXPECTED_VERSION || null;
+const EXPECTED_REVISION = process.env.PEON_UPDATE_EXPECTED_REVISION || null;
+const EXPECTED_SHA256 = process.env.PEON_UPDATE_EXPECTED_SHA256 || null;
+const INITIATOR_PID = Number(process.env.PEON_UPDATE_INITIATOR_PID);
+
+function commandReceipt(state: "running" | "ready_to_attest" | "failed", code?: string): void {
+  if (!UPDATE_COMMAND_ID) return;
+  writeUpdateCommandReceipt({
+    version: 1,
+    commandId: UPDATE_COMMAND_ID,
+    expectedVersion: EXPECTED_VERSION,
+    expectedRevision: EXPECTED_REVISION,
+    expectedSha256: EXPECTED_SHA256,
+    initiatorPid: Number.isSafeInteger(INITIATOR_PID) && INITIATOR_PID > 0 ? INITIATOR_PID : process.ppid,
+    state,
+    ...(code ? { code } : {}),
+    updatedAt: Date.now(),
+  });
+}
 
 // npm ships alongside node (…/bin/node → …/lib/node_modules/npm/bin/npm-cli.js).
 // Resolve it absolutely and run it through *this* node so the update never
@@ -205,23 +233,29 @@ function checkCompiledOutput(): void {
 
 // The updater packs the current global installation before replacing it. That archive is a
 // local, credential-free rollback source and remains valid even when Overseer is unavailable.
-function rollbackToDisk(previousArchive: string): void {
+function rollbackToDisk(previousArchive: string, previousIdentity: UpdateReleaseIdentity | null): boolean {
   console.error("==> rolling back to the previous local Peon release");
   try {
     npmInstallGlobal(previousArchive);
+    if (previousIdentity) writeUpdateRuntimeIdentity(PACKAGE_ROOT, previousIdentity);
+    else rmSync(updateRuntimeIdentityPath(PACKAGE_ROOT), { force: true });
     console.error("rolled back the previous Peon release on disk");
+    return true;
   } catch (rollbackErr) {
     console.error("rollback itself failed — the disk install is left on the broken release:", rollbackErr);
+    return false;
   }
 }
 
 async function main(): Promise<void> {
+  commandReceipt("running");
   // Two update shapes (see isGitCheckout): a source checkout fast-forwards with git without
   // restarting the daemon; a global install reinstalls with npm and restarts via systemd. The npm
   // path below can't work from a checkout (npm install -g wouldn't touch the running tree) and
   // can't work on macOS (no systemd) — so a checkout always takes the git path.
   if (isGitCheckout(PACKAGE_ROOT)) {
     await gitCheckoutUpdate();
+    commandReceipt("ready_to_attest");
     return;
   }
 
@@ -230,45 +264,86 @@ async function main(): Promise<void> {
   const { overseerUrl, overseerToken } = settings.get();
   if (!overseerUrl.trim() || !overseerToken.trim()) throw new Error("Overseer credentials are required to update a global Peon install");
   const currentVersion = installedVersion();
-  const release = await fetchLatestRelease({ baseUrl: overseerUrl, token: overseerToken });
+  let release: PeonRelease | null;
+  try {
+    release = await fetchLatestRelease({ baseUrl: overseerUrl, token: overseerToken });
+  } catch (error) {
+    commandReceipt("failed", "REGISTRY_UNAVAILABLE");
+    throw error;
+  }
   if (!release) {
     console.log("==> Overseer has no published Peon releases");
+    commandReceipt("failed", "NO_UPDATE");
     return;
   }
   if (!FORCE && !semver.gt(release.version, currentVersion)) {
     console.log(`==> already up to date (${currentVersion}; latest ${release.version})`);
+    commandReceipt("failed", "NO_UPDATE");
+    return;
+  }
+  if (EXPECTED_VERSION !== null && EXPECTED_REVISION !== null && EXPECTED_SHA256 !== null
+    && !sameUpdateReleaseIdentity(
+      { version: EXPECTED_VERSION, revision: EXPECTED_REVISION, sha256: EXPECTED_SHA256 },
+      release,
+    )) {
+    console.error("refusing update: approved release identity changed before download");
+    commandReceipt("failed", "RELEASE_CHANGED");
+    process.exitCode = 1;
     return;
   }
 
   const temporaryDir = mkdtempSync(path.join(os.tmpdir(), "peon-update-"));
   try {
     const previousArchive = npmPackCurrent(temporaryDir);
+    const previousIdentity = readUpdateRuntimeIdentity(PACKAGE_ROOT);
     const releaseArchive = path.join(temporaryDir, `peon-${release.version}.tgz`);
     console.log(`==> downloading Peon ${release.version} from Overseer`);
-    await downloadRelease(release, releaseArchive);
+    try {
+      await downloadRelease(release, releaseArchive);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      commandReceipt("failed", /SHA-256|size mismatch|declared size/.test(detail)
+        ? "ARCHIVE_INTEGRITY_FAILED"
+        : "DOWNLOAD_FAILED");
+      throw error;
+    }
     console.log(`==> installing verified Peon ${release.version}`);
     try {
       npmInstallGlobal(releaseArchive);
       console.log("==> sanity-checking the compiled output");
       checkCompiledOutput();
+      writeUpdateRuntimeIdentity(PACKAGE_ROOT, {
+        version: release.version,
+        revision: release.revision,
+        sha256: release.sha256,
+      });
     } catch (err) {
       console.error("the new release failed installation or compiled-output validation:", err);
-      rollbackToDisk(previousArchive);
+      const rolledBack = rollbackToDisk(previousArchive, previousIdentity);
+      commandReceipt("failed", rolledBack ? "INSTALL_FAILED_ROLLED_BACK" : "INSTALL_FAILED_ROLLBACK_FAILED");
       process.exitCode = 1;
       return;
     }
 
+    // The replacement daemon verifies these expected attestation inputs against
+    // its own running package before it completes the durable command.
+    commandReceipt("ready_to_attest");
     console.log("==> restarting peon-daemon.service and peon-dashboard.service");
     try {
       run("systemctl", ["--user", "restart", "peon-daemon.service", "peon-dashboard.service"]);
     } catch (err) {
       console.error("the new release could not restart the Peon services:", err);
-      rollbackToDisk(previousArchive);
+      const rolledBack = rollbackToDisk(previousArchive, previousIdentity);
+      let rollbackRestarted = false;
       try {
         run("systemctl", ["--user", "restart", "peon-daemon.service", "peon-dashboard.service"]);
+        rollbackRestarted = true;
       } catch (restartErr) {
         console.error("restarting into the rolled-back release also failed:", restartErr);
       }
+      commandReceipt("failed", rolledBack && rollbackRestarted
+        ? "RESTART_FAILED_ROLLED_BACK"
+        : "RESTART_FAILED_ROLLBACK_FAILED");
       process.exitCode = 1;
       return;
     }
@@ -286,17 +361,23 @@ async function main(): Promise<void> {
         // Status exits non-zero for a failed unit; its output is still useful diagnostics.
       }
       console.error("==> the new release did not come back up — rolling back and restarting");
-      rollbackToDisk(previousArchive);
+      const rolledBack = rollbackToDisk(previousArchive, previousIdentity);
+      let rollbackRestarted = false;
       try {
         run("systemctl", ["--user", "restart", "peon-daemon.service", "peon-dashboard.service"]);
+        rollbackRestarted = true;
       } catch (err) {
         console.error("restarting into the rolled-back release also failed:", err);
       }
+      commandReceipt("failed", rolledBack && rollbackRestarted
+        ? "RESTART_TIMEOUT_ROLLED_BACK"
+        : "RESTART_TIMEOUT_ROLLBACK_FAILED");
       process.exitCode = 1;
       return;
     }
 
     console.log("==> back up");
+    commandReceipt("ready_to_attest");
     console.log(await (await fetch(`${CONTROL_API}/api/v1/status`)).json());
   } finally {
     rmSync(temporaryDir, { recursive: true, force: true });
@@ -304,6 +385,10 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
+  const receipt = readUpdateCommandReceipt();
+  if (!UPDATE_COMMAND_ID || receipt?.commandId !== UPDATE_COMMAND_ID || receipt.state !== "failed") {
+    commandReceipt("failed", "UPDATE_FAILED");
+  }
   console.error(err);
   process.exit(1);
 });

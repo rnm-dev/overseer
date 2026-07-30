@@ -896,7 +896,7 @@ remain inactive.
     "folder-listing-v1": { "entryMetadata": "entry-metadata-v1" },
     "reverse-command-v1": {
       "protocol": 1,
-      "operations": ["session.cancel", "project.archive", "project.unarchive"]
+      "operations": ["session.cancel", "project.archive", "project.unarchive", "update.check", "update.apply"]
     }
   },
   "delivery": {
@@ -1397,6 +1397,19 @@ priority and capability fencing. The ledger marks results acknowledged from the
 cumulative durable cursor and compacts them only after acknowledgement plus the
 minimum seven-day retention, retaining command-ID/hash tombstones for another
 seven days.
+
+Update commands reuse that lifecycle. Overseer admits at most one active
+`update.*` command per Peon, selects reverse command or legacy HTTP exclusively,
+and leaves an accepted apply pending through the expected disconnect. The
+launching process never attests a pre-restart receipt; only the replacement
+daemon may complete `update.apply` after comparing its running
+version/revision/SHA-256 with the persisted expectation. Overseer binds those
+three immutable release fields into the canonical command before admission;
+the Peon returns `RELEASE_CHANGED` if its pre-download metadata differs.
+Source-checkout applies are rejected because
+changing files without proving process replacement cannot satisfy attestation.
+Update results use strict operation-specific status/code/detail tuples; arbitrary
+detail and contradictory tuples are protocol errors.
 
 ### Session catalog channel (`session-catalog-v1`)
 

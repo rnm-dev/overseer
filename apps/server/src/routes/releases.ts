@@ -21,6 +21,7 @@ function publisherAuth(req: express.Request, res: express.Response, next: expres
 
 const view = (release: ReleaseRecord) => ({
   version: release.version,
+  revision: release.storageKey,
   size: release.size,
   sha256: release.sha256,
   createdAt: release.createdAt,

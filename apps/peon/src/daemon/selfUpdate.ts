@@ -26,7 +26,15 @@ export interface SelfUpdateResult {
 // POST /api/v1/control/update and the fleet-facing POST /api/v1/control/update
 // so both trigger the exact same update, refusing (unless forced) while a
 // session is live because the restart the updater performs kills it.
-export function startSelfUpdate(opts: { force: boolean }): SelfUpdateResult {
+export function startSelfUpdate(opts: {
+  force: boolean;
+  command?: {
+    commandId: string;
+    expectedVersion: string | null;
+    expectedRevision: string | null;
+    expectedSha256: string | null;
+  };
+}): SelfUpdateResult {
   const logPath = path.join(stateDir(), "update.log");
   const force = opts.force;
   const sourceCheckout = isGitCheckout(REPO_ROOT);
@@ -58,7 +66,17 @@ export function startSelfUpdate(opts: { force: boolean }): SelfUpdateResult {
         cwd: REPO_ROOT,
         detached: true,
         stdio: ["ignore", openSync(logPath, "a"), openSync(logPath, "a")],
-        env: { ...process.env, ...(force ? { FORCE: "1" } : {}) },
+        env: {
+          ...process.env,
+          ...(force ? { FORCE: "1" } : {}),
+          ...(opts.command ? {
+            PEON_UPDATE_COMMAND_ID: opts.command.commandId,
+            PEON_UPDATE_EXPECTED_VERSION: opts.command.expectedVersion ?? "",
+            PEON_UPDATE_EXPECTED_REVISION: opts.command.expectedRevision ?? "",
+            PEON_UPDATE_EXPECTED_SHA256: opts.command.expectedSha256 ?? "",
+            PEON_UPDATE_INITIATOR_PID: String(process.pid),
+          } : {}),
+        },
       })
     : spawn(
         "systemd-run",
@@ -73,6 +91,13 @@ export function startSelfUpdate(opts: { force: boolean }): SelfUpdateResult {
           // comment on why), so its FORCE=1 escape hatch has to be forwarded explicitly here,
           // not just passed to this `spawn()` call's own (irrelevant) environment.
           ...(force ? ["--setenv=FORCE=1"] : []),
+          ...(opts.command ? [
+            `--setenv=PEON_UPDATE_COMMAND_ID=${opts.command.commandId}`,
+            `--setenv=PEON_UPDATE_EXPECTED_VERSION=${opts.command.expectedVersion ?? ""}`,
+            `--setenv=PEON_UPDATE_EXPECTED_REVISION=${opts.command.expectedRevision ?? ""}`,
+            `--setenv=PEON_UPDATE_EXPECTED_SHA256=${opts.command.expectedSha256 ?? ""}`,
+            `--setenv=PEON_UPDATE_INITIATOR_PID=${process.pid}`,
+          ] : []),
           // …and, critically, PATH. The transient unit's minimal PATH is /usr/bin-ish, which has
           // git/systemctl but NOT the node/npm bin dir when node was installed via nvm/volta/etc
           // (that dir is only on the login PATH the daemon unit bakes in — see systemdUnits.ts).

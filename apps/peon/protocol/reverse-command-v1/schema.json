@@ -26,12 +26,14 @@
     "target": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["peonId", "sessionId"],
+      "required": ["peonId"],
       "properties": {
         "peonId": { "$ref": "#/$defs/uuid" },
         "sessionId": { "$ref": "#/$defs/uuid" },
         "projectId": { "$ref": "#/$defs/uuid" },
-        "transferId": { "$ref": "#/$defs/uuid" }
+        "transferId": { "$ref": "#/$defs/uuid" },
+        "packageId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,62}$" },
+        "operationId": { "$ref": "#/$defs/uuid" }
       }
     },
     "command": {
@@ -53,13 +55,13 @@
         "protocol": { "const": 1 },
         "capability": { "const": "reverse-command-v1" },
         "commandId": { "$ref": "#/$defs/uuid" },
-        "operation": { "type": "string", "enum": ["session.cancel", "session.start", "session.followup", "session.queue.list", "session.queue.add", "session.queue.edit", "session.queue.remove", "session.queue.send-now", "session.metadata.patch", "session.delete"] },
+        "operation": { "type": "string", "enum": ["session.cancel", "session.start", "session.followup", "session.queue.list", "session.queue.add", "session.queue.edit", "session.queue.remove", "session.queue.send-now", "session.metadata.patch", "session.delete", "daemon.configuration.patch", "project.create", "project.suggest-directory", "project.detail", "project.settings.get", "project.settings.update", "project.delete", "project.documentation.index", "project.documentation.read", "project.skills.list", "project.quick-links.list", "project.quick-links.create", "project.quick-links.update", "project.quick-links.delete", "update.check", "update.apply", "runtime.stats", "runtime.analytics", "runtime.quota", "runtime.capabilities", "armory.inventory", "armory.settings", "armory.refresh", "armory.install", "armory.update", "armory.enable", "armory.disable", "armory.uninstall", "armory.configure", "armory.verify", "armory.configuration.delete", "armory.package", "armory.configuration", "armory.mcp", "armory.operation"] },
         "target": { "$ref": "#/$defs/target" },
         "actor": { "$ref": "#/$defs/actor" },
         "payload": {
           "type": "object",
-          "additionalProperties": false,
-          "maxProperties": 0
+          "additionalProperties": true,
+          "maxProperties": 16
         },
         "expected": {
           "type": ["object", "null"],
@@ -87,7 +89,7 @@
         "type": { "const": "command_accepted" },
         "protocol": { "const": 1 },
         "commandId": { "$ref": "#/$defs/uuid" },
-        "operation": { "const": "session.cancel" },
+        "operation": { "enum": ["session.cancel", "session.start", "session.followup", "session.queue.list", "session.queue.add", "session.queue.edit", "session.queue.remove", "session.queue.send-now", "session.metadata.patch", "session.delete", "daemon.configuration.patch", "project.create", "project.suggest-directory", "project.detail", "project.settings.get", "project.settings.update", "project.delete", "project.documentation.index", "project.documentation.read", "project.skills.list", "project.quick-links.list", "project.quick-links.create", "project.quick-links.update", "project.quick-links.delete", "update.check", "update.apply", "runtime.stats", "runtime.analytics", "runtime.quota", "runtime.capabilities", "armory.inventory", "armory.settings", "armory.refresh", "armory.install", "armory.update", "armory.enable", "armory.disable", "armory.uninstall", "armory.configure", "armory.verify", "armory.configuration.delete", "armory.package", "armory.configuration", "armory.mcp", "armory.operation"] },
         "state": { "enum": ["accepted", "running"] },
         "replayed": { "type": "boolean" },
         "acceptedAt": { "type": "integer", "minimum": 0 }
@@ -110,7 +112,7 @@
         "type": { "const": "command_result" },
         "protocol": { "const": 1 },
         "commandId": { "$ref": "#/$defs/uuid" },
-        "operation": { "const": "session.cancel" },
+        "operation": { "enum": ["session.cancel", "session.start", "session.followup", "session.queue.list", "session.queue.add", "session.queue.edit", "session.queue.remove", "session.queue.send-now", "session.metadata.patch", "session.delete", "daemon.configuration.patch", "project.create", "project.suggest-directory", "project.detail", "project.settings.get", "project.settings.update", "project.delete", "project.documentation.index", "project.documentation.read", "project.skills.list", "project.quick-links.list", "project.quick-links.create", "project.quick-links.update", "project.quick-links.delete", "update.check", "update.apply", "runtime.stats", "runtime.analytics", "runtime.quota", "runtime.capabilities", "armory.inventory", "armory.settings", "armory.refresh", "armory.install", "armory.update", "armory.enable", "armory.disable", "armory.uninstall", "armory.configure", "armory.verify", "armory.configuration.delete", "armory.package", "armory.configuration", "armory.mcp", "armory.operation"] },
         "status": {
           "enum": ["applied", "noop", "rejected", "conflict", "cancelled", "failed"]
         },

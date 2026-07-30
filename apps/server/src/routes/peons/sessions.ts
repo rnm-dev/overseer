@@ -27,9 +27,12 @@ import {
   hasReverseTranscriptConnection,
 } from "../../peonTranscriptSync.js";
 import type { Role } from "../../workspaces.js";
+import { hasRuntimeReverseRead } from "./runtimeReverseRead.js";
+import { reverseCommandGateway } from "../../modules/reverseCommands/index.js";
 import { hasSessionArtifactTransport } from "../../peonTransferConnections.js";
 import { streamSessionArtifactResponse } from "../../modules/projects/index.js";
 import { PeonFileStreamError, requestPeonSessionArtifact, watchPeonSessionArtifact } from "../../peonFileStream.js";
+import { latestRelease } from "../../releases.js";
 
 function acceptedSessionId(result: { ok: boolean; json: unknown }): string | null {
   if (!result.ok || !result.json || typeof result.json !== "object") return null;
@@ -355,8 +358,34 @@ export function registerSessionRoutes(router: express.Router): void {
   }));
   router.post(`${wp}/control/pause`, withWorkspacePeon(async (_req, res, c) => { if (!ownerOnly(res, c.role)) return; relay(await callPeon(connOfRecord(c.record), "POST", "/control/pause", { actor: c.operator.email }), res); }));
   router.post(`${wp}/control/resume`, withWorkspacePeon(async (_req, res, c) => { if (!ownerOnly(res, c.role)) return; relay(await callPeon(connOfRecord(c.record), "POST", "/control/resume", { actor: c.operator.email }), res); }));
-  router.post(`${wp}/control/check-update`, withWorkspacePeon(async (_req, res, c) => { if (!ownerOnly(res, c.role)) return; relay(await callPeon(connOfRecord(c.record), "POST", "/control/check-update", { actor: c.operator.email }), res); }));
-  router.post(`${wp}/control/update`, withWorkspacePeon(async (_req, res, c) => { if (!ownerOnly(res, c.role)) return; relay(await callPeon(connOfRecord(c.record), "POST", "/control/update", { actor: c.operator.email }), res); }));
+  router.post(`${wp}/control/check-update`, withWorkspacePeon(async (req, res, c) => {
+    if (!ownerOnly(res, c.role)) return;
+    if (!hasRuntimeReverseRead(c.record.peonId, "update.check")) {
+      return relay(await callPeon(connOfRecord(c.record), "POST", "/control/check-update", { actor: c.operator.email }), res);
+    }
+    const response = await reverseCommandGateway.submit({
+      workspaceId: c.workspaceId, peonId: c.record.peonId, auth: req.user!,
+      operation: "update.check", target: {}, payload: {}, waitMs: 35_000,
+    });
+    if (response.status === 200 && response.body.result) return res.json(response.body.result);
+    return res.status(response.status).json(response.body);
+  }));
+  router.post(`${wp}/control/update`, withWorkspacePeon(async (req, res, c) => {
+    if (!ownerOnly(res, c.role)) return;
+    if (!hasRuntimeReverseRead(c.record.peonId, "update.apply")) {
+      return relay(await callPeon(connOfRecord(c.record), "POST", "/control/update", { actor: c.operator.email, body: req.body }), res);
+    }
+    const release = await latestRelease();
+    if (!release) return res.status(409).json({ error: "No approved Peon release is available", code: "NO_RELEASE" });
+    const response = await reverseCommandGateway.submit({
+      workspaceId: c.workspaceId, peonId: c.record.peonId, auth: req.user!,
+      operation: "update.apply", target: {}, payload: {
+        ...(req.body?.force === true ? { force: true } : {}),
+        release: { version: release.version, revision: release.storageKey, sha256: release.sha256 },
+      }, waitMs: 2_000,
+    });
+    return res.status(response.status).json(response.body);
+  }));
   router.get(`${wp}/ai/cli-updates`, withWorkspacePeon(async (req, res, c) => {
     if (!ownerOnly(res, c.role)) return;
     const query = req.query.refresh === "true" || req.query.refresh === "1" ? "?refresh=true" : "";

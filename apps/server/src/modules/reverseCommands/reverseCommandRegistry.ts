@@ -195,6 +195,18 @@ export async function createOrGetReverseCommand(
         : { kind: "reused", record: existing };
     }
 
+    if (input.operation.startsWith("update.")) {
+      const { rows } = await tx.query<ReverseCommandRow>(
+        `SELECT ${selectColumns()} FROM reverse_commands
+          WHERE workspace_id=$1 AND peon_id=$2
+            AND operation LIKE 'update.%'
+            AND state IN ('created','sent','accepted','running','unknown')
+          ORDER BY requested_at ASC LIMIT 1`,
+        [input.workspaceId, input.peonId],
+      );
+      if (rows[0]) return { kind: "conflict", record: rowToRecord(rows[0]) };
+    }
+
     const [global, workspace, peon, user] = await Promise.all([
       pendingUsage(tx, "", []),
       pendingUsage(tx, " AND workspace_id=$1", [input.workspaceId]),

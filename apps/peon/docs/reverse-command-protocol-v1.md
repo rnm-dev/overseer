@@ -2,7 +2,8 @@
 
 Status: normative design contract for implementation  
 Capability: `reverse-command-v1`  
-Operations: `session.cancel`, `project.archive`, and `project.unarchive`
+Operations include `session.cancel`, `project.archive`, `project.unarchive`,
+`daemon.configuration.patch`, `update.check`, and `update.apply`
 
 This document defines the common command lifecycle used when Overseer controls a Peon through
 Peon's outbound control WebSocket. It complements the channel-specific wire contract in

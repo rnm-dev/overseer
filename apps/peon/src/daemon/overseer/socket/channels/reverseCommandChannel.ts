@@ -8,6 +8,11 @@ import type { PeonSocketChannel, PeonSocketFrame, PeonSocketSender } from "../pe
 import { ReverseCommandLedger, type ReverseCommandRecord } from "../reverseCommandLedger.js";
 import { sessionCommandHandlers } from "./sessionCommandHandlers.js";
 import { daemonConfigurationChannel } from "./daemonConfigurationChannel.js";
+import {
+  attestUpdateCommand,
+  updateCommandHandlers,
+  waitForUpdateReplacement,
+} from "./updateCommandHandlers.js";
 
 export const REVERSE_COMMAND_CAPABILITY = "reverse-command-v1";
 export const REVERSE_COMMAND_MAX_BYTES = 60 * 1024;
@@ -135,11 +140,16 @@ export class ReverseCommandChannel implements PeonSocketChannel {
       "session.cancel": sessionCancelHandler(sessionService),
       ...sessionCommandHandlers(),
       "daemon.configuration.patch": daemonConfigurationChannel.commandHandler(),
+      ...updateCommandHandlers(),
     };
     this.maxConcurrency = options.maxConcurrency ?? 16;
     this.perSessionConcurrency = options.perSessionConcurrency ?? 1;
     this.publicationRetryBaseMs = options.publicationRetryBaseMs ?? 50;
     this.publicationRetryMaxMs = options.publicationRetryMaxMs ?? 2_000;
+  }
+
+  registerHandlers(handlers: Record<string, ReverseCommandHandler>): void {
+    Object.assign(this.handlers, handlers);
   }
 
   helloState(): PeonSocketFrame {
@@ -148,11 +158,30 @@ export class ReverseCommandChannel implements PeonSocketChannel {
 
   started(sender: PeonSocketSender): void {
     this.sender = null;
-    this.ledger.recoverInterrupted((interrupted) => commandResult(interrupted, {
-      status: "failed",
-      code: "INTERNAL",
-      result: { safeDetail: "execution was interrupted; effect was not retried" },
-    }));
+    this.ledger.recoverInterrupted((interrupted) => {
+      const execution = interrupted.operation === "update.apply"
+        ? attestUpdateCommand(interrupted.commandId)
+        : { status: "failed", code: "INTERNAL" } satisfies ReverseCommandExecution;
+      return execution ? commandResult(interrupted, execution) : null;
+    });
+    for (const interrupted of this.records().filter((record) => record.state === "running")) {
+      if (interrupted.operation === "update.apply") {
+        void waitForUpdateReplacement(interrupted.commandId, { attestReady: true })
+          .then((execution) => this.scheduleTerminalRetry(
+            interrupted.commandId,
+            interrupted.authority,
+            interrupted.admittedGeneration,
+            commandResult(interrupted, execution),
+          ));
+        continue;
+      }
+      this.scheduleTerminalRetry(
+        interrupted.commandId,
+        interrupted.authority,
+        interrupted.admittedGeneration,
+        commandResult(interrupted, { status: "failed", code: "INTERNAL" }),
+      );
+    }
     void sender;
   }
 
