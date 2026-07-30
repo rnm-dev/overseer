@@ -23,6 +23,7 @@ import {
   sha256Base64url,
   type PublicJwk,
 } from "./modules/peonClaims/index.js";
+import { clientInfo } from "./routes/helpers.js";
 import { createServer } from "./server.js";
 
 interface Identity {
@@ -191,6 +192,23 @@ function malformedRightmostHeaders(index: number, token?: string): Record<string
     ...(token ? { authorization: `Bearer ${token}` } : {}),
   };
 }
+
+test("client attribution normalizes IP literals and rejects forwarded addresses carrying ports", () => {
+  const request = (
+    forwarded: string | undefined,
+    peer: string | undefined,
+  ): Parameters<typeof clientInfo>[0] => ({
+    ip: forwarded,
+    socket: { remoteAddress: peer },
+    headers: {},
+  }) as unknown as Parameters<typeof clientInfo>[0];
+
+  assert.equal(clientInfo(request("::ffff:203.0.113.7", "::ffff:127.0.0.1")).ip, "203.0.113.7");
+  assert.equal(clientInfo(request("2001:db8::7", "::ffff:127.0.0.1")).ip, "2001:db8::7");
+  assert.equal(clientInfo(request("203.0.113.7:8443", "::ffff:127.0.0.1")).ip, "127.0.0.1");
+  assert.equal(clientInfo(request("[2001:db8::7]:8443", "2001:db8::1")).ip, "2001:db8::1");
+  assert.equal(clientInfo(request(undefined, "::ffff:192.0.2.9")).ip, "192.0.2.9");
+});
 
 test("direct-origin forwarding headers cannot rotate auth, claim-start, or operator-code rate keys", async () => {
   const original = {
