@@ -81,6 +81,24 @@ body {
   min-height: 100vh;
 }
 
+/* iOS Safari can keep the root scrolling element movable behind a fixed,
+ * overflow-hidden child, especially while its address bar changes height.
+ * A transcript has its own Virtuoso scroller, so freeze the document itself. */
+html.session-transcript-open,
+body.session-transcript-open {
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+body.session-transcript-open {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: var(--session-document-lock-top, 0);
+  width: 100%;
+}
+
 html.peon-sidebar-resizing,
 html.peon-sidebar-resizing * {
   cursor: col-resize !important;

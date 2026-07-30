@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate, useParams } from "react-router";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
@@ -33,6 +33,8 @@ import {
   createTranscriptVirtualWindow,
   updateTranscriptVirtualWindow,
 } from "./session/transcriptVirtualization";
+import { lockSessionDocument } from "./session/sessionViewport";
+import { loadToolDisplayMode } from "../../sessionToolDisplay";
 import { isSuccessfulRunResult, onSelectedSoundPackChange, playPeonSound, playWorkSound, stopWorkSound } from "../../peonSounds";
 
 // author: Viktor
@@ -89,10 +91,16 @@ function PeonSessionDetailPage() {
   const transcriptPaginationSupported = peon.capabilities.includes("transcript-pagination-v1");
   const filePanePageKey = `${wsId}:${sessionKey}`;
   const currentSessionKeyRef = useRef(sessionKey);
+  const [simpleTools] = useState(() => loadToolDisplayMode() === "simple");
   const attentionReadInFlightRef = useRef<string | null>(null);
   // Update during render, not in an effect: a request from the previous route can
   // settle in the small render→effect window and must not mutate the new session.
   currentSessionKeyRef.current = sessionKey;
+
+  // iOS Safari keeps html/body as a second scroll surface even when the fixed
+  // route shell is clipped. Freeze that root surface for the lifetime of the
+  // transcript; Virtuoso remains the only element that handles vertical pan.
+  useLayoutEffect(() => lockSessionDocument(document), []);
 
   // Clearing the unread mark means "the operator has seen this". Only claim that
   // while the tab is actually in front of them; otherwise wait until it is, so a
@@ -638,7 +646,11 @@ function PeonSessionDetailPage() {
       key: `item:${item.key}`,
       kind: "item",
       item,
-      paddingClass: index === 0 ? "" : gapPaddingClass(items[index - 1]!.kind === "user", item.kind === "user"),
+      paddingClass: index === 0 ? "" : gapPaddingClass(
+        items[index - 1]!.kind === "user",
+        item.kind === "user",
+        items[index - 1]!.kind === "text" || item.kind === "text",
+      ),
     }));
     if (ghost) {
       rows.push({
@@ -802,6 +814,7 @@ function PeonSessionDetailPage() {
                       t={t}
                       locale={locale}
                       yesterdayLabel={yesterdayLabelText}
+                      simpleTools={simpleTools}
                       onOpenPreview={onOpenPreviewItem}
                       onOpenAttachment={setSentAttachmentPreview}
                       onOpenProjectFile={onOpenProjectFileItem}

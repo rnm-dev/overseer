@@ -12,6 +12,7 @@ import { useMobileDrawer } from "../hooks/useMobileDrawer";
 import type { PeonContext, PeonView } from "./peon/context";
 import { applyAttentionEvent, applyLocalSessionRunningChange, applySessionEvent, mergeSessions, sessionFromIndex, type IndexedSessionEvent, type IndexedSessionLite, type SessionLite } from "./peon/sessionList";
 import { nextSessionAfterDeletion } from "./peon/session/nextSession";
+import { sessionRouteShellClass } from "./peon/session/sessionViewport";
 import { prefetchTranscriptSnapshot } from "./peon/session/transcriptSnapshotCache";
 
 const SIDEBAR_WIDTH_KEY = "overseer.peon-sidebar-width";
@@ -170,7 +171,7 @@ export function WorkspaceSessions() {
   } : null;
 
   return (
-    <div className="flex min-h-screen">
+    <div className={`flex ${sessionRouteShellClass(Boolean(sid))}`}>
       <button
         type="button"
         aria-label={t("a11y.close")}

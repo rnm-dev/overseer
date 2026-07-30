@@ -18,6 +18,7 @@ import { applyProjectEvent, mergeProjects, withLiveActiveSessionCounts, type Pro
 import { applyAttentionEvent, applyLocalSessionRunningChange, applySessionEvent, mergeSessions, sessionDisplayTitle, sessionFromIndex, sessionSidebarCanLoad, type IndexedSessionEvent, type IndexedSessionLite, type SessionLite } from "./peon/sessionList";
 import { MobilePaneIdentity } from "./peon/session/mobileHeader";
 import { nextSessionAfterDeletion } from "./peon/session/nextSession";
+import { sessionRouteShellClass } from "./peon/session/sessionViewport";
 import { prefetchTranscriptSnapshot } from "./peon/session/transcriptSnapshotCache";
 
 // author: Viktor
@@ -349,7 +350,7 @@ export function PeonDetail() {
     onSessionRunningChange,
   };
   return (
-    <div className="flex min-h-screen">
+    <div className={`flex ${sessionRouteShellClass(Boolean(sid))}`}>
       <button
         type="button"
         aria-label={t("a11y.close")}
