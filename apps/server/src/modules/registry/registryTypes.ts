@@ -4,8 +4,8 @@ export interface PeonRecord {
   workspaceId: string;
   name: string;
   hostname: string | null;
-  // The register request's source address (peon's tailnet IP) + reported
-  // controlPort — where the overseer calls back. NAT'd peons need no public address.
+  // Optional legacy callback metadata. Claim-mode reverse Peons use an empty
+  // address and port 0; it must never be treated as their connection identity.
   address: string;
   controlPort: number;
   publicUrl: string | null;
