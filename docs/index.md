@@ -6,6 +6,8 @@ starts at [client documentation](client/index.md).
 
 The mobile app signs in through a webview on the web login screen — see [mobile webview login](mobile-webview-login.md).
 
+Sign-in is GitHub OAuth plus, where an instance asks for it, email and password. `OVERSEER_PASSWORD_AUTH=1` opens registration and sign-in together; it is on for dev and explicitly off in production, and clients read `GET /api/auth/methods` rather than assuming which doors exist. Passwords are scrypt-hashed in a nullable `users.password_hash` — NULL is every GitHub-created account, not an error — and the two identities converge on one row through the email `ensureUserFromGithub` already matches on. Every sign-in refusal is byte-identical whether the address is unknown, the password wrong, or the account GitHub-only. The switch, the routes and the hashing parameters are in [email and password sign-in](password-auth.md).
+
 Runtime status, capacity, daemon revision, provider availability, models and
 reasoning modes converge through the durable `runtime-state-v1` projection;
 quota, provider capability probes, fixed-period stats and filtered analytics
@@ -150,7 +152,7 @@ sibling repos: git@github.com:rnm-dev/peon.git and git@github.com:rnm-dev/overse
 github: plain git over SSH is the only interface to GitHub here. The `gh` CLI is not used — its stored credentials were removed on 2026-07-29 (they could not see the rnm-dev organisation anyway: every `gh api repos/rnm-dev/*` answered 404). Do not reintroduce it or plan work around the GitHub API; the apt package `gh` is still installed and awaits removal by root
 compose: postgres (compose-net only, 5432 unpublished), app: 127.0.0.1:4580, web: 127.0.0.1:4581 — all three up, postgres healthy
 postgres: postgres:5432/overseer overseer/1701e037ee97028cc925d2925e7ec7b0 (not host-published; use docker compose exec postgres psql)
-seed: no seed script; schema self-migrates on boot (initDb/MIGRATIONS in apps/server/src/db.ts). No env-seeded admin — auth is now GitHub OAuth with open sign-up (ensureUserFromGithub in apps/server/src/auth.ts; OVERSEER_ADMIN_EMAIL no longer used anywhere), access gated by workspace membership
+seed: no seed script; schema self-migrates on boot (initDb/MIGRATIONS in apps/server/src/db.ts). No env-seeded admin — auth is GitHub OAuth with open sign-up (ensureUserFromGithub in apps/server/src/auth.ts; OVERSEER_ADMIN_EMAIL no longer used anywhere) plus email/password where `OVERSEER_PASSWORD_AUTH=1` (on for dev, off in production — see [email and password sign-in](password-auth.md)), access gated by workspace membership
 
 Dev public origin is https://overseer-dev.rnm.dev. Cloudflare A record remains proxied to 94.247.128.101. Dev app configuration uses OVERSEER_PUBLIC_URL and OVERSEER_PEON_CALLBACK_URL = https://overseer-dev.rnm.dev. Native OAuth accepts both `overseer-dev://oauth/github` and `overseer://oauth/github` through OVERSEER_GITHUB_NATIVE_CALLBACKS so dev and prod mobile builds can be tested against the dev server. The dev database intentionally contains only Nova and its history; shared users/workspaces/devices remain available for login. The empty RNM workspace (1313b906-590b-4b07-b7a3-c37b0e9f14d0) was deleted from dev on 2026-07-20; production RNM was not changed. Its pre-delete dump (SHA-256 761057b1aebb1d7df7734d276bb0cc8340e459e2a9d0960009f0e58443dd1bcd) was the only copy and was deleted on 2026-07-29 with the rest of the dev box's `backups/`; that workspace was empty, so nothing recoverable was in it.
 

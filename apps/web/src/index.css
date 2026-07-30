@@ -1175,6 +1175,73 @@ html.peon-sidebar-resizing * {
   opacity: 0.55;
 }
 
+/* The email + password form. The stack is centred and narrow, so the fields
+   simply take its width; the CTA below them sits closer than a lone button. */
+.auth-form {
+  display: flex;
+  width: 100%;
+  max-width: 17.5rem;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-top: 2.25rem;
+  text-align: left;
+}
+
+.auth-form .auth-cta {
+  margin-top: 0.65rem;
+}
+
+.auth-switch {
+  margin-top: 1.1rem;
+  color: var(--color-bone-faint);
+  font-family: var(--font-display);
+  font-size: 0.74rem;
+  letter-spacing: 0.04em;
+}
+
+/* Inside the sentence the link needs to read as the control, not as more of
+   the sentence — the faint tone the standalone .auth-link uses is invisible
+   next to its own label. */
+.auth-switch .auth-link {
+  margin-top: 0;
+  color: var(--color-bone);
+  text-decoration: underline;
+}
+
+/* "or" between the two doors — the tagline's rules, at a smaller scale. */
+.auth-divider {
+  display: flex;
+  width: 100%;
+  max-width: 17.5rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  margin-top: 1.75rem;
+  color: var(--color-bone-faint);
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.28em;
+  text-indent: 0.28em;
+  text-transform: uppercase;
+}
+
+/* GitHub is the alternative, not the headline: same pill, no fel gradient. */
+.auth-cta--quiet {
+  margin-top: 1.1rem;
+  background: var(--color-iron-900);
+  border: 1px solid var(--color-iron-700);
+  color: var(--color-bone);
+  box-shadow: none;
+}
+.auth-cta--quiet:hover:not(:disabled) {
+  border-color: var(--color-fel-deep);
+}
+.auth-cta--quiet:focus-visible {
+  box-shadow:
+    0 0 0 2px var(--color-void),
+    0 0 0 4px var(--color-fel-bright);
+}
+
 /* Quiet secondary route out ("back to sign in", "go to Overseer"). */
 .auth-link {
   margin-top: 1.5rem;

@@ -36,6 +36,8 @@ interface AuthState {
   user: User | null;
   ready: boolean; // finished the initial "am I already logged in?" check
   loginWithGithub: () => Promise<void>;
+  signInWithPassword: (email: string, password: string) => Promise<void>;
+  registerWithPassword: (email: string, password: string) => Promise<void>;
   completeGithubCallback: (code: string | null, state: string, error: string | null) => Promise<"web" | "native">;
   logout: () => Promise<void>;
 }
@@ -88,6 +90,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         : await api<GithubStart>("/auth/github/start", { method: "POST" });
       sessionStorage.setItem(STATE_KEY, started.state);
       window.location.assign(started.authorizationUrl);
+    },
+    // Email + password. The session is the same HttpOnly cookie GitHub sign-in
+    // issues, so nothing below this line knows which door the user came through.
+    async signInWithPassword(email, password) {
+      const r = await api<{ user: User }>("/auth/password/login", json({ email, password }));
+      forgetNativeCallback(sessionStorage);
+      setUser(r.user);
+    },
+    async registerWithPassword(email, password) {
+      const r = await api<{ user: User }>("/auth/password/register", json({ email, password }));
+      forgetNativeCallback(sessionStorage);
+      setUser(r.user);
     },
     async completeGithubCallback(code, state, error) {
       const saved = sessionStorage.getItem(STATE_KEY);

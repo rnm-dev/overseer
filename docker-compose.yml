@@ -61,6 +61,8 @@ services:
       # public origin works today; swap to the tailnet URL once Tailscale lands.
       OVERSEER_PEON_CALLBACK_URL: ${OVERSEER_PEON_CALLBACK_URL:-https://overseer.rnm.dev}
       # Operator/mobile auth (GitHub OAuth → device tokens)
+      # Email + password sign-in beside GitHub. Off unless set to 1.
+      OVERSEER_PASSWORD_AUTH: ${OVERSEER_PASSWORD_AUTH:-0}
       # Wildcard DNS/TLS + nginx route for token.preview.overseer.rnm.dev.
       OVERSEER_PREVIEW_DOMAIN: ${OVERSEER_PREVIEW_DOMAIN:-preview.overseer.rnm.dev}
       OVERSEER_PREVIEW_TOKEN_TTL_MS: ${OVERSEER_PREVIEW_TOKEN_TTL_MS:-600000}

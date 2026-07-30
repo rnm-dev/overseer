@@ -7,12 +7,16 @@ import {
   exchangeNativeAppCode,
   issueWebSocketTicket,
   listDevices,
+  PasswordAuthError,
+  registerWithPassword,
   requestHasTrustedOrigin,
   revokeDevice,
   setWebSessionCookie,
+  signInWithPassword,
   startGithubAuthFlow,
   verifyDeviceToken,
 } from "../modules/auth/index.js";
+import type { PasswordSignInResult } from "../modules/auth/index.js";
 import { GithubAuthError } from "../github.js";
 import { getInvitePreview } from "../workspaces.js";
 import { bearer, clientInfo } from "./helpers.js";
@@ -40,6 +44,16 @@ function nativeCallback(value: unknown): string | null {
 // allowlisted native deep link.
 export function publicAuthRouter(): express.Router {
   const router = express.Router();
+
+  // Which doors this instance actually has. The sign-in page renders from this
+  // rather than guessing, so switching a method off in the environment removes
+  // the form as well as the route behind it.
+  router.get("/auth/methods", (_req, res) => {
+    res.json({
+      password: config.passwordAuthEnabled,
+      github: Boolean(config.githubClientId && config.githubClientSecret),
+    });
+  });
 
   router.get("/auth/github/config", (_req, res) => {
     res.json({ clientId: config.githubClientId, scope: config.githubScope, redirectUri: config.githubRedirectUri });
@@ -69,6 +83,47 @@ export function publicAuthRouter(): express.Router {
       githubScope: config.githubScope,
       githubRedirectUri: config.githubRedirectUri,
     }));
+  });
+
+  // Email + password, beside GitHub. A browser gets the same HttpOnly cookie the
+  // OAuth flow issues and never sees the token; a native client asks for the
+  // bearer explicitly, exactly as it does after the OAuth app-code exchange.
+  const answerPasswordFlow = (req: express.Request, res: express.Response, result: PasswordSignInResult, status: number) => {
+    const user = { email: result.user.email, githubLogin: result.user.githubLogin, avatarUrl: result.user.avatarUrl };
+    if (req.body?.client === "native") return res.status(status).json({ token: result.token, user, device: result.device });
+    setWebSessionCookie(res, result.token, result.device.expiresAt);
+    return res.status(status).json({ user, device: result.device });
+  };
+
+  const passwordFailure = (res: express.Response, err: unknown, operation: string): express.Response => {
+    if (err instanceof PasswordAuthError) return res.status(err.status).json({ error: err.message, code: err.code });
+    console.error(`auth: ${operation} failed:`, err instanceof Error ? err.message : err);
+    return res.status(500).json({ error: "sign-in failed", code: "PASSWORD_AUTH_ERROR" });
+  };
+
+  const passwordAuthOff = (res: express.Response): express.Response =>
+    res.status(503).json({ error: "email and password sign-in is not enabled", code: "PASSWORD_AUTH_DISABLED" });
+
+  router.post("/auth/password/register", async (req, res) => {
+    if (!config.passwordAuthEnabled) return passwordAuthOff(res);
+    if (limited(req, "password-register", 5)) return res.status(429).json({ error: "too many sign-up attempts", code: "RATE_LIMITED" });
+    try {
+      const result = await registerWithPassword({ email: req.body?.email, password: req.body?.password, client: clientInfo(req) });
+      return answerPasswordFlow(req, res, result, 201);
+    } catch (err) {
+      return passwordFailure(res, err, "password registration");
+    }
+  });
+
+  router.post("/auth/password/login", async (req, res) => {
+    if (!config.passwordAuthEnabled) return passwordAuthOff(res);
+    if (limited(req, "password-login", 10)) return res.status(429).json({ error: "too many sign-in attempts", code: "RATE_LIMITED" });
+    try {
+      const result = await signInWithPassword({ email: req.body?.email, password: req.body?.password, client: clientInfo(req) });
+      return answerPasswordFlow(req, res, result, 200);
+    } catch (err) {
+      return passwordFailure(res, err, "password sign-in");
+    }
   });
 
   router.post("/auth/github", async (req, res) => {

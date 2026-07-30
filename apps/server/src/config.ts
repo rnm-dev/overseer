@@ -29,6 +29,10 @@ export interface Config {
   // server-backed state decides which client receives the result.
   githubRedirectUri: string;
   githubNativeCallbacks: string[];
+  // Email + password sign-in beside GitHub, off unless an operator asks for it.
+  // Registration and sign-in share the switch: an instance that does not want
+  // local accounts must not accept new ones either.
+  passwordAuthEnabled: boolean;
   // How long an issued device token lives.
   deviceTokenTtlMs: number;
   // Addresses/CIDRs of reverse proxies that may contribute
@@ -104,6 +108,7 @@ export const config: Config = {
   githubRedirectUri: process.env.OVERSEER_GITHUB_REDIRECT_URI ?? `${publicUrl}/auth/github/callback`,
   githubNativeCallbacks: (process.env.OVERSEER_GITHUB_NATIVE_CALLBACKS ?? "overseer://oauth/github")
     .split(",").map((value) => value.trim()).filter(Boolean),
+  passwordAuthEnabled: process.env.OVERSEER_PASSWORD_AUTH === "1",
   deviceTokenTtlMs: num("OVERSEER_DEVICE_TOKEN_TTL_MS", 90 * 24 * 60 * 60_000),
   trustedProxies: csv("OVERSEER_TRUSTED_PROXIES"),
   previewDomain: (process.env.OVERSEER_PREVIEW_DOMAIN ?? "preview.overseer.rnm.dev").toLowerCase().replace(/^\.+|\.+$/g, ""),

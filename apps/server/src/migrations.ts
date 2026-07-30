@@ -899,4 +899,10 @@ export const MIGRATIONS: { id: string; statements: string[] }[] = [
          ON attachment_transfer_receipts (workspace_id,peon_id,bound_command_id)`,
     ],
   },
+  {
+    // Email + password sign-in beside GitHub. NULL means "this account has no
+    // password" — every GitHub-created user, and it is not an error state.
+    id: "032_user_passwords",
+    statements: [`ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT`],
+  },
 ];

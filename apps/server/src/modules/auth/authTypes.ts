@@ -38,6 +38,12 @@ export interface ClientInfo {
   userAgent: string | null;
 }
 
+export interface PasswordSignInResult {
+  token: string;
+  user: UserRecord;
+  device: DeviceView;
+}
+
 export interface NativeExchangeResult {
   token: string;
   user: UserRecord;
