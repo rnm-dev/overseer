@@ -12,6 +12,7 @@ import { evictPeonTransferConnectionsBelowGeneration, isPeonTransferConnected } 
 import { attachPeonTransferSocket, PEON_TRANSFER_SOCKET_PATH } from "./peonTransferSocket.js";
 import { registry, toView, type PeonRecord } from "./registry.js";
 import { encodePeonFileChunk, openPeonProjectFile, openPeonSandboxFile, openPeonSessionArtifact, PeonFileStreamError, requestPeonSessionArtifact } from "./peonFileStream.js";
+import { sessionArtifactContentType } from "./modules/projects/projectFileHttp.js";
 import { PATH_ESCAPE_PUBLIC_MESSAGE } from "./fileErrorSafety.js";
 import { peonsRouter } from "./routes/peons.js";
 import {
@@ -407,6 +408,14 @@ test("browser viewer infers inline MIME types when Peon reports generic bytes", 
   assert.equal(projectFileContentType("assets/app.js", "application/octet-stream"), "text/javascript; charset=utf-8");
   assert.equal(projectFileContentType("archive.bin", "application/octet-stream"), "application/octet-stream");
   assert.equal(projectFileContentType("index.html", "text/plain; charset=utf-8"), "text/plain; charset=utf-8");
+});
+
+test("session artifact raw responses keep active content download-only", () => {
+  assert.equal(sessionArtifactContentType("report.pdf"), "application/pdf");
+  assert.equal(sessionArtifactContentType("diagram.PNG"), "image/png");
+  assert.equal(sessionArtifactContentType("index.html"), "application/octet-stream");
+  assert.equal(sessionArtifactContentType("vector.svg"), "application/octet-stream");
+  assert.equal(sessionArtifactContentType("script.js"), "application/octet-stream");
 });
 
 test("project file service rejects unsafe paths, propagates Peon errors, and cancels aborted opens", async () => {

@@ -7,6 +7,7 @@ import { registry } from "./registry.js";
 import { hasSessionArtifactTransport } from "./peonTransferConnections.js";
 import { openPeonSessionArtifact } from "./peonFileStream.js";
 import { requestedProjectFileRange } from "./modules/projects/projectFileHttp.js";
+import { canAccessIndexedSessionNow } from "./modules/access/accessService.js";
 
 const SANDBOX = "sandbox allow-scripts allow-forms allow-modals allow-downloads";
 const MIN_TTL_MS = 30_000;
@@ -160,6 +161,17 @@ async function servePreview(req: Request, res: Response): Promise<void> {
 
   const record = await registry.get(grant.peonId);
   if (!record || record.workspaceId !== grant.workspaceId) return statePage(res, 404, "MISSING_PREVIEW", "The Peon for this preview is no longer available.");
+  if (grant.userId && !(await canAccessIndexedSessionNow(
+    grant.workspaceId,
+    grant.userId,
+    grant.peonId,
+    grant.sessionId,
+  ))) {
+    // Preview tokens are bearer URLs, but their authority must never outlive
+    // the operator's current workspace/session grant. Keep the response
+    // indistinguishable from an unknown token so revocation leaks no existence.
+    return statePage(res, 404, "MISSING_PREVIEW", "This preview link is invalid or no longer available.");
+  }
 
   const conn = connOfRecord(record);
   const controller = new AbortController();
