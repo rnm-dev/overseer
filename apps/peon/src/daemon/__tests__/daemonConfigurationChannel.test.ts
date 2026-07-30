@@ -63,7 +63,7 @@ test("daemon configuration negotiates exact checkpoints and publishes only the s
   const payload = (frames[0]!.frame as PeonSocketFrame);
   assert.equal(payload.type, "daemon_configuration_state");
   assert.deepEqual(Object.keys(payload.values as PeonSocketFrame).sort(),
-    ["aiDefaultModel", "defaultAgent", "fileTransferRoot", "heartbeatIntervalMs", "name", "soul"]);
+    ["aiDefaultModel", "aiDefaultReasoningEffort", "defaultAgent", "fileTransferRoot", "heartbeatIntervalMs", "name", "soul"]);
   assert.equal(JSON.stringify(payload).includes("overseerToken"), false);
   assert.equal((frames[0]!.options as PeonSocketFrame).capability, "daemon-configuration-v1");
 });
@@ -183,10 +183,29 @@ test("configuration patch handler applies, noops, conflicts, and rejects forbidd
   assert.equal(normalizedStaleNoop.status, "noop");
   assert.equal(state.snapshot().revision, afterClear.revision);
 
-  const rejected = await handler.execute({
+  const modelApplied = await handler.execute({
     ...base,
     commandId: randomUUID(),
     expected: { epoch: afterClear.epoch, revision: afterClear.revision, digest: afterClear.digest },
+    payload: { patch: {
+      defaultAgent: "codex-app-server",
+      aiDefaultModel: "gpt-5.4",
+      aiDefaultReasoningEffort: "xhigh",
+    } },
+  });
+  assert.equal(modelApplied.status, "applied", JSON.stringify(modelApplied));
+  assert.equal(state.snapshot().values.aiDefaultModel, "gpt-5.4");
+  assert.equal(state.snapshot().values.aiDefaultReasoningEffort, "xhigh");
+  assert.deepEqual(
+    (modelApplied.result as PeonSocketFrame).changedFields,
+    ["defaultAgent", "aiDefaultModel", "aiDefaultReasoningEffort"],
+  );
+
+  const afterModel = state.snapshot();
+  const rejected = await handler.execute({
+    ...base,
+    commandId: randomUUID(),
+    expected: { epoch: afterModel.epoch, revision: afterModel.revision, digest: afterModel.digest },
     payload: { patch: { heartbeatIntervalMs: 1 } },
   });
   assert.deepEqual(rejected, {
@@ -201,14 +220,14 @@ test("configuration patch handler applies, noops, conflicts, and rejects forbidd
   const invalidType = await handler.execute({
     ...base,
     commandId: randomUUID(),
-    expected: afterClear,
+    expected: afterModel,
     payload: { patch: { name: { malicious: true } } },
   });
   assert.equal(invalidType.status, "rejected");
   const oversized = await handler.execute({
     ...base,
     commandId: randomUUID(),
-    expected: afterClear,
+    expected: afterModel,
     payload: { patch: { soul: "x".repeat((48 * 1024) + 1) } },
   });
   assert.equal(oversized.status, "rejected");

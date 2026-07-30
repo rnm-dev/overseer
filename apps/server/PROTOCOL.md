@@ -1668,7 +1668,8 @@ because each can reference a different full-output artifact.
 This capability requires both `durable-delivery-v1` and the generic
 `reverse-command-v1` operation `daemon.configuration.patch`. Its safe document
 contains exactly `name`, `defaultAgent`, `fileTransferRoot`,
-`heartbeatIntervalMs`, `aiDefaultModel`, and `soul`; identity, credentials,
+`heartbeatIntervalMs`, `aiDefaultModel`, `aiDefaultReasoningEffort`, and `soul`;
+identity, credentials,
 network-boundary settings, executable paths and `paused` are forbidden.
 
 Full configuration states use their own epoch, monotonic revision and canonical

@@ -67,6 +67,7 @@ export class SettingsService extends EventEmitter {
             fileTransferRoot: settings.fileTransferRoot || null,
             heartbeatIntervalMs: settings.heartbeatIntervalMs,
             aiDefaultModel: settings.ai.defaultModel ?? null,
+            aiDefaultReasoningEffort: settings.ai.defaultReasoningEffort ?? null,
             soul: settings.ai.soul || null,
         };
     }
@@ -90,7 +91,8 @@ export class SettingsService extends EventEmitter {
     normalizeDaemonConfigurationPatch(body, current) {
         const value = this.ensureRecord(body);
         const allowed = new Set([
-            "name", "defaultAgent", "fileTransferRoot", "heartbeatIntervalMs", "aiDefaultModel", "soul",
+            "name", "defaultAgent", "fileTransferRoot", "heartbeatIntervalMs",
+            "aiDefaultModel", "aiDefaultReasoningEffort", "soul",
         ]);
         const unknown = Object.keys(value).find((key) => !allowed.has(key));
         if (unknown)

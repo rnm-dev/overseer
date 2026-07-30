@@ -159,11 +159,15 @@ function strictObject(value: unknown, allowed: readonly string[], field: string)
 }
 
 export function validateDaemonConfigurationPatch(patch: JsonObject): void {
-  strictObject(patch, ["name", "defaultAgent", "fileTransferRoot", "heartbeatIntervalMs", "aiDefaultModel", "soul"], "patch");
+  strictObject(patch, [
+    "name", "defaultAgent", "fileTransferRoot", "heartbeatIntervalMs",
+    "aiDefaultModel", "aiDefaultReasoningEffort", "soul",
+  ], "patch");
   const nullableStrings: Readonly<Record<string, number>> = {
     name: 200,
     fileTransferRoot: 4_096,
     aiDefaultModel: 200,
+    aiDefaultReasoningEffort: 200,
     soul: 48 * 1024,
   };
   for (const [field, limit] of Object.entries(nullableStrings)) {
@@ -586,7 +590,10 @@ export class ReverseCommandGateway {
       if (!patch || typeof patch !== "object" || Array.isArray(patch)) {
         throw new ReverseCommandGatewayError(400, "BAD_COMMAND", "configuration patch is required");
       }
-      strictObject(patch as JsonObject, ["name", "defaultAgent", "fileTransferRoot", "heartbeatIntervalMs", "aiDefaultModel", "soul"], "patch");
+      strictObject(patch as JsonObject, [
+        "name", "defaultAgent", "fileTransferRoot", "heartbeatIntervalMs",
+        "aiDefaultModel", "aiDefaultReasoningEffort", "soul",
+      ], "patch");
       validateDaemonConfigurationPatch(patch);
       if (Object.keys(patch).length === 0 || expected === null) {
         throw new ReverseCommandGatewayError(400, "BAD_COMMAND", "configuration patch and expected state are required");

@@ -1393,7 +1393,8 @@ canonical safe document. Overseer echoes its committed epoch,
 causes Peon to durably publish a complete `daemon_configuration_state`.
 
 The safe document contains exactly `name`, `defaultAgent`, `fileTransferRoot`,
-`heartbeatIntervalMs`, `aiDefaultModel`, and `soul`. Credentials, enrollment
+`heartbeatIntervalMs`, `aiDefaultModel`, `aiDefaultReasoningEffort`, and `soul`.
+Credentials, enrollment
 identity, URLs, bind addresses, executable paths, and `paused` never cross this
 capability. Local settings changes and remote changes share the same persisted
 epoch/revision stream.

@@ -32,10 +32,10 @@ test("providers without a marked default use their first model", () => {
   assert.equal(resolveDefaultModel(provider, null), "gpt-5.6-sol");
 });
 
-test("Codex settings omit Peon's legacy Claude-only model field", () => {
+test("Codex settings include the selected provider-neutral default model", () => {
   assert.deepEqual(
     buildSettingsPayload({ defaultAgent: "codex", aiDefaultModel: "gpt-5.6-sol", name: "Kanat" }, codex, true),
-    { defaultAgent: "codex", name: "Kanat" },
+    { defaultAgent: "codex", aiDefaultModel: "gpt-5.6-sol", name: "Kanat" },
   );
 });
 
@@ -135,7 +135,7 @@ test("providers and models with no efforts get no effort key at all", () => {
   // Codex here advertises none, so the peon must not be sent the field.
   assert.deepEqual(
     buildSettingsPayload({ defaultAgent: "codex", aiDefaultModel: "gpt-5.6-sol", aiDefaultReasoningEffort: "high" }, codex, true),
-    { defaultAgent: "codex" },
+    { defaultAgent: "codex", aiDefaultModel: "gpt-5.6-sol" },
   );
   assert.deepEqual(
     buildSettingsPayload({ defaultAgent: "claude-code", aiDefaultModel: "claude-haiku-4-5", aiDefaultReasoningEffort: "high" }, claudeWithEfforts, true),

@@ -9,7 +9,10 @@ import {
 } from "../../../settings/index.js";
 
 const EXPECTED_KEYS = ["epoch", "revision", "digest"];
-const PATCH_KEYS = ["name", "defaultAgent", "fileTransferRoot", "heartbeatIntervalMs", "aiDefaultModel", "soul"];
+const PATCH_KEYS = [
+  "name", "defaultAgent", "fileTransferRoot", "heartbeatIntervalMs",
+  "aiDefaultModel", "aiDefaultReasoningEffort", "soul",
+];
 const strictKeys = (value: PeonSocketFrame, allowed: string[]) => Object.keys(value).every((key) => allowed.includes(key));
 
 function publicResult(snapshot: DaemonConfigurationSnapshot, previousRevision: number, changedFields: string[]): PeonSocketFrame {

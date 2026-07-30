@@ -22,10 +22,8 @@ export function resolveDefaultReasoningEffort(
   return effortsForModel(provider, model).some((effort) => optionMatches(effort, current)) ? current : null;
 }
 
-// Current Peon builds expose aiDefaultModel as a legacy Claude-only setting.
-// Codex chooses the model marked `default` in /models, and rejects the legacy
-// field even when defaultAgent is changed to Codex. Omitting the property keeps
-// PATCH partial and allows the provider switch to persist.
+// Current Peon builds expose one provider-neutral default-model setting. Send
+// the concrete selection shown in the form for every provider.
 export function buildSettingsPayload<T extends { aiDefaultModel?: string | null; aiDefaultReasoningEffort?: string | null }>(
   form: T,
   provider: ModelProvider | null,
@@ -41,7 +39,7 @@ export function buildSettingsPayload<T extends { aiDefaultModel?: string | null;
   }
   if (!catalogLoaded) return payload;
   const model = resolveDefaultModel(provider, form.aiDefaultModel);
-  if (provider?.agent === "claude-code") payload.aiDefaultModel = model;
+  if (provider) payload.aiDefaultModel = model;
   else delete payload.aiDefaultModel;
   // Sent explicitly even when null — that is how the operator clears a
   // configured effort back to the model's own default, and the null-stripping

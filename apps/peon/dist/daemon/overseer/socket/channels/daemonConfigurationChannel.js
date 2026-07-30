@@ -1,6 +1,9 @@
 import { DAEMON_CONFIGURATION_CAPABILITY, DaemonConfigurationState, settings, } from "../../../settings/index.js";
 const EXPECTED_KEYS = ["epoch", "revision", "digest"];
-const PATCH_KEYS = ["name", "defaultAgent", "fileTransferRoot", "heartbeatIntervalMs", "aiDefaultModel", "soul"];
+const PATCH_KEYS = [
+    "name", "defaultAgent", "fileTransferRoot", "heartbeatIntervalMs",
+    "aiDefaultModel", "aiDefaultReasoningEffort", "soul",
+];
 const strictKeys = (value, allowed) => Object.keys(value).every((key) => allowed.includes(key));
 function publicResult(snapshot, previousRevision, changedFields) {
     return { epoch: snapshot.epoch, previousRevision, revision: snapshot.revision, schemaVersion: snapshot.schemaVersion,

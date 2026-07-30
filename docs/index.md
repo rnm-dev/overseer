@@ -51,7 +51,7 @@ command ID, and publish through `project-catalog-v1`. Older Peons retain the
 exclusive HTTP compatibility route. The terminal allowlists and bounded cursor
 contract are in [project reverse commands](project-reverse-commands.md).
 
-Peon daemon settings use the same gateway: [reverse daemon configuration](daemon-configuration.md) projects only the six safe `daemon-configuration-v1` fields, revision-fences every owner patch, and selects projection/WSS or legacy HTTP exclusively after negotiation and initial state commit.
+Peon daemon settings use the same gateway: [reverse daemon configuration](daemon-configuration.md) projects only the seven safe `daemon-configuration-v1` fields, revision-fences every owner patch, and selects projection/WSS or legacy HTTP exclusively after negotiation and initial state commit.
 
 If a Peon does not return after a restart, follow the short
 [Peon restart recovery](peon-restart-recovery.md) checklist. Preserve its

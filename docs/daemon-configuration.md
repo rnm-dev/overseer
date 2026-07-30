@@ -6,9 +6,9 @@ without an Overseer-to-Peon HTTP connection. It requires both
 `daemon.configuration.patch`.
 
 The complete projected document contains exactly `name`, `defaultAgent`,
-`fileTransferRoot`, `heartbeatIntervalMs`, `aiDefaultModel`, and `soul`.
-Credentials, enrollment identity, URLs, bind addresses, executable paths and
-`paused` are rejected rather than ignored.
+`fileTransferRoot`, `heartbeatIntervalMs`, `aiDefaultModel`,
+`aiDefaultReasoningEffort`, and `soul`. Credentials, enrollment identity, URLs,
+bind addresses, executable paths and `paused` are rejected rather than ignored.
 
 Peon remains authoritative. Every state carries an independent configuration
 epoch, monotonic revision, schema version and canonical SHA-256 digest.

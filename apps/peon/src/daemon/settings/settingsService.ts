@@ -80,6 +80,7 @@ export interface DaemonConfigurationView {
   fileTransferRoot: string | null;
   heartbeatIntervalMs: number;
   aiDefaultModel: string | null;
+  aiDefaultReasoningEffort: ReasoningEffort | null;
   soul: string | null;
 }
 
@@ -158,6 +159,7 @@ export class SettingsService extends EventEmitter implements SettingsServiceCont
       fileTransferRoot: settings.fileTransferRoot || null,
       heartbeatIntervalMs: settings.heartbeatIntervalMs,
       aiDefaultModel: settings.ai.defaultModel ?? null,
+      aiDefaultReasoningEffort: settings.ai.defaultReasoningEffort ?? null,
       soul: settings.ai.soul || null,
     };
   }
@@ -183,7 +185,8 @@ export class SettingsService extends EventEmitter implements SettingsServiceCont
   private normalizeDaemonConfigurationPatch(body: unknown, current: DaemonSettings): Partial<DaemonSettings> {
     const value = this.ensureRecord(body);
     const allowed = new Set([
-      "name", "defaultAgent", "fileTransferRoot", "heartbeatIntervalMs", "aiDefaultModel", "soul",
+      "name", "defaultAgent", "fileTransferRoot", "heartbeatIntervalMs",
+      "aiDefaultModel", "aiDefaultReasoningEffort", "soul",
     ]);
     const unknown = Object.keys(value).find((key) => !allowed.has(key));
     if (unknown) this.throwBadRequest(`${unknown} is not remotely manageable`);

@@ -25,6 +25,7 @@ const values = {
   fileTransferRoot: null,
   heartbeatIntervalMs: 15_000,
   aiDefaultModel: "gpt-5",
+  aiDefaultReasoningEffort: null,
   soul: null,
 };
 
@@ -258,8 +259,11 @@ test("configuration patch preflight rejects forbidden, oversized and invalid typ
     name: null,
     defaultAgent: "codex-app-server",
     heartbeatIntervalMs: 15_000,
+    aiDefaultModel: "gpt-5",
+    aiDefaultReasoningEffort: "high",
   }));
   assert.throws(() => validateDaemonConfigurationPatch({ overseerToken: "secret" }), /unsupported fields/);
   assert.throws(() => validateDaemonConfigurationPatch({ heartbeatIntervalMs: 999 }), /invalid value/);
+  assert.throws(() => validateDaemonConfigurationPatch({ aiDefaultReasoningEffort: 42 }), /invalid value/);
   assert.throws(() => validateDaemonConfigurationPatch({ soul: "x".repeat(48 * 1024 + 1) }), /invalid value/);
 });

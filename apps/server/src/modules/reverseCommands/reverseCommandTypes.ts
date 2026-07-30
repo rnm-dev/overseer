@@ -869,7 +869,10 @@ function assertSafeDaemonConfigurationResult(result: ReverseCommandResultFrame):
   }
   const restart = object(detail.restart, "daemon configuration restart");
   strict(restart, ["required", "components"], "daemon configuration restart");
-  const fields = new Set(["name", "defaultAgent", "fileTransferRoot", "heartbeatIntervalMs", "aiDefaultModel", "soul"]);
+  const fields = new Set([
+    "name", "defaultAgent", "fileTransferRoot", "heartbeatIntervalMs",
+    "aiDefaultModel", "aiDefaultReasoningEffort", "soul",
+  ]);
   const components = new Set(["daemon", "dashboard", "socket", "provider"]);
   if (typeof restart.required !== "boolean" || !Array.isArray(restart.components)
     || restart.components.some((value) => typeof value !== "string" || !components.has(value))
@@ -890,7 +893,10 @@ function assertSafeDaemonConfigurationError(value: unknown): void {
   const error = object(value, "daemon configuration error");
   strict(error, ["field", "code", "message"], "daemon configuration error");
   if ((error.field !== undefined && (typeof error.field !== "string"
-      || !["name", "defaultAgent", "fileTransferRoot", "heartbeatIntervalMs", "aiDefaultModel", "soul"].includes(error.field)))
+      || ![
+        "name", "defaultAgent", "fileTransferRoot", "heartbeatIntervalMs",
+        "aiDefaultModel", "aiDefaultReasoningEffort", "soul",
+      ].includes(error.field)))
     || typeof error.code !== "string" || !/^[A-Z][A-Z0-9_]{1,63}$/.test(error.code)
     || typeof error.message !== "string" || Buffer.byteLength(error.message, "utf8") > 500
     || /(?:overseerToken|authorization|password|secret|bearer\s+)/i.test(error.message)) {
@@ -900,12 +906,16 @@ function assertSafeDaemonConfigurationError(value: unknown): void {
 
 export function assertDaemonConfigurationValues(value: unknown): asserts value is JsonObject {
   const values = object(value, "daemon configuration values");
-  strict(values, ["name", "defaultAgent", "fileTransferRoot", "heartbeatIntervalMs", "aiDefaultModel", "soul"], "daemon configuration values");
+  strict(values, [
+    "name", "defaultAgent", "fileTransferRoot", "heartbeatIntervalMs",
+    "aiDefaultModel", "aiDefaultReasoningEffort", "soul",
+  ], "daemon configuration values");
   if ((values.name !== null && typeof values.name !== "string")
     || typeof values.defaultAgent !== "string"
     || (values.fileTransferRoot !== null && typeof values.fileTransferRoot !== "string")
     || !Number.isSafeInteger(values.heartbeatIntervalMs) || Number(values.heartbeatIntervalMs) < 1_000
     || (values.aiDefaultModel !== null && typeof values.aiDefaultModel !== "string")
+    || (values.aiDefaultReasoningEffort !== null && typeof values.aiDefaultReasoningEffort !== "string")
     || (values.soul !== null && typeof values.soul !== "string")) {
     throw new ReverseCommandProtocolError("invalid daemon configuration values");
   }
