@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import { ItemView, OTHER_ATTACHMENT_CLASS, OTHER_USER_BUBBLE_AUTHOR_CLASS, OTHER_USER_BUBBLE_CLASS, OTHER_USER_BUBBLE_TIME_CLASS, OWN_ATTACHMENT_CLASS, OWN_USER_BUBBLE_CLASS, OWN_USER_BUBBLE_TIME_CLASS, attachmentMeta, editDiff, editFileName, editOperation, editStats, editStatsFromInput, isCompactUserMessage, isOwnMessageAuthor, userMessageAvatar } from "./peon/session/messageParts";
-import { flattenEvents, toolHasOutputSection } from "./peon/session/parsing";
+import { ItemView, OTHER_ATTACHMENT_CLASS, OTHER_USER_BUBBLE_AUTHOR_CLASS, OTHER_USER_BUBBLE_CLASS, OTHER_USER_BUBBLE_TIME_CLASS, OWN_ATTACHMENT_CLASS, OWN_USER_BUBBLE_CLASS, OWN_USER_BUBBLE_TIME_CLASS, SIMPLE_TOOL_ROW_CLASS, TOOL_ROW_LAYOUT_CLASS, attachmentMeta, editDiff, editFileName, editOperation, editStats, editStatsFromInput, isCompactUserMessage, isOwnMessageAuthor, simpleToolFileName, simpleToolKind, userMessageAvatar } from "./peon/session/messageParts";
+import { flattenEvents, gapClass, gapPaddingClass, toolHasOutputSection } from "./peon/session/parsing";
 
 const t = ((key: string) => key) as Parameters<typeof ItemView>[0]["t"];
 
@@ -72,6 +72,79 @@ test("other tool detail types retain their output section", () => {
   assert.equal(toolHasOutputSection("Bash"), true);
   assert.equal(toolHasOutputSection("Read"), true);
   assert.equal(toolHasOutputSection(undefined), true);
+});
+
+test("simple tool rows hide command text behind a human activity label", () => {
+  const item = {
+    kind: "tool" as const,
+    key: "read",
+    name: "Read",
+    input: { file_path: "/workspace/confidential-contract.pdf" },
+    result: { text: "contents", error: false },
+  };
+  const simple = renderToStaticMarkup(ItemView({ item, t, simpleTools: true }));
+  const technical = renderToStaticMarkup(ItemView({ item, t }));
+
+  assert.match(simple, /session\.chat\.activity\.read/);
+  assert.match(simple, /session\.chat\.activity\.showTechnical/);
+  assert.match(simple, /confidential-contract\.pdf/);
+  assert.match(simple, /data-simple-tool-kind="read"/);
+  assert.doesNotMatch(simple, /\/workspace\//);
+  assert.match(technical, /confidential-contract/);
+});
+
+test("simple tool rows expose pending and failed states without command text", () => {
+  const pending = renderToStaticMarkup(ItemView({
+    item: { kind: "tool", key: "pending", name: "Bash", input: { command: "secret-command" } },
+    t,
+    simpleTools: true,
+  }));
+  const failed = renderToStaticMarkup(ItemView({
+    item: { kind: "tool", key: "failed", name: "Bash", input: { command: "secret-command" }, result: { text: "nope", error: true } },
+    t,
+    simpleTools: true,
+  }));
+
+  assert.match(pending, /session\.chat\.activity\.running/);
+  assert.match(failed, /session\.chat\.activity\.failedShort/);
+  assert.doesNotMatch(pending, /secret-command/);
+  assert.doesNotMatch(failed, /secret-command/);
+});
+
+test("simple tool rows choose semantic icons and expose only safe file names", () => {
+  assert.equal(simpleToolKind("Read"), "read");
+  assert.equal(simpleToolKind("Grep"), "search");
+  assert.equal(simpleToolKind("WebSearch"), "web");
+  assert.equal(simpleToolKind("Edit"), "edit");
+  assert.equal(simpleToolKind("Task"), "analysis");
+  assert.equal(simpleToolKind("Bash"), "command");
+  assert.equal(simpleToolKind("custom"), "generic");
+
+  assert.equal(simpleToolFileName("Read", { file_path: "/private/contracts/nda.pdf" }), "nda.pdf");
+  assert.equal(simpleToolFileName("NotebookEdit", { notebook_path: "analysis/risk.ipynb" }), "risk.ipynb");
+  assert.equal(simpleToolFileName("Bash", { path: "/private/contracts/nda.pdf" }), null);
+});
+
+test("simple tool rows align to the transcript edge with a fixed icon grid", () => {
+  assert.match(SIMPLE_TOOL_ROW_CLASS, /\bgrid\b/);
+  assert.match(SIMPLE_TOOL_ROW_CLASS, /grid-cols-\[auto_minmax\(0,1fr\)_auto\]/);
+  assert.doesNotMatch(SIMPLE_TOOL_ROW_CLASS, /\bpx-/);
+});
+
+test("technical and simple system rows share the same compact vertical rhythm", () => {
+  assert.equal(gapPaddingClass(false, false), "pt-0.5");
+  assert.equal(gapClass(false, false), "mt-0.5");
+  assert.equal(gapPaddingClass(true, false), "pt-6");
+  assert.ok(SIMPLE_TOOL_ROW_CLASS.startsWith(TOOL_ROW_LAYOUT_CLASS));
+  assert.match(TOOL_ROW_LAYOUT_CLASS, /\bgap-x-1\.5\b/);
+  assert.match(SIMPLE_TOOL_ROW_CLASS, /\bpy-0\.5\b/);
+});
+
+test("assistant text keeps breathing room around compact system rows", () => {
+  assert.equal(gapPaddingClass(false, false, true), "pt-4");
+  assert.equal(gapClass(false, false, true), "mt-4");
+  assert.equal(gapPaddingClass(true, false, true), "pt-6");
+  assert.equal(gapPaddingClass(false, true, true), "pt-6");
 });
 
 test("edit modal title uses the edited file name", () => {

@@ -3,7 +3,7 @@ import { Dialog } from "../../../ui";
 import { HighlightedCode, Markdown } from "../../../components/RichText";
 import { gapClass, orcishThinkingLabel, prettyJsonOutput, toolHasOutputSection, toolSummary, type Item, type MessageAttachment, type T } from "./parsing";
 import { Avatar } from "../../../components/Avatar";
-import { FilePlus, FileX, ImageIcon, Paperclip, Pencil, Terminal } from "lucide-react";
+import { Bot, FilePenLine, FilePlus, FileText, FileX, Globe2, ImageIcon, Paperclip, Pencil, Search, Terminal, Wrench } from "lucide-react";
 import { projectViewerHref, projectViewerRelativePath, type ProjectViewerContext } from "./projectViewerLink";
 import { useAuth, type User } from "../../../auth";
 import { useI18n, type Locale } from "../../../i18n";
@@ -15,6 +15,8 @@ import { formatLocalTimestamp, localeTag } from "../../../timeFormat";
 
 export const OWN_ATTACHMENT_CLASS = "bg-iron-950/25 text-bone hover:bg-iron-950/40";
 export const OTHER_ATTACHMENT_CLASS = "on-surface text-bone hover:bg-iron-700/60";
+export const TOOL_ROW_LAYOUT_CLASS = "grid w-fit min-w-0 max-w-[85%] grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-1.5 py-0.5 typo-chat-system-message";
+export const SIMPLE_TOOL_ROW_CLASS = `${TOOL_ROW_LAYOUT_CLASS} rounded text-left transition-colors hover:bg-iron-800/70 hover:text-bone`;
 
 export function attachmentMeta(attachment: MessageAttachment): string {
   const label = attachment.name || attachment.path?.split(/[\\/]/).pop() || "attachment";
@@ -131,16 +133,48 @@ function Notice({ tone, children }: { tone?: "neutral" | "error"; children: Reac
 // A tool call collapsed to a single clipped line — icon, name, clipped command —
 // with a Details button that opens the full command + output in a modal. Command
 // output is never shown inline; it's noise unless the operator asks for it.
-function ToolRow({ name, input, result, t }: { name?: string; input?: unknown; result?: { text: string; error?: boolean }; t: T }) {
+function ToolRow({ name, input, result, t, simple = false }: { name?: string; input?: unknown; result?: { text: string; error?: boolean }; t: T; simple?: boolean }) {
   const [open, setOpen] = useState(false);
   const command = toolSummary(input, name);
   const failed = !!result?.error;
   const isEdit = !toolHasOutputSection(name);
   const operation = isEdit ? editOperation(input) : null;
   const stats = isEdit ? editStatsFromInput(input) : null;
+  const activityKind = simpleToolKind(name);
+  const activityLabel = simpleToolLabel(name, t);
+  const activityFile = simpleToolFileName(name, input);
+  const activityText = activityFile ? `${activityLabel} · ${activityFile}` : activityLabel;
+  const activityStatus = failed
+    ? t("session.chat.activity.failed")
+    : result
+      ? t("session.chat.activity.complete")
+      : t("session.chat.activity.running");
+
+  if (simple) {
+    return (
+      <div className="flex justify-start">
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          title={t("session.chat.activity.showTechnical")}
+          aria-label={`${activityText}. ${activityStatus}. ${t("session.chat.activity.showTechnical")}`}
+          data-simple-tool-kind={activityKind}
+          className={`${SIMPLE_TOOL_ROW_CLASS} ${failed ? "text-blood" : "text-bone-faint"}`}
+        >
+          <span className={`grid size-4 place-items-center ${failed ? "text-blood" : result ? "text-fel-bright" : "animate-pulse text-ember"}`} aria-hidden>
+            <SimpleToolIcon kind={activityKind} />
+          </span>
+          <span className="min-w-0 truncate">{activityText}</span>
+          {failed && <span className="shrink-0 text-blood">· {t("session.chat.activity.failedShort")}</span>}
+        </button>
+        {open && <ToolDetailsModal name={name} input={input} command={command} result={result} t={t} onClose={() => setOpen(false)} />}
+      </div>
+    );
+  }
+
   return (
     <div className="flex justify-start">
-      <div className={`flex min-w-0 max-w-[85%] items-center gap-1.5 py-0.5 typo-chat-system-message ${failed ? "text-blood" : ""}`}>
+      <div className={`${TOOL_ROW_LAYOUT_CLASS} ${failed ? "text-blood" : ""}`}>
         <span className={`flex shrink-0 items-center gap-1 ${failed ? "text-blood" : "text-fel-bright"}`}>
           {operation === "Create" ? <FilePlus size={13} aria-hidden /> : operation === "Delete" ? <FileX size={13} aria-hidden /> : isEdit ? <Pencil size={13} aria-hidden /> : <Terminal size={13} aria-hidden />}
           {operation ?? name ?? t("session.chat.tool")}
@@ -296,7 +330,7 @@ function EditStats({ operation, stats }: { operation: EditOperation; stats: { ad
 export function editFileName(input: unknown): string | null {
   if (!input || typeof input !== "object") return null;
   const value = input as Record<string, unknown>;
-  const explicitPath = value.file_path ?? value.filePath ?? value.path ?? value.filename;
+  const explicitPath = value.file_path ?? value.filePath ?? value.notebook_path ?? value.notebookPath ?? value.path ?? value.filename;
   let path = typeof explicitPath === "string" && explicitPath.trim() ? explicitPath.trim() : null;
   let additionalFiles = 0;
 
@@ -511,7 +545,62 @@ interface PreviewRequest {
   createdAt?: number;
 }
 
-export function ItemView({ item, t, locale = "en", yesterdayLabel = "Yesterday", onOpenPreview, onOpenAttachment, onOpenProjectFile, projectViewer }: { item: Item; t: T; locale?: Locale; yesterdayLabel?: string; onOpenPreview?: (preview: PreviewRequest) => void; onOpenAttachment?: (attachment: MessageAttachment) => void; onOpenProjectFile?: (path: string, viewerUrl: string) => void; projectViewer?: ProjectViewerContext | null }) {
+export type SimpleToolKind = "read" | "search" | "web" | "edit" | "analysis" | "command" | "generic";
+
+export function simpleToolKind(name: string | undefined): SimpleToolKind {
+  switch (name?.trim().toLowerCase()) {
+    case "read":
+      return "read";
+    case "grep":
+    case "glob":
+      return "search";
+    case "webfetch":
+    case "websearch":
+      return "web";
+    case "edit":
+    case "write":
+    case "notebookedit":
+      return "edit";
+    case "task":
+    case "agent":
+      return "analysis";
+    case "bash":
+      return "command";
+    default:
+      return "generic";
+  }
+}
+
+export function simpleToolLabel(name: string | undefined, t: T): string {
+  return t(`session.chat.activity.${simpleToolKind(name)}`);
+}
+
+export function simpleToolFileName(name: string | undefined, input: unknown): string | null {
+  const kind = simpleToolKind(name);
+  return kind === "read" || kind === "edit" || kind === "search" ? editFileName(input) : null;
+}
+
+function SimpleToolIcon({ kind }: { kind: SimpleToolKind }) {
+  const props = { size: 13, strokeWidth: 1.8 };
+  switch (kind) {
+    case "read":
+      return <FileText {...props} />;
+    case "search":
+      return <Search {...props} />;
+    case "web":
+      return <Globe2 {...props} />;
+    case "edit":
+      return <FilePenLine {...props} />;
+    case "analysis":
+      return <Bot {...props} />;
+    case "command":
+      return <Terminal {...props} />;
+    default:
+      return <Wrench {...props} />;
+  }
+}
+
+export function ItemView({ item, t, locale = "en", yesterdayLabel = "Yesterday", simpleTools = false, onOpenPreview, onOpenAttachment, onOpenProjectFile, projectViewer }: { item: Item; t: T; locale?: Locale; yesterdayLabel?: string; simpleTools?: boolean; onOpenPreview?: (preview: PreviewRequest) => void; onOpenAttachment?: (attachment: MessageAttachment) => void; onOpenProjectFile?: (path: string, viewerUrl: string) => void; projectViewer?: ProjectViewerContext | null }) {
   switch (item.kind) {
     case "user":
       return <UserBubble text={item.text} author={item.author} authorEmail={item.authorEmail} authorGithubLogin={item.authorGithubLogin} authorAvatarUrl={item.authorAvatarUrl} attachments={item.attachments} createdAt={item.createdAt} onOpenAttachment={onOpenAttachment} />;
@@ -541,7 +630,7 @@ export function ItemView({ item, t, locale = "en", yesterdayLabel = "Yesterday",
     case "thinking":
       return <Thinking text={item.text} />;
     case "tool":
-      return <ToolRow name={item.name} input={item.input} result={item.result} t={t} />;
+      return <ToolRow name={item.name} input={item.input} result={item.result} t={t} simple={simpleTools} />;
     case "loose":
       return <ActionResult text={item.text} t={t} />;
     case "notice":
@@ -591,7 +680,11 @@ export const TranscriptItemList = memo(function TranscriptItemList({
         <div
           key={item.key}
           data-transcript-row
-          className={`${i === 0 ? "" : gapClass(items[i - 1].kind === "user", item.kind === "user")}${item.key === forgedItemKey ? " forge-cooling" : ""}`}
+          className={`${i === 0 ? "" : gapClass(
+            items[i - 1].kind === "user",
+            item.kind === "user",
+            items[i - 1].kind === "text" || item.kind === "text",
+          )}${item.key === forgedItemKey ? " forge-cooling" : ""}`}
         >
           <ItemView
             item={item}

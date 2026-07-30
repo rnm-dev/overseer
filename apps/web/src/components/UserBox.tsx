@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { Languages, Volume2, VolumeX } from "lucide-react";
+import { Eye, Languages, Volume2, VolumeX } from "lucide-react";
 import { useAuth } from "../auth";
 import { LOCALES, useI18n } from "../i18n";
 import { selectedSoundPack, setSelectedSoundPack, SOUND_PACKS, type SoundPack } from "../peonSounds";
 import { GithubMark } from "../ui";
+import { loadToolDisplayMode, saveToolDisplayMode, type ToolDisplayMode } from "../sessionToolDisplay";
 
 // author: Viktor
 // Account panel, shown as the final in-flow block on the fleet dashboard.
@@ -20,16 +21,38 @@ export function UserBox() {
   const { user, logout } = useAuth();
   const { locale, setLocale, t } = useI18n();
   const [soundPack, setSoundPack] = useState(selectedSoundPack);
+  const [toolDisplayMode, setToolDisplayMode] = useState(loadToolDisplayMode);
 
   const chooseSoundPack = (pack: SoundPack) => {
     setSoundPack(pack);
     setSelectedSoundPack(pack);
   };
 
+  const chooseToolDisplayMode = (mode: ToolDisplayMode) => {
+    setToolDisplayMode(mode);
+    saveToolDisplayMode(mode);
+  };
+
   return (
     <section className={HOME_USER_CARD_CLASS}>
       <h2 className={HOME_USER_TITLE_CLASS}>{t("user.settings")}</h2>
       <div className={HOME_USER_ITEMS_CLASS}>
+        <div className={HOME_USER_ITEM_CLASS}>
+          <div className="flex items-center gap-2 text-bone-dim">
+            <Eye size={16} aria-hidden />
+            <span className={HOME_USER_LABEL_CLASS}>{t("user.toolDisplay")}</span>
+          </div>
+          <select
+            aria-label={t("user.toolDisplay")}
+            value={toolDisplayMode}
+            onChange={(event) => chooseToolDisplayMode(event.target.value as ToolDisplayMode)}
+            className={HOME_USER_SELECT_CLASS}
+          >
+            <option value="simple">{t("user.toolDisplay.simple")}</option>
+            <option value="technical">{t("user.toolDisplay.technical")}</option>
+          </select>
+        </div>
+
         <div className={HOME_USER_ITEM_CLASS}>
           <div className="flex items-center gap-2 text-bone-dim" title={t("user.peonSounds")}>
             {soundPack === "none" ? <VolumeX size={16} aria-hidden /> : <Volume2 size={16} aria-hidden />}

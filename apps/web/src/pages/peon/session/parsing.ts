@@ -296,19 +296,21 @@ export function flattenEvents(events: Ev[], t: T): Item[] {
 // Spacing between two adjacent transcript rows. Consecutive user messages sit
 // close together (they read as one burst); a user message next to anything else
 // gets extra breathing room on that side so it reads as its own turn.
-export function gapClass(prevIsUser: boolean, isUser: boolean): string {
+export function gapClass(prevIsUser: boolean, isUser: boolean, textBoundary = false): string {
   if (prevIsUser && isUser) return "mt-1";
   if (prevIsUser !== isUser) return "mt-6";
-  return "mt-2.5";
+  if (textBoundary) return "mt-4";
+  return "mt-0.5";
 }
 
 // Virtuoso measures each row independently, so its spacing belongs inside the
 // row rather than in a collapsing outer margin. Keep these as literal Tailwind
 // classes: constructing `pt-*` at runtime means Tailwind never emits them.
-export function gapPaddingClass(prevIsUser: boolean, isUser: boolean): string {
+export function gapPaddingClass(prevIsUser: boolean, isUser: boolean, textBoundary = false): string {
   if (prevIsUser && isUser) return "pt-1";
   if (prevIsUser !== isUser) return "pt-6";
-  return "pt-2.5";
+  if (textBoundary) return "pt-4";
+  return "pt-0.5";
 }
 
 // Contextual "agent is working" label from the freshest transcript event — so the

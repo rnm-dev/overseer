@@ -33,6 +33,7 @@ import {
   createTranscriptVirtualWindow,
   updateTranscriptVirtualWindow,
 } from "./session/transcriptVirtualization";
+import { loadToolDisplayMode } from "../../sessionToolDisplay";
 import { isSuccessfulRunResult, onSelectedSoundPackChange, playPeonSound, playWorkSound, stopWorkSound } from "../../peonSounds";
 
 // author: Viktor
@@ -83,6 +84,7 @@ export function PeonSessionDetail() {
   const transcriptPaginationSupported = peon.capabilities.includes("transcript-pagination-v1");
   const filePanePageKey = `${wsId}:${sessionKey}`;
   const currentSessionKeyRef = useRef(sessionKey);
+  const [simpleTools] = useState(() => loadToolDisplayMode() === "simple");
   const attentionReadInFlightRef = useRef<string | null>(null);
   // Update during render, not in an effect: a request from the previous route can
   // settle in the small render→effect window and must not mutate the new session.
@@ -632,7 +634,11 @@ export function PeonSessionDetail() {
       key: `item:${item.key}`,
       kind: "item",
       item,
-      paddingClass: index === 0 ? "" : gapPaddingClass(items[index - 1]!.kind === "user", item.kind === "user"),
+      paddingClass: index === 0 ? "" : gapPaddingClass(
+        items[index - 1]!.kind === "user",
+        item.kind === "user",
+        items[index - 1]!.kind === "text" || item.kind === "text",
+      ),
     }));
     if (ghost) {
       rows.push({
@@ -796,6 +802,7 @@ export function PeonSessionDetail() {
                       t={t}
                       locale={locale}
                       yesterdayLabel={yesterdayLabelText}
+                      simpleTools={simpleTools}
                       onOpenPreview={onOpenPreviewItem}
                       onOpenAttachment={setSentAttachmentPreview}
                       onOpenProjectFile={onOpenProjectFileItem}
