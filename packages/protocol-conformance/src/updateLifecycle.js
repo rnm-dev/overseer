@@ -3,7 +3,6 @@ import { ReverseCommandLifecycleHarness } from "./reverseCommandLifecycle.js";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const REVISION = /^[0-9A-Za-z._:+-]{1,128}$/;
 const SHA256 = /^[0-9a-f]{64}$/;
-const VERSION = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 const FAILURE_CODES = new Set([
   "REGISTRY_UNAVAILABLE", "RELEASE_CHANGED", "DOWNLOAD_FAILED",
   "ARCHIVE_INTEGRITY_FAILED", "UPDATE_FAILED", "INSTALL_FAILED_ROLLED_BACK",
@@ -19,8 +18,9 @@ function validRelease(release) {
 }
 
 function validReleaseIdentity(release) {
-  return release && VERSION.test(release.version)
-    && (release.revision === null || REVISION.test(release.revision))
+  return release && typeof release.version === "string"
+    && release.version.length > 0 && release.version.length <= 128
+    && typeof release.revision === "string" && REVISION.test(release.revision)
     && SHA256.test(release.sha256);
 }
 
@@ -48,12 +48,14 @@ export function validateUpdateFrame(frame, errors, kind) {
       || (frame.state === "terminal") !== (frame.result !== undefined)) errors.push("invalid update status");
   } else if (kind === "result") {
     const applied = frame.status === "applied" && frame.code === "OK"
-      && VERSION.test(frame.result?.version)
+      && typeof frame.result?.version === "string"
+      && frame.result.version.length > 0 && frame.result.version.length <= 100
       && REVISION.test(frame.result.revision)
       && SHA256.test(frame.result.sha256)
       && frame.result.attested === true;
     const mismatch = frame.status === "failed" && frame.code === "ATTESTATION_MISMATCH"
-      && VERSION.test(frame.result?.version)
+      && typeof frame.result?.version === "string"
+      && frame.result.version.length > 0 && frame.result.version.length <= 100
       && (frame.result.revision === null || REVISION.test(frame.result.revision))
       && (frame.result.sha256 === null || SHA256.test(frame.result.sha256))
       && frame.result.attested === false;

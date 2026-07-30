@@ -35,7 +35,15 @@ export class NoInboundTopology {
       }
       throw new Error(`${surface} is not operable through the reverse topology: ${route}`);
     }
-    const channel = surface.includes("file-read") ? "file-transfer" : "control";
+    const transferSurfaces = new Set([
+      "project-file-read",
+      "sandbox-file-read",
+      "project-file-upload",
+      "attachment-upload",
+      "project-file-move",
+      "project-file-delete",
+    ]);
+    const channel = transferSurfaces.has(surface) ? "file-transfer" : "control";
     if (!this.connections.has(channel)) throw new Error(`${channel} reverse connection is not open`);
     this.diagnostics.add("reverse_surface_exercised", { surface, channel });
   }

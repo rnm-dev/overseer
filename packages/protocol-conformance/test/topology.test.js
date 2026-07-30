@@ -30,3 +30,22 @@ test("an Overseer dial or legacy fallback fails the NAT/no-inbound assertion", (
   const legacy = new NoInboundTopology({ peonFleetPortBlocked: true });
   assert.throws(() => legacy.exercise("session-catalog", "legacy-http"), TopologyViolation);
 });
+
+test("every released bulk read/write surface requires the outbound transfer socket", () => {
+  const topology = new NoInboundTopology({ peonFleetPortBlocked: true });
+  topology.openConnection({ initiator: "peon", target: "overseer", channel: "control" });
+  for (const surface of [
+    "project-file-read",
+    "sandbox-file-read",
+    "project-file-upload",
+    "attachment-upload",
+    "project-file-move",
+    "project-file-delete",
+  ]) {
+    assert.throws(
+      () => topology.exercise(surface, "reverse-socket"),
+      /file-transfer reverse connection is not open/,
+      `${surface} must not be modeled on the control socket`,
+    );
+  }
+});

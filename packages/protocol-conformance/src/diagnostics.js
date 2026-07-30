@@ -45,6 +45,16 @@ export class BoundedDiagnostics {
     this.maxBytes = options.maxBytes ?? 64 * 1024;
     this.maxValueLength = options.maxValueLength ?? 512;
     this.clock = options.clock ?? Date.now;
+    if (!Number.isSafeInteger(this.maxEntries) || this.maxEntries < 0) {
+      throw new Error("maxEntries must be a non-negative safe integer");
+    }
+    if (!Number.isSafeInteger(this.maxBytes) || this.maxBytes <= 0) {
+      throw new Error("maxBytes must be a positive safe integer");
+    }
+    if (!Number.isSafeInteger(this.maxValueLength) || this.maxValueLength <= 0) {
+      throw new Error("maxValueLength must be a positive safe integer");
+    }
+    if (typeof this.clock !== "function") throw new Error("clock must be a function");
     this.entries = [];
     this.bytes = 0;
     this.droppedEntries = 0;

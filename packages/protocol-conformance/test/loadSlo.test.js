@@ -82,6 +82,19 @@ test("queue, per-flow and reconnect storm limits fail closed with bounded diagno
   assert.ok(diagnostics.droppedEntries >= 2);
 });
 
+test("scheduler bounds and credit cardinality reject invalid or overflowing input", () => {
+  for (const options of [{ maxQueued: 0 }, { maxPerFlow: -1 }, { maxReconnects: Number.MAX_SAFE_INTEGER + 1 }]) {
+    assert.throws(() => new ProportionalLoadHarness(options), /positive safe integer/);
+  }
+  assert.throws(() => runDeterministicSoak({ durationTicks: 0 }), /positive safe integer/);
+  const harness = new ProportionalLoadHarness();
+  harness.grantCredit("flow", Number.MAX_SAFE_INTEGER);
+  assert.throws(
+    () => harness.grantCredit("flow", 1),
+    (error) => error instanceof HarnessLimitError && error.code === "CREDIT_OVERFLOW",
+  );
+});
+
 test("deterministic soak meets local readiness criteria", () => {
   const first = runDeterministicSoak({ durationTicks: 2_000 });
   const second = runDeterministicSoak({ durationTicks: 2_000 });

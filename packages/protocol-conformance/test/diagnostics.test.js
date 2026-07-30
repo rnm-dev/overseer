@@ -41,3 +41,18 @@ test("diagnostic artifacts enforce entry, byte, value and collection bounds", ()
   assert.ok(artifact.droppedEntries > 0);
   assert.ok(Buffer.byteLength(JSON.stringify(artifact), "utf8") < 2048);
 });
+
+test("diagnostic bound configuration fails closed", () => {
+  for (const options of [
+    { maxEntries: -1 },
+    { maxEntries: Number.MAX_SAFE_INTEGER + 1 },
+    { maxBytes: 0 },
+    { maxValueLength: 0 },
+    { clock: 1 },
+  ]) {
+    assert.throws(() => new BoundedDiagnostics(options));
+  }
+  const disabled = new BoundedDiagnostics({ maxEntries: 0, maxBytes: 128 });
+  disabled.add("discarded", { authorization: "Bearer secret" });
+  assert.equal(disabled.artifact().entries.length, 0);
+});

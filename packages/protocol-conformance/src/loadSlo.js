@@ -7,11 +7,16 @@ function queueSize(queues) {
   return [...queues.values()].reduce((total, queue) => total + queue.length, 0);
 }
 
+function positiveSafeInteger(value, name) {
+  if (!Number.isSafeInteger(value) || value <= 0) throw new Error(`${name} must be a positive safe integer`);
+  return value;
+}
+
 export class ProportionalLoadHarness {
   constructor(options = {}) {
-    this.maxQueued = options.maxQueued ?? 256;
-    this.maxPerFlow = options.maxPerFlow ?? 32;
-    this.maxReconnects = options.maxReconnects ?? 32;
+    this.maxQueued = positiveSafeInteger(options.maxQueued ?? 256, "maxQueued");
+    this.maxPerFlow = positiveSafeInteger(options.maxPerFlow ?? 32, "maxPerFlow");
+    this.maxReconnects = positiveSafeInteger(options.maxReconnects ?? 32, "maxReconnects");
     this.diagnostics = options.diagnostics ?? new BoundedDiagnostics({
       maxEntries: options.maxDiagnosticEntries ?? 64,
       maxBytes: options.maxDiagnosticBytes ?? 16 * 1024,
@@ -71,7 +76,9 @@ export class ProportionalLoadHarness {
 
   grantCredit(flow, bytes) {
     if (!Number.isSafeInteger(bytes) || bytes <= 0) throw new Error("credit must be positive");
-    this.credits.set(String(flow), (this.credits.get(String(flow)) ?? 0) + bytes);
+    const next = (this.credits.get(String(flow)) ?? 0) + bytes;
+    if (!Number.isSafeInteger(next)) throw new HarnessLimitError("CREDIT_OVERFLOW", "transfer credit exceeds safe bounds");
+    this.credits.set(String(flow), next);
   }
 
   reconnect() {
@@ -162,7 +169,7 @@ export class ProportionalLoadHarness {
 }
 
 export function runDeterministicSoak(options = {}) {
-  const durationTicks = options.durationTicks ?? 10_000;
+  const durationTicks = positiveSafeInteger(options.durationTicks ?? 10_000, "durationTicks");
   const harness = new ProportionalLoadHarness({
     maxQueued: options.maxQueued ?? 512,
     maxPerFlow: options.maxPerFlow ?? 64,

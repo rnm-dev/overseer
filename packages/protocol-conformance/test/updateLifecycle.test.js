@@ -23,6 +23,34 @@ test("update.apply golden frames match released reverse-command and attestation 
   assert.deepEqual(fixture.blockedCells, []);
 });
 
+test("update identity validation matches the released non-wildcard implementation seam", () => {
+  for (const releaseIdentity of [
+    { ...command.payload.release, revision: null },
+    { ...command.payload.release, version: "" },
+    { ...command.payload.release, version: "v".repeat(129) },
+  ]) {
+    const errors = [];
+    validateUpdateFrame({
+      ...command,
+      payload: { ...command.payload, release: releaseIdentity },
+    }, errors, "command");
+    assert.deepEqual(errors, ["invalid update.apply command"]);
+  }
+  const errors = [];
+  validateUpdateFrame({
+    ...command,
+    payload: { ...command.payload, release: { ...command.payload.release, version: "release_candidate+1" } },
+  }, errors, "command");
+  assert.deepEqual(errors, [], "Peon and Overseer accept bounded opaque version identifiers");
+
+  const resultErrors = [];
+  validateUpdateFrame({
+    ...fixture.frames[3].frame,
+    result: { ...fixture.frames[3].frame.result, version: "release_candidate+1" },
+  }, resultErrors, "result");
+  assert.deepEqual(resultErrors, [], "terminal attestation uses the same bounded opaque version model");
+});
+
 test("durable admission, restart attestation and ACK loss converge to one install", () => {
   const harness = new UpdateLifecycleHarness();
   const accepted = harness.admit(command, release);
