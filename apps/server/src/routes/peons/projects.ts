@@ -664,9 +664,9 @@ export function registerProjectRoutes(router: express.Router): void {
         source: req,
         actor: { userId: c.userId, email: c.operator.email },
         signal: controller.signal,
-        requestId: transferId,
         maxBytes: path.startsWith("uploads/") ? attachmentUploadMaxBytes : projectUploadMaxBytes,
         ...uploadHeaders(req),
+        requestId: transferId,
       });
       if (!res.destroyed) {
         if (path.startsWith("uploads/")) {

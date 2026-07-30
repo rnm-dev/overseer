@@ -123,10 +123,10 @@ function turnOptions(
     : narrowReasoningEffort(payload.reasoningEffort, agent, model);
   if (payload.reasoningEffort !== undefined && !reasoningEffort) throw new Error("INVALID_REASONING_EFFORT");
   const attachmentList = (payload.attachments ?? []) as AttachmentInfo[];
-  const root = fileTransferRoot?.() ?? settings.get().fileTransferRoot;
-  if (attachmentList.length > 0 && !root) throw new Error("FILES_DISABLED");
   let rootPath = "";
-  if (root) {
+  if (attachmentList.length > 0) {
+    const root = fileTransferRoot?.() ?? settings.get().fileTransferRoot;
+    if (!root) throw new Error("FILES_DISABLED");
     try { rootPath = realpathSync(root); } catch { throw new Error("FILES_DISABLED"); }
   }
   for (const attachment of attachmentList) {
