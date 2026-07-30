@@ -234,15 +234,19 @@ test("reverse commands require durable delivery negotiation", async () => {
   }
 });
 
-test("terminal publication retries outbox pressure and cursor-bind persistence failure", async () => {
+test("terminal publication retries outbox pressure and cursor-bind persistence failure", { timeout: 1_000 }, async () => {
   const directory = mkdtempSync(path.join(os.tmpdir(), "peon-command-publish-"));
   const ledger = new ReverseCommandLedger({ fileBase: path.join(directory, "ledger") });
   let durableAttempts = 0;
   let bindAttempts = 0;
+  let resolveBound!: () => void;
+  const bound = new Promise<void>((resolve) => { resolveBound = resolve; });
   const bind = ledger.bindResultCursor.bind(ledger);
   ledger.bindResultCursor = (...args) => {
     bindAttempts += 1;
-    return bindAttempts > 1 && bind(...args);
+    const persisted = bindAttempts > 1 && bind(...args);
+    if (persisted) resolveBound();
+    return persisted;
   };
   const sender: PeonSocketSender = {
     durable: true,
@@ -268,7 +272,7 @@ test("terminal publication retries outbox pressure and cursor-bind persistence f
     channel.started(sender);
     channel.negotiated(true, {}, sender);
     channel.receive(frame, sender);
-    await new Promise((resolve) => setTimeout(resolve, 30));
+    await bound;
     assert.ok(durableAttempts >= 3);
     assert.ok(bindAttempts >= 2);
     assert.equal(ledger.get(commandId)?.resultCursor, "cursor");

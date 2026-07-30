@@ -42,6 +42,7 @@ function acceptedSessionId(result: { ok: boolean; json: unknown }): string | nul
     ? String((body.session as Record<string, unknown>).id)
     : null;
 }
+import { hasActiveUpdateCommand } from "../../modules/reverseCommands/reverseCommandRegistry.js";
 
 export function transcriptQuery(query: express.Request["query"], supported: boolean): string {
   if (!supported) return "";
@@ -575,6 +576,9 @@ async function streamProjectedTranscript(
   const pending: LiveEvent[] = [];
   let delivery = Promise.resolve();
   const deliver = async (live: LiveEvent): Promise<void> => {
+    if (await hasActiveUpdateCommand(c.record.peonId)) {
+      return res.status(409).json({ error: "Another update operation is still pending", code: "UPDATE_IN_PROGRESS" });
+    }
     if (res.writableEnded || !live.payload || typeof live.payload !== "object") return;
     const payload = live.payload as {
       deleted?: unknown;
@@ -587,6 +591,9 @@ async function streamProjectedTranscript(
       return;
     }
     if (payload.deleted === true) {
+    if (await hasActiveUpdateCommand(c.record.peonId)) {
+      return res.status(409).json({ error: "Another update operation is still pending", code: "UPDATE_IN_PROGRESS" });
+    }
       res.end();
       return;
     }
