@@ -109,6 +109,7 @@ class _SessionDetailPageState extends _SessionDetailAttachmentHost
   bool _readingAttachments = false;
   bool _startingSession = false;
   bool _backgrounded = false;
+  bool _presenceRestored = false;
   String? _selectedProjectKey;
   FollowupScope? _activeComposerScope;
 
@@ -147,12 +148,18 @@ class _SessionDetailPageState extends _SessionDetailAttachmentHost
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _restorePeonPresence();
+    _composerController.dispose();
+    super.dispose();
+  }
+
+  void _restorePeonPresence() {
+    if (_presenceRestored) return;
+    _presenceRestored = true;
     _live?.setPresence(
       workspaceId: workspaceId,
       location: PresenceLocation.peon(peonId: peonId),
     );
-    _composerController.dispose();
-    super.dispose();
   }
 
   @override
@@ -354,6 +361,10 @@ class _SessionDetailPageState extends _SessionDetailAttachmentHost
               session: headerSession,
               details: details,
               isNewSession: isNewSession,
+              onBack: () {
+                _restorePeonPresence();
+                Navigator.of(context).maybePop();
+              },
             ),
             Expanded(
               child: Stack(
@@ -667,7 +678,10 @@ class _SessionDetailPageState extends _SessionDetailAttachmentHost
           startNow: startNow,
           attachments: _composerAttachments,
           transcriptUserMessages: _userMessageCount(
-            ref.read(transcriptControllerProvider(transcriptScope)).value?.events,
+            ref
+                .read(transcriptControllerProvider(transcriptScope))
+                .value
+                ?.events,
           ),
         );
     if (submitted && (!running || startNow)) {
@@ -1220,11 +1234,13 @@ class _SessionHeader extends StatelessWidget {
   const _SessionHeader({
     required this.session,
     required this.details,
+    required this.onBack,
     this.isNewSession = false,
   });
 
   final SessionSummary session;
   final SessionDetails? details;
+  final VoidCallback onBack;
   final bool isNewSession;
 
   @override
@@ -1234,6 +1250,7 @@ class _SessionHeader extends StatelessWidget {
     return AppNavigationBar(
       key: const Key('session-navbar'),
       showBackButton: true,
+      onBack: onBack,
       backButtonKey: const Key('session-back'),
       contentPadding: const EdgeInsets.fromLTRB(8, 10, 8, 6),
       left: Column(

@@ -10,6 +10,8 @@ import 'package:overseer_mobile/features/projects/application/projects_controlle
 import 'package:overseer_mobile/features/projects/domain/project_detail_models.dart';
 import 'package:overseer_mobile/features/projects/domain/project_models.dart';
 import 'package:overseer_mobile/features/projects/domain/project_repository.dart';
+import 'package:overseer_mobile/features/fleet/application/fleet_controller.dart';
+import 'package:overseer_mobile/features/fleet/application/fleet_live_service.dart';
 import 'package:overseer_mobile/features/sessions/application/attachment_clipboard_provider.dart';
 import 'package:overseer_mobile/features/sessions/application/session_details_controller.dart';
 import 'package:overseer_mobile/features/sessions/application/session_composer_controller.dart';
@@ -37,6 +39,64 @@ void main() {
 
     expect(submissionLabel(state, running: false), isNull);
     expect(submissionLabel(state, running: true), isNull);
+  });
+
+  testWidgets('restores Peon presence as soon as Back starts', (tester) async {
+    final live = _RecordingPresenceLiveService();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          fleetLiveServiceProvider.overrideWithValue(live),
+          transcriptControllerProvider.overrideWith2(
+            (scope) => _TestTranscriptController(
+              scope,
+              const TranscriptState(events: []),
+            ),
+          ),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.dark,
+          home: Builder(
+            builder: (context) => TextButton(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const SessionDetailPage(
+                    session: SessionSummary(
+                      workspaceId: 'workspace',
+                      peonId: 'peon',
+                      sessionId: 'session',
+                      title: 'Existing session',
+                      syncedAt: 1,
+                    ),
+                  ),
+                ),
+              ),
+              child: const Text('Open session'),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Open session'));
+    await tester.pumpAndSettle();
+    expect(live.locations.last.scope, PresenceScope.session);
+
+    await tester.tap(find.byKey(const Key('session-back')));
+    await tester.pump();
+
+    expect(find.byType(SessionDetailPage), findsOneWidget);
+    expect(live.locations.last.scope, PresenceScope.peon);
+    expect(
+      live.locations.where((location) => location.scope == PresenceScope.peon),
+      hasLength(1),
+    );
+
+    await tester.pumpAndSettle();
+    expect(
+      live.locations.where((location) => location.scope == PresenceScope.peon),
+      hasLength(1),
+    );
   });
 
   testWidgets('centers a short project selection in the available space', (
@@ -1680,6 +1740,21 @@ class _CancelSessionRepository implements SessionRepository {
     required String sessionId,
   }) {
     return cancel();
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _RecordingPresenceLiveService implements FleetLiveService {
+  final List<PresenceLocation> locations = [];
+
+  @override
+  void setPresence({
+    required String workspaceId,
+    required PresenceLocation location,
+  }) {
+    locations.add(location);
   }
 
   @override
