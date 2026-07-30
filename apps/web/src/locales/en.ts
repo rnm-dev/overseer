@@ -412,6 +412,7 @@ export const en: Record<string, string> = {
   "session.files.title": "Project files",
   "session.files.open": "Toggle project files",
   "session.files.noProject": "This session is not attached to a project.",
+  "session.files.loading": "Loading project files…",
 
   "live.on": "Live",
   "live.reconnecting": "Reconnecting…",

@@ -736,7 +736,11 @@ export function PeonSessionDetail() {
       <SessionOverlays
         base={base}
         sid={sid}
-        projectKey={projectKey}
+        // The identity the header already shows: the indexed row names the
+        // session's project, so the tree opens on it instead of waiting for the
+        // record and asserting meanwhile that there is no project at all.
+        projectKey={headerIdentity.projectKey}
+        projectKeyKnown={loadedMetadataKey === sessionKey || Boolean(selectedSession)}
         filesOpen={filesOpen}
         projectFilePreview={projectFilePreview}
         setProjectFilePreview={setProjectFilePreview}

@@ -412,6 +412,7 @@ export const ru: Record<string, string> = {
   "session.files.title": "Файлы проекта",
   "session.files.open": "Показать или скрыть файлы проекта",
   "session.files.noProject": "Эта сессия не привязана к проекту.",
+  "session.files.loading": "Загрузка файлов проекта…",
 
   "live.on": "В эфире",
   "live.reconnecting": "Переподключение…",

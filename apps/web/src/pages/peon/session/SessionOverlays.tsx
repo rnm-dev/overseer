@@ -15,6 +15,9 @@ interface Props {
   base: string;
   sid: string;
   projectKey: string | null;
+  // Whether anything has told us yet which project this session belongs to.
+  // Absent and not-yet-known are different states and must not read alike.
+  projectKeyKnown: boolean;
   filesOpen: boolean;
   projectFilePreview: FilePreview | null;
   setProjectFilePreview: Dispatch<SetStateAction<FilePreview | null>>;
@@ -29,7 +32,7 @@ interface Props {
 }
 
 export function SessionOverlays({
-  base, sid, projectKey, filesOpen, projectFilePreview, setProjectFilePreview,
+  base, sid, projectKey, projectKeyKnown, filesOpen, projectFilePreview, setProjectFilePreview,
   attachmentPreview, setAttachmentPreview, sentAttachmentPreview,
   setSentAttachmentPreview, artifactPreview, setArtifactPreview,
   previewPinned, setPreviewPinned,
@@ -49,7 +52,9 @@ export function SessionOverlays({
               className="flex-1"
             />
           ) : (
-            <p className="p-3 font-mono text-xs leading-relaxed text-bone-faint">{t("session.files.noProject")}</p>
+            <p className="p-3 font-mono text-xs leading-relaxed text-bone-faint">
+              {t(projectKeyKnown ? "session.files.noProject" : "session.files.loading")}
+            </p>
           )}
         </aside>,
         document.body,
