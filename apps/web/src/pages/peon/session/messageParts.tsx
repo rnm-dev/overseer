@@ -124,7 +124,7 @@ export function UserBubble({ text, author, authorEmail, authorGithubLogin, autho
 // instead of floating in its own row.
 function Notice({ tone, children }: { tone?: "neutral" | "error"; children: ReactNode }) {
   return (
-    <div className={`-mt-2.5 flex justify-start font-body text-[0.7rem] ${tone === "error" ? "text-blood" : "text-bone-faint"}`}>{children}</div>
+    <div className={`-mt-2.5 flex justify-start typo-code-snippet ${tone === "error" ? "text-blood" : "text-bone-faint"}`}>{children}</div>
   );
 }
 

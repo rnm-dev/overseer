@@ -300,6 +300,8 @@ html.peon-sidebar-resizing * {
   min-width: 0;
   color: var(--color-bone);
   overflow-wrap: anywhere;
+  font-size: var(--font-size-chat-message);
+  line-height: var(--line-height-chat-message);
 }
 .markdown-body > :first-child { margin-top: 0; }
 .markdown-body > :last-child { margin-bottom: 0; }
@@ -352,7 +354,7 @@ html.peon-sidebar-resizing * {
   padding: 0.08rem 0.32rem;
   color: var(--color-forge);
   font-family: var(--font-mono);
-  font-size: 0.87em;
+  font-size: var(--font-size-code-snippet);
 }
 .markdown-body pre,
 .code-view {
@@ -363,8 +365,8 @@ html.peon-sidebar-resizing * {
   padding: 0.9rem 1rem;
   color: var(--color-bone-dim);
   font-family: var(--font-mono);
-  font-size: 0.78rem;
-  line-height: 1.55;
+  font-size: var(--font-size-code-snippet);
+  line-height: var(--line-height-code-snippet);
   tab-size: 2;
 }
 .markdown-body pre code,
