@@ -172,8 +172,8 @@
     {
       "id": "enrollment",
       "capability": "peon-claim-v1",
-      "status": "blocked",
-      "blockedBy": "The contract fixtures are frozen, but OVSR-145/147 implementation and rotation/revocation restart scenarios are unfinished."
+      "status": "covered",
+      "coverage": "59 frozen security outcomes, claim/rotation/revocation restart and replay boundaries, mixed-version routing, no downgrade after claim start, generation fencing and explicit operational blockers"
     },
     {
       "id": "transcripts",

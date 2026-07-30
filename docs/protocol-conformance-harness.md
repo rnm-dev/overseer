@@ -87,15 +87,22 @@ JSON-equivalent but not byte-identical because one copy is expanded formatting.
 This drift remains visible without treating formatting as a released lifecycle
 test.
 
+`peon-claim-lifecycle-v1.json` promotes the frozen enrollment contract into a
+required conformance cell. It checks that both byte-identical security-vector
+vendors retain all 59 golden outcomes and every claim, recovery, rotation,
+revocation and legacy-race operation. Its mixed-version cells keep legacy
+enrollment only before claim capability selection and make claim start an
+irreversible authority boundary across timeout, TLS, `429` and `5xx` failures.
+Named fault cells cover lost/duplicate responses, restart at claim and rotation
+commit boundaries, ACK/cancel reordering, delayed old-generation control and
+transfer hellos, and the claim-versus-legacy race. The app-level suites remain
+the executable endpoint/database adapters for those frozen outcomes.
+
 ## Extension cells that must not report green
 
 The matrix reports reverse-command coverage separately and registers these
 unfinished families explicitly:
 
-- `peon-claim-v1`: the shared contract is frozen, but enrollment,
-  recovery/rotation/revocation and restart scenarios depend on unfinished
-  OVSR-145/147 implementation work. See
-  [Peon-initiated enrollment](peon-claim-v1.md).
 - `transcript-sync-v1`: implementation work is landing concurrently, but the
   shared golden adapter, projection/ACK and exclusive-fallback matrix cells,
   and complete mixed-version failure scenarios are not yet stable here. See
@@ -104,6 +111,11 @@ unfinished families explicitly:
   operation is released.
 - rollout: update reconnect/attestation, fairness and latency SLOs,
   production-like soak artifacts and staged fleet rollout remain unfinished.
+
+Enrollment operational evidence remains blocked separately: a real-machine
+NAT/TLS exercise, a production-like mixed-fleet soak, and legacy removal after
+the published compatibility window. Contract conformance must not turn those
+cells green.
 
 `reverse-command-v1` is covered for the released `session.cancel` operation.
 The vendored schemas are canonical-JSON equivalent; byte-formatting differences

@@ -97,11 +97,18 @@ not create the package or make runtime code depend on it.
 
 ## Implementation boundary
 
-Nothing in OVSR-210 advertises the capability or changes enrollment services,
-credential tables, socket authentication, operator routes, or daemon settings.
-OVSR-145 and OVSR-147 must implement every required endpoint, durable boundary,
-cryptographic check, cleanup path, generation fence, rate limit, and
-claim-versus-legacy race before advertising `peon-claim-v1`.
+OVSR-210 owns only the frozen contract, byte-identical artifacts and reusable
+conformance cells. OVSR-145 and OVSR-147 implement the Peon and Overseer sides;
+both implementations have completed approved code review against this contract.
+That review does not move service code, credential tables, socket
+authentication, operator routes, daemon settings or rollout ownership into
+OVSR-210.
+
+The reusable harness now treats the 59 golden security outcomes,
+mixed-version/no-downgrade decisions and named restart/fault boundaries as a
+covered contract cell. Real-machine NAT/TLS enrollment, production-like
+mixed-fleet soak and retirement of legacy enrollment remain explicit blocked
+operational checks rather than being implied by a green contract suite.
 
 Legacy removal remains OVSR-211 and only follows the published mixed-version
 production window. No production deployment is part of OVSR-210.

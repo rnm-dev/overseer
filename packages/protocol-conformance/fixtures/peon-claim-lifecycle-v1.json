@@ -1,0 +1,21 @@
+{
+  "formatVersion": 1,
+  "capability": "peon-claim-v1",
+  "requiredOperations": ["claim_start", "claim_poll", "claim_ack", "claim_cancel", "claim_ack_cancel_reconcile", "rotation_start", "rotation_ack", "credential_revoke", "peon_revoke", "legacy_enroll"],
+  "minimumGoldenCases": 59,
+  "mixedVersion": [
+    { "peon": "legacy", "overseer": "current", "claimAdvertised": false, "claimStarted": false, "route": "legacy-enroll" },
+    { "peon": "current", "overseer": "legacy", "claimAdvertised": false, "claimStarted": false, "route": "legacy-enroll" },
+    { "peon": "current", "overseer": "current", "claimAdvertised": true, "claimStarted": false, "route": "peon-claim-v1" },
+    { "peon": "current", "overseer": "current", "claimAdvertised": true, "claimStarted": true, "failure": "timeout", "route": "peon-claim-v1" },
+    { "peon": "current", "overseer": "current", "claimAdvertised": true, "claimStarted": true, "failure": "5xx", "route": "peon-claim-v1" },
+    { "peon": "current", "overseer": "current", "claimAdvertised": true, "claimStarted": true, "failure": "429", "route": "peon-claim-v1" },
+    { "peon": "current", "overseer": "current", "claimAdvertised": true, "claimStarted": true, "failure": "tls", "route": "peon-claim-v1" }
+  ],
+  "faultCoverage": ["lost-start-response", "duplicate-start", "restart-after-start-commit", "lost-delivery-response", "duplicate-poll", "restart-before-claim-ack", "lost-claim-ack-response", "ack-cancel-reorder", "restart-during-ack-cancel-reconciliation", "lost-rotation-start-response", "restart-after-rotation-start", "lost-rotation-ack-response", "restart-after-rotation-ack", "delayed-old-generation-control-hello", "delayed-old-generation-transfer-hello", "claim-legacy-race"],
+  "operationalChecks": [
+    { "id": "real-machine-nat-tls", "status": "blocked", "blockedBy": "Requires a real Peon behind NAT and a publicly reachable TLS test origin." },
+    { "id": "mixed-fleet-soak", "status": "blocked", "blockedBy": "Requires the staged production-like fleet soak owned by OVSR-152." },
+    { "id": "legacy-removal", "status": "blocked", "blockedBy": "Requires the published compatibility window and OVSR-211 removal gate." }
+  ]
+}
