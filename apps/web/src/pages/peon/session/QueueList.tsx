@@ -26,7 +26,7 @@ export function QueueList({ items, removing, sending, onRemove, onSendNow, t }: 
               aria-hidden
             />
             <div className="min-w-0 flex-1">
-              <div className="whitespace-pre-wrap break-words text-sm leading-normal text-bone">{item.prompt}</div>
+              <div className="whitespace-pre-wrap break-words typo-chat-message text-bone">{item.prompt}</div>
               <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 font-body text-[11px] text-bone/60">
                 {(item.attachments ?? []).map((attachment, attachmentIndex) => (
                   <span key={`${attachment.path ?? attachment.name ?? "attachment"}:${attachmentIndex}`}>📎 {attachmentLabel(attachment)}</span>

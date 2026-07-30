@@ -58,7 +58,7 @@ function LocalMessageTime({ createdAt, locale, yesterdayLabel }: { createdAt?: n
   return <time dateTime={date.toISOString()} title={`${local} (${Intl.DateTimeFormat().resolvedOptions().timeZone})`}>{visible}</time>;
 }
 
-const USER_BUBBLE_BASE_CLASS = "max-w-[80%] whitespace-pre-wrap break-words rounded-xl rounded-br-sm px-3 py-1.5 text-sm leading-normal text-bone";
+const USER_BUBBLE_BASE_CLASS = "max-w-[80%] whitespace-pre-wrap break-words rounded-xl rounded-br-sm px-3 py-1.5 typo-chat-message text-bone";
 export const OWN_USER_BUBBLE_CLASS = `${USER_BUBBLE_BASE_CLASS} bg-forge-deep`;
 export const OTHER_USER_BUBBLE_CLASS = `${USER_BUBBLE_BASE_CLASS} surface`;
 export const OTHER_USER_BUBBLE_AUTHOR_CLASS = "mb-1 truncate font-body text-[0.68rem] font-semibold leading-tight text-fel-bright";
@@ -513,7 +513,7 @@ export function ItemView({ item, t, locale = "en", yesterdayLabel = "Yesterday",
       return <UserBubble text={item.text} author={item.author} authorEmail={item.authorEmail} authorGithubLogin={item.authorGithubLogin} authorAvatarUrl={item.authorAvatarUrl} attachments={item.attachments} createdAt={item.createdAt} onOpenAttachment={onOpenAttachment} />;
     case "text":
       return (
-        <div className="text-sm leading-relaxed text-bone">
+        <div className="typo-chat-message leading-relaxed text-bone">
           <Markdown
             source={item.text}
             onOpenFile={(path) => onOpenPreview?.({ path })}

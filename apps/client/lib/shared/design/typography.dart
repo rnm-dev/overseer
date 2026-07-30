@@ -47,6 +47,19 @@ class AppTypography {
     );
   }
 
+  static TextStyle chatMessage({
+    Color? color,
+    FontWeight? fontWeight,
+    double? height,
+  }) {
+    return body(
+      fontSize: 14,
+      fontWeight: fontWeight ?? FontWeight.w400,
+      color: color ?? AppColors.bone,
+      height: height ?? 1.35,
+    );
+  }
+
   static TextStyle mono({
     double? fontSize,
     FontWeight? fontWeight,

@@ -21,6 +21,8 @@
   --font-display: "Golos Text", ui-sans-serif, system-ui, sans-serif;
   --font-body: "Golos Text", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "Ubuntu Mono", ui-monospace, monospace;
+  --font-size-chat-message: 0.875rem;
+  --line-height-chat-message: 1.4;
 
   /* voids & iron — neutral dark greys */
   --color-void: #0b0c0b;
@@ -88,6 +90,12 @@ html.peon-sidebar-resizing * {
 .title-fade--overflow {
   -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 1.75rem), transparent);
   mask-image: linear-gradient(to right, #000 calc(100% - 1.75rem), transparent);
+}
+
+.typo-chat-message {
+  font-family: var(--font-body);
+  font-size: var(--font-size-chat-message);
+  line-height: var(--line-height-chat-message);
 }
 
 @media (min-width: 1024px) {

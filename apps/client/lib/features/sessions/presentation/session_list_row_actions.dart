@@ -119,15 +119,14 @@ class SessionWorkItem extends StatelessWidget {
                 SizedBox(
                   height: 20,
                   child: Row(
-                    children: [
+                children: [
                       Expanded(
                         child: Text(
                           session.displayTitle,
                           maxLines: 1,
                           overflow: TextOverflow.fade,
                           softWrap: false,
-                          style: AppTypography.display(
-                            fontSize: 14,
+                          style: AppTypography.chatMessage(
                             fontWeight: FontWeight.w500,
                           ),
                         ),

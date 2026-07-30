@@ -93,8 +93,7 @@ class _QueuedFollowupList extends StatelessWidget {
                             AppMarkdownPreview(
                               key: Key('session-queue-markdown-${item.id}'),
                               data: item.prompt,
-                              style: AppTypography.body(
-                                fontSize: 14,
+                              style: AppTypography.chatMessage(
                                 height: 1.35,
                               ),
                               maxLines: 3,
@@ -301,8 +300,7 @@ class _QueuedFollowupDialogState extends State<_QueuedFollowupDialog> {
                         AppMarkdown(
                           key: const Key('session-queue-dialog-markdown'),
                           data: widget.item.prompt,
-                          textStyle: AppTypography.body(
-                            fontSize: 15,
+                          textStyle: AppTypography.chatMessage(
                             height: 1.5,
                           ),
                         ),

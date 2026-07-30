@@ -192,8 +192,7 @@ class _UserText extends StatelessWidget {
     return AppMarkdown(
       data: text,
       onTapLink: onOpenLink,
-      textStyle: AppTypography.body(
-        fontSize: 14,
+      textStyle: AppTypography.chatMessage(
         color: AppColors.bone,
         height: 1.35,
       ),
@@ -369,8 +368,7 @@ class _AssistantText extends StatelessWidget {
           key: Key('transcript-markdown-${item.key}'),
           data: item.text,
           onTapLink: onOpenLink,
-          textStyle: AppTypography.body(
-            fontSize: 14,
+          textStyle: AppTypography.chatMessage(
             color: AppColors.bone,
             height: 1.55,
           ),

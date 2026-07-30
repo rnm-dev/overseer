@@ -241,7 +241,7 @@ export function SessionSidebarList({
               />
               {/* min-h-5 matches the sm avatar so viewers appearing/leaving never resize the row. */}
               <div className="flex min-h-5 items-center gap-2">
-                <span className="min-w-0 flex-1 whitespace-nowrap font-display text-[0.8rem] text-bone">
+                <span className="min-w-0 flex-1 whitespace-nowrap font-body typo-chat-message text-bone">
                   <FadingTitle>{sessionDisplayTitle(session, t("session.untitled"))}</FadingTitle>
                 </span>
                 <SessionPresence viewers={viewersFor(peonId, session.id)} size="sm" />
