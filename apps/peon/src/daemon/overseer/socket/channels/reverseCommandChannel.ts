@@ -6,7 +6,7 @@ import {
 } from "../../../sessions/index.js";
 import type { PeonSocketChannel, PeonSocketFrame, PeonSocketSender } from "../peonSocketProtocol.js";
 import { ReverseCommandLedger, type ReverseCommandRecord } from "../reverseCommandLedger.js";
-import { sessionCommandHandlers } from "./sessionCommandHandlers.js";
+import { sessionCommandHandlers, validSessionCommandExecution } from "./sessionCommandHandlers.js";
 import { daemonConfigurationChannel } from "./daemonConfigurationChannel.js";
 import {
   attestUpdateCommand,
@@ -323,8 +323,12 @@ export class ReverseCommandChannel implements PeonSocketChannel {
       return { error: "invalid reverse command identity or payload" };
     }
     if (target.peonId !== this.options.peonId()) return { error: "reverse command target Peon does not match authenticated socket", disconnect: true };
-    if (frame.operation === "session.cancel" && (target.sessionId === undefined || target.projectId !== undefined)) {
-      return { error: "session.cancel requires only target.sessionId" };
+    if (frame.operation === "session.start" && (target.sessionId !== undefined || target.projectId !== undefined)) {
+      return { error: "session.start targets only the authenticated Peon" };
+    }
+    if (frame.operation.startsWith("session.") && frame.operation !== "session.start"
+      && (target.sessionId === undefined || target.projectId !== undefined)) {
+      return { error: `${frame.operation} requires only target.sessionId` };
     }
     if (frame.operation === "daemon.configuration.patch" && (target.sessionId !== undefined || target.projectId !== undefined)) {
       return { error: "daemon.configuration.patch targets only the authenticated Peon" };
@@ -399,6 +403,9 @@ export class ReverseCommandChannel implements PeonSocketChannel {
     try {
       execution = await item.handler.execute(item.command);
     } catch {
+      execution = { status: "failed", code: "INTERNAL" };
+    }
+    if (item.command.operation.startsWith("session.") && !validSessionCommandExecution(item.command, execution)) {
       execution = { status: "failed", code: "INTERNAL" };
     }
     const result = commandResult(item.command, execution);

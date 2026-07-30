@@ -1,4 +1,4 @@
-import { statSync } from "node:fs";
+import { realpathSync, statSync } from "node:fs";
 import path from "node:path";
 import { projectStore } from "../../../projects/index.js";
 import { settings } from "../../../settings/index.js";
@@ -9,6 +9,19 @@ const MAX_PROMPT_BYTES = 32 * 1024;
 const MAX_TITLE_BYTES = 512;
 const MAX_ATTACHMENTS = 20;
 const MAX_RESULT_BYTES = 48 * 1024;
+const PUBLIC_SESSION_KEYS = [
+    "id", "prompt", "title", "followUpPrompts", "queuedFollowUps", "dir", "agent",
+    "backendSessionId", "backendTurnId", "backendRuntimeGeneration", "backendTurnStatus",
+    "model", "reasoningEffort", "projectId", "projectKey", "candidateProjectKeys",
+    "taskKey", "taskTitle", "initiator", "parentSessionId", "spawnDepth", "spawnRequestId",
+    "expectsOutcome", "status", "outcome", "startedAt", "endedAt", "turnCount", "turnBudget",
+    "usage", "usageByModel", "contextUsage", "autoResumeAttempts", "lastActivityAt",
+    "lastUserMessageAt", "lastMessagePreview", "eventCount",
+];
+const QUEUE_ITEM_KEYS = [
+    "id", "sessionId", "prompt", "attachments", "permissionMode", "author",
+    "model", "reasoningEffort", "commandId", "queuedAt",
+];
 function strict(value, keys) {
     return Object.keys(value).every((key) => keys.includes(key));
 }
@@ -30,6 +43,29 @@ function attachments(value) {
             && typeof attachment.mimetype === "string" && attachment.mimetype.length <= 128;
     }));
 }
+function queueItem(value, sessionId) {
+    if (!value || typeof value !== "object" || Array.isArray(value))
+        return false;
+    const item = value;
+    return strict(item, QUEUE_ITEM_KEYS) && item.sessionId === sessionId
+        && typeof item.id === "string" && UUID.test(item.id)
+        && boundedText(item.prompt, MAX_PROMPT_BYTES)
+        && attachments(item.attachments)
+        && (item.author === null || typeof item.author === "string")
+        && (item.commandId === null || (typeof item.commandId === "string"
+            && item.commandId.length > 0 && item.commandId.length <= 255))
+        && Number.isSafeInteger(item.queuedAt) && Number(item.queuedAt) >= 0;
+}
+function publicSession(value, sessionId) {
+    if (!value || typeof value !== "object" || Array.isArray(value))
+        return false;
+    const session = value;
+    return strict(session, PUBLIC_SESSION_KEYS) && session.id === sessionId
+        && (session.status === "running" || session.status === "completed")
+        && !Object.hasOwn(session, "pendingSystemPrompts")
+        && !Object.hasOwn(session, "parentCompletionNotifiedAt")
+        && !Object.hasOwn(session, "parentCompletionNotificationPending");
+}
 function publicResult(value) {
     return Buffer.byteLength(JSON.stringify(value)) <= MAX_RESULT_BYTES
         ? { status: "applied", code: "OK", result: value }
@@ -41,31 +77,33 @@ function rejected(code) {
 function targetSession(command) {
     return command.target.sessionId ?? null;
 }
-function validateTurn(payload, expected, start) {
-    const keys = ["prompt", "attachments", "permissionMode", "model", "reasoningEffort", "commandId"];
-    if (start)
+function validateTurn(payload, expected, mode) {
+    const keys = ["prompt", "attachments", "permissionMode", "model", "reasoningEffort"];
+    if (mode === "start")
         keys.push("title", "projectId", "dir", "expectsOutcome", "agent");
+    if (mode === "queue")
+        keys.push("startNow");
     if (!strict(payload, keys) || expected !== null)
         return "invalid session turn";
     if (!boundedText(payload.prompt, MAX_PROMPT_BYTES) || !attachments(payload.attachments))
         return "invalid prompt or attachments";
     if (payload.permissionMode !== undefined && payload.permissionMode !== "plan")
         return "invalid permission mode";
-    if (payload.commandId !== undefined && (typeof payload.commandId !== "string" || !UUID.test(payload.commandId)))
-        return "invalid turn command id";
-    if (start && payload.title !== undefined && !boundedText(payload.title, MAX_TITLE_BYTES, true))
+    if (mode === "start" && payload.title !== undefined && !boundedText(payload.title, MAX_TITLE_BYTES, true))
         return "invalid title";
-    if (start && payload.projectId !== undefined && (typeof payload.projectId !== "string" || !UUID.test(payload.projectId)))
+    if (mode === "start" && payload.projectId !== undefined && (typeof payload.projectId !== "string" || !UUID.test(payload.projectId)))
         return "invalid project";
-    if (start && payload.dir !== undefined && (typeof payload.dir !== "string" || payload.dir.length > 4096))
+    if (mode === "start" && payload.dir !== undefined && (typeof payload.dir !== "string" || payload.dir.length > 4096))
         return "invalid directory";
-    if (start && payload.expectsOutcome !== undefined && typeof payload.expectsOutcome !== "boolean")
+    if (mode === "start" && payload.expectsOutcome !== undefined && typeof payload.expectsOutcome !== "boolean")
         return "invalid expectsOutcome";
-    if (start && payload.agent !== undefined && (typeof payload.agent !== "string" || !listConfiguredAgents({ visible: true, available: true }).includes(payload.agent)))
+    if (mode === "start" && payload.agent !== undefined && (typeof payload.agent !== "string" || !listConfiguredAgents({ visible: true, available: true }).includes(payload.agent)))
         return "invalid agent";
+    if (mode === "queue" && payload.startNow !== undefined && typeof payload.startNow !== "boolean")
+        return "invalid startNow";
     return null;
 }
-function turnOptions(command, agent) {
+function turnOptions(command, agent, fileTransferRoot) {
     const payload = command.payload;
     const model = payload.model === undefined ? undefined : narrowModel(payload.model, agent);
     if (payload.model !== undefined && !model)
@@ -76,12 +114,26 @@ function turnOptions(command, agent) {
     if (payload.reasoningEffort !== undefined && !reasoningEffort)
         throw new Error("INVALID_REASONING_EFFORT");
     const attachmentList = (payload.attachments ?? []);
-    const root = settings.get().fileTransferRoot;
+    const root = fileTransferRoot?.() ?? settings.get().fileTransferRoot;
     if (attachmentList.length > 0 && !root)
         throw new Error("FILES_DISABLED");
-    const rootPath = root ? path.resolve(root) : "";
+    let rootPath = "";
+    if (root) {
+        try {
+            rootPath = realpathSync(root);
+        }
+        catch {
+            throw new Error("FILES_DISABLED");
+        }
+    }
     for (const attachment of attachmentList) {
-        const candidate = path.resolve(attachment.path);
+        let candidate;
+        try {
+            candidate = realpathSync(path.resolve(attachment.path));
+        }
+        catch {
+            throw new Error("UNKNOWN_ATTACHMENT_PATH");
+        }
         if (candidate !== rootPath && !candidate.startsWith(`${rootPath}${path.sep}`))
             throw new Error("PATH_ESCAPE");
         let actual;
@@ -93,6 +145,7 @@ function turnOptions(command, agent) {
         }
         if (!actual.isFile() || actual.size !== attachment.size)
             throw new Error("ATTACHMENT_CHANGED");
+        attachment.path = candidate;
     }
     return {
         prompt: payload.prompt.trim(),
@@ -100,7 +153,7 @@ function turnOptions(command, agent) {
         permissionMode: payload.permissionMode,
         model,
         reasoningEffort,
-        commandId: payload.commandId ?? command.commandId,
+        commandId: command.commandId,
     };
 }
 function safeExecute(run) {
@@ -120,20 +173,85 @@ function safeExecute(run) {
         return { status: "failed", code: "INTERNAL" };
     }
 }
-export function sessionCommandHandlers(service = sessions) {
+export function validSessionCommandExecution(command, execution) {
+    if (Buffer.byteLength(JSON.stringify(execution.result ?? null)) > MAX_RESULT_BYTES)
+        return false;
+    if (execution.status === "failed") {
+        return execution.result === undefined && execution.code === "INTERNAL";
+    }
+    if (execution.status === "rejected") {
+        return execution.result === undefined && [
+            "BAD_COMMAND", "UNKNOWN_SESSION", "UNKNOWN_PROJECT", "UNKNOWN_QUEUE_ITEM",
+            "INVALID_MODEL", "INVALID_REASONING_EFFORT", "FILES_DISABLED", "PATH_ESCAPE",
+            "UNKNOWN_ATTACHMENT_PATH", "ATTACHMENT_CHANGED", "DIR_MISSING", "RESULT_TOO_LARGE",
+            "SESSION_NOT_RUNNING",
+        ].includes(execution.code);
+    }
+    if (execution.status === "conflict") {
+        return execution.result === undefined
+            && ["RESUME_IN_PROGRESS", "SESSION_RUNNING"].includes(execution.code);
+    }
+    if (execution.code !== "OK" || !execution.result)
+        return false;
+    const sessionId = command.operation === "session.start" ? command.commandId : targetSession(command);
+    if (!sessionId)
+        return false;
+    if (command.operation === "session.cancel") {
+        return (execution.status === "applied" || execution.status === "noop")
+            && strict(execution.result, ["sessionId", "sessionStatus"])
+            && execution.result.sessionId === sessionId
+            && (execution.result.sessionStatus === "completed" || execution.result.sessionStatus === "cancelled");
+    }
+    if (["session.start", "session.followup", "session.metadata.patch"].includes(command.operation)) {
+        return execution.status === "applied" && publicSession(execution.result, sessionId);
+    }
+    if (command.operation === "session.queue.list") {
+        return execution.status === "applied"
+            && strict(execution.result, ["sessionId", "items"])
+            && execution.result.sessionId === sessionId && Array.isArray(execution.result.items)
+            && execution.result.items.every((item) => queueItem(item, sessionId));
+    }
+    if (command.operation === "session.queue.add") {
+        return execution.status === "applied"
+            && strict(execution.result, ["sessionId", "itemId", "session"])
+            && execution.result.sessionId === sessionId
+            && typeof execution.result.itemId === "string" && UUID.test(execution.result.itemId)
+            && publicSession(execution.result.session, sessionId);
+    }
+    if (command.operation === "session.queue.edit") {
+        return execution.status === "applied"
+            && strict(execution.result, ["sessionId", "itemId", "session"])
+            && execution.result.sessionId === sessionId
+            && typeof execution.result.itemId === "string" && UUID.test(execution.result.itemId)
+            && publicSession(execution.result.session, sessionId);
+    }
+    if (["session.queue.remove", "session.queue.send-now"].includes(command.operation)) {
+        return execution.status === "applied"
+            && strict(execution.result, ["sessionId", "itemId"])
+            && execution.result.sessionId === sessionId
+            && typeof execution.result.itemId === "string" && UUID.test(execution.result.itemId);
+    }
+    if (command.operation === "session.delete") {
+        return (execution.status === "applied" || execution.status === "noop")
+            && strict(execution.result, ["sessionId", "deleted"])
+            && execution.result.sessionId === sessionId && execution.result.deleted === true;
+    }
+    return false;
+}
+export function sessionCommandHandlers(service = sessions, options = {}) {
     const sessionRequired = (payload, expected) => expected === null ? null : "operation requires no expected state";
     return {
         "session.start": {
-            validate: (payload, expected) => validateTurn(payload, expected, true),
+            validate: (payload, expected) => validateTurn(payload, expected, "start"),
             execute: (command) => safeExecute(() => {
                 const payload = command.payload;
                 const agent = payload.agent ?? settings.get().defaultAgent;
                 const project = typeof payload.projectId === "string" ? projectStore.getById(payload.projectId) : undefined;
                 if (payload.projectId !== undefined && !project)
                     return rejected("UNKNOWN_PROJECT");
-                const options = turnOptions(command, agent);
+                const turn = turnOptions(command, agent, options.fileTransferRoot);
                 const record = service.start({
-                    ...options,
+                    ...turn,
                     id: command.commandId,
                     title: payload.title,
                     dir: payload.dir ?? project?.dir,
@@ -146,13 +264,13 @@ export function sessionCommandHandlers(service = sessions) {
             }),
         },
         "session.followup": {
-            validate: (payload, expected) => validateTurn(payload, expected, false),
+            validate: (payload, expected) => validateTurn(payload, expected, "followup"),
             execute: (command) => safeExecute(() => {
                 const record = service.get(targetSession(command));
                 if (!record)
                     return rejected("UNKNOWN_SESSION");
-                const options = turnOptions(command, record.agent);
-                return publicResult(toPublicSessionRecord(service.resume(record.id, options.prompt, options.attachments, options.permissionMode, command.actor.email, options.model, options.reasoningEffort, options.commandId)));
+                const turn = turnOptions(command, record.agent, options.fileTransferRoot);
+                return publicResult(toPublicSessionRecord(service.resume(record.id, turn.prompt, turn.attachments, turn.permissionMode, command.actor.email, turn.model, turn.reasoningEffort, turn.commandId)));
             }),
         },
         "session.queue.list": {
@@ -163,15 +281,21 @@ export function sessionCommandHandlers(service = sessions) {
             },
         },
         "session.queue.add": {
-            validate: (payload, expected) => validateTurn(payload, expected, false),
+            validate: (payload, expected) => validateTurn(payload, expected, "queue"),
             execute: (command) => safeExecute(() => {
                 const record = service.get(targetSession(command));
                 if (!record)
                     return rejected("UNKNOWN_SESSION");
-                const options = turnOptions(command, record.agent);
-                const updated = service.enqueue(record.id, options.prompt, options.attachments, options.permissionMode, command.actor.email, options.model, options.reasoningEffort, options.commandId, false);
-                const item = updated.queuedFollowUps.find((candidate) => candidate.commandId === options.commandId);
-                return publicResult({ sessionId: record.id, item: item ?? null });
+                const turn = turnOptions(command, record.agent, options.fileTransferRoot);
+                const updated = service.enqueue(record.id, turn.prompt, turn.attachments, turn.permissionMode, command.actor.email, turn.model, turn.reasoningEffort, turn.commandId, command.payload.startNow === true);
+                const item = updated.queuedFollowUps.find((candidate) => candidate.commandId === turn.commandId);
+                return item
+                    ? publicResult({
+                        sessionId: record.id,
+                        itemId: item.id,
+                        session: toPublicSessionRecord(updated),
+                    })
+                    : { status: "failed", code: "INTERNAL" };
             }),
         },
         "session.queue.edit": {
@@ -184,7 +308,11 @@ export function sessionCommandHandlers(service = sessions) {
                     return rejected("UNKNOWN_SESSION");
                 if (result === "not_found")
                     return rejected("UNKNOWN_QUEUE_ITEM");
-                return publicResult({ sessionId: result.id, itemId: command.payload.itemId });
+                return publicResult({
+                    sessionId: result.id,
+                    itemId: command.payload.itemId,
+                    session: toPublicSessionRecord(result),
+                });
             },
         },
         ...Object.fromEntries(["remove", "send-now"].map((action) => [`session.queue.${action}`, {

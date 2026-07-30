@@ -1406,6 +1406,16 @@ the canonical public session record; queue results contain only the scoped
 session/item view. Private pending system prompts and parent notification
 bookkeeping never enter a command result, and every result is capped at 48 KiB.
 
+`session.queue.add` accepts an optional boolean `startNow` in the same durable
+payload as the prompt. Its value participates in the command fingerprint and
+is passed to the session service in the single admitted effect; callers must
+not emulate it with a later `session.queue.send-now`. Queue add and edit return
+`{ sessionId, itemId, session }`, where `session` is the bounded canonical
+public `SessionRecord`. Remove and send-now retain the smaller
+`{ sessionId, itemId }` reconciliation identity, and delete retains
+`{ sessionId, deleted: true }`; the Overseer HTTP boundary may translate those
+identity tuples to the legacy `{ ok: true }` response.
+
 An accepted record is resumed after restart. A record already marked `running`
 is never executed again after a crash; Peon records a safe terminal `INTERNAL`
 outcome and relies on operation-specific state reconciliation rather than risk a

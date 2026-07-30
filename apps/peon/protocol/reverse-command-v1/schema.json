@@ -36,6 +36,81 @@
         "operationId": { "$ref": "#/$defs/uuid" }
       }
     },
+    "sessionTurnPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["prompt"],
+      "properties": {
+        "prompt": { "type": "string", "minLength": 1, "maxLength": 32768 },
+        "attachments": { "type": "array", "maxItems": 20, "items": { "$ref": "#/$defs/sessionAttachment" } },
+        "permissionMode": { "const": "plan" },
+        "model": { "type": "string" },
+        "reasoningEffort": { "type": "string" }
+      }
+    },
+    "sessionStartPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["prompt"],
+      "properties": {
+        "prompt": { "type": "string", "minLength": 1, "maxLength": 32768 },
+        "attachments": { "type": "array", "maxItems": 20, "items": { "$ref": "#/$defs/sessionAttachment" } },
+        "permissionMode": { "const": "plan" },
+        "model": { "type": "string" },
+        "reasoningEffort": { "type": "string" },
+        "title": { "type": ["string", "null"], "maxLength": 512 },
+        "projectId": { "$ref": "#/$defs/uuid" },
+        "dir": { "type": "string", "maxLength": 4096 },
+        "expectsOutcome": { "type": "boolean" },
+        "agent": { "type": "string" }
+      }
+    },
+    "sessionQueueAddPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["prompt"],
+      "properties": {
+        "prompt": { "type": "string", "minLength": 1, "maxLength": 32768 },
+        "attachments": { "type": "array", "maxItems": 20, "items": { "$ref": "#/$defs/sessionAttachment" } },
+        "permissionMode": { "const": "plan" },
+        "model": { "type": "string" },
+        "reasoningEffort": { "type": "string" },
+        "startNow": { "type": "boolean" }
+      }
+    },
+    "sessionQueueItemPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["itemId"],
+      "properties": { "itemId": { "$ref": "#/$defs/uuid" } }
+    },
+    "sessionAttachment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["originalName", "filename", "path", "size", "mimetype"],
+      "properties": {
+        "originalName": { "type": "string", "maxLength": 512 },
+        "filename": { "type": "string", "maxLength": 512 },
+        "path": { "type": "string", "maxLength": 4096 },
+        "size": { "type": "integer", "minimum": 0 },
+        "mimetype": { "type": "string", "maxLength": 128 }
+      }
+    },
+    "sessionQueueEditPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["itemId", "prompt"],
+      "properties": {
+        "itemId": { "$ref": "#/$defs/uuid" },
+        "prompt": { "type": "string", "minLength": 1, "maxLength": 32768 }
+      }
+    },
+    "sessionMetadataPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title"],
+      "properties": { "title": { "type": ["string", "null"], "maxLength": 512 } }
+    },
     "command": {
       "type": "object",
       "additionalProperties": false,
@@ -71,7 +146,65 @@
           "type": "integer",
           "minimum": 0
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "operation": { "const": "session.start" } }, "required": ["operation"] },
+          "then": {
+            "properties": {
+              "target": {
+                "type": "object", "additionalProperties": false, "required": ["peonId"],
+                "properties": { "peonId": { "$ref": "#/$defs/uuid" } }
+              },
+              "payload": { "$ref": "#/$defs/sessionStartPayload" },
+              "expected": { "type": "null" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "operation": { "const": "session.followup" } }, "required": ["operation"] },
+          "then": { "properties": { "payload": { "$ref": "#/$defs/sessionTurnPayload" }, "expected": { "type": "null" } } }
+        },
+        {
+          "if": { "properties": { "operation": { "const": "session.queue.add" } }, "required": ["operation"] },
+          "then": { "properties": { "payload": { "$ref": "#/$defs/sessionQueueAddPayload" }, "expected": { "type": "null" } } }
+        },
+        {
+          "if": { "properties": { "operation": { "enum": ["session.cancel", "session.queue.list", "session.delete"] } }, "required": ["operation"] },
+          "then": {
+            "properties": {
+              "payload": { "type": "object", "additionalProperties": false, "maxProperties": 0 },
+              "expected": { "type": "null" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "operation": { "enum": ["session.queue.remove", "session.queue.send-now"] } }, "required": ["operation"] },
+          "then": { "properties": { "payload": { "$ref": "#/$defs/sessionQueueItemPayload" }, "expected": { "type": "null" } } }
+        },
+        {
+          "if": { "properties": { "operation": { "const": "session.queue.edit" } }, "required": ["operation"] },
+          "then": { "properties": { "payload": { "$ref": "#/$defs/sessionQueueEditPayload" }, "expected": { "type": "null" } } }
+        },
+        {
+          "if": { "properties": { "operation": { "const": "session.metadata.patch" } }, "required": ["operation"] },
+          "then": { "properties": { "payload": { "$ref": "#/$defs/sessionMetadataPayload" }, "expected": { "type": "null" } } }
+        },
+        {
+          "if": { "properties": { "operation": { "pattern": "^session\\.(?!start$)" } }, "required": ["operation"] },
+          "then": {
+            "properties": {
+              "target": {
+                "type": "object", "additionalProperties": false, "required": ["peonId", "sessionId"],
+                "properties": {
+                  "peonId": { "$ref": "#/$defs/uuid" },
+                  "sessionId": { "$ref": "#/$defs/uuid" }
+                }
+              }
+            }
+          }
+        }
+      ]
     },
     "commandAccepted": {
       "type": "object",
