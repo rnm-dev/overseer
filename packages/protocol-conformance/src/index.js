@@ -5,6 +5,7 @@ export {
 } from "./goldenFrames.js";
 export {
   negotiateCapabilities,
+  routeForUpdateAdmission,
   routeForSurface,
   runCapabilityMatrix,
 } from "./matrix.js";

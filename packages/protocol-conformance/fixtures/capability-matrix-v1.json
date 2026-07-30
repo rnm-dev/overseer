@@ -246,7 +246,7 @@
       "id": "updates",
       "capability": "reverse-command-v1:update.apply",
       "status": "covered",
-      "coverage": "approved version/revision/SHA command binding and canonical fingerprint, RELEASE_CHANGED download TOCTOU rejection, one installer effect, durable receipt replay across reconnect/restart, PID replacement plus exact version/revision/SHA attestation, generation fencing, bounded terminal results, stable failure codes and exclusive legacy fallback"
+      "coverage": "approved version/revision/SHA command binding and canonical fingerprint, RELEASE_CHANGED download TOCTOU rejection, one installer effect, durable receipt replay across reconnect/restart, PID replacement plus exact version/revision/SHA attestation, active durable admission fencing before fallback, generation fencing, bounded terminal results, stable failure codes and exclusive legacy fallback"
     },
     {
       "id": "rollout",

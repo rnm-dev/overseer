@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   loadFixture,
   negotiateCapabilities,
+  routeForUpdateAdmission,
   routeForSurface,
   runCapabilityMatrix,
 } from "../src/index.js";
@@ -60,6 +61,13 @@ test("update transport is current-only reverse and remains exclusive after selec
   assert.equal(routeForSurface("peon-update", {
     control: [], transfer: [], channelFeatures: {},
   }), "legacy-http");
+  assert.equal(routeForUpdateAdmission(current, true), "blocked-active");
+  assert.equal(routeForUpdateAdmission({
+    control: [], transfer: [], channelFeatures: {},
+  }, true), "blocked-active", "active durable admission fences legacy fallback before transport selection");
+  assert.equal(routeForUpdateAdmission({
+    control: [], transfer: [], channelFeatures: {},
+  }, false), "legacy-http");
 });
 
 test("covered contracts are distinguished from explicitly blocked extension cells", () => {

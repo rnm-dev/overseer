@@ -64,6 +64,11 @@ export function routeForSurface(surface, negotiated) {
   }
 }
 
+export function routeForUpdateAdmission(negotiated, active) {
+  if (active) return "blocked-active";
+  return routeForSurface("peon-update", negotiated);
+}
+
 export function runCapabilityMatrix(document) {
   const profiles = document.profiles ?? {};
   const cells = [];

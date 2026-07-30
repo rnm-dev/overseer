@@ -150,7 +150,9 @@ executes approved version/revision/SHA command binding and canonical
 fingerprinting, `RELEASE_CHANGED` download TOCTOU rejection, one installer
 effect, durable receipt replay, PID replacement and exact
 version/revision/SHA attestation, generation fencing, bounded results and
-exclusive legacy fallback.
+exclusive legacy fallback. A Peon-scoped active durable update admission is
+checked before transport selection, so a retry cannot fall through to legacy
+HTTP while its reverse command is still pending.
 
 - updates: the base `reverse-command-v1:update.apply` lifecycle is covered;
   production-like soak and staged fleet rollout remain separate operational
