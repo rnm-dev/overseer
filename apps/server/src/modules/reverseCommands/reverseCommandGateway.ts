@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import path from "node:path";
 import { WebSocket } from "ws";
 import { canAccessPeon, canAccessProject } from "../access/index.js";
 import { getUserById, type AuthContext } from "../auth/index.js";
@@ -6,6 +7,7 @@ import { membership } from "../workspaces/index.js";
 import { registry } from "../registry/index.js";
 import { getIndexedSession } from "../sessions/sessionQueries.js";
 import { getIndexedProjectById } from "../../projectIndex.js";
+import { getDaemonConfigurationProjection } from "../daemonConfiguration.js";
 import {
   getPeonConnection,
   isCurrentPeonConnection,
@@ -16,6 +18,7 @@ import {
 } from "../../peonConnections.js";
 import {
   commitDurableReverseCommandResult,
+  commitEphemeralReverseCommandResult,
   createOrGetReverseCommand,
   DEFAULT_REVERSE_COMMAND_LIMITS,
   getReverseCommand,
@@ -35,10 +38,12 @@ import {
   isReverseCommandOperation,
   assertSafeReverseCommandResult,
   parseReverseCommandAccepted,
+  parseReverseCommandResult,
   parseReverseCommandStatus,
   REVERSE_COMMAND_CAPABILITY,
   REVERSE_COMMAND_MAX_FRAME_BYTES,
   ReverseCommandCorrelationError,
+  ReverseCommandProtocolError,
   reverseCommandFrame,
   reverseCommandPayloadIsTransient,
   reverseCommandRequestHash,
@@ -56,6 +61,18 @@ import { AttachmentReceiptError } from "../sessions/attachmentReceipts.js";
 const DEFAULT_WAIT_MS = 15_000;
 const MAX_WAIT_MS = 30_000;
 const MAX_SOCKET_BUFFER_BYTES = 4 * 1024 * 1024;
+const SESSION_ATTACHMENT_OPERATIONS = new Set<ReverseCommandOperation>([
+  "session.start",
+  "session.followup",
+  "session.queue.add",
+]);
+const IMAGE_MIME_BY_EXTENSION: Record<string, string> = {
+  ".gif": "image/gif",
+  ".jpeg": "image/jpeg",
+  ".jpg": "image/jpeg",
+  ".png": "image/png",
+  ".webp": "image/webp",
+};
 
 // One entry per operation, keyed by the operation union so the compiler refuses
 // a command that never declared its payload. There is deliberately no fallback:
@@ -111,6 +128,68 @@ const PAYLOAD_FIELDS: Record<ReverseCommandOperation, readonly string[]> = {
   "armory.mcp": [],
   "armory.operation": [],
 };
+
+function attachmentBasename(value: string): string {
+  return value.split(/[\\/]/).filter(Boolean).at(-1) ?? "attachment";
+}
+
+function attachmentMimeType(attachment: Record<string, unknown>, filename: string): string {
+  if (typeof attachment.mimetype === "string" && attachment.mimetype.length > 0) {
+    return attachment.mimetype;
+  }
+  if (attachment.type === "image") {
+    return IMAGE_MIME_BY_EXTENSION[path.posix.extname(filename).toLowerCase()]
+      ?? "application/octet-stream";
+  }
+  return "application/octet-stream";
+}
+
+function attachmentAbsolutePath(root: string | null, requestedPath: string): string {
+  if (!root || path.posix.isAbsolute(requestedPath) || path.win32.isAbsolute(requestedPath)) {
+    return requestedPath;
+  }
+  const flavor = /^(?:[A-Za-z]:[\\/]|\\\\)/.test(root) ? path.win32 : path.posix;
+  const resolvedRoot = flavor.resolve(root);
+  const resolved = flavor.resolve(resolvedRoot, requestedPath);
+  const relative = flavor.relative(resolvedRoot, resolved);
+  if (relative === "" || (!relative.startsWith("..") && !flavor.isAbsolute(relative))) return resolved;
+  throw new ReverseCommandGatewayError(400, "BAD_COMMAND", "session attachment escapes the Peon file sandbox");
+}
+
+async function canonicalSessionWirePayload(
+  peonId: string,
+  operation: ReverseCommandOperation,
+  payload: JsonObject,
+): Promise<JsonObject> {
+  if (!SESSION_ATTACHMENT_OPERATIONS.has(operation) || !Array.isArray(payload.attachments)) return payload;
+  const configuration = await getDaemonConfigurationProjection(peonId);
+  const configuredRoot = typeof configuration?.values.fileTransferRoot === "string"
+    && configuration.values.fileTransferRoot.trim()
+    ? configuration.values.fileTransferRoot.trim()
+    : null;
+  return {
+    ...payload,
+    attachments: payload.attachments.map((value) => {
+      const attachment = value as Record<string, unknown>;
+      const requestedPath = String(attachment.path);
+      const filename = typeof attachment.filename === "string" && attachment.filename
+        ? attachment.filename
+        : attachmentBasename(requestedPath);
+      const originalName = typeof attachment.originalName === "string" && attachment.originalName
+        ? attachment.originalName
+        : typeof attachment.name === "string" && attachment.name
+          ? attachment.name
+          : filename;
+      return {
+        originalName,
+        filename,
+        path: attachmentAbsolutePath(configuredRoot, requestedPath),
+        size: Number(attachment.size),
+        mimetype: attachmentMimeType(attachment, filename),
+      };
+    }),
+  };
+}
 
 export interface SubmitReverseCommandInput {
   workspaceId: string;
@@ -311,7 +390,7 @@ export class ReverseCommandGateway {
         countReverseCommandMetric("queued", record.operation);
         record = await this.sendCommand(record, socket, generation, false, prepared.wirePayload);
       } else if (record.state === "created" || record.state === "send_failed") {
-        record = await this.sendCommand(record, socket, generation, false, prepared.wirePayload);
+        record = await this.sendCommand(record, socket, generation);
       } else if (record.connectionGeneration !== generation) {
         record = await this.reconcileOne(record, socket, generation);
       }
@@ -390,9 +469,27 @@ export class ReverseCommandGateway {
     socket: WebSocket,
     frame: Record<string, unknown>,
   ): Promise<boolean> {
-    if (frame.type !== "command_accepted" && frame.type !== "command_status") return false;
+    if (frame.type !== "command_accepted" && frame.type !== "command_status"
+      && frame.type !== "command_result") return false;
     const generation = peonConnectionGeneration(socket);
     if (!generation || !isCurrentPeonConnection(peonId, socket, generation)) return true;
+    if (frame.type === "command_result") {
+      const result = parseReverseCommandResult(frame);
+      if (result.result !== null || !["rejected", "conflict", "failed"].includes(result.status)) {
+        throw new ReverseCommandProtocolError("invalid pre-admission command result");
+      }
+      const record = await commitEphemeralReverseCommandResult({
+        workspaceId,
+        peonId,
+        connectionGeneration: generation,
+        result,
+        now: this.now(),
+      });
+      if (!record) throw new ReverseCommandCorrelationError("stale reverse command refusal");
+      countReverseCommandMetric("completed", record.operation, record.code);
+      this.notify(record);
+      return true;
+    }
     if (frame.type === "command_accepted") {
       const accepted = parseReverseCommandAccepted(frame);
       const record = await markReverseCommandAccepted({
@@ -652,19 +749,7 @@ export class ReverseCommandGateway {
       payload,
       expected,
     });
-    const wirePayload = (input.operation === "session.start" || input.operation === "session.followup")
-      && Array.isArray(payload.attachments)
-      ? {
-          ...payload,
-          attachments: payload.attachments.map((value) => {
-            const attachment = value as Record<string, unknown>;
-            return {
-              type: attachment.type === "image" ? "image" : "file",
-              path: String(attachment.path),
-            };
-          }),
-        }
-      : payload;
+    const wirePayload = await canonicalSessionWirePayload(input.peonId, input.operation, payload);
     const draft = {
       workspaceId: input.workspaceId,
       peonId: input.peonId,
@@ -674,7 +759,7 @@ export class ReverseCommandGateway {
       actor,
       target,
       payload: reverseCommandPayloadIsTransient(input.operation) ? {} : wirePayload,
-      ...(["session.start", "session.followup"].includes(input.operation)
+      ...(SESSION_ATTACHMENT_OPERATIONS.has(input.operation)
         ? { attachmentPayload: payload }
         : {}),
       expected,

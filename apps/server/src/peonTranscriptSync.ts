@@ -353,7 +353,7 @@ export class PeonTranscriptSync {
         await this.receiveError(message);
         return true;
       case "transcript_subscribed":
-        this.receiveSubscribed(message);
+        await this.receiveSubscribed(message);
         return true;
       case "transcript_unsubscribed":
         this.subscriptionRequests.delete(requiredString(message.requestId, "requestId", 200));
@@ -560,7 +560,7 @@ export class PeonTranscriptSync {
     return snapshot ?? null;
   }
 
-  private receiveSubscribed(message: Record<string, unknown>): void {
+  private async receiveSubscribed(message: Record<string, unknown>): Promise<void> {
     const requestId = requiredString(message.requestId, "requestId", 200);
     const sessionId = requiredString(message.sessionId, "sessionId", 512);
     const expected = this.subscriptionRequests.get(requestId);
@@ -571,8 +571,12 @@ export class PeonTranscriptSync {
     if (expected.sessionId !== sessionId) throw new Error("transcript subscription request mismatch");
     clearTimeout(expected.timer);
     this.subscriptionRequests.delete(requestId);
-    if (requiredString(message.epoch, "transcript epoch", 256) !== expected.epoch
-      || requiredSequence(message.afterSeq, "afterSeq") !== expected.afterSeq) {
+    const epoch = requiredString(message.epoch, "transcript epoch", 256);
+    const afterSeq = requiredSequence(message.afterSeq, "afterSeq");
+    const state = await getTranscriptState(this.record.peonId, sessionId);
+    if (epoch !== expected.epoch || afterSeq < expected.afterSeq
+      || state?.epoch !== epoch || state.acknowledgedSeq === null
+      || state.acknowledgedSeq < afterSeq) {
       throw new Error("transcript subscription checkpoint mismatch");
     }
     const expiresAt = typeof message.expiresAt === "number" && Number.isFinite(message.expiresAt)

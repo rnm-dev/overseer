@@ -100,6 +100,13 @@ from the old generation cannot write or ACK. An Overseer restart retains the
 projection/checkpoints, while process-local demand is rebuilt from browser
 re-subscriptions.
 
+The `transcript_subscribed.afterSeq` acknowledgement is the Peon's actual
+post-catch-up frontier, so it may be greater than the requested `afterSeq`.
+Overseer accepts it only after the preceding ordered durable events have
+advanced the same transcript epoch through that sequence. A lower frontier,
+epoch change or uncommitted jump is a protocol error; an ordinary non-empty
+catch-up never closes the shared control socket.
+
 Demand is shared per Peon/session. Many browsers therefore create one Peon
 subscription, not one each. The last authorized consumer sends
 `transcript_unsubscribe` and cancels a demand-only snapshot. A snapshot needed

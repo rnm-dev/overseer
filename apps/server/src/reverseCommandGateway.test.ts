@@ -26,6 +26,7 @@ import {
 import { getPeonConnection } from "./peonConnections.js";
 import { attachPeonSocket } from "./peonSocket.js";
 import { registry } from "./registry.js";
+import { recordCommittedAttachmentReceipt } from "./modules/sessions/attachmentReceipts.js";
 
 const ownerId = "b169219d-45f6-4f42-b78f-3fb931dac7ee";
 const owner = { userId: ownerId, email: "operator@example.com" };
@@ -510,6 +511,121 @@ test("ACL/capability failures and forged actors are exclusive and never create o
     } as never);
     assert.equal(spoofed.status, 400);
     assert.equal(spoofed.body.code, "BAD_COMMAND");
+  } finally {
+    await f.close();
+  }
+});
+
+test("session attachment receipts become the canonical Peon wire shape", async () => {
+  const f = await fixture(29, ["session.start"]);
+  const commandId = "298f4f0c-9f30-7a61-bf1a-66d2582bdb4a";
+  const sha256 = "7".repeat(64);
+  try {
+    await query(
+      `INSERT INTO peon_daemon_configuration
+        (peon_id,workspace_id,epoch,revision,schema_version,digest,updated_at,values,last_command_id)
+       VALUES ($1,$2,'configuration-29',1,1,$3,$4,$5,NULL)`,
+      [
+        f.peonId,
+        f.workspaceId,
+        "8".repeat(64),
+        Date.now(),
+        JSON.stringify({ fileTransferRoot: "/tmp/peon-files" }),
+      ],
+    );
+    const receipt = await recordCommittedAttachmentReceipt({
+      workspaceId: f.workspaceId,
+      peonId: f.peonId,
+      actor: owner,
+      transferId: "398f4f0c-9f30-7a61-bf1a-66d2582bdb4a",
+      path: "uploads/draft/pasted-image.png",
+      size: 123,
+      sha256,
+    });
+    const response = await reverseCommandGateway.submit({
+      workspaceId: f.workspaceId,
+      peonId: f.peonId,
+      auth,
+      operation: "session.start",
+      target: {},
+      payload: {
+        prompt: "inspect",
+        attachments: [{
+          type: "image",
+          path: receipt.path,
+          transferId: receipt.transferId,
+          size: receipt.size,
+          sha256: receipt.sha256,
+        }],
+      },
+      commandId,
+      waitMs: 0,
+    });
+    assert.equal(response.status, 202);
+    const command = await f.received.waitFor((frame) =>
+      frame.type === "command" && frame.commandId === commandId);
+    assert.deepEqual((command.payload as { attachments: unknown[] }).attachments, [{
+      originalName: "pasted-image.png",
+      filename: "pasted-image.png",
+      path: "/tmp/peon-files/uploads/draft/pasted-image.png",
+      size: 123,
+      mimetype: "image/png",
+    }]);
+    assert.deepEqual((await getReverseCommand(f.workspaceId, f.peonId, commandId))?.payload,
+      command.payload);
+  } finally {
+    await f.close();
+  }
+});
+
+test("pre-admission command refusals terminate only their command and preserve the socket", async () => {
+  const f = await fixture(30, ["session.start"]);
+  const firstId = "308f4f0c-9f30-7a61-bf1a-66d2582bdb4a";
+  const secondId = "318f4f0c-9f30-7a61-bf1a-66d2582bdb4a";
+  try {
+    const first = reverseCommandGateway.submit({
+      workspaceId: f.workspaceId,
+      peonId: f.peonId,
+      auth,
+      operation: "session.start",
+      target: {},
+      payload: { prompt: "malformed at the remote boundary" },
+      commandId: firstId,
+      waitMs: 2_000,
+    });
+    await f.received.waitFor((frame) => frame.type === "command" && frame.commandId === firstId);
+    f.ws.send(JSON.stringify({
+      type: "command_result",
+      protocol: 1,
+      commandId: firstId,
+      operation: "session.start",
+      status: "rejected",
+      code: "BAD_COMMAND",
+      completedAt: Date.now(),
+      result: null,
+    }));
+    const refused = await first;
+    assert.equal(refused.status, 400);
+    assert.equal(refused.body.code, "BAD_COMMAND");
+    assert.equal(f.ws.readyState, WebSocket.OPEN);
+    const record = await getReverseCommand(f.workspaceId, f.peonId, firstId);
+    assert.equal(record?.state, "terminal");
+    assert.ok(record?.durableCommittedAt);
+    assert.equal(record?.attemptCount, 1);
+
+    const second = await reverseCommandGateway.submit({
+      workspaceId: f.workspaceId,
+      peonId: f.peonId,
+      auth,
+      operation: "session.start",
+      target: {},
+      payload: { prompt: "the socket still works" },
+      commandId: secondId,
+      waitMs: 0,
+    });
+    assert.equal(second.status, 202);
+    await f.received.waitFor((frame) => frame.type === "command" && frame.commandId === secondId);
+    assert.equal(f.ws.readyState, WebSocket.OPEN);
   } finally {
     await f.close();
   }

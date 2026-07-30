@@ -195,7 +195,7 @@ export async function createOrGetReverseCommand(
     const existing = await findWith(tx, input.workspaceId, input.peonId, input.commandId);
     if (existing) {
       if (existing.requestHash === input.requestHash
-        && (input.operation === "session.start" || input.operation === "session.followup")) {
+        && ["session.start", "session.followup", "session.queue.add"].includes(input.operation)) {
         await bindAttachmentReceipts(tx, {
           workspaceId: input.workspaceId,
           peonId: input.peonId,
@@ -235,7 +235,7 @@ export async function createOrGetReverseCommand(
     if (exceeds(workspace, input.requestBytes, limits.workspacePending, limits.workspaceBytes)) return { kind: "overloaded", scope: "workspace" };
     if (exceeds(global, input.requestBytes, limits.globalPending, limits.globalBytes)) return { kind: "overloaded", scope: "global" };
 
-    if (input.operation === "session.start" || input.operation === "session.followup") {
+    if (["session.start", "session.followup", "session.queue.add"].includes(input.operation)) {
       await bindAttachmentReceipts(tx, {
         workspaceId: input.workspaceId,
         peonId: input.peonId,
@@ -416,6 +416,89 @@ export async function observeReverseCommandTerminal(
       generation,
     ],
   );
+}
+
+export async function commitEphemeralReverseCommandResult(input: {
+  workspaceId: string;
+  peonId: string;
+  connectionGeneration: string;
+  result: ReverseCommandResultFrame;
+  now?: number;
+}): Promise<ReverseCommandRecord | null> {
+  const now = input.now ?? Date.now();
+  const committed = await transaction(async (tx) => {
+    const current = await findWith(tx, input.workspaceId, input.peonId, input.result.commandId);
+    if (!current || current.operation !== input.result.operation
+      || current.connectionGeneration !== input.connectionGeneration
+      || current.state !== "sent" || current.acceptedAt !== null
+      || input.result.result !== null) return null;
+    assertSafeReverseCommandResult(current, input.result);
+    const updated = await tx.query<ReverseCommandRow>(
+      `UPDATE reverse_commands
+          SET state='terminal',completed_at=$5,terminal_status=$6,result_code=$7,
+              result_message=$8,terminal_result=NULL,result_frame=$9,updated_at=$10,
+              durable_committed_at=COALESCE(durable_committed_at,$10),last_error_code=NULL
+        WHERE workspace_id=$1 AND command_id=$2 AND peon_id=$3 AND operation=$4
+          AND connection_generation=$11 AND state='sent' AND accepted_at IS NULL
+        RETURNING ${selectColumns()}`,
+      [
+        input.workspaceId,
+        input.result.commandId,
+        input.peonId,
+        input.result.operation,
+        input.result.completedAt,
+        input.result.status,
+        input.result.code,
+        input.result.message ?? null,
+        JSON.stringify(input.result),
+        now,
+        input.connectionGeneration,
+      ],
+    );
+    if (!updated.rows[0]) return null;
+    const record = rowToRecord(updated.rows[0]);
+    const audit = await tx.query(
+      `INSERT INTO reverse_command_audit
+        (workspace_id,peon_id,command_id,user_id,operation,event,result_status,result_code,created_at)
+       VALUES ($1,$2,$3,$4,$5,'terminal',$6,$7,$8)
+       ON CONFLICT (workspace_id,peon_id,command_id,event) DO NOTHING
+       RETURNING command_id`,
+      [
+        record.workspaceId,
+        record.peonId,
+        record.commandId,
+        record.actor.userId,
+        record.operation,
+        input.result.status,
+        input.result.code,
+        now,
+      ],
+    );
+    const event = audit.rows[0] ? await insertEvent(tx, {
+      workspaceId: record.workspaceId,
+      peonId: record.peonId,
+      sessionId: record.target.sessionId ?? null,
+      kind: "command",
+      payload: {
+        userId: record.actor.userId,
+        commandId: record.commandId,
+        peonId: record.peonId,
+        operation: record.operation,
+        state: "terminal",
+        status: input.result.status,
+        code: input.result.code,
+        completedAt: input.result.completedAt,
+        result: null,
+      },
+    }) : null;
+    return { record, event };
+  });
+  if (committed?.event) {
+    await publishCommittedEvent(committed.event).catch((error) => {
+      console.warn("reverse command event fan-out failed:", error instanceof Error ? error.message : String(error));
+    });
+  }
+  return committed?.record ?? null;
 }
 
 export async function rebindRecoverableReverseCommands(

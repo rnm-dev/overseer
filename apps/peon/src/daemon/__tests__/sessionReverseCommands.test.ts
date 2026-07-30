@@ -231,7 +231,11 @@ test("attachment resolution canonicalizes contained files and rejects escaping s
     const inside = path.join(root, "inside.txt");
     writeFileSync(inside, "safe");
     const applied = await handlers["session.followup"]!.execute(command("session.followup", {
-      prompt: "read this", attachments: [{ ...attachment, path: inside, size: 4 }],
+      prompt: "read this", attachments: [{
+        ...attachment,
+        path: path.relative(root, inside),
+        size: 4,
+      }],
     }));
     assert.equal(applied.code, "OK");
     assert.equal(state.counts().resumes, 1);

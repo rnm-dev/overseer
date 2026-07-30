@@ -128,8 +128,11 @@ function turnOptions(command, agent, fileTransferRoot) {
     }
     for (const attachment of attachmentList) {
         let candidate;
+        const requested = path.isAbsolute(attachment.path)
+            ? attachment.path
+            : path.resolve(rootPath, attachment.path);
         try {
-            candidate = realpathSync(path.resolve(attachment.path));
+            candidate = realpathSync(requested);
         }
         catch {
             throw new Error("UNKNOWN_ATTACHMENT_PATH");
