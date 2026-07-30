@@ -56,7 +56,7 @@ migration is partly done, and the split today is:
 | Traffic | Channel | What it needs to move |
 | --- | --- | --- |
 | Project file read by ID (docs, web preview) | socket, `project-file-read-v1` | — |
-| Project file read by key (file tree, browser, session pane) | socket, `project-file-read-v1` — Overseer resolves key → project ID through the catalog and falls back to the proxy only for a Peon that holds no transfer socket | — |
+| Project file read by key (file tree, browser, session pane) | socket, `project-file-read-v1` — Overseer resolves key → project ID through the catalog and falls back to the proxy only when the current transfer connection did not negotiate the capability | — |
 | Confirmed project directory listing (`?stat=1&directory=1`) | control socket, `folder-listing-v1`; HTTP fallback for an older Peon | entry metadata is negotiated additively; project-relative paths remain contained by immutable project ID |
 | Project file metadata (`?stat=1`) | HTTP proxy only | retains `sha256`; never probes the folder socket first |
 | Attachment / sandbox file read | socket, `sandbox-file-read-v1`; HTTP fallback for an older Peon | — |
@@ -74,6 +74,11 @@ HTTP route while retaining every other raw query parameter, including repeated
 or encoded values. A chosen socket failure, including `SYNC_IN_PROGRESS`,
 `CONNECTION_LOST`, or `NOT_DIRECTORY`, is returned directly rather than
 falling through to HTTP.
+
+The route-level acceptance test also fixes the security boundary: project
+membership is checked before dispatch, the browser-supplied key becomes the
+catalog's stable project ID, the actor is derived from the authenticated
+operator, and byte ranges plus the isolation headers survive the socket path.
 
 Writes follow the same exclusive choice. A Peon that negotiated
 `file-write-v1` receives attachment and project bodies as bounded 64 KiB
