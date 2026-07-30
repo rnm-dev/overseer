@@ -3,7 +3,7 @@ import { api, ApiError, isPeonNeedsUpdate, json } from "../../../api";
 import type { User } from "../../../auth";
 import type { Translate } from "../../../i18n";
 import { useNotifications } from "../../../notifications";
-import { composerDraftKey, useComposerDraft, useComposerDraftFiles } from "../drafts";
+import { composerDraftKey, saveComposerDraft, useComposerDraft, useComposerDraftFiles } from "../drafts";
 import { attachmentUploadPath } from "../fileLinks";
 import type { ModelsCatalog } from "../models";
 import type { Ev } from "./parsing";
@@ -190,7 +190,16 @@ export function useSessionComposer({
       await api(`${base}/sessions/${encodeURIComponent(sid)}/followup`, request);
       if (currentSessionKeyRef.current === sessionKey) onWorkStarted();
     } catch (err) {
-      if (currentSessionKeyRef.current !== sessionKey) return;
+      if (currentSessionKeyRef.current !== sessionKey) {
+        // The operator moved on, so there is no composer to roll back into and
+        // the switch already wiped this echo from the pending list — it cannot
+        // tell us whether Peon committed the message. An ApiError means the
+        // server answered and refused, so nothing was committed and the draft
+        // belongs back under this session's key. A lost connection might still
+        // have delivered it; stay out of the way rather than invite a resend.
+        if (err instanceof ApiError) saveComposerDraft(draftKey, text, pending);
+        return;
+      }
       // If its SSE event already arrived, Peon committed the message even if the
       // HTTP response was lost. Keep it visible and do not invite an accidental
       // resend. Otherwise roll the optimistic row and composer back.

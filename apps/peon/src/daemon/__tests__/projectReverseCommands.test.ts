@@ -64,6 +64,41 @@ test("key reuse cannot redirect a stable project ID and active sessions guard de
   }
 });
 
+test("project archive reverse commands preserve stable IDs and report noops", async () => {
+  const f = fixture();
+  try {
+    const project = f.service.createRevisioned({ label: "Alpha", dir: path.join(f.root, "alpha") });
+    const handlers = projectCommandHandlers(f.service);
+    const command: ValidCommand = {
+      commandId: "00000000-0000-4000-8000-000000000001",
+      operation: "project.archive",
+      target: {
+        peonId: "00000000-0000-4000-8000-000000000002",
+        projectId: project.projectId,
+      },
+      actor: {
+        userId: "00000000-0000-4000-8000-000000000003",
+        email: "operator@example.com",
+      },
+      payload: {},
+      expected: null,
+      requestedAt: 1,
+    };
+    const archive = handlers["project.archive"]!;
+    assert.equal(archive.validate(command.payload, command.expected, command), null);
+    assert.equal((await archive.execute(command)).status, "applied");
+    assert.equal((await archive.execute(command)).status, "noop");
+    assert.equal(typeof f.service.detailById(project.projectId).archivedAt, "number");
+
+    const unarchive = handlers["project.unarchive"]!;
+    const restored = await unarchive.execute({ ...command, operation: "project.unarchive" });
+    assert.equal(restored.status, "applied");
+    assert.equal(f.service.detailById(project.projectId).archivedAt, null);
+  } finally {
+    rmSync(f.root, { recursive: true, force: true });
+  }
+});
+
 test("project-ID resources preserve URL and documentation containment validation", () => {
   const f = fixture();
   try {

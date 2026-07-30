@@ -52,6 +52,7 @@ import {
 } from "../../peonFileStream.js";
 import { recordCommittedAttachmentReceipt } from "../../modules/sessions/attachmentReceipts.js";
 import {
+  forgetIndexedProject,
   getIndexedProject,
   getProjectCatalogState,
   hasCanonicalProjectCatalog,
@@ -111,6 +112,19 @@ export function registerProjectRoutes(router: express.Router): void {
     if (result.status === 200 && result.body.status === "applied") res.json(result.body.result);
     else res.status(result.status).json(result.body);
     return true;
+  };
+  const forgetDeletedProject = async (
+    c: Parameters<Parameters<typeof withWorkspacePeon>[0]>[2],
+    key: string,
+    projectId: string | null,
+  ) => {
+    try {
+      await forgetIndexedProject({ workspaceId: c.workspaceId, peonId: c.record.peonId, key, projectId });
+    } catch (error) {
+      // The Peon has already committed the deletion. Its catalog event will
+      // eventually perform the same eviction, so do not turn success into 5xx.
+      console.warn("project cache eviction failed:", error instanceof Error ? error.message : String(error));
+    }
   };
   const relayReverseDocumentation = async (
     req: express.Request,
@@ -450,10 +464,15 @@ export function registerProjectRoutes(router: express.Router): void {
         ? (read.body.result as { digest?: unknown }).digest : null;
       if (typeof digest === "string") {
         const reverse = await reverseProject(req, c, "project.delete", { projectId: indexed.projectId }, {}, { digest });
+        if (reverse?.status === 200 && reverse.body.status === "applied") {
+          await forgetDeletedProject(c, key, indexed.projectId);
+        }
         if (relayReverse(res, reverse)) return;
       } else if (read) return void res.status(read.status).json(read.body);
     }
-    relay(await callPeon(connOfRecord(c.record), "DELETE", proj(key), { actor: c.operator.email }), res);
+    const result = await callPeon(connOfRecord(c.record), "DELETE", proj(key), { actor: c.operator.email });
+    if (result.ok) await forgetDeletedProject(c, key, indexed?.projectId ?? null);
+    relay(result, res);
   }));
   router.get(`${wp}/settings`, withWorkspacePeon(async (_req, res, c) => {
     if (!ownerOnly(res, c.role)) return;

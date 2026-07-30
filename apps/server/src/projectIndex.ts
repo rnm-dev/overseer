@@ -479,6 +479,38 @@ export async function refreshIndexedProjectQuickLinks(input: {
   return true;
 }
 
+// Evict a project the owner has just deleted on the Peon. The Peon's catalog
+// event says the same thing a moment later over the socket, but a client that
+// reloads its list first would otherwise be shown a project that no longer
+// exists; deleteProject is a row delete, so the later event is a harmless
+// no-op. Access grants go with it — nothing should inherit them if the key is
+// reused by a new project.
+export async function forgetIndexedProject(input: {
+  workspaceId: string;
+  peonId: string;
+  key: string;
+  projectId?: string | null;
+}): Promise<void> {
+  const mutation = await transaction(async (tx) => {
+    let projectId = input.projectId ?? null;
+    if (!projectId) {
+      const { rows } = await tx.query<{ project_id: string }>(
+        `SELECT project_id FROM projects WHERE peon_id=$1 AND project_key=$2`,
+        [input.peonId, input.key],
+      );
+      projectId = rows[0]?.project_id ?? null;
+    }
+    await tx.query(
+      `DELETE FROM workspace_member_project_access
+       WHERE workspace_id=$1 AND peon_id=$2 AND (project_id=$3 OR (project_id IS NULL AND project_key=$4))`,
+      [input.workspaceId, input.peonId, projectId, input.key],
+    );
+    if (!projectId) return null;
+    return deleteProject(tx, input.workspaceId, input.peonId, projectId);
+  });
+  if (mutation) await publishMutations([mutation]);
+}
+
 export async function getIndexedProject(peonId: string, key: string): Promise<IndexedProject | null> {
   return (await listIndexedProjects(peonId)).find((project) => project.key === key) ?? null;
 }

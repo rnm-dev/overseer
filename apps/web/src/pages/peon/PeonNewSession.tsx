@@ -10,7 +10,7 @@ import { useNotifications } from "../../notifications";
 import { Label } from "../../ui";
 import { usePeon } from "./context";
 import { Composer, supportsDesktopComposerFocus } from "./Composer";
-import { composerDraftKey, useComposerDraft, useComposerDraftFiles } from "./drafts";
+import { clearComposerDraft, composerDraftKey, useComposerDraft, useComposerDraftFiles } from "./drafts";
 import { AgentSelect, defaultEffortIdFor, defaultModelId, effortsForModel, ModelSelect, optionMatches, Picker, ReasoningEffortSelect, providerForAgent, providerForModel, useModels } from "./models";
 import { buildNewSessionRequest } from "./newSessionRequest";
 import { PathInput } from "./PathInput";
@@ -164,6 +164,9 @@ export function PeonNewSession() {
         playPeonSound("start");
         setInput("");
         setFiles([]); // the attachments went with the session — don't leave them drafted here
+        // navigate() unmounts this page in the same commit, so the attachment
+        // half of the draft cannot rely on its persistence effect running.
+        clearComposerDraft(draftKey);
         navigate(`/peons/${peon.peonId}/sessions/${id}`);
       }
       else setSubmitting(false);

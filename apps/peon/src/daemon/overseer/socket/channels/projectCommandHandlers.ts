@@ -133,6 +133,35 @@ const digest = (expected: PeonSocketFrame | null) =>
   expected && strict(expected, ["digest"]) && typeof expected.digest === "string"
     && /^[0-9a-f]{64}$/.test(expected.digest) ? expected.digest : null;
 
+function archiveHandler(projectService: ProjectService, archived: boolean): ReverseCommandHandler {
+  return {
+    maxConcurrency: 4,
+    validate(payload, expected, command) {
+      if (!command.target.projectId) return "operation requires target.projectId";
+      return empty(payload, expected, command);
+    },
+    execute(command) {
+      try {
+        const projectId = id(command);
+        const outcome = archived
+          ? projectService.archiveById(projectId)
+          : projectService.unarchiveById(projectId);
+        return {
+          status: outcome.changed ? "applied" : "noop",
+          code: "OK",
+          result: {
+            projectId,
+            key: outcome.project.key,
+            archivedAt: outcome.project.archivedAt,
+          },
+        };
+      } catch (error) {
+        return failure(error);
+      }
+    },
+  };
+}
+
 export function projectCommandHandlers(projectService: ProjectService = service): Record<string, ReverseCommandHandler> {
   return {
     "project.create": define(
@@ -156,6 +185,8 @@ export function projectCommandHandlers(projectService: ProjectService = service)
       (command) => projectService.removeById(id(command), digest(command.expected)!) as unknown as PeonSocketFrame,
       { projectTarget: true },
     ),
+    "project.archive": archiveHandler(projectService, true),
+    "project.unarchive": archiveHandler(projectService, false),
     "project.documentation.index": define(
       (payload, expected) => strict(payload, ["cursor", "limit"])
         && (payload.cursor === undefined || typeof payload.cursor === "string")

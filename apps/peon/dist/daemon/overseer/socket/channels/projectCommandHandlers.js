@@ -106,6 +106,36 @@ const empty = (payload, expected) => strict(payload, []) && expected === null ? 
 const id = (command) => command.target.projectId;
 const digest = (expected) => expected && strict(expected, ["digest"]) && typeof expected.digest === "string"
     && /^[0-9a-f]{64}$/.test(expected.digest) ? expected.digest : null;
+function archiveHandler(projectService, archived) {
+    return {
+        maxConcurrency: 4,
+        validate(payload, expected, command) {
+            if (!command.target.projectId)
+                return "operation requires target.projectId";
+            return empty(payload, expected, command);
+        },
+        execute(command) {
+            try {
+                const projectId = id(command);
+                const outcome = archived
+                    ? projectService.archiveById(projectId)
+                    : projectService.unarchiveById(projectId);
+                return {
+                    status: outcome.changed ? "applied" : "noop",
+                    code: "OK",
+                    result: {
+                        projectId,
+                        key: outcome.project.key,
+                        archivedAt: outcome.project.archivedAt,
+                    },
+                };
+            }
+            catch (error) {
+                return failure(error);
+            }
+        },
+    };
+}
 export function projectCommandHandlers(projectService = service) {
     return {
         "project.create": define((payload, expected) => strict(payload, ["label", "dir"]) && typeof payload.label === "string"
@@ -115,6 +145,8 @@ export function projectCommandHandlers(projectService = service) {
         "project.settings.get": define(empty, (command) => projectService.settingsById(id(command)), { projectTarget: true }),
         "project.settings.update": define((payload, expected) => strict(payload, ["key", "name", "dir"]) && Object.keys(payload).length > 0 && digest(expected) ? null : "invalid project update", (command) => projectService.updateSettingsById(id(command), command.payload, digest(command.expected)), { projectTarget: true }),
         "project.delete": define((payload, expected) => strict(payload, []) && digest(expected) ? null : "invalid project delete", (command) => projectService.removeById(id(command), digest(command.expected)), { projectTarget: true }),
+        "project.archive": archiveHandler(projectService, true),
+        "project.unarchive": archiveHandler(projectService, false),
         "project.documentation.index": define((payload, expected) => strict(payload, ["cursor", "limit"])
             && (payload.cursor === undefined || typeof payload.cursor === "string")
             && integerInRange(payload.limit, 1, 32 * 1024)
