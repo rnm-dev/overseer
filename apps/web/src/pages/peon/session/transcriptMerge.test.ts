@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   canTailCommitPending,
   canLiveCommitPending,
+  combineVisibleTranscriptEvents,
   numericTailId,
   orderLiveEvents,
   reconcileAuthoritativeSnapshot,
@@ -61,6 +62,20 @@ test("an optimistic row with no numeric baseline stays after durable live events
   const latestAgent: Ev = { type: "assistant", text: "latest", _tailEventId: "event-12" };
   const optimistic: Ev = { type: "user_message", text: "next", _baselineTailId: 0, _optimistic: true };
   assert.deepEqual(orderLiveEvents([latestAgent, optimistic]), [latestAgent, optimistic]);
+});
+
+test("authoritative history hides the same optimistic user command before state reconciliation settles", () => {
+  const history: Ev[] = [
+    { type: "user_message", eventId: "event-7", commandId: "command-1", text: "send once" },
+    { type: "assistant", eventId: "event-8", text: "durable overlap" },
+  ];
+  const live: Ev[] = [
+    { type: "user_message", commandId: "command-1", text: "send once", _clientId: "command-1", _optimistic: true },
+    { type: "user_message", commandId: "command-2", text: "send once", _clientId: "command-2", _optimistic: true },
+    { type: "assistant", text: "durable overlap", _tailEventId: "event-8" },
+  ];
+
+  assert.deepEqual(combineVisibleTranscriptEvents(history, live), [...history, live[1]]);
 });
 
 test("authoritative history replaces replayed and optimistic live rows", () => {

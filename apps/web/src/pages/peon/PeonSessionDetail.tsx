@@ -18,6 +18,7 @@ import {
 } from "./session/parsing";
 import { ItemView, Working } from "./session/messageParts";
 import { createQueueActivityTracker, createQueueReconciler } from "./session/queue";
+import { combineVisibleTranscriptEvents } from "./session/transcriptMerge";
 import type { PreviewTarget } from "./session/PreviewPanel";
 import { useSessionTranscript } from "./session/useSessionTranscript";
 import { useSessionComposer } from "./session/useSessionComposer";
@@ -470,14 +471,18 @@ export function PeonSessionDetail() {
 
   const { showScrollToBottom, scrollToBottom } = useScrollToBottom(stickToBottomRef, history, live, transcriptRef, sessionKey);
   // What the agent is doing right now, from the freshest event (live wins over history).
-  const lastEvent = orderedLive.length ? orderedLive[orderedLive.length - 1] : history?.length ? history[history.length - 1] : undefined;
+  const visibleEvents = useMemo(
+    () => combineVisibleTranscriptEvents(history ?? [], orderedLive),
+    [history, orderedLive],
+  );
+  const lastEvent = visibleEvents.length ? visibleEvents[visibleEvents.length - 1] : undefined;
   const working = workingActivity(lastEvent);
   const workingStepKey = lastEvent
     ? String(lastEvent.eventId ?? lastEvent._tailEventId ?? lastEvent._tailId ?? `${lastEvent.type ?? "event"}:${lastEvent.createdAt ?? "unstamped"}:${history?.length ?? 0}:${orderedLive.length}`)
     : `${sessionKey}:starting`;
   // Flattened render list — pairs each tool_use with its later tool_result so it
   // renders as a single row (see flattenEvents).
-  const items = useMemo(() => flattenEvents([...(history ?? []), ...orderedLive], t), [history, orderedLive, t]);
+  const items = useMemo(() => flattenEvents(visibleEvents, t), [t, visibleEvents]);
   // Forge glow: a row pushed into an open transcript comes out hot and cools.
   // The live tail only grows when the peon (or this composer) pushes something,
   // so it is the one signal that never fires for loaded history — the newest row
@@ -505,8 +510,8 @@ export function PeonSessionDetail() {
     return () => window.clearTimeout(id);
   }, [forgedItemKey]);
   const transcriptTurns = useMemo(
-    () => [...(history ?? []), ...orderedLive].reduce((sum, ev) => sum + (ev.type === "result" && typeof ev.num_turns === "number" ? ev.num_turns : 0), 0),
-    [history, orderedLive],
+    () => visibleEvents.reduce((sum, ev) => sum + (ev.type === "result" && typeof ev.num_turns === "number" ? ev.num_turns : 0), 0),
+    [visibleEvents],
   );
   const turnTotal = turnCount ?? transcriptTurns;
   const usageSummary = useMemo(() => {
@@ -516,13 +521,12 @@ export function PeonSessionDetail() {
     // one) — each turn's own usage already reflects the whole context resent up
     // to that point, so summing across turns would multiply-count it. The
     // freshest turn's usage is the best available snapshot.
-    const events = [...(history ?? []), ...orderedLive];
-    for (let i = events.length - 1; i >= 0; i--) {
-      const u = usageFromEvent(events[i]);
+    for (let i = visibleEvents.length - 1; i >= 0; i--) {
+      const u = usageFromEvent(visibleEvents[i]);
       if (u) return u;
     }
     return null;
-  }, [history, orderedLive, sessionUsage]);
+  }, [sessionUsage, visibleEvents]);
   const cancelRename = () => {
     setDraft(title ?? "");
     setRenameNote(null);

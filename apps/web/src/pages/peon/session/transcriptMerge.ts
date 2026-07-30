@@ -62,6 +62,32 @@ export function orderLiveEvents(events: Ev[]): Ev[] {
 }
 
 /**
+ * History and live state are updated independently. During reconciliation the
+ * authoritative row can reach history one render before its optimistic/tail
+ * counterpart is removed from live. Filter that overlap at the render boundary
+ * so one committed user command can never produce two visible bubbles.
+ */
+export function combineVisibleTranscriptEvents(history: Ev[], live: Ev[]): Ev[] {
+  const historyEventIds = new Set(history.flatMap((event) => (
+    typeof event.eventId === "string" && event.eventId ? [event.eventId] : []
+  )));
+  const historyCommandIds = new Set(history.flatMap((event) => (
+    event.type === "user_message" && typeof event.commandId === "string" && event.commandId
+      ? [event.commandId]
+      : []
+  )));
+  return [
+    ...history,
+    ...live.filter((event) => {
+      if (typeof event._tailEventId === "string" && historyEventIds.has(event._tailEventId)) return false;
+      return event.type !== "user_message"
+        || typeof event.commandId !== "string"
+        || !historyCommandIds.has(event.commandId);
+    }),
+  ];
+}
+
+/**
  * Replace live rows with the authoritative, timestamp-enriched transcript.
  * Numeric SSE ids are one-based transcript positions. This is deliberately
  * positional rather than payload-based: two identical messages are still two
