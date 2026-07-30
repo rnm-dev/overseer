@@ -36,6 +36,7 @@ import {
   uploadPeonProjectFile,
   uploadPeonSandboxFile,
 } from "../../peonFileStream.js";
+import { recordCommittedAttachmentReceipt } from "../../modules/sessions/attachmentReceipts.js";
 import {
   getIndexedProject,
   getProjectCatalogState,
@@ -344,7 +345,24 @@ export function registerProjectRoutes(router: express.Router): void {
         maxBytes: path.startsWith("uploads/") ? attachmentUploadMaxBytes : projectUploadMaxBytes,
         ...uploadHeaders(req),
       });
-      if (!res.destroyed) res.status(result.status).json({ path: result.path, size: result.size, sha256: result.sha256 });
+      if (!res.destroyed) {
+        if (path.startsWith("uploads/")) {
+          if (!result.sha256) {
+            return res.status(502).json({ error: "Peon omitted the committed attachment checksum", code: "INVALID_WRITE_RESULT" });
+          }
+          const receipt = await recordCommittedAttachmentReceipt({
+            workspaceId: c.workspaceId,
+            peonId: c.record.peonId,
+            actor: { userId: c.userId, email: c.operator.email },
+            transferId: result.transferId,
+            path: result.path,
+            size: result.size,
+            sha256: result.sha256,
+          });
+          return res.status(result.status).json(receipt);
+        }
+        res.status(result.status).json({ path: result.path, size: result.size, sha256: result.sha256 });
+      }
     } catch (error) {
       replyFileWriteError(res, error);
     }

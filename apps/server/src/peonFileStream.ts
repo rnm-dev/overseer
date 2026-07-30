@@ -538,6 +538,7 @@ export async function requestPeonSessionArtifact(input: {
 
 export interface PeonFileWriteResult {
   status: number;
+  transferId: string;
   path: string;
   size: number;
   sha256?: string;
@@ -746,7 +747,13 @@ function handlePeonFileWriteJson(item: PendingWrite, socket: WebSocket, frame: R
       || path === undefined || !Number.isSafeInteger(size) || Number(size) < 0
       || sha256 !== undefined && !/^[0-9a-f]{64}$/.test(sha256)
     ) return false;
-    completeWrite(item, { status, path, size: Number(size), ...(sha256 ? { sha256 } : {}) });
+    completeWrite(item, {
+      status,
+      transferId: item.requestId,
+      path,
+      size: Number(size),
+      ...(sha256 ? { sha256 } : {}),
+    });
     return true;
   }
   return false;

@@ -24,7 +24,7 @@ class DefaultNewSessionRepository implements NewSessionRepository {
   @override
   Future<SessionSummary> createSession(NewSessionRequest request) async {
     try {
-      final attachments = <Map<String, String>>[];
+      final attachments = <Map<String, Object>>[];
       final usedUploadNames = <String>{};
       for (var index = 0; index < request.attachments.length; index++) {
         final attachment = request.attachments[index];
@@ -60,13 +60,25 @@ class DefaultNewSessionRepository implements NewSessionRepository {
           );
         }
         final path = response.data?['path'] as String?;
-        if (path == null || path.isEmpty) {
+        final transferId = response.data?['transferId'] as String?;
+        final size = (response.data?['size'] as num?)?.toInt();
+        final committedSha256 = response.data?['sha256'] as String?;
+        if (path == null ||
+            path.isEmpty ||
+            (transferId != null &&
+                (size != attachment.bytes.length || committedSha256 == null))) {
           throw NewSessionException(
             'Overseer returned an invalid upload response for '
             '${attachment.name}.',
           );
         }
-        attachments.add({'type': attachment.type, 'path': path});
+        attachments.add({
+          'type': attachment.type,
+          'path': path,
+          'transferId': ?transferId,
+          'size': ?size,
+          'sha256': ?committedSha256,
+        });
       }
       request.onProgress?.call(const NewSessionSubmissionProgress.starting());
       late final Response<Map<String, dynamic>> response;

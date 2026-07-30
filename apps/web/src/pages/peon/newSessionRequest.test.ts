@@ -28,9 +28,21 @@ test("uses an attachment placeholder and omits empty optional values", () => {
     agent: "",
     model: "",
     reasoningEffort: "",
-    attachments: [{ type: "file", path: "uploads/draft/file.txt" }],
+    attachments: [{
+      type: "file",
+      path: "uploads/draft/file.txt",
+      transferId: "123e4567-e89b-42d3-a456-426614174000",
+      size: 4,
+      sha256: "a".repeat(64),
+    }],
   }), {
     prompt: "(see attachments)",
-    attachments: [{ type: "file", path: "uploads/draft/file.txt" }],
+    attachments: [{
+      type: "file",
+      path: "uploads/draft/file.txt",
+      transferId: "123e4567-e89b-42d3-a456-426614174000",
+      size: 4,
+      sha256: "a".repeat(64),
+    }],
   });
 });

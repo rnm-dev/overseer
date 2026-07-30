@@ -5,7 +5,7 @@ export interface NewSessionValues {
   agent: string;
   model: string;
   reasoningEffort: string;
-  attachments?: { type: "file" | "image"; path: string }[];
+  attachments?: { type: "file" | "image"; path: string; transferId?: string; size?: number; sha256?: string }[];
 }
 
 export function buildNewSessionRequest(values: NewSessionValues) {

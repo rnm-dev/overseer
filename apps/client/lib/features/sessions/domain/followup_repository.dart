@@ -55,12 +55,16 @@ class FollowupAttachment {
     required this.path,
     this.name,
     this.size,
+    this.transferId,
+    this.sha256,
   });
 
   final String type;
   final String path;
   final String? name;
   final int? size;
+  final String? transferId;
+  final String? sha256;
 }
 
 enum FollowupSubmissionStage { uploading, submitting }

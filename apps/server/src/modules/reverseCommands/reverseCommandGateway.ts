@@ -48,6 +48,7 @@ import {
   type ReverseCommandRecord,
   type ReverseCommandTarget,
 } from "./reverseCommandTypes.js";
+import { AttachmentReceiptError } from "../sessions/attachmentReceipts.js";
 
 const DEFAULT_WAIT_MS = 15_000;
 const MAX_WAIT_MS = 30_000;
@@ -217,9 +218,9 @@ export class ReverseCommandGateway {
       let record = created.record;
       if (created.kind === "created") {
         countReverseCommandMetric("queued", record.operation);
-        record = await this.sendCommand(record, socket, generation);
+        record = await this.sendCommand(record, socket, generation, false, prepared.wirePayload);
       } else if (record.state === "created" || record.state === "send_failed") {
-        record = await this.sendCommand(record, socket, generation);
+        record = await this.sendCommand(record, socket, generation, false, prepared.wirePayload);
       } else if (record.connectionGeneration !== generation) {
         record = await this.reconcileOne(record, socket, generation);
       }
@@ -229,6 +230,9 @@ export class ReverseCommandGateway {
       };
     } catch (error) {
       if (error instanceof ReverseCommandGatewayError) return errorResult(error);
+      if (error instanceof AttachmentReceiptError) {
+        return errorResult(new ReverseCommandGatewayError(409, error.code, error.message));
+      }
       throw error;
     }
   }
@@ -605,7 +609,20 @@ export class ReverseCommandGateway {
     if (requestBytes > REVERSE_COMMAND_MAX_FRAME_BYTES) {
       throw new ReverseCommandGatewayError(413, "BAD_COMMAND", "reverse command exceeds 60 KiB");
     }
-    return { ...draft, requestBytes };
+    const wirePayload = (input.operation === "session.start" || input.operation === "session.followup")
+      && Array.isArray(payload.attachments)
+      ? {
+          ...payload,
+          attachments: payload.attachments.map((value) => {
+            const attachment = value as Record<string, unknown>;
+            return {
+              type: attachment.type === "image" ? "image" : "file",
+              path: String(attachment.path),
+            };
+          }),
+        }
+      : payload;
+    return { ...draft, requestBytes, wirePayload };
   }
 
   private async authorize(
@@ -657,6 +674,7 @@ export class ReverseCommandGateway {
     socket: WebSocket,
     generation: string,
     resend = false,
+    wirePayload?: JsonObject,
   ): Promise<ReverseCommandRecord> {
     if (!isCurrentPeonConnection(record.peonId, socket, generation)) return record;
     const marked = await markReverseCommandSent(
@@ -675,7 +693,9 @@ export class ReverseCommandGateway {
     try {
       await this.beforeSocketSend?.();
       if (!isCurrentPeonConnection(marked.peonId, socket, generation)) return marked;
-      this.sendFrame(socket, reverseCommandFrame(marked) as unknown as Record<string, unknown>);
+      const frame = reverseCommandFrame(marked);
+      if (wirePayload) frame.payload = wirePayload;
+      this.sendFrame(socket, frame as unknown as Record<string, unknown>);
       return marked;
     } catch (error) {
       const failed = await markReverseCommandSendFailed(

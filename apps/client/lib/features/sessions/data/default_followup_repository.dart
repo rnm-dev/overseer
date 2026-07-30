@@ -553,7 +553,13 @@ class DefaultFollowupRepository implements FollowupRepository {
           ),
         );
         final path = response.data?['path'] as String?;
-        if (path == null || path.isEmpty) {
+        final transferId = response.data?['transferId'] as String?;
+        final size = (response.data?['size'] as num?)?.toInt();
+        final committedSha256 = response.data?['sha256'] as String?;
+        if (path == null ||
+            path.isEmpty ||
+            (transferId != null &&
+                (size != attachment.bytes.length || committedSha256 == null))) {
           throw FollowupException(
             'Overseer returned an invalid upload response for '
             '${attachment.name}.',
@@ -565,6 +571,8 @@ class DefaultFollowupRepository implements FollowupRepository {
             path: path,
             name: attachment.name,
             size: attachment.bytes.length,
+            transferId: transferId,
+            sha256: committedSha256,
           ),
         );
       } on DioException catch (error) {
@@ -580,11 +588,17 @@ class DefaultFollowupRepository implements FollowupRepository {
     return uploaded;
   }
 
-  List<Map<String, String>> _attachmentPayload(
+  List<Map<String, Object>> _attachmentPayload(
     List<FollowupAttachment> attachments,
   ) => [
     for (final attachment in attachments)
-      {'type': attachment.type, 'path': attachment.path},
+      {
+        'type': attachment.type,
+        'path': attachment.path,
+        if (attachment.transferId != null) 'transferId': attachment.transferId!,
+        if (attachment.size != null) 'size': attachment.size!,
+        if (attachment.sha256 != null) 'sha256': attachment.sha256!,
+      },
   ];
 
   List<FollowupAttachment> _pendingAttachments(String raw) {
@@ -601,6 +615,8 @@ class DefaultFollowupRepository implements FollowupRepository {
               path: item['path'] as String,
               name: item['name'] as String?,
               size: (item['size'] as num?)?.toInt(),
+              transferId: item['transferId'] as String?,
+              sha256: item['sha256'] as String?,
             ),
           )
           .toList(growable: false);

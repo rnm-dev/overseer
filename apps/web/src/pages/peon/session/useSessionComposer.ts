@@ -103,17 +103,24 @@ export function useSessionComposer({
 
   // Upload one file to the peon sandbox (under fileTransferRoot/uploads/<sid>/).
   // Returns the committed path the peon reports.
-  async function uploadFile(f: File): Promise<string> {
+  async function uploadFile(f: File): Promise<{ path: string; transferId?: string; size?: number; sha256?: string }> {
     const safe = f.name.replace(/[^\w.-]+/g, "_") || "file";
     const buf = await f.arrayBuffer();
     const digest = await crypto.subtle.digest("SHA-256", buf);
     const hex = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
-    const res = await api<{ path?: string }>(attachmentUploadPath(base, sid, safe), {
+    const res = await api<{ path?: string; transferId?: string; size?: number; sha256?: string }>(attachmentUploadPath(base, sid, safe), {
       method: "PUT",
       body: buf,
       headers: { "content-type": "application/octet-stream", "peon-content-sha256": hex },
     });
-    return res.path || `uploads/${sid}/${safe}`;
+    if (!res.path || (res.transferId !== undefined
+      && (res.size !== f.size || res.sha256 !== hex))) {
+      throw new Error("Overseer returned an invalid committed attachment receipt");
+    }
+    return {
+      path: res.path,
+      ...(res.transferId ? { transferId: res.transferId, size: res.size, sha256: res.sha256 } : {}),
+    };
   }
 
   async function send() {
@@ -166,8 +173,8 @@ export function useSessionComposer({
     try {
       // Upload each file to the sandbox, then send native attachments[] (peon
       // presents images as visual content to the agent via its Read tool).
-      const attachments: { type: "file" | "image"; path: string }[] = [];
-      for (const f of pending) attachments.push({ type: isImage(f) ? "image" : "file", path: await uploadFile(f) });
+      const attachments: { type: "file" | "image"; path: string; transferId?: string; size?: number; sha256?: string }[] = [];
+      for (const f of pending) attachments.push({ type: isImage(f) ? "image" : "file", ...await uploadFile(f) });
       if (currentSessionKeyRef.current === sessionKey) {
         setLive((prev) => prev.map((event) => event._clientId === clientId ? {
           ...event,
@@ -216,8 +223,8 @@ export function useSessionComposer({
     setSending(true);
     setSendError(null);
     try {
-      const attachments: { type: "file" | "image"; path: string }[] = [];
-      for (const file of pending) attachments.push({ type: isImage(file) ? "image" : "file", path: await uploadFile(file) });
+      const attachments: { type: "file" | "image"; path: string; transferId?: string; size?: number; sha256?: string }[] = [];
+      for (const file of pending) attachments.push({ type: isImage(file) ? "image" : "file", ...await uploadFile(file) });
       const commandId = crypto.randomUUID();
       await enqueueSessionFollowup(base, sid, {
         prompt,

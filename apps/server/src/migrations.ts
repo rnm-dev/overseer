@@ -834,4 +834,34 @@ export const MIGRATIONS: { id: string; statements: string[] }[] = [
       `CREATE UNIQUE INDEX IF NOT EXISTS peon_enrollment_identity_lease_idx ON peon_enrollment_leases (identity_key_id)`,
     ],
   },
+  {
+    // A session command may reference only a terminal file-write-v1 result.
+    // Receipts are durable because the Peon's completed-write replay cache is
+    // intentionally process-local and cannot prove a commit after restart.
+    id: "031_attachment_transfer_receipts",
+    statements: [
+      `CREATE TABLE IF NOT EXISTS attachment_transfer_receipts (
+         receipt_id         TEXT PRIMARY KEY,
+         workspace_id       TEXT NOT NULL,
+         peon_id            TEXT NOT NULL,
+         transfer_id        TEXT NOT NULL,
+         actor_user_id      TEXT NOT NULL,
+         actor_email        TEXT NOT NULL,
+         path               TEXT NOT NULL,
+         size               BIGINT NOT NULL,
+         sha256             TEXT NOT NULL,
+         created_at         BIGINT NOT NULL,
+         expires_at         BIGINT NOT NULL,
+         bound_command_id   TEXT,
+         bound_request_hash TEXT,
+         bound_session_id   TEXT,
+         bound_at           BIGINT,
+         UNIQUE (workspace_id,peon_id,transfer_id)
+       )`,
+      `CREATE INDEX IF NOT EXISTS attachment_transfer_receipts_expiry_idx
+         ON attachment_transfer_receipts (expires_at)`,
+      `CREATE INDEX IF NOT EXISTS attachment_transfer_receipts_command_idx
+         ON attachment_transfer_receipts (workspace_id,peon_id,bound_command_id)`,
+    ],
+  },
 ];

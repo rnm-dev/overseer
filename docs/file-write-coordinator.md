@@ -44,6 +44,27 @@ failure and socket replacement all release the same admission reservation.
 Late terminal frames hit the bounded tombstone and cannot complete a newer
 transfer.
 
+## Attachment commit receipts
+
+An attachment upload returns a server-generated receipt `transferId` only
+after Peon emits a terminal `write_result` whose path, size and SHA-256 pass
+validation. Overseer persists the receipt with its workspace, Peon and
+canonical actor. A reverse `session.start` or `session.followup` attachment
+reference carries `transferId`, `path`, `size` and `sha256`; the
+reverse-command admission transaction binds every receipt to the command ID
+and complete request fingerprint before inserting the durable command.
+
+A receipt is reusable only by an idempotent replay of that exact fingerprint.
+A different actor, Peon, workspace, session, command, path, size or digest
+fails closed. Receipts expire after one hour; commands remain bounded to 20
+attachments, 25 MiB per attachment and 100 MiB aggregate bytes.
+
+Peon's completed-write replay cache remains process-local. Overseer therefore
+never reconstructs a receipt from a path after restart: when the terminal
+result was not durably recorded, the client must upload again. This explicit
+restart boundary prevents unfinished or unverifiable bytes from entering
+durable command admission.
+
 ## Task mapping
 
 OVSR-229 owns the released-compatible transport and Peon receiver. OVSR-51

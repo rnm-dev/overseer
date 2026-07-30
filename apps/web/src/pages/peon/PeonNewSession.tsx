@@ -123,17 +123,24 @@ export function PeonNewSession() {
   // Upload one file into a draft sandbox folder (a client-generated id — the
   // session doesn't exist yet) so its path can ride along in the same request
   // that starts the session, exactly like a followup's attachments[].
-  async function uploadFile(draftId: string, f: File): Promise<string> {
+  async function uploadFile(draftId: string, f: File): Promise<{ path: string; transferId?: string; size?: number; sha256?: string }> {
     const safe = f.name.replace(/[^\w.-]+/g, "_") || "file";
     const buf = await f.arrayBuffer();
     const digest = await crypto.subtle.digest("SHA-256", buf);
     const hex = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
-    const res = await api<{ path?: string }>(attachmentUploadPath(base, draftId, safe), {
+    const res = await api<{ path?: string; transferId?: string; size?: number; sha256?: string }>(attachmentUploadPath(base, draftId, safe), {
       method: "PUT",
       body: buf,
       headers: { "content-type": "application/octet-stream", "peon-content-sha256": hex },
     });
-    return res.path || `uploads/${draftId}/${safe}`;
+    if (!res.path || (res.transferId !== undefined
+      && (res.size !== f.size || res.sha256 !== hex))) {
+      throw new Error("Overseer returned an invalid committed attachment receipt");
+    }
+    return {
+      path: res.path,
+      ...(res.transferId ? { transferId: res.transferId, size: res.size, sha256: res.sha256 } : {}),
+    };
   }
 
   async function start() {
@@ -142,8 +149,8 @@ export function PeonNewSession() {
     setError(null);
     try {
       const draftId = crypto.randomUUID();
-      const attachments: { type: "file" | "image"; path: string }[] = [];
-      for (const f of files) attachments.push({ type: isImage(f) ? "image" : "file", path: await uploadFile(draftId, f) });
+      const attachments: { type: "file" | "image"; path: string; transferId?: string; size?: number; sha256?: string }[] = [];
+      for (const f of files) attachments.push({ type: isImage(f) ? "image" : "file", ...await uploadFile(draftId, f) });
       const body = buildNewSessionRequest({ prompt: input, projectKey, dir, agent, model, reasoningEffort, attachments });
       const res = await api<{ id?: string; session?: { id?: string } }>(`${base}/sessions`, {
         ...json(body),
