@@ -135,6 +135,9 @@ export class PeonTranscriptSync {
       readyWaitMs?: number;
       subscriptionResponseMs?: number;
       subscriptionLimit?: number;
+      loadTranscriptState?: typeof getTranscriptState;
+      scheduleRenewal?: (callback: () => void, delayMs: number) => NodeJS.Timeout;
+      scheduleSubscriptionTimeout?: (callback: () => void, delayMs: number) => NodeJS.Timeout;
     } = {},
   ) {}
 
@@ -581,11 +584,16 @@ export class PeonTranscriptSync {
       this.renewalTimers.delete(sessionId);
       return;
     }
-    const timer = setTimeout(() => {
+    const schedule = this.options.scheduleRenewal ?? setTimeout;
+    const timer = schedule(() => {
       this.renewalTimers.delete(sessionId);
       if ((this.demands.get(sessionId) ?? 0) === 0 || this.disposed) return;
-      void getTranscriptState(this.record.peonId, sessionId).then((state) => {
-        if (!state?.epoch || state.acknowledgedSeq === null || this.disposed) {
+      const loadState = this.options.loadTranscriptState ?? getTranscriptState;
+      void loadState(this.record.peonId, sessionId).then((state) => {
+        if ((this.demands.get(sessionId) ?? 0) === 0
+          || !this.subscriptions.has(sessionId)
+          || this.disposed) return;
+        if (!state?.epoch || state.acknowledgedSeq === null) {
           this.requestSnapshot(sessionId, false);
           return;
         }
@@ -602,7 +610,12 @@ export class PeonTranscriptSync {
           afterSeq: state.acknowledgedSeq,
         });
       }).catch(() => {
-        if (this.ws.readyState === WebSocket.OPEN) this.ws.close(1011, "transcript renewal failed");
+        if ((this.demands.get(sessionId) ?? 0) > 0
+          && this.subscriptions.has(sessionId)
+          && !this.disposed
+          && this.ws.readyState === WebSocket.OPEN) {
+          this.ws.close(1011, "transcript renewal failed");
+        }
       });
     }, Math.max(1_000, expiresAt - Date.now() - 30_000));
     timer.unref();
@@ -676,7 +689,8 @@ export class PeonTranscriptSync {
 
   private beginSubscription(sessionId: string, epoch: string, afterSeq: number): string {
     const requestId = randomUUID();
-    const timer = setTimeout(() => {
+    const schedule = this.options.scheduleSubscriptionTimeout ?? setTimeout;
+    const timer = schedule(() => {
       const current = this.subscriptionRequests.get(requestId);
       if (!current) return;
       this.subscriptionRequests.delete(requestId);

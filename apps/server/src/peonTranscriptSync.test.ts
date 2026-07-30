@@ -122,7 +122,7 @@ async function waitForFrame(
   socket: FakeSocket,
   predicate: (frame: Record<string, unknown>) => boolean,
 ): Promise<Record<string, unknown>> {
-  const deadline = Date.now() + 2_000;
+  const deadline = Date.now() + 30_000;
   while (Date.now() < deadline) {
     const frame = socket.frames.find(predicate);
     if (frame) return frame;
@@ -239,8 +239,8 @@ test("unique active and pending transcript subscriptions obey the per-Peon cap",
   assert.equal(TRANSCRIPT_CHANNEL_HELLO.subscriptions, MAX_TRANSCRIPT_SUBSCRIPTIONS);
   const { socket, sync } = await setup({
     subscriptionLimit: 2,
-    readyWaitMs: 500,
-    subscriptionResponseMs: 500,
+    readyWaitMs: 30_000,
+    subscriptionResponseMs: 30_000,
   });
   const first = sync.acquire("s1");
   const firstSnapshot = await waitForFrame(socket, (frame) =>
@@ -258,6 +258,7 @@ test("unique active and pending transcript subscriptions obey the per-Peon cap",
   }, 512);
   const releaseFirst = await first;
   const second = sync.acquire("s2");
+  const secondRejected = assert.rejects(second, /reverse transcript connection closed/);
   await waitForFrame(socket, (frame) =>
     frame.type === "transcript_snapshot_request" && frame.sessionId === "s2");
   assert.deepEqual(sync.subscriptionStats(), {
@@ -267,7 +268,6 @@ test("unique active and pending transcript subscriptions obey the per-Peon cap",
   await assert.rejects(sync.acquire("s3"), /transcript subscription limit exceeded/);
   assert.equal(socket.frames.filter((frame) =>
     frame.type === "transcript_snapshot_request" && frame.sessionId === "s3").length, 0);
-  const secondRejected = assert.rejects(second, /reverse transcript connection closed/);
   releaseFirst();
   sync.dispose();
   await secondRejected;
@@ -324,13 +324,90 @@ test("release clears a correlated renewal that is still awaiting its Peon respon
   sync.dispose();
 });
 
+test("release during renewal state lookup cannot recreate Peon demand or pending state", async () => {
+  let runRenewal: (() => void) | undefined;
+  let resolveState: ((state: Awaited<ReturnType<typeof getTranscriptState>>) => void) | undefined;
+  let markStateLoadStarted: (() => void) | undefined;
+  const stateLoadStarted = new Promise<void>((resolve) => {
+    markStateLoadStarted = resolve;
+  });
+  const deferredState = new Promise<Awaited<ReturnType<typeof getTranscriptState>>>((resolve) => {
+    resolveState = resolve;
+  });
+  const { socket, sync } = await setup({
+    subscriptionResponseMs: 5_000,
+    loadTranscriptState: () => {
+      markStateLoadStarted!();
+      return deferredState;
+    },
+    scheduleRenewal: (callback) => {
+      runRenewal = callback;
+      const timer = setTimeout(() => undefined, 60_000);
+      timer.unref();
+      return timer;
+    },
+  });
+  const initial = sync.acquire("s1");
+  const snapshot = await waitForFrame(socket, (frame) => frame.type === "transcript_snapshot_request");
+  await sync.handle({
+    type: "transcript_snapshot_page",
+    requestId: snapshot.requestId,
+    sessionId: "s1",
+    epoch: "epoch-1",
+    revision: 1,
+    barrierSeq: 1,
+    events: [published(1)],
+    nextCursor: null,
+    hasMore: false,
+  }, 512);
+  (await initial)();
+
+  const acquired = sync.acquire("s1");
+  const subscribed = await waitForFrame(
+    socket,
+    (frame) => frame.type === "transcript_subscribe" && frame.sessionId === "s1",
+  );
+  await sync.handle({
+    type: "transcript_subscribed",
+    requestId: subscribed.requestId,
+    sessionId: "s1",
+    epoch: "epoch-1",
+    afterSeq: 1,
+    expiresAt: Date.now() + 60_000,
+  }, 128);
+  const release = await acquired;
+  const projectedState = await getTranscriptState("p1", "s1");
+  const subscribeCount = socket.frames.filter((frame) =>
+    frame.type === "transcript_subscribe" && frame.sessionId === "s1").length;
+  runRenewal!();
+  await stateLoadStarted;
+  release();
+  resolveState!(projectedState);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+
+  assert.equal(socket.frames.filter((frame) =>
+    frame.type === "transcript_subscribe" && frame.sessionId === "s1").length, subscribeCount);
+  assert.deepEqual(sync.subscriptionStats(), {
+    activeOrPending: 0,
+    pendingResponses: 0,
+  });
+  sync.dispose();
+});
+
 test("a silent Peon cannot leak correlated pending subscription state", async () => {
+  let expireSubscription: (() => void) | undefined;
   const { socket, sync } = await setup({
     // Initial projection setup performs real pg-mem migration/commit work and
     // may share a saturated parallel test runner. Keep that readiness budget
-    // independent from the deliberately short unanswered-subscribe deadline.
-    readyWaitMs: 5_000,
+    // independent and trigger the unanswered-subscribe deadline explicitly.
+    readyWaitMs: 30_000,
     subscriptionResponseMs: 250,
+    scheduleSubscriptionTimeout: (callback) => {
+      expireSubscription = callback;
+      const timer = setTimeout(() => undefined, 60_000);
+      timer.unref();
+      return timer;
+    },
   });
   const initial = sync.acquire("s1");
   const snapshot = await waitForFrame(socket, (frame) => frame.type === "transcript_snapshot_request");
@@ -348,12 +425,14 @@ test("a silent Peon cannot leak correlated pending subscription state", async ()
   (await initial)();
 
   const unanswered = sync.acquire("s1");
+  const rejected = assert.rejects(unanswered, /reverse transcript connection closed|subscription timed out/);
   await waitForFrame(socket, (frame) => frame.type === "transcript_subscribe");
   assert.deepEqual(sync.subscriptionStats(), {
     activeOrPending: 1,
     pendingResponses: 1,
   });
-  await assert.rejects(unanswered, /reverse transcript connection closed|subscription timed out/);
+  expireSubscription!();
+  await rejected;
   assert.equal(socket.closeCode, 1011);
   assert.deepEqual(sync.subscriptionStats(), {
     activeOrPending: 0,

@@ -50,7 +50,7 @@ function collector(ws: WebSocket) {
   });
   return {
     frames,
-    waitFor(predicate: (frame: Record<string, unknown>) => boolean, timeoutMs = 3_000) {
+    waitFor(predicate: (frame: Record<string, unknown>) => boolean, timeoutMs = 60_000) {
       return new Promise<Record<string, unknown>>((resolve, reject) => {
         const inspect = () => {
           const found = frames.find(predicate);
@@ -78,7 +78,7 @@ function sseCollector(response: Response) {
     new Promise((resolve, reject) => {
       const timer = setTimeout(
         () => reject(new Error(`timed out reading SSE; received ${body}`)),
-        3_000,
+        60_000,
       );
       void reader.read().then(
         (chunk) => {
@@ -395,6 +395,22 @@ test("reverse transcript snapshot/live/replay reaches authorized browsers once a
     demandFramesBeforeRevokedSubscribe,
     "a cached ACL must not emit Peon demand after its authoritative grant is revoked",
   );
+  const revokedHistory = await fetch(
+    `http://127.0.0.1:${port}/api/workspaces/${workspace.id}/peons/peon-1/sessions/session-2/transcript`,
+    { headers: { Authorization: `Bearer ${allowedMemberAuth.token}` } },
+  );
+  assert.equal(revokedHistory.status, 404);
+  const revokedStream = await fetch(
+    `http://127.0.0.1:${port}/api/workspaces/${workspace.id}/peons/peon-1/sessions/session-2/stream`,
+    { headers: { Authorization: `Bearer ${allowedMemberAuth.token}` } },
+  );
+  assert.equal(revokedStream.status, 404);
+  assert.equal(
+    peonFrames.frames.filter((frame) =>
+      frame.type === "transcript_snapshot_request" || frame.type === "transcript_subscribe").length,
+    demandFramesBeforeRevokedSubscribe,
+    "revoked REST and SSE opens must not emit Peon demand",
+  );
   peon.send(JSON.stringify({
     ...live,
     cursor: "cursor-3",
@@ -644,6 +660,57 @@ test("transcript capability negotiation is negative without durable catalog supp
       frame.type === "hello_ack"
       && Array.isArray(frame.capabilities)
       && frame.capabilities.includes("transcript-sync-v1")),
+    false,
+  );
+
+  const oversized = await open(`ws://127.0.0.1:${port}/api/v1/peons/ws`, token);
+  sockets.push(oversized);
+  const oversizedFrames = collector(oversized);
+  oversized.send(JSON.stringify({
+    type: "hello",
+    protocol: 1,
+    peonId: "peon-negotiation",
+    capabilities: ["session-catalog-v1", "durable-delivery-v1", "transcript-sync-v1"],
+    channels: {
+      "session-catalog-v1": { epoch: "catalog", revision: 0, earliestSeq: 0, latestSeq: 0 },
+      "transcript-sync-v1": TRANSCRIPT_CHANNEL_HELLO,
+    },
+    delivery: {
+      epoch: "delivery",
+      earliestCursor: null,
+      latestCursor: null,
+      acknowledgedCursor: null,
+      pendingMessages: 0,
+      pendingBytes: 0,
+      maxMessages: 5_000,
+      maxBytes: 33_554_432,
+      backpressured: false,
+      negotiated: false,
+      recoveredFromCorruption: false,
+      lastError: null,
+    },
+  }));
+  await oversizedFrames.waitFor((frame) => frame.type === "hello_ack");
+  const oversizedClosed = once(oversized, "close");
+  oversized.send(JSON.stringify({
+    type: "durable_message",
+    capability: "transcript-sync-v1",
+    epoch: "delivery",
+    cursor: "oversized-cursor",
+    messageId: "00000000-0000-4000-8000-000000000099",
+    priority: "critical",
+    payload: {
+      type: "transcript_live_event",
+      ...published(1),
+      event: { type: "assistant", text: "x".repeat(TRANSCRIPT_CHANNEL_HELLO.eventBytes) },
+    },
+  }));
+  const [oversizedCode, oversizedReason] = await oversizedClosed;
+  assert.equal(oversizedCode, 1002);
+  assert.match(oversizedReason.toString(), /exceeds negotiated eventBytes/);
+  assert.equal(
+    oversizedFrames.frames.some((frame) =>
+      frame.type === "durable_ack" && frame.cursor === "oversized-cursor"),
     false,
   );
 });

@@ -403,9 +403,9 @@ export async function commitTranscriptEvent(input: {
          WHERE peon_id=$1 AND session_id=$2 AND transcript_epoch=$3 AND seq=$4`,
         [input.peonId, input.sessionId, input.transcriptEpoch, input.seq],
       );
-      if (existing.rows[0]
-        && (existing.rows[0].event_id !== input.eventId
-          || JSON.stringify(existing.rows[0].payload) !== JSON.stringify(event))) {
+      if (!existing.rows[0]
+        || existing.rows[0].event_id !== input.eventId
+        || canonicalPayload(existing.rows[0].payload) !== canonicalPayload(event)) {
         throw new TranscriptProjectionError("REPLAY_MISMATCH", "durable transcript replay payload mismatch");
       }
       const delivery = await sharedDeliveryCheckpoint(tx, input.peonId, input.generation);
@@ -617,6 +617,8 @@ export async function commitTranscriptDeletion(input: {
 
 interface CursorPayload {
   v: 1;
+  peonId: string;
+  sessionId: string;
   epoch: string;
   before: number;
 }
@@ -625,11 +627,16 @@ function encodeCursor(cursor: CursorPayload): string {
   return Buffer.from(JSON.stringify(cursor)).toString("base64url");
 }
 
-function decodeCursor(cursor: string, epoch: string): CursorPayload {
+function decodeCursor(cursor: string, peonId: string, sessionId: string, epoch: string): CursorPayload {
   try {
     if (!cursor || cursor.length > 2_000) throw new Error();
     const parsed = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8")) as Partial<CursorPayload>;
-    if (parsed.v !== 1 || parsed.epoch !== epoch || !Number.isSafeInteger(parsed.before) || Number(parsed.before) < 0) throw new Error();
+    if (parsed.v !== 1
+      || parsed.peonId !== peonId
+      || parsed.sessionId !== sessionId
+      || parsed.epoch !== epoch
+      || !Number.isSafeInteger(parsed.before)
+      || Number(parsed.before) < 0) throw new Error();
     return parsed as CursorPayload;
   } catch {
     throw new TranscriptProjectionError("BAD_CURSOR", "invalid transcript cursor");
@@ -646,7 +653,9 @@ export async function readTranscriptPage(input: {
   const state = await getTranscriptState(input.peonId, input.sessionId);
   if (!state?.epoch || state.status === "evicted") return null;
   const limit = Math.min(500, Math.max(1, input.limit));
-  const cursor = input.cursor ? decodeCursor(input.cursor, state.epoch) : null;
+  const cursor = input.cursor
+    ? decodeCursor(input.cursor, input.peonId, input.sessionId, state.epoch)
+    : null;
   const params: unknown[] = [input.peonId, input.sessionId, state.epoch];
   const before = cursor ? ` AND seq < $${params.push(cursor.before)}` : "";
   params.push(limit + 1);
@@ -666,7 +675,15 @@ export async function readTranscriptPage(input: {
   );
   return {
     events: selected.reverse().map((row) => row.payload),
-    nextCursor: hasMore && oldest ? encodeCursor({ v: 1, epoch: state.epoch, before: Number(oldest.seq) }) : null,
+    nextCursor: hasMore && oldest
+      ? encodeCursor({
+        v: 1,
+        peonId: input.peonId,
+        sessionId: input.sessionId,
+        epoch: state.epoch,
+        before: Number(oldest.seq),
+      })
+      : null,
     hasMore,
     freshness: {
       state: activeState,

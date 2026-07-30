@@ -201,6 +201,96 @@ test("live transcript commit, browser event, inbox cursor, replay dedupe, and ga
   assert.equal((await getTranscriptState("p1", "s1"))?.acknowledgedSeq, 3);
 });
 
+test("durable replay requires the projected row and compares canonical normalized payloads", async () => {
+  await database();
+  await claim("p1", "s1", "generation-1");
+  await commitTranscriptSnapshot({
+    workspaceId: "ws",
+    peonId: "p1",
+    sessionId: "s1",
+    generation: "generation-1",
+    epoch: "epoch-1",
+    revision: 1,
+    barrierSeq: 1,
+    events: [envelope(1)],
+  });
+  const base = envelope(2).event;
+  const live = {
+    workspaceId: "ws",
+    peonId: "p1",
+    sessionId: "s1",
+    generation: "generation-1",
+    transcriptEpoch: "epoch-1",
+    seq: 2,
+    revision: 2,
+    eventId: "event-2",
+    event: { ...base, metadata: { alpha: 1, beta: 2 } },
+    deliveryEpoch: "delivery-1",
+    deliveryCursor: "cursor-2",
+    messageId: "00000000-0000-4000-8000-000000000002",
+  };
+  await commitTranscriptEvent(live);
+  await commitTranscriptEvent({
+    ...live,
+    event: { ...base, metadata: { beta: 2, alpha: 1 } },
+  });
+
+  await query(
+    `DELETE FROM transcript_events
+     WHERE peon_id='p1' AND session_id='s1' AND transcript_epoch='epoch-1' AND seq=2`,
+  );
+  await assert.rejects(
+    commitTranscriptEvent(live),
+    (error) => error instanceof TranscriptProjectionError && error.code === "REPLAY_MISMATCH",
+  );
+  assert.equal((await query<{ acknowledged_cursor: string | null }>(
+    `SELECT acknowledged_cursor FROM peon_session_sync WHERE peon_id='p1'`,
+  )).rows[0]?.acknowledged_cursor, "cursor-2");
+});
+
+test("an inbox identity without its projected transcript row cannot be acknowledged", async () => {
+  await database();
+  await claim("p1", "s1", "generation-1");
+  await commitTranscriptSnapshot({
+    workspaceId: "ws",
+    peonId: "p1",
+    sessionId: "s1",
+    generation: "generation-1",
+    epoch: "epoch-1",
+    revision: 1,
+    barrierSeq: 1,
+    events: [envelope(1)],
+  });
+  await query(
+    `INSERT INTO peon_session_inbox (peon_id,epoch,cursor,created_at,message_id)
+     VALUES ('p1','delivery-1','cursor-2',1,'00000000-0000-4000-8000-000000000002')`,
+  );
+  await assert.rejects(
+    commitTranscriptEvent({
+      workspaceId: "ws",
+      peonId: "p1",
+      sessionId: "s1",
+      generation: "generation-1",
+      transcriptEpoch: "epoch-1",
+      seq: 2,
+      revision: 2,
+      eventId: "event-2",
+      event: envelope(2).event,
+      deliveryEpoch: "delivery-1",
+      deliveryCursor: "cursor-2",
+      messageId: "00000000-0000-4000-8000-000000000002",
+    }),
+    (error) => error instanceof TranscriptProjectionError && error.code === "REPLAY_MISMATCH",
+  );
+  assert.equal((await query<{ acknowledged_cursor: string | null }>(
+    `SELECT acknowledged_cursor FROM peon_session_sync WHERE peon_id='p1'`,
+  )).rows[0]?.acknowledged_cursor, null);
+  assert.equal((await query<{ count: number }>(
+    `SELECT COUNT(*)::int AS count FROM transcript_events
+     WHERE peon_id='p1' AND session_id='s1' AND seq=2`,
+  )).rows[0]?.count, 0);
+});
+
 test("snapshot-covered durable events match projected identity and payload before cursor commit", async () => {
   await database();
   await claim("p1", "s1", "generation-1");
@@ -263,6 +353,46 @@ test("snapshot-covered durable events match projected identity and payload befor
     `SELECT COUNT(*)::int AS count FROM peon_session_inbox
      WHERE cursor IN ('covered-mismatch-payload','covered-mismatch-id')`,
   )).rows[0]?.count, 0);
+});
+
+test("pagination cursors are bound to their Peon and session even when epochs match", async () => {
+  await database();
+  await claimSessionSyncGeneration("p1", "generation-1");
+  for (const sessionId of ["s1", "s2"]) {
+    await claimTranscriptGeneration({
+      workspaceId: "ws",
+      peonId: "p1",
+      sessionId,
+      generation: "generation-1",
+    });
+    await commitTranscriptSnapshot({
+      workspaceId: "ws",
+      peonId: "p1",
+      sessionId,
+      generation: "generation-1",
+      epoch: "shared-epoch",
+      revision: 2,
+      barrierSeq: 2,
+      events: [envelope(1), envelope(2)],
+    });
+  }
+  const firstPage = await readTranscriptPage({
+    peonId: "p1",
+    sessionId: "s1",
+    limit: 1,
+    online: true,
+  });
+  assert.ok(firstPage?.nextCursor);
+  await assert.rejects(
+    readTranscriptPage({
+      peonId: "p1",
+      sessionId: "s2",
+      limit: 1,
+      cursor: firstPage.nextCursor,
+      online: true,
+    }),
+    (error) => error instanceof TranscriptProjectionError && error.code === "BAD_CURSOR",
+  );
 });
 
 test("a restarted connection resumes the committed transcript and a stale generation cannot append", async () => {
