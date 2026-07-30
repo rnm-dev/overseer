@@ -104,8 +104,8 @@ Each of these was checked against the actual tooling, not assumed.
 the literal `"workspace:^"` in the published manifest. Declare workspace
 dependencies as ordinary semver ranges (`"@rnm-dev/protocol": "^1.0.0"`) — npm links
 the local package by symlink and publishes a valid range. This is why
-`@rnm-dev/protocol` must be published publicly alongside `@rnm-dev/peon` rather than kept
-private.
+`@rnm-dev/protocol` must be published publicly before Peon starts depending on
+it rather than kept private.
 
 **The npm name `peon` is taken** (version 0.1.0, maintainer `tpisto`), and the
 `@rnm` npm scope was unavailable. The npm organisation is `rnm-dev`; the
@@ -169,10 +169,11 @@ Each step leaves the tree working.
    rewritten compose mounts and Kamal build context.
 2. **OVSR-239** — `packages/protocol`; server and web move onto it, then publish
    it as `@rnm-dev/protocol`.
-3. **OVSR-240** — *Peon source is now in `apps/peon` as the `@rnm-dev/peon`
-   workspace.* Publish Peon independently before it depends on the future
-   protocol package. This is the risky part because it touches the fleet's live
-   update channel.
+3. **OVSR-240** — *released.* Peon lives in `apps/peon` as the
+   `@rnm-dev/peon` workspace; public `0.11.2` was published to npm on
+   2026-07-30 and verified by a clean registry install. npm is the installation
+   channel only: enrolled fleet updates still use Overseer's authenticated,
+   size- and SHA-256-verified release registry.
 4. **OVSR-241** — *done locally.* The Flutter client is in `apps/client`, its
    GitHub Actions workflow is gone, and its documentation lives under
    `docs/client/`.
