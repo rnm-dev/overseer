@@ -25,10 +25,12 @@ export interface PreviewRevision {
 export class PreviewRevisionState {
   private readonly watches = new Map<string, LogicalWatch>();
   private readonly leaseKeys = new Map<string, string>();
+  private revisionHighWater: number;
 
   constructor(
     private readonly maxLogicalWatches = 16,
     private readonly maxLeases = 64,
+    revisionFloor = 0,
   ) {
     if (!Number.isSafeInteger(maxLogicalWatches) || maxLogicalWatches < 1) {
       throw new RangeError("maxLogicalWatches must be a positive safe integer");
@@ -36,6 +38,10 @@ export class PreviewRevisionState {
     if (!Number.isSafeInteger(maxLeases) || maxLeases < 1) {
       throw new RangeError("maxLeases must be a positive safe integer");
     }
+    if (!Number.isSafeInteger(revisionFloor) || revisionFloor < 0) {
+      throw new RangeError("revisionFloor must be a non-negative safe integer");
+    }
+    this.revisionHighWater = revisionFloor;
   }
 
   add(lease: PreviewLease): { shared: boolean } {
@@ -62,7 +68,8 @@ export class PreviewRevisionState {
     if (!key) return false;
     const lease = this.watches.get(key)?.leases.get(leaseId);
     if (!lease) return false;
-    lease.expiresAt = expiresAt;
+    // A delayed/replayed renewal must not undo a newer extension.
+    lease.expiresAt = Math.max(lease.expiresAt, expiresAt);
     return true;
   }
 
@@ -92,9 +99,20 @@ export class PreviewRevisionState {
   begin(key: string): PreviewRevision {
     const watch = this.watches.get(key);
     if (!watch) throw new Error("UNKNOWN_WATCH");
-    if (watch.revision >= Number.MAX_SAFE_INTEGER) throw new Error("REVISION_EXHAUSTED");
-    watch.revision += 1;
+    if (this.revisionHighWater >= Number.MAX_SAFE_INTEGER) throw new Error("REVISION_EXHAUSTED");
+    this.revisionHighWater += 1;
+    watch.revision = this.revisionHighWater;
     return { key, revision: watch.revision };
+  }
+
+  /**
+   * Advances the allocator after daemon restart reconciliation. Replayed or
+   * stale floors are harmless; callers can safely apply the Overseer-committed
+   * high-water revision more than once.
+   */
+  reconcileRevisionFloor(revision: number): void {
+    if (!Number.isSafeInteger(revision) || revision < 0) throw new Error("INVALID_REVISION");
+    this.revisionHighWater = Math.max(this.revisionHighWater, revision);
   }
 
   activate(candidate: PreviewRevision): boolean {

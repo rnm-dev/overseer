@@ -17,6 +17,7 @@ test("renewal and expiry retain live leases and report released watchers", () =>
   state.add({ leaseId: "two", key: "a", expiresAt: 20 });
   state.add({ leaseId: "three", key: "b", expiresAt: 10 });
   assert.equal(state.renew("one", 30), true);
+  assert.equal(state.renew("one", 15), true);
   assert.deepEqual(state.expire(10), ["b"]);
   assert.deepEqual(state.snapshot().map(({ key, leases }) => [key, leases.map((lease) => lease.leaseId)]), [
     ["a", ["one", "two"]],
@@ -52,4 +53,16 @@ test("clear fences all outstanding completions", () => {
   const pending = state.begin("a");
   assert.deepEqual(state.clear(), ["a"]);
   assert.equal(state.activate(pending), false);
+  state.add({ leaseId: "two", key: "a", expiresAt: 200 });
+  assert.equal(state.begin("a").revision, pending.revision + 1);
+});
+
+test("restart reconciliation advances the revision floor monotonically", () => {
+  const state = new PreviewRevisionState(16, 64, 40);
+  state.add({ leaseId: "one", key: "a", expiresAt: 100 });
+  assert.equal(state.begin("a").revision, 41);
+  state.reconcileRevisionFloor(50);
+  state.reconcileRevisionFloor(45);
+  assert.equal(state.begin("a").revision, 51);
+  assert.throws(() => state.reconcileRevisionFloor(-1), /INVALID_REVISION/);
 });
