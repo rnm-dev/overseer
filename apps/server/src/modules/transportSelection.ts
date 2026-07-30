@@ -2,6 +2,7 @@ export type PeonTransport = "reverse" | "legacy" | "unavailable";
 
 export type PeonTransportReason =
   | "reverse-capability-authoritative"
+  | "reverse-accepted-reconciliation"
   | "reverse-routing-disabled"
   | "reverse-rollout-disabled"
   | "legacy-mixed-version-fallback"
@@ -29,6 +30,7 @@ export interface ReverseCapabilityRollout {
 
 export interface ReverseRolloutPolicy {
   capabilities: ReadonlyMap<string, ReverseCapabilityRollout>;
+  valid: boolean;
 }
 
 export interface TransportTelemetrySnapshot {
@@ -43,6 +45,10 @@ const selectionReasons = new Map<PeonTransportReason, number>();
 
 const CAPABILITY_NAME = /^[a-z][a-z0-9-]{0,63}-v[1-9][0-9]*$/;
 const VERSION = /^(?:v)?(\d+)\.(\d+)\.(\d+)$/;
+const PEON_ID = /^[A-Za-z0-9._-]{1,128}$/;
+const MAX_ROLLOUT_CONFIG_BYTES = 16 * 1024;
+const MAX_ROLLOUT_CAPABILITIES = 64;
+const MAX_ALLOWLISTED_PEONS = 1_000;
 
 function counts<T extends string>(keys: readonly T[], values: ReadonlyMap<T, number>): Record<T, number> {
   return Object.fromEntries(keys.map((key) => [key, values.get(key) ?? 0])) as Record<T, number>;
@@ -51,6 +57,7 @@ function counts<T extends string>(keys: readonly T[], values: ReadonlyMap<T, num
 const transports: readonly PeonTransport[] = ["reverse", "legacy", "unavailable"];
 const reasons: readonly PeonTransportReason[] = [
   "reverse-capability-authoritative",
+  "reverse-accepted-reconciliation",
   "reverse-routing-disabled",
   "reverse-rollout-disabled",
   "legacy-mixed-version-fallback",
@@ -60,6 +67,7 @@ const reasons: readonly PeonTransportReason[] = [
 export function legacyCallbackAttemptCounts(): Readonly<Record<PeonTransportReason, number>> {
   return {
     "reverse-capability-authoritative": callbackAttempts.get("reverse-capability-authoritative") ?? 0,
+    "reverse-accepted-reconciliation": callbackAttempts.get("reverse-accepted-reconciliation") ?? 0,
     "reverse-routing-disabled": callbackAttempts.get("reverse-routing-disabled") ?? 0,
     "reverse-rollout-disabled": callbackAttempts.get("reverse-rollout-disabled") ?? 0,
     "legacy-mixed-version-fallback": callbackAttempts.get("legacy-mixed-version-fallback") ?? 0,
@@ -119,6 +127,7 @@ export function capabilityRolloutAllows(input: {
   peonVersion?: string;
   rollout?: ReverseRolloutPolicy;
 }): boolean {
+  if (input.rollout && !input.rollout.valid) return false;
   const rule = input.rollout?.capabilities.get(input.capability);
   // No rollout policy means the pre-OVSR-152 behavior remains unchanged.
   if (!rule) return true;
@@ -136,22 +145,41 @@ export function reverseRolloutPolicyFromEnv(
   env: NodeJS.ProcessEnv = process.env,
 ): ReverseRolloutPolicy {
   const capabilities = new Map<string, ReverseCapabilityRollout>();
-  for (const entry of (env.OVERSEER_REVERSE_CAPABILITY_ROLLOUT ?? "").split(",")) {
-    const [capability, stage, minimumVersion, percent] = entry.split(":").map((part) => part.trim());
+  const raw = env.OVERSEER_REVERSE_CAPABILITY_ROLLOUT ?? "";
+  if (Buffer.byteLength(raw, "utf8") > MAX_ROLLOUT_CONFIG_BYTES) {
+    return { capabilities, valid: false };
+  }
+  const entries = raw.split(",");
+  if (entries.filter((entry) => entry.trim()).length > MAX_ROLLOUT_CAPABILITIES) {
+    return { capabilities, valid: false };
+  }
+  let valid = true;
+  for (const entry of entries) {
+    const parts = entry.split(":").map((part) => part.trim());
+    const [capability, stage, minimumVersion, percent] = parts;
     if (!capability && !stage) continue;
-    if (!CAPABILITY_NAME.test(capability)
+    if (parts.length > 4
+      || !CAPABILITY_NAME.test(capability)
       || !["off", "allowlist", "cohort", "default"].includes(stage)
       || (minimumVersion && !parseVersion(minimumVersion))
-      || (percent && (!/^\d{1,3}$/.test(percent) || Number(percent) > 100))) {
+      || (percent && (!/^\d{1,3}$/.test(percent) || Number(percent) > 100))
+      || capabilities.has(capability)) {
       // Malformed entries fail closed for that named capability. Invalid names
       // are ignored because they can never match a negotiated capability.
       if (CAPABILITY_NAME.test(capability)) capabilities.set(capability, { stage: "off" });
+      valid = false;
       continue;
     }
-    const allowlistedPeonIds = new Set(
+    const allowlistValues =
       (env[`OVERSEER_REVERSE_ALLOWLIST_${capability.toUpperCase().replace(/-/g, "_")}`] ?? "")
-        .split(";").map((value) => value.trim()).filter(Boolean),
-    );
+        .split(";").map((value) => value.trim()).filter(Boolean);
+    if (allowlistValues.length > MAX_ALLOWLISTED_PEONS
+      || allowlistValues.some((value) => !PEON_ID.test(value))) {
+      capabilities.set(capability, { stage: "off" });
+      valid = false;
+      continue;
+    }
+    const allowlistedPeonIds = new Set(allowlistValues);
     capabilities.set(capability, {
       stage: stage as ReverseRolloutStage,
       ...(minimumVersion ? { minimumVersion } : {}),
@@ -159,7 +187,7 @@ export function reverseRolloutPolicyFromEnv(
       ...(allowlistedPeonIds.size ? { allowlistedPeonIds } : {}),
     });
   }
-  return { capabilities };
+  return { capabilities, valid };
 }
 
 export function transportPolicyFromEnv(
@@ -184,8 +212,19 @@ export function selectPeonTransport(input: {
   peonId?: string;
   peonVersion?: string;
   rollout?: ReverseRolloutPolicy;
+  acceptedReverseCommand?: boolean;
 }): PeonTransportSelection {
   const policy = input.policy ?? transportPolicyFromEnv();
+  // Admission fixes authority for this command ID. A rollout or global
+  // rollback may affect only future commands; this one must reconcile through
+  // the durable reverse lifecycle and must never be reissued over legacy HTTP.
+  if (input.acceptedReverseCommand) {
+    return {
+      transport: "reverse",
+      reason: "reverse-accepted-reconciliation",
+      callbackAllowed: false,
+    };
+  }
   const rolloutAllowed = !input.capability || (!!input.peonId && capabilityRolloutAllows({
     capability: input.capability,
     peonId: input.peonId,

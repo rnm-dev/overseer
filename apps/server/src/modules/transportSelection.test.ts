@@ -132,6 +132,61 @@ test("malformed rollout entries disable the named capability", () => {
   assert.equal(capabilityRolloutAllows({
     capability: "reverse-command-v1", peonId: "peon", peonVersion: "99.0.0", rollout,
   }), false);
+  assert.equal(rollout.valid, false);
+});
+
+test("rollout configuration is bounded and rejects ambiguous extra fields", () => {
+  const tooMany = Array.from(
+    { length: 65 },
+    (_, index) => `capability-${index}-v1:off`,
+  ).join(",");
+  assert.equal(reverseRolloutPolicyFromEnv({
+    OVERSEER_REVERSE_CAPABILITY_ROLLOUT: tooMany,
+  }).valid, false);
+  const extraField = reverseRolloutPolicyFromEnv({
+    OVERSEER_REVERSE_CAPABILITY_ROLLOUT: "reverse-command-v1:default:2.0.0:100:ignored",
+  });
+  assert.equal(extraField.valid, false);
+  assert.equal(capabilityRolloutAllows({
+    capability: "folder-listing-v1",
+    peonId: "peon",
+    peonVersion: "9.0.0",
+    rollout: extraField,
+  }), false, "an invalid policy fails closed for every capability");
+});
+
+test("accepted reverse authority survives rollback without invoking a duplicate legacy effect", async () => {
+  resetTransportTelemetryForTest();
+  const selected = selectPeonTransport({
+    connected: false,
+    familyNegotiated: false,
+    operationNegotiated: false,
+    acceptedReverseCommand: true,
+    policy: { reverseRoutingEnabled: false, legacyCallbackFallbackEnabled: true },
+  });
+  let admittedEffects = 1;
+  let legacyEffects = 0;
+  const result = await runSelectedTransport(selected, {
+    reverse: async () => {
+      // Status/replay joins the already-admitted command ID; it does not admit
+      // another effect.
+      return { status: "accepted", effects: admittedEffects };
+    },
+    legacy: async () => {
+      legacyEffects += 1;
+      admittedEffects += 1;
+      return { status: "duplicated", effects: admittedEffects };
+    },
+    unavailable: async () => ({ status: "unavailable", effects: admittedEffects }),
+  });
+  assert.deepEqual(selected, {
+    transport: "reverse",
+    reason: "reverse-accepted-reconciliation",
+    callbackAllowed: false,
+  });
+  assert.deepEqual(result, { status: "accepted", effects: 1 });
+  assert.equal(legacyEffects, 0);
+  assert.equal(legacyCallbackAttemptCounts()["reverse-accepted-reconciliation"], 0);
 });
 
 test("rollout denial selects one compatibility route and never invokes reverse", async () => {
@@ -161,6 +216,7 @@ test("rollout denial selects one compatibility route and never invokes reverse",
     selections: { reverse: 0, legacy: 1, unavailable: 0 },
     reasons: {
       "reverse-capability-authoritative": 0,
+      "reverse-accepted-reconciliation": 0,
       "reverse-routing-disabled": 0,
       "reverse-rollout-disabled": 1,
       "legacy-mixed-version-fallback": 0,
@@ -168,6 +224,7 @@ test("rollout denial selects one compatibility route and never invokes reverse",
     },
     callbackAttempts: {
       "reverse-capability-authoritative": 0,
+      "reverse-accepted-reconciliation": 0,
       "reverse-routing-disabled": 0,
       "reverse-rollout-disabled": 1,
       "legacy-mixed-version-fallback": 0,

@@ -26,7 +26,9 @@ OVERSEER_REVERSE_ALLOWLIST_REVERSE_COMMAND_V1=peon-id-1;peon-id-2
 
 Each entry is `capability:stage[:minimum-version][:cohort-percent]`. Stages are
 `off`, `allowlist`, `cohort`, and `default`. Invalid entries fail closed for the
-named capability. Minimum versions use three numeric components. Cohorts are a
+entire supplied policy; duplicate entries and extra fields are invalid. The
+configuration is bounded to 16 KiB, 64 capability entries and 1,000 Peon IDs
+per allowlist. Minimum versions use three numeric components. Cohorts are a
 stable percentage assignment based on capability and Peon ID; Peon IDs are not
 emitted as telemetry labels. The global routing switch is the kill switch for
 all families; changing a family to `off` is its independent kill switch.
@@ -78,7 +80,12 @@ For a capability that has not admitted an operation, change its stage to `off`
 or set the global routing switch to `0`, then restart the Overseer process and
 verify selection telemetry. For an accepted reverse command, do not submit a
 new legacy action: reconcile the original command ID through status/replay
-until terminal. Rollback changes future selection only.
+until terminal. The selector models this as `acceptedReverseCommand`: it keeps
+the reverse reconciliation handler authoritative even when the rollout or
+global routing switch is off, and never evaluates the legacy handler. Rollback
+changes future command selection only. Production proof still requires the
+gateway/call sites to pass this accepted state into the selector and a fault
+exercise to demonstrate one durable effect.
 
 Keep `OVERSEER_LEGACY_CALLBACK_FALLBACK` enabled throughout rollback and the
 support window. If a no-inbound Peon cannot serve legacy HTTP, the safe result
