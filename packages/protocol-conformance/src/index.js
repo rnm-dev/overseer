@@ -47,3 +47,9 @@ export {
   ProportionalLoadHarness,
   runDeterministicSoak,
 } from "./loadSlo.js";
+export {
+  compareOperationRegistries,
+  OPERATION_REGISTRY_SOURCES,
+  OperationRegistryError,
+  readDeclaredOperations,
+} from "./operationRegistry.js";
