@@ -13,6 +13,10 @@ import { reverseTransportMetricsSnapshot } from "./reverseTransportMetrics.js";
 
 const wiredSurfaces = new Set<ReverseRolloutSurface>();
 
+export function markReverseOperationSubmissionWired(): void {
+  wiredSurfaces.add("operation-submission");
+}
+
 export type ReverseRolloutSurface =
   | "command-status-reconciliation"
   | "operation-submission";

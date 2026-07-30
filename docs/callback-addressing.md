@@ -13,8 +13,12 @@ The current rollout remains mixed-version safe:
   **not** the default before OVSR-150, OVSR-151 and OVSR-152 pass;
 - no variable deletes legacy code or schema. That remains OVSR-211;
 - a Peon without the negotiated operation uses the legacy route while fallback
-  is enabled. A negotiated operation uses only reverse transport and never
-  retries over HTTP after a socket failure.
+  is enabled and receives `503 REVERSE_TRANSPORT_UNAVAILABLE` when it is
+  disabled. A negotiated operation uses only reverse transport and never
+  retries over HTTP after a socket failure;
+- sessions, projects, runtime queries, daemon configuration, updates and
+  Armory all use this selector; accepted command IDs stay reverse-owned across
+  rollback and reconcile without a duplicate callback effect.
 
 `OVERSEER_PEON_CALLBACK_URL` is therefore optional for Peon-initiated claims.
 Leaving it empty disables legacy callback recruitment, not outbound reverse

@@ -1,5 +1,7 @@
 import WebSocket from "ws";
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { PROTOCOL_VERSION } from "../../protocol.js";
 import { PeonSocketMultiplexer, PEON_SOCKET_MAX_FRAME_BYTES, } from "./peonSocketProtocol.js";
 import { PEON_SOCKET_DURABLE_DELIVERY_CAPABILITY, PeonSocketOutbox, } from "./peonSocketOutbox.js";
@@ -28,6 +30,15 @@ const TRANSFER_MAX_FRAME_BYTES = 64 * 1024;
 const TRANSFER_MAX_BUFFERED_BYTES = 256 * 1024;
 const OUTBOX_RETRY_MS = 50;
 const OUTBOX_ACK_TIMEOUT_MS = 10_000;
+function daemonVersion() {
+    try {
+        const path = fileURLToPath(new URL("../../../../package.json", import.meta.url));
+        return String(JSON.parse(readFileSync(path, "utf8")).version ?? "unknown");
+    }
+    catch {
+        return "unknown";
+    }
+}
 function defaultSubscribe(listener) {
     settings.on("change", listener);
     return () => settings.off("change", listener);
@@ -264,6 +275,7 @@ export class PeonSocketSupervisor {
                 }
                 else {
                     hello = this.multiplexer.hello(PROTOCOL_VERSION, identity);
+                    hello.version = daemonVersion();
                 }
                 if (this.outbox) {
                     hello.capabilities = [...new Set([

@@ -1,10 +1,26 @@
 import type express from "express";
-import { getPeonConnection, peonConnectionSupportsCommand } from "../../peonConnections.js";
 import { reverseCommandGateway, type JsonObject, type ReverseCommandOperation } from "../../modules/reverseCommands/index.js";
+import { runReverseCommandTransport } from "../../modules/reverseCommandTransport.js";
 
-export function hasRuntimeReverseRead(peonId: string, operation: ReverseCommandOperation): boolean {
-  const socket = getPeonConnection(peonId);
-  return Boolean(socket && peonConnectionSupportsCommand(socket, operation));
+export async function runRuntimeCommandTransport(
+  req: express.Request,
+  res: express.Response,
+  input: { workspaceId: string; peonId: string; operation: ReverseCommandOperation; payload?: JsonObject },
+  legacy: () => Promise<void>,
+): Promise<void> {
+  await runReverseCommandTransport<void>({
+    peonId: input.peonId,
+    operation: input.operation,
+    reverse: () => runtimeReverseRead(req, res, input),
+    legacy,
+    unavailable: async (reason) => {
+      res.status(503).json({
+        error: "Peon transport is unavailable",
+        code: "REVERSE_TRANSPORT_UNAVAILABLE",
+        reason,
+      });
+    },
+  });
 }
 
 export async function runtimeReverseRead(

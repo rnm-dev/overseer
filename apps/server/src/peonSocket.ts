@@ -154,6 +154,10 @@ export function attachPeonSocket(server: Server, options: PeonSocketOptions = {}
             ws.close(1008, "Peon identity mismatch");
             return;
           }
+          const daemonVersion = typeof frame.version === "string"
+            && /^(?:v)?\d+\.\d+\.\d+$/.test(frame.version)
+            ? frame.version
+            : undefined;
           clearTimeout(helloTimeout);
           client.ready = true;
           const advertised = Array.isArray(frame.capabilities)
@@ -245,6 +249,7 @@ export function attachPeonSocket(server: Server, options: PeonSocketOptions = {}
             stagedConnectionFeatures,
             [],
             credentialGeneration,
+            daemonVersion,
           );
           if (!claimed.accepted) {
             ws.close(4001, "rejected stale credential generation");

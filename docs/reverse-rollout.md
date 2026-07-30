@@ -33,10 +33,13 @@ stable percentage assignment based on capability and Peon ID; Peon IDs are not
 emitted as telemetry labels. The global routing switch is the kill switch for
 all families; changing a family to `off` is its independent kill switch.
 
-The selector is a seam, not proof that every route uses it. Before a capability
-enters a canary, its production call sites must be audited or mechanically
-tested to show that all operations enter this selector and that no route has a
-second fallback after reverse admission.
+Every released `reverse-command-v1` route family now enters the production
+selector before either handler can run: sessions, projects, runtime queries,
+daemon configuration, updates and Armory. The authenticated control hello
+carries the Peon daemon version used by minimum-version rollout rules. Route
+tests and the shared transport test must continue to show that unavailable
+selection evaluates no callback and that accepted command reconciliation
+cannot cross into legacy HTTP.
 
 ## Safe telemetry
 
@@ -61,11 +64,10 @@ OVSR-151 conformance approval and its deterministic local soak are true, while
 `productionEvidence`, production telemetry, production no-inbound soak,
 production rollback and security approval remain false. The evaluator requires
 every gate simultaneously, so `reverseOnlyDefaultAllowed` remains false. The
-real command-status route is wired
-through accepted reverse reconciliation; operation-submission call sites are
-reported separately and remain false until every shipped family uses the
-selector. The diagnostic is not an operator API and contains no fleet or
-resource identifiers.
+real command-status route is wired through accepted reverse reconciliation.
+Actual operation submission marks its separate process-local wiring signal when
+a shipped route enters the selector. The diagnostic is not an operator API and
+contains no fleet or resource identifiers.
 
 Its dashboard definition has five fixed panels: transport selection, callback
 attempts, command lifecycle, transfer negotiation and production acceptance.
@@ -141,9 +143,8 @@ As of 2026-07-30, OVSR-151 is independently approved at 49/49 conformance tests,
 reviewed soak artifact explicitly says `productionEvidence: false`; it is local
 fault/load evidence, not a production observation.
 
-`docs/reverse-fleet-security.md` does not approve cutover, the selector is not
-yet wired through all production operation-submission call sites, and
-production telemetry, the sustained no-inbound soak and the accepted-command
-rollback exercise have not been recorded. Therefore no production cohort,
+`docs/reverse-fleet-security.md` does not approve cutover, and production
+telemetry, the sustained no-inbound soak and the accepted-command rollback
+exercise have not been recorded. Therefore no production cohort,
 callback-default change, support-window start, Tailscale removal, deployment,
 or completion claim is authorized.

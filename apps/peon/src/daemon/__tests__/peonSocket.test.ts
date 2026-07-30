@@ -123,6 +123,7 @@ test("default control hello advertises the folder listing capability", async () 
     supervisor.start();
     await waitFor(() => supervisor.getState().connected, "default control socket did not connect");
     const hello = target.hellos[0]!;
+    assert.match(String(hello.version), /^\d+\.\d+\.\d+$/);
     assert.ok((hello.capabilities as string[]).includes("folder-listing-v1"));
     assert.deepEqual((hello.channels as Record<string, unknown>)["folder-listing-v1"], { entryMetadata: "entry-metadata-v1" });
   } finally {

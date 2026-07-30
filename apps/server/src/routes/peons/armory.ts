@@ -1,7 +1,7 @@
 import express from "express";
 import { callPeon, connOfRecord } from "../../peonClient.js";
-import { getPeonConnection, peonConnectionSupports, peonConnectionSupportsCommand } from "../../peonConnections.js";
-import { REVERSE_COMMAND_CAPABILITY, reverseCommandGateway, type JsonObject, type ReverseCommandOperation } from "../../modules/reverseCommands/index.js";
+import { reverseCommandGateway, type JsonObject, type ReverseCommandOperation } from "../../modules/reverseCommands/index.js";
+import { runReverseCommandTransport } from "../../modules/reverseCommandTransport.js";
 import type { PeonRecord } from "../../registry.js";
 import { relay, withWorkspacePeon } from "../helpers.js";
 
@@ -17,23 +17,35 @@ async function armoryCall(
   payload: JsonObject,
   legacy: () => Promise<RelayResult & { ok?: boolean }>,
 ): Promise<RelayResult> {
-  const socket = getPeonConnection(ctx.record.peonId);
-  if (!socket || !peonConnectionSupports(socket, REVERSE_COMMAND_CAPABILITY)
-    || !peonConnectionSupportsCommand(socket, operation)) return legacy();
-  const response = await reverseCommandGateway.submit({
-    workspaceId: ctx.workspaceId,
+  return runReverseCommandTransport<RelayResult>({
     peonId: ctx.record.peonId,
-    auth: req.user!,
     operation,
-    target,
-    payload,
-    waitMs: 15_000,
+    reverse: async () => {
+      const response = await reverseCommandGateway.submit({
+        workspaceId: ctx.workspaceId,
+        peonId: ctx.record.peonId,
+        auth: req.user!,
+        operation,
+        target,
+        payload,
+        waitMs: 15_000,
+      });
+      const body = response.body;
+      if (response.status >= 200 && response.status < 300 && body.state === "terminal") {
+        return { status: response.status, json: body.result };
+      }
+      return { status: response.status, json: body };
+    },
+    legacy,
+    unavailable: async (reason) => ({
+      status: 503,
+      json: {
+        error: "Peon transport is unavailable",
+        code: "REVERSE_TRANSPORT_UNAVAILABLE",
+        reason,
+      },
+    }),
   });
-  const body = response.body;
-  if (response.status >= 200 && response.status < 300 && body.state === "terminal") {
-    return { status: response.status, json: body.result };
-  }
-  return { status: response.status, json: body };
 }
 
 function record(value: unknown): Record<string, unknown> | null {
