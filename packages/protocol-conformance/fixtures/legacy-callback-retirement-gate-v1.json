@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "task": "OVSR-211",
+  "decision": "blocked",
+  "auditedAt": "2026-07-30",
+  "gates": {
+    "ovsr152Released": null,
+    "productionNoInboundSoak": null,
+    "rollbackExercise": null,
+    "supportWindowPublishedAt": null,
+    "supportWindowEndsAt": null
+  },
+  "compatibilityAnchors": [
+    {
+      "path": "apps/server/src/modules/transportSelection.ts",
+      "contains": "legacy-mixed-version-fallback"
+    },
+    {
+      "path": "apps/server/src/routes/peons/fleet.ts",
+      "contains": "\"/enroll\""
+    },
+    {
+      "path": "apps/server/src/routes/agent.ts",
+      "contains": "\"/register\""
+    },
+    {
+      "path": "apps/server/src/modules/registry/registryService.ts",
+      "contains": "legacyCallbackUrl"
+    },
+    {
+      "path": "apps/peon/src/daemon/overseer/peonRegistrar.ts",
+      "contains": "/api/v1/peons/register"
+    },
+    {
+      "path": "apps/peon/src/daemon/agentApi.ts",
+      "contains": "router.post(\"/enroll\""
+    }
+  ]
+}
