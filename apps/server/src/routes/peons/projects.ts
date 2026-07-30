@@ -19,7 +19,7 @@ import {
   streamSandboxFileResponse,
   sandboxFileWriteChannel,
 } from "../../modules/projects/index.js";
-import { listProjectDocs } from "../../modules/projectDocs/index.js";
+import { listProjectDocs, projectDocsFromSnapshot } from "../../modules/projectDocs/index.js";
 import { PeonOperationError } from "../../peonOperationChannel.js";
 import { getPeonConnection, peonConnectionSupports, peonDaemonConfigurationIdentity } from "../../peonConnections.js";
 import {
@@ -193,7 +193,7 @@ export function registerProjectRoutes(router: express.Router): void {
           return true;
         }
         try {
-          res.json(parseProjectDocumentationSnapshot(chunks.join("")));
+          res.json(projectDocsFromSnapshot(parseProjectDocumentationSnapshot(chunks.join(""))));
         } catch {
           res.status(502).json({ error: "Peon returned unsafe project documentation", code: "UNSAFE_RESULT" });
         }

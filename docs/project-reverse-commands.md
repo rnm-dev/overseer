@@ -46,7 +46,14 @@ shared durable dedupe ledger and returns the recorded page.
 
 Overseer aggregates at most 2 MiB and 96 pages, requires contiguous offsets and
 one digest/total across the sequence, parses the completed JSON, and recursively
-allowlists the documentation tree before returning the legacy HTTP shape. Once
+allowlists the documentation tree before returning the legacy HTTP shape. That
+last step is a real conversion, not a pass-through: the snapshot Peon returns is
+`{ exists, indexPath, index, tree }`, while the public contract of
+`GET .../projects/:projectId/docs` is the flat `docs/` listing
+`{ exists, entries: [{ name, type, size, mtimeMs }] }` that both the web
+dashboard and the Flutter client read. The snapshot's top-level `tree` *is* that
+directory, so `projectDocsFromSnapshot` flattens it — nested children stay behind
+their directory entry — and no client learns a second shape for one route. Once
 the reverse operation is selected, a disconnect or page failure never retries
 through Peon's legacy HTTP route. Older Peons that did not negotiate the exact
 operation retain the exclusive legacy path.

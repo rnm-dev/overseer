@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { childPath, listProjectDocs } from "./modules/projectDocs/index.js";
+import { childPath, listProjectDocs, projectDocsFromSnapshot } from "./modules/projectDocs/index.js";
+import { parseProjectDocumentationSnapshot } from "./modules/reverseCommands/reverseCommandTypes.js";
 import { PeonOperationError } from "./peonOperationChannel.js";
 import type { FolderListInput, FolderListResult } from "./peonFolderListing.js";
 import { peonsRouter } from "./routes/peons.js";
@@ -91,6 +92,42 @@ test("project docs listing retries transient channel contention with bounded bac
   }), { exists: false, entries: [] });
   assert.equal(calls, 3);
   assert.deepEqual(waits, [50, 100]);
+});
+
+test("reverse documentation snapshots normalize to the same listing contract as HTTP", () => {
+  const snapshot = parseProjectDocumentationSnapshot(JSON.stringify({
+    exists: true,
+    indexPath: "index.md",
+    index: {
+      path: "index.md", name: "index.md", title: "Demo", content: "# Demo",
+      size: 100, mtimeMs: 3, truncated: false,
+    },
+    tree: [
+      { type: "directory", name: "guides", path: "guides", children: [
+        { type: "file", name: "deploy.md", path: "guides/deploy.md", size: 300, mtimeMs: 5 },
+      ] },
+      { type: "file", name: "index.md", path: "index.md", size: 100, mtimeMs: 3 },
+      { type: "file", name: "guide.md", path: "guide.md", size: 200, mtimeMs: 4 },
+    ],
+  }));
+
+  // Exactly the shape `listProjectDocs` returns: a flat `docs/` listing whose
+  // nested children stay behind their directory entry.
+  assert.deepEqual(projectDocsFromSnapshot(snapshot), {
+    exists: true,
+    entries: [
+      { name: "guides", type: "directory", size: null, mtimeMs: null },
+      { name: "index.md", type: "file", size: 100, mtimeMs: 3 },
+      { name: "guide.md", type: "file", size: 200, mtimeMs: 4 },
+    ],
+  });
+});
+
+test("a project without documentation normalizes to the empty listing", () => {
+  const snapshot = parseProjectDocumentationSnapshot(JSON.stringify({
+    exists: false, indexPath: "index.md", index: null, tree: [],
+  }));
+  assert.deepEqual(projectDocsFromSnapshot(snapshot), { exists: false, entries: [] });
 });
 
 test("project docs listing does not retry authoritative errors", async () => {
