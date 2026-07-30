@@ -78,28 +78,17 @@ class _CompactHeaderAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Semantics(
-      button: true,
-      enabled: onPressed != null,
-      label: label,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onPressed,
-        child: SizedBox(
-          height: 48,
-          child: Center(
-            child: ExcludeSemantics(
-              child: IgnorePointer(
-                child: AppButton(
-                  size: AppButtonSize.sm,
-                  onPressed: onPressed,
-                  child: Text(label),
-                ),
-              ),
-            ),
-          ),
-        ),
+    return IconButton(
+      tooltip: label,
+      onPressed: onPressed,
+      constraints: const BoxConstraints.tightFor(width: 44, height: 44),
+      style: IconButton.styleFrom(
+        minimumSize: const Size.square(44),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        foregroundColor: AppColors.felBright,
+        disabledForegroundColor: AppColors.boneDim,
       ),
+      icon: const Icon(LucideIcons.plus, size: 20),
     );
   }
 }

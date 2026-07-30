@@ -8,7 +8,6 @@ import 'package:overseer_mobile/features/projects/domain/project_detail_models.d
 import 'package:overseer_mobile/features/projects/domain/project_detail_repository.dart';
 import 'package:overseer_mobile/features/projects/domain/project_models.dart';
 import 'package:overseer_mobile/features/projects/presentation/project_detail_page.dart';
-import 'package:overseer_mobile/shared/widgets/app_button.dart';
 
 void main() {
   const project = PeonProject(
@@ -127,7 +126,14 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const Key('project-new-session')));
+    final newSession = find.byKey(const Key('project-new-session'));
+    final newSessionButton = find.descendant(
+      of: newSession,
+      matching: find.byType(IconButton),
+    );
+    expect(tester.getSize(newSessionButton), const Size.square(44));
+    expect(tester.widget<IconButton>(newSessionButton).tooltip, 'New session');
+    await tester.tap(newSession);
     expect(openedProjectKey, 'overseer-mobile');
 
     await tester.tap(find.byKey(const Key('project-tab-sessions')));
@@ -176,9 +182,9 @@ void main() {
     );
     final newSessionButton = find.descendant(
       of: find.byKey(const Key('project-new-session')),
-      matching: find.byType(AppButton),
+      matching: find.byType(IconButton),
     );
-    expect(tester.widget<AppButton>(newSessionButton).onPressed, isNull);
+    expect(tester.widget<IconButton>(newSessionButton).onPressed, isNull);
   });
 
   testWidgets('opens external and relative links from project Markdown', (
