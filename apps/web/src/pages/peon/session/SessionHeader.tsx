@@ -96,7 +96,7 @@ export function SessionHeaderStats({ turnTotal, usageSummary }: { turnTotal: num
   if (turnTotal <= 0 && !usageSummary) return null;
 
   return (
-    <div className="flex min-w-0 items-center gap-1.5 whitespace-nowrap font-mono text-[0.62rem] text-bone-faint sm:text-xs">
+    <div className="flex min-w-0 items-center gap-1.5 whitespace-nowrap font-mono text-[0.6875rem] text-bone-faint sm:text-[0.6875rem]">
       {turnTotal > 0 && <span>{t("session.chat.turns", { n: turnTotal })}</span>}
       {turnTotal > 0 && usageSummary && <span>·</span>}
       {usageSummary && (

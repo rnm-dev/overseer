@@ -1280,7 +1280,7 @@ class _SessionHeader extends StatelessWidget {
                       overflow: TextOverflow.fade,
                       softWrap: false,
                       style: AppTypography.mono(
-                        fontSize: 9,
+                        fontSize: 11,
                         color: AppColors.boneFaint,
                         height: 1.2,
                       ),

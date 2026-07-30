@@ -449,7 +449,7 @@ class _ThinkingRowState extends State<_ThinkingRow> {
                   '✦ ${_thinkingLabel(widget.item.text)} ${open ? '▾' : '▸'}',
                     style: AppTypography.monoCode(
                       color: AppColors.boneFaint,
-                    ),
+                    ).copyWith(fontSize: 11),
                 ),
               ),
             ),
@@ -467,7 +467,10 @@ class _ThinkingRowState extends State<_ThinkingRow> {
                     style: AppTypography.monoCode(
                       color: AppColors.boneFaint,
                       height: 1.45,
-                    ).copyWith(fontStyle: FontStyle.italic),
+                    ).copyWith(
+                      fontSize: 11,
+                      fontStyle: FontStyle.italic,
+                    ),
                 ),
               ),
           ],
@@ -524,7 +527,7 @@ class _ToolRow extends StatelessWidget {
                 label,
                 style: AppTypography.monoCode(
                   color: failed ? AppColors.blood : AppColors.felBright,
-                ),
+                ).copyWith(fontSize: 11),
               ),
               if (operation != null && stats != null) ...[
                 const SizedBox(width: 3),
@@ -539,7 +542,7 @@ class _ToolRow extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: AppTypography.monoCode(
                       color: failed ? AppColors.blood : AppColors.boneFaint,
-                    ),
+                    ).copyWith(fontSize: 11),
                   ),
                 ),
               ],
@@ -551,11 +554,12 @@ class _ToolRow extends StatelessWidget {
                 borderRadius: BorderRadius.circular(3),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 3),
-              child: Text(
-                'Details',
+                child: Text(
+                  'Details',
                 style: AppTypography.monoCode(
                   color: AppColors.boneFaint,
                 ).copyWith(
+                  fontSize: 11,
                   decoration: TextDecoration.underline,
                   decorationStyle: TextDecorationStyle.dotted,
                   decorationColor: AppColors.boneFaint,
@@ -580,7 +584,9 @@ class _EditStats extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final base = AppTypography.monoCode(color: AppColors.boneFaint);
+    final base = AppTypography.monoCode(color: AppColors.boneFaint).copyWith(
+      fontSize: 11,
+    );
     return Text.rich(
       TextSpan(
         style: base,
@@ -642,7 +648,7 @@ class _ActionResultState extends State<_ActionResult> {
               style: AppTypography.monoCode(
                 color: AppColors.boneFaint,
                 height: 1.4,
-              ),
+              ).copyWith(fontSize: 11),
             ),
             if (long)
               InkWell(
@@ -653,7 +659,7 @@ class _ActionResultState extends State<_ActionResult> {
                     open ? 'Less' : 'More',
                     style: AppTypography.monoCode(
                       color: AppColors.boneDim,
-                    ),
+                    ).copyWith(fontSize: 11),
                   ),
                 ),
               ),
@@ -673,8 +679,8 @@ class _Notice extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(
       item.text,
-      style: AppTypography.body(
-        fontSize: 11,
+      style: AppTypography.mono(
+        fontSize: AppTypography.systemMessageFontSize,
         color: item.isError ? AppColors.blood : AppColors.boneFaint,
       ),
     );
@@ -763,7 +769,7 @@ class _RawText extends StatelessWidget {
       style: AppTypography.monoCode(
         color: AppColors.boneFaint,
         height: 1.4,
-      ),
+      ).copyWith(fontSize: 11),
     );
   }
 }

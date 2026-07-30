@@ -193,7 +193,7 @@ export function Composer({
       />
       <textarea
         ref={textareaRef}
-        className="composer-input max-h-40 min-h-8 w-full resize-none bg-transparent px-1 py-1 font-body text-sm leading-normal text-bone placeholder:text-bone-faint focus:outline-none"
+        className="composer-input max-h-40 min-h-8 w-full resize-none bg-transparent px-1 py-1 font-body leading-normal text-bone placeholder:text-bone-faint focus:outline-none"
         rows={1}
         autoFocus={autoFocus}
         value={value}

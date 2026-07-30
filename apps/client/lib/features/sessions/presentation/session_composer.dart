@@ -390,13 +390,13 @@ class _SessionComposerState extends State<SessionComposer> {
                                         widget.onContentInserted!,
                                   ),
                             style: AppTypography.body(
-                              fontSize: 14,
+                              fontSize: AppTypography.composerInputFontSize,
                               height: 1.35,
                             ),
                             decoration: InputDecoration(
                               hintText: 'Send a message…',
                               hintStyle: AppTypography.body(
-                                fontSize: 14,
+                                fontSize: AppTypography.composerInputFontSize,
                                 color: AppColors.boneFaint,
                               ),
                               filled: false,

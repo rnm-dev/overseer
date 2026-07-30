@@ -5,6 +5,11 @@ import 'colors.dart';
 class AppTypography {
   const AppTypography._();
 
+  static const double chatMessageFontSize = 14;
+  static const double composerInputFontSize = 14;
+  static const double composerCapabilityTextSize = 13;
+  static const double systemMessageFontSize = 10;
+
   static const String fontFamily = 'Golos Text';
 
   static const List<String> monoFallbacks = <String>[
@@ -53,7 +58,7 @@ class AppTypography {
     double? height,
   }) {
     return body(
-      fontSize: 14,
+      fontSize: chatMessageFontSize,
       fontWeight: fontWeight ?? FontWeight.w400,
       color: color ?? AppColors.bone,
       height: height ?? 1.35,

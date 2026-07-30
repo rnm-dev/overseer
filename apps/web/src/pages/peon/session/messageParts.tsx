@@ -42,7 +42,7 @@ function AttachmentPill({ attachment, mine, onOpen }: { attachment: MessageAttac
       </span>
       <span className="min-w-0 flex-1">
         <span className="block truncate font-display text-xs font-semibold">{label}</span>
-        <span className={`mt-0.5 block font-mono text-[0.65rem] leading-none ${mine ? "text-bone/55" : "text-bone-faint"}`}>{attachmentMeta(attachment)}</span>
+        <span className={`mt-0.5 block font-mono text-[0.625rem] leading-none ${mine ? "text-bone/55" : "text-bone-faint"}`}>{attachmentMeta(attachment)}</span>
       </span>
     </>;
   return onOpen ? <button type="button" className={`${className} cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset ${mine ? "focus-visible:ring-bone/50" : "focus-visible:ring-fel/60"}`} title={attachment.path || label} onClick={onOpen}>{contents}</button>
@@ -61,9 +61,9 @@ function LocalMessageTime({ createdAt, locale, yesterdayLabel }: { createdAt?: n
 const USER_BUBBLE_BASE_CLASS = "max-w-[80%] whitespace-pre-wrap break-words rounded-xl rounded-br-sm px-3 py-1.5 typo-chat-message text-bone";
 export const OWN_USER_BUBBLE_CLASS = `${USER_BUBBLE_BASE_CLASS} bg-forge-deep`;
 export const OTHER_USER_BUBBLE_CLASS = `${USER_BUBBLE_BASE_CLASS} surface`;
-export const OTHER_USER_BUBBLE_AUTHOR_CLASS = "mb-1 truncate font-body text-[0.68rem] font-semibold leading-tight text-fel-bright";
-export const OWN_USER_BUBBLE_TIME_CLASS = "font-body text-[0.65rem] leading-tight text-bone/60";
-export const OTHER_USER_BUBBLE_TIME_CLASS = "font-body text-[0.65rem] leading-tight text-bone-faint";
+export const OTHER_USER_BUBBLE_AUTHOR_CLASS = "mb-1 truncate font-body text-[0.625rem] font-semibold leading-tight text-fel-bright";
+export const OWN_USER_BUBBLE_TIME_CLASS = "font-body text-[0.625rem] leading-tight text-bone/60";
+export const OTHER_USER_BUBBLE_TIME_CLASS = "font-body text-[0.625rem] leading-tight text-bone-faint";
 
 export function isCompactUserMessage(text: string, attachments?: MessageAttachment[]): boolean {
   const trimmed = text.trim();
@@ -124,7 +124,7 @@ export function UserBubble({ text, author, authorEmail, authorGithubLogin, autho
 // instead of floating in its own row.
 function Notice({ tone, children }: { tone?: "neutral" | "error"; children: ReactNode }) {
   return (
-    <div className={`-mt-2.5 flex justify-start typo-code-snippet ${tone === "error" ? "text-blood" : "text-bone-faint"}`}>{children}</div>
+    <div className={`-mt-2.5 flex justify-start typo-chat-system-message ${tone === "error" ? "text-blood" : "text-bone-faint"}`}>{children}</div>
   );
 }
 
@@ -140,14 +140,14 @@ function ToolRow({ name, input, result, t }: { name?: string; input?: unknown; r
   const stats = isEdit ? editStatsFromInput(input) : null;
   return (
     <div className="flex justify-start">
-      <div className={`flex min-w-0 max-w-[85%] items-center gap-1.5 py-0.5 typo-code-snippet ${failed ? "text-blood" : ""}`}>
+      <div className={`flex min-w-0 max-w-[85%] items-center gap-1.5 py-0.5 typo-chat-system-message ${failed ? "text-blood" : ""}`}>
         <span className={`flex shrink-0 items-center gap-1 ${failed ? "text-blood" : "text-fel-bright"}`}>
           {operation === "Create" ? <FilePlus size={13} aria-hidden /> : operation === "Delete" ? <FileX size={13} aria-hidden /> : isEdit ? <Pencil size={13} aria-hidden /> : <Terminal size={13} aria-hidden />}
           {operation ?? name ?? t("session.chat.tool")}
           {stats && <EditStats operation={operation ?? "Edit"} stats={stats} />}
         </span>
         <span className="min-w-0 flex-1 truncate text-bone-faint">{command}</span>
-        <button onClick={() => setOpen(true)} className="shrink-0 typo-code-snippet text-bone-faint underline decoration-dotted underline-offset-2 transition-colors hover:text-fel-bright">
+        <button onClick={() => setOpen(true)} className="shrink-0 typo-chat-system-message text-bone-faint underline decoration-dotted underline-offset-2 transition-colors hover:text-fel-bright">
           {t("session.chat.details")}
         </button>
       </div>
@@ -285,7 +285,7 @@ export function editStatsFromInput(input: unknown): { added: number; removed: nu
 
 function EditStats({ operation, stats }: { operation: EditOperation; stats: { added: number; removed: number } }) {
   return (
-    <span className="ml-0.5 typo-code-snippet font-normal">
+    <span className="ml-0.5 typo-chat-system-message font-normal">
       ({operation !== "Delete" && <span className="text-fel-bright">+{stats.added}</span>}
       {operation === "Edit" && ","}
       {operation !== "Create" && <span className="text-blood">−{stats.removed}</span>})
@@ -419,7 +419,7 @@ function ToolDetailsModal({ name, input, command, result, t, onClose }: { name?:
     <span className="flex min-w-0 items-center gap-2.5">
       {isEdit ? <Pencil size={18} className="shrink-0 text-fel-bright" aria-hidden /> : <Terminal size={18} className="shrink-0 text-fel-bright" aria-hidden />}
       <span className="truncate">{modalName || t("session.chat.tool")}</span>
-  {stats && <span className="shrink-0 typo-code-snippet font-normal tracking-normal">(<span className="text-blood">−{stats.removed}</span>,<span className="text-fel-bright">+{stats.added}</span>)</span>}
+  {stats && <span className="shrink-0 typo-chat-system-message font-normal tracking-normal">(<span className="text-blood">−{stats.removed}</span>,<span className="text-fel-bright">+{stats.added}</span>)</span>}
     </span>
   );
   return (
@@ -441,14 +441,14 @@ function ToolDetailsModal({ name, input, command, result, t, onClose }: { name?:
           </div>
         ) : (
           <section className="surface surface--inset overflow-hidden">
-            <div className="flex items-center gap-2 border-b border-iron-800 bg-iron-900/70 px-3.5 py-2.5 font-display text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-bone-dim">
+            <div className="flex items-center gap-2 border-b border-iron-800 bg-iron-900/70 px-3.5 py-2.5 font-display text-[0.625rem] font-semibold uppercase tracking-[0.18em] text-bone-dim">
               <span className="text-fel-bright" aria-hidden>›_</span>{t("session.chat.command")}
             </div>
             <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words p-3.5 typo-code-snippet leading-relaxed text-bone-dim">{inputText || "—"}</pre>
           </section>
         )}
         {toolHasOutputSection(name) && <section className={`surface surface--inset overflow-hidden ${result?.error ? "border-blood/35" : ""}`}>
-          <div className="flex items-center gap-2 border-b border-iron-800 bg-iron-900/70 px-3.5 py-2.5 font-display text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-bone-dim">
+          <div className="flex items-center gap-2 border-b border-iron-800 bg-iron-900/70 px-3.5 py-2.5 font-display text-[0.625rem] font-semibold uppercase tracking-[0.18em] text-bone-dim">
             <span className={result?.error ? "text-blood" : "text-forge"} aria-hidden>↳</span>{t("session.chat.output")}
           </div>
           {jsonOutput !== null ? (
@@ -475,8 +475,8 @@ function ActionResult({ text, error, t }: { text: string; error?: boolean; t: T 
   if (!text.trim()) return null;
   return (
       <div className="flex justify-start">
-      <div className={`max-w-[85%] border-l-2 pl-3 typo-code-snippet ${error ? "border-blood/60 text-blood" : "border-iron-700 text-bone-faint"}`}>
-        <pre className="whitespace-pre-wrap break-words">{shown}</pre>
+      <div className={`max-w-[85%] border-l-2 pl-3 typo-chat-system-message ${error ? "border-blood/60 text-blood" : "border-iron-700 text-bone-faint"}`}>
+        <pre className="whitespace-pre-wrap break-words typo-chat-system-message">{shown}</pre>
         {long && (
           <button onClick={() => setOpen(!open)} className="mt-1 text-bone-dim transition-colors hover:text-fel-bright">
             {open ? t("session.chat.less") : t("session.chat.more")}
@@ -491,11 +491,15 @@ function Thinking({ text }: { text: string }) {
   const [open, setOpen] = useState(false);
   return (
       <div className="flex justify-start">
-      <div className="max-w-[85%] typo-code-snippet">
-        <button onClick={() => setOpen(!open)} className="text-bone-faint transition-colors hover:text-bone-dim">
+      <div className="max-w-[85%] typo-chat-system-message">
+        <button onClick={() => setOpen(!open)} className="text-bone-faint transition-colors hover:text-bone-dim typo-chat-system-message">
           ✦ {orcishThinkingLabel(`chat-thinking:${text}`)} {open ? "▾" : "▸"}
         </button>
-        {open && <pre className="mt-1 whitespace-pre-wrap break-words border-l-2 border-iron-800 pl-3 italic text-bone-faint">{text}</pre>}
+        {open && (
+          <pre className="mt-1 whitespace-pre-wrap break-words border-l-2 border-iron-800 pl-3 italic text-bone-faint typo-chat-system-message">
+            {text}
+          </pre>
+        )}
       </div>
     </div>
   );
@@ -526,7 +530,7 @@ export function ItemView({ item, t, locale = "en", yesterdayLabel = "Yesterday",
             } : undefined}
           />
           {(item.createdAt || item.resultMeta) && (
-            <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 font-body text-[0.65rem] leading-tight text-bone-faint">
+            <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 font-body text-[0.625rem] leading-tight text-bone-faint">
               {item.createdAt && <LocalMessageTime createdAt={item.createdAt} locale={locale} yesterdayLabel={yesterdayLabel} />}
               {item.createdAt && item.resultMeta && <span aria-hidden>·</span>}
               {item.resultMeta && <span className={item.resultMeta.tone === "error" ? "text-blood" : undefined}>{item.resultMeta.text}</span>}
@@ -549,16 +553,16 @@ export function ItemView({ item, t, locale = "en", yesterdayLabel = "Yesterday",
             <span aria-hidden className="text-fel-bright">▣</span>
             <div className="min-w-0 flex-1">
               <div className="truncate typo-code-snippet text-bone" title={item.path}>{item.path.split(/[\\/]/).pop() || item.path}</div>
-              <div className="typo-code-snippet text-bone-faint">{item.author ? `${item.author} · ` : ""}{item.createdAt ? new Date(item.createdAt).toLocaleString() : ""}</div>
+              <div className="typo-chat-system-message text-bone-faint">{item.author ? `${item.author} · ` : ""}{item.createdAt ? new Date(item.createdAt).toLocaleString() : ""}</div>
             </div>
-            <button type="button" className="shrink-0 typo-code-snippet text-fel-bright underline decoration-dotted underline-offset-2 hover:text-bone" onClick={() => onOpenPreview?.(item)}>
+            <button type="button" className="shrink-0 typo-chat-system-message text-fel-bright underline decoration-dotted underline-offset-2 hover:text-bone" onClick={() => onOpenPreview?.(item)}>
               {t("session.preview.open")}
             </button>
           </div>
         </div>
       );
     case "raw":
-      return item.text ? <div className="whitespace-pre-wrap break-words typo-code-snippet text-bone-faint">{item.text}</div> : null;
+      return item.text ? <div className="whitespace-pre-wrap break-words typo-chat-system-message text-bone-faint">{item.text}</div> : null;
   }
 }
 
@@ -594,7 +598,7 @@ export function Working({
     : fallbackStartedAt.current;
   const duration = formatStepDuration(now - effectiveStartedAt);
   return (
-    <div className="reveal flex items-center justify-start gap-2 typo-code-snippet text-bone-faint">
+    <div className="reveal flex items-center justify-start gap-2 typo-chat-system-message text-bone-faint">
       <span className="thinking-dots" aria-hidden>
         <span />
         <span />

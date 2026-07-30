@@ -1047,8 +1047,8 @@ class _ComposerCapabilityPickerState extends State<_ComposerCapabilityPicker> {
                       key: const Key('session-composer-capabilities-label'),
                       overflow: TextOverflow.ellipsis,
                       maxLines: 1,
-                      style: AppTypography.mono(
-                        fontSize: 11,
+                      style: AppTypography.body(
+                        fontSize: AppTypography.composerCapabilityTextSize,
                         color: AppColors.boneDim,
                       ),
                     ),
@@ -1100,8 +1100,8 @@ class _CapabilityRadioSection extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(8, 0, 8, 4),
             child: Text(
               title,
-              style: AppTypography.mono(
-                fontSize: 11,
+              style: AppTypography.body(
+                fontSize: AppTypography.composerCapabilityTextSize,
                 color: AppColors.boneFaint,
               ),
             ),
@@ -1123,7 +1123,7 @@ class _CapabilityRadioSection extends StatelessWidget {
                     title: Text(
                       option.label,
                       style: AppTypography.body(
-                        fontSize: 14,
+                        fontSize: AppTypography.composerCapabilityTextSize,
                         color: AppColors.bone,
                       ),
                     ),
