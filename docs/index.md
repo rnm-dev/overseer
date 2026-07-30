@@ -34,6 +34,11 @@ tasks rather than creating duplicates. OVSR-229 is the reviewed base
 `file-write-v1` implementation; OVSR-49/51/53 retain only their explicit
 residual scope.
 
+The Overseer-side [file-write coordinator](file-write-coordinator.md) extends
+that base transport with browser-stream correlation, admission quotas, safe
+aggregate lifecycle telemetry and deterministic cleanup; it is not a second
+command ledger or write protocol.
+
 The public reverse-control cutover is gated by the durable
 [reverse fleet security threat model](reverse-fleet-security.md): it records
 assets and trust boundaries, prioritized abuse cases, the stable executable

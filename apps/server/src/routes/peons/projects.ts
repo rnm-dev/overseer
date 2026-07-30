@@ -335,6 +335,7 @@ export function registerProjectRoutes(router: express.Router): void {
     try {
       const result = await uploadPeonSandboxFile({
         peonId: c.record.peonId,
+        workspaceId: c.workspaceId,
         path,
         source: req,
         actor: { userId: c.userId, email: c.operator.email },
@@ -446,6 +447,7 @@ export function registerProjectRoutes(router: express.Router): void {
       try {
         const result = await uploadPeonProjectFile({
           peonId: c.record.peonId,
+          workspaceId: c.workspaceId,
           projectId: projectId!,
           relativePath: restSegments(req).join("/"),
           source: req,
@@ -482,6 +484,7 @@ export function registerProjectRoutes(router: express.Router): void {
         const destination = typeof req.body?.destination === "string" ? req.body.destination : "";
         const result = await movePeonProjectFile({
           peonId: c.record.peonId,
+          workspaceId: c.workspaceId,
           projectId: projectId!,
           relativePath: restSegments(req).join("/"),
           destination,

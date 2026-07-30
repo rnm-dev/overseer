@@ -13,6 +13,11 @@ const META_TIMEOUT_MS = 15_000;
 const STREAM_HIGH_WATER_MARK = 256 * 1024;
 const MAX_REQUESTS_PER_PEON = 32;
 const MAX_REQUESTS_GLOBAL = 256;
+const MAX_WRITES_PER_USER = 8;
+const MAX_WRITES_PER_WORKSPACE = 64;
+const MAX_RESERVED_WRITE_BYTES_PER_USER = 256 * 1024 * 1024;
+const MAX_RESERVED_WRITE_BYTES_PER_WORKSPACE = 1024 * 1024 * 1024;
+const MAX_RESERVED_WRITE_BYTES_GLOBAL = 4 * 1024 * 1024 * 1024;
 const BINARY_HEADER_BYTES = 22;
 export const MAX_FILE_CHUNK_BYTES = 64 * 1024 - BINARY_HEADER_BYTES;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -72,20 +77,24 @@ interface Pending {
 
 interface PendingWrite {
   requestId: string;
+  commandId: string;
   peonId: string;
+  workspaceId: string;
+  userId: string;
   socket: WebSocket;
   source: Readable | null;
   resolve: (value: PeonFileWriteResult) => void;
   reject: (error: PeonFileStreamError) => void;
   timer: NodeJS.Timeout;
   abort?: () => void;
-  state: "opening" | "streaming" | "ending";
+  state: PeonFileWriteLifecycle;
   credit: number;
   wakeCredit: (() => void) | null;
   sequence: number;
   sentBytes: number;
   expectedBytes: number | undefined;
   maxBytes: number;
+  reservedBytes: number;
   pumping: boolean;
 }
 
@@ -342,9 +351,35 @@ export interface PeonFileWriteResult {
 
 export interface PeonFileWriteBase {
   peonId: string;
+  workspaceId: string;
   actor: ProjectFileActor;
   signal?: AbortSignal;
   requestId?: string;
+  commandId?: string;
+}
+
+export type PeonFileWriteLifecycle =
+  | "pending"
+  | "accepted"
+  | "streaming"
+  | "verifying"
+  | "committed"
+  | "rejected"
+  | "cancelled"
+  | "expired";
+
+export function getPeonFileWriteCoordinatorSnapshot(): {
+  active: number;
+  reservedBytes: number;
+  lifecycle: Partial<Record<PeonFileWriteLifecycle, number>>;
+} {
+  const lifecycle: Partial<Record<PeonFileWriteLifecycle, number>> = {};
+  let reservedBytes = 0;
+  for (const item of pendingWrites.values()) {
+    reservedBytes += item.reservedBytes;
+    lifecycle[item.state] = (lifecycle[item.state] ?? 0) + 1;
+  }
+  return { active: pendingWrites.size, reservedBytes, lifecycle };
 }
 
 export interface PeonProjectFileUploadRequest extends PeonFileWriteBase {
@@ -455,7 +490,7 @@ async function pumpWrite(item: PendingWrite): Promise<void> {
     if (item.expectedBytes !== undefined && item.sentBytes !== item.expectedBytes) {
       throw new PeonFileStreamError("LENGTH_MISMATCH", "request body length does not match Content-Length", 400);
     }
-    item.state = "ending";
+    item.state = "verifying";
     resetWriteTimer(item);
     send(item.socket, { type: "write_end", requestId: item.requestId });
   } catch (error) {
@@ -475,7 +510,7 @@ function handlePeonFileWriteJson(item: PendingWrite, socket: WebSocket, frame: R
     failWrite(item, new PeonFileStreamError(code, auditSafeFileErrorMessage(code, message), status));
     return true;
   }
-  if (frame.type === "write_ready" && item.state === "opening" && item.source) {
+  if (frame.type === "write_ready" && item.state === "pending" && item.source) {
     const credit = frame.credit;
     const maxBytes = frame.maxBytes;
     if (
@@ -488,8 +523,9 @@ function handlePeonFileWriteJson(item: PendingWrite, socket: WebSocket, frame: R
       failWrite(item, new PeonFileStreamError("FILE_TOO_LARGE", `file exceeds ${item.maxBytes / (1024 * 1024)}MB limit`, 413), true);
       return true;
     }
-    item.state = "streaming";
+    item.state = "accepted";
     resetWriteTimer(item);
+    item.state = "streaming";
     void pumpWrite(item);
     return true;
   }
@@ -501,7 +537,7 @@ function handlePeonFileWriteJson(item: PendingWrite, socket: WebSocket, frame: R
     item.wakeCredit?.();
     return true;
   }
-  if (frame.type === "write_result" && (item.state === "ending" || !item.source)) {
+  if (frame.type === "write_result" && (item.state === "verifying" || !item.source)) {
     const status = Number(frame.status);
     const path = stringField(frame, "path", 4096);
     const size = frame.size;
@@ -518,9 +554,41 @@ function handlePeonFileWriteJson(item: PendingWrite, socket: WebSocket, frame: R
 }
 
 function validateWriteBase(input: PeonFileWriteBase): void {
+  if (!input.workspaceId || input.workspaceId.length > 512 || input.workspaceId.includes("\0")) {
+    throw new PeonFileStreamError("INVALID_WORKSPACE_ID", "trusted workspace is invalid", 400);
+  }
   if (!input.actor.userId || input.actor.userId.length > 512 || !input.actor.email || input.actor.email.length > 512) {
     throw new PeonFileStreamError("INVALID_ACTOR", "trusted actor is invalid", 400);
   }
+  if (input.commandId !== undefined && !UUID.test(input.commandId)) {
+    throw new PeonFileStreamError("INVALID_COMMAND_ID", "command correlation ID is invalid", 400);
+  }
+}
+
+function writeAdmissionUsage(input: PeonFileWriteBase): {
+  userCount: number;
+  workspaceCount: number;
+  userBytes: number;
+  workspaceBytes: number;
+  globalBytes: number;
+} {
+  let userCount = 0;
+  let workspaceCount = 0;
+  let userBytes = 0;
+  let workspaceBytes = 0;
+  let globalBytes = 0;
+  for (const item of pendingWrites.values()) {
+    globalBytes += item.reservedBytes;
+    if (item.workspaceId === input.workspaceId) {
+      workspaceCount += 1;
+      workspaceBytes += item.reservedBytes;
+    }
+    if (item.userId === input.actor.userId) {
+      userCount += 1;
+      userBytes += item.reservedBytes;
+    }
+  }
+  return { userCount, workspaceCount, userBytes, workspaceBytes, globalBytes };
 }
 
 function openPeonWrite(
@@ -531,6 +599,17 @@ function openPeonWrite(
   frame: Record<string, unknown>,
 ): Promise<PeonFileWriteResult> {
   validateWriteBase(input);
+  const reservedBytes = expectedBytes ?? maxBytes;
+  const usage = writeAdmissionUsage(input);
+  if (
+    usage.userCount >= MAX_WRITES_PER_USER
+    || usage.workspaceCount >= MAX_WRITES_PER_WORKSPACE
+    || usage.userBytes + reservedBytes > MAX_RESERVED_WRITE_BYTES_PER_USER
+    || usage.workspaceBytes + reservedBytes > MAX_RESERVED_WRITE_BYTES_PER_WORKSPACE
+    || usage.globalBytes + reservedBytes > MAX_RESERVED_WRITE_BYTES_GLOBAL
+  ) {
+    throw new PeonFileStreamError("TRANSFER_QUOTA_EXCEEDED", "file write capacity is temporarily exhausted", 429);
+  }
   if (pending.size + pendingWrites.size >= MAX_REQUESTS_GLOBAL || countForPeon(input.peonId) >= MAX_REQUESTS_PER_PEON) {
     throw new PeonFileStreamError("PEON_TRANSFER_BUSY", "too many active Peon file transfers", 429);
   }
@@ -538,25 +617,30 @@ function openPeonWrite(
   if (!socket) throw new PeonFileStreamError("PEON_TRANSFER_UNAVAILABLE", "Peon transfer connection is unavailable", 503);
   if (input.signal?.aborted) throw new PeonFileStreamError("TRANSFER_CANCELLED", "file write was cancelled", 499);
   const requestId = input.requestId && UUID.test(input.requestId) ? input.requestId : randomUUID();
+  const commandId = input.commandId ?? requestId;
   const key = keyOf(input.peonId, requestId);
   if (pendingWrites.has(key) || pending.has(key)) throw new PeonFileStreamError("DUPLICATE_REQUEST", "file request is already active", 409);
 
   return new Promise<PeonFileWriteResult>((resolve, reject) => {
     const item: PendingWrite = {
       requestId,
+      commandId,
       peonId: input.peonId,
+      workspaceId: input.workspaceId,
+      userId: input.actor.userId,
       socket,
       source,
       resolve,
       reject,
       timer: setTimeout(() => {}, META_TIMEOUT_MS),
-      state: "opening",
+      state: "pending",
       credit: 0,
       wakeCredit: null,
       sequence: 0,
       sentBytes: 0,
       expectedBytes,
       maxBytes,
+      reservedBytes,
       pumping: false,
     };
     clearTimeout(item.timer);
@@ -575,11 +659,13 @@ function openPeonWrite(
         type: "write_open",
         protocol: 1,
         requestId,
+        transferId: requestId,
+        commandId,
         ...frame,
         actor: input.actor,
         ...(expectedBytes === undefined ? {} : { contentLength: expectedBytes }),
       });
-      if (!source) item.state = "ending";
+      if (!source) item.state = "verifying";
     } catch (error) {
       failWrite(item, error instanceof PeonFileStreamError
         ? error

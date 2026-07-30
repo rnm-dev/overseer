@@ -4,6 +4,7 @@ import test from "node:test";
 import { WebSocket } from "ws";
 import {
   failPeonFileTransfers,
+  getPeonFileWriteCoordinatorSnapshot,
   handlePeonFileJson,
   MAX_FILE_CHUNK_BYTES,
   movePeonProjectFile,
@@ -56,6 +57,7 @@ test("Overseer chunks client uploads only after Peon credit and preserves the pu
   const bytes = Buffer.alloc(MAX_FILE_CHUNK_BYTES + 7, 0x62);
   const result = uploadPeonProjectFile({
     peonId,
+    workspaceId: "workspace",
     projectId: "project-id",
     relativePath: "dist/app.bin",
     source: Readable.from(bytes),
@@ -118,6 +120,7 @@ test("Overseer propagates checksum refusals and cancels on browser abort or tran
 
   const refused = uploadPeonSandboxFile({
     peonId,
+    workspaceId: "workspace",
     path: "uploads/session/file.txt",
     source: Readable.from(Buffer.from("body")),
     contentLength: 4,
@@ -139,6 +142,7 @@ test("Overseer propagates checksum refusals and cancels on browser abort or tran
   const source = new PassThrough();
   const cancelled = uploadPeonSandboxFile({
     peonId,
+    workspaceId: "workspace",
     path: "uploads/session/cancelled.txt",
     source,
     maxBytes: 25 * 1024 * 1024,
@@ -158,6 +162,7 @@ test("Overseer propagates checksum refusals and cancels on browser abort or tran
 
   const disconnected = movePeonProjectFile({
     peonId,
+    workspaceId: "workspace",
     projectId: "project-id",
     relativePath: "from.txt",
     destination: "to.txt",
@@ -184,6 +189,7 @@ test("write coordinator requires exact capability and validates security boundar
   assert.throws(
     () => uploadPeonProjectFile({
       peonId,
+      workspaceId: "workspace",
       projectId: "project",
       relativePath: "file.txt",
       source: Readable.from("body"),
@@ -195,6 +201,7 @@ test("write coordinator requires exact capability and validates security boundar
   assert.throws(
     () => uploadPeonProjectFile({
       peonId,
+      workspaceId: "workspace",
       projectId: "project",
       relativePath: "../escape",
       source: Readable.from("body"),
@@ -204,4 +211,67 @@ test("write coordinator requires exact capability and validates security boundar
     (error: unknown) => error instanceof PeonFileStreamError && error.code === "INVALID_PROJECT_PATH",
   );
   assert.equal(ws.sent.length, 0);
+});
+
+test("write coordinator correlates command/transfer IDs and bounds user byte reservations", async (t) => {
+  const peonId = "write-admission";
+  const ws = socket();
+  claimPeonTransferConnection(peonId, ws, [FILE_WRITE_CAPABILITY]);
+  t.after(() => releasePeonTransferConnection(peonId, ws));
+
+  const commandId = "11111111-1111-4111-8111-111111111111";
+  const first = uploadPeonProjectFile({
+    peonId,
+    workspaceId: "workspace-a",
+    projectId: "project",
+    relativePath: "first.bin",
+    source: new PassThrough(),
+    contentLength: 100 * 1024 * 1024,
+    maxBytes: 100 * 1024 * 1024,
+    commandId,
+    actor: { userId: "bounded-user", email: "operator@example.com" },
+  });
+  const firstOpen = jsonFrames(ws).at(-1)!;
+  assert.equal(firstOpen.transferId, firstOpen.requestId);
+  assert.equal(firstOpen.commandId, commandId);
+  assert.deepEqual(getPeonFileWriteCoordinatorSnapshot(), {
+    active: 1,
+    reservedBytes: 100 * 1024 * 1024,
+    lifecycle: { pending: 1 },
+  });
+
+  const second = uploadPeonProjectFile({
+    peonId,
+    workspaceId: "workspace-a",
+    projectId: "project",
+    relativePath: "second.bin",
+    source: new PassThrough(),
+    contentLength: 100 * 1024 * 1024,
+    maxBytes: 100 * 1024 * 1024,
+    actor: { userId: "bounded-user", email: "operator@example.com" },
+  });
+  assert.throws(
+    () => uploadPeonProjectFile({
+      peonId,
+      workspaceId: "workspace-a",
+      projectId: "project",
+      relativePath: "third.bin",
+      source: new PassThrough(),
+      contentLength: 100 * 1024 * 1024,
+      maxBytes: 100 * 1024 * 1024,
+      actor: { userId: "bounded-user", email: "operator@example.com" },
+    }),
+    (error: unknown) => error instanceof PeonFileStreamError
+      && error.code === "TRANSFER_QUOTA_EXCEEDED"
+      && error.status === 429,
+  );
+
+  failPeonFileTransfers(peonId, ws);
+  await assert.rejects(first);
+  await assert.rejects(second);
+  assert.deepEqual(getPeonFileWriteCoordinatorSnapshot(), {
+    active: 0,
+    reservedBytes: 0,
+    lifecycle: {},
+  });
 });
