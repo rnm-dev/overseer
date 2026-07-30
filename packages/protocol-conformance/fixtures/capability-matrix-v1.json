@@ -252,7 +252,7 @@
       "id": "rollout",
       "capability": "fleet-rollout-v1",
       "status": "blocked",
-      "blockedBy": "Production-like soak, fairness/latency SLOs and staged fleet rollout remain unfinished operational work."
+      "blockedBy": "Production no-inbound soak evidence and staged fleet rollout remain OVSR-152 operational work."
     }
   ]
 }

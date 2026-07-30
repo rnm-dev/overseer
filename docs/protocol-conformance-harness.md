@@ -157,8 +157,8 @@ HTTP while its reverse command is still pending.
 - updates: the base `reverse-command-v1:update.apply` lifecycle is covered;
   production-like soak and staged fleet rollout remain separate operational
   work.
-- rollout: fairness and latency SLOs, production-like soak artifacts and staged
-  fleet rollout remain unfinished operational cells.
+- rollout: production no-inbound soak artifacts and staged fleet rollout remain
+  unfinished OVSR-152 operational cells.
 
 Enrollment operational evidence remains blocked separately: a real-machine
 NAT/TLS exercise, a production-like mixed-fleet soak, and legacy removal after
@@ -183,3 +183,38 @@ frames with a named adapter passed through
 Overseer endpoint adapters to the deterministic transport. A family moves from
 `extensions` into the required matrix only after its capability, limits, stable
 errors and downgrade authority are frozen.
+
+## Local load and SLO readiness
+
+`ProportionalLoadHarness` runs a deterministic virtual scheduler with a 4:2:1
+control/durable/transfer service ratio. Control flows round-robin across Peons,
+users and sessions; transfer flows round-robin across project reads and writes
+and cannot enqueue beyond granted byte credit. Transcript messages retain one
+contiguous global durable sequence even when control work bypasses them.
+Reconnect admission, total queues, per-flow queues, durable journal order and
+diagnostics all have executable bounds.
+
+The local readiness criteria are:
+
+- heartbeat, cancel and terminal ACK complete within 256 virtual ticks through
+  a bounded pressure burst;
+- transcript durable delivery completes within 256 ticks and never reorders;
+- every continuously backlogged transfer flow progresses, with at most one
+  completed-chunk difference across the tested Peon/user/session flows;
+- queues drain, never exceed configured total/per-flow bounds, and excess
+  producer credit or reconnect storms fail closed;
+- emitted diagnostics remain within their byte/entry limits and use the shared
+  redaction rules.
+
+Run the configurable local/CI soak with:
+
+```sh
+npm run soak -w @rnm/protocol-conformance -- --duration-ms 60000
+```
+
+`CONFORMANCE_SOAK_DURATION_MS` sets the same duration non-interactively. The
+command advances virtual ticks rather than sleeping, writes one machine-readable
+JSON summary to stdout, exits non-zero on any failed criterion, and marks
+`productionEvidence: false`. A green local summary does not claim a deployed
+fleet-port-blocked soak, production SLO evidence or staged rollout; those
+remain OVSR-152.

@@ -43,3 +43,7 @@ export {
   UpdateLifecycleHarness,
   validateUpdateFrame,
 } from "./updateLifecycle.js";
+export {
+  ProportionalLoadHarness,
+  runDeterministicSoak,
+} from "./loadSlo.js";

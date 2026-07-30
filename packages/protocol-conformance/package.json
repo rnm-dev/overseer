@@ -7,6 +7,7 @@
   "exports": "./src/index.js",
   "scripts": {
     "test": "node --test",
+    "soak": "node scripts/soak.mjs",
     "verify": "npm test"
   },
   "engines": {
