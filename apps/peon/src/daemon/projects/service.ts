@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import path from "node:path";
 import { projectDocumentation, readProjectDoc } from "./docs.js";
 import { listProjectSkills } from "./skills.js";
@@ -16,6 +16,7 @@ export type ProjectServiceErrorKind =
   | "UNKNOWN_PROJECT"
   | "BAD_REQUEST"
   | "PROJECT_EXISTS"
+  | "PROJECT_CONFLICT"
   | "PROJECT_RUNNING"
   | "UNKNOWN_QUICK_LINK";
 
@@ -57,6 +58,11 @@ export interface ProjectSettingsView {
   dir: string;
 }
 
+export interface RevisionedProjectView {
+  projectId: string;
+  digest: string;
+}
+
 export interface ProjectListView {
   projectId: string;
   key: string;
@@ -84,6 +90,49 @@ export class ProjectService {
   detail(key: string) {
     const record = this.requireProject(key);
     return { ...this.toListView(record), documentation: projectDocumentation(record.dir) };
+  }
+
+  detailById(projectId: string) {
+    const record = this.requireProjectId(projectId);
+    return { ...this.toListView(record), digest: this.digest(record), documentation: projectDocumentation(record.dir) };
+  }
+
+  documentationById(projectId: string) {
+    return projectDocumentation(this.requireProjectId(projectId).dir);
+  }
+
+  documentById(projectId: string, docPath: string) {
+    return readProjectDoc(this.requireProjectId(projectId).dir, docPath);
+  }
+
+  skillsById(projectId: string) {
+    return { skills: listProjectSkills(this.requireProjectId(projectId).dir) };
+  }
+
+  listQuickLinksById(projectId: string) {
+    const record = this.requireProjectId(projectId);
+    return { links: structuredClone(record.quickLinks), digest: this.digest(record) };
+  }
+
+  createQuickLinkById(projectId: string, input: unknown, expectedDigest: string) {
+    const record = this.requireProjectId(projectId);
+    this.requireDigest(record, expectedDigest);
+    const link = this.createQuickLink(record.key, input);
+    return { link, digest: this.digest(this.requireProjectId(projectId)) };
+  }
+
+  updateQuickLinkById(projectId: string, id: string, input: unknown, expectedDigest: string) {
+    const record = this.requireProjectId(projectId);
+    this.requireDigest(record, expectedDigest);
+    const link = this.updateQuickLink(record.key, id, input);
+    return { link, digest: this.digest(this.requireProjectId(projectId)) };
+  }
+
+  removeQuickLinkById(projectId: string, id: string, expectedDigest: string) {
+    const record = this.requireProjectId(projectId);
+    this.requireDigest(record, expectedDigest);
+    this.removeQuickLink(record.key, id);
+    return { projectId, linkId: id, digest: this.digest(this.requireProjectId(projectId)) };
   }
 
   documentation(key: string) {
@@ -154,6 +203,11 @@ export class ProjectService {
     return this.toSettingsView(this.requireProject(key));
   }
 
+  settingsById(projectId: string) {
+    const record = this.requireProjectId(projectId);
+    return { ...this.toSettingsView(record), digest: this.digest(record) };
+  }
+
   suggest(labelInput: unknown): { key: string; dir: string } {
     const label = typeof labelInput === "string" ? labelInput.trim() : "";
     if (!label) throw new ProjectServiceError(400, "BAD_REQUEST", "label query param is required");
@@ -194,6 +248,11 @@ export class ProjectService {
     return { ...project, onboardingSessionId };
   }
 
+  createRevisioned(input: unknown, author?: string) {
+    const project = this.create(input, author);
+    return { ...project, digest: this.digest(project) };
+  }
+
   updateSettings(key: string, input: unknown): ProjectSettingsView {
     const record = this.requireProject(key);
     const body = this.body(input);
@@ -228,12 +287,26 @@ export class ProjectService {
     return this.toSettingsView(updated);
   }
 
+  updateSettingsById(projectId: string, input: unknown, expectedDigest: string) {
+    const record = this.requireProjectId(projectId);
+    this.requireDigest(record, expectedDigest);
+    const settings = this.updateSettings(record.key, input);
+    return { ...settings, digest: this.digest(this.requireProjectId(projectId)) };
+  }
+
   remove(key: string): void {
     this.requireProject(key);
     if (this.sessionIndex.list().some((session) => session.status === "running" && session.projectKey === key)) {
       throw new ProjectServiceError(409, "PROJECT_RUNNING", "a session is currently running against this project");
     }
     this.projects.remove(key);
+  }
+
+  removeById(projectId: string, expectedDigest: string): RevisionedProjectView {
+    const record = this.requireProjectId(projectId);
+    this.requireDigest(record, expectedDigest);
+    this.remove(record.key);
+    return { projectId, digest: expectedDigest };
   }
 
   archive(key: string): ProjectListView {
@@ -266,6 +339,24 @@ export class ProjectService {
     const record = this.projects.getById(projectId);
     if (!record) throw new ProjectServiceError(404, "UNKNOWN_PROJECT", "unknown project");
     return record;
+  }
+
+  private digest(record: ProjectRecord): string {
+    const value = {
+      projectId: record.projectId,
+      key: record.key,
+      label: record.label,
+      dir: record.dir,
+      quickLinks: record.quickLinks,
+      archivedAt: record.archivedAt,
+    };
+    return createHash("sha256").update(JSON.stringify(value)).digest("hex");
+  }
+
+  private requireDigest(record: ProjectRecord, expectedDigest: string): void {
+    if (!/^[0-9a-f]{64}$/.test(expectedDigest) || this.digest(record) !== expectedDigest) {
+      throw new ProjectServiceError(409, "PROJECT_CONFLICT", "project changed since it was read");
+    }
   }
 
   private setArchived(record: ProjectRecord, archived: boolean): ProjectListView {

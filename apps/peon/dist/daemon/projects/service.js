@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import path from "node:path";
 import { projectDocumentation, readProjectDoc } from "./docs.js";
 import { listProjectSkills } from "./skills.js";
@@ -38,6 +38,41 @@ export class ProjectService {
     detail(key) {
         const record = this.requireProject(key);
         return { ...this.toListView(record), documentation: projectDocumentation(record.dir) };
+    }
+    detailById(projectId) {
+        const record = this.requireProjectId(projectId);
+        return { ...this.toListView(record), digest: this.digest(record), documentation: projectDocumentation(record.dir) };
+    }
+    documentationById(projectId) {
+        return projectDocumentation(this.requireProjectId(projectId).dir);
+    }
+    documentById(projectId, docPath) {
+        return readProjectDoc(this.requireProjectId(projectId).dir, docPath);
+    }
+    skillsById(projectId) {
+        return { skills: listProjectSkills(this.requireProjectId(projectId).dir) };
+    }
+    listQuickLinksById(projectId) {
+        const record = this.requireProjectId(projectId);
+        return { links: structuredClone(record.quickLinks), digest: this.digest(record) };
+    }
+    createQuickLinkById(projectId, input, expectedDigest) {
+        const record = this.requireProjectId(projectId);
+        this.requireDigest(record, expectedDigest);
+        const link = this.createQuickLink(record.key, input);
+        return { link, digest: this.digest(this.requireProjectId(projectId)) };
+    }
+    updateQuickLinkById(projectId, id, input, expectedDigest) {
+        const record = this.requireProjectId(projectId);
+        this.requireDigest(record, expectedDigest);
+        const link = this.updateQuickLink(record.key, id, input);
+        return { link, digest: this.digest(this.requireProjectId(projectId)) };
+    }
+    removeQuickLinkById(projectId, id, expectedDigest) {
+        const record = this.requireProjectId(projectId);
+        this.requireDigest(record, expectedDigest);
+        this.removeQuickLink(record.key, id);
+        return { projectId, linkId: id, digest: this.digest(this.requireProjectId(projectId)) };
     }
     documentation(key) {
         return projectDocumentation(this.requireProject(key).dir);
@@ -100,6 +135,10 @@ export class ProjectService {
     settings(key) {
         return this.toSettingsView(this.requireProject(key));
     }
+    settingsById(projectId) {
+        const record = this.requireProjectId(projectId);
+        return { ...this.toSettingsView(record), digest: this.digest(record) };
+    }
     suggest(labelInput) {
         const label = typeof labelInput === "string" ? labelInput.trim() : "";
         if (!label)
@@ -141,6 +180,10 @@ export class ProjectService {
         }
         return { ...project, onboardingSessionId };
     }
+    createRevisioned(input, author) {
+        const project = this.create(input, author);
+        return { ...project, digest: this.digest(project) };
+    }
     updateSettings(key, input) {
         const record = this.requireProject(key);
         const body = this.body(input);
@@ -176,12 +219,24 @@ export class ProjectService {
             this.sessionIndex.renameProjectKey(record.key, updated.key);
         return this.toSettingsView(updated);
     }
+    updateSettingsById(projectId, input, expectedDigest) {
+        const record = this.requireProjectId(projectId);
+        this.requireDigest(record, expectedDigest);
+        const settings = this.updateSettings(record.key, input);
+        return { ...settings, digest: this.digest(this.requireProjectId(projectId)) };
+    }
     remove(key) {
         this.requireProject(key);
         if (this.sessionIndex.list().some((session) => session.status === "running" && session.projectKey === key)) {
             throw new ProjectServiceError(409, "PROJECT_RUNNING", "a session is currently running against this project");
         }
         this.projects.remove(key);
+    }
+    removeById(projectId, expectedDigest) {
+        const record = this.requireProjectId(projectId);
+        this.requireDigest(record, expectedDigest);
+        this.remove(record.key);
+        return { projectId, digest: expectedDigest };
     }
     archive(key) {
         return this.setArchived(this.requireProject(key), true);
@@ -210,6 +265,22 @@ export class ProjectService {
         if (!record)
             throw new ProjectServiceError(404, "UNKNOWN_PROJECT", "unknown project");
         return record;
+    }
+    digest(record) {
+        const value = {
+            projectId: record.projectId,
+            key: record.key,
+            label: record.label,
+            dir: record.dir,
+            quickLinks: record.quickLinks,
+            archivedAt: record.archivedAt,
+        };
+        return createHash("sha256").update(JSON.stringify(value)).digest("hex");
+    }
+    requireDigest(record, expectedDigest) {
+        if (!/^[0-9a-f]{64}$/.test(expectedDigest) || this.digest(record) !== expectedDigest) {
+            throw new ProjectServiceError(409, "PROJECT_CONFLICT", "project changed since it was read");
+        }
     }
     setArchived(record, archived) {
         if ((record.archivedAt !== null) === archived)

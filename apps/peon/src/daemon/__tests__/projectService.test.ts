@@ -158,3 +158,42 @@ test("project quick links validate, persist, and preserve stable identity and or
     (error: unknown) => error instanceof ProjectServiceError && error.kind === "UNKNOWN_QUICK_LINK",
   );
 });
+
+test("revisioned quick-link mutations reject stale project digests", (t) => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "peon-project-link-revision-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const service = new ProjectService(new ProjectStore(path.join(root, "projects.json")), {
+    list: () => [],
+    renameProjectKey: () => 0,
+    start: () => ({ id: "onboarding" }),
+    rename: () => undefined,
+  });
+  const created = service.createRevisioned({ label: "Links", dir: path.join(root, "project") });
+  const first = service.createQuickLinkById(
+    created.projectId,
+    { title: "Docs", url: "https://example.com/docs" },
+    created.digest,
+  );
+
+  assert.throws(
+    () => service.createQuickLinkById(
+      created.projectId,
+      { title: "Issues", url: "https://example.com/issues" },
+      created.digest,
+    ),
+    (error: unknown) => error instanceof ProjectServiceError && error.kind === "PROJECT_CONFLICT",
+  );
+  assert.throws(
+    () => service.updateQuickLinkById(
+      created.projectId,
+      first.link.id,
+      { title: "Changed" },
+      created.digest,
+    ),
+    (error: unknown) => error instanceof ProjectServiceError && error.kind === "PROJECT_CONFLICT",
+  );
+  assert.throws(
+    () => service.removeQuickLinkById(created.projectId, first.link.id, created.digest),
+    (error: unknown) => error instanceof ProjectServiceError && error.kind === "PROJECT_CONFLICT",
+  );
+});
