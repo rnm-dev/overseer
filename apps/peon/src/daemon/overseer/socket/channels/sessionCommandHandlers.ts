@@ -132,7 +132,10 @@ function turnOptions(
   }
   for (const attachment of attachmentList) {
     let candidate;
-    try { candidate = realpathSync(path.resolve(attachment.path)); } catch { throw new Error("UNKNOWN_ATTACHMENT_PATH"); }
+    const requested = path.isAbsolute(attachment.path)
+      ? attachment.path
+      : path.resolve(rootPath, attachment.path);
+    try { candidate = realpathSync(requested); } catch { throw new Error("UNKNOWN_ATTACHMENT_PATH"); }
     if (candidate !== rootPath && !candidate.startsWith(`${rootPath}${path.sep}`)) throw new Error("PATH_ESCAPE");
     let actual;
     try { actual = statSync(candidate); } catch { throw new Error("UNKNOWN_ATTACHMENT_PATH"); }

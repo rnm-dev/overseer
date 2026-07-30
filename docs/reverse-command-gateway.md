@@ -15,8 +15,11 @@ The wire lifecycle is the frozen `reverse-command-v1` contract vendored in
 3. Peon's ephemeral `command_accepted` records durable admission.
 4. `command_status_request` / `command_status` reconcile an admitted or
    admission-unknown command after reconnect.
-5. The terminal `command_result` arrives in Peon's existing
-   `durable-delivery-v1` envelope.
+5. An admitted command's terminal `command_result` arrives in Peon's existing
+   `durable-delivery-v1` envelope. A bounded refusal that happens before Peon
+   can admit the command (`BAD_COMMAND`, expiry, ledger capacity or persistence
+   failure) may arrive directly on the control socket; Overseer validates and
+   commits that no-effect terminal result itself.
 6. Overseer commits the shared durable inbox cursor, terminal command row,
    safe projection effect, audit row, and operator-scoped browser event in one
    transaction. Only then does it send `durable_ack`.
@@ -38,6 +41,20 @@ No action uses both reverse WSS and legacy HTTP. A missing connection returns
 `PEON_OFFLINE`; a connected Peon that did not negotiate the operation returns
 `CAPABILITY_UNAVAILABLE`. Operation-specific rollout code may select legacy
 HTTP before calling the gateway, but it must select exactly one route.
+
+A valid, correlated pre-admission refusal terminates only its command. It is
+never passed to session-sync as an unexpected frame and never closes the shared
+Peon control socket. Because Overseer commits the refusal with its normal audit
+and operator event before waking the HTTP waiter, reconnect cannot replay the
+refused command as a poison pill.
+
+Session attachment uploads remain represented by receipt identity at the HTTP
+boundary. Before persistence and send, the gateway binds the receipt and
+materializes the protocol's canonical `AttachmentInfo`
+(`originalName`, `filename`, absolute contained `path`, `size`, `mimetype`).
+Receipt-only fields (`transferId`, SHA-256 and the client display `type`) never
+cross into Peon's reverse-command payload. This applies equally to start,
+follow-up and queue-add operations.
 
 ## Durable registry and HTTP result
 
