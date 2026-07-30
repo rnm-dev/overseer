@@ -62,6 +62,13 @@ reported separately and remain false until every shipped family uses the
 selector. The diagnostic is not an operator API and contains no fleet or
 resource identifiers.
 
+Transfer socket claims now contribute actual negotiated-capability and
+initial/replacement connection counts. Unknown capability names collapse to
+`other`; no Peon identity or handshake payload becomes a label. Control-socket
+negotiation/reconnect causes, transfer failure codes, cursor lag, freshness,
+queue pressure and version attestation remain absent until their owning,
+currently changing call sites provide stable sources.
+
 ## Per-capability readiness record
 
 No family advances unless one evidence bundle names the exact capability and

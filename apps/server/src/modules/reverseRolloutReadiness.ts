@@ -5,6 +5,7 @@ import {
   type PeonTransportReason,
 } from "./transportSelection.js";
 import { reverseCommandMetricsSnapshot } from "./reverseCommands/index.js";
+import { reverseTransportMetricsSnapshot } from "./reverseTransportMetrics.js";
 
 const wiredSurfaces = new Set<ReverseRolloutSurface>();
 
@@ -18,6 +19,7 @@ export interface ReverseRolloutReadiness {
     wiredSurfaces: Readonly<Record<ReverseRolloutSurface, boolean>>;
     transport: ReturnType<typeof transportTelemetrySnapshot>;
     commandLifecycle: ReturnType<typeof reverseCommandMetricsSnapshot>;
+    transportSignals: ReturnType<typeof reverseTransportMetricsSnapshot>;
   };
   operationalGates: {
     productionTelemetry: false;
@@ -62,6 +64,7 @@ export function reverseRolloutReadinessSnapshot(): ReverseRolloutReadiness {
       },
       transport: transportTelemetrySnapshot(),
       commandLifecycle: reverseCommandMetricsSnapshot(),
+      transportSignals: reverseTransportMetricsSnapshot(),
     },
     operationalGates: {
       productionTelemetry: false,

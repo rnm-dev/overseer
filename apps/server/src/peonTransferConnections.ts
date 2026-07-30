@@ -1,4 +1,5 @@
 import { WebSocket } from "ws";
+import { observeNegotiatedConnection } from "./modules/reverseTransportMetrics.js";
 
 // Transfer sockets are deliberately independent from authoritative Peon
 // presence. Losing this data-plane connection must not mark the control plane
@@ -32,6 +33,11 @@ export function claimPeonTransferConnection(
   capabilities.set(socket, new Set(acceptedCapabilities));
   connectedAt.set(socket, Date.now());
   credentialGenerations.set(socket, credentialGeneration);
+  observeNegotiatedConnection({
+    plane: "transfer",
+    replacement: previous !== undefined && previous !== socket,
+    capabilities: acceptedCapabilities,
+  });
   return { accepted: true, ...(previous !== socket && previous ? { previous } : {}) };
 }
 
