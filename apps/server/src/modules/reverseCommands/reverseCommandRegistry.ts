@@ -78,6 +78,7 @@ export interface NewReverseCommand {
   actor: ReverseCommandActor;
   target: ReverseCommandTarget;
   payload: JsonObject;
+  attachmentPayload?: JsonObject;
   expected: JsonObject | null;
   requestBytes: number;
   requestedAt: number;
@@ -202,7 +203,7 @@ export async function createOrGetReverseCommand(
           requestHash: input.requestHash,
           actor: input.actor,
           targetSessionId: input.target.sessionId,
-          payload: input.payload,
+          payload: input.attachmentPayload ?? input.payload,
           now,
         });
       }
@@ -242,7 +243,7 @@ export async function createOrGetReverseCommand(
         requestHash: input.requestHash,
         actor: input.actor,
         targetSessionId: input.target.sessionId,
-        payload: input.payload,
+        payload: input.attachmentPayload ?? input.payload,
         now,
       });
     }

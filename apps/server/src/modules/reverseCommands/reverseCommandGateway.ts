@@ -579,6 +579,19 @@ export class ReverseCommandGateway {
       payload,
       expected,
     });
+    const wirePayload = (input.operation === "session.start" || input.operation === "session.followup")
+      && Array.isArray(payload.attachments)
+      ? {
+          ...payload,
+          attachments: payload.attachments.map((value) => {
+            const attachment = value as Record<string, unknown>;
+            return {
+              type: attachment.type === "image" ? "image" : "file",
+              path: String(attachment.path),
+            };
+          }),
+        }
+      : payload;
     const draft = {
       workspaceId: input.workspaceId,
       peonId: input.peonId,
@@ -587,7 +600,10 @@ export class ReverseCommandGateway {
       requestHash,
       actor,
       target,
-      payload,
+      payload: wirePayload,
+      ...(["session.start", "session.followup"].includes(input.operation)
+        ? { attachmentPayload: payload }
+        : {}),
       expected,
       requestBytes: 0,
       requestedAt,
@@ -608,19 +624,6 @@ export class ReverseCommandGateway {
     if (requestBytes > REVERSE_COMMAND_MAX_FRAME_BYTES) {
       throw new ReverseCommandGatewayError(413, "BAD_COMMAND", "reverse command exceeds 60 KiB");
     }
-    const wirePayload = (input.operation === "session.start" || input.operation === "session.followup")
-      && Array.isArray(payload.attachments)
-      ? {
-          ...payload,
-          attachments: payload.attachments.map((value) => {
-            const attachment = value as Record<string, unknown>;
-            return {
-              type: attachment.type === "image" ? "image" : "file",
-              path: String(attachment.path),
-            };
-          }),
-        }
-      : payload;
     return { ...draft, requestBytes, wirePayload };
   }
 

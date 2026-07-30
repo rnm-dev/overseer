@@ -538,7 +538,6 @@ export async function requestPeonSessionArtifact(input: {
 
 export interface PeonFileWriteResult {
   status: number;
-  transferId: string;
   path: string;
   size: number;
   sha256?: string;
@@ -749,7 +748,6 @@ function handlePeonFileWriteJson(item: PendingWrite, socket: WebSocket, frame: R
     ) return false;
     completeWrite(item, {
       status,
-      transferId: item.requestId,
       path,
       size: Number(size),
       ...(sha256 ? { sha256 } : {}),

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import express from "express";
 import { registry, toView } from "../../registry.js";
 import { callPeon, connOfRecord, normalizePeonUrl, proxyFileDownload, proxyFileUpload, proxyGet, proxyUpload } from "../../peonClient.js";
@@ -335,6 +336,7 @@ export function registerProjectRoutes(router: express.Router): void {
       if (!res.writableEnded) controller.abort();
     });
     try {
+      const transferId = randomUUID();
       const result = await uploadPeonSandboxFile({
         peonId: c.record.peonId,
         workspaceId: c.workspaceId,
@@ -342,6 +344,7 @@ export function registerProjectRoutes(router: express.Router): void {
         source: req,
         actor: { userId: c.userId, email: c.operator.email },
         signal: controller.signal,
+        requestId: transferId,
         maxBytes: path.startsWith("uploads/") ? attachmentUploadMaxBytes : projectUploadMaxBytes,
         ...uploadHeaders(req),
       });
@@ -354,7 +357,7 @@ export function registerProjectRoutes(router: express.Router): void {
             workspaceId: c.workspaceId,
             peonId: c.record.peonId,
             actor: { userId: c.userId, email: c.operator.email },
-            transferId: result.transferId,
+            transferId,
             path: result.path,
             size: result.size,
             sha256: result.sha256,

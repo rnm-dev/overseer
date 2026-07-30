@@ -100,6 +100,19 @@ test("attachment receipts fail closed across actor, metadata, expiry, and missin
     (error: unknown) => error instanceof AttachmentReceiptError && error.code === "ATTACHMENT_RECEIPT_CONFLICT");
   await assert.rejects(() => attempt({ type: "file", ...receipt }, USER, 3_700_001),
     (error: unknown) => error instanceof AttachmentReceiptError && error.code === "ATTACHMENT_RECEIPT_CONFLICT");
+  await assert.rejects(() => transaction((tx) => bindAttachmentReceipts(tx, {
+    workspaceId: WORKSPACE,
+    peonId: PEON,
+    commandId: COMMAND,
+    requestHash: "request-a",
+    actor: { userId: USER, email: "operator@example.com" },
+    payload: { attachments: [
+      { type: "file", ...receipt },
+      { type: "file", ...receipt },
+    ] },
+    now: 1_001,
+  })), (error: unknown) =>
+    error instanceof AttachmentReceiptError && error.code === "INVALID_ATTACHMENTS");
 });
 
 test("receipt binding and durable command creation commit atomically and survive registry restart", async () => {
@@ -127,13 +140,22 @@ test("receipt binding and durable command creation commit atomically and survive
     requestHash: "b".repeat(64),
     actor: { userId: USER, email: "operator@example.com" },
     target: { peonId: PEON, sessionId: "123e4567-e89b-42d3-a456-426614174005" },
-    payload,
+    payload: {
+      prompt: "go",
+      attachments: [{ type: "file", path: receipt.path }],
+    },
+    attachmentPayload: payload,
     expected: null,
     requestBytes: 512,
     requestedAt: Date.now(),
   };
   assert.equal((await createOrGetReverseCommand(command)).kind, "created");
   assert.equal((await createOrGetReverseCommand(command)).kind, "existing");
+  const stored = mem.public.one(`SELECT payload FROM reverse_commands WHERE command_id='${COMMAND}'`);
+  assert.deepEqual(stored.payload, {
+    prompt: "go",
+    attachments: [{ type: "file", path: receipt.path }],
+  }, "durable replay payload must not retain receipt capability metadata");
   await assert.rejects(() => createOrGetReverseCommand({
     ...command,
     commandId: OTHER_COMMAND,

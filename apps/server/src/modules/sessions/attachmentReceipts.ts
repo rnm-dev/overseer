@@ -82,6 +82,7 @@ function references(payload: JsonObject): AttachmentReference[] {
     throw new AttachmentReceiptError("INVALID_ATTACHMENTS", "invalid session attachments");
   }
   let total = 0;
+  const receiptIds = new Set<string>();
   return payload.attachments.map((value) => {
     if (!value || typeof value !== "object" || Array.isArray(value)) {
       throw new AttachmentReceiptError("INVALID_ATTACHMENTS", "invalid session attachment");
@@ -92,10 +93,15 @@ function references(payload: JsonObject): AttachmentReference[] {
       || !SHA256.test(String(item.sha256 ?? ""))) {
       throw new AttachmentReceiptError("ATTACHMENT_NOT_COMMITTED", "attachment is missing a committed transfer receipt");
     }
+    const transferId = String(item.transferId);
+    if (receiptIds.has(transferId)) {
+      throw new AttachmentReceiptError("INVALID_ATTACHMENTS", "attachment receipt is duplicated");
+    }
+    receiptIds.add(transferId);
     total += Number(item.size);
     if (total > MAX_TOTAL_BYTES) throw new AttachmentReceiptError("ATTACHMENTS_TOO_LARGE", "session attachments exceed the aggregate limit");
     return {
-      transferId: String(item.transferId),
+      transferId,
       path: item.path,
       size: Number(item.size),
       sha256: String(item.sha256),
