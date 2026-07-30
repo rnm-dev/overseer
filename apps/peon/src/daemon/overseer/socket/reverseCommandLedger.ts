@@ -8,6 +8,7 @@ import {
   openSync,
   readFileSync,
   renameSync,
+  rmSync,
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
@@ -53,6 +54,15 @@ interface StoredLedger {
   state: LedgerState;
 }
 
+type JournalMutation =
+  | { generation: number; type: "records"; records: ReverseCommandRecord[] }
+  | { generation: number; type: "state"; state: LedgerState };
+
+interface StoredJournalMutation {
+  checksum: string;
+  mutation: JournalMutation;
+}
+
 export interface ReverseCommandLedgerOptions {
   fileBase?: string;
   now?: () => number;
@@ -60,6 +70,8 @@ export interface ReverseCommandLedgerOptions {
   maxBytes?: number;
   retentionMs?: number;
   tombstoneRetentionMs?: number;
+  checkpointRecords?: number;
+  checkpointBytes?: number;
 }
 
 export type ReverseCommandAdmission =
@@ -73,9 +85,15 @@ export type ReverseCommandAdmission =
 const DEFAULT_RETENTION_MS = 7 * 24 * 60 * 60 * 1_000;
 const DEFAULT_MAX_RECORDS = 10_000;
 const DEFAULT_MAX_BYTES = 32 * 1024 * 1024;
+const DEFAULT_CHECKPOINT_RECORDS = 1_024;
+const DEFAULT_CHECKPOINT_BYTES = 4 * 1024 * 1024;
 
 function checksum(state: LedgerState): string {
   return createHash("sha256").update(JSON.stringify(state)).digest("hex");
+}
+
+function mutationChecksum(mutation: JournalMutation): string {
+  return createHash("sha256").update(JSON.stringify(mutation)).digest("hex");
 }
 
 function validRecord(value: unknown): value is ReverseCommandRecord {
@@ -101,6 +119,7 @@ function validState(value: unknown): value is LedgerState {
   return Boolean(state)
     && state!.version === 1
     && Number.isSafeInteger(state!.generation)
+    && (state!.generation ?? -1) >= 0
     && Array.isArray(state!.records)
     && state!.records.every(validRecord)
     && new Set(state!.records.map((record) => record.commandId)).size === state!.records.length
@@ -123,6 +142,11 @@ export class ReverseCommandLedger {
   private readonly maxBytes: number;
   private readonly retentionMs: number;
   private readonly tombstoneRetentionMs: number;
+  private readonly journalPath: string;
+  private readonly checkpointRecords: number;
+  private readonly checkpointBytes: number;
+  private journalRecords = 0;
+  private journalBytes = 0;
   private current: LedgerState;
   private lastError: string | null = null;
   private recoveredFromCorruption = false;
@@ -136,13 +160,26 @@ export class ReverseCommandLedger {
     this.maxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES;
     this.retentionMs = options.retentionMs ?? DEFAULT_RETENTION_MS;
     this.tombstoneRetentionMs = options.tombstoneRetentionMs ?? DEFAULT_RETENTION_MS;
+    this.journalPath = `${this.fileBase}.journal`;
+    this.checkpointRecords = options.checkpointRecords ?? DEFAULT_CHECKPOINT_RECORDS;
+    this.checkpointBytes = options.checkpointBytes ?? DEFAULT_CHECKPOINT_BYTES;
     this.current = this.load();
   }
 
-  status(): { records: number; bytes: number; recoveredFromCorruption: boolean; recoveryBlocked: boolean; lastError: string | null } {
+  status(): {
+    records: number;
+    bytes: number;
+    journalRecords: number;
+    journalBytes: number;
+    recoveredFromCorruption: boolean;
+    recoveryBlocked: boolean;
+    lastError: string | null;
+  } {
     return {
       records: this.current.records.length,
       bytes: Buffer.byteLength(JSON.stringify(this.current)),
+      journalRecords: this.journalRecords,
+      journalBytes: this.journalBytes,
       recoveredFromCorruption: this.recoveredFromCorruption,
       recoveryBlocked: this.recoveryBlocked,
       lastError: this.lastError,
@@ -179,7 +216,11 @@ export class ReverseCommandLedger {
     if (next.records.length > this.maxRecords || Buffer.byteLength(JSON.stringify(next)) > this.maxBytes) {
       return { kind: "full" };
     }
-    if (!this.persist(next)) return { kind: "persist_failed", error: this.lastError ?? "unable to persist command admission" };
+    if (!this.commit(next, {
+      generation: next.generation,
+      type: "records",
+      records: [record],
+    })) return { kind: "persist_failed", error: this.lastError ?? "unable to persist command admission" };
     return { kind: "accepted", record: structuredClone(record) };
   }
 
@@ -231,7 +272,11 @@ export class ReverseCommandLedger {
     next.records = next.records.map((record) => ids.has(record.commandId)
       ? { ...record, resultAcknowledgedAt: acknowledgedAt, updatedAt: acknowledgedAt }
       : record);
-    return this.persist(next);
+    return this.commit(next, {
+      generation: next.generation,
+      type: "records",
+      records: next.records.filter((record) => ids.has(record.commandId)),
+    });
   }
 
   recoverInterrupted(resultFactory: (record: ReverseCommandRecord) => PeonSocketFrame | null): ReverseCommandRecord[] {
@@ -247,7 +292,7 @@ export class ReverseCommandLedger {
     const next = this.compacted();
     if (JSON.stringify(next) === JSON.stringify(this.current)) return true;
     next.generation = this.current.generation + 1;
-    return this.persist(next);
+    return this.commit(next, { generation: next.generation, type: "state", state: next });
   }
 
   private compacted(): LedgerState {
@@ -282,26 +327,19 @@ export class ReverseCommandLedger {
     const next = structuredClone(this.current);
     next.generation += 1;
     next.records[index] = replacement;
-    return this.persist(next);
+    return this.commit(next, {
+      generation: next.generation,
+      type: "records",
+      records: [replacement],
+    });
   }
 
-  private persist(next: LedgerState): boolean {
-    const directory = path.dirname(this.fileBase);
-    const target = this.slots[next.generation % 2];
-    const temporary = `${target}.${process.pid}.${randomUUID()}.tmp`;
+  private commit(next: LedgerState, mutation: JournalMutation): boolean {
     try {
-      mkdirSync(directory, { recursive: true, mode: 0o700 });
-      writeFileSync(temporary, JSON.stringify({ checksum: checksum(next), state: next } satisfies StoredLedger), {
-        mode: 0o600,
-        flag: "wx",
-      });
-      const descriptor = openSync(temporary, constants.O_RDONLY);
-      try { fsyncSync(descriptor); }
-      finally { closeSync(descriptor); }
-      renameSync(temporary, target);
-      syncDirectory(directory);
+      this.appendMutation(mutation);
       this.current = next;
       this.lastError = null;
+      this.maybeCheckpoint();
       return true;
     } catch (error) {
       this.lastError = error instanceof Error ? error.message : String(error);
@@ -309,8 +347,115 @@ export class ReverseCommandLedger {
     }
   }
 
+  private appendMutation(mutation: JournalMutation): void {
+    const directory = path.dirname(this.fileBase);
+    mkdirSync(directory, { recursive: true, mode: 0o700 });
+    const envelope: StoredJournalMutation = { checksum: mutationChecksum(mutation), mutation };
+    const line = `${JSON.stringify(envelope)}\n`;
+    const descriptor = openSync(this.journalPath, constants.O_APPEND | constants.O_CREAT | constants.O_WRONLY, 0o600);
+    try {
+      writeFileSync(descriptor, line);
+      fsyncSync(descriptor);
+    } finally {
+      closeSync(descriptor);
+    }
+    this.journalRecords += 1;
+    this.journalBytes += Buffer.byteLength(line);
+  }
+
+  private maybeCheckpoint(): void {
+    if (this.journalRecords < this.checkpointRecords && this.journalBytes < this.checkpointBytes) return;
+    try {
+      // Keep both slots at the same checkpoint generation. Until the journal is
+      // atomically cleared, either an older slot or the new one can replay that
+      // same journal to the identical state after a crash between renames.
+      this.writeSlot(this.current, this.slots[0]);
+      this.writeSlot(this.current, this.slots[1]);
+      this.replaceJournal();
+      this.journalRecords = 0;
+      this.journalBytes = 0;
+    } catch (error) {
+      // The fsynced journal is still authoritative. A failed optional
+      // checkpoint must not turn a committed lifecycle transition into a
+      // reported failure that callers might retry.
+      this.lastError = `reverse command ledger checkpoint failed: ${error instanceof Error ? error.message : String(error)}`;
+    }
+  }
+
+  private replaceJournal(): void {
+    const directory = path.dirname(this.fileBase);
+    const temporary = `${this.journalPath}.${process.pid}.${randomUUID()}.tmp`;
+    try {
+      writeFileSync(temporary, "", { mode: 0o600, flag: "wx" });
+      const descriptor = openSync(temporary, constants.O_RDONLY);
+      try { fsyncSync(descriptor); }
+      finally { closeSync(descriptor); }
+      renameSync(temporary, this.journalPath);
+      syncDirectory(directory);
+    } finally {
+      rmSync(temporary, { force: true });
+    }
+  }
+
+  private applyMutation(state: LedgerState, mutation: JournalMutation): LedgerState | null {
+    if (mutation.generation !== state.generation + 1) return null;
+    if (mutation.type === "state") {
+      return mutation.state.generation === mutation.generation && validState(mutation.state)
+        ? structuredClone(mutation.state)
+        : null;
+    }
+    if (!Array.isArray(mutation.records) || mutation.records.length === 0
+      || !mutation.records.every(validRecord)
+      || new Set(mutation.records.map((record) => record.commandId)).size !== mutation.records.length) return null;
+    const next = structuredClone(state);
+    next.generation = mutation.generation;
+    for (const record of mutation.records) {
+      const index = next.records.findIndex((candidate) => candidate.commandId === record.commandId);
+      if (index < 0) next.records.push(structuredClone(record));
+      else next.records[index] = structuredClone(record);
+    }
+    return validState(next) ? next : null;
+  }
+
+  private readJournal(): { mutations: JournalMutation[]; invalid: boolean } {
+    if (!existsSync(this.journalPath)) return { mutations: [], invalid: false };
+    const raw = readFileSync(this.journalPath, "utf8");
+    if (!raw) return { mutations: [], invalid: false };
+    const parts = raw.split("\n");
+    const hasPartialTail = parts.at(-1) !== "";
+    if (hasPartialTail) parts.pop();
+    const mutations: JournalMutation[] = [];
+    let invalid = false;
+    for (const line of parts.filter(Boolean)) {
+      if (invalid) break;
+      try {
+        const envelope = JSON.parse(line) as Partial<StoredJournalMutation>;
+        const mutation = envelope.mutation as JournalMutation | undefined;
+        if (!mutation || envelope.checksum !== mutationChecksum(mutation)) throw new Error("invalid journal checksum");
+        mutations.push(mutation);
+        this.journalRecords += 1;
+        this.journalBytes += Buffer.byteLength(`${line}\n`);
+      } catch {
+        invalid = true;
+      }
+    }
+    return { mutations, invalid: invalid || hasPartialTail };
+  }
+
+  private replayJournal(base: LedgerState, mutations: JournalMutation[]): LedgerState | null {
+    let state = structuredClone(base);
+    for (const mutation of mutations) {
+      if (mutation.generation <= state.generation) continue;
+      const next = this.applyMutation(state, mutation);
+      if (!next) return null;
+      state = next;
+    }
+    return state;
+  }
+
   private load(): LedgerState {
     const candidates: LedgerState[] = [];
+    let invalidSlots = 0;
     let sawFile = false;
     for (const slot of this.slots) {
       if (!existsSync(slot)) continue;
@@ -320,23 +465,67 @@ export class ReverseCommandLedger {
         if (!validState(envelope.state) || envelope.checksum !== checksum(envelope.state)) throw new Error("invalid checksum");
         candidates.push(envelope.state);
       } catch {
-        this.recoveredFromCorruption = true;
+        invalidSlots += 1;
       }
     }
+    if (!sawFile) {
+      const initial: LedgerState = { version: 1, generation: 0, records: [], tombstones: [] };
+      this.writeSlot(initial, this.slots[0]);
+      this.writeSlot(initial, this.slots[1]);
+      return initial;
+    }
+
+    const journal = this.readJournal();
+    const recovered = candidates
+      .map((candidate) => this.replayJournal(candidate, journal.mutations))
+      .filter((candidate): candidate is LedgerState => candidate !== null)
+      .sort((a, b) => b.generation - a.generation);
+    const best = recovered[0] ?? candidates.sort((a, b) => b.generation - a.generation)[0]
+      ?? { version: 1 as const, generation: 0, records: [], tombstones: [] };
     const generations = candidates.map((candidate) => candidate.generation).sort((a, b) => b - a);
-    const missingRequiredPeer = candidates.length === 1 && generations[0]! >= 2;
-    const generationGap = generations.length === 2 && generations[0]! - generations[1]! !== 1;
-    if (this.recoveredFromCorruption || missingRequiredPeer || generationGap) {
+    const sameGenerationMismatch = candidates.length === 2 && generations[0] === generations[1]
+      && checksum(candidates[0]!) !== checksum(candidates[1]!);
+    const legacyShapeValid = journal.mutations.length === 0
+      && invalidSlots === 0
+      && ((candidates.length === 1 && generations[0]! < 2)
+        || (candidates.length === 2
+          && (generations[0] === generations[1] || generations[0]! - generations[1]! === 1)));
+    const journalRecoveryValid = journal.mutations.length > 0
+      && invalidSlots === 0
+      && recovered.length === candidates.length
+      && recovered.every((candidate) => checksum(candidate) === checksum(best));
+    if (journal.invalid || sameGenerationMismatch || (!legacyShapeValid && !journalRecoveryValid)) {
+      this.recoveredFromCorruption = invalidSlots > 0 || journal.invalid || sameGenerationMismatch;
       this.recoveryBlocked = true;
-      this.lastError = "reverse command ledger recovery blocked: corrupt, missing, or gapped durable generation";
-      return candidates.sort((a, b) => b.generation - a.generation)[0]
-        ?? { version: 1, generation: 0, records: [], tombstones: [] };
+      this.lastError = journal.invalid
+        ? "reverse command ledger recovery blocked: journal is corrupt or incomplete"
+        : "reverse command ledger recovery blocked: corrupt, missing, divergent, or gapped durable generation";
+    } else if (journal.mutations.length === 0 && generations.length === 2 && generations[0] !== generations[1]) {
+      // One-time migration from the old alternating full-snapshot layout. A
+      // common baseline lets every later journal replay from either slot.
+      this.writeSlot(best, this.slots[0]);
+      this.writeSlot(best, this.slots[1]);
     }
-    if (candidates.length > 0) return candidates.sort((a, b) => b.generation - a.generation)[0]!;
-    if (sawFile) {
-      this.recoveryBlocked = true;
-      this.lastError = "reverse command ledger recovery blocked: no valid durable generation";
+    return best;
+  }
+
+  private writeSlot(state: LedgerState, targetOverride?: string): void {
+    const directory = path.dirname(this.fileBase);
+    mkdirSync(directory, { recursive: true, mode: 0o700 });
+    const target = targetOverride ?? this.slots[state.generation % 2];
+    const temporary = `${target}.${process.pid}.${randomUUID()}.tmp`;
+    try {
+      writeFileSync(temporary, JSON.stringify({ checksum: checksum(state), state } satisfies StoredLedger), {
+        mode: 0o600,
+        flag: "wx",
+      });
+      const descriptor = openSync(temporary, constants.O_RDONLY);
+      try { fsyncSync(descriptor); }
+      finally { closeSync(descriptor); }
+      renameSync(temporary, target);
+      syncDirectory(directory);
+    } finally {
+      rmSync(temporary, { force: true });
     }
-    return { version: 1, generation: 0, records: [], tombstones: [] };
   }
 }

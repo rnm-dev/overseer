@@ -202,6 +202,13 @@ serialized ledger data. Peon rejects new mutating commands with `COMMAND_LEDGER_
 evicting an unacknowledged result. Expired records retain bounded command-ID/hash tombstones for
 another seven days.
 
+Peon persists ordinary ledger transitions as checksummed, fsynced append-only journal mutations;
+it does not rewrite the complete retained ledger for every accepted/running/terminal/acknowledged
+state change. The journal checkpoints to two identical atomic snapshots after 1,024 mutations or
+4 MiB. Restart recovery must reproduce the same generation from both usable snapshot bases. A
+partial, corrupt, divergent, or gapped journal remains fail-closed so recovery can never discard a
+deduplication fence after an effect may have occurred.
+
 ## Generic result statuses
 
 | Status | Meaning |
