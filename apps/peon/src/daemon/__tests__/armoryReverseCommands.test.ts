@@ -22,7 +22,7 @@ test("Armory configure result never reflects submitted secret values or hook mes
     kind: "configure",
     status: "success",
     phase: "done",
-    percent: 100,
+    progress: 65,
     message: "hook printed ultra-secret",
     errorCode: null,
     startedAt: 1,
@@ -38,6 +38,7 @@ test("Armory configure result never reflects submitted secret values or hook mes
   const wire = JSON.stringify(result);
   assert.equal(wire.includes("ultra-secret"), false);
   assert.equal((result.result as { operation: { message: string } }).operation.message, "");
+  assert.equal((result.result as { operation: { percent: number } }).operation.percent, 65);
 });
 
 test("Armory inventory is capped and oversized safe results are replaced", async () => {
@@ -78,7 +79,7 @@ test("Armory verify returns the same bounded safe operation shape", async () => 
         kind: "verify",
         status: "success",
         phase: "done",
-        percent: 100,
+        progress: 100,
         message: "provider returned secret diagnostics",
         errorCode: null,
         startedAt: 1,
