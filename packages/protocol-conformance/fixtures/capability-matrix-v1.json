@@ -12,7 +12,7 @@
         "channelFeatures": {}
       },
       "current": {
-        "controlCapabilities": ["session-catalog-v1", "durable-delivery-v1", "project-catalog-v1", "folder-listing-v1"],
+        "controlCapabilities": ["session-catalog-v1", "durable-delivery-v1", "project-catalog-v1", "folder-listing-v1", "reverse-command-v1"],
         "transferCapabilities": ["project-file-read-v1", "sandbox-file-read-v1"],
         "channelFeatures": { "folder-listing-v1": ["entry-metadata-v1"] }
       }
@@ -28,7 +28,7 @@
         "channelFeatures": {}
       },
       "current": {
-        "controlCapabilities": ["session-catalog-v1", "durable-delivery-v1", "project-catalog-v1", "folder-listing-v1"],
+        "controlCapabilities": ["session-catalog-v1", "durable-delivery-v1", "project-catalog-v1", "folder-listing-v1", "reverse-command-v1"],
         "transferCapabilities": ["project-file-read-v1", "sandbox-file-read-v1"],
         "channelFeatures": { "folder-listing-v1": ["entry-metadata-v1"] }
       }
@@ -45,7 +45,8 @@
         "absolute-folder-picker": "unavailable",
         "project-directory": "legacy-http",
         "project-file-read": "legacy-http",
-        "sandbox-file-read": "legacy-http"
+        "sandbox-file-read": "legacy-http",
+        "session-cancel": "legacy-http"
       }
     },
     {
@@ -58,7 +59,8 @@
         "absolute-folder-picker": "unavailable",
         "project-directory": "legacy-http",
         "project-file-read": "legacy-http",
-        "sandbox-file-read": "legacy-http"
+        "sandbox-file-read": "legacy-http",
+        "session-cancel": "legacy-http"
       }
     },
     {
@@ -71,7 +73,8 @@
         "absolute-folder-picker": "unavailable",
         "project-directory": "legacy-http",
         "project-file-read": "legacy-http",
-        "sandbox-file-read": "legacy-http"
+        "sandbox-file-read": "legacy-http",
+        "session-cancel": "legacy-http"
       }
     },
     {
@@ -84,7 +87,8 @@
         "absolute-folder-picker": "unavailable",
         "project-directory": "legacy-http",
         "project-file-read": "legacy-http",
-        "sandbox-file-read": "legacy-http"
+        "sandbox-file-read": "legacy-http",
+        "session-cancel": "legacy-http"
       }
     },
     {
@@ -97,7 +101,8 @@
         "absolute-folder-picker": "reverse-socket",
         "project-directory": "legacy-http",
         "project-file-read": "reverse-socket",
-        "sandbox-file-read": "legacy-http"
+        "sandbox-file-read": "legacy-http",
+        "session-cancel": "legacy-http"
       }
     },
     {
@@ -110,7 +115,8 @@
         "absolute-folder-picker": "reverse-socket",
         "project-directory": "legacy-http",
         "project-file-read": "reverse-socket",
-        "sandbox-file-read": "legacy-http"
+        "sandbox-file-read": "legacy-http",
+        "session-cancel": "legacy-http"
       }
     },
     {
@@ -123,7 +129,8 @@
         "absolute-folder-picker": "unavailable",
         "project-directory": "legacy-http",
         "project-file-read": "legacy-http",
-        "sandbox-file-read": "legacy-http"
+        "sandbox-file-read": "legacy-http",
+        "session-cancel": "legacy-http"
       }
     },
     {
@@ -136,7 +143,8 @@
         "absolute-folder-picker": "reverse-socket",
         "project-directory": "legacy-http",
         "project-file-read": "reverse-socket",
-        "sandbox-file-read": "legacy-http"
+        "sandbox-file-read": "legacy-http",
+        "session-cancel": "legacy-http"
       }
     },
     {
@@ -149,7 +157,8 @@
         "absolute-folder-picker": "reverse-socket",
         "project-directory": "reverse-socket",
         "project-file-read": "reverse-socket",
-        "sandbox-file-read": "reverse-socket"
+        "sandbox-file-read": "reverse-socket",
+        "session-cancel": "reverse-socket"
       }
     }
   ],
@@ -157,8 +166,8 @@
     {
       "id": "reverse-command",
       "capability": "reverse-command-v1",
-      "status": "blocked",
-      "blockedBy": "The vendored schemas are not byte-identical (the current diff is formatting-only), and the accepted/result/status lifecycle crash-point adapters are not yet attached."
+      "status": "covered",
+      "coverage": "session.cancel admission, accepted/status/result reconciliation, durable commit-before-ACK, duplicate/drop/reorder/reconnect/restart, generation fencing, bounds and torn-record fail-closed scenarios"
     },
     {
       "id": "enrollment",

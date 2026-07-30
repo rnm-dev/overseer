@@ -24,3 +24,9 @@ export {
 export {
   auditVendoredContracts,
 } from "./vendorAudit.js";
+export {
+  CommandLifecycleError,
+  OverseerCommandAdapter,
+  PeonCommandAdapter,
+  ReverseCommandLifecycleHarness,
+} from "./reverseCommandLifecycle.js";

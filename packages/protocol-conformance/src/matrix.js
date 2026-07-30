@@ -48,6 +48,8 @@ export function routeForSurface(surface, negotiated) {
       return transfer.has("project-file-read-v1") ? "reverse-socket" : "legacy-http";
     case "sandbox-file-read":
       return transfer.has("sandbox-file-read-v1") ? "reverse-socket" : "legacy-http";
+    case "session-cancel":
+      return control.has("reverse-command-v1") ? "reverse-socket" : "legacy-http";
     default:
       return "unimplemented";
   }
@@ -80,11 +82,10 @@ export function runCapabilityMatrix(document) {
       errors,
     });
   }
-  const extensions = (document.extensions ?? []).map((extension) => ({
-    ...extension,
-    passed: false,
-    blocked: true,
-  }));
+  const extensions = (document.extensions ?? []).map((extension) => {
+    const covered = extension.status === "covered";
+    return { ...extension, passed: covered, blocked: !covered };
+  });
   return {
     formatVersion: 1,
     passed: cells.filter((cell) => cell.passed).length,
