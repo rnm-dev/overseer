@@ -162,7 +162,7 @@ Dev public origin is https://overseer-dev.rnm.dev. Cloudflare A record remains p
 host: root@94.247.128.103 (nid-01 / nid-prod-coloc.mesh.rnm / Tailscale 100.64.0.5)
 tailnet: hs.rnm.dev, MagicDNS suffix mesh.rnm; the production app container resolves and reaches Peons at peon-*.mesh.rnm:4570
 deploy: Kamal 2 config /rnm/overseer/apps/server/config/deploy.yml; service overseer; registry image vibze/overseer
-current image: vibze/overseer:df4b2b75d1558cec99dc771be52026a536065051 (clean commit, deployed 2026-07-29 — OVSR-238 moved the repository root to `/rnm/overseer` and the production build to the root npm workspaces)
+current image: vibze/overseer:caf62ff60474c53a26773baf1cf0dc1d2b17d30c (clean commit, deployed 2026-07-31 — AI stats lost its outcomes card and every money figure)
 app container pattern: overseer-web-<version>, port 5000 on the kamal network, health check /healthz
 primary proxy path: Cloudflare → host nginx :80 → shared kamal-proxy 127.0.0.1:8080 → Overseer :5000. During OVSR-248 review, the production Kamal listeners were wildcard host-bound on both 8080 and 8443 (`0.0.0.0/[::]`). An independent external request to 8080 returned HTTP 200; the 8443 probe timed out with no HTTP response (possibly filtered), so only 8080 was demonstrated Internet-reachable. The checked-in Kamal 2.12+ run config targets both listeners at 127.0.0.1, but that requires a separately approved shared-proxy reboot and has not been applied
 host nginx config: /etc/nginx/sites-available/overseer.rnm.dev, enabled in sites-enabled
