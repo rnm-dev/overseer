@@ -20,6 +20,7 @@ export { toPublicSessionRecord, type PublicSessionRecord } from "./publicView.js
 export {
   flushTranscript,
   previewText,
+  readTranscript,
   readCommittedTranscriptEntries,
   readCommittedTranscriptEntriesBounded,
   sessionArtifactInventory,

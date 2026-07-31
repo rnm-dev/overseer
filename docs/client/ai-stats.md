@@ -24,8 +24,8 @@ adds `refresh=1` to both probes.
 - Headline session count, output tokens, and duration.
 - Show the complete persisted session-state size separately from the selected
   period because `sessionsSizeBytes` covers the whole store.
-- Show prompt and token breakdowns by session initiator and project, ordered by
-  output tokens for the selected period.
+- Show prompt and token breakdowns by transcript-turn author and project,
+  ordered by output tokens for the selected period.
 - Keep input, cache creation, and cache read as a secondary breakdown.
 - Never headline `totalTokens`: it already includes cache tokens and cache read
   can make the number look like newly generated work.
@@ -33,8 +33,10 @@ adds `refresh=1` to both probes.
 - Show account quota windows and reset countdowns when supplied.
 - Keep Plugins, Skills, and MCP inventories collapsed until requested.
 - Treat a 404 from `/stats` as an unsupported Peon version.
-- Explain that historical usage is session-level: tokens from shared follow-ups
-  are attributed to the operator who initiated the session.
+- Explain that prompt counts use each persisted user turn's author. Unsigned
+  historical turns fall back to the session initiator. Tokens, duration,
+  outcomes, and storage remain session-level and are repeated for every
+  participating author because Peon has no exact per-message usage.
 
 ## Caching and privacy
 

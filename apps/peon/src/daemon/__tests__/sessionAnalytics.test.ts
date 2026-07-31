@@ -128,7 +128,9 @@ test("analytics combines user, stable project identity, and time while preservin
   const result = analyticsForSessions(records, query, {
     totalBytes: 1_000,
     bySessionId: new Map([["session-1", 100], ["session-2", 200], ["outside", 300]]),
-  }, NOW);
+  }, NOW, (id) => id === "session-1"
+    ? [{ type: "user_message", text: "initial", author: "alice@example.com" }, { type: "user_message", text: "follow-up", author: "alice@example.com" }]
+    : id === "session-2" ? [{ type: "user_message", text: "initial", author: "bob@example.com" }] : []);
 
   assert.equal(result.rows.length, 2);
   assert.deepEqual(result.rows.map((row) => [row.timeStart, row.user, row.projectId, row.storageBytes]), [
@@ -136,7 +138,7 @@ test("analytics combines user, stable project identity, and time while preservin
     ["2026-07-16T10:00:00.000Z", "bob@example.com", "project-2", 200],
   ]);
   assert.equal(result.totals.sessionCount, 2);
-  assert.equal(result.totals.promptCount, 4);
+  assert.equal(result.totals.promptCount, 3);
   assert.equal(result.totals.totalTokens, 120);
   assert.equal(result.totals.processedTokens, 120);
   assert.equal(result.totals.cachedInputTokens, 50);
@@ -149,7 +151,50 @@ test("analytics combines user, stable project identity, and time while preservin
   assert.equal(result.totals.attributionQuality, "mixed");
   assert.equal(result.totals.runningCount, 1);
   assert.equal(result.storage.unattributedBytes, 400);
-  assert.equal(result.attribution.user, "session_initiator");
+  assert.equal(result.attribution.user, "transcript_turn_author");
+});
+
+test("analytics attributes shared-session prompts to each transcript turn author", () => {
+  const shared = record({ followUpPrompts: ["bob", "unsigned"] });
+  const transcript = [
+    { type: "user_message" as const, text: "initial", author: "alice@example.com" },
+    { type: "user_message" as const, text: "follow-up", author: "bob@example.com" },
+    { type: "user_message" as const, text: "legacy follow-up" },
+  ];
+  const byUser = analyticsForSessions(
+    [shared],
+    parseSessionAnalyticsQuery({ period: "all", groupBy: "user" }, NOW),
+    undefined,
+    NOW,
+    () => transcript,
+  );
+
+  assert.deepEqual(byUser.rows.map((row) => [row.user, row.promptCount]), [
+    ["alice@example.com", 2],
+    ["bob@example.com", 1],
+  ]);
+  assert.equal(byUser.totals.promptCount, 3);
+  const byProject = analyticsForSessions(
+    [shared],
+    parseSessionAnalyticsQuery({ period: "all", groupBy: "project" }, NOW),
+    undefined,
+    NOW,
+    () => transcript,
+  );
+  assert.equal(
+    byUser.rows.reduce((sum, row) => sum + row.promptCount, 0),
+    byProject.rows.reduce((sum, row) => sum + row.promptCount, 0),
+  );
+
+  const bob = analyticsForSessions(
+    [shared],
+    parseSessionAnalyticsQuery({ period: "all", user: "bob@example.com" }, NOW),
+    undefined,
+    NOW,
+    () => transcript,
+  );
+  assert.equal(bob.totals.promptCount, 1);
+  assert.match(bob.attribution.note, /unsigned historical turns fall back to the session initiator/);
 });
 
 test("stats and analytics use identical canonical totals and expose provider/model filtering", () => {

@@ -3,6 +3,8 @@ import { listAgentDrivers } from "./agents/index.js";
 import type { SessionRecord, SessionStatus } from "./sessionTypes.js";
 import { ensurePeonId } from "./peonIdentity.js";
 import { normalizeTokenUsage, TOKEN_USAGE_SEMANTICS_VERSION } from "./tokenUsage.js";
+import { readTranscript } from "./sessions/index.js";
+import type { AgentEvent } from "./agents/index.js";
 
 export const ANALYTICS_DIMENSIONS = ["user", "project", "time", "agent", "model", "status", "outcome"] as const;
 export type AnalyticsDimension = typeof ANALYTICS_DIMENSIONS[number];
@@ -72,7 +74,7 @@ export interface SessionAnalytics {
   timeZone: "UTC";
   attribution: {
     time: "session_started_at";
-    user: "session_initiator";
+    user: "transcript_turn_author";
     project: "session_project_id";
     note: string;
   };
@@ -204,9 +206,9 @@ function bucketRange(timestamp: number, bucket: AnalyticsTimeBucket): { start: n
   return { start, end };
 }
 
-function addRecord(metrics: AnalyticsMetrics, record: SessionRecord, storageBytes: number, now: number): void {
+function addRecord(metrics: AnalyticsMetrics, record: SessionRecord, storageBytes: number, now: number, promptCount: number): void {
   metrics.sessionCount += 1;
-  metrics.promptCount += 1 + record.followUpPrompts.length + record.queuedFollowUps.length;
+  metrics.promptCount += promptCount;
   metrics.turnCount += record.turnCount;
   metrics.storageBytes += storageBytes;
   metrics.wallDurationMs += Math.max(0, (record.endedAt ?? now) - record.startedAt);
@@ -249,7 +251,6 @@ function finishUsageQuality(metrics: AnalyticsMetrics): void {
 
 function matches(record: SessionRecord, filters: AnalyticsQuery["filters"]): boolean {
   const outcome = outcomeOf(record);
-  if (filters.user && !filters.user.includes(record.initiator ?? "unknown")) return false;
   if (filters.project && !filters.project.some((value) => value === (record.projectId ?? "unknown") || value === (record.projectKey ?? "unknown"))) return false;
   if (filters.agent && !filters.agent.includes(record.agent)) return false;
   if (filters.model && !filters.model.includes(record.model ?? "unknown")) return false;
@@ -258,11 +259,26 @@ function matches(record: SessionRecord, filters: AnalyticsQuery["filters"]): boo
   return true;
 }
 
+function promptCountsByAuthor(record: SessionRecord, transcript: readonly AgentEvent[]): Map<string, number> {
+  const userTurns = transcript.filter((event) => event.type === "user_message");
+  const fallbackAuthor = record.initiator ?? "unknown";
+  if (userTurns.length === 0) {
+    return new Map([[fallbackAuthor, 1 + record.followUpPrompts.length + record.queuedFollowUps.length]]);
+  }
+  const counts = new Map<string, number>();
+  for (const turn of userTurns) {
+    const author = typeof turn.author === "string" && turn.author.trim() ? turn.author.trim() : fallbackAuthor;
+    counts.set(author, (counts.get(author) ?? 0) + 1);
+  }
+  return counts;
+}
+
 export function analyticsForSessions(
   records: Iterable<SessionRecord>,
   query: AnalyticsQuery,
   storage: { totalBytes: number; bySessionId: ReadonlyMap<string, number> } = { totalBytes: 0, bySessionId: new Map() },
   now = Date.now(),
+  transcriptReader: (id: string, agent: CodingAgent) => readonly AgentEvent[] = readTranscript,
 ): SessionAnalytics {
   const allRecords = [...records];
   const knownStorageBytes = allRecords.reduce((sum, record) => sum + (storage.bySessionId.get(record.id) ?? 0), 0);
@@ -271,11 +287,22 @@ export function analyticsForSessions(
 
   for (const record of allRecords) {
     if (record.startedAt < query.from || record.startedAt >= query.to || !matches(record, query.filters)) continue;
-    const parts: string[] = [];
-    const dimensions: Partial<AnalyticsRow> = {};
-    for (const dimension of query.groupBy) {
+    const authorCounts = promptCountsByAuthor(record, transcriptReader(record.id, record.agent));
+    const selectedAuthorCounts = query.filters.user
+      ? new Map([...authorCounts].filter(([author]) => query.filters.user!.includes(author)))
+      : authorCounts;
+    if (selectedAuthorCounts.size === 0) continue;
+    const selectedPromptCount = [...selectedAuthorCounts.values()].reduce((sum, count) => sum + count, 0);
+    const bytes = storage.bySessionId.get(record.id) ?? 0;
+    addRecord(totals, record, bytes, now, selectedPromptCount);
+
+    const groupedAuthors = query.groupBy.includes("user") ? selectedAuthorCounts : new Map([["", selectedPromptCount]]);
+    for (const [groupedAuthor, groupedPromptCount] of groupedAuthors) {
+      const parts: string[] = [];
+      const dimensions: Partial<AnalyticsRow> = {};
+      for (const dimension of query.groupBy) {
       if (dimension === "user") {
-        dimensions.user = record.initiator ?? "unknown";
+        dimensions.user = groupedAuthor;
         parts.push(`user:${dimensions.user}`);
       } else if (dimension === "project") {
         dimensions.projectId = record.projectId;
@@ -299,13 +326,12 @@ export function analyticsForSessions(
         dimensions.outcome = outcomeOf(record);
         parts.push(`outcome:${dimensions.outcome}`);
       }
+      }
+      const key = parts.join("\0");
+      const row = grouped.get(key) ?? Object.assign(emptyMetrics(), dimensions);
+      addRecord(row, record, bytes, now, groupedPromptCount);
+      grouped.set(key, row);
     }
-    const key = parts.join("\0");
-    const row = grouped.get(key) ?? Object.assign(emptyMetrics(), dimensions);
-    const bytes = storage.bySessionId.get(record.id) ?? 0;
-    addRecord(row, record, bytes, now);
-    addRecord(totals, record, bytes, now);
-    grouped.set(key, row);
   }
 
   const rows = [...grouped.values()].sort((a, b) => {
@@ -324,9 +350,9 @@ export function analyticsForSessions(
     timeZone: "UTC",
     attribution: {
       time: "session_started_at",
-      user: "session_initiator",
+      user: "transcript_turn_author",
       project: "session_project_id",
-      note: "Usage from shared follow-ups is attributed to the session initiator; exact per-message usage is not available for historical sessions.",
+      note: "Prompt counts use each transcript turn's author; unsigned historical turns fall back to the session initiator. Session-level usage, duration, outcome, and storage are repeated for each participating author because exact per-message usage is unavailable.",
     },
     filters: query.filters,
     totals,
