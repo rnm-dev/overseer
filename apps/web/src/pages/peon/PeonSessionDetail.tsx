@@ -598,31 +598,10 @@ function PeonSessionDetailPage() {
       : null),
     [loadedMetadataKey, sessionKey, projectId, projectRoot, peon.peonId],
   );
-  // Forge glow: a row pushed into an open transcript comes out hot and cools.
-  // The live tail only grows when the peon (or this composer) pushes something,
-  // so it is the one signal that never fires for loaded history — the newest row
-  // at that moment is the freshly forged one. Own messages already have their
-  // own send animation, so only agent-side rows glow.
-  const liveCount = orderedLive.length;
-  const previousLiveCountRef = useRef(liveCount);
-  const [forgedItemKey, setForgedItemKey] = useState<string | null>(null);
-  useEffect(() => {
-    setForgedItemKey(null);
-    previousLiveCountRef.current = 0;
-  }, [sessionKey]);
-  useEffect(() => {
-    const grew = liveCount > previousLiveCountRef.current;
-    previousLiveCountRef.current = liveCount;
-    if (!grew) return;
-    const newest = items[items.length - 1];
-    if (newest && newest.kind !== "user") setForgedItemKey(newest.key);
-  }, [items, liveCount]);
-  // The glow is transient even though its durable row key remains stable.
-  useEffect(() => {
-    if (!forgedItemKey) return;
-    const id = window.setTimeout(() => setForgedItemKey(null), 3_000);
-    return () => window.clearTimeout(id);
-  }, [forgedItemKey]);
+  // An agent row lands without an entrance animation: the operator is reading a
+  // stream they did not just author, and a rerun of motion on every pushed row
+  // pulls the eye away from the text. Only a message the operator sent animates,
+  // and that animation belongs to the composer's ghost.
   const transcriptTurns = useMemo(
     () => visibleEvents.reduce((sum, ev) => sum + (ev.type === "result" && typeof ev.num_turns === "number" ? ev.num_turns : 0), 0),
     [visibleEvents],
@@ -810,7 +789,7 @@ function PeonSessionDetailPage() {
               if (row.kind === "footer") return <div style={{ height: row.height }} aria-hidden="true" />;
               if (row.kind === "item") {
                 return (
-                  <div data-transcript-row className={`mx-auto w-full max-w-6xl px-3 sm:px-6 ${row.paddingClass}${row.item.key === forgedItemKey ? " forge-cooling" : ""}`}>
+                  <div data-transcript-row className={`mx-auto w-full max-w-6xl px-3 sm:px-6 ${row.paddingClass}`}>
                     <ItemView
                       item={row.item}
                       t={t}

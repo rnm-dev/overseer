@@ -662,10 +662,9 @@ export function ItemView({ item, t, locale = "en", yesterdayLabel = "Yesterday",
  * callback/object props referentially stable (useCallback/useMemo).
  */
 export const TranscriptItemList = memo(function TranscriptItemList({
-  items, forgedItemKey, t, locale, yesterdayLabel, onOpenPreview, onOpenAttachment, onOpenProjectFile, projectViewer,
+  items, t, locale, yesterdayLabel, onOpenPreview, onOpenAttachment, onOpenProjectFile, projectViewer,
 }: {
   items: Item[];
-  forgedItemKey: string | null;
   t: T;
   locale?: Locale;
   yesterdayLabel?: string;
@@ -684,7 +683,7 @@ export const TranscriptItemList = memo(function TranscriptItemList({
             items[i - 1].kind === "user",
             item.kind === "user",
             items[i - 1].kind === "text" || item.kind === "text",
-          )}${item.key === forgedItemKey ? " forge-cooling" : ""}`}
+          )}`}
         >
           <ItemView
             item={item}

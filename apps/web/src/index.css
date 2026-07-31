@@ -1399,36 +1399,6 @@ html.peon-sidebar-resizing * {
 .thinking-dots span:nth-child(2) { animation-delay: 0.2s; }
 .thinking-dots span:nth-child(3) { animation-delay: 0.4s; }
 
-/* A message that just landed comes out of the forge: the fel-green accent glows
-   hot, then the heat bleeds away. Only the accent glows — a filter on the whole
-   row repaints every descendant each frame, a text-shadow on one small span
-   does not. The blur radius stays fixed so only the alpha interpolates.
-   Applied to the newest row pushed into an open transcript (PeonSessionDetail). */
-.forge-cooling .text-fel-bright {
-  animation: forge-cool 2.4s cubic-bezier(0.1, 0.55, 0.25, 1) both;
-}
-/* Blur radii stay fixed so only colour/alpha interpolate; the colour ramp also
-   carries the icons, which take no text-shadow. Ends on the token value the
-   utility class already sets, so the persisted final frame is a no-op. */
-@keyframes forge-cool {
-  0% {
-    color: #fff1d4;
-    text-shadow: 0 0 4px rgba(255, 228, 182, 0.95), 0 0 13px rgba(255, 150, 58, 0.6);
-  }
-  22% {
-    color: #ffc077;
-    text-shadow: 0 0 4px rgba(255, 190, 120, 0.72), 0 0 13px rgba(255, 128, 42, 0.42);
-  }
-  60% {
-    color: #d0cb9b;
-    text-shadow: 0 0 4px rgba(214, 192, 140, 0.3), 0 0 13px rgba(200, 118, 48, 0.16);
-  }
-  100% {
-    color: var(--color-fel-bright);
-    text-shadow: 0 0 4px rgba(166, 199, 138, 0), 0 0 13px rgba(255, 150, 60, 0);
-  }
-}
-
 /* A running session has one terminal activity row. Keep only the newest one
    visible defensively if a stale row survives a rapid live-history reconcile. */
 [data-session-running-row]:has(~ [data-session-running-row]) {
@@ -1447,8 +1417,5 @@ html.peon-sidebar-resizing * {
   .thinking-dots span {
     animation: none !important;
     opacity: 0.7;
-  }
-  .forge-cooling .text-fel-bright {
-    animation: none !important;
   }
 }
