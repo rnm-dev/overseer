@@ -1,7 +1,7 @@
 # Project Fleet HTTP control plane
 
 Project requests and mutations have one authority: the authenticated Peon Fleet
-HTTP API reached by Overseer through Tailscale. The public browser/mobile routes,
+HTTP API reached by Overseer through mesh. The public browser/mobile routes,
 workspace and project ACL checks, and response shapes are unchanged.
 
 Overseer resolves a mutable public project key to the catalog's immutable

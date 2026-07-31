@@ -45,7 +45,7 @@ HTTP before calling the gateway, but it must select exactly one route.
 Runtime request/response reads are outside this gateway. Status/state,
 capacity/load, daemon revision, provider availability/capabilities,
 models/reasoning efforts, quota, fixed-period stats and filtered analytics use
-the Peon's authenticated Fleet HTTP routes over Tailscale. `runtime-state-v1`
+the Peon's authenticated Fleet HTTP routes through mesh. `runtime-state-v1`
 remains a WebSocket projection and invalidation channel, not an HTTP polling
 fallback or second request authority.
 
@@ -116,7 +116,7 @@ Session catalog reads and lifecycle mutations are not reverse commands. The
 public Overseer endpoints keep their existing response contracts, but Overseer
 always calls the Peon's authenticated Fleet HTTP `GET /sessions`,
 `PATCH /sessions/:id`, `DELETE /sessions/:id`, and
-`POST /sessions/:id/cancel` endpoints through Tailscale. A `409
+`POST /sessions/:id/cancel` endpoints through mesh. A `409
 SESSION_NOT_RUNNING` is relayed unchanged after a best-effort authoritative
 session read republishes the Peon's state into the index. Remote daemon
 pause/resume likewise remains outside this gateway.
@@ -126,8 +126,8 @@ require its duplicated registry columns to match. A corrupt or legacy
 inconsistent row is reported as `UNSAFE_RESULT`; it cannot regain a success
 mapping through stale `terminal_status`, code, or detail columns.
 
-Update orchestration is outside this gateway. Check, apply, npm release
-metadata and archive bytes use authenticated Fleet HTTP over Tailscale;
+Update orchestration is outside this gateway. Check, apply, approved release
+metadata and archive bytes use authenticated Fleet HTTP over mesh;
 `update.check` and `update.apply` are absent from the operation registry, wire
 schemas and capability advertisement. The update receipt owns HTTP
 idempotency, single-operation admission, restart recovery and

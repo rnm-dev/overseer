@@ -24,9 +24,9 @@ bounded reconnect backoff and normally heal without another restart.
 Linux/systemd:
 
 ```sh
-systemctl --user status peon-daemon.service --no-pager
+systemctl --user status peon-daemon.service peon-dashboard.service --no-pager
 journalctl --user -u peon-daemon.service -n 200 --no-pager
-systemctl --user restart peon-daemon.service
+systemctl --user restart peon-daemon.service peon-dashboard.service
 ```
 
 macOS/launchd:
@@ -35,6 +35,7 @@ macOS/launchd:
 launchctl print gui/$(id -u)/dev.peon.daemon
 tail -n 200 "${XDG_STATE_HOME:-$HOME/.local/state}/.peon/daemon.stderr.log"
 launchctl kickstart -k gui/$(id -u)/dev.peon.daemon
+launchctl kickstart -k gui/$(id -u)/dev.peon.dashboard
 ```
 
 For a source checkout started with `npm run dev`, restart that development
@@ -43,9 +44,9 @@ same ports and state directory.
 
 ## Fast diagnosis
 
-- If the daemon listens only on loopback, Overseer cannot use Fleet HTTP.
-  Set the intended external listener and restart after confirming TLS and
-  firewall policy.
+- A startup error about `reverse-only` and a non-loopback bind means the safety
+  check worked. Keep reverse-only on `127.0.0.1`/`::1`; do not widen the bind to
+  recover connectivity.
 - `spawn ... ENOENT` means the service environment cannot find the configured
   agent executable. Confirm it with `which`, then run `peon start` once to
   regenerate the native service with the current `PATH`.
@@ -63,8 +64,8 @@ same ports and state directory.
 - Do not delete or edit the Peon config/state directories as a recovery step.
   They contain identity, credentials, session records, command deduplication,
   durable delivery state, and update recovery data.
-- Do not expose the Fleet listener without TLS, a strong credential and an
-  ingress rule restricted to Overseer.
+- Do not switch to `legacy-mesh`, expose port 4570, or re-enable VPN callbacks
+  merely to make the Peon appear online.
 - Do not re-enrol or rotate credentials until logs demonstrate an
   authentication or revocation problem.
 - Do not use repeated forced restarts while a session may be running. A forced

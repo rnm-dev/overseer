@@ -112,11 +112,12 @@ it rather than kept private.
 `rnmdev` account owns it with 2FA enabled. Public packages therefore use the
 `@rnm-dev/` scope, matching the GitHub organisation.
 
-**Public npm is Peon's only distribution channel.** Production checks the
-public registry for `@rnm-dev/peon` and installs an exact version while
-preserving the existing global prefix and local rollback archive. Overseer
-keeps only the operator check/apply/status control surface; it no longer
-publishes, stores, approves or proxies release metadata or package bytes.
+**Peon's release channel must not change.** In production a Peon is installed
+from an npm archive served by Overseer itself, verified by exact size and
+SHA-256 against enrollment credentials (`src/cli/update.ts`,
+`shared/releaseRegistry.ts`, the `/data/releases` volume). That is what makes a
+fleet-wide version gate possible. The public registry is the *installation and
+onboarding* channel; Overseer stays the *update* channel for an enrolled fleet.
 
 **Peon's checkout update mode assumes package root == repository root.**
 `PACKAGE_ROOT` and `isGitCheckout` need to be separated once the package sits in
@@ -126,10 +127,9 @@ publishes, stores, approves or proxies release metadata or package bytes.
 `files: [dist, assets]` plus npm's automatic README, LICENSE and manifest keeps
 tests, fixtures, TypeScript sources and build configuration out of the tarball.
 Peon is MIT licensed. `prepack` always rebuilds `dist`; release verification
-installs and exercises that exact archive before publication. Peon ships one
-daemon service and no dashboard. Its control API always accepts loopback
-connections; `peon remote on <host:port>` adds an explicit remote listener and
-`peon remote off` returns to loopback-only mode.
+installs and exercises that exact archive before publication. The daemon and
+dashboard bind to loopback by default. Wider binding remains an explicit
+operator action and is rejected in reverse-only fleet mode.
 
 **The client is Flutter, not React Native.** Flutter 3.44.8, Dart SDK `^3.12.2`,
 Riverpod 3, go_router, dio, drift, freezed, firebase_messaging, and desktop

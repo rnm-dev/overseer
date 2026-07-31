@@ -9,8 +9,8 @@ traffic or migrating production data until those steps are explicitly approved.
   working tree as a production release.
 - Do not enable the nginx vhost, change Cloudflare, or restore the current
   database during preparation.
-- Never delete or reuse `overseer-postgres-data` or
-  `overseer-postgres-backups` during deploy/rollback.
+- Never delete or reuse `overseer-postgres-data`,
+  `overseer-postgres-backups`, or `overseer-releases` during deploy/rollback.
 - Postgres is an accessory. `kamal deploy` does not recreate or upgrade it.
 - Preserve the validated proxy chain in [trusted client IPs](proxy-trust.md):
   the app/container port is not public, the shared Kamal ports must reach the
@@ -30,6 +30,7 @@ traffic or migrating production data until those steps are explicitly approved.
 | --- | --- | --- |
 | `overseer-postgres-data` | `/var/lib/postgresql/data` | PostgreSQL cluster |
 | `overseer-postgres-backups` | `/backups` | On-host database dumps |
+| `overseer-releases` | `/data/releases` | Published Peon release archives |
 
 The backup volume is only the first recovery layer. Copy every cutover dump off
 the production host before restoring or switching traffic.
@@ -76,13 +77,14 @@ ssh root@94.247.128.103 \
    docker inspect overseer-postgres --format "{{.State.Health.Status}}"'
 ```
 
-Before a pre-cutover deploy, confirm the shared proxy routes still list every
-existing application:
+The application volume is created by the first app deploy. Before a pre-cutover
+deploy, confirm the shared proxy routes still list every existing application:
 
 ```sh
 ssh root@94.247.128.103 'docker exec kamal-proxy kamal-proxy list'
 kamal deploy
-ssh root@94.247.128.103 'docker exec kamal-proxy kamal-proxy list'
+ssh root@94.247.128.103 \
+  'docker volume inspect overseer-releases && docker exec kamal-proxy kamal-proxy list'
 ```
 
 Because Overseer is the proxy fallback, test both an allowed and rejected Host
@@ -360,7 +362,17 @@ docker compose exec -T postgres \
 sha256sum backups/overseer-*.dump
 ```
 
-Copy the database dump to independent storage before continuing.
+Archive the current release volume even when the `releases` table is empty:
+
+```sh
+docker run --rm --read-only \
+  -v overseer_releases:/source:ro \
+  -v "$PWD/backups:/backup" \
+  alpine:3.22 tar -C /source -czf /backup/overseer-releases.tgz .
+sha256sum backups/overseer-releases.tgz
+```
+
+Copy both artifacts to independent storage before continuing.
 
 ## Approved data migration
 
@@ -368,7 +380,7 @@ This section is intentionally not executed during preparation.
 
 1. Put the source Overseer into a maintenance window so no writes can race the
    final dump.
-2. Produce and checksum a new final database dump.
+2. Produce and checksum a new final database dump and release archive.
 3. Stream the dump over SSH into the production backup volume:
 
    ```sh
@@ -388,8 +400,18 @@ This section is intentionally not executed during preparation.
         /backups/overseer-final.dump'
    ```
 
-5. Restart the app. Startup applies any pending migrations under a PostgreSQL
-   advisory lock.
+5. Restore release bytes into `overseer-releases`, preserving ownership for the
+   application `node` user:
+
+   ```sh
+   ssh root@94.247.128.103 \
+     'docker run --rm -i -v overseer-releases:/target alpine:3.22 \
+       sh -c "tar -C /target -xzf - && chown -R 1000:1000 /target"' \
+     < backups/overseer-releases.tgz
+   ```
+
+   Then restart the app. Startup applies any pending migrations under a
+   PostgreSQL advisory lock.
 6. Compare migration count and key table counts between source and target.
 
 ## Approved nginx and Cloudflare cutover

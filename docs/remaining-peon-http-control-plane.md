@@ -4,7 +4,7 @@ This inventory was refreshed for OVSR-292 on 2026-07-31.
 
 ## Transport ownership
 
-Direct authenticated Fleet HTTP over Tailscale is the sole authority for:
+Direct authenticated Fleet HTTP over mesh is the sole authority for:
 
 - owner-only Peon daemon settings reads and revision-fenced mutations;
 - bounded Armory inventory/settings/package/configuration/MCP/operation reads
@@ -21,8 +21,8 @@ Direct authenticated Fleet HTTP over Tailscale is the sole authority for:
 - sandbox/project file metadata, bodies, Range/download and uploads;
 - project file move/delete mutations;
 - session artifact metadata, raw/download, preview handoff and watch SSE;
-- authenticated update check/apply/status. Peon release metadata and package
-  bytes come directly from public npm, not through Overseer.
+- authenticated update check/apply/status, release metadata and release archive
+  bytes.
 
 The control WebSocket remains for projections and realtime
 invalidation/events. Update-state notification may remain an event, but check,
@@ -45,9 +45,9 @@ validation, containment, filesystem permissions, size/checksum limits,
 temporary-file cleanup, atomic commit and mutation result.
 
 HTTP streaming preserves backpressure, abort cancellation, Range and download
-headers. Peon updates preserve exact npm-version admission, transactional
-installation, restart attestation, a local rollback archive and restart
-recovery.
+headers. Update archives retain authenticated release authorization, immutable
+version/revision/SHA-256 binding, declared size verification, transactional
+install, restart attestation, rollback archive and restart recovery.
 
 ## Production call-site rule
 
