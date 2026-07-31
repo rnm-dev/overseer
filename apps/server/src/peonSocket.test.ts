@@ -458,6 +458,51 @@ test("catalog epoch rollover drains superseded durable events without reconnect 
   );
   assert.deepEqual(recovered.rows[0], { acknowledged_seq: 2, acknowledged_cursor: "cursor-2", status: "ready" });
 
+  // The first recovery snapshot may itself have raced the already-buffered
+  // replaceable event. If its barrier still precedes the event by more than
+  // one sequence, request another snapshot without tearing down the socket.
+  rollover.send(JSON.stringify({
+    type: "durable_message", epoch: "delivery-stable", cursor: "cursor-3",
+    messageId: "00000000-0000-4000-8000-000000000022", priority: "normal",
+    payload: {
+      type: "session_catalog_event", epoch: "catalog-new", seq: 4, revision: 4,
+      session: { id: "newest", title: "Newest", status: "running", lastActivityAt: 5 },
+    },
+  }));
+  const racedRequest = await Promise.race([
+    rolloverMessages.waitFor((message) => message.type === "session_catalog_snapshot_request"
+      && message.requestId !== rolloverRequest.requestId
+      && message.requestId !== recoveryRequest.requestId),
+    unexpectedlyClosed,
+  ]);
+  rollover.send(JSON.stringify({
+    type: "session_catalog_snapshot_page", requestId: racedRequest.requestId,
+    epoch: "catalog-new", revision: 3, barrierSeq: 2,
+    sessions: [{ id: "latest", title: "Coalesced latest", status: "running", lastActivityAt: 4 }],
+    nextCursor: null, hasMore: false,
+  }));
+  const secondRecoveryRequest = await Promise.race([
+    rolloverMessages.waitFor((message) => message.type === "session_catalog_snapshot_request"
+      && message.requestId !== rolloverRequest.requestId
+      && message.requestId !== recoveryRequest.requestId
+      && message.requestId !== racedRequest.requestId),
+    unexpectedlyClosed,
+  ]);
+  rollover.send(JSON.stringify({
+    type: "session_catalog_snapshot_page", requestId: secondRecoveryRequest.requestId,
+    epoch: "catalog-new", revision: 4, barrierSeq: 4,
+    sessions: [{ id: "newest", title: "Newest", status: "running", lastActivityAt: 5 }],
+    nextCursor: null, hasMore: false,
+  }));
+  await Promise.race([
+    rolloverMessages.waitFor((message) => message.type === "durable_ack" && message.cursor === "cursor-3"),
+    unexpectedlyClosed,
+  ]);
+  assert.deepEqual(
+    (await listSessions({ peonId: "epoch-peon", limit: 10, offset: 0 })).sessions.map((session) => session.sessionId),
+    ["newest"],
+  );
+
   rollover.close();
   await closed(rollover);
   await new Promise<void>((resolve) => wss.close(() => resolve()));

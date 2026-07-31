@@ -622,6 +622,22 @@ export class PeonCatalogSync {
       const checkpoint = event.channel === "session" ? this.checkpoint?.catalog : this.projectCheckpoint?.catalog;
       if (!checkpoint) throw new SessionSyncProtocolError(`${event.channel} catalog event arrived before snapshot`);
       if (checkpoint.epoch === event.catalogEpoch && event.seq > checkpoint.acknowledgedSeq) {
+        // A snapshot can race a replaceable event that was already queued in
+        // the shared durable outbox. If that event still starts beyond the
+        // freshly committed frontier, applying it would make the projection
+        // throw a sequence-gap error and poison every reconnect. Keep the
+        // delivery buffered and take another authoritative snapshot instead.
+        if (event.seq > checkpoint.acknowledgedSeq + 1) {
+          for (const pending of events.slice(index)) this.bufferEvent(pending, 0);
+          if (event.channel === "session") {
+            await markSessionSyncing(this.record.peonId, this.generation);
+            this.requestSnapshot();
+          } else {
+            await markProjectSyncing(this.record.peonId, this.generation);
+            this.requestProjectSnapshot();
+          }
+          return;
+        }
         await this.applyEvent(event);
         continue;
       }
