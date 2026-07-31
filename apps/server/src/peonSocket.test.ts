@@ -554,7 +554,9 @@ test("session and project catalogs share one ordered durable delivery frontier",
     messageId: "00000000-0000-4000-8000-000000000010", priority: "normal",
     payload: {
       type: "project_catalog_event", epoch: "projects", seq: 0, revision: 0,
-      project: { projectId: "project-1", key: "project", name: "Project", dir: "/work/project", metadata: null },
+      // `unreleasedField` stands for any summary field a newer Peon adds: it is
+      // ignored, not fatal, so the socket survives the version skew.
+      project: { projectId: "project-1", key: "project", name: "Project", dir: "/work/project", metadata: null, unreleasedField: "x" },
     },
   }));
   ws.send(JSON.stringify({
@@ -581,6 +583,7 @@ test("session and project catalogs share one ordered durable delivery frontier",
       name: "Project",
       dir: "/work/project",
       metadata: null,
+      archivedAt: null,
       quickLinks: [{ id: "docs", title: "Docs", url: "https://example.test/docs", order: 0 }],
     }],
     nextCursor: null, hasMore: false,

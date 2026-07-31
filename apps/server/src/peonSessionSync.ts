@@ -891,7 +891,11 @@ function parseProject(value: unknown): PeonProject {
   const dir = optionalString(project.dir ?? project.path, "project.dir", 4_096);
   const metadata = optionalString(project.metadata, "project.metadata", 32_000);
   const quickLinks = normalizeProjectQuickLinks(project.quickLinks);
-  const allowed = new Set(["projectId", "key", "name", "label", "dir", "path", "metadata", "quickLinks"]);
-  if (Object.keys(project).some((field) => !allowed.has(field))) throw new SessionSyncProtocolError("unknown project summary field");
+  // Validated but not yet projected: Peon 0.12.0 archives projects locally and
+  // Overseer has no archive surface for it.
+  optionalTime(project.archivedAt, "project.archivedAt");
+  // Unknown fields are ignored rather than fatal, as in parseSession. A summary
+  // is a projection of fields Overseer understands, and a newer Peon adding one
+  // must not take its socket down on every reconnect.
   return { projectId, key, name, dir, metadata, quickLinks };
 }
