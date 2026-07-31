@@ -595,7 +595,7 @@ export class PeonSocketSupervisor {
         if (!this.outbox)
             return { accepted: false, code: "PERSIST_FAILED", error: "durable socket outbox is unavailable" };
         const coalescedCursor = options?.coalesceKey
-            ? this.outbox.pending().find((message) => message.coalesceKey === options.coalesceKey)?.cursor
+            ? this.outbox.pendingForDelivery().find((message) => message.coalesceKey === options.coalesceKey)?.cursor
             : undefined;
         // Once a cursor has crossed this connection it is immutable: Overseer may
         // already have committed those exact bytes. A later replaceable projection
@@ -610,7 +610,7 @@ export class PeonSocketSupervisor {
         if (!this.outbox || !current() || !this.state.connected)
             return;
         this.clearTimer("outboxFlushTimer");
-        for (const message of this.outbox.pending()) {
+        for (const message of this.outbox.pendingForDelivery()) {
             if (this.sentOutboxCursors.has(message.cursor))
                 continue;
             if (message.capability && !this.acceptedCapabilities.has(message.capability)) {
@@ -646,7 +646,7 @@ export class PeonSocketSupervisor {
             this.state.lastError = "invalid durable socket acknowledgement";
             return;
         }
-        const pending = new Set(this.outbox.pending().map((message) => message.cursor));
+        const pending = new Set(this.outbox.pendingForDelivery().map((message) => message.cursor));
         this.sentOutboxCursors = new Set([...this.sentOutboxCursors].filter((cursor) => pending.has(cursor)));
         if (this.outboxAckTimer)
             clearTimeout(this.outboxAckTimer);
@@ -656,7 +656,7 @@ export class PeonSocketSupervisor {
     acknowledgeOutbox(epoch, cursor) {
         if (!this.outbox)
             return false;
-        const pending = this.outbox.pending();
+        const pending = this.outbox.pendingForDelivery();
         const index = pending.findIndex((message) => message.cursor === cursor);
         const acknowledged = index < 0 ? [] : pending.slice(0, index + 1).map((message) => message.cursor);
         for (const removedCursor of acknowledged) {

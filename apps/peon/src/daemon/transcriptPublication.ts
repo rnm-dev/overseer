@@ -217,7 +217,7 @@ export function publishedTranscriptEvent(
 ): PublishedTranscriptEvent {
   const original = entry.event;
   const usage = original.usage && typeof original.usage === "object" && !Array.isArray(original.usage)
-    ? structuredClone(original.usage) as Record<string, unknown>
+    ? original.usage as Record<string, unknown>
     : null;
   const author = typeof original.author === "string" ? original.author : null;
   const refs = artifactRefs(original, entry.id);
@@ -231,7 +231,7 @@ export function publishedTranscriptEvent(
     eventType: original.type,
     author,
     usage,
-    event: structuredClone(original),
+    event: original,
     artifactRefs: refs,
   };
   const originalBytes = transcriptDurableEnvelopeBytes(exact);
@@ -479,7 +479,10 @@ export class TranscriptPublicationRepository {
   private publish(update: TranscriptPublicationUpdate): void {
     for (const listener of this.listeners) {
       try {
-        listener(structuredClone(update));
+        // Repository entries are isolated at the committed JSONL boundary and
+        // immutable after publication. Listeners only consume them, so cloning
+        // large transcript payloads here would block socket pongs.
+        listener(update);
       } catch (error) {
         console.error(
           `transcript publication listener failed for session ${update.type === "event" ? update.event.sessionId : update.sessionId}: `

@@ -107,13 +107,13 @@ export class ReverseCommandChannel {
     }
     started(sender) {
         this.sender = null;
-        this.ledger.recoverInterrupted((interrupted) => {
+        const interruptedRecords = this.ledger.recoverInterrupted((interrupted) => {
             const execution = interrupted.operation === "update.apply"
                 ? attestUpdateCommand(interrupted.commandId)
                 : { status: "failed", code: "INTERNAL" };
             return execution ? commandResult(interrupted, execution) : null;
         });
-        for (const interrupted of this.records().filter((record) => record.state === "running")) {
+        for (const interrupted of interruptedRecords.filter((record) => record.state === "running")) {
             if (interrupted.operation === "update.apply") {
                 void waitForUpdateReplacement(interrupted.commandId, { attestReady: true })
                     .then((execution) => this.scheduleTerminalRetry(interrupted.commandId, interrupted.authority, interrupted.admittedGeneration, commandResult(interrupted, execution)));
@@ -439,13 +439,10 @@ export class ReverseCommandChannel {
         this.publicationRetryAttempt = 0;
     }
     pendingTerminal() {
-        return this.records().filter((record) => record.state === "terminal" && !record.resultCursor);
+        return this.ledger.unpublishedTerminalRecords();
     }
     pendingAccepted() {
-        return this.records().filter((record) => record.state === "accepted");
-    }
-    records() {
-        return this.ledger.records();
+        return this.ledger.acceptedRecords();
     }
     enqueue(command, handler, authority, generation) {
         if (this.queuedCommandIds.has(command.commandId))

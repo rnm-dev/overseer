@@ -169,13 +169,13 @@ export class ReverseCommandChannel implements PeonSocketChannel {
 
   started(sender: PeonSocketSender): void {
     this.sender = null;
-    this.ledger.recoverInterrupted((interrupted) => {
+    const interruptedRecords = this.ledger.recoverInterrupted((interrupted) => {
       const execution = interrupted.operation === "update.apply"
         ? attestUpdateCommand(interrupted.commandId)
         : { status: "failed", code: "INTERNAL" } satisfies ReverseCommandExecution;
       return execution ? commandResult(interrupted, execution) : null;
     });
-    for (const interrupted of this.records().filter((record) => record.state === "running")) {
+    for (const interrupted of interruptedRecords.filter((record) => record.state === "running")) {
       if (interrupted.operation === "update.apply") {
         void waitForUpdateReplacement(interrupted.commandId, { attestReady: true })
           .then((execution) => this.scheduleTerminalRetry(
@@ -509,15 +509,11 @@ export class ReverseCommandChannel implements PeonSocketChannel {
   }
 
   private pendingTerminal(): ReverseCommandRecord[] {
-    return this.records().filter((record) => record.state === "terminal" && !record.resultCursor);
+    return this.ledger.unpublishedTerminalRecords();
   }
 
   private pendingAccepted(): ReverseCommandRecord[] {
-    return this.records().filter((record) => record.state === "accepted");
-  }
-
-  private records(): ReverseCommandRecord[] {
-    return this.ledger.records();
+    return this.ledger.acceptedRecords();
   }
 
   private enqueue(command: ValidCommand, handler: ReverseCommandHandler, authority: string, generation: number): void {

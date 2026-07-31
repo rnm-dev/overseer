@@ -214,6 +214,13 @@ export class PeonSocketOutbox {
     return this.current.messages.map(({ sequence: _sequence, ...message }) => structuredClone(message));
   }
 
+  pendingForDelivery(): PeonSocketOutboxMessage[] {
+    // Payloads are normalized on admission and never mutated in place. The
+    // socket supervisor only reads this view, so avoid deep-cloning the entire
+    // durable backlog on startup, coalescing checks, ACKs, and retries.
+    return this.current.messages.map(({ sequence: _sequence, ...message }) => message);
+  }
+
   bindDestination(destinationHash: string): boolean {
     if (!/^[a-f0-9]{64}$/.test(destinationHash)) return false;
     if (this.current.destinationHash === destinationHash) return true;
@@ -453,7 +460,7 @@ export class PeonSocketOutbox {
 
   private applyMutation(state: OutboxState, mutation: JournalMutation): OutboxState | null {
     if (mutation.generation !== state.generation + 1) return null;
-    const next = structuredClone(state);
+    const next: OutboxState = { ...state, messages: [...state.messages] };
     next.generation = mutation.generation;
     if (mutation.type === "enqueue") {
       if (mutation.message.sequence !== next.nextSequence) return null;

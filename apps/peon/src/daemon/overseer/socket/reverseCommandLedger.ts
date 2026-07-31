@@ -128,6 +128,14 @@ function validState(value: unknown): value is LedgerState {
       && typeof item.requestHash === "string" && typeof item.expiredAt === "number");
 }
 
+function copyState(state: LedgerState): LedgerState {
+  return {
+    ...state,
+    records: [...state.records],
+    tombstones: [...state.tombstones],
+  };
+}
+
 function syncDirectory(directory: string): void {
   const descriptor = openSync(directory, constants.O_RDONLY);
   try { fsyncSync(descriptor); }
@@ -193,6 +201,18 @@ export class ReverseCommandLedger {
 
   records(): ReverseCommandRecord[] {
     return this.current.records.map((record) => structuredClone(record));
+  }
+
+  acceptedRecords(): ReverseCommandRecord[] {
+    return this.current.records
+      .filter((record) => record.state === "accepted")
+      .map((record) => structuredClone(record));
+  }
+
+  unpublishedTerminalRecords(): ReverseCommandRecord[] {
+    return this.current.records
+      .filter((record) => record.state === "terminal" && !record.resultCursor)
+      .map((record) => structuredClone(record));
   }
 
   admit(input: Omit<ReverseCommandRecord, "state" | "acceptedAt" | "updatedAt">): ReverseCommandAdmission {
@@ -267,7 +287,7 @@ export class ReverseCommandLedger {
     if (matches.length === 0) return true;
     const acknowledgedAt = this.now();
     const ids = new Set(matches.map((record) => record.commandId));
-    const next = structuredClone(this.current);
+    const next = copyState(this.current);
     next.generation += 1;
     next.records = next.records.map((record) => ids.has(record.commandId)
       ? { ...record, resultAcknowledgedAt: acknowledgedAt, updatedAt: acknowledgedAt }
@@ -297,7 +317,7 @@ export class ReverseCommandLedger {
 
   private compacted(): LedgerState {
     const now = this.now();
-    const next = structuredClone(this.current);
+    const next = copyState(this.current);
     const retained: ReverseCommandRecord[] = [];
     for (const record of next.records) {
       const eligible = record.state === "terminal"
@@ -324,7 +344,7 @@ export class ReverseCommandLedger {
     if (current.state !== expected) return false;
     const replacement = mutate(current);
     if (!replacement) return false;
-    const next = structuredClone(this.current);
+    const next = copyState(this.current);
     next.generation += 1;
     next.records[index] = replacement;
     return this.commit(next, {
@@ -401,18 +421,18 @@ export class ReverseCommandLedger {
     if (mutation.generation !== state.generation + 1) return null;
     if (mutation.type === "state") {
       return mutation.state.generation === mutation.generation && validState(mutation.state)
-        ? structuredClone(mutation.state)
+        ? copyState(mutation.state)
         : null;
     }
     if (!Array.isArray(mutation.records) || mutation.records.length === 0
       || !mutation.records.every(validRecord)
       || new Set(mutation.records.map((record) => record.commandId)).size !== mutation.records.length) return null;
-    const next = structuredClone(state);
+    const next = copyState(state);
     next.generation = mutation.generation;
     for (const record of mutation.records) {
       const index = next.records.findIndex((candidate) => candidate.commandId === record.commandId);
-      if (index < 0) next.records.push(structuredClone(record));
-      else next.records[index] = structuredClone(record);
+      if (index < 0) next.records.push(record);
+      else next.records[index] = record;
     }
     return validState(next) ? next : null;
   }
@@ -443,7 +463,7 @@ export class ReverseCommandLedger {
   }
 
   private replayJournal(base: LedgerState, mutations: JournalMutation[]): LedgerState | null {
-    let state = structuredClone(base);
+    let state = copyState(base);
     for (const mutation of mutations) {
       if (mutation.generation <= state.generation) continue;
       const next = this.applyMutation(state, mutation);
