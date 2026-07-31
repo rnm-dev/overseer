@@ -27,14 +27,13 @@ type PeonNavItem = {
   to: string;
   key: "peon.tab.work" | "peon.tab.stats";
   icon: LucideIcon;
-  ownerOnly?: boolean;
 };
 
 // Work is the Peon landing view. Projects live in the sidebar, leaving the
 // compact icon rail for Work, Stats, and Settings.
-const NAV: readonly PeonNavItem[] = [
+export const PEON_NAV_ITEMS: readonly PeonNavItem[] = [
   { to: "sessions", key: "peon.tab.work", icon: Pickaxe },
-  { to: "stats", key: "peon.tab.stats", icon: BarChart3, ownerOnly: true },
+  { to: "stats", key: "peon.tab.stats", icon: BarChart3 },
 ];
 
 const iconNavClass = (active: boolean) =>
@@ -374,7 +373,7 @@ export function PeonDetail() {
           <div className="flex items-center justify-between gap-2">
             <PeonScopeSwitcher workspaceId={wsId!} peonId={peonId} />
             <div className="flex flex-none items-center gap-1">
-              {NAV.filter((item) => isOwner || !item.ownerOnly).map((item) => {
+              {PEON_NAV_ITEMS.map((item) => {
                 const Icon = item.icon;
                 return (
                   <NavLink

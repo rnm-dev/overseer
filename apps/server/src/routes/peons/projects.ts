@@ -300,7 +300,6 @@ export function registerProjectRoutes(router: express.Router): void {
     relay(result, res);
   }));
   router.get(`${wp}/stats`, withWorkspacePeon(async (req, res, c) => {
-    if (!ownerOnly(res, c.role)) return;
     const period = typeof req.query.period === "string" ? req.query.period : "";
     relay(await callPeon(
       connOfRecord(c.record),
@@ -310,7 +309,6 @@ export function registerProjectRoutes(router: express.Router): void {
     ), res);
   }));
   router.get(`${wp}/analytics`, withWorkspacePeon(async (req, res, c) => {
-    if (!ownerOnly(res, c.role)) return;
     const suffix = new URLSearchParams(req.query as Record<string, string>).toString();
     relay(await callPeon(
       connOfRecord(c.record),
@@ -323,7 +321,6 @@ export function registerProjectRoutes(router: express.Router): void {
   // slow or unavailable, and neither should hold up the other provider (or the
   // recorded /stats response).
   router.get(`${wp}/quota/:provider`, withWorkspacePeon(async (req, res, c) => {
-    if (!ownerOnly(res, c.role)) return;
     const provider = String(req.params.provider);
     if (provider !== "claude-code" && provider !== "codex") {
       return res.status(404).json({ error: "unknown quota provider", code: "UNKNOWN_PROVIDER" });
@@ -339,7 +336,6 @@ export function registerProjectRoutes(router: express.Router): void {
   // Capability discovery is provider-scoped for the same reason as quota:
   // either CLI may be slow, so callers must be able to fetch them independently.
   router.get(`${wp}/capabilities/:provider`, withWorkspacePeon(async (req, res, c) => {
-    if (!ownerOnly(res, c.role)) return;
     const provider = String(req.params.provider);
     if (provider !== "claude-code" && provider !== "codex") {
       return res.status(404).json({ error: "unknown capabilities provider", code: "UNKNOWN_PROVIDER" });

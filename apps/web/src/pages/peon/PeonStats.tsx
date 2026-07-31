@@ -32,7 +32,7 @@ import {
 
 export function PeonStats() {
   const t = useT();
-  const { peon, base } = usePeon();
+  const { peon, base, isOwner } = usePeon();
   const [period, setPeriod] = useState<Period>("day");
   const [stats, setStats] = useState<Stats | null>(null);
   const [unsupported, setUnsupported] = useState(false);
@@ -186,7 +186,7 @@ export function PeonStats() {
         ))}
       </div>
 
-      <CliUpdatesPanel base={base} online={peon.online} />
+      {isOwner && <CliUpdatesPanel base={base} online={peon.online} />}
 
       {stats && (
         <Card className="px-5 py-4">
