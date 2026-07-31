@@ -602,9 +602,6 @@ class _SessionDetailPageState extends _SessionDetailAttachmentHost
     setState(() => _composerHeight = height);
   }
 
-  static int _userMessageCount(List<TranscriptEvent>? events) =>
-      events?.where((event) => event.isUserMessage).length ?? 0;
-
   /// The ghost is shown until the transcript grows past the count its send
   /// captured. Nothing is matched by payload: the row that retires it need not
   /// be the ghost's own, and it is never rendered as a transcript row.
@@ -615,7 +612,7 @@ class _SessionDetailPageState extends _SessionDetailAttachmentHost
     final ghost = composer?.ghost;
     if (ghost == null) return null;
     return ghost.visibleAgainst(
-          _userMessageCount(transcript?.events),
+          transcript?.userMessageCount ?? 0,
           queuedCommandIds:
               composer?.queue.map((item) => item.commandId) ?? const [],
         )
@@ -675,12 +672,12 @@ class _SessionDetailPageState extends _SessionDetailAttachmentHost
           running: running,
           startNow: startNow,
           attachments: _composerAttachments,
-          transcriptUserMessages: _userMessageCount(
-            ref
-                .read(transcriptControllerProvider(transcriptScope))
-                .value
-                ?.events,
-          ),
+          transcriptUserMessages:
+              ref
+                  .read(transcriptControllerProvider(transcriptScope))
+                  .value
+                  ?.userMessageCount ??
+              0,
         );
     if (submitted && (!running || startNow)) {
       unawaited(

@@ -39,7 +39,9 @@ void main() {
               TranscriptEvent(
                 eventId: 'cached-$index',
                 orderKey: index,
-                payload: const {'type': 'assistant'},
+                payload: index == 0 || index == 74
+                    ? const {'type': 'user_message', 'text': 'hello'}
+                    : const {'type': 'assistant'},
               ),
           ],
           hasOlder: false,
@@ -61,6 +63,8 @@ void main() {
       );
       expect(opened.events, hasLength(50));
       expect(opened.events.first.eventId, 'cached-25');
+      expect(opened.events.where((event) => event.isUserMessage), hasLength(1));
+      expect(opened.userMessageCount, 2);
       expect(opened.hasOlder, isTrue);
 
       while (container

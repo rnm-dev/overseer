@@ -52,6 +52,7 @@ class TranscriptScope {
 class TranscriptState {
   const TranscriptState({
     required this.events,
+    this.cachedUserMessageCount,
     this.isRunning = false,
     this.isRefreshing = false,
     this.isLoadingOlder = false,
@@ -60,6 +61,13 @@ class TranscriptState {
   });
 
   final List<TranscriptEvent> events;
+
+  /// User messages in the complete locally cached transcript, including rows
+  /// outside the bounded visible window.
+  final int? cachedUserMessageCount;
+  int get userMessageCount =>
+      cachedUserMessageCount ??
+      events.where((event) => event.isUserMessage).length;
   final bool isRunning;
   final bool isRefreshing;
   final bool isLoadingOlder;
@@ -68,6 +76,7 @@ class TranscriptState {
 
   TranscriptState copyWith({
     List<TranscriptEvent>? events,
+    int? cachedUserMessageCount,
     bool? isRunning,
     bool? isRefreshing,
     bool? isLoadingOlder,
@@ -77,6 +86,8 @@ class TranscriptState {
   }) {
     return TranscriptState(
       events: events ?? this.events,
+      cachedUserMessageCount:
+          cachedUserMessageCount ?? this.cachedUserMessageCount,
       isRunning: isRunning ?? this.isRunning,
       isRefreshing: isRefreshing ?? this.isRefreshing,
       isLoadingOlder: isLoadingOlder ?? this.isLoadingOlder,
@@ -168,6 +179,7 @@ class TranscriptController extends AsyncNotifier<TranscriptState> {
     });
     return TranscriptState(
       events: _visibleCachedEvents,
+      cachedUserMessageCount: _cachedUserMessageCount,
       isRunning: _running,
       hasOlder: _hasOlder,
     );
@@ -624,9 +636,16 @@ class TranscriptController extends AsyncNotifier<TranscriptState> {
 
   void _applyVisibleCachedEvents(TranscriptState current) {
     state = AsyncData(
-      current.copyWith(events: _visibleCachedEvents, hasOlder: _hasOlder),
+      current.copyWith(
+        events: _visibleCachedEvents,
+        cachedUserMessageCount: _cachedUserMessageCount,
+        hasOlder: _hasOlder,
+      ),
     );
   }
+
+  int get _cachedUserMessageCount =>
+      _cachedEvents.where((event) => event.isUserMessage).length;
 
   bool? _runningSignal(List<TranscriptEvent> events) {
     for (final event in events.reversed) {
