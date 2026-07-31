@@ -67,8 +67,6 @@ Fleet
   pair --retry                       retry a parked enrollment after local recovery
   pair --legacy                       explicitly arm legacy inbound pairing
   credential rotate                   rotate an active peon-claim-v1 credential
-  fleet mode [reverse-only|legacy-mesh]
-                                      show or explicitly select the fleet topology
 
 Remote access
   remote                              show bind host and public URLs
@@ -570,7 +568,6 @@ async function main() {
       const sub = rest[0] ?? "status";
       const current = (await (await fetch(`${BASE}/api/v1/settings`)).json()) as {
         bindHost?: string;
-        fleetMode?: "legacy-mesh" | "reverse-only";
         publicControlUrl?: string;
       };
       const portOf = (url: string | undefined, fallback: string): string => {
@@ -635,10 +632,6 @@ async function main() {
         console.log(`bind host          : ${host}  (${loopbackOnly ? "loopback only — no remote access" : "accepting remote connections"})`);
         console.log(`publicControlUrl   : ${current.publicControlUrl}`);
       } else if (sub === "on") {
-        if (current.fleetMode === "reverse-only") {
-          console.error("remote access is locked in reverse-only mode; run `peon fleet mode legacy-mesh` first");
-          process.exit(1);
-        }
         const publicHost = rest[1] && !rest[1].startsWith("--") ? rest[1] : undefined;
         const patch: Record<string, string> = { bindHost: "0.0.0.0" };
         if (publicHost) {
@@ -673,37 +666,6 @@ async function main() {
       } else {
         console.log("usage: peon remote [status | on [public-host] [--force] | off [--force]]");
       }
-      break;
-    }
-    case "fleet": {
-      if ((rest[0] ?? "mode") !== "mode") {
-        console.log("usage: peon fleet mode [reverse-only|legacy-mesh]");
-        break;
-      }
-      const requested = rest[1];
-      if (!requested) {
-        const current = (await (await fetch(`${BASE}/api/v1/settings`)).json()) as { fleetMode?: string };
-        console.log(`fleet mode: ${current.fleetMode ?? "legacy-mesh"}${current.fleetMode ? "" : " (migrated default)"}`);
-        break;
-      }
-      if (requested !== "reverse-only" && requested !== "legacy-mesh") {
-        console.error("fleet mode must be reverse-only or legacy-mesh");
-        process.exit(1);
-      }
-      const response = await fetch(`${BASE}/api/v1/settings`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fleetMode: requested }),
-      });
-      if (!response.ok) {
-        const detail = await response.text();
-        console.error(`failed to set fleet mode: ${response.status} ${detail.slice(0, 500)}`);
-        process.exit(1);
-      }
-      console.log(requested === "reverse-only"
-        ? "reverse-only selected: local HTTP remains on loopback; inbound Fleet HTTP and legacy callback heartbeat are disabled after restart"
-        : "legacy-mesh compatibility selected: inbound Fleet HTTP fallback may be exposed only if you separately enable remote access");
-      console.log(`restart to apply listener policy: ${serviceRestartHint()}`);
       break;
     }
     default:

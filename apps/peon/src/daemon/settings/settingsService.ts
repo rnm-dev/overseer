@@ -48,7 +48,6 @@ export interface PeonSocketSettings {
 }
 
 export interface PeonRegistrarSettings {
-  fleetMode: DaemonSettings["fleetMode"];
   name: string;
   overseerUrl: string;
   overseerToken: string;
@@ -120,7 +119,6 @@ export class SettingsService extends EventEmitter implements SettingsServiceCont
     const s = this.get();
     return {
       name: s.name,
-      fleetMode: s.fleetMode,
       overseerUrl: s.overseerUrl,
       overseerToken: s.overseerToken,
       fileTransferRoot: s.fileTransferRoot || "",
@@ -343,17 +341,9 @@ export class SettingsService extends EventEmitter implements SettingsServiceCont
       this.throwBadRequest(`${managedCredential} is managed by enrollment and cannot be changed through general settings`);
     }
     const patch = { ...body } as Partial<DaemonSettings>;
-    if ("fleetMode" in body && body.fleetMode !== "legacy-mesh" && body.fleetMode !== "reverse-only") {
-      this.throwBadRequest("fleetMode must be legacy-mesh or reverse-only");
-    }
-    if (body.fleetMode === "reverse-only") {
-      patch.bindHost = "127.0.0.1";
-      patch.publicControlUrl = `http://127.0.0.1:${process.env.ACA_CONTROL_PORT ?? 4570}`;
-      patch.publicDashboardUrl = `http://127.0.0.1:${process.env.ACA_DASHBOARD_PORT ?? 4571}`;
-    } else if (current.fleetMode === "reverse-only" && body.fleetMode !== "legacy-mesh"
-      && "bindHost" in body && body.bindHost !== "127.0.0.1" && body.bindHost !== "::1") {
-      this.throwBadRequest("switch fleetMode to legacy-mesh before enabling a non-loopback listener");
-    }
+    // Rolling upgrades may still submit the retired topology field. Ignore it:
+    // authenticated Fleet HTTP is the single supported transport policy.
+    delete (patch as unknown as Record<string, unknown>).fleetMode;
     const requestedAgent = "defaultAgent" in body ? narrowNewSessionAgent(body.defaultAgent) : current.defaultAgent;
     if (!requestedAgent) {
       this.throwBadRequest(`defaultAgent must be one of: ${this.listAgents()}`);

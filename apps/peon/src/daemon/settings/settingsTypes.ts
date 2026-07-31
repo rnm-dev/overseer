@@ -1,7 +1,5 @@
 import type { CodingAgent, ReasoningEffort } from "../modelCatalog.js";
 
-export type FleetMode = "legacy-mesh" | "reverse-only";
-
 export interface DaemonSettings {
   updateCheckIntervalMs: number;
   maxTurns: number;
@@ -31,11 +29,6 @@ export interface DaemonSettings {
   // admin). Read once at process startup — changing it needs a daemon +
   // dashboard restart. Env var ACA_BIND_HOST overrides it.
   bindHost: string;
-  // Explicit transport policy. Existing installations inherit legacy-mesh,
-  // preserving inbound Fleet HTTP until an operator opts into reverse-only.
-  // reverse-only is fail-closed: the daemon/dashboard must bind loopback and
-  // legacy registration/heartbeat and callback enrollment stay disabled.
-  fleetMode: FleetMode;
   // Display name for this peon instance — shown in the dashboard tab title.
   // Empty means unset; the dashboard falls back to "Peon" in that case.
   name: string;

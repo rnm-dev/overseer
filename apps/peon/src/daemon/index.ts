@@ -32,13 +32,6 @@ function isLoopbackHost(url: string): boolean {
   }
 }
 
-if (configured.fleetMode === "reverse-only" && !LOOPBACK_HOSTS.includes(BIND_HOST)) {
-  throw new Error(
-    `reverse-only fleet mode refuses non-loopback ACA_BIND_HOST/bindHost (${BIND_HOST}); `
-      + "use 127.0.0.1 or ::1, or explicitly switch to legacy-mesh",
-  );
-}
-
 const composition = createDaemonCompositionRoot();
 const app = createControlServer(composition.controlServerOptions);
 const { armoryRuntime, armoryStores } = composition;
@@ -65,9 +58,7 @@ try {
 const server = app.listen(PORT, BIND_HOST, () => {
   const s = settings.get();
   console.log(`peon daemon: control API listening on http://${BIND_HOST}:${PORT}`);
-  console.log(`fleet transport: ${s.fleetMode === "reverse-only"
-    ? "reverse-only (outbound WSS; inbound Fleet HTTP and callback heartbeat disabled)"
-    : "legacy-mesh compatibility (reverse capabilities with inbound Fleet HTTP fallback)"}`);
+  console.log("fleet transport: authenticated Fleet HTTP with outbound WSS projections");
   console.log(`config dir: ${configDir()}`);
   console.log(`state dir: ${stateDir()}`);
   // Redact the two secrets so a routine settings dump never leaks them — the
@@ -83,7 +74,7 @@ const server = app.listen(PORT, BIND_HOST, () => {
     // Bound wide on purpose — reachable from the network. This is the intended
     // remote-access path (auth handles it), so make the exposure visible, not alarming.
     console.warn(
-      `NOTE: bound to ${BIND_HOST} for authenticated legacy Fleet HTTP. ` +
+      `NOTE: bound to ${BIND_HOST} for authenticated Fleet HTTP. ` +
         "Local CLI routes still require a real loopback peer; operator access belongs in Overseer.",
     );
     if (isLoopbackHost(publicControlUrl)) {
@@ -94,7 +85,7 @@ const server = app.listen(PORT, BIND_HOST, () => {
   } else if (!isLoopbackHost(publicControlUrl)) {
     console.warn(
       "WARNING: publicControlUrl is remote but the daemon still binds loopback. " +
-        "Use reverse sockets or explicitly enable legacy Fleet HTTP.",
+        "Use `peon remote on <mesh-host>` to enable Fleet HTTP over the mesh.",
     );
   }
   console.log("(task claim: milestone 1 only — claims + reports needs_human, does not implement yet)");
