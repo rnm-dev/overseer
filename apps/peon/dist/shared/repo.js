@@ -5,14 +5,18 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 // Plain git URL — usable with `git ls-remote`/`git fetch`/`git clone` directly.
 export const REPO_GIT_URL = "git@github.com:rnm-dev/overseer.git";
-// Resolve the checkout containing packageRoot. Peon lives at apps/peon in the monorepo, so .git
-// belongs to an ancestor rather than the package directory itself. A global npm installation has
-// no enclosing checkout and therefore returns null.
+const SOURCE_PACKAGE_PATH = path.join("apps", "peon");
+// Resolve the checkout containing packageRoot. Peon lives at apps/peon in the monorepo, so only
+// that exact relative layout identifies a source checkout. Merely finding an ancestor .git is not
+// enough: global NVM installs live below ~/.nvm, which is itself commonly a Git checkout.
 export function gitCheckoutRoot(packageRoot) {
-    let candidate = path.resolve(packageRoot);
+    const resolvedPackageRoot = path.resolve(packageRoot);
+    let candidate = resolvedPackageRoot;
     for (;;) {
-        if (existsSync(path.join(candidate, ".git")))
+        if (existsSync(path.join(candidate, ".git"))
+            && path.relative(candidate, resolvedPackageRoot) === SOURCE_PACKAGE_PATH) {
             return candidate;
+        }
         const parent = path.dirname(candidate);
         if (parent === candidate)
             return null;

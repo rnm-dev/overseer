@@ -31,3 +31,27 @@ test("does not treat an extracted package as a checkout", () => {
     rmSync(packageRoot, { recursive: true, force: true });
   }
 });
+
+test("does not mistake a global package inside an NVM checkout for Peon source", () => {
+  const nvmRoot = mkdtempSync(path.join(os.tmpdir(), "peon-nvm-"));
+  try {
+    execFileSync("git", ["init", "-q"], { cwd: nvmRoot });
+    const packageRoot = path.join(
+      nvmRoot,
+      "versions",
+      "node",
+      "v22.22.0",
+      "lib",
+      "node_modules",
+      "@rnm-dev",
+      "peon",
+    );
+    mkdirSync(packageRoot, { recursive: true });
+
+    assert.equal(gitCheckoutRoot(packageRoot), null);
+    assert.equal(isGitCheckout(packageRoot), false);
+    assert.equal(readCheckoutSha(packageRoot), null);
+  } finally {
+    rmSync(nvmRoot, { recursive: true, force: true });
+  }
+});
