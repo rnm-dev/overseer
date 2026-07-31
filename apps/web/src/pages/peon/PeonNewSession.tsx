@@ -14,13 +14,16 @@ import { clearComposerDraft, composerDraftKey, useComposerDraft, useComposerDraf
 import { AgentSelect, defaultEffortIdFor, defaultModelId, effortsForModel, ModelSelect, optionMatches, Picker, ReasoningEffortSelect, providerForAgent, providerForModel, useModels } from "./models";
 import { buildNewSessionRequest } from "./newSessionRequest";
 import { PathInput } from "./PathInput";
+import { dedupeProjectsByKey } from "./projectList";
 
 // author: Viktor
 
 interface Project {
   key: string;
+  name?: string | null;
   path?: string | null;
   dir?: string | null;
+  syncedAt?: number;
 }
 
 // Default upload sandbox — auto-set on a peon that has file transfer off, so
@@ -85,7 +88,9 @@ export function PeonNewSession() {
     api<{ projects: Project[] }>(`${base}/projects`)
       .then((r) => {
         if (!alive) return;
-        const list = r.projects ?? [];
+        // A start request names its project by key, so two rows sharing one key
+        // are the same choice — see dedupeProjectsByKey.
+        const list = dedupeProjectsByKey(r.projects ?? []) as Project[];
         setProjects(list);
         // Prefer the project passed from the current session, if it's still
         // one the peon offers; otherwise fall back to the first.
@@ -258,7 +263,7 @@ export function PeonNewSession() {
               <div className="space-y-1">
                 <Label>{t("newSession.project")}</Label>
                 <Picker
-                  options={projects.map((p) => ({ id: p.key, label: p.key }))}
+                  options={projects.map((p) => ({ id: p.key, label: p.name?.trim() || p.key }))}
                   value={projectKey}
                   onChange={(next) => {
                     setProjectKey(next);

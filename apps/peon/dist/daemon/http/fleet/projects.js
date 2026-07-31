@@ -32,6 +32,14 @@ function projectListRows(projectService, sessionProjectReader) {
     for (const session of sessionProjectReader.list()) {
         if (!session.projectKey)
             continue;
+        // A session keeps the project identity it was recorded with, so sessions
+        // outlive the project they ran in. Their counts belong to a catalog row
+        // only while that project is still registered — otherwise deleting a
+        // project would resurrect it here forever, as a nameless duplicate of
+        // whatever replaced it. Sessions with no projectId predate stable IDs and
+        // still earn a legacy row: the ACL path upstream is keyed by their key.
+        if (session.projectId && !rows.has(session.projectId))
+            continue;
         const identity = session.projectId ?? `legacy:${session.projectKey}`;
         let row = rows.get(identity);
         if (!row) {

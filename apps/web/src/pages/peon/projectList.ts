@@ -60,8 +60,27 @@ export function applyProjectEvent(current: ProjectLite[], event: ProjectLiveEven
   return current.map((project, itemIndex) => itemIndex === index ? next : project);
 }
 
+// A Peon still lists a project it no longer holds when sessions were recorded
+// against it: the row keeps the dead projectId and arrives with nothing but a
+// key, a path and its counts. Every surface addresses a project by key, so such
+// a row is indistinguishable from the live project that replaced it — and it is
+// the one that cannot be opened. Keep the registered row.
+function registered(project: ProjectLite): boolean {
+  return project.syncedAt != null || project.name != null || project.dir != null;
+}
+
+export function dedupeProjectsByKey(projects: ProjectLite[]): ProjectLite[] {
+  const byKey = new Map<string, ProjectLite>();
+  for (const project of projects) {
+    const previous = byKey.get(project.key);
+    if (previous && (registered(previous) || !registered(project))) continue;
+    byKey.set(project.key, project);
+  }
+  return [...byKey.values()];
+}
+
 export function visibleProjects(projects: ProjectLite[]): ProjectLite[] {
-  return projects.filter((project) => !project.deleted);
+  return dedupeProjectsByKey(projects.filter((project) => !project.deleted));
 }
 
 // Also stamps each project with the newest activity among its sessions, so the

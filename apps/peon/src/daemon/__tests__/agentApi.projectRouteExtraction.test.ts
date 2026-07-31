@@ -96,6 +96,14 @@ const sessionProjectReader = {
       dir: "/session/alpha",
     },
     {
+      // Recorded against a project that has since been deleted or re-registered.
+      projectId: "project-0",
+      projectKey: "alpha",
+      status: "completed",
+      lastActivityAt: 900,
+      dir: "/session/alpha-deleted",
+    },
+    {
       projectId: null,
       projectKey: "legacy-project",
       status: "completed",
@@ -192,6 +200,11 @@ test("fleet project list route uses injected project and session services", asyn
   assert.equal(legacy?.sessionCount, 1);
   assert.equal(legacy?.activeCount, 0);
   assert.equal(callLog.list, 1);
+
+  // A session outlives the project it ran in, but its dead project ID must not
+  // reappear here as a second, nameless row sharing a registered project's key.
+  assert.deepEqual(payload.projects.map((project) => project.key), ["alpha", "legacy-project"]);
+  assert.equal(payload.projects.some((project) => project.projectId === "project-0"), false);
 });
 
 test("fleet project detail route uses injected service", async () => {

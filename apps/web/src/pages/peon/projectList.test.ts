@@ -1,6 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { applyProjectEvent, mergeProjects, visibleProjects, withLiveActiveSessionCounts } from "./projectList";
+import { applyProjectEvent, dedupeProjectsByKey, mergeProjects, visibleProjects, withLiveActiveSessionCounts } from "./projectList";
+
+test("a nameless row from a dead project never displaces the registered project sharing its key", () => {
+  const registered = { peonId: "peon", projectId: "live", key: "overseer", name: "Overseer", dir: "/p/overseer", syncedAt: 20 };
+  const ghost = { peonId: "peon", projectId: "dead", key: "overseer", path: "/p/peon", sessionCount: 43 };
+  assert.deepEqual(dedupeProjectsByKey([registered, ghost]), [registered]);
+  assert.deepEqual(dedupeProjectsByKey([ghost, registered]), [registered], "order of arrival must not decide");
+  assert.deepEqual(visibleProjects([ghost, registered]), [registered]);
+  assert.deepEqual(dedupeProjectsByKey([ghost]), [ghost], "a key with no registered row still has to be reachable");
+});
 
 test("project reducers use stable IDs across renames and reject stale HTTP data", () => {
   const live = [{ peonId: "peon", projectId: "project", key: "renamed", syncedAt: 20, sessionCount: 2 }];
