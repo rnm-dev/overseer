@@ -665,7 +665,9 @@ function PeonSessionDetailPage() {
       rows.push({
         key: "session-working",
         kind: "working",
-        paddingClass: items.length === 0 && !ghost ? "" : gapPaddingClass(Boolean(previousIsUser), false),
+        // The working indicator reads as assistant prose, not another compact
+        // row, so it keeps the same breathing room a text row gets after one.
+        paddingClass: items.length === 0 && !ghost ? "" : gapPaddingClass(Boolean(previousIsUser), false, true),
       });
     }
     rows.push({ key: "session-footer", kind: "footer", height: composerHeight + 40 });
