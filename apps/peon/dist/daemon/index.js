@@ -11,6 +11,7 @@ import { recoverInterruptedArmoryOperations, recoverInterruptedArmoryUninstalls 
 import { armoryInventory } from "./armory/index.js";
 import { shutdownAgentDriverRuntimes } from "./agents/index.js";
 import { peonClaimClient } from "./enrollment/index.js";
+import { controlListenerHosts, isLoopbackBindHost } from "./controlListeners.js";
 const PORT = Number(process.env.ACA_CONTROL_PORT ?? 4570);
 // Interface to bind. Defaults to loopback-only (settings.bindHost === "127.0.0.1");
 // set it wider (0.0.0.0 or a specific interface IP) via `peon remote on` to accept
@@ -52,7 +53,8 @@ try {
 catch (error) {
     console.error("failed to initialize Armory runtime:", error);
 }
-const server = app.listen(PORT, BIND_HOST, () => {
+const listenerHosts = controlListenerHosts(BIND_HOST);
+const servers = listenerHosts.map((host, index) => app.listen(PORT, host, index === 0 ? () => {
     const s = settings.get();
     console.log(`peon daemon: control API listening on http://${BIND_HOST}:${PORT}`);
     console.log("fleet transport: authenticated Fleet HTTP with outbound WSS projections");
@@ -67,7 +69,7 @@ const server = app.listen(PORT, BIND_HOST, () => {
         pairingSecret: s.pairingSecret ? "<armed>" : "",
     });
     const { publicControlUrl } = settings.get();
-    if (!LOOPBACK_HOSTS.includes(BIND_HOST)) {
+    if (!isLoopbackBindHost(BIND_HOST)) {
         // Bound wide on purpose — reachable from the network. This is the intended
         // remote-access path (auth handles it), so make the exposure visible, not alarming.
         console.warn(`NOTE: bound to ${BIND_HOST} for authenticated Fleet HTTP. ` +
@@ -116,7 +118,9 @@ const server = app.listen(PORT, BIND_HOST, () => {
         sessions.resumeQueued();
         sdNotify.ready();
     });
-});
+} : () => {
+    console.log(`peon daemon: local CLI/MCP listening on http://${host}:${PORT}`);
+}));
 const watchdogIntervalMs = sdNotify.watchdogIntervalMs();
 if (watchdogIntervalMs) {
     setInterval(() => sdNotify.watchdog(), watchdogIntervalMs);
@@ -133,8 +137,10 @@ process.on("SIGTERM", () => {
     // empirically: a restart with the dashboard open hung until systemd's
     // stop-timeout force-killed it, repeatedly. Exit on a hard deadline
     // instead of waiting on client behavior we don't control.
-    server.close();
-    server.closeAllConnections();
+    for (const server of servers) {
+        server.close();
+        server.closeAllConnections();
+    }
     const hardExit = setTimeout(() => process.exit(1), 1000);
     void Promise.all([sessions.flushTranscripts(), armoryRuntime.close(), shutdownAgentDriverRuntimes()]).then(() => {
         clearTimeout(hardExit);
