@@ -13,7 +13,10 @@ export function parseNpmPackageRelease(value) {
 }
 export async function fetchLatestNpmRelease(fetchImpl = fetch) {
     const response = await fetchImpl(PEON_NPM_LATEST_URL, {
-        headers: { Accept: "application/vnd.npm.install-v1+json" },
+        // The abbreviated install metadata media type is supported by the package
+        // document endpoint, but some npm/Cloudflare edges reject it with 406 on
+        // the `/latest` version endpoint. That endpoint returns ordinary JSON.
+        headers: { Accept: "application/json" },
     });
     if (!response.ok) {
         throw new Error(`npm registry request failed (${response.status} ${response.statusText})`);

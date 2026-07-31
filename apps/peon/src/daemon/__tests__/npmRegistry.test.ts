@@ -23,7 +23,7 @@ test("latest release is read from the public npm registry", async () => {
   };
   assert.deepEqual(await fetchLatestNpmRelease(fetchImpl), { version: "0.11.3" });
   assert.equal(requested, PEON_NPM_LATEST_URL);
-  assert.equal(accept, "application/vnd.npm.install-v1+json");
+  assert.equal(accept, "application/json");
 });
 
 test("registry errors are bounded and exact package specs are validated", async () => {
