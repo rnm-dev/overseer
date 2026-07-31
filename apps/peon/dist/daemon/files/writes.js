@@ -3,6 +3,7 @@ import { constants, lstatSync, mkdirSync, realpathSync, statSync } from "node:fs
 import { promises as fs } from "node:fs";
 import { spawn } from "node:child_process";
 import path from "node:path";
+import { SECURE_FILE_HELPER } from "../../shared/runtimePrerequisites.js";
 export const ATTACHMENT_UPLOAD_MAX_BYTES = 25 * 1024 * 1024;
 export const PROJECT_UPLOAD_MAX_BYTES = 100 * 1024 * 1024;
 export class FileWriteError extends Error {
@@ -554,7 +555,7 @@ function anchoredMoveSelection(sourcePath, destinationPath) {
 async function runAnchoredProjectMove(root, selection, expectedSource) {
     const inspect = expectedSource === undefined;
     return new Promise((resolve, reject) => {
-        const child = spawn("/usr/bin/python3", [
+        const child = spawn(SECURE_FILE_HELPER, [
             "-c",
             NATIVE_PROJECT_MOVE,
             inspect ? "inspect" : "commit",
@@ -602,7 +603,7 @@ async function runAnchoredProjectMove(root, selection, expectedSource) {
 }
 async function anchoredRename(source, sourceName, destination, destinationName, exclusive, expectedSource) {
     await new Promise((resolve, reject) => {
-        const child = spawn("/usr/bin/python3", [
+        const child = spawn(SECURE_FILE_HELPER, [
             "-c",
             NATIVE_RENAME,
             sourceName,
@@ -633,7 +634,7 @@ async function anchoredRename(source, sourceName, destination, destinationName, 
 async function anchoredUnlink(parent, name) {
     await new Promise((resolve, reject) => {
         const code = "import errno, os, sys\ntry:\n os.unlink(sys.argv[1], dir_fd=3)\nexcept OSError as error:\n sys.exit(0 if error.errno == errno.ENOENT else 74)";
-        const child = spawn("/usr/bin/python3", ["-c", code, name], {
+        const child = spawn(SECURE_FILE_HELPER, ["-c", code, name], {
             stdio: ["ignore", "ignore", "ignore", parent.handle.fd],
         });
         child.once("error", () => reject(new FileWriteError(501, "UNSUPPORTED_PLATFORM", "native secure unlink helper is unavailable")));
@@ -681,7 +682,7 @@ except OSError as error:
     sys.exit(17 if error.errno == errno.EEXIST else 74)
 `;
 async function openAnchoredTemporary(parent, name) {
-    const child = spawn("/usr/bin/python3", ["-c", NATIVE_TEMP_WRITER, name], {
+    const child = spawn(SECURE_FILE_HELPER, ["-c", NATIVE_TEMP_WRITER, name], {
         stdio: ["pipe", "pipe", "pipe", parent.handle.fd],
     });
     let error = "";
@@ -887,7 +888,7 @@ export async function deleteProjectFile(record, relativePath) {
     try {
         root = await openAnchoredProjectRoot(record);
         const size = await new Promise((resolve, reject) => {
-            const child = spawn("/usr/bin/python3", [
+            const child = spawn(SECURE_FILE_HELPER, [
                 "-c",
                 NATIVE_PROJECT_DELETE,
                 parts.slice(0, -1).join("/"),

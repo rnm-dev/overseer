@@ -13,7 +13,7 @@ test("merges every meaningful legacy project context field into Markdown", () =>
     publication: "Hosted by the old publisher.",
     publicationStatus: "degraded",
     publicationError: "health check failed",
-    publicationRoutes: [{ key: "dashboard", publicUrl: "https://example.test" }],
+    publicationRoutes: [{ key: "preview", publicUrl: "https://example.test" }],
   });
 
   assert.match(metadata ?? "", /^# Existing metadata/);

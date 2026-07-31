@@ -10,6 +10,7 @@ import { AtomicJsonStore } from "./armory/index.js";
 import { settings } from "./settings/index.js";
 import { stateDir } from "./xdgPaths.js";
 import { isGitCheckout } from "../shared/repo.js";
+import { backgroundSupervisor } from "../shared/backgroundSupervisor.js";
 import { getAgentDriver, listAgentDrivers } from "./agents/index.js";
 export function cliUpdateProviders() {
     return listAgentDrivers().filter((driver) => driver.services.cliUpdate).map((driver) => driver.id);
@@ -88,14 +89,14 @@ export class CliUpdateManager {
         this.spawnWorker = options.spawnWorker ?? ((args, logPath) => {
             const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
             const worker = path.join(root, "dist/cli/agentCliUpdateWorker.js");
-            if (isGitCheckout(root)) {
+            if (backgroundSupervisor(isGitCheckout(root)) === "detached") {
                 return spawn(process.execPath, [worker, ...args], {
                     detached: true,
                     stdio: ["ignore", openSync(logPath, "a"), openSync(logPath, "a")],
                     env: process.env,
                 });
             }
-            // A plain detached process still belongs to the daemon's systemd cgroup
+            // On Linux, a plain detached process still belongs to the daemon's systemd cgroup
             // and would be killed by a service restart. A transient user unit gives
             // the updater independent supervision, while its durable state remains
             // readable by the replacement daemon process.

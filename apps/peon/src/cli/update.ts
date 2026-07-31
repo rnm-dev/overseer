@@ -1,23 +1,23 @@
 #!/usr/bin/env node
 // Self-update, in one of two shapes depending on how peon is installed (see isGitCheckout):
 //
-//   - Source checkout (dev / `npm run dev`; the only shape that works on macOS,
-//     which has no systemd): `git fetch` + `git merge --ff-only` this checkout to origin/<branch>,
+//   - Source checkout (dev / `npm run dev`): `git fetch` + `git merge --ff-only`
+//     this checkout to origin/<branch>,
 //     without restarting the running daemon. The committed dist/ arrives with src/ in the same
 //     pull, so there's nothing to npm-install or stamp; the operator restarts the dev harness when
 //     it is safe for daemon changes to take effect.
 //     See gitCheckoutUpdate.
 //
-//   - Global install (production, systemd-managed): check no session is running -> resolve the
+//   - Global install (production, launchd/systemd-managed): check no session is running -> resolve the
 //     latest version from the public npm registry -> install that exact package version ->
 //     syntax-check compiled output -> restart
-//     both systemd services and wait for them. Before replacement, pack the current installation
+//     daemon service and wait for it. Before replacement, pack the current installation
 //     locally so either a failed sanity check or a failed restart can roll back without GitHub or
 //     network access. npm performs its normal package integrity verification.
 //
-// Runnable two ways: spawned by POST /api/v1/control/update (plainly detached in checkout mode; via
-// systemd-run in global mode, so the restart doesn't kill this script along with the daemon's
-// cgroup), or directly by a human (`npm run update` / `tsx src/cli/update.ts`) — so it repeats the
+// Runnable two ways: spawned by POST /api/v1/control/update (detached on macOS/checkouts; via
+// systemd-run for global Linux installs, so the restart doesn't kill this script along with the
+// daemon's cgroup), or directly by a human (`npm run update` / `tsx src/cli/update.ts`) — so it repeats the
 // session-guard check independently rather than trusting the caller already did it. In an installed
 // tree it runs as compiled JS (dist/cli/update.js) under plain node — no tsx at runtime.
 import { execFileSync } from "node:child_process";
@@ -36,6 +36,11 @@ import {
   type UpdateReleaseIdentity,
 } from "../daemon/updateRuntimeIdentity.js";
 import { globalInstallArgs, rollbackPackArgs } from "./npmGlobalInstall.js";
+import {
+  daemonRestartCommand,
+  printDaemonServiceStatus,
+  restartDaemonService,
+} from "./serviceControl.js";
 import { configDir } from "../daemon/xdgPaths.js";
 import { parseListenAddress } from "../shared/listenAddress.js";
 
@@ -128,8 +133,7 @@ function gitOut(args: string[]): string {
   return execFileSync("git", args, { cwd: PACKAGE_ROOT, encoding: "utf8" }).trim();
 }
 
-// From-source update path (dev / `npm run dev`; the only path that can work on
-// macOS, which has no systemd): fast-forward this checkout to origin/<branch>. The committed
+// From-source update path (dev / `npm run dev`): fast-forward this checkout to origin/<branch>. The committed
 // dist/ comes along with src/ in the same pull. The dev harness deliberately does not watch daemon
 // source, so the pull cannot interrupt an in-flight session; the operator restarts it manually when
 // safe. There is nothing to `npm install`, no install stamp, and no systemctl to call.
@@ -235,9 +239,9 @@ function rollbackToDisk(previousArchive: string, previousIdentity: UpdateRelease
 async function main(): Promise<void> {
   commandReceipt("running");
   // Two update shapes (see isGitCheckout): a source checkout fast-forwards with git without
-  // restarting the daemon; a global install reinstalls with npm and restarts via systemd. The npm
-  // path below can't work from a checkout (npm install -g wouldn't touch the running tree) and
-  // can't work on macOS (no systemd) — so a checkout always takes the git path.
+  // restarting the daemon; a global install reinstalls with npm and restarts via launchd/systemd.
+  // The npm path below can't work from a checkout because npm install -g would not touch the
+  // running tree, so a checkout always takes the git path.
   if (isGitCheckout(PACKAGE_ROOT)) {
     await gitCheckoutUpdate();
     commandReceipt("ready_to_attest");
@@ -287,15 +291,16 @@ async function main(): Promise<void> {
     // The replacement daemon verifies these expected attestation inputs against
     // its own running package before it completes the durable command.
     commandReceipt("ready_to_attest");
-    console.log("==> restarting peon-daemon.service");
+    const daemonService = daemonRestartCommand();
+    console.log(`==> restarting ${daemonService.displayName}`);
     try {
-      run("systemctl", ["--user", "restart", "peon-daemon.service"]);
+      restartDaemonService();
     } catch (err) {
-      console.error("the new release could not restart the Peon services:", err);
+      console.error("the new release could not restart the Peon service:", err);
       const rolledBack = rollbackToDisk(previousArchive, previousIdentity);
       let rollbackRestarted = false;
       try {
-        run("systemctl", ["--user", "restart", "peon-daemon.service"]);
+        restartDaemonService();
         rollbackRestarted = true;
       } catch (restartErr) {
         console.error("restarting into the rolled-back release also failed:", restartErr);
@@ -312,7 +317,7 @@ async function main(): Promise<void> {
     const controlUp = await waitFor("control API", `${CONTROL_API}/api/v1/status`, budgetSec);
     if (!controlUp) {
       try {
-        execFileSync("systemctl", ["--user", "status", "peon-daemon.service", "--no-pager"], { stdio: "inherit" });
+        printDaemonServiceStatus();
       } catch {
         // Status exits non-zero for a failed unit; its output is still useful diagnostics.
       }
@@ -320,7 +325,7 @@ async function main(): Promise<void> {
       const rolledBack = rollbackToDisk(previousArchive, previousIdentity);
       let rollbackRestarted = false;
       try {
-        run("systemctl", ["--user", "restart", "peon-daemon.service"]);
+        restartDaemonService();
         rollbackRestarted = true;
       } catch (err) {
         console.error("restarting into the rolled-back release also failed:", err);

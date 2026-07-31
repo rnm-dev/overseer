@@ -329,7 +329,7 @@ The approval transaction:
 7. commits the workspace, actor, decision, credential ID, and delivery expiry atomically.
 
 Peon never supplies `workspaceId`. After approval, neither actor nor workspace can change.
-Recovery is explicit in the decision result and the dashboard must warn that acknowledgement will
+Recovery is explicit in the decision result and Overseer must warn that acknowledgement will
 replace every older credential.
 
 Denial records the authenticated actor and changes pending to `denied`; no credential is minted.
@@ -571,7 +571,7 @@ Internal database, cryptographic, network, and operator details never enter `mes
 
 ## Information-flow policy
 
-| Value | Terminal | Browser/dashboard API | Audit log | Database | URL | Metrics |
+| Value | Terminal | Overseer API | Audit log | Database | URL | Metrics |
 |---|---|---|---|---|---|---|
 | Operator code and URL | yes, once per attempt plus same-attempt pending replay | code may be submitted; remove after resolve | no code | hash/index plus separately sealed code only while pending | operator code only | no |
 | Peon ID, claim/attempt/rotation/delivery/credential IDs | claim/Peon IDs allowed | claim/Peon/credential IDs allowed after auth | yes | yes | only route IDs, never query | no identifiers |

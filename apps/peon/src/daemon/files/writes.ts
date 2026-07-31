@@ -3,6 +3,7 @@ import { constants, lstatSync, mkdirSync, realpathSync, statSync } from "node:fs
 import { promises as fs } from "node:fs";
 import { spawn } from "node:child_process";
 import path from "node:path";
+import { SECURE_FILE_HELPER } from "../../shared/runtimePrerequisites.js";
 
 export const ATTACHMENT_UPLOAD_MAX_BYTES = 25 * 1024 * 1024;
 export const PROJECT_UPLOAD_MAX_BYTES = 100 * 1024 * 1024;
@@ -594,7 +595,7 @@ async function runAnchoredProjectMove(
 ): Promise<{ device: bigint; inode: bigint; size: number } | null> {
   const inspect = expectedSource === undefined;
   return new Promise((resolve, reject) => {
-    const child = spawn("/usr/bin/python3", [
+    const child = spawn(SECURE_FILE_HELPER, [
       "-c",
       NATIVE_PROJECT_MOVE,
       inspect ? "inspect" : "commit",
@@ -641,7 +642,7 @@ async function anchoredRename(
   expectedSource: { device: bigint; inode: bigint },
 ): Promise<void> {
   await new Promise<void>((resolve, reject) => {
-    const child = spawn("/usr/bin/python3", [
+    const child = spawn(SECURE_FILE_HELPER, [
       "-c",
       NATIVE_RENAME,
       sourceName,
@@ -668,7 +669,7 @@ async function anchoredRename(
 async function anchoredUnlink(parent: AnchoredParent, name: string): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     const code = "import errno, os, sys\ntry:\n os.unlink(sys.argv[1], dir_fd=3)\nexcept OSError as error:\n sys.exit(0 if error.errno == errno.ENOENT else 74)";
-    const child = spawn("/usr/bin/python3", ["-c", code, name], {
+    const child = spawn(SECURE_FILE_HELPER, ["-c", code, name], {
       stdio: ["ignore", "ignore", "ignore", parent.handle.fd],
     });
     child.once("error", () => reject(new FileWriteError(501, "UNSUPPORTED_PLATFORM", "native secure unlink helper is unavailable")));
@@ -725,7 +726,7 @@ async function openAnchoredTemporary(
   parent: AnchoredParent,
   name: string,
 ): Promise<AnchoredTemporaryWriter> {
-  const child = spawn("/usr/bin/python3", ["-c", NATIVE_TEMP_WRITER, name], {
+  const child = spawn(SECURE_FILE_HELPER, ["-c", NATIVE_TEMP_WRITER, name], {
     stdio: ["pipe", "pipe", "pipe", parent.handle.fd],
   });
   let error = "";
@@ -947,7 +948,7 @@ export async function deleteProjectFile(
   try {
     root = await openAnchoredProjectRoot(record);
     const size = await new Promise<number>((resolve, reject) => {
-      const child = spawn("/usr/bin/python3", [
+      const child = spawn(SECURE_FILE_HELPER, [
         "-c",
         NATIVE_PROJECT_DELETE,
         parts.slice(0, -1).join("/"),

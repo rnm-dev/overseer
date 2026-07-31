@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { sessions } from "./sessions/index.js";
 import { stateDir } from "./xdgPaths.js";
 import { isGitCheckout } from "../shared/repo.js";
+import { backgroundSupervisor } from "../shared/backgroundSupervisor.js";
 // Repo root of *this* install, whichever shape it is — the compiled updater
 // lives at dist/cli/update.js under it. Same computation controlServer used
 // before this logic moved here: dist/daemon/selfUpdate.js → .. → dist → .. → root.
@@ -27,17 +28,16 @@ export function startSelfUpdate(opts) {
     // update.js runs from the compiled dist/ of *this* repo (REPO_ROOT), whichever install
     // shape we are — but how we detach it differs, because how it restarts differs:
     //
-    //  - Global install (systemd-managed): the restart update.js triggers sends SIGTERM to this
+    //  - Global install on Linux (systemd-managed): the restart update.js triggers sends SIGTERM to this
     //    process's whole systemd cgroup, and plain detached+unref only escapes Node's bookkeeping
     //    and the OS process group/session, not that cgroup — a naively-detached script would get
     //    killed mid-run by its own restart. systemd-run launches it as a brand-new transient unit
     //    (own cgroup, supervised by the user systemd instance) so it survives.
     //
-    //  - Source checkout (`npm run dev`; the only option on macOS, which has no systemd): update.js
-    //    updates files without restarting the daemon. A plain detached+unref child is enough, and
-    //    systemd-run doesn't exist to call anyway. We tee stdout/stderr to update.log ourselves
-    //    since there's no unit capturing it.
-    const child = sourceCheckout
+    //  - Source checkouts update without restarting, and global macOS installs restart through
+    //    launchd. In both cases a detached process survives and writes directly to update.log.
+    const supervisor = backgroundSupervisor(sourceCheckout);
+    const child = supervisor === "detached"
         ? spawn(process.execPath, [path.join(REPO_ROOT, "dist/cli/update.js")], {
             cwd: REPO_ROOT,
             detached: true,

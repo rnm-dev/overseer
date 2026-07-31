@@ -88,7 +88,6 @@ src/
     armory/
       ...
 
-  dashboard/
   cli/
   shared/
 ```
@@ -331,7 +330,7 @@ uses an injected `ProjectSessionIndex`, and the former root compatibility files 
 ### Settings boundary
 
 Settings types, persistence, mutation rules, and safe views have been separated. The compatibility shim
-`daemon/settings.ts` has now been removed, and all known consumers (CLI, dashboard, tests) have been moved to
+`daemon/settings.ts` has now been removed, and all known consumers (CLI and tests) have been moved to
 `daemon/settings/index.js`. The runtime cycle described above has also been removed.
 
 ### Sessions boundary and artifact growth
@@ -388,7 +387,7 @@ lifecycle coupling still needs a dedicated boundary.
 
 The new `check-architecture-imports.mjs` enforces boundary imports across
 Projects, Settings, Sessions, Files, Overseer, Armory, and Agents using parsed import specifiers. It checks
-daemon, CLI, and dashboard consumers and requires production imports to cross feature
+daemon and CLI consumers and requires production imports to cross feature
 boundaries only via the feature `index` entry points.
 
 2026-07-24 follow-up:
@@ -461,7 +460,7 @@ session splitting.
 1. extract `GET /api/v1/fs`, `GET /api/v1/fs/stream`, and `GET /api/v1/fs/file`
    from `controlServer.ts` into `daemon/http/human/files.ts` behind a narrow
    `attachHumanFilesystemRoutes(...)`. ✅ Done.
-2. preserve dashboard auth profile selection in `controlServer.ts` and keep route
+2. preserve operator auth profile selection in `controlServer.ts` and keep route
    behavior (root checks, traversal/escape handling, directory listing, file-view
    translation, SSE watcher behavior and cleanup) unchanged by the extraction. ✅ Done.
 

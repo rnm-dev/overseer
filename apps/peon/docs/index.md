@@ -13,7 +13,7 @@ agent prompt on every run and follow-up. This makes the index the concise, alway
 context; linked documents remain available for details that are only relevant to some tasks.
 
 When a project is created, Peon automatically starts a linked documentation-onboarding session
-and opens it in the dashboard. The agent first inspects the repository without editing it, asks
+and exposes it in Overseer. The agent first inspects the repository without editing it, asks
 3–5 concise questions, and waits for the user's answers before writing lightweight baseline
 documentation. Failure to start this optional session must not roll back project creation.
 

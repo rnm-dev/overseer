@@ -64,14 +64,14 @@ Transport failures, `5xx`, `429`, `PERSIST_FAILED`, and the contract-required
 fresh-proof `CLOCK_SKEW` correction are retryable. Other non-terminal stable
 protocol failures enter `parked` with no timer. After the underlying condition
 is corrected, an operator resumes explicitly with `peon pair --retry` or the
-local dashboard's retry action.
+corresponding Overseer action.
 
 ## Secret and encryption boundary
 
 Overseer owns AES-256-GCM sealing of pending delivery rows. Peon never receives
 the delivery key, nonce, ciphertext, verifier, or tag: after an authenticated
 poll it receives the one plaintext bearer in bounded response memory and writes
-it to its private local candidate store before ACK. Routine status, dashboard
+it to its private local candidate store before ACK. Routine status, operator API
 responses, and logs expose IDs, generation, state, and stable error codes only;
 they never expose claim tokens, signatures, private keys, or bearers. Registrar
 error reads stop at 16 KiB and retain only the three stable credential verdicts;

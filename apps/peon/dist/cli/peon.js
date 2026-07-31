@@ -8,6 +8,7 @@ import { buildDaemonUnit } from "./systemdUnits.js";
 import { buildLaunchAgent } from "./launchdUnits.js";
 import { configDir } from "../daemon/xdgPaths.js";
 import { parseListenAddress } from "../shared/listenAddress.js";
+import { SECURE_FILE_HELPER } from "../shared/runtimePrerequisites.js";
 function configuredControlPort() {
     try {
         const raw = JSON.parse(readFileSync(path.join(configDir(), "settings.json"), "utf8"));
@@ -131,7 +132,7 @@ function requireBinary(name, hint) {
     }
     catch (err) {
         if (err.code === "ENOENT") {
-            console.error(`peon start needs "${name}", which isn't on your PATH. ${hint}`);
+            console.error(`peon start needs "${name}", but it is unavailable. ${hint}`);
             process.exit(1);
         }
         // exists but --version failed for some other reason — fine, it's present
@@ -152,6 +153,7 @@ async function waitForUrl(url, budgetSec) {
     return false;
 }
 async function startCommand() {
+    requireBinary(SECURE_FILE_HELPER, "Python 3 at this path is required for race-safe project file writes.");
     if (IS_MACOS) {
         requireBinary("launchctl", "launchd is required for a persistent Peon service on macOS.");
         const pathEnv = process.env.PATH ?? "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin";

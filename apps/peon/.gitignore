@@ -1,5 +1,5 @@
 node_modules/
-# dist/ is committed pre-built (the compiled daemon/dashboard/CLI a global npm install runs —
+# dist/ is committed pre-built (the compiled daemon/CLI a global npm install runs —
 # see CLAUDE.md). Building it from `prepare` on a global `npm install -g git+...` is unreliable
 # (npm doesn't install devDeps like typescript for a global git build → `tsc: not found`), so
 # the compiled output is checked in and carried into the install via package.json's "files".

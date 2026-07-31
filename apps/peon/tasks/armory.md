@@ -26,7 +26,7 @@ A successful example flow is:
 2. Peon installs the versioned Armory package transactionally.
 3. The package uses only runtime dependencies bundled in its immutable release archive.
 4. Armory reports `needs_configuration` if credentials are required.
-5. The dashboard renders the package-defined form and passes submitted values to the package's configuration hook without exposing them to agents or transcripts.
+5. Overseer renders the package-defined form and passes submitted values to the package's configuration hook without exposing them to agents or transcripts.
 6. The package writes configuration to its declared managed location and verifies access.
 7. Peon starts the package's MCP child process and includes its namespaced tools in `tools/list` on Peon's single MCP endpoint.
 8. Future agent sessions can call those tools without receiving a separate MCP server configuration.
@@ -88,7 +88,7 @@ The copy-ready read-only Overseer UI task is in `tasks/overseer-armory-marketpla
 - Update, verify, purge, and rollback control API routes.
 - Complete lifecycle orchestration around update and rollback.
 - Unified MCP gateway, package process supervision, namespaced tool proxying, runtime health, exposed-tool reporting, and list-change notifications.
-- Armory counts in `/api/v1/status`, dashboard Armory UI, CLI commands, per-route multipart file upload, and final end-to-end release verification.
+- Armory counts in `/api/v1/status`, Overseer Armory UI, CLI commands, per-route multipart file upload, and final end-to-end release verification.
 
 ### Verification baseline
 
@@ -113,8 +113,7 @@ Build on the current architecture rather than creating a parallel control plane:
 
 - `src/daemon/projectMcp.ts` already serves Peon's loopback-only streamable HTTP MCP at `/mcp`.
 - `src/daemon/sessions.ts` currently writes per-session MCP configuration for Peon and the selected task integration.
-- `src/daemon/controlServer.ts` is the authenticated control API used by the dashboard and CLI.
-- `src/dashboard/public/components/SettingsView.jsx` owns the tabbed Settings area.
+- `src/daemon/controlServer.ts` is the authenticated control API used by Overseer and CLI.
 - `src/cli/peon.ts` owns the existing command surface and hidden-input behavior.
 - `src/daemon/credentialStore.ts` demonstrates secret metadata and mode-`0600` persistence, but its single-string credential model is not sufficient as the complete Armory configuration abstraction.
 - `src/daemon/xdgPaths.ts` has config and state paths; add an XDG data path for installed package contents.
@@ -129,7 +128,7 @@ The existing `IntegrationPlugin` abstraction represents task backends such as He
 4. Packages are trusted code. Hooks and MCP servers always run as child processes, never inside the daemon process, but process isolation is for reliability and lifecycle control—not a security sandbox.
 5. Installed and enabled packages are global to this Peon instance in V1. Per-project loadouts are a follow-up; structure persisted state so project scoping can be added without changing package identity.
 6. V1 supports one active configuration profile per installed package.
-7. Armory never asks an agent to supply secrets. Secret-bearing configuration is accepted only through authenticated control API routes used by the dashboard or CLI.
+7. Armory never asks an agent to supply secrets. Secret-bearing configuration is accepted only through authenticated control API routes used by Overseer or CLI.
 8. Package-provided prompt text is not inserted into Peon's system or role instructions in V1. MCP tool descriptions are the package's agent guidance.
 9. The default credential destination is a package-managed home. Writing to an operator-owned path requires a manifest declaration and an explicit warning in the UI.
 10. Uninstall preserves configuration by default. An explicit purge option removes package-owned configuration. It must never remove a pre-existing external CLI or undeclared user file.
@@ -442,7 +441,7 @@ type ArmoryConfigurationField = {
 };
 ```
 
-The dashboard retrieves the schema but never existing secret values. Responses expose only field-level `configured: boolean` metadata. Values from `secret` and `file` fields are redacted recursively from structured logs and errors.
+Overseer retrieves the schema but never existing secret values. Responses expose only field-level `configured: boolean` metadata. Values from `secret` and `file` fields are redacted recursively from structured logs and errors.
 
 Pass submitted values to the configuration handler over a one-use JSON message on stdin. The handler returns safe structured output on stdout. Do not put values in environment variables, arguments, operation files, or logs.
 
@@ -674,7 +673,7 @@ Render fields from the validated manifest schema. Secret fields are blank on eve
 
 After submission, replace the form with operation progress, then reload status. Never put secret values into React state longer than necessary; clear values after submission and on unmount. Do not store them in local storage, URLs, analytics, or console output.
 
-Use the existing dashboard primitives and API helpers. Add operation polling with cleanup on unmount; no new frontend framework or build system is required.
+Use the existing Overseer primitives and API helpers. Add operation polling with cleanup on unmount; no new frontend framework or build system is required.
 
 ## Errors and observability
 
@@ -729,7 +728,7 @@ Expose Armory summary in `/api/v1/status`: installed count, enabled count, packa
 6. **Bundled-runtime portability:** packages must publish self-contained archives for every supported OS/architecture pair.
 7. **Uninstall ownership:** Armory can safely remove only files it recorded as creating.
 8. **OAuth:** OAuth redirect and device-code flows require additional UI/API states; the data model must allow them, but the first package need not implement them.
-9. **Remote dashboard authority:** Peon's current authenticated users effectively administer the daemon. If finer-grained roles are added, all Armory mutations and credential routes must require an administrator role.
+9. **Remote operator authority:** Peon's current authenticated callers effectively administer the daemon. If finer-grained roles are added, all Armory mutations and credential routes must require an administrator role.
 10. **Package schema evolution:** manifests and registry indexes require explicit schema versions and migration/compatibility behavior.
 
 ## Implementation task list
@@ -871,7 +870,7 @@ The frozen normative contract for this phase is
 - [x] Add operation-status retrieval with bounded safe progress.
 - [ ] Add strict per-route body limits and multipart handling for configuration file fields.
 - [ ] Return `202` for started asynchronous work, `409` for conflicts, and consistent `{ error, code }` failures.
-- [ ] Apply the existing dashboard authentication gate and document current administrator-equivalent authority.
+- [ ] Apply the existing operator authentication gate and document current administrator-equivalent authority.
 - [ ] Add Armory installed/enabled/needs-configuration/error counts to `/api/v1/status` without making one broken package fail daemon health.
 - [ ] Ensure request logging and error middleware never serialize configuration request bodies.
 - [ ] Add API tests for authentication, validation, lifecycle operations, conflicts, redaction, cached catalog behavior, and failure codes.
@@ -922,10 +921,10 @@ The frozen normative contract for this phase is
 ### 14. End-to-end release gate
 
 - [ ] Start from an empty isolated XDG environment and install `fixture-echo` through the CLI, call its tool through Peon's MCP, disable it, update it, roll it back under induced failure, and uninstall it.
-- [ ] Install `fixture-configured` through the dashboard, submit credentials, verify it, use its MCP tool, uninstall without purge, reinstall with preserved config, then purge and verify owned files are gone.
+- [ ] Install `fixture-configured` through Overseer, submit credentials, verify it, use its MCP tool, uninstall without purge, reinstall with preserved config, then purge and verify owned files are gone.
 - [ ] Restart the daemon during download, extraction, configuration, active MCP runtime, update, and uninstall; verify deterministic safe recovery.
 - [ ] Run the full existing and new `npm test`, `npm run typecheck`, and `npm run compile` checks.
-- [ ] Verify Heroboard polling/task sessions, manual sessions, project setup, publication, Claude Code, Codex, dashboard authentication, and existing CLI commands have no regression.
+- [ ] Verify Heroboard polling/task sessions, manual sessions, project setup, publication, Claude Code, Codex, operator authentication, and existing CLI commands have no regression.
 - [ ] Publish V1 documentation for operators and a package-author guide for the official Armory repository.
 - [ ] Do not publish a real provider package until the fixture release gate passes on supported macOS and Linux targets.
 

@@ -292,7 +292,7 @@ are rejected as unsupported in V1.
 
 Ordinary uninstall removes package-owned runtime content while preserving the
 managed home and stored configuration. Only an explicit operator-side `purge` from
-the authenticated control API, dashboard, or CLI may remove stored credentials and
+the authenticated control API, Overseer, or CLI may remove stored credentials and
 paths proven by the ownership ledger to belong to that package. MCP uninstall can
 never purge. Undeclared or pre-existing user files are never removed.
 

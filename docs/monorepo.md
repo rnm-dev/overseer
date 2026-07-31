@@ -126,9 +126,10 @@ publishes, stores, approves or proxies release metadata or package bytes.
 `files: [dist, assets]` plus npm's automatic README, LICENSE and manifest keeps
 tests, fixtures, TypeScript sources and build configuration out of the tarball.
 Peon is MIT licensed. `prepack` always rebuilds `dist`; release verification
-installs and exercises that exact archive before publication. The daemon and
-dashboard bind to loopback by default. Wider binding remains an explicit
-operator action and is rejected in reverse-only fleet mode.
+installs and exercises that exact archive before publication. Peon ships one
+daemon service and no dashboard. Its control API always accepts loopback
+connections; `peon remote on <host:port>` adds an explicit remote listener and
+`peon remote off` returns to loopback-only mode.
 
 **The client is Flutter, not React Native.** Flutter 3.44.8, Dart SDK `^3.12.2`,
 Riverpod 3, go_router, dio, drift, freezed, firebase_messaging, and desktop

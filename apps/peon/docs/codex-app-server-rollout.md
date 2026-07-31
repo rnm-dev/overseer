@@ -5,7 +5,7 @@ thread/turn runtime. The former `codex exec --json` driver was removed after the
 rollout completed.
 
 The app-server driver requires Codex CLI 0.144.0 or newer. Its current state is
-available from `GET /api/v1/ai/status/codex-app-server` and the dashboard AI page.
+available from `GET /api/v1/ai/status/codex-app-server` and Overseer.
 `incompatible` and `failed` states include an actionable runtime error. `stopped`
 means no app-server-backed session has started the process yet.
 

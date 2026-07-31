@@ -20,7 +20,9 @@ The Peon reads the npm `latest` metadata immediately before installation and
 refuses with `RELEASE_CHANGED` if it differs from the version admitted by the
 check. npm performs package integrity verification. The updater installs the
 exact version while preserving the existing global npm prefix, validates the
-compiled output and restarts the daemon from a detached systemd unit.
+compiled output and restarts the daemon through launchd on macOS or systemd on
+Linux. The updater runs detached on macOS and in its own transient systemd unit
+on Linux so it survives the service restart.
 
 Before replacement it packs the current installation locally with lifecycle
 scripts disabled. Failed installation, validation or restart rolls back from
