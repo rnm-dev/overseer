@@ -152,6 +152,35 @@ test("snapshot barrier plus committed live publication has no gap or duplicate",
   channel.disconnected(true);
 });
 
+test("snapshot pages stay pinned to the barrier when later commits extend repository state", async () => {
+  const fixture = repositoryFixture(["s1"], { s1: [entry("e1"), entry("e2")] });
+  const channel = new TranscriptChannel({ repository: fixture.repository });
+  const output = capture();
+  channel.negotiated(true, {}, output.sender);
+
+  await snapshot(channel, output.sender, "snapshot-stable", "s1", false, 1);
+  const first = output.frames.find((frame) => frame.type === "transcript_snapshot_page")!;
+  assert.deepEqual((first.events as PeonSocketFrame[]).map((event) => event.eventId), ["e1"]);
+  assert.equal(first.barrierSeq, 2);
+  assert.equal(typeof first.nextCursor, "string");
+
+  fixture.append("s1", entry("e3"));
+  channel.receive({
+    type: "transcript_snapshot_request",
+    requestId: "snapshot-stable",
+    sessionId: "s1",
+    cursor: first.nextCursor,
+    limit: 1,
+  }, output.sender);
+
+  const second = output.frames.at(-1)!;
+  assert.equal(second.type, "transcript_snapshot_page");
+  assert.deepEqual((second.events as PeonSocketFrame[]).map((event) => event.eventId), ["e2"]);
+  assert.equal(second.hasMore, false);
+  assert.equal(second.nextCursor, null);
+  channel.disconnected(true);
+});
+
 test("stable epoch and sequence recover across repository restart and torn rows stay outside canonical truth", async () => {
   const persisted = { s1: [entry("e1"), entry("e2")] };
   const first = repositoryFixture(["s1"], persisted);

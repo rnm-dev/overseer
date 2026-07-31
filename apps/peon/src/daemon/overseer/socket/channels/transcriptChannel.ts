@@ -276,7 +276,11 @@ export class TranscriptChannel implements PeonSocketChannel {
           this.dropPendingSnapshot(reservation, true);
           return this.error(sender, requestId, sessionId, "SNAPSHOT_TOO_LARGE", "transcript snapshot exceeds Peon bounds");
         }
-        const events = state.entries.map((event) => structuredClone(event));
+        // Publication events are immutable after insertion. Snapshot only the
+        // array boundary so later commits cannot leak past barrierSeq; deeply
+        // cloning every transcript event here blocks the daemon event loop on
+        // large reconnect snapshots and starves WebSocket pongs.
+        const events = state.entries.slice();
         snapshot = {
           requestId,
           sessionId,
