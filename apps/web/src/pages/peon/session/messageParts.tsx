@@ -3,7 +3,7 @@ import { Dialog } from "../../../ui";
 import { HighlightedCode, Markdown } from "../../../components/RichText";
 import { gapClass, orcishThinkingLabel, prettyJsonOutput, toolHasOutputSection, toolSummary, type Item, type MessageAttachment, type T } from "./parsing";
 import { Avatar } from "../../../components/Avatar";
-import { Bot, FilePenLine, FilePlus, FileText, FileX, Globe2, ImageIcon, Paperclip, Pencil, Search, Terminal, Wrench } from "lucide-react";
+import { Bot, FilePenLine, FileText, Globe2, ImageIcon, Paperclip, Pencil, Search, Terminal, Wrench } from "lucide-react";
 import { projectViewerHref, projectViewerRelativePath, type ProjectViewerContext } from "./projectViewerLink";
 import { useAuth, type User } from "../../../auth";
 import { useI18n, type Locale } from "../../../i18n";
@@ -16,7 +16,7 @@ import { formatLocalTimestamp, localeTag } from "../../../timeFormat";
 export const OWN_ATTACHMENT_CLASS = "bg-iron-950/25 text-bone hover:bg-iron-950/40";
 export const OTHER_ATTACHMENT_CLASS = "on-surface text-bone hover:bg-iron-700/60";
 export const TOOL_ROW_LAYOUT_CLASS = "grid w-fit min-w-0 max-w-[85%] grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-1.5 py-0.5 typo-chat-system-message";
-export const SIMPLE_TOOL_ROW_CLASS = `${TOOL_ROW_LAYOUT_CLASS} rounded text-left transition-colors hover:bg-iron-800/70 hover:text-bone`;
+export const TOOL_ROW_CLASS = `${TOOL_ROW_LAYOUT_CLASS} rounded text-left transition-colors hover:bg-iron-800/70 hover:text-bone`;
 
 export function attachmentMeta(attachment: MessageAttachment): string {
   const label = attachment.name || attachment.path?.split(/[\\/]/).pop() || "attachment";
@@ -150,41 +150,38 @@ function ToolRow({ name, input, result, t, simple = false }: { name?: string; in
       ? t("session.chat.activity.complete")
       : t("session.chat.activity.running");
 
-  if (simple) {
-    return (
-      <div className="flex justify-start">
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          title={t("session.chat.activity.showTechnical")}
-          aria-label={`${activityText}. ${activityStatus}. ${t("session.chat.activity.showTechnical")}`}
-          data-simple-tool-kind={activityKind}
-          className={`${SIMPLE_TOOL_ROW_CLASS} ${failed ? "text-blood" : "text-bone-faint"}`}
-        >
-          <span className={`grid size-4 place-items-center ${failed ? "text-blood" : result ? "text-fel-bright" : "animate-pulse text-ember"}`} aria-hidden>
-            <SimpleToolIcon kind={activityKind} />
-          </span>
-          <span className="min-w-0 truncate">{activityText}</span>
-          {failed && <span className="shrink-0 text-blood">· {t("session.chat.activity.failedShort")}</span>}
-        </button>
-        {open && <ToolDetailsModal name={name} input={input} command={command} result={result} t={t} onClose={() => setOpen(false)} />}
-      </div>
-    );
-  }
-
+  // One row, one set of styles. The technical mode differs only in its words: the
+  // operation's own name sits beside the icon and the row carries the raw command
+  // instead of the plain-language activity. Layout, colours, the status the icon
+  // reports and the details modal are shared, so the two modes cannot drift apart.
+  const operationName = operation ?? name ?? t("session.chat.tool");
+  const hint = simple ? t("session.chat.activity.showTechnical") : t("session.chat.details");
   return (
     <div className="flex justify-start">
-      <div className={`${TOOL_ROW_LAYOUT_CLASS} ${failed ? "text-blood" : ""}`}>
-        <span className={`flex shrink-0 items-center gap-1 ${failed ? "text-blood" : "text-fel-bright"}`}>
-          {operation === "Create" ? <FilePlus size={13} aria-hidden /> : operation === "Delete" ? <FileX size={13} aria-hidden /> : isEdit ? <Pencil size={13} aria-hidden /> : <Terminal size={13} aria-hidden />}
-          {operation ?? name ?? t("session.chat.tool")}
-          {stats && <EditStats operation={operation ?? "Edit"} stats={stats} />}
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        title={hint}
+        aria-label={`${simple ? activityText : `${operationName} ${command}`}. ${activityStatus}. ${hint}`}
+        data-tool-kind={activityKind}
+        className={`${TOOL_ROW_CLASS} ${failed ? "text-blood" : "text-bone-faint"}`}
+      >
+        <span className={`grid size-4 place-items-center ${failed ? "text-blood" : result ? "text-fel-bright" : "animate-pulse text-ember"}`} aria-hidden>
+          <SimpleToolIcon kind={activityKind} />
         </span>
-        <span className="min-w-0 flex-1 truncate text-bone-faint">{command}</span>
-        <button onClick={() => setOpen(true)} className="shrink-0 typo-chat-system-message text-bone-faint underline decoration-dotted underline-offset-2 transition-colors hover:text-fel-bright">
-          {t("session.chat.details")}
-        </button>
-      </div>
+        {simple ? (
+          <span className="min-w-0 truncate">{activityText}</span>
+        ) : (
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span className="shrink-0">
+              {operationName}
+              {stats && <EditStats operation={operation ?? "Edit"} stats={stats} />}
+            </span>
+            <span className="min-w-0 truncate">{command}</span>
+          </span>
+        )}
+        {failed && <span className="shrink-0 text-blood">· {t("session.chat.activity.failedShort")}</span>}
+      </button>
       {open && <ToolDetailsModal name={name} input={input} command={command} result={result} t={t} onClose={() => setOpen(false)} />}
     </div>
   );

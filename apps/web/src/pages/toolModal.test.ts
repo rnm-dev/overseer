@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import { ItemView, OTHER_ATTACHMENT_CLASS, OTHER_USER_BUBBLE_AUTHOR_CLASS, OTHER_USER_BUBBLE_CLASS, OTHER_USER_BUBBLE_TIME_CLASS, OWN_ATTACHMENT_CLASS, OWN_USER_BUBBLE_CLASS, OWN_USER_BUBBLE_TIME_CLASS, SIMPLE_TOOL_ROW_CLASS, TOOL_ROW_LAYOUT_CLASS, attachmentMeta, editDiff, editFileName, editOperation, editStats, editStatsFromInput, isCompactUserMessage, isOwnMessageAuthor, simpleToolFileName, simpleToolKind, userMessageAvatar } from "./peon/session/messageParts";
+import { ItemView, OTHER_ATTACHMENT_CLASS, OTHER_USER_BUBBLE_AUTHOR_CLASS, OTHER_USER_BUBBLE_CLASS, OTHER_USER_BUBBLE_TIME_CLASS, OWN_ATTACHMENT_CLASS, OWN_USER_BUBBLE_CLASS, OWN_USER_BUBBLE_TIME_CLASS, TOOL_ROW_CLASS, TOOL_ROW_LAYOUT_CLASS, attachmentMeta, editDiff, editFileName, editOperation, editStats, editStatsFromInput, isCompactUserMessage, isOwnMessageAuthor, simpleToolFileName, simpleToolKind, userMessageAvatar } from "./peon/session/messageParts";
 import { flattenEvents, gapClass, gapPaddingClass, toolHasOutputSection } from "./peon/session/parsing";
 
 const t = ((key: string) => key) as Parameters<typeof ItemView>[0]["t"];
@@ -88,9 +88,28 @@ test("simple tool rows hide command text behind a human activity label", () => {
   assert.match(simple, /session\.chat\.activity\.read/);
   assert.match(simple, /session\.chat\.activity\.showTechnical/);
   assert.match(simple, /confidential-contract\.pdf/);
-  assert.match(simple, /data-simple-tool-kind="read"/);
+  assert.match(simple, /data-tool-kind="read"/);
   assert.doesNotMatch(simple, /\/workspace\//);
   assert.match(technical, /confidential-contract/);
+});
+
+test("both modes are the same row: one class list, differing only in words", () => {
+  const item = {
+    kind: "tool" as const,
+    key: "edit",
+    name: "Edit",
+    input: { file_path: "/workspace/src/app.ts", old_string: "a", new_string: "b" },
+    result: { text: "ok", error: false },
+  };
+  const simple = renderToStaticMarkup(ItemView({ item, t, simpleTools: true }));
+  const technical = renderToStaticMarkup(ItemView({ item, t }));
+
+  const rowClass = (html: string) => /class="([^"]*)"/.exec(html.slice(html.indexOf("<button")))?.[1];
+  assert.equal(rowClass(simple), rowClass(technical));
+  assert.ok(rowClass(technical)?.includes(TOOL_ROW_CLASS));
+  // The technical row names its operation beside the icon; the simple one does not.
+  assert.match(technical, /Edit/);
+  assert.doesNotMatch(simple, /Edit</);
 });
 
 test("simple tool rows expose pending and failed states without command text", () => {
@@ -125,19 +144,19 @@ test("simple tool rows choose semantic icons and expose only safe file names", (
   assert.equal(simpleToolFileName("Bash", { path: "/private/contracts/nda.pdf" }), null);
 });
 
-test("simple tool rows align to the transcript edge with a fixed icon grid", () => {
-  assert.match(SIMPLE_TOOL_ROW_CLASS, /\bgrid\b/);
-  assert.match(SIMPLE_TOOL_ROW_CLASS, /grid-cols-\[auto_minmax\(0,1fr\)_auto\]/);
-  assert.doesNotMatch(SIMPLE_TOOL_ROW_CLASS, /\bpx-/);
+test("tool rows align to the transcript edge with a fixed icon grid", () => {
+  assert.match(TOOL_ROW_CLASS, /\bgrid\b/);
+  assert.match(TOOL_ROW_CLASS, /grid-cols-\[auto_minmax\(0,1fr\)_auto\]/);
+  assert.doesNotMatch(TOOL_ROW_CLASS, /\bpx-/);
 });
 
 test("technical and simple system rows share the same compact vertical rhythm", () => {
   assert.equal(gapPaddingClass(false, false), "pt-0.5");
   assert.equal(gapClass(false, false), "mt-0.5");
   assert.equal(gapPaddingClass(true, false), "pt-6");
-  assert.ok(SIMPLE_TOOL_ROW_CLASS.startsWith(TOOL_ROW_LAYOUT_CLASS));
+  assert.ok(TOOL_ROW_CLASS.startsWith(TOOL_ROW_LAYOUT_CLASS));
   assert.match(TOOL_ROW_LAYOUT_CLASS, /\bgap-x-1\.5\b/);
-  assert.match(SIMPLE_TOOL_ROW_CLASS, /\bpy-0\.5\b/);
+  assert.match(TOOL_ROW_CLASS, /\bpy-0\.5\b/);
 });
 
 test("assistant text keeps breathing room around compact system rows", () => {
