@@ -180,8 +180,8 @@ test("desktop project header uses the session content header hierarchy", () => {
 
   assert.match(html, /space-y-1\.5 px-3 py-2\.5 sm:px-6/);
   assert.match(html, /min-h-7 gap-3/);
-  assert.match(html, /text-sm font-semibold text-forge" title="Overseer">Overseer<\/h1>/);
-  assert.match(html, /btn btn-fel btn-sm h-7.*\+ New session<\/a>/);
+  assert.match(html, /typo-content-header[^"]*font-semibold text-warning" title="Overseer">Overseer<\/h1>/);
+  assert.match(html, /btn btn-accent btn-sm h-7.*\+ New session<\/a>/);
   assert.doesNotMatch(html, /← Projects/);
   assert.doesNotMatch(html, /href="\/peons\/nova\/projects"/);
   assert.doesNotMatch(html, />OVSR<\/span>/);

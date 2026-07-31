@@ -36,7 +36,7 @@ export function supportsDesktopComposerFocus(): boolean {
     : window.innerWidth >= 768;
 }
 
-export const COMPOSER_SHELL_CLASS = "surface composer-shell relative p-2 shadow-[0_-6px_28px_-14px_rgba(0,0,0,0.8)] transition-[border-color,box-shadow] focus-within:border-fel-bright focus-within:ring-1 focus-within:ring-fel-bright/55";
+export const COMPOSER_SHELL_CLASS = "surface theme-composer-shell composer-shell relative p-2 transition-[border-color,box-shadow]";
 export const COMPOSER_ICON_ACTION_CLASS = "on-surface on-surface--interactive flex h-8 w-8 flex-none items-center justify-center rounded-lg";
 export const COMPOSER_TEXT_ACTION_CLASS = "on-surface on-surface--interactive h-8 flex-none rounded-lg px-3";
 
@@ -127,7 +127,7 @@ export function Composer({
   return (
     <div
       data-file-drop-zone="composer"
-      className={`${COMPOSER_SHELL_CLASS} ${dragActive ? "border-fel bg-fel/10" : ""}`}
+      className={`${COMPOSER_SHELL_CLASS} ${dragActive ? "border-accent bg-accent/10" : ""}`}
       onDragEnter={(event) => {
         if (!isFileDrag(event.dataTransfer.types)) return;
         event.preventDefault();
@@ -154,27 +154,27 @@ export function Composer({
       }}
     >
       {dragActive && (
-        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-iron-950/90 px-4 text-center font-mono text-xs font-semibold text-fel-bright" role="status">
+        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-surface/90 px-4 text-center font-mono text-xs font-semibold text-accent-strong" role="status">
           {filesEnabled ? t("session.compose.dropFiles") : t("session.compose.filesDisabled")}
         </div>
       )}
-      {error && <div className="px-2 pb-1 pt-0.5 font-mono text-xs text-blood">⚠ {error}</div>}
+      {error && <div className="px-2 pb-1 pt-0.5 font-mono text-xs text-danger">⚠ {error}</div>}
       {files.length > 0 && (
         <div className="flex flex-wrap gap-1.5 px-1 pb-1.5 pt-1">
           {files.map((f, i) => (
-            <span key={i} className="flex items-center gap-1.5 rounded-md border border-iron-700 bg-iron-950 py-1 pl-1.5 pr-2 font-mono text-xs text-bone-dim">
+            <span key={i} className="flex items-center gap-1.5 rounded-md border border-edge-strong bg-surface py-1 pl-1.5 pr-2 font-mono text-xs text-ink-muted">
               {previews[i] ? (
                 <button type="button" title={t("session.compose.preview")} onClick={() => onPreviewFile(previews[i]!)} className="block h-4 w-4 shrink-0 overflow-hidden rounded-sm">
                   <img src={previews[i]!} alt="" className="h-full w-full object-cover" />
                 </button>
               ) : (
-                <svg className="shrink-0 text-bone-faint" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <svg className="shrink-0 text-ink-faint" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                   <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" />
                   <path d="M14 2v6h6" />
                 </svg>
               )}
               <span className="max-w-[130px] truncate" title={f.name}>{chipName(f)}</span>
-              <button className="shrink-0 text-bone-faint transition-colors hover:text-blood" onClick={() => onFilesChange(files.filter((_, j) => j !== i))} disabled={disabled}>
+              <button className="shrink-0 text-ink-faint transition-colors hover:text-danger" onClick={() => onFilesChange(files.filter((_, j) => j !== i))} disabled={disabled}>
                 ×
               </button>
             </span>
@@ -193,7 +193,7 @@ export function Composer({
       />
       <textarea
         ref={textareaRef}
-        className="composer-input max-h-40 min-h-8 w-full resize-none bg-transparent px-1 py-1 font-body leading-normal text-bone placeholder:text-bone-faint focus:outline-none"
+        className="composer-input max-h-40 min-h-8 w-full resize-none bg-transparent px-1 py-1 font-body leading-normal text-ink placeholder:text-ink-faint focus:outline-none"
         rows={1}
         autoFocus={autoFocus}
         value={value}
@@ -229,7 +229,7 @@ export function Composer({
               onErrorChange(null);
               fileInputRef.current?.click();
             }}
-            className={`${COMPOSER_ICON_ACTION_CLASS} text-bone-faint hover:text-fel-bright disabled:opacity-30`}
+            className={`${COMPOSER_ICON_ACTION_CLASS} text-ink-faint hover:text-accent-strong disabled:opacity-30`}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <path d="M5 12h14" />
@@ -247,7 +247,7 @@ export function Composer({
               disabled={disabled || secondaryAction.disabled}
               title={secondaryAction.label}
               aria-label={secondaryAction.label}
-              className={`${secondaryAction.mobileIcon ? `${COMPOSER_ICON_ACTION_CLASS} sm:w-auto sm:px-3` : COMPOSER_TEXT_ACTION_CLASS} font-mono text-xs text-bone-dim hover:text-ember disabled:cursor-wait disabled:opacity-40`}
+              className={`${secondaryAction.mobileIcon ? `${COMPOSER_ICON_ACTION_CLASS} sm:w-auto sm:px-3` : COMPOSER_TEXT_ACTION_CLASS} font-mono text-xs text-ink-muted hover:text-warning-strong disabled:cursor-wait disabled:opacity-40`}
             >
               {secondaryAction.pending ? "…" : secondaryAction.mobileIcon === "zap" ? (
                 <>
@@ -262,7 +262,7 @@ export function Composer({
             onClick={submit}
             disabled={!canSubmit}
             title={submitTitle}
-            className={`flex h-8 w-8 flex-none items-center justify-center rounded-lg transition-colors ${canSubmit ? "bg-fel text-fel-ink hover:bg-fel-bright" : "on-surface text-bone-faint"}`}
+            className={`flex h-8 w-8 flex-none items-center justify-center rounded-lg transition-colors ${canSubmit ? "bg-accent text-on-accent hover:bg-accent-strong" : "on-surface text-ink-faint"}`}
           >
             {pending ? (
               <span className="block h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />

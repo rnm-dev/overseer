@@ -1,28 +1,12 @@
 import { useEffect, useRef, useState } from "react";
+import { useTheme } from "../features/themes/ThemeProvider";
 
 let diagramSequence = 0;
 let mermaidPromise: Promise<typeof import("mermaid")["default"]> | null = null;
 
 function loadMermaid() {
   if (!mermaidPromise) {
-    mermaidPromise = import("mermaid").then(({ default: mermaid }) => {
-      mermaid.initialize({
-        startOnLoad: false,
-        securityLevel: "strict",
-        suppressErrorRendering: true,
-        theme: "dark",
-        themeVariables: {
-          background: "#111411",
-          primaryColor: "#262a23",
-          primaryTextColor: "#e8e2d3",
-          primaryBorderColor: "#596052",
-          lineColor: "#a8b19d",
-          secondaryColor: "#1b211b",
-          tertiaryColor: "#30362d",
-        },
-      });
-      return mermaid;
-    });
+    mermaidPromise = import("mermaid").then(({ default: mermaid }) => mermaid);
   }
   return mermaidPromise;
 }
@@ -33,6 +17,7 @@ function errorMessage(error: unknown): string {
 }
 
 export function MermaidDiagram({ source }: { source: string }) {
+  const { theme } = useTheme();
   const containerRef = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [error, setError] = useState("");
@@ -46,8 +31,27 @@ export function MermaidDiagram({ source }: { source: string }) {
     setError("");
     container?.replaceChildren();
 
+    const styles = getComputedStyle(document.documentElement);
+
     void loadMermaid()
-      .then((mermaid) => mermaid.render(id, source))
+      .then((mermaid) => {
+        mermaid.initialize({
+          startOnLoad: false,
+          securityLevel: "strict",
+          suppressErrorRendering: true,
+          theme: theme.appearance === "dark" ? "dark" : "neutral",
+          themeVariables: {
+            background: styles.getPropertyValue("--ov-surface").trim(),
+            primaryColor: styles.getPropertyValue("--ov-surface-hover").trim(),
+            primaryTextColor: styles.getPropertyValue("--ov-ink").trim(),
+            primaryBorderColor: styles.getPropertyValue("--ov-edge-emphasis").trim(),
+            lineColor: styles.getPropertyValue("--ov-ink-muted").trim(),
+            secondaryColor: styles.getPropertyValue("--ov-surface-raised").trim(),
+            tertiaryColor: styles.getPropertyValue("--ov-surface-active").trim(),
+          },
+        });
+        return mermaid.render(id, source);
+      })
       .then(({ svg, bindFunctions }) => {
         if (cancelled || !container) return;
         container.innerHTML = svg;
@@ -65,7 +69,7 @@ export function MermaidDiagram({ source }: { source: string }) {
       cancelled = true;
       container?.replaceChildren();
     };
-  }, [source]);
+  }, [source, theme]);
 
   return (
     <figure className={`mermaid-diagram mermaid-diagram-${status}`}>

@@ -26,6 +26,6 @@ test("route tabs render the shared settings tabbar treatment and active route", 
   assert.match(html, /overflow-x-auto/);
   assert.match(html, /href="\/projects\/OVSR"[^>]*>Overview<\/a>/);
   assert.match(html, /aria-current="page"[^>]*href="\/projects\/OVSR\/files"/);
-  assert.match(html, /border-fel text-fel-bright/);
+  assert.match(html, /border-accent text-accent-strong/);
   assert.match(html, /px-4 py-2\.5 font-display text-sm font-bold/);
 });

@@ -61,14 +61,14 @@ test("project recent sessions reuse sidebar rows with status, presence hook, and
 
   assert.match(html, /Recent sessions/);
   assert.match(html, /Live work/);
-  assert.match(html, /bg-fel-bright/);
+  assert.match(html, /bg-accent-strong/);
   assert.match(html, /href="\/peons\/nova\/sessions\/live"/);
   assert.match(html, /href="\/peons\/nova\/sessions\/new\?project=OVSR".*\+ New session<\/a>/);
-  assert.match(html, /hover:bg-iron-800\/70/);
+  assert.match(html, /hover:bg-surface-hover\/70/);
   // The row's status now reads off the glowing left edge, so the panel no longer
   // needs its own inset hover marker.
-  assert.match(html, /class="absolute inset-y-1 left-0 w-0\.5 bg-fel-bright status-edge/);
-  assert.doesNotMatch(html, /hover:shadow-\[inset_2px_0_0_var\(--color-fel\)\]/);
+  assert.match(html, /class="absolute inset-y-1 left-0 w-0\.5 bg-accent-strong status-edge/);
+  assert.doesNotMatch(html, /hover:shadow-\[inset_2px_0_0_var\(--color-accent\)\]/);
   assert.doesNotMatch(html, /Wrong project/);
   const header = html.slice(html.indexOf("<header"), html.indexOf("</header>"));
   const footer = html.slice(html.indexOf("<footer"), html.indexOf("</footer>"));

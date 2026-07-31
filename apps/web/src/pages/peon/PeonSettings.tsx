@@ -201,7 +201,7 @@ export function PeonSettings() {
   const tab = peonSettingsTabFromPath(location.pathname);
   const settingsPath = peonSettingsPath(peon.peonId);
 
-  if (!isOwner) return <p className="font-mono text-sm text-bone-faint">{t("ownerOnly")}</p>;
+  if (!isOwner) return <p className="font-mono text-sm text-ink-faint">{t("ownerOnly")}</p>;
 
   return (
     <div className="space-y-8">
@@ -225,8 +225,8 @@ export function PeonSettings() {
             <Button onClick={save} disabled={saving}>
               {saving ? t("peon.settings.saving") : t("peon.settings.save")}
             </Button>
-            {saved && <span className="font-mono text-xs text-fel-bright">⚡ {t("peon.settings.saved")}</span>}
-            {saveError && <span className="font-mono text-xs text-blood">⚠ {saveError}</span>}
+            {saved && <span className="font-mono text-xs text-accent-strong">⚡ {t("peon.settings.saved")}</span>}
+            {saveError && <span className="font-mono text-xs text-danger">⚠ {saveError}</span>}
           </div>
         </Card>
       )}
@@ -235,8 +235,8 @@ export function PeonSettings() {
         <Card className="space-y-4 px-5 py-5">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <h3 className="font-display text-sm font-bold text-bone">{t("peon.update.title")}</h3>
-              <p className="mt-1 font-mono text-xs text-bone-dim">
+              <h3 className="font-display text-sm font-bold text-ink">{t("peon.update.title")}</h3>
+              <p className="mt-1 font-mono text-xs text-ink-muted">
                 {status.updateAvailable ? t("peon.update.available") : t("peon.update.current")}
               </p>
             </div>
@@ -251,51 +251,51 @@ export function PeonSettings() {
             )}
           </div>
           {updating && (
-            <div role="status" aria-live="polite" className="flex items-center gap-3 border-l-2 border-fel bg-fel/5 px-3 py-3 font-mono text-xs text-fel-bright">
+            <div role="status" aria-live="polite" className="flex items-center gap-3 border-l-2 border-accent bg-accent/5 px-3 py-3 font-mono text-xs text-accent-strong">
               <span className="block h-4 w-4 flex-none animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden />
               {updatePhase === "installing" ? t("peon.update.installingDetail") : t("peon.update.restartingDetail")}
             </div>
           )}
           {updatePhase === "complete" && (
-            <p role="status" aria-live="polite" className="border-l-2 border-fel bg-fel/5 px-3 py-3 font-mono text-xs text-fel-bright">
+            <p role="status" aria-live="polite" className="border-l-2 border-accent bg-accent/5 px-3 py-3 font-mono text-xs text-accent-strong">
               ⚡ {t("peon.update.complete")}
             </p>
           )}
           <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 font-mono text-xs">
-            <dt className="text-bone-faint">{t("peon.update.installed")}</dt>
-            <dd className="text-right text-bone">{status.updateCurrentVersion ?? "—"}</dd>
-            <dt className="text-bone-faint">{t("peon.update.latest")}</dt>
-            <dd className="text-right text-bone">{status.updateLatestVersion ?? "—"}</dd>
+            <dt className="text-ink-faint">{t("peon.update.installed")}</dt>
+            <dd className="text-right text-ink">{status.updateCurrentVersion ?? "—"}</dd>
+            <dt className="text-ink-faint">{t("peon.update.latest")}</dt>
+            <dd className="text-right text-ink">{status.updateLatestVersion ?? "—"}</dd>
             {/* Revisions only add signal when they differ from the versions —
                 two identical published builds of one version, say. */}
             {status.updateCurrentRevision && status.updateCurrentRevision !== status.updateCurrentVersion && <>
-              <dt className="text-bone-faint">{t("peon.update.local")}</dt>
-              <dd className="truncate text-right text-bone-dim">{status.updateCurrentRevision}</dd>
+              <dt className="text-ink-faint">{t("peon.update.local")}</dt>
+              <dd className="truncate text-right text-ink-muted">{status.updateCurrentRevision}</dd>
             </>}
             {status.updateLatestRevision && status.updateLatestRevision !== status.updateLatestVersion && <>
-              <dt className="text-bone-faint">{t("peon.update.remote")}</dt>
-              <dd className="truncate text-right text-bone-dim">{status.updateLatestRevision}</dd>
+              <dt className="text-ink-faint">{t("peon.update.remote")}</dt>
+              <dd className="truncate text-right text-ink-muted">{status.updateLatestRevision}</dd>
             </>}
             {status.updateCheckedAt && <>
-              <dt className="text-bone-faint">{t("peon.update.checked")}</dt>
-              <dd className="text-right text-bone-dim">{new Date(status.updateCheckedAt).toLocaleString()}</dd>
+              <dt className="text-ink-faint">{t("peon.update.checked")}</dt>
+              <dd className="text-right text-ink-muted">{new Date(status.updateCheckedAt).toLocaleString()}</dd>
             </>}
           </dl>
           {(status.updateCheckError || updateError) && (
-            <p className="border-l-2 border-blood bg-blood/5 py-2 pl-3 font-mono text-xs text-blood">
+            <p className="border-l-2 border-danger bg-danger/5 py-2 pl-3 font-mono text-xs text-danger">
               ⚠ {updateError ?? status.updateCheckError}
             </p>
           )}
         </Card>
       )}
-      {loadError && <p className="border-l-2 border-blood bg-blood/5 py-2 pl-3 font-mono text-sm text-blood">⚠ {loadError}</p>}
-      {(unsupported || !peon.online) && <p className="font-mono text-sm text-bone-faint">{peon.online ? t("peon.unsupported") : t("peon.offlineNote")}</p>}
+      {loadError && <p className="border-l-2 border-danger bg-danger/5 py-2 pl-3 font-mono text-sm text-danger">⚠ {loadError}</p>}
+      {(unsupported || !peon.online) && <p className="font-mono text-sm text-ink-faint">{peon.online ? t("peon.unsupported") : t("peon.offlineNote")}</p>}
 
       <div>
-        <h3 className="mb-3 rune text-sm text-blood">{t("peon.settings.danger")}</h3>
-        <Card className="flex flex-wrap items-center justify-between gap-4 border-blood/30 px-5 py-4">
-          <p className="font-mono text-xs text-bone-dim">{t("peon.settings.kickHint")}</p>
-          <button className="btn btn-sm flex items-center gap-1.5 !border-blood/50 !text-blood hover:!bg-blood/10" onClick={() => setConfirmDelete(true)}>
+        <h3 className="mb-3 rune text-sm text-danger">{t("peon.settings.danger")}</h3>
+        <Card className="flex flex-wrap items-center justify-between gap-4 border-danger/30 px-5 py-4">
+          <p className="font-mono text-xs text-ink-muted">{t("peon.settings.kickHint")}</p>
+          <button className="btn btn-sm flex items-center gap-1.5 !border-danger/50 !text-danger hover:!bg-danger/10" onClick={() => setConfirmDelete(true)}>
             <SportShoe size={14} aria-hidden />
             {t("peon.settings.kick")}
           </button>
@@ -330,7 +330,7 @@ export function PeonSettings() {
                 }}
                 className="w-full"
               />
-              <p className="font-mono text-xs text-bone-faint">{t("peon.settings.defaultAgentHint")}</p>
+              <p className="font-mono text-xs text-ink-faint">{t("peon.settings.defaultAgentHint")}</p>
             </div>
             )}
             <div className="space-y-1.5">
@@ -342,7 +342,7 @@ export function PeonSettings() {
                 allowClear={false}
                 className="w-full"
               />
-              <p className="font-mono text-xs text-bone-faint">{t("peon.settings.aiDefaultModelHint")}</p>
+              <p className="font-mono text-xs text-ink-faint">{t("peon.settings.aiDefaultModelHint")}</p>
             </div>
             {/* Hidden entirely for models that take no effort — an empty picker
                 would read as a broken control rather than an absent capability. */}
@@ -359,15 +359,15 @@ export function PeonSettings() {
                 inlineLabel={false}
                 className="w-full"
               />
-              <p className="font-mono text-xs text-bone-faint">{t("peon.settings.aiDefaultReasoningEffortHint")}</p>
+              <p className="font-mono text-xs text-ink-faint">{t("peon.settings.aiDefaultReasoningEffortHint")}</p>
             </div>
             )}
           <div className="flex items-center gap-3">
             <Button onClick={save} disabled={saving}>
               {saving ? t("peon.settings.saving") : t("peon.settings.save")}
             </Button>
-            {saved && <span className="font-mono text-xs text-fel-bright">⚡ {t("peon.settings.saved")}</span>}
-            {saveError && <span className="font-mono text-xs text-blood">⚠ {saveError}</span>}
+            {saved && <span className="font-mono text-xs text-accent-strong">⚡ {t("peon.settings.saved")}</span>}
+            {saveError && <span className="font-mono text-xs text-danger">⚠ {saveError}</span>}
           </div>
         </Card>
         )}
@@ -375,13 +375,13 @@ export function PeonSettings() {
         {peon.online && !unsupported && form && soulLoaded && (
           <div>
             <div className="mb-3 flex items-center justify-between gap-3">
-              <h3 className="font-display text-sm font-bold text-bone">{t("peon.soul.title")}</h3>
+              <h3 className="font-display text-sm font-bold text-ink">{t("peon.soul.title")}</h3>
               <Badge tone={soul === null ? "neutral" : "green"}>{t(soul === null ? "peon.soul.unconfigured" : "peon.soul.configured")}</Badge>
             </div>
             <Card className="space-y-4 px-5 py-5">
-              {soul !== null && <p className="font-mono text-sm text-bone-dim">{soulExcerpt(soul)}</p>}
+              {soul !== null && <p className="font-mono text-sm text-ink-muted">{soulExcerpt(soul)}</p>}
               <div className="space-y-1.5">
-                <label htmlFor="peon-soul" className="block font-display text-[0.62rem] font-semibold uppercase tracking-[0.18em] text-bone-dim">
+                <label htmlFor="peon-soul" className="block font-display text-[0.62rem] font-semibold uppercase tracking-[0.18em] text-ink-muted">
                   {t("peon.soul.editor")}
                 </label>
                 <textarea
@@ -404,15 +404,15 @@ export function PeonSettings() {
                 <Button variant="ghost" onClick={() => void persistSoul("")} disabled={soulSaving || (soul === null && soulDraft === "")}>
                   {t("peon.soul.clear")}
                 </Button>
-                {soulSaved && <span role="status" className="font-mono text-xs text-fel-bright">⚡ {t("peon.soul.saved")}</span>}
-                {soulError && <span role="alert" className="font-mono text-xs text-blood">⚠ {soulError}</span>}
+                {soulSaved && <span role="status" className="font-mono text-xs text-accent-strong">⚡ {t("peon.soul.saved")}</span>}
+                {soulError && <span role="alert" className="font-mono text-xs text-danger">⚠ {soulError}</span>}
               </div>
             </Card>
           </div>
         )}
 
-        {loadError && <p className="border-l-2 border-blood bg-blood/5 py-2 pl-3 font-mono text-sm text-blood">⚠ {loadError}</p>}
-        {(unsupported || !peon.online) && <p className="font-mono text-sm text-bone-faint">{peon.online ? t("peon.unsupported") : t("peon.offlineNote")}</p>}
+        {loadError && <p className="border-l-2 border-danger bg-danger/5 py-2 pl-3 font-mono text-sm text-danger">⚠ {loadError}</p>}
+        {(unsupported || !peon.online) && <p className="font-mono text-sm text-ink-faint">{peon.online ? t("peon.unsupported") : t("peon.offlineNote")}</p>}
       </>}
 
       {tab === "armory" && <PeonArmory />}

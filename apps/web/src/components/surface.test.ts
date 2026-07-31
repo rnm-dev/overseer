@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { Card, ContentHeaderLayout } from "../ui";
+import { Card, ContentHeaderLayout, ContentHeaderTitle } from "../ui";
 
 test("Card renders the canonical app surface and preserves variants", () => {
   const html = renderToStaticMarkup(createElement(Card, { className: "surface--interactive p-4", children: "content" }));
@@ -39,4 +39,11 @@ test("compact mobile content headers reuse the slots without fixed-pane padding"
   assert.match(html, /flex min-w-0 flex-1 flex-col justify-center/);
   assert.match(html, /Session.*Stats.*Menu/);
   assert.doesNotMatch(html, /px-3 py-2\.5/);
+});
+
+test("content header titles share the chat message type scale", () => {
+  const html = renderToStaticMarkup(createElement(ContentHeaderTitle, { children: "Session" }));
+
+  assert.match(html, /\btypo-content-header\b/);
+  assert.doesNotMatch(html, /\btext-sm\b/);
 });

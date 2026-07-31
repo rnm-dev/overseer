@@ -82,11 +82,11 @@ export function useFileContent({ source, size, hint, fallback = "unsupported", e
 export function FileView({ content, className = "" }: { content: FileContent; className?: string }) {
   const t = useT();
   const { path, kind, objectUrl, text, note, loading } = content;
-  if (loading) return <div className={`grid min-h-40 place-items-center ${className}`}><div className="forge-spin" /></div>;
-  if (note) return <p className={`grid min-h-full place-items-center p-6 text-center font-mono text-xs text-bone-faint ${className}`}>{note}</p>;
+  if (loading) return <div className={`grid min-h-40 place-items-center ${className}`}><div className="loading-spinner" /></div>;
+  if (note) return <p className={`grid min-h-full place-items-center p-6 text-center font-mono text-xs text-ink-faint ${className}`}>{note}</p>;
   if (kind === "pdf") return <iframe src={objectUrl} title={path} className={`h-full min-h-[32rem] w-full border-0 bg-white ${className}`} />;
   if (kind === "image") return <div className={`grid min-h-full place-items-center p-5 ${className}`}><img src={objectUrl} alt={fileName(path)} className="max-h-full max-w-full rounded" /></div>;
-  if (kind === "markdown") return <article className={`mx-auto max-w-4xl p-6 text-sm leading-relaxed text-bone ${className}`}><Markdown source={text ?? ""} /></article>;
+  if (kind === "markdown") return <article className={`mx-auto max-w-4xl p-6 text-sm leading-relaxed text-ink ${className}`}><Markdown source={text ?? ""} /></article>;
   if (kind === "text") return <HighlightedCode source={text ?? ""} language={languageForPath(path)} className={`min-h-full rounded-none border-0 ${className}`} />;
-  return <p className={`grid min-h-full place-items-center p-6 text-center font-mono text-xs text-bone-faint ${className}`}>{t("session.preview.unsupported")}</p>;
+  return <p className={`grid min-h-full place-items-center p-6 text-center font-mono text-xs text-ink-faint ${className}`}>{t("session.preview.unsupported")}</p>;
 }

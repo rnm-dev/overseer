@@ -41,7 +41,7 @@ export function SessionOverlays({
   return (
     <>
       {filesOpen && createPortal(
-        <aside className="session-files-pane fixed bottom-3 right-3 z-30 hidden w-80 min-h-0 flex-col overflow-hidden rounded-xl bg-iron-900 shadow-2xl lg:flex" style={{ top: "calc(var(--fixed-pane-header-height, 49px) + 0.75rem)" }} aria-label={t("session.files.title")}>
+        <aside className="session-files-pane fixed bottom-3 right-3 z-30 hidden w-80 min-h-0 flex-col overflow-hidden rounded-xl bg-surface-raised shadow-2xl lg:flex" style={{ top: "calc(var(--fixed-pane-header-height, 49px) + 0.75rem)" }} aria-label={t("session.files.title")}>
           {projectKey ? (
             <ProjectFileTree
               filesBase={`${base}/projects/${encodeURIComponent(projectKey)}/files`}
@@ -52,7 +52,7 @@ export function SessionOverlays({
               className="flex-1"
             />
           ) : (
-            <p className="p-3 font-mono text-xs leading-relaxed text-bone-faint">
+            <p className="p-3 font-mono text-xs leading-relaxed text-ink-faint">
               {t(projectKeyKnown ? "session.files.noProject" : "session.files.loading")}
             </p>
           )}

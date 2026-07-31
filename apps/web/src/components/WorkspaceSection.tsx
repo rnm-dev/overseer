@@ -57,15 +57,15 @@ export function WorkspaceSection({ workspace }: { workspace: Workspace }) {
 
   return (
     <section className="surface mb-5 overflow-hidden" aria-labelledby={`workspace-${wsId}`}>
-      <div className="flex flex-wrap items-start justify-between gap-x-5 gap-y-3 border-b border-iron-800 bg-iron-950/35 px-5 py-4">
+      <div className="flex flex-wrap items-start justify-between gap-x-5 gap-y-3 border-b border-edge bg-surface/35 px-5 py-4">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <h2 id={`workspace-${wsId}`} className="truncate font-display text-base font-semibold tracking-wide text-bone">
+            <h2 id={`workspace-${wsId}`} className="truncate font-display text-base font-semibold tracking-wide text-ink">
               {workspace.name}
             </h2>
             <Badge tone={isOwner ? "green" : "neutral"}>{t(isOwner ? "workspace.owner" : "workspace.member")}</Badge>
           </div>
-          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-bone-faint">
+          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-faint">
             <span className="font-mono">/{workspace.slug}</span>
             <span className="inline-flex items-center gap-1.5">
               <Server size={13} aria-hidden="true" />
@@ -94,7 +94,7 @@ export function WorkspaceSection({ workspace }: { workspace: Workspace }) {
 
       {peons.length === 0 ? (
         <div className="px-5 py-9 text-center">
-          <p className="text-sm text-bone-dim">{t(isOwner ? "workspace.emptyOwner" : "workspace.emptyMember")}</p>
+          <p className="text-sm text-ink-muted">{t(isOwner ? "workspace.emptyOwner" : "workspace.emptyMember")}</p>
           {isOwner && (
             <button type="button" className="btn-ghost mt-2" onClick={() => setShowAddPeon(true)}>
               {t("peons.connect")}
@@ -119,13 +119,13 @@ export function WorkspaceSection({ workspace }: { workspace: Workspace }) {
                       </div>
                     </div>
                     <div className="min-w-0">
-                      <div className="truncate font-display text-sm font-semibold tracking-wide text-bone">{p.name || t("peons.unnamed")}</div>
+                      <div className="truncate font-display text-sm font-semibold tracking-wide text-ink">{p.name || t("peons.unnamed")}</div>
                       {online ? (
-                        <div className={`mt-0.5 flex items-center gap-1.5 font-mono text-xs tabular-nums ${active > 0 ? "text-forge" : "text-bone-faint"}`}>
-                          <span className={`h-2 w-2 rounded-full ${active > 0 ? "bg-forge shadow-[0_0_4px_var(--color-forge),0_0_11px_var(--color-forge)]" : "bg-iron-700"}`} />
+                        <div className={`mt-0.5 flex items-center gap-1.5 font-mono text-xs tabular-nums ${active > 0 ? "text-warning" : "text-ink-faint"}`}>
+                          <span className={`h-2 w-2 rounded-full ${active > 0 ? "bg-warning shadow-[0_0_4px_var(--color-warning),0_0_11px_var(--color-warning)]" : "bg-surface-active"}`} />
                           {t("peons.active", { n: active })}
                         </div>
-                      ) : st?.lastError ? <div className="mt-0.5 truncate font-mono text-xs text-blood/80">{st.lastError}</div> : null}
+                      ) : st?.lastError ? <div className="mt-0.5 truncate font-mono text-xs text-danger/80">{st.lastError}</div> : null}
                     </div>
                   </Link>
                 </div>

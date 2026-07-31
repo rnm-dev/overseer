@@ -68,27 +68,27 @@ function ErrorToast({ toast, dismiss }: { toast: Toast; dismiss: (id: string) =>
     <section
       role="alert"
       data-toast="error"
-      className="pointer-events-auto w-full overflow-hidden rounded-xl border border-blood/50 bg-iron-950/95 shadow-[0_18px_50px_rgba(0,0,0,0.55),0_0_28px_rgba(239,91,67,0.08)] backdrop-blur-md"
+      className="pointer-events-auto w-full overflow-hidden rounded-xl border border-danger/50 bg-surface/95 shadow-[0_18px_50px_rgba(0,0,0,0.55),0_0_28px_rgba(239,91,67,0.08)] backdrop-blur-md"
     >
-      <div className="h-0.5 bg-blood" />
+      <div className="h-0.5 bg-danger" />
       <div className="flex items-start gap-3 p-4">
-        <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full bg-blood/10 font-mono text-sm text-blood" aria-hidden>!</span>
+        <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full bg-danger/10 font-mono text-sm text-danger" aria-hidden>!</span>
         <div className="min-w-0 flex-1">
-          <h2 className="font-display text-sm font-bold text-bone">{toast.title}</h2>
-          <p className="mt-1 break-words text-sm leading-relaxed text-bone-dim">{toast.message}</p>
-          {toast.detail && <p className="mt-1 break-words font-mono text-xs leading-relaxed text-blood/90">{toast.detail}</p>}
+          <h2 className="font-display text-sm font-bold text-ink">{toast.title}</h2>
+          <p className="mt-1 break-words text-sm leading-relaxed text-ink-muted">{toast.message}</p>
+          {toast.detail && <p className="mt-1 break-words font-mono text-xs leading-relaxed text-danger/90">{toast.detail}</p>}
           {(toast.code || toast.status || toast.requestId) && (
-            <dl className="mt-3 flex flex-wrap gap-x-3 gap-y-1 font-mono text-[0.65rem] text-bone-faint">
-              {toast.code && <div className="flex gap-1"><dt>{t("toast.code")}</dt><dd className="text-bone-dim">{toast.code}</dd></div>}
-              {toast.status && <div className="flex gap-1"><dt>{t("toast.status")}</dt><dd className="text-bone-dim">{toast.status}</dd></div>}
-              {toast.requestId && <div className="flex min-w-0 gap-1"><dt>{t("toast.requestId")}</dt><dd className="truncate text-bone-dim" title={toast.requestId}>{toast.requestId}</dd></div>}
+            <dl className="mt-3 flex flex-wrap gap-x-3 gap-y-1 font-mono text-[0.65rem] text-ink-faint">
+              {toast.code && <div className="flex gap-1"><dt>{t("toast.code")}</dt><dd className="text-ink-muted">{toast.code}</dd></div>}
+              {toast.status && <div className="flex gap-1"><dt>{t("toast.status")}</dt><dd className="text-ink-muted">{toast.status}</dd></div>}
+              {toast.requestId && <div className="flex min-w-0 gap-1"><dt>{t("toast.requestId")}</dt><dd className="truncate text-ink-muted" title={toast.requestId}>{toast.requestId}</dd></div>}
             </dl>
           )}
         </div>
         <button
           type="button"
           onClick={() => dismiss(toast.id)}
-          className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-lg leading-none text-bone-faint transition-colors hover:bg-iron-800 hover:text-bone"
+          className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-lg leading-none text-ink-faint transition-colors hover:bg-surface-hover hover:text-ink"
           aria-label={t("toast.dismiss")}
         >
           ×

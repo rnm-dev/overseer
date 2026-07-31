@@ -17,6 +17,7 @@ export const ru: Record<string, string> = {
   "user.peonSounds": "Звуки",
   "user.noSound": "Без звука",
   "user.settings": "Настройки",
+  "user.theme": "Тема",
   "user.language": "Язык",
   "user.toolDisplay": "Системные команды",
   "user.toolDisplay.simple": "Упрощённо",

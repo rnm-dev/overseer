@@ -90,7 +90,7 @@ test("package cards use safe icon fallbacks and preserve installed-only/update s
   assert.match(markup, /lucide-package/);
   assert.match(markup, /lucide-cpu/);
   assert.match(markup, /aria-label="Installed but not running"/);
-  assert.match(markup, /text-iron-500/);
+  assert.match(markup, /text-ink-disabled/);
   assert.doesNotMatch(markup, /<img|javascript:/);
   assert.match(markup, /This installed package is no longer present in the current catalog/);
   assert.match(markup, /Update available/);
@@ -105,7 +105,7 @@ test("uninstalled package cards reserve the same CPU position with warnings on i
   };
   const markup = renderToStaticMarkup(createElement(MemoryRouter, null, createElement("ul", null, createElement(PackageCard, { item }))));
   assert.match(markup, /aria-label="Not installed"/);
-  assert.match(markup, /text-iron-500/);
+  assert.match(markup, /text-ink-disabled/);
   assert.ok(markup.indexOf("Update available") < markup.indexOf("lucide-cpu"));
 });
 

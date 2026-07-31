@@ -4,6 +4,7 @@ import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { I18nProvider } from "../i18n";
 import { COMPOSER_ICON_ACTION_CLASS, COMPOSER_SHELL_CLASS, COMPOSER_TEXT_ACTION_CLASS, Composer, MAX_TEXTAREA_HEIGHT, isFileDrag } from "./peon/Composer";
+import { SESSION_COMPOSER_DOCK_CLASS } from "./peon/session/SessionComposerDock";
 
 (globalThis as typeof globalThis & { React: typeof React }).React = React;
 
@@ -30,15 +31,19 @@ test("composer exposes the shared file drop zone", () => {
   assert.match(markup, /data-file-drop-zone="composer"/);
   assert.match(markup, /type="file"/);
   assert.match(COMPOSER_SHELL_CLASS, /\bsurface\b/);
-  assert.match(COMPOSER_SHELL_CLASS, /focus-within:border-fel-bright/);
-  assert.match(COMPOSER_SHELL_CLASS, /focus-within:ring-1/);
-  assert.match(COMPOSER_SHELL_CLASS, /focus-within:ring-fel-bright\/55/);
+  assert.match(COMPOSER_SHELL_CLASS, /\btheme-composer-shell\b/);
+  assert.doesNotMatch(COMPOSER_SHELL_CLASS, /focus-within:/);
   assert.match(COMPOSER_SHELL_CLASS, /\bp-2\b/);
   assert.match(COMPOSER_ICON_ACTION_CLASS, /\bon-surface\b/);
   assert.match(COMPOSER_ICON_ACTION_CLASS, /\bh-8\b/);
   assert.match(COMPOSER_ICON_ACTION_CLASS, /\bw-8\b/);
   assert.match(COMPOSER_ICON_ACTION_CLASS, /\brounded-lg\b/);
   assert.match(COMPOSER_TEXT_ACTION_CLASS, /\bon-surface\b/);
+});
+
+test("composer dock uses the package-owned transcript fade", () => {
+  assert.match(SESSION_COMPOSER_DOCK_CLASS, /\btheme-transcript-composer-fade\b/);
+  assert.doesNotMatch(SESSION_COMPOSER_DOCK_CLASS, /from-void|via-void/);
 });
 
 test("the auto-size cap matches the textarea's painted max height", () => {

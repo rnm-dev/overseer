@@ -23,14 +23,14 @@ export function PeonScopeSwitcher({ workspaceId, peonId }: { workspaceId: string
     <DropdownMenu
       label={t("sessions.scope")}
       className="min-w-0 flex-1"
-      buttonClassName="flex w-full min-w-0 items-center gap-2 rounded px-0.5 py-1 text-left transition-colors hover:text-fel-bright focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-fel/70"
+      buttonClassName="flex w-full min-w-0 items-center gap-2 rounded px-0.5 py-1 text-left transition-colors hover:text-accent-strong focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/70"
       menuAlignClassName="left-0"
       menuWidthClassName="w-full min-w-52"
       trigger={(open) => (
         <>
           {selected && <PeonConnectionStatusDot {...selected} />}
-          <span className="min-w-0 truncate font-display text-base font-extrabold tracking-wide text-bone" title={currentLabel}>{currentLabel}</span>
-          <ChevronDown size={15} className={`flex-none text-bone-dim transition-transform ${open ? "rotate-180" : ""}`} aria-hidden />
+          <span className="min-w-0 truncate font-display text-base font-extrabold tracking-wide text-ink" title={currentLabel}>{currentLabel}</span>
+          <ChevronDown size={15} className={`flex-none text-ink-muted transition-transform ${open ? "rotate-180" : ""}`} aria-hidden />
         </>
       )}
     >
@@ -40,14 +40,14 @@ export function PeonScopeSwitcher({ workspaceId, peonId }: { workspaceId: string
             type="button"
             role="menuitemradio"
             aria-checked={!peonId}
-            className={`${menuItemClass()} !flex items-center gap-2 ${!peonId ? "bg-fel/10 text-fel-bright" : ""}`}
+            className={`${menuItemClass()} !flex items-center gap-2 ${!peonId ? "bg-accent/10 text-accent-strong" : ""}`}
             onClick={() => choose("", close)}
           >
             <span className="w-2 flex-none" />
             <span className="min-w-0 flex-1 truncate">{t("sessions.allPeons")}</span>
             {!peonId && <Check size={14} className="flex-none" aria-hidden />}
           </button>
-          <div className="my-1 border-t border-iron-800" />
+          <div className="my-1 border-t border-edge" />
           {peons.map((peon) => {
             const active = peon.peonId === peonId;
             return (
@@ -56,7 +56,7 @@ export function PeonScopeSwitcher({ workspaceId, peonId }: { workspaceId: string
                 type="button"
                 role="menuitemradio"
                 aria-checked={active}
-                className={`${menuItemClass()} !flex items-center gap-2 ${active ? "bg-fel/10 text-fel-bright" : ""}`}
+                className={`${menuItemClass()} !flex items-center gap-2 ${active ? "bg-accent/10 text-accent-strong" : ""}`}
                 onClick={() => choose(peon.peonId, close)}
               >
                 <PeonConnectionStatusDot {...peon} />

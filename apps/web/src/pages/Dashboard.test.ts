@@ -71,8 +71,8 @@ test("the user card shares the workspace visual system", () => {
   assert.match(HOME_USER_VALUE_CLASS, /text-xs/);
   assert.ok(HOME_USER_SELECT_CLASS.includes(HOME_USER_VALUE_CLASS));
   assert.match(HOME_USER_SELECT_CLASS, /bg-transparent/);
-  assert.match(HOME_USER_SIGN_OUT_CLASS, /hover:bg-blood/);
-  assert.match(HOME_USER_SIGN_OUT_CLASS, /focus-visible:ring-blood/);
+  assert.match(HOME_USER_SIGN_OUT_CLASS, /hover:bg-danger/);
+  assert.match(HOME_USER_SIGN_OUT_CLASS, /focus-visible:ring-danger/);
 });
 
 test("home workspaces use the canonical app surface with unfilled headers", () => {
@@ -82,7 +82,7 @@ test("home workspaces use the canonical app surface with unfilled headers", () =
 });
 
 test("home workspace names use a clean solid-color typographic treatment", () => {
-  assert.match(HOME_WORKSPACE_TITLE_CLASS, /text-fel-bright/);
+  assert.match(HOME_WORKSPACE_TITLE_CLASS, /text-accent-strong/);
   assert.match(HOME_WORKSPACE_TITLE_CLASS, /text-lg/);
   assert.doesNotMatch(HOME_WORKSPACE_TITLE_CLASS, /gradient/);
   assert.doesNotMatch(HOME_WORKSPACE_TITLE_CLASS, /text-transparent/);

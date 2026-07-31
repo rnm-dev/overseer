@@ -32,9 +32,9 @@ function ErrorNotice({ error, retry }: { error: unknown; retry?: () => void }) {
   const candidate = error as Partial<ApiError> | null;
   const message = error instanceof Error ? error.message : "Armory data could not be loaded.";
   return (
-    <div role="alert" className="flex flex-wrap items-center justify-between gap-3 border-l-2 border-blood bg-blood/5 px-4 py-3 font-mono text-sm text-blood">
+    <div role="alert" className="flex flex-wrap items-center justify-between gap-3 border-l-2 border-danger bg-danger/5 px-4 py-3 font-mono text-sm text-danger">
       <span>⚠ {message}{candidate?.code ? <span className="ml-2 text-xs opacity-75">({candidate.code})</span> : null}</span>
-      {retry && <Button type="button" size="sm" variant="iron" onClick={retry}>Retry</Button>}
+      {retry && <Button type="button" size="sm" variant="secondary" onClick={retry}>Retry</Button>}
     </div>
   );
 }
@@ -63,12 +63,12 @@ function RegistryNotices({ registry, settings }: { registry: ArmoryRegistry; set
   return (
     <div className="space-y-2">
       {overridden && (
-        <p className="border-l-2 border-forge bg-forge/5 px-4 py-3 font-mono text-sm text-ember">
+        <p className="border-l-2 border-warning bg-warning/5 px-4 py-3 font-mono text-sm text-warning-strong">
           Non-default Armory registry in use: {safeUrl(settings?.effectiveRegistryUrl || registry.url) ?? "custom registry"}.
         </p>
       )}
       {registry.source === "unavailable" && (
-        <p className="border-l-2 border-forge bg-forge/5 px-4 py-3 font-mono text-sm text-ember">
+        <p className="border-l-2 border-warning bg-warning/5 px-4 py-3 font-mono text-sm text-warning-strong">
           Registry unavailable{registry.error?.message ? `: ${registry.error.message}` : "."} Installed package records remain available.
           {registry.error?.code && <span className="ml-2 text-xs opacity-75">({registry.error.code})</span>}
         </p>
@@ -81,14 +81,14 @@ type RefreshState = "idle" | "refreshing" | "success" | "error";
 
 function RegistryRefresh({ registry, state, checkedAt, onRefresh }: { registry: ArmoryRegistry; state: RefreshState; checkedAt: number | null; onRefresh: () => void }) {
   const label = state === "refreshing" ? "Refreshing" : state === "success" ? "Updated" : state === "error" ? "Retry" : "Refresh";
-  const tone = state === "success" ? "text-fel-bright" : state === "error" ? "text-blood" : "text-bone-dim hover:text-bone";
+  const tone = state === "success" ? "text-accent-strong" : state === "error" ? "text-danger" : "text-ink-muted hover:text-ink";
   const status = checkedAt ? `Checked · ${formatDate(checkedAt)}` : `${registry.source === "cached" ? "Cached" : "Updated"} · ${formatDate(registry.fetchedAt)}`;
   return (
-    <div className="flex h-11 items-center gap-2 rounded-md border border-iron-700 bg-iron-950/80 pl-3 pr-1">
-      <span className={`whitespace-nowrap font-mono text-[0.68rem] ${registry.source === "cached" ? "text-ember" : "text-bone-faint"}`} title="Catalog refresh status">
+    <div className="flex h-11 items-center gap-2 rounded-md border border-edge-strong bg-surface/80 pl-3 pr-1">
+      <span className={`whitespace-nowrap font-mono text-[0.68rem] ${registry.source === "cached" ? "text-warning-strong" : "text-ink-faint"}`} title="Catalog refresh status">
         {status}
       </span>
-      <button type="button" disabled={state === "refreshing"} onClick={onRefresh} className={`inline-flex h-9 items-center gap-1.5 rounded px-2.5 font-display text-xs font-bold transition-colors hover:bg-iron-800 disabled:cursor-wait ${tone}`} aria-live="polite">
+      <button type="button" disabled={state === "refreshing"} onClick={onRefresh} className={`inline-flex h-9 items-center gap-1.5 rounded px-2.5 font-display text-xs font-bold transition-colors hover:bg-surface-hover disabled:cursor-wait ${tone}`} aria-live="polite">
         <RefreshCw size={14} className={state === "refreshing" ? "animate-spin" : ""} aria-hidden />
         {label}
       </button>
@@ -135,29 +135,29 @@ export function PackageCard({ item }: { item: ArmoryPackageSummary }) {
   const icon = safeUrl(item.iconUrl || item.icon);
   return (
     <li>
-      <Link to={encodeURIComponent(item.id)} className="block h-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-fel">
-        <Card className={`relative flex h-full flex-col overflow-hidden p-5 transition-all hover:border-fel/40 hover:bg-fel/[0.025] ${ready ? "border-fel/35 bg-fel/[0.045] shadow-[inset_0_1px_0_rgba(149,201,103,0.08),0_0_28px_rgba(86,136,55,0.06)]" : ""}`}>
-          {ready && <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-fel-bright/70 to-transparent" aria-hidden />}
+      <Link to={encodeURIComponent(item.id)} className="block h-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent">
+        <Card className={`relative flex h-full flex-col overflow-hidden p-5 transition-all hover:border-accent/40 hover:bg-accent/[0.025] ${ready ? "border-accent/35 bg-accent/[0.045] shadow-[inset_0_1px_0_rgba(149,201,103,0.08),0_0_28px_rgba(86,136,55,0.06)]" : ""}`}>
+          {ready && <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-accent-strong/70 to-transparent" aria-hidden />}
           <div className="flex items-start justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
-              <div className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-md border border-iron-700 bg-iron-900 text-bone-faint">{icon ? <img src={icon} alt="" className="h-full w-full object-cover" /> : <PackageIcon size={19} aria-hidden />}</div>
+              <div className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-md border border-edge-strong bg-surface-raised text-ink-faint">{icon ? <img src={icon} alt="" className="h-full w-full object-cover" /> : <PackageIcon size={19} aria-hidden />}</div>
               <div className="min-w-0">
-              <h2 className="truncate font-display text-base font-bold text-bone">{item.displayName || item.id}</h2>
-              {item.displayName && <p className="mt-0.5 truncate font-mono text-[0.68rem] text-bone-faint">{item.id}</p>}
+              <h2 className="truncate font-display text-base font-bold text-ink">{item.displayName || item.id}</h2>
+              {item.displayName && <p className="mt-0.5 truncate font-mono text-[0.68rem] text-ink-faint">{item.id}</p>}
               </div>
             </div>
             <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
               <PackageBadges item={item} />
               <div className="relative grid size-9 place-items-center" role="img" aria-label={ready ? "Installed and running" : item.installed ? "Installed but not running" : "Not installed"}>
-                {ready && <Cpu className="absolute animate-pulse text-fel blur-[5px] motion-reduce:animate-none" size={22} strokeWidth={3} aria-hidden />}
-                <Cpu className={ready ? "relative z-10 text-fel-bright drop-shadow-[0_0_6px_rgba(143,239,63,0.95)]" : "relative z-10 text-iron-500"} size={20} strokeWidth={2.2} aria-hidden />
+                {ready && <Cpu className="absolute animate-pulse text-accent blur-[5px] motion-reduce:animate-none" size={22} strokeWidth={3} aria-hidden />}
+                <Cpu className={ready ? "relative z-10 text-accent-strong drop-shadow-[0_0_6px_rgba(143,239,63,0.95)]" : "relative z-10 text-ink-disabled"} size={20} strokeWidth={2.2} aria-hidden />
               </div>
             </div>
           </div>
-          <p className="mt-3 line-clamp-3 flex-1 text-sm leading-relaxed text-bone-dim">{item.summary || (item.available ? "No description provided." : "This installed package is no longer present in the current catalog.")}</p>
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-2 font-mono text-[0.7rem] text-bone-faint">
+          <p className="mt-3 line-clamp-3 flex-1 text-sm leading-relaxed text-ink-muted">{item.summary || (item.available ? "No description provided." : "This installed package is no longer present in the current catalog.")}</p>
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-2 font-mono text-[0.7rem] text-ink-faint">
             <CapabilityChips item={item} />
-            <span className={ready ? "text-fel-bright/80" : ""}>{ready ? `Enabled · ${item.installed?.version}` : item.installed ? `${item.installed.enabled ? "Enabled" : "Disabled"} · ${item.installed.version}` : "Not installed"}{item.latestVersion && !ready ? ` · Latest ${item.latestVersion}` : ""}</span>
+            <span className={ready ? "text-accent-strong/80" : ""}>{ready ? `Enabled · ${item.installed?.version}` : item.installed ? `${item.installed.enabled ? "Enabled" : "Disabled"} · ${item.installed.version}` : "Not installed"}{item.latestVersion && !ready ? ` · Latest ${item.latestVersion}` : ""}</span>
           </div>
         </Card>
       </Link>
@@ -264,20 +264,20 @@ function MarketplaceList() {
   const officialEmpty = inventory?.total === 0 && view === "available" && !debouncedQuery && inventory.registry.source !== "unavailable" && inventory.registry.official;
   return (
     <div className="space-y-5">
-      <header className="flex flex-wrap items-start justify-between gap-4 border-b border-iron-800 pb-5">
-        <div><h1 className="font-display text-2xl font-extrabold text-bone">Armory</h1><p className="mt-1 font-mono text-xs text-bone-dim">Packages for {peon.name || peon.hostname || peon.peonId}</p></div>
-        {inventory && <span className="rounded-full border border-iron-700 bg-iron-900 px-3 py-1 font-mono text-[0.7rem] text-bone-dim">{inventory.total} package{inventory.total === 1 ? "" : "s"}</span>}
+      <header className="flex flex-wrap items-start justify-between gap-4 border-b border-edge pb-5">
+        <div><h1 className="font-display text-2xl font-extrabold text-ink">Armory</h1><p className="mt-1 font-mono text-xs text-ink-muted">Packages for {peon.name || peon.hostname || peon.peonId}</p></div>
+        {inventory && <span className="rounded-full border border-edge-strong bg-surface-raised px-3 py-1 font-mono text-[0.7rem] text-ink-muted">{inventory.total} package{inventory.total === 1 ? "" : "s"}</span>}
       </header>
 
-      {!peon.online && <p className="border-l-2 border-blood bg-blood/5 px-4 py-3 font-mono text-sm text-blood">This Peon is offline — Armory data is unavailable.</p>}
+      {!peon.online && <p className="border-l-2 border-danger bg-danger/5 px-4 py-3 font-mono text-sm text-danger">This Peon is offline — Armory data is unavailable.</p>}
       <div className="surface flex flex-col gap-2.5 p-2.5 lg:flex-row">
         <label className="group relative min-w-0 flex-1">
           <span className="sr-only">Search packages</span>
-          <Search className="pointer-events-none absolute left-3.5 top-1/2 z-10 -translate-y-1/2 text-bone-faint transition-colors group-focus-within:text-fel-bright" size={17} aria-hidden />
-          <input className="field !h-11 !rounded-md !border-iron-700 !bg-iron-950/80 !py-0 !pl-11 !pr-4 text-sm" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search packages" type="search" />
+          <Search className="pointer-events-none absolute left-3.5 top-1/2 z-10 -translate-y-1/2 text-ink-faint transition-colors group-focus-within:text-accent-strong" size={17} aria-hidden />
+          <input className="field !h-11 !rounded-md !border-edge-strong !bg-surface/80 !py-0 !pl-11 !pr-4 text-sm" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search packages" type="search" />
         </label>
-        <div className="inline-flex h-11 shrink-0 rounded-md border border-iron-700 bg-iron-950/80 p-1" role="group" aria-label="Package view">
-          {(["available", "installed"] as const).map((option) => <button key={option} type="button" aria-pressed={view === option} onClick={() => setView(option)} className={`rounded px-4 font-display text-xs font-bold capitalize transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-fel ${view === option ? "bg-fel text-fel-ink shadow-sm" : "text-bone-dim hover:bg-iron-800 hover:text-bone"}`}>{option}</button>)}
+        <div className="inline-flex h-11 shrink-0 rounded-md border border-edge-strong bg-surface/80 p-1" role="group" aria-label="Package view">
+          {(["available", "installed"] as const).map((option) => <button key={option} type="button" aria-pressed={view === option} onClick={() => setView(option)} className={`rounded px-4 font-display text-xs font-bold capitalize transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent ${view === option ? "bg-accent text-on-accent shadow-sm" : "text-ink-muted hover:bg-surface-hover hover:text-ink"}`}>{option}</button>)}
         </div>
         {inventory && <RegistryRefresh registry={inventory.registry} state={refreshState} checkedAt={lastCheckedAt} onRefresh={() => void refreshCatalog()} />}
       </div>
@@ -286,22 +286,22 @@ function MarketplaceList() {
       {Boolean(error) && <ErrorNotice error={error} retry={() => void load()} />}
       {unavailableEmpty && !error && <ErrorNotice error={new ApiError(503, inventory.registry.error?.code || "REGISTRY_UNAVAILABLE", inventory.registry.error?.message || "The Armory registry is unavailable.")} retry={() => void load()} />}
 
-      {loading && !inventory ? <div className="grid min-h-48 place-items-center"><div className="forge-spin" /></div> : officialEmpty ? (
-        <Card className="px-6 py-12 text-center"><h2 className="font-display text-base text-bone">The official catalog is empty</h2><p className="mt-2 text-sm text-bone-dim">There are currently no published Armory packages.</p></Card>
+      {loading && !inventory ? <div className="grid min-h-48 place-items-center"><div className="loading-spinner" /></div> : officialEmpty ? (
+        <Card className="px-6 py-12 text-center"><h2 className="font-display text-base text-ink">The official catalog is empty</h2><p className="mt-2 text-sm text-ink-muted">There are currently no published Armory packages.</p></Card>
       ) : inventory?.packages.length === 0 && !unavailableEmpty ? (
-        <Card className="px-6 py-12 text-center"><p className="text-sm text-bone-dim">No packages match this {view} view{debouncedQuery ? " and search" : ""}.</p></Card>
+        <Card className="px-6 py-12 text-center"><p className="text-sm text-ink-muted">No packages match this {view} view{debouncedQuery ? " and search" : ""}.</p></Card>
       ) : (
         <ul className="grid gap-4 md:grid-cols-2">{inventory?.packages.map((item) => <PackageCard key={item.id} item={item} />)}</ul>
       )}
 
-      {inventory?.nextCursor && <div className="flex justify-center"><Button type="button" variant="iron" disabled={loadingMore} onClick={() => void load(inventory.nextCursor, true)}>{loadingMore ? "Loading…" : "Load more"}</Button></div>}
+      {inventory?.nextCursor && <div className="flex justify-center"><Button type="button" variant="secondary" disabled={loadingMore} onClick={() => void load(inventory.nextCursor, true)}>{loadingMore ? "Loading…" : "Load more"}</Button></div>}
 
     </div>
   );
 }
 
 function DetailRow({ label, children }: { label: string; children: React.ReactNode }) {
-  return <div><dt className="font-mono text-xs text-bone-faint">{label}</dt><dd className="mt-1 text-sm text-bone">{children}</dd></div>;
+  return <div><dt className="font-mono text-xs text-ink-faint">{label}</dt><dd className="mt-1 text-sm text-ink">{children}</dd></div>;
 }
 
 function PackageDetail({ packageId }: { packageId: string }) {
@@ -353,23 +353,23 @@ function PackageDetail({ packageId }: { packageId: string }) {
     return () => { controller.current?.abort(); requestGate.clear(); };
   }, [load, peon.online]);
 
-  if (!peon.online) return <div className="space-y-4"><Link to=".." relative="path" className="font-mono text-xs text-bone-dim hover:text-fel-bright">← Armory</Link><p className="border-l-2 border-blood bg-blood/5 px-4 py-3 font-mono text-sm text-blood">This Peon is offline — Armory data is unavailable.</p></div>;
-  if (error) return <div className="space-y-4"><Link to=".." relative="path" className="font-mono text-xs text-bone-dim hover:text-fel-bright">← Armory</Link><ErrorNotice error={error} retry={() => void load()} /></div>;
-  if (!detail) return <div className="grid min-h-48 place-items-center"><div className="forge-spin" /></div>;
+  if (!peon.online) return <div className="space-y-4"><Link to=".." relative="path" className="font-mono text-xs text-ink-muted hover:text-accent-strong">← Armory</Link><p className="border-l-2 border-danger bg-danger/5 px-4 py-3 font-mono text-sm text-danger">This Peon is offline — Armory data is unavailable.</p></div>;
+  if (error) return <div className="space-y-4"><Link to=".." relative="path" className="font-mono text-xs text-ink-muted hover:text-accent-strong">← Armory</Link><ErrorNotice error={error} retry={() => void load()} /></div>;
+  if (!detail) return <div className="grid min-h-48 place-items-center"><div className="loading-spinner" /></div>;
   const item = detail.package; const catalog = detail.catalog; const docs = safeUrl(catalog?.documentationUrl || item.documentationUrl);
   const icon = safeUrl(catalog?.iconUrl || catalog?.icon || item.iconUrl || item.icon);
   const mcpCapable = isMcpCapable(item) || isMcpCapable(catalog);
   const configured = item.installed?.configurationStatus === "not_required" || item.installed?.configurationStatus === "verified";
   return (
     <div className="space-y-6">
-      <Link to=".." relative="path" className="font-mono text-xs text-bone-dim hover:text-fel-bright">← Armory</Link>
+      <Link to=".." relative="path" className="font-mono text-xs text-ink-muted hover:text-accent-strong">← Armory</Link>
       <RegistryNotices registry={detail.registry} settings={null} />
-      <header><div className="flex flex-wrap items-start justify-between gap-4"><div className="flex items-center gap-3"><div className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-lg border border-iron-700 bg-iron-900 text-bone-faint">{icon ? <img src={icon} alt="" className="h-full w-full object-cover" /> : <PackageIcon size={23} aria-hidden />}</div><div><h1 className="font-display text-2xl font-extrabold text-bone">{catalog?.displayName || item.displayName || item.id}</h1><p className="mt-1 font-mono text-xs text-bone-faint">{item.id} · {peon.name || peon.hostname || peon.peonId}</p></div></div><div className="flex flex-wrap gap-1.5"><CapabilityChips item={item} /><PackageBadges item={item} /></div></div><p className="mt-4 max-w-3xl text-sm leading-relaxed text-bone-dim">{catalog?.summary || item.summary || "Catalog metadata is unavailable for this installed package."}</p>{docs && <a className="mt-3 inline-flex items-center gap-1.5 font-mono text-xs text-fel-bright hover:underline" href={docs} target="_blank" rel="noreferrer">Documentation <ExternalLink size={13} /></a>}</header>
-      {mcpCapable && <div className="flex border-b border-iron-700" role="tablist" aria-label="Package details"><button type="button" role="tab" aria-selected={tab === "overview"} onClick={() => setTab("overview")} className={`border-b-2 px-4 py-2 font-display text-sm font-bold ${tab === "overview" ? "border-fel text-fel-bright" : "border-transparent text-bone-dim hover:text-bone"}`}>Overview</button><button type="button" role="tab" aria-selected={tab === "mcp"} onClick={() => setTab("mcp")} className={`border-b-2 px-4 py-2 font-display text-sm font-bold ${tab === "mcp" ? "border-fel text-fel-bright" : "border-transparent text-bone-dim hover:text-bone"}`}>MCP</button></div>}
+      <header><div className="flex flex-wrap items-start justify-between gap-4"><div className="flex items-center gap-3"><div className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-lg border border-edge-strong bg-surface-raised text-ink-faint">{icon ? <img src={icon} alt="" className="h-full w-full object-cover" /> : <PackageIcon size={23} aria-hidden />}</div><div><h1 className="font-display text-2xl font-extrabold text-ink">{catalog?.displayName || item.displayName || item.id}</h1><p className="mt-1 font-mono text-xs text-ink-faint">{item.id} · {peon.name || peon.hostname || peon.peonId}</p></div></div><div className="flex flex-wrap gap-1.5"><CapabilityChips item={item} /><PackageBadges item={item} /></div></div><p className="mt-4 max-w-3xl text-sm leading-relaxed text-ink-muted">{catalog?.summary || item.summary || "Catalog metadata is unavailable for this installed package."}</p>{docs && <a className="mt-3 inline-flex items-center gap-1.5 font-mono text-xs text-accent-strong hover:underline" href={docs} target="_blank" rel="noreferrer">Documentation <ExternalLink size={13} /></a>}</header>
+      {mcpCapable && <div className="flex border-b border-edge-strong" role="tablist" aria-label="Package details"><button type="button" role="tab" aria-selected={tab === "overview"} onClick={() => setTab("overview")} className={`border-b-2 px-4 py-2 font-display text-sm font-bold ${tab === "overview" ? "border-accent text-accent-strong" : "border-transparent text-ink-muted hover:text-ink"}`}>Overview</button><button type="button" role="tab" aria-selected={tab === "mcp"} onClick={() => setTab("mcp")} className={`border-b-2 px-4 py-2 font-display text-sm font-bold ${tab === "mcp" ? "border-accent text-accent-strong" : "border-transparent text-ink-muted hover:text-ink"}`}>MCP</button></div>}
       {tab === "mcp" && mcpCapable ? <ArmoryMcpPanel details={mcp} loading={mcpLoading} error={mcpError} configured={Boolean(configured)} enabled={Boolean(item.installed?.enabled)} onRetry={() => void refresh()} /> : <>
         <ArmoryLifecyclePanel base={base} packageId={packageId} installed={item.installed} versions={catalog?.versions ?? []} latestVersion={catalog?.latest || item.latestVersion} updateAvailable={item.updateAvailable} onRefresh={refresh} />
-        <Card className="p-5"><dl className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4"><DetailRow label="Latest version">{catalog?.latest || item.latestVersion || "Unavailable"}</DetailRow><DetailRow label="Installed version">{item.installed?.version || "Not installed"}</DetailRow><DetailRow label="Configuration">{item.installed?.configurationStatus?.replace(/_/g, " ") || "Not installed"}</DetailRow><DetailRow label="Credentials required">{(catalog?.requirements || item.requirements)?.credentials ? "Yes" : "No"}</DetailRow><DetailRow label="Host writes required">{(catalog?.requirements || item.requirements)?.hostWrites ? "Yes" : "No"}</DetailRow>{item.installed && <><DetailRow label="Installed">{formatDate(item.installed.installedAt)}</DetailRow><DetailRow label="Updated">{formatDate(item.installed.updatedAt)}</DetailRow></>}</dl>{item.installed?.lastError && <p className="mt-5 border-l-2 border-blood bg-blood/5 px-3 py-2 text-sm text-blood">The latest package operation failed.</p>}</Card>
-        <section><h2 className="mb-3 font-display text-lg font-bold text-bone">Catalog versions</h2>{!catalog ? <Card className="p-5 text-sm text-bone-dim">This is an installed-only package. It is not present in the current catalog.</Card> : <div className="space-y-3">{catalog.versions.map((version) => <Card key={version.version} className="p-4"><div className="flex flex-wrap items-center justify-between gap-2"><h3 className="font-display text-sm font-bold text-bone">Version {version.version}</h3><span className="font-mono text-xs text-bone-faint">Requires Peon {version.minPeonVersion}+</span></div><div className="mt-3 flex flex-wrap gap-2">{version.platforms.map((platform) => <Badge key={`${platform.os}-${platform.arch}`}>{platform.os} / {platform.arch}</Badge>)}</div><details className="mt-3 text-xs text-bone-faint"><summary className="cursor-pointer font-mono">Technical archive details</summary><dl className="mt-2 space-y-1 font-mono"><div className="break-all">URL: {safeUrl(version.archive.url) ?? "Unavailable"}</div><div>Size: {version.archive.size.toLocaleString()} bytes</div><div className="break-all">SHA-256: {version.archive.sha256}</div></dl></details></Card>)}</div>}</section>
+        <Card className="p-5"><dl className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4"><DetailRow label="Latest version">{catalog?.latest || item.latestVersion || "Unavailable"}</DetailRow><DetailRow label="Installed version">{item.installed?.version || "Not installed"}</DetailRow><DetailRow label="Configuration">{item.installed?.configurationStatus?.replace(/_/g, " ") || "Not installed"}</DetailRow><DetailRow label="Credentials required">{(catalog?.requirements || item.requirements)?.credentials ? "Yes" : "No"}</DetailRow><DetailRow label="Host writes required">{(catalog?.requirements || item.requirements)?.hostWrites ? "Yes" : "No"}</DetailRow>{item.installed && <><DetailRow label="Installed">{formatDate(item.installed.installedAt)}</DetailRow><DetailRow label="Updated">{formatDate(item.installed.updatedAt)}</DetailRow></>}</dl>{item.installed?.lastError && <p className="mt-5 border-l-2 border-danger bg-danger/5 px-3 py-2 text-sm text-danger">The latest package operation failed.</p>}</Card>
+        <section><h2 className="mb-3 font-display text-lg font-bold text-ink">Catalog versions</h2>{!catalog ? <Card className="p-5 text-sm text-ink-muted">This is an installed-only package. It is not present in the current catalog.</Card> : <div className="space-y-3">{catalog.versions.map((version) => <Card key={version.version} className="p-4"><div className="flex flex-wrap items-center justify-between gap-2"><h3 className="font-display text-sm font-bold text-ink">Version {version.version}</h3><span className="font-mono text-xs text-ink-faint">Requires Peon {version.minPeonVersion}+</span></div><div className="mt-3 flex flex-wrap gap-2">{version.platforms.map((platform) => <Badge key={`${platform.os}-${platform.arch}`}>{platform.os} / {platform.arch}</Badge>)}</div><details className="mt-3 text-xs text-ink-faint"><summary className="cursor-pointer font-mono">Technical archive details</summary><dl className="mt-2 space-y-1 font-mono"><div className="break-all">URL: {safeUrl(version.archive.url) ?? "Unavailable"}</div><div>Size: {version.archive.size.toLocaleString()} bytes</div><div className="break-all">SHA-256: {version.archive.sha256}</div></dl></details></Card>)}</div>}</section>
         <ArmoryConfigurationPanel key={`${base}:${packageId}`} base={base} packageId={packageId} installed={item.installed} schema={configuration} schemaError={configurationError} onRetrySchema={() => void refresh()} onRefresh={refresh} />
       </>}
     </div>

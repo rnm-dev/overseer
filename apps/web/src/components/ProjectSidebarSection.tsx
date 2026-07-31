@@ -50,7 +50,7 @@ export function sidebarProjects(projects: ProjectLite[]): ProjectLite[] {
 
 export function projectStatusEdgeClass(activeCount?: number): string {
   return (activeCount ?? 0) > 0
-    ? "bg-fel-bright status-edge status-edge--fel"
+    ? "bg-accent-strong status-edge status-edge--accent"
     : SIDEBAR_ROW_EDGE_IDLE_CLASS;
 }
 
@@ -138,12 +138,12 @@ export function ProjectSidebarSection({ projects, error = false, to, onNew }: Pr
         <div id="peon-sidebar-projects">
           {projects === null && !error ? (
             <div className="flex min-h-8 items-center justify-center">
-              <span className="forge-spin scale-75" role="status" aria-label={t("projects.loading")} />
+              <span className="loading-spinner scale-75" role="status" aria-label={t("projects.loading")} />
             </div>
           ) : error && visible.length === 0 ? (
-            <p className="px-3 py-2 font-body text-xs text-bone-faint">{t("error.loadFailed")}</p>
+            <p className="px-3 py-2 font-body text-xs text-ink-faint">{t("error.loadFailed")}</p>
           ) : visible.length === 0 ? (
-            <p className="px-3 py-2 font-body text-xs text-bone-faint">{t("peon.projects.empty")}</p>
+            <p className="px-3 py-2 font-body text-xs text-ink-faint">{t("peon.projects.empty")}</p>
           ) : (
             <nav aria-label={t("peon.tab.projects")}>
               <ul className="py-1">
@@ -162,7 +162,7 @@ export function ProjectSidebarSection({ projects, error = false, to, onNew }: Pr
                     >
                       <NavLink
                         to={to(project)}
-                        className={({ isActive }) => `relative block min-w-0 flex-1 py-1.5 pl-3 transition-colors ${project.quickLinks?.length ? "pr-8" : "pr-2"} ${isActive ? "bg-fel/10" : "hover:bg-iron-900"}`}
+                        className={({ isActive }) => `relative block min-w-0 flex-1 py-1.5 pl-3 transition-colors ${project.quickLinks?.length ? "pr-8" : "pr-2"} ${isActive ? "bg-accent/10" : "hover:bg-surface-raised"}`}
                         title={project.name ?? project.key}
                       >
                         <span
@@ -170,24 +170,24 @@ export function ProjectSidebarSection({ projects, error = false, to, onNew }: Pr
                           className={rowEdgeClass(projectStatusEdgeClass(project.activeCount), flash)}
                           aria-hidden
                         />
-                        <span className="block min-w-0 whitespace-nowrap font-display text-[0.8rem] text-bone">
+                        <span className="block min-w-0 whitespace-nowrap font-display text-[0.8rem] text-ink">
                           <FadingTitle>{project.name?.trim() || project.key}</FadingTitle>
                         </span>
                         {/* Counts read as one sentence: the total first, then only
-                            the states that need attention — running in fel green,
-                            unread in forge orange, matching the row edge colours. */}
-                        <div className="mt-0.5 flex items-center gap-1.5 font-body text-[0.6875rem] text-bone-faint">
+                            the states that need attention — running in accent green,
+                            unread in warning orange, matching the row edge colours. */}
+                        <div className="mt-0.5 flex items-center gap-1.5 font-body text-[0.6875rem] text-ink-faint">
                           <span className="flex-none">{t("peon.projects.sessions", { n: project.sessionCount ?? 0 })}</span>
                           {(project.activeCount ?? 0) > 0 && (
                             <>
-                              <span className="flex-none text-bone-dim" aria-hidden>•</span>
-                              <span className="flex-none text-fel-bright">{t("peon.projects.active", { n: project.activeCount ?? 0 })}</span>
+                              <span className="flex-none text-ink-muted" aria-hidden>•</span>
+                              <span className="flex-none text-accent-strong">{t("peon.projects.active", { n: project.activeCount ?? 0 })}</span>
                             </>
                           )}
                           {(project.unreadCount ?? 0) > 0 && (
                             <>
-                              <span className="flex-none text-bone-dim" aria-hidden>•</span>
-                              <span className="flex-none text-forge">{t("peon.projects.unread", { n: project.unreadCount ?? 0 })}</span>
+                              <span className="flex-none text-ink-muted" aria-hidden>•</span>
+                              <span className="flex-none text-warning">{t("peon.projects.unread", { n: project.unreadCount ?? 0 })}</span>
                             </>
                           )}
                         </div>
@@ -197,7 +197,7 @@ export function ProjectSidebarSection({ projects, error = false, to, onNew }: Pr
                           type="button"
                           aria-label={`${t("proj.quickLinks")}: ${project.name?.trim() || project.key}`}
                           aria-haspopup="menu"
-                          className="absolute right-1 top-1 grid h-7 w-7 place-items-center rounded text-bone-faint opacity-70 transition-colors hover:bg-iron-800 hover:text-bone focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-fel/60 md:opacity-0 md:group-hover/project:opacity-100"
+                          className="absolute right-1 top-1 grid h-7 w-7 place-items-center rounded text-ink-faint opacity-70 transition-colors hover:bg-surface-hover hover:text-ink focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/60 md:opacity-0 md:group-hover/project:opacity-100"
                           onClick={(event) => {
                             const rect = event.currentTarget.getBoundingClientRect();
                             openContextMenu(project, rect.right, rect.bottom);
@@ -219,10 +219,10 @@ export function ProjectSidebarSection({ projects, error = false, to, onNew }: Pr
           ref={menuRef}
           role="menu"
           aria-label={`${t("proj.quickLinks")}: ${contextMenu.project.name?.trim() || contextMenu.project.key}`}
-          className="fixed z-[110] w-52 overflow-hidden rounded-lg border border-iron-800 bg-iron-950 py-1 shadow-xl"
+          className="fixed z-[110] w-52 overflow-hidden rounded-lg border border-edge bg-surface py-1 shadow-xl"
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
-          <div className="border-b border-iron-800 px-2.5 py-1.5 font-display text-[0.56rem] uppercase tracking-[0.16em] text-bone-faint">
+          <div className="border-b border-edge px-2.5 py-1.5 font-display text-[0.56rem] uppercase tracking-[0.16em] text-ink-faint">
             {t("proj.quickLinks")}
           </div>
           <div className="max-h-64 overflow-y-auto py-1">
@@ -233,11 +233,11 @@ export function ProjectSidebarSection({ projects, error = false, to, onNew }: Pr
                 href={link.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left font-body text-[0.7rem] text-bone-dim transition-colors hover:bg-iron-800 hover:text-bone focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-fel/60"
+                className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left font-body text-[0.7rem] text-ink-muted transition-colors hover:bg-surface-hover hover:text-ink focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-accent/60"
                 onClick={() => setContextMenu(null)}
               >
                 <span className="min-w-0 flex-1 truncate">{link.title}</span>
-                <ExternalLink size={12} className="flex-none text-bone-faint" aria-hidden />
+                <ExternalLink size={12} className="flex-none text-ink-faint" aria-hidden />
               </a>
             ))}
           </div>

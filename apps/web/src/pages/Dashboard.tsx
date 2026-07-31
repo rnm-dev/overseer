@@ -4,7 +4,7 @@ import { ChevronRight } from "lucide-react";
 import { api } from "../api";
 import { useWorkspace, type Workspace } from "../workspace";
 import { useWorkspacePeonPresence } from "../hooks/usePeonPresence";
-import { Logo } from "../ui";
+import { OverseerWordmark } from "../ui";
 import { PeonConnectionStatusDot } from "../components/PeonConnectionStatusDot";
 import { useT } from "../i18n";
 import { useAuth, type User } from "../auth";
@@ -37,10 +37,10 @@ export function userBoxLayoutClass(workspaceCount: number): string {
 }
 
 export const HOME_WORKSPACE_CARD_CLASS = "surface overflow-hidden";
-export const HOME_WORKSPACE_HEADER_CLASS = "group block px-5 py-5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-fel/60";
-export const HOME_WORKSPACE_TITLE_CLASS = "truncate font-display text-lg font-bold tracking-[0.06em] text-fel-bright drop-shadow-[0_0_8px_rgba(134,171,99,0.18)] transition-colors group-hover:text-fel";
+export const HOME_WORKSPACE_HEADER_CLASS = "group block px-5 py-5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60";
+export const HOME_WORKSPACE_TITLE_CLASS = "truncate font-display text-lg font-bold tracking-[0.06em] text-accent-strong drop-shadow-[0_0_8px_rgba(134,171,99,0.18)] transition-colors group-hover:text-accent";
 export const HOME_PEON_LIST_CLASS = "space-y-3 px-4 pb-4";
-export const HOME_PEON_LINK_CLASS = "on-surface on-surface--interactive group/peon flex items-center gap-3 rounded-lg px-4 py-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-fel/60";
+export const HOME_PEON_LINK_CLASS = "on-surface on-surface--interactive group/peon flex items-center gap-3 rounded-lg px-4 py-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60";
 
 export function presenceUsersForPeon(entries: PresenceEntry[], peonId: string): PresenceUser[] {
   const users = new Map<string, PresenceUser>();
@@ -62,21 +62,21 @@ export function Dashboard() {
     <div className="mx-auto w-full max-w-6xl flex-1 px-6 pb-8 pt-7">
       <header className="mb-10 flex flex-col items-center">
         <Link to="/" className="flex min-w-0 flex-col items-center text-center">
-          <Logo size={144} />
-          <span className="dashboard-identity" title={username}>
+          <OverseerWordmark size="hero" />
+          <span className="dashboard-operator" title={username}>
             {username}
           </span>
         </Link>
       </header>
 
       {!ready ? (
-        <div className="grid min-h-44 place-items-center" aria-label={t("workspace.loading")}><div className="forge-spin" /></div>
+        <div className="grid min-h-44 place-items-center" aria-label={t("workspace.loading")}><div className="loading-spinner" /></div>
       ) : (
         <>
           {groups.length === 0 ? (
             <div className="surface px-6 py-12 text-center">
-              <p className="font-display text-base font-semibold text-bone">{t("workspace.empty")}</p>
-              <p className="mx-auto mt-1 max-w-md text-sm text-bone-faint">{t("workspace.emptyJoinedHint")}</p>
+              <p className="font-display text-base font-semibold text-ink">{t("workspace.empty")}</p>
+              <p className="mx-auto mt-1 max-w-md text-sm text-ink-faint">{t("workspace.emptyJoinedHint")}</p>
             </div>
           ) : (
             <ul className={workspaceListClass(groups.length)}>
@@ -150,14 +150,14 @@ function WorkspaceCard({ workspace }: { workspace: Workspace }) {
                 className={HOME_PEON_LINK_CLASS}
               >
                 <PeonConnectionStatusDot {...peon} />
-                <span className="min-w-0 flex-1 truncate font-display text-sm font-semibold text-bone group-hover/peon:text-fel-bright">
+                <span className="min-w-0 flex-1 truncate font-display text-sm font-semibold text-ink group-hover/peon:text-accent-strong">
                   {peon.name || t("peons.unnamed")}
                 </span>
-                <span className={`font-mono text-xs tabular-nums ${online && activeSessions > 0 ? "text-forge" : "text-bone-faint"}`}>
+                <span className={`font-mono text-xs tabular-nums ${online && activeSessions > 0 ? "text-warning" : "text-ink-faint"}`}>
                   {online ? t("peons.active", { n: activeSessions }) : t("peons.offline")}
                 </span>
                 <SessionPresence viewers={viewers} size="xs" />
-                <ChevronRight size={15} className="text-bone-faint" aria-hidden="true" />
+                <ChevronRight size={15} className="text-ink-faint" aria-hidden="true" />
               </Link>
             </li>;
           })}

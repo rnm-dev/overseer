@@ -1,0 +1,11 @@
+{
+  "format": "overseer-theme-v1",
+  "id": "org.overseer.ironwood",
+  "name": "Ironwood",
+  "version": "1.0.0",
+  "author": "Overseer",
+  "description": "Charcoal, aged bone, moss and restrained firelight.",
+  "appearance": "dark",
+  "entrypoints": { "web": "web/theme.css" },
+  "capabilities": ["colors", "typography", "images", "borders", "motion", "syntax", "mermaid"]
+}

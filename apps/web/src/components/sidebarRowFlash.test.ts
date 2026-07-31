@@ -44,7 +44,7 @@ test("project fingerprints track the live counts the row renders", () => {
 });
 
 test("the flash class rides along only while a row holds a flash nonce", () => {
-  assert.equal(rowEdgeClass("bg-fel-bright status-edge", 0), `${SIDEBAR_ROW_EDGE_CLASS} bg-fel-bright status-edge`);
-  assert.equal(rowEdgeClass("bg-fel-bright status-edge", undefined), `${SIDEBAR_ROW_EDGE_CLASS} bg-fel-bright status-edge`);
-  assert.equal(rowEdgeClass("bg-bone-faint/40", 3), `${SIDEBAR_ROW_EDGE_CLASS} bg-bone-faint/40 status-edge-flash`);
+  assert.equal(rowEdgeClass("bg-accent-strong status-edge", 0), `${SIDEBAR_ROW_EDGE_CLASS} bg-accent-strong status-edge`);
+  assert.equal(rowEdgeClass("bg-accent-strong status-edge", undefined), `${SIDEBAR_ROW_EDGE_CLASS} bg-accent-strong status-edge`);
+  assert.equal(rowEdgeClass("bg-ink-faint/40", 3), `${SIDEBAR_ROW_EDGE_CLASS} bg-ink-faint/40 status-edge-flash`);
 });

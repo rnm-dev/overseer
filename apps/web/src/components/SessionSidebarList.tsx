@@ -14,11 +14,11 @@ import { rowEdgeClass, SIDEBAR_ROW_EDGE_IDLE_CLASS, useRowUpdateFlashes } from "
 
 export function sessionStatusEdgeClass(status?: string | null, attentionUnread = false): string {
   return status === "running"
-    ? "bg-fel-bright status-edge status-edge--fel"
+    ? "bg-accent-strong status-edge status-edge--accent"
     : attentionUnread || status === "needs_human"
-      ? "bg-forge status-edge status-edge--forge"
+      ? "bg-warning status-edge status-edge--warning"
       : status === "failure" || status === "failed" || status === "error"
-        ? "bg-blood status-edge status-edge--blood"
+        ? "bg-danger status-edge status-edge--danger"
         : SIDEBAR_ROW_EDGE_IDLE_CLASS;
 }
 
@@ -237,7 +237,7 @@ export function SessionSidebarList({
               onPointerDown={() => onNavigateIntent?.(session)}
               onFocus={() => onNavigateIntent?.(session)}
               title={session.catalogStale ? t("session.catalogStaleTitle") : undefined}
-              className={({ isActive }) => `relative block py-1.5 pl-3 pr-2 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-fel/60 ${session.catalogStale ? "opacity-70" : ""} ${isActive ? "bg-fel/10" : appearance === "panel" ? "hover:bg-iron-800/70" : "hover:bg-iron-900"}`}
+              className={({ isActive }) => `relative block py-1.5 pl-3 pr-2 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/60 ${session.catalogStale ? "opacity-70" : ""} ${isActive ? "bg-accent/10" : appearance === "panel" ? "hover:bg-surface-hover/70" : "hover:bg-surface-raised"}`}
             >
               <span
                 key={`edge-${flash ?? 0}`}
@@ -246,16 +246,16 @@ export function SessionSidebarList({
               />
               {/* min-h-5 matches the sm avatar so viewers appearing/leaving never resize the row. */}
               <div className="flex min-h-5 items-center gap-2">
-                <span className="min-w-0 flex-1 whitespace-nowrap font-body typo-chat-message text-bone">
+                <span className="min-w-0 flex-1 whitespace-nowrap font-body typo-chat-message text-ink">
                   <FadingTitle>{sessionDisplayTitle(session, t("session.untitled"))}</FadingTitle>
                 </span>
                 <SessionPresence viewers={viewersFor(peonId, session.id)} size="sm" />
               </div>
-              <div className="mt-0.5 flex items-center gap-2 font-body text-[0.6875rem] text-bone-faint">
-                {peonName && <span className="max-w-[35%] flex-none truncate text-bone-dim">{peonName}</span>}
-                {session.projectKey && <span className="max-w-[30%] flex-none truncate font-body text-forge/80">{session.projectKey}</span>}
+              <div className="mt-0.5 flex items-center gap-2 font-body text-[0.6875rem] text-ink-faint">
+                {peonName && <span className="max-w-[35%] flex-none truncate text-ink-muted">{peonName}</span>}
+                {session.projectKey && <span className="max-w-[30%] flex-none truncate font-body text-warning/80">{session.projectKey}</span>}
                 {session.catalogStale && (
-                  <span className="flex-none font-mono uppercase tracking-wide text-forge/70">
+                  <span className="flex-none font-mono uppercase tracking-wide text-warning/70">
                     {session.catalogState === "syncing" ? t("session.catalogSyncing") : t("session.catalogStale")}
                   </span>
                 )}
@@ -276,14 +276,14 @@ export function SessionSidebarList({
         <div
           ref={menuRef}
           role="menu"
-          className="fixed z-[110] w-40 overflow-hidden rounded-lg border border-iron-800 bg-iron-950 py-1 shadow-xl"
+          className="fixed z-[110] w-40 overflow-hidden rounded-lg border border-edge bg-surface py-1 shadow-xl"
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
           <button
             type="button"
             role="menuitem"
             autoFocus
-            className="flex w-full items-center gap-2 px-3 py-2 text-left font-body text-xs text-bone-dim transition-colors hover:bg-iron-800 hover:text-bone"
+            className="flex w-full items-center gap-2 px-3 py-2 text-left font-body text-xs text-ink-muted transition-colors hover:bg-surface-hover hover:text-ink"
             onClick={() => beginRename(contextMenu.session)}
           >
             <Pencil size={13} aria-hidden />
@@ -292,7 +292,7 @@ export function SessionSidebarList({
           <button
             type="button"
             role="menuitem"
-            className="flex w-full items-center gap-2 px-3 py-2 text-left font-body text-xs text-blood transition-colors hover:bg-blood/10"
+            className="flex w-full items-center gap-2 px-3 py-2 text-left font-body text-xs text-danger transition-colors hover:bg-danger/10"
             onClick={() => {
               setDeleteSession(contextMenu.session);
               setContextMenu(null);
@@ -315,12 +315,12 @@ export function SessionSidebarList({
                 disabled={renaming}
                 onChange={(event) => setRenameDraft(event.target.value)}
                 onFocus={(event) => event.currentTarget.select()}
-                className="mt-2 w-full rounded-lg border border-iron-700 bg-iron-950 px-3 py-2 font-body text-sm text-bone outline-none transition-colors focus:border-fel/70 disabled:cursor-wait disabled:opacity-60"
+                className="mt-2 w-full rounded-lg border border-edge-strong bg-surface px-3 py-2 font-body text-sm text-ink outline-none transition-colors focus:border-accent/70 disabled:cursor-wait disabled:opacity-60"
               />
             </div>
             <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-              <Button type="button" variant="iron" disabled={renaming} onClick={() => setRenameSession(null)}>{t("action.cancel")}</Button>
-              <Button type="submit" variant="fel" disabled={renaming}>{t("session.rename.save")}</Button>
+              <Button type="button" variant="secondary" disabled={renaming} onClick={() => setRenameSession(null)}>{t("action.cancel")}</Button>
+              <Button type="submit" variant="accent" disabled={renaming}>{t("session.rename.save")}</Button>
             </div>
           </form>
         </Dialog>

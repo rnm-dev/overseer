@@ -102,7 +102,7 @@ export function PathInput({ base, value, onChange, browseRoot, browseBase, brows
           type="button"
           disabled={disabled}
           onClick={() => setOpen(true)}
-          className="absolute bottom-px right-px top-px grid w-10 place-items-center rounded-r-[5px] border-l border-iron-700 text-bone-faint transition-colors hover:bg-iron-900 hover:text-fel-bright disabled:cursor-not-allowed disabled:opacity-40"
+          className="absolute bottom-px right-px top-px grid w-10 place-items-center rounded-r-[5px] border-l border-edge-strong text-ink-faint transition-colors hover:bg-surface-raised hover:text-accent-strong disabled:cursor-not-allowed disabled:opacity-40"
           title={t("pathSelector.open")}
           aria-label={t("pathSelector.open")}
         >
@@ -240,16 +240,16 @@ function PathSelectorModal({
   return (
     <Dialog title={t("pathSelector.title")} onClose={onClose} size="lg">
       <div className="surface surface--inset overflow-hidden">
-        <div className="flex min-h-10 flex-wrap items-center gap-1 border-b border-iron-800 px-3 py-2 font-mono text-xs" title={selectedPath || undefined}>
-          <button type="button" onClick={() => setCurrentPath("/")} className="text-bone-dim hover:text-fel-bright">/</button>
-          {locations === null && !folderSource && <span className="text-bone-dim">{t("app.loading")}</span>}
+        <div className="flex min-h-10 flex-wrap items-center gap-1 border-b border-edge px-3 py-2 font-mono text-xs" title={selectedPath || undefined}>
+          <button type="button" onClick={() => setCurrentPath("/")} className="text-ink-muted hover:text-accent-strong">/</button>
+          {locations === null && !folderSource && <span className="text-ink-muted">{t("app.loading")}</span>}
           {crumbs.map((segment, index) => (
             <span key={`${segment}-${index}`} className="flex min-w-0 items-center gap-1">
-              <ChevronRight size={13} className="flex-none text-bone-faint" aria-hidden />
+              <ChevronRight size={13} className="flex-none text-ink-faint" aria-hidden />
               <button
                 type="button"
                 onClick={() => setCurrentPath(`/${crumbs.slice(0, index + 1).join("/")}`)}
-                className="truncate text-bone-dim hover:text-fel-bright"
+                className="truncate text-ink-muted hover:text-accent-strong"
               >
                 {segment}
               </button>
@@ -259,33 +259,33 @@ function PathSelectorModal({
 
         <div className="h-72 overflow-y-auto p-1.5">
           {error ? (
-            <div className="grid h-full place-items-center px-5 text-center font-mono text-xs text-blood">⚠ {error}</div>
+            <div className="grid h-full place-items-center px-5 text-center font-mono text-xs text-danger">⚠ {error}</div>
           ) : entries === null ? (
-            <div className="grid h-full place-items-center"><div className="forge-spin" /></div>
+            <div className="grid h-full place-items-center"><div className="loading-spinner" /></div>
           ) : entries.length === 0 ? (
-            <div className="grid h-full place-items-center font-mono text-xs text-bone-faint">{t("pathSelector.empty")}</div>
+            <div className="grid h-full place-items-center font-mono text-xs text-ink-faint">{t("pathSelector.empty")}</div>
           ) : (
             entries.map((entry) => (
               <button
                 type="button"
                 key={entry.name}
                 onClick={() => setCurrentPath(pathFromRoot(currentPath, entry.name))}
-                className="flex w-full items-center gap-2 rounded px-2.5 py-2 text-left font-mono text-sm text-bone-dim transition-colors hover:bg-fel/[0.07] hover:text-bone"
+                className="flex w-full items-center gap-2 rounded px-2.5 py-2 text-left font-mono text-sm text-ink-muted transition-colors hover:bg-accent/[0.07] hover:text-ink"
               >
-                <Folder size={16} className="flex-none text-fel-deep" aria-hidden />
+                <Folder size={16} className="flex-none text-accent-deep" aria-hidden />
                 <span className="truncate">{entry.name}</span>
-                <ChevronRight size={14} className="ml-auto flex-none text-bone-faint" aria-hidden />
+                <ChevronRight size={14} className="ml-auto flex-none text-ink-faint" aria-hidden />
               </button>
             ))
           )}
         </div>
       </div>
 
-      <div className="mt-3 truncate font-mono text-xs text-bone-faint" title={selectedPath}>
-        {t("pathSelector.selected")}: <span className="text-bone-dim">{selectedPath || "—"}</span>
+      <div className="mt-3 truncate font-mono text-xs text-ink-faint" title={selectedPath}>
+        {t("pathSelector.selected")}: <span className="text-ink-muted">{selectedPath || "—"}</span>
       </div>
       <div className="mt-4 flex justify-end gap-2">
-        <Button variant="iron" onClick={onClose}>{t("action.cancel")}</Button>
+        <Button variant="secondary" onClick={onClose}>{t("action.cancel")}</Button>
         <Button
           disabled={!selectedPath || !!error}
           onClick={() => {

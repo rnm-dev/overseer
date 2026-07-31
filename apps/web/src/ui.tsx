@@ -7,7 +7,7 @@ import { DIALOG_EXIT_MS, sheetDragProgress, shouldDismissSheet } from "./dialogM
 // UI primitives — styling lives in index.css (.surface, .btn-*, .field, .badge-*).
 // author: Viktor
 
-type Variant = "fel" | "iron" | "ghost";
+type Variant = "accent" | "secondary" | "ghost";
 
 // Humanizes a slug-style key ("my-project_key" → "My Project Key") for display —
 // project keys are stored as identifiers but read better title-cased.
@@ -20,7 +20,7 @@ export function titleize(s: string): string {
 }
 
 export function Button({
-  variant = "fel",
+  variant = "accent",
   size = "md",
   className = "",
   ...props
@@ -151,7 +151,7 @@ export function Dialog({ title, children, onClose, size = "md", dismissible = tr
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
-        className={`dialog-panel relative w-full max-h-[calc(100dvh-0.75rem)] overflow-hidden overflow-y-auto rounded-b-none rounded-t-2xl border-0 bg-iron-900/95 p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] shadow-[0_28px_90px_rgba(0,0,0,0.65),0_0_0_1px_rgba(149,201,103,0.04)] md:max-h-[calc(100vh-2.5rem)] md:rounded-xl md:border md:border-iron-700/80 md:p-6 md:pb-6 ${size === "lg" ? "md:max-w-2xl" : "md:max-w-md"}`}
+        className={`dialog-panel relative w-full max-h-[calc(100dvh-0.75rem)] overflow-hidden overflow-y-auto rounded-b-none rounded-t-2xl border-0 bg-surface-raised/95 p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] shadow-[0_28px_90px_rgba(0,0,0,0.65),0_0_0_1px_rgba(149,201,103,0.04)] md:max-h-[calc(100vh-2.5rem)] md:rounded-xl md:border md:border-edge-strong/80 md:p-6 md:pb-6 ${size === "lg" ? "md:max-w-2xl" : "md:max-w-md"}`}
       >
         <div
           aria-hidden="true"
@@ -161,12 +161,12 @@ export function Dialog({ title, children, onClose, size = "md", dismissible = tr
           onPointerUp={endDrag}
           onPointerCancel={cancelDrag}
         >
-          <span className="h-1 w-10 rounded-full bg-iron-600/90" />
+          <span className="h-1 w-10 rounded-full bg-surface-disabled/90" />
         </div>
-        <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-fel/45 to-transparent" />
-        <div className="mb-4 flex items-start gap-3 border-b border-iron-800/90 pb-4">
-          <h3 id={titleId} className="min-w-0 flex-1 font-display text-base font-bold tracking-wide text-bone">{title}</h3>
-          <button className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-transparent text-base leading-none text-bone-faint transition-colors hover:border-iron-700 hover:bg-iron-800 hover:text-bone" onClick={requestClose} disabled={!dismissible} aria-label={t("a11y.close")}>
+        <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-accent/45 to-transparent" />
+        <div className="mb-4 flex items-start gap-3 border-b border-edge/90 pb-4">
+          <h3 id={titleId} className="min-w-0 flex-1 font-display text-base font-bold tracking-wide text-ink">{title}</h3>
+          <button className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-transparent text-base leading-none text-ink-faint transition-colors hover:border-edge-strong hover:bg-surface-hover hover:text-ink" onClick={requestClose} disabled={!dismissible} aria-label={t("a11y.close")}>
             ✕
           </button>
         </div>
@@ -190,13 +190,13 @@ export function ConfirmationDialog({ title, description, confirmLabel, pendingLa
   const { t } = useI18n();
   return (
     <Dialog title={title} onClose={onClose} dismissible={!pending}>
-      {description && <div className="mb-5 text-sm leading-relaxed text-bone-dim">{description}</div>}
+      {description && <div className="mb-5 text-sm leading-relaxed text-ink-muted">{description}</div>}
       <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-        <Button variant="iron" onClick={onClose} disabled={pending}>{t("action.cancel")}</Button>
+        <Button variant="secondary" onClick={onClose} disabled={pending}>{t("action.cancel")}</Button>
         <Button
           autoFocus
-          className={destructive ? "!border-blood/50 !text-blood hover:!bg-blood/10" : ""}
-          variant={destructive ? "iron" : "fel"}
+          className={destructive ? "!border-danger/50 !text-danger hover:!bg-danger/10" : ""}
+          variant={destructive ? "secondary" : "accent"}
           onClick={onConfirm}
           disabled={pending}
         >
@@ -208,11 +208,11 @@ export function ConfirmationDialog({ title, description, confirmLabel, pendingLa
 }
 
 export function Label({ children }: { children: ReactNode }) {
-  return <label className="block font-display text-[0.62rem] font-semibold uppercase tracking-[0.18em] text-bone-dim">{children}</label>;
+  return <label className="block font-display text-[0.62rem] font-semibold uppercase tracking-[0.18em] text-ink-muted">{children}</label>;
 }
 
 export function Badge({ children, tone = "neutral" }: { children: ReactNode; tone?: "neutral" | "green" | "red" | "amber" }) {
-  const map: Record<string, string> = { neutral: "badge-iron", green: "badge-fel", red: "badge-blood", amber: "badge-forge" };
+  const map: Record<string, string> = { neutral: "badge-neutral", green: "badge-accent", red: "badge-danger", amber: "badge-warning" };
   return <span className={`badge ${map[tone]}`}>{children}</span>;
 }
 
@@ -220,16 +220,8 @@ export function StatusDot({ state }: { state: "on" | "off" | "busy" }) {
   return <span className={`statdot statdot--${state}`} aria-hidden />;
 }
 
-export function Logo({ size = 40, className = "" }: { size?: number; className?: string }) {
-  return (
-    <img
-      src="/overseer-logo.png"
-      alt="Overseer"
-      className={`logo-glow ${className}`}
-      style={{ height: size, width: "auto" }}
-      draggable={false}
-    />
-  );
+export function OverseerWordmark({ size = "compact", className = "" }: { size?: "compact" | "hero"; className?: string }) {
+  return <span className={`overseer-wordmark overseer-wordmark--${size} ${className}`}>Overseer</span>;
 }
 
 export function GithubMark({ size = 18 }: { size?: number }) {
@@ -240,12 +232,12 @@ export function GithubMark({ size = 18 }: { size?: number }) {
   );
 }
 
-export function StatPlate({ value, label, tone = "fel" }: { value: ReactNode; label: string; tone?: "fel" | "forge" | "bone" }) {
-  const color = tone === "fel" ? "text-fel-bright" : tone === "forge" ? "text-ember" : "text-bone";
+export function StatPlate({ value, label, tone = "accent" }: { value: ReactNode; label: string; tone?: "accent" | "warning" | "ink" }) {
+  const color = tone === "accent" ? "text-accent-strong" : tone === "warning" ? "text-warning-strong" : "text-ink";
   return (
     <Card className="px-4 py-3">
       <div className={`font-display text-2xl font-extrabold leading-none ${color}`}>{value}</div>
-      <div className="mt-1.5 font-display text-[0.6rem] uppercase tracking-[0.16em] text-bone-dim">{label}</div>
+      <div className="mt-1.5 font-display text-[0.6rem] uppercase tracking-[0.16em] text-ink-muted">{label}</div>
     </Card>
   );
 }
@@ -289,7 +281,7 @@ export function FixedPaneHeader({ children, className = "" }: { children: ReactN
   return (
     <>
       {createPortal(
-        <div ref={setNode} className={`fixed-pane-header fixed left-0 right-0 top-12 z-20 border-b border-iron-800 bg-void md:left-[var(--peon-sidebar-width)] md:top-0 ${className}`}>
+        <div ref={setNode} className={`fixed-pane-header fixed left-0 right-0 top-12 z-20 border-b border-edge bg-canvas md:left-[var(--peon-sidebar-width)] md:top-0 ${className}`}>
           {children}
         </div>,
         document.body,
@@ -343,8 +335,8 @@ export function ContentHeaderIdentitySkeleton({ label }: { label: string }) {
       aria-label={label}
       aria-busy="true"
     >
-      <span className="h-3.5 w-16 flex-none animate-pulse rounded bg-iron-700/70 motion-reduce:animate-none" aria-hidden />
-      <span className="h-3.5 w-44 max-w-[55%] animate-pulse rounded bg-iron-700/70 motion-reduce:animate-none" aria-hidden />
+      <span className="h-3.5 w-16 flex-none animate-pulse rounded bg-surface-active/70 motion-reduce:animate-none" aria-hidden />
+      <span className="h-3.5 w-44 max-w-[55%] animate-pulse rounded bg-surface-active/70 motion-reduce:animate-none" aria-hidden />
     </div>
   );
 }
@@ -358,9 +350,9 @@ export function ContentHeaderTitle({
   to?: string;
   title?: string;
 }) {
-  const className = "min-w-0 truncate whitespace-nowrap font-display text-sm font-semibold text-forge";
+  const className = "typo-content-header min-w-0 truncate whitespace-nowrap font-display font-semibold text-warning";
   return to ? (
-    <Link to={to} className={`${className} transition-colors hover:text-fel-bright`} title={title}>
+    <Link to={to} className={`${className} transition-colors hover:text-accent-strong`} title={title}>
       {children}
     </Link>
   ) : (
@@ -409,11 +401,11 @@ export function PageHeader({
       identity={(
         <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-3 gap-y-1">
         {backTo && (
-          <Link to={backTo} relative="path" className="flex-none font-body text-xs text-bone-dim hover:text-fel-bright">
+          <Link to={backTo} relative="path" className="flex-none font-body text-xs text-ink-muted hover:text-accent-strong">
             {backLabel}
           </Link>
         )}
-        <h1 className="truncate font-display text-sm font-semibold text-bone">{title}</h1>
+        <h1 className="truncate font-display text-sm font-semibold text-ink">{title}</h1>
         {meta}
         </div>
       )}
@@ -423,7 +415,7 @@ export function PageHeader({
           {menu && (
             <DropdownMenu
               label={menuLabel}
-              buttonClassName="flex items-center rounded p-1 text-bone-dim transition-colors hover:bg-iron-800 hover:text-bone"
+              buttonClassName="flex items-center rounded p-1 text-ink-muted transition-colors hover:bg-surface-hover hover:text-ink"
               trigger={(
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
                   <circle cx="12" cy="5" r="1.75" />
@@ -489,7 +481,7 @@ export function DropdownMenu({
         {typeof trigger === "function" ? trigger(open) : trigger}
       </button>
       {open && (
-        <div role="menu" className={`absolute top-full z-30 mt-1 overflow-hidden rounded-lg border border-iron-800 bg-iron-950 py-1 shadow-lg ${menuAlignClassName} ${menuWidthClassName}`}>
+        <div role="menu" className={`absolute top-full z-30 mt-1 overflow-hidden rounded-lg border border-edge bg-surface py-1 shadow-lg ${menuAlignClassName} ${menuWidthClassName}`}>
           {children(() => setOpen(false))}
         </div>
       )}
@@ -502,7 +494,7 @@ export function DropdownMenu({
 // <Link> too.
 export function menuItemClass(tone: "default" | "danger" = "default"): string {
   return `block w-full px-3 py-1.5 text-left font-body text-xs transition-colors disabled:opacity-40 ${
-    tone === "danger" ? "text-blood hover:bg-blood/10" : "text-bone-dim hover:bg-iron-900 hover:text-fel-bright"
+    tone === "danger" ? "text-danger hover:bg-danger/10" : "text-ink-muted hover:bg-surface-raised hover:text-accent-strong"
   }`;
 }
 
@@ -513,7 +505,7 @@ export function MenuItem({ tone = "default", className = "", ...props }: ButtonH
 export function SectionHead({ title, right }: { title: string; right?: ReactNode }) {
   return (
     <div className="mb-3 flex items-end justify-between gap-3">
-      <h2 className="rune text-sm text-bone">{title}</h2>
+      <h2 className="rune text-sm text-ink">{title}</h2>
       {right}
     </div>
   );

@@ -1,0 +1,11 @@
+{
+  "format": "overseer-theme-v1",
+  "id": "org.overseer.parchment",
+  "name": "Parchment",
+  "version": "0.1.0",
+  "author": "Overseer",
+  "description": "A warm daylight foundation for the archive.",
+  "appearance": "light",
+  "entrypoints": { "web": "web/theme.css" },
+  "capabilities": ["colors", "typography", "images", "borders", "motion", "syntax", "mermaid"]
+}

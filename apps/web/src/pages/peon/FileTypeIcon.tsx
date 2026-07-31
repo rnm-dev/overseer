@@ -72,7 +72,7 @@ const KIND_APPEARANCE: Record<FileKind, { icon: LucideIcon; color: string }> = {
   typescript: { icon: FileCode, color: "text-blue-400" },
   video: { icon: FileVideo, color: "text-rose-400" },
   web: { icon: FileCode, color: "text-orange-500" },
-  unknown: { icon: File, color: "text-bone-faint" },
+  unknown: { icon: File, color: "text-ink-faint" },
 };
 
 export function fileKindForName(name: string): FileKind {

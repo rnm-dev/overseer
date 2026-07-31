@@ -762,7 +762,7 @@ function PeonSessionDetailPage() {
         aria-live="polite"
       >
         {(historyLoadError || loadingOlder || olderLoadError) && (
-          <p className={`whitespace-nowrap rounded-full border border-white/10 bg-iron-950/75 px-3 py-1.5 font-mono text-xs shadow-lg shadow-black/30 backdrop-blur-xl ${historyLoadError || olderLoadError ? "text-red-300" : "text-bone-muted"}`}>
+          <p className={`whitespace-nowrap rounded-full border border-white/10 bg-surface/75 px-3 py-1.5 font-mono text-xs shadow-lg shadow-black/30 backdrop-blur-xl ${historyLoadError || olderLoadError ? "text-red-300" : "text-ink-muted"}`}>
             {historyLoadError
               ? t("session.history.latestFailed")
               : olderLoadError ? t("session.history.failed") : t("session.history.loading")}
@@ -773,11 +773,11 @@ function PeonSessionDetailPage() {
         {history === null ? (
           showHistorySpinner && (
             <div className="grid h-full place-items-center pt-12">
-              <div className="forge-spin" />
+              <div className="loading-spinner" />
             </div>
           )
         ) : history.length === 0 && live.length === 0 && !liveWork ? (
-          <p className="grid h-full place-items-center pt-12 text-center font-mono text-sm text-bone-faint">{t("session.empty")}</p>
+          <p className="grid h-full place-items-center pt-12 text-center font-mono text-sm text-ink-faint">{t("session.empty")}</p>
         ) : (
           <Virtuoso
             key={sessionKey}
@@ -858,7 +858,7 @@ function PeonSessionDetailPage() {
             <button
               type="button"
               onClick={scrollToBottom}
-              className="pointer-events-auto grid size-10 place-items-center rounded-full border border-iron-700 bg-iron-950/95 text-bone shadow-lg backdrop-blur transition-colors hover:border-ember/60 hover:bg-iron-900 hover:text-ember focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ember/70"
+              className="pointer-events-auto grid size-10 place-items-center rounded-full border border-edge-strong bg-surface/95 text-ink shadow-lg backdrop-blur transition-colors hover:border-warning-strong/60 hover:bg-surface-raised hover:text-warning-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warning-strong/70"
               title={t("session.scrollToBottom")}
               aria-label={t("session.scrollToBottom")}
             >

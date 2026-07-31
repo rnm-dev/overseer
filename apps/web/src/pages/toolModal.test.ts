@@ -12,16 +12,15 @@ test("edit tool details omit the output section", () => {
   assert.equal(toolHasOutputSection(" EDIT "), false);
 });
 
-test("own chat messages use deep forge while other users use the canonical surface", () => {
-  assert.match(OWN_USER_BUBBLE_CLASS, /\bbg-forge-deep\b/);
-  assert.match(OWN_USER_BUBBLE_CLASS, /\btext-bone\b/);
+test("own chat messages use package-owned colors while other users use the canonical surface", () => {
+  assert.match(OWN_USER_BUBBLE_CLASS, /\btheme-user-message\b/);
   assert.doesNotMatch(OWN_USER_BUBBLE_CLASS, /\bsurface\b/);
   assert.match(OTHER_USER_BUBBLE_CLASS, /\bsurface\b/);
-  assert.doesNotMatch(OTHER_USER_BUBBLE_CLASS, /\bbg-forge-deep\b/);
-  assert.match(OTHER_USER_BUBBLE_AUTHOR_CLASS, /\btext-fel-bright\b/);
+  assert.doesNotMatch(OTHER_USER_BUBBLE_CLASS, /\bbg-warning-deep\b/);
+  assert.match(OTHER_USER_BUBBLE_AUTHOR_CLASS, /\btext-accent-strong\b/);
   assert.match(OTHER_USER_BUBBLE_AUTHOR_CLASS, /\bfont-body\b/);
-  assert.match(OWN_USER_BUBBLE_TIME_CLASS, /\btext-bone\/60\b/);
-  assert.match(OTHER_USER_BUBBLE_TIME_CLASS, /\btext-bone-faint\b/);
+  assert.match(OWN_USER_BUBBLE_TIME_CLASS, /\btheme-user-message-meta\b/);
+  assert.match(OTHER_USER_BUBBLE_TIME_CLASS, /\btext-ink-faint\b/);
   assert.match(OWN_USER_BUBBLE_TIME_CLASS, /\bfont-body\b/);
 });
 
@@ -42,7 +41,7 @@ test("a newly tailed own message falls back to the signed-in user's avatar", () 
 });
 
 test("message attachments adapt to bubble ownership and expose compact metadata", () => {
-  assert.match(OWN_ATTACHMENT_CLASS, /\bbg-iron-950\/25\b/);
+  assert.match(OWN_ATTACHMENT_CLASS, /\bbg-surface\/25\b/);
   assert.match(OTHER_ATTACHMENT_CLASS, /\bon-surface\b/);
   assert.equal(attachmentMeta({ type: "image", name: "preview.png", size: 245_760 }), "PNG · 240 KB");
   assert.equal(attachmentMeta({ type: "file", name: "notes", size: 1_258_291 }), "FILE · 1.2 MB");

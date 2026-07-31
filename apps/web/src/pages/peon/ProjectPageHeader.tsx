@@ -18,7 +18,7 @@ export function ProjectMobileHeader({
   return <ContentHeaderLayout
     compact
     identity={(
-      <div className="min-w-0 flex-1 truncate font-display text-sm font-semibold text-bone" title={title}>{title}</div>
+      <div className="min-w-0 flex-1 truncate font-display text-sm font-semibold text-ink" title={title}>{title}</div>
     )}
     actions={<Link to={newSessionTo} className="btn btn-sm">{t("newSession.new")}</Link>}
   />;
@@ -42,7 +42,7 @@ export function ProjectHeaderLayout({
         <ContentHeaderTitle title={title}>{title}</ContentHeaderTitle>
       )}
       actions={showNewSession
-        ? <Link to={newSessionTo} className="btn btn-fel btn-sm h-7">{t("newSession.new")}</Link>
+        ? <Link to={newSessionTo} className="btn btn-accent btn-sm h-7">{t("newSession.new")}</Link>
         : undefined}
     />
   );

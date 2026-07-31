@@ -13,12 +13,12 @@ export function SessionPresence({ viewers, size = "sm" }: { viewers: PresenceUse
     <div className="flex flex-none -space-x-1.5" aria-label={viewers.map(displayName).join(", ")}>
       {visible.map((viewer) => (
         <PresenceTooltip key={viewer.userId} text={displayName(viewer)}>
-          <Avatar src={viewer.avatarUrl} label={displayName(viewer)} tooltip={null} size={size} decorative className="border-iron-950 ring-1 ring-fel/50" />
+          <Avatar src={viewer.avatarUrl} label={displayName(viewer)} tooltip={null} size={size} decorative className="border-edge-subtle ring-1 ring-accent/50" />
         </PresenceTooltip>
       ))}
       {viewers.length > MAX_VISIBLE && (
         <PresenceTooltip text={viewers.slice(MAX_VISIBLE).map(displayName).join("\n")}>
-          <span className={`${size === "xs" ? "h-4 w-4 text-[0.48rem]" : "h-5 w-5 text-[0.55rem]"} grid place-items-center rounded-full border border-iron-950 bg-iron-800 font-mono text-bone-dim ring-1 ring-fel/50`}>
+          <span className={`${size === "xs" ? "h-4 w-4 text-[0.48rem]" : "h-5 w-5 text-[0.55rem]"} grid place-items-center rounded-full border border-edge-subtle bg-surface-hover font-mono text-ink-muted ring-1 ring-accent/50`}>
             +{viewers.length - MAX_VISIBLE}
           </span>
         </PresenceTooltip>
@@ -49,7 +49,7 @@ function PresenceTooltip({ text, children }: { text: string; children: ReactNode
       {position && createPortal(
         <span
           role="tooltip"
-          className="pointer-events-none fixed z-[100] w-max max-w-56 -translate-x-1/2 whitespace-pre-line rounded border border-iron-700 bg-iron-950 px-2 py-1.5 text-left font-mono text-[0.65rem] font-normal leading-relaxed text-bone shadow-lg"
+          className="pointer-events-none fixed z-[100] w-max max-w-56 -translate-x-1/2 whitespace-pre-line rounded border border-edge-strong bg-surface px-2 py-1.5 text-left font-mono text-[0.65rem] font-normal leading-relaxed text-ink shadow-lg"
           style={{
             left: position.left,
             top: position.top,

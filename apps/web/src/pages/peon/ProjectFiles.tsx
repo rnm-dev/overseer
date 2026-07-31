@@ -236,8 +236,8 @@ export function ProjectFileTree({ filesBase, activePath, onOpenFile, onFileMoved
     const state = directories[path];
     if (!state) return null;
     if (state.loading) return <FileTreeLoader depth={depth} label={t("app.loading")} />;
-    if (state.error) return <div className="px-3 py-2 font-mono text-[0.68rem] text-blood" style={{ paddingLeft: 12 + depth * 16 }}>⚠ {state.error}</div>;
-    if (path === "" && state.entries.length === 0) return <p className="p-3 font-mono text-xs text-bone-faint">{t("proj.files.empty")}</p>;
+    if (state.error) return <div className="px-3 py-2 font-mono text-[0.68rem] text-danger" style={{ paddingLeft: 12 + depth * 16 }}>⚠ {state.error}</div>;
+    if (path === "" && state.entries.length === 0) return <p className="p-3 font-mono text-xs text-ink-faint">{t("proj.files.empty")}</p>;
     return state.entries.map((entry) => {
       const fullPath = path ? `${path}/${entry.name}` : entry.name;
       const directory = isDirectory(entry);
@@ -261,14 +261,14 @@ export function ProjectFileTree({ filesBase, activePath, onOpenFile, onFileMoved
               setDragSource(fullPath);
             } : undefined}
             onDragEnd={!directory ? () => { setDragSource(null); setDropTarget(null); } : undefined}
-            className={`group flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left font-mono text-xs transition-[background-color,color,box-shadow,opacity] duration-150 ${dragSource === fullPath ? "opacity-40" : "opacity-100"} ${dropTarget === fullPath ? "bg-fel/20 text-bone shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--color-fel-deep)_85%,transparent),0_2px_10px_rgba(0,0,0,0.18)]" : activePath === fullPath ? "bg-iron-800 text-fel-bright" : "text-bone-dim hover:bg-iron-800/85 hover:text-bone"}`}
+            className={`group flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left font-mono text-xs transition-[background-color,color,box-shadow,opacity] duration-150 ${dragSource === fullPath ? "opacity-40" : "opacity-100"} ${dropTarget === fullPath ? "bg-accent/20 text-ink shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--color-accent-deep)_85%,transparent),0_2px_10px_rgba(0,0,0,0.18)]" : activePath === fullPath ? "bg-surface-hover text-accent-strong" : "text-ink-muted hover:bg-surface-hover/85 hover:text-ink"}`}
             style={{ paddingLeft: 8 + depth * 16 }}
             title={fullPath}
           >
-            {directory ? <ChevronRight size={13} className={`flex-none text-bone-faint transition-[transform,color] group-hover:text-bone-dim ${open ? "rotate-90" : ""}`} aria-hidden /> : <span className="w-[13px] flex-none" />}
-            {directory ? (loading ? <LoaderCircle size={15} className="flex-none animate-spin text-fel-bright" aria-hidden /> : open ? <FolderOpen size={15} className="flex-none text-fel-deep transition-colors group-hover:text-fel-bright" aria-hidden /> : <Folder size={15} className="flex-none text-fel-deep transition-colors group-hover:text-fel-bright" aria-hidden />) : <FileTypeIcon name={entry.name} className="transition-[color,filter] group-hover:brightness-125" />}
+            {directory ? <ChevronRight size={13} className={`flex-none text-ink-faint transition-[transform,color] group-hover:text-ink-muted ${open ? "rotate-90" : ""}`} aria-hidden /> : <span className="w-[13px] flex-none" />}
+            {directory ? (loading ? <LoaderCircle size={15} className="flex-none animate-spin text-accent-strong" aria-hidden /> : open ? <FolderOpen size={15} className="flex-none text-accent-deep transition-colors group-hover:text-accent-strong" aria-hidden /> : <Folder size={15} className="flex-none text-accent-deep transition-colors group-hover:text-accent-strong" aria-hidden />) : <FileTypeIcon name={entry.name} className="transition-[color,filter] group-hover:brightness-125" />}
             <span className="min-w-0 flex-1 truncate">{entry.name}</span>
-            {!directory && entry.size !== undefined && <span className="flex-none text-[0.62rem] text-bone-faint">{formatFileSize(entry.size)}</span>}
+            {!directory && entry.size !== undefined && <span className="flex-none text-[0.62rem] text-ink-faint">{formatFileSize(entry.size)}</span>}
           </button>
           {open && renderDirectory(fullPath, depth + 1)}
         </div>
@@ -278,7 +278,7 @@ export function ProjectFileTree({ filesBase, activePath, onOpenFile, onFileMoved
 
   return (
     <div
-      className={`group/file-tree relative flex min-h-0 flex-col rounded-xl transition-[background-color,box-shadow] duration-150 ${dropTarget === "" ? "bg-fel/[0.06] shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--color-fel-deep)_75%,transparent)]" : ""} ${className}`}
+      className={`group/file-tree relative flex min-h-0 flex-col rounded-xl transition-[background-color,box-shadow] duration-150 ${dropTarget === "" ? "bg-accent/[0.06] shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--color-accent-deep)_75%,transparent)]" : ""} ${className}`}
       onDragEnter={(event) => acceptDrag(event, "")}
       onDragOver={(event) => acceptDrag(event, "")}
       onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropTarget(null); }}
@@ -288,23 +288,23 @@ export function ProjectFileTree({ filesBase, activePath, onOpenFile, onFileMoved
         type="button"
         onClick={() => void refreshExpanded()}
         disabled={refreshing}
-        className="absolute right-2 top-2 z-10 grid size-7 place-items-center rounded-md bg-iron-950/85 text-bone-faint opacity-70 shadow-sm backdrop-blur transition-[opacity,color,background-color] hover:bg-iron-800 hover:text-fel-bright hover:opacity-100 focus-visible:opacity-100 disabled:cursor-wait"
+        className="absolute right-2 top-2 z-10 grid size-7 place-items-center rounded-md bg-surface/85 text-ink-faint opacity-70 shadow-sm backdrop-blur transition-[opacity,color,background-color] hover:bg-surface-hover hover:text-accent-strong hover:opacity-100 focus-visible:opacity-100 disabled:cursor-wait"
         title={t("proj.files.refresh")}
         aria-label={t("proj.files.refresh")}
       >
         <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} aria-hidden />
       </button>
       <div className="min-h-0 flex-1 overflow-y-auto p-1.5">{renderDirectory("", 0)}</div>
-      {dropTarget === "" && <div className="pointer-events-none absolute inset-x-3 bottom-3 rounded-lg bg-iron-950/95 px-3 py-2 text-center font-mono text-xs text-fel-bright shadow-lg">{dragSource ? t("proj.files.moveRoot") : t("proj.files.dropRoot")}</div>}
+      {dropTarget === "" && <div className="pointer-events-none absolute inset-x-3 bottom-3 rounded-lg bg-surface/95 px-3 py-2 text-center font-mono text-xs text-accent-strong shadow-lg">{dragSource ? t("proj.files.moveRoot") : t("proj.files.dropRoot")}</div>}
       {upload && (
-        <div className={`flex flex-none items-center gap-2 bg-black/10 px-3 py-2 font-mono text-[0.68rem] ${upload.error ? "text-blood" : "text-bone-faint"}`} title={upload.error}>
-          {upload.done < upload.total && <LoaderCircle size={13} className="flex-none animate-spin text-fel-deep" aria-hidden />}
+        <div className={`flex flex-none items-center gap-2 bg-black/10 px-3 py-2 font-mono text-[0.68rem] ${upload.error ? "text-danger" : "text-ink-faint"}`} title={upload.error}>
+          {upload.done < upload.total && <LoaderCircle size={13} className="flex-none animate-spin text-accent-deep" aria-hidden />}
           <span className="truncate">{upload.error || (upload.done < upload.total ? t("proj.files.uploading", { done: upload.done, total: upload.total }) : t("proj.files.uploaded", { n: upload.total }))}</span>
         </div>
       )}
       {move && (
-        <div className={`flex flex-none items-center gap-2 bg-black/10 px-3 py-2 font-mono text-[0.68rem] ${move.error ? "text-blood" : "text-bone-faint"}`} title={move.error}>
-          {move.running && <LoaderCircle size={13} className="flex-none animate-spin text-fel-deep" aria-hidden />}
+        <div className={`flex flex-none items-center gap-2 bg-black/10 px-3 py-2 font-mono text-[0.68rem] ${move.error ? "text-danger" : "text-ink-faint"}`} title={move.error}>
+          {move.running && <LoaderCircle size={13} className="flex-none animate-spin text-accent-deep" aria-hidden />}
           <span className="truncate">{move.error || (move.running ? t("proj.files.moving") : t("proj.files.moved"))}</span>
         </div>
       )}
@@ -322,8 +322,8 @@ function FileTreeLoader({ depth, label }: { depth: number; label: string }) {
           className="flex h-7 items-center gap-2 rounded px-2"
           style={{ paddingLeft: 8 + depth * 16, animationDelay: `${index * 90}ms` }}
         >
-          <span className="h-2.5 w-2.5 flex-none animate-pulse rounded-sm bg-iron-700/70" style={{ animationDelay: `${index * 90}ms` }} />
-          <span className="h-2.5 animate-pulse rounded-full bg-iron-700/70" style={{ width, animationDelay: `${index * 90}ms` }} />
+          <span className="h-2.5 w-2.5 flex-none animate-pulse rounded-sm bg-surface-active/70" style={{ animationDelay: `${index * 90}ms` }} />
+          <span className="h-2.5 animate-pulse rounded-full bg-surface-active/70" style={{ width, animationDelay: `${index * 90}ms` }} />
         </div>
       ))}
       <span className="sr-only">{label}</span>
@@ -340,12 +340,12 @@ export function ProjectFilePreviewModal({ source, path, size, viewerUrl, onClose
 
   return createPortal(
     <div className="fixed inset-0 z-50 grid place-items-center bg-[radial-gradient(circle_at_50%_18%,rgba(149,201,103,0.08),transparent_38%),rgba(2,4,3,0.82)] p-4 backdrop-blur-md" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <section role="dialog" aria-modal="true" aria-label={path} className="relative flex h-[min(88vh,56rem)] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-iron-700/80 bg-iron-950/95 shadow-[0_28px_90px_rgba(0,0,0,0.65),0_0_0_1px_rgba(149,201,103,0.04)]">
-        <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 z-10 h-px bg-gradient-to-r from-transparent via-fel/45 to-transparent" />
-        <header className="flex items-center gap-3 border-b border-iron-800 bg-iron-900/70 px-4 py-3.5">
+      <section role="dialog" aria-modal="true" aria-label={path} className="relative flex h-[min(88vh,56rem)] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-edge-strong/80 bg-surface/95 shadow-[0_28px_90px_rgba(0,0,0,0.65),0_0_0_1px_rgba(149,201,103,0.04)]">
+        <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 z-10 h-px bg-gradient-to-r from-transparent via-accent/45 to-transparent" />
+        <header className="flex items-center gap-3 border-b border-edge bg-surface-raised/70 px-4 py-3.5">
           <FileTypeIcon name={path} size={16} />
-          <span className="min-w-0 flex-1 truncate font-mono text-xs text-bone-dim" title={path}>{path}</span>
-          <button type="button" onClick={onClose} className="grid h-8 w-8 place-items-center rounded-lg border border-transparent text-bone-faint transition-colors hover:border-iron-700 hover:bg-iron-800 hover:text-bone" aria-label={t("session.preview.close")}><X size={18} /></button>
+          <span className="min-w-0 flex-1 truncate font-mono text-xs text-ink-muted" title={path}>{path}</span>
+          <button type="button" onClick={onClose} className="grid h-8 w-8 place-items-center rounded-lg border border-transparent text-ink-faint transition-colors hover:border-edge-strong hover:bg-surface-hover hover:text-ink" aria-label={t("session.preview.close")}><X size={18} /></button>
         </header>
         <div className="min-h-0 flex-1 overflow-auto">
           {browserHtml

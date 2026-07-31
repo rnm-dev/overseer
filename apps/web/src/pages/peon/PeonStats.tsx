@@ -112,8 +112,8 @@ export function PeonStats() {
     };
   }, [base, peon.online, period, t]);
 
-  if (!peon.online) return <p className="font-mono text-sm text-bone-faint">{t("peon.offlineNote")}</p>;
-  if (unsupported) return <p className="font-mono text-sm text-bone-faint">{t("peon.unsupported")}</p>;
+  if (!peon.online) return <p className="font-mono text-sm text-ink-faint">{t("peon.offlineNote")}</p>;
+  if (unsupported) return <p className="font-mono text-sm text-ink-faint">{t("peon.unsupported")}</p>;
 
   const outcomes = stats?.outcomeCounts ? Object.entries(stats.outcomeCounts) : [];
   const missingUsage = stats?.sessionsMissingUsage ?? 0;
@@ -136,7 +136,7 @@ export function PeonStats() {
             key={p}
             onClick={() => setPeriod(p)}
             className={`rounded-sm border px-3 py-1.5 font-display text-[0.68rem] font-bold uppercase tracking-[0.12em] transition-colors ${
-              period === p ? "border-fel text-fel-bright" : "border-iron-800 text-bone-dim hover:text-bone"
+              period === p ? "border-accent text-accent-strong" : "border-edge text-ink-muted hover:text-ink"
             }`}
           >
             {t(`peon.stats.period.${p}`)}
@@ -144,24 +144,24 @@ export function PeonStats() {
         ))}
       </div>
 
-      {error && <p className="border-l-2 border-blood bg-blood/5 py-2 pl-3 font-mono text-sm text-blood">⚠ {error}</p>}
-      {!stats && !error && <div className="forge-spin" />}
+      {error && <p className="border-l-2 border-danger bg-danger/5 py-2 pl-3 font-mono text-sm text-danger">⚠ {error}</p>}
+      {!stats && !error && <div className="loading-spinner" />}
       {stats && (
         <>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <StatPlate value={fmtCount(stats.sessionCount)} label={t("peon.stats.sessions")} />
-            <StatPlate value={fmtCount(stats.totalOutputTokens)} label={t("peon.stats.outputTokens")} tone="forge" />
-            <StatPlate value={fmtCost(stats.totalCostUsd)} label={t("peon.stats.cost")} tone="bone" />
-            <StatPlate value={fmtDuration(stats.totalDurationMs)} label={t("peon.stats.duration")} tone="bone" />
+            <StatPlate value={fmtCount(stats.totalOutputTokens)} label={t("peon.stats.outputTokens")} tone="warning" />
+            <StatPlate value={fmtCost(stats.totalCostUsd)} label={t("peon.stats.cost")} tone="ink" />
+            <StatPlate value={fmtDuration(stats.totalDurationMs)} label={t("peon.stats.duration")} tone="ink" />
           </div>
 
-          {missingUsage > 0 && <p className="font-mono text-xs text-bone-faint">{t("peon.stats.missingUsage", { n: missingUsage })}</p>}
+          {missingUsage > 0 && <p className="font-mono text-xs text-ink-faint">{t("peon.stats.missingUsage", { n: missingUsage })}</p>}
 
           {hasBreakdown && (
-            <div className="flex flex-wrap gap-x-4 gap-y-1 font-mono text-xs text-bone-dim">
+            <div className="flex flex-wrap gap-x-4 gap-y-1 font-mono text-xs text-ink-muted">
               {breakdown.map(([key, n]) => (
                 <span key={key}>
-                  <span className="text-bone-faint">{t(key)}</span> {fmtCount(n)}
+                  <span className="text-ink-faint">{t(key)}</span> {fmtCount(n)}
                 </span>
               ))}
             </div>
@@ -190,15 +190,15 @@ export function PeonStats() {
 
       {stats && (
         <Card className="px-5 py-4">
-          <div className="mb-3 font-display text-[0.6rem] uppercase tracking-[0.16em] text-bone-dim">{t("peon.stats.outcomes")}</div>
+          <div className="mb-3 font-display text-[0.6rem] uppercase tracking-[0.16em] text-ink-muted">{t("peon.stats.outcomes")}</div>
           {outcomes.length === 0 ? (
-            <p className="font-mono text-sm text-bone-faint">{t("peon.stats.empty")}</p>
+            <p className="font-mono text-sm text-ink-faint">{t("peon.stats.empty")}</p>
           ) : (
             <ul className="space-y-2">
               {outcomes.map(([outcome, n]) => (
                 <li key={outcome} className="flex items-center justify-between gap-3">
                   <Badge tone={outcomeTone(outcome)}>{outcome.replace(/_/g, " ")}</Badge>
-                  <span className="font-mono text-sm text-bone">{fmtCount(n)}</span>
+                  <span className="font-mono text-sm text-ink">{fmtCount(n)}</span>
                 </li>
               ))}
             </ul>
@@ -241,11 +241,11 @@ function ProviderUsage({
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className="font-display text-sm font-bold uppercase tracking-[0.12em] text-bone">{providerName}</h3>
+            <h3 className="font-display text-sm font-bold uppercase tracking-[0.12em] text-ink">{providerName}</h3>
             <Badge tone={statusTone}>{statusLabel}</Badge>
           </div>
           {quota.data?.accountEmail && (
-            <p className="mt-1 font-mono text-xs text-bone-dim">{t("peon.quota.signedIn", { email: quota.data.accountEmail })}</p>
+            <p className="mt-1 font-mono text-xs text-ink-muted">{t("peon.quota.signedIn", { email: quota.data.accountEmail })}</p>
           )}
         </div>
         <Button variant="ghost" size="sm" disabled={refreshing} onClick={onRefresh}>
@@ -253,23 +253,23 @@ function ProviderUsage({
         </Button>
       </div>
 
-      {quotaError && <p className="mt-3 border-l-2 border-blood pl-3 font-mono text-xs text-blood">{quotaError}</p>}
+      {quotaError && <p className="mt-3 border-l-2 border-danger pl-3 font-mono text-xs text-danger">{quotaError}</p>}
 
       <section className="mt-5">
-        <div className="mb-2 font-display text-[0.6rem] uppercase tracking-[0.16em] text-bone-dim">{t("peon.quota.recorded")}</div>
+        <div className="mb-2 font-display text-[0.6rem] uppercase tracking-[0.16em] text-ink-muted">{t("peon.quota.recorded")}</div>
         <div className="grid grid-cols-3 gap-2">
-          <StatPlate value={fmtCount(recordedTokens)} label={t("peon.quota.tokens")} tone="forge" />
-          <StatPlate value={fmtCost(recordedCost)} label={t("peon.stats.cost")} tone="bone" />
-          <StatPlate value={fmtDuration(recordedDuration)} label={t("peon.stats.duration")} tone="bone" />
+          <StatPlate value={fmtCount(recordedTokens)} label={t("peon.quota.tokens")} tone="warning" />
+          <StatPlate value={fmtCost(recordedCost)} label={t("peon.stats.cost")} tone="ink" />
+          <StatPlate value={fmtDuration(recordedDuration)} label={t("peon.stats.duration")} tone="ink" />
         </div>
         {models.length === 0 ? (
-          <p className="mt-3 font-mono text-xs text-bone-faint">{t("peon.quota.noRecorded")}</p>
+          <p className="mt-3 font-mono text-xs text-ink-faint">{t("peon.quota.noRecorded")}</p>
         ) : (
           <ul className="mt-3 space-y-2">
             {models.map((model, index) => (
               <li key={`${model.model ?? "unknown"}-${index}`} className="flex items-center justify-between gap-3 font-mono text-xs">
-                <span className="min-w-0 truncate text-bone">{model.model ?? "—"}</span>
-                <span className="shrink-0 text-bone-faint">
+                <span className="min-w-0 truncate text-ink">{model.model ?? "—"}</span>
+                <span className="shrink-0 text-ink-faint">
                   {fmtCount(model.totalTokens)} · {fmtCost(model.totalCostUsd)} · {fmtDuration(model.totalDurationMs)}
                 </span>
               </li>
@@ -279,11 +279,11 @@ function ProviderUsage({
       </section>
 
       <section className="mt-5">
-        <div className="mb-2 font-display text-[0.6rem] uppercase tracking-[0.16em] text-bone-dim">{t("peon.quota.accountLimits")}</div>
+        <div className="mb-2 font-display text-[0.6rem] uppercase tracking-[0.16em] text-ink-muted">{t("peon.quota.accountLimits")}</div>
         {quota.loading && !quota.data ? (
-          <div className="forge-spin" />
+          <div className="loading-spinner" />
         ) : (quota.data?.windows.length ?? 0) === 0 ? (
-          <p className="font-mono text-xs text-bone-faint">{t("peon.quota.noLimits")}</p>
+          <p className="font-mono text-xs text-ink-faint">{t("peon.quota.noLimits")}</p>
         ) : (
           <ul className="space-y-3">
             {quota.data?.windows.map((window) => {
@@ -291,16 +291,16 @@ function ProviderUsage({
               return (
                 <li key={window.id}>
                   <div className="mb-1 flex items-center justify-between gap-3 font-mono text-xs">
-                    <span className="text-bone">
+                    <span className="text-ink">
                       {window.label}
-                      {window.modelIds?.length ? <span className="ml-1 text-bone-faint">· {window.modelIds.join(", ")}</span> : null}
+                      {window.modelIds?.length ? <span className="ml-1 text-ink-faint">· {window.modelIds.join(", ")}</span> : null}
                     </span>
-                    <span className="shrink-0 text-bone-dim">{window.usedPercent.toFixed(0)}%</span>
+                    <span className="shrink-0 text-ink-muted">{window.usedPercent.toFixed(0)}%</span>
                   </div>
-                  <div className="h-2 overflow-hidden rounded-sm bg-iron-900">
-                    <div className="h-full bg-fel transition-[width]" style={{ width: `${percent}%` }} />
+                  <div className="h-2 overflow-hidden rounded-sm bg-surface-raised">
+                    <div className="h-full bg-accent transition-[width]" style={{ width: `${percent}%` }} />
                   </div>
-                  <div className="mt-1 font-mono text-[0.68rem] text-bone-faint">
+                  <div className="mt-1 font-mono text-[0.68rem] text-ink-faint">
                     {t("peon.quota.resets", { countdown: fmtReset(window.resetsAt, now) })}
                   </div>
                 </li>
@@ -311,8 +311,8 @@ function ProviderUsage({
       </section>
 
       {credits && Object.values(credits).some((value) => value !== undefined) && (
-        <section className="mt-5 border-t border-iron-800 pt-3 font-mono text-xs text-bone-dim">
-          <div className="mb-2 font-display text-[0.6rem] uppercase tracking-[0.16em] text-bone-dim">{t("peon.quota.credits")}</div>
+        <section className="mt-5 border-t border-edge pt-3 font-mono text-xs text-ink-muted">
+          <div className="mb-2 font-display text-[0.6rem] uppercase tracking-[0.16em] text-ink-muted">{t("peon.quota.credits")}</div>
           <div className="flex flex-wrap gap-x-4 gap-y-1">
             {typeof credits.balance === "number" && <span>{t("peon.quota.balance")}: {fmtCredit(credits.balance, credits.currency)}</span>}
             {typeof credits.used === "number" && <span>{t("peon.quota.used")}: {fmtCredit(credits.used, credits.currency)}</span>}
@@ -339,16 +339,16 @@ function CapabilitiesInventory({ state }: { state: CapabilitiesState }) {
   const partial = Boolean(inventoryError && hasItems);
 
   return (
-    <section className="mt-5 border-t border-iron-800 pt-4">
-      <div className="mb-2 font-display text-[0.6rem] uppercase tracking-[0.16em] text-bone-dim">
+    <section className="mt-5 border-t border-edge pt-4">
+      <div className="mb-2 font-display text-[0.6rem] uppercase tracking-[0.16em] text-ink-muted">
         {t("peon.capabilities.inventory")}
       </div>
       {state.loading && !inventory ? (
-        <div className="forge-spin" />
+        <div className="loading-spinner" />
       ) : (
         <>
           {inventoryError && (
-            <p className={`mb-3 border-l-2 pl-3 font-mono text-xs ${partial ? "border-forge text-forge" : "border-blood text-blood"}`}>
+            <p className={`mb-3 border-l-2 pl-3 font-mono text-xs ${partial ? "border-warning text-warning" : "border-danger text-danger"}`}>
               {partial ? `${t("peon.capabilities.partial")}: ` : ""}{inventoryError}
             </p>
           )}
@@ -364,25 +364,25 @@ function CapabilitiesInventory({ state }: { state: CapabilitiesState }) {
 function CapabilityGroup({ label, items }: { label: string; items: CapabilityItem[] }) {
   const t = useT();
   return (
-    <details className="border-t border-iron-800 first:border-t-0">
-      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 py-3 font-display text-xs font-medium text-bone marker:hidden">
+    <details className="border-t border-edge first:border-t-0">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 py-3 font-display text-xs font-medium text-ink marker:hidden">
         <span>{label}</span>
-        <span className="rounded-sm bg-iron-900 px-2 py-0.5 font-mono text-[0.68rem] text-bone-dim">{items.length}</span>
+        <span className="rounded-sm bg-surface-raised px-2 py-0.5 font-mono text-[0.68rem] text-ink-muted">{items.length}</span>
       </summary>
       {items.length === 0 ? (
-        <p className="pb-3 font-mono text-xs text-bone-faint">{t("peon.capabilities.empty")}</p>
+        <p className="pb-3 font-mono text-xs text-ink-faint">{t("peon.capabilities.empty")}</p>
       ) : (
         <ul className="divide-y divide-iron-800 pb-2">
           {items.map((item) => (
             <li key={item.id} className="py-2.5">
               <div className="flex items-start justify-between gap-3">
-                <span className="min-w-0 break-words font-mono text-xs text-bone">{item.name}</span>
+                <span className="min-w-0 break-words font-mono text-xs text-ink">{item.name}</span>
                 <Badge tone={item.enabled ? "green" : "neutral"}>
                   {t(item.enabled ? "peon.capabilities.enabled" : "peon.capabilities.disabled")}
                 </Badge>
               </div>
               {(item.version || item.source || item.transport) && (
-                <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 font-mono text-[0.68rem] text-bone-faint">
+                <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 font-mono text-[0.68rem] text-ink-faint">
                   {item.version && <span>{t("peon.capabilities.version")}: {item.version}</span>}
                   {item.source && <span>{t("peon.capabilities.source")}: {item.source}</span>}
                   {item.transport && <span>{t("peon.capabilities.transport")}: {item.transport}</span>}

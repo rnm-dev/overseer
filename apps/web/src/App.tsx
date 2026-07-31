@@ -41,8 +41,8 @@ function Loading() {
   return (
     <div className="grid min-h-screen place-items-center gap-4">
       <div className="flex flex-col items-center gap-4">
-        <div className="forge-spin" />
-        <p className="rune text-xs text-bone-dim">{t("app.loading")}</p>
+        <div className="loading-spinner" />
+        <p className="rune text-xs text-ink-muted">{t("app.loading")}</p>
       </div>
     </div>
   );
@@ -75,12 +75,12 @@ function PeonSessionsEmpty() {
     return () => { active = false; };
   }, [navigate, peon.peonId, wsId]);
 
-  if (loading) return <div className="grid min-h-[55vh] place-items-center"><div className="forge-spin" /></div>;
+  if (loading) return <div className="grid min-h-[55vh] place-items-center"><div className="loading-spinner" /></div>;
   return (
     <div className="grid min-h-[55vh] place-items-center text-center">
       <div>
-        <h1 className="font-display text-xl font-bold text-bone">{t("peon.tab.sessions")}</h1>
-        <p className="mt-2 font-mono text-sm text-bone-faint">{t("sessions.choose")}</p>
+        <h1 className="font-display text-xl font-bold text-ink">{t("peon.tab.sessions")}</h1>
+        <p className="mt-2 font-mono text-sm text-ink-faint">{t("sessions.choose")}</p>
       </div>
     </div>
   );

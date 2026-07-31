@@ -18,7 +18,7 @@ export function RouteTabs({
 }) {
   return (
     <nav
-      className={`flex overflow-x-auto border-b border-iron-700 ${className}`}
+      className={`flex overflow-x-auto border-b border-edge-strong ${className}`}
       aria-label={ariaLabel}
     >
       {tabs.map((tab) => (
@@ -29,8 +29,8 @@ export function RouteTabs({
           className={({ isActive }) =>
             `shrink-0 whitespace-nowrap border-b-2 px-4 py-2.5 font-display text-sm font-bold transition-colors ${
               isActive
-                ? "border-fel text-fel-bright"
-                : "border-transparent text-bone-dim hover:text-bone"
+                ? "border-accent text-accent-strong"
+                : "border-transparent text-ink-muted hover:text-ink"
             }`
           }
         >

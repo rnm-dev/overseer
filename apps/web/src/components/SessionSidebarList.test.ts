@@ -63,7 +63,7 @@ test("stale catalog rows are visibly marked without changing their session statu
 
   assert.match(markup, />stale</);
   assert.match(markup, /opacity-70/);
-  assert.match(markup, /bg-fel/);
+  assert.match(markup, /bg-accent/);
 });
 
 test("session rows do not render a kebab menu trigger", () => {
@@ -104,9 +104,9 @@ test("rename starts from the title currently displayed in the sidebar", () => {
 });
 
 test("session status edges prioritize running green, then unread completion amber", () => {
-  assert.match(sessionStatusEdgeClass("running", true), /bg-fel-bright/);
-  assert.match(sessionStatusEdgeClass("running", true), /status-edge status-edge--fel/);
-  assert.match(sessionStatusEdgeClass("completed", true), /bg-forge/);
-  assert.match(sessionStatusEdgeClass("completed", true), /status-edge status-edge--forge/);
-  assert.equal(sessionStatusEdgeClass("completed", false), "bg-bone-faint/40");
+  assert.match(sessionStatusEdgeClass("running", true), /bg-accent-strong/);
+  assert.match(sessionStatusEdgeClass("running", true), /status-edge status-edge--accent/);
+  assert.match(sessionStatusEdgeClass("completed", true), /bg-warning/);
+  assert.match(sessionStatusEdgeClass("completed", true), /status-edge status-edge--warning/);
+  assert.equal(sessionStatusEdgeClass("completed", false), "bg-ink-faint/40");
 });

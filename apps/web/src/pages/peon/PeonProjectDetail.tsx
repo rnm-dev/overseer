@@ -59,10 +59,10 @@ export function ProjectRecentSessions({
 
   return (
     <Card className="overflow-hidden">
-      <header className="flex min-h-12 items-center gap-3 border-b border-iron-800/90 bg-gradient-to-r from-forge/[0.06] via-transparent to-transparent px-5 py-2">
-        <h2 className="min-w-0 flex-1 font-display text-sm font-bold tracking-wide text-bone">{t("peon.dash.recentSessions")}</h2>
+      <header className="flex min-h-12 items-center gap-3 border-b border-edge/90 bg-gradient-to-r from-warning/[0.06] via-transparent to-transparent px-5 py-2">
+        <h2 className="min-w-0 flex-1 font-display text-sm font-bold tracking-wide text-ink">{t("peon.dash.recentSessions")}</h2>
         <span className="hidden md:inline-flex">
-          <Link to={newSessionTo} className="btn btn-fel btn-sm h-7">{t("newSession.new")}</Link>
+          <Link to={newSessionTo} className="btn btn-accent btn-sm h-7">{t("newSession.new")}</Link>
         </span>
       </header>
 
@@ -82,16 +82,16 @@ export function ProjectRecentSessions({
           />
         ) : loading ? (
           <div className="grid min-h-28 place-items-center">
-            <span className="forge-spin scale-75" role="status" aria-label={t("sessions.loading")} />
+            <span className="loading-spinner scale-75" role="status" aria-label={t("sessions.loading")} />
           </div>
         ) : error ? (
-          <p className="px-3 py-8 text-center font-mono text-xs text-blood">⚠ {t("error.loadFailed")}</p>
+          <p className="px-3 py-8 text-center font-mono text-xs text-danger">⚠ {t("error.loadFailed")}</p>
         ) : (
-          <p className="px-3 py-8 text-center font-body text-xs text-bone-faint">{t("peon.dash.noSessions")}</p>
+          <p className="px-3 py-8 text-center font-body text-xs text-ink-faint">{t("peon.dash.noSessions")}</p>
         )}
       </div>
       {recent.length > 0 && (
-        <footer className="border-t border-iron-800/90 px-5 py-2.5 text-right font-mono text-xs tabular-nums text-bone-faint">
+        <footer className="border-t border-edge/90 px-5 py-2.5 text-right font-mono text-xs tabular-nums text-ink-faint">
           {t("peon.projects.sessions", { n: recent.length })}
         </footer>
       )}
@@ -140,11 +140,11 @@ export function PeonProjectDetail() {
           <ProjectDocumentation base={base} projectId={detail.projectId ?? null} />
         ) : detailErr ? (
           <Card className="grid min-h-40 place-items-center px-6 py-8">
-            <p className="font-mono text-xs text-blood">⚠ {t("error.loadFailed")}</p>
+            <p className="font-mono text-xs text-danger">⚠ {t("error.loadFailed")}</p>
           </Card>
         ) : (
           <Card className="grid min-h-40 place-items-center">
-            <span className="forge-spin" role="status" aria-label={t("proj.docs.loading")} />
+            <span className="loading-spinner" role="status" aria-label={t("proj.docs.loading")} />
           </Card>
         )}
       <ProjectRecentSessions

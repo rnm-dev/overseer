@@ -2,8 +2,9 @@ import { useEffect, useState } from "react";
 import { useAuth } from "../auth";
 import { api, ApiError } from "../api";
 import { useT } from "../i18n";
-import { Skull } from "lucide-react";
+import { Palette, Skull } from "lucide-react";
 import { GithubMark, LocaleSwitcher } from "../ui";
+import { useTheme } from "../features/themes/ThemeProvider";
 
 // Two doors into the same session: an email + password form, and GitHub. Both
 // end in the server's HttpOnly cookie, and an account registered here links to
@@ -26,6 +27,7 @@ interface AuthMethods {
 
 export function Login() {
   const { loginWithGithub, signInWithPassword, registerWithPassword } = useAuth();
+  const { theme, themes, selectTheme } = useTheme();
   const t = useT();
   const [mode, setMode] = useState<Mode>("signIn");
   const [email, setEmail] = useState("");
@@ -70,7 +72,20 @@ export function Login() {
 
   return (
     <div className="auth-scene">
-      <LocaleSwitcher className="fixed right-4 top-4" />
+      <div className="auth-controls">
+        <label className="auth-theme-picker">
+          <Palette size={14} aria-hidden />
+          <span className="sr-only">{t("user.theme")}</span>
+          <select
+            aria-label={t("user.theme")}
+            value={theme.id}
+            onChange={(event) => selectTheme(event.target.value)}
+          >
+            {themes.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}
+          </select>
+        </label>
+        <LocaleSwitcher />
+      </div>
       <div className="auth-stack">
         <h1 className="auth-wordmark">{t("app.name")}</h1>
         <p className="auth-tagline">

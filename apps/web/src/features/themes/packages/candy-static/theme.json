@@ -1,0 +1,11 @@
+{
+  "format": "overseer-theme-v1",
+  "id": "org.overseer.candy-static",
+  "name": "Candy Static",
+  "version": "1.0.0",
+  "author": "Overseer",
+  "description": "Off-white stock, electric pink, cobalt and graphic mischief.",
+  "appearance": "light",
+  "entrypoints": { "web": "web/theme.css" },
+  "capabilities": ["colors", "typography", "images", "borders", "motion", "syntax", "mermaid"]
+}

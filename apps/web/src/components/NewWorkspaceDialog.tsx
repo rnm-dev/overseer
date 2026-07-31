@@ -42,13 +42,13 @@ export function NewWorkspaceDialog({ onClose }: { onClose: () => void }) {
             }}
             onKeyDown={(e) => e.key === "Enter" && submit()}
           />
-          <p className="font-mono text-xs text-bone-faint">{t("newWs.hint")}</p>
+          <p className="font-mono text-xs text-ink-faint">{t("newWs.hint")}</p>
         </div>
 
-        {error && <div className="border border-blood/30 bg-blood/10 p-3 font-mono text-sm text-blood">{error}</div>}
+        {error && <div className="border border-danger/30 bg-danger/10 p-3 font-mono text-sm text-danger">{error}</div>}
 
         <div className="flex justify-end gap-2 pt-1">
-          <Button variant="iron" onClick={onClose} disabled={busy}>
+          <Button variant="secondary" onClick={onClose} disabled={busy}>
             {t("action.cancel")}
           </Button>
           <Button onClick={submit} disabled={!name.trim() || busy}>

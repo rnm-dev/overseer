@@ -28,7 +28,7 @@ export function Avatar({
   const [failed, setFailed] = useState(false);
   useEffect(() => setFailed(false), [src]);
 
-  const shared = `${sizes[size]} shrink-0 rounded-full border bg-iron-800 ${className}`;
+  const shared = `${sizes[size]} shrink-0 rounded-full border bg-surface-hover ${className}`;
   if (src && !failed) {
     return (
       <img
@@ -43,7 +43,7 @@ export function Avatar({
 
   return (
     <span
-      className={`${shared} grid place-items-center font-display font-bold text-bone`}
+      className={`${shared} grid place-items-center font-display font-bold text-ink`}
       title={tooltip === null ? undefined : tooltip ?? label}
       aria-hidden={decorative || undefined}
       aria-label={decorative ? undefined : label}

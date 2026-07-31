@@ -65,7 +65,7 @@ export function NewProjectDialog({ base, onClose }: { base: string; onClose: () 
         <div className="space-y-1.5">
           <Label>{t("newProject.label")}</Label>
           <Input value={label} autoFocus onChange={(e) => setLabel(e.target.value)} placeholder="My Project" />
-          {suggestedKey && <div className="font-mono text-[0.7rem] text-bone-faint">key: {suggestedKey}</div>}
+          {suggestedKey && <div className="font-mono text-[0.7rem] text-ink-faint">key: {suggestedKey}</div>}
         </div>
         <div className="space-y-1.5">
           <Label>{t("newProject.dir")}</Label>
@@ -87,9 +87,9 @@ export function NewProjectDialog({ base, onClose }: { base: string; onClose: () 
         <textarea className="field min-h-24 w-full resize-y" rows={5} value={metadata} onChange={(e) => setMetadata(e.target.value)} />
       </div>
 
-      {error && <p className="mt-3 font-mono text-xs text-blood">⚠ {error}</p>}
+      {error && <p className="mt-3 font-mono text-xs text-danger">⚠ {error}</p>}
       <div className="mt-4 flex justify-end gap-2">
-        <Button variant="iron" onClick={onClose} disabled={submitting}>
+        <Button variant="secondary" onClick={onClose} disabled={submitting}>
           {t("action.cancel")}
         </Button>
         <Button onClick={submit} disabled={submitting || !label.trim()}>

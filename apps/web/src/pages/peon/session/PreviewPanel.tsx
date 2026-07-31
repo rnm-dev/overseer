@@ -216,13 +216,13 @@ export function PreviewPanel({ base, sessionId, target, pinned, onPinnedChange, 
   }
 
   return createPortal(
-    <aside className="fixed bottom-0 right-0 top-0 z-[45] flex w-full flex-col border-l border-iron-700 bg-iron-950 shadow-2xl sm:w-[min(54rem,70vw)]">
-      <header className="flex items-center gap-2 border-b border-iron-800 px-3 py-2.5">
+    <aside className="fixed bottom-0 right-0 top-0 z-[45] flex w-full flex-col border-l border-edge-strong bg-surface shadow-2xl sm:w-[min(54rem,70vw)]">
+      <header className="flex items-center gap-2 border-b border-edge px-3 py-2.5">
         <div className="min-w-0 flex-1">
-          <div className="truncate font-display text-sm font-semibold text-bone" title={target.path}>{displayName(target.path)}</div>
-          <div className="truncate font-mono text-[0.68rem] text-bone-faint" title={target.path}>{target.path}</div>
+          <div className="truncate font-display text-sm font-semibold text-ink" title={target.path}>{displayName(target.path)}</div>
+          <div className="truncate font-mono text-[0.68rem] text-ink-faint" title={target.path}>{target.path}</div>
         </div>
-        <button type="button" aria-pressed={pinned} title={pinned ? t("session.preview.unpin") : t("session.preview.pin")} onClick={() => onPinnedChange(!pinned)} className={`rounded px-2 py-1 font-mono text-xs transition-colors hover:bg-iron-800 ${pinned ? "text-fel-bright" : "text-bone-dim"}`}>
+        <button type="button" aria-pressed={pinned} title={pinned ? t("session.preview.unpin") : t("session.preview.pin")} onClick={() => onPinnedChange(!pinned)} className={`rounded px-2 py-1 font-mono text-xs transition-colors hover:bg-surface-hover ${pinned ? "text-accent-strong" : "text-ink-muted"}`}>
           {pinned ? "◆" : "◇"}
         </button>
         {canCopy && (
@@ -231,25 +231,25 @@ export function PreviewPanel({ base, sessionId, target, pinned, onPinnedChange, 
             title={t(`session.preview.${copyStatus === "idle" ? "copy" : copyStatus}`)}
             aria-label={t(`session.preview.${copyStatus === "idle" ? "copy" : copyStatus}`)}
             onClick={() => void copyContent()}
-            className={`rounded px-2 py-1 transition-colors hover:bg-iron-800 ${copyStatus === "copied" ? "text-fel-bright" : copyStatus === "failed" ? "text-blood" : "text-bone-dim hover:text-bone"}`}
+            className={`rounded px-2 py-1 transition-colors hover:bg-surface-hover ${copyStatus === "copied" ? "text-accent-strong" : copyStatus === "failed" ? "text-danger" : "text-ink-muted hover:text-ink"}`}
           >
             {copyStatus === "copied" ? <Check size={14} aria-hidden /> : <Copy size={14} aria-hidden />}
           </button>
         )}
-        <button type="button" title={t("session.preview.download")} onClick={download} className="rounded px-2 py-1 font-mono text-xs text-bone-dim transition-colors hover:bg-iron-800 hover:text-bone">↓</button>
-        <button type="button" title={t("session.preview.close")} onClick={onClose} className="rounded px-2 py-1 font-mono text-lg leading-none text-bone-dim transition-colors hover:bg-iron-800 hover:text-bone">×</button>
+        <button type="button" title={t("session.preview.download")} onClick={download} className="rounded px-2 py-1 font-mono text-xs text-ink-muted transition-colors hover:bg-surface-hover hover:text-ink">↓</button>
+        <button type="button" title={t("session.preview.close")} onClick={onClose} className="rounded px-2 py-1 font-mono text-lg leading-none text-ink-muted transition-colors hover:bg-surface-hover hover:text-ink">×</button>
       </header>
       {file && (
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-iron-800 px-3 py-1.5 font-mono text-[0.68rem] text-bone-faint">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-edge px-3 py-1.5 font-mono text-[0.68rem] text-ink-faint">
           <span>{sizeLabel(file.size)}</span>
           <span>{new Date(file.mtimeMs).toLocaleString()}</span>
-          {file.truncated && <span className="text-ember">{t("session.preview.truncated")}</span>}
-          {watchError && <span className="text-ember">⚠ {watchError}</span>}
+          {file.truncated && <span className="text-warning-strong">{t("session.preview.truncated")}</span>}
+          {watchError && <span className="text-warning-strong">⚠ {watchError}</span>}
         </div>
       )}
-      <div className="min-h-0 flex-1 overflow-auto bg-void/40">
-        {loading ? <div className="forge-spin mt-8" /> : error ? (
-          <div className="m-4 rounded border border-blood/40 bg-blood/5 p-3 font-mono text-sm text-blood"><strong>{error.code}</strong>: {error.message}</div>
+      <div className="min-h-0 flex-1 overflow-auto bg-canvas/40">
+        {loading ? <div className="loading-spinner mt-8" /> : error ? (
+          <div className="m-4 rounded border border-danger/40 bg-danger/5 p-3 font-mono text-sm text-danger"><strong>{error.code}</strong>: {error.message}</div>
         ) : isHtml && webUrl ? (
           <iframe
             sandbox="allow-scripts allow-forms allow-modals allow-downloads"
@@ -262,11 +262,11 @@ export function PreviewPanel({ base, sessionId, target, pinned, onPinnedChange, 
         ) : isPdf && blobUrl ? (
           <iframe src={blobUrl} title={displayName(target.path)} className="h-full min-h-[70vh] w-full border-0 bg-white" />
         ) : file && !file.binary && file.content !== null ? (
-          isMarkdown ? <article className="mx-auto max-w-4xl p-5 text-sm leading-relaxed text-bone"><Markdown source={file.content} /></article>
+          isMarkdown ? <article className="mx-auto max-w-4xl p-5 text-sm leading-relaxed text-ink"><Markdown source={file.content} /></article>
             : <HighlightedCode source={file.content} language={languageForPath(target.path)} className="min-h-full rounded-none border-0" />
         ) : file ? (
           <div className="grid min-h-full place-items-center p-6 text-center">
-            <div><div className="mb-3 font-mono text-sm text-bone-dim">{t("session.preview.unsupported")}</div><button type="button" onClick={download} className="btn btn-iron btn-sm">{t("session.preview.rawDownload")}</button></div>
+            <div><div className="mb-3 font-mono text-sm text-ink-muted">{t("session.preview.unsupported")}</div><button type="button" onClick={download} className="btn btn-secondary btn-sm">{t("session.preview.rawDownload")}</button></div>
           </div>
         ) : null}
       </div>

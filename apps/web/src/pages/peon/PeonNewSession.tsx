@@ -190,7 +190,7 @@ export function PeonNewSession() {
   return (
     <div>
       <div className="flex min-h-[65vh] flex-col items-center justify-start gap-4 px-0 py-4 sm:justify-center sm:px-6 sm:py-10">
-        <h2 className="rune fel-glow text-sm">{t("newSession.title")}</h2>
+        <h2 className="rune accent-glow text-sm">{t("newSession.title")}</h2>
 
         <div className="w-full max-w-[76rem]">
           <Composer

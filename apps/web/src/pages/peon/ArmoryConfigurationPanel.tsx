@@ -57,10 +57,10 @@ function FieldControl({ packageId, field, value, error, configured, disabled, on
   };
 
   return (
-    <div className="grid gap-2 border-b border-iron-800 pb-5 last:border-b-0 last:pb-0 sm:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] sm:gap-6">
+    <div className="grid gap-2 border-b border-edge pb-5 last:border-b-0 last:pb-0 sm:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] sm:gap-6">
       <div>
-        <label htmlFor={id} className="font-display text-xs font-bold text-bone">{field.label}{field.required && <span className="ml-1 text-ember" aria-label="required">*</span>}</label>
-        {field.help && <p id={helpId} className="mt-1.5 text-xs leading-relaxed text-bone-dim">{field.help}</p>}
+        <label htmlFor={id} className="font-display text-xs font-bold text-ink">{field.label}{field.required && <span className="ml-1 text-warning-strong" aria-label="required">*</span>}</label>
+        {field.help && <p id={helpId} className="mt-1.5 text-xs leading-relaxed text-ink-muted">{field.help}</p>}
       </div>
       <div className="min-w-0">
         <div className="relative">
@@ -70,7 +70,7 @@ function FieldControl({ packageId, field, value, error, configured, disabled, on
               {(field.options ?? []).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
             </select>
           ) : field.type === "file" ? (
-            <input {...common} ref={fileInput} name={fieldName} autoComplete="off" className={`field w-full file:mr-3 file:border-0 file:bg-iron-800 file:px-3 file:py-1 file:text-bone ${hasBadges ? "pr-40" : ""}`} type="file" onChange={(event) => void readFile(event)} />
+            <input {...common} ref={fileInput} name={fieldName} autoComplete="off" className={`field w-full file:mr-3 file:border-0 file:bg-surface-hover file:px-3 file:py-1 file:text-ink ${hasBadges ? "pr-40" : ""}`} type="file" onChange={(event) => void readFile(event)} />
           ) : (
             <input
               {...common}
@@ -91,8 +91,8 @@ function FieldControl({ packageId, field, value, error, configured, disabled, on
           )}
           {hasBadges && <div className={`pointer-events-none absolute top-1/2 flex -translate-y-1/2 gap-1.5 ${field.type === "select" ? "right-8" : "right-3"}`}><Badge>Configured</Badge></div>}
         </div>
-        {field.validation && <p className="mt-1 font-mono text-[0.68rem] text-bone-faint">{field.validation.maxLength !== undefined ? `Maximum ${field.validation.maxLength} characters. ` : ""}{field.validation.pattern ? "A package-defined format is required." : ""}</p>}
-        {error && <p id={errorId} role="alert" className="mt-1 text-xs text-blood">{error}</p>}
+        {field.validation && <p className="mt-1 font-mono text-[0.68rem] text-ink-faint">{field.validation.maxLength !== undefined ? `Maximum ${field.validation.maxLength} characters. ` : ""}{field.validation.pattern ? "A package-defined format is required." : ""}</p>}
+        {error && <p id={errorId} role="alert" className="mt-1 text-xs text-danger">{error}</p>}
       </div>
     </div>
   );
@@ -102,13 +102,13 @@ function OperationProgress({ operation, pollingError, onRetry }: { operation: Ar
   const progress = armoryOperationProgress(operation.progress);
   const failed = operation.status === "failure" || operation.status === "needs_human";
   return (
-    <Card className={`p-4 ${failed ? "border-blood/50" : ""}`}>
-      <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="font-display text-sm font-bold text-bone">{operation.kind === "configure" ? "Configure and verify" : "Delete configuration"}</h3><Badge tone={operation.status === "success" ? "green" : failed ? "red" : "amber"}>{operation.status.replace(/_/g, " ")}</Badge></div>
-      <p className="mt-2 font-mono text-xs text-bone-dim">Phase: {operation.kind === "configure" ? "configuration" : operation.phase || "waiting"}</p>
-      {operation.kind !== "configure" && operation.message && <p className="mt-2 text-sm text-bone-dim">{operation.message}</p>}
-      {progress !== null && <div className="mt-3"><progress className="h-2 w-full accent-fel" max={100} value={progress} aria-label="Operation progress" /><p className="mt-1 text-right font-mono text-[0.68rem] text-bone-faint">{progress}%</p></div>}
-      {operation.kind !== "configure" && operation.errorCode && <p className="mt-2 font-mono text-xs text-blood">Error code: {operation.errorCode}</p>}
-      {Boolean(pollingError) && <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-l-2 border-blood bg-blood/5 p-3 text-sm text-blood"><span>Status polling was interrupted. The operation was not resubmitted.</span><Button type="button" size="sm" variant="iron" onClick={onRetry}>Retry status</Button></div>}
+    <Card className={`p-4 ${failed ? "border-danger/50" : ""}`}>
+      <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="font-display text-sm font-bold text-ink">{operation.kind === "configure" ? "Configure and verify" : "Delete configuration"}</h3><Badge tone={operation.status === "success" ? "green" : failed ? "red" : "amber"}>{operation.status.replace(/_/g, " ")}</Badge></div>
+      <p className="mt-2 font-mono text-xs text-ink-muted">Phase: {operation.kind === "configure" ? "configuration" : operation.phase || "waiting"}</p>
+      {operation.kind !== "configure" && operation.message && <p className="mt-2 text-sm text-ink-muted">{operation.message}</p>}
+      {progress !== null && <div className="mt-3"><progress className="h-2 w-full accent-accent" max={100} value={progress} aria-label="Operation progress" /><p className="mt-1 text-right font-mono text-[0.68rem] text-ink-faint">{progress}%</p></div>}
+      {operation.kind !== "configure" && operation.errorCode && <p className="mt-2 font-mono text-xs text-danger">Error code: {operation.errorCode}</p>}
+      {Boolean(pollingError) && <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-l-2 border-danger bg-danger/5 p-3 text-sm text-danger"><span>Status polling was interrupted. The operation was not resubmitted.</span><Button type="button" size="sm" variant="secondary" onClick={onRetry}>Retry status</Button></div>}
     </Card>
   );
 }
@@ -202,7 +202,7 @@ export function ArmoryConfigurationPanel({ base, packageId, installed, schema, s
     return () => { alive = false; if (timer !== undefined) window.clearTimeout(timer); pollController.current?.abort(); };
   }, [base, onRefresh, operation, pollAttempt, pollingError]);
 
-  if (!installed) return <section><h2 className="mb-3 font-display text-lg font-bold text-bone">Configuration</h2><Card className="p-5 text-sm text-bone-dim">Install this package before configuring it.</Card></section>;
+  if (!installed) return <section><h2 className="mb-3 font-display text-lg font-bold text-ink">Configuration</h2><Card className="p-5 text-sm text-ink-muted">Install this package before configuring it.</Card></section>;
   const status = statusPresentation(installed.configurationStatus);
   const configured = installed.configurationStatus === "verified";
   const operationConflict = requestError instanceof ApiError && requestError.code === "OPERATION_IN_PROGRESS";
@@ -246,32 +246,32 @@ export function ArmoryConfigurationPanel({ base, packageId, installed, schema, s
 
   return (
     <section className="space-y-4">
-      {(!configured || editing || operationActive(operation)) && <><div className="flex flex-wrap items-center gap-3"><h2 className="font-display text-lg font-bold text-bone">Configuration</h2><Badge tone={status.tone}>{status.label}</Badge></div><p className="text-sm text-bone-dim">{status.detail}</p></>}
-      {Boolean(schemaError) && <div className="flex flex-wrap items-center justify-between gap-3 border-l-2 border-blood bg-blood/5 p-3 text-sm text-blood"><span>{schemaError instanceof Error ? schemaError.message : "Configuration schema could not be loaded."}{schemaError instanceof ApiError ? ` (${schemaError.code})` : ""}</span><Button type="button" size="sm" variant="iron" onClick={onRetrySchema}>Retry</Button></div>}
-      {Boolean(recoveryError) && !operation && <div className="flex flex-wrap items-center justify-between gap-3 border-l-2 border-blood bg-blood/5 p-3 text-sm text-blood"><span>Existing operation status could not be loaded. No configuration was resubmitted.</span><Button type="button" size="sm" variant="iron" onClick={() => { setRecoveryError(null); setRecoveryAttempt((value) => value + 1); }}>Retry status</Button></div>}
-      {!schema && !schemaError && <Card className="p-5"><div className="forge-spin" aria-label="Loading configuration schema" /></Card>}
-      {schema && schema.fields.length === 0 && installed.configurationStatus === "not_required" && <Card className="p-5 text-sm text-bone-dim">No configuration required.</Card>}
-      {schema && schema.fields.length > 0 && configured && !editing && !operationActive(operation) && <Card className="relative overflow-hidden border-fel/35 bg-fel/[0.04] p-6 shadow-[inset_0_1px_0_rgba(149,201,103,0.08),0_0_32px_rgba(86,136,55,0.07)]">
-        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-fel-bright/70 to-transparent" aria-hidden />
+      {(!configured || editing || operationActive(operation)) && <><div className="flex flex-wrap items-center gap-3"><h2 className="font-display text-lg font-bold text-ink">Configuration</h2><Badge tone={status.tone}>{status.label}</Badge></div><p className="text-sm text-ink-muted">{status.detail}</p></>}
+      {Boolean(schemaError) && <div className="flex flex-wrap items-center justify-between gap-3 border-l-2 border-danger bg-danger/5 p-3 text-sm text-danger"><span>{schemaError instanceof Error ? schemaError.message : "Configuration schema could not be loaded."}{schemaError instanceof ApiError ? ` (${schemaError.code})` : ""}</span><Button type="button" size="sm" variant="secondary" onClick={onRetrySchema}>Retry</Button></div>}
+      {Boolean(recoveryError) && !operation && <div className="flex flex-wrap items-center justify-between gap-3 border-l-2 border-danger bg-danger/5 p-3 text-sm text-danger"><span>Existing operation status could not be loaded. No configuration was resubmitted.</span><Button type="button" size="sm" variant="secondary" onClick={() => { setRecoveryError(null); setRecoveryAttempt((value) => value + 1); }}>Retry status</Button></div>}
+      {!schema && !schemaError && <Card className="p-5"><div className="loading-spinner" aria-label="Loading configuration schema" /></Card>}
+      {schema && schema.fields.length === 0 && installed.configurationStatus === "not_required" && <Card className="p-5 text-sm text-ink-muted">No configuration required.</Card>}
+      {schema && schema.fields.length > 0 && configured && !editing && !operationActive(operation) && <Card className="relative overflow-hidden border-accent/35 bg-accent/[0.04] p-6 shadow-[inset_0_1px_0_rgba(149,201,103,0.08),0_0_32px_rgba(86,136,55,0.07)]">
+        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-accent-strong/70 to-transparent" aria-hidden />
         <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex min-w-0 items-start gap-4">
-            <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-fel/35 bg-fel/10 text-fel-bright shadow-[0_0_20px_rgba(143,239,63,0.08)]"><CheckCircle2 size={23} strokeWidth={2.2} aria-hidden /></div>
-            <h3 className="self-center font-display text-lg font-bold text-bone">Configuration verified</h3>
+            <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-accent/35 bg-accent/10 text-accent-strong shadow-[0_0_20px_rgba(143,239,63,0.08)]"><CheckCircle2 size={23} strokeWidth={2.2} aria-hidden /></div>
+            <h3 className="self-center font-display text-lg font-bold text-ink">Configuration verified</h3>
           </div>
           <div className="flex shrink-0 flex-wrap gap-2 sm:justify-end">
-            <Button type="button" variant="iron" onClick={() => setEditing(true)}><span className="inline-flex items-center gap-2"><Pencil size={14} aria-hidden />Edit</span></Button>
+            <Button type="button" variant="secondary" onClick={() => setEditing(true)}><span className="inline-flex items-center gap-2"><Pencil size={14} aria-hidden />Edit</span></Button>
             <Button type="button" variant="ghost" aria-haspopup="dialog" onClick={() => setDeleteOpen(true)}>Delete</Button>
           </div>
         </div>
       </Card>}
       {schema && schema.fields.length > 0 && (!configured || editing || operationActive(operation)) && <Card className="p-5"><form className="space-y-5" onSubmit={(event) => { event.preventDefault(); void submit(); }} autoComplete="off">
         {schema.fields.map((field) => <FieldControl key={field.id} packageId={packageId} field={field} value={values[field.id] ?? ""} error={errors[field.id]} configured={schema.configured[field.id] === true} disabled={busy} onValue={(value) => { setValues((current) => ({ ...current, [field.id]: value })); setErrors((current) => { const next = { ...current }; delete next[field.id]; return next; }); }} />)}
-        {schema.hostWrites.length > 0 && <Card className="border-forge/50 bg-forge/[0.03] p-4"><h3 className="font-display text-sm font-bold text-ember">Host writes</h3><p className="mt-2 text-sm text-bone-dim">This package may write outside its managed Armory home at these exact paths:</p><ul className="mt-2 space-y-1 font-mono text-xs text-bone">{schema.hostWrites.map((path) => <li key={path} className="break-all">{path}</li>)}</ul><label className="mt-3 flex items-start gap-2 text-sm text-bone"><input type="checkbox" className="mt-0.5 accent-fel" checked={hostConfirmed} disabled={busy} onChange={(event) => { setHostConfirmed(event.target.checked); setErrors((current) => { const next = { ...current }; delete next.$hostWrites; return next; }); }} />I confirm these host-write paths.</label>{errors.$hostWrites && <p role="alert" className="mt-2 text-xs text-blood">{errors.$hostWrites}</p>}</Card>}
-        {Boolean(requestError) && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 border-l-2 border-blood bg-blood/5 p-3 text-sm text-blood"><span>Peon rejected the configuration.</span>{operationConflict && <Button type="button" size="sm" variant="iron" onClick={() => { setRequestError(null); void onRefresh(); }}>Refresh operation status</Button>}</div>}
-        <div className="flex flex-wrap gap-3"><Button type="submit" disabled={busy}>{submitting ? "Submitting…" : "Save configuration"}</Button>{configured && editing && <Button type="button" variant="iron" disabled={busy} onClick={() => { setEditing(false); setValues({}); setErrors({}); setHostConfirmed(false); }}>Cancel</Button>}<Button type="button" variant="iron" aria-haspopup="dialog" disabled={busy} onClick={() => setDeleteOpen(true)}>Delete configuration</Button></div>
+        {schema.hostWrites.length > 0 && <Card className="border-warning/50 bg-warning/[0.03] p-4"><h3 className="font-display text-sm font-bold text-warning-strong">Host writes</h3><p className="mt-2 text-sm text-ink-muted">This package may write outside its managed Armory home at these exact paths:</p><ul className="mt-2 space-y-1 font-mono text-xs text-ink">{schema.hostWrites.map((path) => <li key={path} className="break-all">{path}</li>)}</ul><label className="mt-3 flex items-start gap-2 text-sm text-ink"><input type="checkbox" className="mt-0.5 accent-accent" checked={hostConfirmed} disabled={busy} onChange={(event) => { setHostConfirmed(event.target.checked); setErrors((current) => { const next = { ...current }; delete next.$hostWrites; return next; }); }} />I confirm these host-write paths.</label>{errors.$hostWrites && <p role="alert" className="mt-2 text-xs text-danger">{errors.$hostWrites}</p>}</Card>}
+        {Boolean(requestError) && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 border-l-2 border-danger bg-danger/5 p-3 text-sm text-danger"><span>Peon rejected the configuration.</span>{operationConflict && <Button type="button" size="sm" variant="secondary" onClick={() => { setRequestError(null); void onRefresh(); }}>Refresh operation status</Button>}</div>}
+        <div className="flex flex-wrap gap-3"><Button type="submit" disabled={busy}>{submitting ? "Submitting…" : "Save configuration"}</Button>{configured && editing && <Button type="button" variant="secondary" disabled={busy} onClick={() => { setEditing(false); setValues({}); setErrors({}); setHostConfirmed(false); }}>Cancel</Button>}<Button type="button" variant="secondary" aria-haspopup="dialog" disabled={busy} onClick={() => setDeleteOpen(true)}>Delete configuration</Button></div>
       </form></Card>}
-      {schema && schema.fields.length === 0 && installed.configurationStatus !== "not_required" && <div className="flex gap-3"><Button type="button" variant="iron" aria-haspopup="dialog" disabled={busy} onClick={() => setDeleteOpen(true)}>Delete configuration</Button></div>}
-      {deleteOpen && schema && <Dialog title="Delete configuration?" onClose={() => { setDeleteOpen(false); setIncludeHost(false); setDeleteHostConfirmed(false); }} dismissible={!busy}><p className="text-sm text-bone-dim">This deletes Armory-managed configuration and disables the package. It does not uninstall the package.</p>{schema.hostWrites.length > 0 && <div className="mt-4"><p className="text-sm text-bone-dim">Managed deletion leaves these declared host paths untouched:</p><ul className="mt-2 space-y-1 font-mono text-xs text-bone">{schema.hostWrites.map((path) => <li key={path} className="break-all">{path}</li>)}</ul><label className="mt-3 flex items-start gap-2 text-sm text-bone"><input type="checkbox" className="mt-0.5 accent-fel" checked={includeHost} disabled={busy} onChange={(event) => { setIncludeHost(event.target.checked); setDeleteHostConfirmed(false); }} />Also delete the exact declared host paths.</label>{includeHost && <label className="mt-3 flex items-start gap-2 border-l-2 border-blood bg-blood/5 p-3 text-sm text-bone"><input type="checkbox" className="mt-0.5 accent-fel" checked={deleteHostConfirmed} disabled={busy} onChange={(event) => setDeleteHostConfirmed(event.target.checked)} />I explicitly confirm deletion of every path listed above.</label>}</div>}<div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><Button type="button" variant="iron" disabled={busy} onClick={() => { setDeleteOpen(false); setIncludeHost(false); setDeleteHostConfirmed(false); }}>Cancel</Button><Button type="button" className="!border-blood/50 !text-blood hover:!bg-blood/10" variant="iron" disabled={busy || (includeHost && !deleteHostConfirmed)} onClick={() => void remove()}>{submitting ? "Deleting…" : includeHost ? "Delete configuration and host paths" : "Delete managed configuration"}</Button></div></Dialog>}
+      {schema && schema.fields.length === 0 && installed.configurationStatus !== "not_required" && <div className="flex gap-3"><Button type="button" variant="secondary" aria-haspopup="dialog" disabled={busy} onClick={() => setDeleteOpen(true)}>Delete configuration</Button></div>}
+      {deleteOpen && schema && <Dialog title="Delete configuration?" onClose={() => { setDeleteOpen(false); setIncludeHost(false); setDeleteHostConfirmed(false); }} dismissible={!busy}><p className="text-sm text-ink-muted">This deletes Armory-managed configuration and disables the package. It does not uninstall the package.</p>{schema.hostWrites.length > 0 && <div className="mt-4"><p className="text-sm text-ink-muted">Managed deletion leaves these declared host paths untouched:</p><ul className="mt-2 space-y-1 font-mono text-xs text-ink">{schema.hostWrites.map((path) => <li key={path} className="break-all">{path}</li>)}</ul><label className="mt-3 flex items-start gap-2 text-sm text-ink"><input type="checkbox" className="mt-0.5 accent-accent" checked={includeHost} disabled={busy} onChange={(event) => { setIncludeHost(event.target.checked); setDeleteHostConfirmed(false); }} />Also delete the exact declared host paths.</label>{includeHost && <label className="mt-3 flex items-start gap-2 border-l-2 border-danger bg-danger/5 p-3 text-sm text-ink"><input type="checkbox" className="mt-0.5 accent-accent" checked={deleteHostConfirmed} disabled={busy} onChange={(event) => setDeleteHostConfirmed(event.target.checked)} />I explicitly confirm deletion of every path listed above.</label>}</div>}<div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><Button type="button" variant="secondary" disabled={busy} onClick={() => { setDeleteOpen(false); setIncludeHost(false); setDeleteHostConfirmed(false); }}>Cancel</Button><Button type="button" className="!border-danger/50 !text-danger hover:!bg-danger/10" variant="secondary" disabled={busy || (includeHost && !deleteHostConfirmed)} onClick={() => void remove()}>{submitting ? "Deleting…" : includeHost ? "Delete configuration and host paths" : "Delete managed configuration"}</Button></div></Dialog>}
       {operation && !(configured && operation.status === "success") && <OperationProgress operation={operation} pollingError={pollingError} onRetry={() => { pollAttempts.current = 0; setPollingError(null); setPollAttempt((value) => value + 1); }} />}
     </section>
   );

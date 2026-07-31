@@ -13,10 +13,10 @@ import { formatLocalTimestamp, localeTag } from "../../../timeFormat";
 // renderer and the "agent is working" indicator. Pure presentation — all parsing
 // lives in ./parsing. author: Viktor
 
-export const OWN_ATTACHMENT_CLASS = "bg-iron-950/25 text-bone hover:bg-iron-950/40";
-export const OTHER_ATTACHMENT_CLASS = "on-surface text-bone hover:bg-iron-700/60";
+export const OWN_ATTACHMENT_CLASS = "theme-user-message-ink bg-surface/25 hover:bg-surface/40";
+export const OTHER_ATTACHMENT_CLASS = "on-surface text-ink hover:bg-surface-active/60";
 export const TOOL_ROW_LAYOUT_CLASS = "grid w-fit min-w-0 max-w-[85%] grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-1.5 py-0.5 typo-chat-system-message";
-export const TOOL_ROW_CLASS = `${TOOL_ROW_LAYOUT_CLASS} rounded text-left transition-colors hover:bg-iron-800/70 hover:text-bone`;
+export const TOOL_ROW_CLASS = `${TOOL_ROW_LAYOUT_CLASS} rounded text-left transition-colors hover:bg-surface-hover/70 hover:text-ink`;
 
 export function attachmentMeta(attachment: MessageAttachment): string {
   const label = attachment.name || attachment.path?.split(/[\\/]/).pop() || "attachment";
@@ -37,17 +37,17 @@ export function attachmentMeta(attachment: MessageAttachment): string {
 function AttachmentPill({ attachment, mine, onOpen }: { attachment: MessageAttachment; mine: boolean; onOpen?: () => void }) {
   const label = attachment.name || attachment.path?.split(/[\\/]/).pop() || "attachment";
   const className = `group/attachment flex min-w-0 items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors ${mine ? OWN_ATTACHMENT_CLASS : OTHER_ATTACHMENT_CLASS}`;
-  const iconClass = `grid h-7 w-7 shrink-0 place-items-center rounded-md ${mine ? "bg-bone/10 text-bone/80" : "bg-forge/10 text-forge"}`;
+  const iconClass = `grid h-7 w-7 shrink-0 place-items-center rounded-md ${mine ? "theme-user-message-icon" : "bg-warning/10 text-warning"}`;
   const contents = <>
       <span className={iconClass} aria-hidden>
         {attachment.type === "image" ? <ImageIcon size={14} /> : <Paperclip size={14} />}
       </span>
       <span className="min-w-0 flex-1">
         <span className="block truncate font-display text-xs font-semibold">{label}</span>
-        <span className={`mt-0.5 block font-mono text-[0.625rem] leading-none ${mine ? "text-bone/55" : "text-bone-faint"}`}>{attachmentMeta(attachment)}</span>
+        <span className={`mt-0.5 block font-mono text-[0.625rem] leading-none ${mine ? "theme-user-message-meta" : "text-ink-faint"}`}>{attachmentMeta(attachment)}</span>
       </span>
     </>;
-  return onOpen ? <button type="button" className={`${className} cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset ${mine ? "focus-visible:ring-bone/50" : "focus-visible:ring-fel/60"}`} title={attachment.path || label} onClick={onOpen}>{contents}</button>
+  return onOpen ? <button type="button" className={`${className} cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset ${mine ? "theme-user-message-focus" : "focus-visible:ring-accent/60"}`} title={attachment.path || label} onClick={onOpen}>{contents}</button>
     : <div className={className} title={attachment.path || label}>{contents}</div>;
 }
 
@@ -60,12 +60,12 @@ function LocalMessageTime({ createdAt, locale, yesterdayLabel }: { createdAt?: n
   return <time dateTime={date.toISOString()} title={`${local} (${Intl.DateTimeFormat().resolvedOptions().timeZone})`}>{visible}</time>;
 }
 
-const USER_BUBBLE_BASE_CLASS = "max-w-[80%] whitespace-pre-wrap break-words rounded-xl rounded-br-sm px-3 py-1.5 typo-chat-message text-bone";
-export const OWN_USER_BUBBLE_CLASS = `${USER_BUBBLE_BASE_CLASS} bg-forge-deep`;
+const USER_BUBBLE_BASE_CLASS = "max-w-[80%] whitespace-pre-wrap break-words rounded-xl rounded-br-sm px-3 py-1.5 typo-chat-message text-ink";
+export const OWN_USER_BUBBLE_CLASS = `${USER_BUBBLE_BASE_CLASS} theme-user-message`;
 export const OTHER_USER_BUBBLE_CLASS = `${USER_BUBBLE_BASE_CLASS} surface`;
-export const OTHER_USER_BUBBLE_AUTHOR_CLASS = "mb-1 truncate font-body text-[0.625rem] font-semibold leading-tight text-fel-bright";
-export const OWN_USER_BUBBLE_TIME_CLASS = "font-body text-[0.625rem] leading-tight text-bone/60";
-export const OTHER_USER_BUBBLE_TIME_CLASS = "font-body text-[0.625rem] leading-tight text-bone-faint";
+export const OTHER_USER_BUBBLE_AUTHOR_CLASS = "mb-1 truncate font-body text-[0.625rem] font-semibold leading-tight text-accent-strong";
+export const OWN_USER_BUBBLE_TIME_CLASS = "theme-user-message-meta font-body text-[0.625rem] leading-tight";
+export const OTHER_USER_BUBBLE_TIME_CLASS = "font-body text-[0.625rem] leading-tight text-ink-faint";
 
 export function isCompactUserMessage(text: string, attachments?: MessageAttachment[]): boolean {
   const trimmed = text.trim();
@@ -116,7 +116,7 @@ export function UserBubble({ text, author, authorEmail, authorGithubLogin, autho
         )}
         {createdAt && !compact && <div className={`${mine ? OWN_USER_BUBBLE_TIME_CLASS : OTHER_USER_BUBBLE_TIME_CLASS} mt-1 text-right`}><LocalMessageTime createdAt={createdAt} locale={locale} yesterdayLabel={t("peon.stats.period.yesterday")} /></div>}
       </div>
-      <Avatar src={avatarUrl} label={avatarLabel} className="border-fel/35 bg-fel/15 text-fel-bright" />
+      <Avatar src={avatarUrl} label={avatarLabel} className="border-accent/35 bg-accent/15 text-accent-strong" />
     </div>
   );
 }
@@ -126,7 +126,7 @@ export function UserBubble({ text, author, authorEmail, authorGithubLogin, autho
 // instead of floating in its own row.
 function Notice({ tone, children }: { tone?: "neutral" | "error"; children: ReactNode }) {
   return (
-    <div className={`-mt-2.5 flex justify-start typo-chat-system-message ${tone === "error" ? "text-blood" : "text-bone-faint"}`}>{children}</div>
+    <div className={`-mt-2.5 flex justify-start typo-chat-system-message ${tone === "error" ? "text-danger" : "text-ink-faint"}`}>{children}</div>
   );
 }
 
@@ -164,9 +164,9 @@ function ToolRow({ name, input, result, t, simple = false }: { name?: string; in
         title={hint}
         aria-label={`${simple ? activityText : `${operationName} ${command}`}. ${activityStatus}. ${hint}`}
         data-tool-kind={activityKind}
-        className={`${TOOL_ROW_CLASS} ${failed ? "text-blood" : "text-bone-faint"}`}
+        className={`${TOOL_ROW_CLASS} ${failed ? "text-danger" : "text-ink-faint"}`}
       >
-        <span className={`grid size-4 place-items-center ${failed ? "text-blood" : result ? "text-fel-bright" : "animate-pulse text-ember"}`} aria-hidden>
+        <span className={`grid size-4 place-items-center ${failed ? "text-danger" : result ? "text-accent-strong" : "animate-pulse text-warning-strong"}`} aria-hidden>
           <SimpleToolIcon kind={activityKind} />
         </span>
         {simple ? (
@@ -180,7 +180,7 @@ function ToolRow({ name, input, result, t, simple = false }: { name?: string; in
             <span className="min-w-0 truncate">{command}</span>
           </span>
         )}
-        {failed && <span className="shrink-0 text-blood">· {t("session.chat.activity.failedShort")}</span>}
+        {failed && <span className="shrink-0 text-danger">· {t("session.chat.activity.failedShort")}</span>}
       </button>
       {open && <ToolDetailsModal name={name} input={input} command={command} result={result} t={t} onClose={() => setOpen(false)} />}
     </div>
@@ -317,9 +317,9 @@ export function editStatsFromInput(input: unknown): { added: number; removed: nu
 function EditStats({ operation, stats }: { operation: EditOperation; stats: { added: number; removed: number } }) {
   return (
     <span className="ml-0.5 typo-chat-system-message font-normal">
-      ({operation !== "Delete" && <span className="text-fel-bright">+{stats.added}</span>}
+      ({operation !== "Delete" && <span className="text-accent-strong">+{stats.added}</span>}
       {operation === "Edit" && ","}
-      {operation !== "Create" && <span className="text-blood">−{stats.removed}</span>})
+      {operation !== "Create" && <span className="text-danger">−{stats.removed}</span>})
     </span>
   );
 }
@@ -448,9 +448,9 @@ function ToolDetailsModal({ name, input, command, result, t, onClose }: { name?:
   })();
   const title = (
     <span className="flex min-w-0 items-center gap-2.5">
-      {isEdit ? <Pencil size={18} className="shrink-0 text-fel-bright" aria-hidden /> : <Terminal size={18} className="shrink-0 text-fel-bright" aria-hidden />}
+      {isEdit ? <Pencil size={18} className="shrink-0 text-accent-strong" aria-hidden /> : <Terminal size={18} className="shrink-0 text-accent-strong" aria-hidden />}
       <span className="truncate">{modalName || t("session.chat.tool")}</span>
-  {stats && <span className="shrink-0 typo-chat-system-message font-normal tracking-normal">(<span className="text-blood">−{stats.removed}</span>,<span className="text-fel-bright">+{stats.added}</span>)</span>}
+  {stats && <span className="shrink-0 typo-chat-system-message font-normal tracking-normal">(<span className="text-danger">−{stats.removed}</span>,<span className="text-accent-strong">+{stats.added}</span>)</span>}
     </span>
   );
   return (
@@ -461,26 +461,26 @@ function ToolDetailsModal({ name, input, command, result, t, onClose }: { name?:
               {diff.map((line, index) => (
                 <div
                   key={index}
-                  className={`grid grid-cols-[1.5rem_3rem_3rem_minmax(0,1fr)] px-5 py-px md:px-6 ${line.kind === "add" ? "bg-fel/15 text-fel-bright" : line.kind === "remove" ? "bg-blood/15 text-blood" : "text-bone-dim"}`}
+                  className={`grid grid-cols-[1.5rem_3rem_3rem_minmax(0,1fr)] px-5 py-px md:px-6 ${line.kind === "add" ? "bg-accent/15 text-accent-strong" : line.kind === "remove" ? "bg-danger/15 text-danger" : "text-ink-muted"}`}
                 >
                   <span className="select-none text-center opacity-70">{line.kind === "add" ? "+" : line.kind === "remove" ? "−" : " "}</span>
-                  <span className="select-none border-r border-iron-700/60 pr-2 text-right tabular-nums text-bone-faint" aria-label={line.oldLine === undefined ? undefined : `Old line ${line.oldLine}`}>{line.oldLine ?? ""}</span>
-                  <span className="select-none border-r border-iron-700/60 pr-2 text-right tabular-nums text-bone-faint" aria-label={line.newLine === undefined ? undefined : `New line ${line.newLine}`}>{line.newLine ?? ""}</span>
+                  <span className="select-none border-r border-edge-strong/60 pr-2 text-right tabular-nums text-ink-faint" aria-label={line.oldLine === undefined ? undefined : `Old line ${line.oldLine}`}>{line.oldLine ?? ""}</span>
+                  <span className="select-none border-r border-edge-strong/60 pr-2 text-right tabular-nums text-ink-faint" aria-label={line.newLine === undefined ? undefined : `New line ${line.newLine}`}>{line.newLine ?? ""}</span>
                   <span className="whitespace-pre-wrap break-words pl-3">{line.text || " "}</span>
                 </div>
               ))}
           </div>
         ) : (
           <section className="surface surface--inset overflow-hidden">
-            <div className="flex items-center gap-2 border-b border-iron-800 bg-iron-900/70 px-3.5 py-2.5 font-display text-[0.625rem] font-semibold uppercase tracking-[0.18em] text-bone-dim">
-              <span className="text-fel-bright" aria-hidden>›_</span>{t("session.chat.command")}
+            <div className="flex items-center gap-2 border-b border-edge bg-surface-raised/70 px-3.5 py-2.5 font-display text-[0.625rem] font-semibold uppercase tracking-[0.18em] text-ink-muted">
+              <span className="text-accent-strong" aria-hidden>›_</span>{t("session.chat.command")}
             </div>
-            <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words p-3.5 typo-code-snippet leading-relaxed text-bone-dim">{inputText || "—"}</pre>
+            <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words p-3.5 typo-code-snippet leading-relaxed text-ink-muted">{inputText || "—"}</pre>
           </section>
         )}
-        {toolHasOutputSection(name) && <section className={`surface surface--inset overflow-hidden ${result?.error ? "border-blood/35" : ""}`}>
-          <div className="flex items-center gap-2 border-b border-iron-800 bg-iron-900/70 px-3.5 py-2.5 font-display text-[0.625rem] font-semibold uppercase tracking-[0.18em] text-bone-dim">
-            <span className={result?.error ? "text-blood" : "text-forge"} aria-hidden>↳</span>{t("session.chat.output")}
+        {toolHasOutputSection(name) && <section className={`surface surface--inset overflow-hidden ${result?.error ? "border-danger/35" : ""}`}>
+          <div className="flex items-center gap-2 border-b border-edge bg-surface-raised/70 px-3.5 py-2.5 font-display text-[0.625rem] font-semibold uppercase tracking-[0.18em] text-ink-muted">
+            <span className={result?.error ? "text-danger" : "text-warning"} aria-hidden>↳</span>{t("session.chat.output")}
           </div>
           {jsonOutput !== null ? (
             <HighlightedCode
@@ -489,7 +489,7 @@ function ToolDetailsModal({ name, input, command, result, t, onClose }: { name?:
               className="max-h-72 !rounded-none !border-0 !bg-transparent !p-3.5 !text-[0.75rem]"
             />
           ) : (
-              <pre className={`max-h-72 overflow-auto whitespace-pre-wrap break-words p-3.5 typo-code-snippet leading-relaxed ${result?.error ? "text-blood" : "text-bone-dim"}`}>
+              <pre className={`max-h-72 overflow-auto whitespace-pre-wrap break-words p-3.5 typo-code-snippet leading-relaxed ${result?.error ? "text-danger" : "text-ink-muted"}`}>
                 {result?.text?.trim() ? result.text : t("session.chat.noOutput")}
               </pre>
           )}
@@ -506,10 +506,10 @@ function ActionResult({ text, error, t }: { text: string; error?: boolean; t: T 
   if (!text.trim()) return null;
   return (
       <div className="flex justify-start">
-      <div className={`max-w-[85%] border-l-2 pl-3 typo-chat-system-message ${error ? "border-blood/60 text-blood" : "border-iron-700 text-bone-faint"}`}>
+      <div className={`max-w-[85%] border-l-2 pl-3 typo-chat-system-message ${error ? "border-danger/60 text-danger" : "border-edge-strong text-ink-faint"}`}>
         <pre className="whitespace-pre-wrap break-words typo-chat-system-message">{shown}</pre>
         {long && (
-          <button onClick={() => setOpen(!open)} className="mt-1 text-bone-dim transition-colors hover:text-fel-bright">
+          <button onClick={() => setOpen(!open)} className="mt-1 text-ink-muted transition-colors hover:text-accent-strong">
             {open ? t("session.chat.less") : t("session.chat.more")}
           </button>
         )}
@@ -523,11 +523,11 @@ function Thinking({ text }: { text: string }) {
   return (
       <div className="flex justify-start">
       <div className="max-w-[85%] typo-chat-system-message">
-        <button onClick={() => setOpen(!open)} className="text-bone-faint transition-colors hover:text-bone-dim typo-chat-system-message">
+        <button onClick={() => setOpen(!open)} className="text-ink-faint transition-colors hover:text-ink-muted typo-chat-system-message">
           ✦ {orcishThinkingLabel(`chat-thinking:${text}`)} {open ? "▾" : "▸"}
         </button>
         {open && (
-          <pre className="mt-1 whitespace-pre-wrap break-words border-l-2 border-iron-800 pl-3 italic text-bone-faint typo-chat-system-message">
+          <pre className="mt-1 whitespace-pre-wrap break-words border-l-2 border-edge pl-3 italic text-ink-faint typo-chat-system-message">
             {text}
           </pre>
         )}
@@ -603,7 +603,7 @@ export function ItemView({ item, t, locale = "en", yesterdayLabel = "Yesterday",
       return <UserBubble text={item.text} author={item.author} authorEmail={item.authorEmail} authorGithubLogin={item.authorGithubLogin} authorAvatarUrl={item.authorAvatarUrl} attachments={item.attachments} createdAt={item.createdAt} onOpenAttachment={onOpenAttachment} />;
     case "text":
       return (
-        <div className="typo-chat-message leading-relaxed text-bone">
+        <div className="typo-chat-message leading-relaxed text-ink">
           <Markdown
             source={item.text}
             onOpenFile={(path) => onOpenPreview?.({ path })}
@@ -616,10 +616,10 @@ export function ItemView({ item, t, locale = "en", yesterdayLabel = "Yesterday",
             } : undefined}
           />
           {(item.createdAt || item.resultMeta) && (
-            <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 font-body text-[0.625rem] leading-tight text-bone-faint">
+            <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 font-body text-[0.625rem] leading-tight text-ink-faint">
               {item.createdAt && <LocalMessageTime createdAt={item.createdAt} locale={locale} yesterdayLabel={yesterdayLabel} />}
               {item.createdAt && item.resultMeta && <span aria-hidden>·</span>}
-              {item.resultMeta && <span className={item.resultMeta.tone === "error" ? "text-blood" : undefined}>{item.resultMeta.text}</span>}
+              {item.resultMeta && <span className={item.resultMeta.tone === "error" ? "text-danger" : undefined}>{item.resultMeta.text}</span>}
             </div>
           )}
         </div>
@@ -635,20 +635,20 @@ export function ItemView({ item, t, locale = "en", yesterdayLabel = "Yesterday",
     case "preview":
       return (
         <div className="flex justify-start">
-          <div className="flex min-w-0 max-w-[85%] items-center gap-2 rounded-md border border-fel-deep/50 bg-fel/[0.07] px-3 py-2">
-            <span aria-hidden className="text-fel-bright">▣</span>
+          <div className="flex min-w-0 max-w-[85%] items-center gap-2 rounded-md border border-accent-deep/50 bg-accent/[0.07] px-3 py-2">
+            <span aria-hidden className="text-accent-strong">▣</span>
             <div className="min-w-0 flex-1">
-              <div className="truncate typo-code-snippet text-bone" title={item.path}>{item.path.split(/[\\/]/).pop() || item.path}</div>
-              <div className="typo-chat-system-message text-bone-faint">{item.author ? `${item.author} · ` : ""}{item.createdAt ? new Date(item.createdAt).toLocaleString() : ""}</div>
+              <div className="truncate typo-code-snippet text-ink" title={item.path}>{item.path.split(/[\\/]/).pop() || item.path}</div>
+              <div className="typo-chat-system-message text-ink-faint">{item.author ? `${item.author} · ` : ""}{item.createdAt ? new Date(item.createdAt).toLocaleString() : ""}</div>
             </div>
-            <button type="button" className="shrink-0 typo-chat-system-message text-fel-bright underline decoration-dotted underline-offset-2 hover:text-bone" onClick={() => onOpenPreview?.(item)}>
+            <button type="button" className="shrink-0 typo-chat-system-message text-accent-strong underline decoration-dotted underline-offset-2 hover:text-ink" onClick={() => onOpenPreview?.(item)}>
               {t("session.preview.open")}
             </button>
           </div>
         </div>
       );
     case "raw":
-      return item.text ? <div className="whitespace-pre-wrap break-words typo-chat-system-message text-bone-faint">{item.text}</div> : null;
+      return item.text ? <div className="whitespace-pre-wrap break-words typo-chat-system-message text-ink-faint">{item.text}</div> : null;
   }
 }
 
@@ -730,20 +730,20 @@ export function Working({
     : fallbackStartedAt.current;
   const duration = formatStepDuration(now - effectiveStartedAt);
   return (
-    <div className="reveal flex items-center justify-start gap-2 typo-chat-system-message text-bone-faint">
+    <div className="reveal flex items-center justify-start gap-2 typo-chat-system-message text-ink-faint">
       <span className="thinking-dots" aria-hidden>
         <span />
         <span />
         <span />
       </span>
       {label && <span>{label}</span>}
-      <span className="tabular-nums text-bone-dim">{label ? "· " : ""}{duration}</span>
-      {model && <span className="text-bone-dim">· {model}</span>}
-      {effort && <span className="text-bone-dim">· {effort}</span>}
+      <span className="tabular-nums text-ink-muted">{label ? "· " : ""}{duration}</span>
+      {model && <span className="text-ink-muted">· {model}</span>}
+      {effort && <span className="text-ink-muted">· {effort}</span>}
       <button
         type="button"
         data-session-stop-control
-        className="flex items-center gap-1 text-ember transition-colors hover:text-blood disabled:opacity-40"
+        className="flex items-center gap-1 text-warning-strong transition-colors hover:text-danger disabled:opacity-40"
         onClick={onStop}
         disabled={stopping}
       >

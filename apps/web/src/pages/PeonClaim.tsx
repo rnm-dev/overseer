@@ -113,22 +113,22 @@ export function PeonClaim() {
       <div className="w-full max-w-xl">
         <h1 className="auth-wordmark auth-wordmark--muted text-center">{t("app.name")}</h1>
         <Card className="mt-8 p-6 md:p-8">
-          <h2 className="font-display text-xl font-semibold text-bone">{t("claim.title")}</h2>
+          <h2 className="font-display text-xl font-semibold text-ink">{t("claim.title")}</h2>
           {!code ? (
-            <p className="mt-4 font-body text-sm text-bone-dim">{t("claim.invalid")}</p>
+            <p className="mt-4 font-body text-sm text-ink-muted">{t("claim.invalid")}</p>
           ) : !user ? (
             <div className="mt-5">
-              <p className="font-body text-sm text-bone-dim">{t("claim.signInHint")}</p>
+              <p className="font-body text-sm text-ink-muted">{t("claim.signInHint")}</p>
               <button type="button" className="auth-cta mt-5" disabled={busy} onClick={signIn}>
                 <GithubMark size={17} />
                 {t("claim.signIn")}
               </button>
             </div>
           ) : busy && !details ? (
-            <div className="mt-8 flex justify-center" role="status"><div className="forge-spin" /></div>
+            <div className="mt-8 flex justify-center" role="status"><div className="loading-spinner" /></div>
           ) : result ? (
             <div className="mt-5">
-              <p className="font-body text-sm text-bone">
+              <p className="font-body text-sm text-ink">
                 {result.state === "denied"
                   ? t("claim.denied")
                   : result.mode === "recover"
@@ -140,19 +140,19 @@ export function PeonClaim() {
           ) : details ? (
             <div className="mt-5 space-y-5">
               <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 font-mono text-xs">
-                <dt className="text-bone-faint">{t("claim.name")}</dt>
-                <dd className="text-bone">{details.display.name}</dd>
-                <dt className="text-bone-faint">{t("claim.system")}</dt>
-                <dd className="text-bone">{details.display.platform} · {details.display.architecture}</dd>
-                <dt className="text-bone-faint">{t("claim.version")}</dt>
-                <dd className="text-bone">{details.display.daemonVersion}</dd>
-                <dt className="text-bone-faint">{t("claim.identity")}</dt>
-                <dd className="break-all text-bone">{details.identityKeyId}</dd>
-                <dt className="text-bone-faint">{t("claim.expires")}</dt>
-                <dd className="text-bone">{expires}</dd>
+                <dt className="text-ink-faint">{t("claim.name")}</dt>
+                <dd className="text-ink">{details.display.name}</dd>
+                <dt className="text-ink-faint">{t("claim.system")}</dt>
+                <dd className="text-ink">{details.display.platform} · {details.display.architecture}</dd>
+                <dt className="text-ink-faint">{t("claim.version")}</dt>
+                <dd className="text-ink">{details.display.daemonVersion}</dd>
+                <dt className="text-ink-faint">{t("claim.identity")}</dt>
+                <dd className="break-all text-ink">{details.identityKeyId}</dd>
+                <dt className="text-ink-faint">{t("claim.expires")}</dt>
+                <dd className="text-ink">{expires}</dd>
               </dl>
               <label className="block">
-                <span className="mb-2 block font-mono text-xs text-bone-dim">{t("claim.workspace")}</span>
+                <span className="mb-2 block font-mono text-xs text-ink-muted">{t("claim.workspace")}</span>
                 <select
                   className="field w-full"
                   value={workspaceId}
@@ -161,8 +161,8 @@ export function PeonClaim() {
                   {workspaces.map((workspace) => <option key={workspace.id} value={workspace.id}>{workspace.name}</option>)}
                 </select>
               </label>
-              {!workspaces.length && <p className="text-sm text-forge">{t("claim.noOwnerWorkspace")}</p>}
-              <p className="rounded-md border border-forge/30 bg-forge/10 p-3 font-body text-xs text-ember">
+              {!workspaces.length && <p className="text-sm text-warning">{t("claim.noOwnerWorkspace")}</p>}
+              <p className="rounded-md border border-warning/30 bg-warning/10 p-3 font-body text-xs text-warning-strong">
                 {t("claim.recoveryWarning")}
               </p>
               <div className="flex justify-end gap-3">
@@ -171,7 +171,7 @@ export function PeonClaim() {
               </div>
             </div>
           ) : null}
-          {error && <p className="mt-5 text-sm text-blood" role="alert">{error}</p>}
+          {error && <p className="mt-5 text-sm text-danger" role="alert">{error}</p>}
         </Card>
       </div>
     </div>

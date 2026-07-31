@@ -89,27 +89,27 @@ export function ProjectMembers() {
     <div className="space-y-3">
       <ProjectPageHeader />
       <ProjectTabs />
-      {error && <p className="rounded-md border border-blood/30 bg-blood/5 px-4 py-3 font-mono text-xs text-blood">⚠ {error}</p>}
+      {error && <p className="rounded-md border border-danger/30 bg-danger/5 px-4 py-3 font-mono text-xs text-danger">⚠ {error}</p>}
       <Card className="overflow-hidden">
-        <div className="flex items-start gap-3 border-b border-iron-800 px-5 py-4">
-          <div className="grid h-9 w-9 flex-none place-items-center rounded-lg bg-fel/10 text-fel-bright"><Users size={17} aria-hidden /></div>
-          <div><h2 className="font-display text-sm font-semibold text-bone">{t("proj.members.title")}</h2><p className="mt-1 font-mono text-[0.7rem] text-bone-faint">{t("proj.members.hint")}</p></div>
+        <div className="flex items-start gap-3 border-b border-edge px-5 py-4">
+          <div className="grid h-9 w-9 flex-none place-items-center rounded-lg bg-accent/10 text-accent-strong"><Users size={17} aria-hidden /></div>
+          <div><h2 className="font-display text-sm font-semibold text-ink">{t("proj.members.title")}</h2><p className="mt-1 font-mono text-[0.7rem] text-ink-faint">{t("proj.members.hint")}</p></div>
         </div>
-        {members === null ? <div className="grid min-h-40 place-items-center"><div className="forge-spin" /></div> : <>
-          {owners.length > 0 && <div className="border-b border-iron-800 bg-iron-950/25 px-5 py-3"><p className="font-mono text-[0.68rem] text-bone-faint">{t("proj.members.owners", { n: owners.length })}</p></div>}
-          {regularMembers.length === 0 ? <p className="p-8 text-center font-mono text-sm text-bone-faint">{t("proj.members.empty")}</p> : <ul className="divide-y divide-iron-800">
+        {members === null ? <div className="grid min-h-40 place-items-center"><div className="loading-spinner" /></div> : <>
+          {owners.length > 0 && <div className="border-b border-edge bg-surface/25 px-5 py-3"><p className="font-mono text-[0.68rem] text-ink-faint">{t("proj.members.owners", { n: owners.length })}</p></div>}
+          {regularMembers.length === 0 ? <p className="p-8 text-center font-mono text-sm text-ink-faint">{t("proj.members.empty")}</p> : <ul className="divide-y divide-iron-800">
             {regularMembers.map((member) => {
               const access = accessByMember[member.userId];
               const checked = access?.projects.some((item) => item.peonId === peon.peonId && (projectId ? item.projectId === projectId : item.projectKey === key)) ?? false;
-              return <li key={member.userId} className="flex items-center justify-between gap-4 px-5 py-4 transition-colors hover:bg-iron-800/20">
+              return <li key={member.userId} className="flex items-center justify-between gap-4 px-5 py-4 transition-colors hover:bg-surface-hover/20">
                 <div className="flex min-w-0 items-center gap-3">
-                  <Avatar src={member.avatarUrl} label={member.githubLogin || member.email} size="lg" className="border-iron-700" />
-                  <div className="min-w-0"><p className="truncate font-display text-sm font-semibold text-bone">{member.githubLogin ? `@${member.githubLogin}` : member.email}</p>{member.githubLogin && <p className="truncate font-mono text-[0.68rem] text-bone-faint">{member.email}</p>}</div>
+                  <Avatar src={member.avatarUrl} label={member.githubLogin || member.email} size="lg" className="border-edge-strong" />
+                  <div className="min-w-0"><p className="truncate font-display text-sm font-semibold text-ink">{member.githubLogin ? `@${member.githubLogin}` : member.email}</p>{member.githubLogin && <p className="truncate font-mono text-[0.68rem] text-ink-faint">{member.email}</p>}</div>
                 </div>
                 <label className="flex cursor-pointer items-center gap-2.5">
                   {saved === member.userId && <Badge tone="green"><Check size={11} aria-hidden />{t("peon.settings.saved")}</Badge>}
-                  <span className="font-display text-xs text-bone-dim">{checked ? t("proj.members.canAccess") : t("proj.members.noAccess")}</span>
-                  <input type="checkbox" className="h-4 w-4 accent-[var(--color-fel)]" disabled={!access || busy === member.userId} checked={checked} onChange={(event) => void setProjectAccess(member, event.target.checked)} />
+                  <span className="font-display text-xs text-ink-muted">{checked ? t("proj.members.canAccess") : t("proj.members.noAccess")}</span>
+                  <input type="checkbox" className="h-4 w-4 accent-[var(--color-accent)]" disabled={!access || busy === member.userId} checked={checked} onChange={(event) => void setProjectAccess(member, event.target.checked)} />
                 </label>
               </li>;
             })}

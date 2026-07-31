@@ -85,12 +85,12 @@ export function ProjectSettings() {
   return <div className="space-y-3">
     <ProjectPageHeader name={settings?.name} />
     <ProjectTabs />
-    {!peon.online && <p className="font-mono text-xs text-bone-faint">{t("peon.offlineNote")}</p>}
-    {loadError && <p role="alert" className="border-l-2 border-blood bg-blood/5 py-2 pl-3 font-mono text-xs text-blood">⚠ {loadError}</p>}
+    {!peon.online && <p className="font-mono text-xs text-ink-faint">{t("peon.offlineNote")}</p>}
+    {loadError && <p role="alert" className="border-l-2 border-danger bg-danger/5 py-2 pl-3 font-mono text-xs text-danger">⚠ {loadError}</p>}
     {form && <Card className="overflow-hidden">
-      <div className="border-b border-iron-800 bg-iron-900/40 px-5 py-3">
-        <h2 className="font-display text-sm font-bold text-bone">{t("proj.settings")}</h2>
-        <p className="mt-0.5 text-xs text-bone-faint">{t("proj.settingsHint")}</p>
+      <div className="border-b border-edge bg-surface-raised/40 px-5 py-3">
+        <h2 className="font-display text-sm font-bold text-ink">{t("proj.settings")}</h2>
+        <p className="mt-0.5 text-xs text-ink-faint">{t("proj.settingsHint")}</p>
       </div>
       <div className="grid gap-4 p-5 md:grid-cols-2">
         <div className="space-y-1.5"><Label>{t("proj.key")}</Label><Input value={form.key} onChange={(event) => setForm({ ...form, key: event.target.value })} /></div>
@@ -98,9 +98,9 @@ export function ProjectSettings() {
         <div className="space-y-1.5 md:col-span-2"><Label>{t("newProject.dir")}</Label><PathInput base={base} value={form.dir} onChange={(dir) => setForm({ ...form, dir })} browseRoot={settings?.dir || form.dir} browseBase={`${base}/projects/${encodeURIComponent(key)}/files`} /></div>
         <div className="space-y-1.5 md:col-span-2"><Label>{t("proj.metadata")}</Label><textarea className="field min-h-32 resize-y" rows={7} value={form.metadata} onChange={(event) => setForm({ ...form, metadata: event.target.value })} /></div>
       </div>
-      <div className="flex items-center justify-end gap-3 border-t border-iron-800 px-5 py-3">
-        {saveError && <p role="alert" className="mr-auto font-mono text-xs text-blood">⚠ {saveError}</p>}
-        {saved && <span className="mr-auto font-mono text-xs text-fel-bright">⚡ {t("peon.settings.saved")}</span>}
+      <div className="flex items-center justify-end gap-3 border-t border-edge px-5 py-3">
+        {saveError && <p role="alert" className="mr-auto font-mono text-xs text-danger">⚠ {saveError}</p>}
+        {saved && <span className="mr-auto font-mono text-xs text-accent-strong">⚡ {t("peon.settings.saved")}</span>}
         <Button onClick={() => void save()} disabled={!peon.online || saving || !form.key.trim() || !form.name.trim() || !form.dir.trim()}>{saving ? t("proj.saving") : t("proj.save")}</Button>
       </div>
     </Card>}
@@ -113,14 +113,14 @@ export function ProjectSettings() {
       />
     )}
     <div className="pt-3">
-      <h3 className="mb-3 rune text-sm text-blood">{t("proj.danger")}</h3>
-      <Card className="flex flex-wrap items-center justify-between gap-4 border-blood/30 px-5 py-4">
+      <h3 className="mb-3 rune text-sm text-danger">{t("proj.danger")}</h3>
+      <Card className="flex flex-wrap items-center justify-between gap-4 border-danger/30 px-5 py-4">
         <div className="min-w-0">
-          <p className="font-mono text-xs text-bone-dim">{t("proj.deleteHint")}</p>
-          {deleteError && <p role="alert" className="mt-2 font-mono text-xs text-blood">⚠ {deleteError}</p>}
+          <p className="font-mono text-xs text-ink-muted">{t("proj.deleteHint")}</p>
+          {deleteError && <p role="alert" className="mt-2 font-mono text-xs text-danger">⚠ {deleteError}</p>}
         </div>
         <button
-          className="btn btn-sm !border-blood/50 !text-blood hover:!bg-blood/10 disabled:opacity-40"
+          className="btn btn-sm !border-danger/50 !text-danger hover:!bg-danger/10 disabled:opacity-40"
           disabled={!peon.online || deleting}
           onClick={() => setConfirmDelete(true)}
         >

@@ -185,10 +185,10 @@ export function WorkspaceSessions() {
       <aside
         id="workspace-session-navigation"
         data-open={drawerOpen}
-        className="mobile-drawer-panel fixed inset-y-0 left-0 z-50 flex h-[100dvh] w-[min(20rem,86vw)] shrink-0 flex-col border-r border-iron-800 bg-iron-950 shadow-2xl md:visible md:sticky md:top-0 md:z-auto md:h-screen md:w-[var(--peon-sidebar-width)] md:translate-x-0 md:bg-iron-950/50 md:shadow-none"
+        className="mobile-drawer-panel fixed inset-y-0 left-0 z-50 flex h-[100dvh] w-[min(20rem,86vw)] shrink-0 flex-col border-r border-edge bg-surface shadow-2xl md:visible md:sticky md:top-0 md:z-auto md:h-screen md:w-[var(--peon-sidebar-width)] md:translate-x-0 md:bg-surface/50 md:shadow-none"
       >
-        <div className="border-b border-iron-800 px-3 pb-3 pt-3.5">
-          <NavLink to={`/workspaces/${encodeURIComponent(workspaceId)}`} className="mb-2 inline-block font-body text-xs text-bone-dim transition-colors hover:text-fel-bright">{t("peon.back")}</NavLink>
+        <div className="border-b border-edge px-3 pb-3 pt-3.5">
+          <NavLink to={`/workspaces/${encodeURIComponent(workspaceId)}`} className="mb-2 inline-block font-body text-xs text-ink-muted transition-colors hover:text-accent-strong">{t("peon.back")}</NavLink>
           <div className="flex items-center gap-2">
             <PeonScopeSwitcher workspaceId={workspaceId} />
           </div>
@@ -197,11 +197,11 @@ export function WorkspaceSessions() {
         <SidebarSectionHeader label={t("peon.tab.sessions")} />
         <div className="min-h-0 flex-1 overflow-y-auto pb-24">
           {sessionsLoading && ordered.length === 0 ? (
-            <div className="flex min-h-20 items-center justify-center"><span className="forge-spin scale-75" role="status" aria-label={t("sessions.loading")} /></div>
+            <div className="flex min-h-20 items-center justify-center"><span className="loading-spinner scale-75" role="status" aria-label={t("sessions.loading")} /></div>
           ) : sessionError && ordered.length === 0 ? (
-            <button type="button" className="px-3 py-2 font-body text-xs text-bone-dim hover:text-fel-bright" onClick={() => void loadSessions()}>{t("sessions.retry")}</button>
+            <button type="button" className="px-3 py-2 font-body text-xs text-ink-muted hover:text-accent-strong" onClick={() => void loadSessions()}>{t("sessions.retry")}</button>
           ) : ordered.length === 0 ? (
-            <p className="px-3 py-2 font-body text-xs text-bone-faint">{t("sessions.empty")}</p>
+            <p className="px-3 py-2 font-body text-xs text-ink-faint">{t("sessions.empty")}</p>
           ) : (
             <SessionSidebarList
               sessions={ordered}
@@ -238,7 +238,7 @@ export function WorkspaceSessions() {
             />
           )}
           {sessionTotal !== null && sessionTotal > ordered.length && (
-            <p className="px-3 py-3 text-center font-body text-[0.65rem] text-bone-faint">{t("sessions.showingRecent", { shown: ordered.length, total: sessionTotal })}</p>
+            <p className="px-3 py-3 text-center font-body text-[0.65rem] text-ink-faint">{t("sessions.showingRecent", { shown: ordered.length, total: sessionTotal })}</p>
           )}
         </div>
         <div
@@ -249,7 +249,7 @@ export function WorkspaceSessions() {
           aria-valuemax={MAX_SIDEBAR_WIDTH}
           aria-valuenow={Math.round(sidebarWidth)}
           tabIndex={0}
-          className="absolute -right-1 top-0 hidden h-full w-2 cursor-col-resize touch-none outline-none after:absolute after:inset-y-0 after:left-[3px] after:w-px after:bg-transparent hover:after:bg-fel/70 focus-visible:after:bg-fel md:block"
+          className="absolute -right-1 top-0 hidden h-full w-2 cursor-col-resize touch-none outline-none after:absolute after:inset-y-0 after:left-[3px] after:w-px after:bg-transparent hover:after:bg-accent/70 focus-visible:after:bg-accent md:block"
           onPointerDown={(event) => { event.preventDefault(); setResizing(true); }}
           onKeyDown={(event) => {
             if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
@@ -261,15 +261,15 @@ export function WorkspaceSessions() {
       </aside>
 
       <main className="peon-main-pane min-w-0 flex-1">
-        <div className="sticky top-0 z-30 flex h-12 items-center gap-3 border-b border-iron-800 bg-void/95 px-3 backdrop-blur md:hidden">
-          <button type="button" className="-ml-1 rounded p-2 text-bone-dim transition-colors hover:bg-iron-900 hover:text-bone" aria-label={t("peon.tab.sessions")} aria-expanded={drawerOpen} aria-controls="workspace-session-navigation" onClick={() => setDrawerOpen(true)}>
+        <div className="sticky top-0 z-30 flex h-12 items-center gap-3 border-b border-edge bg-canvas/95 px-3 backdrop-blur md:hidden">
+          <button type="button" className="-ml-1 rounded p-2 text-ink-muted transition-colors hover:bg-surface-raised hover:text-ink" aria-label={t("peon.tab.sessions")} aria-expanded={drawerOpen} aria-controls="workspace-session-navigation" onClick={() => setDrawerOpen(true)}>
             <Menu size={20} />
           </button>
-          <span className="min-w-0 flex-1 truncate font-display text-sm font-bold text-bone">{t("sessions.allPeons")}</span>
+          <span className="min-w-0 flex-1 truncate font-display text-sm font-bold text-ink">{t("sessions.allPeons")}</span>
         </div>
         <div className="mx-auto max-w-6xl px-3 py-4 reveal sm:px-6 sm:py-7">
           {peonId && !activePeon ? (
-            activePeonError ? <p className="border-l-2 border-blood bg-blood/5 py-2 pl-3 font-mono text-sm text-blood">{t("peon.notFound")}</p> : <div className="grid min-h-[40vh] place-items-center"><div className="forge-spin" /></div>
+            activePeonError ? <p className="border-l-2 border-danger bg-danger/5 py-2 pl-3 font-mono text-sm text-danger">{t("peon.notFound")}</p> : <div className="grid min-h-[40vh] place-items-center"><div className="loading-spinner" /></div>
           ) : (
             <Outlet context={outletContext} />
           )}
@@ -284,8 +284,8 @@ export function WorkspaceSessionsEmpty() {
   return (
     <div className="grid min-h-[55vh] place-items-center text-center">
       <div>
-        <h1 className="font-display text-xl font-bold text-bone">{t("sessions.allPeons")}</h1>
-        <p className="mt-2 font-mono text-sm text-bone-faint">{t("sessions.choose")}</p>
+        <h1 className="font-display text-xl font-bold text-ink">{t("sessions.allPeons")}</h1>
+        <p className="mt-2 font-mono text-sm text-ink-faint">{t("sessions.choose")}</p>
       </div>
     </div>
   );

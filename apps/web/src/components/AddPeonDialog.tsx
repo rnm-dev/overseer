@@ -64,7 +64,7 @@ export function AddPeonDialog({ workspaceId, onClose, onAdded }: { workspaceId: 
             <button
               type="button"
               onClick={() => setShowSecret((v) => !v)}
-              className="font-mono text-xs text-bone-faint hover:text-bone"
+              className="font-mono text-xs text-ink-faint hover:text-ink"
             >
               {showSecret ? "hide" : "show"}
             </button>
@@ -78,28 +78,28 @@ export function AddPeonDialog({ workspaceId, onClose, onAdded }: { workspaceId: 
               setCheck({ state: "idle" });
             }}
           />
-          <p className="font-mono text-xs text-bone-faint">{t("addPeon.secretHelp")}</p>
+          <p className="font-mono text-xs text-ink-faint">{t("addPeon.secretHelp")}</p>
         </div>
 
         {check.state === "ok" && (
-          <div className="border border-fel/30 bg-fel/10 p-3 font-mono text-sm text-fel-bright">
+          <div className="border border-accent/30 bg-accent/10 p-3 font-mono text-sm text-accent-strong">
             ⚡ {check.name ? t("addPeon.connectedNamed", { name: check.name }) : t("addPeon.connected")}
           </div>
         )}
         {check.state === "err" && (
-          <div className="border border-blood/30 bg-blood/10 p-3 font-mono text-sm text-blood">
+          <div className="border border-danger/30 bg-danger/10 p-3 font-mono text-sm text-danger">
             {check.message}
             {check.requestId && <div className="mt-1 text-xs">{t("addPeon.requestId", { id: check.requestId })}</div>}
           </div>
         )}
         {check.state === "paired-waiting" && (
-          <div className="border border-fel/30 bg-fel/10 p-3 font-mono text-sm text-fel-bright">
+          <div className="border border-accent/30 bg-accent/10 p-3 font-mono text-sm text-accent-strong">
             ⚡ {t("addPeon.pairedWaiting")}
           </div>
         )}
 
         <div className="flex justify-end gap-2 pt-1">
-          <Button variant="iron" onClick={doCheck} disabled={!url || !secret || check.state === "checking"}>
+          <Button variant="secondary" onClick={doCheck} disabled={!url || !secret || check.state === "checking"}>
             {check.state === "checking" ? t("addPeon.checking") : t("addPeon.check")}
           </Button>
           <Button onClick={doAdd} disabled={!url || !secret || adding}>

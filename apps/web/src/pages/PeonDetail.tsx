@@ -38,7 +38,7 @@ const NAV: readonly PeonNavItem[] = [
 ];
 
 const iconNavClass = (active: boolean) =>
-  `rounded p-1.5 transition-colors ${active ? "bg-fel/10 text-fel-bright" : "text-bone-dim hover:bg-iron-800 hover:text-bone"}`;
+  `rounded p-1.5 transition-colors ${active ? "bg-accent/10 text-accent-strong" : "text-ink-muted hover:bg-surface-hover hover:text-ink"}`;
 
 const SIDEBAR_WIDTH_KEY = "overseer.peon-sidebar-width";
 const DEFAULT_SIDEBAR_WIDTH = 256;
@@ -297,14 +297,14 @@ export function PeonDetail() {
   if (error) {
     return (
       <div className="mx-auto max-w-2xl px-6 py-7">
-        <Link to="/" className="font-body text-xs text-bone-dim hover:text-fel-bright">
+        <Link to="/" className="font-body text-xs text-ink-muted hover:text-accent-strong">
           {t("peon.back")}
         </Link>
-        <p className="mt-4 border-l-2 border-blood bg-blood/5 py-2 pl-3 font-mono text-sm text-blood">⚠ {error}</p>
+        <p className="mt-4 border-l-2 border-danger bg-danger/5 py-2 pl-3 font-mono text-sm text-danger">⚠ {error}</p>
       </div>
     );
   }
-  if (!peon) return <div className="grid min-h-screen place-items-center"><div className="forge-spin" /></div>;
+  if (!peon) return <div className="grid min-h-screen place-items-center"><div className="loading-spinner" /></div>;
 
   const displayedPeon = { ...peon, online };
   const onSessionDeleted = (_deletedPeonId: string, sessionId: string) => {
@@ -364,11 +364,11 @@ export function PeonDetail() {
       <aside
         id="peon-navigation"
         data-open={drawerOpen}
-        className="mobile-drawer-panel fixed inset-y-0 left-0 z-50 flex h-[100dvh] w-[min(20rem,86vw)] shrink-0 flex-col border-r border-iron-800 bg-iron-950 shadow-2xl md:visible md:sticky md:top-0 md:z-auto md:h-screen md:w-[var(--peon-sidebar-width)] md:translate-x-0 md:bg-iron-950/50 md:shadow-none"
+        className="mobile-drawer-panel fixed inset-y-0 left-0 z-50 flex h-[100dvh] w-[min(20rem,86vw)] shrink-0 flex-col border-r border-edge bg-surface shadow-2xl md:visible md:sticky md:top-0 md:z-auto md:h-screen md:w-[var(--peon-sidebar-width)] md:translate-x-0 md:bg-surface/50 md:shadow-none"
       >
         {/* header: back + workspace-wide Peon scope switcher */}
-        <div className="border-b border-iron-800 px-3 pb-3 pt-3.5">
-          <Link to="/" className="mb-2 inline-block font-body text-xs text-bone-dim transition-colors hover:text-fel-bright">
+        <div className="border-b border-edge px-3 pb-3 pt-3.5">
+          <Link to="/" className="mb-2 inline-block font-body text-xs text-ink-muted transition-colors hover:text-accent-strong">
             {t("peon.back")}
           </Link>
           <div className="flex items-center justify-between gap-2">
@@ -419,9 +419,9 @@ export function PeonDetail() {
               )}
             />
             <div>
-              {!online && <p className="px-3 py-2 font-body text-xs text-bone-faint">{t("peon.offlineNote")}</p>}
+              {!online && <p className="px-3 py-2 font-body text-xs text-ink-faint">{t("peon.offlineNote")}</p>}
               {ordered.length === 0 && !sessionsLoading && !sessionPageError ? (
-                <p className="px-3 py-2 font-body text-xs text-bone-faint">{t("peon.dash.noSessions")}</p>
+                <p className="px-3 py-2 font-body text-xs text-ink-faint">{t("peon.dash.noSessions")}</p>
               ) : (
                 <>
                   <SessionSidebarList
@@ -440,9 +440,9 @@ export function PeonDetail() {
                     onDelete={deleteSession}
                   />
                   <div ref={sessionLoadSentinel} className="flex min-h-8 items-center justify-center px-3 py-2" aria-live="polite">
-                    {sessionsLoading && <span className="forge-spin scale-75" role="status" aria-label={t("sessions.loading")} />}
+                    {sessionsLoading && <span className="loading-spinner scale-75" role="status" aria-label={t("sessions.loading")} />}
                     {sessionPageError && (
-                      <button type="button" className="font-body text-[0.68rem] text-bone-dim hover:text-fel-bright" onClick={() => void loadNextSessions()}>
+                      <button type="button" className="font-body text-[0.68rem] text-ink-muted hover:text-accent-strong" onClick={() => void loadNextSessions()}>
                         {t("sessions.retry")}
                       </button>
                     )}
@@ -464,7 +464,7 @@ export function PeonDetail() {
           aria-valuemax={MAX_SIDEBAR_WIDTH}
           aria-valuenow={Math.round(sidebarWidth)}
           tabIndex={0}
-          className="absolute -right-1 top-0 hidden h-full w-2 cursor-col-resize touch-none outline-none after:absolute after:inset-y-0 after:left-[3px] after:w-px after:bg-transparent hover:after:bg-fel/70 focus-visible:after:bg-fel md:block"
+          className="absolute -right-1 top-0 hidden h-full w-2 cursor-col-resize touch-none outline-none after:absolute after:inset-y-0 after:left-[3px] after:w-px after:bg-transparent hover:after:bg-accent/70 focus-visible:after:bg-accent md:block"
           onPointerDown={(event) => {
             event.preventDefault();
             setResizing(true);
@@ -479,10 +479,10 @@ export function PeonDetail() {
       </aside>
 
       <main className="peon-main-pane min-w-0 flex-1">
-        <div className="sticky top-0 z-30 flex h-12 items-center gap-3 border-b border-iron-800 bg-void/95 px-3 backdrop-blur md:hidden">
+        <div className="sticky top-0 z-30 flex h-12 items-center gap-3 border-b border-edge bg-canvas/95 px-3 backdrop-blur md:hidden">
           <button
             type="button"
-            className="-ml-1 rounded p-2 text-bone-dim transition-colors hover:bg-iron-900 hover:text-bone"
+            className="-ml-1 rounded p-2 text-ink-muted transition-colors hover:bg-surface-raised hover:text-ink"
             aria-label={t("peon.tab.sessions")}
             aria-expanded={drawerOpen}
             aria-controls="peon-navigation"
@@ -493,7 +493,7 @@ export function PeonDetail() {
           <MobilePaneIdentity contentActive={!!sid || !!projectKey}>
             <>
               <PeonConnectionStatusDot {...displayedPeon} />
-              <span className="min-w-0 flex-1 whitespace-nowrap font-display text-sm font-bold text-bone"><FadingTitle>{peon.name || t("peons.unnamed")}</FadingTitle></span>
+              <span className="min-w-0 flex-1 whitespace-nowrap font-display text-sm font-bold text-ink"><FadingTitle>{peon.name || t("peons.unnamed")}</FadingTitle></span>
             </>
           </MobilePaneIdentity>
         </div>

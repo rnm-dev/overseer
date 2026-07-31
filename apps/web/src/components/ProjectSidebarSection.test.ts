@@ -49,16 +49,16 @@ test("project sidebar renders a collapsible header and every visible project lin
   assert.match(markup, />OVERSEER</);
   assert.match(markup, />RNM Website</);
   assert.match(markup, /aria-current="page"/);
-  assert.match(markup, /bg-bone\/5 px-3 py-1\.5 font-display text-\[0\.55rem\] uppercase tracking-\[0\.16em\]/);
+  assert.match(markup, /bg-ink\/5 px-3 py-1\.5 font-display text-\[0\.55rem\] uppercase tracking-\[0\.16em\]/);
   assert.match(markup, /id="peon-sidebar-projects"/);
   assert.match(markup, /<ul class="py-1">/);
-  assert.match(markup, /relative block min-w-0 flex-1 py-1\.5 pl-3 transition-colors pr-2 bg-fel\/10/);
-  assert.match(markup, /class="absolute inset-y-1 left-0 w-0\.5 bg-fel-bright status-edge status-edge--fel"/);
-  assert.match(markup, /font-display text-\[0\.8rem\] text-bone/);
+  assert.match(markup, /relative block min-w-0 flex-1 py-1\.5 pl-3 transition-colors pr-2 bg-accent\/10/);
+  assert.match(markup, /class="absolute inset-y-1 left-0 w-0\.5 bg-accent-strong status-edge status-edge--accent"/);
+  assert.match(markup, /font-display text-\[0\.8rem\] text-ink/);
   assert.match(markup, />•</);
   assert.match(markup, />8 sessions</);
-  assert.match(markup, /text-fel-bright">2 active</);
-  assert.match(markup, /text-forge">1 unread</);
+  assert.match(markup, /text-accent-strong">2 active</);
+  assert.match(markup, /text-warning">1 unread</);
   assert.doesNotMatch(markup, />3 members</);
   assert.doesNotMatch(markup, />\/rnm\/overseer</);
   // Total first, then the states that need attention.
@@ -87,10 +87,10 @@ test("a quiet project shows only its session total, without empty active or unre
 });
 
 test("project status edge glows only while the project has active sessions", () => {
-  assert.match(projectStatusEdgeClass(1), /bg-fel-bright/);
-  assert.match(projectStatusEdgeClass(1), /status-edge status-edge--fel/);
-  assert.equal(projectStatusEdgeClass(0), "bg-bone-faint/40");
-  assert.equal(projectStatusEdgeClass(), "bg-bone-faint/40");
+  assert.match(projectStatusEdgeClass(1), /bg-accent-strong/);
+  assert.match(projectStatusEdgeClass(1), /status-edge status-edge--accent/);
+  assert.equal(projectStatusEdgeClass(0), "bg-ink-faint/40");
+  assert.equal(projectStatusEdgeClass(), "bg-ink-faint/40");
 });
 
 test("projects with quick links expose a discoverable context-menu button", () => {

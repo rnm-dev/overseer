@@ -15,12 +15,12 @@ export function WorkspaceDashboard() {
     if (workspaceId && group && current?.id !== workspaceId) setCurrent(workspaceId);
   }, [current?.id, group, setCurrent, workspaceId]);
 
-  if (!ready) return <div className="grid min-h-screen place-items-center"><div className="forge-spin" /></div>;
+  if (!ready) return <div className="grid min-h-screen place-items-center"><div className="loading-spinner" /></div>;
   if (!group) return <Navigate to="/" replace />;
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-6xl px-4 pb-20 pt-5 sm:px-6 sm:pt-8">
-      <Link to="/" className="mb-6 inline-flex items-center gap-2 text-xs text-bone-faint transition-colors hover:text-bone">
+      <Link to="/" className="mb-6 inline-flex items-center gap-2 text-xs text-ink-faint transition-colors hover:text-ink">
         <ArrowLeft size={14} aria-hidden="true" /> {t("workspace.back")}
       </Link>
       <WorkspaceSection workspace={group.workspace} />

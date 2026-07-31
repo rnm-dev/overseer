@@ -17,6 +17,7 @@ export const en: Record<string, string> = {
   "user.peonSounds": "Sounds",
   "user.noSound": "No sound",
   "user.settings": "Settings",
+  "user.theme": "Theme",
   "user.language": "Language",
   "user.toolDisplay": "System commands",
   "user.toolDisplay.simple": "Simple",

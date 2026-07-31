@@ -8,13 +8,13 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 // dashboard sidebar and the site stay pixel-identical.
 
 export const SIDEBAR_SECTION_HEADER_CLASS =
-  "flex items-center gap-1 bg-bone/5 px-3 py-1.5 font-display text-[0.55rem] uppercase tracking-[0.16em] text-bone-faint";
+  "flex items-center gap-1 bg-ink/5 px-3 py-1.5 font-display text-[0.55rem] uppercase tracking-[0.16em] text-ink-faint";
 
-export const SIDEBAR_SECTION_ACTION_CLASS = "uppercase text-bone-dim transition-colors hover:text-fel-bright";
+export const SIDEBAR_SECTION_ACTION_CLASS = "uppercase text-ink-muted transition-colors hover:text-accent-strong";
 
 export const SIDEBAR_ROW_EDGE_CLASS = "absolute inset-y-1 left-0 w-0.5";
 
-export const SIDEBAR_ROW_EDGE_IDLE_CLASS = "bg-bone-faint/40";
+export const SIDEBAR_ROW_EDGE_IDLE_CLASS = "bg-ink-faint/40";
 
 export const SIDEBAR_ROW_EDGE_FLASH_CLASS = "status-edge-flash";
 
@@ -87,7 +87,7 @@ export function SidebarSectionHeader({
           type="button"
           aria-expanded={expanded}
           aria-controls={controls}
-          className="flex min-w-0 items-center gap-1 uppercase transition-colors hover:text-bone"
+          className="flex min-w-0 items-center gap-1 uppercase transition-colors hover:text-ink"
           onClick={onToggle}
         >
           {expanded ? <ChevronDown size={10} aria-hidden /> : <ChevronRight size={10} aria-hidden />}

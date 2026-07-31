@@ -191,17 +191,17 @@ export function ProjectDocumentation({ base, projectId }: { base: string; projec
 
   return (
     <Card className="overflow-hidden">
-      <header className="relative flex min-h-12 items-center gap-3 border-b border-iron-800/90 bg-gradient-to-r from-fel/[0.07] via-transparent to-transparent px-5 py-2 sm:px-6">
+      <header className="relative flex min-h-12 items-center gap-3 border-b border-edge/90 bg-gradient-to-r from-accent/[0.07] via-transparent to-transparent px-5 py-2 sm:px-6">
         <nav aria-label={t("proj.docs.breadcrumbs")} className="flex min-w-0 flex-1 items-center gap-1 font-display text-sm font-bold tracking-wide">
-          <button type="button" onClick={goHome} className="shrink-0 text-bone-dim transition-colors hover:text-fel-bright">{t("proj.docs.project")}</button>
+          <button type="button" onClick={goHome} className="shrink-0 text-ink-muted transition-colors hover:text-accent-strong">{t("proj.docs.project")}</button>
           {breadcrumbs.map((part, index) => {
             const last = index === breadcrumbs.length - 1;
             const home = index === 0 && part === "docs";
             return <span key={`${part}-${index}`} className="contents">
-              <ChevronRight size={13} className="shrink-0 text-bone-faint/55" aria-hidden />
+              <ChevronRight size={13} className="shrink-0 text-ink-faint/55" aria-hidden />
               {home && !last
-                ? <button type="button" onClick={goHome} className="min-w-0 truncate text-bone-dim transition-colors hover:text-fel-bright">{part}</button>
-                : <span className={`min-w-0 truncate ${last ? "text-bone" : "text-bone-dim"}`} title={part}>{part}</span>}
+                ? <button type="button" onClick={goHome} className="min-w-0 truncate text-ink-muted transition-colors hover:text-accent-strong">{part}</button>
+                : <span className={`min-w-0 truncate ${last ? "text-ink" : "text-ink-muted"}`} title={part}>{part}</span>}
             </span>;
           })}
         </nav>
@@ -209,7 +209,7 @@ export function ProjectDocumentation({ base, projectId }: { base: string; projec
           type="button"
           onClick={refresh}
           disabled={state.kind === "loading"}
-          className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-transparent text-bone-faint transition-colors hover:border-iron-700 hover:bg-iron-800 hover:text-bone disabled:opacity-40"
+          className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-transparent text-ink-faint transition-colors hover:border-edge-strong hover:bg-surface-hover hover:text-ink disabled:opacity-40"
           aria-label={t("proj.docs.refresh")}
           title={t("proj.docs.refresh")}
         >
@@ -221,12 +221,12 @@ export function ProjectDocumentation({ base, projectId }: { base: string; projec
         : state.kind === "missing" ? <DocumentationEmpty title={t("proj.docs.empty")} detail={t("proj.docs.emptyHint")} />
           : state.kind === "error" ? (
             <div className="flex flex-col items-center px-6 py-10 text-center">
-              <div className="grid h-11 w-11 place-items-center rounded-full border border-ember/25 bg-ember/10 text-ember"><TriangleAlert size={20} aria-hidden /></div>
-              <p className="mt-3 max-w-lg text-sm text-bone-dim">{errorCopy(state.code, t)}</p>
-              <button type="button" className="mt-4 font-mono text-xs text-fel-bright hover:underline" onClick={refresh}>{t("proj.docs.retry")}</button>
+              <div className="grid h-11 w-11 place-items-center rounded-full border border-warning-strong/25 bg-warning-strong/10 text-warning-strong"><TriangleAlert size={20} aria-hidden /></div>
+              <p className="mt-3 max-w-lg text-sm text-ink-muted">{errorCopy(state.code, t)}</p>
+              <button type="button" className="mt-4 font-mono text-xs text-accent-strong hover:underline" onClick={refresh}>{t("proj.docs.retry")}</button>
             </div>
           ) : state.kind === "document" ? (
-            <article className="mx-auto max-w-4xl px-5 py-6 text-sm leading-relaxed text-bone sm:px-8 sm:py-8">
+            <article className="mx-auto max-w-4xl px-5 py-6 text-sm leading-relaxed text-ink sm:px-8 sm:py-8">
               <Markdown source={state.source} onOpenLink={(href) => {
                 const path = resolveDocumentationLink(state.path, href);
                 if (!path) return false;
@@ -242,25 +242,25 @@ export function ProjectDocumentation({ base, projectId }: { base: string; projec
 function DocumentationEmpty({ title, detail }: { title: string; detail: string }) {
   return (
     <div className="flex flex-col items-center px-6 py-11 text-center">
-      <div className="relative grid h-14 w-14 place-items-center rounded-2xl border border-dashed border-iron-600 bg-iron-900/65 text-bone-faint">
+      <div className="relative grid h-14 w-14 place-items-center rounded-2xl border border-dashed border-edge-emphasis bg-surface-raised/65 text-ink-faint">
         <BookOpen size={25} aria-hidden />
-        <span className="absolute -right-1 -top-1 h-3 w-3 rounded-full border-2 border-iron-950 bg-iron-600" />
+        <span className="absolute -right-1 -top-1 h-3 w-3 rounded-full border-2 border-edge-subtle bg-surface-disabled" />
       </div>
-      <h3 className="mt-4 font-display text-sm font-semibold text-bone">{title}</h3>
-      <p className="mt-1.5 max-w-md text-xs leading-relaxed text-bone-faint">{detail}</p>
+      <h3 className="mt-4 font-display text-sm font-semibold text-ink">{title}</h3>
+      <p className="mt-1.5 max-w-md text-xs leading-relaxed text-ink-faint">{detail}</p>
     </div>
   );
 }
 
 function DocumentationFileList({ entries, emptyLabel }: { entries: DocumentationEntry[]; emptyLabel: string }) {
-  if (!entries.length) return <p className="px-6 py-9 text-center font-mono text-xs text-bone-faint">{emptyLabel}</p>;
+  if (!entries.length) return <p className="px-6 py-9 text-center font-mono text-xs text-ink-faint">{emptyLabel}</p>;
   return (
     <ul className="divide-y divide-iron-800/80" aria-label="docs">
       {entries.map((entry) => (
-        <li key={`${entry.type}:${entry.name}`} className="group flex min-h-11 items-center gap-3 px-5 py-2.5 transition-colors hover:bg-fel/[0.035] sm:px-6">
-          {entry.type === "directory" ? <Folder size={16} className="shrink-0 fill-fel/10 text-fel-deep" aria-hidden /> : <FileTypeIcon name={entry.name} size={16} />}
-          <span className="min-w-0 flex-1 truncate font-mono text-xs text-bone-dim group-hover:text-bone" title={entry.name}>{entry.name}</span>
-          <span className="font-mono text-[0.6rem] uppercase tracking-[0.12em] text-bone-faint/60">{entry.type === "directory" ? "dir" : "file"}</span>
+        <li key={`${entry.type}:${entry.name}`} className="group flex min-h-11 items-center gap-3 px-5 py-2.5 transition-colors hover:bg-accent/[0.035] sm:px-6">
+          {entry.type === "directory" ? <Folder size={16} className="shrink-0 fill-accent/10 text-accent-deep" aria-hidden /> : <FileTypeIcon name={entry.name} size={16} />}
+          <span className="min-w-0 flex-1 truncate font-mono text-xs text-ink-muted group-hover:text-ink" title={entry.name}>{entry.name}</span>
+          <span className="font-mono text-[0.6rem] uppercase tracking-[0.12em] text-ink-faint/60">{entry.type === "directory" ? "dir" : "file"}</span>
         </li>
       ))}
     </ul>
@@ -270,10 +270,10 @@ function DocumentationFileList({ entries, emptyLabel }: { entries: Documentation
 function DocumentationSkeleton({ label }: { label: string }) {
   return (
     <div role="status" aria-label={label} className="space-y-3 px-6 py-7">
-      <div className="h-5 w-2/5 animate-pulse rounded bg-iron-700/65" />
-      <div className="h-3 w-full animate-pulse rounded bg-iron-800" />
-      <div className="h-3 w-11/12 animate-pulse rounded bg-iron-800" />
-      <div className="h-3 w-4/5 animate-pulse rounded bg-iron-800" />
+      <div className="h-5 w-2/5 animate-pulse rounded bg-surface-active/65" />
+      <div className="h-3 w-full animate-pulse rounded bg-surface-hover" />
+      <div className="h-3 w-11/12 animate-pulse rounded bg-surface-hover" />
+      <div className="h-3 w-4/5 animate-pulse rounded bg-surface-hover" />
       <span className="sr-only">{label}</span>
     </div>
   );

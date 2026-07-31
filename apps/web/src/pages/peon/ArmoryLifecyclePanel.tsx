@@ -143,36 +143,36 @@ export function ArmoryLifecyclePanel({ base, packageId, installed, versions = []
   return <Card className="p-5">
     <div className="flex flex-wrap items-start justify-between gap-4">
       <div>
-        <div className="flex flex-wrap items-center gap-2"><h2 className="font-display text-lg font-bold text-bone">Package lifecycle</h2><Badge tone={stateTone(installed)}>{stateLabel(installed)}</Badge></div>
-        <p className="mt-2 text-sm text-bone-dim">{!installed ? "Choose a version and install it on this Peon." : installed.enabled ? "This package is active on the Peon." : configured ? "Configuration is ready, but the package is not active." : "Complete and verify configuration before enabling this package."}</p>
+        <div className="flex flex-wrap items-center gap-2"><h2 className="font-display text-lg font-bold text-ink">Package lifecycle</h2><Badge tone={stateTone(installed)}>{stateLabel(installed)}</Badge></div>
+        <p className="mt-2 text-sm text-ink-muted">{!installed ? "Choose a version and install it on this Peon." : installed.enabled ? "This package is active on the Peon." : configured ? "Configuration is ready, but the package is not active." : "Complete and verify configuration before enabling this package."}</p>
       </div>
       {!installed ? <div className="flex flex-wrap items-end gap-2">
-        {versions.length > 1 && <label className="block"><span className="mb-1 block font-mono text-[0.68rem] text-bone-faint">Version</span><select className="field !w-auto !py-2 text-sm" value={selectedVersion} disabled={busy} onChange={(event) => setSelectedVersion(event.target.value)}>{versions.map((version) => <option key={version.version} value={version.version}>{version.version}{version.version === latestVersion ? " (latest)" : ""}</option>)}</select></label>}
+        {versions.length > 1 && <label className="block"><span className="mb-1 block font-mono text-[0.68rem] text-ink-faint">Version</span><select className="field !w-auto !py-2 text-sm" value={selectedVersion} disabled={busy} onChange={(event) => setSelectedVersion(event.target.value)}>{versions.map((version) => <option key={version.version} value={version.version}>{version.version}{version.version === latestVersion ? " (latest)" : ""}</option>)}</select></label>}
         <Button type="button" disabled={busy || !latestVersion} title={!latestVersion ? "No installable catalog version is available." : undefined} onClick={() => void begin("install")}>{submitting ? "Submitting…" : selectedVersion && selectedVersion !== latestVersion ? `Install ${selectedVersion}` : "Install latest"}</Button>
       </div> : <div className="flex flex-wrap gap-2">
         {updateAvailable === true && latestVersion && <Button type="button" disabled={busy} onClick={() => void begin("update")}>{submitting ? "Submitting…" : `Update to ${latestVersion}`}</Button>}
-        <Button type="button" variant="iron" disabled={busy} className="!border-blood/40 !text-blood hover:!bg-blood/10" onClick={() => setUninstallOpen(true)}>Uninstall</Button>
-        <Button type="button" variant={installed.enabled ? "iron" : undefined} disabled={busy || (!installed.enabled && Boolean(enableReason))} title={!installed.enabled && enableReason ? enableReason : undefined} onClick={() => void begin(installed.enabled ? "disable" : "enable")}>{submitting ? "Submitting…" : installed.enabled ? "Disable package" : "Enable package"}</Button>
+        <Button type="button" variant="secondary" disabled={busy} className="!border-danger/40 !text-danger hover:!bg-danger/10" onClick={() => setUninstallOpen(true)}>Uninstall</Button>
+        <Button type="button" variant={installed.enabled ? "secondary" : undefined} disabled={busy || (!installed.enabled && Boolean(enableReason))} title={!installed.enabled && enableReason ? enableReason : undefined} onClick={() => void begin(installed.enabled ? "disable" : "enable")}>{submitting ? "Submitting…" : installed.enabled ? "Disable package" : "Enable package"}</Button>
       </div>}
     </div>
 
-    {installed && <dl className="mt-5 grid gap-4 border-t border-iron-700 pt-4 sm:grid-cols-3">
-      <div><dt className="font-mono text-xs text-bone-faint">Runtime</dt><dd className="mt-1 text-sm text-bone">{installed.enabled ? "Enabled" : "Disabled"}</dd></div>
-      <div><dt className="font-mono text-xs text-bone-faint">Package state</dt><dd className="mt-1 text-sm capitalize text-bone">{installed.state.replace(/_/g, " ")}</dd></div>
-      <div><dt className="font-mono text-xs text-bone-faint">Configuration</dt><dd className="mt-1 text-sm capitalize text-bone">{installed.configurationStatus.replace(/_/g, " ")}</dd></div>
+    {installed && <dl className="mt-5 grid gap-4 border-t border-edge-strong pt-4 sm:grid-cols-3">
+      <div><dt className="font-mono text-xs text-ink-faint">Runtime</dt><dd className="mt-1 text-sm text-ink">{installed.enabled ? "Enabled" : "Disabled"}</dd></div>
+      <div><dt className="font-mono text-xs text-ink-faint">Package state</dt><dd className="mt-1 text-sm capitalize text-ink">{installed.state.replace(/_/g, " ")}</dd></div>
+      <div><dt className="font-mono text-xs text-ink-faint">Configuration</dt><dd className="mt-1 text-sm capitalize text-ink">{installed.configurationStatus.replace(/_/g, " ")}</dd></div>
     </dl>}
 
-    {operation && <div className={`mt-4 border-l-2 px-3 py-2 text-sm ${failed ? "border-blood bg-blood/5 text-blood" : operation.status === "success" ? "border-fel bg-fel/5 text-fel-bright" : "border-forge bg-forge/5 text-ember"}`} role="status">
+    {operation && <div className={`mt-4 border-l-2 px-3 py-2 text-sm ${failed ? "border-danger bg-danger/5 text-danger" : operation.status === "success" ? "border-accent bg-accent/5 text-accent-strong" : "border-warning bg-warning/5 text-warning-strong"}`} role="status">
       <div className="flex flex-wrap items-center justify-between gap-2"><span>{operationName(operation)}: {operation.status.replace(/_/g, " ")} · {operation.phase.replace(/_/g, " ")}</span>{operationProgress !== null && <span className="font-mono text-xs">{operationProgress}%</span>}</div>
-      {operationProgress !== null && <div className="mt-2 h-1 overflow-hidden rounded bg-iron-800" aria-label={`${operationName(operation)} progress`} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={operationProgress}><div className="h-full bg-current transition-[width]" style={{ width: `${operationProgress}%` }} /></div>}
+      {operationProgress !== null && <div className="mt-2 h-1 overflow-hidden rounded bg-surface-hover" aria-label={`${operationName(operation)} progress`} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={operationProgress}><div className="h-full bg-current transition-[width]" style={{ width: `${operationProgress}%` }} /></div>}
       {operation.message && <p className="mt-1 text-xs opacity-80">{operation.message}</p>}
       {operation.errorCode && <p className="mt-1 font-mono text-xs">{operation.errorCode}</p>}
     </div>}
-    {Boolean(error) && <div role="alert" className="mt-4 flex flex-wrap items-center justify-between gap-2 border-l-2 border-blood bg-blood/5 px-3 py-2 text-sm text-blood"><span>{error instanceof Error ? error.message : "Package action failed."}{apiError?.code ? ` (${apiError.code})` : ""}</span><Button type="button" size="sm" variant="iron" onClick={() => { setError(null); setRetryAttempt((value) => value + 1); void onRefresh(); }}>Retry status</Button></div>}
+    {Boolean(error) && <div role="alert" className="mt-4 flex flex-wrap items-center justify-between gap-2 border-l-2 border-danger bg-danger/5 px-3 py-2 text-sm text-danger"><span>{error instanceof Error ? error.message : "Package action failed."}{apiError?.code ? ` (${apiError.code})` : ""}</span><Button type="button" size="sm" variant="secondary" onClick={() => { setError(null); setRetryAttempt((value) => value + 1); void onRefresh(); }}>Retry status</Button></div>}
 
     {uninstallOpen && installed && <Dialog title="Uninstall package?" onClose={() => setUninstallOpen(false)} dismissible={!busy}>
-      <p className="text-sm text-bone-dim">{UNINSTALL_PRESERVATION_COPY}</p>
-      <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><Button type="button" variant="iron" disabled={busy} onClick={() => setUninstallOpen(false)}>Cancel</Button><Button type="button" className="!border-blood/50 !text-blood hover:!bg-blood/10" variant="iron" disabled={busy} onClick={() => void begin("uninstall")}>{submitting ? "Uninstalling…" : "Confirm uninstall"}</Button></div>
+      <p className="text-sm text-ink-muted">{UNINSTALL_PRESERVATION_COPY}</p>
+      <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><Button type="button" variant="secondary" disabled={busy} onClick={() => setUninstallOpen(false)}>Cancel</Button><Button type="button" className="!border-danger/50 !text-danger hover:!bg-danger/10" variant="secondary" disabled={busy} onClick={() => void begin("uninstall")}>{submitting ? "Uninstalling…" : "Confirm uninstall"}</Button></div>
     </Dialog>}
   </Card>;
 }

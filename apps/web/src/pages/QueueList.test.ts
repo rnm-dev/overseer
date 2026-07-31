@@ -37,7 +37,7 @@ test("every queued item exposes an accessible send-now action", () => {
   assert.match(html, /width="13"[^>]*lucide-hourglass/);
   assert.doesNotMatch(html, /size-8[^>]*>[\s\S]*?lucide-hourglass/);
   assert.doesNotMatch(html, /viktor@example\.test/);
-  assert.match(html, /bg-forge-deep\/55/);
+  assert.match(html, /bg-warning-deep\/55/);
   assert.match(html, /backdrop-blur-md/);
   assert.match(html, /\bw-full\b/);
   assert.match(html, /\bmax-w-none\b/);
@@ -50,9 +50,9 @@ test("every queued item exposes an accessible send-now action", () => {
   assert.match(QUEUE_ACTION_CLASS, /\btext-white\b/);
   assert.match(QUEUE_ACTION_CLASS, /\bhover:text-white\b/);
   assert.doesNotMatch(QUEUE_ACTION_CLASS, /\bon-surface\b|\bsize-9\b/);
-  assert.doesNotMatch(html, /\btext-ember\/85\b|\btext-bone\/45\b|\bhover:text-blood\b/);
-  assert.match(QUEUE_HOURGLASS_CLASS, /\btext-ember\/70\b/);
-  assert.doesNotMatch(QUEUE_HOURGLASS_CLASS, /\btext-fel-bright\b/);
+  assert.doesNotMatch(html, /\btext-warning-strong\/85\b|\btext-ink\/45\b|\bhover:text-danger\b/);
+  assert.match(QUEUE_HOURGLASS_CLASS, /\btext-warning-strong\/70\b/);
+  assert.doesNotMatch(QUEUE_HOURGLASS_CLASS, /\btext-accent-strong\b/);
   assert.match(html, /width="13"[^>]*lucide-send/);
   assert.match(html, /width="15"[^>]*lucide-trash2/);
   assert.match(html, /plan\.md/);

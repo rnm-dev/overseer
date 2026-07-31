@@ -1,21 +1,9 @@
-/* overseer — design system (calm dark, muted green accent)
- * author: Viktor */
+/* Overseer semantic design system. Theme packages supply the values. */
 
 @import "tailwindcss";
 
-@font-face {
-  font-family: "Overseer Friz";
-  src:
-    local("Friz Quadrata"),
-    local("Friz Quadrata Std"),
-    url("/fonts/friz-quadrata-regular.woff2") format("woff2");
-  font-display: swap;
-  font-style: normal;
-  font-weight: 400 700;
-}
-
 /* ------------------------------------------------------------------ *
- *  Design tokens (Tailwind v4 @theme -> utilities: bg-fel, text-bone…) *
+ *  Design tokens (Tailwind v4 @theme -> utilities: bg-accent, text-ink…) *
  * ------------------------------------------------------------------ */
 @theme {
   --font-display: "Golos Text", ui-sans-serif, system-ui, sans-serif;
@@ -30,53 +18,50 @@
   --font-size-model-picker-option: 0.8125rem;
   --line-height-code-snippet: 1.35;
 
-  /* voids & iron — neutral dark greys */
-  --color-void: #0b0c0b;
-  --color-iron-950: #111311;
-  --color-iron-900: #171916;
-  --color-iron-800: #262a23;
-  --color-iron-700: #343931;
-  --color-iron-600: #474d42;
-  --color-iron-500: #5c6353;
-
-  /* fel — the accent: a muted, natural green (was neon) */
-  --color-fel: #86ab63;
-  --color-fel-bright: #a6c78a;
-  --color-fel-deep: #5c7a41;
-  --color-fel-dim: #3a4b2a;
-  --color-fel-ink: #0b1305; /* dark foreground on fel fills */
-
-  /* forge — softened amber for warnings */
-  --color-forge: #d99441;
-  --color-forge-deep: #8d5624;
-  --color-ember: #e6b877;
-
-  /* blood — softened red for danger */
-  --color-blood: #d95f48;
-  --color-rust: #a53a29;
-
-  /* bone — the text */
-  --color-bone: #e7e6dc;
-  --color-bone-dim: #9a9c8e;
-  --color-bone-faint: #64685a;
+  --color-canvas: var(--ov-canvas);
+  --color-surface: var(--ov-surface);
+  --color-surface-raised: var(--ov-surface-raised);
+  --color-surface-hover: var(--ov-surface-hover);
+  --color-surface-active: var(--ov-surface-active);
+  --color-surface-disabled: var(--ov-surface-disabled);
+  --color-edge-subtle: var(--ov-edge-subtle);
+  --color-edge: var(--ov-edge);
+  --color-edge-strong: var(--ov-edge-strong);
+  --color-edge-emphasis: var(--ov-edge-emphasis);
+  --color-ink: var(--ov-ink);
+  --color-ink-muted: var(--ov-ink-muted);
+  --color-ink-faint: var(--ov-ink-faint);
+  --color-ink-disabled: var(--ov-ink-disabled);
+  --color-accent: var(--ov-accent);
+  --color-accent-strong: var(--ov-accent-strong);
+  --color-accent-deep: var(--ov-accent-deep);
+  --color-accent-muted: var(--ov-accent-muted);
+  --color-on-accent: var(--ov-on-accent);
+  --color-warning: var(--ov-warning);
+  --color-warning-strong: var(--ov-warning-strong);
+  --color-warning-deep: var(--ov-warning-deep);
+  --color-danger: var(--ov-danger);
+  --color-danger-deep: var(--ov-danger-deep);
 }
 
 /* ------------------------------------------------------------------ *
  *  Base                                                               *
  * ------------------------------------------------------------------ */
-:root {
-  color-scheme: dark;
-}
+:root { color-scheme: var(--ov-color-scheme, dark); }
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: var(--color-iron-600) transparent;
+  scrollbar-color: var(--color-edge-emphasis) transparent;
 }
 
 body {
   font-family: var(--font-body);
-  background-color: var(--color-void);
-  color: var(--color-bone);
+  background-color: var(--color-canvas);
+  background-image: var(--ov-app-background-image, none);
+  background-attachment: fixed;
+  background-position: center;
+  background-size: cover;
+  color: var(--color-ink);
   -webkit-font-smoothing: antialiased;
   min-height: 100vh;
 }
@@ -120,6 +105,10 @@ html.peon-sidebar-resizing * {
   font-family: var(--font-body);
   font-size: var(--font-size-chat-message);
   line-height: var(--line-height-chat-message);
+}
+
+.typo-content-header {
+  font-size: var(--font-size-chat-message);
 }
 
 .typo-chat-system-message {
@@ -166,7 +155,7 @@ html.peon-sidebar-resizing * {
  * larger screens. The easing mirrors iOS' quick start and soft spring-like
  * settle without pulling an animation runtime into the bundle. */
 .dialog-backdrop {
-  background: radial-gradient(circle at 50% 18%, rgba(149, 201, 103, 0.08), transparent 38%), rgba(2, 4, 3, 0.82);
+  background: var(--ov-dialog-backdrop);
   opacity: 0;
   -webkit-backdrop-filter: blur(4px);
   backdrop-filter: blur(4px);
@@ -246,7 +235,7 @@ html.peon-sidebar-resizing * {
     visibility: hidden;
     opacity: 0;
     pointer-events: none;
-    background: rgb(0 0 0 / 0.66);
+    background: var(--ov-drawer-backdrop);
     -webkit-backdrop-filter: blur(0);
     backdrop-filter: blur(0);
     transition:
@@ -286,12 +275,16 @@ html.peon-sidebar-resizing * {
     visibility: hidden;
   }
 
-  /* iOS zooms the viewport when a focused form control is below 16px. Keep
-     mobile controls at that threshold without disabling user pinch zoom. */
+  /* iOS zooms the viewport when a keyboard-bearing control is below 16px.
+     Native selects use the platform picker, so their displayed value can keep
+     the compact control typography without affecting text-entry zoom. */
   input:not([type="button"]):not([type="checkbox"]):not([type="file"]):not([type="radio"]):not([type="range"]):not([type="reset"]):not([type="submit"]),
-  textarea,
-  select {
+  textarea {
     font-size: 16px;
+  }
+
+  select {
+    font-size: 0.875rem;
   }
 }
 
@@ -303,8 +296,8 @@ html.peon-sidebar-resizing * {
 }
 
 ::selection {
-  background: rgba(134, 171, 99, 0.22);
-  color: var(--color-bone);
+  background: color-mix(in srgb, var(--color-accent) 22%, transparent);
+  color: var(--color-ink);
 }
 
 ::-webkit-scrollbar {
@@ -315,12 +308,12 @@ html.peon-sidebar-resizing * {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--color-iron-700);
-  border: 3px solid var(--color-void);
+  background: var(--color-edge-strong);
+  border: 3px solid var(--color-canvas);
   border-radius: 6px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--color-iron-600);
+  background: var(--color-edge-emphasis);
 }
 
 /* ------------------------------------------------------------------ *
@@ -328,7 +321,7 @@ html.peon-sidebar-resizing * {
  * ------------------------------------------------------------------ */
 .markdown-body {
   min-width: 0;
-  color: var(--color-bone);
+  color: var(--color-ink);
   overflow-wrap: anywhere;
   font-size: var(--font-size-chat-message);
   line-height: var(--line-height-chat-message);
@@ -349,13 +342,13 @@ html.peon-sidebar-resizing * {
 .markdown-body h5,
 .markdown-body h6 {
   margin: 1rem 0 0.45rem;
-  color: var(--color-bone);
+  color: var(--color-ink);
   font-family: var(--font-display);
   font-weight: 700;
   line-height: 1.25;
 }
 .markdown-body h1 { font-size: 1.45rem; }
-.markdown-body h2 { font-size: 1.22rem; border-bottom: 1px solid var(--color-iron-800); padding-bottom: 0.25rem; }
+.markdown-body h2 { font-size: 1.22rem; border-bottom: 1px solid var(--color-surface-hover); padding-bottom: 0.25rem; }
 .markdown-body h3 { font-size: 1.05rem; }
 .markdown-body h4,
 .markdown-body h5,
@@ -367,33 +360,33 @@ html.peon-sidebar-resizing * {
 .markdown-body li > ol { margin: 0.2rem 0; }
 .markdown-body .contains-task-list { list-style: none; padding-left: 0.2rem; }
 .markdown-body .task-list-item { display: flex; align-items: baseline; gap: 0.45rem; }
-.markdown-body input[type="checkbox"] { accent-color: var(--color-fel); }
-.markdown-body a { color: var(--color-fel-bright); text-decoration: underline; text-underline-offset: 2px; }
-.markdown-body a:hover { color: var(--color-bone); }
-.markdown-body strong { color: var(--color-bone); font-weight: 700; }
+.markdown-body input[type="checkbox"] { accent-color: var(--color-accent); }
+.markdown-body a { color: var(--color-accent-strong); text-decoration: underline; text-underline-offset: 2px; }
+.markdown-body a:hover { color: var(--color-ink); }
+.markdown-body strong { color: var(--color-ink); font-weight: 700; }
 .markdown-body blockquote {
-  border-left: 3px solid var(--color-fel-deep);
+  border-left: 3px solid var(--color-accent-deep);
   padding: 0.25rem 0 0.25rem 0.85rem;
-  color: var(--color-bone-dim);
+  color: var(--color-ink-muted);
 }
-.markdown-body hr { border: 0; border-top: 1px solid var(--color-iron-700); }
+.markdown-body hr { border: 0; border-top: 1px solid var(--color-edge-strong); }
 .markdown-body .markdown-inline-code {
-  border: 1px solid rgba(52, 57, 49, 0.7);
+  border: 1px solid color-mix(in srgb, var(--color-edge-strong) 70%, transparent);
   border-radius: 4px;
-  background: var(--color-iron-900);
+  background: var(--color-surface-raised);
   padding: 0.08rem 0.32rem;
-  color: var(--color-forge);
+  color: var(--color-warning);
   font-family: var(--font-mono);
   font-size: var(--font-size-code-snippet);
 }
 .markdown-body pre,
 .code-view {
   overflow: auto;
-  border: 1px solid var(--color-iron-800);
+  border: 1px solid var(--color-surface-hover);
   border-radius: 7px;
-  background: #111411;
+  background: var(--ov-code-background);
   padding: 0.9rem 1rem;
-  color: var(--color-bone-dim);
+  color: var(--color-ink-muted);
   font-family: var(--font-mono);
   font-size: var(--font-size-code-snippet);
   line-height: var(--line-height-code-snippet);
@@ -401,45 +394,45 @@ html.peon-sidebar-resizing * {
 }
 .markdown-body pre code,
 .code-view code { background: transparent; padding: 0; font: inherit; white-space: pre; }
-.markdown-body pre .markdown-inline-code { border: 0; color: var(--color-bone-dim); }
+.markdown-body pre .markdown-inline-code { border: 0; color: var(--color-ink-muted); }
 .mermaid-diagram {
   margin: 0.75rem 0;
   overflow-x: auto;
-  border: 1px solid var(--color-iron-800);
+  border: 1px solid var(--color-surface-hover);
   border-radius: 7px;
-  background: #111411;
+  background: var(--ov-code-background);
   padding: 1rem;
 }
 .mermaid-diagram-canvas { display: flex; min-width: max-content; justify-content: center; }
 .mermaid-diagram-canvas:empty { display: none; }
 .mermaid-diagram-canvas svg { width: auto; max-width: 100%; height: auto; }
 .mermaid-diagram-status,
-.mermaid-diagram figcaption { color: var(--color-bone-dim); font-size: 0.78rem; }
-.mermaid-diagram figcaption { margin-bottom: 0.65rem; color: var(--color-forge); }
+.mermaid-diagram figcaption { color: var(--color-ink-muted); font-size: 0.78rem; }
+.mermaid-diagram figcaption { margin-bottom: 0.65rem; color: var(--color-warning); }
 .markdown-body .mermaid-diagram-source { margin: 0; }
 .markdown-table-wrap {
   max-width: 100%;
   overflow-x: auto;
-  border: 1px solid var(--color-iron-700);
+  border: 1px solid var(--color-edge-strong);
   border-radius: 7px;
 }
 .markdown-body table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
 .markdown-body th,
-.markdown-body td { border-right: 1px solid var(--color-iron-800); border-bottom: 1px solid var(--color-iron-800); padding: 0.5rem 0.65rem; text-align: left; vertical-align: top; }
+.markdown-body td { border-right: 1px solid var(--color-surface-hover); border-bottom: 1px solid var(--color-surface-hover); padding: 0.5rem 0.65rem; text-align: left; vertical-align: top; }
 .markdown-body th:last-child,
 .markdown-body td:last-child { border-right: 0; }
 .markdown-body tr:last-child td { border-bottom: 0; }
-.markdown-body th { background: var(--color-iron-900); color: var(--color-bone); font-family: var(--font-display); font-weight: 600; }
-.markdown-body tbody tr:nth-child(even) { background: rgba(38, 42, 35, 0.22); }
+.markdown-body th { background: var(--color-surface-raised); color: var(--color-ink); font-family: var(--font-display); font-weight: 600; }
+.markdown-body tbody tr:nth-child(even) { background: color-mix(in srgb, var(--color-surface-hover) 22%, transparent); }
 
 /* highlight.js tokens, tuned to Overseer's muted green/amber palette. */
 .hljs-comment,
-.hljs-quote { color: #687061; font-style: italic; }
+.hljs-quote { color: var(--ov-syntax-comment); font-style: italic; }
 .hljs-keyword,
 .hljs-selector-tag,
 .hljs-literal,
 .hljs-section,
-.hljs-link { color: #c792a6; }
+.hljs-link { color: var(--ov-syntax-link); }
 .hljs-string,
 .hljs-title,
 .hljs-name,
@@ -447,20 +440,20 @@ html.peon-sidebar-resizing * {
 .hljs-attribute,
 .hljs-symbol,
 .hljs-bullet,
-.hljs-addition { color: var(--color-fel-bright); }
+.hljs-addition { color: var(--color-accent-strong); }
 .hljs-number,
 .hljs-meta,
 .hljs-built_in,
 .hljs-builtin-name,
-.hljs-params { color: var(--color-ember); }
+.hljs-params { color: var(--color-warning-strong); }
 .hljs-variable,
 .hljs-template-variable,
 .hljs-selector-class,
-.hljs-selector-id { color: #c9b47b; }
+.hljs-selector-id { color: var(--ov-syntax-selector); }
 .hljs-regexp,
-.hljs-deletion { color: #df7a68; }
+.hljs-deletion { color: var(--ov-syntax-deletion); }
 .hljs-function .hljs-title,
-.hljs-title.function_ { color: #8bb8c9; }
+.hljs-title.function_ { color: var(--ov-syntax-function); }
 .hljs-emphasis { font-style: italic; }
 .hljs-strong { font-weight: 700; }
 
@@ -468,22 +461,23 @@ html.peon-sidebar-resizing * {
  *  Surfaces — the default app card/panel treatment                    *
  * ------------------------------------------------------------------ */
 :where(.surface, .warplate) {
-  background: var(--color-iron-900);
-  border: 1px solid var(--color-iron-800);
-  border-radius: 12px;
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-surface-hover);
+  border-radius: var(--ov-surface-radius, 0.75rem);
+  box-shadow: var(--ov-surface-shadow, none);
 }
 
 :where(.surface--lit, .warplate--lit) {
-  border-color: var(--color-fel-deep);
+  border-color: var(--color-accent-deep);
 }
 
 :where(.surface--subtle) {
-  background: color-mix(in srgb, var(--color-iron-900) 60%, transparent);
+  background: color-mix(in srgb, var(--color-surface-raised) 60%, transparent);
 }
 
 :where(.surface--inset) {
-  background: color-mix(in srgb, var(--color-iron-950) 58%, transparent);
-  border-color: color-mix(in srgb, var(--color-iron-700) 80%, transparent);
+  background: color-mix(in srgb, var(--color-surface) 58%, transparent);
+  border-color: color-mix(in srgb, var(--color-edge-strong) 80%, transparent);
 }
 
 :where(.surface--interactive) {
@@ -491,13 +485,13 @@ html.peon-sidebar-resizing * {
 }
 
 :where(.surface--interactive:hover) {
-  background: color-mix(in srgb, var(--color-fel) 3%, var(--color-iron-900));
-  border-color: color-mix(in srgb, var(--color-fel) 40%, var(--color-iron-800));
+  background: color-mix(in srgb, var(--color-accent) 3%, var(--color-surface-raised));
+  border-color: color-mix(in srgb, var(--color-accent) 40%, var(--color-surface-hover));
 }
 
 /* Borderless controls and rows placed inside a surface. */
 :where(.on-surface) {
-  background: color-mix(in srgb, var(--color-iron-800) 52%, var(--color-iron-900));
+  background: color-mix(in srgb, var(--color-surface-hover) 52%, var(--color-surface-raised));
 }
 
 :where(.on-surface--interactive) {
@@ -505,14 +499,15 @@ html.peon-sidebar-resizing * {
 }
 
 :where(.on-surface--interactive:hover) {
-  background: color-mix(in srgb, var(--color-iron-700) 48%, var(--color-iron-900));
+  background: var(--ov-interactive-hover-background);
+  color: var(--ov-interactive-hover-ink);
 }
 
 /* thin rule under a section header */
 .hairline {
   height: 1px;
   border: 0;
-  background: var(--color-iron-800);
+  background: var(--color-surface-hover);
 }
 
 /* ------------------------------------------------------------------ *
@@ -543,35 +538,35 @@ html.peon-sidebar-resizing * {
   font-size: 0.72rem;
 }
 
-.btn-fel {
-  color: var(--color-fel-ink);
-  background: var(--color-fel);
+.btn-accent {
+  color: var(--color-on-accent);
+  background: var(--color-accent);
 }
-.btn-fel:hover:not(:disabled) {
-  background: var(--color-fel-bright);
+.btn-accent:hover:not(:disabled) {
+  background: var(--color-accent-strong);
 }
 
-.btn-iron {
-  color: var(--color-bone);
-  background: var(--color-iron-800);
-  border: 1px solid var(--color-iron-700);
+.btn-secondary {
+  color: var(--color-ink);
+  background: var(--color-surface-hover);
+  border: 1px solid var(--color-edge-strong);
 }
-.btn-iron:hover:not(:disabled) {
-  background: var(--color-iron-700);
-  border-color: var(--color-iron-600);
+.btn-secondary:hover:not(:disabled) {
+  background: var(--color-edge-strong);
+  border-color: var(--color-edge-emphasis);
 }
 
 .btn-ghost {
   background: transparent;
-  color: var(--color-bone-dim);
+  color: var(--color-ink-muted);
   padding: 0.3rem 0.45rem;
   border-radius: 6px;
   font-size: 0.72rem;
   letter-spacing: 0.04em;
 }
 .btn-ghost:hover:not(:disabled) {
-  color: var(--color-bone);
-  background: var(--color-iron-900);
+  color: var(--color-ink);
+  background: var(--color-surface-raised);
 }
 
 /* ------------------------------------------------------------------ *
@@ -580,9 +575,9 @@ html.peon-sidebar-resizing * {
 .field {
   font-family: var(--font-body);
   width: 100%;
-  color: var(--color-bone);
-  background: var(--color-iron-950);
-  border: 1px solid var(--color-iron-700);
+  color: var(--color-ink);
+  background: var(--color-surface);
+  border: 1px solid var(--color-edge-strong);
   border-radius: 6px;
   padding: 0.55rem 0.8rem;
   font-size: 0.9rem;
@@ -593,18 +588,18 @@ html.peon-sidebar-resizing * {
   font-family: var(--font-mono);
 }
 .field::placeholder {
-  color: var(--color-bone-faint);
+  color: var(--color-ink-faint);
 }
 .field:focus {
   outline: none;
-  border-color: var(--color-fel-deep);
-  box-shadow: 0 0 0 1px var(--color-fel-deep);
+  border-color: var(--color-accent-deep);
+  box-shadow: 0 0 0 1px var(--color-accent-deep);
 }
 .field:-webkit-autofill,
 .field:-webkit-autofill:focus {
-  -webkit-text-fill-color: var(--color-bone);
-  -webkit-box-shadow: 0 0 0 100px var(--color-iron-900) inset;
-  caret-color: var(--color-bone);
+  -webkit-text-fill-color: var(--color-ink);
+  -webkit-box-shadow: 0 0 0 100px var(--color-surface-raised) inset;
+  caret-color: var(--color-ink);
 }
 
 /* the workspace select */
@@ -613,9 +608,9 @@ html.peon-sidebar-resizing * {
   font-weight: 500;
   letter-spacing: 0.02em;
   font-size: 0.78rem;
-  color: var(--color-bone);
-  background: var(--color-iron-900);
-  border: 1px solid var(--color-iron-700);
+  color: var(--color-ink);
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-edge-strong);
   border-radius: 6px;
   padding: 0.4rem 1.9rem 0.4rem 0.65rem;
   cursor: pointer;
@@ -626,7 +621,7 @@ html.peon-sidebar-resizing * {
 }
 .warp-select:focus {
   outline: none;
-  border-color: var(--color-fel-deep);
+  border-color: var(--color-accent-deep);
 }
 .model-picker {
   position: relative;
@@ -641,26 +636,26 @@ html.peon-sidebar-resizing * {
   align-items: center;
   justify-content: space-between;
   gap: 0.45rem;
-  border: 1px solid var(--color-iron-700);
+  border: 1px solid var(--color-edge-strong);
   border-radius: 6px;
-  background: var(--color-iron-900);
+  background: var(--color-surface-raised);
   padding: 0.38rem 0.55rem 0.38rem 0.65rem;
   font-family: var(--font-body);
   font-size: var(--font-size-model-picker-trigger);
   font-weight: 500;
-  color: var(--color-bone);
+  color: var(--color-ink);
   cursor: pointer;
   transition: border-color 120ms ease, background-color 120ms ease, color 120ms ease;
 }
 .model-picker-trigger:hover,
 .model-picker-trigger:focus {
-  border-color: var(--color-fel-deep);
+  border-color: var(--color-accent-deep);
   outline: none;
 }
 .model-picker.field-picker .model-picker-trigger {
   height: 2.5rem;
   min-height: 2.5rem;
-  background: var(--color-iron-950);
+  background: var(--color-surface);
   padding: 0.55rem 0.8rem;
   font-family: var(--font-body);
   font-size: var(--font-size-model-picker-trigger);
@@ -675,7 +670,7 @@ html.peon-sidebar-resizing * {
 }
 .model-picker-chevron {
   flex: none;
-  color: var(--color-bone-faint);
+  color: var(--color-ink-faint);
   transition: transform 120ms ease, color 120ms ease;
 }
 .model-picker-menu {
@@ -686,9 +681,9 @@ html.peon-sidebar-resizing * {
   min-width: 13rem;
   max-height: 18rem;
   overflow-y: auto;
-  border: 1px solid var(--color-iron-700);
+  border: 1px solid var(--color-edge-strong);
   border-radius: 8px;
-  background: var(--color-iron-950);
+  background: var(--color-surface);
   padding: 0.35rem;
   box-shadow: 0 14px 34px -18px rgba(0, 0, 0, 0.85);
 }
@@ -708,7 +703,7 @@ html.peon-sidebar-resizing * {
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--color-bone-faint);
+  color: var(--color-ink-faint);
 }
 .model-picker-option {
   display: block;
@@ -718,13 +713,16 @@ html.peon-sidebar-resizing * {
   text-align: left;
   font-family: var(--font-body);
   font-size: var(--font-size-model-picker-option);
-  color: var(--color-bone-dim);
+  color: var(--color-ink-muted);
   transition: background-color 120ms ease, color 120ms ease;
 }
-.model-picker-option:hover,
+.model-picker-option:hover {
+  background: var(--ov-picker-hover-background);
+  color: var(--ov-picker-hover-ink);
+}
 .model-picker-option.is-active {
-  background: rgba(54, 58, 48, 0.65);
-  color: var(--color-fel-bright);
+  background: var(--ov-picker-active-background);
+  color: var(--ov-picker-active-ink);
 }
 /* Compact boxed variant for the composer's bottom toolbar row — same fixed
    height as the attach/send buttons (h-8) so the whole row lines up. */
@@ -740,19 +738,23 @@ html.peon-sidebar-resizing * {
   min-height: 2rem;
   border: none;
   border-radius: 8px;
-  background: color-mix(in srgb, var(--color-iron-800) 52%, var(--color-iron-900));
+  background: color-mix(in srgb, var(--color-surface-hover) 52%, var(--color-surface-raised));
   padding: 0 0.625rem;
   gap: 0.35rem;
   font-family: var(--font-body);
   font-size: var(--font-size-model-picker-trigger);
   font-weight: 400;
-  color: var(--color-bone-dim);
+  color: var(--color-ink-muted);
 }
-.model-picker.model-select-compact .model-picker-trigger:hover,
+.model-picker.model-select-compact .model-picker-trigger:hover {
+  border: none;
+  background: var(--ov-picker-hover-background);
+  color: var(--ov-picker-hover-ink);
+}
 .model-picker.model-select-compact .model-picker-trigger:focus {
   border: none;
-  background: color-mix(in srgb, var(--color-iron-700) 48%, var(--color-iron-900));
-  color: var(--color-fel-bright);
+  background: var(--ov-picker-focus-background);
+  color: var(--ov-picker-focus-ink);
 }
 .model-picker.model-select-compact .model-picker-menu {
   min-width: 12rem;
@@ -760,6 +762,32 @@ html.peon-sidebar-resizing * {
 
 .composer-input {
   font-size: var(--font-size-composer-input);
+}
+
+.theme-user-message {
+  background: var(--ov-user-message-background);
+  color: var(--ov-user-message-ink);
+}
+
+.theme-user-message-ink { color: var(--ov-user-message-ink); }
+.theme-user-message-meta { color: var(--ov-user-message-meta); }
+.theme-user-message-icon {
+  background: color-mix(in srgb, var(--ov-user-message-ink) 10%, transparent);
+  color: color-mix(in srgb, var(--ov-user-message-ink) 80%, transparent);
+}
+.theme-user-message-focus:focus-visible { --tw-ring-color: color-mix(in srgb, var(--ov-user-message-ink) 50%, transparent); }
+
+.theme-composer-shell {
+  box-shadow: var(--ov-composer-shadow);
+}
+
+.theme-composer-shell:focus-within {
+  border-color: var(--ov-composer-focus-edge);
+  box-shadow: var(--ov-composer-focus-shadow);
+}
+
+.theme-transcript-composer-fade {
+  background: var(--ov-transcript-composer-fade);
 }
 
 @media (max-width: 639px) {
@@ -829,25 +857,25 @@ html.peon-sidebar-resizing * {
   border: 1px solid transparent;
   white-space: nowrap;
 }
-.badge-iron {
-  color: var(--color-bone-dim);
-  background: var(--color-iron-800);
-  border-color: var(--color-iron-700);
+.badge-neutral {
+  color: var(--color-ink-muted);
+  background: var(--color-surface-hover);
+  border-color: var(--color-edge-strong);
 }
-.badge-fel {
-  color: var(--color-fel-bright);
-  background: rgba(134, 171, 99, 0.12);
-  border-color: rgba(134, 171, 99, 0.3);
+.badge-accent {
+  color: var(--color-accent-strong);
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  border-color: color-mix(in srgb, var(--color-accent) 30%, transparent);
 }
-.badge-blood {
-  color: var(--color-blood);
-  background: rgba(217, 95, 72, 0.1);
-  border-color: rgba(217, 95, 72, 0.32);
+.badge-danger {
+  color: var(--color-danger);
+  background: color-mix(in srgb, var(--color-danger) 10%, transparent);
+  border-color: color-mix(in srgb, var(--color-danger) 32%, transparent);
 }
-.badge-forge {
-  color: var(--color-ember);
-  background: rgba(217, 148, 65, 0.1);
-  border-color: rgba(217, 148, 65, 0.32);
+.badge-warning {
+  color: var(--color-warning-strong);
+  background: color-mix(in srgb, var(--color-warning) 10%, transparent);
+  border-color: color-mix(in srgb, var(--color-warning) 32%, transparent);
 }
 
 /* ------------------------------------------------------------------ *
@@ -861,15 +889,15 @@ html.peon-sidebar-resizing * {
   flex: none;
 }
 .statdot--on {
-  background: var(--color-fel-bright);
-  box-shadow: 0 0 4px var(--color-fel), 0 0 11px var(--color-fel);
+  background: var(--color-accent-strong);
+  box-shadow: 0 0 4px var(--color-accent), 0 0 11px var(--color-accent);
 }
 .statdot--off {
-  background: var(--color-iron-600);
+  background: var(--color-edge-emphasis);
 }
 .statdot--busy {
-  background: var(--color-forge);
-  box-shadow: 0 0 4px var(--color-forge), 0 0 10px var(--color-forge);
+  background: var(--color-warning);
+  box-shadow: 0 0 4px var(--color-warning), 0 0 10px var(--color-warning);
 }
 
 /* ------------------------------------------------------------------ *
@@ -883,14 +911,14 @@ html.peon-sidebar-resizing * {
     0 0 5px var(--status-edge-glow),
     0 0 15px color-mix(in srgb, var(--status-edge-glow) 78%, transparent);
 }
-.status-edge--fel {
-  --status-edge-glow: var(--color-fel);
+.status-edge--accent {
+  --status-edge-glow: var(--color-accent);
 }
-.status-edge--forge {
-  --status-edge-glow: var(--color-forge);
+.status-edge--warning {
+  --status-edge-glow: var(--color-warning);
 }
-.status-edge--blood {
-  --status-edge-glow: var(--color-blood);
+.status-edge--danger {
+  --status-edge-glow: var(--color-danger);
 }
 
 /* A live update flares the row's edge once — brightness and glow only, never
@@ -898,7 +926,7 @@ html.peon-sidebar-resizing * {
    box-shadow is declared at the peak only, so the implicit 0%/100% keyframes
    come from whatever the row already had: the steady glow above on a live row,
    nothing at all on an idle one. Idle rows carry no glow colour of their own,
-   so their flare falls back to fel. */
+   so their flare falls back to accent. */
 @keyframes status-edge-flash {
   0% {
     filter: brightness(1) saturate(1);
@@ -915,7 +943,7 @@ html.peon-sidebar-resizing * {
   }
 }
 .status-edge-flash {
-  --status-edge-flare: var(--status-edge-glow, var(--color-fel));
+  --status-edge-flare: var(--status-edge-glow, var(--color-accent));
   animation: status-edge-flash 620ms ease-out;
 }
 
@@ -933,41 +961,47 @@ html.peon-sidebar-resizing * {
   text-transform: uppercase;
   letter-spacing: 0.14em;
 }
-.fel-glow {
-  color: var(--color-bone);
+.accent-glow {
+  color: var(--color-ink);
 }
-.wordmark {
+.wordmark,
+.overseer-wordmark {
   font-family: var(--font-display);
   font-weight: 700;
-  letter-spacing: 0.12em;
-  color: var(--color-bone);
+  line-height: 1;
 }
 
-.logo-glow {
-  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.5));
+.overseer-wordmark {
+  display: inline-block;
+  background: var(--ov-identity-gradient);
+  background-clip: text;
+  color: transparent;
+  filter: var(--ov-identity-shadow);
+  letter-spacing: -0.035em;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
   user-select: none;
 }
 
-.dashboard-identity {
-  position: relative;
-  z-index: 1;
+.overseer-wordmark--compact {
+  font-size: 0.875rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.overseer-wordmark--hero {
+  font-size: clamp(2.75rem, 10vw, 4.5rem);
+}
+
+.dashboard-operator {
   max-width: 16rem;
-  margin-top: -1.1rem;
-  padding: 0 0.35rem 0.25rem;
+  margin-top: 0.65rem;
   overflow: hidden;
-  background: linear-gradient(180deg, #f3dfb5 0%, #d5b276 34%, #8b5037 67%, #e27d32 100%);
-  background-clip: text;
-  filter: drop-shadow(0 2px 1px rgba(36, 22, 20, 0.98)) drop-shadow(0 0 8px rgba(226, 125, 50, 0.58));
-  color: transparent;
-  font-family: "Overseer Friz", "Friz Quadrata Std", "Friz Quadrata", fantasy;
-  font-size: 2.15rem;
-  font-variant: small-caps;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  line-height: 1.1;
+  color: var(--color-ink-muted);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
   text-overflow: ellipsis;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
   white-space: nowrap;
 }
 
@@ -975,7 +1009,7 @@ html.peon-sidebar-resizing * {
  *  Auth screens (sign-in, GitHub callback, invite)                    *
  * ------------------------------------------------------------------ *
  * These three pages carry no chrome: no card, no logo plate. Identity
- * is typographic and the page itself is the surface — a slow fel glow
+ * is typographic and the page itself is the surface — a slow accent glow
  * over the void, one CTA, nothing to frame it. */
 .auth-scene {
   position: relative;
@@ -986,17 +1020,14 @@ html.peon-sidebar-resizing * {
   padding: max(2.5rem, env(safe-area-inset-top)) 1.5rem max(2.5rem, env(safe-area-inset-bottom));
 }
 
-/* The atmosphere: a fel dawn above, an ember rumour below. Both live on a
+/* The atmosphere: a accent dawn above, an warning-strong rumour below. Both live on a
    pseudo-element so the drift animates one compositor layer, not the text. */
 .auth-scene::before {
   content: "";
   position: absolute;
   inset: -25%;
   z-index: 0;
-  background:
-    radial-gradient(58% 42% at 50% 8%, rgba(134, 171, 99, 0.2), transparent 68%),
-    radial-gradient(46% 38% at 82% 96%, rgba(217, 148, 65, 0.09), transparent 72%),
-    radial-gradient(40% 34% at 12% 88%, rgba(134, 171, 99, 0.07), transparent 74%);
+  background: var(--ov-auth-atmosphere);
   animation: auth-drift 24s ease-in-out infinite alternate;
   pointer-events: none;
 }
@@ -1007,7 +1038,7 @@ html.peon-sidebar-resizing * {
   position: absolute;
   inset: 0;
   z-index: 0;
-  background: radial-gradient(120% 80% at 50% 50%, transparent 42%, rgba(3, 5, 3, 0.72));
+  background: var(--ov-auth-vignette);
   pointer-events: none;
 }
 
@@ -1031,7 +1062,7 @@ html.peon-sidebar-resizing * {
 
 .auth-wordmark {
   margin: 0;
-  background: linear-gradient(176deg, #f4f3e8 6%, #cfd6b4 38%, var(--color-fel) 74%, var(--color-fel-deep) 100%);
+  background: var(--ov-auth-wordmark-gradient);
   background-clip: text;
   -webkit-background-clip: text;
   color: transparent;
@@ -1039,7 +1070,7 @@ html.peon-sidebar-resizing * {
   /* text-shadow, not filter: a filter on a background-clip:text element glows
      from its whole box and draws exactly the rectangle this page is meant to
      be free of. The shadow follows the glyph outlines. */
-  text-shadow: 0 0 34px rgba(134, 171, 99, 0.3);
+  text-shadow: var(--ov-auth-wordmark-shadow);
   font-family: var(--font-display);
   font-size: clamp(2.7rem, 13vw, 3.6rem);
   font-weight: 700;
@@ -1061,7 +1092,7 @@ html.peon-sidebar-resizing * {
   justify-content: center;
   gap: 0.85rem;
   margin-top: 1.15rem;
-  color: var(--color-bone-faint);
+  color: var(--color-ink-faint);
   font-family: var(--font-mono);
   /* Tracked-out and unwrapped, so both locales' taglines have to fit a phone:
      size and tracking give way before the line does. */
@@ -1076,22 +1107,22 @@ html.peon-sidebar-resizing * {
   height: 1px;
   min-width: 1rem;
   flex: 1;
-  background: linear-gradient(to right, transparent, rgba(134, 171, 99, 0.34));
+  background: linear-gradient(to right, transparent, color-mix(in srgb, var(--color-accent) 34%, transparent));
 }
 .auth-rule:last-child {
-  background: linear-gradient(to left, transparent, rgba(134, 171, 99, 0.34));
+  background: linear-gradient(to left, transparent, color-mix(in srgb, var(--color-accent) 34%, transparent));
 }
 
 .auth-lede {
   margin-top: 1.6rem;
-  color: var(--color-bone-dim);
+  color: var(--color-ink-muted);
   font-size: 0.85rem;
   letter-spacing: 0.01em;
 }
 
 .auth-subject {
   margin-top: 0.4rem;
-  color: var(--color-bone);
+  color: var(--color-ink);
   font-family: var(--font-display);
   font-size: clamp(1.35rem, 7vw, 1.7rem);
   font-weight: 600;
@@ -1100,7 +1131,7 @@ html.peon-sidebar-resizing * {
   overflow-wrap: anywhere;
 }
 
-/* The one solid thing on the page. Pill, fel gradient, a light that
+/* The one solid thing on the page. Pill, accent gradient, a light that
    travels across it on hover. */
 .auth-cta {
   position: relative;
@@ -1113,9 +1144,9 @@ html.peon-sidebar-resizing * {
   overflow: hidden;
   margin-top: 2.5rem;
   border-radius: 999px;
-  background: linear-gradient(180deg, var(--color-fel-bright), var(--color-fel) 58%, #74975a);
+  background: var(--ov-cta-gradient);
   padding: 0.85rem 1.5rem;
-  color: var(--color-fel-ink);
+  color: var(--color-on-accent);
   font-family: var(--font-display);
   font-size: 0.83rem;
   font-weight: 600;
@@ -1124,7 +1155,7 @@ html.peon-sidebar-resizing * {
   cursor: pointer;
   box-shadow:
     0 1px 0 rgba(255, 255, 255, 0.28) inset,
-    0 14px 38px -16px rgba(134, 171, 99, 0.75);
+    var(--ov-cta-shadow);
   transition: transform 160ms cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 200ms ease, filter 160ms ease;
 }
 
@@ -1146,7 +1177,7 @@ html.peon-sidebar-resizing * {
   filter: saturate(1.06);
   box-shadow:
     0 1px 0 rgba(255, 255, 255, 0.34) inset,
-    0 20px 46px -16px rgba(134, 171, 99, 0.9);
+    var(--ov-cta-shadow-hover);
 }
 
 .auth-cta:hover:not(:disabled)::after {
@@ -1157,16 +1188,16 @@ html.peon-sidebar-resizing * {
   transform: translateY(0);
   box-shadow:
     0 1px 0 rgba(255, 255, 255, 0.2) inset,
-    0 8px 22px -14px rgba(134, 171, 99, 0.7);
+    var(--ov-cta-shadow-active);
 }
 
 .auth-cta:focus-visible {
   outline: none;
   box-shadow:
     0 1px 0 rgba(255, 255, 255, 0.28) inset,
-    0 0 0 2px var(--color-void),
-    0 0 0 4px var(--color-fel-bright),
-    0 14px 38px -16px rgba(134, 171, 99, 0.75);
+    0 0 0 2px var(--color-canvas),
+    0 0 0 4px var(--color-accent-strong),
+    var(--ov-cta-shadow);
 }
 
 .auth-cta:disabled {
@@ -1193,7 +1224,7 @@ html.peon-sidebar-resizing * {
 
 .auth-switch {
   margin-top: 1.1rem;
-  color: var(--color-bone-faint);
+  color: var(--color-ink-faint);
   font-family: var(--font-display);
   font-size: 0.74rem;
   letter-spacing: 0.04em;
@@ -1204,7 +1235,7 @@ html.peon-sidebar-resizing * {
    next to its own label. */
 .auth-switch .auth-link {
   margin-top: 0;
-  color: var(--color-bone);
+  color: var(--color-ink);
   text-decoration: underline;
 }
 
@@ -1217,7 +1248,7 @@ html.peon-sidebar-resizing * {
   justify-content: center;
   gap: 0.75rem;
   margin-top: 1.75rem;
-  color: var(--color-bone-faint);
+  color: var(--color-ink-faint);
   font-family: var(--font-mono);
   font-size: 0.6rem;
   letter-spacing: 0.28em;
@@ -1225,27 +1256,27 @@ html.peon-sidebar-resizing * {
   text-transform: uppercase;
 }
 
-/* GitHub is the alternative, not the headline: same pill, no fel gradient. */
+/* GitHub is the alternative, not the headline: same pill, no accent gradient. */
 .auth-cta--quiet {
   margin-top: 1.1rem;
-  background: var(--color-iron-900);
-  border: 1px solid var(--color-iron-700);
-  color: var(--color-bone);
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-edge-strong);
+  color: var(--color-ink);
   box-shadow: none;
 }
 .auth-cta--quiet:hover:not(:disabled) {
-  border-color: var(--color-fel-deep);
+  border-color: var(--color-accent-deep);
 }
 .auth-cta--quiet:focus-visible {
   box-shadow:
-    0 0 0 2px var(--color-void),
-    0 0 0 4px var(--color-fel-bright);
+    0 0 0 2px var(--color-canvas),
+    0 0 0 4px var(--color-accent-strong);
 }
 
 /* Quiet secondary route out ("back to sign in", "go to Overseer"). */
 .auth-link {
   margin-top: 1.5rem;
-  color: var(--color-bone-faint);
+  color: var(--color-ink-faint);
   font-family: var(--font-display);
   font-size: 0.74rem;
   letter-spacing: 0.06em;
@@ -1253,7 +1284,7 @@ html.peon-sidebar-resizing * {
   transition: color 150ms ease;
 }
 .auth-link:hover {
-  color: var(--color-fel-bright);
+  color: var(--color-accent-strong);
   text-decoration: underline;
 }
 
@@ -1263,7 +1294,7 @@ html.peon-sidebar-resizing * {
   justify-content: center;
   gap: 0.7rem;
   margin-top: 2rem;
-  color: var(--color-bone-dim);
+  color: var(--color-ink-muted);
   font-family: var(--font-mono);
   font-size: 0.72rem;
   letter-spacing: 0.16em;
@@ -1276,7 +1307,7 @@ html.peon-sidebar-resizing * {
   height: 15px;
   flex: none;
   border: 1.5px solid rgba(134, 171, 99, 0.18);
-  border-top-color: var(--color-fel-bright);
+  border-top-color: var(--color-accent-strong);
   border-radius: 50%;
   animation: spin 0.9s linear infinite;
 }
@@ -1287,12 +1318,61 @@ html.peon-sidebar-resizing * {
   justify-content: center;
   gap: 0.45rem;
   margin-top: 1.5rem;
-  color: var(--color-blood);
+  color: var(--color-danger);
   font-family: var(--font-mono);
   font-size: 0.75rem;
   line-height: 1.5;
   text-wrap: balance;
   animation: auth-rise 320ms ease-out both;
+}
+
+/* Theme and language are available before authentication. The package choice
+   persists locally, while an absent or invalid choice resolves to Ironwood. */
+.auth-controls {
+  position: fixed;
+  top: max(1rem, env(safe-area-inset-top));
+  right: max(1rem, env(safe-area-inset-right));
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.auth-theme-picker {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--color-ink-faint);
+  transition: color 150ms ease;
+}
+
+.auth-theme-picker:hover,
+.auth-theme-picker:focus-within {
+  color: var(--color-accent-strong);
+}
+
+.auth-theme-picker select {
+  max-width: 9.5rem;
+  cursor: pointer;
+  border: 0;
+  background: transparent;
+  color: currentColor;
+  font-family: var(--font-display);
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  outline: none;
+}
+
+.auth-theme-picker select:focus-visible {
+  outline: 1px solid var(--color-accent-deep);
+  outline-offset: 3px;
+}
+
+.auth-theme-picker option {
+  background: var(--color-surface-raised);
+  color: var(--color-ink);
 }
 
 /* Borderless locale toggle — the auth pages are the only place it appears. */
@@ -1305,7 +1385,7 @@ html.peon-sidebar-resizing * {
 .locale-switch-item {
   position: relative;
   padding: 0.3rem 0.4rem;
-  color: var(--color-bone-faint);
+  color: var(--color-ink-faint);
   font-family: var(--font-display);
   font-size: 0.62rem;
   font-weight: 600;
@@ -1315,10 +1395,10 @@ html.peon-sidebar-resizing * {
   transition: color 150ms ease;
 }
 .locale-switch-item:hover {
-  color: var(--color-bone-dim);
+  color: var(--color-ink-muted);
 }
 .locale-switch-item[aria-pressed="true"] {
-  color: var(--color-fel-bright);
+  color: var(--color-accent-strong);
 }
 .locale-switch-item[aria-pressed="true"]::after {
   content: "";
@@ -1327,10 +1407,10 @@ html.peon-sidebar-resizing * {
   left: 0.4rem;
   right: 0.4rem;
   height: 1px;
-  background: var(--color-fel);
+  background: var(--color-accent);
 }
 .locale-switch-item:focus-visible {
-  outline: 1px solid var(--color-fel-deep);
+  outline: 1px solid var(--color-accent-deep);
   outline-offset: 2px;
 }
 
@@ -1372,12 +1452,12 @@ html.peon-sidebar-resizing * {
   to { opacity: 1; transform: none; }
 }
 
-.forge-spin {
+.loading-spinner {
   width: 28px;
   height: 28px;
   border-radius: 50%;
-  border: 2px solid var(--color-iron-800);
-  border-top-color: var(--color-fel);
+  border: 2px solid var(--color-surface-hover);
+  border-top-color: var(--color-accent);
   animation: spin 0.8s linear infinite;
 }
 @keyframes spin {
@@ -1393,7 +1473,7 @@ html.peon-sidebar-resizing * {
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: var(--color-fel);
+  background: var(--color-accent);
   animation: thinking-bounce 1.2s ease-in-out infinite;
 }
 .thinking-dots span:nth-child(2) { animation-delay: 0.2s; }
@@ -1411,7 +1491,7 @@ html.peon-sidebar-resizing * {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .reveal, .forge-spin {
+  .reveal, .loading-spinner {
     animation: none !important;
   }
   .thinking-dots span {

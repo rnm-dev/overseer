@@ -66,24 +66,24 @@ export function ProjectSkills() {
     <ProjectPageHeader />
     <ProjectTabs />
     <Card className="overflow-hidden">
-      <div className="border-b border-iron-800 bg-iron-900/40 px-5 py-3">
-        <h2 className="font-display text-sm font-bold text-bone">{t("proj.skills.title")}</h2>
-        <p className="mt-0.5 text-xs text-bone-faint">{t("proj.skills.hint")}</p>
+      <div className="border-b border-edge bg-surface-raised/40 px-5 py-3">
+        <h2 className="font-display text-sm font-bold text-ink">{t("proj.skills.title")}</h2>
+        <p className="mt-0.5 text-xs text-ink-faint">{t("proj.skills.hint")}</p>
       </div>
       <div className="p-5">
-        {!peon.online && <p role="status" className="font-mono text-sm text-bone-faint">{t("peon.offlineNote")}</p>}
-        {peon.online && state.kind === "loading" && <p role="status" aria-live="polite" className="font-mono text-sm text-bone-faint">{t("proj.skills.loading")}</p>}
-        {peon.online && state.kind === "unsupported" && <p role="status" className="font-mono text-sm text-bone-faint">{t("proj.skills.unsupported")}</p>}
-        {peon.online && state.kind === "unknown" && <p role="alert" className="border-l-2 border-blood bg-blood/5 py-2 pl-3 font-mono text-sm text-blood">⚠ {t("proj.skills.unknown")}</p>}
-        {peon.online && state.kind === "forbidden" && <p role="alert" className="border-l-2 border-blood bg-blood/5 py-2 pl-3 font-mono text-sm text-blood">⚠ {t("proj.skills.forbidden")}</p>}
-        {peon.online && state.kind === "error" && <p role="alert" className="border-l-2 border-blood bg-blood/5 py-2 pl-3 font-mono text-sm text-blood">⚠ {state.message}</p>}
-        {peon.online && state.kind === "ready" && state.skills.length === 0 && <p role="status" className="font-mono text-sm text-bone-faint">{t("proj.skills.empty")}</p>}
+        {!peon.online && <p role="status" className="font-mono text-sm text-ink-faint">{t("peon.offlineNote")}</p>}
+        {peon.online && state.kind === "loading" && <p role="status" aria-live="polite" className="font-mono text-sm text-ink-faint">{t("proj.skills.loading")}</p>}
+        {peon.online && state.kind === "unsupported" && <p role="status" className="font-mono text-sm text-ink-faint">{t("proj.skills.unsupported")}</p>}
+        {peon.online && state.kind === "unknown" && <p role="alert" className="border-l-2 border-danger bg-danger/5 py-2 pl-3 font-mono text-sm text-danger">⚠ {t("proj.skills.unknown")}</p>}
+        {peon.online && state.kind === "forbidden" && <p role="alert" className="border-l-2 border-danger bg-danger/5 py-2 pl-3 font-mono text-sm text-danger">⚠ {t("proj.skills.forbidden")}</p>}
+        {peon.online && state.kind === "error" && <p role="alert" className="border-l-2 border-danger bg-danger/5 py-2 pl-3 font-mono text-sm text-danger">⚠ {state.message}</p>}
+        {peon.online && state.kind === "ready" && state.skills.length === 0 && <p role="status" className="font-mono text-sm text-ink-faint">{t("proj.skills.empty")}</p>}
         {peon.online && state.kind === "ready" && state.skills.length > 0 && (
           <ul className="grid gap-3 md:grid-cols-2" aria-label={t("proj.skills.title")}>
             {state.skills.map((skill) => <li key={`${skill.name}:${skill.path ?? ""}`} className="surface surface--subtle p-4">
-              <h3 className="font-display text-sm font-bold text-bone">{skill.name}</h3>
-              <p className="mt-1 text-sm leading-relaxed text-bone-dim">{skill.description}</p>
-              {skill.path && <p className="mt-3 break-all font-mono text-[0.7rem] text-bone-faint">{skill.path}</p>}
+              <h3 className="font-display text-sm font-bold text-ink">{skill.name}</h3>
+              <p className="mt-1 text-sm leading-relaxed text-ink-muted">{skill.description}</p>
+              {skill.path && <p className="mt-3 break-all font-mono text-[0.7rem] text-ink-faint">{skill.path}</p>}
             </li>)}
           </ul>
         )}

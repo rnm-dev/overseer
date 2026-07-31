@@ -107,7 +107,7 @@ export function PeonConnectionStatusDot(props: Props) {
         <span
           id={tooltipId}
           role="tooltip"
-          className="pointer-events-none fixed z-[100] w-64 rounded-lg border border-iron-700/90 bg-iron-950/95 p-2.5 text-left shadow-[0_12px_32px_rgba(0,0,0,0.55),0_0_0_1px_rgba(149,201,103,0.05)] backdrop-blur-md"
+          className="pointer-events-none fixed z-[100] w-64 rounded-lg border border-edge-strong/90 bg-surface/95 p-2.5 text-left shadow-[0_12px_32px_rgba(0,0,0,0.55),0_0_0_1px_rgba(149,201,103,0.05)] backdrop-blur-md"
           style={{
             left: position.left,
             top: position.top,
@@ -120,13 +120,13 @@ export function PeonConnectionStatusDot(props: Props) {
                 ? t("socket.uptime", { duration: formatChannelUptime(now - channel.startedAt) })
                 : null;
               return (
-                <span key={channel.name} className={`flex items-center gap-2 px-1 py-1.5 ${index > 0 ? "border-t border-iron-800/80" : ""}`}>
+                <span key={channel.name} className={`flex items-center gap-2 px-1 py-1.5 ${index > 0 ? "border-t border-edge/80" : ""}`}>
                   <StatusDot state={channel.active ? "on" : "off"} />
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate font-display text-[0.72rem] font-semibold text-bone">{channel.name}</span>
-                    {uptime && <span className="block font-mono text-[0.58rem] leading-tight text-bone-faint">{uptime}</span>}
+                    <span className="block truncate font-display text-[0.72rem] font-semibold text-ink">{channel.name}</span>
+                    {uptime && <span className="block font-mono text-[0.58rem] leading-tight text-ink-faint">{uptime}</span>}
                   </span>
-                  <span className={`font-mono text-[0.58rem] uppercase tracking-[0.08em] ${channel.active ? "text-fel-bright" : "text-bone-faint"}`}>
+                  <span className={`font-mono text-[0.58rem] uppercase tracking-[0.08em] ${channel.active ? "text-accent-strong" : "text-ink-faint"}`}>
                     {channel.active ? connected : disconnected}
                   </span>
                 </span>
