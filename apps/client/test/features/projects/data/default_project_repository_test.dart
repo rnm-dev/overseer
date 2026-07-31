@@ -78,17 +78,19 @@ void main() {
   });
 
   test('authoritative refresh retires a cached pre-rename identity', () async {
-    await database.into(database.cachedProjects).insert(
-      const CachedProjectsCompanion(
-        workspaceId: Value('workspace'),
-        peonId: Value('peon'),
-        projectId: Value('legacy:old-key'),
-        projectKey: Value('old-key'),
-        name: Value('Old name'),
-        dir: Value('/projects/shared'),
-        syncedAt: Value(90),
-      ),
-    );
+    await database
+        .into(database.cachedProjects)
+        .insert(
+          const CachedProjectsCompanion(
+            workspaceId: Value('workspace'),
+            peonId: Value('peon'),
+            projectId: Value('legacy:old-key'),
+            projectKey: Value('old-key'),
+            name: Value('Old name'),
+            dir: Value('/projects/shared'),
+            syncedAt: Value(90),
+          ),
+        );
 
     final dio = Dio();
     dio.interceptors.add(

@@ -99,7 +99,9 @@ class DefaultProjectRepository implements ProjectRepository {
           }
         });
 
-        final projectIds = projects.map((project) => project.projectId).toList();
+        final projectIds = projects
+            .map((project) => project.projectId)
+            .toList();
         final staleRows = database.update(database.cachedProjects)
           ..where(
             (row) =>

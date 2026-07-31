@@ -12,6 +12,10 @@ only.
 ## Workflow
 
 1. Read `docs/testflight.md`.
+   This repository-local skill is the mandatory release authority. Upload the
+   IPA through the connected App Store Connect MCP Build Upload API described
+   below; do not substitute `altool`, Transporter, or Xcode Organizer for the
+   routine agent-driven upload.
 2. Show `git status --short`. A dirty tree is allowed, but state clearly that
    the release contains the current local files. Never discard unrelated work.
 3. Resolve the App Store Connect app by exact bundle ID `org.ovrseer.app`.
