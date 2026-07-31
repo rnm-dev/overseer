@@ -126,6 +126,7 @@ export class PeonCatalogSync {
   private checkpoint: SessionSyncCheckpoint | null = null;
   private projectCheckpoint: ProjectSyncCheckpoint | null = null;
   private bufferedEvents: DurableDeliveryEvent[] = [];
+  private bufferedEventFingerprints = new Map<string, string>();
   private bufferedBytes = 0;
   private sessionTimer: NodeJS.Timeout | null = null;
   private projectTimer: NodeJS.Timeout | null = null;
@@ -263,6 +264,7 @@ export class PeonCatalogSync {
     this.snapshot = null;
     this.projectSnapshot = null;
     this.bufferedEvents = [];
+    this.bufferedEventFingerprints.clear();
     this.transcriptSync?.dispose();
     void releaseSessionSyncGeneration(this.record.peonId, this.generation).catch(() => undefined);
     if (this.projectCatalog) void releaseProjectSyncGeneration(this.record.peonId, this.generation).catch(() => undefined);
@@ -478,10 +480,19 @@ export class PeonCatalogSync {
   }
 
   private bufferEvent(event: DurableDeliveryEvent, frameBytes: number): void {
+    const fingerprint = JSON.stringify(event);
+    const buffered = this.bufferedEventFingerprints.get(event.deliveryCursor);
+    if (buffered !== undefined) {
+      if (buffered !== fingerprint) {
+        throw new SessionSyncProtocolError("durable delivery cursor changed during catalog snapshots");
+      }
+      return;
+    }
     this.bufferedBytes += frameBytes;
     if (this.bufferedBytes > MAX_SNAPSHOT_BYTES) throw new SessionSyncProtocolError("catalog snapshot byte limit exceeded");
     if (this.bufferedEvents.length >= MAX_BUFFERED_EVENTS) throw new SessionSyncProtocolError("too many events during catalog snapshots");
     this.bufferedEvents.push(event);
+    this.bufferedEventFingerprints.set(event.deliveryCursor, fingerprint);
   }
 
   private async applyEvent(event: DurableDeliveryEvent): Promise<void> {
@@ -591,6 +602,7 @@ export class PeonCatalogSync {
     if (this.snapshot || this.projectSnapshot || this.transcriptSync?.hasActiveSnapshots()) return;
     const events = this.bufferedEvents;
     this.bufferedEvents = [];
+    this.bufferedEventFingerprints.clear();
     this.bufferedBytes = 0;
     for (let index = 0; index < events.length; index += 1) {
       const event = events[index]!;
