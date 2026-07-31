@@ -109,26 +109,21 @@ test("POST /api/v1/control/check-update runs a fresh check and returns update st
 
   assert.equal(response.status, 200);
   const body = await response.json() as Record<string, unknown>;
-  assert.deepEqual(Object.keys(body).sort(), [
-    "updateAvailable",
-    "updateCheckError",
-    "updateCheckedAt",
-    "updateCurrentRevision",
-    "updateCurrentVersion",
-    "updateLatestRevision",
-    "updateLatestVersion",
-  ]);
-  assert.equal(body.updateAvailable, true);
-  assert.equal(body.updateCurrentVersion, currentVersion);
-  assert.equal(body.updateLatestVersion, null);
-  assert.equal(body.updateCurrentRevision, localSha);
-  assert.equal(body.updateLatestRevision, firstRemoteSha);
-  assert.equal(body.updateCheckError, null);
-  assert.equal(typeof body.updateCheckedAt, "number");
-  if (previousCheckedAt !== null) assert.ok((body.updateCheckedAt as number) > previousCheckedAt);
+  assert.deepEqual(Object.keys(body).sort(), ["code", "result", "status"]);
+  assert.equal(body.status, "available");
+  assert.equal(body.code, "OK");
+  const result = body.result as Record<string, unknown>;
+  assert.equal(result.updateAvailable, true);
+  assert.equal(result.currentVersion, currentVersion);
+  assert.equal(result.latestVersion, null);
+  assert.equal(result.currentRevision, localSha);
+  assert.equal(result.latestRevision, firstRemoteSha);
+  assert.equal(result.checkError, null);
+  assert.equal(typeof result.checkedAt, "number");
+  if (previousCheckedAt !== null) assert.ok((result.checkedAt as number) > previousCheckedAt);
 });
 
-test("concurrent manual update requests share one in-flight check and both receive fresh state", async () => {
+test("concurrent manual update requests admit one check and reject the competing operation", async () => {
   writeFileSync(checkCountFile, "");
   process.env.PEON_TEST_REMOTE_SHA = secondRemoteSha;
   const before = updateChecker.getState().checkedAt as number;
@@ -143,16 +138,17 @@ test("concurrent manual update requests share one in-flight check and both recei
     second.json() as Promise<Record<string, unknown>>,
   ]);
 
-  assert.equal(first.status, 200);
-  assert.equal(second.status, 200);
+  assert.deepEqual([first.status, second.status].sort(), [200, 409]);
   assert.equal(readFileSync(checkCountFile, "utf8"), "x");
-  assert.equal(firstBody.updateLatestRevision, secondRemoteSha);
-  assert.equal(secondBody.updateLatestRevision, secondRemoteSha);
-  assert.equal(firstBody.updateCheckedAt, secondBody.updateCheckedAt);
-  assert.ok((firstBody.updateCheckedAt as number) > before);
+  const success = first.status === 200 ? firstBody : secondBody;
+  const conflict = first.status === 409 ? firstBody : secondBody;
+  const result = success.result as Record<string, unknown>;
+  assert.equal(result.latestRevision, secondRemoteSha);
+  assert.ok((result.checkedAt as number) > before);
+  assert.equal(conflict.code, "UPDATE_IN_PROGRESS");
 });
 
-test("manual update-check failures are returned as state without crashing the API", async () => {
+test("manual update-check failures return a bounded registry error without crashing the API", async () => {
   process.env.PEON_TEST_UPDATE_ERROR = "1";
   const response = await fetch(`http://127.0.0.1:${port}/api/v1/control/check-update`, {
     method: "POST",
@@ -160,10 +156,11 @@ test("manual update-check failures are returned as state without crashing the AP
   });
   delete process.env.PEON_TEST_UPDATE_ERROR;
 
-  assert.equal(response.status, 200);
+  assert.equal(response.status, 503);
   const body = await response.json() as Record<string, unknown>;
-  assert.equal(typeof body.updateCheckedAt, "number");
-  assert.match(String(body.updateCheckError), /simulated update check failure/);
+  assert.deepEqual(Object.keys(body).sort(), ["code", "error"]);
+  assert.equal(body.code, "REGISTRY_UNAVAILABLE");
+  assert.equal(body.error, "release registry is unavailable");
 });
 
 test("GET /api/v1/status remains cache-only", async () => {

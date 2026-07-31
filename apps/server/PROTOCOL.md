@@ -494,12 +494,13 @@ is null because a remote commit need not be a published release. The overseer
 uses `updateAvailable` for actions and chooses version fields for release installs,
 falling back to short revision identifiers for development checkouts.
 
-`POST /control/check-update` runs that check immediately and returns those same
-seven fields. Concurrent requests share one in-flight check and all wait for its
-result. A failed check still returns `200` with the failure in `updateCheckError`;
-the daemon remains healthy. `GET /status` never starts a check and remains a fast,
-cache-only read. The Overseer **Check now** action should call this endpoint and
-replace its displayed update state with the response.
+`POST /control/check-update` runs that check immediately and returns a bounded
+`{ status, code, result }` envelope. `result` contains `updateAvailable`,
+`currentVersion`, `latestVersion`, `currentRevision`, `latestRevision`,
+`checkedAt`, and `checkError`. Update operations are serialized: a competing
+check or apply returns `409 UPDATE_IN_PROGRESS`. A failed registry check returns
+`503 REGISTRY_UNAVAILABLE` without provider output. `GET /status` never starts a
+check and remains a fast, cache-only read.
 
 `GET /stats` returns session outcome counts plus token/cost/duration totals over
 the period (`sessionCount`, `outcomeCounts`, `totalTokens`, `totalCostUsd`, …) —

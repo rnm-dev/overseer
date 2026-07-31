@@ -32,7 +32,7 @@ export class NoInboundTopology {
       if (route === "legacy-http" && [
         "absolute-folder-picker", "project-directory", "project-file-read",
         "sandbox-file-read", "project-file-upload", "attachment-upload",
-        "project-file-move", "project-file-delete",
+        "project-file-move", "project-file-delete", "session-cancel", "peon-update",
       ].includes(surface)) {
         this.diagnostics.add("fleet_http_surface_exercised", { surface, channel: "mesh" });
         return;

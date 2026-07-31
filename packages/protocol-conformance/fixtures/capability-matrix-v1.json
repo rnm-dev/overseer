@@ -220,7 +220,7 @@
         "project-directory": "legacy-http",
         "project-file-read": "legacy-http",
         "sandbox-file-read": "legacy-http",
-        "session-cancel": "reverse-socket",
+        "session-cancel": "legacy-http",
         "session-transcript": "reverse-socket",
         "project-file-upload": "legacy-http",
         "attachment-upload": "legacy-http",
@@ -248,6 +248,12 @@
       "capability": "transcript-sync-v1",
       "status": "covered",
       "coverage": "canonical snapshot/live frames, barrier staging, shared demand/cancellation, durable atomic projection+inbox+browser event before ACK, drop/duplicate/reorder/reconnect/restart, epoch and generation fencing, bounds and corrupt input"
+    },
+    {
+      "id": "updates",
+      "capability": "fleet-http",
+      "status": "covered",
+      "coverage": "direct authenticated check/apply/status lifecycle, request identity, approved release binding, restart attestation, bounded outcomes and single-operation admission"
     },
     {
       "id": "rollout",

@@ -627,8 +627,8 @@ export function createAgentRouter(options: AgentRouterOptions = {}): express.Rou
   router.post("/control/resume", (_req, res) => res.json(settings.update({ paused: false })));
 
   // Force a fresh update check for the overseer's explicit "Check now" action.
-  // checkNow owns the in-flight deduplication and absorbs failures into state,
-  // so concurrent requests wait for one check and the daemon stays healthy.
+  // Update operations are serialized and return bounded status/result envelopes;
+  // registry failures never expose provider output.
   router.post("/control/check-update", async (_req, res) => {
     const result = await checkUpdate();
     res.status(result.status).json(result.body);
