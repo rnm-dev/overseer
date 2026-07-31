@@ -26,7 +26,7 @@ const DEFAULT_SETTINGS = {
     maxBudgetUsd: 0,
     publicControlUrl: `http://127.0.0.1:${process.env.ACA_CONTROL_PORT ?? 4570}`,
     publicDashboardUrl: `http://127.0.0.1:${process.env.ACA_DASHBOARD_PORT ?? 4571}`,
-    bindHost: "127.0.0.1",
+    bindHost: "0.0.0.0",
     name: "",
     autoResumeInterrupted: true,
     overseerToken: "",

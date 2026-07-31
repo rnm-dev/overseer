@@ -23,6 +23,7 @@ import { attachFleetProjectFileRoutes } from "./http/fleet/files.js";
 import { attachFleetSessionFileRoutes } from "./http/fleet/sessionFiles.js";
 import { PROTOCOL_VERSION } from "./protocol.js";
 import { peonClaimClient } from "./enrollment/index.js";
+import { UnauthorizedRateLimiter } from "./unauthorizedRateLimit.js";
 // The machine-facing control surface a "overseer" (fleet control plane) uses
 // to drive this peon — see PROTOCOL.md. It is deliberately a *separate* router
 // from the human `/api/v1/*` surface in controlServer.ts: its own auth (a shared
@@ -172,6 +173,7 @@ function updateStatusView() {
 }
 export function createAgentRouter(options = {}) {
     const router = express.Router();
+    const unauthorizedRateLimiter = options.unauthorizedRateLimiter ?? new UnauthorizedRateLimiter();
     const sessionProjectContract = {
         list: () => sessions.list(),
         renameProjectKey: (oldKey, newKey) => sessions.renameProjectKey(oldKey, newKey),
@@ -284,6 +286,11 @@ export function createAgentRouter(options = {}) {
         }
         const provided = (req.headers.authorization ?? "").replace(/^Bearer\s+/i, "");
         if (!provided || !tokenMatches(provided, token)) {
+            const decision = unauthorizedRateLimiter.recordFailure(req.socket.remoteAddress);
+            if (decision.limited) {
+                res.setHeader("Retry-After", String(decision.retryAfterSeconds));
+                return fail(res, 429, "RATE_LIMITED", "too many failed authorization attempts");
+            }
             return fail(res, 401, "UNAUTHENTICATED", "missing or invalid bearer token");
         }
         const proto = req.headers["peon-protocol"];

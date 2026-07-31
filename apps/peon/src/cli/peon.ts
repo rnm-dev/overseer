@@ -627,7 +627,7 @@ async function main() {
       };
 
       if (sub === "status") {
-        const host = current.bindHost ?? "127.0.0.1";
+        const host = current.bindHost ?? "0.0.0.0";
         const loopbackOnly = isLoopbackHost(host);
         console.log(`bind host          : ${host}  (${loopbackOnly ? "loopback only — no remote access" : "accepting remote connections"})`);
         console.log(`publicControlUrl   : ${current.publicControlUrl}`);

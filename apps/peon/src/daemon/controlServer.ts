@@ -13,6 +13,7 @@ import {
   toPublicSessionRecord,
   type SessionRecord,
 } from "./sessions/index.js";
+import { UnauthorizedRateLimiter } from "./unauthorizedRateLimit.js";
 import { createProjectService, projectStore, type ProjectService } from "./projects/index.js";
 import { updateChecker } from "./updateChecker.js";
 import { createAgentRouter } from "./agentApi.js";
@@ -72,10 +73,12 @@ export interface ControlServerOptions {
   sessionOrchestration?: SessionOrchestrationService;
   sessionService?: HumanSessionService;
   sessionHelpers?: HumanSessionResponseHelpers;
+  unauthorizedRateLimiter?: UnauthorizedRateLimiter;
 }
 
 export function createControlServer(options: ControlServerOptions = {}) {
   const app = express();
+  const unauthorizedRateLimiter = options.unauthorizedRateLimiter ?? new UnauthorizedRateLimiter();
   const cliUpdateService = options.cliUpdates ?? cliUpdates;
   const fileAccessService = options.fileAccessService ?? new FileAccessService();
   const armoryRuntime = options.armoryRuntime ?? new ArmoryMcpRuntime(createArmoryStores());
@@ -138,6 +141,7 @@ export function createControlServer(options: ControlServerOptions = {}) {
     armoryInventory: options.armoryInventory,
     armoryApi,
     projectService,
+    unauthorizedRateLimiter,
   });
   app.use("/api/v1", (req, res, next) => {
     // Profile selection must only decide which auth middleware receives the
@@ -171,6 +175,14 @@ export function createControlServer(options: ControlServerOptions = {}) {
 
   app.use((req, res, next) => {
     if (isLoopback(req)) return next();
+    const decision = unauthorizedRateLimiter.recordFailure(req.socket.remoteAddress);
+    if (decision.limited) {
+      res.setHeader("Retry-After", String(decision.retryAfterSeconds));
+      return res.status(429).json({
+        error: "too many failed authorization attempts",
+        code: "RATE_LIMITED",
+      });
+    }
     return res.status(403).json({
       error: "Peon local API is CLI-only; use Overseer for operator access",
       code: "LOCAL_ONLY",

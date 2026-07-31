@@ -15,9 +15,9 @@ import { recoverUpdateOperation } from "./updateOperations.js";
 
 const PORT = Number(process.env.ACA_CONTROL_PORT ?? 4570);
 
-// Interface to bind. Defaults to loopback-only (settings.bindHost === "127.0.0.1");
-// set it wider (0.0.0.0 or a specific interface IP) via `peon remote on` to accept
-// remote connections. Remote peers then go through per-user magic-link auth —
+// Interface to bind. Defaults to all interfaces so enrolled Overseers can use
+// authenticated Fleet HTTP. `peon remote off` opts into loopback-only access.
+// Remote peers go through per-user magic-link or Fleet bearer authentication —
 // only genuine loopback connections are auto-trusted as admin (isLoopback() in
 // controlServer.ts keys off the real TCP socket address, which can't be spoofed).
 const configured = settings.get();

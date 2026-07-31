@@ -138,8 +138,10 @@ commands:
 - `peon user sessions <username>` — list a user's login sessions
 - `peon user revoke <username> [sessionId]` — log out one session, or all of them
 
-By default both servers bind `127.0.0.1` only — peon has no direct network exposure, and there
-are two ways to reach it from another machine:
+By default both servers bind `0.0.0.0` so an enrolled Overseer can reach the
+authenticated Fleet HTTP API. Only a genuine loopback peer skips local API
+authentication; remote callers need a Fleet bearer or user login. Keep the ports
+firewalled to trusted networks. There are two ways to reach Peon:
 
 - **Tunnel (no config).** Port-forward both ports over a channel you already trust
   (`ssh -L 4570:localhost:4570 -L 4571:localhost:4571 you@box`). A forwarded request is
@@ -179,7 +181,7 @@ View or change settings with `peon settings` / `peon settings set <key> <value>`
 | `codexCommand` | `codex` | Codex CLI binary used by `codex-app-server` sessions and provider probes |
 | `publicControlUrl` | `http://127.0.0.1:4570` | public URL of the control API |
 | `publicDashboardUrl` | `http://127.0.0.1:4571` | public URL of the dashboard |
-| `bindHost` | `127.0.0.1` | interface both servers bind (`0.0.0.0` for remote); prefer `peon remote on/off`. Read at startup — restart to apply |
+| `bindHost` | `0.0.0.0` | interface both servers bind (`127.0.0.1` for local-only); prefer `peon remote on/off`. Read at startup — restart to apply |
 | `paused` | `false` | whether task polling is on |
 
 > `publicControlUrl` and `publicDashboardUrl` must use the same hostname (a different port

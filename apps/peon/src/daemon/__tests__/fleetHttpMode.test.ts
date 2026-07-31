@@ -13,6 +13,10 @@ function isolatedSettings(initial?: Record<string, unknown>): SettingsService {
   return new SettingsService(new SettingsStore(file));
 }
 
+test("new Peons listen for authenticated Fleet HTTP on every interface", () => {
+  assert.equal(isolatedSettings().get().bindHost, "0.0.0.0");
+});
+
 test("retired topology settings cannot disable Fleet HTTP", () => {
   const service = isolatedSettings({
     fleetMode: "reverse-only",

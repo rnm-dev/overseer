@@ -33,6 +33,7 @@ import { attachFleetProjectFileRoutes, type FleetProjectFileReader } from "./htt
 import { attachFleetSessionFileRoutes } from "./http/fleet/sessionFiles.js";
 import { PROTOCOL_VERSION } from "./protocol.js";
 import { peonClaimClient } from "./enrollment/index.js";
+import { UnauthorizedRateLimiter } from "./unauthorizedRateLimit.js";
 
 // The machine-facing control surface a "overseer" (fleet control plane) uses
 // to drive this peon — see PROTOCOL.md. It is deliberately a *separate* router
@@ -259,10 +260,12 @@ export interface AgentRouterOptions {
   legacyEnrollmentBlocked?: () => boolean;
   openProjectUpload?: typeof AtomicFileUpload.open;
   moveProjectFile?: typeof moveProjectFile;
+  unauthorizedRateLimiter?: UnauthorizedRateLimiter;
 }
 
 export function createAgentRouter(options: AgentRouterOptions = {}): express.Router {
   const router = express.Router();
+  const unauthorizedRateLimiter = options.unauthorizedRateLimiter ?? new UnauthorizedRateLimiter();
   const sessionProjectContract: ProjectSessionContract = {
     list: () => sessions.list(),
     renameProjectKey: (oldKey, newKey) => sessions.renameProjectKey(oldKey, newKey),
@@ -392,6 +395,11 @@ export function createAgentRouter(options: AgentRouterOptions = {}): express.Rou
     }
     const provided = (req.headers.authorization ?? "").replace(/^Bearer\s+/i, "");
     if (!provided || !tokenMatches(provided, token)) {
+      const decision = unauthorizedRateLimiter.recordFailure(req.socket.remoteAddress);
+      if (decision.limited) {
+        res.setHeader("Retry-After", String(decision.retryAfterSeconds));
+        return fail(res, 429, "RATE_LIMITED", "too many failed authorization attempts");
+      }
       return fail(res, 401, "UNAUTHENTICATED", "missing or invalid bearer token");
     }
     const proto = req.headers["peon-protocol"];

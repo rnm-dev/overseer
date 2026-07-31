@@ -22,9 +22,9 @@ export interface DaemonSettings {
   // explicit cookie Domain=, which isn't set up here.
   publicControlUrl: string;
   publicDashboardUrl: string;
-  // Network interface the control API and dashboard bind to. "127.0.0.1"
-  // (default) accepts loopback only — the CLI, scripts, and same-box browsers.
-  // "0.0.0.0" (or a specific interface IP) accepts remote connections, which
+  // Network interface the control API and dashboard bind to. "0.0.0.0"
+  // (default) accepts Fleet HTTP from reachable interfaces. "127.0.0.1"
+  // opts into local-only access. Remote connections
   // then go through per-user magic-link auth (only loopback is auto-trusted as
   // admin). Read once at process startup — changing it needs a daemon +
   // dashboard restart. Env var ACA_BIND_HOST overrides it.
