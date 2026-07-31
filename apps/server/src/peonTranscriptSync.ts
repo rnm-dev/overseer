@@ -27,6 +27,7 @@ const MAX_SNAPSHOT_PAGES = 1_000;
 const MAX_ACTIVE_SNAPSHOTS = 4;
 const SNAPSHOT_TIMEOUT_MS = 60_000;
 const READY_WAIT_MS = 15_000;
+const MAX_RETIRED_SNAPSHOT_REQUESTS = 256;
 export const MAX_TRANSCRIPT_SUBSCRIPTIONS = 64;
 
 export const TRANSCRIPT_CHANNEL_HELLO = {
@@ -118,6 +119,7 @@ export async function acquireTranscriptProjection(
 
 export class PeonTranscriptSync {
   private readonly snapshots = new Map<string, SnapshotState>();
+  private readonly retiredSnapshotRequests = new Map<string, string>();
   private readonly demands = new Map<string, number>();
   private readonly claimed = new Set<string>();
   private readonly waiters = new Map<string, Set<ReadyWaiter>>();
@@ -166,6 +168,7 @@ export class PeonTranscriptSync {
     }
     for (const snapshot of this.snapshots.values()) clearTimeout(snapshot.timer);
     this.snapshots.clear();
+    this.retiredSnapshotRequests.clear();
     for (const waiters of this.waiters.values()) {
       for (const waiter of waiters) {
         clearTimeout(waiter.timer);
@@ -447,6 +450,7 @@ export class PeonTranscriptSync {
 
   private async receiveSnapshotPage(message: Record<string, unknown>, frameBytes: number): Promise<void> {
     const snapshot = this.requireSnapshot(message);
+    if (!snapshot) return;
     if (message.sessionId !== snapshot.sessionId) throw new Error("transcript snapshot session mismatch");
     snapshot.pages += 1;
     snapshot.bytes += frameBytes;
@@ -499,7 +503,7 @@ export class PeonTranscriptSync {
       barrierSeq,
       events: snapshot.events,
     });
-    this.snapshots.delete(snapshot.sessionId);
+    this.retireSnapshot(snapshot);
     this.send({ type: "transcript_snapshot_cancel", requestId: snapshot.requestId });
     this.resolveReady(snapshot.sessionId);
     if ((this.demands.get(snapshot.sessionId) ?? 0) === 0) {
@@ -537,7 +541,7 @@ export class PeonTranscriptSync {
       }
       this.send({ type: "transcript_snapshot_cancel", requestId: snapshot.requestId, sessionId });
       clearTimeout(snapshot.timer);
-      this.snapshots.delete(sessionId);
+      this.retireSnapshot(snapshot);
       this.requestSnapshot(sessionId, snapshot.requiredForDelivery);
       return;
     }
@@ -546,12 +550,23 @@ export class PeonTranscriptSync {
     else this.rejectReady(sessionId, error);
   }
 
-  private requireSnapshot(message: Record<string, unknown>): SnapshotState {
+  private requireSnapshot(message: Record<string, unknown>): SnapshotState | null {
     const requestId = requiredString(message.requestId, "requestId", 64);
     const sessionId = requiredString(message.sessionId, "sessionId", 512);
     const snapshot = this.snapshots.get(sessionId);
-    if (!snapshot || snapshot.requestId !== requestId) throw new Error("transcript snapshot request mismatch");
-    return snapshot;
+    if (snapshot?.requestId === requestId) return snapshot;
+    if (this.retiredSnapshotRequests.get(requestId) === sessionId) return null;
+    throw new Error("transcript snapshot request mismatch");
+  }
+
+  private retireSnapshot(snapshot: SnapshotState): void {
+    this.snapshots.delete(snapshot.sessionId);
+    this.retiredSnapshotRequests.set(snapshot.requestId, snapshot.sessionId);
+    while (this.retiredSnapshotRequests.size > MAX_RETIRED_SNAPSHOT_REQUESTS) {
+      const oldest = this.retiredSnapshotRequests.keys().next().value as string | undefined;
+      if (!oldest) break;
+      this.retiredSnapshotRequests.delete(oldest);
+    }
   }
 
   private findSnapshotByRequest(message: Record<string, unknown>): SnapshotState | null {
@@ -675,7 +690,7 @@ export class PeonTranscriptSync {
 
   private failSnapshot(snapshot: SnapshotState, error: Error): void {
     clearTimeout(snapshot.timer);
-    this.snapshots.delete(snapshot.sessionId);
+    this.retireSnapshot(snapshot);
     this.rejectReady(snapshot.sessionId, error);
   }
 

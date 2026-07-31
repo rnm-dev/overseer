@@ -171,6 +171,51 @@ test("snapshot demand is shared across browser consumers and preserves the Peon 
   sync.dispose();
 });
 
+test("a delayed page from a retired snapshot cannot tear down its replacement", async () => {
+  const { socket, sync } = await setup();
+  const acquired = sync.acquire("s1");
+  const initial = await waitForFrame(socket, (frame) =>
+    frame.type === "transcript_snapshot_request" && frame.sessionId === "s1");
+  const initialPage = {
+    type: "transcript_snapshot_page",
+    requestId: initial.requestId,
+    sessionId: "s1",
+    epoch: "epoch-1",
+    revision: 1,
+    barrierSeq: 1,
+    events: [published(1)],
+    nextCursor: null,
+    hasMore: false,
+  };
+  await sync.handle(initialPage, 512);
+  const release = await acquired;
+
+  await sync.handle({
+    type: "transcript_error",
+    requestId: "00000000-0000-4000-8000-000000000099",
+    sessionId: "s1",
+    code: "RESYNC_REQUIRED",
+  }, 128);
+  const replacement = await waitForFrame(socket, (frame) =>
+    frame.type === "transcript_snapshot_request"
+    && frame.sessionId === "s1"
+    && frame.requestId !== initial.requestId);
+
+  await sync.handle(initialPage, 512);
+  await sync.handle({
+    ...initialPage,
+    requestId: replacement.requestId,
+    revision: 2,
+    barrierSeq: 2,
+    events: [published(1), published(2)],
+  }, 768);
+
+  assert.equal((await getTranscriptState("p1", "s1"))?.acknowledgedSeq, 2);
+  assert.equal(socket.closeCode, null);
+  release();
+  sync.dispose();
+});
+
 test("restart resume uses epoch/afterSeq, live commits dedupe, and a sequence gap requests a fenced rebuild", async () => {
   const { socket, sync } = await setup();
   const initial = sync.acquire("s1");
