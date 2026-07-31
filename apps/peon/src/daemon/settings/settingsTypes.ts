@@ -13,12 +13,12 @@ export interface DaemonSettings {
   // Per-session USD cap passed as `--max-budget-usd`. 0 (default) means no cap —
   // agentExecutor's `if (opts.maxBudgetUsd)` guard omits the flag entirely.
   maxBudgetUsd: number;
-  // Externally reachable URL Overseer uses for authenticated Fleet HTTP.
+  // Tailscale MagicDNS URL Overseer uses for authenticated Fleet HTTP.
   publicControlUrl: string;
-  // Network interface the control API binds to. "0.0.0.0" (default) accepts
-  // authenticated Fleet HTTP from every reachable interface. "127.0.0.1"
-  // opts into local-only access. Read once at startup; ACA_BIND_HOST overrides it.
-  bindHost: string;
+  // host:port the control API binds. "0.0.0.0:4570" (default) includes
+  // loopback and every reachable interface. A concrete non-loopback address
+  // gets a second loopback listener on the same port. Read once at startup.
+  listenAddress: string;
   // Display name for this Peon in Overseer. Empty means unset.
   name: string;
   // When true (default), eligible ad-hoc sessions killed mid-run by a daemon
@@ -32,7 +32,7 @@ export interface DaemonSettings {
   // a fleet exposes no additional capabilities. The token is trusted to assert
   // the acting human's identity via a `Peon-Actor` header (forwarded into a
   // session's `author`), so it must be treated as a full-admin credential and
-  // only travel over a trusted encrypted connection.
+  // only travel over the encrypted Tailscale path.
   overseerToken: string;
   // Filesystem root the fleet `/api/v1/files/*` endpoints are sandboxed to. Empty
   // (default) disables file transfer entirely (503 `FILES_DISABLED`) — the

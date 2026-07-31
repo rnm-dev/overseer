@@ -118,6 +118,7 @@ export interface CanonicalOutcome {
 
 export interface AgentDriver {
   id: CodingAgent;
+  serviceProvider?: string;
   label: string;
   available(): boolean;
   visible: boolean;
@@ -168,6 +169,12 @@ export function registerAgentDriver(driver: AgentDriver): AgentDriver {
 
 export function getAgentDriver(id: unknown): AgentDriver | undefined {
   return typeof id === "string" ? drivers.get(id) : undefined;
+}
+
+export function getAgentServiceDriver(provider: unknown): AgentDriver | undefined {
+  if (typeof provider !== "string") return undefined;
+  return drivers.get(provider)
+    ?? [...drivers.values()].find((driver) => driver.serviceProvider === provider);
 }
 
 export function requireAgentDriver(id: unknown): AgentDriver {
@@ -284,7 +291,7 @@ registerAgentDriver({
 });
 
 registerAgentDriver({
-  id: "codex-app-server", label: "Codex", available: () => true, visible: true, models: codexModels,
+  id: "codex-app-server", serviceProvider: "codex", label: "Codex", available: () => true, visible: true, models: codexModels,
   reasoningEfforts: effort(["low", "medium", "high", "xhigh", "max", "ultra"], "medium"),
   canonicalModel: (value) => fromCatalog(codexModels, value),
   reasoningEffort: (value, model) => modelEffort(codexModels, value, model),
@@ -317,14 +324,14 @@ export async function shutdownAgentDriverRuntimes(): Promise<void> {
 
 export const agentServices = {
   async quota(agent: string, force = false): Promise<ProviderQuotaSnapshot | undefined> {
-    return getAgentDriver(agent)?.services.quota?.(force);
+    return getAgentServiceDriver(agent)?.services.quota?.(force);
   },
   async quotas(force = false) {
     const providers = await Promise.all(listAgentDrivers().flatMap((driver) => driver.services.quota ? [driver.services.quota(force)] : []));
     return { updatedAt: providers.length ? Math.max(...providers.map((item) => item.updatedAt)) : Date.now(), providers };
   },
   async capabilities(agent: string, force = false): Promise<ProviderCapabilitiesSnapshot | undefined> {
-    return getAgentDriver(agent)?.services.capabilities?.(force);
+    return getAgentServiceDriver(agent)?.services.capabilities?.(force);
   },
   async allCapabilities(force = false) {
     const providers = await Promise.all(listAgentDrivers().flatMap((driver) => driver.services.capabilities ? [driver.services.capabilities(force)] : []));

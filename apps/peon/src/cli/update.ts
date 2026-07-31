@@ -36,9 +36,22 @@ import {
   type UpdateReleaseIdentity,
 } from "../daemon/updateRuntimeIdentity.js";
 import { globalInstallArgs, rollbackPackArgs } from "./npmGlobalInstall.js";
+import { configDir } from "../daemon/xdgPaths.js";
+import { parseListenAddress } from "../shared/listenAddress.js";
 
 const PACKAGE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-const CONTROL_API = `http://127.0.0.1:${process.env.ACA_CONTROL_PORT ?? "4570"}`;
+function configuredControlPort(): number {
+  try {
+    const raw = JSON.parse(readFileSync(path.join(configDir(), "settings.json"), "utf8")) as {
+      listenAddress?: unknown;
+    };
+    if (typeof raw.listenAddress === "string") return parseListenAddress(raw.listenAddress).port;
+  } catch {
+    // Missing and pre-listenAddress settings use the stable default.
+  }
+  return Number(process.env.ACA_CONTROL_PORT ?? 4570);
+}
+const CONTROL_API = `http://127.0.0.1:${configuredControlPort()}`;
 const FORCE = process.env.FORCE === "1";
 const UPDATE_COMMAND_ID = process.env.PEON_UPDATE_COMMAND_ID || null;
 const EXPECTED_VERSION = process.env.PEON_UPDATE_EXPECTED_VERSION || null;

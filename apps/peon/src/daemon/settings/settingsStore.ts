@@ -43,7 +43,7 @@ const DEFAULT_SETTINGS: DaemonSettings = {
   codexCommand: "codex",
   maxBudgetUsd: 0,
   publicControlUrl: `http://127.0.0.1:${process.env.ACA_CONTROL_PORT ?? 4570}`,
-  bindHost: "0.0.0.0",
+  listenAddress: `0.0.0.0:${process.env.ACA_CONTROL_PORT ?? 4570}`,
   name: "",
   autoResumeInterrupted: true,
   overseerToken: "",
@@ -101,6 +101,17 @@ export class SettingsStore {
     // from older settings files; the next update persists a clean document.
     delete (fromFile as unknown as Record<string, unknown>).fleetMode;
     delete (fromFile as unknown as Record<string, unknown>).publicDashboardUrl;
+    const legacy = fromFile as unknown as Record<string, unknown>;
+    if (typeof fromFile.listenAddress !== "string" && typeof legacy.bindHost === "string") {
+      let port = Number(process.env.ACA_CONTROL_PORT ?? 4570);
+      try {
+        port = Number(new URL(fromFile.publicControlUrl ?? "").port) || port;
+      } catch {
+        // Keep the legacy/default control port.
+      }
+      fromFile.listenAddress = `${legacy.bindHost.includes(":") ? `[${legacy.bindHost}]` : legacy.bindHost}:${port}`;
+    }
+    delete legacy.bindHost;
     return {
       ...DEFAULT_SETTINGS,
       ...fromFile,

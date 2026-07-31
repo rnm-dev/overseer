@@ -15,7 +15,7 @@ browser and mobile routes are unchanged:
 
 Overseer authorizes the workspace, Peon, project/session and operator, then
 streams the request through the direct authenticated Peon Fleet HTTP API over
-the configured external endpoint. This is the only authority for:
+Tailscale. This is the only authority for:
 
 - sandbox and project file bodies, metadata and Range downloads;
 - attachment and project uploads;

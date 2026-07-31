@@ -12,6 +12,7 @@ import { sessionWarnings } from "../sessionWarnings.js";
 import { appendTranscriptEvent, assistantEventText, persistSummary, previewText, readTranscript, sessionsDir, } from "./sessionArtifacts.js";
 import { isAgentPreviewArtifact, previewPathsFromAgentEvent, sessionPreviewDir } from "./preview.js";
 import { WARNING_COOLDOWN_MS, sessionState } from "./state.js";
+import { parseListenAddress } from "../../shared/listenAddress.js";
 export function appendPreviewEvent(record, filePath, author) {
     const trimmed = filePath.trim();
     if (!trimmed)
@@ -268,7 +269,7 @@ export function appendUserTurn(record, prompt, attachments = [], permissionMode,
     sessionState.emitter.emit("event", { sessionId: record.id, event: userEntry.event, eventId: userEntry.id });
 }
 function writeMcpConfig(record) {
-    const controlPort = process.env.ACA_CONTROL_PORT ?? "4570";
+    const controlPort = parseListenAddress(settings.get().listenAddress).port;
     const assembled = new McpConfigAssembler(mcpBindingRegistry, `http://127.0.0.1:${controlPort}`).assemble({
         sessionId: record.id,
         // Children never receive the spawning tool. The orchestration service also

@@ -4,7 +4,7 @@ This inventory was refreshed for OVSR-292 on 2026-07-31.
 
 ## Transport ownership
 
-Direct authenticated external Fleet HTTP is the sole authority for:
+Direct authenticated Fleet HTTP over Tailscale is the sole authority for:
 
 - owner-only Peon daemon settings reads and revision-fenced mutations;
 - bounded Armory inventory/settings/package/configuration/MCP/operation reads

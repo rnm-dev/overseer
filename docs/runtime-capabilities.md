@@ -1,7 +1,7 @@
 # Reverse runtime capabilities
 
 `runtime-state-v1` is the realtime runtime projection. Bounded request/response
-runtime reads use authenticated external Fleet HTTP.
+runtime reads use authenticated Fleet HTTP over Tailscale.
 
 ## `runtime-state-v1`
 
@@ -23,7 +23,7 @@ HTTP query responses are never fed back into this projection.
 ## Bounded runtime queries
 
 Every operator-triggered runtime query uses exactly one authenticated Peon
-Fleet HTTP request through the configured external endpoint:
+Fleet HTTP request through Tailscale:
 
 - `GET /api/v1/status`;
 - `GET /api/v1/models`;

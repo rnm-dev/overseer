@@ -8,8 +8,6 @@ export interface LaunchAgentOptions {
   nodeBin: string;
   script: string;
   pathEnv: string;
-  portName: "ACA_CONTROL_PORT";
-  port: number;
   stdoutPath: string;
   stderrPath: string;
 }
@@ -41,8 +39,6 @@ export function buildLaunchAgent(opts: LaunchAgentOptions): string {
   <string>${xml(opts.peonHome)}</string>
   <key>EnvironmentVariables</key>
   <dict>
-    <key>${opts.portName}</key>
-    <string>${opts.port}</string>
     <key>PATH</key>
     <string>${xml(opts.pathEnv)}</string>
   </dict>

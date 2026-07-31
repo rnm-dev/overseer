@@ -121,10 +121,11 @@ connect more than one integration. Other integration commands:
 
 - `peon integration remove <key>` — disconnect one (refuses if a project still uses it)
 
-By default the daemon binds `0.0.0.0` so an enrolled Overseer can reach the
-authenticated Fleet HTTP API. Only a genuine loopback peer can use the local CLI/MCP
-surface; remote callers need the Peon's Fleet bearer. Keep the port firewalled to
-trusted networks. There are two ways to reach Peon:
+By default the daemon binds `0.0.0.0` so it keeps listening when Tailscale comes
+up after the service. Overseer reaches the authenticated Fleet HTTP API through
+the Peon's MagicDNS name. Only a genuine loopback peer can use the local CLI/MCP
+surface; tailnet callers still need the Peon's Fleet bearer. Restrict port 4570
+to the tailnet in the host firewall.
 
 - **Tunnel (no config).** Port-forward the control port over a channel you already trust
   (`ssh -L 4570:localhost:4570 you@box`). A forwarded request is
@@ -132,18 +133,19 @@ trusted networks. There are two ways to reach Peon:
   "local access is always trusted" behavior above. Only tunnel over SSH you trust as
   much as a shell on this box, and never put the port behind a plain reverse proxy with no
   auth of its own.
-- **Direct, with Fleet auth.** Bind the port to the network for Overseer:
+- **Tailscale, with Fleet auth.** Open the listener without changing the
+  separately configured MagicDNS callback URL:
 
   ```sh
-  peon remote on <public-host-or-ip>   # binds 0.0.0.0, sets the public URL
+  peon remote on 0.0.0.0:4570
   ```
 
   Remote connections aren't loopback, so they require the Fleet credential — only
   genuinely local processes can use local CLI/MCP routes. `peon remote` shows the current
-  state and `peon remote off` reverts to loopback-only. **The bind host is read at startup**,
+  state and `peon remote off` reverts to loopback-only. **The listen address is read at startup**,
   so restart the daemon after toggling it
   (`systemctl --user restart peon-daemon.service`). Still keep the port firewalled to
-  networks you trust.
+  tailnet.
 
 ### Settings
 
@@ -160,8 +162,8 @@ View or change settings with `peon settings` / `peon settings set <key> <value>`
 | `maxBudgetUsd` | `3` | max `$` spend per task |
 | `agentCommand` | `claude` | Claude Code CLI binary used by default sessions and autonomous tasks |
 | `codexCommand` | `codex` | Codex CLI binary used by `codex-app-server` sessions and provider probes |
-| `publicControlUrl` | `http://127.0.0.1:4570` | public URL of the control API |
-| `bindHost` | `0.0.0.0` | interface the daemon binds (`127.0.0.1` for local-only); prefer `peon remote on/off`. Read at startup — restart to apply |
+| `publicControlUrl` | `http://127.0.0.1:4570` | advertised `http://` or `https://` Tailscale/MagicDNS URL Overseer uses for the control API |
+| `listenAddress` | `0.0.0.0:4570` | listener address; wildcard avoids startup races with the Tailscale interface (`127.0.0.1:4570` for local-only). Read at startup — restart to apply |
 | `paused` | `false` | whether task polling is on |
 
 ## Commands
@@ -177,8 +179,8 @@ Lifecycle commands. (Integration commands are listed above, under Configure.)
 | `peon pause` / `peon resume` | turn task polling off/on |
 | `peon settings` | show current settings |
 | `peon settings set <key> <value>` | change a setting |
-| `peon remote [status]` | show bind host and public URLs |
-| `peon remote on [public-host]` | accept remote connections (see Configure) |
+| `peon remote [status]` | show listener and advertised URL |
+| `peon remote on <host:port>` | accept remote connections while preserving loopback (see Configure) |
 | `peon remote off` | revert to loopback-only |
 
 `peon status` reads like a sentence, not a JSON dump:

@@ -4,7 +4,6 @@
 // whichever node actually ran `peon start` — no assumptions about install location, npm
 // prefix, or how node itself was installed (nvm/volta/system package/etc).
 export function buildDaemonUnit(opts) {
-    const controlPort = opts.controlPort ?? 4570;
     return `[Unit]
 Description=peon daemon (control API)
 After=network-online.target
@@ -18,7 +17,6 @@ ExecStart=${opts.nodeBin} dist/daemon/index.js
 Restart=always
 RestartSec=2
 WatchdogSec=30
-Environment=ACA_CONTROL_PORT=${controlPort}
 # Session harness spawns the agent CLI by bare name (settings.agentCommand) — bake in the
 # PATH \`peon start\` itself saw so it resolves the same way a login shell would, regardless
 # of nvm/volta/homebrew/etc.

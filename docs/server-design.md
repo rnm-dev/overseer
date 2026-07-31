@@ -15,11 +15,11 @@ touching anything protocol-shaped.
 
 These are settled — build toward them, don't relitigate without a reason:
 
-- **Deploys to a public VPS with a domain.** The mobile app and Peons reach it
-  over public TLS.
+- **Deploys to a public VPS with a domain.** The mobile app reaches it over
+  public TLS; Peon Fleet traffic uses Tailscale.
 - **Every machine-facing edge is authenticated.** Peons register and maintain
-  outbound WSS over HTTPS. Overseer calls each Peon's advertised external
-  Fleet HTTPS endpoint with that Peon's scoped bearer. Local Peon CLI/MCP
+  outbound WSS over HTTPS. Overseer calls each Peon's advertised Tailscale
+  Fleet HTTP endpoint with that Peon's scoped bearer. Local Peon CLI/MCP
   routes remain loopback-only.
 - **Postgres is the single system-of-record.** Everything durable lives there
   (already in the peon stack — peon assigns a `pgPort` per project). Connect via
@@ -93,8 +93,8 @@ tracked in `schema_migrations`.
  peons ───────/agent/v1/peons/register + heartbeat (fleetToken)───────────────► OVERSEER
 ```
 
-- **Transport is authenticated external HTTPS.** A Peon dials Overseer to
-  register and advertises the external URL configured by its operator.
+- **Fleet transport is Tailscale.** A Peon dials Overseer to register and
+  advertises the MagicDNS URL configured by its operator.
 - **The overseer is the client for all control.** `/fleet/*` routes proxy
   through to a peon's `/agent/v1/*` (`peonClient.ts`). The one inbound thing
   peons do is register + heartbeat (discovery/liveness only).
@@ -248,7 +248,7 @@ to a few dozen. You do not need anything fancier yet.** But the mobile app + a
 
 `GET /fleet/sessions` = fire `GET /agent/v1/sessions` at every *online* peon
 concurrently (`Promise.all`, exactly like `/fleet/status` already does) and
-merge. At 10 Peons that's 10 parallel external requests; wall-clock ≈ the slowest
+merge. At 10 Peons that's 10 parallel tailnet requests; wall-clock ≈ the slowest
 single Peon. Cheap, **stateless, always fresh, nothing
 to keep in sync.** Rules that keep it healthy — most already in place:
 

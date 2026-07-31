@@ -12,14 +12,16 @@ import { shutdownAgentDriverRuntimes } from "./agents/index.js";
 import { peonClaimClient } from "./enrollment/index.js";
 import { controlListenerHosts, isLoopbackBindHost } from "./controlListeners.js";
 import { recoverUpdateOperation } from "./updateOperations.js";
-const PORT = Number(process.env.ACA_CONTROL_PORT ?? 4570);
+import { parseListenAddress } from "../shared/listenAddress.js";
 // Interface to bind. Defaults to all interfaces so enrolled Overseers can use
 // authenticated Fleet HTTP. `peon remote off` opts into loopback-only access.
 // Remote peers go through per-user magic-link or Fleet bearer authentication —
 // only genuine loopback connections are auto-trusted as admin (isLoopback() in
 // controlServer.ts keys off the real TCP socket address, which can't be spoofed).
 const configured = settings.get();
-const BIND_HOST = process.env.ACA_BIND_HOST ?? configured.bindHost;
+const listenAddress = parseListenAddress(process.env.ACA_LISTEN_ADDRESS ?? configured.listenAddress);
+const BIND_HOST = listenAddress.host;
+const PORT = listenAddress.port;
 const LOOPBACK_HOSTS = ["127.0.0.1", "localhost", "::1"];
 function isLoopbackHost(url) {
     try {
@@ -53,7 +55,7 @@ catch (error) {
 const listenerHosts = controlListenerHosts(BIND_HOST);
 const servers = listenerHosts.map((host, index) => app.listen(PORT, host, index === 0 ? () => {
     const s = settings.get();
-    console.log(`peon daemon: control API listening on http://${BIND_HOST}:${PORT}`);
+    console.log(`peon daemon: control API listening on ${listenAddress.canonical}`);
     console.log("fleet transport: authenticated Fleet HTTP with outbound WSS projections");
     console.log(`config dir: ${configDir()}`);
     console.log(`state dir: ${stateDir()}`);
@@ -72,12 +74,12 @@ const servers = listenerHosts.map((host, index) => app.listen(PORT, host, index 
         console.warn(`NOTE: bound to ${BIND_HOST} for authenticated Fleet HTTP. ` +
             "Local CLI routes still require a real loopback peer; operator access belongs in Overseer.");
         if (isLoopbackHost(publicControlUrl)) {
-            console.warn("  ...but publicControlUrl still points at loopback. Fix with `peon remote on <public-host>`.");
+            console.warn("  ...but publicControlUrl still points at loopback; set it to this Peon's MagicDNS URL.");
         }
     }
     else if (!isLoopbackHost(publicControlUrl)) {
         console.warn("WARNING: publicControlUrl is remote but the daemon still binds loopback. " +
-            "Use `peon remote on <public-host>` to enable external Fleet HTTP.");
+            "Use `peon remote on 0.0.0.0:4570` to enable Fleet HTTP over Tailscale.");
     }
     console.log("(task claim: milestone 1 only — claims + reports needs_human, does not implement yet)");
     // A fresh Peon now initiates peon-claim-v1 outbound. Legacy pairing remains

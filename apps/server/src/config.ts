@@ -1,6 +1,6 @@
 // All configuration comes from the environment. No shared peon secret and no
 // operator key: peons connect with per-peon credentials (credentials.ts),
-// operators with device tokens (auth.ts). peonCallbackUrl is the external URL the
+// operators with device tokens (auth.ts). peonCallbackUrl is the Tailscale URL the
 // overseer hands a peon at recruitment so it knows where to phone home.
 import { resolvePushConfig, type PushConfig } from "./infrastructure/push/pushConfig.js";
 import { resolveVoiceConfig, type VoiceConfig } from "./infrastructure/voice/voiceConfig.js";
@@ -89,7 +89,8 @@ const publicUrl = (process.env.OVERSEER_PUBLIC_URL ?? "https://overseer.rnm.dev"
 
 export const config: Config = {
   port: num("OVERSEER_PORT", 5000),
-  // Bind the intended external interface (or 0.0.0.0 behind the ingress) in production;
+  // Bind 0.0.0.0 on the Tailscale-connected host so interface startup order
+  // cannot strand the listener;
   // defaults to loopback so a misconfigured deploy doesn't expose the operator API.
   host: process.env.OVERSEER_HOST ?? "127.0.0.1",
   peonCallbackUrl: (process.env.OVERSEER_PEON_CALLBACK_URL ?? "").replace(/\/+$/, ""),

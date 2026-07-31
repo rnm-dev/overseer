@@ -6,7 +6,20 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildDaemonUnit } from "./systemdUnits.js";
 import { buildLaunchAgent } from "./launchdUnits.js";
-const BASE = process.env.ACA_CONTROL_URL ?? "http://127.0.0.1:4570";
+import { configDir } from "../daemon/xdgPaths.js";
+import { parseListenAddress } from "../shared/listenAddress.js";
+function configuredControlPort() {
+    try {
+        const raw = JSON.parse(readFileSync(path.join(configDir(), "settings.json"), "utf8"));
+        if (typeof raw.listenAddress === "string")
+            return parseListenAddress(raw.listenAddress).port;
+    }
+    catch {
+        // A missing or old settings file uses the stable default below.
+    }
+    return Number(process.env.ACA_CONTROL_PORT ?? 4570);
+}
+const BASE = process.env.ACA_CONTROL_URL ?? `http://127.0.0.1:${configuredControlPort()}`;
 const PACKAGE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const SYSTEMD_USER_DIR = path.join(os.homedir(), ".config", "systemd", "user");
 const LAUNCHD_USER_DIR = path.join(os.homedir(), "Library", "LaunchAgents");
@@ -59,10 +72,9 @@ Fleet
   credential rotate                   rotate an active peon-claim-v1 credential
 
 Remote access
-  remote                              show bind host and public URLs
-  remote on [public-host] [--force]   accept remote connections and restart (bind 0.0.0.0)
-                                        public-host may be a full URL (https://host) for a
-                                        reverse proxy — no port is appended to the links then
+  remote                              show listener and advertised Tailscale URL
+  remote on <host:port> [--force]     listen remotely and restart
+                                      example: peon remote on 0.0.0.0:4570
   remote off [--force]                loopback only and restart (default)
 
 `;
@@ -153,8 +165,6 @@ async function startCommand() {
             nodeBin: process.execPath,
             script: path.join(PACKAGE_ROOT, "dist", "daemon", "index.js"),
             pathEnv,
-            portName: "ACA_CONTROL_PORT",
-            port: 4570,
             stdoutPath: path.join(STATE_DIR, "daemon.stdout.log"),
             stderrPath: path.join(STATE_DIR, "daemon.stderr.log"),
         }));
@@ -514,15 +524,6 @@ async function main() {
         case "remote": {
             const sub = rest[0] ?? "status";
             const current = (await (await fetch(`${BASE}/api/v1/settings`)).json());
-            const portOf = (url, fallback) => {
-                try {
-                    return new URL(url ?? "").port || fallback;
-                }
-                catch {
-                    return fallback;
-                }
-            };
-            const controlPort = portOf(current.publicControlUrl, new URL(BASE).port || "4570");
             const isLoopbackHost = (host) => ["127.0.0.1", "localhost", "::1"].includes(host);
             const patchSettings = async (patch) => {
                 const res = await fetch(`${BASE}/api/v1/settings`, {
@@ -531,7 +532,8 @@ async function main() {
                     body: JSON.stringify(patch),
                 });
                 if (!res.ok) {
-                    console.error(`failed to update settings: ${res.status} ${res.statusText}`);
+                    const body = await res.json().catch(() => ({}));
+                    console.error(`failed to update settings: ${body.error ?? `${res.status} ${res.statusText}`}`);
                     process.exit(1);
                 }
             };
@@ -566,46 +568,37 @@ async function main() {
                 }
             };
             if (sub === "status") {
-                const host = current.bindHost ?? "0.0.0.0";
-                const loopbackOnly = isLoopbackHost(host);
-                console.log(`bind host          : ${host}  (${loopbackOnly ? "loopback only — no remote access" : "accepting remote connections"})`);
+                const address = parseListenAddress(current.listenAddress ?? "0.0.0.0:4570");
+                const loopbackOnly = isLoopbackHost(address.host);
+                console.log(`listenAddress      : ${address.canonical}  (${loopbackOnly ? "loopback only — no remote access" : "remote + loopback"})`);
                 console.log(`publicControlUrl   : ${current.publicControlUrl}`);
             }
             else if (sub === "on") {
-                const publicHost = rest[1] && !rest[1].startsWith("--") ? rest[1] : undefined;
-                const patch = { bindHost: "0.0.0.0" };
-                if (publicHost) {
-                    if (/^https?:\/\//i.test(publicHost)) {
-                        // A full URL means a reverse proxy fronts the control API on
-                        // 80/443 rather than the daemon's own port.
-                        const origin = new URL(publicHost).origin;
-                        patch.publicControlUrl = origin;
-                    }
-                    else {
-                        patch.publicControlUrl = `http://${publicHost}:${controlPort}`;
-                    }
+                const requested = rest[1] && !rest[1].startsWith("--") ? rest[1] : "";
+                if (!requested) {
+                    console.error("usage: peon remote on <host:port> [--force]");
+                    process.exit(1);
                 }
-                await patchSettings(patch);
-                console.log("remote access enabled — the daemon will bind 0.0.0.0 after a restart.");
-                if (publicHost) {
-                    console.log(`  control   : ${patch.publicControlUrl}`);
+                let address;
+                try {
+                    address = parseListenAddress(requested);
                 }
-                else {
-                    console.log("next: set the public host advertised to Overseer:");
-                    console.log("  peon remote on <public-host-or-ip>");
+                catch (error) {
+                    console.error(error instanceof Error ? error.message : "invalid listen address");
+                    process.exit(1);
                 }
+                await patchSettings({ listenAddress: address.canonical });
+                console.log(`remote access enabled — the daemon will listen on ${address.canonical}; loopback remains available.`);
                 await restartBothServices(rest.includes("--force"));
             }
             else if (sub === "off") {
-                await patchSettings({
-                    bindHost: "127.0.0.1",
-                    publicControlUrl: `http://127.0.0.1:${controlPort}`,
-                });
-                console.log("remote access disabled — loopback only.");
+                const port = parseListenAddress(current.listenAddress ?? "0.0.0.0:4570").port;
+                await patchSettings({ listenAddress: `127.0.0.1:${port}` });
+                console.log(`remote access disabled — listening on 127.0.0.1:${port} only.`);
                 await restartBothServices(rest.includes("--force"));
             }
             else {
-                console.log("usage: peon remote [status | on [public-host] [--force] | off [--force]]");
+                console.log("usage: peon remote [status | on <host:port> [--force] | off [--force]]");
             }
             break;
         }

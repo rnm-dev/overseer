@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 import {
   agentServices,
   getAgentDriver,
+  getAgentServiceDriver,
   listAgentDrivers,
   registerAgentDriver,
   requireAgentDriver,
@@ -25,6 +26,7 @@ describe("agent driver registry", () => {
     assert.equal(codex.conversation.initialBackendId("session-1"), null);
     assert.deepEqual(codex.normalizeOutcome({ result: "success", summary: "done" }), { result: "success", summary: "done", previewPath: null });
     assert.equal(getAgentDriver("codex"), undefined);
+    assert.equal(getAgentServiceDriver("codex"), codex);
   });
 
   it("keeps hidden legacy drivers usable for existing sessions but out of new-session discovery", () => {

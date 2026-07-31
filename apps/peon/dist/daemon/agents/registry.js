@@ -19,6 +19,12 @@ export function registerAgentDriver(driver) {
 export function getAgentDriver(id) {
     return typeof id === "string" ? drivers.get(id) : undefined;
 }
+export function getAgentServiceDriver(provider) {
+    if (typeof provider !== "string")
+        return undefined;
+    return drivers.get(provider)
+        ?? [...drivers.values()].find((driver) => driver.serviceProvider === provider);
+}
 export function requireAgentDriver(id) {
     const driver = getAgentDriver(id);
     if (!driver)
@@ -137,7 +143,7 @@ registerAgentDriver({
     },
 });
 registerAgentDriver({
-    id: "codex-app-server", label: "Codex", available: () => true, visible: true, models: codexModels,
+    id: "codex-app-server", serviceProvider: "codex", label: "Codex", available: () => true, visible: true, models: codexModels,
     reasoningEfforts: effort(["low", "medium", "high", "xhigh", "max", "ultra"], "medium"),
     canonicalModel: (value) => fromCatalog(codexModels, value),
     reasoningEffort: (value, model) => modelEffort(codexModels, value, model),
@@ -169,14 +175,14 @@ export async function shutdownAgentDriverRuntimes() {
 }
 export const agentServices = {
     async quota(agent, force = false) {
-        return getAgentDriver(agent)?.services.quota?.(force);
+        return getAgentServiceDriver(agent)?.services.quota?.(force);
     },
     async quotas(force = false) {
         const providers = await Promise.all(listAgentDrivers().flatMap((driver) => driver.services.quota ? [driver.services.quota(force)] : []));
         return { updatedAt: providers.length ? Math.max(...providers.map((item) => item.updatedAt)) : Date.now(), providers };
     },
     async capabilities(agent, force = false) {
-        return getAgentDriver(agent)?.services.capabilities?.(force);
+        return getAgentServiceDriver(agent)?.services.capabilities?.(force);
     },
     async allCapabilities(force = false) {
         const providers = await Promise.all(listAgentDrivers().flatMap((driver) => driver.services.capabilities ? [driver.services.capabilities(force)] : []));

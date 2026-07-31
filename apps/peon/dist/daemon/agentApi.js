@@ -10,7 +10,7 @@ import { pairing } from "./pairing.js";
 import { ensurePeonId } from "./peonIdentity.js";
 import { peonPublicUrl } from "./peonAddress.js";
 import { modelCatalog } from "./modelCatalog.js";
-import { agentServices, getAgentDriver } from "./agents/index.js";
+import { agentServices, getAgentDriver, getAgentServiceDriver } from "./agents/index.js";
 import { updateChecker } from "./updateChecker.js";
 import { applyUpdate, checkUpdate, updateOperationStatus } from "./updateOperations.js";
 import { createArmoryReadRouter } from "./armory/index.js";
@@ -94,8 +94,8 @@ function normalizeOverseerUrl(raw) {
     return { url: url.toString().replace(/\/$/, "") };
 }
 // Rate-limit /enroll to blunt online guessing of the (memorable, lower-entropy)
-// pairing phrase — a sliding 60s window per source IP. The short TTL, one-time
-// use and this limit jointly bound online guessing. Only rejected bearer credentials
+// pairing phrase — a sliding 60s window per source IP. Tailnet-only exposure,
+// the short TTL, one-time use and this limit jointly bound online guessing. Only rejected bearer credentials
 // count: once the caller has proved it knows the phrase, correcting a malformed
 // URL must not unexpectedly lock a legitimate operator out.
 const ENROLL_WINDOW_MS = 60_000;
@@ -337,7 +337,7 @@ export function createAgentRouter(options = {}) {
     });
     router.get("/quota/:provider", async (req, res) => {
         const provider = req.params.provider;
-        if (!getAgentDriver(provider)?.capabilities.quota)
+        if (!getAgentServiceDriver(provider)?.capabilities.quota)
             return fail(res, 404, "NOT_FOUND", "unknown quota provider");
         res.json(await agentServices.quota(provider, req.query.refresh === "1"));
     });
@@ -346,7 +346,7 @@ export function createAgentRouter(options = {}) {
     });
     router.get("/capabilities/:provider", async (req, res) => {
         const provider = req.params.provider;
-        if (!getAgentDriver(provider))
+        if (!getAgentServiceDriver(provider))
             return fail(res, 404, "NOT_FOUND", "unknown capabilities provider");
         res.json(await agentServices.capabilities(provider, req.query.refresh === "1"));
     });
@@ -427,7 +427,7 @@ export function createAgentRouter(options = {}) {
     });
     // Partial, allowlisted, validated update. Only name/defaultAgent/
     // fileTransferRoot/heartbeatIntervalMs/aiDefaultModel/soul/paused are editable here;
-    // secrets and bind host are never accepted (the human PATCH /api/v1/settings is
+    // secrets and listen address are never accepted (the human PATCH /api/v1/settings is
     // unguarded; this fleet-facing one must not be). Absent keys are untouched;
     // unknown keys ignored. Reuses the same atomic write path (settings.update),
     // whose `change` event propagates the edit with no restart.

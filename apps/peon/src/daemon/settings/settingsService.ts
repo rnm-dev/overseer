@@ -11,6 +11,7 @@ import {
 } from "../modelCatalog.js";
 import type { DaemonSettings } from "./settingsTypes.js";
 import { SettingsStore } from "./settingsStore.js";
+import { parseListenAddress } from "../../shared/listenAddress.js";
 
 type SettingsBody = Record<string, unknown>;
 
@@ -54,6 +55,7 @@ export interface PeonRegistrarSettings {
   fileTransferRoot: string;
   heartbeatIntervalMs: number;
   paused: boolean;
+  listenAddress?: string;
 }
 
 export interface UpdateCheckerSettings {
@@ -124,6 +126,7 @@ export class SettingsService extends EventEmitter implements SettingsServiceCont
       fileTransferRoot: s.fileTransferRoot || "",
       heartbeatIntervalMs: s.heartbeatIntervalMs,
       paused: s.paused,
+      listenAddress: s.listenAddress,
     };
   }
 
@@ -344,6 +347,17 @@ export class SettingsService extends EventEmitter implements SettingsServiceCont
     // Rolling upgrades may still submit fields removed from the daemon.
     delete (patch as unknown as Record<string, unknown>).fleetMode;
     delete (patch as unknown as Record<string, unknown>).publicDashboardUrl;
+    delete (patch as unknown as Record<string, unknown>).bindHost;
+    if ("listenAddress" in body) {
+      if (typeof body.listenAddress !== "string") {
+        this.throwBadRequest("listenAddress must be a string");
+      }
+      try {
+        patch.listenAddress = parseListenAddress(body.listenAddress).canonical;
+      } catch (error) {
+        this.throwBadRequest(error instanceof Error ? error.message : "invalid listenAddress");
+      }
+    }
     const requestedAgent = "defaultAgent" in body ? narrowNewSessionAgent(body.defaultAgent) : current.defaultAgent;
     if (!requestedAgent) {
       this.throwBadRequest(`defaultAgent must be one of: ${this.listAgents()}`);

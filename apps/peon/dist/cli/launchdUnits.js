@@ -26,8 +26,6 @@ export function buildLaunchAgent(opts) {
   <string>${xml(opts.peonHome)}</string>
   <key>EnvironmentVariables</key>
   <dict>
-    <key>${opts.portName}</key>
-    <string>${opts.port}</string>
     <key>PATH</key>
     <string>${xml(opts.pathEnv)}</string>
   </dict>

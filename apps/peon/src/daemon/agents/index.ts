@@ -3,6 +3,7 @@ export {
   agentServices,
   registerAgentDriver,
   getAgentDriver,
+  getAgentServiceDriver,
   requireAgentDriver,
   listAgentDrivers,
   shutdownAgentDriverRuntimes,

@@ -27,6 +27,7 @@ import {
 } from "./sessionArtifacts.js";
 import { isAgentPreviewArtifact, previewPathsFromAgentEvent, sessionPreviewDir } from "./preview.js";
 import { WARNING_COOLDOWN_MS, sessionState } from "./state.js";
+import { parseListenAddress } from "../../shared/listenAddress.js";
 
 export function appendPreviewEvent(record: SessionRecord, filePath: string, author?: string): AgentEvent | null {
   const trimmed = filePath.trim();
@@ -341,7 +342,7 @@ export function appendUserTurn(
 }
 
 function writeMcpConfig(record: SessionRecord): { path: string; allowedTools: string } | undefined {
-  const controlPort = process.env.ACA_CONTROL_PORT ?? "4570";
+  const controlPort = parseListenAddress(settings.get().listenAddress).port;
   const assembled = new McpConfigAssembler(mcpBindingRegistry, `http://127.0.0.1:${controlPort}`).assemble({
     sessionId: record.id,
     // Children never receive the spawning tool. The orchestration service also

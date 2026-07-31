@@ -34,7 +34,7 @@ export class NoInboundTopology {
         "sandbox-file-read", "project-file-upload", "attachment-upload",
         "project-file-move", "project-file-delete", "session-cancel", "peon-update",
       ].includes(surface)) {
-        this.diagnostics.add("fleet_http_surface_exercised", { surface, channel: "external-http" });
+        this.diagnostics.add("fleet_http_surface_exercised", { surface, channel: "mesh" });
         return;
       }
       if (this.peonFleetPortBlocked && route === "legacy-http") {

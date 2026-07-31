@@ -5,6 +5,7 @@ import { PROTOCOL_VERSION } from "../protocol.js";
 import { ensurePeonId } from "../peonIdentity.js";
 import { peonPublicUrl } from "../peonAddress.js";
 import { peonClaimClient } from "../enrollment/index.js";
+import { parseListenAddress } from "../../shared/listenAddress.js";
 
 // The outbound half of the overseer protocol: this peon announcing *itself* to
 // a central overseer (fleet control plane), so the registry self-populates and
@@ -18,7 +19,6 @@ import { peonClaimClient } from "../enrollment/index.js";
 // overseer presents to command this peon is what this peon presents as its
 // own bearer to register — one secret per peon<->overseer pair.
 
-const CONTROL_PORT = Number(process.env.ACA_CONTROL_PORT ?? 4570);
 const MAX_ERROR_BODY_BYTES = 16 * 1024;
 const CREDENTIAL_VERDICTS = new Set([
   "CREDENTIAL_INVALID",
@@ -134,7 +134,7 @@ export function registrationPayload(peonId: string, settingsSource: PeonRegistra
     peonId,
     name: settingsSource.name || os.hostname(),
     hostname: os.hostname(),
-    controlPort: CONTROL_PORT,
+    controlPort: parseListenAddress(settingsSource.listenAddress ?? "0.0.0.0:4570").port,
     // Canonical, operator-configured callback address. hostname/controlPort
     // remain as legacy direct-connect hints, but an overseer must not replace
     // this domain with the registration request's source IP.

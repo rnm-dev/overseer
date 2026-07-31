@@ -1,18 +1,18 @@
 import os from "node:os";
 import { settings } from "./settings/index.js";
-
-const CONTROL_PORT = Number(process.env.ACA_CONTROL_PORT ?? 4570);
+import { parseListenAddress } from "../shared/listenAddress.js";
 
 function directControlUrl(): string {
   const hostname = os.hostname();
   const host = hostname.includes(":") && !hostname.startsWith("[") ? `[${hostname}]` : hostname;
-  return `http://${host}:${CONTROL_PORT}`;
+  const port = parseListenAddress(settings.get().listenAddress).port;
+  return `http://${host}:${port}`;
 }
 
 /**
  * The canonical address an overseer should use when calling this peon back.
  *
- * publicControlUrl is operator-owned: it may be a public DNS name or the
+ * publicControlUrl is operator-owned: it may be a Tailscale MagicDNS name or the
  * external side of a reverse proxy, neither of which can be reconstructed from the
  * source IP of a registration request. Keep a defensive fallback for old or
  * manually-edited settings files, but never replace a valid configured domain

@@ -3,7 +3,7 @@
   "version": "0.0.1",
   "private": true,
   "type": "module",
-  "description": "Fleet control plane for Peons over authenticated external HTTP endpoints",
+  "description": "Fleet control plane for Peons over authenticated Tailscale HTTP endpoints",
   "bin": {
     "overseer": "dist/index.js"
   },

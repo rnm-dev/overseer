@@ -1,8 +1,8 @@
 # overseer-server
 
 Fleet control plane for Peon. Holds a registry of Peons and fans out control
-over their configured authenticated HTTPS endpoints, so one operator API
-drives the fleet.
+over their authenticated Tailscale endpoints, so one operator API drives the
+fleet.
 
 See [`PROTOCOL.md`](./PROTOCOL.md) for the wire contract.
 
@@ -13,8 +13,8 @@ See [`PROTOCOL.md`](./PROTOCOL.md) for the wire contract.
  peons ────/agent/v1/peons/register + heartbeat (fleetToken)──────────────────► OVERSEER
 ```
 
-- **Peons self-register** (`peonRegistrar.ts` on the Peon) with the external
-  URL Overseer should use.
+- **Peons self-register** (`peonRegistrar.ts` on the Peon) with the Tailscale
+  MagicDNS URL Overseer should use.
 - **The overseer is the client** for all control: `/fleet/*` calls proxy
   through to the target Peon's authenticated Fleet HTTP API.
 - **Two independent secrets / two auth boundaries:**
@@ -86,7 +86,7 @@ still appears in the registry; proxied calls to an unreachable peon return
 | Var | Default | Meaning |
 |---|---|---|
 | `OVERSEER_PORT` | `5000` | listen port |
-| `OVERSEER_HOST` | `127.0.0.1` | bind interface (set `0.0.0.0` behind the production ingress) |
+| `OVERSEER_HOST` | `127.0.0.1` | bind interface (set `0.0.0.0` on the Tailscale-connected host when required) |
 | `OVERSEER_FLEET_TOKEN` | — | shared peon secret (empty ⇒ registration 503s) |
 | `OVERSEER_API_KEY` | — | operator secret (empty ⇒ `/fleet` 503s) |
 | `DATABASE_URL` | — | Postgres connection string (required) |

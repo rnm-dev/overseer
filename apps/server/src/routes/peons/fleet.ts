@@ -43,7 +43,7 @@ export function registerFleetRoutes(router: express.Router): void {
     }),
   );
 
-  // Recruit a Peon: Overseer reaches its configured external endpoint and pairs it. The
+  // Recruit a Peon: Overseer reaches its advertised Tailscale endpoint and pairs it. The
   // operator gives the peon's address + its pairing secret; the overseer mints a
   // workspace-scoped credential and pushes it to the peon's /api/v1/enroll, which
   // makes the peon phone home. Nothing is ever pasted onto the peon by hand.

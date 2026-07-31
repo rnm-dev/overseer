@@ -1,6 +1,7 @@
 import { EventEmitter } from "node:events";
 import { canonicalModel, isModelForAgent, listConfiguredAgents, narrowNewSessionAgent, narrowReasoningEffort, providerDefaultModel, reasoningEffortsForModel, } from "../modelCatalog.js";
 import { SettingsStore } from "./settingsStore.js";
+import { parseListenAddress } from "../../shared/listenAddress.js";
 function parseModelValue(value) {
     return typeof value === "string" || value === null || value === undefined ? value : undefined;
 }
@@ -36,6 +37,7 @@ export class SettingsService extends EventEmitter {
             fileTransferRoot: s.fileTransferRoot || "",
             heartbeatIntervalMs: s.heartbeatIntervalMs,
             paused: s.paused,
+            listenAddress: s.listenAddress,
         };
     }
     getUpdateCheckerSettings() {
@@ -246,6 +248,18 @@ export class SettingsService extends EventEmitter {
         // Rolling upgrades may still submit fields removed from the daemon.
         delete patch.fleetMode;
         delete patch.publicDashboardUrl;
+        delete patch.bindHost;
+        if ("listenAddress" in body) {
+            if (typeof body.listenAddress !== "string") {
+                this.throwBadRequest("listenAddress must be a string");
+            }
+            try {
+                patch.listenAddress = parseListenAddress(body.listenAddress).canonical;
+            }
+            catch (error) {
+                this.throwBadRequest(error instanceof Error ? error.message : "invalid listenAddress");
+            }
+        }
         const requestedAgent = "defaultAgent" in body ? narrowNewSessionAgent(body.defaultAgent) : current.defaultAgent;
         if (!requestedAgent) {
             this.throwBadRequest(`defaultAgent must be one of: ${this.listAgents()}`);

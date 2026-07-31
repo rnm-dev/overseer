@@ -14,7 +14,7 @@ The normative correlated command lifecycle and fleet-surface migration matrix ar
 defined in [`../peon/docs/reverse-command-protocol-v1.md`](../peon/docs/reverse-command-protocol-v1.md).
 The frozen Peon-initiated enrollment and credential lifecycle is defined separately
 in [`../peon/docs/peon-claim-protocol-v1.md`](../peon/docs/peon-claim-protocol-v1.md). It uses
-outbound HTTPS short polling and does not inherit external Fleet HTTP reachability assumptions
+outbound HTTPS short polling and does not inherit tailnet reachability assumptions
 of the legacy recruitment flow below. Its strict schema, lifecycle fixtures, and
 executable cryptographic/security vectors live under `protocol/peon-claim-v1/`.
 Remote daemon pause/resume is intentionally local-only and is not part of the
@@ -22,12 +22,13 @@ reverse command surface.
 
 ## Topology
 
-- **Transport:** authenticated HTTP/JSON through each Peon's configured external
-  endpoint. Internet-facing deployments terminate TLS before this endpoint.
+- **Transport:** authenticated HTTP/JSON over the Tailscale tailnet. Tailscale
+  supplies peer reachability and WireGuard encryption; the application still
+  requires the Peon-scoped bearer on every Fleet request.
 - **Direction:** the **overseer is the client** for all *control* — request /
   response, the peon is a passive server. The one exception is discovery: the
   Peon *announces itself* outbound (see "North-bound" below).
-- **Addressing:** `https://<peon-host>/api/v1/...`
+- **Addressing:** `http://<peon>.<tailnet-domain>:4570/api/v1/...`
 
 ## Envelope
 
@@ -71,7 +72,7 @@ not random hex. Flow:
 1. A fresh peon (no `overseerToken`) arms a phrase at boot and prints it once (also
    re-armable with `peon pair` to re-point an already-recruited peon). Never logged
    again after generation.
-2. The human running the Peon reads the phrase + its external address to an
+2. The human running the Peon reads the phrase + its Tailscale MagicDNS address to an
    operator, who enters both in the overseer's "Connect peon" form.
 3. The overseer calls the peon:
 
@@ -80,7 +81,7 @@ POST {peonBaseUrl}/api/v1/enroll
   Authorization: Bearer <pairing phrase>     # e.g. "lok-tar-ogar-dabu"
   Peon-Protocol: 1
   { "overseerUrl": "https://overseer.example.com", "overseerToken": "pn_xxxx" }
-  → 200 { "ok": true, "peonId": "<stable id>", "publicUrl": "http://peon.example:4570" }
+  → 200 { "ok": true, "peonId": "<stable id>", "publicUrl": "http://peon.<tailnet-domain>:4570" }
 ```
 
 - **Auth is dual:** a valid *armed, unexpired* pairing phrase **or** the peon's
@@ -736,7 +737,7 @@ move source or delete target is `404 NOT_FOUND`. Read errors remain `404
 UNKNOWN_PROJECT`, `404 NOT_FOUND`, `400 PATH_ESCAPE`, and `400 IS_DIRECTORY`.
 
 `GET /settings` returns **only** the safe subset — never the whole settings
-object, never `overseerToken`/`pairingSecret`/bind host:
+object, never `overseerToken`/`pairingSecret`/listen address:
 
 ```
 { "name": "Marat",                   // string|null (empty ⇒ null)
@@ -830,7 +831,7 @@ POST {overseerUrl}/api/v1/peons/:peonId/heartbeat   (every heartbeatIntervalMs)
 - `peonId` is stable across restarts (auto-generated + persisted in settings on
   first use) so the overseer dedupes a peon across reconnects.
 - `publicUrl` is the canonical, operator-configured callback address and may be a
-  public DNS name or reverse-proxy URL. `hostname` / `controlPort` and the request's
+  Tailscale MagicDNS name or reverse-proxy URL. `hostname` / `controlPort` and the request's
   source IP are legacy discovery hints only. They may populate a missing address,
   but must not overwrite the URL retained during enrollment or a valid `publicUrl`.
 - A `404` on heartbeat means the overseer lost its registry (restarted) — the
@@ -931,7 +932,7 @@ remain inactive.
 }
 ```
 
-The control WebSocket carries only control, durable projection, and realtime event frames. File and release bytes use the authenticated external Fleet HTTP endpoint; binary WebSocket frames are not part of this protocol.
+The control WebSocket carries only control, durable projection, and realtime event frames. File bytes use the authenticated Fleet HTTP endpoint over Tailscale; binary WebSocket frames are not part of this protocol.
 
 ### Durable delivery (`durable-delivery-v1`)
 
@@ -1125,7 +1126,7 @@ minimum seven-day retention, retaining command-ID/hash tombstones for another
 seven days.
 
 Update control is outside this lifecycle. Check, apply and operation status use
-the authenticated Fleet HTTP `/api/v1/control/*` routes through the configured external endpoint. Release
+the authenticated Fleet HTTP `/api/v1/control/*` routes through Tailscale. Release
 metadata and package bytes come directly from the public npm registry.
 `reverse-command-v1` advertises no `update.*` operations. A mode-0600 update
 receipt supplies idempotency, one-operation admission, restart recovery and
@@ -1316,7 +1317,8 @@ because each can reference a different full-output artifact.
 
 ```
 PATCH /api/v1/settings {
-  "overseerToken": "<shared secret>",         // inbound + outbound auth (empty => fleet profile off)
+  "listenAddress": "0.0.0.0:4570",             // local TCP listener; restart required
+  "publicControlUrl": "https://peon.example",   // advertised URL; HTTP or HTTPS
   "fileTransferRoot": "/path/to/sandbox",         // empty => file transfer off
   "overseerUrl": "http://overseer.ts.net:5000" // empty => this peon doesn't self-register
 }
@@ -1324,6 +1326,11 @@ PATCH /api/v1/settings {
 
 Leave `overseerToken` empty on a standalone peon and bearer-authenticated fleet
 requests stay off; leave `overseerUrl` empty and it never phones home.
+
+`peon remote on 0.0.0.0:4570` changes `listenAddress` and restarts the daemon;
+`peon remote off` keeps the current port and switches to `127.0.0.1`. Wildcard
+bind includes loopback; a concrete non-loopback bind gets a second loopback
+listener on the same port.
 
 ## Reverse runtime state and queries (v1)
 
@@ -1334,6 +1341,6 @@ epoch/revision state. Projection consumers identify it as fresh, stale or
 offline.
 
 Explicit status/models, quota, provider capabilities, stats and filtered
-analytics reads use authenticated external Fleet HTTP. They are not
+analytics reads use authenticated Fleet HTTP over Tailscale. They are not
 `reverse-command-v1` operations and have no command-ledger fallback. The
 projection, heartbeat and invalidation/events remain on the control WebSocket.

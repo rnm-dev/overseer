@@ -7,7 +7,7 @@ transcript synchronization and topology.
 For OVSR-292 the transfer handshake, file-read/write frames, lifecycle harness
 and fixtures were removed. The capability matrix now routes directory
 listings, file bodies, Range/download, uploads/mutations and session artifacts
-to `fleet-http`, meaning the authenticated external Fleet HTTP API. The
+to `fleet-http`, meaning the authenticated Fleet HTTP API over Tailscale. The
 topology harness rejects a `file-transfer` reverse channel and permits these
 explicit byte surfaces on Fleet HTTP.
 

@@ -14,7 +14,7 @@ import { createHumanProjectsRouter } from "./http/human/projects.js";
 import { createHumanSessionsRouter } from "./http/human/sessions.js";
 import { createScopedMcpRouter } from "./scopedMcp.js";
 import { modelCatalog, narrowNewSessionAgent, narrowModel, narrowReasoningEffort } from "./modelCatalog.js";
-import { agentServices, getAgentDriver, listAgentDrivers } from "./agents/index.js";
+import { agentServices, getAgentDriver, getAgentServiceDriver, listAgentDrivers } from "./agents/index.js";
 import { startSelfUpdate } from "./selfUpdate.js";
 import { attachHumanFilesystemRoutes } from "./http/human/files.js";
 import { peonRegistrar, peonSocket } from "./overseer/index.js";
@@ -339,7 +339,7 @@ export function createControlServer(options = {}) {
     });
     app.get("/api/v1/ai/quota/:provider", async (req, res) => {
         const provider = req.params.provider;
-        if (!getAgentDriver(provider)?.capabilities.quota)
+        if (!getAgentServiceDriver(provider)?.capabilities.quota)
             return res.status(404).json({ error: "unknown quota provider" });
         res.json(await agentServices.quota(provider, req.query.refresh === "1"));
     });
@@ -348,7 +348,7 @@ export function createControlServer(options = {}) {
     });
     app.get("/api/v1/ai/capabilities/:provider", async (req, res) => {
         const provider = req.params.provider;
-        if (!getAgentDriver(provider))
+        if (!getAgentServiceDriver(provider))
             return res.status(404).json({ error: "unknown capabilities provider" });
         res.json(await agentServices.capabilities(provider, req.query.refresh === "1"));
     });

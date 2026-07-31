@@ -79,7 +79,7 @@ One compose file, dev-oriented. `docker compose up -d`:
 
 - **Operator/mobile API** (`/fleet/*` + WS) → public via nginx/Cloudflare. Done.
 - **Peon-facing API** accepts outbound registration/WSS over public HTTPS.
-  Overseer reaches each Peon's separately advertised external Fleet HTTPS
+  Overseer reaches each Peon's separately advertised Tailscale Fleet HTTP
   endpoint with its Peon-scoped bearer.
 
 ## Secrets (`.env`)
