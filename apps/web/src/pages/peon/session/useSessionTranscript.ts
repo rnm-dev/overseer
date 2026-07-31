@@ -26,6 +26,7 @@ import {
 import {
   TAIL_FALLBACK_CHECK_MS,
   replaceTranscriptRequest,
+  snapshotEndsRun,
   transcriptReconcileMode,
 } from "./transcriptReconciliation";
 import {
@@ -77,6 +78,7 @@ export function useSessionTranscript({
   );
   const [live, setLive] = useState<Ev[]>([]);
   const [showHistorySpinner, setShowHistorySpinner] = useState(false);
+  const [historyLoadError, setHistoryLoadError] = useState(false);
   const [hasOlder, setHasOlder] = useState(
     () => Boolean(initialSnapshotRef.current?.hasMore && initialSnapshotRef.current.nextCursor),
   );
@@ -87,13 +89,10 @@ export function useSessionTranscript({
   // without replaying history. The boundary carries the session it was read from:
   // `sid` changes one render before the reset effect runs, and a boundary handed
   // to the wrong session is unknown there, which makes Overseer replay the whole
-  // transcript rather than resume.
-  const [tailStart, setTailStart] = useState<TailStart | null>(() => {
-    const page = initialSnapshotRef.current;
-    return page
-      ? { sessionKey, id: page.paginated && page.events.length ? eventId(page.events[page.events.length - 1]!) : null }
-      : null;
-  });
+  // transcript rather than resume. A cache hit may paint immediately, but it
+  // is not the opening boundary.
+  // Wait for the current HTTP newest-page request before starting the tail.
+  const [tailStart, setTailStart] = useState<TailStart | null>(null);
   const historyReadyRef = useRef(initialSnapshotRef.current !== null);
   const historyLengthRef = useRef(initialSnapshotRef.current?.paginated ? 0 : initialSnapshotRef.current?.events.length ?? 0);
   const loadedTranscriptRef = useRef<LoadedTranscript | null>(initialSnapshotRef.current);
@@ -105,6 +104,10 @@ export function useSessionTranscript({
   const seenRef = useRef<Set<string>>(new Set());
   const pendingLiveRef = useRef<Array<{ event: Ev; tailId: number | null; tailEventId: string | null }>>([]);
   const olderLoadInFlightRef = useRef(false);
+  // Read by callbacks the fetch/tail effects must not depend on: making them
+  // depend on `running` would tear the tail down on every run transition.
+  const runningRef = useRef(running);
+  runningRef.current = running;
   const reconciliationSessionRef = useRef(sessionKey);
   const lastTailActivityAtRef = useRef<number | null>(Date.now());
   const tailUnhealthyRef = useRef(false);
@@ -196,7 +199,8 @@ export function useSessionTranscript({
     for (const event of page.events) seenRef.current.add(sig(event));
     setHasOlder(merged.paginated && merged.hasMore && merged.nextCursor !== null);
     setHistory(merged.events);
-  }, [base, paginationSupported, sid]);
+    if (snapshotEndsRun(runningRef.current, page.events)) onRunFinished();
+  }, [base, onRunFinished, paginationSupported, sid]);
 
   const fetchLatestTranscript = useCallback(async (signal?: AbortSignal): Promise<TranscriptPage> => {
     let page = parseTranscriptPage(await api<TranscriptResponse>(
@@ -246,21 +250,19 @@ export function useSessionTranscript({
       historyEventIdsRef.current = new Set(cached.events.flatMap((event) => eventId(event) ?? []));
       setHistory(cached.events);
       setHasOlder(cached.paginated && cached.hasMore && cached.nextCursor !== null);
-      setTailStart({
-        sessionKey,
-        id: cached.paginated && cached.events.length ? eventId(cached.events[cached.events.length - 1]!) : null,
-      });
-      historyReadyRef.current = true;
     } else {
       setHistory(null);
       setHasOlder(false);
-      setTailStart(null);
     }
+    setTailStart(null);
+    historyReadyRef.current = false;
     setLive([]);
+    setHistoryLoadError(false);
     setLoadingOlder(false);
     setOlderLoadError(false);
     const ready = (page: TranscriptPage) => {
       applyAuthoritativeSnapshot(page);
+      setHistoryLoadError(false);
       setTailStart({
         sessionKey,
         id: page.paginated && page.events.length ? eventId(page.events[page.events.length - 1]!) : null,
@@ -280,7 +282,14 @@ export function useSessionTranscript({
     const prepared = preparedTranscriptSnapshot(base, sid, paginationSupported);
     (prepared ?? fetchLatestTranscript(controller.signal))
       .then((page) => alive && ready(page))
-      .catch(() => alive && ready(parseTranscriptPage([])));
+      .catch(() => {
+        if (!alive) return;
+        // Without an authoritative newest window there is no safe eventId from
+        // which to start the tail. Keep any cached paint visible, report the
+        // failed history read, and do not subscribe from an invented boundary.
+        historyReadyRef.current = false;
+        setHistoryLoadError(true);
+      });
     return () => {
       alive = false;
       controller.abort();
@@ -408,6 +417,7 @@ export function useSessionTranscript({
     live,
     orderedLive,
     showHistorySpinner,
+    historyLoadError,
     hasOlder,
     loadingOlder,
     olderLoadError,

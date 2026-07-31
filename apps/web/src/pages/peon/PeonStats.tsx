@@ -3,6 +3,7 @@ import { api, ApiError } from "../../api";
 import { Badge, Button, Card, StatPlate } from "../../ui";
 import { useT } from "../../i18n";
 import { usePeon } from "./context";
+import { CliUpdatesPanel } from "./CliUpdatesPanel";
 import {
   EMPTY_CAPABILITIES,
   EMPTY_QUOTA,
@@ -184,6 +185,8 @@ export function PeonStats() {
           />
         ))}
       </div>
+
+      <CliUpdatesPanel base={base} online={peon.online} />
 
       {stats && (
         <Card className="px-5 py-4">

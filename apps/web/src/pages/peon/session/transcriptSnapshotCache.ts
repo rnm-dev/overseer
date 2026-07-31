@@ -59,15 +59,12 @@ export function preparedTranscriptSnapshot(
   base: string,
   sid: string,
   paginationSupported: boolean,
-  now = Date.now(),
 ): Promise<TranscriptPage> | null {
   const key = cacheKey(base, sid, paginationSupported);
-  const pending = inFlight.get(key);
-  if (pending) return pending;
-  const cached = cache.get(key);
-  return cached && now - cached.storedAt <= PREFETCH_FRESH_MS
-    ? Promise.resolve(cached.page)
-    : null;
+  // An in-flight prefetch is the current HTTP newest-page request. A completed
+  // cache entry is only paint data: opening must revalidate it over HTTP before
+  // choosing the live-tail boundary.
+  return inFlight.get(key) ?? null;
 }
 
 export function prefetchTranscriptSnapshot(

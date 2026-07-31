@@ -6,32 +6,22 @@ import { Badge, Button, Card, ConfirmationDialog, Input, Label } from "../../ui"
 import { useT } from "../../i18n";
 import { usePeon } from "./context";
 import { AgentSelect, defaultEffortIdFor, effortsForModel, ModelSelect, ReasoningEffortSelect, providerForAgent, useModels } from "./models";
-import { PathInput } from "./PathInput";
 import { PeonArmory } from "./PeonArmory";
 import { buildSettingsPayload, resolveDefaultModel, resolveDefaultReasoningEffort } from "./settingsModel";
 import { peonSettingsPath, peonSettingsTabFromPath, SOUL_EDITOR_ROWS } from "./settingsNavigation";
 import { savePeonSoul, soulExcerpt } from "./peonApi";
-import { CliUpdatesPanel } from "./CliUpdatesPanel";
+import { normalizeUpdateStatus, type PeonUpdateStatus } from "./updateStatus";
 import { RouteTabs } from "../../components/RouteTabs";
 
 // author: Viktor
 
 interface Settings {
   name?: string | null;
-  fileTransferRoot?: string | null;
-  heartbeatIntervalMs?: number | null;
   aiDefaultModel?: string | null;
   aiDefaultReasoningEffort?: string | null;
   defaultAgent?: string | null;
 }
 
-interface PeonStatus {
-  updateAvailable?: boolean;
-  updateLocalSha?: string | null;
-  updateRemoteSha?: string | null;
-  updateCheckedAt?: number | null;
-  updateCheckError?: string | null;
-}
 
 export function PeonSettings() {
   const t = useT();
@@ -54,7 +44,7 @@ export function PeonSettings() {
   const [soulError, setSoulError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [status, setStatus] = useState<PeonStatus | null>(null);
+  const [status, setStatus] = useState<PeonUpdateStatus | null>(null);
   const [updatePhase, setUpdatePhase] = useState<"idle" | "installing" | "restarting" | "complete">("idle");
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [updateError, setUpdateError] = useState<string | null>(null);
@@ -102,8 +92,8 @@ export function PeonSettings() {
   useEffect(() => {
     if (!peon.online) return;
     let alive = true;
-    api<PeonStatus>(`${base}/status`)
-      .then((next) => alive && setStatus(next))
+    api<unknown>(`${base}/status`)
+      .then((next) => alive && setStatus(normalizeUpdateStatus(next)))
       .catch(() => {});
     return () => { alive = false; };
   }, [base, peon.online]);
@@ -118,7 +108,7 @@ export function PeonSettings() {
 
     const check = async () => {
       try {
-        const next = await api<PeonStatus>(`${base}/status`);
+        const next = normalizeUpdateStatus(await api<unknown>(`${base}/status`));
         if (!alive) return;
         setStatus(next);
         if (!next.updateAvailable) {
@@ -155,7 +145,7 @@ export function PeonSettings() {
     setCheckingUpdate(true);
     setUpdateError(null);
     try {
-      setStatus(await api<PeonStatus>(`${base}/control/check-update`, { method: "POST" }));
+      setStatus(normalizeUpdateStatus(await api<unknown>(`${base}/control/check-update`, { method: "POST" })));
     } catch (err) {
       setUpdateError(err instanceof Error ? err.message : t("error.generic"));
     } finally {
@@ -164,7 +154,7 @@ export function PeonSettings() {
   }
 
   function patch(key: keyof Settings, value: string) {
-    setForm((f) => ({ ...(f ?? {}), [key]: key === "heartbeatIntervalMs" ? (value ? Number(value) : null) : value }) as Settings);
+    setForm((f) => ({ ...(f ?? {}), [key]: value }) as Settings);
     setSaved(false);
     setSaveError(null);
   }
@@ -225,6 +215,22 @@ export function PeonSettings() {
       />
 
       {tab === "general" && <>
+      {peon.online && !unsupported && form && (
+        <Card className="space-y-5 px-5 py-5">
+          <div className="space-y-1.5">
+            <Label>{t("peon.settings.name")}</Label>
+            <Input value={form.name ?? ""} onChange={(e) => patch("name", e.target.value)} />
+          </div>
+          <div className="flex items-center gap-3">
+            <Button onClick={save} disabled={saving}>
+              {saving ? t("peon.settings.saving") : t("peon.settings.save")}
+            </Button>
+            {saved && <span className="font-mono text-xs text-fel-bright">⚡ {t("peon.settings.saved")}</span>}
+            {saveError && <span className="font-mono text-xs text-blood">⚠ {saveError}</span>}
+          </div>
+        </Card>
+      )}
+
       {(peon.online || updating) && status && (
         <Card className="space-y-4 px-5 py-5">
           <div className="flex flex-wrap items-start justify-between gap-4">
@@ -255,13 +261,26 @@ export function PeonSettings() {
               ⚡ {t("peon.update.complete")}
             </p>
           )}
-          {(status.updateLocalSha || status.updateRemoteSha || status.updateCheckedAt) && (
-            <div className="space-y-1 font-mono text-xs text-bone-faint">
-              {status.updateLocalSha && <p>{t("peon.update.local")}: {status.updateLocalSha}</p>}
-              {status.updateRemoteSha && <p>{t("peon.update.remote")}: {status.updateRemoteSha}</p>}
-              {status.updateCheckedAt && <p>{t("peon.update.checked")}: {new Date(status.updateCheckedAt).toLocaleString()}</p>}
-            </div>
-          )}
+          <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 font-mono text-xs">
+            <dt className="text-bone-faint">{t("peon.update.installed")}</dt>
+            <dd className="text-right text-bone">{status.updateCurrentVersion ?? "—"}</dd>
+            <dt className="text-bone-faint">{t("peon.update.latest")}</dt>
+            <dd className="text-right text-bone">{status.updateLatestVersion ?? "—"}</dd>
+            {/* Revisions only add signal when they differ from the versions —
+                two identical published builds of one version, say. */}
+            {status.updateCurrentRevision && status.updateCurrentRevision !== status.updateCurrentVersion && <>
+              <dt className="text-bone-faint">{t("peon.update.local")}</dt>
+              <dd className="truncate text-right text-bone-dim">{status.updateCurrentRevision}</dd>
+            </>}
+            {status.updateLatestRevision && status.updateLatestRevision !== status.updateLatestVersion && <>
+              <dt className="text-bone-faint">{t("peon.update.remote")}</dt>
+              <dd className="truncate text-right text-bone-dim">{status.updateLatestRevision}</dd>
+            </>}
+            {status.updateCheckedAt && <>
+              <dt className="text-bone-faint">{t("peon.update.checked")}</dt>
+              <dd className="text-right text-bone-dim">{new Date(status.updateCheckedAt).toLocaleString()}</dd>
+            </>}
+          </dl>
           {(status.updateCheckError || updateError) && (
             <p className="border-l-2 border-blood bg-blood/5 py-2 pl-3 font-mono text-xs text-blood">
               ⚠ {updateError ?? status.updateCheckError}
@@ -269,32 +288,6 @@ export function PeonSettings() {
           )}
         </Card>
       )}
-      <CliUpdatesPanel base={base} online={peon.online} />
-
-      {peon.online && !unsupported && form && (
-        <Card className="space-y-5 px-5 py-5">
-          <div className="space-y-1.5">
-            <Label>{t("peon.settings.name")}</Label>
-            <Input value={form.name ?? ""} onChange={(e) => patch("name", e.target.value)} />
-          </div>
-          <div className="space-y-1.5">
-            <Label>{t("peon.settings.fileRoot")}</Label>
-            <PathInput base={base} value={form.fileTransferRoot ?? ""} onChange={(value) => patch("fileTransferRoot", value)} placeholder="/srv/peon/files" />
-          </div>
-          <div className="space-y-1.5">
-            <Label>{t("peon.settings.heartbeat")}</Label>
-            <Input type="number" value={form.heartbeatIntervalMs ?? ""} onChange={(e) => patch("heartbeatIntervalMs", e.target.value)} placeholder="5000" />
-          </div>
-          <div className="flex items-center gap-3">
-            <Button onClick={save} disabled={saving}>
-              {saving ? t("peon.settings.saving") : t("peon.settings.save")}
-            </Button>
-            {saved && <span className="font-mono text-xs text-fel-bright">⚡ {t("peon.settings.saved")}</span>}
-            {saveError && <span className="font-mono text-xs text-blood">⚠ {saveError}</span>}
-          </div>
-        </Card>
-      )}
-
       {loadError && <p className="border-l-2 border-blood bg-blood/5 py-2 pl-3 font-mono text-sm text-blood">⚠ {loadError}</p>}
       {(unsupported || !peon.online) && <p className="font-mono text-sm text-bone-faint">{peon.online ? t("peon.unsupported") : t("peon.offlineNote")}</p>}
 

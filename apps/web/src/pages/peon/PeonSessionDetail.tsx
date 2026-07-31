@@ -105,14 +105,20 @@ function PeonSessionDetailPage() {
   // Clearing the unread mark means "the operator has seen this". Only claim that
   // while the tab is actually in front of them; otherwise wait until it is, so a
   // run that finishes in a backgrounded tab keeps its amber edge.
+  // The unread mark flips exactly when a run ends, so anything keyed to this
+  // callback's identity would be rebuilt at that moment — including the
+  // transcript's fetch and tail effects, which must not be torn down while the
+  // run they are reporting on is ending. Read the flag through a ref instead.
+  const attentionUnreadRef = useRef(selectedSession?.attentionUnread);
+  attentionUnreadRef.current = selectedSession?.attentionUnread;
   const markAttentionRead = useCallback(() => {
-    if (!sid || !shouldAcknowledgeAttention(selectedSession?.attentionUnread, document.visibilityState, document.hasFocus())) return;
+    if (!sid || !shouldAcknowledgeAttention(attentionUnreadRef.current, document.visibilityState, document.hasFocus())) return;
     if (attentionReadInFlightRef.current === sessionKey) return;
     attentionReadInFlightRef.current = sessionKey;
     void api(`${base}/sessions/${encodeURIComponent(sid)}/attention/read`, { method: "POST" }).catch(() => {
       if (attentionReadInFlightRef.current === sessionKey) attentionReadInFlightRef.current = null;
     });
-  }, [base, selectedSession?.attentionUnread, sessionKey, sid]);
+  }, [base, sessionKey, sid]);
 
   useEffect(() => {
     if (selectedSession?.attentionUnread !== true) attentionReadInFlightRef.current = null;
@@ -127,7 +133,7 @@ function PeonSessionDetailPage() {
       document.removeEventListener("visibilitychange", onPresence);
       window.removeEventListener("focus", onPresence);
     };
-  }, [markAttentionRead]);
+  }, [markAttentionRead, selectedSession?.attentionUnread]);
 
   // Session title + inline rename.
   const [title, setTitle] = useState<string | null>(null);
@@ -322,6 +328,7 @@ function PeonSessionDetailPage() {
     live,
     orderedLive,
     showHistorySpinner,
+    historyLoadError,
     hasOlder,
     loadingOlder,
     olderLoadError,
@@ -754,9 +761,11 @@ function PeonSessionDetailPage() {
         className="pointer-events-none absolute left-0 right-0 top-2 z-20 grid h-8 place-items-center"
         aria-live="polite"
       >
-        {(loadingOlder || olderLoadError) && (
-          <p className={`whitespace-nowrap rounded-full border border-white/10 bg-iron-950/75 px-3 py-1.5 font-mono text-xs shadow-lg shadow-black/30 backdrop-blur-xl ${olderLoadError ? "text-red-300" : "text-bone-muted"}`}>
-            {olderLoadError ? t("session.history.failed") : t("session.history.loading")}
+        {(historyLoadError || loadingOlder || olderLoadError) && (
+          <p className={`whitespace-nowrap rounded-full border border-white/10 bg-iron-950/75 px-3 py-1.5 font-mono text-xs shadow-lg shadow-black/30 backdrop-blur-xl ${historyLoadError || olderLoadError ? "text-red-300" : "text-bone-muted"}`}>
+            {historyLoadError
+              ? t("session.history.latestFailed")
+              : olderLoadError ? t("session.history.failed") : t("session.history.loading")}
           </p>
         )}
       </div>

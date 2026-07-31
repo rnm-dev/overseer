@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   TAIL_FALLBACK_SILENCE_MS,
   replaceTranscriptRequest,
+  snapshotEndsRun,
   transcriptReconcileMode,
 } from "./transcriptReconciliation";
 
@@ -64,4 +65,27 @@ test("a replacement transcript request aborts the stale request", () => {
   assert.equal(stale.signal.aborted, true);
   assert.equal(replacement.signal.aborted, false);
   assert.notEqual(replacement, stale);
+});
+
+test("an authoritative page ending in a result ends the run the tail could not", () => {
+  // The tail frame carrying this result is deduplicated against history the
+  // moment the page is merged, so the page has to end the run itself.
+  assert.equal(snapshotEndsRun(true, [
+    { type: "user_message", text: "go" },
+    { type: "assistant", text: "done" },
+    { type: "result", is_error: false },
+  ]), true);
+});
+
+test("an authoritative page still in a turn keeps the run alive", () => {
+  assert.equal(snapshotEndsRun(true, [
+    { type: "result", is_error: false },
+    { type: "user_message", text: "again" },
+    { type: "assistant", text: "working" },
+  ]), false);
+  assert.equal(snapshotEndsRun(true, []), false);
+});
+
+test("a finished page never revives run bookkeeping for an idle session", () => {
+  assert.equal(snapshotEndsRun(false, [{ type: "result", is_error: false }]), false);
 });

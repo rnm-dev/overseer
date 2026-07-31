@@ -23,7 +23,7 @@ test("prefetch deduplicates intent and leaves a snapshot for immediate opening",
   const first = prefetchTranscriptSnapshot("/peon", "session-1", true, request, 100);
   const second = prefetchTranscriptSnapshot("/peon", "session-1", true, request, 100);
   assert.equal(requests, 1);
-  assert.equal(preparedTranscriptSnapshot("/peon", "session-1", true, 100), first);
+  assert.equal(preparedTranscriptSnapshot("/peon", "session-1", true), first);
 
   resolveRequest({
     events: [{ type: "assistant", eventId: "event-1", text: "ready" }],
@@ -31,7 +31,26 @@ test("prefetch deduplicates intent and leaves a snapshot for immediate opening",
     hasMore: true,
   });
   assert.equal(await first, await second);
-  assert.ok(preparedTranscriptSnapshot("/peon", "session-1", true, Date.now()));
+  assert.equal(preparedTranscriptSnapshot("/peon", "session-1", true), null);
+  assert.equal(cachedTranscriptSnapshot("/peon", "session-1", true)?.events[0]?.eventId, "event-1");
+});
+
+test("a completed prefetch remains paint-only so opening revalidates before tailing", async () => {
+  clearTranscriptSnapshotCacheForTests();
+  let requests = 0;
+  const request = async (): Promise<TranscriptResponse> => {
+    requests += 1;
+    return {
+      events: [{ type: "assistant", eventId: "event-1", text: "cached" }],
+      nextCursor: null,
+      hasMore: false,
+    };
+  };
+
+  await prefetchTranscriptSnapshot("/peon", "session-1", true, request, 100);
+
+  assert.equal(requests, 1);
+  assert.equal(preparedTranscriptSnapshot("/peon", "session-1", true), null);
   assert.equal(cachedTranscriptSnapshot("/peon", "session-1", true)?.events[0]?.eventId, "event-1");
 });
 

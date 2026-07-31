@@ -1,3 +1,5 @@
+import { latestRunSignal, type Ev } from "./parsing";
+
 export const TAIL_FALLBACK_CHECK_MS = 5_000;
 export const TAIL_FALLBACK_SILENCE_MS = 30_000;
 
@@ -11,6 +13,15 @@ export interface TranscriptFallbackState {
 }
 
 export type TranscriptReconcileMode = "none" | "status" | "transcript";
+
+// An authoritative newest page is the strongest statement about a run there is.
+// Once its result event is merged into history, the live tail frame repeating
+// that event is deduplicated and the "idle" signal it carried is lost with it,
+// so the page itself has to end the run — otherwise the working indicator
+// outlives the turn until the session is reopened.
+export function snapshotEndsRun(running: boolean, events: Ev[]): boolean {
+  return running && latestRunSignal(events) === "idle";
+}
 
 export function replaceTranscriptRequest(previous: AbortController | null): AbortController {
   previous?.abort();
