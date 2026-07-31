@@ -82,18 +82,37 @@ class DefaultProjectRepository implements ProjectRepository {
             ),
           )
           .toList(growable: false);
-      await database.batch((batch) {
-        for (final project in projects) {
-          batch.insert(
-            database.cachedProjects,
-            _companion(project),
-            onConflict: DoUpdate<CachedProjects, CachedProject>(
-              (_) => _companion(project),
-              where: (old) =>
-                  old.syncedAt.isSmallerOrEqualValue(project.syncedAt),
-            ),
+      await database.transaction(() async {
+        await database.batch((batch) {
+          for (final project in projects) {
+            batch.insert(
+              database.cachedProjects,
+              _companion(project),
+              onConflict: DoUpdate<CachedProjects, CachedProject>(
+                (_) => _companion(project),
+                where: (old) =>
+                    old.syncedAt.isSmallerThanValue(project.syncedAt) |
+                    (old.syncedAt.equals(project.syncedAt) &
+                        old.deleted.equals(false)),
+              ),
+            );
+          }
+        });
+
+        final projectIds = projects.map((project) => project.projectId).toList();
+        final staleRows = database.update(database.cachedProjects)
+          ..where(
+            (row) =>
+                row.workspaceId.equals(workspaceId) &
+                row.peonId.equals(peonId) &
+                row.deleted.equals(false) &
+                (projectIds.isEmpty
+                    ? const Constant(true)
+                    : row.projectId.isNotIn(projectIds)),
           );
-        }
+        await staleRows.write(
+          const CachedProjectsCompanion(deleted: Value(true)),
+        );
       });
       final rawCatalog = payload?['catalog'];
       final catalog = rawCatalog is Map
@@ -332,7 +351,9 @@ class DefaultProjectRepository implements ProjectRepository {
               onConflict: DoUpdate(
                 (_) => _companion(project),
                 where: (old) =>
-                    old.syncedAt.isSmallerOrEqualValue(project.syncedAt),
+                    old.syncedAt.isSmallerThanValue(project.syncedAt) |
+                    (old.syncedAt.equals(project.syncedAt) &
+                        old.deleted.equals(false)),
               ),
             );
       }

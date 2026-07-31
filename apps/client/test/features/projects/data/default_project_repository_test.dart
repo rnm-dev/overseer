@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:overseer_mobile/core/database/app_database.dart';
@@ -74,6 +75,60 @@ void main() {
     expect(cached.single.memberCount, 2);
     expect(cached.single.sessionCount, 20);
     expect(cached.single.activeCount, 5);
+  });
+
+  test('authoritative refresh retires a cached pre-rename identity', () async {
+    await database.into(database.cachedProjects).insert(
+      const CachedProjectsCompanion(
+        workspaceId: Value('workspace'),
+        peonId: Value('peon'),
+        projectId: Value('legacy:old-key'),
+        projectKey: Value('old-key'),
+        name: Value('Old name'),
+        dir: Value('/projects/shared'),
+        syncedAt: Value(90),
+      ),
+    );
+
+    final dio = Dio();
+    dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) => handler.resolve(
+          Response<Map<String, dynamic>>(
+            requestOptions: options,
+            data: {
+              'projects': [
+                {
+                  'projectId': 'stable-project-id',
+                  'key': 'new-key',
+                  'name': 'New name',
+                  'dir': '/projects/shared',
+                  'syncedAt': 100,
+                },
+              ],
+              'catalog': {'state': 'ready', 'stale': false},
+            },
+          ),
+        ),
+      ),
+    );
+    repository = DefaultProjectRepository(
+      database: database,
+      apiUrl: Uri.parse('https://overseer.example/api/'),
+      token: 'test-token',
+      dio: dio,
+    );
+
+    await repository.refreshProjects(workspaceId: 'workspace', peonId: 'peon');
+
+    final cached = await repository.loadCachedProjects(
+      workspaceId: 'workspace',
+      peonId: 'peon',
+    );
+    expect(cached, hasLength(1));
+    expect(cached.single.projectId, 'stable-project-id');
+    expect(cached.single.key, 'new-key');
+    expect(cached.single.displayName, 'New name');
   });
 
   test('suggests a key and directory using the web endpoint', () async {
