@@ -3,9 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const operations = [
-  "session.cancel", "session.start", "session.followup", "session.queue.list",
-  "session.queue.add", "session.queue.edit", "session.queue.remove",
-  "session.queue.send-now", "session.metadata.patch", "session.delete",
+  "session.metadata.patch", "session.delete",
 ];
 
 test("released reverse session command schemas stay vendored and complete on both peers", async () => {
@@ -17,11 +15,6 @@ test("released reverse session command schemas stay vendored and complete on bot
   const schema = JSON.parse(overseer);
   const advertised = schema.$defs.command.properties.operation.enum;
   for (const operation of operations) assert.ok(advertised.includes(operation), operation);
-  const conditionals = schema.$defs.command.allOf;
-  assert.ok(conditionals.some((entry) =>
-    entry.if?.properties?.operation?.const === "session.queue.add"
-      && entry.then?.properties?.payload?.$ref === "#/$defs/sessionQueueAddPayload"));
-  assert.equal(schema.$defs.sessionQueueAddPayload.properties.startNow.type, "boolean");
 });
 
 test("session mutation transport selection is exclusive before admission", () => {
@@ -29,20 +22,47 @@ test("session mutation transport selection is exclusive before admission", () =>
     connected && advertised.includes(operation) ? "reverse" : "legacy";
   for (const operation of operations) {
     assert.equal(select({ connected: true, operations }, operation), "reverse");
-    assert.equal(select({ connected: true, operations: ["session.cancel"] }, operation),
-      operation === "session.cancel" ? "reverse" : "legacy");
+    assert.equal(select({ connected: true, operations: ["session.metadata.patch"] }, operation),
+      operation === "session.metadata.patch" ? "reverse" : "legacy");
     assert.equal(select({ connected: false, operations }, operation), "legacy");
   }
 });
 
-test("session.start carries stable project identity in payload, never in the Peon target", async () => {
-  const [peonHandler, overseerRoute, overseerGateway] = await Promise.all([
-    readFile(new URL("../../../apps/peon/src/daemon/overseer/socket/channels/reverseCommandChannel.ts", import.meta.url), "utf8"),
-    readFile(new URL("../../../apps/server/src/routes/peons/sessions.ts", import.meta.url), "utf8"),
-    readFile(new URL("../../../apps/server/src/modules/reverseCommands/reverseCommandGateway.ts", import.meta.url), "utf8"),
+test("direct HTTP session operations are absent from the reverse contract on both peers", async () => {
+  const [peon, overseer] = await Promise.all([
+    readFile(new URL("../../../apps/peon/protocol/reverse-command-v1/schema.json", import.meta.url), "utf8"),
+    readFile(new URL("../../../apps/server/protocol/reverse-command-v1/schema.json", import.meta.url), "utf8"),
   ]);
-  assert.match(peonHandler, /session\.start" && \(target\.sessionId !== undefined \|\| target\.projectId !== undefined\)/);
-  assert.match(overseerRoute, /"session\.start", \{\}, payload as JsonObject/);
-  assert.match(overseerGateway, /session\.start" && target\.projectId !== undefined/);
-  assert.doesNotMatch(overseerRoute, /"session\.start", projectId \? \{ projectId \}/);
+  for (const schema of [JSON.parse(peon), JSON.parse(overseer)]) {
+    const advertised = schema.$defs.command.properties.operation.enum;
+    assert.equal(advertised.includes("session.start"), false);
+    assert.equal(advertised.includes("session.followup"), false);
+    assert.equal(advertised.includes("session.cancel"), false);
+    assert.equal(advertised.includes("session.detail"), false);
+    for (const operation of [
+      "session.queue.add", "session.queue.list", "session.queue.edit",
+      "session.queue.remove", "session.queue.send-now",
+    ]) assert.equal(advertised.includes(operation), false, operation);
+  }
+});
+
+test("all public queue routes use the single Fleet HTTP path", async () => {
+  const source = await readFile(
+    new URL("../../../apps/server/src/routes/peons/sessions.ts", import.meta.url),
+    "utf8",
+  );
+  const queueStart = source.indexOf("router.get(`${wp}/sessions/:sid/queue`");
+  const queueEnd = source.indexOf("// Stop is self-healing", queueStart);
+  assert.ok(queueStart >= 0 && queueEnd > queueStart);
+  const queueRoutes = source.slice(queueStart, queueEnd);
+  assert.equal(queueRoutes.includes("selectSessionTransport"), false);
+  assert.equal(queueRoutes.includes("reverseSession"), false);
+  assert.equal(queueRoutes.includes("reverseCommandOperation"), false);
+  for (const fragment of [
+    '"GET", `/sessions/${encodeURIComponent(String(req.params.sid))}/queue`',
+    '"POST", `/sessions/${encodeURIComponent(sid)}/queue`',
+    '"PATCH",',
+    '"DELETE",',
+    '/queue/${encodeURIComponent(String(req.params.itemId))}/send',
+  ]) assert.ok(queueRoutes.includes(fragment), fragment);
 });

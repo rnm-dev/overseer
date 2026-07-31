@@ -1,7 +1,8 @@
 import { api, ApiError } from "../../api";
 
 // Folder browsing for the directory picker. The overseer route behind this
-// adapter talks to the Peon over the `folder-listing-v1` reverse WebSocket, so
+// adapter talks to the Peon through Overseer's stable route, which proxies the
+// authenticated Fleet HTTP filesystem listing over mesh, so
 // the operator can descend from `/` instead of the HTTP file-transfer root.
 // Protocol/error handling lives here, never in the picker component.
 

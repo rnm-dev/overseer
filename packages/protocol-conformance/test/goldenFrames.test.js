@@ -16,7 +16,7 @@ test("shared stable golden frames execute across every released reverse surface"
   assert.equal(report.passed, fixture.frames.length);
   assert.deepEqual(
     [...new Set(report.cases.map((entry) => entry.surface))].sort(),
-    ["catalog", "file-read", "folder-listing", "socket"],
+    ["catalog", "file-read", "socket"],
   );
   assert.ok(report.diagnostics.bytes <= report.diagnostics.bounds.maxBytes);
 });

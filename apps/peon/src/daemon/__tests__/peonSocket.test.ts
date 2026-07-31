@@ -103,7 +103,7 @@ test("converts Overseer HTTP URLs to the Peon WebSocket endpoint", () => {
   );
 });
 
-test("default control hello advertises the folder listing capability", async () => {
+test("default control hello does not advertise the retired folder listing capability", async () => {
   const target = acceptingServer();
   const base = await listen(target.server);
   const config = { overseerUrl: base, overseerToken: "secret-token", peonId: "peon-folder" };
@@ -124,8 +124,8 @@ test("default control hello advertises the folder listing capability", async () 
     await waitFor(() => supervisor.getState().connected, "default control socket did not connect");
     const hello = target.hellos[0]!;
     assert.match(String(hello.version), /^\d+\.\d+\.\d+$/);
-    assert.ok((hello.capabilities as string[]).includes("folder-listing-v1"));
-    assert.deepEqual((hello.channels as Record<string, unknown>)["folder-listing-v1"], { entryMetadata: "entry-metadata-v1" });
+    assert.equal((hello.capabilities as string[]).includes("folder-listing-v1"), false);
+    assert.equal((hello.channels as Record<string, unknown>)["folder-listing-v1"], undefined);
   } finally {
     supervisor.stop();
     await closeServer(target.server, target.sockets);

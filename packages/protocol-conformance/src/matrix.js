@@ -5,10 +5,6 @@ function intersection(left = [], right = []) {
   return left.filter((value) => accepted.has(value));
 }
 
-function feature(profile, channel, name) {
-  return profile.channelFeatures?.[channel]?.includes(name) === true;
-}
-
 export function negotiateCapabilities(peon, overseer) {
   let control = intersection(peon.controlCapabilities, overseer.controlCapabilities);
   const hasCanonicalPair = CANONICAL_PAIR.every((capability) => control.includes(capability));
@@ -19,19 +15,12 @@ export function negotiateCapabilities(peon, overseer) {
     control = control.filter((capability) => capability !== "project-catalog-v1");
   }
   const transfer = intersection(peon.transferCapabilities, overseer.transferCapabilities);
-  const channelFeatures = {};
-  if (control.includes("folder-listing-v1")
-    && feature(peon, "folder-listing-v1", "entry-metadata-v1")
-    && feature(overseer, "folder-listing-v1", "entry-metadata-v1")) {
-    channelFeatures["folder-listing-v1"] = ["entry-metadata-v1"];
-  }
-  return { control, transfer, channelFeatures };
+  return { control, transfer, channelFeatures: {} };
 }
 
 export function routeForSurface(surface, negotiated) {
   const control = new Set(negotiated.control);
   const transfer = new Set(negotiated.transfer);
-  const folderMetadata = negotiated.channelFeatures["folder-listing-v1"]?.includes("entry-metadata-v1") === true;
   switch (surface) {
     case "socket-presence":
       return "reverse-socket";
@@ -41,9 +30,8 @@ export function routeForSurface(surface, negotiated) {
       return control.has("project-catalog-v1") && CANONICAL_PAIR.every((capability) => control.has(capability))
         ? "reverse-socket" : "legacy-http";
     case "absolute-folder-picker":
-      return control.has("folder-listing-v1") ? "reverse-socket" : "unavailable";
     case "project-directory":
-      return control.has("folder-listing-v1") && folderMetadata ? "reverse-socket" : "legacy-http";
+      return "legacy-http";
     case "project-file-read":
       return transfer.has("project-file-read-v1") ? "reverse-socket" : "legacy-http";
     case "sandbox-file-read":

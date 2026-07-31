@@ -49,12 +49,9 @@ and operator event before waking the HTTP waiter, reconnect cannot replay the
 refused command as a poison pill.
 
 Session attachment uploads remain represented by receipt identity at the HTTP
-boundary. Before persistence and send, the gateway binds the receipt and
-materializes the protocol's canonical `AttachmentInfo`
-(`originalName`, `filename`, absolute contained `path`, `size`, `mimetype`).
-Receipt-only fields (`transferId`, SHA-256 and the client display `type`) never
-cross into Peon's reverse-command payload. This applies equally to start,
-follow-up and queue-add operations.
+boundary. Session start, follow-up and queue-add send that identity through the
+direct Fleet HTTP API; the reverse-command gateway no longer binds attachment
+receipts or materializes an `AttachmentInfo` payload for any session operation.
 
 ## Durable registry and HTTP result
 
@@ -108,21 +105,12 @@ Process metrics count queueing, acceptance, completion, replay, timeouts,
 disconnect phase, and stable error code. Labels deliberately exclude actor and
 Peon IDs, payloads, prompts, paths, and credentials.
 
-The released v1 operation is `session.cancel`. Overseer accepts only these
-complete status/code/detail tuples:
-
-- `applied` or `noop` + `OK` + exactly
-  `{ sessionId: <target>, sessionStatus: "completed" | "cancelled" }`;
-- `rejected` + one of `BAD_COMMAND`, `COMMAND_EXPIRED`,
-  `COMMAND_LEDGER_FULL`, `SESSION_NOT_RUNNING`, or `UNKNOWN_SESSION` + `null`;
-- `conflict` + `COMMAND_ID_REUSED` + `null`;
-- `failed` + `INTERNAL` or `PERSIST_FAILED` + `null`.
-
-There is no accepted `cancelled` tuple. Messages, cross-combined status/codes,
-unknown codes, non-terminal cancellation states, extra fields, and detail on
-non-success results are rejected before terminal persistence, projection,
-browser publication, or a success HTTP response. Remote daemon pause/resume
-remains local-only and is not a reverse command.
+Session Stop is not a reverse command. The public Overseer endpoint keeps its
+existing response contract, but Overseer always calls the Peon's Fleet HTTP
+`POST /sessions/:id/cancel` endpoint through mesh. A `409
+SESSION_NOT_RUNNING` is relayed unchanged after a best-effort authoritative
+session read republishes the Peon's state into the index. Remote daemon
+pause/resume likewise remains outside this gateway.
 
 Terminal HTTP/status views use the validated canonical `result_frame` and
 require its duplicated registry columns to match. A corrupt or legacy

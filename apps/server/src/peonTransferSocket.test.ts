@@ -20,7 +20,6 @@ import {
   projectFileContentType,
   projectFileProxyQuery,
   projectFileReadChannel,
-  projectFolderReadChannel,
   PROJECT_FILE_CSP,
 } from "./modules/projects/index.js";
 
@@ -555,10 +554,6 @@ test("a project file read takes one authority and retains HTTP only for an older
   assert.equal(projectFileReadChannel({ transportReady: false, projectId: "p" }), "proxy");
   assert.equal(projectFileReadChannel({ transportReady: true, projectId: null }), "unavailable");
   assert.equal(projectFileReadChannel({ transportReady: true, projectId: "p" }), "socket");
-  assert.equal(projectFolderReadChannel({ confirmedDirectory: true, metadataReady: false, projectId: "p" }), "proxy");
-  assert.equal(projectFolderReadChannel({ confirmedDirectory: true, metadataReady: true, projectId: null }), "unavailable");
-  assert.equal(projectFolderReadChannel({ confirmedDirectory: false, metadataReady: true, projectId: "p" }), "proxy");
-  assert.equal(projectFolderReadChannel({ confirmedDirectory: true, metadataReady: true, projectId: "p" }), "socket");
 });
 
 test("the project-key file route is the one that changes channel", () => {

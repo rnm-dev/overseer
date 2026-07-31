@@ -105,7 +105,7 @@ test("a capability-incomplete reverse Peon does not silently become reverse-auth
 test("capability rollout stages are independent and fail closed on minimum version", () => {
   const rollout = reverseRolloutPolicyFromEnv({
     OVERSEER_REVERSE_CAPABILITY_ROLLOUT:
-      "reverse-command-v1:allowlist:2.4.0,folder-listing-v1:default:1.2.0,file-write-v1:cohort:3.0.0:100",
+      "reverse-command-v1:allowlist:2.4.0,project-file-read-v1:default:1.2.0,file-write-v1:cohort:3.0.0:100",
     OVERSEER_REVERSE_ALLOWLIST_REVERSE_COMMAND_V1: "peon-canary;peon-second",
   });
   assert.equal(capabilityRolloutAllows({
@@ -115,10 +115,10 @@ test("capability rollout stages are independent and fail closed on minimum versi
     capability: "reverse-command-v1", peonId: "not-listed", peonVersion: "9.0.0", rollout,
   }), false);
   assert.equal(capabilityRolloutAllows({
-    capability: "folder-listing-v1", peonId: "any", peonVersion: "1.1.9", rollout,
+    capability: "project-file-read-v1", peonId: "any", peonVersion: "1.1.9", rollout,
   }), false);
   assert.equal(capabilityRolloutAllows({
-    capability: "folder-listing-v1", peonId: "any", peonVersion: "1.2.0-beta.1", rollout,
+    capability: "project-file-read-v1", peonId: "any", peonVersion: "1.2.0-beta.1", rollout,
   }), false);
   assert.equal(capabilityRolloutAllows({
     capability: "file-write-v1", peonId: "any", peonVersion: "3.0.0", rollout,
@@ -148,7 +148,7 @@ test("rollout configuration is bounded and rejects ambiguous extra fields", () =
   });
   assert.equal(extraField.valid, false);
   assert.equal(capabilityRolloutAllows({
-    capability: "folder-listing-v1",
+    capability: "project-file-read-v1",
     peonId: "peon",
     peonVersion: "9.0.0",
     rollout: extraField,

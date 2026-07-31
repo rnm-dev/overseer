@@ -20,14 +20,11 @@ import { bus, type LiveEvent } from "../../eventLog.js";
 import {
   getTranscriptState,
   readTranscriptAfter,
-  readTranscriptPage,
-  TranscriptProjectionError,
   type TranscriptState,
 } from "../../modules/sessions/index.js";
 import {
   acquireTranscriptProjection,
   hasReverseTranscriptConnection,
-  reverseTranscriptGeneration,
 } from "../../peonTranscriptSync.js";
 import type { Role } from "../../workspaces.js";
 import { getRuntimeProjection, RUNTIME_STATE_CAPABILITY } from "../../modules/runtimeProjection.js";
@@ -81,9 +78,6 @@ export function sessionReverseHttpResponse(
   result: ReverseCommandHttpResult,
 ): { status: number; body: unknown } {
   if (result.status !== 200 || (result.body.status !== "applied" && result.body.status !== "noop")) {
-    if (operation === "session.cancel" && result.body.code === "SESSION_NOT_RUNNING") {
-      return { status: 409, body: result.body };
-    }
     if (operation === "session.delete" && result.status === 409 && result.body.code === "SESSION_RUNNING") {
       return { status: 409, body: { ...result.body, code: "SESSION_NOT_RUNNING" } };
     }
@@ -93,12 +87,7 @@ export function sessionReverseHttpResponse(
     };
   }
   const detail = result.body.result as Record<string, unknown>;
-  if (operation === "session.start") return { status: result.reused ? 200 : 201, body: detail };
-  if (operation === "session.followup") return { status: 201, body: detail };
-  if (operation === "session.queue.list") return { status: 200, body: { items: detail.items } };
-  if (operation === "session.queue.add") return { status: 201, body: detail.session };
-  if (operation === "session.queue.edit") return { status: 200, body: detail.session };
-  if (["session.queue.remove", "session.queue.send-now", "session.cancel", "session.delete"].includes(operation)) {
+  if (operation === "session.delete") {
     return { status: 200, body: { ok: true } };
   }
   return { status: 200, body: detail };
@@ -289,27 +278,6 @@ export function registerSessionRoutes(router: express.Router): void {
   }));
   router.get(`${wp}/sessions/:sid`, withWorkspaceSession(async (req, res, c) => {
     const sid = String(req.params.sid);
-    const transport = await selectSessionTransport(req, res, c, "session.detail");
-    if (transport === "unavailable") return;
-    if (transport === "reverse") {
-      const reverse = await reverseSession(req, c, "session.detail", { sessionId: sid }, {});
-      const mapped = sessionReverseHttpResponse("session.detail", reverse);
-      if (mapped.status !== 200 || !mapped.body || typeof mapped.body !== "object") {
-        return res.status(mapped.status).json(mapped.body);
-      }
-      const body = mapped.body as Record<string, unknown>;
-      await indexAcceptedSession({ ok: true, json: body }, c.workspaceId, c.record.peonId);
-      const projectId = typeof body.projectId === "string" ? body.projectId : null;
-      const projectKey = typeof body.projectKey === "string" ? body.projectKey : null;
-      const project = projectId
-        ? await getIndexedProjectById(c.record.peonId, projectId)
-        : projectKey ? await getIndexedProject(c.record.peonId, projectKey) : null;
-      return res.json({
-        ...body,
-        projectId: projectId ?? project?.projectId ?? null,
-        projectRoot: project?.dir ?? null,
-      });
-    }
     const result = await callPeon(connOfRecord(c.record), "GET", `/sessions/${encodeURIComponent(sid)}`, { actor: c.operator.email });
     // Reading a session is a reconcile point: opening one — and the client's
     // run watchdog polling this same route — republishes the Peon's authoritative
@@ -330,57 +298,11 @@ export function registerSessionRoutes(router: express.Router): void {
       projectId: projectId ?? project?.projectId ?? null,
       projectRoot: project?.dir ?? null,
     });
-  }, { reverseCommandOperation: "session.detail" }));
+  }));
   router.get(`${wp}/sessions/:sid/transcript`, withWorkspaceSession(async (req, res, c) => {
     const sid = String(req.params.sid);
     if (!(await canAccessIndexedSessionNow(c.workspaceId, c.userId, c.record.peonId, sid))) {
       return res.status(404).json({ error: "unknown session", code: "UNKNOWN_SESSION" });
-    }
-    const storedState = await getTranscriptState(c.record.peonId, sid);
-    const activeTranscriptGeneration = reverseTranscriptGeneration(c.record.peonId);
-    const reverseConnected = activeTranscriptGeneration !== null;
-    if (storedState?.epoch || reverseConnected) {
-      let release: (() => void) | null = null;
-      try {
-        // A retained projection is already a bounded opening snapshot. Return
-        // it immediately; the browser starts its durable tail from the page's
-        // lastEventId and catches up anything committed after this read. Taking
-        // temporary demand here would add a Peon subscribe round trip, release
-        // it as soon as this response is built, then make the browser subscribe
-        // to the same session again. Only states that cannot be trusted as a
-        // resume boundary still need a synchronous rebuild/catch-up.
-        const needsDemand = transcriptProjectionNeedsDemand(storedState, activeTranscriptGeneration);
-        if (needsDemand) {
-          release = await acquireTranscriptProjection(c.record.peonId, sid);
-        }
-        const rawLimit = typeof req.query.limit === "string" && /^\d+$/.test(req.query.limit)
-          ? Number(req.query.limit)
-          : 50;
-        const page = await readTranscriptPage({
-          peonId: c.record.peonId,
-          sessionId: sid,
-          limit: rawLimit,
-          cursor: typeof req.query.cursor === "string" ? req.query.cursor : undefined,
-          online: reverseConnected,
-        });
-        if (page) return res.json(page);
-        return res.status(503).json({
-          error: "transcript projection is not ready",
-          code: "TRANSCRIPT_SYNCING",
-          freshness: { state: reverseConnected ? "syncing" : "offline" },
-        });
-      } catch (error) {
-        if (error instanceof TranscriptProjectionError && error.code === "BAD_CURSOR") {
-          return res.status(400).json({ error: error.message, code: "BAD_CURSOR" });
-        }
-        return res.status(503).json({
-          error: error instanceof Error ? error.message : "transcript projection unavailable",
-          code: "TRANSCRIPT_UNAVAILABLE",
-          freshness: { state: reverseConnected ? "syncing" : "offline" },
-        });
-      } finally {
-        release?.();
-      }
     }
     const query = transcriptQuery(req.query, c.record.capabilities.includes("transcript-pagination-v1"));
     const r = await callPeon(connOfRecord(c.record), "GET", `/sessions/${encodeURIComponent(sid)}/transcript${query}`, { actor: c.operator.email });
@@ -410,17 +332,8 @@ export function registerSessionRoutes(router: express.Router): void {
       if (requestId !== undefined && !validCommandId(requestId)) {
         return res.status(400).json({ error: "Peon-Request-Id must be a non-empty idempotency key of at most 255 characters", code: "BAD_REQUEST" });
       }
-      const transport = await selectSessionTransport(
-        req, res, c, "session.start",
-        typeof requestId === "string" ? requestId : undefined,
-      );
-      if (transport === "unavailable") return;
-      const reverseSelected = transport === "reverse";
       const indexedProject = projectKey ? await getIndexedProject(c.record.peonId, projectKey) : null;
       let projectId: string | null = indexedProject?.projectId ?? null;
-      if (projectKey && !projectId && reverseSelected) {
-        return res.status(404).json({ error: "unknown project", code: "UNKNOWN_PROJECT" });
-      }
       if (projectKey && !projectId && c.role !== "owner") {
         const project = await callPeon(connOfRecord(c.record), "GET", `/projects/${encodeURIComponent(projectKey)}`, { actor: c.operator.email });
         projectId = project.ok && project.json && typeof project.json === "object" && typeof (project.json as { projectId?: unknown }).projectId === "string"
@@ -440,25 +353,6 @@ export function registerSessionRoutes(router: express.Router): void {
           code: "AGENT_UNAVAILABLE",
           authState: blocked,
         });
-      }
-      if (reverseSelected) {
-        const payload = { ...req.body } as Record<string, unknown>;
-        delete payload.projectKey;
-        if (projectId) payload.projectId = projectId;
-        const reverse = await reverseSession(
-          req, c, "session.start", {}, payload as JsonObject,
-          typeof requestId === "string" ? requestId : undefined,
-        );
-        const sessionId = reverse.status === 200 && reverse.body.result && typeof reverse.body.result === "object"
-          ? (reverse.body.result as { id?: unknown }).id : null;
-        if (typeof sessionId === "string") {
-          await recordSessionRequest({
-            workspaceId: c.workspaceId, userId: c.userId, peonId: c.record.peonId, sessionId,
-            occurrenceKey: `create:${typeof requestId === "string" ? requestId : sessionId}`,
-          }).catch(() => undefined);
-        }
-        relayReverseSession(res, "session.start", reverse);
-        return;
       }
       const result = await callPeon(connOfRecord(c.record), "POST", "/sessions", {
         actor: c.operator.email,
@@ -494,21 +388,6 @@ export function registerSessionRoutes(router: express.Router): void {
     const commandId = req.headers["peon-request-id"];
     if (!validCommandId(commandId)) return res.status(400).json({ error: "Peon-Request-Id must be a non-empty idempotency key of at most 255 characters", code: "BAD_REQUEST" });
     const sid = String(req.params.sid);
-    const transport = await selectSessionTransport(req, res, c, "session.followup", commandId);
-    if (transport === "unavailable") return;
-    if (transport === "reverse") {
-      const payload = { ...req.body } as Record<string, unknown>;
-      delete payload.commandId;
-      const reverse = await reverseSession(req, c, "session.followup", { sessionId: sid }, payload as JsonObject, commandId);
-      if (reverse.status === 200) {
-        await recordSessionRequest({
-          workspaceId: c.workspaceId, userId: c.userId, peonId: c.record.peonId,
-          sessionId: sid, occurrenceKey: `followup:${commandId}`,
-        }).catch(() => undefined);
-      }
-      relayReverseSession(res, "session.followup", reverse);
-      return;
-    }
     const result = await runIdempotentFollowup(c.record.peonId, sid, commandId, req.body, () =>
       callPeon(connOfRecord(c.record), "POST", `/sessions/${encodeURIComponent(sid)}/followup`, { actor: c.operator.email, body: req.body, requestId: commandId }),
     );
@@ -523,69 +402,26 @@ export function registerSessionRoutes(router: express.Router): void {
     }
     await indexAcceptedSession(result, c.workspaceId, c.record.peonId);
     relay(result, res);
-  }, {
-    reverseCommandOperation: "session.followup",
-    idempotencyKey: (req) => typeof req.headers["peon-request-id"] === "string"
-      ? req.headers["peon-request-id"] : undefined,
   }));
   router.post(`${wp}/sessions/:sid/attention/read`, withWorkspaceSession(async (req, res, c) => {
     await markSessionAttentionRead(c.workspaceId, c.userId, c.record.peonId, String(req.params.sid));
     res.json({ ok: true });
   }));
   router.get(`${wp}/sessions/:sid/queue`, withWorkspaceSession(async (req, res, c) => {
-    const sid = String(req.params.sid);
-    const transport = await selectSessionTransport(req, res, c, "session.queue.list");
-    if (transport === "unavailable") return;
-    if (transport === "reverse") {
-      return relayReverseSession(res, "session.queue.list", await reverseSession(
-        req, c, "session.queue.list", { sessionId: sid }, {},
-      ));
-    }
     relay(await callPeon(connOfRecord(c.record), "GET", `/sessions/${encodeURIComponent(String(req.params.sid))}/queue`, { actor: c.operator.email }), res);
-  }, { reverseCommandOperation: "session.queue.list" }));
+  }));
   router.post(`${wp}/sessions/:sid/queue`, withWorkspaceSession(async (req, res, c) => {
     const sid = String(req.params.sid);
     const commandId = typeof req.body?.commandId === "string" ? req.body.commandId : null;
-    const transport = await selectSessionTransport(
-      req, res, c, "session.queue.add", commandId ?? undefined,
-    );
-    if (transport === "unavailable") return;
-    if (transport === "reverse") {
-      const payload = { ...req.body } as Record<string, unknown>;
-      delete payload.commandId;
-      const reverse = await reverseSession(
-        req, c, "session.queue.add", { sessionId: sid }, payload as JsonObject,
-        commandId ?? undefined,
-      );
-      if (reverse.status === 200 && commandId) {
-        await recordSessionRequest({
-          workspaceId: c.workspaceId, userId: c.userId, peonId: c.record.peonId,
-          sessionId: sid, occurrenceKey: `queue:${commandId}`,
-        }).catch(() => undefined);
-      }
-      relayReverseSession(res, "session.queue.add", reverse);
-      return;
-    }
     const result = await callPeon(connOfRecord(c.record), "POST", `/sessions/${encodeURIComponent(sid)}/queue`, { actor: c.operator.email, body: req.body });
+    await indexAcceptedSession(result, c.workspaceId, c.record.peonId);
     if (result.ok && commandId) {
       await recordSessionRequest({ workspaceId: c.workspaceId, userId: c.userId, peonId: c.record.peonId, sessionId: sid, occurrenceKey: `queue:${commandId}` }).catch(() => undefined);
     }
     relay(result, res);
-  }, {
-    reverseCommandOperation: "session.queue.add",
-    idempotencyKey: (req) => typeof req.body?.commandId === "string"
-      ? req.body.commandId : undefined,
   }));
   router.post(`${wp}/sessions/:sid/queue/:itemId/send`, withWorkspaceSession(async (req, res, c) => {
     const sid = String(req.params.sid);
-    const itemId = String(req.params.itemId);
-    const transport = await selectSessionTransport(req, res, c, "session.queue.send-now");
-    if (transport === "unavailable") return;
-    if (transport === "reverse") {
-      return relayReverseSession(res, "session.queue.send-now", await reverseSession(
-        req, c, "session.queue.send-now", { sessionId: sid }, { itemId },
-      ));
-    }
     const result = await callPeon(
       connOfRecord(c.record),
       "POST",
@@ -608,33 +444,21 @@ export function registerSessionRoutes(router: express.Router): void {
       }
     }
     relay(result, res);
-  }, { reverseCommandOperation: "session.queue.send-now" }));
+  }));
   router.patch(`${wp}/sessions/:sid/queue/:itemId`, withWorkspaceSession(async (req, res, c) => {
     const sid = String(req.params.sid);
     const itemId = String(req.params.itemId);
-    const transport = await selectSessionTransport(req, res, c, "session.queue.edit");
-    if (transport === "unavailable") return;
-    if (transport === "reverse") {
-      return relayReverseSession(res, "session.queue.edit", await reverseSession(
-        req, c, "session.queue.edit", { sessionId: sid }, { itemId, prompt: req.body?.prompt } as JsonObject,
-      ));
-    }
-    relay(await callPeon(
+    const result = await callPeon(
       connOfRecord(c.record), "PATCH",
       `/sessions/${encodeURIComponent(sid)}/queue/${encodeURIComponent(itemId)}`,
       { actor: c.operator.email, body: req.body },
-    ), res);
-  }, { reverseCommandOperation: "session.queue.edit" }));
+    );
+    await indexAcceptedSession(result, c.workspaceId, c.record.peonId);
+    relay(result, res);
+  }));
   router.delete(`${wp}/sessions/:sid/queue/:itemId`, withWorkspaceSession(async (req, res, c) => {
     const sid = String(req.params.sid);
     const itemId = String(req.params.itemId);
-    const transport = await selectSessionTransport(req, res, c, "session.queue.remove");
-    if (transport === "unavailable") return;
-    if (transport === "reverse") {
-      return relayReverseSession(res, "session.queue.remove", await reverseSession(
-        req, c, "session.queue.remove", { sessionId: sid }, { itemId },
-      ));
-    }
     const queue = await callPeon(connOfRecord(c.record), "GET", `/sessions/${encodeURIComponent(sid)}/queue`, { actor: c.operator.email });
     const items = queue.ok && queue.json && typeof queue.json === "object" && Array.isArray((queue.json as { items?: unknown }).items)
       ? (queue.json as { items: Array<{ id?: unknown; commandId?: unknown }> }).items
@@ -648,26 +472,19 @@ export function registerSessionRoutes(router: express.Router): void {
     );
     if (result.ok && typeof removedCommandId === "string") await cancelSessionRequest(c.record.peonId, sid, `queue:${removedCommandId}`).catch(() => undefined);
     relay(result, res);
-  }, { reverseCommandOperation: "session.queue.remove" }));
+  }));
   // Stop is self-healing: a 409 SESSION_NOT_RUNNING means the operator pressed
   // Stop on a run that had already ended, so republish the Peon's authoritative
   // record and let the stale "running" state clear everywhere.
   router.post(`${wp}/sessions/:sid/cancel`, withWorkspaceSession(async (req, res, c) => {
     const sid = String(req.params.sid);
-    const transport = await selectSessionTransport(req, res, c, "session.cancel");
-    if (transport === "unavailable") return;
-    if (transport === "reverse") {
-      return relayReverseSession(res, "session.cancel", await reverseSession(
-        req, c, "session.cancel", { sessionId: sid }, {},
-      ));
-    }
     const result = await cancelSessionRun({
       cancel: () => callPeon(connOfRecord(c.record), "POST", `/sessions/${encodeURIComponent(sid)}/cancel`, { actor: c.operator.email }),
       snapshot: () => callPeon(connOfRecord(c.record), "GET", `/sessions/${encodeURIComponent(sid)}`, { actor: c.operator.email }),
       publish: (snapshot) => indexAcceptedSession(snapshot, c.workspaceId, c.record.peonId),
     });
     relay(result, res);
-  }, { reverseCommandOperation: "session.cancel" }));
+  }));
   router.delete(`${wp}/sessions/:sid`, withWorkspaceSession(async (req, res, c) => {
     const sid = String(req.params.sid);
     const transport = await selectSessionTransport(req, res, c, "session.delete");

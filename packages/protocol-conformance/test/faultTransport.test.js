@@ -67,8 +67,8 @@ test("reconnect generation fencing discards held stale frames", () => {
 
 test("ephemeral reorder is deterministic and transport queues are bounded", () => {
   const transport = new DeterministicTransport({ maxQueuedFrames: 2 });
-  transport.send({ type: "folder_list_page", page: 1 }, { fault: "hold" });
-  transport.send({ type: "folder_list_page", page: 2 }, { fault: "hold" });
+  transport.send({ type: "ephemeral_page", page: 1 }, { fault: "hold" });
+  transport.send({ type: "ephemeral_page", page: 2 }, { fault: "hold" });
   assert.deepEqual(transport.releaseHeld("reverse").map((entry) => entry.frame.page), [2, 1]);
 
   const bounded = new DeterministicDeliveryHarness({ maxMessages: 1, maxBytes: 256 });

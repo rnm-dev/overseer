@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import path from "node:path";
 import { WebSocket } from "ws";
 import { canAccessPeon, canAccessProject } from "../access/index.js";
 import { getUserById, type AuthContext } from "../auth/index.js";
@@ -7,7 +6,6 @@ import { membership } from "../workspaces/index.js";
 import { registry } from "../registry/index.js";
 import { getIndexedSession } from "../sessions/sessionQueries.js";
 import { getIndexedProjectById } from "../../projectIndex.js";
-import { getDaemonConfigurationProjection } from "../daemonConfiguration.js";
 import {
   getPeonConnection,
   isCurrentPeonConnection,
@@ -56,23 +54,10 @@ import {
   type ReverseCommandRecord,
   type ReverseCommandTarget,
 } from "./reverseCommandTypes.js";
-import { AttachmentReceiptError } from "../sessions/attachmentReceipts.js";
 
 const DEFAULT_WAIT_MS = 15_000;
 const MAX_WAIT_MS = 30_000;
 const MAX_SOCKET_BUFFER_BYTES = 4 * 1024 * 1024;
-const SESSION_ATTACHMENT_OPERATIONS = new Set<ReverseCommandOperation>([
-  "session.start",
-  "session.followup",
-  "session.queue.add",
-]);
-const IMAGE_MIME_BY_EXTENSION: Record<string, string> = {
-  ".gif": "image/gif",
-  ".jpeg": "image/jpeg",
-  ".jpg": "image/jpeg",
-  ".png": "image/png",
-  ".webp": "image/webp",
-};
 
 // One entry per operation, keyed by the operation union so the compiler refuses
 // a command that never declared its payload. There is deliberately no fallback:
@@ -98,15 +83,6 @@ const PAYLOAD_FIELDS: Record<ReverseCommandOperation, readonly string[]> = {
   "project.quick-links.create": ["title", "url"],
   "project.quick-links.update": ["id", "title", "url"],
   "project.quick-links.delete": ["id"],
-  "session.detail": [],
-  "session.cancel": [],
-  "session.start": ["prompt", "attachments", "permissionMode", "model", "reasoningEffort", "title", "projectId", "dir", "expectsOutcome", "agent"],
-  "session.followup": ["prompt", "attachments", "permissionMode", "model", "reasoningEffort"],
-  "session.queue.list": [],
-  "session.queue.add": ["prompt", "attachments", "permissionMode", "model", "reasoningEffort", "startNow"],
-  "session.queue.edit": ["itemId", "prompt"],
-  "session.queue.remove": ["itemId"],
-  "session.queue.send-now": ["itemId"],
   "session.metadata.patch": ["title"],
   "session.delete": [],
   // Mirrors the per-operation contract Peon already enforces in
@@ -128,68 +104,6 @@ const PAYLOAD_FIELDS: Record<ReverseCommandOperation, readonly string[]> = {
   "armory.mcp": [],
   "armory.operation": [],
 };
-
-function attachmentBasename(value: string): string {
-  return value.split(/[\\/]/).filter(Boolean).at(-1) ?? "attachment";
-}
-
-function attachmentMimeType(attachment: Record<string, unknown>, filename: string): string {
-  if (typeof attachment.mimetype === "string" && attachment.mimetype.length > 0) {
-    return attachment.mimetype;
-  }
-  if (attachment.type === "image") {
-    return IMAGE_MIME_BY_EXTENSION[path.posix.extname(filename).toLowerCase()]
-      ?? "application/octet-stream";
-  }
-  return "application/octet-stream";
-}
-
-function attachmentAbsolutePath(root: string | null, requestedPath: string): string {
-  if (!root || path.posix.isAbsolute(requestedPath) || path.win32.isAbsolute(requestedPath)) {
-    return requestedPath;
-  }
-  const flavor = /^(?:[A-Za-z]:[\\/]|\\\\)/.test(root) ? path.win32 : path.posix;
-  const resolvedRoot = flavor.resolve(root);
-  const resolved = flavor.resolve(resolvedRoot, requestedPath);
-  const relative = flavor.relative(resolvedRoot, resolved);
-  if (relative === "" || (!relative.startsWith("..") && !flavor.isAbsolute(relative))) return resolved;
-  throw new ReverseCommandGatewayError(400, "BAD_COMMAND", "session attachment escapes the Peon file sandbox");
-}
-
-async function canonicalSessionWirePayload(
-  peonId: string,
-  operation: ReverseCommandOperation,
-  payload: JsonObject,
-): Promise<JsonObject> {
-  if (!SESSION_ATTACHMENT_OPERATIONS.has(operation) || !Array.isArray(payload.attachments)) return payload;
-  const configuration = await getDaemonConfigurationProjection(peonId);
-  const configuredRoot = typeof configuration?.values.fileTransferRoot === "string"
-    && configuration.values.fileTransferRoot.trim()
-    ? configuration.values.fileTransferRoot.trim()
-    : null;
-  return {
-    ...payload,
-    attachments: payload.attachments.map((value) => {
-      const attachment = value as Record<string, unknown>;
-      const requestedPath = String(attachment.path);
-      const filename = typeof attachment.filename === "string" && attachment.filename
-        ? attachment.filename
-        : attachmentBasename(requestedPath);
-      const originalName = typeof attachment.originalName === "string" && attachment.originalName
-        ? attachment.originalName
-        : typeof attachment.name === "string" && attachment.name
-          ? attachment.name
-          : filename;
-      return {
-        originalName,
-        filename,
-        path: attachmentAbsolutePath(configuredRoot, requestedPath),
-        size: Number(attachment.size),
-        mimetype: attachmentMimeType(attachment, filename),
-      };
-    }),
-  };
-}
 
 export interface SubmitReverseCommandInput {
   workspaceId: string;
@@ -400,9 +314,6 @@ export class ReverseCommandGateway {
       };
     } catch (error) {
       if (error instanceof ReverseCommandGatewayError) return errorResult(error);
-      if (error instanceof AttachmentReceiptError) {
-        return errorResult(new ReverseCommandGatewayError(409, error.code, error.message));
-      }
       throw error;
     }
   }
@@ -607,55 +518,6 @@ export class ReverseCommandGateway {
         (nullable && value === null)
         || (typeof value === "string" && value.trim().length > 0
           && Buffer.byteLength(value, "utf8") <= maximum);
-      const turn = ["session.start", "session.followup", "session.queue.add"].includes(input.operation);
-      if (turn && (!bytes(payload.prompt, 32 * 1024)
-        || (payload.permissionMode !== undefined && payload.permissionMode !== "plan")
-        || (payload.model !== undefined && !bytes(payload.model, 200))
-        || (payload.reasoningEffort !== undefined && !bytes(payload.reasoningEffort, 64)))) {
-        throw new ReverseCommandGatewayError(400, "BAD_COMMAND", "invalid session turn payload");
-      }
-      if (turn && payload.attachments !== undefined) {
-        if (!Array.isArray(payload.attachments) || payload.attachments.length > 20) {
-          throw new ReverseCommandGatewayError(400, "BAD_COMMAND", "invalid session attachments");
-        }
-        for (const attachment of payload.attachments) {
-          strictObject(attachment, [
-            "type", "path", "transferId", "size", "sha256", "name",
-            "originalName", "filename", "mimetype",
-          ], "attachment");
-          if ((attachment.type !== undefined && attachment.type !== "file" && attachment.type !== "image")
-            || typeof attachment.path !== "string" || attachment.path.length > 4_096
-            || !Number.isSafeInteger(attachment.size) || Number(attachment.size) < 0
-            || (attachment.name !== undefined && (typeof attachment.name !== "string" || attachment.name.length > 512))
-            || (attachment.originalName !== undefined && (typeof attachment.originalName !== "string" || attachment.originalName.length > 512))
-            || (attachment.filename !== undefined && (typeof attachment.filename !== "string" || attachment.filename.length > 512))
-            || (attachment.mimetype !== undefined && (typeof attachment.mimetype !== "string" || attachment.mimetype.length > 128))
-            || (["session.start", "session.followup"].includes(input.operation)
-              && (typeof attachment.transferId !== "string"
-                || typeof attachment.sha256 !== "string"))) {
-            throw new ReverseCommandGatewayError(400, "BAD_COMMAND", "invalid session attachment");
-          }
-        }
-      }
-      if (input.operation === "session.start"
-        && ((payload.title !== undefined && !bytes(payload.title, 512, true))
-          || (payload.projectId !== undefined && !isCanonicalUuid(payload.projectId))
-          || (payload.dir !== undefined && (typeof payload.dir !== "string" || payload.dir.length > 4_096))
-          || (payload.expectsOutcome !== undefined && typeof payload.expectsOutcome !== "boolean")
-          || (payload.agent !== undefined && !bytes(payload.agent, 200)))) {
-        throw new ReverseCommandGatewayError(400, "BAD_COMMAND", "invalid session start payload");
-      }
-      if (input.operation === "session.queue.add"
-        && payload.startNow !== undefined && typeof payload.startNow !== "boolean") {
-        throw new ReverseCommandGatewayError(400, "BAD_COMMAND", "invalid queue startNow");
-      }
-      if (["session.queue.edit", "session.queue.remove", "session.queue.send-now"].includes(input.operation)
-        && !isCanonicalUuid(payload.itemId)) {
-        throw new ReverseCommandGatewayError(400, "BAD_COMMAND", "invalid queue item");
-      }
-      if (input.operation === "session.queue.edit" && !bytes(payload.prompt, 32 * 1024)) {
-        throw new ReverseCommandGatewayError(400, "BAD_COMMAND", "invalid queue prompt");
-      }
       if (input.operation === "session.metadata.patch" && !bytes(payload.title, 512, true)) {
         throw new ReverseCommandGatewayError(400, "BAD_COMMAND", "invalid session title");
       }
@@ -715,14 +577,8 @@ export class ReverseCommandGateway {
     }
     const target: ReverseCommandTarget = { ...input.target, peonId: input.peonId };
     strictObject(target as unknown as JsonObject, ["peonId", "sessionId", "projectId", "packageId", "operationId"], "target");
-    if (session && input.operation !== "session.start" && !isCanonicalUuid(target.sessionId)) {
+    if (session && !isCanonicalUuid(target.sessionId)) {
       throw new ReverseCommandGatewayError(400, "BAD_COMMAND", `${input.operation} requires target.sessionId`);
-    }
-    if (session && input.operation === "session.start" && target.sessionId !== undefined) {
-      throw new ReverseCommandGatewayError(400, "BAD_COMMAND", "session.start cannot target an existing session");
-    }
-    if (input.operation === "session.start" && target.projectId !== undefined) {
-      throw new ReverseCommandGatewayError(400, "BAD_COMMAND", "session.start targets only the authenticated Peon");
     }
     if ((runtime || configuration || armory || update) && target.sessionId !== undefined) {
       throw new ReverseCommandGatewayError(400, "BAD_COMMAND", "operation targets only the Peon");
@@ -749,7 +605,7 @@ export class ReverseCommandGateway {
       payload,
       expected,
     });
-    const wirePayload = await canonicalSessionWirePayload(input.peonId, input.operation, payload);
+    const wirePayload = payload;
     const draft = {
       workspaceId: input.workspaceId,
       peonId: input.peonId,
@@ -759,9 +615,6 @@ export class ReverseCommandGateway {
       actor,
       target,
       payload: reverseCommandPayloadIsTransient(input.operation) ? {} : wirePayload,
-      ...(SESSION_ATTACHMENT_OPERATIONS.has(input.operation)
-        ? { attachmentPayload: payload }
-        : {}),
       expected,
       requestBytes: 0,
       requestedAt,
@@ -808,7 +661,6 @@ export class ReverseCommandGateway {
       return;
     }
     if (!target.sessionId) {
-      if (operation === "session.start") return;
       if (role !== "owner") throw new ReverseCommandGatewayError(403, "FORBIDDEN", "owner access required");
       return;
     }

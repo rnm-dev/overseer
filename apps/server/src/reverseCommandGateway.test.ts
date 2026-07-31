@@ -15,18 +15,14 @@ import {
   assertSafeReverseCommandResult,
   getReverseCommand,
   hasActiveUpdateCommand,
-  parseDurableReverseCommandResult,
   reverseCommandHttpResult,
   reverseCommandGateway,
-  type JsonObject,
   type ReverseCommandHttpResult,
   type ReverseCommandResultFrame,
-  type ReverseCommandResultStatus,
 } from "./modules/reverseCommands/index.js";
 import { getPeonConnection } from "./peonConnections.js";
 import { attachPeonSocket } from "./peonSocket.js";
 import { registry } from "./registry.js";
-import { recordCommittedAttachmentReceipt } from "./modules/sessions/attachmentReceipts.js";
 
 const ownerId = "b169219d-45f6-4f42-b78f-3fb931dac7ee";
 const owner = { userId: ownerId, email: "operator@example.com" };
@@ -46,7 +42,7 @@ function registryCommand(input: {
 }) {
   return {
     ...input,
-    operation: "session.cancel" as const,
+    operation: "session.delete" as const,
     actor: owner,
     target: { peonId: input.peonId, sessionId },
     payload: {},
@@ -107,7 +103,7 @@ interface Fixture {
 
 async function fixture(
   index: number,
-  operations = ["session.cancel"],
+  operations = ["session.delete"],
   socketOptions: Parameters<typeof attachPeonSocket>[1] = {},
 ): Promise<Fixture> {
   const db = newDb();
@@ -143,7 +139,7 @@ async function fixture(
   await query(
     `INSERT INTO sessions (peon_id,session_id,status,raw,synced_at)
      VALUES ($1,$2,'running',$3,$4)`,
-    [peonId, sessionId, JSON.stringify({ id: sessionId, status: "running" }), Date.now()],
+    [peonId, sessionId, JSON.stringify({ id: sessionId, deleted: true }), Date.now()],
   );
   const server = http.createServer();
   const wss = attachPeonSocket(server, socketOptions);
@@ -194,7 +190,7 @@ async function fixture(
     epoch: `catalog-${index}`,
     revision: 0,
     barrierSeq: 0,
-    sessions: [{ id: sessionId, status: "running" }],
+    sessions: [{ id: sessionId, deleted: true }],
     nextCursor: null,
     hasMore: false,
   }));
@@ -238,7 +234,7 @@ async function reconnect(
       },
       "reverse-command-v1": {
         protocol: 1,
-        operations: ["session.cancel"],
+        operations: ["session.delete"],
       },
     },
     delivery: {
@@ -282,7 +278,7 @@ test("gateway derives the actor, deduplicates browser retries, and commits a dur
       workspaceId: f.workspaceId,
       peonId: f.peonId,
       auth: { ...auth, email: "forged@example.com" },
-      operation: "session.cancel",
+      operation: "session.delete",
       target: { sessionId },
       payload: {},
       expected: null,
@@ -293,7 +289,7 @@ test("gateway derives the actor, deduplicates browser retries, and commits a dur
       workspaceId: f.workspaceId,
       peonId: f.peonId,
       auth,
-      operation: "session.cancel",
+      operation: "session.delete",
       target: { sessionId },
       commandId,
       waitMs: 2_000,
@@ -307,7 +303,7 @@ test("gateway derives the actor, deduplicates browser retries, and commits a dur
       type: "command_accepted",
       protocol: 1,
       commandId,
-      operation: "session.cancel",
+      operation: "session.delete",
       state: "accepted",
       replayed: false,
       acceptedAt: Date.now(),
@@ -323,11 +319,11 @@ test("gateway derives the actor, deduplicates browser retries, and commits a dur
         type: "command_result",
         protocol: 1,
         commandId,
-        operation: "session.cancel",
+        operation: "session.delete",
         status: "applied",
         code: "OK",
         completedAt: Date.now(),
-        result: { sessionId, sessionStatus: "completed" },
+        result: { sessionId, deleted: true },
       },
     }));
     await f.received.waitFor((frame) => frame.type === "durable_ack" && frame.cursor === "0000000000000001");
@@ -356,11 +352,11 @@ test("gateway derives the actor, deduplicates browser retries, and commits a dur
         type: "command_result",
         protocol: 1,
         commandId,
-        operation: "session.cancel",
+        operation: "session.delete",
         status: "applied",
         code: "OK",
         completedAt: (await getReverseCommand(f.workspaceId, f.peonId, commandId))!.completedAt,
-        result: { sessionId, sessionStatus: "completed" },
+        result: { sessionId, deleted: true },
       }),
     }));
     await new Promise((resolve) => setTimeout(resolve, 20));
@@ -489,7 +485,7 @@ test("ACL/capability failures and forged actors are exclusive and never create o
       workspaceId: f.workspaceId,
       peonId: f.peonId,
       auth,
-      operation: "session.cancel",
+      operation: "session.delete",
       target: { sessionId },
       commandId: "128f4f0c-9f30-7a61-bf1a-66d2582bdb4a",
       waitMs: 0,
@@ -504,7 +500,7 @@ test("ACL/capability failures and forged actors are exclusive and never create o
       peonId: f.peonId,
       auth,
       actor: { userId: ownerId, email: "attacker@example.com" },
-      operation: "session.cancel",
+      operation: "session.delete",
       target: { sessionId },
       commandId: "228f4f0c-9f30-7a61-bf1a-66d2582bdb4a",
       waitMs: 0,
@@ -516,70 +512,8 @@ test("ACL/capability failures and forged actors are exclusive and never create o
   }
 });
 
-test("session attachment receipts become the canonical Peon wire shape", async () => {
-  const f = await fixture(29, ["session.start"]);
-  const commandId = "298f4f0c-9f30-7a61-bf1a-66d2582bdb4a";
-  const sha256 = "7".repeat(64);
-  try {
-    await query(
-      `INSERT INTO peon_daemon_configuration
-        (peon_id,workspace_id,epoch,revision,schema_version,digest,updated_at,values,last_command_id)
-       VALUES ($1,$2,'configuration-29',1,1,$3,$4,$5,NULL)`,
-      [
-        f.peonId,
-        f.workspaceId,
-        "8".repeat(64),
-        Date.now(),
-        JSON.stringify({ fileTransferRoot: "/tmp/peon-files" }),
-      ],
-    );
-    const receipt = await recordCommittedAttachmentReceipt({
-      workspaceId: f.workspaceId,
-      peonId: f.peonId,
-      actor: owner,
-      transferId: "398f4f0c-9f30-7a61-bf1a-66d2582bdb4a",
-      path: "uploads/draft/pasted-image.png",
-      size: 123,
-      sha256,
-    });
-    const response = await reverseCommandGateway.submit({
-      workspaceId: f.workspaceId,
-      peonId: f.peonId,
-      auth,
-      operation: "session.start",
-      target: {},
-      payload: {
-        prompt: "inspect",
-        attachments: [{
-          type: "image",
-          path: receipt.path,
-          transferId: receipt.transferId,
-          size: receipt.size,
-          sha256: receipt.sha256,
-        }],
-      },
-      commandId,
-      waitMs: 0,
-    });
-    assert.equal(response.status, 202);
-    const command = await f.received.waitFor((frame) =>
-      frame.type === "command" && frame.commandId === commandId);
-    assert.deepEqual((command.payload as { attachments: unknown[] }).attachments, [{
-      originalName: "pasted-image.png",
-      filename: "pasted-image.png",
-      path: "/tmp/peon-files/uploads/draft/pasted-image.png",
-      size: 123,
-      mimetype: "image/png",
-    }]);
-    assert.deepEqual((await getReverseCommand(f.workspaceId, f.peonId, commandId))?.payload,
-      command.payload);
-  } finally {
-    await f.close();
-  }
-});
-
 test("pre-admission command refusals terminate only their command and preserve the socket", async () => {
-  const f = await fixture(30, ["session.start"]);
+  const f = await fixture(30, ["session.delete"]);
   const firstId = "308f4f0c-9f30-7a61-bf1a-66d2582bdb4a";
   const secondId = "318f4f0c-9f30-7a61-bf1a-66d2582bdb4a";
   try {
@@ -587,9 +521,8 @@ test("pre-admission command refusals terminate only their command and preserve t
       workspaceId: f.workspaceId,
       peonId: f.peonId,
       auth,
-      operation: "session.start",
-      target: {},
-      payload: { prompt: "malformed at the remote boundary" },
+      operation: "session.delete",
+      target: { sessionId },
       commandId: firstId,
       waitMs: 2_000,
     });
@@ -598,7 +531,7 @@ test("pre-admission command refusals terminate only their command and preserve t
       type: "command_result",
       protocol: 1,
       commandId: firstId,
-      operation: "session.start",
+      operation: "session.delete",
       status: "rejected",
       code: "BAD_COMMAND",
       completedAt: Date.now(),
@@ -617,9 +550,8 @@ test("pre-admission command refusals terminate only their command and preserve t
       workspaceId: f.workspaceId,
       peonId: f.peonId,
       auth,
-      operation: "session.start",
-      target: {},
-      payload: { prompt: "the socket still works" },
+      operation: "session.delete",
+      target: { sessionId },
       commandId: secondId,
       waitMs: 0,
     });
@@ -639,7 +571,7 @@ test("gateway rejects non-object payloads before admission", async () => {
         workspaceId: f.workspaceId,
         peonId: f.peonId,
         auth,
-        operation: "session.cancel",
+        operation: "session.delete",
         target: { sessionId },
         payload,
         commandId: `${offset + 1}48f4f0c-9f30-7a61-bf1a-66d2582bdb4a`,
@@ -658,117 +590,24 @@ test("gateway rejects non-object payloads before admission", async () => {
 });
 
 test("hello intersects supported operations instead of rejecting a newer Peon", async () => {
-  const f = await fixture(15, ["session.cancel", "project.archive", "project.unarchive"]);
+  const f = await fixture(15, ["session.delete", "project.archive", "project.unarchive"]);
   try {
     const result = await reverseCommandGateway.submit({
       workspaceId: f.workspaceId,
       peonId: f.peonId,
       auth,
-      operation: "session.cancel",
+      operation: "session.delete",
       target: { sessionId },
       commandId: "358f4f0c-9f30-7a61-bf1a-66d2582bdb4a",
       waitMs: 0,
     });
     assert.equal(result.status, 202);
     await f.received.waitFor(
-      (frame) => frame.type === "command" && frame.operation === "session.cancel",
+      (frame) => frame.type === "command" && frame.operation === "session.delete",
     );
   } finally {
     await f.close();
   }
-});
-
-test("session.cancel accepts only its exact safe status/code/detail tuples", () => {
-  const statuses: ReverseCommandResultStatus[] = [
-    "applied", "noop", "rejected", "conflict", "cancelled", "failed",
-  ];
-  const codes = [
-    "OK",
-    "BAD_COMMAND",
-    "COMMAND_EXPIRED",
-    "COMMAND_ID_REUSED",
-    "COMMAND_LEDGER_FULL",
-    "INTERNAL",
-    "PERSIST_FAILED",
-    "SESSION_NOT_RUNNING",
-    "UNKNOWN_SESSION",
-  ];
-  const details: Array<{ name: string; value: JsonObject | null }> = [
-    { name: "null", value: null },
-    { name: "completed", value: { sessionId, sessionStatus: "completed" } },
-    { name: "cancelled", value: { sessionId, sessionStatus: "cancelled" } },
-    { name: "running", value: { sessionId, sessionStatus: "running" } },
-    { name: "extra", value: { sessionId, sessionStatus: "completed", secret: "unsafe" } },
-  ];
-  const rejected = new Set([
-    "BAD_COMMAND",
-    "COMMAND_EXPIRED",
-    "COMMAND_LEDGER_FULL",
-    "SESSION_NOT_RUNNING",
-    "UNKNOWN_SESSION",
-  ]);
-  const failed = new Set(["INTERNAL", "PERSIST_FAILED"]);
-  const record = {
-    operation: "session.cancel" as const,
-    target: { peonId: "matrix-peon", sessionId },
-  };
-
-  for (const status of statuses) {
-    for (const code of codes) {
-      for (const detail of details) {
-        const frame: ReverseCommandResultFrame = {
-          type: "command_result",
-          protocol: 1,
-          commandId: "528f4f0c-9f30-7a61-bf1a-66d2582bdb4a",
-          operation: "session.cancel",
-          status,
-          code,
-          completedAt: 1,
-          result: detail.value,
-        };
-        const valid = ((status === "applied" || status === "noop")
-            && code === "OK" && (detail.name === "completed" || detail.name === "cancelled"))
-          || (status === "rejected" && rejected.has(code) && detail.name === "null")
-          || (status === "conflict" && code === "COMMAND_ID_REUSED" && detail.name === "null")
-          || (status === "failed" && failed.has(code) && detail.name === "null");
-        const label = `${status}/${code}/${detail.name}`;
-        if (valid) assert.doesNotThrow(() => assertSafeReverseCommandResult(record, frame), label);
-        else assert.throws(() => assertSafeReverseCommandResult(record, frame), label);
-      }
-    }
-  }
-
-  assert.throws(() => assertSafeReverseCommandResult(record, {
-    type: "command_result",
-    protocol: 1,
-    commandId: "528f4f0c-9f30-7a61-bf1a-66d2582bdb4a",
-    operation: "session.cancel",
-    status: "applied",
-    code: "OK",
-    message: "unsafe",
-    completedAt: 1,
-    result: { sessionId, sessionStatus: "completed" },
-  }));
-
-  assert.throws(() => parseDurableReverseCommandResult({
-    type: "durable_message",
-    epoch: "delivery",
-    cursor: "1",
-    messageId: "d47f43a9-a537-4af7-abcf-ad7acfef8904",
-    priority: "critical",
-    capability: "reverse-command-v1",
-    payload: {
-      type: "command_result",
-      protocol: 1,
-      commandId: "528f4f0c-9f30-7a61-bf1a-66d2582bdb4a",
-      operation: "session.cancel",
-      status: "applied",
-      code: "OK",
-      completedAt: 1,
-      result: { sessionId, sessionStatus: "completed" },
-    },
-    credential: "must-not-be-tolerated",
-  }));
 });
 
 
@@ -780,7 +619,7 @@ test("unsafe operation tuples cannot persist, publish, return 200, or regress pr
       workspaceId: f.workspaceId,
       peonId: f.peonId,
       auth,
-      operation: "session.cancel",
+      operation: "session.delete",
       target: { sessionId },
       commandId,
       waitMs: 0,
@@ -791,7 +630,7 @@ test("unsafe operation tuples cannot persist, publish, return 200, or regress pr
       type: "command_accepted",
       protocol: 1,
       commandId,
-      operation: "session.cancel",
+      operation: "session.delete",
       state: "accepted",
       replayed: false,
       acceptedAt: Date.now(),
@@ -807,13 +646,13 @@ test("unsafe operation tuples cannot persist, publish, return 200, or regress pr
         type: "command_result",
         protocol: 1,
         commandId,
-        operation: "session.cancel",
+        operation: "session.delete",
         status: "applied",
         code: "UNKNOWN_SESSION",
         completedAt: Date.now(),
         result: {
           sessionId,
-          sessionStatus: "running",
+          deleted: true,
         },
       },
     }));
@@ -821,10 +660,10 @@ test("unsafe operation tuples cannot persist, publish, return 200, or regress pr
     const stored = await getReverseCommand(f.workspaceId, f.peonId, commandId);
     assert.equal(stored?.state, "accepted");
     assert.equal(stored?.result, null);
-    assert.equal((await query<{ status: string }>(
+    assert.equal((await query<{ status: string | null }>(
       `SELECT status FROM sessions WHERE peon_id=$1 AND session_id=$2`,
       [f.peonId, sessionId],
-    )).rows[0]?.status, "running");
+    )).rows[0]?.status, null);
     assert.equal((await query<{ count: number }>(
       `SELECT COUNT(*)::int AS count FROM events WHERE kind='command'`,
     )).rows[0]?.count, 0);
@@ -834,11 +673,11 @@ test("unsafe operation tuples cannot persist, publish, return 200, or regress pr
       type: "command_result",
       protocol: 1,
       commandId,
-      operation: "session.cancel",
+      operation: "session.delete",
       status: "applied",
       code: "UNKNOWN_SESSION",
       completedAt: Date.now(),
-      result: { sessionId, sessionStatus: "running" },
+      result: { sessionId, deleted: true },
     };
     assert.equal(reverseCommandHttpResult({
       ...stored,
@@ -853,7 +692,7 @@ test("unsafe operation tuples cannot persist, publish, return 200, or regress pr
       type: "command_result",
       protocol: 1,
       commandId,
-      operation: "session.cancel",
+      operation: "session.delete",
       status: "rejected",
       code: "UNKNOWN_SESSION",
       completedAt: Date.now(),
@@ -865,7 +704,7 @@ test("unsafe operation tuples cannot persist, publish, return 200, or regress pr
       completedAt: safeRejected.completedAt,
       terminalStatus: "applied",
       code: "OK",
-      result: { sessionId, sessionStatus: "completed" },
+      result: { sessionId, deleted: true },
       resultFrame: safeRejected,
     });
     assert.equal(mismatched.status, 502);
@@ -963,7 +802,7 @@ test("a socket replaced after durable admission fencing never receives the comma
       workspaceId: f.workspaceId,
       peonId: f.peonId,
       auth,
-      operation: "session.cancel",
+      operation: "session.delete",
       target: { sessionId },
       commandId,
       waitMs: 0,
@@ -1007,7 +846,7 @@ test("a stale connectionReady cannot rebind over the replacement generation", as
       workspaceId: f.workspaceId,
       peonId: f.peonId,
       auth,
-      operation: "session.cancel",
+      operation: "session.delete",
       target: { sessionId },
       commandId,
       waitMs: 0,
@@ -1018,7 +857,7 @@ test("a stale connectionReady cannot rebind over the replacement generation", as
       type: "command_accepted",
       protocol: 1,
       commandId,
-      operation: "session.cancel",
+      operation: "session.delete",
       state: "accepted",
       replayed: false,
       acceptedAt: Date.now(),
@@ -1054,13 +893,13 @@ test("submit during canonical hello remains unavailable and creates no stranded 
   const peonId = `f4de920f-e33e-4cf5-97d0-3a75e92660${String(index).padStart(2, "0")}`;
   const commandId = "c28f4f0c-9f30-7a61-bf1a-66d2582bdb4a";
   let duringStart: ReverseCommandHttpResult | null = null;
-  const f = await fixture(index, ["session.cancel"], {
+  const f = await fixture(index, ["session.delete"], {
     beforeCanonicalHelloAck: async () => {
       duringStart = await reverseCommandGateway.submit({
         workspaceId,
         peonId,
         auth,
-        operation: "session.cancel",
+        operation: "session.delete",
         target: { sessionId },
         commandId,
         waitMs: 0,
@@ -1087,7 +926,7 @@ test("accepted row replacement exposes ownership only after hello_ack and reconc
   const commandId = "d28f4f0c-9f30-7a61-bf1a-66d2582bdb4a";
   let helloStarts = 0;
   let replacementSubmit: ReverseCommandHttpResult | null = null;
-  const f = await fixture(index, ["session.cancel"], {
+  const f = await fixture(index, ["session.delete"], {
     beforeCanonicalHelloAck: async () => {
       helloStarts += 1;
       if (helloStarts !== 2) return;
@@ -1095,7 +934,7 @@ test("accepted row replacement exposes ownership only after hello_ack and reconc
         workspaceId: `command-workspace-${index}`,
         peonId: `f4de920f-e33e-4cf5-97d0-3a75e92660${String(index).padStart(2, "0")}`,
         auth,
-        operation: "session.cancel",
+        operation: "session.delete",
         target: { sessionId },
         commandId,
         waitMs: 0,
@@ -1108,7 +947,7 @@ test("accepted row replacement exposes ownership only after hello_ack and reconc
       workspaceId: f.workspaceId,
       peonId: f.peonId,
       auth,
-      operation: "session.cancel",
+      operation: "session.delete",
       target: { sessionId },
       commandId,
       waitMs: 0,
@@ -1119,7 +958,7 @@ test("accepted row replacement exposes ownership only after hello_ack and reconc
       type: "command_accepted",
       protocol: 1,
       commandId,
-      operation: "session.cancel",
+      operation: "session.delete",
       state: "accepted",
       replayed: false,
       acceptedAt: Date.now(),
@@ -1173,7 +1012,7 @@ test("an HTTP wait cannot miss a terminal commit before its waiter observes the 
       workspaceId: f.workspaceId,
       peonId: f.peonId,
       auth,
-      operation: "session.cancel",
+      operation: "session.delete",
       target: { sessionId },
       commandId,
       waitMs: 2_000,
@@ -1184,7 +1023,7 @@ test("an HTTP wait cannot miss a terminal commit before its waiter observes the 
       type: "command_accepted",
       protocol: 1,
       commandId,
-      operation: "session.cancel",
+      operation: "session.delete",
       state: "accepted",
       replayed: false,
       acceptedAt: Date.now(),
@@ -1200,11 +1039,11 @@ test("an HTTP wait cannot miss a terminal commit before its waiter observes the 
         type: "command_result",
         protocol: 1,
         commandId,
-        operation: "session.cancel",
+        operation: "session.delete",
         status: "applied",
         code: "OK",
         completedAt: Date.now(),
-        result: { sessionId, sessionStatus: "completed" },
+        result: { sessionId, deleted: true },
       },
     }));
     await f.received.waitFor(
@@ -1231,7 +1070,7 @@ test("an expired HTTP wait asks Peon status with the same command ID", async () 
       workspaceId: f.workspaceId,
       peonId: f.peonId,
       auth,
-      operation: "session.cancel",
+      operation: "session.delete",
       target: { sessionId },
       commandId,
       waitMs: 0,
@@ -1242,7 +1081,7 @@ test("an expired HTTP wait asks Peon status with the same command ID", async () 
       type: "command_accepted",
       protocol: 1,
       commandId,
-      operation: "session.cancel",
+      operation: "session.delete",
       state: "accepted",
       replayed: false,
       acceptedAt: Date.now(),
@@ -1253,7 +1092,7 @@ test("an expired HTTP wait asks Peon status with the same command ID", async () 
       workspaceId: f.workspaceId,
       peonId: f.peonId,
       auth,
-      operation: "session.cancel",
+      operation: "session.delete",
       target: { sessionId },
       commandId,
       waitMs: 25,
@@ -1284,7 +1123,7 @@ test("pending limits are enforced before a second command is queued", async () =
       workspaceId: f.workspaceId,
       peonId: f.peonId,
       auth,
-      operation: "session.cancel",
+      operation: "session.delete",
       target: { sessionId },
       commandId: "318f4f0c-9f30-7a61-bf1a-66d2582bdb4a",
       waitMs: 0,
@@ -1294,7 +1133,7 @@ test("pending limits are enforced before a second command is queued", async () =
       workspaceId: f.workspaceId,
       peonId: f.peonId,
       auth,
-      operation: "session.cancel",
+      operation: "session.delete",
       target: { sessionId },
       commandId: "418f4f0c-9f30-7a61-bf1a-66d2582bdb4a",
       waitMs: 0,
@@ -1316,14 +1155,14 @@ test("disconnect boundaries and a fresh gateway reconcile with the same command 
       if (record.commandId === commandId) releaseTerminalObserved();
     },
   });
-  const f = await fixture(4, ["session.cancel"], { commandGateway: gateway });
+  const f = await fixture(4, ["session.delete"], { commandGateway: gateway });
   let current = f.ws;
   try {
     const pending = await gateway.submit({
       workspaceId: f.workspaceId,
       peonId: f.peonId,
       auth,
-      operation: "session.cancel",
+      operation: "session.delete",
       target: { sessionId },
       commandId,
       waitMs: 0,
@@ -1344,7 +1183,7 @@ test("disconnect boundaries and a fresh gateway reconcile with the same command 
       type: "command_accepted",
       protocol: 1,
       commandId,
-      operation: "session.cancel",
+      operation: "session.delete",
       state: "accepted",
       replayed: true,
       acceptedAt: Date.now(),
@@ -1370,11 +1209,11 @@ test("disconnect boundaries and a fresh gateway reconcile with the same command 
       type: "command_result",
       protocol: 1,
       commandId,
-      operation: "session.cancel",
+      operation: "session.delete",
       status: "applied",
       code: "OK",
       completedAt,
-      result: { sessionId, sessionStatus: "completed" },
+      result: { sessionId, deleted: true },
     };
     third.ws.send(JSON.stringify({
       type: "command_status",
@@ -1433,13 +1272,13 @@ test("disconnect boundaries and a fresh gateway reconcile with the same command 
 test("disconnect before acceptance wakes an HTTP wait as pending, not a false timeout", async () => {
   const commandId = "558f4f0c-9f30-7a61-bf1a-66d2582bdb4a";
   const gateway = new ReverseCommandGateway();
-  const f = await fixture(30, ["session.cancel"], { commandGateway: gateway });
+  const f = await fixture(30, ["session.delete"], { commandGateway: gateway });
   try {
     const submitting = gateway.submit({
       workspaceId: f.workspaceId,
       peonId: f.peonId,
       auth,
-      operation: "session.cancel",
+      operation: "session.delete",
       target: { sessionId },
       commandId,
       waitMs: 5_000,
@@ -1460,13 +1299,13 @@ test("disconnect before acceptance wakes an HTTP wait as pending, not a false ti
 test("an actually expired wait still returns COMMAND_TIMEOUT", async () => {
   const commandId = "608f4f0c-9f30-7a61-bf1a-66d2582bdb4a";
   const gateway = new ReverseCommandGateway();
-  const f = await fixture(32, ["session.cancel"], { commandGateway: gateway });
+  const f = await fixture(32, ["session.delete"], { commandGateway: gateway });
   try {
     const result = await gateway.submit({
       workspaceId: f.workspaceId,
       peonId: f.peonId,
       auth,
-      operation: "session.cancel",
+      operation: "session.delete",
       target: { sessionId },
       commandId,
       waitMs: 25,
@@ -1486,7 +1325,7 @@ test("a stale correlated frame is ignored without closing the current control so
       type: "command_accepted",
       protocol: 1,
       commandId: "658f4f0c-9f30-7a61-bf1a-66d2582bdb4a",
-      operation: "session.cancel",
+      operation: "session.delete",
       state: "accepted",
       replayed: true,
       acceptedAt: Date.now(),

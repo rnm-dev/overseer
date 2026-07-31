@@ -1,9 +1,4 @@
 import { createHash } from "node:crypto";
-import {
-  sessions,
-  type SessionCatalogReader,
-  type SessionLifecycleContract,
-} from "../../../sessions/index.js";
 import type { PeonSocketChannel, PeonSocketFrame, PeonSocketSender } from "../peonSocketProtocol.js";
 import { ReverseCommandLedger, type ReverseCommandRecord } from "../reverseCommandLedger.js";
 import { runtimeQueryHandlers } from "./runtimeQueryHandlers.js";
@@ -48,7 +43,6 @@ export interface ReverseCommandChannelOptions {
   peonId: () => string | undefined;
   ledger?: ReverseCommandLedger;
   handlers?: Record<string, ReverseCommandHandler>;
-  sessions?: Pick<SessionCatalogReader, "get"> & Pick<SessionLifecycleContract, "cancel">;
   maxConcurrency?: number;
   perSessionConcurrency?: number;
   publicationRetryBaseMs?: number;
@@ -92,25 +86,6 @@ function commandResult(record: Pick<ReverseCommandRecord, "commandId" | "operati
   };
 }
 
-export function sessionCancelHandler(service: Pick<SessionCatalogReader, "get"> & Pick<SessionLifecycleContract, "cancel">): ReverseCommandHandler {
-  return {
-    priority: "critical",
-    maxConcurrency: 8,
-    validate: (payload, expected) => strictKeys(payload, []) && expected === null ? null : "session.cancel requires an empty payload and no expected object",
-    execute: (command) => {
-      const sessionId = command.target.sessionId!;
-      const before = service.get(sessionId);
-      if (!before) return { status: "rejected", code: "UNKNOWN_SESSION" };
-      if (before.status !== "running") {
-        return { status: "noop", code: "OK", result: { sessionId, sessionStatus: before.status } };
-      }
-      if (!service.cancel(sessionId)) return { status: "rejected", code: "SESSION_NOT_RUNNING" };
-      const after = service.get(sessionId);
-      return { status: "applied", code: "OK", result: { sessionId, sessionStatus: after?.status ?? "cancelled" } };
-    },
-  };
-}
-
 export class ReverseCommandChannel implements PeonSocketChannel {
   readonly capability = REVERSE_COMMAND_CAPABILITY;
   private readonly ledger: ReverseCommandLedger;
@@ -144,9 +119,7 @@ export class ReverseCommandChannel implements PeonSocketChannel {
 
   constructor(private readonly options: ReverseCommandChannelOptions) {
     this.ledger = options.ledger ?? new ReverseCommandLedger();
-    const sessionService = options.sessions ?? sessions;
     this.handlers = options.handlers ?? {
-      "session.cancel": sessionCancelHandler(sessionService),
       ...sessionCommandHandlers(),
       "daemon.configuration.patch": daemonConfigurationChannel.commandHandler(),
       ...projectCommandHandlers(),
@@ -339,10 +312,7 @@ export class ReverseCommandChannel implements PeonSocketChannel {
       return { error: "invalid reverse command identity or payload" };
     }
     if (target.peonId !== this.options.peonId()) return { error: "reverse command target Peon does not match authenticated socket", disconnect: true };
-    if (frame.operation === "session.start" && (target.sessionId !== undefined || target.projectId !== undefined)) {
-      return { error: "session.start targets only the authenticated Peon" };
-    }
-    if (frame.operation.startsWith("session.") && frame.operation !== "session.start"
+    if (frame.operation.startsWith("session.")
       && (target.sessionId === undefined || target.projectId !== undefined)) {
       return { error: `${frame.operation} requires only target.sessionId` };
     }
@@ -424,9 +394,7 @@ export class ReverseCommandChannel implements PeonSocketChannel {
     } catch {
       execution = { status: "failed", code: "INTERNAL" };
     }
-    if (item.command.operation === "session.cancel" && !this.validSessionCancelExecution(item.command, execution)) {
-      execution = { status: "failed", code: "INTERNAL" };
-    } else if (item.command.operation.startsWith("session.") && item.command.operation !== "session.cancel"
+    if (item.command.operation.startsWith("session.")
       && !validSessionCommandExecution(item.command, execution)) {
       execution = { status: "failed", code: "INTERNAL" };
     }
@@ -469,24 +437,6 @@ export class ReverseCommandChannel implements PeonSocketChannel {
       this.terminalRetries.set(commandId, { authority, generation, result, attempt, timer });
     };
     schedule(0);
-  }
-
-  private validSessionCancelExecution(command: ValidCommand, execution: ReverseCommandExecution): boolean {
-    if (execution.status === "applied" || execution.status === "noop") {
-      const result = execution.result;
-      return execution.code === "OK" && !!result
-        && strictKeys(result, ["sessionId", "sessionStatus"])
-        && result.sessionId === command.target.sessionId
-        && (result.sessionStatus === "completed" || result.sessionStatus === "cancelled");
-    }
-    if (execution.status === "rejected") {
-      return execution.result === undefined
-        && ["BAD_COMMAND", "COMMAND_EXPIRED", "COMMAND_LEDGER_FULL", "SESSION_NOT_RUNNING", "UNKNOWN_SESSION"].includes(execution.code);
-    }
-    if (execution.status === "conflict") return execution.code === "COMMAND_ID_REUSED" && execution.result === undefined;
-    return execution.status === "failed"
-      && (execution.code === "INTERNAL" || execution.code === "PERSIST_FAILED")
-      && execution.result === undefined;
   }
 
   private publishStored(record: ReverseCommandRecord, sender: PeonSocketSender): void {

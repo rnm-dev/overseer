@@ -344,46 +344,6 @@ test("terminal ledger persistence retries without executing the effect twice", a
   }
 });
 
-test("invalid session.cancel handler tuples fail closed to schema-valid INTERNAL", async () => {
-  const directory = mkdtempSync(path.join(os.tmpdir(), "peon-command-result-contract-"));
-  const durable: PeonSocketFrame[] = [];
-  const sender: PeonSocketSender = {
-    durable: true,
-    authority,
-    generation: 1,
-    send: () => true,
-    sendBinary: () => false,
-    sendDurable: (message) => {
-      durable.push(message);
-      return { accepted: true, epoch: "epoch", cursor: "cursor", messageId: "message" };
-    },
-    disconnect: (reason) => assert.fail(reason),
-  };
-  try {
-    const channel = new ReverseCommandChannel({
-      peonId: () => peonId,
-      ledger: new ReverseCommandLedger({ fileBase: path.join(directory, "ledger") }),
-      handlers: {
-        "session.cancel": {
-          priority: "critical",
-          validate: () => null,
-          execute: () => ({ status: "applied", code: "OK", result: { sessionId, sessionStatus: "running" } }),
-        },
-      },
-    });
-    channel.started(sender);
-    channel.negotiated(true, {}, sender);
-    channel.receive({ ...frame, operation: "session.cancel" }, sender);
-    await tick();
-    assert.equal(durable.length, 1);
-    assert.equal(durable[0]?.status, "failed");
-    assert.equal(durable[0]?.code, "INTERNAL");
-    assert.equal(durable[0]?.result, null);
-  } finally {
-    rmSync(directory, { recursive: true, force: true });
-  }
-});
-
 test("manual validation matches actor, timestamp, and target schema constraints", async () => {
   const directory = mkdtempSync(path.join(os.tmpdir(), "peon-command-schema-"));
   let effects = 0;
@@ -415,47 +375,6 @@ test("manual validation matches actor, timestamp, and target schema constraints"
     await tick();
     assert.equal(effects, 0);
     assert.equal(sent.filter((message) => message.code === "BAD_COMMAND").length, 3);
-  } finally {
-    rmSync(directory, { recursive: true, force: true });
-  }
-});
-
-test("critical cancel uses its reserved lane while normal capacity is saturated", async () => {
-  const directory = mkdtempSync(path.join(os.tmpdir(), "peon-command-critical-"));
-  const normal = deferred();
-  let cancelEffects = 0;
-  const sender: PeonSocketSender = {
-    durable: true,
-    authority,
-    generation: 1,
-    send: () => true,
-    sendBinary: () => false,
-    sendDurable: () => ({ accepted: true, epoch: "epoch", cursor: randomUUID(), messageId: randomUUID() }),
-    disconnect: (reason) => assert.fail(reason),
-  };
-  try {
-    const channel = new ReverseCommandChannel({
-      peonId: () => peonId,
-      ledger: new ReverseCommandLedger({ fileBase: path.join(directory, "ledger") }),
-      maxConcurrency: 1,
-      perSessionConcurrency: 1,
-      handlers: {
-        "test.normal": { priority: "normal", validate: () => null, execute: () => normal.promise.then(() => ({ status: "applied", code: "OK" })) },
-        "session.cancel": { priority: "critical", validate: () => null, execute: () => { cancelEffects += 1; return { status: "applied", code: "OK" }; } },
-      },
-    });
-    channel.started(sender);
-    channel.negotiated(true, {}, sender);
-    channel.receive({ ...frame, operation: "test.normal" }, sender);
-    await tick();
-    channel.receive({
-      ...frame,
-      commandId: "118f4f0c-9f30-7a61-bf1a-66d2582bdb4a",
-      operation: "session.cancel",
-    }, sender);
-    await tick();
-    assert.equal(cancelEffects, 1);
-    normal.resolve();
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }

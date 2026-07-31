@@ -9,12 +9,6 @@ import {
   releasePeonConnection,
   setPeonDaemonConfigurationIdentity,
 } from "./peonConnections.js";
-import {
-  FOLDER_LISTING_CAPABILITY,
-  FOLDER_LISTING_ENTRY_METADATA,
-  FOLDER_LISTING_ENTRY_METADATA_FEATURE,
-  folderListingOperations,
-} from "./peonFolderListing.js";
 import { authenticatePeonUpgrade } from "./peonSocketAuth.js";
 import {
   DURABLE_DELIVERY_CAPABILITY,
@@ -67,7 +61,6 @@ interface PeonClient {
 }
 
 interface PeonSocketOptions {
-  folderOperations?: typeof folderListingOperations;
   beforeCanonicalHelloAck?: () => Promise<void>;
   commandGateway?: ReverseCommandGateway;
 }
@@ -108,7 +101,6 @@ function safeControlFailure(error: unknown, fallback: string): string {
 // North-bound Peon transport. Authentication happens before the WebSocket
 // upgrade so invalid/revoked credentials never become accepted connections.
 export function attachPeonSocket(server: Server, options: PeonSocketOptions = {}): WebSocketServer {
-  const folderOperations = options.folderOperations ?? folderListingOperations;
   const commandGateway = options.commandGateway ?? reverseCommandGateway;
   const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_PAYLOAD_BYTES });
   const authenticated = new WeakMap<IncomingMessage, { record: PeonRecord; credentialGeneration: number }>();
@@ -203,21 +195,12 @@ export function attachPeonSocket(server: Server, options: PeonSocketOptions = {}
           const advertisesCatalog = advertised.includes(SESSION_CATALOG_CAPABILITY);
           const advertisesDelivery = advertised.includes(DURABLE_DELIVERY_CAPABILITY);
           const advertisesProjects = advertised.includes(PROJECT_CATALOG_CAPABILITY);
-          const advertisesFolderListing = advertised.includes(FOLDER_LISTING_CAPABILITY);
           const advertisesReverseCommands = advertised.includes(REVERSE_COMMAND_CAPABILITY);
           const advertisesTranscripts = advertised.includes(SESSION_TRANSCRIPT_CAPABILITY);
           const advertisesRuntime = advertised.includes(RUNTIME_STATE_CAPABILITY);
           const advertisesConfiguration = advertised.includes(DAEMON_CONFIGURATION_CAPABILITY);
           const advertisedChannels = frame.channels && typeof frame.channels === "object" && !Array.isArray(frame.channels)
             ? frame.channels as Record<string, unknown>
-            : {};
-          const folderChannel = advertisedChannels[FOLDER_LISTING_CAPABILITY];
-          const advertisesFolderEntryMetadata = advertisesFolderListing
-            && Boolean(folderChannel && typeof folderChannel === "object" && !Array.isArray(folderChannel)
-              && (folderChannel as Record<string, unknown>).entryMetadata === FOLDER_LISTING_ENTRY_METADATA);
-          const ephemeralCapabilities = advertisesFolderListing ? [FOLDER_LISTING_CAPABILITY] : [];
-          const folderAcknowledgement = advertisesFolderEntryMetadata
-            ? { [FOLDER_LISTING_CAPABILITY]: { entryMetadata: FOLDER_LISTING_ENTRY_METADATA } }
             : {};
           const supportsCanonical = advertisesCatalog && advertisesDelivery;
           if (supportsCanonical
@@ -254,7 +237,6 @@ export function attachPeonSocket(server: Server, options: PeonSocketOptions = {}
             && advertisesConfiguration
             && commandOperations.includes("daemon.configuration.patch");
           const additionalCapabilities = [
-            ...ephemeralCapabilities,
             ...(supportsCanonical && advertisesTranscripts ? [SESSION_TRANSCRIPT_CAPABILITY] : []),
             ...(supportsCanonical && advertisesRuntime ? [RUNTIME_STATE_CAPABILITY] : []),
             ...(acceptsReverseCommands ? [REVERSE_COMMAND_CAPABILITY] : []),
@@ -267,11 +249,8 @@ export function attachPeonSocket(server: Server, options: PeonSocketOptions = {}
                 ...(advertisesProjects ? [PROJECT_CATALOG_CAPABILITY] : []),
                 ...additionalCapabilities,
               ]
-            : ephemeralCapabilities;
-          const acceptedConnectionFeatures = [
-            ...negotiatedCapabilities,
-            ...(advertisesFolderEntryMetadata ? [FOLDER_LISTING_ENTRY_METADATA_FEATURE] : []),
-          ];
+            : [];
+          const acceptedConnectionFeatures = [...negotiatedCapabilities];
           const stagedConnectionFeatures = acceptedConnectionFeatures.filter(
             (feature) => feature !== REVERSE_COMMAND_CAPABILITY,
           );
@@ -292,7 +271,6 @@ export function attachPeonSocket(server: Server, options: PeonSocketOptions = {}
           }
           const previous = claimed.previous;
           if (previous && previous.readyState !== WebSocket.CLOSED) {
-            folderOperations.connectionClosed(record.peonId, previous, "CONNECTION_LOST");
             previous.close(4001, "replaced by a newer connection");
           }
           if (credentialGeneration > 0) {
@@ -319,7 +297,6 @@ export function attachPeonSocket(server: Server, options: PeonSocketOptions = {}
               advertisesProjects ? hello.projectCatalog : null,
               additionalCapabilities,
               {
-                ...folderAcknowledgement,
                 ...(configurationCheckpoint ? {
                   [DAEMON_CONFIGURATION_CAPABILITY]: configurationCheckpoint,
                 } : {}),
@@ -345,13 +322,11 @@ export function attachPeonSocket(server: Server, options: PeonSocketOptions = {}
               type: "hello_ack",
               protocol: PROTOCOL,
               capabilities: negotiatedCapabilities,
-              ...(advertisesFolderEntryMetadata ? { channels: folderAcknowledgement } : {}),
             }));
           }
           return;
         }
         if (await commandGateway.handleEphemeralFrame(record.workspaceId, record.peonId, ws, frame)) return;
-        if (folderOperations.handleFrame(record.peonId, ws, frame, frameBytes)) return;
         if (client.sessionSync && await client.sessionSync.handle(frame, frameBytes)) return;
         ws.close(1008, "unexpected Peon frame");
       }).catch((error) => {
@@ -383,7 +358,6 @@ export function attachPeonSocket(server: Server, options: PeonSocketOptions = {}
     ws.on("close", () => {
       clearTimeout(helloTimeout);
       client.sessionSync?.dispose();
-      folderOperations.connectionClosed(record.peonId, ws);
       const commandGeneration = peonConnectionGeneration(ws);
       if (commandGeneration) {
         void commandGateway.connectionClosed(

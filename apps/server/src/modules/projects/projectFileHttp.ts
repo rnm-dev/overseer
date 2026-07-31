@@ -93,8 +93,8 @@ export function requestedProjectFileRange(value: string | undefined): ProjectFil
   return { start, ...(end === undefined ? {} : { end }) };
 }
 
-// Which channel serves a project file body. Directory listings are routed
-// separately through folder-listing-v1. HTTP remains only for an older Peon
+// Which channel serves a project file body. Directory listings always use
+// Fleet HTTP. HTTP bodies remain only for an older Peon
 // with no negotiated transfer capability; a modern peer whose catalog identity
 // is temporarily unavailable must not switch authorities.
 export function projectFileReadChannel(input: { transportReady: boolean; projectId: string | null }): "socket" | "proxy" | "unavailable" {
@@ -109,15 +109,6 @@ export function projectFileWriteChannel(input: { capabilityReady: boolean; proje
 
 export function sandboxFileWriteChannel(input: { capabilityReady: boolean }): "socket" | "proxy" {
   return input.capabilityReady ? "socket" : "proxy";
-}
-
-export function projectFolderReadChannel(input: {
-  confirmedDirectory: boolean;
-  metadataReady: boolean;
-  projectId: string | null;
-}): "socket" | "proxy" | "unavailable" {
-  if (!input.confirmedDirectory || !input.metadataReady) return "proxy";
-  return input.projectId ? "socket" : "unavailable";
 }
 
 // `directory=1` is an Overseer-private transport hint. Remove only parameters

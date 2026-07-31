@@ -11,9 +11,6 @@ import type { ReverseCommandHandler } from "./reverseCommandChannel.js";
 // the legacy HTTP path instead. Typing every table against this list turns that
 // class of drift into a build error.
 export const REVERSE_COMMAND_OPERATIONS = [
-  "session.detail", "session.cancel", "session.start", "session.followup",
-  "session.queue.list", "session.queue.add", "session.queue.edit",
-  "session.queue.remove", "session.queue.send-now",
   "session.metadata.patch", "session.delete",
   "project.create", "project.suggest-directory", "project.detail",
   "project.settings.get", "project.settings.update", "project.delete",

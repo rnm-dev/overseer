@@ -29,7 +29,8 @@ type PathInputProps = Omit<InputHTMLAttributes<HTMLInputElement>, "value" | "onC
   browseBase?: string;
   browseLocations?: PathBrowseLocation[];
   // When given, the picker browses the whole Peon filesystem through this
-  // source (the folder-listing WebSocket) instead of the HTTP file proxy.
+  // source (the host-wide Fleet HTTP filesystem listing) instead of the
+  // fileTransferRoot proxy.
   folderSource?: FolderSource;
 };
 
@@ -152,7 +153,7 @@ function PathSelectorModal({
   // first listing resolves to the nearest ancestor; later ones must not.
   const openedRef = useRef(false);
 
-  // Whole-filesystem browsing over the folder-listing WebSocket. Each navigation
+  // Whole-filesystem browsing over the stable Overseer route. Each navigation
   // supersedes — and aborts — the listing before it; closing the picker or
   // switching Peon unmounts this modal, which aborts too.
   useEffect(() => {

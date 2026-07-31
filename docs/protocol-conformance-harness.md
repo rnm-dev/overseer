@@ -16,10 +16,10 @@ npm test -w @rnm-dev/protocol-conformance
 
 `fixtures/stable-v1.json` is the shared golden-frame document. Its runner checks
 the released control and transfer socket handshakes, the durable envelope,
-session and project snapshots/events/acknowledgements, folder requests/pages/
-cancellation/errors, and project/sandbox file open/metadata/credit/end/errors.
+session and project snapshots/events/acknowledgements, and project/sandbox file
+open/metadata/credit/end/errors.
 Positive and negative frames share the same adapters. Complete serialized frame
-sizes are checked against the control, durable, catalog-page, folder-page and
+sizes are checked against the control, durable, catalog-page and
 transfer-JSON limits, and error frames accept only their stable code allowlists.
 
 `fixtures/capability-matrix-v1.json` defines three Peon profiles and three
@@ -33,20 +33,19 @@ Overseer profiles:
 
 Every cell asserts one route per surface: `reverse-socket`, `legacy-http`, or
 `unavailable`. The session catalog and durable delivery capabilities are
-all-or-nothing; project catalog depends on that pair. Folder listing negotiates
-independently. Project directory metadata stays on HTTP unless both sides
-negotiate `entry-metadata-v1`. Project and sandbox file reads independently
-downgrade to HTTP when their transfer capability is absent.
+all-or-nothing; project catalog depends on that pair. Filesystem pickers and
+project directory metadata always use Fleet HTTP over mesh. Project and sandbox
+file bodies independently downgrade to HTTP when their transfer capability is
+absent.
 
-The current×current cell also includes `session.cancel` through
-`reverse-command-v1` and transcript history/live demand through
+The current×current cell includes transcript history/live demand through
 `transcript-sync-v1`, plus update check/apply route selection through the
 shared reverse-command dispatcher, and runs through `NoInboundTopology` with
-the Peon fleet port blocked. It opens only Peon-initiated control and file-transfer
-connections and fails immediately if a surface selects legacy HTTP or Overseer
-attempts to dial Peon. This proves the already stable socket/catalog/folder/
-file-read/session-cancel/transcript slice behind NAT; it is not yet proof of
-the epic's full fleet surface.
+the Peon fleet port blocked for every surface except the two intentional
+directory-listing calls over mesh. It opens Peon-initiated control and
+file-transfer connections, permits Fleet HTTP only for
+`absolute-folder-picker` and `project-directory`, and fails any other
+Overseer→Peon dial. This is not yet proof of the epic's full fleet surface.
 
 ## Deterministic faults and diagnostics
 
@@ -61,8 +60,8 @@ eventual one-effect convergence.
 
 `ReverseCommandLifecycleHarness` attaches stateful Peon-command and
 Overseer-registry adapters to that transport. The shared
-`reverse-command-lifecycle-v1.json` fixture exercises every released
-`session.cancel` boundary: before durable admission, admission before
+`reverse-command-lifecycle-v1.json` fixture exercises generic durable-command
+boundaries: before durable admission, admission before
 `command_accepted`, acceptance before effect, effect/terminal persistence
 crash and replay, terminal persistence before durable result delivery, and
 Overseer atomic result/projection/audit/browser commit before ACK. Dropped and
@@ -171,11 +170,10 @@ daemon restart remain explicit blocked cells. The v1 receiver's five-minute
 replay cache is process-local, so the harness does not claim durable restart
 deduplication.
 
-`reverse-command-v1` is covered for the released `session.cancel` operation.
-The vendored schemas are canonical-JSON equivalent; byte-formatting differences
-are audit metadata and not a semantic blocker. This does not claim coverage for
-future command operations whose operation-specific result and cancellation
-contracts are not frozen.
+`reverse-command-v1` lifecycle coverage uses an operation that remains in the
+advertised union. The vendored schemas are byte-identical, and conformance
+explicitly asserts that direct HTTP `session.start`, `session.followup`, and
+`session.cancel` are absent from both vendors.
 
 To extend the harness, add a version profile and expected route cell, add golden
 frames with a named adapter passed through

@@ -869,7 +869,7 @@ remain inactive.
   "type": "hello",
   "protocol": 1,
   "peonId": "<stable Peon id>",
-  "capabilities": ["session-catalog-v1", "project-catalog-v1", "transcript-sync-v1", "folder-listing-v1", "session-warning-v1", "reverse-command-v1", "durable-delivery-v1", "project-file-read-v1", "sandbox-file-read-v1"],
+  "capabilities": ["session-catalog-v1", "project-catalog-v1", "transcript-sync-v1", "session-warning-v1", "reverse-command-v1", "durable-delivery-v1", "project-file-read-v1", "sandbox-file-read-v1"],
   "channels": {
     "session-catalog-v1": {
       "epoch": "<boot uuid>",
@@ -893,10 +893,9 @@ remain inactive.
       "subscriptionTtlMs": 300000,
       "eventBytes": 196608
     },
-    "folder-listing-v1": { "entryMetadata": "entry-metadata-v1" },
     "reverse-command-v1": {
       "protocol": 1,
-      "operations": ["session.cancel", "project.archive", "project.unarchive", "update.check", "update.apply"]
+      "operations": ["project.archive", "project.unarchive", "update.check", "update.apply"]
     }
   },
   "delivery": {
@@ -914,7 +913,7 @@ remain inactive.
 {
   "type": "hello_ack",
   "protocol": 1,
-  "capabilities": ["session-catalog-v1", "project-catalog-v1", "transcript-sync-v1", "folder-listing-v1", "session-warning-v1", "reverse-command-v1", "durable-delivery-v1"],
+  "capabilities": ["session-catalog-v1", "project-catalog-v1", "transcript-sync-v1", "session-warning-v1", "reverse-command-v1", "durable-delivery-v1"],
   "channels": {
     "session-catalog-v1": {
       "epoch": "<last accepted boot uuid>",
@@ -924,7 +923,6 @@ remain inactive.
       "epoch": "<last accepted project catalog uuid>",
       "acknowledgedSeq": 11
     },
-    "folder-listing-v1": { "entryMetadata": "entry-metadata-v1" }
   },
   "delivery": {
     "epoch": "<durable outbox epoch>",
@@ -1384,7 +1382,7 @@ frames remain serviceable. Stable errors include `BAD_REQUEST`, `BAD_CURSOR`,
 
 Peon advertises this capability only on the control socket alongside
 `durable-delivery-v1`. Its complete envelope, hashing, lifecycle, status
-reconciliation, retention, and `session.cancel` result contract are normative in
+reconciliation, retention, are normative in
 [`../peon/docs/reverse-command-protocol-v1.md`](../peon/docs/reverse-command-protocol-v1.md).
 
 The Peon dispatcher rejects command traffic before exact capability negotiation,
@@ -1551,74 +1549,6 @@ acknowledgements return `BAD_CURSOR`; an unavailable resume point returns
 
 When an older Overseer does not negotiate `project-catalog-v1`, this channel is
 inactive and the existing authenticated HTTP project APIs remain unchanged.
-
-### Folder listing (`folder-listing-v1`)
-
-This ephemeral control-socket channel lists one directory's immediate children.
-It never enters durable delivery and does not recursively walk the tree.
-
-```jsonc
-// Absolute path, or omit path and select a project directory by immutable ID.
-{ "type": "folder_list_request", "requestId": "...", "path": "/absolute/path", "projectId": "optional", "limit": 200 }
-{ "type": "folder_list_request", "requestId": "...", "projectId": "<uuid>", "relativePath": "src/lib", "limit": 200 }
-{ "type": "folder_list_request", "requestId": "...", "cursor": "<opaque>", "limit": 200 }
-{
-  "type": "folder_list_page",
-  "requestId": "...",
-  "path": "/resolved/absolute/path",
-  "projectId": "<uuid>|null",
-  "entries": [
-    { "name": "src", "type": "directory", "size": null, "mtimeMs": 1785400000000 },
-    { "name": "package.json", "type": "file", "size": 1832, "mtimeMs": 1785400000123 },
-    { "name": "outside-link", "type": "other", "size": null, "mtimeMs": null }
-  ],
-  "nextCursor": "<opaque>|null",
-  "hasMore": false
-}
-{ "type": "folder_list_cancel", "requestId": "..." }
-{ "type": "folder_list_cancelled", "requestId": "..." }
-{ "type": "folder_list_error", "requestId": "...|null", "code": "BAD_REQUEST", "error": "..." }
-```
-
-An absolute `path` is authoritative even when `projectId` is also present and
-produces `projectId: null`; it cannot be combined with `relativePath`. With no
-path, Peon resolves the immutable project ID and lists its configured root or
-the supplied project-relative child. Project-relative selector traversal that
-resolves outside the project is rejected with `PATH_ESCAPE`. The selected
-directory and project root are anchored by open handles. Enumeration and child
-opens use Linux `/proc/self/fd/<fd>` handle-relative paths, never the mutable
-selected pathname. A platform without the required `O_DIRECTORY`,
-`O_NOFOLLOW`, and traversable handle path fails closed with
-`UNSUPPORTED_PLATFORM`; it does not use pathname enumeration. Requests with
-neither selector are rejected. Absolute browsing is limited by the Peon
-process's OS permissions, not by project or transfer roots. Hidden entries are
-included. A symlink whose opened target remains inside the anchored project
-root is reported as its target `directory`/`file` with metadata. Escaping,
-broken/cyclic, inaccessible, changed, and special entries are returned as
-inert `other` rows with null metadata.
-Directories sort before files, then `other`, then by name. A file carries its
-byte `size`; directories carry `size: null`; both carry target `mtimeMs`.
-
-Entry metadata is an additive, explicitly negotiated extension of
-`folder-listing-v1`. Peon advertises
-`channels.folder-listing-v1.entryMetadata: "entry-metadata-v1"` and includes
-`size`/`mtimeMs` and inert `other` rows only when Overseer echoes that value in
-`hello_ack`. A new Peon therefore omits `other` and keeps sending legacy
-`{ name, type }` entries to an older Overseer, while a new Overseer accepts
-legacy entries from an older Peon.
-
-`limit` defaults to 200 and clamps to 500. A first request freezes the sorted
-listing for cursor-stable pages. Only one listing is active per control
-connection; it expires after 30 seconds and is released on completion,
-cancellation, or disconnect. Metadata traversal runs in batches of at most 64.
-Cancellation aborts further batches, waits with all-settled semantics for every
-sibling in the current batch, then sends `folder_list_cancelled` and releases
-the slot, so a restarted listing cannot overlap the cancelled scan. One
-snapshot is limited to 20,000 entries and 16 MiB, and each complete page to 900
-KiB. Stable errors include `BAD_REQUEST`,
-`BAD_CURSOR`, `SYNC_IN_PROGRESS`, `UNKNOWN_PROJECT`, `NOT_FOUND`,
-`NOT_DIRECTORY`, `FORBIDDEN`, `INVALID_PATH`, `PATH_ESCAPE`,
-`UNSUPPORTED_PLATFORM`, `LISTING_TOO_LARGE`, and `INTERNAL`.
 
 ### Session warnings (`session-warning-v1`)
 

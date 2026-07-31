@@ -2,7 +2,6 @@ const KNOWN_CAPABILITIES = new Set([
   "durable-delivery-v1",
   "session-catalog-v1",
   "project-catalog-v1",
-  "folder-listing-v1",
   "entry-metadata-v1",
   "reverse-command-v1",
   "transcript-sync-v1",

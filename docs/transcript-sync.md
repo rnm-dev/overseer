@@ -1,24 +1,23 @@
 # Reverse transcript projection and live relay
 
-Overseer serves transcript history and live session tails without dialing a
-Peon's HTTP or SSE listener when the control socket negotiates
-`transcript-sync-v1` together with `session-catalog-v1` and
-`durable-delivery-v1`. Peon remains authoritative; Postgres contains a bounded,
-rebuildable projection.
+Overseer serves transcript history pages through the authenticated Peon Fleet
+HTTP API and serves live session tails through `transcript-sync-v1` together
+with `session-catalog-v1` and `durable-delivery-v1`. Peon remains authoritative;
+Postgres contains a bounded, rebuildable live-tail projection, not the history
+page read authority.
 
 ## Authority and ACL
 
-The transport is selected once per Peon/session request:
+History and realtime deliberately have different read paths:
 
-- an active negotiated reverse connection requests or renews the reverse
-  projection and never starts a legacy request in parallel;
-- a previously committed reverse projection remains the read authority while
-  the Peon is offline, with freshness reported as `offline`;
-- before any reverse projection has committed and with no negotiated reverse
-  connection, the existing Peon HTTP/SSE routes remain the exclusive fallback;
-- after reverse authority exists, an eviction, gap, or outage is surfaced as
-  `syncing`, `gap`, `evicted`, or `offline`; it is not hidden by switching back
-  to HTTP.
+- every `GET .../transcript` page is one authenticated Fleet HTTP request,
+  including on a Peon that negotiates `transcript-sync-v1`;
+- opening or paging history never creates snapshot/subscription demand and
+  never reads the Postgres transcript projection;
+- browser WebSocket and HTTP SSE live tails continue to share one reverse
+  subscription and use the projection for replay/catch-up;
+- a reverse gap or outage affects realtime freshness, but does not select a
+  second history-page transport.
 
 Workspace and session/project access is checked from the committed session
 catalog before a snapshot or subscription frame is sent. Immediately before
@@ -113,16 +112,12 @@ subscription, not one each. The last authorized consumer sends
 to unblock an already durable Peon message completes even without a browser,
 then releases demand.
 
-Opening history does not itself create temporary demand when a retained
-projection is `ready`, has an epoch and belongs to the active socket generation.
-`GET .../transcript` returns that bounded Postgres page immediately, including
-its freshness, and the browser subsequently starts the durable tail after the
-page's last `eventId`. The tail catch-up closes the read-to-subscribe race. A
-missing, non-ready or previous-generation projection still acquires demand
-synchronously and waits for catch-up or a snapshot before the history response;
-this is the rebuild path, not the ordinary session-switch path. With no reverse
-connection, the retained projection remains readable as `offline` without
-trying to create demand.
+Opening history performs one Fleet HTTP page read with the caller's `limit` and
+opaque `cursor` when the Peon advertises `transcript-pagination-v1`. The public
+shape remains `{events,nextCursor,hasMore}`; Overseer retains its corrupt-row
+degradation and best-effort timestamp/author enrichment. The client subscribes
+to the live tail separately, and the tail's existing replay/deduplication rules
+close races without making the history page part of reverse demand.
 
 The transcript channel hello is an exact fixed contract, including
 `subscriptions: 64`; a different or missing limit is a protocol error when the
@@ -150,20 +145,7 @@ the deletion is durably admitted.
 
 ## Browser APIs and bounds
 
-The existing transcript REST shape remains `{events,nextCursor,hasMore}` and
-adds:
-
-```json
-{
-  "freshness": {
-    "state": "ready",
-    "updatedAt": 1785400000000,
-    "epoch": "transcript-epoch",
-    "revision": 42,
-    "barrierSeq": 42
-  }
-}
-```
+The existing transcript REST shape remains `{events,nextCursor,hasMore}`.
 
 The web dashboard keeps a bounded in-memory cache of twelve recently opened
 newest pages and prefetches a transcript on pointer/focus intent. Switching
@@ -202,7 +184,7 @@ Resource limits:
 - 50,000 events / 256 MiB across the central transcript projection; and
 - 8 MiB maximum buffered output for a slow browser.
 
-Global retention evicts whole least-recently-read sessions, never an older
-prefix that could be mistaken for complete history. The row becomes `evicted`;
-the next authorized demand deterministically rebuilds it from Peon's canonical
-JSONL transcript.
+Global retention evicts whole least-recently-read live-tail projections, never
+an older prefix that could be mistaken for complete replay state. A later live
+subscription deterministically rebuilds it from Peon's canonical JSONL
+transcript; history pages are unaffected.

@@ -3,11 +3,21 @@
   "$id": "https://peon.local/protocol/reverse-command-v1/schema.json",
   "title": "Overseer to Peon reverse command protocol v1",
   "oneOf": [
-    { "$ref": "#/$defs/command" },
-    { "$ref": "#/$defs/commandAccepted" },
-    { "$ref": "#/$defs/commandStatusRequest" },
-    { "$ref": "#/$defs/commandStatus" },
-    { "$ref": "#/$defs/durableCommandResult" }
+    {
+      "$ref": "#/$defs/command"
+    },
+    {
+      "$ref": "#/$defs/commandAccepted"
+    },
+    {
+      "$ref": "#/$defs/commandStatusRequest"
+    },
+    {
+      "$ref": "#/$defs/commandStatus"
+    },
+    {
+      "$ref": "#/$defs/durableCommandResult"
+    }
   ],
   "$defs": {
     "uuid": {
@@ -17,99 +27,64 @@
     "actor": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["userId", "email"],
+      "required": [
+        "userId",
+        "email"
+      ],
       "properties": {
-        "userId": { "$ref": "#/$defs/uuid" },
-        "email": { "type": "string", "minLength": 3, "maxLength": 320 }
+        "userId": {
+          "$ref": "#/$defs/uuid"
+        },
+        "email": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 320
+        }
       }
     },
     "target": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["peonId"],
+      "required": [
+        "peonId"
+      ],
       "properties": {
-        "peonId": { "$ref": "#/$defs/uuid" },
-        "sessionId": { "$ref": "#/$defs/uuid" },
-        "projectId": { "$ref": "#/$defs/uuid" },
-        "transferId": { "$ref": "#/$defs/uuid" },
-        "packageId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,62}$" },
-        "operationId": { "$ref": "#/$defs/uuid" }
-      }
-    },
-    "sessionTurnPayload": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["prompt"],
-      "properties": {
-        "prompt": { "type": "string", "minLength": 1, "maxLength": 32768 },
-        "attachments": { "type": "array", "maxItems": 20, "items": { "$ref": "#/$defs/sessionAttachment" } },
-        "permissionMode": { "const": "plan" },
-        "model": { "type": "string" },
-        "reasoningEffort": { "type": "string" }
-      }
-    },
-    "sessionStartPayload": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["prompt"],
-      "properties": {
-        "prompt": { "type": "string", "minLength": 1, "maxLength": 32768 },
-        "attachments": { "type": "array", "maxItems": 20, "items": { "$ref": "#/$defs/sessionAttachment" } },
-        "permissionMode": { "const": "plan" },
-        "model": { "type": "string" },
-        "reasoningEffort": { "type": "string" },
-        "title": { "type": ["string", "null"], "maxLength": 512 },
-        "projectId": { "$ref": "#/$defs/uuid" },
-        "dir": { "type": "string", "maxLength": 4096 },
-        "expectsOutcome": { "type": "boolean" },
-        "agent": { "type": "string" }
-      }
-    },
-    "sessionQueueAddPayload": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["prompt"],
-      "properties": {
-        "prompt": { "type": "string", "minLength": 1, "maxLength": 32768 },
-        "attachments": { "type": "array", "maxItems": 20, "items": { "$ref": "#/$defs/sessionAttachment" } },
-        "permissionMode": { "const": "plan" },
-        "model": { "type": "string" },
-        "reasoningEffort": { "type": "string" },
-        "startNow": { "type": "boolean" }
-      }
-    },
-    "sessionQueueItemPayload": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["itemId"],
-      "properties": { "itemId": { "$ref": "#/$defs/uuid" } }
-    },
-    "sessionAttachment": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["originalName", "filename", "path", "size", "mimetype"],
-      "properties": {
-        "originalName": { "type": "string", "maxLength": 512 },
-        "filename": { "type": "string", "maxLength": 512 },
-        "path": { "type": "string", "maxLength": 4096 },
-        "size": { "type": "integer", "minimum": 0 },
-        "mimetype": { "type": "string", "maxLength": 128 }
-      }
-    },
-    "sessionQueueEditPayload": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["itemId", "prompt"],
-      "properties": {
-        "itemId": { "$ref": "#/$defs/uuid" },
-        "prompt": { "type": "string", "minLength": 1, "maxLength": 32768 }
+        "peonId": {
+          "$ref": "#/$defs/uuid"
+        },
+        "sessionId": {
+          "$ref": "#/$defs/uuid"
+        },
+        "projectId": {
+          "$ref": "#/$defs/uuid"
+        },
+        "transferId": {
+          "$ref": "#/$defs/uuid"
+        },
+        "packageId": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]{0,62}$"
+        },
+        "operationId": {
+          "$ref": "#/$defs/uuid"
+        }
       }
     },
     "sessionMetadataPayload": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["title"],
-      "properties": { "title": { "type": ["string", "null"], "maxLength": 512 } }
+      "required": [
+        "title"
+      ],
+      "properties": {
+        "title": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 512
+        }
+      }
     },
     "command": {
       "type": "object",
@@ -126,20 +101,76 @@
         "requestedAt"
       ],
       "properties": {
-        "type": { "const": "command" },
-        "protocol": { "const": 1 },
-        "capability": { "const": "reverse-command-v1" },
-        "commandId": { "$ref": "#/$defs/uuid" },
-        "operation": { "type": "string", "enum": ["session.detail", "session.cancel", "session.start", "session.followup", "session.queue.list", "session.queue.add", "session.queue.edit", "session.queue.remove", "session.queue.send-now", "session.metadata.patch", "session.delete", "daemon.configuration.patch", "project.create", "project.suggest-directory", "project.detail", "project.settings.get", "project.settings.update", "project.delete", "project.documentation.index", "project.documentation.read", "project.skills.list", "project.quick-links.list", "project.quick-links.create", "project.quick-links.update", "project.quick-links.delete", "update.check", "update.apply", "runtime.stats", "runtime.analytics", "runtime.quota", "runtime.capabilities", "armory.inventory", "armory.settings", "armory.refresh", "armory.install", "armory.update", "armory.enable", "armory.disable", "armory.uninstall", "armory.configure", "armory.verify", "armory.configuration.delete", "armory.package", "armory.configuration", "armory.mcp", "armory.operation"] },
-        "target": { "$ref": "#/$defs/target" },
-        "actor": { "$ref": "#/$defs/actor" },
+        "type": {
+          "const": "command"
+        },
+        "protocol": {
+          "const": 1
+        },
+        "capability": {
+          "const": "reverse-command-v1"
+        },
+        "commandId": {
+          "$ref": "#/$defs/uuid"
+        },
+        "operation": {
+          "type": "string",
+          "enum": [
+            "session.metadata.patch",
+            "session.delete",
+            "daemon.configuration.patch",
+            "project.create",
+            "project.suggest-directory",
+            "project.detail",
+            "project.settings.get",
+            "project.settings.update",
+            "project.delete",
+            "project.documentation.index",
+            "project.documentation.read",
+            "project.skills.list",
+            "project.quick-links.list",
+            "project.quick-links.create",
+            "project.quick-links.update",
+            "project.quick-links.delete",
+            "update.check",
+            "update.apply",
+            "runtime.stats",
+            "runtime.analytics",
+            "runtime.quota",
+            "runtime.capabilities",
+            "armory.inventory",
+            "armory.settings",
+            "armory.refresh",
+            "armory.install",
+            "armory.update",
+            "armory.enable",
+            "armory.disable",
+            "armory.uninstall",
+            "armory.configure",
+            "armory.verify",
+            "armory.configuration.delete",
+            "armory.package",
+            "armory.configuration",
+            "armory.mcp",
+            "armory.operation"
+          ]
+        },
+        "target": {
+          "$ref": "#/$defs/target"
+        },
+        "actor": {
+          "$ref": "#/$defs/actor"
+        },
         "payload": {
           "type": "object",
           "additionalProperties": true,
           "maxProperties": 16
         },
         "expected": {
-          "type": ["object", "null"],
+          "type": [
+            "object",
+            "null"
+          ],
           "additionalProperties": true
         },
         "requestedAt": {
@@ -149,56 +180,54 @@
       },
       "allOf": [
         {
-          "if": { "properties": { "operation": { "const": "session.start" } }, "required": ["operation"] },
+          "if": {
+            "properties": {
+              "operation": {
+                "const": "session.metadata.patch"
+              }
+            },
+            "required": [
+              "operation"
+            ]
+          },
           "then": {
             "properties": {
-              "target": {
-                "type": "object", "additionalProperties": false, "required": ["peonId"],
-                "properties": { "peonId": { "$ref": "#/$defs/uuid" } }
+              "payload": {
+                "$ref": "#/$defs/sessionMetadataPayload"
               },
-              "payload": { "$ref": "#/$defs/sessionStartPayload" },
-              "expected": { "type": "null" }
+              "expected": {
+                "type": "null"
+              }
             }
           }
         },
         {
-          "if": { "properties": { "operation": { "const": "session.followup" } }, "required": ["operation"] },
-          "then": { "properties": { "payload": { "$ref": "#/$defs/sessionTurnPayload" }, "expected": { "type": "null" } } }
-        },
-        {
-          "if": { "properties": { "operation": { "const": "session.queue.add" } }, "required": ["operation"] },
-          "then": { "properties": { "payload": { "$ref": "#/$defs/sessionQueueAddPayload" }, "expected": { "type": "null" } } }
-        },
-        {
-          "if": { "properties": { "operation": { "enum": ["session.detail", "session.cancel", "session.queue.list", "session.delete"] } }, "required": ["operation"] },
-          "then": {
+          "if": {
             "properties": {
-              "payload": { "type": "object", "additionalProperties": false, "maxProperties": 0 },
-              "expected": { "type": "null" }
-            }
-          }
-        },
-        {
-          "if": { "properties": { "operation": { "enum": ["session.queue.remove", "session.queue.send-now"] } }, "required": ["operation"] },
-          "then": { "properties": { "payload": { "$ref": "#/$defs/sessionQueueItemPayload" }, "expected": { "type": "null" } } }
-        },
-        {
-          "if": { "properties": { "operation": { "const": "session.queue.edit" } }, "required": ["operation"] },
-          "then": { "properties": { "payload": { "$ref": "#/$defs/sessionQueueEditPayload" }, "expected": { "type": "null" } } }
-        },
-        {
-          "if": { "properties": { "operation": { "const": "session.metadata.patch" } }, "required": ["operation"] },
-          "then": { "properties": { "payload": { "$ref": "#/$defs/sessionMetadataPayload" }, "expected": { "type": "null" } } }
-        },
-        {
-          "if": { "properties": { "operation": { "pattern": "^session\\.(?!start$)" } }, "required": ["operation"] },
+              "operation": {
+                "pattern": "^session\\.(?!start$)"
+              }
+            },
+            "required": [
+              "operation"
+            ]
+          },
           "then": {
             "properties": {
               "target": {
-                "type": "object", "additionalProperties": false, "required": ["peonId", "sessionId"],
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "peonId",
+                  "sessionId"
+                ],
                 "properties": {
-                  "peonId": { "$ref": "#/$defs/uuid" },
-                  "sessionId": { "$ref": "#/$defs/uuid" }
+                  "peonId": {
+                    "$ref": "#/$defs/uuid"
+                  },
+                  "sessionId": {
+                    "$ref": "#/$defs/uuid"
+                  }
                 }
               }
             }
@@ -219,13 +248,69 @@
         "acceptedAt"
       ],
       "properties": {
-        "type": { "const": "command_accepted" },
-        "protocol": { "const": 1 },
-        "commandId": { "$ref": "#/$defs/uuid" },
-        "operation": { "enum": ["session.detail", "session.cancel", "session.start", "session.followup", "session.queue.list", "session.queue.add", "session.queue.edit", "session.queue.remove", "session.queue.send-now", "session.metadata.patch", "session.delete", "daemon.configuration.patch", "project.create", "project.suggest-directory", "project.detail", "project.settings.get", "project.settings.update", "project.delete", "project.documentation.index", "project.documentation.read", "project.skills.list", "project.quick-links.list", "project.quick-links.create", "project.quick-links.update", "project.quick-links.delete", "update.check", "update.apply", "runtime.stats", "runtime.analytics", "runtime.quota", "runtime.capabilities", "armory.inventory", "armory.settings", "armory.refresh", "armory.install", "armory.update", "armory.enable", "armory.disable", "armory.uninstall", "armory.configure", "armory.verify", "armory.configuration.delete", "armory.package", "armory.configuration", "armory.mcp", "armory.operation"] },
-        "state": { "enum": ["accepted", "running"] },
-        "replayed": { "type": "boolean" },
-        "acceptedAt": { "type": "integer", "minimum": 0 }
+        "type": {
+          "const": "command_accepted"
+        },
+        "protocol": {
+          "const": 1
+        },
+        "commandId": {
+          "$ref": "#/$defs/uuid"
+        },
+        "operation": {
+          "enum": [
+            "session.metadata.patch",
+            "session.delete",
+            "daemon.configuration.patch",
+            "project.create",
+            "project.suggest-directory",
+            "project.detail",
+            "project.settings.get",
+            "project.settings.update",
+            "project.delete",
+            "project.documentation.index",
+            "project.documentation.read",
+            "project.skills.list",
+            "project.quick-links.list",
+            "project.quick-links.create",
+            "project.quick-links.update",
+            "project.quick-links.delete",
+            "update.check",
+            "update.apply",
+            "runtime.stats",
+            "runtime.analytics",
+            "runtime.quota",
+            "runtime.capabilities",
+            "armory.inventory",
+            "armory.settings",
+            "armory.refresh",
+            "armory.install",
+            "armory.update",
+            "armory.enable",
+            "armory.disable",
+            "armory.uninstall",
+            "armory.configure",
+            "armory.verify",
+            "armory.configuration.delete",
+            "armory.package",
+            "armory.configuration",
+            "armory.mcp",
+            "armory.operation"
+          ]
+        },
+        "state": {
+          "enum": [
+            "accepted",
+            "running"
+          ]
+        },
+        "replayed": {
+          "type": "boolean"
+        },
+        "acceptedAt": {
+          "type": "integer",
+          "minimum": 0
+        }
       }
     },
     "commandResult": {
@@ -242,17 +327,85 @@
         "result"
       ],
       "properties": {
-        "type": { "const": "command_result" },
-        "protocol": { "const": 1 },
-        "commandId": { "$ref": "#/$defs/uuid" },
-        "operation": { "enum": ["session.detail", "session.cancel", "session.start", "session.followup", "session.queue.list", "session.queue.add", "session.queue.edit", "session.queue.remove", "session.queue.send-now", "session.metadata.patch", "session.delete", "daemon.configuration.patch", "project.create", "project.suggest-directory", "project.detail", "project.settings.get", "project.settings.update", "project.delete", "project.documentation.index", "project.documentation.read", "project.skills.list", "project.quick-links.list", "project.quick-links.create", "project.quick-links.update", "project.quick-links.delete", "update.check", "update.apply", "runtime.stats", "runtime.analytics", "runtime.quota", "runtime.capabilities", "armory.inventory", "armory.settings", "armory.refresh", "armory.install", "armory.update", "armory.enable", "armory.disable", "armory.uninstall", "armory.configure", "armory.verify", "armory.configuration.delete", "armory.package", "armory.configuration", "armory.mcp", "armory.operation"] },
-        "status": {
-          "enum": ["applied", "noop", "rejected", "conflict", "cancelled", "failed"]
+        "type": {
+          "const": "command_result"
         },
-        "code": { "type": "string", "minLength": 2, "maxLength": 80 },
-        "message": { "type": "string", "maxLength": 1000 },
-        "completedAt": { "type": "integer", "minimum": 0 },
-        "result": { "type": ["object", "null"] }
+        "protocol": {
+          "const": 1
+        },
+        "commandId": {
+          "$ref": "#/$defs/uuid"
+        },
+        "operation": {
+          "enum": [
+            "session.metadata.patch",
+            "session.delete",
+            "daemon.configuration.patch",
+            "project.create",
+            "project.suggest-directory",
+            "project.detail",
+            "project.settings.get",
+            "project.settings.update",
+            "project.delete",
+            "project.documentation.index",
+            "project.documentation.read",
+            "project.skills.list",
+            "project.quick-links.list",
+            "project.quick-links.create",
+            "project.quick-links.update",
+            "project.quick-links.delete",
+            "update.check",
+            "update.apply",
+            "runtime.stats",
+            "runtime.analytics",
+            "runtime.quota",
+            "runtime.capabilities",
+            "armory.inventory",
+            "armory.settings",
+            "armory.refresh",
+            "armory.install",
+            "armory.update",
+            "armory.enable",
+            "armory.disable",
+            "armory.uninstall",
+            "armory.configure",
+            "armory.verify",
+            "armory.configuration.delete",
+            "armory.package",
+            "armory.configuration",
+            "armory.mcp",
+            "armory.operation"
+          ]
+        },
+        "status": {
+          "enum": [
+            "applied",
+            "noop",
+            "rejected",
+            "conflict",
+            "cancelled",
+            "failed"
+          ]
+        },
+        "code": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 80
+        },
+        "message": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "completedAt": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "result": {
+          "type": [
+            "object",
+            "null"
+          ]
+        }
       }
     },
     "durableCommandResult": {
@@ -268,35 +421,88 @@
         "payload"
       ],
       "properties": {
-        "type": { "const": "durable_message" },
-        "epoch": { "type": "string", "minLength": 1, "maxLength": 200 },
-        "cursor": { "type": "string", "minLength": 1, "maxLength": 200 },
-        "messageId": { "$ref": "#/$defs/uuid" },
-        "priority": { "enum": ["critical", "control", "normal", "bulk"] },
-        "capability": { "const": "reverse-command-v1" },
-        "payload": { "$ref": "#/$defs/commandResult" }
+        "type": {
+          "const": "durable_message"
+        },
+        "epoch": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "cursor": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "messageId": {
+          "$ref": "#/$defs/uuid"
+        },
+        "priority": {
+          "enum": [
+            "critical",
+            "control",
+            "normal",
+            "bulk"
+          ]
+        },
+        "capability": {
+          "const": "reverse-command-v1"
+        },
+        "payload": {
+          "$ref": "#/$defs/commandResult"
+        }
       }
     },
     "commandStatusRequest": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["type", "protocol", "commandId"],
+      "required": [
+        "type",
+        "protocol",
+        "commandId"
+      ],
       "properties": {
-        "type": { "const": "command_status_request" },
-        "protocol": { "const": 1 },
-        "commandId": { "$ref": "#/$defs/uuid" }
+        "type": {
+          "const": "command_status_request"
+        },
+        "protocol": {
+          "const": 1
+        },
+        "commandId": {
+          "$ref": "#/$defs/uuid"
+        }
       }
     },
     "commandStatus": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["type", "protocol", "commandId", "state"],
+      "required": [
+        "type",
+        "protocol",
+        "commandId",
+        "state"
+      ],
       "properties": {
-        "type": { "const": "command_status" },
-        "protocol": { "const": 1 },
-        "commandId": { "$ref": "#/$defs/uuid" },
-        "state": { "enum": ["unknown", "accepted", "running", "terminal"] },
-        "result": { "$ref": "#/$defs/commandResult" }
+        "type": {
+          "const": "command_status"
+        },
+        "protocol": {
+          "const": 1
+        },
+        "commandId": {
+          "$ref": "#/$defs/uuid"
+        },
+        "state": {
+          "enum": [
+            "unknown",
+            "accepted",
+            "running",
+            "terminal"
+          ]
+        },
+        "result": {
+          "$ref": "#/$defs/commandResult"
+        }
       }
     }
   }

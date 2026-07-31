@@ -2,14 +2,14 @@
   "contractVersion": 1,
   "capability": "reverse-command-v1",
   "maxCommandFrameBytes": 61440,
-  "enabledOperations": ["session.cancel"],
+  "enabledOperations": ["session.metadata.patch"],
   "frames": {
     "command": {
       "type": "command",
       "protocol": 1,
       "capability": "reverse-command-v1",
       "commandId": "018f4f0c-9f30-7a61-bf1a-66d2582bdb4a",
-      "operation": "session.cancel",
+      "operation": "session.metadata.patch",
       "target": {
         "peonId": "f4de920f-e33e-4cf5-97d0-3a75e9266090",
         "sessionId": "6a379713-f4ca-4ca4-b4a8-9a3fbfea80d5"
@@ -25,7 +25,7 @@
       "type": "command_accepted",
       "protocol": 1,
       "commandId": "018f4f0c-9f30-7a61-bf1a-66d2582bdb4a",
-      "operation": "session.cancel",
+      "operation": "session.metadata.patch",
       "state": "accepted",
       "replayed": false,
       "acceptedAt": 1784912400010
@@ -41,13 +41,13 @@
         "type": "command_result",
         "protocol": 1,
         "commandId": "018f4f0c-9f30-7a61-bf1a-66d2582bdb4a",
-        "operation": "session.cancel",
+        "operation": "session.metadata.patch",
         "status": "applied",
         "code": "OK",
         "completedAt": 1784912400040,
         "result": {
           "sessionId": "6a379713-f4ca-4ca4-b4a8-9a3fbfea80d5",
-          "sessionStatus": "cancelled"
+          "deleted": true
         }
       }
     },
@@ -65,13 +65,13 @@
         "type": "command_result",
         "protocol": 1,
         "commandId": "018f4f0c-9f30-7a61-bf1a-66d2582bdb4a",
-        "operation": "session.cancel",
+        "operation": "session.metadata.patch",
         "status": "applied",
         "code": "OK",
         "completedAt": 1784912400040,
         "result": {
           "sessionId": "6a379713-f4ca-4ca4-b4a8-9a3fbfea80d5",
-          "sessionStatus": "cancelled"
+          "deleted": true
         }
       }
     }

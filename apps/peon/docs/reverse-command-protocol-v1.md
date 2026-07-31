@@ -2,7 +2,7 @@
 
 Status: normative design contract for implementation  
 Capability: `reverse-command-v1`  
-Operations include `session.detail`, `session.cancel`, `project.archive`, `project.unarchive`,
+Operations include session mutations such as `session.metadata.patch`, plus `project.archive`, `project.unarchive`,
 `daemon.configuration.patch`, `update.check`, and `update.apply`
 
 This document defines the common command lifecycle used when Overseer controls a Peon through
@@ -42,7 +42,7 @@ Overseer sends:
   "protocol": 1,
   "capability": "reverse-command-v1",
   "commandId": "018f4f0c-9f30-7a61-bf1a-66d2582bdb4a",
-  "operation": "session.cancel",
+  "operation": "session.delete",
   "target": {
     "peonId": "f4de920f-e33e-4cf5-97d0-3a75e9266090",
     "sessionId": "6a379713-f4ca-4ca4-b4a8-9a3fbfea80d5"
@@ -63,7 +63,7 @@ Peon sends an ephemeral acceptance only after the command record is durable:
   "type": "command_accepted",
   "protocol": 1,
   "commandId": "018f4f0c-9f30-7a61-bf1a-66d2582bdb4a",
-  "operation": "session.cancel",
+  "operation": "session.delete",
   "state": "accepted",
   "replayed": false,
   "acceptedAt": 1784912400010
@@ -84,13 +84,13 @@ The terminal result is a typed payload in the existing durable envelope:
     "type": "command_result",
     "protocol": 1,
     "commandId": "018f4f0c-9f30-7a61-bf1a-66d2582bdb4a",
-    "operation": "session.cancel",
+    "operation": "session.delete",
     "status": "applied",
     "code": "OK",
     "completedAt": 1784912400040,
     "result": {
       "sessionId": "6a379713-f4ca-4ca4-b4a8-9a3fbfea80d5",
-      "sessionStatus": "cancelled"
+      "deleted": true
     }
   }
 }
@@ -132,20 +132,20 @@ response repeats the stored result. It does not replace durable result delivery.
     "type": "command_result",
     "protocol": 1,
     "commandId": "018f4f0c-9f30-7a61-bf1a-66d2582bdb4a",
-    "operation": "session.cancel",
+    "operation": "session.delete",
     "status": "applied",
     "code": "OK",
     "completedAt": 1784912400040,
     "result": {
       "sessionId": "6a379713-f4ca-4ca4-b4a8-9a3fbfea80d5",
-      "sessionStatus": "cancelled"
+      "deleted": true
     }
   }
 }
 ```
 
 `command_cancel` is reserved for operations whose operation-specific contract explicitly declares
-cancellability. Cancelling an agent session uses `session.cancel` as the primary command; it is
+cancellability. Cancelling an agent session uses Fleet HTTP session cancel as the primary command; it is
 not cancellation of another command envelope.
 
 ## Identity, validation, and hashing
@@ -251,16 +251,13 @@ Operation-specific stable codes remain authoritative. Generic codes are:
 The response for `COMMAND_PENDING` contains `commandId` and a command-status URL. Overseer must not
 retry with a new command ID.
 
-## Session operation: `session.cancel`
+## Direct HTTP session Stop
 
-`session.cancel` requires `target.sessionId`, an empty payload, and an authenticated actor. It is
-high priority.
-
-- Running session successfully interrupted: `applied`, `OK`.
-- Session already terminal/cancelled: `noop`, `OK`, returning current public session state.
-- Unknown session: `rejected`, `UNKNOWN_SESSION`.
-- Session exists but cannot currently be cancelled: `rejected`, `SESSION_NOT_RUNNING`.
-- Duplicate command: replay the original result without a second interrupt or transcript result.
+Session Stop is outside this protocol. Overseer calls the authenticated Fleet
+HTTP `POST /sessions/:id/cancel` endpoint through mesh and relays its response
+unchanged. A `409 SESSION_NOT_RUNNING` additionally triggers a best-effort
+authoritative session read so Overseer's index heals without changing the
+operator-visible refusal.
 
 ## Project archive operations
 
@@ -372,7 +369,7 @@ available to Overseer.
 | `GET /models` | projection | `runtime-state-v1` | no | Legacy HTTP until ready |
 | `GET /quota[/:provider]` | query | `runtime-query-v1` | yes | Exclusive query or legacy HTTP |
 | `GET /capabilities[/:provider]` | projection/query | `runtime-state-v1` | no/yes | Projection where safe; bounded query otherwise |
-| `GET /filesystem[/…]` | query | `folder-listing-v1` | yes | Reverse channel already available |
+| `GET /filesystem[/…]` | query | Fleet HTTP | yes | Deliberately kept as the one directory-picker transport |
 | `GET /projects` | projection | `project-catalog-v1` | no | Reverse channel already authoritative after sync |
 | `GET /projects/suggest-dir` | query | `project-command-v1` | yes | Reverse query or legacy HTTP |
 | `POST /projects` | command | `project-command-v1` | yes | Stable command ID; catalog confirms state |
@@ -384,7 +381,7 @@ available to Overseer.
 | `POST /projects/:key/archive` | command | `reverse-command-v1` | yes | `project.archive`; stable project ID |
 | `DELETE /projects/:key/archive` | command | `reverse-command-v1` | yes | `project.unarchive`; stable project ID |
 | `DELETE /projects/:key` | command | `project-command-v1` | yes | Stable project ID; catalog tombstone confirms |
-| project file list/read | query/transfer | `folder-listing-v1`, `project-file-read-v1` | yes | Project-scoped listings use negotiated entry metadata; reverse channels available |
+| project file list/read | query/transfer | Fleet HTTP listings, `project-file-read-v1` bodies | yes | Directory listings deliberately stay on Fleet HTTP; reverse body reads remain available |
 | project file put/patch/delete | command/transfer | `project-file-write-v1` | yes | Atomic write and exclusive route |
 | `GET /settings` | projection | `daemon-configuration-v1` | no | Safe allowlist only |
 | `PATCH /settings` | command | `daemon-configuration-v1` | yes | `paused` is forbidden remotely |
@@ -395,7 +392,7 @@ available to Overseer.
 | session files/raw/stream/preview | query/transfer | `session-artifact-v1` | yes | Metadata on control, bytes on transfer |
 | `POST /sessions` | command | `session-command-v1` | yes | Existing request ID becomes command ID |
 | follow-up | command | `session-command-v1` | yes | Same-ID replay cannot duplicate user turn |
-| queue list/add/edit/send/delete | projection/command | `session-command-v1` | yes | Durable queue identity and command dedupe |
+| queue list/add/edit/send/delete | direct Fleet HTTP | none | yes | Existing actor, request ID, validation and response contracts |
 | cancel | command | `reverse-command-v1` first slice | yes | High-priority, idempotent |
 | delete session | command | `session-command-v1` | yes | Stable session ID |
 | `POST /control/pause`, `/control/resume` | local-only | none | n/a | Overseer support must be removed |

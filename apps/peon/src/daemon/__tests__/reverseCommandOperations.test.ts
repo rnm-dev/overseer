@@ -13,7 +13,7 @@ import { updateCommandHandlers } from "../overseer/socket/channels/updateCommand
 // ReverseCommandChannel registers these two itself rather than through a family
 // table, and the Armory family is registered later from daemon/index.ts once its
 // services exist. Its completeness is compile-checked like the others.
-const CHANNEL_REGISTERED = ["session.cancel", "daemon.configuration.patch"] as const;
+const CHANNEL_REGISTERED = ["daemon.configuration.patch"] as const;
 
 const sorted = (values: Iterable<string>): string[] => [...values].sort();
 

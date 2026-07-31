@@ -43,7 +43,7 @@ for that Peon must have passed their operation tests and the NAT/no-inbound
 conformance cell.
 
 Available reverse families include socket presence, session/project catalogs,
-transcript sync, folder listing, project/sandbox reads, file writes, daemon and
+transcript sync, project/sandbox body reads, file writes, daemon and
 runtime projections/queries, reverse commands, Armory/update handlers and base
 session artifacts. The exact accepted set remains connection-generation
 specific.

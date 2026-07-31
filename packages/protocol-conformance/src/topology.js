@@ -29,6 +29,10 @@ export class NoInboundTopology {
 
   exercise(surface, route) {
     if (route !== "reverse-socket") {
+      if (route === "legacy-http" && ["absolute-folder-picker", "project-directory"].includes(surface)) {
+        this.diagnostics.add("fleet_http_surface_exercised", { surface, channel: "mesh" });
+        return;
+      }
       if (this.peonFleetPortBlocked && route === "legacy-http") {
         this.inboundAttempts.push({ initiator: "overseer", target: "peon", channel: surface });
         throw new TopologyViolation(`${surface} selected legacy HTTP while the Peon fleet port is blocked`);

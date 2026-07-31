@@ -7,21 +7,16 @@ import { allowedProjects, canAccessProject, projectMemberCounts } from "../../ac
 import { ownerOnly, relay, restSegments, withWorkspacePeon } from "../helpers.js";
 import { analyticsQuery, runRuntimeCommandTransport } from "./runtimeReverseRead.js";
 import {
-  browsePeonFolders,
   folderBrowseSelector,
   projectFileReadChannel,
   projectFileWriteChannel,
   projectFileProxyQuery,
-  projectFolderBrowseSelector,
-  projectFolderEntries,
-  projectFolderReadChannel,
   streamProjectFileResponse,
   streamSandboxFileResponse,
   sandboxFileWriteChannel,
 } from "../../modules/projects/index.js";
-import { listProjectDocs, projectDocsFromSnapshot } from "../../modules/projectDocs/index.js";
-import { PeonOperationError } from "../../peonOperationChannel.js";
-import { getPeonConnection, peonConnectionSupports, peonDaemonConfigurationIdentity } from "../../peonConnections.js";
+import { projectDocsFromSnapshot } from "../../modules/projectDocs/index.js";
+import { getPeonConnection, peonDaemonConfigurationIdentity } from "../../peonConnections.js";
 import {
   canonicalJson,
   getReverseCommandForActor,
@@ -33,11 +28,6 @@ import {
   type ReverseCommandOperation,
 } from "../../modules/reverseCommands/index.js";
 import { runReverseCommandTransport } from "../../modules/reverseCommandTransport.js";
-import {
-  FOLDER_LISTING_CAPABILITY,
-  FOLDER_LISTING_ENTRY_METADATA_FEATURE,
-  type FolderListEntry,
-} from "../../peonFolderListing.js";
 import { auditSafeFileErrorBody } from "../../fileErrorSafety.js";
 import { FileSandboxError, resolveAttachmentPath, resolveSandboxSegments } from "../../peonFileSandbox.js";
 import { hasProjectFileTransport, hasSandboxFileTransport } from "../../peonTransferConnections.js";
@@ -53,6 +43,7 @@ import { recordCommittedAttachmentReceipt } from "../../modules/sessions/attachm
 import {
   forgetIndexedProject,
   getIndexedProject,
+  getIndexedProjectById,
   getProjectCatalogState,
   hasCanonicalProjectCatalog,
   listIndexedProjects,
@@ -342,23 +333,26 @@ export function registerProjectRoutes(router: express.Router): void {
     if (relayReverse(res, reverse)) return;
     relay(await callPeon(connOfRecord(c.record), "POST", "/projects", { actor: c.operator.email, body: req.body }), res);
   }));
-  // Directory picker for new projects: folder data travels over the Peon's
-  // `folder-listing-v1` reverse WebSocket, so an owner can browse from `/`
-  // instead of being confined to the HTTP file-transfer root.
+  // Directory picker for new projects. Keep the public Overseer route stable,
+  // but make the one authenticated Fleet HTTP request directly to the Peon's
+  // host-filesystem listing endpoint over mesh.
   router.get(`${wp}/folders`, withWorkspacePeon(async (req, res, c) => {
     if (!ownerOnly(res, c.role)) return;
-    const controller = new AbortController();
-    req.once("aborted", () => controller.abort());
-    res.once("close", () => controller.abort());
     try {
       const selector = folderBrowseSelector(req.query.path, req.query.limit);
-      res.json(await browsePeonFolders(c.record.peonId, selector, controller.signal));
+      const segments = selector.path === "/"
+        ? []
+        : selector.path.replaceAll("\\", "/").split("/").filter(Boolean);
+      const suffix = segments.length ? `/${segments.map(encodeURIComponent).join("/")}` : "";
+      relay(await callPeon(
+        connOfRecord(c.record),
+        "GET",
+        `/filesystem${suffix}?stat=1`,
+        { actor: c.operator.email },
+      ), res);
     } catch (error) {
-      if (controller.signal.aborted || res.headersSent || res.destroyed) return;
-      const typed = error instanceof PeonOperationError
-        ? error
-        : new PeonOperationError("FOLDER_LIST_FAILED", "the folder could not be listed", 502);
-      res.status(typed.status === 499 ? 502 : typed.status).json({ error: typed.message, code: typed.code });
+      const message = error instanceof Error ? error.message : "the folder could not be listed";
+      res.status(400).json({ error: message, code: "BAD_REQUEST" });
     }
   }));
   router.get(`${wp}/projects/:projectId/docs`, withWorkspacePeon(async (req, res, c) => {
@@ -367,18 +361,18 @@ export function registerProjectRoutes(router: express.Router): void {
       return res.status(404).json({ error: "unknown project", code: "UNKNOWN_PROJECT" });
     }
     if (await relayReverseDocumentation(req, res, c, projectId)) return;
-    const controller = new AbortController();
-    req.once("aborted", () => controller.abort());
-    res.once("close", () => controller.abort());
-    try {
-      res.json(await listProjectDocs(c.record.peonId, projectId, controller.signal));
-    } catch (error) {
-      if (controller.signal.aborted || res.headersSent || res.destroyed) return;
-      const typed = error instanceof PeonOperationError
-        ? error
-        : new PeonOperationError("DOCS_LIST_FAILED", "project documentation could not be listed", 502);
-      res.status(typed.status === 499 ? 502 : typed.status).json({ error: typed.message, code: typed.code });
-    }
+    const project = await getIndexedProjectById(c.record.peonId, projectId);
+    if (!project) return res.status(404).json({ error: "unknown project", code: "UNKNOWN_PROJECT" });
+    const result = await callPeon(
+      connOfRecord(c.record),
+      "GET",
+      `/projects/${encodeURIComponent(project.key)}/files/docs?stat=1`,
+      { actor: c.operator.email },
+    );
+    if (result.status === 404) return res.json({ exists: false, entries: [] });
+    if (!result.ok || !result.json || typeof result.json !== "object") return relay(result, res);
+    const entries = (result.json as { entries?: unknown }).entries;
+    res.json({ exists: true, entries: Array.isArray(entries) ? entries : [] });
   }));
   router.get(`${wp}/projects/by-id/:projectId/files/{*rest}`, withWorkspacePeon(async (req, res, c) => {
     const projectId = String(req.params.projectId);
@@ -796,50 +790,17 @@ export function registerProjectRoutes(router: express.Router): void {
     return proxyGet(conn, `/files/${segments.map(encodeURIComponent).join("/")}`, req, res, c.operator.email);
   }));
 
-  // Read-only project file browse. Directory listings use the project-scoped
-  // folder-listing operation when its additive entry metadata was negotiated;
-  // file bodies use the transfer socket. Older Peons retain the HTTP proxy.
+  // Read-only project file browse. Directory listings always use the
+  // authenticated Fleet HTTP API; file bodies retain their transfer-socket
+  // selection independently.
   router.get(`${wp}/projects/:key/files/{*rest}`, withWorkspaceProject(async (req, res, c) => {
     const key = String(req.params.key);
     const segments = restSegments(req);
     const stat = req.query.stat !== undefined;
-    const confirmedDirectory = req.query.directory === "1";
     const transportReady = hasProjectFileTransport(c.record.peonId);
-    const controlSocket = getPeonConnection(c.record.peonId);
-    const folderMetadataReady = Boolean(controlSocket
-      && peonConnectionSupports(controlSocket, FOLDER_LISTING_CAPABILITY)
-      && peonConnectionSupports(controlSocket, FOLDER_LISTING_ENTRY_METADATA_FEATURE));
-    // Both reverse operations address the immutable catalog identity. Skip the
-    // lookup only when neither socket can answer.
-    const projectId = transportReady || folderMetadataReady
+    const projectId = transportReady
       ? (await getIndexedProject(c.record.peonId, key))?.projectId ?? null
       : null;
-    const folderChannel = projectFolderReadChannel({ confirmedDirectory, metadataReady: folderMetadataReady, projectId });
-    if (stat && folderChannel === "unavailable") {
-      return res.status(409).json({ error: "canonical project identity is temporarily unavailable", code: "PROJECT_IDENTITY_UNAVAILABLE" });
-    }
-    if (stat && folderChannel === "socket") {
-      const controller = new AbortController();
-      req.once("aborted", () => controller.abort());
-      res.once("close", () => controller.abort());
-      try {
-        const listing = await browsePeonFolders(
-          c.record.peonId,
-          projectFolderBrowseSelector(projectId!, segments),
-          controller.signal,
-          undefined,
-          {},
-          true,
-        );
-        return res.json({ path: segments.join("/"), entries: projectFolderEntries(listing.entries as FolderListEntry[]) });
-      } catch (error) {
-        if (controller.signal.aborted || res.headersSent || res.destroyed) return;
-        const typed = error instanceof PeonOperationError
-          ? error
-          : new PeonOperationError("FOLDER_LIST_FAILED", "the project folder could not be listed", 502);
-        return res.status(typed.status === 499 ? 502 : typed.status).json({ error: typed.message, code: typed.code });
-      }
-    }
     const readChannel = projectFileReadChannel({ transportReady, projectId });
     if (!stat && readChannel === "unavailable") {
       return res.status(409).json({ error: "canonical project identity is temporarily unavailable", code: "PROJECT_IDENTITY_UNAVAILABLE" });

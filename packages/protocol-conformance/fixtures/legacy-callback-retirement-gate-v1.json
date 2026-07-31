@@ -73,10 +73,6 @@
       "contains": "function isLoopback"
     },
     {
-      "path": "apps/peon/src/dashboard/server.ts",
-      "contains": "app.listen(PORT, BIND_HOST"
-    },
-    {
       "path": "apps/peon/src/cli/peon.ts",
       "contains": "const BASE ="
     }

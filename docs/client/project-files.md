@@ -17,7 +17,7 @@ encoded independently. Responses contain an `entries` array whose items have a
 
 Plain `?stat=1` remains an HTTP request. The web tree adds `directory=1` when
 it already knows the target is a directory; Overseer may then serve that
-listing through the Peon's project-scoped `folder-listing-v1` control-socket
+listing through the Peon's authenticated Fleet HTTP project-files API
 operation when `entry-metadata-v1` was negotiated. Older Peons keep the HTTP
 fallback, with the marker stripped. Individual-file `?stat=1` stays exclusively
 on HTTP because that response includes `sha256`.

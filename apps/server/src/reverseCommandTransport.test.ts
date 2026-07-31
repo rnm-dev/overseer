@@ -99,7 +99,7 @@ test("accepted reverse authority reconciles after rollback without a legacy effe
   let legacy = 0;
   const result = await runReverseCommandTransport({
     peonId: "reconciling-peon",
-    operation: "session.followup",
+    operation: "session.metadata.patch",
     acceptedReverseCommand: true,
     policy: { reverseRoutingEnabled: false, legacyCallbackFallbackEnabled: false },
     reverse: async () => { reverse += 1; return "reconciled"; },

@@ -24,18 +24,19 @@ test("Peon × Overseer stable capability and downgrade matrix is green", () => {
 test("canonical catalog dependencies are all-or-nothing and fallback is exclusive", () => {
   const negotiated = negotiateCapabilities(
     {
-      controlCapabilities: ["session-catalog-v1", "project-catalog-v1", "folder-listing-v1"],
+      controlCapabilities: ["session-catalog-v1", "project-catalog-v1"],
       transferCapabilities: [],
     },
     {
-      controlCapabilities: ["session-catalog-v1", "durable-delivery-v1", "project-catalog-v1", "folder-listing-v1"],
+      controlCapabilities: ["session-catalog-v1", "durable-delivery-v1", "project-catalog-v1"],
       transferCapabilities: [],
     },
   );
-  assert.deepEqual(negotiated.control, ["folder-listing-v1"]);
+  assert.deepEqual(negotiated.control, []);
   assert.equal(routeForSurface("session-catalog", negotiated), "legacy-http");
   assert.equal(routeForSurface("project-catalog", negotiated), "legacy-http");
-  assert.equal(routeForSurface("absolute-folder-picker", negotiated), "reverse-socket");
+  assert.equal(routeForSurface("absolute-folder-picker", negotiated), "legacy-http");
+  assert.equal(routeForSurface("project-directory", negotiated), "legacy-http");
 });
 
 test("file write transport is pre-selected exclusively and never falls back after socket selection", () => {

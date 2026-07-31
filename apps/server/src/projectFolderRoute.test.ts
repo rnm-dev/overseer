@@ -184,8 +184,7 @@ test("project-key file route selects one transport and preserves the legacy list
     type: "hello",
     protocol: 1,
     peonId: "route-peon",
-    capabilities: ["folder-listing-v1", "file-write-v1"],
-    channels: { "folder-listing-v1": { entryMetadata: "entry-metadata-v1" } },
+    capabilities: ["file-write-v1"],
   }));
   await control.next((frame) => frame.type === "hello_ack");
   const transfer = new WebSocket(`ws://127.0.0.1:${appPort}${PEON_TRANSFER_SOCKET_PATH}`, {
@@ -258,42 +257,22 @@ test("project-key file route selects one transport and preserves the legacy list
     assert.deepEqual(JSON.parse(failedFile.body.toString()), { error: "file does not exist", code: "NOT_FOUND" });
     assert.deepEqual(httpRequests, [], "a socket file error must never fall through to HTTP");
 
-    const directoryResponse = get(appPort, `${base}/src?stat=1&directory=1`, cookie);
-    const directoryRequest = await control.next((frame) => frame.type === "folder_list_request");
-    assert.equal(directoryRequest.projectId, "route-project");
-    assert.equal(directoryRequest.relativePath, "src");
-    ws.send(JSON.stringify({
-      type: "folder_list_page",
-      requestId: directoryRequest.requestId,
-      path: "/projects/route/src",
-      projectId: "route-project",
-      entries: [
-        { name: "lib", type: "directory", size: null, mtimeMs: 20 },
-        { name: "main.ts", type: "file", size: 12, mtimeMs: 21 },
-        { name: "outside-link", type: "other", size: null, mtimeMs: null },
-      ],
-      nextCursor: null,
-      hasMore: false,
-    }));
-    assert.deepEqual(await directoryResponse, {
+    assert.deepEqual(await get(appPort, `${base}/src?stat=1&directory=1`, cookie), {
       status: 200,
       body: {
         path: "src",
-        entries: [
-          { name: "lib", type: "dir", size: null, mtimeMs: 20 },
-          { name: "main.ts", type: "file", size: 12, mtimeMs: 21 },
-          { name: "outside-link", type: "other", size: null, mtimeMs: null },
-        ],
+        entries: [{ name: "legacy.ts", type: "file", size: 3, mtimeMs: 11 }],
       },
     });
-    assert.deepEqual(httpRequests, []);
+    assert.equal(httpRequests.length, 1);
+    assert.equal(httpRequests[0], "/api/v1/projects/project-key/files/src?stat=1");
 
     assert.deepEqual(await get(appPort, `${base}/README.md?stat=1`, cookie), {
       status: 200,
       body: { path: "README.md", size: 7, mtimeMs: 10, sha256: "abc" },
     });
-    assert.equal(httpRequests.length, 1);
-    assert.equal(String(httpRequests[0]).includes("directory="), false);
+    assert.equal(httpRequests.length, 2);
+    assert.equal(String(httpRequests[1]).includes("directory="), false);
 
     assert.deepEqual(await get(
       appPort,
@@ -306,42 +285,12 @@ test("project-key file route selects one transport and preserves the legacy list
         entries: [{ name: "legacy.ts", type: "file", size: 3, mtimeMs: 11 }],
       },
     });
-    assert.equal(httpRequests.length, 2, "unconfirmed stat requests must stay exclusively on HTTP");
+    assert.equal(httpRequests.length, 3, "all stat requests must stay exclusively on HTTP");
     assert.equal(
-      String(httpRequests[1]).endsWith("?stat=1&stat=2&encoded=a%2Bb&array%5B%5D=x&array%5B%5D=y"),
+      String(httpRequests[2]).endsWith("?stat=1&stat=2&encoded=a%2Bb&array%5B%5D=x&array%5B%5D=y"),
       true,
       "repeated, array-shaped, and encoded query values must survive the HTTP proxy unchanged",
     );
-
-    const busyResponse = get(appPort, `${base}/src?stat=1&directory=1`, cookie);
-    for (let attempt = 0; attempt < 7; attempt += 1) {
-      const busyRequest = await control.next((frame) => frame.type === "folder_list_request");
-      ws.send(JSON.stringify({
-        type: "folder_list_error",
-        requestId: busyRequest.requestId,
-        code: "SYNC_IN_PROGRESS",
-        error: "another folder listing is already active",
-      }));
-    }
-    assert.deepEqual(await busyResponse, {
-      status: 409,
-      body: { error: "another folder listing is already active", code: "SYNC_IN_PROGRESS" },
-    });
-    assert.equal(httpRequests.length, 2, "socket contention must not fall through to HTTP");
-
-    const wrongKindResponse = get(appPort, `${base}/README.md?stat=1&directory=1`, cookie);
-    const wrongKindRequest = await control.next((frame) => frame.type === "folder_list_request");
-    ws.send(JSON.stringify({
-      type: "folder_list_error",
-      requestId: wrongKindRequest.requestId,
-      code: "NOT_DIRECTORY",
-      error: "filesystem path is not a directory",
-    }));
-    assert.deepEqual(await wrongKindResponse, {
-      status: 400,
-      body: { error: "filesystem path is not a directory", code: "NOT_DIRECTORY" },
-    });
-    assert.equal(httpRequests.length, 2, "a confirmed socket request must never probe HTTP");
 
     const legacyTransfer = new WebSocket(`ws://127.0.0.1:${appPort}${PEON_TRANSFER_SOCKET_PATH}`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -363,7 +312,7 @@ test("project-key file route selects one transport and preserves the legacy list
     const legacyRead = await getRaw(appPort, `${base}/README.md`, cookie);
     assert.equal(legacyRead.status, 200);
     assert.deepEqual(JSON.parse(legacyRead.body.toString()), { path: "README.md", size: 7, mtimeMs: 10, sha256: "abc" });
-    assert.equal(httpRequests.length, 3, "a Peon without project-file-read-v1 must retain the HTTP fallback");
+    assert.equal(httpRequests.length, 4, "a Peon without project-file-read-v1 must retain the HTTP fallback");
 
     const deleteId = "ecce5b66-bfe8-4c29-b746-bc0df76c0a35";
     const deleting = mutate(appPort, "DELETE", `${base}/obsolete.txt`, cookie, undefined, {
@@ -400,7 +349,7 @@ test("project-key file route selects one transport and preserves the legacy list
       status: 200,
       body: { path: "obsolete.txt", size: 7 },
     });
-    assert.equal(httpRequests.length, 3, "a selected socket delete must never probe legacy HTTP");
+    assert.equal(httpRequests.length, 4, "a selected socket delete must never probe legacy HTTP");
 
     await query(`DELETE FROM projects WHERE peon_id='route-peon'`);
     const beforeIdentityRefusals = httpRequests.length;
@@ -443,14 +392,14 @@ test("project-key file route selects one transport and preserves the legacy list
     assert.equal(httpMethods.at(-1), "DELETE");
     assert.equal(httpRequests.at(-1), "/api/v1/projects/project-key/files/legacy-delete.txt");
 
-    const disconnectedResponse = get(appPort, `${base}/src?stat=1&directory=1`, cookie);
-    await control.next((frame) => frame.type === "folder_list_request");
     ws.terminate();
-    assert.deepEqual(await disconnectedResponse, {
-      status: 502,
-      body: { error: "Peon connection was lost", code: "CONNECTION_LOST" },
+    assert.deepEqual(await get(appPort, `${base}/src?stat=1&directory=1`, cookie), {
+      status: 200,
+      body: {
+        path: "src",
+        entries: [{ name: "legacy.ts", type: "file", size: 3, mtimeMs: 11 }],
+      },
     });
-    assert.equal(httpRequests.length, 4, "a lost chosen socket must not fall through to HTTP");
   } finally {
     ws.terminate();
     transfer.terminate();

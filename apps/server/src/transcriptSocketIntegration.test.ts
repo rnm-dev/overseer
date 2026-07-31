@@ -313,50 +313,6 @@ test("reverse transcript snapshot/live/replay reaches authorized browsers once a
   owner.send(JSON.stringify({ type: "unsubscribe", sessionId: "session-1" }));
   await peonFrames.waitFor((frame) =>
     frame.type === "transcript_unsubscribe" && frame.sessionId === "session-1");
-  const demandFramesBeforeCachedHistory = peonFrames.frames.filter((frame) =>
-    frame.type === "transcript_snapshot_request" || frame.type === "transcript_subscribe").length;
-  const history = await fetch(
-    `http://127.0.0.1:${port}/api/workspaces/${workspace.id}/peons/peon-1/sessions/session-1/transcript?limit=50`,
-    { headers: { Authorization: `Bearer ${ownerAuth.token}` } },
-  );
-  assert.equal(history.status, 200);
-  const historyBody = await history.json() as {
-    events?: Array<{ eventId?: string }>;
-    freshness?: { state?: string };
-  };
-  assert.deepEqual(historyBody.events?.map((event) => event.eventId), ["event-1"]);
-  assert.equal(historyBody.freshness?.state, "ready");
-  await new Promise((resolve) => setTimeout(resolve, 30));
-  assert.equal(
-    peonFrames.frames.filter((frame) =>
-      frame.type === "transcript_snapshot_request" || frame.type === "transcript_subscribe").length,
-    demandFramesBeforeCachedHistory,
-    "a ready stored transcript page must not create temporary Peon demand",
-  );
-
-  const missingProjectionHistory = fetch(
-    `http://127.0.0.1:${port}/api/workspaces/${workspace.id}/peons/peon-1/sessions/session-2/transcript?limit=50`,
-    { headers: { Authorization: `Bearer ${ownerAuth.token}` } },
-  );
-  const missingProjectionSnapshot = await peonFrames.waitFor((frame) =>
-    frame.type === "transcript_snapshot_request" && frame.sessionId === "session-2");
-  peon.send(JSON.stringify({
-    type: "transcript_snapshot_page",
-    requestId: missingProjectionSnapshot.requestId,
-    sessionId: "session-2",
-    epoch: "transcript-epoch-2",
-    revision: 0,
-    barrierSeq: 0,
-    events: [],
-    nextCursor: null,
-    hasMore: false,
-  }));
-  const rebuiltHistory = await missingProjectionHistory;
-  assert.equal(rebuiltHistory.status, 200);
-  assert.deepEqual((await rebuiltHistory.json() as { events?: unknown[] }).events, []);
-  await peonFrames.waitFor((frame) =>
-    frame.type === "transcript_unsubscribe" && frame.sessionId === "session-2");
-
   owner.send(JSON.stringify({
     type: "subscribe",
     peonId: "peon-1",

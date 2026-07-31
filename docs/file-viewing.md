@@ -57,7 +57,7 @@ migration is partly done, and the split today is:
 | --- | --- | --- |
 | Project file read by ID (docs, web preview) | socket, `project-file-read-v1` | — |
 | Project file read by key (file tree, browser, session pane) | socket, `project-file-read-v1` — Overseer resolves key → project ID through the catalog and falls back to the proxy only when the current transfer connection did not negotiate the capability; a negotiated socket with temporarily missing identity fails closed | — |
-| Confirmed project directory listing (`?stat=1&directory=1`) | control socket, `folder-listing-v1`; HTTP fallback for an older Peon; a metadata-capable socket with temporarily missing identity fails closed | entry metadata is negotiated additively; project-relative paths remain contained by immutable project ID |
+| Confirmed project directory listing (`?stat=1&directory=1`) | authenticated Fleet HTTP `GET /projects/:key/files/<path>?stat=1` over mesh, always | `directory=1` is stripped as an Overseer-private UI hint; Peon preserves containment and entry metadata |
 | Project file metadata (`?stat=1`) | HTTP proxy only | retains `sha256`; never probes the folder socket first |
 | Attachment / sandbox file read | socket, `sandbox-file-read-v1`; HTTP fallback for an older Peon | — |
 | Attachment upload, project file `PUT`/`PATCH`/`DELETE` | socket, `file-write-v1`; HTTP fallback for an older Peon | — |
@@ -71,18 +71,13 @@ callback for base previews. Legacy transcript events may still name an absolute
 path; Peon treats it only as containment input and does not publish it as new
 wire metadata.
 
-`projectFileReadChannel`, `projectFileWriteChannel`,
-`sandboxFileWriteChannel`, and `projectFolderReadChannel`
-(`src/modules/projects/projectFileHttp.ts`) decide independently: file bodies
-need the transfer socket, while a caller-confirmed directory listing needs a
-control socket whose `folder-listing-v1` hello negotiated
-`entry-metadata-v1`. The web tree adds the additive `directory=1` marker; plain
-`?stat=1` remains exclusively on HTTP and is never used to probe both
-transports. Overseer strips the marker if it must fall back to an older Peon's
-HTTP route while retaining every other raw query parameter, including repeated
-or encoded values. A chosen socket failure, including `SYNC_IN_PROGRESS`,
-`CONNECTION_LOST`, or `NOT_DIRECTORY`, is returned directly rather than
-falling through to HTTP.
+`projectFileReadChannel`, `projectFileWriteChannel`, and
+`sandboxFileWriteChannel` (`src/modules/projects/projectFileHttp.ts`) decide
+file-body and mutation transports independently. Directory listings do not
+enter those selectors: the web tree's `directory=1` marker is stripped while
+every other raw query parameter, including repeated or encoded values, is
+preserved for the one Fleet HTTP request. Peon's response remains authoritative;
+there is no socket probe or fallback.
 
 The route-level acceptance test also fixes the security boundary: project
 membership is checked before dispatch, the browser-supplied key becomes the
@@ -121,10 +116,9 @@ directories are `type: "dir"` (the wire channel's `"directory"` is normalized
 at the route), files retain their size and modification time, and contained
 symlinks retain the target's directory/file type and metadata. Escaping,
 broken, or special links are inert `type: "other"` rows with null metadata.
-Peon enumerates and traverses from anchored Linux directory handles rather than
-the mutable pathname; unsupported platforms fail closed. It holds its single
-listing slot until every sibling in an aborted in-flight metadata batch has
-settled.
+Peon's shared Fleet HTTP file-access service resolves and contains the requested
+project path before listing it, follows contained symlink targets for their
+effective type and metadata, and disarms escaping, broken and special links.
 
 ## Display policy
 

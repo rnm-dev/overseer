@@ -1,7 +1,6 @@
 import { query, transaction, transactionWithAdvisoryLock, type Transaction } from "../../db.js";
 import { insertEvent, publishCommittedEvent, type LiveEvent } from "../../eventLog.js";
 import { normalizeSessionSummary } from "../sessions/sessionNormalization.js";
-import { bindAttachmentReceipts } from "../sessions/attachmentReceipts.js";
 import {
   assertSafeReverseCommandResult,
   canonicalJson,
@@ -78,7 +77,6 @@ export interface NewReverseCommand {
   actor: ReverseCommandActor;
   target: ReverseCommandTarget;
   payload: JsonObject;
-  attachmentPayload?: JsonObject;
   expected: JsonObject | null;
   requestBytes: number;
   requestedAt: number;
@@ -194,19 +192,6 @@ export async function createOrGetReverseCommand(
     );
     const existing = await findWith(tx, input.workspaceId, input.peonId, input.commandId);
     if (existing) {
-      if (existing.requestHash === input.requestHash
-        && ["session.start", "session.followup", "session.queue.add"].includes(input.operation)) {
-        await bindAttachmentReceipts(tx, {
-          workspaceId: input.workspaceId,
-          peonId: input.peonId,
-          commandId: input.commandId,
-          requestHash: input.requestHash,
-          actor: input.actor,
-          targetSessionId: input.target.sessionId,
-          payload: input.attachmentPayload ?? input.payload,
-          now,
-        });
-      }
       return existing.requestHash === input.requestHash
         ? { kind: "existing", record: existing }
         : { kind: "reused", record: existing };
@@ -234,19 +219,6 @@ export async function createOrGetReverseCommand(
     if (exceeds(peon, input.requestBytes, limits.peonPending, limits.peonBytes)) return { kind: "overloaded", scope: "peon" };
     if (exceeds(workspace, input.requestBytes, limits.workspacePending, limits.workspaceBytes)) return { kind: "overloaded", scope: "workspace" };
     if (exceeds(global, input.requestBytes, limits.globalPending, limits.globalBytes)) return { kind: "overloaded", scope: "global" };
-
-    if (["session.start", "session.followup", "session.queue.add"].includes(input.operation)) {
-      await bindAttachmentReceipts(tx, {
-        workspaceId: input.workspaceId,
-        peonId: input.peonId,
-        commandId: input.commandId,
-        requestHash: input.requestHash,
-        actor: input.actor,
-        targetSessionId: input.target.sessionId,
-        payload: input.attachmentPayload ?? input.payload,
-        now,
-      });
-    }
 
     const { rows } = await tx.query<ReverseCommandRow>(
       `INSERT INTO reverse_commands
@@ -587,13 +559,7 @@ async function applySafeProjection(
     return null;
   }
   if ((result.status !== "applied" && result.status !== "noop")) return null;
-  const projected = ["session.start", "session.followup", "session.metadata.patch"].includes(record.operation)
-    ? result.result
-    : (record.operation === "session.queue.add" || record.operation === "session.queue.edit")
-      && result.result.session && typeof result.result.session === "object"
-      && !Array.isArray(result.result.session)
-      ? result.result.session as JsonObject
-      : null;
+  const projected = record.operation === "session.metadata.patch" ? result.result : null;
   if (projected) {
     const summary = normalizeSessionSummary(projected as never);
     const syncedAt = Date.now();

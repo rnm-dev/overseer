@@ -8,10 +8,10 @@ import {
 
 test("reverse command metrics use bounded redacted labels", () => {
   resetReverseCommandMetricsForTest();
-  countReverseCommandMetric("completed", "session.cancel", "SESSION_NOT_RUNNING");
+  countReverseCommandMetric("completed", "session.delete", "SESSION_NOT_RUNNING");
   countReverseCommandMetric("error", "attacker-operation-with-/private/path", "token-secret-value");
   assert.deepEqual(reverseCommandMetricsSnapshot(), {
-    "completed:session.cancel:SESSION_NOT_RUNNING": 1,
+    "completed:session.delete:SESSION_NOT_RUNNING": 1,
     "error:other:other": 1,
   });
   const encoded = JSON.stringify(reverseCommandMetricsSnapshot());

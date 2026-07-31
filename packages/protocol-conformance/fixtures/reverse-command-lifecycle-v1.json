@@ -1,13 +1,13 @@
 {
   "formatVersion": 1,
   "capability": "reverse-command-v1",
-  "operation": "session.cancel",
+  "operation": "session.metadata.patch",
   "command": {
     "type": "command",
     "protocol": 1,
     "capability": "reverse-command-v1",
     "commandId": "018f4f0c-9f30-7a61-bf1a-66d2582bdb4a",
-    "operation": "session.cancel",
+    "operation": "session.metadata.patch",
     "target": {
       "peonId": "f4de920f-e33e-4cf5-97d0-3a75e9266090",
       "sessionId": "6a379713-f4ca-4ca4-b4a8-9a3fbfea80d5"

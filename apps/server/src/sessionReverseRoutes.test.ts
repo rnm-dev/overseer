@@ -34,19 +34,8 @@ test("every released session operation has its public workspace route", () => {
 });
 
 test("reverse terminal results preserve legacy session HTTP response shapes", () => {
-  const itemId = "7d83d995-d4aa-46b7-93d9-a8ece76fa68d";
   const cases: Array<[ReverseCommandOperation, ReverseCommandHttpResult, number, unknown]> = [
-    ["session.detail", applied(session), 200, session],
-    ["session.start", applied(session), 201, session],
-    ["session.start", applied(session, true), 200, session],
-    ["session.followup", applied(session), 201, session],
     ["session.metadata.patch", applied(session), 200, session],
-    ["session.queue.list", applied({ sessionId: session.id, items: [] }), 200, { items: [] }],
-    ["session.queue.add", applied({ sessionId: session.id, itemId, session }), 201, session],
-    ["session.queue.edit", applied({ sessionId: session.id, itemId, session }), 200, session],
-    ["session.queue.remove", applied({ sessionId: session.id, itemId }), 200, { ok: true }],
-    ["session.queue.send-now", applied({ sessionId: session.id, itemId }), 200, { ok: true }],
-    ["session.cancel", applied({ sessionId: session.id, sessionStatus: "completed" }), 200, { ok: true }],
     ["session.delete", applied({ sessionId: session.id, deleted: true }), 200, { ok: true }],
   ];
   for (const [operation, result, status, body] of cases) {
@@ -63,7 +52,7 @@ test("pending results retain status reconciliation and delete preserves its lega
       statusUrl: "/api/workspaces/w/peons/p/commands/c",
     },
   };
-  assert.deepEqual(sessionReverseHttpResponse("session.followup", pending), {
+  assert.deepEqual(sessionReverseHttpResponse("session.metadata.patch", pending), {
     status: 202,
     body: pending.body,
   });

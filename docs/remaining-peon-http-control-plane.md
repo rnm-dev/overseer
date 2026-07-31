@@ -41,10 +41,11 @@ Capability selectors already make several families exclusive:
 
 - `session-catalog-v1` and `project-catalog-v1` serve canonical list/basic
   detail projections, leaving HTTP only before the initial projection commits;
-- `transcript-sync-v1` serves transcript pages and the projected live tail;
-- `folder-listing-v1`, `project-file-read-v1`, `sandbox-file-read-v1`, and
+- Fleet HTTP serves authoritative session detail and transcript pages;
+  `transcript-sync-v1` serves only the projected live tail;
+- `project-file-read-v1`, `sandbox-file-read-v1`, and
   `file-write-v1` own selected file paths;
-- `reverse-command-v1` owns session cancel when negotiated.
+- Fleet HTTP owns session start, follow-up, and cancel for every Peon version.
 
 No selected reverse operation may fall back to HTTP after a socket error.
 Fallback is only a capability/version decision made before dispatch.
@@ -53,16 +54,16 @@ Fallback is only a capability/version decision made before dispatch.
 
 | Family | Current HTTP surface | Target form and owner | Capability | Tasks |
 | --- | --- | --- | --- | --- |
-| Session catalog/detail | `/sessions`, `/sessions/:id`, status refreshes | Rebuildable projection; bounded authoritative detail query only where the projection lacks fields | `session-catalog-v1`; a typed session query on the shared gateway if still needed | OVSR-132, OVSR-134 |
-| Transcript history/live tail | transcript GET and `/stream` SSE in API and browser socket | Durable snapshot + ordered commits into an ACL-filtered local projection/browser relay; remove both SSE dials | `transcript-sync-v1` | OVSR-133, OVSR-135 |
-| Session lifecycle/queue | create, patch, follow-up, queue CRUD/send, cancel, delete | Durable commands with replayable terminal results | typed operations under `reverse-command-v1` | OVSR-129, OVSR-130, OVSR-132, OVSR-134 |
+| Session catalog/detail | `/sessions`, `/sessions/:id`, status refreshes | Catalog remains rebuildable; one-session authoritative detail is direct authenticated Fleet HTTP | `session-catalog-v1` for catalog, Fleet HTTP for detail | OVSR-132, OVSR-134, OVSR-290 |
+| Transcript history/live tail | transcript GET and `/stream` SSE in API and browser socket | History pages use Fleet HTTP pagination; durable snapshot + ordered commits remain for the ACL-filtered live relay | Fleet HTTP for pages; `transcript-sync-v1` for realtime | OVSR-133, OVSR-135, OVSR-290 |
+| Session lifecycle/queue | create, patch, follow-up, queue CRUD/send, cancel, delete | Create, follow-up, cancel and the complete queue surface use the existing authenticated Fleet HTTP API through mesh; metadata/delete may retain typed durable commands | Fleet HTTP for `session.start`, `session.followup`, cancel and `session.queue.add/list/edit/remove/send-now`; remaining typed operations under `reverse-command-v1` | OVSR-129, OVSR-130, OVSR-132, OVSR-134, OVSR-286, OVSR-287, OVSR-289 |
 | Daemon configuration | `/settings`, mutable `/status` | Safe durable projection for reads; commands for mutation | `daemon-configuration-v1` + `reverse-command-v1` | OVSR-86, OVSR-87 |
 | Project administration/resources | project CRUD/settings, suggest-dir, skills, quick links | Catalog projection for basic reads; bounded typed queries for skills/suggest-dir; durable commands for mutations | `project-catalog-v1`, project resource/query capability, `reverse-command-v1` | OVSR-136, OVSR-138 |
 | Runtime/provider state | `/status`, `/models`, `/stats`, `/quota/:provider`, `/capabilities/:provider` | Durable low-cost runtime projection; bounded on-demand queries for slow/refresh probes | `runtime-state-v1`, `runtime-query-v1` | OVSR-137, OVSR-139 |
 | Armory | inventory/settings/configuration, refresh/install/update/remove/enable/disable/restart, operation polling | Safe projection for inventory/config summaries; durable commands and shared command-status reconciliation for effects/long operations | Armory state/operation capability + `reverse-command-v1` | OVSR-140, OVSR-141 |
 | Update control | pause/resume/check-update/update and AI CLI update aliases | Durable commands; update result remains pending across process replacement and completes only after reconnect attestation | update capability + `reverse-command-v1` | OVSR-142, OVSR-143 |
 | Session artifacts/previews | session file metadata/raw/stream, preview handoff, attachments | Bounded transfer stream plus control metadata/lease; no Peon SSE | `session-artifact-v1` and existing transfer primitives | OVSR-144, OVSR-146; live watched revisions stay OVSR-50/52 |
-| Project/sandbox files | generic `/files`, project file read/write/move fallbacks | Existing reverse read/write/list operations; retain HTTP only for older Peons | `folder-listing-v1`, `project-file-read-v1`, `sandbox-file-read-v1`, `file-write-v1` | OVSR-228/229/230/232/234; residual OVSR-49/51/53; proxy/API retirement OVSR-231/235 |
+| Project/sandbox files | generic `/files`, project file reads/writes/moves; project directory listings | Directory listings deliberately stay on the single Fleet HTTP project-files API; body reads and mutations retain their existing reverse transports | Fleet HTTP listings; `project-file-read-v1`, `sandbox-file-read-v1`, `file-write-v1` for bodies/mutations | OVSR-288; OVSR-228/229/232/234; residual OVSR-49/51/53 |
 | Enrollment/reconciliation | `/enroll`, status probes, callback address | Peon-initiated claim, socket presence and projections; no outbound dial | `peon-claim-v1` and family capabilities | OVSR-210, OVSR-145, OVSR-147, OVSR-148, OVSR-149 |
 
 Read-only request/response operations may use the shared correlated gateway but
@@ -162,11 +163,10 @@ socket generation.
 - Session/runtime/project/Armory/update Peon and Overseer pairs are still in
   progress; configuration and session-artifact Overseer counterparts remain
   backlog.
-- Some current reads still use HTTP to compensate for incomplete projection
-  shape: session detail, project identity for legacy ACL checks, quick-link
-  refresh, and `fileTransferRoot`. Their owners must either add the missing safe
-  projected fields or define a typed query; a generic HTTP-shaped RPC is not an
-  acceptable shortcut.
+- Session detail and transcript pages intentionally use Fleet HTTP as their
+  single authoritative read transport. Other remaining HTTP reads (project
+  identity for legacy ACL checks, quick-link refresh and `fileTransferRoot`)
+  retain their existing migration owners.
 - `callSupportedPeonPath` preserves three historical AI CLI update path
   dialects. The reverse contract needs one canonical operation name and keeps
   aliases only at the operator HTTP boundary.

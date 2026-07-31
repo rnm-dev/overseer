@@ -6,10 +6,6 @@ import { BoundedDiagnostics } from "./diagnostics.js";
 const PACKAGE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const CATALOG_DEPENDENCIES = ["session-catalog-v1", "durable-delivery-v1"];
-const FOLDER_ERRORS = new Set([
-  "BAD_REQUEST", "BAD_CURSOR", "SYNC_IN_PROGRESS", "UNKNOWN_PROJECT", "NOT_FOUND",
-  "NOT_DIRECTORY", "FORBIDDEN", "INVALID_PATH", "PATH_ESCAPE", "LISTING_TOO_LARGE", "INTERNAL",
-]);
 const FILE_ERRORS = new Set([
   "BAD_REQUEST", "UNKNOWN_PROJECT", "FILES_DISABLED", "PATH_ESCAPE", "NOT_FOUND",
   "IS_DIRECTORY", "RANGE_NOT_SATISFIABLE", "TRANSFER_CANCELLED", "INTERNAL",
@@ -150,60 +146,6 @@ function validateTranscriptControl(frame, errors, type) {
   if (frame.type !== type || !uuid(frame.requestId) || typeof frame.sessionId !== "string") errors.push(`invalid ${type}`);
 }
 
-function validateFolderRequest(frame, errors) {
-  if (frame.type !== "folder_list_request" || !uuid(frame.requestId)) errors.push("invalid folder request identity");
-  const firstPage = frame.cursor === undefined;
-  if (firstPage) {
-    const absolute = typeof frame.path === "string" && frame.path.startsWith("/");
-    const project = uuid(frame.projectId);
-    if (!absolute && !project) errors.push("folder request requires an absolute path or projectId");
-    if (absolute && frame.relativePath !== undefined) errors.push("absolute path cannot include relativePath");
-    if (frame.relativePath !== undefined && (typeof frame.relativePath !== "string" || frame.relativePath.startsWith("/"))) {
-      errors.push("relativePath must be relative");
-    }
-  } else if (typeof frame.cursor !== "string" || !frame.cursor) {
-    errors.push("cursor is invalid");
-  }
-  if (frame.limit !== undefined && (!integer(frame.limit, 1) || frame.limit > 500)) errors.push("limit exceeds 500");
-}
-
-function validateFolderPage(frame, errors) {
-  if (frame.type !== "folder_list_page" || !uuid(frame.requestId)) errors.push("invalid folder page identity");
-  if (typeof frame.path !== "string" || !frame.path.startsWith("/")) errors.push("folder path must be absolute");
-  if (frame.projectId !== null && !uuid(frame.projectId)) errors.push("projectId must be null or UUID");
-  if (!Array.isArray(frame.entries) || frame.entries.length > 20_000) {
-    errors.push("entries exceed bounds");
-    return;
-  }
-  for (const entry of frame.entries) {
-    if (!isObject(entry) || typeof entry.name !== "string" || !["directory", "file", "other"].includes(entry.type)) {
-      errors.push("invalid folder entry");
-      continue;
-    }
-    const hasMetadata = Object.hasOwn(entry, "size") || Object.hasOwn(entry, "mtimeMs");
-    if (!hasMetadata && entry.type === "other") errors.push("legacy entries cannot use other");
-    if (hasMetadata) {
-      if (entry.type === "file" && !integer(entry.size)) errors.push("file size must be non-negative");
-      if (entry.type !== "file" && entry.size !== null) errors.push("non-file size must be null");
-      if (entry.type === "other" ? entry.mtimeMs !== null : typeof entry.mtimeMs !== "number") {
-        errors.push("invalid entry mtimeMs");
-      }
-    }
-  }
-  if (typeof frame.hasMore !== "boolean"
-    || (frame.hasMore ? typeof frame.nextCursor !== "string" || !frame.nextCursor : frame.nextCursor !== null)) {
-    errors.push("folder cursor does not match hasMore");
-  }
-}
-
-function validateFolderTerminal(frame, errors, kind) {
-  if (frame.type !== `folder_list_${kind}`) errors.push(`expected folder_list_${kind}`);
-  if (frame.requestId !== null && !uuid(frame.requestId)) errors.push("requestId must be null or UUID");
-  if (kind === "error" && (!FOLDER_ERRORS.has(frame.code) || typeof frame.error !== "string" || !frame.error)) {
-    errors.push("invalid stable folder error");
-  }
-}
-
 function validateFileOpen(frame, errors, sandbox) {
   if (frame.type !== "file_open" || frame.protocol !== 1 || !uuid(frame.requestId)) errors.push("invalid file_open identity");
   if (!actor(frame.actor)) errors.push("actor must be server-derived");
@@ -298,11 +240,6 @@ const validators = {
   "transcript.live": validateTranscriptDurable,
   "transcript.cancel": (frame, errors) => validateTranscriptControl(frame, errors, "transcript_snapshot_cancel"),
   "transcript.unsubscribe": (frame, errors) => validateTranscriptControl(frame, errors, "transcript_unsubscribe"),
-  "folder.request": validateFolderRequest,
-  "folder.page": validateFolderPage,
-  "folder.cancel": (frame, errors) => validateFolderTerminal(frame, errors, "cancel"),
-  "folder.cancelled": (frame, errors) => validateFolderTerminal(frame, errors, "cancelled"),
-  "folder.error": (frame, errors) => validateFolderTerminal(frame, errors, "error"),
   "file.project.open": (frame, errors) => validateFileOpen(frame, errors, false),
   "file.sandbox.open": (frame, errors) => validateFileOpen(frame, errors, true),
   "file.meta": validateFileMeta,

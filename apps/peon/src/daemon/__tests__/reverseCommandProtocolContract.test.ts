@@ -13,12 +13,12 @@ test("reverse command v1 fixtures stay aligned with the normative schema", () =>
   assert.equal(schema.$id, "https://peon.local/protocol/reverse-command-v1/schema.json");
   assert.equal(fixtures.contractVersion, 1);
   assert.equal(fixtures.capability, "reverse-command-v1");
-  assert.ok(fixtures.enabledOperations.includes("session.cancel"));
+  assert.ok(!fixtures.enabledOperations.includes("session.delete"));
   assert.equal(fixtures.maxCommandFrameBytes, 60 * 1024);
 
   const { command, accepted, durableResult, statusRequest, terminalStatus } = fixtures.frames;
   assert.equal(command.capability, fixtures.capability);
-  assert.equal(command.operation, "session.cancel");
+  assert.equal(command.operation, "session.metadata.patch");
   assert.deepEqual(command.payload, {});
   assert.deepEqual(schema.$defs.target.required, ["peonId"]);
   assert.match(command.commandId, UUID);

@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-import { sessions, } from "../../../sessions/index.js";
 import { ReverseCommandLedger } from "../reverseCommandLedger.js";
 import { runtimeQueryHandlers } from "./runtimeQueryHandlers.js";
 import { projectCommandHandlers } from "./projectCommandHandlers.js";
@@ -42,26 +41,6 @@ function commandResult(record, execution, now = Date.now()) {
         result: execution.result ?? null,
     };
 }
-export function sessionCancelHandler(service) {
-    return {
-        priority: "critical",
-        maxConcurrency: 8,
-        validate: (payload, expected) => strictKeys(payload, []) && expected === null ? null : "session.cancel requires an empty payload and no expected object",
-        execute: (command) => {
-            const sessionId = command.target.sessionId;
-            const before = service.get(sessionId);
-            if (!before)
-                return { status: "rejected", code: "UNKNOWN_SESSION" };
-            if (before.status !== "running") {
-                return { status: "noop", code: "OK", result: { sessionId, sessionStatus: before.status } };
-            }
-            if (!service.cancel(sessionId))
-                return { status: "rejected", code: "SESSION_NOT_RUNNING" };
-            const after = service.get(sessionId);
-            return { status: "applied", code: "OK", result: { sessionId, sessionStatus: after?.status ?? "cancelled" } };
-        },
-    };
-}
 export class ReverseCommandChannel {
     options;
     capability = REVERSE_COMMAND_CAPABILITY;
@@ -85,9 +64,7 @@ export class ReverseCommandChannel {
     constructor(options) {
         this.options = options;
         this.ledger = options.ledger ?? new ReverseCommandLedger();
-        const sessionService = options.sessions ?? sessions;
         this.handlers = options.handlers ?? {
-            "session.cancel": sessionCancelHandler(sessionService),
             ...sessionCommandHandlers(),
             "daemon.configuration.patch": daemonConfigurationChannel.commandHandler(),
             ...projectCommandHandlers(),
@@ -274,10 +251,7 @@ export class ReverseCommandChannel {
         }
         if (target.peonId !== this.options.peonId())
             return { error: "reverse command target Peon does not match authenticated socket", disconnect: true };
-        if (frame.operation === "session.start" && (target.sessionId !== undefined || target.projectId !== undefined)) {
-            return { error: "session.start targets only the authenticated Peon" };
-        }
-        if (frame.operation.startsWith("session.") && frame.operation !== "session.start"
+        if (frame.operation.startsWith("session.")
             && (target.sessionId === undefined || target.projectId !== undefined)) {
             return { error: `${frame.operation} requires only target.sessionId` };
         }
@@ -357,10 +331,7 @@ export class ReverseCommandChannel {
         catch {
             execution = { status: "failed", code: "INTERNAL" };
         }
-        if (item.command.operation === "session.cancel" && !this.validSessionCancelExecution(item.command, execution)) {
-            execution = { status: "failed", code: "INTERNAL" };
-        }
-        else if (item.command.operation.startsWith("session.") && item.command.operation !== "session.cancel"
+        if (item.command.operation.startsWith("session.")
             && !validSessionCommandExecution(item.command, execution)) {
             execution = { status: "failed", code: "INTERNAL" };
         }
@@ -400,24 +371,6 @@ export class ReverseCommandChannel {
             this.terminalRetries.set(commandId, { authority, generation, result, attempt, timer });
         };
         schedule(0);
-    }
-    validSessionCancelExecution(command, execution) {
-        if (execution.status === "applied" || execution.status === "noop") {
-            const result = execution.result;
-            return execution.code === "OK" && !!result
-                && strictKeys(result, ["sessionId", "sessionStatus"])
-                && result.sessionId === command.target.sessionId
-                && (result.sessionStatus === "completed" || result.sessionStatus === "cancelled");
-        }
-        if (execution.status === "rejected") {
-            return execution.result === undefined
-                && ["BAD_COMMAND", "COMMAND_EXPIRED", "COMMAND_LEDGER_FULL", "SESSION_NOT_RUNNING", "UNKNOWN_SESSION"].includes(execution.code);
-        }
-        if (execution.status === "conflict")
-            return execution.code === "COMMAND_ID_REUSED" && execution.result === undefined;
-        return execution.status === "failed"
-            && (execution.code === "INTERNAL" || execution.code === "PERSIST_FAILED")
-            && execution.result === undefined;
     }
     publishStored(record, sender) {
         const authority = this.senderAuthority(sender);

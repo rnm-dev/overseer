@@ -1,6 +1,9 @@
-import type { FolderListEntry } from "../../peonFolderListing.js";
-
-export type { FolderLister, RetryOptions } from "../../peonFolderRetry.js";
+export interface FolderListEntry {
+  name: string;
+  type: "directory" | "file" | "other";
+  size: number | null;
+  mtimeMs: number | null;
+}
 
 export interface ProjectDocsListing {
   exists: boolean;

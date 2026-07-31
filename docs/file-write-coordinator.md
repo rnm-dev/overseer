@@ -49,18 +49,9 @@ transfer.
 An attachment upload returns a server-generated receipt `transferId` only
 after Peon emits a terminal `write_result` whose path, size and SHA-256 pass
 validation. Overseer persists the receipt with its workspace, Peon and
-canonical actor. A reverse `session.start`, `session.followup` or
-`session.queue.add` attachment reference carries `transferId`, `path`, `size`
-and `sha256`; the
-reverse-command admission transaction binds every receipt to the command ID
-and complete request fingerprint before inserting the durable command.
-
-After binding, Overseer replaces the receipt reference with the canonical
-reverse-command `AttachmentInfo`. It derives the contained absolute path from
-the Peon's projected `fileTransferRoot`, preserves bounded client names when
-present, infers the supported image MIME type from the committed filename, and
-uses `application/octet-stream` otherwise. Peon independently resolves a
-sandbox-relative path against its real transfer root for compatibility and
+canonical actor. Session start, follow-up and queue-add carry the committed
+reference through their direct Fleet HTTP requests. No reverse-command
+admission transaction binds or rewrites it.
 still applies its realpath, containment and size checks before execution.
 
 A receipt is reusable only by an idempotent replay of that exact fingerprint.

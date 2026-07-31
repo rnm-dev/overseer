@@ -20,7 +20,7 @@ Capability rollout configuration is optional. When absent, it preserves the
 existing capability-negotiated behavior. Its format is a comma-separated list:
 
 ```text
-OVERSEER_REVERSE_CAPABILITY_ROLLOUT=reverse-command-v1:allowlist:2.4.0,folder-listing-v1:cohort:2.3.0:5
+OVERSEER_REVERSE_CAPABILITY_ROLLOUT=reverse-command-v1:allowlist:2.4.0,project-file-read-v1:cohort:2.3.0:5
 OVERSEER_REVERSE_ALLOWLIST_REVERSE_COMMAND_V1=peon-id-1;peon-id-2
 ```
 
