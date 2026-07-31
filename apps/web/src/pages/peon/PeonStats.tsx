@@ -9,6 +9,7 @@ import {
   EMPTY_QUOTA,
   PERIODS,
   PROVIDERS,
+  fmtBytes,
   fmtCost,
   fmtCount,
   fmtCredit,
@@ -194,6 +195,9 @@ export function PeonStats() {
               ))}
             </div>
           )}
+          <div className="font-mono text-xs text-ink-muted">
+            <span className="text-ink-faint">{t("peon.stats.stateSize")}</span> {fmtBytes(stats.sessionsSizeBytes)}
+          </div>
         </>
       )}
 

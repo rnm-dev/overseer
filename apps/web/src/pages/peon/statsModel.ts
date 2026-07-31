@@ -8,6 +8,7 @@ export interface Stats {
   period?: string;
   rangeStart?: number;
   rangeEnd?: number;
+  sessionsSizeBytes?: number;
   sessionCount?: number;
   outcomeCounts?: Record<string, number>;
   totalInputTokens?: number;
@@ -133,6 +134,18 @@ export const compact = new Intl.NumberFormat(undefined, { notation: "compact", m
 
 export function fmtCount(n?: number): string {
   return typeof n === "number" ? compact.format(n) : "—";
+}
+export function fmtBytes(bytes?: number): string {
+  if (typeof bytes !== "number" || !Number.isFinite(bytes) || bytes < 0) return "—";
+  if (bytes < 1024) return `${Math.round(bytes)} B`;
+  const units = ["KiB", "MiB", "GiB", "TiB"];
+  let value = bytes / 1024;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  return `${value >= 10 ? value.toFixed(0) : value.toFixed(1)} ${units[unit]}`;
 }
 export function fmtCost(n?: number): string {
   return typeof n === "number" ? `$${n.toFixed(2)}` : "—";

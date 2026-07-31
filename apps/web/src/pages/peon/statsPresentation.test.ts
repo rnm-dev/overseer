@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { analyticsRows } from "./statsModel.js";
+import { analyticsRows, fmtBytes } from "./statsModel.js";
 
 test("AI statistics request and render user and project analytics", () => {
   const source = readFileSync(new URL("./PeonStats.tsx", import.meta.url), "utf8");
@@ -20,4 +20,11 @@ test("analytics breakdown rows prioritize output token consumption", () => {
   ]);
 
   assert.deepEqual(rows.map((row) => row.user), ["high", "tie", "low"]);
+});
+
+test("state size is formatted as a compact binary byte amount", () => {
+  assert.equal(fmtBytes(0), "0 B");
+  assert.equal(fmtBytes(1536), "1.5 KiB");
+  assert.equal(fmtBytes(12 * 1024 * 1024), "12 MiB");
+  assert.equal(fmtBytes(-1), "—");
 });

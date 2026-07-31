@@ -291,6 +291,7 @@ export const ru: Record<string, string> = {
   "peon.stats.noProjectUsage": "Нет активности проектов за этот период.",
   "peon.stats.breakdownUnavailable": "Не удалось загрузить разбивку использования.",
   "peon.stats.attributionNote": "Токены последующих запросов относятся к пользователю, который начал сессию.",
+  "peon.stats.stateSize": "Размер сохранённых сессий",
   "peon.quota.provider.claude-code": "Claude Code",
   "peon.quota.provider.codex": "Codex",
   "peon.quota.status.ok": "Подключено",

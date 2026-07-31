@@ -22,6 +22,8 @@ adds `refresh=1` to both probes.
 ## Presentation rules
 
 - Headline session count, output tokens, and duration.
+- Show the complete persisted session-state size separately from the selected
+  period because `sessionsSizeBytes` covers the whole store.
 - Show prompt and token breakdowns by session initiator and project, ordered by
   output tokens for the selected period.
 - Keep input, cache creation, and cache read as a secondary breakdown.

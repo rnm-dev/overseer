@@ -291,6 +291,7 @@ export const en: Record<string, string> = {
   "peon.stats.noProjectUsage": "No project activity in this period.",
   "peon.stats.breakdownUnavailable": "Usage breakdowns could not be loaded.",
   "peon.stats.attributionNote": "Tokens from follow-ups are attributed to the user who started the session.",
+  "peon.stats.stateSize": "Stored session state",
   "peon.quota.provider.claude-code": "Claude Code",
   "peon.quota.provider.codex": "Codex",
   "peon.quota.status.ok": "Connected",
