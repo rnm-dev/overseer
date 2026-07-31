@@ -180,13 +180,6 @@ export function createPeonRegistrar(options = {}) {
         ticking = true;
         try {
             const s = readSettings();
-            if (s.fleetMode === "reverse-only") {
-                state.enabled = false;
-                state.registered = false;
-                state.derecruited = false;
-                state.lastError = null;
-                return;
-            }
             const base = s.overseerUrl.trim();
             const token = s.overseerToken.trim();
             state.enabled = Boolean(base && token);
@@ -295,8 +288,7 @@ export function createPeonRegistrar(options = {}) {
             timer = null;
         },
         getState() {
-            const mode = readSettings().fleetMode;
-            return { ...state, mode, publicUrl: mode === "reverse-only" ? null : peonPublicUrl() };
+            return { ...state, publicUrl: peonPublicUrl() };
         },
     };
 }

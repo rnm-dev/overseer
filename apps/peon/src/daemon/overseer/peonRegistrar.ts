@@ -71,7 +71,7 @@ function capabilities(fileTransferRoot: string): string[] {
 export interface PeonRegistrar {
   start(): void;
   stop(): void;
-  getState(): RegistrarState & { publicUrl: string | null; mode: PeonRegistrarSettings["fleetMode"] };
+  getState(): RegistrarState & { publicUrl: string | null };
 }
 
 async function readBoundedErrorBody(response: Response): Promise<string | null> {
@@ -208,13 +208,6 @@ export function createPeonRegistrar(options: PeonRegistrarOptions = {}): PeonReg
     ticking = true;
     try {
       const s = readSettings();
-      if (s.fleetMode === "reverse-only") {
-        state.enabled = false;
-        state.registered = false;
-        state.derecruited = false;
-        state.lastError = null;
-        return;
-      }
       const base = s.overseerUrl.trim();
       const token = s.overseerToken.trim();
       state.enabled = Boolean(base && token);
@@ -321,9 +314,8 @@ export function createPeonRegistrar(options: PeonRegistrarOptions = {}): PeonReg
       timer = null;
     },
 
-    getState(): RegistrarState & { publicUrl: string | null; mode: PeonRegistrarSettings["fleetMode"] } {
-      const mode = readSettings().fleetMode;
-      return { ...state, mode, publicUrl: mode === "reverse-only" ? null : peonPublicUrl() };
+    getState(): RegistrarState & { publicUrl: string | null } {
+      return { ...state, publicUrl: peonPublicUrl() };
     },
   };
 }
