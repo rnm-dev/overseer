@@ -26,7 +26,7 @@
     "linux"
   ],
   "bin": {
-    "peon": "./dist/cli/peon.js"
+    "peon": "dist/cli/peon.js"
   },
   "files": [
     "dist",
