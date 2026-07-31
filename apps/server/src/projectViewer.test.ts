@@ -37,7 +37,9 @@ before(async () => {
     name: "Viewer Peon",
     hostname: null,
     address: "127.0.0.1",
-    controlPort: 4570,
+    // Keep this deterministic on developer machines that run a real Peon on
+    // the default 4570 port. Port 1 on loopback is intentionally unreachable.
+    controlPort: 1,
     publicUrl: null,
     protocol: 1,
     capabilities: [],
@@ -90,14 +92,14 @@ test("browser viewer requires a web session and hides inaccessible projects", as
 
 test("viewer derives workspace from Peon+project IDs and applies project ACLs", async () => {
   const owner = await get("/view/viewer-peon/viewer-project/docs/index.html", ownerCookie);
-  assert.equal(owner.status, 503);
-  assert.equal(owner.body.code, "PEON_TRANSFER_UNAVAILABLE");
+  assert.equal(owner.status, 502);
+  assert.equal(owner.body.code, "PEON_UNREACHABLE");
 
   await replaceMemberAccess("viewer-ws", "member", {
     peonIds: ["viewer-peon"],
     projects: [{ peonId: "viewer-peon", projectKey: "old-key-is-ignored", projectId: "viewer-project" }],
   }, "owner");
   const member = await get("/view/viewer-peon/viewer-project/docs/index.html", memberCookie);
-  assert.equal(member.status, 503);
-  assert.equal(member.body.code, "PEON_TRANSFER_UNAVAILABLE");
+  assert.equal(member.status, 502);
+  assert.equal(member.body.code, "PEON_UNREACHABLE");
 });
