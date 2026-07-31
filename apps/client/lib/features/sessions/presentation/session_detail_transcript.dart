@@ -144,6 +144,10 @@ class _TranscriptBodyState extends State<_TranscriptBody> {
             final hasTopControl = state.hasOlder || state.message != null;
             final hasWorking = widget.showWorking;
             final ghost = widget.ghost;
+            final workingGap = transcriptWorkingGap(
+              items.lastOrNull,
+              afterGhost: ghost != null,
+            );
             // The list is reversed, so leading indices are the newest rows: the
             // working indicator sits below the ghost, which sits below the last
             // committed message.
@@ -160,7 +164,7 @@ class _TranscriptBodyState extends State<_TranscriptBody> {
                     key: ValueKey(
                       'transcript-working-flow-${state.events.lastOrNull?.eventId ?? 'empty'}',
                     ),
-                    padding: const EdgeInsets.only(top: 16),
+                    padding: EdgeInsets.only(top: workingGap),
                     child: _workingContent(state.events.lastOrNull),
                   );
                 }

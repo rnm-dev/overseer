@@ -135,9 +135,9 @@ export function toolSummary(input: unknown, name?: string): string {
   }
   return "";
 }
-// Output tokens + cost are what matter — cache_read is context reread every
-// turn (cheap, and dwarfs everything else), so a raw token sum reads as wildly
-// inflated. Never headline it; keep it as a breakdown detail instead.
+// Output tokens are the useful headline — cache_read is context reread every
+// turn and dwarfs everything else, so a raw token sum reads as wildly inflated.
+// Never headline it; keep it as a breakdown detail instead.
 export interface UsageBreakdown {
   input: number;
   output: number;
@@ -258,7 +258,6 @@ export function flattenEvents(events: Ev[], t: T): Item[] {
         const parts: string[] = [];
         if (typeof ev.duration_ms === "number") parts.push(`${Math.round(ev.duration_ms / 1000)}s`);
         if (typeof ev.num_turns === "number") parts.push(t("session.chat.turns", { n: ev.num_turns }));
-        if (typeof ev.total_cost_usd === "number") parts.push(`$${ev.total_cost_usd.toFixed(2)}`);
         const out = ev.usage?.output_tokens ?? 0;
         if (out > 0) parts.push(`${compactNum.format(out)} ${t("peon.stats.outputTokens").toLowerCase()}`);
         if (parts.length) {

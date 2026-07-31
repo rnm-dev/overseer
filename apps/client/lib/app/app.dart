@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:overseer_mobile/l10n/l10n.dart';
 import 'package:go_router/go_router.dart';
 import 'package:overseer_mobile/core/notifications/notification_routing.dart';
 import 'package:overseer_mobile/features/auth/presentation/auth_gate.dart';
@@ -249,7 +251,14 @@ class _OverseerMobileAppState extends State<OverseerMobileApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp.router(
-      title: 'Overseer Mobile',
+      onGenerateTitle: (context) => context.l10n.appTitle,
+      localizationsDelegates: const [
+        AppLocalizations.delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: AppLocalizations.supportedLocales,
       theme: AppTheme.dark,
       routerConfig: _router,
       builder: (context, child) => ForegroundNotificationSurface(

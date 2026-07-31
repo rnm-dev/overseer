@@ -586,6 +586,14 @@ html.peon-sidebar-resizing * {
 }
 .field.path-field {
   font-family: var(--font-mono);
+  font-size: 0.8rem;
+  letter-spacing: 0.01em;
+}
+@media (max-width: 767px) {
+  .field.path-field {
+    /* Avoid iOS focus zoom while keeping the denser desktop path treatment. */
+    font-size: 16px;
+  }
 }
 .field::placeholder {
   color: var(--color-ink-faint);

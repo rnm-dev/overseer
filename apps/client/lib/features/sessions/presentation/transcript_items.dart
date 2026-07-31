@@ -145,9 +145,19 @@ class TranscriptResultMeta {
 
 double transcriptItemGap(TranscriptItem? previous, TranscriptItem item) {
   if (previous == null) return 0;
-  if (previous.isUser && item.isUser) return 3;
-  if (previous.isUser != item.isUser) return 16;
-  return 6;
+  if (previous.isUser && item.isUser) return 4;
+  if (previous.isUser != item.isUser) return 24;
+  if (previous is TranscriptTextItem || item is TranscriptTextItem) return 16;
+  return 2;
+}
+
+double transcriptWorkingGap(
+  TranscriptItem? previous, {
+  bool afterGhost = false,
+}) {
+  if (previous == null && !afterGhost) return 0;
+  if (afterGhost || previous?.isUser == true) return 24;
+  return 16;
 }
 
 class TranscriptWorkingActivity {
@@ -312,14 +322,12 @@ List<TranscriptItem> flattenTranscriptEvents(List<TranscriptEvent> events) {
         final parts = <String>[];
         final duration = _number(payload['duration_ms']);
         final turns = _number(payload['num_turns'])?.round();
-        final cost = _number(payload['total_cost_usd']);
         final usage = payload['usage'];
         final output = usage is Map
             ? _number(usage['output_tokens'])?.round() ?? 0
             : 0;
         if (duration != null) parts.add('${(duration / 1000).round()}s');
         if (turns != null) parts.add('$turns ${turns == 1 ? 'turn' : 'turns'}');
-        if (cost != null) parts.add('\$${cost.toStringAsFixed(2)}');
         if (output > 0) parts.add('${compactTranscriptNumber(output)} output');
         if (parts.isNotEmpty) {
           final meta = TranscriptResultMeta(

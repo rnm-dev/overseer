@@ -277,7 +277,7 @@ export const en: Record<string, string> = {
   "peon.stats.outputTokens": "Output",
   "peon.stats.cacheRead": "Cache read",
   "peon.stats.cacheWrite": "Cache write",
-  "peon.stats.missingUsage": "{n} run(s) missing usage data — cost may undercount.",
+  "peon.stats.missingUsage": "{n} run(s) missing usage data — usage totals may undercount.",
   "peon.stats.byUser": "Usage by user",
   "peon.stats.byProject": "Usage by project",
   "peon.stats.name": "Name",

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -19,6 +20,16 @@ test("path fields use the technical monospace typography", () => {
   ));
 
   assert.match(markup, /<input class="field pr-11 path-field"/);
+});
+
+test("directory typography stays compact on desktop without triggering mobile focus zoom", () => {
+  const css = readFileSync(new URL("../../index.css", import.meta.url), "utf8");
+  const component = readFileSync(new URL("./PathInput.tsx", import.meta.url), "utf8");
+
+  assert.match(css, /\.field\.path-field\s*\{[^}]*font-size:\s*0\.8rem;/s);
+  assert.match(css, /@media \(max-width: 767px\)[\s\S]*?\.field\.path-field\s*\{[^}]*font-size:\s*16px;/);
+  assert.match(component, /font-mono text-\[0\.6875rem\] leading-4/);
+  assert.match(component, /font-mono text-xs leading-4 text-ink-muted/);
 });
 
 test("path selector normalizes and joins absolute paths", () => {

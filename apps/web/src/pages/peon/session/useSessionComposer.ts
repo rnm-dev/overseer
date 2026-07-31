@@ -50,6 +50,13 @@ export function composerActionErrorMessage(error: unknown, t: Translate): string
   return undefined;
 }
 
+// Only a stated client-side refusal proves that Peon did not accept the turn.
+// Network failures and 5xx responses are ambiguous: restoring their payload to
+// the visible draft can make an already-accepted follow-up appear unsent.
+export function followupWasRefused(error: unknown): boolean {
+  return error instanceof ApiError && error.status < 500;
+}
+
 interface Args {
   base: string;
   sid: string;
@@ -236,7 +243,7 @@ export function useSessionComposer({
       // the next attempt is a new command and must not be answered from this
       // one's record. Only a 5xx or a lost connection leaves the outcome unknown
       // and keeps the request id for an idempotent retry.
-      const refused = err instanceof ApiError && err.status < 500;
+      const refused = followupWasRefused(err);
       if (refused) clearRequestId();
       if (currentSessionKeyRef.current !== sessionKey) {
         // The operator moved on, so there is no composer to roll back into. A
@@ -246,11 +253,13 @@ export function useSessionComposer({
         if (refused) saveComposerDraft(draftKey, text, pending);
         return;
       }
-      setGhost(null);
-      setRunning(wasRunning);
-      setRunningSelection(wasRunning ? prevModel : null, wasRunning ? prevReasoningEffort : null);
-      setInput(text);
-      setFiles(pending);
+      if (refused) {
+        setGhost(null);
+        setRunning(wasRunning);
+        setRunningSelection(wasRunning ? prevModel : null, wasRunning ? prevReasoningEffort : null);
+        setInput(text);
+        setFiles(pending);
+      }
       notifyError(err, {
         title: t("session.compose.sendFailed"),
         fallback: t("error.generic"),
@@ -371,12 +380,6 @@ export function useSessionComposer({
       (items) => {
         queueActivity.replace(sessionKey, items);
         setQueueItems(items);
-      },
-      (error) => {
-        if (!isPeonNeedsUpdate(error)) notifyError(error, {
-          title: t("session.queue.loadFailed"),
-          fallback: t("error.generic"),
-        });
       },
     );
     queueReconcilerRef.current = reconciler;

@@ -277,7 +277,7 @@ export const ru: Record<string, string> = {
   "peon.stats.outputTokens": "Выход",
   "peon.stats.cacheRead": "Чтение кэша",
   "peon.stats.cacheWrite": "Запись кэша",
-  "peon.stats.missingUsage": "У {n} запуск(ов) нет данных об использовании — стоимость может быть занижена.",
+  "peon.stats.missingUsage": "У {n} запуск(ов) нет данных об использовании — итоги могут быть занижены.",
   "peon.stats.byUser": "Использование по пользователям",
   "peon.stats.byProject": "Использование по проектам",
   "peon.stats.name": "Название",

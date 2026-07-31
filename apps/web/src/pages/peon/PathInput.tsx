@@ -240,7 +240,7 @@ function PathSelectorModal({
   return (
     <Dialog title={t("pathSelector.title")} onClose={onClose} size="lg">
       <div className="surface surface--inset overflow-hidden">
-        <div className="flex min-h-10 flex-wrap items-center gap-1 border-b border-edge px-3 py-2 font-mono text-xs" title={selectedPath || undefined}>
+        <div className="flex min-h-10 flex-wrap items-center gap-1 border-b border-edge px-3 py-2 font-mono text-[0.6875rem] leading-4" title={selectedPath || undefined}>
           <button type="button" onClick={() => setCurrentPath("/")} className="text-ink-muted hover:text-accent-strong">/</button>
           {locations === null && !folderSource && <span className="text-ink-muted">{t("app.loading")}</span>}
           {crumbs.map((segment, index) => (
@@ -270,7 +270,7 @@ function PathSelectorModal({
                 type="button"
                 key={entry.name}
                 onClick={() => setCurrentPath(pathFromRoot(currentPath, entry.name))}
-                className="flex w-full items-center gap-2 rounded px-2.5 py-2 text-left font-mono text-sm text-ink-muted transition-colors hover:bg-accent/[0.07] hover:text-ink"
+                className="flex w-full items-center gap-2 rounded px-2.5 py-2 text-left font-mono text-xs leading-4 text-ink-muted transition-colors hover:bg-accent/[0.07] hover:text-ink"
               >
                 <Folder size={16} className="flex-none text-accent-deep" aria-hidden />
                 <span className="truncate">{entry.name}</span>
@@ -281,7 +281,7 @@ function PathSelectorModal({
         </div>
       </div>
 
-      <div className="mt-3 truncate font-mono text-xs text-ink-faint" title={selectedPath}>
+      <div className="mt-3 truncate font-mono text-[0.6875rem] leading-4 text-ink-faint" title={selectedPath}>
         {t("pathSelector.selected")}: <span className="text-ink-muted">{selectedPath || "—"}</span>
       </div>
       <div className="mt-4 flex justify-end gap-2">

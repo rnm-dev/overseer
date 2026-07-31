@@ -6,6 +6,7 @@ import 'package:overseer_mobile/shared/design/colors.dart';
 import 'package:overseer_mobile/shared/widgets/app_bottom_sheet.dart';
 import 'package:overseer_mobile/shared/widgets/app_button.dart';
 import 'package:overseer_mobile/shared/widgets/app_text_field.dart';
+import 'package:overseer_mobile/l10n/l10n.dart';
 
 class AddOverseerPanel extends StatefulWidget {
   const AddOverseerPanel({
@@ -44,7 +45,7 @@ class _AddOverseerPanelState extends State<AddOverseerPanel> {
     final serverUrl = parseOverseerServerUrl(_controller.text);
     if (serverUrl == null) {
       setState(() {
-        _errorText = 'Enter a valid http:// or https:// URL.';
+        _errorText = context.l10n.invalidOverseerUrl;
       });
       return;
     }
@@ -58,7 +59,7 @@ class _AddOverseerPanelState extends State<AddOverseerPanel> {
     } on DuplicateOverseerConnectionException {
       if (!mounted) return;
       setState(() {
-        _errorText = 'This Overseer connection is already saved.';
+        _errorText = context.l10n.duplicateOverseerConnection;
         _submitting = false;
       });
     } on AuthException catch (error) {
@@ -70,7 +71,7 @@ class _AddOverseerPanelState extends State<AddOverseerPanel> {
     } catch (_) {
       if (!mounted) return;
       setState(() {
-        _errorText = 'The Overseer URL could not be opened. Please try again.';
+        _errorText = context.l10n.overseerUrlOpenFailed;
         _submitting = false;
       });
     }
@@ -78,18 +79,19 @@ class _AddOverseerPanelState extends State<AddOverseerPanel> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
       child: AppBottomSheet(
-        title: 'Add Overseer',
+        title: l10n.addOverseerTitle,
         handleKey: const Key('add-overseer-panel-handle'),
         children: [
           AppTextField(
             key: const Key('overseer-url-field'),
             controller: _controller,
-            label: 'Overseer URL',
-            hint: 'https://overseer.example',
-            helperText: 'This address is saved after you successfully sign in.',
+            label: l10n.overseerUrl,
+            hint: l10n.overseerUrlHint,
+            helperText: l10n.overseerUrlHelper,
             errorText: _errorText,
             prefix: const Icon(
               LucideIcons.globe,
@@ -112,7 +114,7 @@ class _AddOverseerPanelState extends State<AddOverseerPanel> {
             disabled: _submitting,
             fullWidth: true,
             size: AppButtonSize.lg,
-            child: Text(_submitting ? 'Checking sign-in…' : 'Continue'),
+            child: Text(_submitting ? l10n.checkingSignIn : l10n.continueLabel),
           ),
         ],
       ),

@@ -11,6 +11,7 @@ import '../../../shared/widgets/app_bottom_sheet.dart';
 import '../../../shared/widgets/app_button.dart';
 import '../../../shared/widgets/app_markdown.dart';
 import '../../../shared/widgets/app_text_field.dart';
+import '../../../l10n/l10n.dart';
 import '../application/voice_dictation_controller.dart';
 import '../domain/followup_repository.dart';
 import '../domain/new_session_repository.dart';
@@ -206,6 +207,7 @@ class _SessionComposerState extends State<SessionComposer> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     final borderColor = _focusNode.hasFocus
         ? AppColors.felBright
         : AppColors.iron800;
@@ -304,9 +306,7 @@ class _SessionComposerState extends State<SessionComposer> {
                           ),
                           const SizedBox(width: 6),
                           Text(
-                            '${widget.queuedCount} '
-                            '${widget.queuedCount == 1 ? 'message' : 'messages'} '
-                            'waiting to send',
+                            l10n.queuedMessages(widget.queuedCount),
                             key: const Key('session-composer-queued'),
                             style: AppTypography.mono(
                               fontSize: 11,
@@ -365,7 +365,7 @@ class _SessionComposerState extends State<SessionComposer> {
                       onKeyEvent: _handleComposerKeyEvent,
                       child: Semantics(
                         identifier: 'session-composer-message',
-                        label: 'Message',
+                        label: l10n.message,
                         value: widget.controller.text,
                         textField: true,
                         enabled: widget.enabled && !widget.pending,
@@ -398,7 +398,7 @@ class _SessionComposerState extends State<SessionComposer> {
                               height: 1.35,
                             ),
                             decoration: InputDecoration(
-                              hintText: 'Send a message…',
+                              hintText: l10n.sendMessageHint,
                               hintStyle: AppTypography.body(
                                 fontSize: AppTypography.composerInputFontSize,
                                 color: AppColors.boneFaint,
@@ -425,7 +425,7 @@ class _SessionComposerState extends State<SessionComposer> {
                       _ComposerIconButton(
                         key: const Key('session-composer-attach'),
                         visualKey: const Key('session-composer-attach-visual'),
-                        tooltip: 'Attach files',
+                        tooltip: l10n.attachFiles,
                         icon: LucideIcons.plus,
                         alignment: Alignment.centerLeft,
                         onPressed: widget.enabled && !widget.pending
@@ -467,7 +467,7 @@ class _SessionComposerState extends State<SessionComposer> {
                           visualKey: const Key(
                             'session-composer-stop-and-run-visual',
                           ),
-                          tooltip: 'Send now',
+                          tooltip: l10n.sendNow,
                           icon: LucideIcons.sendHorizontal,
                           alignment: Alignment.centerRight,
                           enabled: _canSubmit && widget.onStopAndRun != null,
@@ -477,7 +477,7 @@ class _SessionComposerState extends State<SessionComposer> {
                       _ComposerSubmitButton(
                         buttonKey: const Key('session-composer-submit'),
                         visualKey: const Key('session-composer-submit-visual'),
-                        tooltip: widget.running ? 'Queue' : 'Send',
+                        tooltip: widget.running ? l10n.queue : l10n.send,
                         icon: widget.running
                             ? LucideIcons.listPlus
                             : LucideIcons.sendHorizontal,

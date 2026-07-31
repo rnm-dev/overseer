@@ -5,6 +5,7 @@ import 'package:overseer_mobile/shared/design/spacing.dart';
 import 'package:overseer_mobile/shared/design/typography.dart';
 import 'package:overseer_mobile/shared/widgets/app_button.dart';
 import 'package:overseer_mobile/shared/widgets/app_page_header.dart';
+import 'package:overseer_mobile/l10n/l10n.dart';
 
 /// Signed-out landing page.
 ///
@@ -26,6 +27,7 @@ class SignInPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     return Scaffold(
       body: SafeArea(
         child: Padding(
@@ -38,7 +40,7 @@ class SignInPage extends StatelessWidget {
                   alignment: Alignment.topLeft,
                   child: IconButton(
                     key: const Key('auth-back-to-connections'),
-                    tooltip: 'Back to Overseers',
+                    tooltip: l10n.backToOverseers,
                     onPressed: onBack,
                     icon: const Icon(
                       LucideIcons.arrowLeft,
@@ -54,10 +56,9 @@ class SignInPage extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: <Widget>[
-                        const AppPageHeader(
-                          title: 'Sign in to Overseer',
-                          subtitle:
-                              'Continue with GitHub to access your workspaces.',
+                        AppPageHeader(
+                          title: l10n.signInTitle,
+                          subtitle: l10n.signInSubtitle,
                         ),
                         if (errorMessage != null) ...<Widget>[
                           const SizedBox(height: 20),
@@ -83,7 +84,9 @@ class SignInPage extends StatelessWidget {
                           disabled: isSigningIn,
                           fullWidth: true,
                           size: AppButtonSize.lg,
-                          child: Text(isSigningIn ? 'Connecting…' : 'Sign In'),
+                          child: Text(
+                            isSigningIn ? l10n.connecting : l10n.signIn,
+                          ),
                         ),
                       ],
                     ),

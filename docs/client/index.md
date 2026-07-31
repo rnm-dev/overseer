@@ -10,6 +10,8 @@ offline and reconcile when the server is reachable.
 The app supports:
 
 - multiple Overseer connections with isolated credentials and Drift caches;
+- device-locale English and Russian UI for the app shell, connection/auth
+  flow, and session composer, with English fallback;
 - native GitHub sign-in and secure device-token storage;
 - cached-first workspaces, Peons, projects, sessions, and transcripts;
 - resumable workspace and transcript WebSocket updates;
@@ -112,6 +114,8 @@ Feature documentation:
 - [transcripts.md](transcripts.md): transcript cache, composer, queue, and tail;
 - [voice-input.md](voice-input.md): native dictation capture, upload, composer
   behavior, and real-device QA;
+- [localization.md](localization.md): locale resolution, translation resources,
+  current coverage, and migration rules;
 - [project-detail.md](project-detail.md): project navigation and settings;
 - [project-files.md](project-files.md): project tree and shared file viewer;
 - [peon-settings.md](peon-settings.md): General, Agent, and Armory settings;

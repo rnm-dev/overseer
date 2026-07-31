@@ -13,12 +13,14 @@ import 'package:overseer_mobile/shared/widgets/confirmation_bottom_sheet.dart';
 import 'package:overseer_mobile/shared/widgets/entity_list_tile.dart';
 import 'package:overseer_mobile/shared/widgets/app_option_bottom_sheet.dart';
 import 'package:overseer_mobile/shared/widgets/loading_shimmer.dart';
+import 'package:overseer_mobile/l10n/l10n.dart';
 
 class OverseerConnectionsLoadingPage extends StatelessWidget {
   const OverseerConnectionsLoadingPage({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     return Scaffold(
       key: const Key('overseer-connections-loading'),
       body: SafeArea(
@@ -27,9 +29,9 @@ class OverseerConnectionsLoadingPage extends StatelessWidget {
             constraints: const BoxConstraints(maxWidth: 520),
             child: Padding(
               padding: context.appSpacing.screenInsets(top: 20, bottom: 20),
-              child: const LoadingShimmer(
-                label: 'Loading Overseer connections',
-                child: Column(
+              child: LoadingShimmer(
+                label: l10n.loadingOverseerConnections,
+                child: const Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
@@ -73,6 +75,7 @@ class OverseerConnectionsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     return Scaffold(
       body: SafeArea(
         bottom: false,
@@ -102,10 +105,10 @@ class OverseerConnectionsPage extends StatelessWidget {
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
                               AppPageHeader(
-                                title: 'Overseer connections',
+                                title: l10n.overseerConnections,
                                 subtitle: _isEmpty
-                                    ? 'Add an Overseer server to get started.'
-                                    : 'Choose an Overseer to continue.',
+                                    ? l10n.addOverseerToStart
+                                    : l10n.chooseOverseer,
                               ),
                               const SizedBox(height: 24),
                               if (_isEmpty)
@@ -153,7 +156,7 @@ class OverseerConnectionsPage extends StatelessWidget {
                   size: AppButtonSize.lg,
                   variant: AppButtonVariant.secondary,
                   leading: const Icon(LucideIcons.plus, size: 18),
-                  child: const Text('Add Overseer'),
+                  child: Text(l10n.addOverseer),
                 ),
               ),
           ],
@@ -192,10 +195,9 @@ class OverseerConnectionsPage extends StatelessWidget {
 
     final confirmed = await showAppConfirmationBottomSheet(
       context: context,
-      title: 'Delete Overseer?',
-      message:
-          'Remove ${connection.title} and its saved login from this device?',
-      confirmLabel: 'Delete Overseer',
+      title: context.l10n.deleteOverseerQuestion,
+      message: context.l10n.deleteOverseerMessage(connection.title),
+      confirmLabel: context.l10n.deleteOverseer,
       destructive: true,
     );
     if (!confirmed || !context.mounted) return;
@@ -205,14 +207,13 @@ class OverseerConnectionsPage extends StatelessWidget {
     } catch (_) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('The Overseer could not be deleted. Please try again.'),
-        ),
+        SnackBar(content: Text(context.l10n.overseerDeleteFailed)),
       );
     }
   }
 
   Future<_ConnectionMenuAction?> _showWideConnectionMenu(BuildContext context) {
+    final l10n = context.l10n;
     final overlay =
         Overlay.of(context).context.findRenderObject()! as RenderBox;
     final row = context.findRenderObject()! as RenderBox;
@@ -251,7 +252,7 @@ class OverseerConnectionsPage extends StatelessWidget {
               const Icon(LucideIcons.trash2, size: 13, color: AppColors.blood),
               const SizedBox(width: 8),
               Text(
-                'Delete',
+                l10n.delete,
                 style: AppTypography.body(fontSize: 12, color: AppColors.blood),
               ),
             ],
@@ -277,11 +278,12 @@ class _ConnectionTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     return EntityListTile(
       key: ValueKey('overseer-connection-${connection.id}'),
       title: connection.title,
       subtitle: connection.serverUrl.toString(),
-      semanticsHint: 'Open this Overseer. Long press for actions.',
+      semanticsHint: l10n.openOverseerHint,
       leading: const Icon(LucideIcons.server, size: 20, color: AppColors.fel),
       onTap: () => onSelect(connection),
       onLongPress: () => onLongPress(context),
@@ -294,8 +296,9 @@ class _ConnectionActionsBottomSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     return AppOptionBottomSheet(
-      title: 'Overseer actions',
+      title: l10n.overseerActions,
       handleKey: const Key('overseer-menu-sheet-handle'),
       children: [
         AppOptionSheetTile(
@@ -306,7 +309,7 @@ class _ConnectionActionsBottomSheet extends StatelessWidget {
               const Icon(LucideIcons.trash2, size: 20, color: AppColors.blood),
               const SizedBox(width: 12),
               Text(
-                'Delete',
+                l10n.delete,
                 style: AppTypography.optionLabel(
                   selected: false,
                 ).copyWith(color: AppColors.blood),
@@ -326,16 +329,17 @@ class _EmptyConnections extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 360),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            Text('No connections yet', style: AppTypography.sectionTitle()),
+            Text(l10n.noConnections, style: AppTypography.sectionTitle()),
             const SizedBox(height: 6),
             Text(
-              'Your saved Overseer servers will appear here.',
+              l10n.savedServersAppearHere,
               textAlign: TextAlign.center,
               style: AppTypography.body(fontSize: 13, color: AppColors.boneDim),
             ),
@@ -345,7 +349,7 @@ class _EmptyConnections extends StatelessWidget {
               onPressed: onAdd,
               size: AppButtonSize.lg,
               leading: const Icon(LucideIcons.plus, size: 18),
-              child: const Text('Add Overseer'),
+              child: Text(l10n.addOverseer),
             ),
           ],
         ),

@@ -57,11 +57,12 @@ test("only short attachment-free single-line user messages use the compact times
 test("assistant timestamp and result summary share one Golos metadata row", () => {
   const [item] = flattenEvents([
     { type: "assistant", createdAt: Date.now(), message: { content: [{ type: "text", text: "Done" }] } },
-    { type: "result", duration_ms: 3_000, num_turns: 1, usage: { output_tokens: 28 } },
+    { type: "result", duration_ms: 3_000, num_turns: 1, total_cost_usd: 9.99, usage: { output_tokens: 28 } },
   ], t);
   assert.equal(item.kind, "text");
   if (item.kind !== "text") return;
   assert.equal(item.resultMeta?.text, "3s · session.chat.turns · 28 peon.stats.outputtokens");
+  assert.doesNotMatch(item.resultMeta?.text ?? "", /\$|9\.99/);
   const html = renderToStaticMarkup(ItemView({ item, t }));
   assert.match(html, /font-body/);
   assert.match(html, /<time[^>]*>[^<]+<\/time><span[^>]*>·<\/span><span>3s · session\.chat\.turns · 28 peon\.stats\.outputtokens<\/span>/);

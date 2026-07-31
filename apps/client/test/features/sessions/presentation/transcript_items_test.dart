@@ -114,7 +114,8 @@ void main() {
     expect(items, hasLength(1));
     final answer = items.single as TranscriptTextItem;
     expect(answer.text, 'Done.');
-    expect(answer.resultMeta?.text, '12s · 3 turns · \$0.04 · 1.2K output');
+    expect(answer.resultMeta?.text, '12s · 3 turns · 1.2K output');
+    expect(answer.resultMeta?.text, isNot(contains(r'$')));
   });
 
   test('keeps an unmatched tool result visible as a standalone tool row', () {
@@ -181,14 +182,24 @@ void main() {
   test('keeps same-side rows compact and separates turn boundaries', () {
     final firstAssistant = TranscriptTextItem(key: 'a', text: 'First');
     const secondAssistant = TranscriptToolItem(key: 'b', name: 'Read');
+    const thinking = TranscriptThinkingItem(key: 't', text: 'Thinking');
+    const notice = TranscriptNoticeItem(key: 'n', text: 'System update');
     const firstUser = TranscriptUserItem(key: 'u1', text: 'One');
     const secondUser = TranscriptUserItem(key: 'u2', text: 'Two');
 
     expect(transcriptItemGap(null, firstAssistant), 0);
-    expect(transcriptItemGap(firstAssistant, secondAssistant), 6);
-    expect(transcriptItemGap(firstUser, secondUser), 3);
-    expect(transcriptItemGap(secondAssistant, firstUser), 16);
-    expect(transcriptItemGap(firstUser, firstAssistant), 16);
+    expect(transcriptItemGap(firstAssistant, secondAssistant), 16);
+    expect(transcriptItemGap(secondAssistant, thinking), 2);
+    expect(transcriptItemGap(thinking, notice), 2);
+    expect(transcriptItemGap(firstUser, secondUser), 4);
+    expect(transcriptItemGap(secondAssistant, firstUser), 24);
+    expect(transcriptItemGap(firstUser, firstAssistant), 24);
+
+    expect(transcriptWorkingGap(null), 0);
+    expect(transcriptWorkingGap(secondAssistant), 16);
+    expect(transcriptWorkingGap(firstAssistant), 16);
+    expect(transcriptWorkingGap(firstUser), 24);
+    expect(transcriptWorkingGap(secondAssistant, afterGhost: true), 24);
   });
 
   testWidgets('short user messages use content-sized bubbles', (tester) async {

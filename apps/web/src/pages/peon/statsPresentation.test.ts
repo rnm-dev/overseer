@@ -3,6 +3,14 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { analyticsRows, fmtBytes } from "./statsModel.js";
 
+test("AI statistics render no outcomes or monetary values", () => {
+  const source = readFileSync(new URL("./PeonStats.tsx", import.meta.url), "utf8");
+
+  assert.doesNotMatch(source, /outcomeCounts|stats\.outcomes|outcomeTone/);
+  assert.doesNotMatch(source, /totalCostUsd|fmtCost|fmtCredit|quota\.credits/);
+  assert.doesNotMatch(source, /quota\.(balance|used|limit)/);
+});
+
 test("AI statistics request and render user and project analytics", () => {
   const source = readFileSync(new URL("./PeonStats.tsx", import.meta.url), "utf8");
 

@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:overseer_mobile/l10n/l10n.dart';
 import 'package:overseer_mobile/app/app.dart';
 import 'package:overseer_mobile/app/app_dependencies.dart';
 import 'package:overseer_mobile/app/overseer_connection_authenticator.dart';
@@ -228,7 +230,14 @@ class _AppBootstrapState extends State<AppBootstrap>
   Widget build(BuildContext context) {
     if (_loading) {
       return MaterialApp(
-        title: 'Overseer Mobile',
+        onGenerateTitle: (context) => context.l10n.appTitle,
+        localizationsDelegates: const [
+          AppLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        supportedLocales: AppLocalizations.supportedLocales,
         theme: AppTheme.dark,
         home: const OverseerConnectionsLoadingPage(),
         builder: (context, child) =>
@@ -258,7 +267,14 @@ class _AppBootstrapState extends State<AppBootstrap>
 
   Widget _buildConnectionPicker() {
     return MaterialApp(
-      title: 'Overseer Mobile',
+      onGenerateTitle: (context) => context.l10n.appTitle,
+      localizationsDelegates: const [
+        AppLocalizations.delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: AppLocalizations.supportedLocales,
       theme: AppTheme.dark,
       home: OverseerConnectionsPage(
         connections: _connections,
