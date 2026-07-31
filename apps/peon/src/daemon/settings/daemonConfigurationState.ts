@@ -5,7 +5,6 @@ import { writePrivateFileDurably, ensurePrivateDirectory, secureExistingPrivateF
 import { stateDir } from "../xdgPaths.js";
 import { settings, type DaemonConfigurationView, type SettingsService } from "./settingsService.js";
 
-export const DAEMON_CONFIGURATION_CAPABILITY = "daemon-configuration-v1";
 export const DAEMON_CONFIGURATION_SCHEMA_VERSION = 1;
 
 export interface DaemonConfigurationIdentity {
@@ -48,7 +47,7 @@ export class DaemonConfigurationState {
   private identity: StoredIdentity;
 
   constructor(
-    private readonly filePath = path.join(stateDir(), "daemon-configuration-v1.json"),
+    private readonly filePath = path.join(stateDir(), "daemon-settings-revision-v1.json"),
     private readonly now: () => number = Date.now,
     private readonly configuration: SettingsService = settings,
   ) {

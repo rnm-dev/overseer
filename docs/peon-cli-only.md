@@ -9,7 +9,7 @@ The Peon package contains:
 - the `peon` CLI;
 - the daemon and its loopback-only CLI API;
 - authenticated legacy Fleet HTTP for older Overseers;
-- outbound reverse control and transfer sockets;
+- outbound reverse control/realtime socket;
 - agent, session, project, file and Armory runtimes.
 
 The removed surface includes the port 4571 static server, browser assets,

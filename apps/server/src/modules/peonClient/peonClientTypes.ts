@@ -22,6 +22,7 @@ export interface ProxyErrorResponse {
 export interface PeonCallOptions {
   actor?: string | null;
   body?: unknown;
+  headers?: Record<string, string>;
   timeoutMs?: number;
   requestId?: string;
 }

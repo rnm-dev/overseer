@@ -43,7 +43,6 @@ function testSupervisor(
   subscribe: (listener: () => void) => () => void = () => () => {},
   channels: PeonSocketChannel[] = [],
   outbox?: PeonSocketOutbox,
-  socketChannel: "control" | "file-transfer" = "control",
 ) {
   return new PeonSocketSupervisor({
     readSettings: () => config,
@@ -60,7 +59,6 @@ function testSupervisor(
     // covered independently so new features do not make every socket test know
     // their hello payload.
     channels,
-    socketChannel,
     ...(outbox ? { outbox } : {}),
   });
 }
@@ -88,7 +86,7 @@ function acceptingServer(options: { autoPong?: boolean } = {}) {
     socket.once("close", () => sockets.delete(socket));
   });
   server.on("upgrade", (request, socket, head) => {
-    if (request.url !== "/api/v1/peons/ws" && request.url !== "/api/v1/peons/transfer/ws") return socket.destroy();
+    if (request.url !== "/api/v1/peons/ws") return socket.destroy();
     wss.handleUpgrade(request, socket, head, (client) => wss.emit("connection", client, request));
   });
   return { server, sockets, auth, hellos, paths, get connections() { return connections; } };
@@ -97,10 +95,6 @@ function acceptingServer(options: { autoPong?: boolean } = {}) {
 test("converts Overseer HTTP URLs to the Peon WebSocket endpoint", () => {
   assert.equal(peonSocketUrl("https://fleet.example.test"), "wss://fleet.example.test/api/v1/peons/ws");
   assert.equal(peonSocketUrl("http://fleet.example.test/root/"), "ws://fleet.example.test/root/api/v1/peons/ws");
-  assert.equal(
-    peonSocketUrl("https://fleet.example.test", "file-transfer"),
-    "wss://fleet.example.test/api/v1/peons/transfer/ws",
-  );
 });
 
 test("default control hello does not advertise the retired folder listing capability", async () => {
@@ -172,32 +166,6 @@ test("durable control hello advertises bounded transcript synchronization", asyn
   }
 });
 
-test("default transfer hello advertises project and sandbox file reads", async () => {
-  const target = acceptingServer();
-  const base = await listen(target.server);
-  const config = { overseerUrl: base, overseerToken: "secret-token", peonId: "peon-files" };
-  const supervisor = new PeonSocketSupervisor({
-    readSettings: () => config,
-    subscribe: () => () => {},
-    socketChannel: "file-transfer",
-    retryBaseMs: 10,
-    retryMaxMs: 40,
-    handshakeTimeoutMs: 25,
-    maintenanceIntervalMs: 10,
-  });
-  try {
-    supervisor.start();
-    await waitFor(() => supervisor.getState().connected, "default transfer socket did not connect");
-    assert.deepEqual(target.hellos[0], {
-      type: "hello", protocol: 1, channel: "file-transfer", peonId: "peon-files",
-      capabilities: ["project-file-read-v1", "sandbox-file-read-v1", "session-artifact-v1", "file-write-v1"],
-    });
-  } finally {
-    supervisor.stop();
-    await closeServer(target.server, target.sockets);
-  }
-});
-
 test("authenticates, handshakes, and reconnects after disconnect", async () => {
   const target = acceptingServer();
   const base = await listen(target.server);
@@ -213,45 +181,6 @@ test("authenticates, handshakes, and reconnects after disconnect", async () => {
     assert.equal(supervisor.getState().derecruited, false);
   } finally {
     supervisor.stop();
-    await closeServer(target.server, target.sockets);
-  }
-});
-
-test("pool opens and independently maintains control and transfer WebSockets", async () => {
-  const target = acceptingServer();
-  const base = await listen(target.server);
-  const config = { overseerUrl: base, overseerToken: "secret-token", peonId: "peon-1" };
-  const first = testSupervisor(config);
-  const second = testSupervisor(config, undefined, [], undefined, "file-transfer");
-  const pool = new PeonSocketPool([first, second]);
-  try {
-    pool.start();
-    await waitFor(() => pool.getState().connectedConnections === 2, "pool did not open two sockets");
-    assert.equal(pool.getState().targetConnections, 2);
-    assert.equal(pool.getState().connected, true);
-    assert.ok(target.auth.length >= 2);
-    assert.ok(target.auth.every((authorization) => authorization === "Bearer secret-token"));
-    assert.deepEqual(target.hellos.map((hello) => hello.peonId), ["peon-1", "peon-1"]);
-    assert.deepEqual(target.paths.sort(), ["/api/v1/peons/transfer/ws", "/api/v1/peons/ws"]);
-    const transferHello = target.hellos.find((hello) => hello.channel === "file-transfer");
-    assert.deepEqual(transferHello, {
-      type: "hello",
-      protocol: 1,
-      channel: "file-transfer",
-      peonId: "peon-1",
-    });
-
-    const survivingSocket = [...target.sockets][1];
-    [...target.sockets][0]?.terminate();
-    await waitFor(() => pool.getState().connectedConnections === 1, "pool did not report its degraded state");
-    assert.equal(survivingSocket?.readyState, WebSocket.OPEN);
-    await waitFor(
-      () => target.connections >= 3 && pool.getState().connectedConnections === 2,
-      "dropped pool member was not independently restored",
-    );
-    assert.equal(pool.getState().connected, true);
-  } finally {
-    pool.stop();
     await closeServer(target.server, target.sockets);
   }
 });

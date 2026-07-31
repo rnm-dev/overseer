@@ -2,7 +2,7 @@
 
 Use this checklist if a Peon does not return after `peon restart`. A normal
 restart may make it disappear from Overseer briefly; the outbound control and
-transfer sockets reconnect by themselves and accepted reverse commands
+control/realtime sockets reconnect by themselves and accepted reverse commands
 reconcile with their original command IDs.
 
 ## First check

@@ -37,7 +37,6 @@ const SAFE_CODES = new Set([
   "UNKNOWN_PROJECT",
   "UNKNOWN_PROVIDER",
   "UNKNOWN_SESSION",
-  "UPDATE_IN_PROGRESS",
 ]);
 
 // Labels deliberately contain only the operation, lifecycle signal, and stable

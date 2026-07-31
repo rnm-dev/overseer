@@ -22,14 +22,18 @@ export class NoInboundTopology {
       this.diagnostics.add("forbidden_inbound_attempt", attempt);
       throw new TopologyViolation(`Overseer attempted inbound Peon connection on ${channel}`);
     }
-    if (!["control", "file-transfer"].includes(channel)) throw new Error(`unknown reverse channel ${channel}`);
+    if (channel !== "control") throw new Error(`unknown reverse channel ${channel}`);
     this.connections.add(channel);
     this.diagnostics.add("outbound_connection_opened", { initiator, target, channel });
   }
 
   exercise(surface, route) {
     if (route !== "reverse-socket") {
-      if (route === "legacy-http" && ["absolute-folder-picker", "project-directory"].includes(surface)) {
+      if (route === "legacy-http" && [
+        "absolute-folder-picker", "project-directory", "project-file-read",
+        "sandbox-file-read", "project-file-upload", "attachment-upload",
+        "project-file-move", "project-file-delete",
+      ].includes(surface)) {
         this.diagnostics.add("fleet_http_surface_exercised", { surface, channel: "mesh" });
         return;
       }
@@ -39,15 +43,7 @@ export class NoInboundTopology {
       }
       throw new Error(`${surface} is not operable through the reverse topology: ${route}`);
     }
-    const transferSurfaces = new Set([
-      "project-file-read",
-      "sandbox-file-read",
-      "project-file-upload",
-      "attachment-upload",
-      "project-file-move",
-      "project-file-delete",
-    ]);
-    const channel = transferSurfaces.has(surface) ? "file-transfer" : "control";
+    const channel = "control";
     if (!this.connections.has(channel)) throw new Error(`${channel} reverse connection is not open`);
     this.diagnostics.add("reverse_surface_exercised", { surface, channel });
   }

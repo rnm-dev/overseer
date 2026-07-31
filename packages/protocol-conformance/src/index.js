@@ -5,7 +5,6 @@ export {
 } from "./goldenFrames.js";
 export {
   negotiateCapabilities,
-  routeForUpdateAdmission,
   routeForSurface,
   runCapabilityMatrix,
 } from "./matrix.js";
@@ -35,14 +34,6 @@ export {
   TranscriptHarnessError,
   TranscriptSyncHarness,
 } from "./transcriptLifecycle.js";
-export {
-  FileWriteHarnessError,
-  FileWriteLifecycleHarness,
-} from "./fileWriteLifecycle.js";
-export {
-  UpdateLifecycleHarness,
-  validateUpdateFrame,
-} from "./updateLifecycle.js";
 export {
   ProportionalLoadHarness,
   runDeterministicSoak,

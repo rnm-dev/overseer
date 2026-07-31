@@ -109,7 +109,7 @@ must not cross into another Peon/workspace or escape browser isolation.
          | command/control WSS, authenticated Peon credential
          v
   +---------------------------+       +---------------------------+
-  | TB4 control socket        |       | TB5 transfer socket       |
+  | TB4 control socket        |       | TB5 Fleet HTTP byte plane |
   | generation + capability   |       | generation + capability   |
   +-------------+-------------+       +-------------+-------------+
                 ^                                   ^
@@ -227,7 +227,7 @@ Overseer coverage:
 
 - `apps/server/src/reverseFleetSecurity.test.ts`
 - claim contract and service proof/replay/race/rotation/revocation tests
-- reverse-command contract/gateway, control and transfer sockets
+- reverse-command contract/gateway, control socket and Fleet HTTP byte routes
 - attachment sandbox, folder browse, project viewer, preview and ACL tests
 
 Peon coverage:
@@ -260,7 +260,8 @@ sentinel regression for OVSR-249, and the claim contract/client/service
 security cells. The former claim-generation failure was an outbound-only view
 defect: presence publication required a legacy callback URL and closed the
 generation-2 socket with `1011`. `PeonView.baseUrl` is now nullable, and the
-delayed generation-1 control/transfer regression passes repeatedly.
+delayed generation-1 control regression passes repeatedly. The former transfer
+socket generation no longer exists.
 
 The two gateway intermittents were test synchronization defects, not observed
 duplicate command effects. Terminal status was followed by a fixed sleep
@@ -327,7 +328,7 @@ the captured legacy options. A separately authorized rollback therefore
 restores both wildcard bindings and reopens the verified direct 8080 boundary;
 it is outage recovery only, not an acceptable steady-state security posture.
 
-### OVSR-249 — absolute file-transfer root in error (resolved 2026-07-30)
+### OVSR-249 — absolute file root in error (resolved 2026-07-30)
 
 Both legacy HTTP attachment resolution and reverse-transfer `PATH_ESCAPE`
 failures now publish one generic message. Overseer replaces Peon-supplied

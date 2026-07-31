@@ -9,36 +9,23 @@ const fixturesRaw = readFileSync(path.join(root, "protocol/reverse-command-v1/fi
 const schema = JSON.parse(schemaRaw);
 const fixtures = JSON.parse(fixturesRaw);
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
-
 test("vendored reverse command v1 fixtures match the shared contract", () => {
   assert.equal(schema.$id, "https://peon.local/protocol/reverse-command-v1/schema.json");
   assert.equal(fixtures.contractVersion, 1);
   assert.equal(fixtures.capability, "reverse-command-v1");
-  assert.ok(!fixtures.enabledOperations.includes("session.delete"));
+  assert.ok(!fixtures.enabledOperations.some((operation: string) => operation.startsWith("session.")));
   assert.equal(fixtures.maxCommandFrameBytes, 60 * 1024);
 
-  const { command, accepted, durableResult, statusRequest, terminalStatus } = fixtures.frames;
-  assert.equal(command.capability, fixtures.capability);
-  assert.equal(command.operation, "session.metadata.patch");
-  assert.deepEqual(command.payload, {});
+  assert.deepEqual(fixtures.enabledOperations, []);
+  assert.deepEqual(fixtures.frames, {});
   assert.deepEqual(schema.$defs.target.required, ["peonId"]);
-  assert.match(command.commandId, UUID);
-  assert.match(command.target.peonId, UUID);
-  assert.match(command.target.sessionId, UUID);
-  assert.match(command.actor.userId, UUID);
-  assert.ok(Buffer.byteLength(JSON.stringify(command), "utf8") <= fixtures.maxCommandFrameBytes);
-  assert.equal(accepted.commandId, command.commandId);
-  assert.equal(durableResult.payload.commandId, command.commandId);
-  assert.equal(statusRequest.commandId, command.commandId);
-  assert.deepEqual(terminalStatus.result, durableResult.payload);
+  assert.deepEqual(schema.$defs.command.properties.operation.not, {});
 });
 
 test("remote daemon pause and resume are not reverse command operations", () => {
   assert.ok(!fixtures.enabledOperations.includes("daemon.pause"));
   assert.ok(!fixtures.enabledOperations.includes("daemon.resume"));
-  assert.ok(!schema.$defs.command.properties.operation.enum.includes("daemon.pause"));
-  assert.ok(!schema.$defs.command.properties.operation.enum.includes("daemon.resume"));
+  assert.deepEqual(schema.$defs.command.properties.operation.not, {});
 });
 
 test("reverse command v1 publishes stable generic HTTP mappings", () => {
@@ -51,9 +38,8 @@ test("reverse command v1 publishes stable generic HTTP mappings", () => {
   });
 });
 
-test("the released v1 contract includes update operations", () => {
-  assert.ok(schema.$defs.command.properties.operation.enum.includes("update.check"));
-  assert.ok(schema.$defs.command.properties.operation.enum.includes("update.apply"));
-  assert.ok(schema.$defs.commandAccepted.properties.operation.enum.includes("update.apply"));
-  assert.ok(schema.$defs.commandResult.properties.operation.enum.includes("update.apply"));
+test("the released v1 contract includes no update operations", () => {
+  assert.deepEqual(schema.$defs.command.properties.operation.not, {});
+  assert.deepEqual(schema.$defs.commandAccepted.properties.operation.not, {});
+  assert.deepEqual(schema.$defs.commandResult.properties.operation.not, {});
 });

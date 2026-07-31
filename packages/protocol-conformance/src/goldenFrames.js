@@ -6,11 +6,6 @@ import { BoundedDiagnostics } from "./diagnostics.js";
 const PACKAGE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const CATALOG_DEPENDENCIES = ["session-catalog-v1", "durable-delivery-v1"];
-const FILE_ERRORS = new Set([
-  "BAD_REQUEST", "UNKNOWN_PROJECT", "FILES_DISABLED", "PATH_ESCAPE", "NOT_FOUND",
-  "IS_DIRECTORY", "RANGE_NOT_SATISFIABLE", "TRANSFER_CANCELLED", "INTERNAL",
-]);
-
 function isObject(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
@@ -25,11 +20,6 @@ function integer(value, minimum = 0) {
 
 function uuid(value) {
   return typeof value === "string" && UUID.test(value);
-}
-
-function actor(value) {
-  return isObject(value) && uuid(value.userId)
-    && typeof value.email === "string" && value.email.length > 0 && value.email.length <= 320;
 }
 
 function catalogCapabilities(frame, errors) {
@@ -56,15 +46,6 @@ function validateControlHello(frame, errors) {
 function validateControlHelloAck(frame, errors) {
   if (frame.type !== "hello_ack" || frame.protocol !== 1) errors.push("expected control hello_ack protocol 1");
   catalogCapabilities(frame, errors);
-}
-
-function validateTransferHello(frame, errors, acknowledgement) {
-  if (frame.type !== (acknowledgement ? "hello_ack" : "hello")
-    || frame.protocol !== 1 || frame.channel !== "file-transfer") {
-    errors.push(`expected file-transfer ${acknowledgement ? "hello_ack" : "hello"} protocol 1`);
-  }
-  if (!acknowledgement && frame.peonId !== undefined && !uuid(frame.peonId)) errors.push("peonId must be a UUID");
-  if (!strings(frame.capabilities)) errors.push("capabilities must be a string array");
 }
 
 function validateDurableMessage(frame, errors) {
@@ -146,86 +127,9 @@ function validateTranscriptControl(frame, errors, type) {
   if (frame.type !== type || !uuid(frame.requestId) || typeof frame.sessionId !== "string") errors.push(`invalid ${type}`);
 }
 
-function validateFileOpen(frame, errors, sandbox) {
-  if (frame.type !== "file_open" || frame.protocol !== 1 || !uuid(frame.requestId)) errors.push("invalid file_open identity");
-  if (!actor(frame.actor)) errors.push("actor must be server-derived");
-  if (sandbox) {
-    if (frame.scope !== "sandbox" || typeof frame.path !== "string" || !frame.path) errors.push("sandbox selector is invalid");
-    if (frame.projectId !== undefined || frame.relativePath !== undefined) errors.push("sandbox selector cannot include a project");
-  } else {
-    if (!uuid(frame.projectId) || typeof frame.relativePath !== "string" || !frame.relativePath
-      || frame.relativePath.startsWith("/") || frame.relativePath.split("/").includes("..")) {
-      errors.push("project selector is invalid");
-    }
-    if (frame.scope !== undefined || frame.path !== undefined) errors.push("project selector cannot include sandbox fields");
-  }
-  if (frame.range !== undefined && (!isObject(frame.range) || !integer(frame.range.start)
-    || (frame.range.end !== undefined && (!integer(frame.range.end) || frame.range.end < frame.range.start)))) {
-    errors.push("range is invalid");
-  }
-}
-
-function validateFileMeta(frame, errors) {
-  if (frame.type !== "file_meta" || !uuid(frame.requestId)) errors.push("invalid file_meta identity");
-  if (![200, 206].includes(frame.status) || !integer(frame.contentLength)
-    || frame.acceptRanges !== "bytes" || typeof frame.contentType !== "string") errors.push("invalid file metadata");
-  if (frame.status === 206 && typeof frame.contentRange !== "string") errors.push("206 requires contentRange");
-}
-
-function validateFileSimple(frame, errors, kind) {
-  if (frame.type !== `file_${kind}` || !uuid(frame.requestId)) errors.push(`invalid file_${kind} identity`);
-  if (kind === "credit" && (!integer(frame.bytes, 1) || frame.bytes > 1024 * 1024)) errors.push("credit exceeds 1 MiB");
-  if (kind === "error" && (!integer(frame.status, 400) || !FILE_ERRORS.has(frame.code) || typeof frame.message !== "string")) {
-    errors.push("invalid stable file error");
-  }
-}
-
-function validateWriteOpen(frame, errors) {
-  if (frame.type !== "write_open" || frame.protocol !== 1 || !uuid(frame.requestId)) errors.push("invalid write_open identity");
-  if (frame.transferId !== frame.requestId || !uuid(frame.commandId)) errors.push("invalid transfer/command correlation");
-  if (!actor(frame.actor)) errors.push("actor must be server-derived");
-  if (!["upload", "move", "delete"].includes(frame.operation) || !["project", "sandbox"].includes(frame.scope)) errors.push("invalid write operation/scope");
-  if (frame.operation === "upload" && frame.scope === "project"
-    && (!uuid(frame.projectId) || typeof frame.relativePath !== "string")) errors.push("invalid project upload selector");
-  if (frame.operation === "upload" && frame.scope === "sandbox" && typeof frame.path !== "string") errors.push("invalid sandbox upload selector");
-  if (frame.operation === "move" && (frame.scope !== "project" || !uuid(frame.projectId)
-    || typeof frame.relativePath !== "string" || typeof frame.destination !== "string")) errors.push("invalid project move selector");
-  if (frame.operation === "delete" && (frame.scope !== "project" || !uuid(frame.projectId)
-    || typeof frame.relativePath !== "string" || frame.destination !== undefined
-    || frame.contentLength !== undefined || frame.sha256 !== undefined
-    || frame.commandId !== frame.requestId)) errors.push("invalid project delete selector");
-  for (const pathValue of [frame.relativePath, frame.destination, frame.path].filter((value) => value !== undefined)) {
-    if (!pathValue || pathValue.startsWith("/") || pathValue.split("/").includes("..")) errors.push("write path must be contained");
-  }
-  if (frame.contentLength !== undefined && !integer(frame.contentLength)) errors.push("invalid contentLength");
-  if (frame.sha256 !== undefined && !/^[0-9a-f]{64}$/.test(frame.sha256)) errors.push("invalid sha256");
-}
-
-function validateWriteFlow(frame, errors, type) {
-  if (frame.type !== type || !uuid(frame.requestId)) errors.push(`invalid ${type}`);
-  if (type === "write_ready" && (!integer(frame.maxBytes, 1) || !integer(frame.credit, 1) || frame.credit > 65514)) errors.push("invalid initial write credit");
-  if (type === "write_credit" && (!integer(frame.bytes, 1) || frame.bytes > 65514)) errors.push("invalid write credit");
-  if (type === "write_result" && (
-    !integer(frame.status, 200) || frame.status > 299
-    || typeof frame.path !== "string" || !integer(frame.size)
-    || (frame.sha256 !== undefined && !/^[0-9a-f]{64}$/.test(frame.sha256))
-  )) errors.push("invalid write result");
-  if (type === "write_cancel" && typeof frame.reason !== "string") errors.push("invalid write cancellation");
-}
-
-function validateWriteChunk(frame, errors) {
-  if (frame.protocol !== 1 || frame.frameType !== 2 || !uuid(frame.requestId)
-    || !integer(frame.sequence) || !integer(frame.payloadBytes, 1)
-    || frame.payloadBytes > 65514 || frame.totalBytes !== frame.payloadBytes + 22) {
-    errors.push("invalid binary write chunk");
-  }
-}
-
 const validators = {
   "socket.control.hello": validateControlHello,
   "socket.control.hello_ack": validateControlHelloAck,
-  "socket.transfer.hello": (frame, errors) => validateTransferHello(frame, errors, false),
-  "socket.transfer.hello_ack": (frame, errors) => validateTransferHello(frame, errors, true),
   "delivery.message": validateDurableMessage,
   "catalog.session.snapshot_request": (frame, errors) => validateSnapshotRequest(frame, errors, "session"),
   "catalog.session.snapshot_page": (frame, errors) => validateSnapshotPage(frame, errors, "session", "sessions"),
@@ -240,19 +144,6 @@ const validators = {
   "transcript.live": validateTranscriptDurable,
   "transcript.cancel": (frame, errors) => validateTranscriptControl(frame, errors, "transcript_snapshot_cancel"),
   "transcript.unsubscribe": (frame, errors) => validateTranscriptControl(frame, errors, "transcript_unsubscribe"),
-  "file.project.open": (frame, errors) => validateFileOpen(frame, errors, false),
-  "file.sandbox.open": (frame, errors) => validateFileOpen(frame, errors, true),
-  "file.meta": validateFileMeta,
-  "file.credit": (frame, errors) => validateFileSimple(frame, errors, "credit"),
-  "file.end": (frame, errors) => validateFileSimple(frame, errors, "end"),
-  "file.error": (frame, errors) => validateFileSimple(frame, errors, "error"),
-  "write.open": validateWriteOpen,
-  "write.ready": (frame, errors) => validateWriteFlow(frame, errors, "write_ready"),
-  "write.credit": (frame, errors) => validateWriteFlow(frame, errors, "write_credit"),
-  "write.chunk": validateWriteChunk,
-  "write.end": (frame, errors) => validateWriteFlow(frame, errors, "write_end"),
-  "write.result": (frame, errors) => validateWriteFlow(frame, errors, "write_result"),
-  "write.cancel": (frame, errors) => validateWriteFlow(frame, errors, "write_cancel"),
 };
 
 export function loadFixture(name) {

@@ -1,6 +1,6 @@
 import { type FolderListEntry, type ProjectDocsListing } from "./projectDocsTypes.js";
 
-// `project.documentation.index` carries the Peon's own recursive snapshot
+// Fleet HTTP carries the Peon's own recursive snapshot
 // (`{ exists, indexPath, index, tree }`), while the route's public contract is
 // the flat `docs/` listing both clients read. The snapshot's top-level `tree`
 // *is* that directory, so normalize it here rather than teaching every client a

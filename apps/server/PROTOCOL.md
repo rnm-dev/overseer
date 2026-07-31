@@ -174,6 +174,11 @@ POST  /api/v1/control/update             self-update (git pull / reinstall + res
 GET   /api/v1/sessions/:id/stream        SSE tail (events: `event`, `change`) — see "Live tail" below
 ```
 
+The authenticated Fleet HTTP routes above are the sole remote Armory
+authority. Armory reads and mutations are not `reverse-command-v1` operations;
+there is no transport selector or fallback. The control WebSocket carries no
+Armory result projection or lifecycle event.
+
 Project and session representations carry an immutable `projectId` alongside
 the compatibility `key`/`projectKey` fields. Project keys remain mutable routing
 slugs; renaming a key (including a case-only legacy rename) does not change
@@ -451,7 +456,7 @@ Together, the overseer-facing AI data is available as:
 - `GET /api/v1/armory/settings` — configured/effective registry URL and the agent-install allowlist. The fleet profile is read-only; only the operator profile may change settings or submit/delete package configuration.
 
 `GET /filesystem/<path>?stat=1` is a read-only host filesystem browser for
-choosing directories outside project and file-transfer sandboxes. The path is
+choosing directories outside project and file sandboxes. The path is
 root-relative (`GET /filesystem?stat=1` and `/filesystem/?stat=1` address `/`),
 and access is limited only by the Peon process's operating-system permissions.
 Its response is `{ path: "/absolute/path", entries: [{ name, type:
@@ -711,7 +716,7 @@ traversal (`%2e%2e`, `%2f`), an absolute-looking join, or a symlink pointing
 outside the project root all return `400 PATH_ESCAPE` **before** anything
 about the escaped target is disclosed. Without `?stat=1` the file body streams
 with `Range:` support (206 + `Content-Range` + `Accept-Ranges`, exactly like
-the file-transfer routes below); a directory without `?stat=1` is `400
+the file routes above); a directory without `?stat=1` is `400
 IS_DIRECTORY` ("use ?stat=1 to list it"). `PUT` streams a raw
 `application/octet-stream` body to a temporary file created relative to an
 already validated open handle for the existing destination directory, computes
@@ -848,11 +853,10 @@ POST {overseerUrl}/api/v1/peons/:peonId/heartbeat   (every heartbeatIntervalMs)
 ## North-bound (peon → overseer): WebSocket presence
 
 Implemented in `src/daemon/peonSocket.ts`. A configured peon maintains one
-authenticated outbound connection per channel:
+authenticated outbound control/realtime connection:
 
 ```
 WS(S) {overseerUrl}/api/v1/peons/ws
-WS(S) {overseerUrl}/api/v1/peons/transfer/ws
 Authorization: Bearer <overseerToken>
 Peon-Protocol: 1
 ```
@@ -869,7 +873,7 @@ remain inactive.
   "type": "hello",
   "protocol": 1,
   "peonId": "<stable Peon id>",
-  "capabilities": ["session-catalog-v1", "project-catalog-v1", "transcript-sync-v1", "session-warning-v1", "reverse-command-v1", "durable-delivery-v1", "project-file-read-v1", "sandbox-file-read-v1"],
+  "capabilities": ["session-catalog-v1", "project-catalog-v1", "transcript-sync-v1", "session-warning-v1", "reverse-command-v1", "durable-delivery-v1"],
   "channels": {
     "session-catalog-v1": {
       "epoch": "<boot uuid>",
@@ -895,7 +899,7 @@ remain inactive.
     },
     "reverse-command-v1": {
       "protocol": 1,
-      "operations": ["project.archive", "project.unarchive", "update.check", "update.apply"]
+      "operations": []
     }
   },
   "delivery": {
@@ -931,285 +935,7 @@ remain inactive.
 }
 ```
 
-The transfer connection identifies its channel and operations in its opening
-frame:
-
-```json
-{ "type": "hello", "protocol": 1, "channel": "file-transfer", "peonId": "<stable Peon id>", "capabilities": ["project-file-read-v1", "sandbox-file-read-v1", "session-artifact-v1", "file-write-v1"] }
-```
-
-Each connection has an independent handshake, heartbeat, reconnect backoff, and
-configuration-generation fence. The control connection owns capability channels
-and the durable delivery outbox; the transfer connection is reserved for file
-bytes. Endpoint plus channel identifies the role, so no extra connection ID is
-required. Peon status reports the target, connected, and connecting connection
-counts, making a 1/2 degraded state observable while the failed member reconnects.
-
-A connection is not live until that acknowledgement arrives. Socket presence,
-rather than HTTP heartbeat freshness, is authoritative for online/offline status.
-Unknown post-handshake frame types are ignored for forward-compatible channel
-rollout. Binary frames, oversized frames, and malformed opening frames terminate
-the connection and enter normal reconnect recovery.
-
-Control-socket JSON frames are limited to 1 MiB, with at most 4 MiB of aggregate
-buffered output before backpressure closes the connection. The transfer socket's
-byte-stream limits are independent.
-
-### Project file reads (`project-file-read-v1`)
-
-When the transfer socket negotiates this capability, Overseer may open a file by
-immutable project ID and a strict path relative to that project's configured
-root. Mutable project keys and absolute paths are never accepted on this
-operation. Overseer supplies the authenticated actor for attribution; Peon's
-enrolled bearer remains the authorization boundary and Peon remains
-authoritative for project lookup, filesystem permissions, canonical containment,
-symlinks, and file type.
-
-```jsonc
-// Overseer -> Peon
-{
-  "type": "file_open", "protocol": 1, "requestId": "<uuid>",
-  "projectId": "<immutable uuid>", "relativePath": "dist/index.html",
-  "actor": { "userId": "<stable user id>", "email": "operator@example.com" },
-  "range": { "start": 0, "end": 1023 } // optional, inclusive single range
-}
-
-// Exactly one pre-body outcome from Peon
-{ "type": "file_error", "requestId": "<uuid>", "status": 404, "code": "NOT_FOUND", "message": "file does not exist" }
-{
-  "type": "file_meta", "requestId": "<uuid>", "status": 200,
-  "contentType": "application/octet-stream", "contentLength": 1234,
-  "acceptRanges": "bytes", "etag": "optional", "lastModified": "optional"
-}
-
-// Status 206 additionally carries: "contentRange": "bytes 0-1023/4096"
-// Overseer -> Peon flow control and cancellation
-{ "type": "file_credit", "requestId": "<uuid>", "bytes": 262144 }
-{ "type": "file_cancel", "requestId": "<uuid>", "reason": "TRANSFER_CANCELLED" }
-
-// Peon -> Overseer after the advertised number of bytes
-{ "type": "file_end", "requestId": "<uuid>" }
-```
-
-File bytes are binary WebSocket frames. Their 22-byte header is: byte 0 protocol
-version `1`; byte 1 frame type `1` (file chunk); bytes 2–17 the request UUID as
-16 network-order bytes; and bytes 18–21 an unsigned big-endian sequence starting
-at zero. The remaining payload is at most 65,514 bytes, keeping the complete
-frame within 64 KiB. Peon never sends more payload bytes than the cumulative
-credit granted for that request, and keeps at most one bounded pending chunk
-while the socket itself is backpressured. A transfer connection supports at most
-32 concurrent reads and at most 1 MiB of outstanding credit per read.
-Backpressure retries grow exponentially from 5 ms to 1 second, and a read with
-no progress for 60 seconds expires so a stalled peer cannot retain every file
-handle indefinitely.
-
-The optional range is one inclusive `start`/`end` pair. An omitted `end` means
-end-of-file; an end beyond EOF is clamped. A start at or beyond EOF returns
-`RANGE_NOT_SATISFIABLE` with status 416. Cancellation and socket disconnect close
-the file handle and release all request state. Peon revalidates canonical
-containment and the opened file's device/inode after `open`, closing the race
-where a directory is replaced by a symlink between path validation and opening.
-Recently completed request IDs remain as bounded 30-second tombstones so the
-credit Overseer grants after accepting the final chunk cannot tear down the
-shared socket after `file_end`. File frames are ephemeral and never enter durable
-delivery or the control socket.
-
-Stable pre-body `file_error` codes across the read capabilities are
-`BAD_PROTOCOL`, `DUPLICATE_REQUEST`, `TRANSFER_BUSY`, `INVALID_ACTOR`,
-`INVALID_PROJECT_ID`, `INVALID_PROJECT_PATH`, `INVALID_SESSION_ID`,
-`INVALID_PATH`, `INVALID_RANGE`, `UNKNOWN_PROJECT`, `UNKNOWN_SESSION`,
-`FILES_DISABLED`, `PATH_ESCAPE`, `NOT_FOUND`, `FORBIDDEN`, `IS_DIRECTORY`,
-`NOT_FILE`, `FILE_CHANGED`, `FILE_TOO_LARGE`, `RANGE_NOT_SATISFIABLE`, and
-`INTERNAL`. Invalid request IDs, credit, binary framing, sequence, or traffic
-sent before negotiation are connection-level protocol violations rather than
-`file_error` refusals.
-
-### Sandbox file reads (`sandbox-file-read-v1`)
-
-This capability uses the same metadata, binary chunks, ranges, credit,
-cancellation, limits and lifecycle as `project-file-read-v1`, but addresses a
-file inside the configured `fileTransferRoot`:
-
-```json
-{
-  "type": "file_open", "protocol": 1, "requestId": "<uuid>",
-  "scope": "sandbox", "path": "/tmp/peon-files/uploads/session/file.png",
-  "actor": { "userId": "<stable user id>", "email": "operator@example.com" }
-}
-```
-
-`path` may be absolute or relative to `fileTransferRoot`. Peon resolves and
-revalidates canonical containment itself; it returns `FILES_DISABLED` when no
-root is configured, `PATH_ESCAPE` when the target leaves it, and `NOT_FOUND`
-when the contained target does not exist. An absolute path is never trusted as
-an authorization decision made by Overseer.
-
-### Session artifact reads and base previews (`session-artifact-v1`)
-
-Session attachments, generated artifacts, downloads and preview assets use the
-same metadata-first response, binary chunks, byte credit, Range, cancellation,
-idle lease, request tombstones and connection-generation fencing as
-`project-file-read-v1`:
-
-```json
-{
-  "type": "file_open", "protocol": 1, "requestId": "<uuid>",
-  "scope": "session", "sessionId": "<stable session id>",
-  "path": "dist/report.pdf",
-  "actor": { "userId": "<stable user id>", "email": "operator@example.com" }
-}
-```
-
-Peon resolves the authoritative session record and requires a regular file
-beneath its working directory. A legacy preview event's absolute path is
-accepted only as containment input and is never a new authorization decision.
-Peon repeats containment and device/inode validation after opening, before
-publishing `file_meta`. Unknown sessions, traversal, escaping symlinks and file
-swaps therefore fail before any body byte is visible.
-
-A single outgoing session artifact is limited to 1 GiB. Raw HTML, SVG,
-JavaScript and every other active or unknown type is advertised as
-`application/octet-stream`; only the allowlisted passive image formats and PDF
-retain an inline MIME type on this path. The isolated preview origin may assign
-asset MIME types separately when rendering an explicitly granted preview.
-
-Overseer chooses this route exclusively after negotiation. Browser cancellation,
-preview expiry, socket replacement and timeout release the handle
-deterministically. Base HTML preview assets share this bounded path; advanced
-revision leases and atomic multi-asset publication are separate capabilities.
-
-The small metadata and baseline refresh operations stay on the transfer socket
-but never carry file bodies in JSON:
-
-```jsonc
-{ "type": "artifact_request", "protocol": 1, "requestId": "<uuid>", "sessionId": "<id>", "operation": "view|list|preview", "path": "dist/report.pdf", "actor": { "userId": "<id>", "email": "operator@example.com" } }
-{ "type": "artifact_result", "requestId": "<uuid>", "status": 200, "code": "OK", "message": null, "body": {} }
-{ "type": "artifact_watch", "protocol": 1, "requestId": "<uuid>", "sessionId": "<id>", "path": "dist/report.pdf", "actor": { "userId": "<id>", "email": "operator@example.com" } }
-{ "type": "artifact_watching", "requestId": "<uuid>", "path": "dist/report.pdf" }
-{ "type": "artifact_changed", "requestId": "<uuid>", "path": "dist/report.pdf" }
-{ "type": "artifact_cancel", "protocol": 1, "requestId": "<uuid>" }
-```
-
-At most 16 watches exist on one Peon transfer generation. They are debounced,
-generation-owned and closed on browser cancellation, socket replacement,
-watch failure or disconnect. Refresh notifications contain only the contained
-session path; the browser refetches bytes through the credited reader.
-
-### Attachment and project writes (`file-write-v1`)
-
-The write capability shares the transfer connection, request correlation,
-generation fencing, cancellation and bounded resource accounting of file reads.
-It handles attachment/sandbox uploads, project uploads, and scoped project
-renames; it never enters the control socket or durable outbox.
-
-```jsonc
-// Project upload: mutable keys never cross the wire.
-{
-  "type": "write_open", "protocol": 1, "requestId": "<uuid>",
-  "operation": "upload", "scope": "project",
-  "projectId": "<immutable uuid>", "relativePath": "dist/app.js",
-  "contentLength": 1234, // optional for a chunked HTTP request
-  "sha256": "<optional lowercase SHA-256>",
-  "actor": { "userId": "<stable user id>", "email": "operator@example.com" }
-}
-// Attachment upload: path is relative to fileTransferRoot.
-{
-  "type": "write_open", "protocol": 1, "requestId": "<uuid>",
-  "operation": "upload", "scope": "sandbox",
-  "path": "uploads/<session>/<filename>",
-  "contentLength": 1234, "sha256": "<optional lowercase SHA-256>",
-  "actor": { "userId": "<stable user id>", "email": "operator@example.com" }
-}
-
-{ "type": "write_ready", "requestId": "<uuid>", "maxBytes": 26214400, "credit": 65514 }
-{ "type": "write_credit", "requestId": "<uuid>", "bytes": 65514 }
-{ "type": "write_end", "requestId": "<uuid>" }
-{ "type": "write_cancel", "requestId": "<uuid>", "reason": "TRANSFER_CANCELLED" }
-{ "type": "write_result", "requestId": "<uuid>", "status": 201, "path": "uploads/session/file", "size": 1234, "sha256": "<digest>" }
-{ "type": "write_error", "requestId": "<uuid>", "status": 409, "code": "CHECKSUM_MISMATCH", "message": "safe detail" }
-```
-
-Upload bytes use the read frame's 22-byte header with frame type byte `2` and a
-per-request sequence starting at zero. A frame remains at most 64 KiB and cannot
-exceed credit Peon granted after the preceding chunk reached its temporary file.
-Peon admits at most 16 writes across admitted, opening, active and move work.
-Every admission is leased and fenced by socket generation plus a unique
-incarnation. Cancellation or replacement cleans cancellable upload work and a
-late open cannot become ready. A dispatched project move is not cancellable:
-its capacity token and request-ID tombstone remain until the native operation
-settles. Peon expires idle/opening work after 60 seconds, limits
-attachment paths under `uploads/` to 25 MiB, and limits other
-sandbox/project uploads to 100 MiB. Session validation still enforces at most
-ten attachments per message.
-
-Peon opens and validates the destination parent first, then creates the
-exclusive temporary file relative to that anchored directory handle. The
-streaming temp fd, commit and cleanup all retain the same directory inode;
-none reopen the mutable parent pathname. Peon hashes while streaming, flushes
-and closes the temporary file, verifies the optional checksum and declared
-length, revalidates the canonical parent device/inode and destination type, and
-only then atomically replaces the regular-file destination. Cancellation, limit
-failure, checksum mismatch, disconnect and process error remove the temporary
-file through that same anchor. Project and sandbox parents are independently
-contained; traversals, absolute paths, escaping symlinks and parent swaps cannot
-select another root. Platforms without the required fd-relative primitives
-fail closed.
-
-Project rename is the no-body form:
-
-```json
-{
-  "type": "write_open", "protocol": 1, "requestId": "<uuid>",
-  "operation": "move", "scope": "project",
-  "projectId": "<immutable uuid>", "relativePath": "old/name.txt",
-  "destination": "new/name.txt",
-  "actor": { "userId": "<stable user id>", "email": "operator@example.com" }
-}
-```
-
-Source and destination are contained in the same immutable project. The move
-resolves, opens and device/inode-validates the immutable project root exactly
-once. Source preflight, destination preflight and commit then resolve only
-relative to that one root handle, and independently verify that their opened
-parents remain descendants of its exact identity. The commit uses a native
-atomic no-replace rename (`renameat2` on Linux or `renameatx_np` on macOS), so a
-destination race returns `DESTINATION_EXISTS` without changing either
-pre-existing file. The shared root handle, descendant checks and expected
-source inode fence project-root, parent and source swaps; platforms without
-the required contained/open-at or rename primitive fail closed. Terminal
-results and refusals are retained in a bounded five-minute, 512-entry
-process-local replay cache. Reopening the same request ID with equivalent
-admission data replays the outcome; different data returns `REQUEST_ID_REUSE`.
-An active duplicate returns `DUPLICATE_REQUEST`. Cancel, lease expiry,
-disconnect, and socket-generation replacement suppress publication to the
-stale caller but do not release a move's request ownership or discard its
-authoritative terminal result. Until settlement, identical retries remain
-duplicates and changed input remains request-ID reuse; afterward the result is
-replayed from the bounded cache.
-
-Stable `write_error` refusals include `BAD_PROTOCOL`, `BAD_REQUEST`,
-`INVALID_ACTOR`, `INVALID_CHECKSUM`, `INVALID_LENGTH`, `INVALID_PATH`,
-`INVALID_PROJECT_ID`, `UNKNOWN_PROJECT`, `FILES_DISABLED`, `PATH_ESCAPE`,
-`NOT_FOUND`, `PARENT_NOT_FOUND`, `FORBIDDEN`, `FILE_TOO_LARGE`,
-`CHECKSUM_MISMATCH`, `LENGTH_MISMATCH`, `DESTINATION_EXISTS`,
-`SOURCE_CHANGED`, `TRANSFER_CLOSED`, `DUPLICATE_REQUEST`,
-`REQUEST_ID_REUSE`, `TRANSFER_BUSY`, `TRANSFER_TIMEOUT`,
-`UNSUPPORTED_PLATFORM`, and `WRITE_FAILED`.
-Once Overseer selects this negotiated capability, socket errors are final for
-that public request and never fall through to the legacy HTTP mutation.
-
-Peon reconnects indefinitely after transient DNS, TCP, TLS, upgrade, handshake,
-heartbeat, and close failures using exponential backoff with jitter (250 ms up
-to 30 s). A connection must remain stable before the backoff resets, preventing
-rapid connect/drop loops. Ping/pong lease checks detect half-open connections.
-Credential or URL changes replace the current generation immediately; stale
-callbacks are identity-fenced and cannot disturb the replacement. A 401 enters
-the normal bounded reconnect backoff instead of permanently parking the
-connector, allowing transient authentication-state failures to self-heal. An
-independent maintenance watchdog repairs missed configuration
-notifications or socket/retry lifecycle transitions, so one lost callback cannot
-leave presence permanently disconnected. The bearer credential is never included
-in status or logs.
+The control WebSocket carries only control, durable projection, and realtime event frames. File and release bytes use the authenticated Fleet HTTP endpoints over mesh; binary WebSocket frames are not part of this protocol.
 
 ### Durable delivery (`durable-delivery-v1`)
 
@@ -1402,23 +1128,20 @@ cumulative durable cursor and compacts them only after acknowledgement plus the
 minimum seven-day retention, retaining command-ID/hash tombstones for another
 seven days.
 
-Update commands reuse that lifecycle. Overseer admits at most one active
-`update.*` command per Peon, selects reverse command or legacy HTTP exclusively,
-and leaves an accepted apply pending through the expected disconnect. The
-launching process never attests a pre-restart receipt; only the replacement
-daemon may complete `update.apply` after comparing its running
-version/revision/SHA-256 with the persisted expectation. Overseer binds those
-three immutable release fields into the canonical command before admission;
-the Peon returns `RELEASE_CHANGED` if its pre-download metadata differs.
-Source-checkout applies are rejected because
-changing files without proving process replacement cannot satisfy attestation.
-Update results use strict operation-specific status/code/detail tuples; arbitrary
-detail and contradictory tuples are protocol errors.
+Update control is outside this lifecycle. Check, apply and operation status use
+the authenticated Fleet HTTP `/api/v1/control/*` routes through mesh. Approved
+release metadata and archive bytes use authenticated HTTP as well.
+`reverse-command-v1` advertises no `update.*` operations. A mode-0600 update
+receipt supplies idempotency, one-operation admission, restart recovery and
+exact version/revision/SHA-256 replacement-process attestation.
 
 ### Session catalog channel (`session-catalog-v1`)
 
-When negotiated, this channel is the sole authority for the Overseer session
-index. It requires `durable-delivery-v1`; accepting the catalog capability
+When negotiated, this channel keeps the rebuildable Overseer session projection
+fresh for realtime clients. Public catalog requests remain authoritative direct
+Fleet HTTP `GET /sessions` reads; rename and delete likewise use Fleet HTTP, so
+no request or mutation selects this socket channel. It requires
+`durable-delivery-v1`; accepting the catalog capability
 without durable delivery is a protocol error and Peon disconnects. If either
 capability is absent from `hello_ack`, remote session-index synchronization is
 inactive. Peon does not fall back to HTTP event pushes or run a second sync
@@ -1593,30 +1316,6 @@ starts compaction while a task is active. Repeated near-limit warnings are
 throttled per session/code/source; truncation notices are retained individually
 because each can reference a different full-output artifact.
 
-### Daemon configuration (`daemon-configuration-v1`)
-
-This capability requires both `durable-delivery-v1` and the generic
-`reverse-command-v1` operation `daemon.configuration.patch`. Its safe document
-contains exactly `name`, `defaultAgent`, `fileTransferRoot`,
-`heartbeatIntervalMs`, `aiDefaultModel`, `aiDefaultReasoningEffort`, and `soul`;
-identity, credentials,
-network-boundary settings, executable paths and `paused` are forbidden.
-
-Full configuration states use their own epoch, monotonic revision and canonical
-SHA-256 digest inside the shared durable envelope. Overseer commits the
-projection, inbox/checkpoint and an owner-only value-free browser event before
-ACK. Exact old transport replays return the current cumulative ACK, semantic
-same-revision/same-digest repeats do not emit another event, and identity or
-same-revision digest collisions fail closed.
-
-Remote patches use the shared command ledger and always carry expected
-`{epoch,revision,digest}`. Applied/noop/conflict/rejected terminal tuples,
-returned values, field errors and restart metadata are strictly bounded; the
-returned digest must match the complete safe document. A delayed terminal
-replay cannot regress a later revision or replace a newer epoch. Negotiated
-reads and writes never retry through HTTP; unnegotiated Peons retain the legacy
-settings routes.
-
 ## Enabling it on a peon
 
 ```
@@ -1635,10 +1334,10 @@ requests stay off; leave `overseerUrl` empty and it never phones home.
 `runtime-state-v1` requires `durable-delivery-v1`. Its durable payload is
 `{type:"runtime_state",protocol:1,epoch,revision,digest,generatedAt,state}`.
 It is committed with the shared inbox cursor before ACK and replaces the prior
-epoch/revision state. HTTP status/models reads use this projection when present
-and identify it as fresh, stale or offline.
+epoch/revision state. Projection consumers identify it as fresh, stale or
+offline.
 
-Quota, provider capabilities, stats and filtered analytics use the
-`runtime.quota`, `runtime.capabilities`, `runtime.stats` and
-`runtime.analytics` operations of `reverse-command-v1`; they do not introduce
-another ledger or lifecycle.
+Explicit status/models, quota, provider capabilities, stats and filtered
+analytics reads use authenticated Fleet HTTP through mesh. They are not
+`reverse-command-v1` operations and have no command-ledger fallback. The
+projection, heartbeat and invalidation/events remain on the control WebSocket.

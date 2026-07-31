@@ -1,6 +1,5 @@
 export { SettingsService, settings } from "./settingsService.js";
 export {
-  DAEMON_CONFIGURATION_CAPABILITY,
   DAEMON_CONFIGURATION_SCHEMA_VERSION,
   DaemonConfigurationState,
   daemonConfigurationDigest,

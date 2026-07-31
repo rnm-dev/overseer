@@ -614,7 +614,11 @@ class _SessionDetailPageState extends _SessionDetailAttachmentHost
   ) {
     final ghost = composer?.ghost;
     if (ghost == null) return null;
-    return ghost.visibleAgainst(_userMessageCount(transcript?.events))
+    return ghost.visibleAgainst(
+          _userMessageCount(transcript?.events),
+          queuedCommandIds:
+              composer?.queue.map((item) => item.commandId) ?? const [],
+        )
         ? ghost
         : null;
   }

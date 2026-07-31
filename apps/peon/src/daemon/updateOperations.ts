@@ -1,0 +1,206 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { isGitCheckout, readLocalSha } from "../shared/repo.js";
+import { startSelfUpdate } from "./selfUpdate.js";
+import { readUpdateCommandReceipt, writeUpdateCommandReceipt, type UpdateCommandReceipt } from "./updateCommandReceipt.js";
+import { isUpdateReleaseIdentity, readUpdateRuntimeIdentity } from "./updateRuntimeIdentity.js";
+import { updateChecker } from "./updateChecker.js";
+
+const PACKAGE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+const REQUEST_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+let preflightActive = false;
+
+export type UpdateHttpResult = {
+  status: number;
+  body: Record<string, unknown>;
+};
+
+type RunningUpdateIdentity = { version: string; revision: string | null; sha256: string | null };
+
+function runtimeIdentity(): RunningUpdateIdentity {
+  const manifest = JSON.parse(readFileSync(path.join(PACKAGE_ROOT, "package.json"), "utf8")) as { version: string };
+  const installed = readUpdateRuntimeIdentity(PACKAGE_ROOT);
+  return installed && installed.version === manifest.version
+    ? installed
+    : { version: manifest.version, revision: readLocalSha(PACKAGE_ROOT), sha256: null };
+}
+
+function statusView(): Record<string, unknown> {
+  const state = updateChecker.getState();
+  return {
+    updateAvailable: state.updateAvailable,
+    currentVersion: state.currentVersion,
+    latestVersion: state.latestVersion,
+    currentRevision: state.currentRevision,
+    latestRevision: state.latestRevision,
+    checkedAt: state.checkedAt,
+    checkError: state.error,
+  };
+}
+
+function boundedReceipt(receipt: UpdateCommandReceipt): Record<string, unknown> {
+  if (receipt.state === "running" || receipt.state === "ready_to_attest") {
+    return { requestId: receipt.commandId, status: "pending", code: "UPDATE_PENDING" };
+  }
+  if (receipt.state === "succeeded") {
+    return {
+      requestId: receipt.commandId,
+      status: "applied",
+      code: "OK",
+      result: {
+        version: receipt.actualVersion ?? null,
+        revision: receipt.actualRevision ?? null,
+        sha256: receipt.actualSha256 ?? null,
+        attested: true,
+      },
+    };
+  }
+  return { requestId: receipt.commandId, status: "failed", code: receipt.code ?? "UPDATE_FAILED" };
+}
+
+export function recoverUpdateOperation(
+  runningPid = process.pid,
+  runningIdentity?: RunningUpdateIdentity,
+): UpdateCommandReceipt | null {
+  const receipt = readUpdateCommandReceipt();
+  if (!receipt || receipt.state !== "ready_to_attest" || receipt.initiatorPid === runningPid) return receipt;
+  const actual = runningIdentity ?? runtimeIdentity();
+  const matches = receipt.expectedVersion !== null
+    && receipt.expectedRevision !== null
+    && receipt.expectedSha256 !== null
+    && receipt.expectedVersion === actual.version
+    && receipt.expectedRevision === actual.revision
+    && receipt.expectedSha256 === actual.sha256;
+  const recovered: UpdateCommandReceipt = matches
+    ? {
+        ...receipt,
+        state: "succeeded",
+        code: "OK",
+        attested: true,
+        actualVersion: actual.version,
+        actualRevision: actual.revision,
+        actualSha256: actual.sha256,
+        updatedAt: Date.now(),
+      }
+    : {
+        ...receipt,
+        state: "failed",
+        code: "ATTESTATION_MISMATCH",
+        attested: false,
+        actualVersion: actual.version,
+        actualRevision: actual.revision,
+        actualSha256: actual.sha256,
+        updatedAt: Date.now(),
+      };
+  writeUpdateCommandReceipt(recovered);
+  return recovered;
+}
+
+export async function checkUpdate(): Promise<UpdateHttpResult> {
+  if (preflightActive) {
+    return { status: 409, body: { error: "another update operation is in progress", code: "UPDATE_IN_PROGRESS" } };
+  }
+  const active = recoverUpdateOperation();
+  if (active?.state === "running" || active?.state === "ready_to_attest") {
+    return { status: 409, body: { error: "another update operation is in progress", code: "UPDATE_IN_PROGRESS" } };
+  }
+  preflightActive = true;
+  try {
+    await updateChecker.checkNow();
+    const state = updateChecker.getState();
+    if (state.error) return { status: 503, body: { error: "release registry is unavailable", code: "REGISTRY_UNAVAILABLE" } };
+    return {
+      status: 200,
+      body: {
+        status: state.updateAvailable ? "available" : "current",
+        code: state.updateAvailable ? "OK" : "NO_UPDATE",
+        result: statusView(),
+      },
+    };
+  } finally {
+    preflightActive = false;
+  }
+}
+
+export async function applyUpdate(
+  requestId: string,
+  body: unknown,
+): Promise<UpdateHttpResult> {
+  if (!REQUEST_ID.test(requestId)) {
+    return { status: 400, body: { error: "Peon-Request-Id is required", code: "BAD_REQUEST" } };
+  }
+  const payload = body && typeof body === "object" && !Array.isArray(body) ? body as Record<string, unknown> : {};
+  const release = payload.release;
+  const force = payload.force === true;
+  if (!isUpdateReleaseIdentity(release) || Object.keys(payload).some((key) => key !== "force" && key !== "release")) {
+    return { status: 400, body: { error: "approved release identity is required", code: "BAD_REQUEST" } };
+  }
+  if (preflightActive) {
+    return { status: 409, body: { error: "another update operation is in progress", code: "UPDATE_IN_PROGRESS" } };
+  }
+  const existing = recoverUpdateOperation();
+  if (existing?.commandId === requestId) {
+    const same = existing.expectedVersion === release.version
+      && existing.expectedRevision === release.revision
+      && existing.expectedSha256 === release.sha256;
+    if (!same) return { status: 409, body: { error: "request id was reused", code: "REQUEST_ID_REUSED" } };
+    const response = boundedReceipt(existing);
+    return { status: existing.state === "running" || existing.state === "ready_to_attest" ? 202 : 200, body: response };
+  }
+  if (existing?.state === "running" || existing?.state === "ready_to_attest") {
+    return { status: 409, body: { error: "another update operation is in progress", code: "UPDATE_IN_PROGRESS" } };
+  }
+  if (isGitCheckout(PACKAGE_ROOT)) {
+    return { status: 409, body: { error: "source checkouts cannot attest process replacement", code: "UPDATE_BLOCKED" } };
+  }
+  preflightActive = true;
+  try {
+    await updateChecker.checkNow();
+    const state = updateChecker.getState();
+    if (state.error) return { status: 503, body: { error: "release registry is unavailable", code: "REGISTRY_UNAVAILABLE" } };
+    if (!state.updateAvailable && !force) {
+      return { status: 200, body: { requestId, status: "noop", code: "NO_UPDATE", result: statusView() } };
+    }
+    writeUpdateCommandReceipt({
+      version: 1,
+      commandId: requestId,
+      expectedVersion: release.version,
+      expectedRevision: release.revision,
+      expectedSha256: release.sha256,
+      initiatorPid: process.pid,
+      state: "running",
+      updatedAt: Date.now(),
+    });
+    const launch = startSelfUpdate({
+      force,
+      command: {
+        commandId: requestId,
+        expectedVersion: release.version,
+        expectedRevision: release.revision,
+        expectedSha256: release.sha256,
+      },
+    });
+    if (launch.busy) {
+      writeUpdateCommandReceipt({
+        ...readUpdateCommandReceipt()!,
+        state: "failed",
+        code: "UPDATE_BLOCKED",
+        updatedAt: Date.now(),
+      });
+      return { status: 409, body: { error: "update admission is blocked", code: "UPDATE_BLOCKED" } };
+    }
+    return { status: 202, body: { requestId, status: "pending", code: "UPDATE_PENDING" } };
+  } finally {
+    preflightActive = false;
+  }
+}
+
+export function updateOperationStatus(requestId: string): UpdateHttpResult {
+  const receipt = recoverUpdateOperation();
+  if (!receipt || receipt.commandId !== requestId) {
+    return { status: 404, body: { error: "unknown update operation", code: "UNKNOWN_UPDATE" } };
+  }
+  const pending = receipt.state === "running" || receipt.state === "ready_to_attest";
+  return { status: pending ? 202 : 200, body: boundedReceipt(receipt) };
+}

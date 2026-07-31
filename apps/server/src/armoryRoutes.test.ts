@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { peonsRouter } from "./routes/peons.js";
 import { normalizeArmoryResult, safeConfigurationResult } from "./routes/peons/armory.js";
@@ -17,6 +18,7 @@ test("Armory exposes discovery, configuration, and lifecycle mutation routes", (
   assert.equal(has(`${root}/packages/:packageId/configuration`, "get"), true);
   assert.equal(has(`${root}/packages/:packageId/configuration`, "put"), true);
   assert.equal(has(`${root}/packages/:packageId/configuration`, "delete"), true);
+  assert.equal(has(`${root}/packages/:packageId/configuration/verify`, "post"), true);
   assert.equal(has(`${root}/packages/:packageId/mcp`, "get"), true);
   assert.equal(has(`${root}/packages/:packageId/enable`, "post"), true);
   assert.equal(has(`${root}/packages/:packageId/disable`, "post"), true);
@@ -24,6 +26,20 @@ test("Armory exposes discovery, configuration, and lifecycle mutation routes", (
   assert.equal(has(`${root}/operations/:operationId`, "get"), true);
   for (const route of routes) {
     for (const method of Object.keys(route.methods ?? {})) assert.ok(["get", "post", "put", "delete"].includes(method));
+  }
+});
+
+test("Armory production routes have one direct Fleet HTTP authority", () => {
+  const source = readFileSync(new URL("./routes/peons/armory.ts", import.meta.url), "utf8");
+  assert.doesNotMatch(source, /reverseCommand|runReverseCommandTransport|armoryCall/);
+  assert.match(source, /import \{ callPeon, connOfRecord \}/);
+  assert.equal((source.match(/\bcallPeon\(/g) ?? []).length, 14);
+  for (const operation of [
+    "inventory", "settings", "package", "configuration", "mcp", "operation",
+    "refresh", "install", "update", "enable", "disable", "configure", "verify",
+    "configuration.delete", "uninstall",
+  ]) {
+    assert.doesNotMatch(source, new RegExp(`["'\`]armory\\\\.${operation.replace(".", "\\\\.")}["'\`]`));
   }
 });
 
@@ -43,7 +59,7 @@ test("Armory configuration relays suppress submitted values in errors and operat
   });
 });
 
-test("Armory reverse operations expose the public progress field without non-finite values", () => {
+test("Armory operations expose the public progress field without non-finite values", () => {
   assert.deepEqual(normalizeArmoryResult({
     operation: { id: "op", kind: "update", status: "running", phase: "health_check", percent: 94 },
   }), {

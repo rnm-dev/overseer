@@ -21,7 +21,6 @@ import {
   type ProjectSyncCheckpoint,
 } from "./projectIndex.js";
 import type { PeonRecord } from "./registry.js";
-import { peonDaemonConfigurationIdentity, setPeonDaemonConfigurationIdentity } from "./peonConnections.js";
 import {
   parseDurableReverseCommandResult,
   REVERSE_COMMAND_CAPABILITY,
@@ -35,12 +34,6 @@ import {
   TRANSCRIPT_CHANNEL_HELLO,
   type DurableTranscriptMessage,
 } from "./peonTranscriptSync.js";
-import {
-  commitDaemonConfigurationState,
-  DAEMON_CONFIGURATION_CAPABILITY,
-  parseDurableDaemonConfigurationState,
-  type DurableDaemonConfigurationState,
-} from "./modules/daemonConfiguration.js";
 import {
   commitRuntimeState,
   parseDurableRuntimeState,
@@ -89,7 +82,7 @@ interface DurableCatalogEvent {
   projectId?: string;
 }
 
-type DurableDeliveryEvent = DurableCatalogEvent | DurableReverseCommandResult | DurableTranscriptMessage | DurableDaemonConfigurationState | DurableRuntimeState;
+type DurableDeliveryEvent = DurableCatalogEvent | DurableReverseCommandResult | DurableTranscriptMessage | DurableRuntimeState;
 
 interface SnapshotState {
   requestId: string;
@@ -448,7 +441,7 @@ export class PeonCatalogSync {
       this.bufferEvent(event, frameBytes);
       return;
     }
-    if (event.channel === "transcript" || event.channel === "configuration" || event.channel === "runtime") {
+    if (event.channel === "transcript" || event.channel === "runtime") {
       await this.applyEvent(event);
       return;
     }
@@ -506,25 +499,6 @@ export class PeonCatalogSync {
       });
       if (this.checkpoint) this.checkpoint = { ...this.checkpoint, delivery };
       this.send({ type: "durable_ack", epoch: delivery.epoch, cursor: delivery.acknowledgedCursor });
-      return;
-    }
-    if (event.channel === "configuration") {
-      const committed = await commitDaemonConfigurationState({
-        workspaceId: this.record.workspaceId,
-        peonId: this.record.peonId,
-        syncGeneration: this.generation,
-        durable: event,
-        advertisedIdentity: peonDaemonConfigurationIdentity(this.ws),
-      });
-      if (committed.projected) {
-        setPeonDaemonConfigurationIdentity(this.ws, {
-          epoch: event.epoch,
-          revision: event.revision,
-          digest: event.digest,
-        });
-      }
-      if (this.checkpoint) this.checkpoint = { ...this.checkpoint, delivery: committed.delivery };
-      this.send({ type: "durable_ack", epoch: committed.delivery.epoch, cursor: committed.delivery.acknowledgedCursor });
       return;
     }
     if (event.channel === "runtime") {
@@ -606,7 +580,7 @@ export class PeonCatalogSync {
     this.bufferedBytes = 0;
     for (let index = 0; index < events.length; index += 1) {
       const event = events[index]!;
-      if (event.channel === "command" || event.channel === "configuration" || event.channel === "runtime") {
+      if (event.channel === "command" || event.channel === "runtime") {
         await this.applyEvent(event);
         continue;
       }
@@ -677,16 +651,6 @@ export class PeonCatalogSync {
         return parseDurableRuntimeState(message);
       } catch (error) {
         throw new SessionSyncProtocolError(error instanceof Error ? error.message : "invalid runtime state");
-      }
-    }
-    if (message.capability === DAEMON_CONFIGURATION_CAPABILITY) {
-      if (!this.additionalCapabilities.includes(DAEMON_CONFIGURATION_CAPABILITY)) {
-        throw new SessionSyncProtocolError("daemon configuration capability not negotiated");
-      }
-      try {
-        return parseDurableDaemonConfigurationState(message);
-      } catch (error) {
-        throw new SessionSyncProtocolError(error instanceof Error ? error.message : "invalid daemon configuration state");
       }
     }
     if (message.capability === REVERSE_COMMAND_CAPABILITY) {

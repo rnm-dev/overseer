@@ -1,15 +1,6 @@
 import { createHash } from "node:crypto";
 import type { PeonSocketChannel, PeonSocketFrame, PeonSocketSender } from "../peonSocketProtocol.js";
 import { ReverseCommandLedger, type ReverseCommandRecord } from "../reverseCommandLedger.js";
-import { runtimeQueryHandlers } from "./runtimeQueryHandlers.js";
-import { projectCommandHandlers } from "./projectCommandHandlers.js";
-import { sessionCommandHandlers, validSessionCommandExecution } from "./sessionCommandHandlers.js";
-import { daemonConfigurationChannel } from "./daemonConfigurationChannel.js";
-import {
-  attestUpdateCommand,
-  updateCommandHandlers,
-  waitForUpdateReplacement,
-} from "./updateCommandHandlers.js";
 
 export const REVERSE_COMMAND_CAPABILITY = "reverse-command-v1";
 export const REVERSE_COMMAND_MAX_BYTES = 60 * 1024;
@@ -32,7 +23,7 @@ export interface ReverseCommandHandler {
 export interface ValidCommand {
   commandId: string;
   operation: string;
-  target: { peonId: string; sessionId?: string; projectId?: string; packageId?: string; operationId?: string };
+  target: { peonId: string; sessionId?: string; projectId?: string };
   actor: { userId: string; email: string };
   payload: PeonSocketFrame;
   expected: PeonSocketFrame | null;
@@ -119,13 +110,7 @@ export class ReverseCommandChannel implements PeonSocketChannel {
 
   constructor(private readonly options: ReverseCommandChannelOptions) {
     this.ledger = options.ledger ?? new ReverseCommandLedger();
-    this.handlers = options.handlers ?? {
-      ...sessionCommandHandlers(),
-      "daemon.configuration.patch": daemonConfigurationChannel.commandHandler(),
-      ...projectCommandHandlers(),
-      ...runtimeQueryHandlers(),
-      ...updateCommandHandlers(),
-    };
+    this.handlers = options.handlers ?? {};
     this.maxConcurrency = options.maxConcurrency ?? 16;
     this.perSessionConcurrency = options.perSessionConcurrency ?? 1;
     this.publicationRetryBaseMs = options.publicationRetryBaseMs ?? 50;
@@ -142,23 +127,10 @@ export class ReverseCommandChannel implements PeonSocketChannel {
 
   started(sender: PeonSocketSender): void {
     this.sender = null;
-    const interruptedRecords = this.ledger.recoverInterrupted((interrupted) => {
-      const execution = interrupted.operation === "update.apply"
-        ? attestUpdateCommand(interrupted.commandId)
-        : { status: "failed", code: "INTERNAL" } satisfies ReverseCommandExecution;
-      return execution ? commandResult(interrupted, execution) : null;
-    });
+    const interruptedRecords = this.ledger.recoverInterrupted((interrupted) =>
+      commandResult(interrupted, { status: "failed", code: "INTERNAL" }),
+    );
     for (const interrupted of interruptedRecords.filter((record) => record.state === "running")) {
-      if (interrupted.operation === "update.apply") {
-        void waitForUpdateReplacement(interrupted.commandId, { attestReady: true })
-          .then((execution) => this.scheduleTerminalRetry(
-            interrupted.commandId,
-            interrupted.authority,
-            interrupted.admittedGeneration,
-            commandResult(interrupted, execution),
-          ));
-        continue;
-      }
       this.scheduleTerminalRetry(
         interrupted.commandId,
         interrupted.authority,
@@ -300,11 +272,9 @@ export class ReverseCommandChannel implements PeonSocketChannel {
       || !frame.payload || typeof frame.payload !== "object" || Array.isArray(frame.payload)) return { error: "invalid reverse command envelope" };
     const target = frame.target as PeonSocketFrame;
     const actor = frame.actor as PeonSocketFrame;
-    if (!strictKeys(target, ["peonId", "sessionId", "projectId", "packageId", "operationId"]) || typeof target.peonId !== "string" || !UUID.test(target.peonId)
+    if (!strictKeys(target, ["peonId", "sessionId", "projectId"]) || typeof target.peonId !== "string" || !UUID.test(target.peonId)
       || (target.sessionId !== undefined && (typeof target.sessionId !== "string" || !UUID.test(target.sessionId)))
       || (target.projectId !== undefined && (typeof target.projectId !== "string" || !UUID.test(target.projectId)))
-      || (target.packageId !== undefined && (typeof target.packageId !== "string" || !/^[a-z0-9][a-z0-9-]{0,62}$/.test(target.packageId)))
-      || (target.operationId !== undefined && (typeof target.operationId !== "string" || !UUID.test(target.operationId)))
       || !strictKeys(actor, ["userId", "email"]) || typeof actor.userId !== "string" || !UUID.test(actor.userId)
       || typeof actor.email !== "string" || actor.email.length < 3 || actor.email.length > 320
       || (frame.expected !== undefined && frame.expected !== null
@@ -312,10 +282,6 @@ export class ReverseCommandChannel implements PeonSocketChannel {
       return { error: "invalid reverse command identity or payload" };
     }
     if (target.peonId !== this.options.peonId()) return { error: "reverse command target Peon does not match authenticated socket", disconnect: true };
-    if (frame.operation.startsWith("session.")
-      && (target.sessionId === undefined || target.projectId !== undefined)) {
-      return { error: `${frame.operation} requires only target.sessionId` };
-    }
     return { command: {
       commandId: frame.commandId,
       operation: frame.operation,
@@ -323,8 +289,6 @@ export class ReverseCommandChannel implements PeonSocketChannel {
         peonId: target.peonId,
         ...(typeof target.sessionId === "string" ? { sessionId: target.sessionId } : {}),
         ...(typeof target.projectId === "string" ? { projectId: target.projectId } : {}),
-        ...(typeof target.packageId === "string" ? { packageId: target.packageId } : {}),
-        ...(typeof target.operationId === "string" ? { operationId: target.operationId } : {}),
       },
       actor: { userId: actor.userId, email: actor.email },
       payload: frame.payload as PeonSocketFrame,
@@ -392,10 +356,6 @@ export class ReverseCommandChannel implements PeonSocketChannel {
     try {
       execution = await item.handler.execute(item.command);
     } catch {
-      execution = { status: "failed", code: "INTERNAL" };
-    }
-    if (item.command.operation.startsWith("session.")
-      && !validSessionCommandExecution(item.command, execution)) {
       execution = { status: "failed", code: "INTERNAL" };
     }
     const result = commandResult(item.command, execution);

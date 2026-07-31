@@ -16,8 +16,8 @@ The current rollout remains mixed-version safe:
   is enabled and receives `503 REVERSE_TRANSPORT_UNAVAILABLE` when it is
   disabled. A negotiated operation uses only reverse transport and never
   retries over HTTP after a socket failure;
-- sessions, projects, runtime queries, daemon configuration, updates and
-  Armory all use this selector; accepted command IDs stay reverse-owned across
+- remaining reverse command families use this selector; Armory uses only
+  authenticated Fleet HTTP. Accepted command IDs stay reverse-owned across
   rollback and reconcile without a duplicate callback effect.
 
 `OVERSEER_PEON_CALLBACK_URL` is therefore optional for Peon-initiated claims.

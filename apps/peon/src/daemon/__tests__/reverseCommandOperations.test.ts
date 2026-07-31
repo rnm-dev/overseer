@@ -5,30 +5,17 @@ import {
   PEON_ONLY_REVERSE_COMMAND_OPERATIONS,
   REVERSE_COMMAND_OPERATIONS,
 } from "../overseer/socket/channels/reverseCommandOperations.js";
-import { sessionCommandHandlers } from "../overseer/socket/channels/sessionCommandHandlers.js";
-import { projectCommandHandlers } from "../overseer/socket/channels/projectCommandHandlers.js";
-import { runtimeQueryHandlers } from "../overseer/socket/channels/runtimeQueryHandlers.js";
-import { updateCommandHandlers } from "../overseer/socket/channels/updateCommandHandlers.js";
-
-// ReverseCommandChannel registers these two itself rather than through a family
-// table, and the Armory family is registered later from daemon/index.ts once its
-// services exist. Its completeness is compile-checked like the others.
-const CHANNEL_REGISTERED = ["daemon.configuration.patch"] as const;
+const CHANNEL_REGISTERED = [] as const;
 
 const sorted = (values: Iterable<string>): string[] => [...values].sort();
 
 test("the assembled handler set is exactly the declared contract", () => {
   const handled = new Set<string>([
     ...CHANNEL_REGISTERED,
-    ...Object.keys(sessionCommandHandlers()),
-    ...Object.keys(projectCommandHandlers()),
-    ...Object.keys(runtimeQueryHandlers()),
-    ...Object.keys(updateCommandHandlers()),
   ]);
   const expected = new Set<string>([
     ...REVERSE_COMMAND_OPERATIONS.filter((operation) =>
-      !operation.startsWith("armory.")
-      && !(DEFERRED_REVERSE_COMMAND_OPERATIONS as readonly string[]).includes(operation)),
+      !(DEFERRED_REVERSE_COMMAND_OPERATIONS as readonly string[]).includes(operation)),
     ...PEON_ONLY_REVERSE_COMMAND_OPERATIONS,
   ]);
   assert.deepEqual(sorted(handled), sorted(expected));
@@ -50,10 +37,6 @@ test("the deferred and Peon-only lists stay on the right side of the union", () 
 test("no operation is advertised without a handler behind it", () => {
   const advertised = new Set<string>([
     ...CHANNEL_REGISTERED,
-    ...Object.keys(sessionCommandHandlers()),
-    ...Object.keys(projectCommandHandlers()),
-    ...Object.keys(runtimeQueryHandlers()),
-    ...Object.keys(updateCommandHandlers()),
   ]);
   for (const operation of DEFERRED_REVERSE_COMMAND_OPERATIONS) {
     assert.ok(!advertised.has(operation), `${operation} is deferred yet advertised`);

@@ -45,11 +45,6 @@ import {
   evictPeonConnectionsBelowGeneration,
 } from "./peonConnections.js";
 import { attachPeonSocket } from "./peonSocket.js";
-import {
-  claimPeonTransferConnection,
-  evictPeonTransferConnectionsBelowGeneration,
-} from "./peonTransferConnections.js";
-import { attachPeonTransferSocket, PEON_TRANSFER_SOCKET_PATH } from "./peonTransferSocket.js";
 import { registry, toView } from "./registry.js";
 import { createServer } from "./server.js";
 import { membership } from "./workspaces.js";
@@ -501,28 +496,18 @@ test("request nonce retention is exact at and after the 24-hour boundary without
   )).rows[0]?.created_at, now + 86_400_001);
 });
 
-test("credential generation fencing rejects delayed lower-generation control and transfer claims", () => {
+test("credential generation fencing rejects delayed lower-generation control claims", () => {
   let newerControlTerminated = 0;
   let staleControlTerminated = 0;
-  let newerTransferTerminated = 0;
-  let staleTransferTerminated = 0;
   const newerControl = { terminate: () => { newerControlTerminated += 1; } } as unknown as WebSocket;
   const staleControl = { terminate: () => { staleControlTerminated += 1; } } as unknown as WebSocket;
-  const newerTransfer = { terminate: () => { newerTransferTerminated += 1; } } as unknown as WebSocket;
-  const staleTransfer = { terminate: () => { staleTransferTerminated += 1; } } as unknown as WebSocket;
   const peonId = randomUUID();
   assert.equal(claimPeonConnection(peonId, newerControl, [], [], 2).accepted, true);
-  assert.equal(claimPeonTransferConnection(peonId, newerTransfer, [], 2).accepted, true);
   assert.equal(claimPeonConnection(peonId, staleControl, [], [], 1).accepted, false);
-  assert.equal(claimPeonTransferConnection(peonId, staleTransfer, [], 1).accepted, false);
   assert.equal(evictPeonConnectionsBelowGeneration(peonId, 2), false);
-  assert.equal(evictPeonTransferConnectionsBelowGeneration(peonId, 2), false);
   assert.equal(evictPeonConnectionsBelowGeneration(peonId, 3), true);
-  assert.equal(evictPeonTransferConnectionsBelowGeneration(peonId, 3), true);
   assert.equal(newerControlTerminated, 1);
-  assert.equal(newerTransferTerminated, 1);
   assert.equal(staleControlTerminated, 0);
-  assert.equal(staleTransferTerminated, 0);
 });
 
 test("generation 2 hellos stay authoritative when delayed generation 1 hellos arrive", async () => {
@@ -575,7 +560,6 @@ test("generation 2 hellos stay authoritative when delayed generation 1 hellos ar
   assert.equal(toView((await registry.get(machine.peonId))!).baseUrl, null);
   const server = http.createServer();
   const controlWss = attachPeonSocket(server);
-  const transferWss = attachPeonTransferSocket(server);
   const port = await new Promise<number>((resolve) => {
     server.listen(0, "127.0.0.1", () => resolve((server.address() as AddressInfo).port));
   });
@@ -596,40 +580,22 @@ test("generation 2 hellos stay authoritative when delayed generation 1 hellos ar
   try {
     const staleControl = await openSocket("/api/v1/peons/ws", firstBearer);
     opened.add(staleControl);
-    const staleTransfer = await openSocket(PEON_TRANSFER_SOCKET_PATH, firstBearer);
-    opened.add(staleTransfer);
     await query(`UPDATE peons SET credential_id=$2 WHERE peon_id=$1`, [machine.peonId, secondId]);
     const newerControl = await openSocket("/api/v1/peons/ws", secondBearer);
     opened.add(newerControl);
-    const newerTransfer = await openSocket(PEON_TRANSFER_SOCKET_PATH, secondBearer);
-    opened.add(newerTransfer);
 
     const newerControlAck = message(newerControl);
     newerControl.send(JSON.stringify({ type: "hello", protocol: 1 }));
     assert.deepEqual(await newerControlAck, { type: "hello_ack", protocol: 1, capabilities: [] });
-    const newerTransferAck = message(newerTransfer);
-    newerTransfer.send(JSON.stringify({ type: "hello", protocol: 1, channel: "file-transfer", capabilities: [] }));
-    assert.deepEqual(await newerTransferAck, {
-      type: "hello_ack",
-      protocol: 1,
-      channel: "file-transfer",
-      capabilities: [],
-    });
 
     const staleControlClosed = closed(staleControl);
     staleControl.send(JSON.stringify({ type: "hello", protocol: 1 }));
-    const staleTransferClosed = closed(staleTransfer);
-    staleTransfer.send(JSON.stringify({ type: "hello", protocol: 1, channel: "file-transfer", capabilities: [] }));
     assert.deepEqual(await staleControlClosed, { code: 4001, reason: "rejected stale credential generation" });
-    assert.deepEqual(await staleTransferClosed, { code: 4001, reason: "rejected stale credential generation" });
     assert.equal(newerControl.readyState, WebSocket.OPEN);
-    assert.equal(newerTransfer.readyState, WebSocket.OPEN);
     newerControl.close();
-    newerTransfer.close();
   } finally {
     for (const socket of opened) socket.terminate();
     await new Promise<void>((resolve) => controlWss.close(() => resolve()));
-    await new Promise<void>((resolve) => transferWss.close(() => resolve()));
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 });

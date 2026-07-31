@@ -4,7 +4,6 @@ import { existsSync, readFileSync } from "node:fs";
 import { writePrivateFileDurably, ensurePrivateDirectory, secureExistingPrivateFile } from "../durablePrivateFile.js";
 import { stateDir } from "../xdgPaths.js";
 import { settings } from "./settingsService.js";
-export const DAEMON_CONFIGURATION_CAPABILITY = "daemon-configuration-v1";
 export const DAEMON_CONFIGURATION_SCHEMA_VERSION = 1;
 function canonical(value) {
     if (value === null || typeof value !== "object")
@@ -30,7 +29,7 @@ export class DaemonConfigurationState {
     now;
     configuration;
     identity;
-    constructor(filePath = path.join(stateDir(), "daemon-configuration-v1.json"), now = Date.now, configuration = settings) {
+    constructor(filePath = path.join(stateDir(), "daemon-settings-revision-v1.json"), now = Date.now, configuration = settings) {
         this.filePath = filePath;
         this.now = now;
         this.configuration = configuration;

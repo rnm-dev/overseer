@@ -1,47 +1,60 @@
-# Armory over the reverse command gateway
+# Armory over Fleet HTTP
 
-Armory fleet traffic uses `reverse-command-v1` when the Peon advertises the
-individual `armory.*` operation. The operator routes choose exactly one path:
-the reverse gateway for a negotiated operation, otherwise the legacy Peon HTTP
-API. A failure after reverse selection is never retried over HTTP.
+Armory request/response traffic has one authority: Overseer calls Peon's
+authenticated Fleet HTTP API directly through mesh. Public browser/mobile
+routes, workspace membership checks and Peon ACLs are unchanged. There is no
+capability selector, reverse-command path, legacy fallback or retry onto a
+second transport.
 
-## Operations
+## Routes
 
-The bounded read operations are `armory.inventory`, `armory.settings`,
-`armory.package`, `armory.configuration`, `armory.mcp`, and
-`armory.operation`. Lifecycle operations are `armory.refresh`,
+Overseer preserves `/api/workspaces/:wsId/peons/:peonId/armory/*` and maps it
+one-for-one onto these Peon Fleet routes:
+
+- `GET /api/v1/armory/packages?q=&installed=&limit=&cursor=`
+- `GET /api/v1/armory/settings`
+- `GET /api/v1/armory/packages/:id`
+- `GET /api/v1/armory/packages/:id/configuration`
+- `GET /api/v1/armory/packages/:id/mcp`
+- `GET /api/v1/armory/operations/:operationId`
+- `POST /api/v1/armory/refresh`
+- `POST /api/v1/armory/packages/:id/install`
+- `POST /api/v1/armory/packages/:id/update`
+- `POST /api/v1/armory/packages/:id/enable`
+- `POST /api/v1/armory/packages/:id/disable`
+- `PUT /api/v1/armory/packages/:id/configuration`
+- `POST /api/v1/armory/packages/:id/configuration/verify`
+- `DELETE /api/v1/armory/packages/:id/configuration`
+- `DELETE /api/v1/armory/packages/:id`
+
+Every request carries the server-derived `Peon-Actor`; Fleet authentication
+uses the Peon's enrolled credential. HTTP retries retain `Peon-Request-Id`.
+Peon's durable operation IDs and operation store remain the authority for
+long-running work and restart recovery.
+
+## Preserved safety
+
+Inventory stays cursor-bounded and capped at 100 packages. Package,
+configuration, MCP and operation responses retain their existing bounded safe
+representations. Configuration reads expose schemas and configured booleans,
+never stored values. Overseer still strips unsafe configuration failures and
+free-form configure diagnostics before returning them to a client.
+
+Package locks, transactional staging, dependency checks, hooks, rollback,
+runtime drain/reconcile, durable operation state and interrupted-operation
+recovery remain inside Peon. Moving transport does not move those authorities.
+Stable Peon HTTP status/code pairs pass through the existing relay.
+
+Armory has no realtime WebSocket projection or event in the current UI. The UI
+refreshes authoritative HTTP reads and polls durable operations. If a future
+invalidation event is added, it may trigger an HTTP refetch but must not carry
+an authoritative Armory result or mutation.
+
+## Removed reverse operations
+
+`armory.inventory`, `armory.settings`, `armory.package`,
+`armory.configuration`, `armory.mcp`, `armory.operation`, `armory.refresh`,
 `armory.install`, `armory.update`, `armory.enable`, `armory.disable`,
 `armory.configure`, `armory.verify`, `armory.configuration.delete`, and
-`armory.uninstall`.
-
-Every request is admitted by the shared Peon reverse-command ledger before it
-executes. The command ID and canonical request hash therefore deduplicate
-install, update, configuration, hooks, and uninstall across retries, socket
-replacement, and Overseer restart. Package-level coordination remains inside
-Armory, preserving its lock, transactional staging, dependency, rollback, and
-restart-recovery rules.
-
-## Safety and bounds
-
-Control frames contain metadata only. Package archives continue to be fetched
-by the Peon from its authenticated catalog selection; archive bytes never enter
-the control socket. Results are capped at 48 KiB. Inventory requests are capped
-at 100 packages. Operation results expose only ID, package ID, kind, status,
-phase, percentage, timestamps, and a stable error code. Free-form operation and
-hook messages are replaced with an empty string.
-
-Targets fail closed by operation: package operations accept exactly one
-`packageId`, operation polling accepts exactly one `operationId`, and
-fleet-wide inventory, settings and refresh accept neither. Stored or overridden
-registry URLs cross the socket only when they are credential-free HTTPS URLs.
-
-Configuration values are accepted only in the command request needed to
-perform `armory.configure`; they are never copied into the result, durable
-projection, audit view, or browser event. Configuration reads expose schema and
-configured booleans, not stored values. The shared result allowlist rejects
-messages and oversized terminal detail before Overseer commits or publishes it.
-
-Long-running Armory work returns its stable operation ID. The existing Armory
-operation store remains authoritative and survives Peon restarts; callers poll
-`armory.operation` with that ID. If transport drops after admission, the shared
-gateway reconciles the same command ID and replays its terminal result.
+`armory.uninstall` are not `reverse-command-v1` operations and are not
+advertised, accepted, persisted or measured by the command gateway.

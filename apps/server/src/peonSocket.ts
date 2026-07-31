@@ -7,7 +7,6 @@ import {
   claimPeonConnection,
   peonConnectionGeneration,
   releasePeonConnection,
-  setPeonDaemonConfigurationIdentity,
 } from "./peonConnections.js";
 import { authenticatePeonUpgrade } from "./peonSocketAuth.js";
 import {
@@ -23,7 +22,6 @@ import {
   validTranscriptChannelHello,
 } from "./peonTranscriptSync.js";
 import { toView, type PeonRecord } from "./registry.js";
-import { evictPeonTransferConnectionsBelowGeneration } from "./peonTransferConnections.js";
 import {
   parseReverseCommandHello,
   REVERSE_COMMAND_CAPABILITY,
@@ -33,11 +31,6 @@ import {
   type ReverseCommandGateway,
   type ReverseCommandOperation,
 } from "./modules/reverseCommands/index.js";
-import {
-  configurationHelloCheckpoint,
-  DAEMON_CONFIGURATION_CAPABILITY,
-  parseDaemonConfigurationHello,
-} from "./modules/daemonConfiguration.js";
 import { RUNTIME_STATE_CAPABILITY } from "./modules/runtimeProjection.js";
 
 const ENDPOINT = "/api/v1/peons/ws";
@@ -198,7 +191,6 @@ export function attachPeonSocket(server: Server, options: PeonSocketOptions = {}
           const advertisesReverseCommands = advertised.includes(REVERSE_COMMAND_CAPABILITY);
           const advertisesTranscripts = advertised.includes(SESSION_TRANSCRIPT_CAPABILITY);
           const advertisesRuntime = advertised.includes(RUNTIME_STATE_CAPABILITY);
-          const advertisesConfiguration = advertised.includes(DAEMON_CONFIGURATION_CAPABILITY);
           const advertisedChannels = frame.channels && typeof frame.channels === "object" && !Array.isArray(frame.channels)
             ? frame.channels as Record<string, unknown>
             : {};
@@ -224,23 +216,10 @@ export function attachPeonSocket(server: Server, options: PeonSocketOptions = {}
           const acceptsReverseCommands = supportsCanonical
             && advertisesReverseCommands
             && commandOperations.length > 0;
-          let configurationIdentity: ReturnType<typeof parseDaemonConfigurationHello> | null = null;
-          if (advertisesConfiguration) {
-            try {
-              configurationIdentity = parseDaemonConfigurationHello(advertisedChannels[DAEMON_CONFIGURATION_CAPABILITY]);
-            } catch (error) {
-              throw new SessionSyncProtocolError(error instanceof Error ? error.message : "invalid daemon configuration hello");
-            }
-          }
-          const acceptsConfiguration = supportsCanonical
-            && acceptsReverseCommands
-            && advertisesConfiguration
-            && commandOperations.includes("daemon.configuration.patch");
           const additionalCapabilities = [
             ...(supportsCanonical && advertisesTranscripts ? [SESSION_TRANSCRIPT_CAPABILITY] : []),
             ...(supportsCanonical && advertisesRuntime ? [RUNTIME_STATE_CAPABILITY] : []),
             ...(acceptsReverseCommands ? [REVERSE_COMMAND_CAPABILITY] : []),
-            ...(acceptsConfiguration ? [DAEMON_CONFIGURATION_CAPABILITY] : []),
           ];
           const negotiatedCapabilities = supportsCanonical
             ? [
@@ -266,15 +245,9 @@ export function attachPeonSocket(server: Server, options: PeonSocketOptions = {}
             ws.close(4001, "rejected stale credential generation");
             return;
           }
-          if (acceptsConfiguration && configurationIdentity) {
-            setPeonDaemonConfigurationIdentity(ws, configurationIdentity);
-          }
           const previous = claimed.previous;
           if (previous && previous.readyState !== WebSocket.CLOSED) {
             previous.close(4001, "replaced by a newer connection");
-          }
-          if (credentialGeneration > 0) {
-            evictPeonTransferConnectionsBelowGeneration(record.peonId, credentialGeneration);
           }
           publishPresence(record);
           console.info(
@@ -286,9 +259,6 @@ export function attachPeonSocket(server: Server, options: PeonSocketOptions = {}
             if (frame.peonId !== record.peonId) throw new SessionSyncProtocolError("missing or invalid Peon identity");
             const hello = parseSessionCatalogHello(frame);
             if (advertisesProjects && !hello.projectCatalog) throw new SessionSyncProtocolError("missing project catalog channel state");
-            const configurationCheckpoint = acceptsConfiguration
-              ? await configurationHelloCheckpoint(record.peonId)
-              : null;
             client.sessionSync = new PeonCatalogSync(
               record,
               ws,
@@ -296,11 +266,7 @@ export function attachPeonSocket(server: Server, options: PeonSocketOptions = {}
               hello.delivery,
               advertisesProjects ? hello.projectCatalog : null,
               additionalCapabilities,
-              {
-                ...(configurationCheckpoint ? {
-                  [DAEMON_CONFIGURATION_CAPABILITY]: configurationCheckpoint,
-                } : {}),
-              },
+              {},
               peonConnectionGeneration(ws) ?? undefined,
             );
             await client.sessionSync.start(options.beforeCanonicalHelloAck);

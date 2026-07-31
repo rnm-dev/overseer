@@ -13,6 +13,25 @@ import '../../../support/manual_app_time.dart';
 import 'package:overseer_mobile/core/time/app_time.dart';
 
 void main() {
+  test('authoritative queue item suppresses the matching optimistic ghost', () {
+    const ghost = ComposerGhost(
+      commandId: 'command-1',
+      text: 'Send now',
+      attachments: [],
+      createdAt: 1,
+      baselineUserMessages: 2,
+    );
+
+    expect(ghost.visibleAgainst(2), isTrue);
+    expect(
+      ghost.visibleAgainst(
+        2,
+        queuedCommandIds: const ['another-command', 'command-1'],
+      ),
+      isFalse,
+    );
+  });
+
   const scope = FollowupScope(
     workspaceId: 'workspace',
     peonId: 'peon',

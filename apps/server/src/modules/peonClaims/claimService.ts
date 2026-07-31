@@ -8,11 +8,6 @@ import {
   evictPeonConnectionsBelowGeneration,
 } from "../../peonConnections.js";
 import {
-  evictPeonTransferConnection,
-  evictPeonTransferConnectionGeneration,
-  evictPeonTransferConnectionsBelowGeneration,
-} from "../../peonTransferConnections.js";
-import {
   claimKeysConfigured,
   CLAIM_CAPABILITY,
   CLAIM_TTL_MS,
@@ -934,7 +929,6 @@ export async function acknowledgeClaim(
   const credential = (await query<ClaimCredentialRow>(`SELECT * FROM peon_claim_credentials WHERE id=$1`, [auth.credential_id])).rows[0];
   if (completed.mode === "recover") {
     evictPeonConnection(completed.peon_id);
-    evictPeonTransferConnection(completed.peon_id);
   }
   return completedClaim(completed, credential, now, replayed);
 }
@@ -1269,7 +1263,6 @@ export async function acknowledgeRotation(
   if (replayed) return completedRotation(row, now, true);
   const timer = setTimeout(() => {
     evictPeonConnectionsBelowGeneration(row.peon_id, auth.generation);
-    evictPeonTransferConnectionsBelowGeneration(row.peon_id, auth.generation);
   }, OLD_SOCKET_GRACE_MS);
   timer.unref();
   return completedRotation(row, now, false);
@@ -1353,7 +1346,6 @@ export async function revokeClaimCredential(
   if (!result) return null;
   const evictedSocketCount = result.changed
     ? Number(evictPeonConnectionGeneration(peonId, result.generation))
-      + Number(evictPeonTransferConnectionGeneration(peonId, result.generation))
     : 0;
   return {
     type: "revocation_result", protocol: 1, scope: "credential", code: "CREDENTIAL_REVOKED",
@@ -1459,7 +1451,7 @@ export async function revokeClaimPeon(
   if (forbidden) throw claimError("FORBIDDEN");
   if (!result) return null;
   const evictedSocketCount = result.changed
-    ? Number(evictPeonConnection(peonId)) + Number(evictPeonTransferConnection(peonId))
+    ? Number(evictPeonConnection(peonId))
     : 0;
   return {
     type: "revocation_result", protocol: 1, scope: "peon", code: "PEON_REVOKED",
@@ -1631,7 +1623,6 @@ export async function cleanupPeonClaims(now = Date.now()): Promise<void> {
   )).rows;
   for (const item of grace) {
     evictPeonConnectionsBelowGeneration(item.peon_id, item.generation);
-    evictPeonTransferConnectionsBelowGeneration(item.peon_id, item.generation);
   }
   await pruneBounded("peon_claim_request_nonces", ["identity_key_id", "request_nonce"], "expires_at<$1", [now]);
   await pruneBounded("peon_claim_ack_auth", ["claim_id"], "expires_at<$1", [now]);

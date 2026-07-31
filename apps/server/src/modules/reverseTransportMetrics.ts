@@ -6,14 +6,9 @@ const KNOWN_CAPABILITIES = new Set([
   "reverse-command-v1",
   "transcript-sync-v1",
   "runtime-state-v1",
-  "daemon-configuration-v1",
-  "project-file-read-v1",
-  "sandbox-file-read-v1",
-  "file-write-v1",
-  "session-artifact-v1",
 ]);
 
-type SocketPlane = "control" | "transfer";
+type SocketPlane = "control";
 
 const counters = new Map<string, number>();
 

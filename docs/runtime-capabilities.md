@@ -1,7 +1,7 @@
 # Reverse runtime capabilities
 
-OVSR-137 replaces callback reads for routine runtime state and expensive
-provider/analytics reads with two versioned reverse capabilities.
+`runtime-state-v1` is the realtime runtime projection. Bounded request/response
+runtime reads use authenticated Fleet HTTP over mesh.
 
 ## `runtime-state-v1`
 
@@ -16,25 +16,30 @@ version/revision, provider availability and public capabilities, supported
 models/reasoning modes, and freshness metadata. It excludes paths, environment,
 credentials, provider authentication replies and unrestricted metrics.
 Overseer commits state and the shared durable inbox cursor together before
-acknowledging it. Reads report `fresh`, `stale`, or `offline`.
+acknowledging it. Projection consumers report `fresh`, `stale`, or `offline`.
+Heartbeat and runtime invalidation/events remain on the control WebSocket.
+HTTP query responses are never fed back into this projection.
 
 ## Bounded runtime queries
 
-Provider quota/capabilities, fixed-period stats, and filtered analytics use
-operations on `reverse-command-v1`; there is no runtime-specific request
-ledger:
+Every operator-triggered runtime query uses exactly one authenticated Peon
+Fleet HTTP request through mesh:
 
-- `runtime.quota` — `{ provider, refresh }`
-- `runtime.capabilities` — `{ provider, refresh }`
-- `runtime.stats` — `{ period }`
-- `runtime.analytics` — `{ query }`
+- `GET /api/v1/status`;
+- `GET /api/v1/models`;
+- `GET /api/v1/quota/:provider?refresh=1`;
+- `GET /api/v1/capabilities/:provider?refresh=1`;
+- `GET /api/v1/stats?period=day|yesterday|week|month`;
+- `GET /api/v1/analytics` with the existing bounded filters and cursors.
 
-The shared substrate supplies actor derivation, admission, deduplication,
-timeouts, reconnect reconciliation and durable terminal results. Requests and
-results stay under its frame bound; malformed filters and oversized results are
-rejected with stable safe codes. A negotiated reverse generation selects this
-route exclusively, while legacy Peons continue using HTTP callbacks.
+Overseer still owns browser/mobile authentication, workspace ACL and owner-only
+analytics/quota authorization, and forwards the canonical `Peon-Actor`. Peon
+keeps provider validation, period/filter/cursor bounds, result redaction and
+stable Fleet error envelopes. There is no reverse-command fallback or runtime
+query ledger.
 
-Status and models are projected because they are cheap and needed fleet-wide.
-Quota and analytics remain on demand because they are slower, volatile, and
-potentially account-sensitive.
+Status/capacity/load, daemon revision, provider availability/public
+capabilities and models/reasoning efforts continue to be published in
+`runtime-state-v1` for fleet-wide realtime views. An explicit public API read,
+however, is an HTTP query and never treats the projection as its request
+response.

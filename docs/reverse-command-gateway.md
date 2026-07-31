@@ -42,6 +42,13 @@ No action uses both reverse WSS and legacy HTTP. A missing connection returns
 `CAPABILITY_UNAVAILABLE`. Operation-specific rollout code may select legacy
 HTTP before calling the gateway, but it must select exactly one route.
 
+Runtime request/response reads are outside this gateway. Status/state,
+capacity/load, daemon revision, provider availability/capabilities,
+models/reasoning efforts, quota, fixed-period stats and filtered analytics use
+the Peon's authenticated Fleet HTTP routes through mesh. `runtime-state-v1`
+remains a WebSocket projection and invalidation channel, not an HTTP polling
+fallback or second request authority.
+
 A valid, correlated pre-admission refusal terminates only its command. It is
 never passed to session-sync as an unexpected frame and never closes the shared
 Peon control socket. Because Overseer commits the refusal with its normal audit
@@ -105,9 +112,11 @@ Process metrics count queueing, acceptance, completion, replay, timeouts,
 disconnect phase, and stable error code. Labels deliberately exclude actor and
 Peon IDs, payloads, prompts, paths, and credentials.
 
-Session Stop is not a reverse command. The public Overseer endpoint keeps its
-existing response contract, but Overseer always calls the Peon's Fleet HTTP
-`POST /sessions/:id/cancel` endpoint through mesh. A `409
+Session catalog reads and lifecycle mutations are not reverse commands. The
+public Overseer endpoints keep their existing response contracts, but Overseer
+always calls the Peon's authenticated Fleet HTTP `GET /sessions`,
+`PATCH /sessions/:id`, `DELETE /sessions/:id`, and
+`POST /sessions/:id/cancel` endpoints through mesh. A `409
 SESSION_NOT_RUNNING` is relayed unchanged after a best-effort authoritative
 session read republishes the Peon's state into the index. Remote daemon
 pause/resume likewise remains outside this gateway.
@@ -117,25 +126,9 @@ require its duplicated registry columns to match. A corrupt or legacy
 inconsistent row is reported as `UNSAFE_RESULT`; it cannot regain a success
 mapping through stale `terminal_status`, code, or detail columns.
 
-## Update orchestration
-
-`update.check` and `update.apply` use this registry; they do not create another
-pending-command ledger. Admission is serialized and permits only one active
-`update.*` command per Peon. A conflicting check or apply returns
-`409 UPDATE_IN_PROGRESS` without inserting or sending a second command.
-
-An accepted apply remains pending across the expected socket loss. The daemon
-that launched the updater may publish a pre-restart failure, but it never
-attests a `ready_to_attest` receipt: only the replacement daemon, during command
-ledger recovery, compares its running package version/revision with the
-persisted expectation. Source checkouts are rejected with `UPDATE_BLOCKED`
-because their updater changes files without proving process replacement.
-
-Update terminal results have operation-specific tuple and field allowlists.
-Successful apply requires `applied + OK` and exactly
-`{ version, revision, sha256, attested: true }`; an attestation mismatch requires
-`failed + ATTESTATION_MISMATCH` with the same bounded fields and
-`attested: false`. Failure/rollback codes carry no detail. Check/no-update
-results expose only the bounded update status fields. Contradictory
-status/code combinations, extra fields, messages, and credential-like detail
-are rejected before persistence or browser/API publication.
+Update orchestration is outside this gateway. Check, apply, approved release
+metadata and archive bytes use authenticated Fleet HTTP over mesh;
+`update.check` and `update.apply` are absent from the operation registry, wire
+schemas and capability advertisement. The update receipt owns HTTP
+idempotency, single-operation admission, restart recovery and
+replacement-process attestation. See [Peon update channel](peon-update-channel.md).

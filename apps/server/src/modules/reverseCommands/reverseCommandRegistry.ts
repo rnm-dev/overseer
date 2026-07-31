@@ -1,6 +1,5 @@
 import { query, transaction, transactionWithAdvisoryLock, type Transaction } from "../../db.js";
 import { insertEvent, publishCommittedEvent, type LiveEvent } from "../../eventLog.js";
-import { normalizeSessionSummary } from "../sessions/sessionNormalization.js";
 import {
   assertSafeReverseCommandResult,
   canonicalJson,
@@ -197,7 +196,7 @@ export async function createOrGetReverseCommand(
         : { kind: "reused", record: existing };
     }
 
-    if (input.operation.startsWith("update.")) {
+    if ((input.operation as string).startsWith("update.")) {
       const { rows } = await tx.query<ReverseCommandRow>(
         `SELECT ${selectColumns()} FROM reverse_commands
           WHERE workspace_id=$1 AND peon_id=$2
@@ -526,85 +525,7 @@ async function applySafeProjection(
   result: ReverseCommandResultFrame,
 ): Promise<LiveEvent | null> {
   if (!result.result) return null;
-  if (record.operation === "daemon.configuration.patch") {
-    const detail = result.result;
-    const values = detail.values;
-    if (!values || typeof values !== "object" || Array.isArray(values)) return null;
-    const current = await tx.query<{ epoch: string; revision: string; digest: string }>(
-      `SELECT epoch,revision,digest FROM peon_daemon_configuration WHERE peon_id=$1`,
-      [record.peonId],
-    );
-    const existing = current.rows[0];
-    if (existing?.epoch === detail.epoch) {
-      if (Number(existing.revision) > Number(detail.revision)) return null;
-      if (Number(existing.revision) === Number(detail.revision) && existing.digest !== detail.digest) {
-        throw new Error("daemon configuration result revision digest collision");
-      }
-    } else if (existing && existing.epoch !== record.expected?.epoch) {
-      // A delayed replay from a retired configuration epoch remains a valid
-      // command outcome, but it must not replace a newer authoritative epoch.
-      return null;
-    }
-    const updatedAt = Number.isSafeInteger(detail.updatedAt) ? Number(detail.updatedAt) : result.completedAt;
-    await tx.query(
-      `INSERT INTO peon_daemon_configuration
-        (peon_id,workspace_id,epoch,revision,schema_version,digest,updated_at,values,last_command_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-       ON CONFLICT (peon_id) DO UPDATE SET workspace_id=EXCLUDED.workspace_id,epoch=EXCLUDED.epoch,
-         revision=EXCLUDED.revision,schema_version=EXCLUDED.schema_version,digest=EXCLUDED.digest,
-         updated_at=EXCLUDED.updated_at,values=EXCLUDED.values,last_command_id=EXCLUDED.last_command_id`,
-      [record.peonId, record.workspaceId, detail.epoch, detail.revision, detail.schemaVersion,
-        detail.digest, updatedAt, JSON.stringify(values), record.commandId],
-    );
-    return null;
-  }
   if ((result.status !== "applied" && result.status !== "noop")) return null;
-  const projected = record.operation === "session.metadata.patch" ? result.result : null;
-  if (projected) {
-    const summary = normalizeSessionSummary(projected as never);
-    const syncedAt = Date.now();
-    await tx.query(
-      `INSERT INTO sessions
-        (peon_id,session_id,status,project_key,project_id,title,prompt_preview,preview,author,outcome,
-         started_at,ended_at,last_activity_at,raw,synced_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
-       ON CONFLICT (peon_id,session_id) DO UPDATE SET
-         status=EXCLUDED.status,project_key=EXCLUDED.project_key,project_id=EXCLUDED.project_id,
-         title=EXCLUDED.title,prompt_preview=EXCLUDED.prompt_preview,preview=EXCLUDED.preview,
-         author=EXCLUDED.author,outcome=EXCLUDED.outcome,started_at=EXCLUDED.started_at,
-         ended_at=EXCLUDED.ended_at,last_activity_at=EXCLUDED.last_activity_at,
-         raw=EXCLUDED.raw,synced_at=EXCLUDED.synced_at`,
-      [
-        record.peonId, summary.id, summary.status, summary.projectKey, summary.projectId,
-        summary.title, summary.promptPreview, summary.lastMessagePreview ?? summary.promptPreview,
-        summary.initiator, summary.outcome === null ? null : JSON.stringify(summary.outcome),
-        summary.startedAt, summary.endedAt, summary.lastActivityAt,
-        JSON.stringify(projected), syncedAt,
-      ],
-    );
-    return insertEvent(tx, {
-      workspaceId: record.workspaceId,
-      peonId: record.peonId,
-      sessionId: summary.id,
-      kind: "session",
-      payload: {
-        peonId: record.peonId, sessionId: summary.id, status: summary.status,
-        projectKey: summary.projectKey, projectId: summary.projectId, title: summary.title,
-        promptPreview: summary.promptPreview,
-        preview: summary.lastMessagePreview ?? summary.promptPreview,
-        author: summary.initiator, outcome: summary.outcome, startedAt: summary.startedAt,
-        endedAt: summary.endedAt, lastActivityAt: summary.lastActivityAt, syncedAt,
-      },
-    });
-  }
-  if (record.operation === "session.delete") {
-    const sessionId = record.target.sessionId!;
-    await tx.query(`DELETE FROM sessions WHERE peon_id=$1 AND session_id=$2`, [record.peonId, sessionId]);
-    return insertEvent(tx, {
-      workspaceId: record.workspaceId, peonId: record.peonId, sessionId,
-      kind: "session", payload: { peonId: record.peonId, sessionId, deleted: true, syncedAt: Date.now() },
-    });
-  }
   const sessionId = typeof result.result.sessionId === "string" ? result.result.sessionId : null;
   const status = typeof result.result.sessionStatus === "string" ? result.result.sessionStatus : null;
   if (!sessionId || !status || sessionId !== record.target.sessionId) return null;
@@ -791,17 +712,4 @@ export async function commitDurableReverseCommandResult(input: {
 
 export function reverseCommandRegistryActiveStates(): readonly string[] {
   return ACTIVE_STATES;
-}
-
-export async function hasActiveUpdateCommand(peonId: string): Promise<boolean> {
-  const { rows } = await query<{ present: boolean }>(
-    `SELECT EXISTS (
-       SELECT 1 FROM reverse_commands
-        WHERE peon_id=$1
-          AND operation LIKE 'update.%'
-          AND state IN ('created','sent','accepted','running','unknown')
-     ) AS present`,
-    [peonId],
-  );
-  return rows[0]?.present === true;
 }

@@ -20,7 +20,7 @@ Capability rollout configuration is optional. When absent, it preserves the
 existing capability-negotiated behavior. Its format is a comma-separated list:
 
 ```text
-OVERSEER_REVERSE_CAPABILITY_ROLLOUT=reverse-command-v1:allowlist:2.4.0,project-file-read-v1:cohort:2.3.0:5
+OVERSEER_REVERSE_CAPABILITY_ROLLOUT=reverse-command-v1:allowlist:2.4.0,runtime-state-v1:cohort:2.3.0:5
 OVERSEER_REVERSE_ALLOWLIST_REVERSE_COMMAND_V1=peon-id-1;peon-id-2
 ```
 
@@ -33,9 +33,9 @@ stable percentage assignment based on capability and Peon ID; Peon IDs are not
 emitted as telemetry labels. The global routing switch is the kill switch for
 all families; changing a family to `off` is its independent kill switch.
 
-Every released `reverse-command-v1` route family now enters the production
-selector before either handler can run: sessions, projects, runtime queries,
-daemon configuration, updates and Armory. The authenticated control hello
+Every remaining released `reverse-command-v1` route family enters the
+production selector before either handler can run. Armory does not: its
+request/response traffic has one authenticated Fleet HTTP path. The authenticated control hello
 carries the Peon daemon version used by minimum-version rollout rules. Route
 tests and the shared transport test must continue to show that unavailable
 selection evaluates no callback and that accepted command reconciliation

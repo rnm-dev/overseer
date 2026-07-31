@@ -8,24 +8,7 @@
 // negotiated capability set, and Overseer quietly routes that operation over
 // the legacy HTTP path instead. Typing every table against this list turns that
 // class of drift into a build error.
-export const REVERSE_COMMAND_OPERATIONS = [
-    "session.metadata.patch", "session.delete",
-    "project.create", "project.suggest-directory", "project.detail",
-    "project.settings.get", "project.settings.update", "project.delete",
-    "project.documentation.index", "project.documentation.read", "project.skills.list",
-    "project.quick-links.list", "project.quick-links.create",
-    "project.quick-links.update", "project.quick-links.delete",
-    "runtime.stats",
-    "runtime.analytics",
-    "runtime.quota",
-    "runtime.capabilities",
-    "daemon.configuration.patch",
-    "update.check", "update.apply",
-    "armory.inventory", "armory.refresh", "armory.install", "armory.update",
-    "armory.enable", "armory.disable", "armory.uninstall", "armory.configure", "armory.verify",
-    "armory.configuration.delete", "armory.package", "armory.configuration",
-    "armory.mcp", "armory.operation", "armory.settings",
-];
+export const REVERSE_COMMAND_OPERATIONS = [];
 // Operations Overseer may send that this daemon does not implement yet. Such an
 // operation keeps taking the legacy HTTP route, and listing it here is what
 // makes that a decision rather than an accident — the family tables below stop
@@ -34,7 +17,4 @@ export const DEFERRED_REVERSE_COMMAND_OPERATIONS = [];
 // Operations this daemon handles that no current Overseer sends. A newer Peon
 // is allowed to run ahead of the server it talks to; the pair is listed so the
 // asymmetry stays deliberate rather than accumulating unnoticed.
-export const PEON_ONLY_REVERSE_COMMAND_OPERATIONS = [
-    "project.archive",
-    "project.unarchive",
-];
+export const PEON_ONLY_REVERSE_COMMAND_OPERATIONS = [];

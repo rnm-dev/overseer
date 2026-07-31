@@ -1,6 +1,6 @@
 import express from "express";
 import { canAccessPeon, canAccessProject } from "../access.js";
-import { streamProjectFileResponse } from "../modules/projects/index.js";
+import { connOfRecord, proxyGet } from "../peonClient.js";
 import { getIndexedProjectById } from "../projectIndex.js";
 import { registry } from "../registry.js";
 import { membership } from "../workspaces.js";
@@ -24,14 +24,14 @@ export function projectViewerRouter(): express.Router {
       return res.status(404).json({ error: "unknown project", code: "UNKNOWN_PROJECT" });
     }
 
-    await streamProjectFileResponse({
+    const rest = ((req.params.rest as unknown as string[] | undefined) ?? []).map(encodeURIComponent).join("/");
+    await proxyGet(
+      connOfRecord(record),
+      `/projects/${encodeURIComponent(project.key)}/files/${rest}`,
       req,
       res,
-      peonId,
-      projectId,
-      relativePath: ((req.params.rest as unknown as string[] | undefined) ?? []).join("/"),
-      actor: { userId: auth.userId, email: auth.email },
-    });
+      auth.email,
+    );
   });
 
   return router;

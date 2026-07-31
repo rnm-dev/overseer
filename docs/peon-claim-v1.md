@@ -63,8 +63,8 @@ not create the package or make runtime code depend on it.
   next credential can only acknowledge itself. After acknowledgement, the old
   credential cannot create requests or connections; already-open old sockets
   get at most five minutes and are evicted sooner when any new-generation
-  control or transfer socket becomes ready.
-- Revocation has no grace period and evicts both control and transfer sockets.
+  control socket becomes ready.
+- Revocation has no grace period and evicts the control socket.
 - Existing Overseer-driven `/api/v1/enroll` remains legacy-only during the
   mixed-version window. Capability probing may downgrade only on explicit
   unsupported responses before a claim exists. Network/TLS/timeout/`5xx`/`429`

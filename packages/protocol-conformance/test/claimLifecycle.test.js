@@ -17,7 +17,6 @@ test("peon-claim-v1 golden, mixed-version and fault cells are covered", () => {
   assert.equal(peon.goldenCases, 59);
   assert.equal(peon.mixedVersion.every((cell) => cell.passed), true);
   assert.ok(peon.faultCoverage.includes("restart-during-ack-cancel-reconciliation"));
-  assert.ok(peon.faultCoverage.includes("delayed-old-generation-transfer-hello"));
 });
 
 test("claim start is an irreversible downgrade boundary", () => {

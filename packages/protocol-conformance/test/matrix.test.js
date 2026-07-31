@@ -3,7 +3,6 @@ import test from "node:test";
 import {
   loadFixture,
   negotiateCapabilities,
-  routeForUpdateAdmission,
   routeForSurface,
   runCapabilityMatrix,
 } from "../src/index.js";
@@ -39,36 +38,27 @@ test("canonical catalog dependencies are all-or-nothing and fallback is exclusiv
   assert.equal(routeForSurface("project-directory", negotiated), "legacy-http");
 });
 
-test("file write transport is pre-selected exclusively and never falls back after socket selection", () => {
-  const reverse = negotiateCapabilities(
+test("all file bytes and mutations select the single Fleet HTTP authority", () => {
+  const negotiated = negotiateCapabilities(
     { controlCapabilities: [], transferCapabilities: ["file-write-v1"] },
     { controlCapabilities: [], transferCapabilities: ["file-write-v1"] },
   );
-  for (const surface of ["project-file-upload", "attachment-upload", "project-file-move", "project-file-delete"]) {
-    assert.equal(routeForSurface(surface, reverse), "reverse-socket");
-    // Runtime socket failure cannot alter the already selected route.
-    assert.equal(routeForSurface(surface, reverse), "reverse-socket");
-  }
-  assert.equal(routeForSurface("project-file-upload", { control: [], transfer: [], channelFeatures: {} }), "legacy-http");
+  for (const surface of [
+    "project-file-read", "sandbox-file-read", "project-file-upload",
+    "attachment-upload", "project-file-move", "project-file-delete",
+  ]) assert.equal(routeForSurface(surface, negotiated), "legacy-http");
+  assert.equal("transfer" in negotiated, false);
 });
 
-test("update transport is current-only reverse and remains exclusive after selection", () => {
+test("update control always uses the single Fleet HTTP authority", () => {
   const current = negotiateCapabilities(
     { controlCapabilities: ["reverse-command-v1"], transferCapabilities: [] },
     { controlCapabilities: ["reverse-command-v1"], transferCapabilities: [] },
   );
-  assert.equal(routeForSurface("peon-update", current), "reverse-socket");
-  assert.equal(routeForSurface("peon-update", current), "reverse-socket");
+  assert.equal(routeForSurface("peon-update", current), "legacy-http");
   assert.equal(routeForSurface("peon-update", {
     control: [], transfer: [], channelFeatures: {},
   }), "legacy-http");
-  assert.equal(routeForUpdateAdmission(current, true), "blocked-active");
-  assert.equal(routeForUpdateAdmission({
-    control: [], transfer: [], channelFeatures: {},
-  }, true), "blocked-active", "active durable admission fences legacy fallback before transport selection");
-  assert.equal(routeForUpdateAdmission({
-    control: [], transfer: [], channelFeatures: {},
-  }, false), "legacy-http");
 });
 
 test("covered contracts are distinguished from explicitly blocked extension cells", () => {
@@ -79,9 +69,6 @@ test("covered contracts are distinguished from explicitly blocked extension cell
   const transcripts = report.extensions.find((entry) => entry.id === "transcripts");
   assert.equal(transcripts?.passed, true);
   assert.equal(transcripts?.blocked, false);
-  const writes = report.extensions.find((entry) => entry.id === "writes");
-  assert.equal(writes?.passed, true);
-  assert.equal(writes?.blocked, false);
   const updates = report.extensions.find((entry) => entry.id === "updates");
   assert.equal(updates?.passed, true);
   assert.equal(updates?.blocked, false);

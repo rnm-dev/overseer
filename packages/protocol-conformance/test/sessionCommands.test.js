@@ -2,29 +2,16 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const operations = [
-  "session.metadata.patch", "session.delete",
-];
-
-test("released reverse session command schemas stay vendored and complete on both peers", async () => {
+test("session catalog reads and mutations are absent from reverse-command-v1", async () => {
   const [peon, overseer] = await Promise.all([
     readFile(new URL("../../../apps/peon/protocol/reverse-command-v1/schema.json", import.meta.url), "utf8"),
     readFile(new URL("../../../apps/server/protocol/reverse-command-v1/schema.json", import.meta.url), "utf8"),
   ]);
   assert.equal(overseer, peon);
   const schema = JSON.parse(overseer);
-  const advertised = schema.$defs.command.properties.operation.enum;
-  for (const operation of operations) assert.ok(advertised.includes(operation), operation);
-});
-
-test("session mutation transport selection is exclusive before admission", () => {
-  const select = ({ connected, operations: advertised }, operation) =>
-    connected && advertised.includes(operation) ? "reverse" : "legacy";
-  for (const operation of operations) {
-    assert.equal(select({ connected: true, operations }, operation), "reverse");
-    assert.equal(select({ connected: true, operations: ["session.metadata.patch"] }, operation),
-      operation === "session.metadata.patch" ? "reverse" : "legacy");
-    assert.equal(select({ connected: false, operations }, operation), "legacy");
+  const operations = schema.$defs.command.properties.operation.enum ?? [];
+  for (const operation of ["session.list", "session.metadata.patch", "session.delete"]) {
+    assert.equal(operations.includes(operation), false, operation);
   }
 });
 
@@ -34,16 +21,42 @@ test("direct HTTP session operations are absent from the reverse contract on bot
     readFile(new URL("../../../apps/server/protocol/reverse-command-v1/schema.json", import.meta.url), "utf8"),
   ]);
   for (const schema of [JSON.parse(peon), JSON.parse(overseer)]) {
-    const advertised = schema.$defs.command.properties.operation.enum;
+    const advertised = schema.$defs.command.properties.operation.enum ?? [];
     assert.equal(advertised.includes("session.start"), false);
     assert.equal(advertised.includes("session.followup"), false);
     assert.equal(advertised.includes("session.cancel"), false);
     assert.equal(advertised.includes("session.detail"), false);
+    assert.equal(advertised.includes("session.list"), false);
+    assert.equal(advertised.includes("session.metadata.patch"), false);
+    assert.equal(advertised.includes("session.delete"), false);
     for (const operation of [
       "session.queue.add", "session.queue.list", "session.queue.edit",
       "session.queue.remove", "session.queue.send-now",
     ]) assert.equal(advertised.includes(operation), false, operation);
   }
+});
+
+test("session catalog, rename and delete use Fleet HTTP while realtime catalog stays on sockets", async () => {
+  const source = await readFile(
+    new URL("../../../apps/server/src/routes/peons/sessions.ts", import.meta.url),
+    "utf8",
+  );
+  for (const route of [
+    'router.get(`${wp}/sessions`',
+    'router.patch(`${wp}/sessions/:sid`',
+    'router.delete(`${wp}/sessions/:sid`',
+  ]) assert.ok(source.includes(route), route);
+  assert.ok(source.includes('"GET", "/sessions"'));
+  assert.ok(source.includes('"PATCH", `/sessions/${encodeURIComponent(sid)}`'));
+  assert.ok(source.includes('"DELETE", `/sessions/${encodeURIComponent(sid)}`'));
+  assert.equal(source.includes('"session.metadata.patch"'), false);
+  assert.equal(source.includes('"session.delete"'), false);
+
+  const catalog = await readFile(
+    new URL("../../../apps/peon/src/daemon/overseer/socket/channels/sessionCatalogChannel.ts", import.meta.url),
+    "utf8",
+  );
+  assert.ok(catalog.includes("session_catalog_event"));
 });
 
 test("all public queue routes use the single Fleet HTTP path", async () => {

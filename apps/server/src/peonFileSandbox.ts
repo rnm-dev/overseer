@@ -2,7 +2,7 @@ import { callPeon } from "./peonClient.js";
 import type { PeonConn } from "./modules/peonClient/peonClientTypes.js";
 import { PATH_ESCAPE_PUBLIC_MESSAGE } from "./fileErrorSafety.js";
 
-// The file-transfer API is rooted at the Peon's `fileTransferRoot`, so every
+// The Fleet file API is rooted at the Peon's `fileTransferRoot`, so every
 // path under `/files/...` is sandbox-relative. A message attachment, however,
 // travels through the transcript as the absolute path the agent Reads
 // (`AttachmentInfo.path`), which is all a client has for a message it did not

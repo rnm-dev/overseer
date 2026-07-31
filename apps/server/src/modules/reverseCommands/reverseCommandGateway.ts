@@ -12,7 +12,6 @@ import {
   peonConnectionGeneration,
   peonConnectionSupports,
   peonConnectionSupportsCommand,
-  setPeonDaemonConfigurationIdentity,
 } from "../../peonConnections.js";
 import {
   commitDurableReverseCommandResult,
@@ -63,46 +62,6 @@ const MAX_SOCKET_BUFFER_BYTES = 4 * 1024 * 1024;
 // a command that never declared its payload. There is deliberately no fallback:
 // a missing entry must fail the build, not silently admit an empty payload.
 const PAYLOAD_FIELDS: Record<ReverseCommandOperation, readonly string[]> = {
-  "runtime.stats": ["period"],
-  "runtime.analytics": ["query"],
-  "runtime.quota": ["provider", "refresh"],
-  "runtime.capabilities": ["provider", "refresh"],
-  "daemon.configuration.patch": ["patch"],
-  "update.check": [],
-  "update.apply": ["force", "release"],
-  "project.create": ["label", "dir"],
-  "project.suggest-directory": ["label"],
-  "project.detail": [],
-  "project.settings.get": [],
-  "project.settings.update": ["key", "name", "dir"],
-  "project.delete": [],
-  "project.documentation.index": ["cursor", "limit"],
-  "project.documentation.read": ["path", "offset", "limit"],
-  "project.skills.list": [],
-  "project.quick-links.list": [],
-  "project.quick-links.create": ["title", "url"],
-  "project.quick-links.update": ["id", "title", "url"],
-  "project.quick-links.delete": ["id"],
-  "session.metadata.patch": ["title"],
-  "session.delete": [],
-  // Mirrors the per-operation contract Peon already enforces in
-  // armoryCommandHandlers.ts; the previous shared union admitted fields the
-  // daemon rejects, such as values on a lifecycle command.
-  "armory.inventory": ["q", "installedOnly", "limit", "cursor"],
-  "armory.refresh": [],
-  "armory.settings": [],
-  "armory.install": ["version"],
-  "armory.update": ["version"],
-  "armory.enable": [],
-  "armory.disable": [],
-  "armory.uninstall": [],
-  "armory.configure": ["values", "confirmHostWrites"],
-  "armory.verify": [],
-  "armory.configuration.delete": ["includeHost", "confirmHostWrites"],
-  "armory.package": [],
-  "armory.configuration": [],
-  "armory.mcp": [],
-  "armory.operation": [],
 };
 
 export interface SubmitReverseCommandInput {
@@ -149,37 +108,6 @@ function strictObject(value: unknown, allowed: readonly string[], field: string)
   if (!value || typeof value !== "object" || Array.isArray(value)
     || Object.keys(value).some((key) => !allowed.includes(key))) {
     throw new ReverseCommandGatewayError(400, "BAD_COMMAND", `${field} contains unsupported fields`);
-  }
-}
-
-export function validateDaemonConfigurationPatch(patch: JsonObject): void {
-  strictObject(patch, [
-    "name", "defaultAgent", "fileTransferRoot", "heartbeatIntervalMs",
-    "aiDefaultModel", "aiDefaultReasoningEffort", "soul",
-  ], "patch");
-  const nullableStrings: Readonly<Record<string, number>> = {
-    name: 200,
-    fileTransferRoot: 4_096,
-    aiDefaultModel: 200,
-    aiDefaultReasoningEffort: 200,
-    soul: 48 * 1024,
-  };
-  for (const [field, limit] of Object.entries(nullableStrings)) {
-    if (!Object.hasOwn(patch, field)) continue;
-    const value = patch[field];
-    if (value !== null && (typeof value !== "string" || Buffer.byteLength(value, "utf8") > limit)) {
-      throw new ReverseCommandGatewayError(400, "BAD_COMMAND", `${field} has an invalid value`);
-    }
-  }
-  if (Object.hasOwn(patch, "defaultAgent")
-    && (typeof patch.defaultAgent !== "string" || !patch.defaultAgent
-      || Buffer.byteLength(patch.defaultAgent, "utf8") > 200)) {
-    throw new ReverseCommandGatewayError(400, "BAD_COMMAND", "defaultAgent has an invalid value");
-  }
-  if (Object.hasOwn(patch, "heartbeatIntervalMs")
-    && (!Number.isSafeInteger(patch.heartbeatIntervalMs)
-      || Number(patch.heartbeatIntervalMs) < 1_000 || Number(patch.heartbeatIntervalMs) > 60_000)) {
-    throw new ReverseCommandGatewayError(400, "BAD_COMMAND", "heartbeatIntervalMs has an invalid value");
   }
 }
 
@@ -291,12 +219,7 @@ export class ReverseCommandGateway {
         throw new ReverseCommandGatewayError(409, "COMMAND_ID_REUSED", "command ID was already used for a different request");
       }
       if (created.kind === "conflict") {
-        countReverseCommandMetric("error", input.operation, "UPDATE_IN_PROGRESS");
-        throw new ReverseCommandGatewayError(
-          409,
-          "UPDATE_IN_PROGRESS",
-          "another update operation is already pending for this Peon",
-        );
+        throw new ReverseCommandGatewayError(409, "COMMAND_PENDING_LIMIT", "reverse command conflicts with active work");
       }
 
       let record = created.record;
@@ -474,16 +397,6 @@ export class ReverseCommandGateway {
       syncGeneration: input.syncGeneration,
       durable: input.durable,
     });
-    if (committed.record.operation === "daemon.configuration.patch" && committed.record.result) {
-      const detail = committed.record.result;
-      if (typeof detail.epoch === "string" && Number.isSafeInteger(detail.revision) && typeof detail.digest === "string") {
-        setPeonDaemonConfigurationIdentity(input.socket, {
-          epoch: detail.epoch,
-          revision: Number(detail.revision),
-          digest: detail.digest,
-        });
-      }
-    }
     countReverseCommandMetric("completed", committed.record.operation, committed.record.code);
     this.notify(committed.record);
     return committed.delivery;
@@ -506,94 +419,16 @@ export class ReverseCommandGateway {
     }
     const payload = input.payload === undefined ? {} : input.payload;
     const expected = input.expected ?? null;
-    const runtime = input.operation.startsWith("runtime.");
-    const configuration = input.operation === "daemon.configuration.patch";
-    const session = input.operation.startsWith("session.");
-    const armory = input.operation.startsWith("armory.");
-    const update = input.operation.startsWith("update.");
-    const project = input.operation.startsWith("project.");
+    const runtime = (input.operation as string).startsWith("runtime.");
+    const update = (input.operation as string).startsWith("update.");
     strictObject(payload, PAYLOAD_FIELDS[input.operation], "payload");
-    if (session) {
-      const bytes = (value: unknown, maximum: number, nullable = false): boolean =>
-        (nullable && value === null)
-        || (typeof value === "string" && value.trim().length > 0
-          && Buffer.byteLength(value, "utf8") <= maximum);
-      if (input.operation === "session.metadata.patch" && !bytes(payload.title, 512, true)) {
-        throw new ReverseCommandGatewayError(400, "BAD_COMMAND", "invalid session title");
-      }
-    }
-    if (input.operation === "update.apply" && payload.force !== undefined && typeof payload.force !== "boolean") {
-      throw new ReverseCommandGatewayError(400, "BAD_COMMAND", "update.apply force must be boolean");
-    }
-    if (input.operation === "update.apply") {
-      const release = payload.release;
-      if (!release || typeof release !== "object" || Array.isArray(release)) {
-        throw new ReverseCommandGatewayError(400, "BAD_COMMAND", "update.apply release identity is required");
-      }
-      strictObject(release as JsonObject, ["version", "revision", "sha256"], "release");
-      const identity = release as JsonObject;
-      if (typeof identity.version !== "string" || identity.version.length < 1 || identity.version.length > 128
-        || typeof identity.revision !== "string" || !/^[0-9A-Za-z._:+-]{1,128}$/.test(identity.revision)
-        || typeof identity.sha256 !== "string" || !/^[0-9a-f]{64}$/.test(identity.sha256)) {
-        throw new ReverseCommandGatewayError(400, "BAD_COMMAND", "update.apply release identity is invalid");
-      }
-    }
-    if (input.operation === "project.documentation.index"
-      && ((payload.cursor !== undefined
-        && (typeof payload.cursor !== "string" || payload.cursor.length < 1 || payload.cursor.length > 512))
-        || (payload.limit !== undefined
-          && (!Number.isSafeInteger(payload.limit) || Number(payload.limit) < 1 || Number(payload.limit) > 32 * 1024)))) {
-      throw new ReverseCommandGatewayError(400, "BAD_COMMAND", "invalid project documentation cursor or limit");
-    }
-    if (configuration) {
-      const patch = payload.patch;
-      if (!patch || typeof patch !== "object" || Array.isArray(patch)) {
-        throw new ReverseCommandGatewayError(400, "BAD_COMMAND", "configuration patch is required");
-      }
-      strictObject(patch as JsonObject, [
-        "name", "defaultAgent", "fileTransferRoot", "heartbeatIntervalMs",
-        "aiDefaultModel", "aiDefaultReasoningEffort", "soul",
-      ], "patch");
-      validateDaemonConfigurationPatch(patch);
-      if (Object.keys(patch).length === 0 || expected === null) {
-        throw new ReverseCommandGatewayError(400, "BAD_COMMAND", "configuration patch and expected state are required");
-      }
-      strictObject(expected, ["epoch", "revision", "digest"], "expected");
-      if (typeof expected.epoch !== "string" || !expected.epoch || Buffer.byteLength(expected.epoch, "utf8") > 256
-        || !Number.isSafeInteger(expected.revision) || Number(expected.revision) < 0
-        || typeof expected.digest !== "string" || !/^[0-9a-f]{64}$/.test(expected.digest)) {
-        throw new ReverseCommandGatewayError(400, "BAD_COMMAND", "configuration expected state is invalid");
-      }
-    } else if (project && [
-      "project.settings.update", "project.delete", "project.quick-links.create",
-      "project.quick-links.update", "project.quick-links.delete",
-    ].includes(input.operation)) {
-      strictObject(expected, ["digest"], "expected");
-      if (typeof expected.digest !== "string" || !/^[0-9a-f]{64}$/.test(expected.digest)) {
-        throw new ReverseCommandGatewayError(400, "BAD_COMMAND", "project digest is required");
-      }
-    } else if (expected !== null) {
+    if (expected !== null) {
       throw new ReverseCommandGatewayError(400, "BAD_COMMAND", `${input.operation} does not accept expected state`);
     }
     const target: ReverseCommandTarget = { ...input.target, peonId: input.peonId };
-    strictObject(target as unknown as JsonObject, ["peonId", "sessionId", "projectId", "packageId", "operationId"], "target");
-    if (session && !isCanonicalUuid(target.sessionId)) {
-      throw new ReverseCommandGatewayError(400, "BAD_COMMAND", `${input.operation} requires target.sessionId`);
-    }
-    if ((runtime || configuration || armory || update) && target.sessionId !== undefined) {
+    strictObject(target as unknown as JsonObject, ["peonId", "sessionId", "projectId"], "target");
+    if ((runtime || update) && target.sessionId !== undefined) {
       throw new ReverseCommandGatewayError(400, "BAD_COMMAND", "operation targets only the Peon");
-    }
-    const projectWithoutTarget = input.operation === "project.create" || input.operation === "project.suggest-directory";
-    if (project && (target.sessionId !== undefined
-      || (projectWithoutTarget ? target.projectId !== undefined : !isCanonicalUuid(target.projectId)))) {
-      throw new ReverseCommandGatewayError(400, "BAD_COMMAND", "invalid project command target");
-    }
-    if (armory && target.packageId !== undefined
-      && (typeof target.packageId !== "string" || !/^[a-z0-9][a-z0-9-]{0,62}$/.test(target.packageId))) {
-      throw new ReverseCommandGatewayError(400, "BAD_COMMAND", "invalid Armory package ID");
-    }
-    if (input.operation === "armory.operation" && !isCanonicalUuid(target.operationId)) {
-      throw new ReverseCommandGatewayError(400, "BAD_COMMAND", "invalid Armory operation ID");
     }
 
     await this.authorize(input.workspaceId, input.peonId, actor.userId, target, input.operation);
@@ -643,7 +478,7 @@ export class ReverseCommandGateway {
     peonId: string,
     userId: string,
     target: ReverseCommandTarget,
-    operation: ReverseCommandOperation,
+    _operation: ReverseCommandOperation,
   ): Promise<void> {
     const [record, role] = await Promise.all([registry.get(peonId), membership(workspaceId, userId)]);
     if (!record || record.workspaceId !== workspaceId || !role
@@ -654,9 +489,6 @@ export class ReverseCommandGateway {
       const project = await getIndexedProjectById(peonId, target.projectId);
       if (!project || !(await canAccessProject(workspaceId, userId, role, peonId, project.key, project.projectId))) {
         throw new ReverseCommandGatewayError(404, "UNKNOWN_PROJECT", "unknown project");
-      }
-      if (role !== "owner" && ["project.settings.update", "project.delete", "project.quick-links.create", "project.quick-links.update", "project.quick-links.delete"].includes(operation)) {
-        throw new ReverseCommandGatewayError(403, "FORBIDDEN", "owner access required");
       }
       return;
     }

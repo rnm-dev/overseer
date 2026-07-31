@@ -1,6 +1,5 @@
 import { query } from "../../db.js";
 import { isPeonConnected, peonConnectionStartedAt } from "../../peonConnections.js";
-import { isPeonTransferConnected, peonTransferConnectionStartedAt } from "../../peonTransferConnections.js";
 import type { AddressSource, PeonLoad, PeonRecord, PeonView, RegisterInput } from "./registryTypes.js";
 
 // The peon registry — Postgres-backed (`peons` table). `online` and `baseUrl` are
@@ -191,9 +190,9 @@ export function toView(record: PeonRecord): PeonView {
     ...rest,
     online: controlConnected,
     controlConnected,
-    transferConnected: isPeonTransferConnected(record.peonId),
+    transferConnected: false,
     controlConnectedAt: controlConnected ? peonConnectionStartedAt(record.peonId) : null,
-    transferConnectedAt: peonTransferConnectionStartedAt(record.peonId),
+    transferConnectedAt: null,
     baseUrl: legacyCallbackUrl(record),
   };
 }

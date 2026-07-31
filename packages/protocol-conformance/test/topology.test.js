@@ -7,18 +7,19 @@ import {
   TopologyViolation,
 } from "../src/index.js";
 
-test("the stable current slice permits only directory listings over Fleet HTTP mesh", () => {
+test("the stable current slice keeps the complete file plane on Fleet HTTP mesh", () => {
   const matrix = runCapabilityMatrix(loadFixture("capability-matrix-v1.json"));
   const current = matrix.cells.find((cell) => cell.peon === "current" && cell.overseer === "current");
   assert.ok(current?.passed);
 
   const topology = new NoInboundTopology({ peonFleetPortBlocked: true });
   topology.openConnection({ initiator: "peon", target: "overseer", channel: "control" });
-  topology.openConnection({ initiator: "peon", target: "overseer", channel: "file-transfer" });
   for (const [surface, route] of Object.entries(current.routes)) topology.exercise(surface, route);
   assert.equal(topology.assertNoInboundAttempts(), true);
   assert.equal(current.routes["absolute-folder-picker"], "legacy-http");
   assert.equal(current.routes["project-directory"], "legacy-http");
+  assert.equal(current.routes["project-file-read"], "legacy-http");
+  assert.equal(current.routes["project-file-upload"], "legacy-http");
 });
 
 test("an Overseer dial or legacy fallback fails the NAT/no-inbound assertion", () => {
@@ -33,21 +34,10 @@ test("an Overseer dial or legacy fallback fails the NAT/no-inbound assertion", (
   assert.throws(() => legacy.exercise("session-catalog", "legacy-http"), TopologyViolation);
 });
 
-test("every released bulk read/write surface requires the outbound transfer socket", () => {
-  const topology = new NoInboundTopology({ peonFleetPortBlocked: true });
-  topology.openConnection({ initiator: "peon", target: "overseer", channel: "control" });
-  for (const surface of [
-    "project-file-read",
-    "sandbox-file-read",
-    "project-file-upload",
-    "attachment-upload",
-    "project-file-move",
-    "project-file-delete",
-  ]) {
-    assert.throws(
-      () => topology.exercise(surface, "reverse-socket"),
-      /file-transfer reverse connection is not open/,
-      `${surface} must not be modeled on the control socket`,
-    );
-  }
+test("the retired transfer channel is rejected", () => {
+  const topology = new NoInboundTopology({ peonFleetPortBlocked: false });
+  assert.throws(
+    () => topology.openConnection({ initiator: "peon", target: "overseer", channel: "file-transfer" }),
+    /unknown reverse channel/,
+  );
 });

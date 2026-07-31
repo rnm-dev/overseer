@@ -15,7 +15,7 @@ function tempLedger(options: Record<string, unknown> = {}) {
 const admission = {
   commandId: "018f4f0c-9f30-7a61-bf1a-66d2582bdb4a",
   requestHash: "a".repeat(64),
-  operation: "session.delete",
+  operation: "retired.test",
   peonId: "f4de920f-e33e-4cf5-97d0-3a75e9266090",
   sessionId: "6a379713-f4ca-4ca4-b4a8-9a3fbfea80d5",
   actorUserId: "b169219d-45f6-4f42-b78f-3fb931dac7ee",

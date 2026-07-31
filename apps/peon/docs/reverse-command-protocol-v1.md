@@ -2,8 +2,9 @@
 
 Status: normative design contract for implementation  
 Capability: `reverse-command-v1`  
-Operations include session mutations such as `session.metadata.patch`, plus `project.archive`, `project.unarchive`,
-`daemon.configuration.patch`, `update.check`, and `update.apply`
+Update, session, project, daemon configuration, runtime-query and Armory
+request/response traffic uses authenticated Fleet HTTP and is not part of this
+capability.
 
 This document defines the common command lifecycle used when Overseer controls a Peon through
 Peon's outbound control WebSocket. It complements the channel-specific wire contract in
@@ -32,117 +33,12 @@ command frame.
 - durable terminal result delivery through `durable-delivery-v1`;
 - idempotent replay on both sides.
 
-## Envelope
+## Envelope and reconciliation
 
-Overseer sends:
-
-```json
-{
-  "type": "command",
-  "protocol": 1,
-  "capability": "reverse-command-v1",
-  "commandId": "018f4f0c-9f30-7a61-bf1a-66d2582bdb4a",
-  "operation": "session.delete",
-  "target": {
-    "peonId": "f4de920f-e33e-4cf5-97d0-3a75e9266090",
-    "sessionId": "6a379713-f4ca-4ca4-b4a8-9a3fbfea80d5"
-  },
-  "actor": {
-    "userId": "b169219d-45f6-4f42-b78f-3fb931dac7ee",
-    "email": "operator@example.com"
-  },
-  "payload": {},
-  "requestedAt": 1784912400000
-}
-```
-
-Peon sends an ephemeral acceptance only after the command record is durable:
-
-```json
-{
-  "type": "command_accepted",
-  "protocol": 1,
-  "commandId": "018f4f0c-9f30-7a61-bf1a-66d2582bdb4a",
-  "operation": "session.delete",
-  "state": "accepted",
-  "replayed": false,
-  "acceptedAt": 1784912400010
-}
-```
-
-The terminal result is a typed payload in the existing durable envelope:
-
-```json
-{
-  "type": "durable_message",
-  "epoch": "delivery-epoch",
-  "cursor": "0000000000000042",
-  "messageId": "b47f43a9-a537-4af7-abcf-ad7acfef8904",
-  "priority": "critical",
-  "capability": "reverse-command-v1",
-  "payload": {
-    "type": "command_result",
-    "protocol": 1,
-    "commandId": "018f4f0c-9f30-7a61-bf1a-66d2582bdb4a",
-    "operation": "session.delete",
-    "status": "applied",
-    "code": "OK",
-    "completedAt": 1784912400040,
-    "result": {
-      "sessionId": "6a379713-f4ca-4ca4-b4a8-9a3fbfea80d5",
-      "deleted": true
-    }
-  }
-}
-```
-
-Overseer acknowledges the result only after committing its inbox record, command outcome, audit
-record, projection change, and authorized browser event:
-
-```json
-{
-  "type": "durable_ack",
-  "epoch": "delivery-epoch",
-  "cursor": "0000000000000042"
-}
-```
-
-## Reconciliation frames
-
-After reconnect or an HTTP wait timeout, Overseer reuses the same command ID:
-
-```json
-{
-  "type": "command_status_request",
-  "protocol": 1,
-  "commandId": "018f4f0c-9f30-7a61-bf1a-66d2582bdb4a"
-}
-```
-
-Peon answers ephemerally with one of `unknown`, `accepted`, `running`, or `terminal`. A terminal
-response repeats the stored result. It does not replace durable result delivery.
-
-```json
-{
-  "type": "command_status",
-  "protocol": 1,
-  "commandId": "018f4f0c-9f30-7a61-bf1a-66d2582bdb4a",
-  "state": "terminal",
-  "result": {
-    "type": "command_result",
-    "protocol": 1,
-    "commandId": "018f4f0c-9f30-7a61-bf1a-66d2582bdb4a",
-    "operation": "session.delete",
-    "status": "applied",
-    "code": "OK",
-    "completedAt": 1784912400040,
-    "result": {
-      "sessionId": "6a379713-f4ca-4ca4-b4a8-9a3fbfea80d5",
-      "deleted": true
-    }
-  }
-}
-```
+The v1 envelope and ledger remain documented for persisted historical command
+records, but the current operation set is empty. A current Peon advertises no
+settings operation and Overseer sends no command, acceptance, status, or
+terminal-result frame for daemon configuration.
 
 `command_cancel` is reserved for operations whose operation-specific contract explicitly declares
 cancellability. Cancelling an agent session uses Fleet HTTP session cancel as the primary command; it is
@@ -259,101 +155,17 @@ unchanged. A `409 SESSION_NOT_RUNNING` additionally triggers a best-effort
 authoritative session read so Overseer's index heals without changing the
 operator-visible refusal.
 
-## Project archive operations
+## Project control plane
 
-`project.archive` and `project.unarchive` require `target.projectId`, an empty payload, and an
-authenticated actor. They update reversible `archivedAt` metadata without deleting the project
-directory or its sessions. A project already in the requested state returns `noop` with code
-`OK`; an unknown immutable project identity returns `rejected` with code `UNKNOWN_PROJECT`.
+Project catalog/detail/settings/documentation/skills/quick links and lifecycle mutations use the authenticated Fleet HTTP API through mesh. `project-catalog-v1` remains the realtime projection and invalidation channel. `reverse-command-v1` contains no `project.*` operations.
 
-Each additional operation requires explicit support in both peers and entry in the capability
-matrix.
+## Peon update control
 
-## Project administration and resources
-
-Project administration uses `project.create`, `project.suggest-directory`,
-`project.detail`, `project.settings.get`, `project.settings.update`,
-`project.delete`, `project.documentation.index`, `project.documentation.read`,
-`project.skills.list`, and `project.quick-links.{list,create,update,delete}`.
-After creation/suggestion, every operation targets immutable
-`target.projectId`; mutable keys never identify a command target.
-
-Settings updates, deletion, and quick-link mutations require the lowercase
-SHA-256 `expected.digest` returned by a settings/detail read. A mismatch is
-`conflict/PROJECT_CONFLICT`, preventing key reuse or concurrent rename from
-redirecting an operation. The shared durable ledger supplies replay and
-deduplication, while successful mutations publish through
-`project-catalog-v1`.
-
-Documentation paths remain contained by `ProjectService` inside `docs/`.
-Individual page reads accept byte-based `offset` and `limit`, cap content chunks
-at 32 KiB, never split a UTF-8 sequence, and return the next byte offset in
-`nextOffset`. Negative offsets and limits outside `1..32768` are rejected before
-admission.
-
-The documentation index is a bounded snapshot (2 MiB aggregate maximum) split
-into UTF-8-safe pages. The first command carries an optional `limit`; later
-commands carry the opaque `cursor` returned as `nextCursor`. Each result contains
-`snapshotDigest`, `byteOffset`, `totalBytes`, `chunk`, `cursor`, and
-`nextCursor`. The cursor binds the offset to the complete snapshot digest:
-malformed cursors return `INVALID_CURSOR`, while a filesystem change invalidates
-the prior identity with `conflict/CURSOR_EXPIRED`. Each page is an ordinary
-deduplicated reverse command; there is no pagination ledger or frame dialect.
-
-## Peon update operations
-
-`update.check` takes an empty payload. `update.apply` requires
-`release: { version, revision, sha256 }` and accepts optional `force`; both
-target the authenticated Peon without a session. Overseer resolves that
-immutable identity before admission, so it is part of the canonical request
-hash and survives gateway restart/reconciliation.
-They reuse the shared durable admission, dedupe, reconciliation, and terminal
-result lifecycle. Apply persists a receipt across process replacement and
-returns `OK` only when the replacement daemon's running
-version/revision/SHA-256
-matches the expected release inputs.
-
-The release mechanism remains the authenticated Overseer registry with exact
-archive size and SHA-256 verification plus local rollback. The receipt and
-terminal result contain no credential, archive URL, or download grant.
-All three approved identity fields are rechecked after fetching metadata so a
-moving `latest` release cannot silently change the artifact. `OK` requires a daemon
-process different from the admitting process; files updated on disk do not
-count as reconnect attestation. Download, integrity, install, rollback,
-restart, timeout, and attestation failures have distinct stable codes.
-
-## Daemon configuration operation
-
-`daemon.configuration.patch` is owned by `daemon-configuration-v1` and is
-available only when that capability and `durable-delivery-v1` are negotiated.
-It targets the authenticated Peon, carries `{ "patch": { ... } }`, and requires
-an `expected` configuration epoch, revision, and digest. The operation reuses
-this protocol's admission, request hashing, ledger, status reconciliation, and
-durable terminal result. The typed result contains the complete safe
-configuration identity and values; no private setting may appear in it.
-
-## Armory operations
-
-`armory-command-v1` uses this dispatcher for inventory, settings, package,
-configuration, MCP and operation reads plus refresh, install, update, enable,
-disable, configure, verify, configuration deletion and uninstall. Package
-operations require exactly one `packageId`; operation reads require exactly one
-`operationId`; fleet-wide inventory, refresh and settings require neither.
-
-The durable command ID is the lifecycle idempotency key. A replay therefore
-returns the admitted operation/result from the shared reverse-command ledger
-and never invokes an install, hook, configuration write or uninstall twice.
-Armory's own package locks, transactional staging, recovery journals and
-rollback remain authoritative below the dispatcher.
-
-Results are capped at 48 KiB. Operation results expose only identity, kind,
-state, phase, percentage, stable error code and timestamps. Hook messages are
-blanked, and submitted configuration values, archive bodies, credentials and
-raw diagnostics never enter command results. Registry URLs fail closed unless
-they are credential-free HTTPS URLs. Armory package archives remain
-Peon-initiated authenticated downloads; the control socket carries metadata
-only. Running operations are recovered by the existing Armory journals after a
-Peon restart and reconciled through `armory.operation`.
+Update check, apply and bounded operation status use authenticated Fleet HTTP
+through mesh. Release metadata and archive bytes use the same HTTP authority.
+There are no `update.*` reverse operations, negotiation branches or fallback.
+The durable update receipt retains idempotency, serialized admission, restart
+recovery and exact version/revision/SHA-256 replacement-process attestation.
 
 ## Fleet surface capability matrix
 
@@ -370,21 +182,19 @@ available to Overseer.
 | `GET /quota[/:provider]` | query | `runtime-query-v1` | yes | Exclusive query or legacy HTTP |
 | `GET /capabilities[/:provider]` | projection/query | `runtime-state-v1` | no/yes | Projection where safe; bounded query otherwise |
 | `GET /filesystem[/…]` | query | Fleet HTTP | yes | Deliberately kept as the one directory-picker transport |
-| `GET /projects` | projection | `project-catalog-v1` | no | Reverse channel already authoritative after sync |
-| `GET /projects/suggest-dir` | query | `project-command-v1` | yes | Reverse query or legacy HTTP |
-| `POST /projects` | command | `project-command-v1` | yes | Stable command ID; catalog confirms state |
-| `GET /projects/:key` | projection | `project-catalog-v1` | no | Resolve mutable key to immutable project ID |
-| `GET /projects/:key/docs[/…]` | query | `project-command-v1` | yes | Bound response; transfer if oversized |
-| `GET /projects/:key/skills` | query | `project-command-v1` | yes | Bound response |
-| quick-link list/create/update/delete | projection/command | `project-command-v1` | mutations | Stable project and quick-link IDs |
-| project settings read/update | projection/command | `project-command-v1` | mutation | Revision-fenced mutation |
-| `POST /projects/:key/archive` | command | `reverse-command-v1` | yes | `project.archive`; stable project ID |
-| `DELETE /projects/:key/archive` | command | `reverse-command-v1` | yes | `project.unarchive`; stable project ID |
-| `DELETE /projects/:key` | command | `project-command-v1` | yes | Stable project ID; catalog tombstone confirms |
+| `GET /projects` | query | Fleet HTTP | no | HTTP authority; `project-catalog-v1` remains realtime only |
+| `GET /projects/suggest-dir` | query | Fleet HTTP | yes | Reverse query or legacy HTTP |
+| `POST /projects` | command | Fleet HTTP | yes | Stable command ID; catalog confirms state |
+| `GET /projects/:key` | query | Fleet HTTP | no | Resolve mutable key to immutable project ID |
+| `GET /projects/:key/docs[/…]` | query | Fleet HTTP | yes | Bound response; transfer if oversized |
+| `GET /projects/:key/skills` | query | Fleet HTTP | yes | Bound response |
+| quick-link list/create/update/delete | projection/command | Fleet HTTP | mutations | Stable project and quick-link IDs |
+| project settings read/update | projection/command | Fleet HTTP | mutation | Revision-fenced mutation |
+| `DELETE /projects/:key` | command | Fleet HTTP | yes | Stable project ID; catalog tombstone confirms |
 | project file list/read | query/transfer | Fleet HTTP listings, `project-file-read-v1` bodies | yes | Directory listings deliberately stay on Fleet HTTP; reverse body reads remain available |
 | project file put/patch/delete | command/transfer | `project-file-write-v1` | yes | Atomic write and exclusive route |
-| `GET /settings` | projection | `daemon-configuration-v1` | no | Safe allowlist only |
-| `PATCH /settings` | command | `daemon-configuration-v1` | yes | `paused` is forbidden remotely |
+| `GET /settings` | direct Fleet HTTP | none | yes | Safe allowlist plus revision identity |
+| `PATCH /settings` | direct Fleet HTTP | none | yes | Required revision headers; `paused` is forbidden remotely |
 | `GET /stats`, `GET /analytics` | projection/query | `runtime-state-v1`, `runtime-query-v1` | yes | Bounded filters; explicit freshness |
 | `GET /sessions`, `GET /sessions/:id` | projection | `session-catalog-v1` | no | Reverse channel already authoritative after sync |
 | `PATCH /sessions/:id` | command | `session-command-v1` | yes | Revision/state fenced |
@@ -398,9 +208,7 @@ available to Overseer.
 | `POST /control/pause`, `/control/resume` | local-only | none | n/a | Overseer support must be removed |
 | check update / self-update | command | `peon-update-v1` | yes | Success only after reconnect attestation |
 | generic `/files` get/put | legacy-only | none | yes | Replace with stable project/session transfer operations |
-| Armory catalog/package/settings reads | projection | `armory-state-v1` | no | Safe projection after initial commit |
-| Armory refresh/install/update/enable/disable/uninstall | command | `armory-command-v1` | yes | Long-running accepted operation |
-| Armory configuration put/delete | command | `armory-command-v1` | yes | Secret values never persist in Overseer |
+| Armory reads and lifecycle/configuration mutations | direct Fleet HTTP | none | yes | One authenticated authority; durable operation IDs survive retries/restart |
 
 Registration and heartbeat are discovery-era HTTP operations, not operator fleet routes. Socket
 identity/presence and runtime projections replace them only after outbound claim and reverse-only
@@ -431,18 +239,6 @@ No feature may open a third connection or introduce an HTTPS spool without a new
   soak tests.
 
 ## Machine-readable contract
-
-### Armory operation family
-
-Armory uses `target.packageId` (or `target.operationId` for operation reads).
-Read operations are `armory.inventory`, `armory.settings`, `armory.package`,
-`armory.configuration`, `armory.mcp`, and `armory.operation`; mutations are
-`armory.refresh`, `armory.install`, `armory.update`, `armory.enable`,
-`armory.disable`, `armory.configure`, `armory.verify`, `armory.configuration.delete`, and
-`armory.uninstall`. All share the normal durable admission, replay, status, and
-terminal-result lifecycle. Results are limited to 48 KiB and operation output
-is reduced to stable metadata; configuration values and hook messages are
-forbidden from terminal frames.
 
 The canonical schema and golden examples live under `protocol/reverse-command-v1/`. Overseer
 vendors the exact files and both repositories run a contract test over them. Any breaking envelope

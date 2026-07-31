@@ -28,6 +28,19 @@ const headers = {
   "Content-Type": "application/json",
 };
 
+async function fencedHeaders(): Promise<Record<string, string>> {
+  const response = await fetch(`${base}/settings`, { headers });
+  const body = await response.json() as {
+    configuration: { epoch: string; revision: number; digest: string };
+  };
+  return {
+    ...headers,
+    "Peon-Configuration-Epoch": body.configuration.epoch,
+    "Peon-Configuration-Revision": String(body.configuration.revision),
+    "Peon-Configuration-Digest": body.configuration.digest,
+  };
+}
+
 test.after(async () => {
   // Node's fetch keeps idle sockets alive; close them before waiting for the
   // listening servers so this test file cannot hold the full suite open.
@@ -35,26 +48,26 @@ test.after(async () => {
   await new Promise<void>((resolve, reject) => api.close((err) => err ? reject(err) : resolve()));
 });
 
-test("fleet API changes peon paused status through status and settings", async () => {
+test("fleet API changes paused status only through the status route", async () => {
   const paused = await fetch(`${base}/status`, {
     method: "PATCH",
-    headers,
+    headers: await fencedHeaders(),
     body: JSON.stringify({ paused: true }),
   });
   assert.equal(paused.status, 200);
   assert.equal(((await paused.json()) as { paused: boolean }).paused, true);
 
-  const resumed = await fetch(`${base}/settings`, {
+  const rejected = await fetch(`${base}/settings`, {
     method: "PATCH",
-    headers,
+    headers: await fencedHeaders(),
     body: JSON.stringify({ paused: false }),
   });
-  assert.equal(resumed.status, 200);
-  assert.equal(((await resumed.json()) as { paused: boolean }).paused, false);
+  assert.equal(rejected.status, 400);
+  assert.equal(((await rejected.json()) as { code: string }).code, "BAD_REQUEST");
 
   const invalid = await fetch(`${base}/status`, {
     method: "PATCH",
-    headers,
+    headers: await fencedHeaders(),
     body: JSON.stringify({ paused: "yes" }),
   });
   assert.equal(invalid.status, 400);
@@ -65,7 +78,7 @@ test("fleet API reads, updates, and clears the Peon soul", async () => {
   const soul = "## Working style\n\nBe candid and quietly persistent.";
   const updated = await fetch(`${base}/settings`, {
     method: "PATCH",
-    headers,
+    headers: await fencedHeaders(),
     body: JSON.stringify({ soul }),
   });
   assert.equal(updated.status, 200);
@@ -77,7 +90,7 @@ test("fleet API reads, updates, and clears the Peon soul", async () => {
 
   const cleared = await fetch(`${base}/settings`, {
     method: "PATCH",
-    headers,
+    headers: await fencedHeaders(),
     body: JSON.stringify({ soul: "" }),
   });
   assert.equal(((await cleared.json()) as { soul: string | null }).soul, null);
@@ -85,11 +98,38 @@ test("fleet API reads, updates, and clears the Peon soul", async () => {
 
   const invalid = await fetch(`${base}/settings`, {
     method: "PATCH",
-    headers,
+    headers: await fencedHeaders(),
     body: JSON.stringify({ soul: 42 }),
   });
   assert.equal(invalid.status, 400);
   assert.equal(((await invalid.json()) as { code: string }).code, "BAD_REQUEST");
+});
+
+test("fleet settings fence stale writes and preserve explicit reasoning-effort reset", async () => {
+  const staleHeaders = await fencedHeaders();
+  const reset = await fetch(`${base}/settings`, {
+    method: "PATCH",
+    headers: staleHeaders,
+    body: JSON.stringify({ aiDefaultReasoningEffort: null, soul: "new revision" }),
+  });
+  assert.equal(reset.status, 200);
+  assert.equal(((await reset.json()) as { aiDefaultReasoningEffort: string | null }).aiDefaultReasoningEffort, null);
+
+  const stale = await fetch(`${base}/settings`, {
+    method: "PATCH",
+    headers: staleHeaders,
+    body: JSON.stringify({ soul: "must not win" }),
+  });
+  assert.equal(stale.status, 409);
+  assert.equal(((await stale.json()) as { code: string }).code, "REVISION_CONFLICT");
+
+  const invalid = await fetch(`${base}/settings`, {
+    method: "PATCH",
+    headers: await fencedHeaders(),
+    body: JSON.stringify({ aiDefaultReasoningEffort: "not-a-real-effort" }),
+  });
+  assert.equal(invalid.status, 400);
+  assert.match(((await invalid.json()) as { error: string }).error, /not valid for model/);
 });
 
 test("fleet API reads and edits a project's key, name, and folder through project settings", async () => {
@@ -102,9 +142,14 @@ test("fleet API reads and edits a project's key, name, and folder through projec
   assert.equal(createdResponse.status, 201);
   const created = (await createdResponse.json()) as { projectId: string; key: string; dir: string };
 
-  const settingsResponse = await fetch(`${base}/projects/${created.key}/settings`, { headers });
+  const settingsResponse = await fetch(`${base}/projects/by-id/${created.projectId}/settings`, { headers });
   assert.equal(settingsResponse.status, 200);
-  assert.deepEqual(await settingsResponse.json(), { projectId: created.projectId, key: created.key, name: label, dir: created.dir });
+  const settings = (await settingsResponse.json()) as { projectId: string; key: string; name: string; dir: string; digest: string };
+  assert.deepEqual(
+    { projectId: settings.projectId, key: settings.key, name: settings.name, dir: settings.dir },
+    { projectId: created.projectId, key: created.key, name: label, dir: created.dir },
+  );
+  assert.match(settings.digest, /^[0-9a-f]{64}$/);
   const listResponse = await fetch(`${base}/projects`, { headers });
   const list = (await listResponse.json()) as { projects: Array<{ projectId: string; key: string }> };
   assert.equal(list.projects.find((project) => project.key === created.key)?.projectId, created.projectId);
@@ -112,13 +157,26 @@ test("fleet API reads and edits a project's key, name, and folder through projec
   const newDir = path.join(mkdtempSync(path.join(os.tmpdir(), "peon-project-parent-")), "new folder");
   const newKey = "renamed-folder-settings-project";
   const newName = "Renamed Folder Settings Project";
-  const updatedResponse = await fetch(`${base}/projects/${created.key}/settings`, {
+  const missingFence = await fetch(`${base}/projects/by-id/${created.projectId}/settings`, {
     method: "PATCH",
     headers,
+    body: JSON.stringify({ name: newName }),
+  });
+  assert.equal(missingFence.status, 409);
+  assert.equal(((await missingFence.json()) as { code: string }).code, "PROJECT_CONFLICT");
+
+  const updatedResponse = await fetch(`${base}/projects/by-id/${created.projectId}/settings`, {
+    method: "PATCH",
+    headers: { ...headers, "Peon-Project-Digest": settings.digest },
     body: JSON.stringify({ key: newKey, name: newName, dir: newDir }),
   });
   assert.equal(updatedResponse.status, 200);
-  assert.deepEqual(await updatedResponse.json(), { projectId: created.projectId, key: newKey, name: newName, dir: newDir });
+  const updated = (await updatedResponse.json()) as { projectId: string; key: string; name: string; dir: string; digest: string };
+  assert.deepEqual(
+    { projectId: updated.projectId, key: updated.key, name: updated.name, dir: updated.dir },
+    { projectId: created.projectId, key: newKey, name: newName, dir: newDir },
+  );
+  assert.match(updated.digest, /^[0-9a-f]{64}$/);
   assert.equal(existsSync(newDir), true);
 
   const oldDetailResponse = await fetch(`${base}/projects/${created.key}`, { headers });

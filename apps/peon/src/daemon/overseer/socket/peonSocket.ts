@@ -20,16 +20,12 @@ import {
 import { SessionCatalogChannel } from "./channels/sessionCatalogChannel.js";
 import { SessionWarningChannel } from "./channels/sessionWarningChannel.js";
 import { ProjectCatalogChannel } from "./channels/projectCatalogChannel.js";
-import { ProjectFileReadChannel, SandboxFileReadChannel, SessionArtifactReadChannel } from "./channels/projectFileReadChannel.js";
 import { ReverseCommandChannel } from "./channels/reverseCommandChannel.js";
 import type { ReverseCommandHandler } from "./channels/reverseCommandChannel.js";
 import { RuntimeStateChannel } from "./channels/runtimeStateChannel.js";
 import { TranscriptChannel } from "./channels/transcriptChannel.js";
-import { FileWriteChannel } from "./channels/fileWriteChannel.js";
-import { SessionArtifactChannel } from "./channels/sessionArtifactChannel.js";
 import { settings, type PeonSocketSettings } from "../../settings/index.js";
 import { peonClaimClient } from "../../enrollment/index.js";
-import { daemonConfigurationChannel } from "./channels/daemonConfigurationChannel.js";
 
 const DEFAULT_RETRY_BASE_MS = 250;
 const DEFAULT_RETRY_MAX_MS = 30_000;
@@ -39,8 +35,6 @@ const DEFAULT_PING_INTERVAL_MS = 15_000;
 const DEFAULT_PONG_TIMEOUT_MS = 10_000;
 const DEFAULT_MAINTENANCE_INTERVAL_MS = 5_000;
 const CONTROL_MAX_BUFFERED_BYTES = 4 * 1024 * 1024;
-const TRANSFER_MAX_FRAME_BYTES = 64 * 1024;
-const TRANSFER_MAX_BUFFERED_BYTES = 256 * 1024;
 const OUTBOX_RETRY_MS = 50;
 const OUTBOX_ACK_TIMEOUT_MS = 10_000;
 
@@ -94,7 +88,6 @@ interface PeonSocketOptions {
   channels?: PeonSocketChannel[];
   outbox?: PeonSocketOutbox;
   outboxFactory?: () => PeonSocketOutbox;
-  socketChannel?: "control" | "file-transfer";
 }
 
 function defaultSubscribe(listener: () => void): () => void {
@@ -102,13 +95,12 @@ function defaultSubscribe(listener: () => void): () => void {
   return () => settings.off("change", listener);
 }
 
-export function peonSocketUrl(base: string, channel: "control" | "file-transfer" = "control"): string {
+export function peonSocketUrl(base: string): string {
   const url = new URL(base);
   if (url.protocol === "http:") url.protocol = "ws:";
   else if (url.protocol === "https:") url.protocol = "wss:";
   else throw new Error("overseerUrl must use http or https");
-  const endpoint = channel === "file-transfer" ? "transfer/ws" : "ws";
-  url.pathname = `${url.pathname.replace(/\/$/, "")}/api/v1/peons/${endpoint}`;
+  url.pathname = `${url.pathname.replace(/\/$/, "")}/api/v1/peons/ws`;
   url.search = "";
   url.hash = "";
   return url.toString();
@@ -128,7 +120,6 @@ export class PeonSocketSupervisor {
   private readonly pingIntervalMs: number;
   private readonly pongTimeoutMs: number;
   private readonly maintenanceIntervalMs: number;
-  private readonly socketChannel: "control" | "file-transfer";
   private readonly maxFrameBytes: number;
   private readonly maxBufferedBytes: number;
   private socket: WebSocket | null = null;
@@ -164,12 +155,9 @@ export class PeonSocketSupervisor {
   private readonly reverseCommandChannel: ReverseCommandChannel | null;
 
   constructor(options: PeonSocketOptions = {}) {
-    this.socketChannel = options.socketChannel ?? "control";
     this.readSettings = options.readSettings ?? (() => {
-      if (this.socketChannel === "control") {
-        const candidate = peonClaimClient.getSocketCredentialOverride();
-        if (candidate) return candidate;
-      }
+      const candidate = peonClaimClient.getSocketCredentialOverride();
+      if (candidate) return candidate;
       return settings.getPeonSocketSettings();
     });
     this.subscribe = options.subscribe ?? defaultSubscribe;
@@ -181,31 +169,19 @@ export class PeonSocketSupervisor {
     this.pingIntervalMs = options.pingIntervalMs ?? DEFAULT_PING_INTERVAL_MS;
     this.pongTimeoutMs = options.pongTimeoutMs ?? DEFAULT_PONG_TIMEOUT_MS;
     this.maintenanceIntervalMs = options.maintenanceIntervalMs ?? DEFAULT_MAINTENANCE_INTERVAL_MS;
-    this.maxFrameBytes = this.socketChannel === "control" ? PEON_SOCKET_MAX_FRAME_BYTES : TRANSFER_MAX_FRAME_BYTES;
-    this.maxBufferedBytes = this.socketChannel === "control" ? CONTROL_MAX_BUFFERED_BYTES : TRANSFER_MAX_BUFFERED_BYTES;
-    if (this.socketChannel === "file-transfer" && (options.outbox || options.outboxFactory)) {
-      throw new Error("file-transfer socket cannot own the control durable outbox");
-    }
+    this.maxFrameBytes = PEON_SOCKET_MAX_FRAME_BYTES;
+    this.maxBufferedBytes = CONTROL_MAX_BUFFERED_BYTES;
     const hasDurableOutbox = Boolean(options.outbox || options.outboxFactory);
-    this.reverseCommandChannel = this.socketChannel === "control" && hasDurableOutbox
+    this.reverseCommandChannel = hasDurableOutbox
       ? new ReverseCommandChannel({ peonId: () => this.configured()?.peonId })
       : null;
-    const defaultChannels = this.socketChannel === "control"
-      ? [
+    const defaultChannels = [
           new SessionCatalogChannel(),
           ...(hasDurableOutbox ? [new ProjectCatalogChannel()] : []),
           new SessionWarningChannel(),
           ...(hasDurableOutbox ? [new TranscriptChannel()] : []),
-          ...(hasDurableOutbox ? [daemonConfigurationChannel] : []),
           ...(this.reverseCommandChannel ? [this.reverseCommandChannel] : []),
           ...(hasDurableOutbox ? [new RuntimeStateChannel()] : []),
-        ]
-      : [
-          new ProjectFileReadChannel(),
-          new SandboxFileReadChannel({ sandboxRoot: () => settings.get().fileTransferRoot }),
-          new SessionArtifactReadChannel(),
-          new SessionArtifactChannel(),
-          new FileWriteChannel({ sandboxRoot: () => settings.get().fileTransferRoot }),
         ];
     this.multiplexer = new PeonSocketMultiplexer(options.channels ?? defaultChannels);
     this.outbox = options.outbox ?? null;
@@ -298,7 +274,7 @@ export class PeonSocketSupervisor {
 
     let socket: WebSocket;
     try {
-      socket = new WebSocket(peonSocketUrl(config.base, this.socketChannel), {
+      socket = new WebSocket(peonSocketUrl(config.base), {
         headers: {
           Authorization: `Bearer ${config.token}`,
           "Peon-Protocol": String(PROTOCOL_VERSION),
@@ -325,17 +301,8 @@ export class PeonSocketSupervisor {
       if (!current()) return;
       try {
         const identity = config.peonId ? { peonId: config.peonId } : {};
-        let hello: PeonSocketFrame;
-        if (this.socketChannel === "file-transfer") {
-          hello = this.multiplexer.hello(PROTOCOL_VERSION, { channel: "file-transfer", ...identity });
-          // Transfer capabilities have no resumable hello state. Keep its
-          // opening frame compact and aligned with Overseer's data-plane
-          // handshake rather than exposing the control-channel `channels` map.
-          delete hello.channels;
-        } else {
-          hello = this.multiplexer.hello(PROTOCOL_VERSION, identity);
-          hello.version = daemonVersion();
-        }
+        const hello: PeonSocketFrame = this.multiplexer.hello(PROTOCOL_VERSION, identity);
+        hello.version = daemonVersion();
         if (this.outbox) {
           hello.capabilities = [...new Set([
             ...(Array.isArray(hello.capabilities) ? hello.capabilities.filter((value): value is string => typeof value === "string") : []),
@@ -413,9 +380,7 @@ export class PeonSocketSupervisor {
       this.state.derecruited = false;
       this.state.connectedAt = Date.now();
       this.state.lastError = null;
-      if (this.socketChannel === "control") {
-        peonClaimClient.confirmCandidateFromSocket(config.token, config.peonId);
-      }
+      peonClaimClient.confirmCandidateFromSocket(config.token, config.peonId);
       durableAccepted = Array.isArray(frame.capabilities) && frame.capabilities.includes(PEON_SOCKET_DURABLE_DELIVERY_CAPABILITY);
       this.acceptedCapabilities = new Set(
         Array.isArray(frame.capabilities)
@@ -436,7 +401,7 @@ export class PeonSocketSupervisor {
       }
       this.multiplexer.negotiated(frame, sender);
       if (durableAccepted && this.outbox) this.flushOutbox(socket, current);
-      console.log(`overseer: ${this.socketChannel} WebSocket connected to ${new URL(config.base).origin}`);
+      console.log(`overseer: control WebSocket connected to ${new URL(config.base).origin}`);
       this.startLiveness(socket, generation);
       this.stableTimer = setTimeout(() => {
         if (current() && this.state.connected) this.state.reconnectAttempt = 0;
@@ -762,10 +727,8 @@ export class PeonSocketSupervisor {
   }
 }
 
-// Overseer uses one socket per channel: the control socket owns capabilities
-// and durable delivery, while the transfer socket carries file bytes. Their
-// lifecycle loops remain independent, so a failed transfer path cannot replace
-// or suppress control presence (and vice versa).
+// Overseer uses one control/realtime socket for capabilities and durable
+// delivery. File bytes use Fleet HTTP and do not participate in this pool.
 export class PeonSocketPool {
   constructor(private readonly supervisors: PeonSocketSupervisor[]) {
     if (supervisors.length === 0) throw new Error("Peon socket pool requires at least one connection");
@@ -825,5 +788,4 @@ export class PeonSocketPool {
 
 export const peonSocket = new PeonSocketPool([
   new PeonSocketSupervisor({ outboxFactory: () => new PeonSocketOutbox() }),
-  new PeonSocketSupervisor({ socketChannel: "file-transfer" }),
 ]);

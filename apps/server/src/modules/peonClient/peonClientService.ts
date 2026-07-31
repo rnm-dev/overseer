@@ -73,6 +73,7 @@ export async function callPeon(
     const res = await fetch(url, {
       method,
       headers: headers(conn.token, opts.actor ?? null, {
+        ...opts.headers,
         ...(opts.body !== undefined ? { "Content-Type": "application/json" } : {}),
         "Peon-Request-Id": requestId,
       }),

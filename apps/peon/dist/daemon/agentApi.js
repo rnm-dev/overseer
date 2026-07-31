@@ -3,7 +3,7 @@ import { createReadStream, createWriteStream, existsSync, mkdirSync, promises as
 import { eventLoopDelayStats } from "./eventLoopMonitor.js";
 import path from "node:path";
 import express from "express";
-import { settings } from "./settings/index.js";
+import { DaemonConfigurationState, settings } from "./settings/index.js";
 import { sessionArtifactInventory, sessions, toPublicSessionRecord, } from "./sessions/index.js";
 import { createProjectService, projectStore } from "./projects/index.js";
 import { pairing } from "./pairing.js";
@@ -11,8 +11,8 @@ import { ensurePeonId } from "./peonIdentity.js";
 import { peonPublicUrl } from "./peonAddress.js";
 import { modelCatalog } from "./modelCatalog.js";
 import { agentServices, getAgentDriver } from "./agents/index.js";
-import { startSelfUpdate } from "./selfUpdate.js";
 import { updateChecker } from "./updateChecker.js";
+import { applyUpdate, checkUpdate, updateOperationStatus } from "./updateOperations.js";
 import { createArmoryReadRouter } from "./armory/index.js";
 import { FileAccessService } from "./files/index.js";
 import { parseTranscriptPageRequest, parseTranscriptResumeEventId, transcriptResumeIndex, TranscriptPaginationError } from "./transcriptPagination.js";
@@ -42,6 +42,13 @@ export { PROTOCOL_VERSION } from "./protocol.js";
 const SSE_HEARTBEAT_MS = Number(process.env.ACA_SSE_HEARTBEAT_MS) || 15_000;
 // Accepted ?period= values for GET /stats — mirrors the human /api/v1/ai/stats.
 const STATS_PERIODS = ["day", "yesterday", "week", "month"];
+// Fleet HTTP owns configuration reads and mutations. Create the durable
+// optimistic-concurrency fence only after module initialization completes;
+// settings and model discovery intentionally share an import cycle.
+let daemonConfigurationState;
+function configurationState() {
+    return daemonConfigurationState ??= new DaemonConfigurationState();
+}
 function fail(res, status, code, error) {
     res.status(status).json({ error, code });
 }
@@ -341,7 +348,7 @@ export function createAgentRouter(options = {}) {
         allowMutations: true,
     }));
     // Host filesystem directory browser for an authenticated Overseer. This is
-    // intentionally outside both project and file-transfer sandboxes: the
+    // intentionally outside both project and configured file sandboxes: the
     // Overseer bearer is an admin credential and may navigate from `/`, subject
     // only to this Peon process's OS permissions. The route never returns file
     // metadata or bytes and has no mutation-method siblings.
@@ -400,7 +407,16 @@ export function createAgentRouter(options = {}) {
     });
     // --- settings (operator-facing subset only) ------------------------------
     router.get("/settings", (_req, res) => {
-        res.json(settings.getFleetSettingsView());
+        const snapshot = configurationState().reconcile().snapshot;
+        res.json({
+            ...snapshot.values,
+            configuration: {
+                epoch: snapshot.epoch,
+                revision: snapshot.revision,
+                digest: snapshot.digest,
+                updatedAt: snapshot.updatedAt,
+            },
+        });
     });
     // Partial, allowlisted, validated update. Only name/defaultAgent/
     // fileTransferRoot/heartbeatIntervalMs/aiDefaultModel/soul/paused are editable here;
@@ -410,8 +426,37 @@ export function createAgentRouter(options = {}) {
     // whose `change` event propagates the edit with no restart.
     router.patch("/settings", (req, res) => {
         try {
-            const { view } = settings.patchFleetSettings(req.body ?? {});
-            res.json(view);
+            const before = configurationState().reconcile().snapshot;
+            const expectedEpoch = req.header("Peon-Configuration-Epoch");
+            const expectedRevision = Number(req.header("Peon-Configuration-Revision"));
+            const expectedDigest = req.header("Peon-Configuration-Digest");
+            if (expectedEpoch !== before.epoch
+                || !Number.isSafeInteger(expectedRevision)
+                || expectedRevision !== before.revision
+                || expectedDigest !== before.digest) {
+                return res.status(409).json({
+                    error: "configuration revision conflict",
+                    code: "REVISION_CONFLICT",
+                    configuration: {
+                        epoch: before.epoch,
+                        revision: before.revision,
+                        digest: before.digest,
+                        updatedAt: before.updatedAt,
+                    },
+                });
+            }
+            const { view } = settings.patchDaemonConfiguration(req.body ?? {});
+            const after = configurationState().reconcile().snapshot;
+            res.json({
+                ...view,
+                configuration: {
+                    epoch: after.epoch,
+                    revision: after.revision,
+                    digest: after.digest,
+                    updatedAt: after.updatedAt,
+                },
+                restart: { required: false, components: [] },
+            });
         }
         catch (error) {
             if (error.code === "BAD_REQUEST") {
@@ -471,8 +516,8 @@ export function createAgentRouter(options = {}) {
     // checkNow owns the in-flight deduplication and absorbs failures into state,
     // so concurrent requests wait for one check and the daemon stays healthy.
     router.post("/control/check-update", async (_req, res) => {
-        await updateChecker.checkNow();
-        res.json(updateStatusView());
+        const result = await checkUpdate();
+        res.status(result.status).json(result.body);
     });
     // Self-update this peon (git pull / reinstall + restart) — the fleet-facing
     // twin of the dashboard's POST /api/v1/control/update, so the overseer can update
@@ -480,18 +525,14 @@ export function createAgentRouter(options = {}) {
     // session is running unless { force: true }, since their restart kills it. Source
     // checkouts update files without restarting the dev daemon and report that a
     // manual restart is required for the new daemon code to take effect.
-    router.post("/control/update", (req, res) => {
-        const result = startSelfUpdate({ force: req.body?.force === true });
-        if (result.busy) {
-            return fail(res, 409, "UPDATE_BLOCKED", "a session is running (the update restarts the daemon, which kills it) — pass { force: true } to override");
-        }
-        res.status(202).json({
-            ok: true,
-            manualRestartRequired: result.manualRestartRequired,
-            message: result.manualRestartRequired
-                ? `update started — the dev daemon will keep running; check ${result.logPath}, then restart \`npm run dev\` manually when safe`
-                : `update started — poll GET /api/v1/status, or check ${result.logPath}`,
-        });
+    router.post("/control/update", async (req, res) => {
+        const requestId = typeof req.headers["peon-request-id"] === "string" ? req.headers["peon-request-id"] : "";
+        const result = await applyUpdate(requestId, req.body);
+        res.status(result.status).json(result.body);
+    });
+    router.get("/control/update/:requestId", (req, res) => {
+        const result = updateOperationStatus(req.params.requestId);
+        res.status(result.status).json(result.body);
     });
     // --- live tail (SSE, no human-presence bookkeeping) ----------------------
     // Every committed transcript event reaches every subscriber, in order,

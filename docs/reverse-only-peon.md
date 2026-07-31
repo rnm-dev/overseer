@@ -31,7 +31,7 @@ peon remote on peon.example.mesh
 `ACA_BIND_HOST` cannot override the safety boundary: daemon and dashboard
 startup fail with a bounded diagnostic if reverse-only is combined with a
 non-loopback host. Release lookup/download, claim polling, credential rotation
-and control/transfer sockets remain Peon-initiated HTTPS/WSS flows.
+and the control/realtime socket remains a Peon-initiated HTTPS/WSS flow.
 
 ## Capability gate and current blockers
 

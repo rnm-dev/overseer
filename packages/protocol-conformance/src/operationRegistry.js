@@ -43,9 +43,6 @@ export function readDeclaredOperations({ file, binding }) {
     throw new OperationRegistryError(`${binding} is not declared as an "as const" array in ${file}`);
   }
   const operations = [...declaration[1].matchAll(/"([^"]+)"/g)].map((match) => match[1]);
-  if (operations.length === 0) {
-    throw new OperationRegistryError(`${binding} in ${file} declares no operations`);
-  }
   const duplicates = operations.filter((value, index) => operations.indexOf(value) !== index);
   if (duplicates.length > 0) {
     throw new OperationRegistryError(`${binding} in ${file} repeats ${duplicates.join(", ")}`);

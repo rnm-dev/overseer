@@ -1,11 +1,10 @@
 {
   "formatVersion": 1,
-  "description": "Shared stable control, catalog and file-read golden frames.",
+  "description": "Shared stable control and catalog golden frames.",
   "limits": {
     "control": 1048576,
     "durable": 1048576,
-    "catalogPage": 61440,
-    "transferJson": 65536
+    "catalogPage": 61440
   },
   "frames": [
     {
@@ -85,37 +84,6 @@
         "protocol": 1,
         "capabilities": [
           "session-catalog-v1"
-        ]
-      }
-    },
-    {
-      "name": "transfer hello advertises both stable reads",
-      "surface": "socket",
-      "schema": "socket.transfer.hello",
-      "limit": "transferJson",
-      "frame": {
-        "type": "hello",
-        "protocol": 1,
-        "channel": "file-transfer",
-        "peonId": "00000000-0000-4000-8000-000000000001",
-        "capabilities": [
-          "project-file-read-v1",
-          "sandbox-file-read-v1"
-        ]
-      }
-    },
-    {
-      "name": "transfer acknowledgement is channel-fenced",
-      "surface": "socket",
-      "schema": "socket.transfer.hello_ack",
-      "limit": "transferJson",
-      "frame": {
-        "type": "hello_ack",
-        "protocol": 1,
-        "channel": "file-transfer",
-        "capabilities": [
-          "project-file-read-v1",
-          "sandbox-file-read-v1"
         ]
       }
     },
@@ -258,126 +226,6 @@
         "type": "project_catalog_ack",
         "epoch": "projects-a",
         "acknowledgedSeq": 3
-      }
-    },
-    {
-      "name": "project file open",
-      "surface": "file-read",
-      "schema": "file.project.open",
-      "limit": "transferJson",
-      "frame": {
-        "type": "file_open",
-        "protocol": 1,
-        "requestId": "00000000-0000-4000-8000-000000000040",
-        "projectId": "00000000-0000-4000-8000-000000000020",
-        "relativePath": "dist/index.html",
-        "actor": {
-          "userId": "00000000-0000-4000-8000-000000000050",
-          "email": "operator@example.com"
-        },
-        "range": {
-          "start": 0,
-          "end": 1023
-        }
-      }
-    },
-    {
-      "name": "sandbox file open",
-      "surface": "file-read",
-      "schema": "file.sandbox.open",
-      "limit": "transferJson",
-      "frame": {
-        "type": "file_open",
-        "protocol": 1,
-        "requestId": "00000000-0000-4000-8000-000000000041",
-        "scope": "sandbox",
-        "path": "/srv/transfer/attachment.png",
-        "actor": {
-          "userId": "00000000-0000-4000-8000-000000000050",
-          "email": "operator@example.com"
-        }
-      }
-    },
-    {
-      "name": "project file traversal is invalid",
-      "surface": "file-read",
-      "schema": "file.project.open",
-      "limit": "transferJson",
-      "valid": false,
-      "frame": {
-        "type": "file_open",
-        "protocol": 1,
-        "requestId": "00000000-0000-4000-8000-000000000040",
-        "projectId": "00000000-0000-4000-8000-000000000020",
-        "relativePath": "../secret",
-        "actor": {
-          "userId": "00000000-0000-4000-8000-000000000050",
-          "email": "operator@example.com"
-        }
-      }
-    },
-    {
-      "name": "partial file metadata",
-      "surface": "file-read",
-      "schema": "file.meta",
-      "limit": "transferJson",
-      "frame": {
-        "type": "file_meta",
-        "requestId": "00000000-0000-4000-8000-000000000040",
-        "status": 206,
-        "contentType": "application/octet-stream",
-        "contentLength": 1024,
-        "acceptRanges": "bytes",
-        "contentRange": "bytes 0-1023/4096"
-      }
-    },
-    {
-      "name": "partial metadata without range is invalid",
-      "surface": "file-read",
-      "schema": "file.meta",
-      "limit": "transferJson",
-      "valid": false,
-      "frame": {
-        "type": "file_meta",
-        "requestId": "00000000-0000-4000-8000-000000000040",
-        "status": 206,
-        "contentType": "application/octet-stream",
-        "contentLength": 1024,
-        "acceptRanges": "bytes"
-      }
-    },
-    {
-      "name": "bounded file credit",
-      "surface": "file-read",
-      "schema": "file.credit",
-      "limit": "transferJson",
-      "frame": {
-        "type": "file_credit",
-        "requestId": "00000000-0000-4000-8000-000000000040",
-        "bytes": 262144
-      }
-    },
-    {
-      "name": "file completion",
-      "surface": "file-read",
-      "schema": "file.end",
-      "limit": "transferJson",
-      "frame": {
-        "type": "file_end",
-        "requestId": "00000000-0000-4000-8000-000000000040"
-      }
-    },
-    {
-      "name": "file stable error",
-      "surface": "file-read",
-      "schema": "file.error",
-      "limit": "transferJson",
-      "frame": {
-        "type": "file_error",
-        "requestId": "00000000-0000-4000-8000-000000000040",
-        "status": 404,
-        "code": "NOT_FOUND",
-        "message": "file does not exist"
       }
     }
   ]

@@ -870,7 +870,7 @@ export const MIGRATIONS: { id: string; statements: string[] }[] = [
     ],
   },
   {
-    // A session command may reference only a terminal file-write-v1 result.
+    // Historical attachment receipts are retained for already-recorded rows.
     // Receipts are durable because the Peon's completed-write replay cache is
     // intentionally process-local and cannot prove a commit after restart.
     id: "031_attachment_transfer_receipts",

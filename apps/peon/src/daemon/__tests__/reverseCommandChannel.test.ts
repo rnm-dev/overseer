@@ -370,7 +370,7 @@ test("manual validation matches actor, timestamp, and target schema constraints"
     channel.receive({
       ...frame,
       commandId: "218f4f0c-9f30-7a61-bf1a-66d2582bdb4a",
-      target: { peonId, packageId: "../invalid-package" },
+      target: { peonId, unknownTarget: true },
     }, sender);
     await tick();
     assert.equal(effects, 0);

@@ -1,7 +1,6 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { query } from "../../db.js";
 import { evictPeonConnection } from "../../peonConnections.js";
-import { evictPeonTransferConnection } from "../../peonTransferConnections.js";
 import type { Minted, PeonCredential } from "./credentialsTypes.js";
 import {
   resolvePc1Credential,
@@ -85,7 +84,6 @@ export async function revokeCredential(workspaceId: string, credentialId: string
   );
   if (rows[0]?.bound_peon_id) {
     evictPeonConnection(rows[0].bound_peon_id);
-    evictPeonTransferConnection(rows[0].bound_peon_id);
   }
   return (rowCount ?? 0) > 0;
 }
@@ -93,14 +91,12 @@ export async function revokeCredential(workspaceId: string, credentialId: string
 export async function revokeCredentialForPeon(workspaceId: string, peonId: string): Promise<void> {
   await revokePeonCredentialsForFleetDeletion(workspaceId, peonId);
   evictPeonConnection(peonId);
-  evictPeonTransferConnection(peonId);
 }
 
 export async function deRecruitPeon(workspaceId: string, peonId: string): Promise<boolean> {
   const removed = await revokePeonCredentialsForFleetDeletion(workspaceId, peonId, true);
   if (removed) {
     evictPeonConnection(peonId);
-    evictPeonTransferConnection(peonId);
   }
   return removed;
 }

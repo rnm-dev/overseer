@@ -60,29 +60,6 @@
         },
         "transferId": {
           "$ref": "#/$defs/uuid"
-        },
-        "packageId": {
-          "type": "string",
-          "pattern": "^[a-z0-9][a-z0-9-]{0,62}$"
-        },
-        "operationId": {
-          "$ref": "#/$defs/uuid"
-        }
-      }
-    },
-    "sessionMetadataPayload": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "title"
-      ],
-      "properties": {
-        "title": {
-          "type": [
-            "string",
-            "null"
-          ],
-          "maxLength": 512
         }
       }
     },
@@ -115,45 +92,7 @@
         },
         "operation": {
           "type": "string",
-          "enum": [
-            "session.metadata.patch",
-            "session.delete",
-            "daemon.configuration.patch",
-            "project.create",
-            "project.suggest-directory",
-            "project.detail",
-            "project.settings.get",
-            "project.settings.update",
-            "project.delete",
-            "project.documentation.index",
-            "project.documentation.read",
-            "project.skills.list",
-            "project.quick-links.list",
-            "project.quick-links.create",
-            "project.quick-links.update",
-            "project.quick-links.delete",
-            "update.check",
-            "update.apply",
-            "runtime.stats",
-            "runtime.analytics",
-            "runtime.quota",
-            "runtime.capabilities",
-            "armory.inventory",
-            "armory.settings",
-            "armory.refresh",
-            "armory.install",
-            "armory.update",
-            "armory.enable",
-            "armory.disable",
-            "armory.uninstall",
-            "armory.configure",
-            "armory.verify",
-            "armory.configuration.delete",
-            "armory.package",
-            "armory.configuration",
-            "armory.mcp",
-            "armory.operation"
-          ]
+          "not": {}
         },
         "target": {
           "$ref": "#/$defs/target"
@@ -179,28 +118,6 @@
         }
       },
       "allOf": [
-        {
-          "if": {
-            "properties": {
-              "operation": {
-                "const": "session.metadata.patch"
-              }
-            },
-            "required": [
-              "operation"
-            ]
-          },
-          "then": {
-            "properties": {
-              "payload": {
-                "$ref": "#/$defs/sessionMetadataPayload"
-              },
-              "expected": {
-                "type": "null"
-              }
-            }
-          }
-        },
         {
           "if": {
             "properties": {
@@ -258,45 +175,7 @@
           "$ref": "#/$defs/uuid"
         },
         "operation": {
-          "enum": [
-            "session.metadata.patch",
-            "session.delete",
-            "daemon.configuration.patch",
-            "project.create",
-            "project.suggest-directory",
-            "project.detail",
-            "project.settings.get",
-            "project.settings.update",
-            "project.delete",
-            "project.documentation.index",
-            "project.documentation.read",
-            "project.skills.list",
-            "project.quick-links.list",
-            "project.quick-links.create",
-            "project.quick-links.update",
-            "project.quick-links.delete",
-            "update.check",
-            "update.apply",
-            "runtime.stats",
-            "runtime.analytics",
-            "runtime.quota",
-            "runtime.capabilities",
-            "armory.inventory",
-            "armory.settings",
-            "armory.refresh",
-            "armory.install",
-            "armory.update",
-            "armory.enable",
-            "armory.disable",
-            "armory.uninstall",
-            "armory.configure",
-            "armory.verify",
-            "armory.configuration.delete",
-            "armory.package",
-            "armory.configuration",
-            "armory.mcp",
-            "armory.operation"
-          ]
+          "not": {}
         },
         "state": {
           "enum": [
@@ -337,45 +216,7 @@
           "$ref": "#/$defs/uuid"
         },
         "operation": {
-          "enum": [
-            "session.metadata.patch",
-            "session.delete",
-            "daemon.configuration.patch",
-            "project.create",
-            "project.suggest-directory",
-            "project.detail",
-            "project.settings.get",
-            "project.settings.update",
-            "project.delete",
-            "project.documentation.index",
-            "project.documentation.read",
-            "project.skills.list",
-            "project.quick-links.list",
-            "project.quick-links.create",
-            "project.quick-links.update",
-            "project.quick-links.delete",
-            "update.check",
-            "update.apply",
-            "runtime.stats",
-            "runtime.analytics",
-            "runtime.quota",
-            "runtime.capabilities",
-            "armory.inventory",
-            "armory.settings",
-            "armory.refresh",
-            "armory.install",
-            "armory.update",
-            "armory.enable",
-            "armory.disable",
-            "armory.uninstall",
-            "armory.configure",
-            "armory.verify",
-            "armory.configuration.delete",
-            "armory.package",
-            "armory.configuration",
-            "armory.mcp",
-            "armory.operation"
-          ]
+          "not": {}
         },
         "status": {
           "enum": [

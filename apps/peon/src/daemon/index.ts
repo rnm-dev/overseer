@@ -1,17 +1,17 @@
 import { createControlServer } from "./controlServer.js";
 import { settings } from "./settings/index.js";
 import { sdNotify } from "./sdNotify.js";
-import { armoryCommandHandlers, peonRegistrar, peonSocket } from "./overseer/index.js";
+import { peonRegistrar, peonSocket } from "./overseer/index.js";
 import { sessions } from "./sessions/index.js";
 import { updateChecker } from "./updateChecker.js";
 import { claudeCodeAuth } from "./claudeCodeAuth.js";
 import { configDir, stateDir } from "./xdgPaths.js";
 import { createDaemonCompositionRoot } from "./bootstrap/compositionRoot.js";
 import { recoverInterruptedArmoryOperations, recoverInterruptedArmoryUninstalls } from "./armory/index.js";
-import { armoryInventory } from "./armory/index.js";
 import { shutdownAgentDriverRuntimes } from "./agents/index.js";
 import { peonClaimClient } from "./enrollment/index.js";
 import { controlListenerHosts, isLoopbackBindHost } from "./controlListeners.js";
+import { recoverUpdateOperation } from "./updateOperations.js";
 
 const PORT = Number(process.env.ACA_CONTROL_PORT ?? 4570);
 
@@ -36,11 +36,7 @@ function isLoopbackHost(url: string): boolean {
 const composition = createDaemonCompositionRoot();
 const app = createControlServer(composition.controlServerOptions);
 const { armoryRuntime, armoryStores } = composition;
-peonSocket.registerReverseCommandHandlers(armoryCommandHandlers({
-  ...composition.armoryApi,
-  inventory: armoryInventory,
-} as Parameters<typeof armoryCommandHandlers>[0]));
-
+recoverUpdateOperation();
 // Armory bindings are snapshotted when each agent turn starts. Finish the
 // initial reconciliation before accepting session requests so a session
 // created during daemon startup cannot permanently miss healthy package tools

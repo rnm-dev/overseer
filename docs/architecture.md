@@ -52,7 +52,7 @@ these ownership categories rather than being created for a single use case.
 - `presence` owns operator presence state and visibility.
 - `projects` owns project projections, metadata, documentation, and membership.
   Browser file links use `/view/:peonId/:projectId/*`: workspace membership is
-  derived server-side, bytes stream over the Peon transfer socket, and active
+  derived server-side, bytes stream over authenticated Fleet HTTP, and active
   content is sandboxed away from the authenticated Overseer origin.
 - `sessions` owns session projections, reconciliation, accepted-session indexing,
   queries, and session lifecycle rules.

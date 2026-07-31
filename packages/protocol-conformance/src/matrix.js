@@ -14,13 +14,11 @@ export function negotiateCapabilities(peon, overseer) {
   if (!control.includes("session-catalog-v1")) {
     control = control.filter((capability) => capability !== "project-catalog-v1");
   }
-  const transfer = intersection(peon.transferCapabilities, overseer.transferCapabilities);
-  return { control, transfer, channelFeatures: {} };
+  return { control, channelFeatures: {} };
 }
 
 export function routeForSurface(surface, negotiated) {
   const control = new Set(negotiated.control);
-  const transfer = new Set(negotiated.transfer);
   switch (surface) {
     case "socket-presence":
       return "reverse-socket";
@@ -31,30 +29,22 @@ export function routeForSurface(surface, negotiated) {
         ? "reverse-socket" : "legacy-http";
     case "absolute-folder-picker":
     case "project-directory":
-      return "legacy-http";
     case "project-file-read":
-      return transfer.has("project-file-read-v1") ? "reverse-socket" : "legacy-http";
     case "sandbox-file-read":
-      return transfer.has("sandbox-file-read-v1") ? "reverse-socket" : "legacy-http";
-    case "session-cancel":
-    case "peon-update":
-      return control.has("reverse-command-v1") ? "reverse-socket" : "legacy-http";
-    case "session-transcript":
-      return control.has("transcript-sync-v1") && CANONICAL_PAIR.every((capability) => control.has(capability))
-        ? "reverse-socket" : "legacy-http";
     case "project-file-upload":
     case "attachment-upload":
     case "project-file-move":
     case "project-file-delete":
-      return transfer.has("file-write-v1") ? "reverse-socket" : "legacy-http";
+      return "legacy-http";
+    case "session-cancel":
+    case "peon-update":
+      return "legacy-http";
+    case "session-transcript":
+      return control.has("transcript-sync-v1") && CANONICAL_PAIR.every((capability) => control.has(capability))
+        ? "reverse-socket" : "legacy-http";
     default:
       return "unimplemented";
   }
-}
-
-export function routeForUpdateAdmission(negotiated, active) {
-  if (active) return "blocked-active";
-  return routeForSurface("peon-update", negotiated);
 }
 
 export function runCapabilityMatrix(document) {

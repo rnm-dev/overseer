@@ -57,18 +57,25 @@ class ComposerGhostAttachment {
 /// retires on the other's row, one beat before its own arrives.
 class ComposerGhost {
   const ComposerGhost({
+    required this.commandId,
     required this.text,
     required this.attachments,
     required this.createdAt,
     required this.baselineUserMessages,
   });
 
+  final String commandId;
   final String text;
   final List<ComposerGhostAttachment> attachments;
   final double createdAt;
   final int baselineUserMessages;
 
-  bool visibleAgainst(int userMessages) => userMessages <= baselineUserMessages;
+  bool visibleAgainst(
+    int userMessages, {
+    Iterable<String?> queuedCommandIds = const [],
+  }) =>
+      userMessages <= baselineUserMessages &&
+      !queuedCommandIds.contains(commandId);
 }
 
 class SessionComposerState {
@@ -327,6 +334,7 @@ class SessionComposerController extends AsyncNotifier<SessionComposerState> {
     final ghost = running && !startNow
         ? null
         : ComposerGhost(
+            commandId: _followupRequestId!,
             text: prompt.isEmpty ? '(see attachments)' : prompt,
             attachments: [
               for (final attachment in attachments)

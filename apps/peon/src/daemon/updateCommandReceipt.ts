@@ -12,12 +12,16 @@ export type UpdateCommandReceipt = {
   expectedRevision: string | null;
   expectedSha256: string | null;
   initiatorPid: number;
-  state: "running" | "ready_to_attest" | "failed";
+  state: "running" | "ready_to_attest" | "succeeded" | "failed";
   code?: string;
+  attested?: boolean;
+  actualVersion?: string | null;
+  actualRevision?: string | null;
+  actualSha256?: string | null;
   updatedAt: number;
 };
 
-const STATES = new Set(["running", "ready_to_attest", "failed"]);
+const STATES = new Set(["running", "ready_to_attest", "succeeded", "failed"]);
 const REVISION = /^[0-9A-Za-z._:+-]{1,128}$/;
 const SHA256 = /^[0-9a-f]{64}$/;
 
@@ -38,7 +42,13 @@ export function readUpdateCommandReceipt(): UpdateCommandReceipt | null {
         && (typeof value.expectedSha256 !== "string" || !SHA256.test(value.expectedSha256)))
       || !Number.isSafeInteger(value.initiatorPid) || value.initiatorPid <= 0
       || !STATES.has(value.state) || !Number.isSafeInteger(value.updatedAt) || value.updatedAt < 0
-      || (value.code !== undefined && (typeof value.code !== "string" || value.code.length > 80))) return null;
+      || (value.code !== undefined && (typeof value.code !== "string" || value.code.length > 80))
+      || (value.attested !== undefined && typeof value.attested !== "boolean")
+      || (value.actualVersion !== undefined && value.actualVersion !== null && typeof value.actualVersion !== "string")
+      || (value.actualRevision !== undefined && value.actualRevision !== null
+        && (typeof value.actualRevision !== "string" || !REVISION.test(value.actualRevision)))
+      || (value.actualSha256 !== undefined && value.actualSha256 !== null
+        && (typeof value.actualSha256 !== "string" || !SHA256.test(value.actualSha256)))) return null;
     return value;
   } catch {
     return null;
