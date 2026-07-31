@@ -459,7 +459,6 @@ export const en: Record<string, string> = {
   "sessions.choose": "Choose a session from the sidebar.",
   "sessions.showingRecent": "Showing the latest {shown} of {total}",
   "socket.control": "Control Channel",
-  "socket.transfer": "Transfer Channel",
   "socket.connected": "connected",
   "socket.disconnected": "disconnected",
   "socket.uptime": "uptime {duration}",

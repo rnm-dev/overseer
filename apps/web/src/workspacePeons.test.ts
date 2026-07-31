@@ -23,7 +23,7 @@ test("socket snapshots accept only typed Peon presence entries", () => {
   assert.deepEqual(parsePeonProjections([
     { peonId: "p1", name: "One", online: true, controlConnected: true, transferConnected: false, controlConnectedAt: 123, transferConnectedAt: null },
     { peonId: "p2", online: "yes" },
-  ]), [{ peonId: "p1", name: "One", online: true, controlConnected: true, transferConnected: false, controlConnectedAt: 123, transferConnectedAt: null }]);
+  ]), [{ peonId: "p1", name: "One", online: true, controlConnected: true, controlConnectedAt: 123 }]);
 });
 
 test("HTTP inventory cannot change socket-owned online state", () => {
@@ -33,15 +33,13 @@ test("HTTP inventory cannot change socket-owned online state", () => {
       [{ peonId: "p1", name: "Renamed", online: false }, { peonId: "p2", name: "New", online: true }],
     ),
     [
-      { peonId: "p1", name: "Renamed", online: true, controlConnected: false, transferConnected: false, controlConnectedAt: null, transferConnectedAt: null },
-      { peonId: "p2", name: "New", online: false, controlConnected: false, transferConnected: false, controlConnectedAt: null, transferConnectedAt: null },
+      { peonId: "p1", name: "Renamed", online: true, controlConnected: false, controlConnectedAt: null },
+      { peonId: "p2", name: "New", online: false, controlConnected: false, controlConnectedAt: null },
     ],
   );
 });
 
-test("connection dot is green for two sockets, yellow for one, and red for neither", () => {
-  assert.equal(peonConnectionDotState({ online: true, controlConnected: true, transferConnected: true }), "on");
-  assert.equal(peonConnectionDotState({ online: true, controlConnected: true, transferConnected: false }), "busy");
-  assert.equal(peonConnectionDotState({ online: false, controlConnected: false, transferConnected: true }), "busy");
-  assert.equal(peonConnectionDotState({ online: false, controlConnected: false, transferConnected: false }), "off");
+test("connection dot follows the sole control/realtime socket", () => {
+  assert.equal(peonConnectionDotState({ online: true, controlConnected: true }), "on");
+  assert.equal(peonConnectionDotState({ online: false, controlConnected: false }), "off");
 });

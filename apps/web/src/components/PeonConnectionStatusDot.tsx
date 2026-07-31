@@ -6,9 +6,7 @@ import { StatusDot } from "../ui";
 interface Props {
   online: boolean;
   controlConnected?: boolean;
-  transferConnected?: boolean;
   controlConnectedAt?: number | null;
-  transferConnectedAt?: number | null;
 }
 
 export function formatChannelUptime(durationMs: number): string {
@@ -23,12 +21,8 @@ export function formatChannelUptime(durationMs: number): string {
   return `${seconds}s`;
 }
 
-export function peonConnectionDotState({ online, controlConnected, transferConnected }: Props): "on" | "busy" | "off" {
-  const control = controlConnected ?? online;
-  const transfer = transferConnected ?? false;
-  if (control && transfer) return "on";
-  if (control || transfer) return "busy";
-  return "off";
+export function peonConnectionDotState({ online, controlConnected }: Props): "on" | "off" {
+  return (controlConnected ?? online) ? "on" : "off";
 }
 
 export function PeonConnectionStatusDot(props: Props) {
@@ -38,10 +32,9 @@ export function PeonConnectionStatusDot(props: Props) {
   const [now, setNow] = useState(() => Date.now());
   const [position, setPosition] = useState<{ left: number; top: number; above: boolean } | null>(null);
   const control = props.controlConnected ?? props.online;
-  const transfer = props.transferConnected ?? false;
   const connected = t("socket.connected");
   const disconnected = t("socket.disconnected");
-  const hasUptime = (control && props.controlConnectedAt != null) || (transfer && props.transferConnectedAt != null);
+  const hasUptime = control && props.controlConnectedAt != null;
 
   useEffect(() => {
     if (!hasUptime || !position) return;
@@ -74,7 +67,6 @@ export function PeonConnectionStatusDot(props: Props) {
   };
   const channels = [
     { name: t("socket.control"), active: control, startedAt: props.controlConnectedAt },
-    { name: t("socket.transfer"), active: transfer, startedAt: props.transferConnectedAt },
   ];
   const label = channels.map((channel) => channelLabel(channel.name, channel.active, channel.startedAt)).join("\n");
 

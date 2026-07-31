@@ -15,9 +15,7 @@ export interface PeonLite {
   name: string | null;
   online: boolean;
   controlConnected?: boolean;
-  transferConnected?: boolean;
   controlConnectedAt?: number | null;
-  transferConnectedAt?: number | null;
 }
 
 export interface PeonGroup {

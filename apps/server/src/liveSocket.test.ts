@@ -202,9 +202,7 @@ test("WebSocket handshake and session tails survive ordering and replacement rac
       name: "stub",
       online: false,
       controlConnected: false,
-      transferConnected: false,
       controlConnectedAt: null,
-      transferConnectedAt: null,
     }], "socket snapshot owns initial connection state without duplicating full Peon records");
     assert.ok(JSON.stringify(snapshot).length < 10_000, "REST records must not inflate the WebSocket snapshot");
     broadcast({ workspaceId: workspace.id, peonId: "peon-1", kind: "peon", payload: { peonId: "peon-1", name: "stub", online: true } });

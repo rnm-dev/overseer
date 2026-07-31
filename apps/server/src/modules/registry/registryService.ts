@@ -190,9 +190,7 @@ export function toView(record: PeonRecord): PeonView {
     ...rest,
     online: controlConnected,
     controlConnected,
-    transferConnected: false,
     controlConnectedAt: controlConnected ? peonConnectionStartedAt(record.peonId) : null,
-    transferConnectedAt: null,
     baseUrl: legacyCallbackUrl(record),
   };
 }

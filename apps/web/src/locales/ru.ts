@@ -459,7 +459,6 @@ export const ru: Record<string, string> = {
   "sessions.choose": "Выберите сессию в сайдбаре.",
   "sessions.showingRecent": "Показаны последние {shown} из {total}",
   "socket.control": "Control Channel",
-  "socket.transfer": "Transfer Channel",
   "socket.connected": "подключён",
   "socket.disconnected": "отключён",
   "socket.uptime": "аптайм {duration}",

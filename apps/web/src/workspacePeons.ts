@@ -5,9 +5,7 @@ export interface PeonProjection {
   name?: string | null;
   online: boolean;
   controlConnected?: boolean;
-  transferConnected?: boolean;
   controlConnectedAt?: number | null;
-  transferConnectedAt?: number | null;
 }
 
 export function parsePeonProjection(value: unknown): PeonProjection | null {
@@ -16,18 +14,14 @@ export function parsePeonProjection(value: unknown): PeonProjection | null {
     name?: unknown;
     online?: unknown;
     controlConnected?: unknown;
-    transferConnected?: unknown;
     controlConnectedAt?: unknown;
-    transferConnectedAt?: unknown;
   } | null;
   if (!projection || typeof projection.peonId !== "string" || typeof projection.online !== "boolean") return null;
   return {
     peonId: projection.peonId,
     online: projection.online,
     ...(typeof projection.controlConnected === "boolean" ? { controlConnected: projection.controlConnected } : {}),
-    ...(typeof projection.transferConnected === "boolean" ? { transferConnected: projection.transferConnected } : {}),
     ...(projection.controlConnectedAt === null || typeof projection.controlConnectedAt === "number" ? { controlConnectedAt: projection.controlConnectedAt } : {}),
-    ...(projection.transferConnectedAt === null || typeof projection.transferConnectedAt === "number" ? { transferConnectedAt: projection.transferConnectedAt } : {}),
     ...(projection.name === null || typeof projection.name === "string" ? { name: projection.name } : {}),
   };
 }
@@ -62,9 +56,7 @@ export function mergePeonInventory(current: PeonLite[], inventory: PeonLite[]): 
       ...peon,
       online: projected?.online ?? false,
       controlConnected: projected?.controlConnected ?? false,
-      transferConnected: projected?.transferConnected ?? false,
       controlConnectedAt: projected?.controlConnectedAt ?? null,
-      transferConnectedAt: projected?.transferConnectedAt ?? null,
     };
   });
 }

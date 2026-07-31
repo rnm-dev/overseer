@@ -33,9 +33,7 @@ export interface PeonLoad {
 export type PeonView = Omit<PeonRecord, "token"> & {
   online: boolean;
   controlConnected: boolean;
-  transferConnected: boolean;
   controlConnectedAt: number | null;
-  transferConnectedAt: number | null;
   baseUrl: string | null;
 };
 

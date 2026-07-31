@@ -508,9 +508,7 @@ async function snapshotAndReplay(client: Client, workspaceId: string, wsCursor: 
           name: view.name,
           online: view.online,
           controlConnected: view.controlConnected,
-          transferConnected: view.transferConnected,
           controlConnectedAt: view.controlConnectedAt,
-          transferConnectedAt: view.transferConnectedAt,
         };
       }),
     cursor: snapCursor,

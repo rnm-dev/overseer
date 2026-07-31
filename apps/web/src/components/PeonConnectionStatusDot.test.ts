@@ -7,22 +7,21 @@ import { formatChannelUptime, PeonConnectionStatusDot } from "./PeonConnectionSt
 
 (globalThis as typeof globalThis & { React: typeof React }).React = React;
 
-test("connection status tooltip names both channels, shows live uptime, and partial connectivity is yellow", () => {
+test("connection status tooltip shows only the live control channel", () => {
   const startedAt = Date.now() - 65_000;
   const markup = renderToStaticMarkup(React.createElement(
     I18nProvider,
     null,
     React.createElement(PeonConnectionStatusDot, {
-      online: false,
-      controlConnected: false,
-      transferConnected: true,
-      transferConnectedAt: startedAt,
+      online: true,
+      controlConnected: true,
+      controlConnectedAt: startedAt,
     }),
   ));
 
-  assert.match(markup, /Control Channel: disconnected/);
-  assert.match(markup, /Transfer Channel: connected · uptime 1m 5s/);
-  assert.match(markup, /statdot--busy/);
+  assert.match(markup, /Control Channel: connected · uptime 1m 5s/);
+  assert.doesNotMatch(markup, /Transfer Channel/);
+  assert.match(markup, /statdot--on/);
   assert.doesNotMatch(markup, /title=/, "status uses the custom JavaScript tooltip instead of the native browser title");
 });
 
