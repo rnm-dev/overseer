@@ -16,6 +16,9 @@ import {
   fmtReset,
   outcomeTone,
   sum,
+  analyticsRows,
+  type Analytics,
+  type AnalyticsRow,
   type ByModel,
   type CapabilitiesState,
   type CapabilityItem,
@@ -35,6 +38,8 @@ export function PeonStats() {
   const { peon, base, isOwner } = usePeon();
   const [period, setPeriod] = useState<Period>("day");
   const [stats, setStats] = useState<Stats | null>(null);
+  const [analytics, setAnalytics] = useState<{ users: Analytics | null; projects: Analytics | null }>({ users: null, projects: null });
+  const [analyticsError, setAnalyticsError] = useState<string | null>(null);
   const [unsupported, setUnsupported] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [quotas, setQuotas] = useState<Record<Provider, QuotaState>>(EMPTY_QUOTA);
@@ -112,6 +117,29 @@ export function PeonStats() {
     };
   }, [base, peon.online, period, t]);
 
+  useEffect(() => {
+    if (!peon.online) return;
+    let alive = true;
+    setAnalytics({ users: null, projects: null });
+    setAnalyticsError(null);
+    Promise.allSettled([
+      api<Analytics>(`${base}/analytics?period=${period}&groupBy=user`),
+      api<Analytics>(`${base}/analytics?period=${period}&groupBy=project`),
+    ]).then(([users, projects]) => {
+      if (!alive) return;
+      setAnalytics({
+        users: users.status === "fulfilled" ? users.value : null,
+        projects: projects.status === "fulfilled" ? projects.value : null,
+      });
+      if (users.status === "rejected" || projects.status === "rejected") {
+        setAnalyticsError(t("error.loadFailed"));
+      }
+    });
+    return () => {
+      alive = false;
+    };
+  }, [base, peon.online, period, t]);
+
   if (!peon.online) return <p className="font-mono text-sm text-ink-faint">{t("peon.offlineNote")}</p>;
   if (unsupported) return <p className="font-mono text-sm text-ink-faint">{t("peon.unsupported")}</p>;
 
@@ -170,6 +198,27 @@ export function PeonStats() {
       )}
 
       <div className="grid gap-4 xl:grid-cols-2">
+        <UsageBreakdown
+          title={t("peon.stats.byUser")}
+          rows={analytics.users?.rows}
+          label={(row) => row.user === "unknown" || !row.user ? t("peon.stats.unknownUser") : row.user}
+          empty={t("peon.stats.noUserUsage")}
+          loading={!analytics.users && !analyticsError}
+        />
+        <UsageBreakdown
+          title={t("peon.stats.byProject")}
+          rows={analytics.projects?.rows}
+          label={(row) => row.projectKey || (row.projectId ? row.projectId : t("peon.stats.unknownProject"))}
+          empty={t("peon.stats.noProjectUsage")}
+          loading={!analytics.projects && !analyticsError}
+        />
+      </div>
+      {analyticsError && <p className="border-l-2 border-danger bg-danger/5 py-2 pl-3 font-mono text-sm text-danger">⚠ {t("peon.stats.breakdownUnavailable")}</p>}
+      {(analytics.users?.attribution?.note || analytics.projects?.attribution?.note) && (
+        <p className="font-mono text-xs text-ink-faint">{t("peon.stats.attributionNote")}</p>
+      )}
+
+      <div className="grid gap-4 xl:grid-cols-2">
         {PROVIDERS.map((provider) => (
           <ProviderUsage
             key={provider}
@@ -206,6 +255,54 @@ export function PeonStats() {
         </Card>
       )}
     </div>
+  );
+}
+
+function UsageBreakdown({
+  title,
+  rows,
+  label,
+  empty,
+  loading,
+}: {
+  title: string;
+  rows?: AnalyticsRow[];
+  label: (row: AnalyticsRow) => string;
+  empty: string;
+  loading: boolean;
+}) {
+  const t = useT();
+  const ordered = analyticsRows(rows);
+  return (
+    <Card className="overflow-hidden px-0 py-0">
+      <div className="border-b border-edge px-5 py-4 font-display text-[0.6rem] uppercase tracking-[0.16em] text-ink-muted">{title}</div>
+      {loading ? <div className="m-5 loading-spinner" /> : ordered.length === 0 ? (
+        <p className="px-5 py-6 font-mono text-sm text-ink-faint">{empty}</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[28rem] text-left font-mono text-xs">
+            <thead className="text-ink-faint">
+              <tr className="border-b border-edge">
+                <th className="px-5 py-2 font-normal">{t("peon.stats.name")}</th>
+                <th className="px-3 py-2 text-right font-normal">{t("peon.stats.prompts")}</th>
+                <th className="px-3 py-2 text-right font-normal">{t("peon.stats.outputTokens")}</th>
+                <th className="px-5 py-2 text-right font-normal">{t("peon.stats.inputTokens")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {ordered.map((row, index) => (
+                <tr key={`${label(row)}-${index}`} className="border-b border-edge/60 last:border-0">
+                  <td className="max-w-56 truncate px-5 py-3 text-ink" title={label(row)}>{label(row)}</td>
+                  <td className="px-3 py-3 text-right text-ink-muted">{fmtCount(row.promptCount)}</td>
+                  <td className="px-3 py-3 text-right text-accent-strong">{fmtCount(row.outputTokens)}</td>
+                  <td className="px-5 py-3 text-right text-ink-muted">{fmtCount(row.inputTokens)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Card>
   );
 }
 

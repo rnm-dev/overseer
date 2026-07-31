@@ -21,6 +21,34 @@ export interface Stats {
   sessionsMissingUsage?: number;
   byModel?: ByModel[];
 }
+
+export interface AnalyticsRow {
+  user?: string;
+  projectId?: string | null;
+  projectKey?: string | null;
+  sessionCount?: number;
+  promptCount?: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  cacheCreationTokens?: number;
+  cacheReadTokens?: number;
+  processedTokens?: number;
+  sessionsMissingUsage?: number;
+}
+
+export interface Analytics {
+  rows?: AnalyticsRow[];
+  attribution?: {
+    note?: string;
+  };
+}
+
+export function analyticsRows(rows?: AnalyticsRow[]): AnalyticsRow[] {
+  return [...(rows ?? [])].sort((a, b) =>
+    (b.outputTokens ?? 0) - (a.outputTokens ?? 0)
+      || (b.promptCount ?? 0) - (a.promptCount ?? 0),
+  );
+}
 // Per-model usage rollup — attributed to the model actually used per turn, sorted
 // by cost server-side. Rendered defensively (any field may be absent).
 export interface ByModel {

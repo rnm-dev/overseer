@@ -8,6 +8,7 @@ capabilities. Compact layouts stack provider cards vertically.
 The feature uses the workspace-scoped peon routes:
 
 - `GET /api/workspaces/:workspaceId/peons/:peonId/stats?period=...`
+- `GET /api/workspaces/:workspaceId/peons/:peonId/analytics?period=...&groupBy=user|project`
 - `GET /api/workspaces/:workspaceId/peons/:peonId/quota/:provider`
 - `GET /api/workspaces/:workspaceId/peons/:peonId/capabilities/:provider`
 
@@ -21,6 +22,8 @@ adds `refresh=1` to both probes.
 ## Presentation rules
 
 - Headline session count, output tokens, and duration.
+- Show prompt and token breakdowns by session initiator and project, ordered by
+  output tokens for the selected period.
 - Keep input, cache creation, and cache read as a secondary breakdown.
 - Never headline `totalTokens`: it already includes cache tokens and cache read
   can make the number look like newly generated work.
@@ -28,6 +31,8 @@ adds `refresh=1` to both probes.
 - Show account quota windows and reset countdowns when supplied.
 - Keep Plugins, Skills, and MCP inventories collapsed until requested.
 - Treat a 404 from `/stats` as an unsupported Peon version.
+- Explain that historical usage is session-level: tokens from shared follow-ups
+  are attributed to the operator who initiated the session.
 
 ## Caching and privacy
 
