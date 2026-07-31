@@ -96,9 +96,14 @@ export async function commitRuntimeState(input: {
       `SELECT epoch,revision,digest FROM peon_runtime_state WHERE peon_id=$1 FOR UPDATE`, [input.peonId],
     );
     const row = existing.rows[0];
-    if (row?.epoch === input.durable.epoch && input.durable.revision < Number(row.revision)) {
-      throw new Error("stale runtime revision");
-    }
+    // A durable runtime-state message can be redelivered out of order across
+    // reconnects (the client republishes its current snapshot on every
+    // renegotiation while older queued messages are still draining). An
+    // already-superseded revision must still be acknowledged rather than
+    // treated as fatal, or the connection is torn down and the same message
+    // is redelivered forever, permanently blocking this Peon's runtime
+    // channel. Only a genuine digest mismatch at an equal revision indicates
+    // real corruption worth rejecting.
     if (row?.epoch === input.durable.epoch && Number(row.revision) === input.durable.revision && row.digest !== input.durable.digest) {
       throw new Error("runtime revision digest changed");
     }
