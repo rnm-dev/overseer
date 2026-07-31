@@ -15,13 +15,12 @@ browser and mobile routes are unchanged:
 
 Overseer authorizes the workspace, Peon, project/session and operator, then
 streams the request through the direct authenticated Peon Fleet HTTP API over
-mesh. This is the only authority for:
+the configured external endpoint. This is the only authority for:
 
 - sandbox and project file bodies, metadata and Range downloads;
 - attachment and project uploads;
 - project move/delete mutations;
-- session artifact metadata, raw/download bytes, preview handoff and watch SSE;
-- approved Peon release archive bytes.
+- session artifact metadata, raw/download bytes, preview handoff and watch SSE.
 
 There is no transfer WebSocket, transfer capability negotiation, socket
 fallback or reverse-command byte payload. Browser abort closes the upstream

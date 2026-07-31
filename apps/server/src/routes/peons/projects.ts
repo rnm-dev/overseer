@@ -136,7 +136,7 @@ export function registerProjectRoutes(router: express.Router): void {
   }));
   // Directory picker for new projects. Keep the public Overseer route stable,
   // but make the one authenticated Fleet HTTP request directly to the Peon's
-  // host-filesystem listing endpoint over mesh.
+  // host-filesystem listing endpoint over authenticated Fleet HTTP.
   router.get(`${wp}/folders`, withWorkspacePeon(async (req, res, c) => {
     if (!ownerOnly(res, c.role)) return;
     try {

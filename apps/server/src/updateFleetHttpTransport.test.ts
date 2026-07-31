@@ -12,7 +12,7 @@ test("Peon update routes have one direct Fleet HTTP authority", () => {
 
   assert.match(updateRoutes, /callPeon\(connOfRecord\(c\.record\), "POST", "\/control\/check-update"/);
   assert.match(updateRoutes, /callPeon\(connOfRecord\(c\.record\), "POST", "\/control\/update"/);
-  assert.match(updateRoutes, /latestRelease\(\)/);
-  assert.match(updateRoutes, /release: \{ version: release\.version, revision: release\.storageKey, sha256: release\.sha256 \}/);
+  assert.doesNotMatch(updateRoutes, /latestRelease|release:/);
+  assert.match(updateRoutes, /body: req\.body\?\.force === true \? \{ force: true \} : \{\}/);
   assert.doesNotMatch(updateRoutes, /reverseCommand|runReverseCommandTransport|fallback|legacy/);
 });

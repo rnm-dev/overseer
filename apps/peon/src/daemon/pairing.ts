@@ -10,7 +10,7 @@ import { settings } from "./settings/index.js";
 // (lok-tar-ogar-dabu) rather than random hex.
 //
 // Security model — memorable is safe here because the phrase is *single-use*,
-// *TTL'd* (~15 min), *tailnet-only*, *rate-limited* (agentApi.ts), and compared
+// *TTL'd* (~15 min), single-use, *rate-limited* (agentApi.ts), and compared
 // in *constant time*. Entropy is log2(N) * words; the list below is >256 words,
 // so a 4-word phrase is ~32 bits — plenty for a secret with all those guards.
 

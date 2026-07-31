@@ -25,7 +25,7 @@ export function attachHumanFilesystemRoutes(app, deps) {
     });
     // Live version of the above: streams an initial snapshot, then re-lists and
     // re-sends whenever `fs.watch` reports a change in the watched directory
-    // (coalesced, since watch fires bursts per change). Powers the dashboard's
+    // (coalesced, since watch fires bursts per change). Powers the local API's
     // Files card so it stays current while open without polling.
     app.get("/api/v1/fs/stream", (req, res) => {
         const root = typeof req.query.root === "string" ? req.query.root.trim() : "";

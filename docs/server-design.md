@@ -15,17 +15,12 @@ touching anything protocol-shaped.
 
 These are settled — build toward them, don't relitigate without a reason:
 
-- **Deploys to a public VPS with a domain.** The mobile app reaches it over the
-  public internet (TLS), NOT via Tailscale-on-phone.
-- **Two network faces — keep them separate.** The VPS *also* joins the tailnet
-  so it can reach NAT'd peons. The **peon-facing** API (`/agent/v1/peons/*`
-  register+heartbeat, plus the overseer→peon calls) stays **tailnet-only** —
-  bind it to the tailnet interface, never expose the `fleetToken` endpoints to
-  the internet. Only the **operator/mobile** API (`/fleet/*` + the WebSocket)
-  goes **public, behind TLS + per-user/per-device auth**. A leaked `fleetToken`
-  on the public net would let anyone impersonate a peon; the split keeps the
-  fleet plane private and the internet-facing surface a single authenticated
-  app. (Dual-bind is a deploy TODO — see roadmap; today it's one listener.)
+- **Deploys to a public VPS with a domain.** The mobile app and Peons reach it
+  over public TLS.
+- **Every machine-facing edge is authenticated.** Peons register and maintain
+  outbound WSS over HTTPS. Overseer calls each Peon's advertised external
+  Fleet HTTPS endpoint with that Peon's scoped bearer. Local Peon CLI/MCP
+  routes remain loopback-only.
 - **Postgres is the single system-of-record.** Everything durable lives there
   (already in the peon stack — peon assigns a `pgPort` per project). Connect via
   `DATABASE_URL`. Schema is migration-managed in `db.ts`. **Redis is deliberately
@@ -98,11 +93,8 @@ tracked in `schema_migrations`.
  peons ───────/agent/v1/peons/register + heartbeat (fleetToken)───────────────► OVERSEER
 ```
 
-- **Transport is Tailscale.** No inbound reachability needed on a peon: it dials
-  the overseer to register, and the overseer records the peon's tailnet
-  address **from the source of that request** (`sourceAddress()` in
-  `server.ts`). That's the whole NAT solution — never trust a peon's
-  self-claimed address, only where its connection came from.
+- **Transport is authenticated external HTTPS.** A Peon dials Overseer to
+  register and advertises the external URL configured by its operator.
 - **The overseer is the client for all control.** `/fleet/*` routes proxy
   through to a peon's `/agent/v1/*` (`peonClient.ts`). The one inbound thing
   peons do is register + heartbeat (discovery/liveness only).
@@ -235,9 +227,8 @@ lost phone → revoke that device only. Needed before the overseer goes public.
    admission").
 8. **Per-peon tokens** — one shared `fleetToken` today; per-peon secrets limit
    blast radius if a box is compromised.
-9. **Dual-bind the two interfaces** (deploy) — peon-facing `/agent/v1/peons/*`
-   on the tailnet interface only; `/fleet/*` + WS public behind TLS. Today it's
-   one listener; split before going public (see "Locked decisions").
+9. **Keep ingress policy explicit** (deploy) — public services stay behind TLS,
+   and Peon Fleet endpoints accept only their scoped bearer from Overseer.
 10. **A committed test suite** (`node --test`/vitest + `pg-mem`) replacing the
     throwaway scripts.
 
@@ -257,8 +248,8 @@ to a few dozen. You do not need anything fancier yet.** But the mobile app + a
 
 `GET /fleet/sessions` = fire `GET /agent/v1/sessions` at every *online* peon
 concurrently (`Promise.all`, exactly like `/fleet/status` already does) and
-merge. At 10 peons that's 10 parallel tailnet requests; wall-clock ≈ the slowest
-single peon (tens of ms on a tailnet). Cheap, **stateless, always fresh, nothing
+merge. At 10 Peons that's 10 parallel external requests; wall-clock ≈ the slowest
+single Peon. Cheap, **stateless, always fresh, nothing
 to keep in sync.** Rules that keep it healthy — most already in place:
 
 - **Skip offline peons** (already done in `/fleet/status`) so a dead box never
@@ -314,8 +305,8 @@ the index.
 - **Design `/fleet/*` response shapes for the phone now.** Keep list endpoints
   paginated and summary-only from day one so the mobile app never has to
   re-shape them.
-- **Decide the public-exposure model early** (Tailscale-on-phone vs public VPS +
-  TLS) — it gates the auth work in roadmap #3.
+- **Keep the public-exposure model explicit** — TLS, Peon-scoped bearers and
+  ingress restrictions gate every machine-facing endpoint.
 - **Don't let the overseer accrete session logic.** It orchestrates and
   aggregates; the peon owns execution. If you're tempted to compute session
   state *in* the overseer, that's a smell — read it from the peon or from the

@@ -83,7 +83,7 @@ const servers = listenerHosts.map((host, index) => app.listen(PORT, host, index 
   } else if (!isLoopbackHost(publicControlUrl)) {
     console.warn(
       "WARNING: publicControlUrl is remote but the daemon still binds loopback. " +
-        "Use `peon remote on <mesh-host>` to enable Fleet HTTP over the mesh.",
+        "Use `peon remote on <public-host>` to enable external Fleet HTTP.",
     );
   }
   console.log("(task claim: milestone 1 only — claims + reports needs_human, does not implement yet)");
@@ -95,7 +95,7 @@ const servers = listenerHosts.map((host, index) => app.listen(PORT, host, index 
     console.log(`\n${rule}`);
     console.log("  peon is unrecruited — start an outbound claim with:\n");
     console.log("      peon pair https://your-overseer.example\n");
-    console.log("  No inbound address, callback, or Tailscale reachability is required.");
+    console.log("  No inbound address or callback is required for enrollment.");
     console.log(`${rule}\n`);
   }
   // Restores a persisted start, poll, delivery acknowledgement, or rotation
@@ -137,10 +137,10 @@ process.on("SIGTERM", () => {
   peonRegistrar.stop();
   sessions.notifyShuttingDown();
   // server.close() waits for every open connection to end — but SSE clients
-  // (dashboard tabs, live session streams) hold theirs open indefinitely,
+  // hold live session streams open indefinitely,
   // and EventSource auto-reconnects the instant a connection is force-closed,
   // so even closeAllConnections() doesn't reliably win that race. Confirmed
-  // empirically: a restart with the dashboard open hung until systemd's
+  // empirically: a restart with a stream open hung until systemd's
   // stop-timeout force-killed it, repeatedly. Exit on a hard deadline
   // instead of waiting on client behavior we don't control.
   for (const server of servers) {

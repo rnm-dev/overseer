@@ -39,7 +39,7 @@ The final change must treat these as one coordinated compatibility boundary:
   created them. Historical migrations must not simply be edited; cleanup needs
   a new reversible migration and a verified retained backup.
 - Peon compatibility: inbound fleet bearer middleware/routes, legacy
-  `/api/v1/enroll`, `peonRegistrar` registration/heartbeat, `legacy-mesh`,
+  `/api/v1/enroll`, `peonRegistrar` registration/heartbeat, retired callback mode,
   remote-listener settings, callback credential fields and obsolete dashboard
   status/actions.
 - Configuration and documentation:

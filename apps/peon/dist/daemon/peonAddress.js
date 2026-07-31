@@ -9,8 +9,8 @@ function directControlUrl() {
 /**
  * The canonical address an overseer should use when calling this peon back.
  *
- * publicControlUrl is operator-owned: it may be a mesh DNS name or the public
- * side of a reverse proxy, neither of which can be reconstructed from the
+ * publicControlUrl is operator-owned: it may be a public DNS name or the
+ * external side of a reverse proxy, neither of which can be reconstructed from the
  * source IP of a registration request. Keep a defensive fallback for old or
  * manually-edited settings files, but never replace a valid configured domain
  * with os.hostname() or a socket address.

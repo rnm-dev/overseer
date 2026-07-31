@@ -1,6 +1,6 @@
-// Generates the two systemd user units `peon start` installs, replacing the old static
-// `systemd/*.service` files. Generating them at install time (rather than shipping fixed
-// files) lets each unit point at wherever this particular install actually landed and
+// Generates the systemd user unit `peon start` installs. Generating it at install
+// time (rather than shipping a fixed file) lets the unit point at wherever this
+// particular install actually landed and
 // whichever node actually ran `peon start` — no assumptions about install location, npm
 // prefix, or how node itself was installed (nvm/volta/system package/etc).
 export function buildDaemonUnit(opts) {

@@ -68,8 +68,6 @@ env:
     OVERSEER_PREVIEW_TOKEN_TTL_MS: 600000
     OVERSEER_OFFLINE_AFTER_MS: 45000
     OVERSEER_RECONCILE_INTERVAL_MS: 30000
-    OVERSEER_RELEASE_DIRECTORY: /data/releases
-    OVERSEER_RELEASE_MAX_BYTES: 536870912
     # Voice dictation. The preset resolves to Groq's OpenAI-compatible endpoint
     # and its model pair; only the key is a secret. The daily ceiling matters
     # because the per-user limits are per user: 20 requests/minute is 1200 an
@@ -85,7 +83,6 @@ env:
     - DATABASE_URL
     - OVERSEER_GITHUB_CLIENT_ID
     - OVERSEER_GITHUB_CLIENT_SECRET
-    - OVERSEER_RELEASE_TOKEN
     - OVERSEER_VOICE_API_KEY
     # Firebase service account for FCM HTTP v1 (project overseer-9fe46), passed
     # as base64 of the JSON. Production and dev hold DIFFERENT Firebase projects
@@ -93,10 +90,6 @@ env:
     # the voice key there is no shared budget to split here.
     - OVERSEER_PUSH_FCM_CREDENTIALS
 
-# Application-owned persistent data. This named volume is independent of every
-# versioned app container and must be included in backup/cutover verification.
-volumes:
-  - overseer-releases:/data/releases
 
 accessories:
   postgres:

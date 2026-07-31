@@ -1,7 +1,7 @@
 # Armory over Fleet HTTP
 
 Armory request/response traffic has one authority: Overseer calls Peon's
-authenticated Fleet HTTP API directly through mesh. Public browser/mobile
+authenticated Fleet HTTP API directly through the configured external endpoint. Public browser/mobile
 routes, workspace membership checks and Peon ACLs are unchanged. There is no
 capability selector, reverse-command path, legacy fallback or retry onto a
 second transport.

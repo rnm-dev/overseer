@@ -6,7 +6,7 @@ import { promisify } from "node:util";
 import semver from "semver";
 import { settings, type UpdateCheckerSettings } from "./settings/index.js";
 import { REPO_GIT_URL, readLocalSha, isGitCheckout } from "../shared/repo.js";
-import { fetchLatestRelease } from "../shared/releaseRegistry.js";
+import { fetchLatestNpmRelease } from "../shared/npmRegistry.js";
 
 const execFileAsync = promisify(execFile);
 const PACKAGE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -82,20 +82,15 @@ function createUpdateChecker(options: UpdateCheckerOptions = {}): UpdateChecker 
 
     checkInFlight = (async () => {
       try {
-        const { overseerUrl, overseerToken } = readSettings();
-
         if (!isGitCheckout(PACKAGE_ROOT)) {
-          if (!overseerUrl.trim() || !overseerToken.trim()) {
-            throw new Error("Overseer credentials are required to check Peon releases");
-          }
           const currentVersion = packageVersion();
-          const release = await fetchLatestRelease({ baseUrl: overseerUrl, token: overseerToken });
+          const release = await fetchLatestNpmRelease();
           Object.assign(state, {
             currentVersion,
-            latestVersion: release?.version ?? null,
+            latestVersion: release.version,
             currentRevision: null,
             latestRevision: null,
-            updateAvailable: release ? semver.gt(release.version, currentVersion) : false,
+            updateAvailable: semver.gt(release.version, currentVersion),
             checkedAt: Date.now(),
             error: null,
           });

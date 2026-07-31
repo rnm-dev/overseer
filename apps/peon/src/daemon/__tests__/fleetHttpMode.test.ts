@@ -20,18 +20,22 @@ test("new Peons listen for authenticated Fleet HTTP on every interface", () => {
 test("retired topology settings cannot disable Fleet HTTP", () => {
   const service = isolatedSettings({
     fleetMode: "reverse-only",
-    bindHost: "100.64.0.3",
+    publicDashboardUrl: "http://127.0.0.1:9999",
+    bindHost: "203.0.113.3",
   });
   assert.equal("fleetMode" in service.get(), false);
-  assert.equal(service.get().bindHost, "100.64.0.3");
+  assert.equal("publicDashboardUrl" in service.get(), false);
+  assert.equal(service.get().bindHost, "203.0.113.3");
 });
 
 test("rolling clients may submit the retired field without changing listener settings", () => {
-  const service = isolatedSettings({ bindHost: "100.64.0.3" });
+  const service = isolatedSettings({ bindHost: "203.0.113.3" });
   const { settings } = service.patchControlSettings({
     fleetMode: "reverse-only",
-    bindHost: "100.64.0.4",
+    publicDashboardUrl: "http://127.0.0.1:9999",
+    bindHost: "203.0.113.4",
   });
   assert.equal("fleetMode" in settings, false);
-  assert.equal(settings.bindHost, "100.64.0.4");
+  assert.equal("publicDashboardUrl" in settings, false);
+  assert.equal(settings.bindHost, "203.0.113.4");
 });

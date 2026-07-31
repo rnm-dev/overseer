@@ -112,12 +112,11 @@ it rather than kept private.
 `rnmdev` account owns it with 2FA enabled. Public packages therefore use the
 `@rnm-dev/` scope, matching the GitHub organisation.
 
-**Peon's release channel must not change.** In production a Peon is installed
-from an npm archive served by Overseer itself, verified by exact size and
-SHA-256 against enrollment credentials (`src/cli/update.ts`,
-`shared/releaseRegistry.ts`, the `/data/releases` volume). That is what makes a
-fleet-wide version gate possible. The public registry is the *installation and
-onboarding* channel; Overseer stays the *update* channel for an enrolled fleet.
+**Public npm is Peon's only distribution channel.** Production checks the
+public registry for `@rnm-dev/peon` and installs an exact version while
+preserving the existing global prefix and local rollback archive. Overseer
+keeps only the operator check/apply/status control surface; it no longer
+publishes, stores, approves or proxies release metadata or package bytes.
 
 **Peon's checkout update mode assumes package root == repository root.**
 `PACKAGE_ROOT` and `isGitCheckout` need to be separated once the package sits in

@@ -39,7 +39,7 @@ transcription of Peon output, real-time partial results.
 | Option | Verdict |
 | --- | --- |
 | In the browser (Web Speech API, whisper WASM) | No. Quality is poor, Safari/WKWebView support is inconsistent, and a WASM model is a multi-megabyte download on mobile. |
-| On the Peon | No. The audio originates on the operator's device, the Peon may be offline, and it adds a tailnet round trip to a latency-critical path. |
+| On the Peon | No. The audio originates on the operator's device, the Peon may be offline, and it adds an unnecessary network round trip to a latency-critical path. |
 | **On Overseer, proxied to a provider** | **Yes.** The API key never reaches a client, web / mobile webview / native share one endpoint, and the provider seam is a single server-side interface. |
 
 ## Provider seam
@@ -197,7 +197,7 @@ the shared key.
 
 **When a stage counts as configured:** it needs a base URL *and* a model, plus
 an API key if the base URL is `https`. A plain-`http` endpoint is taken to be a
-local or tailnet server and runs keyless, which is what makes the `local` preset
+local server and runs keyless, which is what makes the `local` preset
 work out of the box. The rule's real job is the common misconfiguration —
 `OVERSEER_VOICE=groq` with the key forgotten — which becomes a boot warning
 instead of a 502 on the operator's first utterance.
@@ -598,7 +598,7 @@ prompt instead of cleaning it:
 The second quality lever, and the reason it is worth owning this pipeline
 rather than embedding a vendor widget. Overseer knows things a generic
 transcriber does not: Peon names (Kanat, Marat, Nova, Thor), project names,
-repo jargon (Kamal, Tailscale, kamal-proxy, Postgres), the current session's
+repo jargon (Kamal, ingress, kamal-proxy, Postgres), the current session's
 prompt preview, and the draft already in the composer.
 
 The client sends only ids; the server assembles the glossary from data the

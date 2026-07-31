@@ -576,11 +576,8 @@ async function main() {
                 const patch = { bindHost: "0.0.0.0" };
                 if (publicHost) {
                     if (/^https?:\/\//i.test(publicHost)) {
-                        // A full URL means a reverse proxy fronts both the dashboard and the
-                        // control API on one origin (served on 80/443, not our own ports) — use
-                        // it verbatim for both so magic links come out portless
-                        // (https://host/?token=...) instead of host:4571. api.js already routes
-                        // /api/v1/* same-origin behind a proxy, so the two sharing one origin is fine.
+                        // A full URL means a reverse proxy fronts the control API on
+                        // 80/443 rather than the daemon's own port.
                         const origin = new URL(publicHost).origin;
                         patch.publicControlUrl = origin;
                     }
@@ -589,12 +586,12 @@ async function main() {
                     }
                 }
                 await patchSettings(patch);
-                console.log("remote access enabled — both processes will bind 0.0.0.0 after a restart.");
+                console.log("remote access enabled — the daemon will bind 0.0.0.0 after a restart.");
                 if (publicHost) {
                     console.log(`  control   : ${patch.publicControlUrl}`);
                 }
                 else {
-                    console.log("next: set the public host so magic links resolve from other machines:");
+                    console.log("next: set the public host advertised to Overseer:");
                     console.log("  peon remote on <public-host-or-ip>");
                 }
                 await restartBothServices(rest.includes("--force"));

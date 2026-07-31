@@ -7,7 +7,7 @@ import {
   TopologyViolation,
 } from "../src/index.js";
 
-test("the stable current slice keeps the complete file plane on Fleet HTTP mesh", () => {
+test("the stable current slice keeps the complete file plane on external Fleet HTTP", () => {
   const matrix = runCapabilityMatrix(loadFixture("capability-matrix-v1.json"));
   const current = matrix.cells.find((cell) => cell.peon === "current" && cell.overseer === "current");
   assert.ok(current?.passed);

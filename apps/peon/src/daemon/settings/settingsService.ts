@@ -341,9 +341,9 @@ export class SettingsService extends EventEmitter implements SettingsServiceCont
       this.throwBadRequest(`${managedCredential} is managed by enrollment and cannot be changed through general settings`);
     }
     const patch = { ...body } as Partial<DaemonSettings>;
-    // Rolling upgrades may still submit the retired topology field. Ignore it:
-    // authenticated Fleet HTTP is the single supported transport policy.
+    // Rolling upgrades may still submit fields removed from the daemon.
     delete (patch as unknown as Record<string, unknown>).fleetMode;
+    delete (patch as unknown as Record<string, unknown>).publicDashboardUrl;
     const requestedAgent = "defaultAgent" in body ? narrowNewSessionAgent(body.defaultAgent) : current.defaultAgent;
     if (!requestedAgent) {
       this.throwBadRequest(`defaultAgent must be one of: ${this.listAgents()}`);

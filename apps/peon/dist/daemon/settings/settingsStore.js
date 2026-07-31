@@ -25,7 +25,6 @@ const DEFAULT_SETTINGS = {
     codexCommand: "codex",
     maxBudgetUsd: 0,
     publicControlUrl: `http://127.0.0.1:${process.env.ACA_CONTROL_PORT ?? 4570}`,
-    publicDashboardUrl: `http://127.0.0.1:${process.env.ACA_DASHBOARD_PORT ?? 4571}`,
     bindHost: "0.0.0.0",
     name: "",
     autoResumeInterrupted: true,
@@ -81,6 +80,7 @@ export class SettingsStore {
         // Fleet HTTP is the only topology now. Ignore retired topology switches
         // from older settings files; the next update persists a clean document.
         delete fromFile.fleetMode;
+        delete fromFile.publicDashboardUrl;
         return {
             ...DEFAULT_SETTINGS,
             ...fromFile,

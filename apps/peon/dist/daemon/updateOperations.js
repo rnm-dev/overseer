@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { isGitCheckout, readLocalSha } from "../shared/repo.js";
 import { startSelfUpdate } from "./selfUpdate.js";
 import { readUpdateCommandReceipt, writeUpdateCommandReceipt } from "./updateCommandReceipt.js";
-import { isUpdateReleaseIdentity, readUpdateRuntimeIdentity } from "./updateRuntimeIdentity.js";
+import { readUpdateRuntimeIdentity } from "./updateRuntimeIdentity.js";
 import { updateChecker } from "./updateChecker.js";
 const PACKAGE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const REQUEST_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
@@ -53,8 +53,6 @@ export function recoverUpdateOperation(runningPid = process.pid, runningIdentity
         return receipt;
     const actual = runningIdentity ?? runtimeIdentity();
     const matches = receipt.expectedVersion !== null
-        && receipt.expectedRevision !== null
-        && receipt.expectedSha256 !== null
         && receipt.expectedVersion === actual.version
         && receipt.expectedRevision === actual.revision
         && receipt.expectedSha256 === actual.sha256;
@@ -95,7 +93,7 @@ export async function checkUpdate() {
         await updateChecker.checkNow();
         const state = updateChecker.getState();
         if (state.error)
-            return { status: 503, body: { error: "release registry is unavailable", code: "REGISTRY_UNAVAILABLE" } };
+            return { status: 503, body: { error: "npm registry is unavailable", code: "REGISTRY_UNAVAILABLE" } };
         return {
             status: 200,
             body: {
@@ -114,21 +112,15 @@ export async function applyUpdate(requestId, body) {
         return { status: 400, body: { error: "Peon-Request-Id is required", code: "BAD_REQUEST" } };
     }
     const payload = body && typeof body === "object" && !Array.isArray(body) ? body : {};
-    const release = payload.release;
     const force = payload.force === true;
-    if (!isUpdateReleaseIdentity(release) || Object.keys(payload).some((key) => key !== "force" && key !== "release")) {
-        return { status: 400, body: { error: "approved release identity is required", code: "BAD_REQUEST" } };
+    if (Object.keys(payload).some((key) => key !== "force")) {
+        return { status: 400, body: { error: "unsupported update option", code: "BAD_REQUEST" } };
     }
     if (preflightActive) {
         return { status: 409, body: { error: "another update operation is in progress", code: "UPDATE_IN_PROGRESS" } };
     }
     const existing = recoverUpdateOperation();
     if (existing?.commandId === requestId) {
-        const same = existing.expectedVersion === release.version
-            && existing.expectedRevision === release.revision
-            && existing.expectedSha256 === release.sha256;
-        if (!same)
-            return { status: 409, body: { error: "request id was reused", code: "REQUEST_ID_REUSED" } };
         const response = boundedReceipt(existing);
         return { status: existing.state === "running" || existing.state === "ready_to_attest" ? 202 : 200, body: response };
     }
@@ -143,16 +135,16 @@ export async function applyUpdate(requestId, body) {
         await updateChecker.checkNow();
         const state = updateChecker.getState();
         if (state.error)
-            return { status: 503, body: { error: "release registry is unavailable", code: "REGISTRY_UNAVAILABLE" } };
+            return { status: 503, body: { error: "npm registry is unavailable", code: "REGISTRY_UNAVAILABLE" } };
         if (!state.updateAvailable && !force) {
             return { status: 200, body: { requestId, status: "noop", code: "NO_UPDATE", result: statusView() } };
         }
         writeUpdateCommandReceipt({
             version: 1,
             commandId: requestId,
-            expectedVersion: release.version,
-            expectedRevision: release.revision,
-            expectedSha256: release.sha256,
+            expectedVersion: state.latestVersion,
+            expectedRevision: null,
+            expectedSha256: null,
             initiatorPid: process.pid,
             state: "running",
             updatedAt: Date.now(),
@@ -161,9 +153,9 @@ export async function applyUpdate(requestId, body) {
             force,
             command: {
                 commandId: requestId,
-                expectedVersion: release.version,
-                expectedRevision: release.revision,
-                expectedSha256: release.sha256,
+                expectedVersion: state.latestVersion,
+                expectedRevision: null,
+                expectedSha256: null,
             },
         });
         if (launch.busy) {

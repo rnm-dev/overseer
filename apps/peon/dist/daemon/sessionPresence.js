@@ -45,8 +45,3 @@ class SessionPresenceStore extends EventEmitter {
     }
 }
 export const sessionPresence = new SessionPresenceStore();
-// A pseudo-session id for dashboard-wide presence (who currently has the
-// dashboard open at all, on any page) — reuses the exact same store/API
-// rather than standing up a second one, since join/leave/list are already
-// generic over an arbitrary string key.
-export const DASHBOARD_PRESENCE_KEY = "__dashboard__";

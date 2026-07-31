@@ -133,7 +133,7 @@ diagnostics, and version-update instructions before the date is announced.
 
 OVSR-211 may remove callback code and recoverable legacy credentials only after
 the published window expires and fleet telemetry shows no supported legacy
-use. Tailscale remains part of legacy setup until the complete no-inbound soak
+use. The retired private-overlay setup remains documented only until the complete no-inbound soak
 and security gates pass.
 
 ## Current acceptance evidence and blockers
@@ -146,5 +146,5 @@ fault/load evidence, not a production observation.
 `docs/reverse-fleet-security.md` does not approve cutover, and production
 telemetry, the sustained no-inbound soak and the accepted-command rollback
 exercise have not been recorded. Therefore no production cohort,
-callback-default change, support-window start, Tailscale removal, deployment,
+callback-default change, support-window start, old network-path removal, deployment,
 or completion claim is authorized.

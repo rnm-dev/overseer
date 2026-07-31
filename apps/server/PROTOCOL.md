@@ -5,16 +5,16 @@
 > apart from this note and the monorepo-relative links below.
 
 The machine-facing API a **overseer** (fleet control plane) uses to drive many
-peons. It shares the `/api/v1` namespace with the human dashboard surface but
+Peons. It shares the `/api/v1` namespace with the loopback-only CLI surface but
 has its own bearer auth, representations, and no human presence bookkeeping. Implemented in
-`src/daemon/agentApi.ts`, mounted at `/api/v1` ahead of the human cookie
-auth-gate in `controlServer.ts`.
+`src/daemon/agentApi.ts`, mounted at `/api/v1` ahead of the local-only
+gate in `controlServer.ts`.
 
 The normative correlated command lifecycle and fleet-surface migration matrix are
 defined in [`../peon/docs/reverse-command-protocol-v1.md`](../peon/docs/reverse-command-protocol-v1.md).
 The frozen Peon-initiated enrollment and credential lifecycle is defined separately
 in [`../peon/docs/peon-claim-protocol-v1.md`](../peon/docs/peon-claim-protocol-v1.md). It uses
-outbound HTTPS short polling and does not inherit the tailnet reachability assumptions
+outbound HTTPS short polling and does not inherit external Fleet HTTP reachability assumptions
 of the legacy recruitment flow below. Its strict schema, lifecycle fixtures, and
 executable cryptographic/security vectors live under `protocol/peon-claim-v1/`.
 Remote daemon pause/resume is intentionally local-only and is not part of the
@@ -22,15 +22,12 @@ reverse command surface.
 
 ## Topology
 
-- **Transport:** HTTP/JSON over a **Tailscale** tailnet. NAT (office desktops
-  with no public IP) is solved by the overlay — every peon has a stable MagicDNS
-  name the overseer can reach; WireGuard provides the encryption. Plain HTTP on
-  the tailnet is acceptable.
+- **Transport:** authenticated HTTP/JSON through each Peon's configured external
+  endpoint. Internet-facing deployments terminate TLS before this endpoint.
 - **Direction:** the **overseer is the client** for all *control* — request /
   response, the peon is a passive server. The one exception is discovery: the
-  peon *announces itself* outbound (see "North-bound" below), so a NAT'd box with
-  no inbound reachability is still discoverable.
-- **Addressing:** `http://<peon>.<tailnet>.ts.net:4570/api/v1/...`
+  Peon *announces itself* outbound (see "North-bound" below).
+- **Addressing:** `https://<peon-host>/api/v1/...`
 
 ## Envelope
 
@@ -74,7 +71,7 @@ not random hex. Flow:
 1. A fresh peon (no `overseerToken`) arms a phrase at boot and prints it once (also
    re-armable with `peon pair` to re-point an already-recruited peon). Never logged
    again after generation.
-2. The human running the peon reads the phrase + the peon's tailnet address to an
+2. The human running the Peon reads the phrase + its external address to an
    operator, who enters both in the overseer's "Connect peon" form.
 3. The overseer calls the peon:
 
@@ -82,7 +79,7 @@ not random hex. Flow:
 POST {peonBaseUrl}/api/v1/enroll
   Authorization: Bearer <pairing phrase>     # e.g. "lok-tar-ogar-dabu"
   Peon-Protocol: 1
-  { "overseerUrl": "http://overseer.<tailnet>.ts.net:5000", "overseerToken": "pn_xxxx" }
+  { "overseerUrl": "https://overseer.example.com", "overseerToken": "pn_xxxx" }
   → 200 { "ok": true, "peonId": "<stable id>", "publicUrl": "http://peon.example:4570" }
 ```
 
@@ -352,8 +349,8 @@ carry an `id:`, since a client already has current state from `GET
 half-open connection through an idle-timing proxy gets noticed. All listeners
 and the heartbeat timer are torn down the moment the request closes.
 
-The dashboard's human-authenticated stream also accepts `afterEventId` as its
-initial snapshot boundary because browser `EventSource` cannot set a custom
+The local stream also accepts `afterEventId` as its initial snapshot boundary
+because browser `EventSource` cannot set a custom
 header on the first connection. Once connected, `Last-Event-ID` takes
 precedence on automatic reconnects. Resume ids are bounded and validated before
 SSE headers are sent.
@@ -532,8 +529,7 @@ initiator because providers did not persist per-message usage; the response's
 `attribution` object states this explicitly. Invalid combinations return `400
 BAD_REQUEST`.
 
-`POST /control/update` triggers this peon's self-update — the fleet-facing twin of
-the dashboard's own update button (both call the same detached updater: `git pull`
+`POST /control/update` triggers this Peon's self-update through the same detached updater used locally: `git pull`
 + tsx-watch reload on a source checkout, authenticated Overseer archive download,
 size/SHA-256 verification, `npm install -g`, and restart on a systemd/global
 install). The global updater packs its current installation before replacement
@@ -578,7 +574,7 @@ never trips that.
   model sees** (the same mechanism the Claude Code IDE extensions use). Vision is
   real; it just arrives via a Read tool-call rather than the opening turn.
 
-**Limits** (shared with the dashboard upload path): **≤ 10 attachments/message**,
+**Limits** (shared by every upload path): **≤ 10 attachments/message**,
 **≤ 25 MB each**, image types **png/jpeg/gif/webp** (Claude Code auto-resizes
 large images to the model's vision limits). Errors branch on `code`:
 `503 FILES_DISABLED`, `400 PATH_ESCAPE`, `404 UNKNOWN_ATTACHMENT_PATH`,
@@ -678,8 +674,7 @@ On first load after upgrading, Peon migrates legacy `info`, `setup`,
 values into headed sections of the Markdown document, persists `metadata`, and
 removes the old keys. Empty/default publication state is omitted.
 
-**Project creation.** Two ways a project enters the store, mirroring the human
-dashboard's two forms:
+**Project creation.** Two ways a project enters the store:
 
 - `POST /projects` — a manual project. `key` is the slugified `label` (server-side);
   `409 PROJECT_EXISTS` on a collision. `dir` is optional — omit it and the peon
@@ -708,7 +703,7 @@ listed. Empty ⇒ `{ "projects": [] }`, never `404`.
 ```
 
 **Project files** (`GET|PUT|PATCH|DELETE /projects/:key/files*`) are sandboxed to
-the project's `dir` — the fleet-facing twin of the human dashboard's own
+the project's `dir` — the fleet-facing twin of the local
 `/api/v1/projects/:key/files*`. Unlike `/sessions/:id/files*` above (which
 follows a session's cwd with no containment check, since a coding agent may
 legitimately work outside it), every path here is realpath-resolved and
@@ -835,7 +830,7 @@ POST {overseerUrl}/api/v1/peons/:peonId/heartbeat   (every heartbeatIntervalMs)
 - `peonId` is stable across restarts (auto-generated + persisted in settings on
   first use) so the overseer dedupes a peon across reconnects.
 - `publicUrl` is the canonical, operator-configured callback address and may be a
-  mesh DNS name or reverse-proxy URL. `hostname` / `controlPort` and the request's
+  public DNS name or reverse-proxy URL. `hostname` / `controlPort` and the request's
   source IP are legacy discovery hints only. They may populate a missing address,
   but must not overwrite the URL retained during enrollment or a valid `publicUrl`.
 - A `404` on heartbeat means the overseer lost its registry (restarted) — the
@@ -936,7 +931,7 @@ remain inactive.
 }
 ```
 
-The control WebSocket carries only control, durable projection, and realtime event frames. File and release bytes use the authenticated Fleet HTTP endpoints over mesh; binary WebSocket frames are not part of this protocol.
+The control WebSocket carries only control, durable projection, and realtime event frames. File and release bytes use the authenticated external Fleet HTTP endpoint; binary WebSocket frames are not part of this protocol.
 
 ### Durable delivery (`durable-delivery-v1`)
 
@@ -1130,11 +1125,11 @@ minimum seven-day retention, retaining command-ID/hash tombstones for another
 seven days.
 
 Update control is outside this lifecycle. Check, apply and operation status use
-the authenticated Fleet HTTP `/api/v1/control/*` routes through mesh. Approved
-release metadata and archive bytes use authenticated HTTP as well.
+the authenticated Fleet HTTP `/api/v1/control/*` routes through the configured external endpoint. Release
+metadata and package bytes come directly from the public npm registry.
 `reverse-command-v1` advertises no `update.*` operations. A mode-0600 update
 receipt supplies idempotency, one-operation admission, restart recovery and
-exact version/revision/SHA-256 replacement-process attestation.
+exact-version replacement-process attestation.
 
 ### Session catalog channel (`session-catalog-v1`)
 
@@ -1277,9 +1272,9 @@ inactive and the existing authenticated HTTP project APIs remain unchanged.
 ### Session warnings (`session-warning-v1`)
 
 When negotiated, Peon publishes small durable warnings through the socket
-outbox. The warning is also a first-class local transcript event, so the Peon
-dashboard remains authoritative when an older Overseer does not accept this
-capability. Context and transport pressure use separate codes and units:
+outbox. The warning is also a first-class local transcript event, so Peon
+remains authoritative when an older Overseer does not accept this capability.
+Context and transport pressure use separate codes and units:
 
 ```jsonc
 {
@@ -1339,6 +1334,6 @@ epoch/revision state. Projection consumers identify it as fresh, stale or
 offline.
 
 Explicit status/models, quota, provider capabilities, stats and filtered
-analytics reads use authenticated Fleet HTTP through mesh. They are not
+analytics reads use authenticated external Fleet HTTP. They are not
 `reverse-command-v1` operations and have no command-ledger fallback. The
 projection, heartbeat and invalidation/events remain on the control WebSocket.

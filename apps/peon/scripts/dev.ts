@@ -2,12 +2,11 @@
 // Runs the daemon as a drop-in replacement for its systemd unit — same port and XDG config/state (so it's
 // the same real settings/credentials/sessions, not a separate instance),
 // same restrictive PATH (no shell-profile inheritance) and Restart=always-
-// style auto-restart on crash. The dashboard server keeps tsx watch hot reload,
-// while the daemon intentionally runs without watch so deploying or editing
+// style auto-restart on crash. The daemon intentionally runs without watch so deploying or editing
 // source cannot interrupt an in-flight session. Restart the harness manually
 // after finishing work when daemon changes need to take effect.
-// Only ever run one of {this, the systemd services} at a time — both bind
-// the same ports.
+// Only ever run one of {this, the native service} at a time — both bind
+// the same port.
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { mkdirSync, openSync, readFileSync, rmSync, writeFileSync, closeSync } from "node:fs";
 import os from "node:os";
@@ -19,9 +18,8 @@ const ROOT = path.join(__dirname, "..");
 const TSX_BIN = path.join(ROOT, "node_modules", ".bin", "tsx");
 const HOME = os.homedir();
 
-// Two long-lived harnesses can each win one of the daemon/dashboard ports,
-// leaving a mixed-version pair serving the same state directory. Take an
-// atomic per-user lock before spawning either child. A stale lock left by an
+// Two long-lived harnesses can race for the daemon port while serving the same
+// state directory. Take an atomic per-user lock before spawning the child. A stale lock left by an
 // ungraceful exit is reclaimed only when its recorded process no longer exists.
 const STATE_ROOT = path.join(process.env.XDG_STATE_HOME || path.join(HOME, ".local", "state"), ".peon");
 const HARNESS_LOCK = path.join(STATE_ROOT, "dev-harness.lock");

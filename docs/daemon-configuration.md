@@ -5,7 +5,7 @@ Peon owns daemon settings. Overseer's owner-only public surface:
 - `GET /api/workspaces/:workspaceId/peons/:peonId/settings`
 - `PATCH /api/workspaces/:workspaceId/peons/:peonId/settings`
 
-always issues authenticated Fleet HTTP requests through mesh to Peon's
+always issues authenticated Fleet HTTP requests to Peon's configured external
 `GET/PATCH /api/v1/settings`. There is no reverse-command, projection,
 negotiation, compatibility selector, or fallback path.
 

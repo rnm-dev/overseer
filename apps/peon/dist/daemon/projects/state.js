@@ -15,7 +15,7 @@ export function slugify(name) {
         .replace(/[^a-z0-9]+/g, "-")
         .replace(/^-+|-+$/g, "");
 }
-// The dashboard's import wizard prefills its dir field with this — same
+// The project import flow prefills its dir field with this — same
 // convention createProject() falls back to when no dir is given explicitly.
 export function suggestDir(label) {
     return path.join(PROJECTS_ROOT, slugify(label));

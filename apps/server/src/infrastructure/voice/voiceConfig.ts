@@ -60,7 +60,7 @@ function normalizeBaseUrl(value: string): string {
 }
 
 // An https endpoint is assumed to be a hosted vendor that needs a key; a plain
-// http one is assumed to be a local or tailnet server that does not. This keeps
+// http one is assumed to be a trusted local server that does not. This keeps
 // `local` usable with no key while still catching the common misconfiguration —
 // OVERSEER_VOICE=groq with the key forgotten — at boot rather than at request
 // time.

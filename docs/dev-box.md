@@ -75,24 +75,19 @@ One compose file, dev-oriented. `docker compose up -d`:
 - Note: `/healthz` (API liveness) is only reachable on the container directly
   (`curl 127.0.0.1:4580/healthz`) — nginx sends non-`/fleet`,-`/agent` paths to Vite.
 
-## The two network faces (IMPORTANT — see [server design notes](server-design.md), "Locked decisions")
+## Network boundaries
 
 - **Operator/mobile API** (`/fleet/*` + WS) → public via nginx/Cloudflare. Done.
-- **Peon-facing API** (`/agent/v1/peons/*` register+heartbeat, and the
-  overseer→peon calls) is meant to be **tailnet-only**. ⚠️ **Tailscale is NOT
-  installed on nid-dev yet** and the container currently binds `0.0.0.0`
-  *inside* the container (host mapping is loopback-only, so nothing is exposed —
-  but there is also no tailnet path to NAT'd peons yet). Before wiring real
-  peons: `apt install tailscale && tailscale up`, then give the container the
-  tailnet and split the listeners. Until then, test with a peon reachable on
-  the same host/LAN.
+- **Peon-facing API** accepts outbound registration/WSS over public HTTPS.
+  Overseer reaches each Peon's separately advertised external Fleet HTTPS
+  endpoint with its Peon-scoped bearer.
 
 ## Secrets (`.env`)
 
 Generated at setup (2026-07-07), git-ignored. Rotate before this faces real
 traffic. Keys:
 - `POSTGRES_PASSWORD` — Postgres superuser for the `overseer` DB.
-- `OVERSEER_PEON_CALLBACK_URL` — tailnet URL the overseer hands a peon at
+- `OVERSEER_PEON_CALLBACK_URL` — external HTTPS URL the Overseer hands a Peon at
   recruitment (`/enroll`), i.e. where peons phone home. Empty ⇒ only *manual*
   recruitment (operator pastes the minted token) works. There is **no shared fleet
   secret**: each peon gets a per-peon, workspace-scoped credential the overseer
@@ -180,6 +175,6 @@ so a restart (which every reload is) keeps the schema in sync.
   `docker image prune -f` if builds start failing on space.
 - **Done:** full-stack (Express API + React dashboard), passwordless auth
   (magic-link + OTP → device tokens), CORS for mobile.
-- Not yet done: Tailscale + tailnet binding; real email provider (Resend key);
+- Not yet done: real email provider (Resend key);
   the resumable WebSocket + event log (roadmap step 3); APNs/FCM. See
   [server design notes](server-design.md) roadmap.

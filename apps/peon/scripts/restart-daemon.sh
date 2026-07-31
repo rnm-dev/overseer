@@ -19,7 +19,7 @@ echo "==> checking for an active session"
 running=$(curl -sf "$CONTROL_API/api/sessions" | jq '[.sessions[] | select(.status == "running")] | length')
 if [ "$running" -gt 0 ]; then
   echo "refusing to restart: a session is currently running (restarting kills it)" >&2
-  echo "cancel it first (dashboard Stop button, or POST /api/sessions/<id>/cancel), or re-run with FORCE=1" >&2
+  echo "cancel it first in Overseer (or POST /api/v1/sessions/<id>/cancel), or re-run with FORCE=1" >&2
   if [ "${FORCE:-0}" != "1" ]; then
     exit 1
   fi

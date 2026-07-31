@@ -279,7 +279,7 @@ export const sessions: SessionCatalogReader & SessionLifecycleContract & Session
     if (record.status === "running") {
       // A previous interrupt is still tearing down its old process; spawning now
       // would race the pending resume onto the same session file. The caller
-      // (the dashboard composer) surfaces this as a retryable error.
+      // the calling client surfaces this as a retryable error.
       if (sessionState.resumePending.has(id) || sessionState.steerPending.has(id)) {
         throw new Error("a resume is already in progress");
       }

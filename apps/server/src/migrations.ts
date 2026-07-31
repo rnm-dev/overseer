@@ -905,4 +905,10 @@ export const MIGRATIONS: { id: string; statements: string[] }[] = [
     id: "032_user_passwords",
     statements: [`ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT`],
   },
+  {
+    // Peon releases are distributed exclusively through the public npm
+    // registry. Overseer no longer stores release metadata or archive bytes.
+    id: "033_remove_peon_releases",
+    statements: [`DROP TABLE IF EXISTS releases`],
+  },
 ];

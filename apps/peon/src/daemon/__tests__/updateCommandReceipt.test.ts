@@ -19,8 +19,8 @@ function isolated(run: () => void): void {
   }
 }
 
-test("replacement success requires exact approved version, revision and SHA-256", () => isolated(() => {
-  const expected = { version: "1.2.3", revision: "revision-a", sha256: "a".repeat(64) };
+test("npm replacement success requires the admitted exact version", () => isolated(() => {
+  const expected = { version: "1.2.3", revision: null, sha256: null };
   writeUpdateCommandReceipt({
     version: 1,
     commandId: "018f4f0c-9f30-7a61-bf1a-66d2582bdb4a",

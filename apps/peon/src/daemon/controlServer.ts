@@ -146,8 +146,7 @@ export function createControlServer(options: ControlServerOptions = {}) {
   app.use("/api/v1", (req, res, next) => {
     // Profile selection must only decide which auth middleware receives the
     // request. Do not validate the Bearer shape here: doing so lets a request
-    // with an Authorization header fall through to the unrelated dashboard
-    // cookie gate, which responds with the misleading "not authenticated".
+    // with an Authorization header fall through to the local-only API gate.
     // createAgentRouter performs the actual strict Bearer validation.
     const fleetRequest =
       req.path === "/enroll" ||
@@ -157,10 +156,8 @@ export function createControlServer(options: ControlServerOptions = {}) {
       req.headers["peon-actor"] !== undefined;
     if (fleetRequest) {
       // Never let an authenticated Fleet-profile request fall through into
-      // dashboard cookie auth when its route is unknown (notably when an
-      // Overseer is newer than the Peon it controls). That used to turn a
-      // useful 404 into the misleading plain-text-profile 401
-      // "not authenticated".
+      // the local-only API when its route is unknown (notably when an
+      // Overseer is newer than the Peon it controls).
       return fleetRouter(req, res, () => {
         if (!res.headersSent) res.status(404).json({ error: "not found", code: "NOT_FOUND" });
       });
@@ -169,7 +166,7 @@ export function createControlServer(options: ControlServerOptions = {}) {
   });
 
   // Local coding agents use enabled Armory MCP packages. Mounted before the
-  // dashboard cookie gate because the MCP router has a stricter boundary of
+  // local-only API gate because the MCP router has a stricter boundary of
   // its own: genuine loopback, no browser Origin, and a loopback Host header.
   app.use("/mcp", createScopedMcpRouter({ armoryRuntime, projectService, sessionOrchestration }));
 
@@ -408,8 +405,8 @@ export function createControlServer(options: ControlServerOptions = {}) {
     res.json(await agentServices.capabilities(provider, req.query.refresh === "1"));
   });
 
-  // The model catalog for the dashboard's model pickers — same payload as the
-  // fleet-facing GET /api/v1/models, so the dashboard needn't use bearer auth
+  // The model catalog for local clients — same payload as the
+  // fleet-facing GET /api/v1/models, so local CLI callers reuse the same catalog
   // surface. Defaults are marked directly on their list records.
   app.get("/api/v1/models", (_req, res) => {
     const s = settings.get();
@@ -479,7 +476,7 @@ export function createControlServer(options: ControlServerOptions = {}) {
   });
 
   // Render an HTML artifact as a real page while keeping it isolated from the
-  // dashboard origin. A base URL lets ordinary relative CSS/JS/image assets
+  // control API origin. A base URL lets ordinary relative CSS/JS/image assets
   // resolve through the companion asset route below. The response-level CSP
   // sandbox also applies if someone opens this URL outside our iframe.
   app.get("/api/v1/sessions/:id/file/web", (req, res) => {
@@ -663,7 +660,7 @@ export function createControlServer(options: ControlServerOptions = {}) {
     sessions.on("event", onEvent);
     sessions.on("change", onChange);
 
-    // The dashboard fetches a bounded snapshot first, then supplies its newest
+    // The client fetches a bounded snapshot first, then supplies its newest
     // immutable id here. Subscribe before reading so events accepted during
     // this handoff are either in the replay snapshot or delivered live.
     if (resumeEventId !== undefined) {

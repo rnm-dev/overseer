@@ -234,7 +234,7 @@ test("human and fleet project routes share one application-service result", asyn
   assert.deepEqual(await missing.json(), { error: "unknown project" });
 });
 
-test("authenticated fleet requests reach project settings without dashboard-cookie 401s", async () => {
+test("authenticated fleet requests reach project settings without local-profile 401s", async () => {
   const headers = {
     Authorization: `Bearer ${token}`,
     "Content-Type": "application/json",
@@ -283,7 +283,7 @@ test("fleet credentials select fleet auth for control mutations", async () => {
   settings.update({ paused: false });
 });
 
-test("an Authorization header never falls through to dashboard cookie auth", async () => {
+test("an Authorization header never falls through to local-only auth", async () => {
   const response = await fetch(`${base}/api/v1/status`, {
     method: "PATCH",
     headers: { Authorization: "invalid", "Content-Type": "application/json" },
@@ -300,7 +300,7 @@ test("CORS preflight permits fleet control headers", async () => {
   const response = await fetch(`${base}/api/v1/status`, {
     method: "OPTIONS",
     headers: {
-      Origin: "http://127.0.0.1:4571",
+      Origin: "https://overseer.example.test",
       "Access-Control-Request-Method": "PATCH",
       "Access-Control-Request-Headers": "authorization,content-type,peon-actor,peon-protocol,peon-request-id",
     },
@@ -347,10 +347,10 @@ test("fleet session queue uses the same bearer profile, preserves actor, and unk
   assert.equal(Object.hasOwn(fleetDetail, "parentCompletionNotificationPending"), false);
   const humanDetail = await fetch(`${base}/api/v1/sessions/${id}`);
   assert.equal(humanDetail.status, 200);
-  const dashboardDetail = await humanDetail.json() as object;
-  assert.equal(Object.hasOwn(dashboardDetail, "pendingSystemPrompts"), false);
-  assert.equal(Object.hasOwn(dashboardDetail, "parentCompletionNotifiedAt"), false);
-  assert.equal(Object.hasOwn(dashboardDetail, "parentCompletionNotificationPending"), false);
+  const localDetail = await humanDetail.json() as object;
+  assert.equal(Object.hasOwn(localDetail, "pendingSystemPrompts"), false);
+  assert.equal(Object.hasOwn(localDetail, "parentCompletionNotifiedAt"), false);
+  assert.equal(Object.hasOwn(localDetail, "parentCompletionNotificationPending"), false);
   const empty = await fetch(`${base}/api/v1/sessions/${id}/queue`, { headers });
   assert.equal(empty.status, 200);
   assert.deepEqual(await empty.json(), { items: [] });
@@ -388,13 +388,13 @@ test("fleet session queue uses the same bearer profile, preserves actor, and unk
   const humanEdited = await fetch(`${base}/api/v1/sessions/${id}/queue/${queue.items[0].id}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ prompt: "edited from dashboard" }),
+    body: JSON.stringify({ prompt: "edited locally" }),
   });
   assert.equal(humanEdited.status, 200);
   assert.equal(
     ((await humanEdited.json()) as { queuedFollowUps: Array<{ id: string; prompt: string }> })
       .queuedFollowUps.find((item) => item.id === queue.items[0].id)?.prompt,
-    "edited from dashboard",
+    "edited locally",
   );
 
   const secondEnqueued = await fetch(`${base}/api/v1/sessions/${id}/queue`, {
@@ -429,7 +429,7 @@ test("fleet session queue uses the same bearer profile, preserves actor, and unk
   sessions.cancel(id);
 });
 
-test("dashboard SSE resumes from Last-Event-ID and validates replay boundaries before streaming", async () => {
+test("local SSE resumes from Last-Event-ID and validates replay boundaries before streaming", async () => {
   const id = "1cd64079-69aa-451c-bb74-b80f100fe13c";
   sessions.start({ id, prompt: "stream handoff", dir: os.tmpdir() });
   const boundary = sessions.getTranscriptEntries(id).at(-1)?.id;

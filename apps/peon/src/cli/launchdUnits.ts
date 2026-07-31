@@ -8,7 +8,7 @@ export interface LaunchAgentOptions {
   nodeBin: string;
   script: string;
   pathEnv: string;
-  portName: "ACA_CONTROL_PORT" | "ACA_DASHBOARD_PORT";
+  portName: "ACA_CONTROL_PORT";
   port: number;
   stdoutPath: string;
   stderrPath: string;

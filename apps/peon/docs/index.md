@@ -39,5 +39,3 @@ URLs are not valid cross-references. `../` is acceptable from nested pages only 
 resolves inside `docs/`. External `https://` links are unaffected.
 
 ## Migrated project information
-
-- [Legacy project metadata](legacy-project-metadata.md)

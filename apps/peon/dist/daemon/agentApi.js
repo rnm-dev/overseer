@@ -27,9 +27,9 @@ import { UnauthorizedRateLimiter } from "./unauthorizedRateLimit.js";
 // The machine-facing control surface a "overseer" (fleet control plane) uses
 // to drive this peon — see PROTOCOL.md. It is deliberately a *separate* router
 // from the human `/api/v1/*` surface in controlServer.ts: its own auth (a shared
-// bearer token, not a per-user magic-link cookie), its own version handle
+// bearer token), its own version handle
 // (`/api/v1`), and none of the human-only presence bookkeeping. It is mounted
-// ahead of the cookie auth-gate so its bearer check is the only thing standing
+// ahead of the local-only gate so its bearer check is the only thing standing
 // in front of it.
 //
 // Everything here reuses the same underlying stores (sessions, settings) the
@@ -94,8 +94,8 @@ function normalizeOverseerUrl(raw) {
     return { url: url.toString().replace(/\/$/, "") };
 }
 // Rate-limit /enroll to blunt online guessing of the (memorable, lower-entropy)
-// pairing phrase — a sliding 60s window per source IP. Tailnet-only exposure plus
-// this is what keeps a 4-word phrase safe. Only rejected bearer credentials
+// pairing phrase — a sliding 60s window per source IP. The short TTL, one-time
+// use and this limit jointly bound online guessing. Only rejected bearer credentials
 // count: once the caller has proved it knows the phrase, correcting a malformed
 // URL must not unexpectedly lock a legitimate operator out.
 const ENROLL_WINDOW_MS = 60_000;
@@ -527,7 +527,7 @@ export function createAgentRouter(options = {}) {
         res.status(result.status).json(result.body);
     });
     // Self-update this peon (git pull / reinstall + restart) — the fleet-facing
-    // twin of the dashboard's POST /api/v1/control/update, so the overseer can update
+    // twin of the local POST /api/v1/control/update, so Overseer can update
     // a peon (or roll the whole fleet) remotely. Production installs refuse while a
     // session is running unless { force: true }, since their restart kills it. Source
     // checkouts update files without restarting the dev daemon and report that a

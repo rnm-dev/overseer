@@ -3,7 +3,7 @@
   "version": "0.0.1",
   "private": true,
   "type": "module",
-  "description": "Fleet control plane for peons — registry + fan-out control over a Tailscale tailnet",
+  "description": "Fleet control plane for Peons over authenticated external HTTP endpoints",
   "bin": {
     "overseer": "dist/index.js"
   },

@@ -1,9 +1,8 @@
 # overseer-server
 
-Fleet control plane for Peon (still its own repository, `rnm-dev/peon`; it
-becomes `apps/peon` here in OVSR-240). Holds a registry of peons and fans out
-control over a **Tailscale tailnet**, so a single operator API drives many peons
-— including office desktops behind NAT (no public IP).
+Fleet control plane for Peon. Holds a registry of Peons and fans out control
+over their configured authenticated HTTPS endpoints, so one operator API
+drives the fleet.
 
 See [`PROTOCOL.md`](./PROTOCOL.md) for the wire contract.
 
@@ -14,11 +13,10 @@ See [`PROTOCOL.md`](./PROTOCOL.md) for the wire contract.
  peons ────/agent/v1/peons/register + heartbeat (fleetToken)──────────────────► OVERSEER
 ```
 
-- **Peons self-register** (`peonRegistrar.ts` on the peon) — the overseer
-  learns each peon's tailnet address from the *source* of that request, so a
-  NAT'd peon never needs an inbound address.
+- **Peons self-register** (`peonRegistrar.ts` on the Peon) with the external
+  URL Overseer should use.
 - **The overseer is the client** for all control: `/fleet/*` calls proxy
-  through to the target peon's `/agent/v1/*` API over the tailnet.
+  through to the target Peon's authenticated Fleet HTTP API.
 - **Two independent secrets / two auth boundaries:**
   - `OVERSEER_FLEET_TOKEN` — shared with peons (register/heartbeat + the
     bearer the overseer presents when calling a peon). Must equal each peon's
@@ -44,7 +42,7 @@ Then point each peon at it:
 ```sh
 # on each peon box
 PATCH /api/settings { "overseerToken": "<same as FLEET_TOKEN>",
-                      "overseerUrl": "http://<overseer-tailnet-host>:5000" }
+                      "overseerUrl": "https://overseer.example.com" }
 ```
 
 ## API
@@ -88,7 +86,7 @@ still appears in the registry; proxied calls to an unreachable peon return
 | Var | Default | Meaning |
 |---|---|---|
 | `OVERSEER_PORT` | `5000` | listen port |
-| `OVERSEER_HOST` | `127.0.0.1` | bind interface (set `0.0.0.0` behind the tailnet) |
+| `OVERSEER_HOST` | `127.0.0.1` | bind interface (set `0.0.0.0` behind the production ingress) |
 | `OVERSEER_FLEET_TOKEN` | — | shared peon secret (empty ⇒ registration 503s) |
 | `OVERSEER_API_KEY` | — | operator secret (empty ⇒ `/fleet` 503s) |
 | `DATABASE_URL` | — | Postgres connection string (required) |

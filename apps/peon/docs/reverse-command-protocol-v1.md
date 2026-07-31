@@ -150,19 +150,19 @@ retry with a new command ID.
 ## Direct HTTP session Stop
 
 Session Stop is outside this protocol. Overseer calls the authenticated Fleet
-HTTP `POST /sessions/:id/cancel` endpoint through mesh and relays its response
+HTTP `POST /sessions/:id/cancel` endpoint through authenticated external Fleet HTTP and relays its response
 unchanged. A `409 SESSION_NOT_RUNNING` additionally triggers a best-effort
 authoritative session read so Overseer's index heals without changing the
 operator-visible refusal.
 
 ## Project control plane
 
-Project catalog/detail/settings/documentation/skills/quick links and lifecycle mutations use the authenticated Fleet HTTP API through mesh. `project-catalog-v1` remains the realtime projection and invalidation channel. `reverse-command-v1` contains no `project.*` operations.
+Project catalog/detail/settings/documentation/skills/quick links and lifecycle mutations use the authenticated external Fleet HTTP API. `project-catalog-v1` remains the realtime projection and invalidation channel. `reverse-command-v1` contains no `project.*` operations.
 
 ## Peon update control
 
 Update check, apply and bounded operation status use authenticated Fleet HTTP
-through mesh. Release metadata and archive bytes use the same HTTP authority.
+through the configured external endpoint. Release metadata and archive bytes use the same HTTP authority.
 There are no `update.*` reverse operations, negotiation branches or fallback.
 The durable update receipt retains idempotency, serialized admission, restart
 recovery and exact version/revision/SHA-256 replacement-process attestation.

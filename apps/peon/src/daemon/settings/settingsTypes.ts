@@ -13,24 +13,13 @@ export interface DaemonSettings {
   // Per-session USD cap passed as `--max-budget-usd`. 0 (default) means no cap —
   // agentExecutor's `if (opts.maxBudgetUsd)` guard omits the flag entirely.
   maxBudgetUsd: number;
-  // Externally-reachable base URLs used to build magic-link hrefs: the link itself points
-  // at publicDashboardUrl (`/?token=...`), whose page reads the token and POSTs it to
-  // publicControlUrl (`/api/v1/auth/consume`) to actually authenticate. Cookies are set with
-  // no Domain attribute + sameSite:"lax", so these two must keep the same hostname
-  // (differ only by port) for the cross-origin cookie flow to keep working — a
-  // genuinely different hostname per side would need SameSite=None + Secure + an
-  // explicit cookie Domain=, which isn't set up here.
+  // Externally reachable URL Overseer uses for authenticated Fleet HTTP.
   publicControlUrl: string;
-  publicDashboardUrl: string;
-  // Network interface the control API and dashboard bind to. "0.0.0.0"
-  // (default) accepts Fleet HTTP from reachable interfaces. "127.0.0.1"
-  // opts into local-only access. Remote connections
-  // then go through per-user magic-link auth (only loopback is auto-trusted as
-  // admin). Read once at process startup — changing it needs a daemon +
-  // dashboard restart. Env var ACA_BIND_HOST overrides it.
+  // Network interface the control API binds to. "0.0.0.0" (default) accepts
+  // authenticated Fleet HTTP from every reachable interface. "127.0.0.1"
+  // opts into local-only access. Read once at startup; ACA_BIND_HOST overrides it.
   bindHost: string;
-  // Display name for this peon instance — shown in the dashboard tab title.
-  // Empty means unset; the dashboard falls back to "Peon" in that case.
+  // Display name for this Peon in Overseer. Empty means unset.
   name: string;
   // When true (default), eligible ad-hoc sessions killed mid-run by a daemon
   // restart are automatically resumed on the next startup, up to a per-session
@@ -43,7 +32,7 @@ export interface DaemonSettings {
   // a fleet exposes no additional capabilities. The token is trusted to assert
   // the acting human's identity via a `Peon-Actor` header (forwarded into a
   // session's `author`), so it must be treated as a full-admin credential and
-  // only travels over the tailnet, never the public internet.
+  // only travel over a trusted encrypted connection.
   overseerToken: string;
   // Filesystem root the fleet `/api/v1/files/*` endpoints are sandboxed to. Empty
   // (default) disables file transfer entirely (503 `FILES_DISABLED`) — the
@@ -52,8 +41,7 @@ export interface DaemonSettings {
   // root and rejected if it escapes it, so widening it widens what the
   // overseer can read/write on this box.
   fileTransferRoot: string;
-  // Base URL of the overseer this peon should announce itself to (e.g.
-  // "http://overseer.my-tailnet.ts.net:5000"). Empty (default) means this peon
+  // Base URL of the Overseer this Peon should announce itself to. Empty means this Peon
   // registers with nothing and stays a purely passive server — the overseer
   // must then be told about it out-of-band. When set (together with a
   // overseerToken, presented as this peon's bearer to the overseer — the

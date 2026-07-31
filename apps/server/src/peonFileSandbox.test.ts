@@ -11,7 +11,7 @@ import {
 import { PATH_ESCAPE_PUBLIC_MESSAGE } from "./fileErrorSafety.js";
 import { peonsRouter } from "./routes/peons.js";
 
-const conn = { baseUrl: "http://peon.mesh.rnm:4570", token: "t" };
+const conn = { baseUrl: "https://peon.example.test", token: "t" };
 const rootIs = (root: string) => async () => root;
 
 test("an absolute request is the one a joined-on path produces", () => {

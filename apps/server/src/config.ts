@@ -1,6 +1,6 @@
 // All configuration comes from the environment. No shared peon secret and no
 // operator key: peons connect with per-peon credentials (credentials.ts),
-// operators with device tokens (auth.ts). peonCallbackUrl is the tailnet URL the
+// operators with device tokens (auth.ts). peonCallbackUrl is the external URL the
 // overseer hands a peon at recruitment so it knows where to phone home.
 import { resolvePushConfig, type PushConfig } from "./infrastructure/push/pushConfig.js";
 import { resolveVoiceConfig, type VoiceConfig } from "./infrastructure/voice/voiceConfig.js";
@@ -44,12 +44,6 @@ export interface Config {
   // details or credentials are encoded in the public URL.
   previewDomain: string;
   previewTokenTtlMs: number;
-
-  // Global Peon release archive storage. Publishing uses a dedicated secret;
-  // downloads use normal Peon credentials.
-  releaseToken: string;
-  releaseDirectory: string;
-  releaseMaxBytes: number;
 
   // Peon-initiated enrollment keeps credential verifiers and recoverable
   // pending deliveries and replayable operator codes under separate,
@@ -95,7 +89,7 @@ const publicUrl = (process.env.OVERSEER_PUBLIC_URL ?? "https://overseer.rnm.dev"
 
 export const config: Config = {
   port: num("OVERSEER_PORT", 5000),
-  // Bind the tailnet interface (or 0.0.0.0 behind the tailnet) in production;
+  // Bind the intended external interface (or 0.0.0.0 behind the ingress) in production;
   // defaults to loopback so a misconfigured deploy doesn't expose the operator API.
   host: process.env.OVERSEER_HOST ?? "127.0.0.1",
   peonCallbackUrl: (process.env.OVERSEER_PEON_CALLBACK_URL ?? "").replace(/\/+$/, ""),
@@ -113,9 +107,6 @@ export const config: Config = {
   trustedProxies: csv("OVERSEER_TRUSTED_PROXIES"),
   previewDomain: (process.env.OVERSEER_PREVIEW_DOMAIN ?? "preview.overseer.rnm.dev").toLowerCase().replace(/^\.+|\.+$/g, ""),
   previewTokenTtlMs: num("OVERSEER_PREVIEW_TOKEN_TTL_MS", 10 * 60_000),
-  releaseToken: process.env.OVERSEER_RELEASE_TOKEN ?? "",
-  releaseDirectory: process.env.OVERSEER_RELEASE_DIRECTORY ?? "/data/releases",
-  releaseMaxBytes: num("OVERSEER_RELEASE_MAX_BYTES", 512 * 1024 * 1024),
   peonClaimEnabled: process.env.OVERSEER_PEON_CLAIM_V1 === "1",
   peonClaimCredentialPepper: process.env.OVERSEER_PEON_CREDENTIAL_PEPPER ?? "",
   peonClaimDeliveryKey: process.env.OVERSEER_PEON_DELIVERY_KEY ?? "",
@@ -134,8 +125,6 @@ export function configWarnings(): string[] {
     w.push("OVERSEER_GITHUB_CLIENT_ID / OVERSEER_GITHUB_CLIENT_SECRET are not both set — GitHub sign-in is disabled, so nobody can log in.");
   if (process.env.NODE_ENV === "production" && config.trustedProxies.length === 0)
     w.push("OVERSEER_TRUSTED_PROXIES is empty — forwarded client addresses are ignored and public abuse limits use the socket peer.");
-  if (!config.releaseToken)
-    w.push("OVERSEER_RELEASE_TOKEN is empty — Peon release publishing is disabled.");
   if (!config.peonClaimEnabled)
     w.push("OVERSEER_PEON_CLAIM_V1 is not enabled — peon-claim-v1 is not advertised.");
   else {

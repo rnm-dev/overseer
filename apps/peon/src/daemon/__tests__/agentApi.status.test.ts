@@ -160,7 +160,7 @@ test("manual update-check failures return a bounded registry error without crash
   const body = await response.json() as Record<string, unknown>;
   assert.deepEqual(Object.keys(body).sort(), ["code", "error"]);
   assert.equal(body.code, "REGISTRY_UNAVAILABLE");
-  assert.equal(body.error, "release registry is unavailable");
+  assert.equal(body.error, "npm registry is unavailable");
 });
 
 test("GET /api/v1/status remains cache-only", async () => {

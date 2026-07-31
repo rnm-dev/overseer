@@ -1,50 +1,33 @@
 # Peon update channel
 
-Peon update checks and approved self-updates use only the direct authenticated
-Fleet HTTP API over mesh. `update.check` and `update.apply` are not
-`reverse-command-v1` operations; there is no selector, fallback or second
-request authority.
+Public npm is the only Peon release and update channel. Global installations
+check `@rnm-dev/peon` through the public npm registry and install an exact
+version such as `@rnm-dev/peon@0.11.3`. Overseer does not publish, approve,
+store or proxy Peon release metadata or archive bytes.
 
-The machine routes are:
+Overseer still exposes the owner-only operator control surface and relays it to
+the Peon's authenticated Fleet HTTP API:
 
 - `POST /api/v1/control/check-update`;
-- `POST /api/v1/control/update`, with the approved
-  `{ version, revision, sha256 }` identity and optional `force`;
-- `GET /api/v1/control/update/:requestId`, returning a bounded pending or
-  terminal view.
+- `POST /api/v1/control/update`, with optional `{ force: true }`;
+- `GET /api/v1/control/update/:requestId`.
 
-`Peon-Request-Id` is the apply idempotency identity. The same ID and approved
-release replays the existing lifecycle. Reuse with different identity returns
-`409 REQUEST_ID_REUSED`; another check or apply while one is running or awaiting
-replacement attestation returns `409 UPDATE_IN_PROGRESS`.
+`Peon-Request-Id` is the apply idempotency identity. Another check or apply
+while one is running or awaiting replacement attestation returns
+`409 UPDATE_IN_PROGRESS`.
 
-Overseer resolves the approved release once and binds version, immutable
-release revision and SHA-256 into the apply request. The updater re-fetches
-authenticated release metadata immediately before download and returns
-`RELEASE_CHANGED` if that identity changed.
+The Peon reads the npm `latest` metadata immediately before installation and
+refuses with `RELEASE_CHANGED` if it differs from the version admitted by the
+check. npm performs package integrity verification. The updater installs the
+exact version while preserving the existing global npm prefix, validates the
+compiled output and restarts the daemon from a detached systemd unit.
 
-Release metadata and the Overseer-served npm archive use authenticated Fleet
-HTTP. Bytes never use the control WebSocket, a transfer WebSocket or the
-reverse-command ledger. Streaming preserves Range, abort/backpressure, declared
-length and SHA-256 verification. Public npm is not the enrolled fleet update
-channel.
+Before replacement it packs the current installation locally with lifecycle
+scripts disabled. Failed installation, validation or restart rolls back from
+that local archive without depending on the network. A replacement process
+with a different PID completes the durable operation only when its running
+package version matches the admitted npm version.
 
-The detached updater durably writes a mode-0600 receipt containing only request
-ID, initiating PID and expected version/revision/SHA-256. It downloads and
-verifies the exact archive, transactionally installs it, validates compiled
-output, writes the same bounded identity into the installed package and keeps a
-locally packed rollback archive. Duplicate delivery does not reinstall or
-restart.
-
-Only a replacement daemon with a different PID may complete the operation. Its
-running package must report the exact approved version, revision and SHA-256;
-changed files, version alone, or a mismatched revision/digest fail with
-`ATTESTATION_MISMATCH`. Source checkouts are rejected because they cannot attest
-process replacement.
-
-Stable bounded outcomes distinguish no update, registry unavailability,
-changed release, download or archive-integrity failure, policy rejection,
-install/restart failure with rollback, restart timeout and attestation mismatch.
-Credentials, URLs and free-form updater output stay out of receipts and API
-results. Realtime update-state notification may remain a WebSocket event, but
-it is not a request or command transport.
+Source checkouts retain the development-only `git fetch` plus `merge --ff-only`
+path and require a manual daemon restart. That path is not a production
+distribution channel.

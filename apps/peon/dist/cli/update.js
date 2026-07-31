@@ -9,12 +9,11 @@
 //     See gitCheckoutUpdate.
 //
 //   - Global install (production, systemd-managed): check no session is running -> resolve the
-//     latest global release from the configured Overseer -> stream its npm archive to a temporary
-//     file -> verify exact size and SHA-256 -> install it -> syntax-check compiled output -> restart
+//     latest version from the public npm registry -> install that exact package version ->
+//     syntax-check compiled output -> restart
 //     both systemd services and wait for them. Before replacement, pack the current installation
 //     locally so either a failed sanity check or a failed restart can roll back without GitHub or
-//     network access. Overseer credentials already provisioned during enrollment authenticate the
-//     release metadata and archive download endpoints.
+//     network access. npm performs its normal package integrity verification.
 //
 // Runnable two ways: spawned by POST /api/v1/control/update (plainly detached in checkout mode; via
 // systemd-run in global mode, so the restart doesn't kill this script along with the daemon's
@@ -22,18 +21,15 @@
 // session-guard check independently rather than trusting the caller already did it. In an installed
 // tree it runs as compiled JS (dist/cli/update.js) under plain node — no tsx at runtime.
 import { execFileSync } from "node:child_process";
-import { createWriteStream, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { Readable, Transform } from "node:stream";
-import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
 import semver from "semver";
-import { settings } from "../daemon/settings/index.js";
 import { isGitCheckout } from "../shared/repo.js";
-import { fetchLatestRelease, releaseArchiveUrl, releaseHeaders, sha256File } from "../shared/releaseRegistry.js";
+import { fetchLatestNpmRelease, peonNpmSpec } from "../shared/npmRegistry.js";
 import { readUpdateCommandReceipt, writeUpdateCommandReceipt } from "../daemon/updateCommandReceipt.js";
-import { readUpdateRuntimeIdentity, sameUpdateReleaseIdentity, updateRuntimeIdentityPath, writeUpdateRuntimeIdentity, } from "../daemon/updateRuntimeIdentity.js";
+import { readUpdateRuntimeIdentity, updateRuntimeIdentityPath, writeUpdateRuntimeIdentity, } from "../daemon/updateRuntimeIdentity.js";
 import { globalInstallArgs, rollbackPackArgs } from "./npmGlobalInstall.js";
 const PACKAGE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const CONTROL_API = `http://127.0.0.1:${process.env.ACA_CONTROL_PORT ?? "4570"}`;
@@ -106,29 +102,6 @@ function installedVersion() {
     if (typeof pkg.version !== "string" || !semver.valid(pkg.version))
         throw new Error("installed package has an invalid version");
     return pkg.version;
-}
-async function downloadRelease(release, destination) {
-    const { overseerUrl, overseerToken } = settings.get();
-    const response = await fetch(releaseArchiveUrl(overseerUrl, release), { headers: releaseHeaders(overseerToken) });
-    if (!response.ok || !response.body)
-        throw new Error(`release archive download failed (${response.status} ${response.statusText})`);
-    const contentLength = response.headers.get("content-length");
-    if (contentLength !== null && Number(contentLength) !== release.sizeBytes) {
-        throw new Error(`release archive size mismatch (metadata ${release.sizeBytes}, response ${contentLength})`);
-    }
-    let received = 0;
-    const limiter = new Transform({
-        transform(chunk, _encoding, callback) {
-            received += chunk.length;
-            callback(received > release.sizeBytes ? new Error("release archive exceeded its declared size") : null, chunk);
-        },
-    });
-    await pipeline(Readable.fromWeb(response.body), limiter, createWriteStream(destination, { flags: "wx" }));
-    if (received !== release.sizeBytes)
-        throw new Error(`release archive size mismatch (expected ${release.sizeBytes}, received ${received})`);
-    const digest = await sha256File(destination);
-    if (digest !== release.sha256)
-        throw new Error(`release archive SHA-256 mismatch (expected ${release.sha256}, received ${digest})`);
 }
 function gitOut(args) {
     return execFileSync("git", args, { cwd: PACKAGE_ROOT, encoding: "utf8" }).trim();
@@ -245,31 +218,22 @@ async function main() {
         return;
     }
     await checkNoActiveSession();
-    const { overseerUrl, overseerToken } = settings.get();
-    if (!overseerUrl.trim() || !overseerToken.trim())
-        throw new Error("Overseer credentials are required to update a global Peon install");
     const currentVersion = installedVersion();
     let release;
     try {
-        release = await fetchLatestRelease({ baseUrl: overseerUrl, token: overseerToken });
+        release = await fetchLatestNpmRelease();
     }
     catch (error) {
         commandReceipt("failed", "REGISTRY_UNAVAILABLE");
         throw error;
-    }
-    if (!release) {
-        console.log("==> Overseer has no published Peon releases");
-        commandReceipt("failed", "NO_UPDATE");
-        return;
     }
     if (!FORCE && !semver.gt(release.version, currentVersion)) {
         console.log(`==> already up to date (${currentVersion}; latest ${release.version})`);
         commandReceipt("failed", "NO_UPDATE");
         return;
     }
-    if (EXPECTED_VERSION !== null && EXPECTED_REVISION !== null && EXPECTED_SHA256 !== null
-        && !sameUpdateReleaseIdentity({ version: EXPECTED_VERSION, revision: EXPECTED_REVISION, sha256: EXPECTED_SHA256 }, release)) {
-        console.error("refusing update: approved release identity changed before download");
+    if (EXPECTED_VERSION !== null && EXPECTED_VERSION !== release.version) {
+        console.error("refusing update: npm latest changed before installation");
         commandReceipt("failed", "RELEASE_CHANGED");
         process.exitCode = 1;
         return;
@@ -278,28 +242,12 @@ async function main() {
     try {
         const previousArchive = npmPackCurrent(temporaryDir);
         const previousIdentity = readUpdateRuntimeIdentity(PACKAGE_ROOT);
-        const releaseArchive = path.join(temporaryDir, `peon-${release.version}.tgz`);
-        console.log(`==> downloading Peon ${release.version} from Overseer`);
+        console.log(`==> installing ${peonNpmSpec(release.version)} from the public npm registry`);
         try {
-            await downloadRelease(release, releaseArchive);
-        }
-        catch (error) {
-            const detail = error instanceof Error ? error.message : String(error);
-            commandReceipt("failed", /SHA-256|size mismatch|declared size/.test(detail)
-                ? "ARCHIVE_INTEGRITY_FAILED"
-                : "DOWNLOAD_FAILED");
-            throw error;
-        }
-        console.log(`==> installing verified Peon ${release.version}`);
-        try {
-            npmInstallGlobal(releaseArchive);
+            npmInstallGlobal(peonNpmSpec(release.version));
             console.log("==> sanity-checking the compiled output");
             checkCompiledOutput();
-            writeUpdateRuntimeIdentity(PACKAGE_ROOT, {
-                version: release.version,
-                revision: release.revision,
-                sha256: release.sha256,
-            });
+            rmSync(updateRuntimeIdentityPath(PACKAGE_ROOT), { force: true });
         }
         catch (err) {
             console.error("the new release failed installation or compiled-output validation:", err);

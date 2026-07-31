@@ -66,7 +66,6 @@ services:
       # Wildcard DNS/TLS + nginx route for token.preview.overseer.rnm.dev.
       OVERSEER_PREVIEW_DOMAIN: ${OVERSEER_PREVIEW_DOMAIN:-preview.overseer.rnm.dev}
       OVERSEER_PREVIEW_TOKEN_TTL_MS: ${OVERSEER_PREVIEW_TOKEN_TTL_MS:-600000}
-      OVERSEER_RELEASE_TOKEN: ${OVERSEER_RELEASE_TOKEN}
     volumes:
       # Workspace sources + the root manifests that define them: every source or
       # config file hot-reloads (tsx watch restarts). The anonymous volume keeps

@@ -22,7 +22,7 @@ The current rollout remains mixed-version safe:
 
 `OVERSEER_PEON_CALLBACK_URL` is therefore optional for Peon-initiated claims.
 Leaving it empty disables legacy callback recruitment, not outbound reverse
-connections. Existing legacy mesh Peons still need usable callback metadata.
+connections. Older callback-based Peons still need usable external endpoint metadata.
 
 The process-local callback-attempt counters are attributed to the selector
 reason. In particular, `reverse-capability-authoritative` must remain zero;

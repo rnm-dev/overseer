@@ -26,7 +26,6 @@ import {
   hasReverseTranscriptConnection,
 } from "../../peonTranscriptSync.js";
 import type { Role } from "../../workspaces.js";
-import { latestRelease } from "../../releases.js";
 
 function acceptedSessionId(result: { ok: boolean; json: unknown }): string | null {
   if (!result.ok || !result.json || typeof result.json !== "object") return null;
@@ -353,16 +352,9 @@ export function registerSessionRoutes(router: express.Router): void {
   }));
   router.post(`${wp}/control/update`, withWorkspacePeon(async (req, res, c) => {
     if (!ownerOnly(res, c.role)) return;
-    const release = await latestRelease();
-    if (!release) {
-      return res.status(409).json({ error: "No approved Peon release is available", code: "NO_RELEASE" });
-    }
     relay(await callPeon(connOfRecord(c.record), "POST", "/control/update", {
       actor: c.operator.email,
-      body: {
-        ...(req.body?.force === true ? { force: true } : {}),
-        release: { version: release.version, revision: release.storageKey, sha256: release.sha256 },
-      },
+      body: req.body?.force === true ? { force: true } : {},
       timeoutMs: 5_000,
     }), res);
   }));

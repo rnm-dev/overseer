@@ -47,7 +47,7 @@ isn't installed, or it was installed *after* `peon start` last ran. `peon start`
 whatever `PATH` your shell had at that moment into the systemd unit
 (`Environment=PATH=...`); installing `claude` afterward doesn't retroactively update an
 already-running service. Confirm it resolves (`which claude`), then either re-run
-`peon start` (regenerates the unit with your current `PATH`) or restart both services
+`peon start` (regenerates the unit with your current `PATH`) or restart the service
 (`systemctl --user restart peon-daemon.service`). If `claude` lives
 somewhere you'd rather not add to `PATH`, point `agentCommand` at its full path instead:
 `peon settings set agentCommand /full/path/to/claude`.
@@ -96,9 +96,8 @@ This stops it now, but it'll start again on the next reboot/login. To turn that 
 systemctl --user disable peon-daemon.service
 ```
 
-On macOS, remove `~/Library/LaunchAgents/dev.peon.daemon.plist` and
-`~/Library/LaunchAgents/dev.peon.dashboard.plist` after `peon stop` to disable future
-login starts.
+On macOS, remove `~/Library/LaunchAgents/dev.peon.daemon.plist` after `peon stop`
+to disable future login starts.
 
 ### Updating peon
 
@@ -122,47 +121,29 @@ connect more than one integration. Other integration commands:
 
 - `peon integration remove <key>` — disconnect one (refuses if a project still uses it)
 
-**Dashboard login** — only needed if you access the dashboard from somewhere other than the
-machine it runs on. Local/`localhost` access is always trusted, no login needed.
+By default the daemon binds `0.0.0.0` so an enrolled Overseer can reach the
+authenticated Fleet HTTP API. Only a genuine loopback peer can use the local CLI/MCP
+surface; remote callers need the Peon's Fleet bearer. Keep the port firewalled to
+trusted networks. There are two ways to reach Peon:
 
-```sh
-peon user add <username>
-peon user auth-link <username>
-```
-
-`add` creates the dashboard user; `auth-link` prints a one-time login link for an existing
-user, valid for 15 minutes. Opening it in a browser logs you in for 30 days. Other user
-commands:
-
-- `peon user list` — list users
-- `peon user sessions <username>` — list a user's login sessions
-- `peon user revoke <username> [sessionId]` — log out one session, or all of them
-
-By default both servers bind `0.0.0.0` so an enrolled Overseer can reach the
-authenticated Fleet HTTP API. Only a genuine loopback peer skips local API
-authentication; remote callers need a Fleet bearer or user login. Keep the ports
-firewalled to trusted networks. There are two ways to reach Peon:
-
-- **Tunnel (no config).** Port-forward both ports over a channel you already trust
-  (`ssh -L 4570:localhost:4570 -L 4571:localhost:4571 you@box`). A forwarded request is
+- **Tunnel (no config).** Port-forward the control port over a channel you already trust
+  (`ssh -L 4570:localhost:4570 you@box`). A forwarded request is
   indistinguishable from a local process to peon and **skips login entirely** — same as the
-  "local access is always trusted" behavior above. Only tunnel over SSH/a VPN you trust as
-  much as a shell on this box, and never put either port behind a plain reverse proxy with no
+  "local access is always trusted" behavior above. Only tunnel over SSH you trust as
+  much as a shell on this box, and never put the port behind a plain reverse proxy with no
   auth of its own.
-- **Direct, with auth.** Bind the ports to the network and require each remote user to log in:
+- **Direct, with Fleet auth.** Bind the port to the network for Overseer:
 
   ```sh
-  peon remote on <public-host-or-ip>   # binds 0.0.0.0, sets the public URLs
-  # restart both processes, then:
-  peon user add alice && peon user auth-link alice
+  peon remote on <public-host-or-ip>   # binds 0.0.0.0, sets the public URL
   ```
 
-  Remote connections aren't loopback, so they go through the per-user magic-link auth — only
-  genuinely local processes are auto-trusted. `peon remote` shows the current state and
-  `peon remote off` reverts to loopback-only. **The bind host is read at startup**, so restart
-  the daemon and dashboard after toggling it
-  (`systemctl --user restart peon-daemon.service peon-dashboard.service`). Still keep the ports
-  firewalled to networks you trust.
+  Remote connections aren't loopback, so they require the Fleet credential — only
+  genuinely local processes can use local CLI/MCP routes. `peon remote` shows the current
+  state and `peon remote off` reverts to loopback-only. **The bind host is read at startup**,
+  so restart the daemon after toggling it
+  (`systemctl --user restart peon-daemon.service`). Still keep the port firewalled to
+  networks you trust.
 
 ### Settings
 
@@ -180,17 +161,12 @@ View or change settings with `peon settings` / `peon settings set <key> <value>`
 | `agentCommand` | `claude` | Claude Code CLI binary used by default sessions and autonomous tasks |
 | `codexCommand` | `codex` | Codex CLI binary used by `codex-app-server` sessions and provider probes |
 | `publicControlUrl` | `http://127.0.0.1:4570` | public URL of the control API |
-| `publicDashboardUrl` | `http://127.0.0.1:4571` | public URL of the dashboard |
-| `bindHost` | `0.0.0.0` | interface both servers bind (`127.0.0.1` for local-only); prefer `peon remote on/off`. Read at startup — restart to apply |
+| `bindHost` | `0.0.0.0` | interface the daemon binds (`127.0.0.1` for local-only); prefer `peon remote on/off`. Read at startup — restart to apply |
 | `paused` | `false` | whether task polling is on |
-
-> `publicControlUrl` and `publicDashboardUrl` must use the same hostname (a different port
-> is fine) — dashboard logins break otherwise. This only matters once the dashboard is
-> reached from somewhere other than `127.0.0.1`.
 
 ## Commands
 
-Lifecycle commands. (Integration and user commands are listed above, under Configure.)
+Lifecycle commands. (Integration commands are listed above, under Configure.)
 
 | command | what it does |
 |---|---|
@@ -218,7 +194,7 @@ If something needs attention it tells you what and how to fix it, e.g. `integrat
 authenticated — connect one with peon integration add <label> <apiUrl>`, or
 `update available (2b9f105 → eaa8f21) — run peon update`.
 
-Dashboard: `http://127.0.0.1:4571`. Control API: `http://127.0.0.1:4570`.
+Control API: `http://127.0.0.1:4570`. Operator UI: Overseer.
 
 ## Developing peon itself
 
@@ -229,17 +205,15 @@ npm ci
 npm run dev
 ```
 
-This runs the daemon and dashboard together with live reload on save, on the same ports
-(4570/4571) the systemd service uses — don't run both at the same time.
+This runs the daemon with live reload on save, on the same port (`4570`) the
+background service uses — don't run both at the same time.
 
 | npm script | what it does |
 |---|---|
-| `npm run dev` | daemon + dashboard, hot reload |
-| `npm run dev:daemon` / `npm run dev:dashboard` | just one side |
+| `npm run dev` / `npm run dev:daemon` | daemon, hot reload |
 | `npm run restart:daemon` | typecheck, then restart (refuses if a task is running) |
-| `npm run restart:dashboard` | same, no task-running check needed |
 | `npm run update` | same as `peon update` |
-| `npm run compile` | compile the whole app to `dist/` (CLI, daemon, dashboard) — run after editing anything under `src/` and commit `dist/` |
+| `npm run compile` | compile the CLI and daemon to `dist/` — run after editing anything under `src/` and commit `dist/` |
 
 ## More detail
 

@@ -28,10 +28,9 @@ export function bearer(req: express.Request): string {
   return h.startsWith("Bearer ") ? h.slice(7).trim() : "";
 }
 
-// Observed source address of a register call = the peon's tailnet IP. Strip the
+// Observed source address of a register call. Strip the
 // IPv4-mapped-IPv6 prefix Node reports for v4 clients so we store a clean
-// dotted-quad. This is what makes NAT irrelevant — we never trust a peon's
-// self-claimed address, only where its connection actually came from.
+// dotted-quad. We never trust a Peon's self-claimed source address.
 export function sourceAddress(req: express.Request): string {
   const raw = req.socket.remoteAddress ?? "";
   return raw.startsWith("::ffff:") ? raw.slice(7) : raw;

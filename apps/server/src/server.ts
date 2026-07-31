@@ -9,7 +9,6 @@ import { workspacesRouter } from "./routes/workspaces.js";
 import { peonsRouter } from "./routes/peons.js";
 import { pushRouter } from "./routes/push.js";
 import { webPreviewHandler } from "./webPreview.js";
-import { peonReleasesRouter, releasePublisherRouter } from "./routes/releases.js";
 import { projectViewerRouter } from "./routes/projectViewer.js";
 import { voiceRouter } from "./routes/voice.js";
 import { operatorPeonClaimRouter, publicPeonClaimRouter } from "./modules/peonClaims/index.js";
@@ -74,7 +73,6 @@ export function createServer({ production = process.env.NODE_ENV === "production
 
   // North-bound: peon registration + heartbeat + event push.
   app.use("/api/v1/peons", agentRouter());
-  app.use("/api/v1/releases", peonReleasesRouter());
 
   // Browser-facing project files use the same operator session cookie as the
   // dashboard, while native clients may still present a bearer. Workspace and
@@ -99,10 +97,6 @@ export function createServer({ production = process.env.NODE_ENV === "production
   // Public auth endpoints (GitHub OAuth) sit BEFORE the operator guard — they're
   // how a client gets a token.
   api.use(publicAuthRouter());
-
-  // CI/infrastructure publishing uses its own deployment secret, not a user or
-  // workspace role. This route must sit before the operator device-token guard.
-  api.use(releasePublisherRouter());
 
   // The operator auth guard — everything below requires a device token.
   api.use(operatorPeonClaimRouter());

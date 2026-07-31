@@ -1,5 +1,5 @@
 // Git helpers used only by source checkouts. Production global installs resolve immutable
-// release archives through Overseer instead; see releaseRegistry.ts and cli/update.ts.
+// published npm package instead; see npmRegistry.ts and cli/update.ts.
 
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -27,7 +27,7 @@ export function gitCheckoutRoot(packageRoot: string): string | null {
 // differently and can't be updated the same way:
 //   - a checkout updates via `git fetch` + `git merge --ff-only` (which brings the committed
 //     dist/ along with src/), and under `tsx watch` the daemon reloads itself — no npm, no systemd;
-//   - a global install updates from an authenticated Overseer release archive + systemd restart.
+//   - a global install updates from the public npm registry + systemd restart.
 // A global git install is packed+extracted with no `.git`, so this is false there; a dev checkout
 // has `.git`, so it's true. On macOS (no systemd at all) only the checkout path can possibly work.
 export function isGitCheckout(packageRoot: string): boolean {

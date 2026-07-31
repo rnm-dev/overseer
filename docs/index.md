@@ -23,7 +23,7 @@ Runtime status, capacity, daemon revision, provider availability, models and
 reasoning modes converge through the durable `runtime-state-v1` projection.
 All explicit request/response runtime reads — including status/models, quota,
 provider capability probes, fixed-period stats and filtered analytics — use
-the direct authenticated Fleet HTTP API through mesh with no reverse-command
+the direct authenticated external Fleet HTTP API with no reverse-command
 fallback. The projection, heartbeat and invalidation/events remain on the
 control WebSocket; stored projection state is explicitly fresh, stale or
 offline. The field classification, redaction and query bounds are in
@@ -41,25 +41,25 @@ A Peon can leave a session record at `status: "running"` with no process behind 
 
 Session run state heals itself rather than waiting for the periodic reconcile: reading a session (`GET .../sessions/:sid`) and a Stop refused with `409 SESSION_NOT_RUNNING` both republish the Peon's authoritative record into the index, so every open and every client-side run-watchdog poll corrects a stale "running" row for the whole fleet. The projection's monotonicity and fingerprint guards keep repeated reads silent. A Peon that dies mid-run cannot report the ending, so the session view stops claiming live work while its control channel is down — the index still holds the Peon's last word, which is why a list can show a run as live until that Peon answers again.
 
-Every rendered transcript row is Peon's own: no surface inserts a message into the transcript optimistically. A sent message is instead shown as a **ghost** — one dimmed, breathing placeholder rendered *after* the transcript, owned by the composer, on both the web dashboard and the Flutter client. It retires as soon as the transcript shows more user messages than it counted when the send started (plus a 60 s backstop, and immediately if the send is refused); a queued follow-up gets none, because the queue widget already shows it. The Send button spins until the browser's/client's `POST .../sessions/:sid/followup` settles. The session catalog, rename, delete, new session starts, follow-ups, cancel, and all five queue operations (`add`, `list`, `edit`, `remove`, `send-now`) travel from Overseer to Peon over the direct authenticated Fleet HTTP API through mesh; none exists in `reverse-command-v1`. `session-catalog-v1` remains only the realtime projection/event channel and is never selected as request authority for a browser/mobile catalog read or mutation. Their browser/mobile API, validation, actor attribution, idempotency and response shapes remain unchanged.
+Every rendered transcript row is Peon's own: no surface inserts a message into the transcript optimistically. A sent message is instead shown as a **ghost** — one dimmed, breathing placeholder rendered *after* the transcript, owned by the composer, on both the web dashboard and the Flutter client. It retires as soon as the transcript shows more user messages than it counted when the send started (plus a 60 s backstop, and immediately if the send is refused); a queued follow-up gets none, because the queue widget already shows it. The Send button spins until the browser's/client's `POST .../sessions/:sid/followup` settles. The session catalog, rename, delete, new session starts, follow-ups, cancel, and all five queue operations (`add`, `list`, `edit`, `remove`, `send-now`) travel from Overseer to Peon over the direct authenticated external Fleet HTTP API; none exists in `reverse-command-v1`. `session-catalog-v1` remains only the realtime projection/event channel and is never selected as request authority for a browser/mobile catalog read or mutation. Their browser/mobile API, validation, actor attribution, idempotency and response shapes remain unchanged.
 
 Counting, rather than matching, is the point. A client cannot depend on transport-specific command identity to recognise its own authoritative transcript row. Every attempt to reconcile a local echo against that row by payload was a guess, and one of them left every follow-up on screen twice. A ghost is not a transcript row, so it cannot duplicate one; at worst two operators send at once and a ghost retires on the other's row, one beat before its own arrives. A follow-up's `Peon-Request-Id` is stable while the payload is unchanged: a 5xx or a lost connection keeps it so Overseer's HTTP idempotency record prevents a second post, while a stated refusal (4xx) mints a fresh one.
 
 A Peon carries a default reasoning effort next to its default model, settable from the Peon Settings → Agent tab. The Peon owns this setting (`ai.defaultReasoningEffort`, flat on the wire as `aiDefaultReasoningEffort` on `GET`/`PATCH /settings` in both the fleet and human profiles); `null` means the agent applies its own default. It validates an effort against the **effective model**, not just the agent — `PATCH` fails with `aiDefaultReasoningEffort is not valid for model <id>` — and when a change of `defaultAgent` or default model strands a saved effort, the Peon substitutes that model's own default rather than clearing it. Overseer only ever submits an effort the effective model still advertises, and sends an explicit `null` to reset (the settings form otherwise strips nulls to keep the `PATCH` partial, which would make "reset" a no-op). Effort options come from the per-model `reasoningEfforts` list a current Peon publishes on `/api/v1/models`, falling back to the provider-wide list for older Peons; a model advertising no efforts hides the selector entirely.
 
-All file traffic uses one authenticated Overseer→Peon Fleet HTTP path over mesh. This includes directory listings, file bodies and Range downloads, uploads and mutations, session artifacts/previews/watches, and approved update archive bytes. The public browser/mobile API is unchanged. The new-project picker still proxies to Peon's host-wide filesystem listing and the project tree still strips only Overseer's private `directory=1` hint. Peon retains path normalization, containment, symlink classification, size/checksum limits, atomic writes and stable errors. The former transfer WebSocket and its capabilities were removed; there is no selector, fallback or second byte authority.
+All file traffic uses one authenticated Overseer→Peon external Fleet HTTP path. This includes directory listings, file bodies and Range downloads, uploads and mutations, and session artifacts/previews/watches. The public browser/mobile API is unchanged. The new-project picker still proxies to Peon's host-wide filesystem listing and the project tree still strips only Overseer's private `directory=1` hint. Peon retains path normalization, containment, symlink classification, size/checksum limits, atomic writes and stable errors. The former transfer WebSocket and its capabilities were removed; there is no selector, fallback or second byte authority.
 
-Overseer has one durable [reverse command gateway](reverse-command-gateway.md) for `reverse-command-v1`: it persists the canonical request and server-derived authenticated actor before send, fences acceptance/status/result by workspace, Peon and socket generation, reconciles the same Peon-scoped command ID after reconnect/restart, and commits an allowlisted terminal result + shared durable inbox/checkpoint + safe projection + audit + operator browser event before ACK. The status surface for a bounded HTTP wait is `GET /api/workspaces/:wsId/peons/:peonId/commands/:commandId`. Session catalog reads, rename, delete, start, follow-up, and Stop deliberately bypass this gateway and use the direct Fleet HTTP API through mesh; Stop retains the Peon's HTTP response semantics and heals the indexed session after `409 SESSION_NOT_RUNNING`.
+Overseer has one durable [reverse command gateway](reverse-command-gateway.md) for `reverse-command-v1`: it persists the canonical request and server-derived authenticated actor before send, fences acceptance/status/result by workspace, Peon and socket generation, reconciles the same Peon-scoped command ID after reconnect/restart, and commits an allowlisted terminal result + shared durable inbox/checkpoint + safe projection + audit + operator browser event before ACK. The status surface for a bounded HTTP wait is `GET /api/workspaces/:wsId/peons/:peonId/commands/:commandId`. Session catalog reads, rename, delete, start, follow-up, and Stop deliberately bypass this gateway and use the direct external Fleet HTTP API; Stop retains the Peon's HTTP response semantics and heals the indexed session after `409 SESSION_NOT_RUNNING`.
 
 Armory inventory, settings, package/configuration/MCP/operation reads and every
-lifecycle mutation use the direct authenticated Fleet HTTP API through mesh.
+lifecycle mutation use the direct authenticated external Fleet HTTP API.
 There is no reverse-command path or fallback. Results remain bounded and
 redacted, while Peon's package locks, transactional installer, durable
 operation store and restart recovery remain authoritative — see
 [Armory over Fleet HTTP](armory-reverse.md).
 
 Project administration and resources use one direct authenticated Fleet HTTP
-authority through mesh: catalog, suggest/create, stable-ID detail/settings,
+authority through the configured external endpoint: catalog, suggest/create, stable-ID detail/settings,
 documentation, skill discovery, quick-link CRUD, update and delete. Selected
 projects travel as immutable `projectId`; mutations retain request idempotency
 and canonical digest fences. `project-catalog-v1` remains only the realtime
@@ -67,18 +67,18 @@ WebSocket projection/event/invalidation channel. There are no `project.*`
 reverse commands, selector, fallback or second authority. The routes and
 invariants are in [project Fleet HTTP control plane](project-reverse-commands.md).
 
-Peon daemon settings use one authority: [daemon configuration over Fleet HTTP](daemon-configuration.md). Owner-only reads and revision-fenced patches go directly to the authenticated Peon `/api/v1/settings` route through mesh; the control WebSocket carries only the resulting realtime invalidation.
+Peon daemon settings use one authority: [daemon configuration over Fleet HTTP](daemon-configuration.md). Owner-only reads and revision-fenced patches go directly to the authenticated Peon `/api/v1/settings` route through its configured external endpoint; the control WebSocket carries only the resulting realtime invalidation.
 
 If a Peon does not return after a restart, follow the short
 [Peon restart recovery](peon-restart-recovery.md) checklist. Preserve its
 config/state, inspect the native service's first startup error, and do not
-restore connectivity by exposing the local listener or re-enabling VPN
-callbacks.
+restore connectivity by bypassing Fleet authentication or TLS.
 
-Update checks, apply admission, approved release metadata and archive bytes use
-the single authenticated Fleet HTTP path over mesh. SHA-256 verification,
-rollback and replacement-process attestation remain local to the Peon; see
-[Peon update channel](peon-update-channel.md).
+Public npm is the only Peon distribution and update channel. Overseer retains
+only owner-authorized check/apply/status orchestration over Fleet HTTP; it no
+longer publishes, approves, stores or proxies Peon releases. Exact-version npm
+installation, local rollback and replacement-process attestation remain local
+to the Peon; see [Peon update channel](peon-update-channel.md).
 
 The remaining direct Peon HTTP/SSE control plane is inventoried and assigned in
 [remaining Peon HTTP control plane](remaining-peon-http-control-plane.md).
@@ -110,10 +110,10 @@ Do not call that target deployed until exact loopback bindings and both external
 negative probes are verified. Exact behavior and the preflight/reboot checks
 are in [trusted client IPs](proxy-trust.md).
 
-The reusable [protocol conformance and failure-injection harness](protocol-conformance-harness.md) lives in the private `@rnm-dev/protocol-conformance` workspace. Its stable slice executes shared socket/catalog/file-read golden frames, a 3×3 Peon/Overseer capability and exclusive-downgrade matrix, deterministic drop/duplicate/reorder/reconnect/restart faults, bounded redacted diagnostics, and a topology assertion that permits only the two intentional Fleet HTTP directory-listing surfaces over mesh. Reverse commands, enrollment, transcripts, writes and rollout remain explicit blocked extension cells until their contracts, adapters and acceptance coverage are complete.
+The reusable [protocol conformance and failure-injection harness](protocol-conformance-harness.md) lives in the private `@rnm-dev/protocol-conformance` workspace. Its stable slice executes shared socket/catalog/file-read golden frames, a 3×3 Peon/Overseer capability and exclusive-downgrade matrix, deterministic drop/duplicate/reorder/reconnect/restart faults, bounded redacted diagnostics, and a topology assertion that permits only the two intentional external Fleet HTTP directory-listing surfaces. Reverse commands, enrollment, transcripts, writes and rollout remain explicit blocked extension cells until their contracts, adapters and acceptance coverage are complete.
 
 Transcript history pages and authoritative one-session detail use the direct
-authenticated Peon Fleet HTTP API through the mesh. Page reads preserve
+authenticated external Peon Fleet HTTP API. Page reads preserve
 `transcript-pagination-v1` limit/cursor semantics and never create reverse
 snapshot demand. The [`transcript-sync-v1` snapshot/projection/relay](transcript-sync.md)
 remains for live tails: Peon publishes post-barrier commits through the shared
@@ -123,7 +123,7 @@ generations.
 
 Deleting a project unregisters it and nothing more: the Peon drops its record (refusing with `409 PROJECT_RUNNING` while a session is running against it, and leaving already-recorded sessions with the project key they carry), while the directory and its files stay on disk. The owner-only Settings action needs the Peon online because the Peon owns the record. After a confirmed Fleet HTTP deletion, Overseer immediately evicts its cached project and access grants through `forgetIndexedProject` instead of waiting for the following catalog event; that event then becomes an idempotent no-op.
 
-Every file the web client shows — a message attachment, project file, documentation page or session artifact — is named by one `FileSource` and read by one renderer. Message attachments retain their dedicated public route because transcript paths may be absolute; Overseer safely maps them into `fileTransferRoot`. File bodies, Range/download, uploads/mutations, session artifacts/preview/watch and update archive bytes all stream through the direct authenticated Fleet HTTP API over mesh. Details are in [showing a file](file-viewing.md).
+Every file the web client shows — a message attachment, project file, documentation page or session artifact — is named by one `FileSource` and read by one renderer. Message attachments retain their dedicated public route because transcript paths may be absolute; Overseer safely maps them into `fileTransferRoot`. File bodies, Range/download, uploads/mutations and session artifacts/preview/watch all stream through the direct authenticated external Fleet HTTP API. Details are in [showing a file](file-viewing.md).
 
 An iOS Live Activity server surface shipped on 2026-07-27 (`/api/push/live-activities*`, tables `live_activity_tokens` and `live_activity_claims`): one aggregate per operator per device connection, keyed by (user, device, connection). Registration takes a `connectionId` and never a `workspaceId`/`peonId`/`sessionId`, and the content state is `runningCount`/`completedCount`/`oldestStartedAt`/`updatedAt` — the contract is in [push notifications](push-notifications.md#ios-live-activities), and `apps/server/src/liveActivity.test.ts` holds start/update/end to it. It is dormant in production until an iOS client registers ActivityKit tokens — no tokens, no pushes, and behaviour on a real handset is still unverified.
 
@@ -159,8 +159,8 @@ Dev public origin is https://overseer-dev.rnm.dev. Cloudflare A record remains p
 
 ## Production deployment
 
-host: root@94.247.128.103 (nid-01 / nid-prod-coloc.mesh.rnm / Tailscale 100.64.0.5)
-tailnet: hs.rnm.dev, MagicDNS suffix mesh.rnm; the production app container resolves and reaches Peons at peon-*.mesh.rnm:4570
+host: root@94.247.128.103 (nid-01)
+Peons advertise externally reachable Fleet HTTPS endpoints to Overseer.
 deploy: Kamal 2 config /rnm/overseer/apps/server/config/deploy.yml; service overseer; registry image vibze/overseer
 current image: vibze/overseer:df4b2b75d1558cec99dc771be52026a536065051 (clean commit, deployed 2026-07-29 — OVSR-238 moved the repository root to `/rnm/overseer` and the production build to the root npm workspaces)
 app container pattern: overseer-web-<version>, port 5000 on the kamal network, health check /healthz
@@ -174,7 +174,6 @@ database: accessory container overseer-postgres, PostgreSQL 16, internal DNS ove
 Persistent Docker volumes on nid-01:
 - overseer-postgres-data → /var/lib/postgresql/data
 - overseer-postgres-backups → /backups
-- overseer-releases → /data/releases
 
 Never remove/recreate these volumes during deploy or rollback. Kamal app deploys do not replace the Postgres accessory.
 
