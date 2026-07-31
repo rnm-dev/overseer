@@ -147,9 +147,6 @@ export function fmtBytes(bytes?: number): string {
   }
   return `${value >= 10 ? value.toFixed(0) : value.toFixed(1)} ${units[unit]}`;
 }
-export function fmtCost(n?: number): string {
-  return typeof n === "number" ? `$${n.toFixed(2)}` : "—";
-}
 export function fmtDuration(ms?: number): string {
   if (typeof ms !== "number" || ms < 0) return "—";
   const s = Math.round(ms / 1000);
@@ -178,26 +175,4 @@ export function fmtReset(resetsAt: number | null, now: number): string {
   return `${mins}m`;
 }
 
-export function fmtCredit(value: number, currency?: string): string {
-  if (!currency) return compact.format(value);
-  try {
-    return new Intl.NumberFormat(undefined, { style: "currency", currency }).format(value);
-  } catch {
-    return `${compact.format(value)} ${currency}`;
-  }
-}
 
-export function outcomeTone(outcome: string): "green" | "red" | "amber" | "neutral" {
-  switch (outcome) {
-    case "success":
-      return "green";
-    case "failure":
-      return "red";
-    case "needs_human":
-      return "amber";
-    case "running":
-      return "green";
-    default:
-      return "neutral"; // "none" (finished, ungraded) and any unknown key
-  }
-}

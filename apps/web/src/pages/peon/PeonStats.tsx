@@ -10,12 +10,9 @@ import {
   PERIODS,
   PROVIDERS,
   fmtBytes,
-  fmtCost,
   fmtCount,
-  fmtCredit,
   fmtDuration,
   fmtReset,
-  outcomeTone,
   sum,
   analyticsRows,
   type Analytics,
@@ -144,11 +141,10 @@ export function PeonStats() {
   if (!peon.online) return <p className="font-mono text-sm text-ink-faint">{t("peon.offlineNote")}</p>;
   if (unsupported) return <p className="font-mono text-sm text-ink-faint">{t("peon.unsupported")}</p>;
 
-  const outcomes = stats?.outcomeCounts ? Object.entries(stats.outcomeCounts) : [];
   const missingUsage = stats?.sessionsMissingUsage ?? 0;
-  // Output tokens + cost are the headline (below); input/cache are cheap and
-  // cache_read dominates any raw total (it's context reread every turn, not new
-  // work) — never headline a summed total, it reads as wildly inflated.
+  // Output tokens are the headline (below); input/cache are cheap and cache_read
+  // dominates any raw total (it's context reread every turn, not new work) —
+  // never headline a summed total, it reads as wildly inflated.
   const breakdown: [string, number | undefined][] = [
     ["peon.stats.inputTokens", stats?.totalInputTokens],
     ["peon.stats.cacheWrite", stats?.totalCacheCreationTokens],
@@ -177,10 +173,9 @@ export function PeonStats() {
       {!stats && !error && <div className="loading-spinner" />}
       {stats && (
         <>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="grid grid-cols-3 gap-3">
             <StatPlate value={fmtCount(stats.sessionCount)} label={t("peon.stats.sessions")} />
             <StatPlate value={fmtCount(stats.totalOutputTokens)} label={t("peon.stats.outputTokens")} tone="warning" />
-            <StatPlate value={fmtCost(stats.totalCostUsd)} label={t("peon.stats.cost")} tone="ink" />
             <StatPlate value={fmtDuration(stats.totalDurationMs)} label={t("peon.stats.duration")} tone="ink" />
           </div>
 
@@ -240,24 +235,6 @@ export function PeonStats() {
       </div>
 
       {isOwner && <CliUpdatesPanel base={base} online={peon.online} />}
-
-      {stats && (
-        <Card className="px-5 py-4">
-          <div className="mb-3 font-display text-[0.6rem] uppercase tracking-[0.16em] text-ink-muted">{t("peon.stats.outcomes")}</div>
-          {outcomes.length === 0 ? (
-            <p className="font-mono text-sm text-ink-faint">{t("peon.stats.empty")}</p>
-          ) : (
-            <ul className="space-y-2">
-              {outcomes.map(([outcome, n]) => (
-                <li key={outcome} className="flex items-center justify-between gap-3">
-                  <Badge tone={outcomeTone(outcome)}>{outcome.replace(/_/g, " ")}</Badge>
-                  <span className="font-mono text-sm text-ink">{fmtCount(n)}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-      )}
     </div>
   );
 }
@@ -331,10 +308,8 @@ function ProviderUsage({
   const statusLabel = quota.loading && !quota.data ? t("peon.quota.status.checking") : t(`peon.quota.status.${effectiveStatus}`);
   const providerName = t(`peon.quota.provider.${provider}`);
   const recordedTokens = sum(models, "totalTokens");
-  const recordedCost = sum(models, "totalCostUsd");
   const recordedDuration = sum(models, "totalDurationMs");
   const quotaError = quota.error ?? (quota.data?.status === "error" ? quota.data.error : null);
-  const credits = quota.data?.credits;
   const refreshing = quota.loading || capabilities.loading;
 
   return (
@@ -358,9 +333,8 @@ function ProviderUsage({
 
       <section className="mt-5">
         <div className="mb-2 font-display text-[0.6rem] uppercase tracking-[0.16em] text-ink-muted">{t("peon.quota.recorded")}</div>
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-2 gap-2">
           <StatPlate value={fmtCount(recordedTokens)} label={t("peon.quota.tokens")} tone="warning" />
-          <StatPlate value={fmtCost(recordedCost)} label={t("peon.stats.cost")} tone="ink" />
           <StatPlate value={fmtDuration(recordedDuration)} label={t("peon.stats.duration")} tone="ink" />
         </div>
         {models.length === 0 ? (
@@ -371,7 +345,7 @@ function ProviderUsage({
               <li key={`${model.model ?? "unknown"}-${index}`} className="flex items-center justify-between gap-3 font-mono text-xs">
                 <span className="min-w-0 truncate text-ink">{model.model ?? "—"}</span>
                 <span className="shrink-0 text-ink-faint">
-                  {fmtCount(model.totalTokens)} · {fmtCost(model.totalCostUsd)} · {fmtDuration(model.totalDurationMs)}
+                  {fmtCount(model.totalTokens)} · {fmtDuration(model.totalDurationMs)}
                 </span>
               </li>
             ))}
@@ -410,17 +384,6 @@ function ProviderUsage({
           </ul>
         )}
       </section>
-
-      {credits && Object.values(credits).some((value) => value !== undefined) && (
-        <section className="mt-5 border-t border-edge pt-3 font-mono text-xs text-ink-muted">
-          <div className="mb-2 font-display text-[0.6rem] uppercase tracking-[0.16em] text-ink-muted">{t("peon.quota.credits")}</div>
-          <div className="flex flex-wrap gap-x-4 gap-y-1">
-            {typeof credits.balance === "number" && <span>{t("peon.quota.balance")}: {fmtCredit(credits.balance, credits.currency)}</span>}
-            {typeof credits.used === "number" && <span>{t("peon.quota.used")}: {fmtCredit(credits.used, credits.currency)}</span>}
-            {typeof credits.limit === "number" && <span>{t("peon.quota.limit")}: {fmtCredit(credits.limit, credits.currency)}</span>}
-          </div>
-        </section>
-      )}
 
       <CapabilitiesInventory state={capabilities} />
     </Card>
