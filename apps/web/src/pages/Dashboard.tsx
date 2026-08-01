@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, Plus } from "lucide-react";
 import { api } from "../api";
 import { useWorkspace, type Workspace } from "../workspace";
 import { useWorkspacePeonPresence } from "../hooks/usePeonPresence";
-import { OverseerWordmark } from "../ui";
+import { Button, OverseerWordmark } from "../ui";
 import { PeonConnectionStatusDot } from "../components/PeonConnectionStatusDot";
 import { useT } from "../i18n";
 import { useAuth, type User } from "../auth";
@@ -12,6 +12,7 @@ import { SessionPresence } from "../components/SessionPresence";
 import { useLiveSocket, type PresenceEntry, type PresenceUser } from "../liveSocket";
 import { useWorkspaceLivePresence } from "../workspaceLive";
 import { UserBox } from "../components/UserBox";
+import { NewWorkspaceDialog } from "../components/NewWorkspaceDialog";
 
 // author: Viktor
 // The fleet dashboard (index): every peon in a grid, grouped by workspace. No
@@ -28,12 +29,12 @@ export function peonHref(id: string): string {
   return `/peons/${encodeURIComponent(id)}`;
 }
 
-export function workspaceListClass(count: number): string {
-  return count === 1 ? "mx-auto max-w-2xl" : "grid gap-4 sm:grid-cols-2";
+export function workspaceListClass(_count: number): string {
+  return "mx-auto max-w-2xl space-y-4";
 }
 
 export function userBoxLayoutClass(workspaceCount: number): string {
-  return `mt-4 ${workspaceListClass(Math.max(workspaceCount, 1))}`;
+  return `mt-4 ${workspaceListClass(workspaceCount)}`;
 }
 
 export const HOME_WORKSPACE_CARD_CLASS = "surface overflow-hidden";
@@ -41,6 +42,7 @@ export const HOME_WORKSPACE_HEADER_CLASS = "group block px-5 py-5 focus-visible:
 export const HOME_WORKSPACE_TITLE_CLASS = "truncate font-display text-lg font-bold tracking-[0.06em] text-accent-strong drop-shadow-[0_0_8px_rgba(134,171,99,0.18)] transition-colors group-hover:text-accent";
 export const HOME_PEON_LIST_CLASS = "space-y-3 px-4 pb-4";
 export const HOME_PEON_LINK_CLASS = "on-surface on-surface--interactive group/peon flex items-center gap-3 rounded-lg px-4 py-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60";
+export const HOME_CREATE_WORKSPACE_CLASS = "mt-6 gap-2";
 
 export function presenceUsersForPeon(entries: PresenceEntry[], peonId: string): PresenceUser[] {
   const users = new Map<string, PresenceUser>();
@@ -57,6 +59,7 @@ export function Dashboard() {
   const { groups, ready } = useWorkspace();
   const { user } = useAuth();
   const username = displayUsername(user);
+  const [showNewWorkspace, setShowNewWorkspace] = useState(false);
 
   return (
     <div className="mx-auto w-full max-w-6xl flex-1 px-6 pb-8 pt-7">
@@ -67,6 +70,10 @@ export function Dashboard() {
             {username}
           </span>
         </Link>
+        <Button className={HOME_CREATE_WORKSPACE_CLASS} onClick={() => setShowNewWorkspace(true)}>
+          <Plus size={16} aria-hidden="true" />
+          {t("workspace.create")}
+        </Button>
       </header>
 
       {!ready ? (
@@ -92,6 +99,7 @@ export function Dashboard() {
           </div>
         </>
       )}
+      {showNewWorkspace && <NewWorkspaceDialog onClose={() => setShowNewWorkspace(false)} />}
     </div>
   );
 }

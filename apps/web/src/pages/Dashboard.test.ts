@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   displayUsername,
+  HOME_CREATE_WORKSPACE_CLASS,
   HOME_PEON_LINK_CLASS,
   HOME_PEON_LIST_CLASS,
   HOME_WORKSPACE_CARD_CLASS,
@@ -41,18 +42,26 @@ test("home Peon rows open the Peon directly", () => {
   assert.equal(peonHref("peon/id"), "/peons/peon%2Fid");
 });
 
-test("a single workspace is centered instead of occupying a two-column grid", () => {
+test("all workspaces use one centered column at every viewport width", () => {
   assert.match(workspaceListClass(1), /mx-auto/);
   assert.doesNotMatch(workspaceListClass(1), /grid-cols-2/);
-  assert.match(workspaceListClass(2), /grid-cols-2/);
+  assert.match(workspaceListClass(2), /max-w-2xl/);
+  assert.match(workspaceListClass(2), /space-y-4/);
+  assert.doesNotMatch(workspaceListClass(2), /grid-cols/);
 });
 
 test("the in-flow user card occupies the same column width as a workspace card", () => {
   assert.match(userBoxLayoutClass(1), /max-w-2xl/);
-  assert.match(userBoxLayoutClass(2), /sm:grid-cols-2/);
+  assert.match(userBoxLayoutClass(2), /max-w-2xl/);
+  assert.doesNotMatch(userBoxLayoutClass(2), /grid-cols/);
   assert.match(userBoxLayoutClass(2), /\bmt-4\b/);
   assert.doesNotMatch(HOME_USER_CARD_CLASS, /\b(?:fixed|sticky|w-64)\b/);
   assert.match(HOME_USER_CARD_CLASS, /\bw-full\b/);
+});
+
+test("the create-workspace action is presented as a prominent header button", () => {
+  assert.match(HOME_CREATE_WORKSPACE_CLASS, /mt-6/);
+  assert.match(HOME_CREATE_WORKSPACE_CLASS, /gap-2/);
 });
 
 test("the user card shares the workspace visual system", () => {
