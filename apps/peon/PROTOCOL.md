@@ -8,11 +8,6 @@ auth-gate in `controlServer.ts`.
 
 The normative correlated command lifecycle and fleet-surface migration matrix are
 defined in [`docs/reverse-command-protocol-v1.md`](docs/reverse-command-protocol-v1.md).
-The frozen Peon-initiated enrollment and credential lifecycle is defined separately
-in [`docs/peon-claim-protocol-v1.md`](docs/peon-claim-protocol-v1.md). It uses
-outbound HTTPS short polling and does not inherit tailnet reachability assumptions
-of the legacy recruitment flow below. Its strict schema, lifecycle fixtures, and
-executable cryptographic/security vectors live under `protocol/peon-claim-v1/`.
 Remote daemon pause/resume is intentionally local-only and is not part of the
 reverse command surface.
 
@@ -49,13 +44,9 @@ Errors are always `{ "error": "<human message>", "code": "<STABLE_CODE>" }` —
 indicates that an authenticated caller selected a host path the Peon process
 cannot read, or a path a project-file policy intentionally excludes.
 
-## Legacy recruitment (`/enroll`)
+## Pairing and enrollment (`/enroll`)
 
-This is the mixed-version compatibility path. A `peon-claim-v1` attempt and this
-legacy `/enroll` path are mutually exclusive under the downgrade and attempt-lock
-rules in the normative claim contract.
-
-How a legacy peon gets its `overseerToken` in the first place (zero-touch). The overseer
+How a Peon gets its `overseerToken` in the first place. The Overseer
 mints a per-peon, workspace-scoped credential (`pn_…`) and hands it over through
 `/enroll`. That's chicken-and-egg — `/enroll` needs auth, but a never-recruited
 peon holds no overseer credential yet — so a **one-time pairing phrase** bootstraps
@@ -65,8 +56,8 @@ The pairing phrase is a short, human-carried, single-use, TTL'd bootstrap key.
 Because a human carries it, it's a **memorable orcish phrase** (`lok-tar-ogar-dabu`),
 not random hex. Flow:
 
-1. A fresh peon (no `overseerToken`) arms a phrase at boot and prints it once (also
-   re-armable with `peon pair` to re-point an already-recruited peon). Never logged
+1. A local operator arms a phrase with `peon enroll` (also available as the
+   compatibility alias `peon pair`). The phrase is never logged
    again after generation.
 2. The human running the Peon reads the phrase + its Tailscale MagicDNS address to an
    operator, who enters both in the overseer's "Connect peon" form.

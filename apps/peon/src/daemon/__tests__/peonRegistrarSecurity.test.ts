@@ -14,12 +14,12 @@ test("registrar exposes only allowlisted credential verdicts and never remote me
   const allowed = await northError("register", errorResponse(JSON.stringify({
     code: "CREDENTIAL_REVOKED",
     message: secret,
-    bearer: `pc1.secret.${"A".repeat(43)}`,
+    bearer: `pn_${"A".repeat(32)}`,
   })));
   assert.equal(allowed.code, "CREDENTIAL_REVOKED");
   assert.equal(allowed.message, "register -> 401");
   assert.doesNotMatch(JSON.stringify(allowed), new RegExp(secret));
-  assert.doesNotMatch(allowed.message, /pc1\./);
+  assert.doesNotMatch(allowed.message, /pn_/);
 
   const unknown = await northError("heartbeat", errorResponse(JSON.stringify({
     code: "FUTURE_REMOTE_VERDICT",

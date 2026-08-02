@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
-import { ApiError, api, migrateLegacyWebSession } from "./api";
+import { api, migrateLegacyWebSession } from "./api";
 
 const originalFetch = globalThis.fetch;
 
@@ -35,22 +35,4 @@ test("legacy web-session migration sends the old token once as a bearer", async 
   assert.equal(calls[0]?.init?.method, "POST");
   assert.equal(calls[0]?.init?.credentials, "same-origin");
   assert.equal(new Headers(calls[0]?.init?.headers).get("authorization"), "Bearer device.secret");
-});
-
-test("claim_error uses its safe message without requiring the legacy error field", async () => {
-  globalThis.fetch = async () => Response.json({
-    type: "claim_error",
-    protocol: 1,
-    code: "CLAIM_EXPIRED",
-    message: "claim expired",
-    serverTime: 1,
-  }, { status: 410 });
-
-  await assert.rejects(
-    api("/peon-claims/resolve"),
-    (error: unknown) => error instanceof ApiError
-      && error.status === 410
-      && error.code === "CLAIM_EXPIRED"
-      && error.message === "claim expired",
-  );
 });

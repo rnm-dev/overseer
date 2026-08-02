@@ -7,10 +7,8 @@ that is still in progress.
 
 Normative protocol details remain in
 [the reverse command gateway](reverse-command-gateway.md),
-[Peon-initiated enrollment](peon-claim-v1.md), and
-[file viewing](file-viewing.md). The canonical claim contract is
-`apps/peon/docs/peon-claim-protocol-v1.md`; the canonical reverse-command
-contract is `apps/peon/docs/reverse-command-protocol-v1.md`.
+[file viewing](file-viewing.md), and the canonical reverse-command contract at
+`apps/peon/docs/reverse-command-protocol-v1.md`.
 
 ## Security decision and current gate
 
@@ -25,16 +23,15 @@ This command is read-only apart from temporary test files and in-memory
 databases. It does not contact production, deploy, or restart a service.
 
 Reverse-only/public-boundary cutover is **not approved** by this document.
-OVSR-129, OVSR-130, and OVSR-210 remain In Progress. OVSR-145, OVSR-147,
-OVSR-248, and OVSR-249 are in Code Review; review state is not deployment or
+OVSR-129 and OVSR-130 remain In Progress. OVSR-248 and OVSR-249 are in Code
+Review; review state is not deployment or
 operational evidence. The exact executable and blocked cells are listed under
 [Blocked suites](#blocked-suites).
 
-The mixed-version legacy credential is also deliberately recoverable plaintext
-in `peon_credentials.token` and `peons.token`, because Overseer still calls old
-Peons. That is a high-impact compatibility risk, not evidence that `pc1`
-implements hashing incorrectly. It must not survive the reverse-only/legacy
-retirement gate in OVSR-211.
+The `pn_` Peon credential is deliberately recoverable in
+`peon_credentials.token` and `peons.token`, because Overseer uses it for Fleet
+HTTP and Peon-initiated registration/socket authentication. Database access is
+therefore sufficient to impersonate a Peon and must be protected accordingly.
 
 ## Security objectives
 
@@ -43,7 +40,7 @@ The boundary must preserve these properties:
 1. An operator can affect or observe only a workspace, Peon, project, and
    session authorized by server-side membership and ACL state.
 2. Browser input never selects the command actor, Peon socket identity,
-   workspace binding, credential generation, or durable delivery cursor.
+   workspace binding or durable delivery cursor.
 3. At-least-once delivery cannot become more-than-once effect. Same ID/same
    canonical request joins one lifecycle; same ID/different request fails.
 4. A stale socket, callback, async completion, ACK, or transfer frame cannot
@@ -53,7 +50,7 @@ The boundary must preserve these properties:
 6. Peon is authoritative for command admission/effect and filesystem
    containment; Overseer is authoritative for operator ACL and its safe,
    rebuildable projection.
-7. Credentials, pairing/claim material, prompts, transcript bodies, private
+7. Credentials, pairing phrases, prompts, transcript bodies, private
    keys, sensitive paths, and configuration secrets do not enter routine logs,
    metrics, browser events, URLs, or safe error bodies.
 8. Active content from a Peon never executes in the authenticated Overseer
@@ -73,9 +70,8 @@ must not cross into another Peon/workspace or escape browser isolation.
 | Asset | Required protection |
 | --- | --- |
 | Operator web/device credentials | Secret; accepted only by operator auth; never forwarded to Peon |
-| Legacy `pn_…` Peon credential | Secret and workspace/Peon bound; currently recoverable for callback compatibility |
-| Claim `pc1.…` credential | HMAC-verifiable in the ordinary row; plaintext recoverable only while encrypted delivery is pending |
-| Claim token, operator code, Ed25519 private key | Separate scopes; no browser access to claim token/private key; short operator-code lifetime |
+| `pn_…` Peon credential | Secret and workspace/Peon bound; recoverable because it authenticates both Fleet HTTP and outbound registration/socket traffic |
+| Pairing phrase | Short-lived, single-use bootstrap secret; generated and displayed only through the local CLI |
 | Workspace/Peon/project/session ACL | Integrity and non-enumerability |
 | Command ID, request hash, actor and lifecycle | Integrity, replay safety, generation binding, durable recovery |
 | Durable epoch/cursor/message ID | Ordered integrity; ACK only after atomic commit |
@@ -128,15 +124,9 @@ must not cross into another Peon/workspace or escape browser isolation.
 
   Before TB4/TB5 exist:
 
-  Peon identity + signed HTTPS ----> TB8 public claim service
+  local operator -> peon enroll -> one-time phrase
                                       |
-  operator code + owner approval --->+----> encrypted delivery /
-                                            hashed credential state
-
-  Legacy coexistence:
-
-  operator -> Overseer -> inbound Peon /enroll -> pn_ credential
-               (separate attempt lock; must never race claim mode)
+  operator -> Overseer -> Peon /enroll -> pn_ credential
 ```
 
 ### Boundary rules
@@ -150,7 +140,6 @@ must not cross into another Peon/workspace or escape browser isolation.
 | TB5 transfer WSS | Same credential binding plus file capability and request correlation | Unknown transfer ID, bad sequence, excess credit/bytes, late non-tombstoned frame, oversized frame |
 | TB6 Peon command | Authenticated socket authority, server-derived actor envelope, durable admission | Wrong target Peon, unknown fields, ID reuse with changed hash, unnegotiated capability |
 | TB7 filesystem | Immutable project ID/root, contained resolved path, opened regular-file inode | Traversal, absolute project path, external symlink, symlink swap, directory/device, invalid range |
-| TB8 claim | Strict 16 KiB schema, minimal auth lookup, valid fresh Ed25519 proof, correct token/credential state | Redirect/downgrade, replayed nonce, bad origin/path/binding, workspace supplied by Peon, plaintext normal-row bearer |
 
 The two sockets are separate availability domains. Transfer loss must not mark
 control presence offline, and transfer pressure must not block command
@@ -169,8 +158,6 @@ acceptance, heartbeat, status reconciliation, or durable ACKs.
   scope until revocation. It does not authorize another workspace or Peon.
 - A stale/replaced Peon socket may continue producing frames and async results.
 - A compromised Peon may send arbitrary protocol-valid metadata and bytes.
-- PostgreSQL and deployment keys are separate compromise domains. A database
-  read alone must not recover an acknowledged `pc1` bearer.
 - TLS termination/proxy configuration is part of the security boundary.
   Forwarded-client identity follows the explicit, fail-closed chain in
   [trusted client IPs](proxy-trust.md).
@@ -189,8 +176,6 @@ acceptance, heartbeat, status reconciliation, or durable ACKs.
 | Send result/acceptance from another Peon/generation | Fence and close/reject without resolving command | gateway/socket generation tests |
 | Steal/replay revoked credential | Upgrade/request rejected; both sockets evicted | transfer/socket credential tests |
 | Expose credential in view/error/preview | Sentinel absent from browser/API/close reason | security gate, settings and preview tests |
-| Claim or rotate with replayed proof | Fresh proof + semantic ID; nonce replay rejected | claim contract/client/service tests in the gate |
-| Race claim and legacy enrollment | One durable method lease; losing credential revoked | claim service tests in the gate; delayed-generation race remains blocked |
 
 ### P1: frame, durable stream, and resource abuse
 
@@ -307,11 +292,11 @@ on both 8080 and 8443 (`0.0.0.0/[::]`). An independent external request to
 reachable direct-Kamal listener, the pinned proxy behavior preserves inbound
 XFF and appends the actual TCP peer at the right; the application stops at that
 first untrusted peer, so attacker-controlled or malformed entries farther left
-cannot rotate auth, claim-start, or operator-code attribution. A malformed
+cannot rotate authentication attribution. A malformed
 rightmost token is rejected as a non-IP and collapses to the trusted
 application socket peer.
 
-`proxyTrust.test.ts` exercises all three limits for an untrusted direct app
+`proxyTrust.test.ts` exercises authentication limits for an untrusted direct app
 peer, the exact trusted-Kamal/appended-public-peer chain, malformed
 left/intermediate and rightmost XFF, a multi-hop trusted chain, invalid proxy
 configuration, and the checked-in nginx/Kamal/Compose invariant.
@@ -337,15 +322,13 @@ security-gate regression uses independent sentinel root and rejected-path
 values and asserts that neither reaches the response body, durable/live browser
 events, routine logs, or an upstream file read.
 
-### Legacy recoverable bearer (high at cutover)
+### Recoverable Peon bearer
 
-Legacy `pn_` credentials are plaintext in both the credential and Peon
-registry rows. This is necessary only because Overseer still authenticates
-outbound callbacks to legacy Peons. `pc1` normal rows use an HMAC verifier and
-claim-mode Peon registry rows keep an empty callback token. Before legacy
-retirement, database access therefore remains enough to impersonate a legacy
-Peon. OVSR-211 owns removal; cutover evidence must prove there are no remaining
-legacy credentials before declaring plaintext-bearer risk removed.
+`pn_` credentials are plaintext in both the credential and Peon registry rows.
+They authenticate direct Fleet HTTP as well as Peon registration and sockets,
+so database access is enough to impersonate a Peon. This is an accepted current
+boundary and requires strict database access control, credential redaction and
+immediate revocation on suspected disclosure.
 
 ### WebSocket Origin is not the Peon authorization boundary (accepted)
 
@@ -367,13 +350,13 @@ safer: it is operation-allowlisted before persistence and publication.
 
 These are operator actions, not automated assumptions.
 
-### Suspected legacy `pn_` credential compromise
+### Suspected `pn_` credential compromise
 
 1. Stop using the affected Peon for new work and record workspace, Peon ID,
    observed time, socket presence and affected sessions without copying the
    token into the incident record.
 2. As workspace owner, remove/revoke the Peon through the authenticated fleet
-   surface. Current `DELETE /api/workspaces/:wsId/peons/:id` revokes the legacy
+   surface. Current `DELETE /api/workspaces/:wsId/peons/:id` revokes the
    credential, evicts both sockets, and removes the registry row.
 3. Confirm both control and transfer presence are gone and old north-bound
    requests/upgrades return unauthenticated.
@@ -383,46 +366,17 @@ These are operator actions, not automated assumptions.
    IDs/codes; do not paste credentials, prompts, transcript bodies, or host
    paths into routine logs/tickets.
 
-### Suspected `pc1` bearer compromise
-
-The following endpoints and rotation behavior are implemented and in Code
-Review, but remain operationally provisional until deployment and exercise:
-
-1. Revoke the specific credential immediately when the Peon identity is still
-   trusted; otherwise revoke the whole Peon.
-2. Confirm revocation committed before UI success, both sockets were evicted,
-   and old HTTP/upgrades are rejected without a grace period.
-3. If only the bearer was lost, start recovery with the same Ed25519 identity;
-   owner approval must remain in the already-bound workspace. Older
-   credentials are revoked only when the recovered credential ACK commits.
-4. If the identity private key may be compromised, revoke the Peon, explicitly
-   remove the identity binding, generate a new Peon ID/key and enroll as a new
-   identity. Remote key reset is forbidden.
-5. Routine rotation uses the old active bearer plus identity proof, persists
-   the new bearer before ACK, rejects old new connections after ACK, and evicts
-   lower-generation sockets on the first new-generation ready channel or the
-   five-minute deadline.
-
-No operator should execute these provisional `pc1` steps in production until
-the feature gate, deployment keys, reviewed implementations and regression
-suites are complete.
-
 ## Cutover checklist
 
 - Stable security runner passes from a clean, reviewed revision.
 - OVSR-248 is resolved and proxy trust is verified in the deployed topology.
 - No unresolved critical/high security finding remains.
 - OVSR-129/130 fault suites pass every lifecycle boundary.
-- OVSR-210/145/147 claim/rotation/revocation suites are unblocked and pass.
 - Cross-workspace authorization covers every shipped operation family.
 - Transfer write/checksum suites cover every shipped write operation.
 - Logs, metrics, events, URLs, error bodies and projections pass sentinel-secret
   scans.
 - Both socket channels are proven bounded under concurrent command/catalog/file
   load and no-inbound soak.
-- Legacy route selection is exclusive and the published mixed-version window is
-  observed.
-- Before claiming legacy risk removed, production inventory proves no
-  recoverable callback credential remains.
-- Incident revoke/rotate/re-enroll procedures have been exercised in a
+- Incident revoke/re-enroll procedures have been exercised in a
   non-production environment.

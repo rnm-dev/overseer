@@ -176,7 +176,7 @@ available to Overseer.
 
 | Existing Peon fleet surface | Target authority | Planned capability | Actor | Migration rule |
 |---|---|---|---:|---|
-| `POST /enroll` | outbound claim | `peon-claim-v1` | operator approval | Legacy callback only until claim ships |
+| `POST /enroll` | direct Fleet HTTP | none | pairing phrase | Sole enrollment authority; Overseer initiates the request |
 | `GET /status` | projection | `runtime-state-v1` | no | Legacy HTTP until initial projection commits |
 | `PATCH /status` | local-only | none | n/a | Do not migrate remote pause |
 | `GET /models` | projection | `runtime-state-v1` | no | Legacy HTTP until ready |
@@ -211,9 +211,9 @@ available to Overseer.
 | generic `/files` get/put | legacy-only | none | yes | Replace with stable project/session transfer operations |
 | Armory reads and lifecycle/configuration mutations | direct Fleet HTTP | none | yes | One authenticated authority; durable operation IDs survive retries/restart |
 
-Registration and heartbeat are discovery-era HTTP operations, not operator fleet routes. Socket
-identity/presence and runtime projections replace them only after outbound claim and reverse-only
-mode ship.
+Registration and heartbeat are machine lifecycle HTTP operations, not operator fleet routes.
+Pairing remains Overseer-initiated because the same reachable Fleet HTTP boundary is required
+for normal operation.
 
 ## Data-plane allocation
 

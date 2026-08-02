@@ -1,11 +1,7 @@
 import { randomBytes, randomUUID } from "node:crypto";
-import { query } from "../../db.js";
+import { query, transaction } from "../../db.js";
 import { evictPeonConnection } from "../../peonConnections.js";
 import type { Minted, PeonCredential } from "./credentialsTypes.js";
-import {
-  resolvePc1Credential,
-  revokePeonCredentialsForFleetDeletion,
-} from "../peonClaims/claimService.js";
 
 interface CredentialRow {
   id: string;
@@ -28,8 +24,6 @@ function rowToCredential(r: CredentialRow): PeonCredential {
     createdAt: r.created_at,
     revokedAt: r.revoked_at,
     boundPeonId: r.bound_peon_id,
-    generation: null,
-    method: "legacy",
   };
 }
 
@@ -44,24 +38,11 @@ export async function mintCredential(workspaceId: string, label: string | null, 
      VALUES ($1, $2, $3, $4, $5, $6, NULL, NULL)`,
     [id, workspaceId, token, label, createdBy, now],
   );
-  return { credential: { id, workspaceId, label, createdAt: now, revokedAt: null, boundPeonId: null, generation: null, method: "legacy" }, token };
+  return { credential: { id, workspaceId, label, createdAt: now, revokedAt: null, boundPeonId: null }, token };
 }
 
 export async function resolveCredential(token: string): Promise<PeonCredential | null> {
   if (!token) return null;
-  if (token.startsWith("pc1.")) {
-    const claim = await resolvePc1Credential(token);
-    return claim ? {
-      id: claim.id,
-      workspaceId: claim.workspaceId,
-      label: null,
-      createdAt: 0,
-      revokedAt: null,
-      boundPeonId: claim.boundPeonId,
-      generation: claim.generation,
-      method: "claim",
-    } : null;
-  }
   const { rows } = await query<CredentialRow>(
     `SELECT ${COLS} FROM peon_credentials WHERE token = $1 AND revoked_at IS NULL`,
     [token],
@@ -89,12 +70,27 @@ export async function revokeCredential(workspaceId: string, credentialId: string
 }
 
 export async function revokeCredentialForPeon(workspaceId: string, peonId: string): Promise<void> {
-  await revokePeonCredentialsForFleetDeletion(workspaceId, peonId);
+  await query(
+    `UPDATE peon_credentials SET revoked_at=$3
+     WHERE workspace_id=$1 AND bound_peon_id=$2 AND revoked_at IS NULL`,
+    [workspaceId, peonId, Date.now()],
+  );
   evictPeonConnection(peonId);
 }
 
 export async function deRecruitPeon(workspaceId: string, peonId: string): Promise<boolean> {
-  const removed = await revokePeonCredentialsForFleetDeletion(workspaceId, peonId, true);
+  const removed = await transaction(async (tx) => {
+    await tx.query(
+      `UPDATE peon_credentials SET revoked_at=$3
+       WHERE workspace_id=$1 AND bound_peon_id=$2 AND revoked_at IS NULL`,
+      [workspaceId, peonId, Date.now()],
+    );
+    const result = await tx.query(
+      `DELETE FROM peons WHERE peon_id=$1 AND workspace_id=$2`,
+      [peonId, workspaceId],
+    );
+    return (result.rowCount ?? 0) > 0;
+  });
   if (removed) {
     evictPeonConnection(peonId);
   }

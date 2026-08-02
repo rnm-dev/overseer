@@ -4,8 +4,7 @@ export interface PeonRecord {
   workspaceId: string;
   name: string;
   hostname: string | null;
-  // Optional legacy callback metadata. Claim-mode reverse Peons use an empty
-  // address and port 0; it must never be treated as their connection identity.
+  // Optional legacy callback metadata retained for compatible enrolled Peons.
   address: string;
   controlPort: number;
   publicUrl: string | null;

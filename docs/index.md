@@ -133,14 +133,12 @@ Peon, the Overseer server, the web dashboard and the Flutter client are being br
 
 The work is epic **Монорепо**. OVSR-238 is **released to production**: the checkout root was flattened from `/rnm/overseer/app` to `/rnm/overseer`, the server and the dashboard became `apps/server` and `apps/web`, and `docs/`, `infra/` and compose came under version control with them. Peon now lives in `apps/peon` as the `@rnm-dev/peon` workspace. The npm organisation is `rnm-dev` (`@rnm` was unavailable), so every Node package uses `@rnm-dev/*`. OVSR-240 is released: `@rnm-dev/peon@0.11.3` is public on npm and verified by clean install plus installed-package rollback packing. npm remains the installation channel, while enrolled fleet updates stay on Overseer's authenticated, size- and SHA-256-verified registry. The updater derives and preserves the existing global npm prefix and packs rollback archives with lifecycle scripts disabled, which is required by the compiled-only npm distribution. On 2026-07-30 nid-dev (`94.247.128.101`, user `peon`) was migrated in place from unscoped `peon@0.11.1` to `@rnm-dev/peon@0.11.3`: its Peon ID and all 556 sessions were preserved, both reverse sockets reconnected with an empty outbox, the old package remains for rollback, and the verified pre-migration archive remains on that host at `/root/peon-migration-backups/20260730T183400Z/`. Remaining monorepo work: OVSR-237 (give the instructions site its own repository and detach it), OVSR-239 (`packages/protocol`) and OVSR-241 (Flutter client). The layout and measured constraints are in [monorepo](monorepo.md).
 
-Peon-initiated enrollment is frozen as `peon-claim-v1`: outbound HTTPS short
-polling, stable Ed25519 machine identity, one encrypted-at-rest credential
-delivery replayed until acknowledgement, explicit recovery/rotation/revocation,
-generation-fenced socket replacement, and no automatic legacy downgrade after a
-claim begins. OVSR-210 defines only the contract, schemas, fixtures and
-conformance tests; OVSR-145/147 still implement it, and legacy `/enroll` remains
-until OVSR-211. Artifact ownership and the settled security decisions are in
-[Peon-initiated enrollment](peon-claim-v1.md).
+Peon enrollment has one path: the local operator runs `peon enroll` to arm a
+single-use, 15-minute pairing phrase, enters the Peon's reachable address and
+phrase in Overseer, and Overseer mints the workspace credential and sends it to
+the Peon's authenticated `POST /api/v1/enroll` route. `peon pair` remains a CLI
+alias. The retired outbound `peon-claim-v1` service, operator-code page,
+credential rotation, recovery and dual-mode locks have been removed.
 
 Pages this index does not otherwise reach: [server design notes](server-design.md) holds the settled decisions, the robustness model and the roadmap; [architecture](architecture.md) holds the rules for organising the code itself; [the dev box](dev-box.md) holds how the stack is served and operated on nid-dev; [deploy runbook](deploy-runbook.md) holds the Kamal preparation, the persistent-volume rules and rollback; [public website PRD](public-website-prd.md) belongs to the instructions site and leaves with it (OVSR-237). There are no `CLAUDE.md` files in this repository — that content lives in the two pages above, and this index is what every session is given.
 

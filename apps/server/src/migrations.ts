@@ -911,4 +911,25 @@ export const MIGRATIONS: { id: string; statements: string[] }[] = [
     id: "033_remove_peon_releases",
     statements: [`DROP TABLE IF EXISTS releases`],
   },
+  {
+    // Outbound peon-claim-v1 was retired before production rollout. Pairing is
+    // now exclusively Overseer-initiated through a Peon's one-time phrase.
+    id: "034_remove_peon_claim_v1",
+    statements: [
+      `DELETE FROM peons WHERE credential_id IN (SELECT id FROM peon_claim_credentials)`,
+      `DROP TABLE IF EXISTS peon_claim_peon_revocations`,
+      `DROP TABLE IF EXISTS peon_claim_ack_auth`,
+      `DROP TABLE IF EXISTS peon_claim_audit`,
+      `DROP TABLE IF EXISTS peon_claim_rate_limits`,
+      `DROP TABLE IF EXISTS peon_claim_request_nonces`,
+      `DROP TABLE IF EXISTS peon_credential_rotations`,
+      `DROP TABLE IF EXISTS peon_claim_deliveries`,
+      `DROP TABLE IF EXISTS peon_claim_credentials`,
+      `DROP TABLE IF EXISTS peon_claim_attempts`,
+      `DROP TABLE IF EXISTS peon_claim_resolutions`,
+      `DROP TABLE IF EXISTS peon_claims`,
+      `DROP TABLE IF EXISTS peon_enrollment_leases`,
+      `DROP TABLE IF EXISTS peon_identity_bindings`,
+    ],
+  },
 ];

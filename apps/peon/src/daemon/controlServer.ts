@@ -4,6 +4,7 @@ import { eventLoopDelayStats } from "./eventLoopMonitor.js";
 import path from "node:path";
 import express from "express";
 import { settings } from "./settings/index.js";
+import { pairing } from "./pairing.js";
 import { sessionPresence } from "./sessionPresence.js";
 import {
   sessionArtifactInventory,
@@ -35,7 +36,6 @@ import { toSessionSummary } from "./sessionSummary.js";
 import { paginateTranscript, parseTranscriptPageRequest, parseTranscriptResumeEventId, transcriptResumeIndex, TranscriptPaginationError } from "./transcriptPagination.js";
 import { analyticsForSessions, parseSessionAnalyticsQuery, SessionAnalyticsQueryError } from "./sessionAnalytics.js";
 import { cliUpdates, CliUpdateError, type CliUpdateProvider, type CliUpdateService } from "./cliUpdates.js";
-import { ClaimHttpError, peonClaimClient } from "./enrollment/index.js";
 
 const startedAt = Date.now();
 const SSE_HEARTBEAT_MS = Number(process.env.ACA_SSE_HEARTBEAT_MS) || 15_000;
@@ -212,7 +212,6 @@ export function createControlServer(options: ControlServerOptions = {}) {
       // same poll. `enabled` reflects whether overseerUrl+overseerToken are set;
       // `derecruited` (a revoked credential) is what the sidebar flags.
       overseer: { ...peonRegistrar.getState(), socket: peonSocket.getState() },
-      enrollment: peonClaimClient.getStatus(),
       eventLoopDelay: eventLoopDelayStats(),
     });
   });
@@ -247,61 +246,11 @@ export function createControlServer(options: ControlServerOptions = {}) {
     }
   });
 
-  // Explicit legacy compatibility arm. Normal `peon pair <origin>` starts the
-  // outbound claim endpoint below and reaches this mode only after an explicit
-  // unsupported capability response.
+  // Pairing is deliberately local-only. Overseer later presents this
+  // single-use phrase to the machine-facing /api/v1/enroll route.
   app.post("/api/v1/pairing/arm", (_req, res) => {
-    try {
-      const { phrase, expiresAt } = peonClaimClient.armLegacy();
-      res.json({ ok: true, phrase, expiresAt });
-    } catch (error) {
-      const status = error instanceof ClaimHttpError ? error.status : 500;
-      const code = error instanceof ClaimHttpError ? error.body?.code ?? error.message : "INTERNAL";
-      res.status(status).json({ ok: false, code, error: code });
-    }
-  });
-
-  app.get("/api/v1/enrollment/claim", (_req, res) => {
-    res.json(peonClaimClient.getStatus());
-  });
-
-  app.post("/api/v1/enrollment/claim", async (req, res) => {
-    try {
-      const serverOrigin = typeof req.body?.serverOrigin === "string" ? req.body.serverOrigin : "";
-      res.json(await peonClaimClient.begin(serverOrigin));
-    } catch (error) {
-      const status = error instanceof ClaimHttpError ? error.status : 400;
-      const code = error instanceof ClaimHttpError ? error.body?.code ?? error.message : "BAD_REQUEST";
-      res.status(status).json({ code, error: code });
-    }
-  });
-
-  app.post("/api/v1/enrollment/claim/cancel", async (_req, res) => {
-    try {
-      res.json(await peonClaimClient.cancel());
-    } catch (error) {
-      const status = error instanceof ClaimHttpError ? error.status : 503;
-      const code = error instanceof ClaimHttpError ? error.body?.code ?? error.message : "PERSIST_FAILED";
-      res.status(status).json({ code, error: code });
-    }
-  });
-
-  app.post("/api/v1/enrollment/retry", (_req, res) => {
-    try {
-      res.json(peonClaimClient.resumeParked());
-    } catch {
-      res.status(503).json({ code: "PERSIST_FAILED", error: "PERSIST_FAILED" });
-    }
-  });
-
-  app.post("/api/v1/enrollment/credential/rotate", async (_req, res) => {
-    try {
-      res.json(await peonClaimClient.rotate());
-    } catch (error) {
-      const status = error instanceof ClaimHttpError ? error.status : 503;
-      const code = error instanceof ClaimHttpError ? error.body?.code ?? error.message : "PERSIST_FAILED";
-      res.status(status).json({ code, error: code });
-    }
+    const { phrase, expiresAt } = pairing.arm();
+    res.json({ ok: true, phrase, expiresAt });
   });
 
   app.post("/api/v1/control/pause", (_req, res) => {

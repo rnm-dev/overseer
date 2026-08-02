@@ -7,8 +7,6 @@ const peonRoot = path.join(repositoryRoot, "apps", "peon");
 
 const stableServerTests = [
   "apps/server/src/reverseFleetSecurity.test.ts",
-  "apps/server/src/peonClaimProtocolContract.test.ts",
-  "apps/server/src/peonClaims.test.ts",
   "apps/server/src/proxyTrust.test.ts",
   "apps/server/src/reverseCommandProtocolContract.test.ts",
   "apps/server/src/reverseCommandGateway.test.ts",
@@ -25,9 +23,6 @@ const stablePeonTests = [
   "reverseCommandChannel.test.ts",
   "reverseCommandLedger.test.ts",
   "peonSocket.test.ts",
-  "peonCredentialSocketGeneration.test.ts",
-  "peonClaimProtocolContract.test.ts",
-  "peonClaimClient.test.ts",
   "projectFileReadChannel.test.ts",
   "sandboxFileReadChannel.test.ts",
   "folderListingChannel.test.ts",

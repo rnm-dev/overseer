@@ -10,7 +10,6 @@ const capabilities = new WeakMap<WebSocket, ReadonlySet<string>>();
 const commandOperations = new WeakMap<WebSocket, ReadonlySet<string>>();
 const generations = new WeakMap<WebSocket, string>();
 const connectedAt = new WeakMap<WebSocket, number>();
-const credentialGenerations = new WeakMap<WebSocket, number>();
 const daemonVersions = new WeakMap<WebSocket, string>();
 
 export interface PeonConnectionClaim {
@@ -23,20 +22,14 @@ export function claimPeonConnection(
   socket: WebSocket,
   acceptedCapabilities: readonly string[] = [],
   acceptedCommandOperations: readonly string[] = [],
-  credentialGeneration = 0,
   daemonVersion?: string,
 ): PeonConnectionClaim {
   const previous = connections.get(peonId);
-  const previousGeneration = previous ? credentialGenerations.get(previous) ?? 0 : 0;
-  if (previous && previous !== socket && previousGeneration > credentialGeneration) {
-    return { accepted: false };
-  }
   connections.set(peonId, socket);
   capabilities.set(socket, new Set(acceptedCapabilities));
   commandOperations.set(socket, new Set(acceptedCommandOperations));
   generations.set(socket, randomUUID());
   connectedAt.set(socket, Date.now());
-  credentialGenerations.set(socket, credentialGeneration);
   if (daemonVersion) daemonVersions.set(socket, daemonVersion);
   return { accepted: true, ...(previous !== socket && previous ? { previous } : {}) };
 }
@@ -106,22 +99,6 @@ export function isCurrentPeonConnection(
 export function evictPeonConnection(peonId: string): boolean {
   const socket = connections.get(peonId);
   if (!socket) return false;
-  connections.delete(peonId);
-  socket.terminate();
-  return true;
-}
-
-export function evictPeonConnectionsBelowGeneration(peonId: string, generation: number): boolean {
-  const socket = connections.get(peonId);
-  if (!socket || (credentialGenerations.get(socket) ?? 0) >= generation) return false;
-  connections.delete(peonId);
-  socket.terminate();
-  return true;
-}
-
-export function evictPeonConnectionGeneration(peonId: string, generation: number): boolean {
-  const socket = connections.get(peonId);
-  if (!socket || (credentialGenerations.get(socket) ?? 0) !== generation) return false;
   connections.delete(peonId);
   socket.terminate();
   return true;

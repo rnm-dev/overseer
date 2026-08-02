@@ -4,7 +4,6 @@ import { sessions } from "../sessions/index.js";
 import { PROTOCOL_VERSION } from "../protocol.js";
 import { ensurePeonId } from "../peonIdentity.js";
 import { peonPublicUrl } from "../peonAddress.js";
-import { peonClaimClient } from "../enrollment/index.js";
 import { parseListenAddress } from "../../shared/listenAddress.js";
 // The outbound half of the overseer protocol: this peon announcing *itself* to
 // a central overseer (fleet control plane), so the registry self-populates and
@@ -219,9 +218,6 @@ export function createPeonRegistrar(options = {}) {
                     // Only an explicit stable revocation verdict is authoritative enough
                     // to erase the locally active credential. A bare/stale 401 keeps the
                     // established bounded retry behavior.
-                    if (["CREDENTIAL_REVOKED", "CREDENTIAL_INVALID", "CREDENTIAL_RETIRED"].includes(err.code)) {
-                        peonClaimClient.recordCredentialRejection(token, err.code);
-                    }
                     // One 401 is not enough to prove a durable revocation. A recovering
                     // deployment can briefly authenticate against stale or unavailable
                     // credential state. Mark the degraded state, but keep probing with

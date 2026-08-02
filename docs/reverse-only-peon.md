@@ -30,8 +30,9 @@ peon remote on peon.example.mesh
 
 `ACA_BIND_HOST` cannot override the safety boundary: daemon and dashboard
 startup fail with a bounded diagnostic if reverse-only is combined with a
-non-loopback host. Release lookup/download, claim polling, credential rotation
-and the control/realtime socket remains a Peon-initiated HTTPS/WSS flow.
+non-loopback host. Release lookup/download and the control/realtime socket
+remain Peon-initiated HTTPS/WSS flows. Enrollment is not available in this mode:
+the supported pairing-phrase flow requires Overseer to reach `/api/v1/enroll`.
 
 ## Capability gate and current blockers
 

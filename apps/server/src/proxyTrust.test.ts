@@ -1,11 +1,4 @@
 import assert from "node:assert/strict";
-import {
-  generateKeyPairSync,
-  randomBytes,
-  randomUUID,
-  sign,
-  type KeyObject,
-} from "node:crypto";
 import { readFileSync } from "node:fs";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
@@ -15,23 +8,9 @@ import test from "node:test";
 import type pg from "pg";
 import { newDb } from "pg-mem";
 import { config } from "./config.js";
-import { initDb, query } from "./db.js";
-import { issueDevice } from "./modules/auth/index.js";
-import {
-  canonicalJson,
-  identityKeyId,
-  sha256Base64url,
-  type PublicJwk,
-} from "./modules/peonClaims/index.js";
+import { initDb } from "./db.js";
 import { clientInfo } from "./routes/helpers.js";
 import { createServer } from "./server.js";
-
-interface Identity {
-  peonId: string;
-  keyId: string;
-  publicKey: PublicJwk;
-  privateKey: KeyObject;
-}
 
 interface JsonResponse {
   status: number;
@@ -63,69 +42,6 @@ const cloudflareCidrs = [
   "2a06:98c0::/29",
   "2c0f:f248::/32",
 ];
-
-function identity(): Identity {
-  const pair = generateKeyPairSync("ed25519");
-  const publicKey = pair.publicKey.export({ format: "jwk" }) as PublicJwk;
-  return {
-    peonId: randomUUID(),
-    keyId: identityKeyId(publicKey),
-    publicKey,
-    privateKey: pair.privateKey,
-  };
-}
-
-function claimStart(machine: Identity, now: number): Record<string, unknown> {
-  const claimNonce = randomBytes(32).toString("base64url");
-  const body: Record<string, unknown> = {
-    type: "claim_start",
-    protocol: 1,
-    capability: "peon-claim-v1",
-    attemptId: randomUUID(),
-    peonId: machine.peonId,
-    serverOrigin: config.publicUrl,
-    claimNonce,
-    claimTokenHash: sha256Base64url(randomBytes(32)),
-    identity: {
-      algorithm: "Ed25519",
-      keyId: machine.keyId,
-      publicKey: machine.publicKey,
-    },
-    display: {
-      name: "Proxy trust regression",
-      platform: "linux",
-      architecture: "x64",
-      daemonVersion: "0.0.0-test",
-    },
-    proof: {
-      issuedAt: now,
-      requestNonce: randomBytes(16).toString("base64url"),
-      signature: "",
-    },
-  };
-  const proof = body.proof as Record<string, unknown>;
-  const unsigned = {
-    capability: "peon-claim-v1",
-    protocol: 1,
-    serverOrigin: config.publicUrl,
-    method: "POST",
-    path: "/api/v1/peon-claims",
-    bindingNonce: claimNonce,
-    body: {
-      ...body,
-      proof: {
-        issuedAt: proof.issuedAt,
-        requestNonce: proof.requestNonce,
-      },
-    },
-  };
-  proof.signature = sign(
-    null,
-    Buffer.from(canonicalJson(unsigned)),
-    machine.privateKey,
-  ).toString("base64url");
-  return body;
-}
 
 async function listen(): Promise<{ port: number; server: http.Server }> {
   const server = http.createServer(createServer());
@@ -210,15 +126,11 @@ test("client attribution normalizes IP literals and rejects forwarded addresses 
   assert.equal(clientInfo(request(undefined, "::ffff:192.0.2.9")).ip, "192.0.2.9");
 });
 
-test("direct-origin forwarding headers cannot rotate auth, claim-start, or operator-code rate keys", async () => {
+test("direct-origin forwarding headers cannot rotate auth rate keys", async () => {
   const original = {
     publicUrl: config.publicUrl,
     githubClientId: config.githubClientId,
     githubClientSecret: config.githubClientSecret,
-    peonClaimEnabled: config.peonClaimEnabled,
-    peonClaimCredentialPepper: config.peonClaimCredentialPepper,
-    peonClaimDeliveryKey: config.peonClaimDeliveryKey,
-    peonClaimOperatorCodeKey: config.peonClaimOperatorCodeKey,
     trustedProxies: config.trustedProxies,
   };
   const mem = newDb();
@@ -227,10 +139,6 @@ test("direct-origin forwarding headers cannot rotate auth, claim-start, or opera
   config.publicUrl = "https://overseer.example.test";
   config.githubClientId = "proxy-trust-client";
   config.githubClientSecret = "proxy-trust-secret";
-  config.peonClaimEnabled = true;
-  config.peonClaimCredentialPepper = randomBytes(32).toString("base64url");
-  config.peonClaimDeliveryKey = randomBytes(32).toString("base64url");
-  config.peonClaimOperatorCodeKey = randomBytes(32).toString("base64url");
   config.trustedProxies = [];
 
   const { port, server } = await listen();
@@ -241,36 +149,6 @@ test("direct-origin forwarding headers cannot rotate auth, claim-start, or opera
       if (index === 10) assert.equal(response.body.code, "RATE_LIMITED");
     }
 
-    for (let index = 0; index < 6; index += 1) {
-      const response = await post(
-        port,
-        "/api/v1/peon-claims",
-        claimStart(identity(), Date.now()),
-        spoofedHeaders(index),
-      );
-      assert.equal(response.status, index < 5 ? 201 : 429);
-      if (index === 5) assert.equal(response.body.code, "RATE_LIMITED");
-    }
-
-    const tokens: string[] = [];
-    for (let index = 0; index < 11; index += 1) {
-      const userId = randomUUID();
-      await query(
-        `INSERT INTO users (id,email,created_at) VALUES ($1,$2,$3)`,
-        [userId, `proxy-limit-${index}@example.test`, Date.now()],
-      );
-      tokens.push((await issueDevice(userId, "proxy trust", { ip: null, userAgent: null })).token);
-    }
-    for (let index = 0; index < 11; index += 1) {
-      const response = await post(
-        port,
-        "/api/peon-claims/resolve",
-        { type: "claim_resolve", protocol: 1, operatorCode: "0000-0000" },
-        spoofedHeaders(index, tokens[index]),
-      );
-      assert.equal(response.status, index < 10 ? 404 : 429);
-      assert.equal(response.body.code, index < 10 ? "CLAIM_NOT_FOUND" : "RATE_LIMITED");
-    }
   } finally {
     await close(server);
     Object.assign(config, original);
@@ -283,10 +161,6 @@ test("trusted Kamal keeps its appended direct peer authoritative across spoofed 
     githubClientId: config.githubClientId,
     githubClientSecret: config.githubClientSecret,
     githubNativeCallbacks: config.githubNativeCallbacks,
-    peonClaimEnabled: config.peonClaimEnabled,
-    peonClaimCredentialPepper: config.peonClaimCredentialPepper,
-    peonClaimDeliveryKey: config.peonClaimDeliveryKey,
-    peonClaimOperatorCodeKey: config.peonClaimOperatorCodeKey,
     trustedProxies: config.trustedProxies,
   };
   const mem = newDb();
@@ -296,10 +170,6 @@ test("trusted Kamal keeps its appended direct peer authoritative across spoofed 
   config.githubClientId = "direct-kamal-client";
   config.githubClientSecret = "direct-kamal-secret";
   config.githubNativeCallbacks = ["overseer://oauth/github"];
-  config.peonClaimEnabled = true;
-  config.peonClaimCredentialPepper = randomBytes(32).toString("base64url");
-  config.peonClaimDeliveryKey = randomBytes(32).toString("base64url");
-  config.peonClaimOperatorCodeKey = randomBytes(32).toString("base64url");
   config.trustedProxies = ["loopback", "linklocal", "uniquelocal"];
 
   const { port, server } = await listen();
@@ -307,7 +177,7 @@ test("trusted Kamal keeps its appended direct peer authoritative across spoofed 
     // Exact current direct-Kamal chain: the trusted app socket peer is
     // loopback/private, while Kamal's appended external TCP peer is the
     // rightmost XFF address. Changing or corrupting values farther left cannot
-    // rotate any of the three public abuse-limit subjects.
+    // rotate the public abuse-limit subject.
     for (let index = 0; index < 11; index += 1) {
       const response = await post(
         port,
@@ -318,46 +188,8 @@ test("trusted Kamal keeps its appended direct peer authoritative across spoofed 
       assert.equal(response.status, index < 10 ? 200 : 429);
       if (index === 10) assert.equal(response.body.code, "RATE_LIMITED");
     }
-    for (let index = 0; index < 6; index += 1) {
-      const response = await post(
-        port,
-        "/api/v1/peon-claims",
-        claimStart(identity(), Date.now()),
-        directKamalHeaders(index),
-      );
-      assert.equal(response.status, index < 5 ? 201 : 429);
-      if (index === 5) assert.equal(response.body.code, "RATE_LIMITED");
-    }
-    const directTokens: string[] = [];
-    for (let index = 0; index < 21; index += 1) {
-      const userId = randomUUID();
-      await query(
-        `INSERT INTO users (id,email,created_at) VALUES ($1,$2,$3)`,
-        [userId, `direct-kamal-${index}@example.test`, Date.now()],
-      );
-      directTokens.push((await issueDevice(userId, "direct Kamal", { ip: null, userAgent: null })).token);
-    }
-    let directRateLimited = false;
-    for (let index = 0; index < directTokens.length; index += 1) {
-      const response = await post(
-        port,
-        "/api/peon-claims/resolve",
-        { type: "claim_resolve", protocol: 1, operatorCode: "0000-0000" },
-        directKamalHeaders(index, directTokens[index]),
-      );
-      if (response.status === 429) {
-        assert.equal(response.body.code, "RATE_LIMITED");
-        directRateLimited = true;
-        break;
-      }
-      assert.equal(response.status, 404);
-      assert.equal(response.body.code, "CLAIM_NOT_FOUND");
-    }
-    assert.equal(directRateLimited, true);
-
     // Fail closed even if a future/broken proxy emits a malformed rightmost
     // token: clientInfo rejects it as an IP and uses the one trusted socket peer.
-    await query(`DELETE FROM peon_claim_rate_limits`);
     for (let index = 0; index < 21; index += 1) {
       const response = await post(
         port,
@@ -368,42 +200,6 @@ test("trusted Kamal keeps its appended direct peer authoritative across spoofed 
       assert.equal(response.status, index < 20 ? 400 : 429);
       assert.equal(response.body.code, index < 20 ? "BAD_APP_CODE" : "RATE_LIMITED");
     }
-    for (let index = 0; index < 6; index += 1) {
-      const response = await post(
-        port,
-        "/api/v1/peon-claims",
-        claimStart(identity(), Date.now()),
-        malformedRightmostHeaders(index),
-      );
-      assert.equal(response.status, index < 5 ? 201 : 429);
-      if (index === 5) assert.equal(response.body.code, "RATE_LIMITED");
-    }
-    const malformedTokens: string[] = [];
-    for (let index = 0; index < 21; index += 1) {
-      const userId = randomUUID();
-      await query(
-        `INSERT INTO users (id,email,created_at) VALUES ($1,$2,$3)`,
-        [userId, `malformed-kamal-${index}@example.test`, Date.now()],
-      );
-      malformedTokens.push((await issueDevice(userId, "malformed Kamal", { ip: null, userAgent: null })).token);
-    }
-    let malformedRateLimited = false;
-    for (let index = 0; index < malformedTokens.length; index += 1) {
-      const response = await post(
-        port,
-        "/api/peon-claims/resolve",
-        { type: "claim_resolve", protocol: 1, operatorCode: "0000-0000" },
-        malformedRightmostHeaders(index, malformedTokens[index]),
-      );
-      if (response.status === 429) {
-        assert.equal(response.body.code, "RATE_LIMITED");
-        malformedRateLimited = true;
-        break;
-      }
-      assert.equal(response.status, 404);
-      assert.equal(response.body.code, "CLAIM_NOT_FOUND");
-    }
-    assert.equal(malformedRateLimited, true);
   } finally {
     await close(server);
     Object.assign(config, original);

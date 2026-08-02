@@ -96,7 +96,7 @@ function safeControlFailure(error: unknown, fallback: string): string {
 export function attachPeonSocket(server: Server, options: PeonSocketOptions = {}): WebSocketServer {
   const commandGateway = options.commandGateway ?? reverseCommandGateway;
   const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_PAYLOAD_BYTES });
-  const authenticated = new WeakMap<IncomingMessage, { record: PeonRecord; credentialGeneration: number }>();
+  const authenticated = new WeakMap<IncomingMessage, { record: PeonRecord }>();
   const clients = new Set<PeonClient>();
   let globalQueuedBytes = 0;
 
@@ -117,7 +117,7 @@ export function attachPeonSocket(server: Server, options: PeonSocketOptions = {}
   wss.on("connection", (ws, req) => {
     const auth = authenticated.get(req);
     if (!auth) return ws.close(1011, "authentication state unavailable");
-    const { record, credentialGeneration } = auth;
+    const { record } = auth;
 
     const client: PeonClient = {
       ws, record, alive: true, ready: false, sessionSync: null, messages: Promise.resolve(), queuedMessages: 0, queuedBytes: 0,
@@ -238,11 +238,10 @@ export function attachPeonSocket(server: Server, options: PeonSocketOptions = {}
             ws,
             stagedConnectionFeatures,
             [],
-            credentialGeneration,
             daemonVersion,
           );
           if (!claimed.accepted) {
-            ws.close(4001, "rejected stale credential generation");
+            ws.close(4001, "connection rejected");
             return;
           }
           const previous = claimed.previous;

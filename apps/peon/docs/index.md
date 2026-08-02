@@ -28,8 +28,6 @@ documentation. Failure to start this optional session must not roll back project
 - [Canonical token-usage analytics](token-usage-analytics.md)
 - [Reverse command protocol v1](reverse-command-protocol-v1.md)
 - [Reverse daemon configuration](../../../docs/daemon-configuration.md)
-- [Peon claim protocol v1](peon-claim-protocol-v1.md)
-- [Peon claim implementation](peon-claim-implementation.md)
 
 Project documentation belongs in this directory. Add focused sub-pages as the project evolves and link the important entry points from this index.
 

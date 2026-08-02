@@ -45,15 +45,6 @@ export interface Config {
   previewDomain: string;
   previewTokenTtlMs: number;
 
-  // Peon-initiated enrollment keeps credential verifiers and recoverable
-  // pending deliveries and replayable operator codes under separate,
-  // versioned deployment keys. All are base64url-encoded 32-byte values and
-  // never live in Postgres.
-  peonClaimEnabled: boolean;
-  peonClaimCredentialPepper: string;
-  peonClaimDeliveryKey: string;
-  peonClaimOperatorCodeKey: string;
-
   // Voice dictation. The resolution rules (presets, per-stage overrides, which
   // stage counts as configured) live with the provider seam in
   // infrastructure/voice; this is only the wiring, so the two never depend on
@@ -79,12 +70,6 @@ function csv(name: string): string[] {
     .filter(Boolean);
 }
 
-function canonicalClaimKey(value: string): string | null {
-  if (!/^[A-Za-z0-9_-]{43}$/.test(value)) return null;
-  const decoded = Buffer.from(value, "base64url");
-  return decoded.length === 32 && decoded.toString("base64url") === value ? value : null;
-}
-
 const publicUrl = (process.env.OVERSEER_PUBLIC_URL ?? "https://overseer.rnm.dev").replace(/\/+$/, "");
 
 export const config: Config = {
@@ -108,10 +93,6 @@ export const config: Config = {
   trustedProxies: csv("OVERSEER_TRUSTED_PROXIES"),
   previewDomain: (process.env.OVERSEER_PREVIEW_DOMAIN ?? "preview.overseer.rnm.dev").toLowerCase().replace(/^\.+|\.+$/g, ""),
   previewTokenTtlMs: num("OVERSEER_PREVIEW_TOKEN_TTL_MS", 10 * 60_000),
-  peonClaimEnabled: process.env.OVERSEER_PEON_CLAIM_V1 === "1",
-  peonClaimCredentialPepper: process.env.OVERSEER_PEON_CREDENTIAL_PEPPER ?? "",
-  peonClaimDeliveryKey: process.env.OVERSEER_PEON_DELIVERY_KEY ?? "",
-  peonClaimOperatorCodeKey: process.env.OVERSEER_PEON_OPERATOR_CODE_KEY ?? "",
   voice: resolveVoiceConfig(process.env),
   push: resolvePushConfig(process.env),
 };
@@ -121,23 +102,11 @@ export const config: Config = {
 export function configWarnings(): string[] {
   const w: string[] = [];
   if (!config.peonCallbackUrl)
-    w.push("OVERSEER_PEON_CALLBACK_URL is empty — legacy callback recruitment is disabled; claimed reverse-capable Peons can still connect outbound.");
+    w.push("OVERSEER_PEON_CALLBACK_URL is empty — Peon enrollment is disabled.");
   if (!config.githubClientId || !config.githubClientSecret)
     w.push("OVERSEER_GITHUB_CLIENT_ID / OVERSEER_GITHUB_CLIENT_SECRET are not both set — GitHub sign-in is disabled, so nobody can log in.");
   if (process.env.NODE_ENV === "production" && config.trustedProxies.length === 0)
     w.push("OVERSEER_TRUSTED_PROXIES is empty — forwarded client addresses are ignored and public abuse limits use the socket peer.");
-  if (!config.peonClaimEnabled)
-    w.push("OVERSEER_PEON_CLAIM_V1 is not enabled — peon-claim-v1 is not advertised.");
-  else {
-    const claimKeys = [
-      canonicalClaimKey(config.peonClaimCredentialPepper),
-      canonicalClaimKey(config.peonClaimDeliveryKey),
-      canonicalClaimKey(config.peonClaimOperatorCodeKey),
-    ];
-    if (claimKeys.some((key) => key === null) || new Set(claimKeys).size !== claimKeys.length) {
-      w.push("OVERSEER_PEON_CREDENTIAL_PEPPER / OVERSEER_PEON_DELIVERY_KEY / OVERSEER_PEON_OPERATOR_CODE_KEY must all be set to independent 32-byte base64url keys — peon-claim-v1 is disabled.");
-    }
-  }
   // An unconfigured or half-configured voice stage is a boot-time warning, not
   // a request-time failure: clients read /api/v1/voice/capabilities and simply
   // hide the mic button on an instance with no provider.

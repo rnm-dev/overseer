@@ -7,7 +7,6 @@ import { useT } from "../i18n";
 // GitHub's shared frontend callback. It submits code + state to the API, which
 // either finishes web sign-in or tells the browser to open the native app.
 const PENDING_INVITE_KEY = "overseer_pending_invite";
-const PENDING_CLAIM_KEY = "overseer_pending_claim";
 
 export function GithubCallback() {
   const { completeGithubCallback } = useAuth();
@@ -30,12 +29,8 @@ export function GithubCallback() {
     completeGithubCallback(code, state, githubError)
       .then((flow) => {
         if (flow === "native") return;
-        const pendingClaim = sessionStorage.getItem(PENDING_CLAIM_KEY);
         const pending = sessionStorage.getItem(PENDING_INVITE_KEY);
-        if (pendingClaim) {
-          sessionStorage.removeItem(PENDING_CLAIM_KEY);
-          navigate(`/claim/${pendingClaim}`, { replace: true });
-        } else if (pending) {
+        if (pending) {
           sessionStorage.removeItem(PENDING_INVITE_KEY);
           navigate(`/join/${pending}`, { replace: true });
         } else {

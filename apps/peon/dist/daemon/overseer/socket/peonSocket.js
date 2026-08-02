@@ -12,7 +12,6 @@ import { ReverseCommandChannel } from "./channels/reverseCommandChannel.js";
 import { RuntimeStateChannel } from "./channels/runtimeStateChannel.js";
 import { TranscriptChannel } from "./channels/transcriptChannel.js";
 import { settings } from "../../settings/index.js";
-import { peonClaimClient } from "../../enrollment/index.js";
 const DEFAULT_RETRY_BASE_MS = 250;
 const DEFAULT_RETRY_MAX_MS = 30_000;
 const DEFAULT_STABLE_MS = 30_000;
@@ -97,12 +96,7 @@ export class PeonSocketSupervisor {
     };
     reverseCommandChannel;
     constructor(options = {}) {
-        this.readSettings = options.readSettings ?? (() => {
-            const candidate = peonClaimClient.getSocketCredentialOverride();
-            if (candidate)
-                return candidate;
-            return settings.getPeonSocketSettings();
-        });
+        this.readSettings = options.readSettings ?? (() => settings.getPeonSocketSettings());
         this.subscribe = options.subscribe ?? defaultSubscribe;
         this.random = options.random ?? Math.random;
         this.retryBaseMs = options.retryBaseMs ?? DEFAULT_RETRY_BASE_MS;
@@ -326,7 +320,6 @@ export class PeonSocketSupervisor {
             this.state.derecruited = false;
             this.state.connectedAt = Date.now();
             this.state.lastError = null;
-            peonClaimClient.confirmCandidateFromSocket(config.token, config.peonId);
             durableAccepted = Array.isArray(frame.capabilities) && frame.capabilities.includes(PEON_SOCKET_DURABLE_DELIVERY_CAPABILITY);
             this.acceptedCapabilities = new Set(Array.isArray(frame.capabilities)
                 ? frame.capabilities.filter((value) => typeof value === "string")
@@ -354,32 +347,6 @@ export class PeonSocketSupervisor {
             }, this.stableMs);
         });
         socket.once("unexpected-response", (_request, response) => {
-            const responseChunks = [];
-            let responseBytes = 0;
-            response.on("data", (chunk) => {
-                if (responseBytes > 16 * 1024)
-                    return;
-                const value = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-                responseBytes += value.length;
-                if (responseBytes <= 16 * 1024)
-                    responseChunks.push(value);
-            });
-            response.once("end", () => {
-                if (response.statusCode !== 401 || responseBytes > 16 * 1024)
-                    return;
-                try {
-                    const body = JSON.parse(Buffer.concat(responseChunks).toString("utf8"));
-                    if (body.code === "CREDENTIAL_REVOKED"
-                        || body.code === "CREDENTIAL_INVALID"
-                        || body.code === "CREDENTIAL_RETIRED") {
-                        peonClaimClient.recordCredentialRejection(config.token, body.code);
-                    }
-                }
-                catch {
-                    // A generic/non-JSON 401 is deliberately ambiguous and never erases
-                    // a persisted candidate credential.
-                }
-            });
             response.resume();
             if (!current())
                 return;

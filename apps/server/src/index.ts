@@ -6,7 +6,6 @@ import { attachLiveSocket } from "./liveSocket.js";
 import { attachPeonSocket } from "./peonSocket.js";
 import { pruneEvents } from "./eventLog.js";
 import { startPushWorker } from "./push.js";
-import { cleanupPeonClaims } from "./modules/peonClaims/index.js";
 import { pruneTranscriptProjection } from "./modules/sessions/index.js";
 
 // Fail loud if Postgres is unreachable — the overseer has no meaningful degraded
@@ -26,8 +25,6 @@ async function main(): Promise<void> {
     // Keep the resumable event log bounded (see eventLog.ts).
     setInterval(() => void pruneEvents().catch(() => null), 5 * 60_000);
     setInterval(() => void pruneTranscriptProjection().catch(() => null), 5 * 60_000);
-    const claimCleanup = setInterval(() => void cleanupPeonClaims().catch(() => null), 60_000);
-    claimCleanup.unref();
   });
   // Resumable client transport shares the HTTP server (nginx upgrades /api/ws).
   attachLiveSocket(server);

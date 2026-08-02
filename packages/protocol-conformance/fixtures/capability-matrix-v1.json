@@ -238,12 +238,6 @@
       "coverage": "reverse command admission, accepted/status/result reconciliation, durable commit-before-ACK, duplicate/drop/reorder/reconnect/restart, generation fencing, bounds and torn-record fail-closed scenarios"
     },
     {
-      "id": "enrollment",
-      "capability": "peon-claim-v1",
-      "status": "covered",
-      "coverage": "59 frozen security outcomes, claim/rotation/revocation restart and replay boundaries, mixed-version routing, no downgrade after claim start, generation fencing and explicit operational blockers"
-    },
-    {
       "id": "transcripts",
       "capability": "transcript-sync-v1",
       "status": "covered",

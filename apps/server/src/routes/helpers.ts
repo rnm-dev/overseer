@@ -18,7 +18,7 @@ declare global {
     interface Request {
       user?: AuthContext; // set by operatorAuth
       authTransport?: "bearer" | "cookie"; // set by operatorAuth
-      peonCred?: { id: string; workspaceId: string; boundPeonId: string | null; method: "legacy" | "claim"; generation: number | null }; // set by credentialAuth
+      peonCred?: { id: string; workspaceId: string; boundPeonId: string | null }; // set by credentialAuth
     }
   }
 }
@@ -60,8 +60,6 @@ export const credentialAuth: express.RequestHandler = (req, res, next) => {
       id: cred.id,
       workspaceId: cred.workspaceId,
       boundPeonId: cred.boundPeonId,
-      method: cred.method,
-      generation: cred.generation,
     };
     next();
   })().catch(next);

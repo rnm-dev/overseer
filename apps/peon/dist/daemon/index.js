@@ -9,7 +9,6 @@ import { configDir, stateDir } from "./xdgPaths.js";
 import { createDaemonCompositionRoot } from "./bootstrap/compositionRoot.js";
 import { recoverInterruptedArmoryOperations, recoverInterruptedArmoryUninstalls } from "./armory/index.js";
 import { shutdownAgentDriverRuntimes } from "./agents/index.js";
-import { peonClaimClient } from "./enrollment/index.js";
 import { controlListenerHosts, isLoopbackBindHost } from "./controlListeners.js";
 import { recoverUpdateOperation } from "./updateOperations.js";
 import { parseListenAddress } from "../shared/listenAddress.js";
@@ -82,21 +81,14 @@ const servers = listenerHosts.map((host, index) => app.listen(PORT, host, index 
             "Use `peon remote on 0.0.0.0:4570` to enable Fleet HTTP over Tailscale.");
     }
     console.log("(task claim: milestone 1 only — claims + reports needs_human, does not implement yet)");
-    // A fresh Peon now initiates peon-claim-v1 outbound. Legacy pairing remains
-    // available only after an explicit unsupported capability response (or an
-    // explicit local legacy arm), so startup must not silently choose it.
     if (!settings.get().overseerToken.trim()) {
         const rule = "═".repeat(60);
         console.log(`\n${rule}`);
-        console.log("  peon is unrecruited — start an outbound claim with:\n");
-        console.log("      peon pair https://your-overseer.example\n");
-        console.log("  No inbound address or callback is required for enrollment.");
+        console.log("  peon is not enrolled — arm a one-time pairing phrase with:\n");
+        console.log("      peon enroll\n");
+        console.log("  Then enter this Peon's address and phrase in Overseer.");
         console.log(`${rule}\n`);
     }
-    // Restores a persisted start, poll, delivery acknowledgement, or rotation
-    // before opening sockets. Any newly installed credential updates settings,
-    // which then generation-replaces both socket supervisors.
-    peonClaimClient.start();
     // Outbound: if an overseerUrl+token are configured, announce this peon to the
     // fleet control plane and heartbeat it; a no-op (idle loop) otherwise.
     peonRegistrar.start();
@@ -126,7 +118,6 @@ if (watchdogIntervalMs) {
 }
 process.on("SIGTERM", () => {
     sdNotify.stopping();
-    peonClaimClient.stop();
     peonRegistrar.stop();
     sessions.notifyShuttingDown();
     // server.close() waits for every open connection to end — but SSE clients

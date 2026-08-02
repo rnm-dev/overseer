@@ -15,10 +15,12 @@ and an authenticated Claude Code or Codex CLI.
 ```sh
 npm install -g @rnm-dev/peon
 peon start
-peon pair https://overseer.example.com
+peon remote on 0.0.0.0:4570
+peon settings set publicControlUrl http://my-peon.example.ts.net:4570
+peon enroll
 ```
 
-Approve the code in Overseer. Done.
+Enter the printed address and one-time phrase in Overseer's Add Peon dialog.
 
 Run Peon as a regular user, not with `sudo`.
 
@@ -50,6 +52,7 @@ Peon asks for the API key and checks it for you.
 
 ```sh
 peon status
+peon enroll
 peon pause
 peon resume
 peon restart

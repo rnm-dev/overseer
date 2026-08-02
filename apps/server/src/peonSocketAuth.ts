@@ -5,7 +5,6 @@ import { registry, type PeonRecord } from "./registry.js";
 
 export interface AuthenticatedPeonUpgrade {
   record: PeonRecord;
-  credentialGeneration: number;
 }
 
 function bearer(req: IncomingMessage): string {
@@ -34,7 +33,7 @@ export async function authenticatePeonUpgrade(req: IncomingMessage, socket: Dupl
       rejectUpgrade(socket, 404, "Not Found");
       return null;
     }
-    return { record, credentialGeneration: credential.generation ?? 0 };
+    return { record };
   } catch {
     rejectUpgrade(socket, 503, "Service Unavailable");
     return null;

@@ -5,8 +5,6 @@ export interface PeonCredential {
   createdAt: number;
   revokedAt: number | null;
   boundPeonId: string | null;
-  generation: number | null;
-  method: "legacy" | "claim";
 }
 
 export interface Minted {

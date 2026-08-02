@@ -22,7 +22,7 @@ export function agentRouter(): express.Router {
     if (cred.boundPeonId && cred.boundPeonId !== peonId) return res.status(409).json({ error: "credential is already bound to a different Peon", code: "PEON_ID_MISMATCH" });
     const publicUrl = b.publicUrl === undefined ? null : typeof b.publicUrl === "string" ? normalizePeonUrl(b.publicUrl) : null;
     if (b.publicUrl !== undefined && !publicUrl) return res.status(400).json({ error: "publicUrl must be an http(s) URL without credentials, query, or fragment", code: "BAD_PUBLIC_URL" });
-    if (cred.method === "legacy" && !(await bindPeon(cred.id, peonId))) return res.status(409).json({ error: "credential is already bound to a different Peon", code: "PEON_ID_MISMATCH" });
+    if (!(await bindPeon(cred.id, peonId))) return res.status(409).json({ error: "credential is already bound to a different Peon", code: "PEON_ID_MISMATCH" });
     const record = await registry.register({
       peonId,
       credentialId: cred.id,
@@ -34,7 +34,7 @@ export function agentRouter(): express.Router {
       publicUrl,
       protocol: typeof b.protocol === "number" ? b.protocol : null,
       capabilities: Array.isArray(b.capabilities) ? b.capabilities.filter((c: unknown) => typeof c === "string") : [],
-      token: cred.method === "claim" ? "" : bearer(req),
+      token: bearer(req),
       load: extractLoad(b),
     });
     // Warm the index for this peon without blocking the response.

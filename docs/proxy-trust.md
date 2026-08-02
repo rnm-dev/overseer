@@ -1,7 +1,7 @@
 # Trusted client IPs
 
-Overseer uses a client IP for public authentication limits, Peon claim-start
-limits, operator-code lookup limits, and device security attribution. That
+Overseer uses a client IP for public authentication limits and device security
+attribution. That
 identity is security-sensitive: a request header is not an IP observation until
 every proxy between the TCP peer and the client has been validated.
 
@@ -184,12 +184,11 @@ The 8443 probe already timed out during review, but that alone does not prove
 the target: Docker must also show the exact loopback binding after reboot.
 Until both loopback bindings and both external negative probes are verified,
 OVSR-248 must not be treated as deployed. The current production image also
-predates the application fix, so public claim enrollment and reverse-only
-cutover remain blocked.
+predates the application fix, so reverse-only cutover remains blocked.
 
 The regression test proves that rotating both `X-Forwarded-For` and
-`CF-Connecting-IP` on direct requests does not rotate the auth, claim-start, or
-operator-code rate keys. It separately models the exact v0.9.2 direct-Kamal
+`CF-Connecting-IP` on direct requests does not rotate authentication rate keys.
+It separately models the exact v0.9.2 direct-Kamal
 chain, malformed intermediate/left entries, malformed rightmost entries, a
 valid multi-proxy chain, invalid trusted-proxy configuration, and the
 loopback-only Kamal run configuration.

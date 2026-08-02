@@ -11,7 +11,6 @@ import { pushRouter } from "./routes/push.js";
 import { webPreviewHandler } from "./webPreview.js";
 import { projectViewerRouter } from "./routes/projectViewer.js";
 import { voiceRouter } from "./routes/voice.js";
-import { operatorPeonClaimRouter, publicPeonClaimRouter } from "./modules/peonClaims/index.js";
 
 // The overseer's two-sided HTTP surface:
 //
@@ -48,18 +47,14 @@ export function createServer({ production = process.env.NODE_ENV === "production
   // Production uses Overseer as the hostless fallback in the shared
   // kamal-proxy so dynamic preview subdomains can reach the same container.
   // Valid preview hosts have already been consumed above. Everything else,
-  // including every public Peon claim route, must use the canonical authority
-  // before any request body parser is allowed to run.
+  // must use the canonical authority before any request body parser is allowed
+  // to run.
   if (production) {
     app.use((req, res, next) => {
       if (isAllowedProductionHost(req.headers.host)) return next();
       res.status(421).json({ error: "request host is not served here", code: "MISDIRECTED_REQUEST" });
     });
   }
-  // peon-claim-v1 owns a much smaller, strict public JSON boundary. Mount it
-  // before the application-wide parser so malformed or oversized claim frames
-  // never consume the 1 MiB allowance or escape as Express HTML errors.
-  app.use("/api/v1", publicPeonClaimRouter());
   // Composer prompts can include large pasted logs or source files. Express's
   // 100 KB default rejected those before they reached the session routes, even
   // though the textarea itself has no character limit. Keep a finite ceiling,
@@ -99,7 +94,6 @@ export function createServer({ production = process.env.NODE_ENV === "production
   api.use(publicAuthRouter());
 
   // The operator auth guard — everything below requires a device token.
-  api.use(operatorPeonClaimRouter());
   api.use(operatorAuth);
   api.use(accountRouter());
   api.use(pushRouter());

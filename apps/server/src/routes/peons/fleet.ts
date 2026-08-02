@@ -3,11 +3,10 @@ import { config } from "../../config.js";
 import { registry, toView, type PeonRecord } from "../../registry.js";
 import { callPeon, connOfRecord, normalizePeonUrl, PROTOCOL } from "../../peonClient.js";
 import { clampRecentSessionsLimit, getSessionCatalogStates, listOperatorRecentSessions, listSessions } from "../../sessionIndex.js";
-import { deRecruitPeon, mintCredential, revokeCredential } from "../../credentials.js";
+import { bindPeon, deRecruitPeon, mintCredential, revokeCredential } from "../../credentials.js";
 import { ownerOnly, withWorkspace } from "../helpers.js";
 import { canAccessPeon, listMemberAccess } from "../../access.js";
 import { sessionAttentionStates } from "../../sessionAttention.js";
-import { bindLegacyCredentialWithClaimLock, ClaimServiceError } from "../../modules/peonClaims/index.js";
 
 function enrollmentFallback(status: number, code: string): string {
   if (code === "DNS_FAILURE") return "the Peon domain could not be resolved";
@@ -83,17 +82,9 @@ export function registerFleetRoutes(router: express.Router): void {
       let registered = false;
       if (typeof peonId === "string" && peonId.trim()) {
         const id = peonId.trim();
-        try {
-          if (!(await bindLegacyCredentialWithClaimLock(ctx.workspaceId, credential.id, id))) {
-            await revokeCredential(ctx.workspaceId, credential.id);
-            return res.status(409).json({ error: "the minted credential was bound to a different Peon", code: "PEON_ID_MISMATCH" });
-          }
-        } catch (error) {
+        if (!(await bindPeon(credential.id, id))) {
           await revokeCredential(ctx.workspaceId, credential.id);
-          if (error instanceof ClaimServiceError && error.code === "ENROLLMENT_METHOD_LOCKED") {
-            return res.status(409).json({ error: error.message, code: error.code });
-          }
-          throw error;
+          return res.status(409).json({ error: "the minted credential was bound to a different Peon", code: "PEON_ID_MISMATCH" });
         }
         const record = await registry.confirmPairing({ peonId: id, credentialId: credential.id, workspaceId: ctx.workspaceId, token, publicUrl: baseUrl, name: label });
         registered = record.lastSeen > 0;
@@ -145,9 +136,9 @@ export function registerFleetRoutes(router: express.Router): void {
           const r = await callPeon(connOfRecord(record), "GET", "/status", { timeoutMs: 4_000 });
           if (r.ok) return { ...view, status: r.json, statusError: null, lastError: null };
 
-          // Connection presence remains authoritative. Until status commands are
-          // routed over WSS, a legacy callback probe may fail for a connected Peon
-          // behind NAT; expose that as missing detail without flipping it offline.
+          // Connection presence remains authoritative. A direct Fleet HTTP status
+          // probe may fail for a connected Peon behind NAT; expose that as missing
+          // detail without flipping it offline.
           const lastError =
             r.json && typeof r.json === "object" && "error" in r.json && typeof r.json.error === "string"
               ? r.json.error

@@ -67,10 +67,8 @@ Runtime
 Config
   settings [set <key> <value>] show all settings, or set one
 Fleet
-  pair <overseer-origin>              start outbound peon-claim-v1 enrollment
-  pair --retry                       retry a parked enrollment after local recovery
-  pair --legacy                       explicitly arm legacy inbound pairing
-  credential rotate                   rotate an active peon-claim-v1 credential
+  enroll                       arm a one-time phrase for adding this Peon in Overseer
+  pair                         compatibility alias for enroll
 
 Remote access
   remote                              show listener and advertised Tailscale URL
@@ -449,78 +447,32 @@ async function main() {
             }
             break;
         }
-        case "credential": {
-            if (rest[0] !== "rotate") {
-                console.error("usage: peon credential rotate");
+        case "enroll":
+        case "pair": {
+            if (rest.length) {
+                console.error(`usage: peon ${cmd}`);
                 process.exit(1);
             }
-            const res = await fetch(`${BASE}/api/v1/enrollment/credential/rotate`, {
+            const currentResponse = await fetch(`${BASE}/api/v1/settings`);
+            const current = (await currentResponse.json());
+            const res = await fetch(`${BASE}/api/v1/pairing/arm`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: "{}",
             });
             const body = (await res.json());
             if (!res.ok) {
-                console.error(`credential rotation failed: ${body.error ?? res.statusText}`);
+                console.error(`enroll failed: ${body.error ?? res.statusText}`);
                 process.exit(1);
             }
-            console.log(body.rotation
-                ? `credential rotation ${body.rotation.state}; Peon will finish it automatically`
-                : body.credential
-                    ? `credential rotation complete: generation ${body.credential.generation} (${body.credential.credentialId})`
-                    : "credential rotation started");
-            break;
-        }
-        case "pair": {
-            const currentResponse = await fetch(`${BASE}/api/v1/settings`);
-            const current = (await currentResponse.json());
-            const explicitLegacy = rest[0] === "--legacy";
-            const retryParked = rest[0] === "--retry";
-            const endpoint = explicitLegacy
-                ? "/api/v1/pairing/arm"
-                : retryParked
-                    ? "/api/v1/enrollment/retry"
-                    : "/api/v1/enrollment/claim";
-            const serverOrigin = explicitLegacy ? "" : (rest[0] ?? current.overseerUrl ?? "").trim();
-            if (!explicitLegacy && !retryParked && !serverOrigin) {
-                console.error("usage: peon pair <https://overseer-origin> (or `peon pair --retry` / `peon pair --legacy`)");
-                process.exit(1);
-            }
-            const res = await fetch(`${BASE}${endpoint}`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(explicitLegacy || retryParked ? {} : { serverOrigin }),
-            });
-            const body = (await res.json());
-            if (!res.ok) {
-                console.error(`pair failed: ${body.error ?? res.statusText}`);
-                process.exit(1);
-            }
-            if (retryParked) {
-                console.log(`enrollment retry requested; current state: ${body.state ?? "idle"}`);
-                break;
-            }
-            const phrase = body.legacyPhrase ?? body.phrase;
-            if (phrase) {
-                const expiresAt = body.legacyExpiresAt ?? body.expiresAt;
-                const mins = expiresAt ? Math.max(1, Math.round((expiresAt - Date.now()) / 60_000)) : null;
-                console.log("This Overseer does not support peon-claim-v1; explicit legacy pairing is armed:\n");
-                console.log(`  phrase   : ${phrase}`);
-                if (mins)
-                    console.log(`  valid    : ~${mins} min`);
-                console.log("\nLegacy mode requires the Overseer to reach this Peon's control API.");
-                break;
-            }
-            console.log("Outbound enrollment claim created. Give the operator this code or URL:\n");
-            if (body.operatorCode)
-                console.log(`  code     : ${body.operatorCode}`);
-            if (body.operatorUrl)
-                console.log(`  URL      : ${body.operatorUrl}`);
-            if (body.expiresAt) {
-                const mins = Math.max(1, Math.round((body.expiresAt - Date.now()) / 60_000));
+            const mins = body.expiresAt ? Math.max(1, Math.round((body.expiresAt - Date.now()) / 60_000)) : null;
+            const address = current.publicControlUrl?.trim() || current.listenAddress?.trim() || "not configured";
+            console.log("Pairing phrase armed. Add this Peon from Overseer with:\n");
+            console.log(`  address  : ${address}`);
+            console.log(`  phrase   : ${body.phrase ?? ""}`);
+            if (mins)
                 console.log(`  valid    : ~${mins} min`);
-            }
-            console.log("\nPeon will poll securely and connect automatically after owner approval.");
+            console.log("\nThe phrase is single-use. Overseer must be able to reach this address.");
             break;
         }
         case "remote": {
