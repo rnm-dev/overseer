@@ -14,7 +14,7 @@ import { SIDEBAR_SECTION_ACTION_CLASS, SidebarSectionHeader } from "../component
 import { PeonConnectionStatusDot } from "../components/PeonConnectionStatusDot";
 import type { PeonContext, PeonView } from "./peon/context";
 import { NewProjectDialog } from "./peon/NewProjectDialog";
-import { applyProjectEvent, mergeProjects, withLiveActiveSessionCounts, type ProjectLite } from "./peon/projectList";
+import { applyProjectEvent, applyProjectSessionCounts, mergeProjects, withLiveActiveSessionCounts, type ProjectLite } from "./peon/projectList";
 import { applyAttentionEvent, applyLocalSessionRunningChange, applySessionEvent, mergeSessions, sessionDisplayTitle, sessionFromIndex, sessionSidebarCanLoad, type IndexedSessionEvent, type IndexedSessionLite, type SessionLite } from "./peon/sessionList";
 import { MobilePaneIdentity } from "./peon/session/mobileHeader";
 import { nextSessionAfterDeletion } from "./peon/session/nextSession";
@@ -249,6 +249,7 @@ export function PeonDetail() {
     // key; the next index refresh then treated the same record as a second row
     // under `peonId + sessionId` until a page reload cleared local state.
     setSessions((current) => applySessionEvent(current, event as IndexedSessionEvent));
+    setProjects((current) => current ? applyProjectSessionCounts(current, event.projectSessionCounts) : current);
     if (event.deleted) setSessionTotal((total) => total === null ? null : Math.max(0, total - 1));
   }), [peonId, subscribeSessions]);
 

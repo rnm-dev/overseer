@@ -9,6 +9,7 @@ import '../../../core/network/overseer_http_client.dart';
 import '../../../core/time/app_time.dart';
 import '../domain/session_models.dart';
 import '../domain/session_repository.dart';
+import 'project_session_count_cache.dart';
 
 class DefaultSessionRepository
     implements SessionRepository, AttentionProjectionSink {
@@ -307,13 +308,33 @@ class DefaultSessionRepository
         '/peons/${Uri.encodeComponent(peonId)}'
         '/sessions/${Uri.encodeComponent(sessionId)}',
       );
-      await (database.delete(database.cachedSessions)..where(
-            (row) =>
-                row.workspaceId.equals(workspaceId) &
-                row.peonId.equals(peonId) &
-                row.sessionId.equals(sessionId),
-          ))
-          .go();
+      await database.transaction(() async {
+        final existing =
+            await (database.select(database.cachedSessions)..where(
+                  (row) =>
+                      row.workspaceId.equals(workspaceId) &
+                      row.peonId.equals(peonId) &
+                      row.sessionId.equals(sessionId),
+                ))
+                .getSingleOrNull();
+        await (database.delete(database.cachedSessions)..where(
+              (row) =>
+                  row.workspaceId.equals(workspaceId) &
+                  row.peonId.equals(peonId) &
+                  row.sessionId.equals(sessionId),
+            ))
+            .go();
+        if (existing != null) {
+          await adjustCachedProjectSessionCount(
+            database: database,
+            workspaceId: workspaceId,
+            peonId: peonId,
+            projectId: existing.projectId,
+            projectKey: existing.projectKey,
+            delta: -1,
+          );
+        }
+      });
     } on DioException catch (error) {
       final data = error.response?.data;
       final serverMessage = data is Map ? data['error'] as String? : null;
@@ -674,6 +695,12 @@ class DefaultSessionRepository
               ),
             );
       }
+      await applyAuthoritativeProjectSessionCounts(
+        database: database,
+        workspaceId: workspaceId,
+        peonId: peonId,
+        rawCounts: projection['projectSessionCounts'],
+      );
       await _advanceCursorInTransaction(workspaceId, cursor);
     });
   }

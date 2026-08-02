@@ -21,6 +21,16 @@ Overseer afterward.
 5. Activity projections update `lastActivityAt`, so Drift emits the reordered
    list without presentation-layer sorting. Delete projections remove the row.
 
+Every durable session projection also carries `projectSessionCounts`, an
+authoritative list of the affected project totals after that mutation. Web
+assigns those totals directly to its project rows, and Flutter updates
+`cached_projects` in the same transaction as the session projection and live
+cursor. Assigning a total instead of applying a delta makes replay and duplicate
+delivery idempotent even though session history is paginated. Flutter also
+adjusts the cached total immediately after a locally accepted create/delete;
+the following projection replaces that provisional value with the authoritative
+count.
+
 The cache retains the complete known history, while the sliver-native Peon
 history lazily builds only rows near the viewport and exposes 20 sessions at a
 time. Approaching the end automatically reveals the next cached page, which

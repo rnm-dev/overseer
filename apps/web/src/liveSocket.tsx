@@ -41,6 +41,11 @@ export interface SessionLiveEvent {
   sessionId?: string;
   deleted?: boolean;
   syncedAt?: number;
+  projectSessionCounts?: Array<{
+    projectId: string | null;
+    projectKey: string;
+    sessionCount: number;
+  }>;
   [key: string]: unknown;
 }
 export interface ProjectLiveEvent {

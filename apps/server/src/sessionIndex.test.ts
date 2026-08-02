@@ -10,12 +10,32 @@ import {
   applySocketSessionEvent,
   applySocketSessionSnapshot,
   claimSessionSyncGeneration,
+  deleteIndexedSession,
   listSessions,
   reconcilePeon,
   releaseSessionSyncGeneration,
   StaleSessionSyncGenerationError,
   upsertSession,
 } from "./sessionIndex.js";
+
+test("session events carry exact affected project totals", async () => {
+  const mem = newDb();
+  const adapter = mem.adapters.createPg();
+  await initDb(new adapter.Pool() as unknown as pg.Pool);
+
+  await upsertSession("workspace", "peon", { id: "one", projectId: "project", projectKey: "project", lastActivityAt: 1 });
+  await upsertSession("workspace", "peon", { id: "two", projectId: "project", projectKey: "project", lastActivityAt: 2 });
+  assert.equal(await deleteIndexedSession("workspace", "peon", "one"), true);
+
+  const events = await query<{ payload: { projectSessionCounts?: Array<{ projectId: string | null; projectKey: string; sessionCount: number }> } }>(
+    `SELECT payload FROM events WHERE session_id IN ('one','two') ORDER BY cursor`,
+  );
+  assert.deepEqual(events.rows.map((event) => event.payload.projectSessionCounts), [
+    [{ projectId: "project", projectKey: "project", sessionCount: 1 }],
+    [{ projectId: "project", projectKey: "project", sessionCount: 2 }],
+    [{ projectId: "project", projectKey: "project", sessionCount: 1 }],
+  ]);
+});
 
 test("session index keeps the opening preview separate from latest activity", async () => {
   const mem = newDb();

@@ -7,6 +7,7 @@ import '../../../core/network/overseer_http_client.dart';
 import '../../../core/time/app_time.dart';
 import '../domain/new_session_repository.dart';
 import '../domain/session_models.dart';
+import 'project_session_count_cache.dart';
 
 class DefaultNewSessionRepository implements NewSessionRepository {
   DefaultNewSessionRepository({
@@ -117,12 +118,16 @@ class DefaultNewSessionRepository implements NewSessionRepository {
         throw const FormatException('Invalid new session response');
       }
       final now = _clock.now().millisecondsSinceEpoch.toDouble();
+      final responseSession = nested is Map
+          ? Map<String, dynamic>.from(nested)
+          : payload ?? const <String, dynamic>{};
       final session = SessionSummary(
         workspaceId: request.workspaceId,
         peonId: request.peonId,
         sessionId: sessionId,
         status: 'running',
         projectKey: request.projectKey,
+        projectId: responseSession['projectId'] as String?,
         title: request.prompt.trim().isEmpty
             ? '(see attachments)'
             : request.prompt.trim(),
@@ -136,25 +141,46 @@ class DefaultNewSessionRepository implements NewSessionRepository {
         hasOutstandingRequest: true,
         lastRequestedAt: now,
       );
-      await database
-          .into(database.cachedSessions)
-          .insertOnConflictUpdate(
-            CachedSessionsCompanion.insert(
-              workspaceId: session.workspaceId,
-              peonId: session.peonId,
-              sessionId: session.sessionId,
-              status: Value(session.status),
-              projectKey: Value(session.projectKey),
-              title: Value(session.title),
-              promptPreview: Value(session.promptPreview),
-              startedAt: Value(session.startedAt),
-              lastActivityAt: Value(session.lastActivityAt),
-              syncedAt: session.syncedAt,
-              operatorRequested: const Value(true),
-              hasOutstandingRequest: const Value(true),
-              lastRequestedAt: Value(now),
-            ),
+      await database.transaction(() async {
+        final existing =
+            await (database.select(database.cachedSessions)..where(
+                  (row) =>
+                      row.workspaceId.equals(session.workspaceId) &
+                      row.peonId.equals(session.peonId) &
+                      row.sessionId.equals(session.sessionId),
+                ))
+                .getSingleOrNull();
+        await database
+            .into(database.cachedSessions)
+            .insertOnConflictUpdate(
+              CachedSessionsCompanion.insert(
+                workspaceId: session.workspaceId,
+                peonId: session.peonId,
+                sessionId: session.sessionId,
+                status: Value(session.status),
+                projectKey: Value(session.projectKey),
+                projectId: Value(session.projectId),
+                title: Value(session.title),
+                promptPreview: Value(session.promptPreview),
+                startedAt: Value(session.startedAt),
+                lastActivityAt: Value(session.lastActivityAt),
+                syncedAt: session.syncedAt,
+                operatorRequested: const Value(true),
+                hasOutstandingRequest: const Value(true),
+                lastRequestedAt: Value(now),
+              ),
+            );
+        if (existing == null) {
+          await adjustCachedProjectSessionCount(
+            database: database,
+            workspaceId: session.workspaceId,
+            peonId: session.peonId,
+            projectId: session.projectId,
+            projectKey: session.projectKey,
+            delta: 1,
           );
+        }
+      });
       return session;
     } on FormatException {
       throw const NewSessionException(

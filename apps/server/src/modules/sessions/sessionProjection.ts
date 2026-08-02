@@ -7,6 +7,7 @@ import { normalizeSessionSummary } from "./sessionNormalization.js";
 import { completeNextSessionAttention, deleteSessionAttention } from "../../sessionAttention.js";
 import type {
   PeonSession,
+  ProjectSessionCount,
   SessionIndexRow,
   SessionSyncCheckpoint,
 } from "./sessionTypes.js";
@@ -47,10 +48,52 @@ interface StoredMutation {
   completion?: { workspaceId: string; peonId: string; sessionId: string; completedAt: number };
 }
 
+interface ProjectIdentity {
+  projectId: string | null;
+  projectKey: string | null;
+}
+
+async function projectSessionCounts(
+  tx: Transaction,
+  peonId: string,
+  identities: ProjectIdentity[],
+): Promise<ProjectSessionCount[]> {
+  const unique = new Map<string, ProjectIdentity>();
+  for (const identity of identities) {
+    if (!identity.projectKey) continue;
+    unique.set(identity.projectId ? `id:${identity.projectId}` : `key:${identity.projectKey}`, identity);
+  }
+  const counts: ProjectSessionCount[] = [];
+  for (const identity of unique.values()) {
+    const params = identity.projectId
+      ? [peonId, identity.projectId]
+      : [peonId, identity.projectKey];
+    const where = identity.projectId
+      ? "peon_id=$1 AND project_id=$2"
+      : "peon_id=$1 AND project_id IS NULL AND project_key=$2";
+    const result = await tx.query<{ count: number | string }>(
+      `SELECT COUNT(*)::int AS count FROM sessions WHERE ${where}`,
+      params,
+    );
+    counts.push({
+      projectId: identity.projectId,
+      projectKey: identity.projectKey!,
+      sessionCount: Number(result.rows[0]?.count ?? 0),
+    });
+  }
+  return counts;
+}
+
 async function storeSession(tx: Transaction, workspaceId: string, peonId: string, s: PeonSession): Promise<StoredMutation> {
   const summary = normalizeSessionSummary(s);
-  const previous = await tx.query<{ status: string | null; last_activity_at: number | null; ended_at: number | null }>(
-    `SELECT status, last_activity_at, ended_at FROM sessions WHERE peon_id=$1 AND session_id=$2`,
+  const previous = await tx.query<{
+    status: string | null;
+    project_id: string | null;
+    project_key: string | null;
+    last_activity_at: number | null;
+    ended_at: number | null;
+  }>(
+    `SELECT status, project_id, project_key, last_activity_at, ended_at FROM sessions WHERE peon_id=$1 AND session_id=$2`,
     [peonId, summary.id],
   );
   const row: SessionIndexRow = {
@@ -116,8 +159,18 @@ async function storeSession(tx: Transaction, workspaceId: string, peonId: string
   const key = `${peonId}:${row.sessionId}`;
   const fp = `${row.status}|${row.projectId}|${row.projectKey}|${row.lastActivityAt}|${row.endedAt}|${row.title}|${row.promptPreview}|${row.preview}`;
   if (fingerprints.get(key) !== fp) {
-    const event = await insertEvent(tx, { workspaceId, peonId, sessionId: row.sessionId, kind: "session", payload: row });
     const before = previous.rows[0];
+    const counts = await projectSessionCounts(tx, peonId, [
+      { projectId: before?.project_id ?? null, projectKey: before?.project_key ?? null },
+      { projectId: row.projectId, projectKey: row.projectKey },
+    ]);
+    const event = await insertEvent(tx, {
+      workspaceId,
+      peonId,
+      sessionId: row.sessionId,
+      kind: "session",
+      payload: { ...row, projectSessionCounts: counts },
+    });
     const terminalAt = row.endedAt ?? row.lastActivityAt ?? row.syncedAt;
     const previousTerminalAt = before?.ended_at ?? before?.last_activity_at ?? 0;
     const completedRun = row.status === "completed"
@@ -166,19 +219,23 @@ async function deleteSession(
   const syncedAt = nextSyncedAt();
   const params: unknown[] = [peonId, sessionId];
   const versionGuard = expectedSyncedAt === undefined ? "" : ` AND synced_at = $${params.push(expectedSyncedAt)}`;
-  const deleted = await tx.query<{ session_id: string }>(
-    `DELETE FROM sessions WHERE peon_id = $1 AND session_id = $2${versionGuard} RETURNING session_id`,
+  const deleted = await tx.query<{ session_id: string; project_id: string | null; project_key: string | null }>(
+    `DELETE FROM sessions WHERE peon_id = $1 AND session_id = $2${versionGuard} RETURNING session_id,project_id,project_key`,
     params,
   );
   if (!deleted.rows[0]) return { event: null };
   await markTranscriptDeleted(tx, peonId, sessionId);
+  const projectCounts = await projectSessionCounts(tx, peonId, [{
+    projectId: deleted.rows[0].project_id,
+    projectKey: deleted.rows[0].project_key,
+  }]);
 
   const event = await insertEvent(tx, {
     workspaceId,
     peonId,
     sessionId,
     kind: "session",
-    payload: { peonId, sessionId, deleted: true, syncedAt },
+    payload: { peonId, sessionId, deleted: true, syncedAt, projectSessionCounts: projectCounts },
   });
   return { event, deletedKey: `${peonId}:${sessionId}` };
 }

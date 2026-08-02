@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { applyProjectEvent, dedupeProjectsByKey, mergeProjects, visibleProjects, withLiveActiveSessionCounts } from "./projectList";
+import { applyProjectEvent, applyProjectSessionCounts, dedupeProjectsByKey, mergeProjects, visibleProjects, withLiveActiveSessionCounts } from "./projectList";
 
 test("a nameless row from a dead project never displaces the registered project sharing its key", () => {
   const registered = { peonId: "peon", projectId: "live", key: "overseer", name: "Overseer", dir: "/p/overseer", syncedAt: 20 };
@@ -83,4 +83,21 @@ test("projects inherit the newest activity among their sessions, whatever the st
     { key: "website", activeCount: 0, unreadCount: 0, lastActivityMs: 30 },
     { key: "quiet", activeCount: 0, unreadCount: 0, lastActivityMs: 7 },
   ]);
+});
+
+test("authoritative session events replace project totals idempotently", () => {
+  const projects = [
+    { projectId: "one", key: "one", sessionCount: 0 },
+    { projectId: "two", key: "two", sessionCount: 9 },
+    { projectId: null, key: "legacy", sessionCount: 1 },
+  ];
+  const counts = [
+    { projectId: "one", projectKey: "one", sessionCount: 4 },
+    { projectId: "two", projectKey: "two", sessionCount: 8 },
+    { projectId: null, projectKey: "legacy", sessionCount: 2 },
+  ];
+  const updated = applyProjectSessionCounts(projects, counts);
+  assert.deepEqual(updated.map((project) => project.sessionCount), [4, 8, 2]);
+  assert.equal(applyProjectSessionCounts(updated, counts), updated, "replayed events stay silent");
+  assert.equal(applyProjectSessionCounts(updated, [{ projectId: "one", projectKey: "one", sessionCount: -1 }]), updated);
 });

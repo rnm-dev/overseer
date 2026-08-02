@@ -113,3 +113,30 @@ export function withLiveActiveSessionCounts(
     lastActivityMs: activityByProject.get(project.key) ?? project.lastActivityMs ?? null,
   }));
 }
+
+export function applyProjectSessionCounts(
+  projects: ProjectLite[],
+  counts: unknown,
+): ProjectLite[] {
+  if (!Array.isArray(counts)) return projects;
+  const byIdentity = new Map<string, number>();
+  for (const item of counts) {
+    if (!item || typeof item !== "object") continue;
+    const count = (item as { sessionCount?: unknown }).sessionCount;
+    const projectId = (item as { projectId?: unknown }).projectId;
+    const projectKey = (item as { projectKey?: unknown }).projectKey;
+    if (typeof count !== "number" || !Number.isInteger(count) || count < 0 || typeof projectKey !== "string") continue;
+    byIdentity.set(typeof projectId === "string" ? `id:${projectId}` : `key:${projectKey}`, count);
+  }
+  if (byIdentity.size === 0) return projects;
+  let changed = false;
+  const next = projects.map((project) => {
+    const count = project.projectId
+      ? byIdentity.get(`id:${project.projectId}`)
+      : byIdentity.get(`key:${project.key}`);
+    if (count === undefined || count === project.sessionCount) return project;
+    changed = true;
+    return { ...project, sessionCount: count };
+  });
+  return changed ? next : projects;
+}

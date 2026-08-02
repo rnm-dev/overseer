@@ -50,6 +50,16 @@ export interface SessionIndexRow {
   syncedAt: number;
 }
 
+export interface ProjectSessionCount {
+  projectId: string | null;
+  projectKey: string;
+  sessionCount: number;
+}
+
+export interface SessionLiveProjection extends SessionIndexRow {
+  projectSessionCounts: ProjectSessionCount[];
+}
+
 export interface SessionSyncCheckpoint {
   catalog: { epoch: string; acknowledgedSeq: number } | null;
   delivery: { epoch: string; acknowledgedCursor: string | null } | null;
