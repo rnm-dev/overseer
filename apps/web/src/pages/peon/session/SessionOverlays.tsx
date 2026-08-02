@@ -45,6 +45,7 @@ export function SessionOverlays({
           {projectKey ? (
             <ProjectFileTree
               filesBase={`${base}/projects/${encodeURIComponent(projectKey)}/files`}
+              sourceFor={(path) => ({ kind: "project", base, projectKey, path })}
               activePath={projectFilePreview?.path}
               onOpenFile={(path, size) => setProjectFilePreview({ path, size })}
               onFileMoved={(source, destination) => setProjectFilePreview((current) => current?.path === source ? { ...current, path: destination } : current)}

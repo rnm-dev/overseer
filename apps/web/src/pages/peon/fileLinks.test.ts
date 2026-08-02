@@ -3,8 +3,10 @@ import test from "node:test";
 import {
   attachmentUploadPath,
   fileApiPath,
+  fileDownloadUrl,
   fileKind,
   fileUrl,
+  isUnviewableFile,
   projectDirectoryListingPath,
 } from "./fileLinks";
 
@@ -51,4 +53,32 @@ test("an unknown type reads as text in a project tree and as unsupported as an a
   assert.equal(fileKind({ name: "Dockerfile", contentType: "application/octet-stream", fallback: "text" }), "text");
   assert.equal(fileKind({ name: "Dockerfile", contentType: "application/octet-stream" }), "unsupported");
   assert.equal(fileKind({ name: "archive.zip", contentType: "application/octet-stream" }), "unsupported");
+});
+
+test("a format with no rendering stays unsupported even where the fallback is text", () => {
+  // The project tree asks for `fallback: "text"`. That is right for Dockerfile
+  // and wrong for a zip, which used to be pulled in full and painted as
+  // characters.
+  for (const name of ["archive.zip", "bundle.tar.gz", "app.tgz", "installer.dmg", "peon.exe", "libfoo.so", "Inter.woff2", "clip.mp4", "notes.docx", "state.sqlite3"]) {
+    assert.equal(fileKind({ name, contentType: "application/octet-stream", fallback: "text" }), "unsupported", name);
+    assert.equal(isUnviewableFile(name), true, name);
+  }
+  // A binary content type is refused whatever the name claims, while
+  // octet-stream — what the sandbox serves everything as — decides nothing.
+  assert.equal(fileKind({ name: "report.txt", contentType: "application/zip", fallback: "text" }), "unsupported");
+  assert.equal(fileKind({ name: "track", contentType: "audio/mpeg", fallback: "text" }), "unsupported");
+  assert.equal(isUnviewableFile("Dockerfile", "application/octet-stream"), false);
+  assert.equal(isUnviewableFile("notes.md"), false);
+  assert.equal(fileKind({ name: "diagram.svg", contentType: "image/svg+xml" }), "image");
+});
+
+test("a download names the bytes, not a session file's metadata", () => {
+  assert.equal(
+    fileDownloadUrl({ kind: "sessionFile", base, sessionId: "s 1", path: "/tmp/out.zip" }),
+    `/api${base}/sessions/s%201/file/raw?path=%2Ftmp%2Fout.zip`,
+  );
+  assert.equal(
+    fileDownloadUrl({ kind: "project", base, projectKey: "OVSR", path: "src/a b.zip" }),
+    `/api${base}/projects/OVSR/files/src/a%20b.zip`,
+  );
 });

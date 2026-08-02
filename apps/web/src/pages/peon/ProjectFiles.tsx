@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState, type DragEvent } from "react";
 import { createPortal } from "react-dom";
-import { ChevronRight, Folder, FolderOpen, LoaderCircle, RefreshCw, X } from "lucide-react";
+import { ChevronRight, Check, Copy, Download, ExternalLink, Folder, FolderOpen, LoaderCircle, RefreshCw, X } from "lucide-react";
 import { api, ApiError } from "../../api";
 import { useT } from "../../i18n";
 import { FileTypeIcon } from "./FileTypeIcon";
-import { FileView, useFileContent } from "./FileView";
-import { encodeFilePath, formatFileSize, type FileSource } from "./fileLinks";
+import { FileDownloadButton, FileView, useFileContent } from "./FileView";
+import { encodeFilePath, fileDownloadUrl, fileName, formatFileSize, type FileSource } from "./fileLinks";
 import { requestProjectDirectory, type ProjectFileEntry } from "./projectDirectoryListing";
 
 export { formatFileSize } from "./fileLinks";
@@ -42,8 +42,30 @@ const hasDraggedProjectFile = (event: DragEvent) => Array.from(event.dataTransfe
 const parentPath = (path: string) => path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
 const baseName = (path: string) => path.slice(path.lastIndexOf("/") + 1);
 
-export function ProjectFileTree({ filesBase, activePath, onOpenFile, onFileMoved, allowUpload = false, className = "" }: {
+// Keep a right-click menu inside the viewport wherever the pointer was: an
+// entry near the bottom edge would otherwise open below the fold.
+export function fileContextMenuPosition(clientX: number, clientY: number, viewportWidth: number, viewportHeight: number, itemCount: number) {
+  const width = 208;
+  const height = 16 + Math.max(1, itemCount) * 32;
+  const margin = 8;
+  return {
+    x: Math.max(margin, Math.min(clientX, viewportWidth - width - margin)),
+    y: Math.max(margin, Math.min(clientY, viewportHeight - height - margin)),
+  };
+}
+
+interface FileMenuState {
+  path: string;
+  size?: number;
+  x: number;
+  y: number;
+}
+
+export function ProjectFileTree({ filesBase, sourceFor, activePath, onOpenFile, onFileMoved, allowUpload = false, className = "" }: {
   filesBase: string;
+  // How a tree path is named for reading and saving. The tree never assembles
+  // a file URL itself; fileLinks.ts owns that for every surface.
+  sourceFor: (path: string) => FileSource;
   activePath?: string | null;
   onOpenFile: (path: string, size?: number) => void;
   onFileMoved?: (source: string, destination: string) => void;
@@ -51,6 +73,9 @@ export function ProjectFileTree({ filesBase, activePath, onOpenFile, onFileMoved
   className?: string;
 }) {
   const t = useT();
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [menu, setMenu] = useState<FileMenuState | null>(null);
+  const [copied, setCopied] = useState(false);
   const [directories, setDirectories] = useState<Record<string, DirectoryState>>({});
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set([""]));
   const [dropTarget, setDropTarget] = useState<string | null>(null);
@@ -99,6 +124,42 @@ export function ProjectFileTree({ filesBase, activePath, onOpenFile, onFileMoved
   useEffect(() => () => {
     if (uploadNoticeTimer.current !== null) window.clearTimeout(uploadNoticeTimer.current);
   }, []);
+
+  useEffect(() => {
+    if (!menu) return;
+    const close = (event: MouseEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) setMenu(null);
+    };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMenu(null);
+    };
+    const viewport = () => setMenu(null);
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", escape);
+    window.addEventListener("scroll", viewport, true);
+    window.addEventListener("resize", viewport);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", escape);
+      window.removeEventListener("scroll", viewport, true);
+      window.removeEventListener("resize", viewport);
+    };
+  }, [menu]);
+
+  const openMenu = (path: string, size: number | undefined, x: number, y: number) => {
+    setCopied(false);
+    setMenu({ path, size, ...fileContextMenuPosition(x, y, window.innerWidth, window.innerHeight, 3) });
+  };
+
+  const copyPath = async (path: string) => {
+    try {
+      await navigator.clipboard.writeText(path);
+      setCopied(true);
+      window.setTimeout(() => setMenu(null), 700);
+    } catch {
+      setMenu(null);
+    }
+  };
 
   useEffect(() => {
     setDirectories({});
@@ -249,6 +310,10 @@ export function ProjectFileTree({ filesBase, activePath, onOpenFile, onFileMoved
             type="button"
             draggable={allowUpload && !directory}
             onClick={() => directory ? void toggle(fullPath) : onOpenFile(fullPath, entry.size)}
+            onContextMenu={directory ? undefined : (event) => {
+              event.preventDefault();
+              openMenu(fullPath, entry.size, event.clientX, event.clientY);
+            }}
             disabled={loading}
             onDragEnter={directory ? (event) => acceptDrag(event, fullPath) : undefined}
             onDragOver={directory ? (event) => acceptDrag(event, fullPath) : undefined}
@@ -308,9 +373,40 @@ export function ProjectFileTree({ filesBase, activePath, onOpenFile, onFileMoved
           <span className="truncate">{move.error || (move.running ? t("proj.files.moving") : t("proj.files.moved"))}</span>
         </div>
       )}
+      {menu && createPortal(
+        <div
+          ref={menuRef}
+          role="menu"
+          aria-label={`${t("file.actions")}: ${fileName(menu.path)}`}
+          className="fixed z-[110] w-52 overflow-hidden rounded-lg border border-edge bg-surface py-1 shadow-xl"
+          style={{ left: menu.x, top: menu.y }}
+        >
+          <button type="button" role="menuitem" className={FILE_MENU_ITEM_CLASS} onClick={() => { setMenu(null); onOpenFile(menu.path, menu.size); }}>
+            <span className="min-w-0 flex-1 truncate">{t("file.open")}</span>
+            <ExternalLink size={12} className="flex-none text-ink-faint" aria-hidden />
+          </button>
+          <a
+            role="menuitem"
+            href={fileDownloadUrl(sourceFor(menu.path))}
+            download={fileName(menu.path)}
+            className={FILE_MENU_ITEM_CLASS}
+            onClick={() => setMenu(null)}
+          >
+            <span className="min-w-0 flex-1 truncate">{t("file.download")}</span>
+            <Download size={12} className="flex-none text-ink-faint" aria-hidden />
+          </a>
+          <button type="button" role="menuitem" className={FILE_MENU_ITEM_CLASS} onClick={() => void copyPath(menu.path)}>
+            <span className="min-w-0 flex-1 truncate">{t(copied ? "file.pathCopied" : "file.copyPath")}</span>
+            {copied ? <Check size={12} className="flex-none text-accent-strong" aria-hidden /> : <Copy size={12} className="flex-none text-ink-faint" aria-hidden />}
+          </button>
+        </div>,
+        document.body,
+      )}
     </div>
   );
 }
+
+const FILE_MENU_ITEM_CLASS = "flex w-full items-center gap-2 px-2.5 py-1.5 text-left font-body text-[0.7rem] text-ink-muted transition-colors hover:bg-surface-hover hover:text-ink focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-accent/60";
 
 function FileTreeLoader({ depth, label }: { depth: number; label: string }) {
   const rows = depth === 0 ? ["68%", "52%", "76%", "44%", "61%"] : ["58%", "72%", "46%"];
@@ -345,6 +441,7 @@ export function ProjectFilePreviewModal({ source, path, size, viewerUrl, onClose
         <header className="flex items-center gap-3 border-b border-edge bg-surface-raised/70 px-4 py-3.5">
           <FileTypeIcon name={path} size={16} />
           <span className="min-w-0 flex-1 truncate font-mono text-xs text-ink-muted" title={path}>{path}</span>
+          <FileDownloadButton source={source} />
           <button type="button" onClick={onClose} className="grid h-8 w-8 place-items-center rounded-lg border border-transparent text-ink-faint transition-colors hover:border-edge-strong hover:bg-surface-hover hover:text-ink" aria-label={t("session.preview.close")}><X size={18} /></button>
         </header>
         <div className="min-h-0 flex-1 overflow-auto">

@@ -183,6 +183,12 @@ export const en: Record<string, string> = {
   "proj.files.moved": "File moved",
   "proj.files.moveFailed": "Could not move the file.",
   "proj.files.moveUnsupported": "This Peon needs an update before it can move project files.",
+
+  "file.actions": "File actions",
+  "file.open": "Open",
+  "file.download": "Download",
+  "file.copyPath": "Copy path",
+  "file.pathCopied": "Path copied",
   "proj.skills.title": "Project skills",
   "proj.skills.hint": "Skills discovered from this project's agent configuration.",
   "proj.skills.loading": "Loading project skills…",

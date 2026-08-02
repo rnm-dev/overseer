@@ -183,6 +183,12 @@ export const ru: Record<string, string> = {
   "proj.files.moved": "Файл перемещён",
   "proj.files.moveFailed": "Не удалось переместить файл.",
   "proj.files.moveUnsupported": "Обновите Peon, чтобы перемещать файлы проекта.",
+
+  "file.actions": "Действия с файлом",
+  "file.open": "Открыть",
+  "file.download": "Скачать",
+  "file.copyPath": "Скопировать путь",
+  "file.pathCopied": "Путь скопирован",
   "proj.skills.title": "Навыки проекта",
   "proj.skills.hint": "Навыки из конфигурации агентов этого проекта.",
   "proj.skills.loading": "Загрузка навыков проекта…",

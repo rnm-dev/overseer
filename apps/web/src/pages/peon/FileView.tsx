@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
+import { Download } from "lucide-react";
 import { HighlightedCode, Markdown, languageForPath } from "../../components/RichText";
 import { useT, type Translate } from "../../i18n";
-import { fileKind, fileName, fileUrl, formatFileSize, type FileKind, type FileSource } from "./fileLinks";
+import { fileDownloadUrl, fileKind, fileName, fileUrl, formatFileSize, isUnviewableFile, type FileKind, type FileSource } from "./fileLinks";
 
 // One reader and one renderer for every file the app displays. The surfaces
 // differ only in chrome — a modal, a side pane, a dialog — so the fetching,
@@ -43,6 +44,13 @@ export function useFileContent({ source, size, hint, fallback = "unsupported", e
   useEffect(() => {
     if (!enabled) return setContent({ path, loading: false });
     const name = fileName(path);
+    // An archive, an executable or a font has no rendering here, so say so
+    // without reading it: the fetch could only end at the same sentence, after
+    // moving the whole file across the mesh to be thrown away.
+    if (isUnviewableFile(name)) {
+      setContent({ path, loading: false, kind: "unsupported", note: t("session.preview.unsupported") });
+      return;
+    }
     // Classify by name first: media streams to an object URL regardless of
     // size, everything else is capped before a megabyte of text is pulled.
     const byName = fileKind({ name, hint, fallback });
@@ -77,6 +85,24 @@ export function useFileContent({ source, size, hint, fallback = "unsupported", e
   }, [enabled, fallback, hint, path, size, t, url]);
 
   return content;
+}
+
+// Saving is offered for every file, viewable or not — an anchor rather than a
+// blob, so the browser streams it and the operator's session cookie rides
+// along on the same origin.
+export function FileDownloadButton({ source, className = "" }: { source: FileSource; className?: string }) {
+  const t = useT();
+  return (
+    <a
+      href={fileDownloadUrl(source)}
+      download={fileName(source.path)}
+      title={t("file.download")}
+      aria-label={t("file.download")}
+      className={`grid h-8 w-8 flex-none place-items-center rounded-lg border border-transparent text-ink-faint transition-colors hover:border-edge-strong hover:bg-surface-hover hover:text-ink ${className}`}
+    >
+      <Download size={16} aria-hidden />
+    </a>
+  );
 }
 
 export function FileView({ content, className = "" }: { content: FileContent; className?: string }) {

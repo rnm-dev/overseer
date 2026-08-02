@@ -39,11 +39,32 @@ export function fileApiPath(source: FileSource): string {
 
 export const fileUrl = (source: FileSource): string => `/api${fileApiPath(source)}`;
 
+// Saving a file always wants its bytes; the session-file route answers with
+// metadata unless the raw body is asked for by name.
+export const fileDownloadUrl = (source: FileSource): string =>
+  fileUrl(source.kind === "sessionFile" ? { ...source, raw: true } : source);
+
 export type FileKind = "image" | "pdf" | "markdown" | "text" | "unsupported";
 
 const IMAGE_EXTENSION = /\.(?:png|jpe?g|gif|webp|avif|bmp|svg|ico)$/i;
 const MARKDOWN_EXTENSION = /\.(?:md|markdown|mdown|mkd|mdx)$/i;
 const TEXT_EXTENSION = /\.(?:txt|json|ya?ml|csv|log|tsx?|jsx?|css|html?|py|go|rs|java|sh)$/i;
+
+// Formats this app has no rendering for and never will: archives, installers,
+// executables, compiled artifacts, fonts, media containers, office documents.
+// They are named separately from the `fallback` policy because a project tree
+// asks for `fallback: "text"` — correct for Dockerfile and LICENSE, and how a
+// zip came to be pulled in full and painted on screen as a wall of mojibake.
+const BINARY_EXTENSION = /\.(?:zip|tar|t[gbx]z|gz|bz2|xz|zst|7z|rar|lz4?|jar|war|ear|iso|dmg|pkg|deb|rpm|apk|aab|msi|exe|dll|so|dylib|bin|obj|class|wasm|pyc|pyd|node|woff2?|ttf|otf|eot|mp3|wav|flac|ogg|oga|opus|m4a|aac|mp4|m4v|mov|avi|mkv|webm|wmv|psd|ai|sketch|fig|blend|docx?|xlsx?|pptx?|od[tsp]|rtf|sqlite3?|db-wal|pdb|pack|idx)$/i;
+const BINARY_MIME = /^(?:audio|video|font|model)\/|^application\/(?:zip|gzip|x-(?:tar|gzip|bzip2?|xz|7z-compressed|rar-compressed|zip-compressed|msdownload|sharedlib|executable|font-\w+)|java-archive|wasm|vnd\.(?:openxmlformats-officedocument|ms-(?:excel|word|powerpoint)|oasis\.opendocument|android\.package-archive|debian\.binary-package|rar|sqlite3))/;
+
+// Whether a file can be refused on sight. `application/octet-stream` is
+// deliberately absent: the Peon's transfer sandbox serves every upload that
+// way, so it says nothing about the bytes.
+export function isUnviewableFile(name: string, contentType = ""): boolean {
+  const mime = contentType.split(";", 1)[0]!.trim().toLowerCase();
+  return BINARY_EXTENSION.test(name) || (!!mime && BINARY_MIME.test(mime));
+}
 
 // How a fetched file gets displayed. The Peon's transfer sandbox serves every
 // upload as application/octet-stream, so the name and the sender's own
@@ -62,6 +83,7 @@ export function fileKind({ name, contentType = "", hint, fallback = "unsupported
   if (hint === "image" || mime.startsWith("image/") || IMAGE_EXTENSION.test(name)) return "image";
   if (mime === "application/pdf" || /\.pdf$/i.test(name)) return "pdf";
   if (MARKDOWN_EXTENSION.test(name)) return "markdown";
+  if (isUnviewableFile(name, contentType)) return "unsupported";
   if (mime.startsWith("text/") || TEXT_EXTENSION.test(name)) return "text";
   return fallback;
 }

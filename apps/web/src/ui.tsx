@@ -36,7 +36,7 @@ export function Card({ children, className = "" }: { children: ReactNode; classN
   return <div className={`surface ${className}`}>{children}</div>;
 }
 
-export function Dialog({ title, children, onClose, size = "md", dismissible = true }: { title: ReactNode; children: ReactNode; onClose: () => void; size?: "md" | "lg"; dismissible?: boolean }) {
+export function Dialog({ title, children, actions, onClose, size = "md", dismissible = true }: { title: ReactNode; children: ReactNode; actions?: ReactNode; onClose: () => void; size?: "md" | "lg"; dismissible?: boolean }) {
   const { t } = useI18n();
   const titleId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
@@ -166,6 +166,7 @@ export function Dialog({ title, children, onClose, size = "md", dismissible = tr
         <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-accent/45 to-transparent" />
         <div className="mb-4 flex items-start gap-3 border-b border-edge/90 pb-4">
           <h3 id={titleId} className="min-w-0 flex-1 font-display text-base font-bold tracking-wide text-ink">{title}</h3>
+          {actions}
           <button className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-transparent text-base leading-none text-ink-faint transition-colors hover:border-edge-strong hover:bg-surface-hover hover:text-ink" onClick={requestClose} disabled={!dismissible} aria-label={t("a11y.close")}>
             ✕
           </button>
