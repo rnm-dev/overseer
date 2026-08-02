@@ -39,11 +39,13 @@ test("the transcript locks and restores the iOS document scroller", () => {
   const unlock = lockSessionDocument(target);
   assert.equal(rootClasses.has("session-transcript-open"), true);
   assert.equal(bodyClasses.has("session-transcript-open"), true);
-  assert.equal(properties.get("--session-document-lock-top"), "-42px");
+  // No `top: -scrollY` offset: it would push the mobile header off screen,
+  // and the locked body has no scroller left to reach it.
+  assert.equal(properties.size, 0);
 
   unlock();
   assert.equal(rootClasses.has("session-transcript-open"), false);
   assert.equal(bodyClasses.has("session-transcript-open"), false);
-  assert.equal(properties.has("--session-document-lock-top"), false);
+  assert.equal(properties.size, 0);
   assert.deepEqual(restored, [[7, 42]]);
 });

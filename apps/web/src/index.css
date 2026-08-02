@@ -80,7 +80,9 @@ body.session-transcript-open {
   position: fixed;
   left: 0;
   right: 0;
-  top: var(--session-document-lock-top, 0);
+  /* Pinned at the top, never at the page's old scroll offset: the mobile
+     header is the one element still in flow and must stay on screen. */
+  top: 0;
   width: 100%;
 }
 
