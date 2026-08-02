@@ -4,6 +4,7 @@ import 'package:overseer_mobile/features/sessions/domain/session_models.dart';
 import 'package:overseer_mobile/features/sessions/presentation/transcript_item_view.dart';
 import 'package:overseer_mobile/features/sessions/presentation/transcript_items.dart';
 import 'package:overseer_mobile/shared/design/theme.dart';
+import 'package:overseer_mobile/shared/design/typography.dart';
 import 'package:overseer_mobile/shared/widgets/app_markdown.dart';
 
 void main() {
@@ -217,6 +218,36 @@ void main() {
       find.byKey(const Key('transcript-user-short')),
     );
     expect(bubbleSize.width, lessThan(160));
+  });
+
+  testWidgets('thinking row matches system message typography and spacing', (
+    tester,
+  ) async {
+    const item = TranscriptThinkingItem(key: 'thinking', text: 'Working');
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.dark,
+        home: const Scaffold(
+          body: SizedBox(width: 400, child: TranscriptItemView(item: item)),
+        ),
+      ),
+    );
+
+    final indicator = tester.widget<Text>(find.textContaining('✦'));
+    expect(indicator.style?.fontSize, AppTypography.systemMessageFontSize);
+    expect(indicator.style?.height, 1.35);
+
+    await tester.tap(find.byKey(const Key('transcript-thinking-thinking')));
+    await tester.pump();
+
+    final details = tester.widget<Text>(find.text('Working'));
+    expect(details.style?.fontSize, AppTypography.systemMessageFontSize);
+    expect(details.style?.height, 1.35);
+    expect(details.style?.fontStyle, FontStyle.italic);
+    final detailsContainer = tester.widget<Container>(
+      find.ancestor(of: find.text('Working'), matching: find.byType(Container)),
+    );
+    expect(detailsContainer.margin, const EdgeInsets.only(top: 4));
   });
 
   testWidgets('renders user text as selectable GitHub Markdown', (

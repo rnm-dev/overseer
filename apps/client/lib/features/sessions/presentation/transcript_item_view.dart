@@ -440,19 +440,18 @@ class _ThinkingRowState extends State<_ThinkingRow> {
               key: Key('transcript-thinking-${widget.item.key}'),
               onTap: () => setState(() => open = !open),
               borderRadius: BorderRadius.circular(4),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 2),
-                child: Text(
-                  '✦ ${_thinkingLabel(widget.item.text)} ${open ? '▾' : '▸'}',
-                  style: AppTypography.monoCode(
-                    color: AppColors.boneFaint,
-                  ).copyWith(fontSize: 11),
+              child: Text(
+                '✦ ${_thinkingLabel(widget.item.text)} ${open ? '▾' : '▸'}',
+                style: AppTypography.mono(
+                  fontSize: AppTypography.systemMessageFontSize,
+                  color: AppColors.boneFaint,
+                  height: 1.35,
                 ),
               ),
             ),
             if (open)
               Container(
-                margin: const EdgeInsets.only(top: 5),
+                margin: const EdgeInsets.only(top: 4),
                 padding: const EdgeInsets.only(left: 12),
                 decoration: const BoxDecoration(
                   border: Border(
@@ -461,10 +460,11 @@ class _ThinkingRowState extends State<_ThinkingRow> {
                 ),
                 child: Text(
                   widget.item.text,
-                  style: AppTypography.monoCode(
+                  style: AppTypography.mono(
+                    fontSize: AppTypography.systemMessageFontSize,
                     color: AppColors.boneFaint,
-                    height: 1.45,
-                  ).copyWith(fontSize: 11, fontStyle: FontStyle.italic),
+                    height: 1.35,
+                  ).copyWith(fontStyle: FontStyle.italic),
                 ),
               ),
           ],
