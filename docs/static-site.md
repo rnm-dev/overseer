@@ -114,11 +114,34 @@ site/
 It is a Vite multi-page build — `build.rollupOptions.input` lists both HTML
 entries — and both pages share one CSS and one JS chunk.
 
+**Every layout grid declares `grid-cols-1` even when it looks redundant.** A
+bare `grid` with only a `md:grid-cols-2` variant has *no* column template below
+that breakpoint, so the implicit track is auto-sized — max-content — and grows
+past the container instead of clamping to it. That is how the page came to
+scroll horizontally on a phone: the widest max-content contribution on the page
+was the `whitespace-nowrap` copyable `git clone …` command, and it dragged every
+`w-full` illustration SVG out to 707px inside a 390px viewport. `overflow:
+hidden` on `.command-value` does not help — a clipped box still makes a
+max-content contribution to track sizing. Tailwind's `grid-cols-1` is
+`repeat(1, minmax(0, 1fr))`, which is the fix. When adding a section, check the
+document's `scrollWidth` against the viewport at 320px and 390px rather than
+trusting that it looks right.
+
 The documentation page covers requirements, every environment variable with its
 default, a compose file, GitHub OAuth setup, the operator/machine network split,
 operations and troubleshooting. **Its content is derived from
 `apps/server/src/config.ts`**, not written from memory; re-read that file before
-editing the configuration table.
+editing the configuration table. It once documented
+`OVERSEER_RELEASE_TOKEN/_DIRECTORY/_MAX_BYTES` and mounted `/data/releases` in
+the compose sample; migration `033_remove_peon_releases` dropped that surface
+and Peon updates come from public npm, so those are gone.
+
+**The enrollment story on the page is the sole supported flow.** The operator
+runs `peon remote on`, configures `publicControlUrl`, and runs `peon enroll` to
+arm a one-time phrase, then enters the address and phrase in Overseer. Overseer
+dials the Peon for enrollment and for every Fleet HTTP call, so the page must
+not claim machines work behind NAT with nothing reachable. The retired outbound
+`peon-claim-v1` code and its `pair <origin>` semantics no longer exist.
 
 ## Page structure
 
@@ -140,7 +163,8 @@ causally sequenced along it: an inbound signal arrives, activity starts, then
 an outbound signal returns over the same lane before idle resumes. Signals move
 at the hero diagram's 144 rendered pixels per second and share the lane fade—inbound brightens
 toward Peon, outbound fades toward the edge. A same-width
-copyable npm install command sits beneath the container;
+copyable npm install command sits beneath the container — the real one,
+`npm install -g @rnm-dev/peon`, checked against `apps/peon/package.json`;
 followed by
 persistent Peon connections into an identically styled Overseer shell with
 centred lanes on both sides and internal Workspaces, Projects, ACL, History,
@@ -153,10 +177,19 @@ Windows, iOS and Android platform glyphs with compact labels) →
 **Collaboration at AI speed** (two concise benefits: shared session history
 with live presence, and quantitative analytics broken down by project and
 member) →
-**Backlog** (six short planned capabilities: plugin registry, self-hosted voice
-and speech-to-text, more auth options, custom sound packs, expanded analytics,
-and integration API/webhooks, plus an invitation to contribute; presented as
-icon-led roadmap cards with short descriptions).
+**Backlog** (four short planned capabilities, each one traceable to a real task
+on the board: more ways to sign in, live previews, token and cost analytics, and
+context/output limits, plus an invitation to contribute; presented as icon-led
+roadmap cards in a 2×2 grid with short descriptions). The earlier set — plugin
+registry, custom sound packs, API and webhooks — was removed because nothing on
+the board backed it. Keep that test: a card here is a promise, so it needs a
+task behind it.
+
+Two cards that *did* have tasks behind them were still removed by request:
+outbound enrollment and client-side dictation. Both invite the reader to ask
+when, and neither is close enough to answer. The grid dropped to
+`sm:grid-cols-2` so four cards read as 2×2 rather than a row of three plus an
+orphan; restore `md:grid-cols-3` if a fifth or sixth card ever returns.
 
 The footer closes with a compact product statement, internal links to
 Documentation, Backlog and How it works, three positioning chips (Open source,
