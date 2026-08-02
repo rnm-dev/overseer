@@ -38,7 +38,7 @@ interface Props {
   sessionReasoningEffort: string | null;
 }
 
-export const SESSION_COMPOSER_DOCK_CLASS = "theme-transcript-composer-fade session-composer fixed bottom-0 left-0 right-0 z-40 pt-4 md:left-[var(--peon-sidebar-width)]";
+export const SESSION_COMPOSER_DOCK_CLASS = "theme-transcript-composer-fade session-composer fixed bottom-0 left-0 z-40 pt-4 md:left-[var(--peon-sidebar-width)]";
 
 export function SessionComposerDock(props: Props) {
   const {

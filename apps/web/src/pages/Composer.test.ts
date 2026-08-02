@@ -46,6 +46,13 @@ test("composer dock uses the package-owned transcript fade", () => {
   assert.doesNotMatch(SESSION_COMPOSER_DOCK_CLASS, /from-void|via-void/);
 });
 
+test("composer dock leaves its right edge to the scrollbar-aware stylesheet", () => {
+  // .session-composer owns `right` so the fade stops before the transcript
+  // scrollbar; a utility right-0 here would paint over it again.
+  assert.doesNotMatch(SESSION_COMPOSER_DOCK_CLASS, /\bright-0\b/);
+  assert.match(SESSION_COMPOSER_DOCK_CLASS, /\bsession-composer\b/);
+});
+
 test("the auto-size cap matches the textarea's painted max height", () => {
   const markup = renderToStaticMarkup(React.createElement(
     I18nProvider,

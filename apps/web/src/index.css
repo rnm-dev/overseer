@@ -132,10 +132,13 @@ html.peon-sidebar-resizing * {
     margin-right: var(--session-files-pane-width);
   }
 
-  html.session-files-open .session-composer,
   html.session-files-open .session-scroll-control,
   html.session-files-open .session-transcript-pane {
     right: var(--session-files-pane-width);
+  }
+
+  html.session-files-open .session-composer {
+    right: calc(var(--session-files-pane-width) + var(--ov-scrollbar-width, 0px));
   }
 
   .peon-main-pane,
@@ -796,6 +799,12 @@ html.peon-sidebar-resizing * {
 
 .theme-transcript-composer-fade {
   background: var(--ov-transcript-composer-fade);
+}
+
+/* The dock is fixed over the transcript scroller: stop it short of that
+   scroller's scrollbar so the fade never paints across it. */
+.session-composer {
+  right: var(--ov-scrollbar-width, 0px);
 }
 
 @media (max-width: 639px) {

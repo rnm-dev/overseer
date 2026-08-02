@@ -7,12 +7,16 @@ import { I18nProvider } from "./i18n";
 import { NotificationsProvider } from "./notifications";
 import { ThemeProvider } from "./features/themes/ThemeProvider";
 import { rememberNativeCallback } from "./nativeLoginMode";
+import { trackScrollbarWidth } from "./scrollbarWidth";
 import "./index.css";
 import "./features/themes/packages/themes.css";
 
 // Before the router runs: an unauthenticated deep entry redirects to /login and
 // drops the query string, which is where the mobile app's callback lives.
 rememberNativeCallback(window.location.search, sessionStorage);
+
+// Publishes --ov-scrollbar-width so fixed overlays can keep off the scrollbar.
+trackScrollbarWidth(window);
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
