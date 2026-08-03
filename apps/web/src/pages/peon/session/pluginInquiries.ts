@@ -103,6 +103,10 @@ export function stableInquiryError(error: unknown): PluginInquiryStatus {
   return "failed";
 }
 
+export function isActivePluginInquiry(inquiry: Pick<PluginInstallInquiry, "status">): boolean {
+  return inquiry.status === "pending" || inquiry.status === "installing" || inquiry.status === "auth_required";
+}
+
 export function usePluginInquiries(base: string, sid: string, supported: boolean) {
   const [inquiries, setInquiries] = useState<PluginInstallInquiry[]>([]);
   const [loading, setLoading] = useState(supported);
@@ -193,5 +197,5 @@ export function usePluginInquiries(base: string, sid: string, supported: boolean
     }
   }, [base, refresh, sid]);
 
-  return { inquiries, loading, loadFailed, refresh, respond };
+  return { inquiries: inquiries.filter(isActivePluginInquiry), loading, loadFailed, refresh, respond };
 }

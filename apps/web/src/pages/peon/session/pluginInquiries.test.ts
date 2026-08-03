@@ -5,6 +5,7 @@ import {
   inquiryAuthPath,
   inquiryCollectionPath,
   inquiryResponsePath,
+  isActivePluginInquiry,
   PLUGIN_INQUIRY_CAPABILITY,
   parsePluginInquiries,
   respondToPluginInquiry,
@@ -72,4 +73,9 @@ test("runtime loss and stale generation render as stale, not generic failure", (
   for (const terminalCode of ["INQUIRY_RUNTIME_LOST", "INQUIRY_STALE_GENERATION", "INQUIRY_TURN_ENDED"]) {
     assert.equal(visiblePluginInquiry({ ...pending, status: "failed", terminalCode }, Date.parse("2029-01-01"))?.status, "stale");
   }
+});
+
+test("only actionable inquiries remain visible in the transcript", () => {
+  for (const status of ["pending", "installing", "auth_required"] as const) assert.equal(isActivePluginInquiry({ ...pending, status }), true);
+  for (const status of ["installed", "expired", "cancelled", "failed", "stale", "refused"] as const) assert.equal(isActivePluginInquiry({ ...pending, status }), false);
 });
