@@ -69,8 +69,7 @@ test("grouped sidebar renders collapsible project toolbars, limits rows, and end
   assert.doesNotMatch(markup, /All sessions/);
   assert.match(markup, /aria-label="\+ New session: Overseer"/);
   assert.doesNotMatch(markup, />12 sessions</);
-  assert.match(markup, /<ul class="pb-1">/);
-  assert.doesNotMatch(markup, /<ul class="py-1">/);
+  assert.match(markup, /<ul class="py-1">/);
   assert.match(markup, />First</);
   assert.match(markup, />Second</);
   assert.doesNotMatch(markup, /Hidden by limit/);

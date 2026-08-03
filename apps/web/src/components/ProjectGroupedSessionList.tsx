@@ -156,7 +156,6 @@ export function ProjectGroupedSessionList({
                     onRename={onRename}
                     onDelete={onDelete}
                     onNavigateIntent={onNavigateIntent}
-                    flushTop
                   />
                 )}
               </div>

@@ -48,7 +48,7 @@ test("display control reuses the recent-section header and plain action treatmen
     }),
   ));
   assert.match(markup, /bg-ink\/5 px-3 py-1\.5 font-display text-\[0\.55rem\]/);
-  assert.match(markup, /^<div class="border-b border-edge">/);
+  assert.match(markup, /^<div>/);
   assert.match(markup, /class="uppercase text-ink-muted transition-colors hover:text-accent-strong"/);
   assert.doesNotMatch(markup, /sliders-horizontal|rounded-md px-2/);
 });

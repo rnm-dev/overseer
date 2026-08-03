@@ -181,7 +181,7 @@ export function SessionListDisplayControl({
 
   return (
     <>
-      <div className="border-b border-edge">
+      <div>
         <SidebarSectionHeader
           label={t("sessions.display.title")}
           action={(
