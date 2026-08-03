@@ -790,6 +790,12 @@ html.peon-sidebar-resizing * {
 }
 .theme-user-message-focus:focus-visible { --tw-ring-color: color-mix(in srgb, var(--ov-user-message-ink) 50%, transparent); }
 
+/* Queued messages are the composer's own echo, so they follow the theme rather
+ * than the shared warning ramp: Sterling reads blue-steel, everyone else amber. */
+.theme-queued-message { background: var(--ov-queued-message-background); }
+.theme-queued-message-icon { color: color-mix(in srgb, var(--ov-queued-message-icon) 70%, transparent); }
+.theme-queued-message-icon-active { color: var(--ov-queued-message-icon); }
+
 .theme-composer-shell {
   box-shadow: var(--ov-composer-shadow);
 }

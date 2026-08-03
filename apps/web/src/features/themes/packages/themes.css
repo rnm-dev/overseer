@@ -46,6 +46,8 @@
   --ov-cta-shadow-hover: 0 20px 46px -16px rgb(134 171 99 / 0.9);
   --ov-cta-shadow-active: 0 8px 22px -14px rgb(134 171 99 / 0.7);
   --ov-user-message-background: var(--ov-warning-deep);
+  --ov-queued-message-background: color-mix(in srgb, var(--ov-warning-deep) 55%, transparent);
+  --ov-queued-message-icon: var(--ov-warning-strong);
   --ov-user-message-ink: var(--ov-ink);
   --ov-user-message-meta: color-mix(in srgb, var(--ov-ink) 60%, transparent);
   --ov-composer-shadow: 0 -6px 28px -14px rgb(0 0 0 / 0.8);
@@ -112,6 +114,8 @@
   --ov-cta-shadow-hover: 0 18px 40px -18px rgb(54 83 31 / 0.58);
   --ov-cta-shadow-active: 0 8px 20px -14px rgb(54 83 31 / 0.42);
   --ov-user-message-background: linear-gradient(145deg, #6f8d56, #58753f);
+  --ov-queued-message-background: color-mix(in srgb, var(--ov-warning-deep) 55%, transparent);
+  --ov-queued-message-icon: var(--ov-warning-strong);
   --ov-user-message-ink: #ffffff;
   --ov-user-message-meta: rgb(255 255 255 / 0.68);
   --ov-composer-shadow: 0 -10px 34px -24px rgb(92 76 53 / 0.2);
@@ -170,6 +174,8 @@
   --ov-cta-shadow-hover: 0 17px 36px -18px rgb(48 77 100 / 0.56);
   --ov-cta-shadow-active: 0 7px 18px -14px rgb(48 77 100 / 0.4);
   --ov-user-message-background: linear-gradient(145deg, #638198, #49677e);
+  --ov-queued-message-background: color-mix(in srgb, var(--ov-accent-deep) 55%, transparent);
+  --ov-queued-message-icon: var(--ov-accent-strong);
   --ov-user-message-ink: #ffffff;
   --ov-user-message-meta: rgb(255 255 255 / 0.7);
   --ov-composer-shadow: 0 -10px 36px -22px rgb(42 50 57 / 0.12);
@@ -228,6 +234,8 @@
   --ov-cta-shadow-hover: 0 0 34px rgb(112 239 255 / 0.7), 0 0 50px rgb(168 229 75 / 0.24), 0 20px 56px -18px rgb(239 79 189 / 0.74);
   --ov-cta-shadow-active: 0 0 14px rgb(40 198 220 / 0.42), 0 8px 24px -14px rgb(239 79 189 / 0.5);
   --ov-user-message-background: linear-gradient(135deg, #7d276e, #a92f84 52%, #543b91 82%, #49782e 130%);
+  --ov-queued-message-background: color-mix(in srgb, var(--ov-warning-deep) 55%, transparent);
+  --ov-queued-message-icon: var(--ov-warning-strong);
   --ov-user-message-ink: #ffffff;
   --ov-user-message-meta: rgb(255 255 255 / 0.7);
   --ov-composer-shadow: 0 -12px 54px -18px rgb(40 198 220 / 0.4), -18px -5px 44px -28px rgb(168 229 75 / 0.34), 18px -4px 42px -24px rgb(239 79 189 / 0.48);
@@ -288,6 +296,8 @@
   --ov-cta-shadow-hover: 0 0 27px rgb(255 210 119 / 0.52), 0 17px 42px -18px rgb(229 168 58 / 0.64);
   --ov-cta-shadow-active: 0 0 12px rgb(229 168 58 / 0.4), 0 7px 20px -14px rgb(229 168 58 / 0.5);
   --ov-user-message-background: linear-gradient(145deg, #275e51, #326f60);
+  --ov-queued-message-background: color-mix(in srgb, var(--ov-warning-deep) 55%, transparent);
+  --ov-queued-message-icon: var(--ov-warning-strong);
   --ov-user-message-ink: #eafff8;
   --ov-user-message-meta: rgb(234 255 248 / 0.66);
   --ov-composer-shadow: -12px -8px 42px -26px rgb(88 185 157 / 0.24), 12px -10px 42px -24px rgb(229 168 58 / 0.26);
@@ -346,6 +356,8 @@
   --ov-cta-shadow-hover: 6px 6px 0 #3257d6;
   --ov-cta-shadow-active: 2px 2px 0 #171522;
   --ov-user-message-background: linear-gradient(135deg, #dcf56d, #a9dc43 72%, #87c83c);
+  --ov-queued-message-background: color-mix(in srgb, var(--ov-warning-deep) 55%, transparent);
+  --ov-queued-message-icon: var(--ov-warning-strong);
   --ov-user-message-ink: #171522;
   --ov-user-message-meta: rgb(23 21 34 / 0.62);
   --ov-composer-shadow: 5px -5px 0 rgb(50 87 214 / 0.16), -5px -2px 0 rgb(242 48 155 / 0.11);
