@@ -12,13 +12,16 @@ change.
 
 ## Authority and flow
 
-Peon registers a handler only for the native `item/tool/call` tool named
-`request_plugin_install`. Every other unattended dynamic tool call keeps the
-existing immediate refusal. The handler validates the active Codex thread and
-turn, calls `plugin/list` and `plugin/read`, normalizes an allowlisted metadata
-summary, generates a UUID `inquiryId`, persists the safe operator state, and
-waits. It does not call `plugin/install` until an authenticated operator submits
-`action: "install"`.
+Peon exposes `request_plugin_install` through a session-authenticated, loopback-only
+MCP binding. This is deliberate: Codex Code Mode wraps native dynamic tools in
+its own `exec` host, whose built-in installer returns `user_confirmed: false`
+without forwarding the confirmation request to Peon. The MCP call still works
+through Code Mode, but its HTTP request remains owned by Peon and waits for the
+operator response. Peon validates the active Codex thread and turn, calls
+`plugin/list` and `plugin/read`, normalizes an allowlisted metadata summary,
+generates a UUID `inquiryId`, persists the safe operator state, and waits. It
+does not call `plugin/install` until an authenticated operator submits `action:
+"install"`.
 
 All reads and mutations use direct authenticated Fleet HTTP over mesh:
 

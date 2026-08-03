@@ -56,6 +56,20 @@ configureManagedPluginToolHandler(async (params, generation) => {
     managedPluginInquiries.bindRuntime(runtime);
     return managedPluginInquiries.handleDynamicToolCall(params, generation);
 });
+export async function requestManagedPluginInstall(sessionId, pluginId) {
+    const session = sessions.get(sessionId);
+    const runtime = getCodexAppServerRuntime(settings.get().codexCommand);
+    managedPluginInquiries.bindRuntime(runtime);
+    if (!session?.backendSessionId || !session.backendTurnId || session.backendRuntimeGeneration === null) {
+        return { contentItems: [{ type: "inputText", text: "The originating session turn is not active." }], success: false };
+    }
+    return managedPluginInquiries.handleDynamicToolCall({
+        threadId: session.backendSessionId,
+        turnId: session.backendTurnId,
+        tool: "request_plugin_install",
+        arguments: { plugin_id: pluginId },
+    }, session.backendRuntimeGeneration);
+}
 function fail(res, status, code, error) {
     res.status(status).json({ error, code });
 }

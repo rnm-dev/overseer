@@ -39,10 +39,13 @@ test("root sessions receive a signed orchestration binding while children do not
   assert.equal(root.mcpServers.peon_sessions?.url, "http://127.0.0.1:4570/mcp/sessions");
   assert.equal(verifySessionMcpCredential(credential), "root-session");
   assert.match(root.allowedTools, /mcp__peon_sessions__\*/);
+  assert.equal(verifySessionMcpCredential(root.mcpServers.peon_plugins?.headers[SESSION_MCP_HEADER]), "root-session");
+  assert.match(root.allowedTools, /mcp__peon_plugins__\*/);
 
   const child = assembler.assemble({ sessionId: "child-session", allowSessionSpawning: false })!;
   assert.equal(child.mcpServers.peon_sessions, undefined);
   assert.doesNotMatch(child.allowedTools, /peon_sessions/);
+  assert.equal(verifySessionMcpCredential(child.mcpServers.peon_plugins?.headers[SESSION_MCP_HEADER]), "child-session");
 });
 
 test("session MCP credentials reject tampering and malformed values", () => {

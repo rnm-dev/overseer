@@ -77,6 +77,21 @@ configureManagedPluginToolHandler(async (params, generation) => {
   return managedPluginInquiries.handleDynamicToolCall(params, generation);
 });
 
+export async function requestManagedPluginInstall(sessionId: string, pluginId: string): Promise<unknown> {
+  const session = sessions.get(sessionId);
+  const runtime = getCodexAppServerRuntime(settings.get().codexCommand);
+  managedPluginInquiries.bindRuntime(runtime);
+  if (!session?.backendSessionId || !session.backendTurnId || session.backendRuntimeGeneration === null) {
+    return { contentItems: [{ type: "inputText", text: "The originating session turn is not active." }], success: false };
+  }
+  return managedPluginInquiries.handleDynamicToolCall({
+    threadId: session.backendSessionId,
+    turnId: session.backendTurnId,
+    tool: "request_plugin_install",
+    arguments: { plugin_id: pluginId },
+  }, session.backendRuntimeGeneration);
+}
+
 // Stable machine-readable error codes. The overseer branches on these, never
 // on the English `error` string (which the human `/api` handlers match on with
 // `.startsWith(...)` — too brittle to expose fleet-wide).

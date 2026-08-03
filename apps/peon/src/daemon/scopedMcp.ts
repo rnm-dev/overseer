@@ -31,6 +31,8 @@ interface McpToolProvider {
   callTool(name: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<CallToolResult>;
 }
 
+type ManagedPluginInstallRequester = (sessionId: string, pluginId: string) => Promise<unknown>;
+
 type SessionOrchestrationApi = Pick<
   SessionOrchestrationService,
   "listOptions" | "spawn" | "children" | "wait" | "transcript" | "followUp"
@@ -40,6 +42,7 @@ export function createScopedMcpRouter(options: {
   armoryRuntime: ArmoryMcpRuntime;
   projectService?: ProjectService;
   sessionOrchestration?: SessionOrchestrationApi;
+  requestManagedPluginInstall?: ManagedPluginInstallRequester;
 }): express.Router {
   const router = express.Router();
 
@@ -55,6 +58,17 @@ export function createScopedMcpRouter(options: {
   if (options.projectService) {
     router.use("/projects", createProviderRouter(() => projectProvider(options.projectService!)));
   }
+  if (options.requestManagedPluginInstall) {
+    router.use("/plugins", (req, res, next) => {
+      const sessionId = verifySessionMcpCredential(req.headers[SESSION_MCP_HEADER]);
+      if (!sessionId) return res.status(401).json({ error: "invalid session MCP capability" });
+      res.locals.parentSessionId = sessionId;
+      next();
+    }, createProviderRouter((req) => managedPluginProvider(
+      options.requestManagedPluginInstall!,
+      String(req.res?.locals.parentSessionId ?? ""),
+    )));
+  }
   if (options.sessionOrchestration) {
     router.use("/sessions", (req, res, next) => {
       const parentSessionId = verifySessionMcpCredential(req.headers[SESSION_MCP_HEADER]);
@@ -67,6 +81,33 @@ export function createScopedMcpRouter(options: {
     )));
   }
   return router;
+}
+
+const MANAGED_PLUGIN_TOOLS: Tool[] = [{
+  name: "request_plugin_install",
+  description: "Request explicit operator approval to install a managed Codex plugin. The call waits for the operator's Install or Decline response. Use it when a requested plugin is unavailable, and do not claim an installation was requested without calling it.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      plugin_id: { type: "string", enum: ["posthog@openai-curated-remote"] },
+    },
+    required: ["plugin_id"],
+    additionalProperties: false,
+  },
+}];
+
+function managedPluginProvider(requestInstall: ManagedPluginInstallRequester, sessionId: string): McpToolProvider {
+  return {
+    listTools: async () => MANAGED_PLUGIN_TOOLS,
+    callTool: async (name, args) => {
+      if (name !== "request_plugin_install") return toolError(`unknown tool: ${name}`);
+      const pluginId = requiredString(args.plugin_id, "plugin_id");
+      const response = await requestInstall(sessionId, pluginId) as { contentItems?: Array<{ type?: string; text?: string }>; success?: boolean };
+      const text = response.contentItems?.filter((item) => item.type === "inputText" && typeof item.text === "string")
+        .map((item) => item.text).join("\n") || "Managed plugin request completed.";
+      return { content: [{ type: "text", text }], isError: response.success !== true };
+    },
+  };
 }
 
 function createProviderRouter(resolveProvider: (req: express.Request) => McpToolProvider): express.Router {

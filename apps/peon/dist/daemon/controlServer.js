@@ -10,7 +10,7 @@ import { sessionArtifactInventory, SessionOrchestrationService, sessions, toPubl
 import { UnauthorizedRateLimiter } from "./unauthorizedRateLimit.js";
 import { createProjectService, projectStore } from "./projects/index.js";
 import { updateChecker } from "./updateChecker.js";
-import { createAgentRouter } from "./agentApi.js";
+import { createAgentRouter, requestManagedPluginInstall } from "./agentApi.js";
 import { createHumanProjectsRouter } from "./http/human/projects.js";
 import { createHumanSessionsRouter } from "./http/human/sessions.js";
 import { createScopedMcpRouter } from "./scopedMcp.js";
@@ -132,7 +132,7 @@ export function createControlServer(options = {}) {
     // Local coding agents use enabled Armory MCP packages. Mounted before the
     // local-only API gate because the MCP router has a stricter boundary of
     // its own: genuine loopback, no browser Origin, and a loopback Host header.
-    app.use("/mcp", createScopedMcpRouter({ armoryRuntime, projectService, sessionOrchestration }));
+    app.use("/mcp", createScopedMcpRouter({ armoryRuntime, projectService, sessionOrchestration, requestManagedPluginInstall }));
     app.use((req, res, next) => {
         if (isLoopback(req))
             return next();

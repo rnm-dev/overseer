@@ -410,3 +410,44 @@ test("session MCP route requires a bound capability and exposes orchestration to
     server.close();
   }
 });
+
+test("managed plugin MCP is session-scoped and returns the operator decision to the same tool call", async () => {
+  const { runtime } = await fixture();
+  const calls: Array<{ sessionId: string; pluginId: string }> = [];
+  const app = express();
+  app.use(express.json());
+  app.use("/mcp", createScopedMcpRouter({
+    armoryRuntime: runtime,
+    requestManagedPluginInstall: async (sessionId, pluginId) => {
+      calls.push({ sessionId, pluginId });
+      return { contentItems: [{ type: "inputText", text: "The operator installed the managed plugin." }], success: true };
+    },
+  }));
+  const server: Server = app.listen(0, "127.0.0.1");
+  await new Promise<void>((resolve) => server.once("listening", resolve));
+  try {
+    const port = (server.address() as { port: number }).port;
+    const url = new URL(`http://127.0.0.1:${port}/mcp/plugins`);
+    const unauthorized = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} }),
+    });
+    assert.equal(unauthorized.status, 401);
+
+    const client = new Client({ name: "plugin-route-test", version: "1.0.0" });
+    await client.connect(new StreamableHTTPClientTransport(url, {
+      requestInit: { headers: { [SESSION_MCP_HEADER]: sessionMcpCredential("parent-session") } },
+    }));
+    assert.deepEqual((await client.listTools()).tools.map((tool) => tool.name), ["request_plugin_install"]);
+    const result = await client.callTool({
+      name: "request_plugin_install",
+      arguments: { plugin_id: "posthog@openai-curated-remote" },
+    });
+    assert.equal(result.isError, false);
+    assert.deepEqual(calls, [{ sessionId: "parent-session", pluginId: "posthog@openai-curated-remote" }]);
+    await client.close();
+  } finally {
+    server.close();
+  }
+});

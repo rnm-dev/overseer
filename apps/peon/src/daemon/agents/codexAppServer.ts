@@ -34,24 +34,6 @@ const activeThreadTurns = new Map<string, Promise<void>>();
 const configuredRequestPolicies = new WeakSet<CodexAppServerRuntime>();
 let managedPluginToolHandler: ((params: unknown, generation: number) => Promise<unknown>) | null = null;
 
-export const MANAGED_PLUGIN_DYNAMIC_TOOLS = [{
-  type: "function",
-  name: "request_plugin_install",
-  description: "Request explicit operator approval to install an available managed Codex plugin. Use this when the requested plugin is not installed; do not claim that an installation was requested unless this tool call succeeds.",
-  inputSchema: {
-    type: "object",
-    additionalProperties: false,
-    required: ["plugin_id"],
-    properties: {
-      plugin_id: {
-        type: "string",
-        enum: ["posthog@openai-curated-remote"],
-        description: "The exact managed plugin id to install.",
-      },
-    },
-  },
-}] as const;
-
 export function configureManagedPluginToolHandler(handler: (params: unknown, generation: number) => Promise<unknown>): void {
   managedPluginToolHandler = handler;
   if (runtimeSlot) configureUnattendedRequests(runtimeSlot.runtime, true);
@@ -423,7 +405,6 @@ export function createCodexAppServerRun(opts: AgentRunOptions, runtime: CodexApp
         approvalsReviewer: "user",
         sandbox: sandboxMode(opts),
         developerInstructions: opts.systemPromptAppend,
-        dynamicTools: MANAGED_PLUGIN_DYNAMIC_TOOLS,
         ...(config ? { config } : {}),
       };
       if (opts.resume) {

@@ -18,6 +18,15 @@ export function createScopedMcpRouter(options) {
     if (options.projectService) {
         router.use("/projects", createProviderRouter(() => projectProvider(options.projectService)));
     }
+    if (options.requestManagedPluginInstall) {
+        router.use("/plugins", (req, res, next) => {
+            const sessionId = verifySessionMcpCredential(req.headers[SESSION_MCP_HEADER]);
+            if (!sessionId)
+                return res.status(401).json({ error: "invalid session MCP capability" });
+            res.locals.parentSessionId = sessionId;
+            next();
+        }, createProviderRouter((req) => managedPluginProvider(options.requestManagedPluginInstall, String(req.res?.locals.parentSessionId ?? ""))));
+    }
     if (options.sessionOrchestration) {
         router.use("/sessions", (req, res, next) => {
             const parentSessionId = verifySessionMcpCredential(req.headers[SESSION_MCP_HEADER]);
@@ -28,6 +37,32 @@ export function createScopedMcpRouter(options) {
         }, createProviderRouter((req) => sessionProvider(options.sessionOrchestration, String(req.res?.locals.parentSessionId ?? ""))));
     }
     return router;
+}
+const MANAGED_PLUGIN_TOOLS = [{
+        name: "request_plugin_install",
+        description: "Request explicit operator approval to install a managed Codex plugin. The call waits for the operator's Install or Decline response. Use it when a requested plugin is unavailable, and do not claim an installation was requested without calling it.",
+        inputSchema: {
+            type: "object",
+            properties: {
+                plugin_id: { type: "string", enum: ["posthog@openai-curated-remote"] },
+            },
+            required: ["plugin_id"],
+            additionalProperties: false,
+        },
+    }];
+function managedPluginProvider(requestInstall, sessionId) {
+    return {
+        listTools: async () => MANAGED_PLUGIN_TOOLS,
+        callTool: async (name, args) => {
+            if (name !== "request_plugin_install")
+                return toolError(`unknown tool: ${name}`);
+            const pluginId = requiredString(args.plugin_id, "plugin_id");
+            const response = await requestInstall(sessionId, pluginId);
+            const text = response.contentItems?.filter((item) => item.type === "inputText" && typeof item.text === "string")
+                .map((item) => item.text).join("\n") || "Managed plugin request completed.";
+            return { content: [{ type: "text", text }], isError: response.success !== true };
+        },
+    };
 }
 function createProviderRouter(resolveProvider) {
     const router = express.Router({ mergeParams: true });

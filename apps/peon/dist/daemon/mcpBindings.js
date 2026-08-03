@@ -27,6 +27,11 @@ export class McpConfigAssembler {
         const bindings = [
             this.localBinding("peon_projects", "/mcp/projects"),
         ];
+        if (context) {
+            bindings.push(this.localBinding("peon_plugins", "/mcp/plugins", {
+                [SESSION_MCP_HEADER]: sessionMcpCredential(context.sessionId),
+            }));
+        }
         if (context?.allowSessionSpawning) {
             bindings.push(this.localBinding("peon_sessions", "/mcp/sessions", {
                 [SESSION_MCP_HEADER]: sessionMcpCredential(context.sessionId),

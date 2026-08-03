@@ -7,7 +7,7 @@ import { describe, it } from "node:test";
 import type { AgentEvent, AgentRun, AgentRunOptions, AgentSteerInput } from "../agents/index.js";
 import { getAgentDriver, listAgentDrivers } from "../agents/index.js";
 import { CodexAppServerRuntime } from "../agents/runtimes/codexAppServerRuntime.js";
-import { createCodexAppServerRun, MANAGED_PLUGIN_DYNAMIC_TOOLS, reconcileCodexAppServerTurn } from "../agents/codexAppServer.js";
+import { createCodexAppServerRun, reconcileCodexAppServerTurn } from "../agents/codexAppServer.js";
 import { modelCatalog, narrowNewSessionAgent } from "../modelCatalog.js";
 
 const fixture = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures", "fakeCodexAppServer.mjs");
@@ -128,7 +128,6 @@ describe("Codex app-server driver", () => {
       assert.equal(thread?.approvalPolicy, "never");
       assert.equal(thread?.sandbox, "read-only");
       assert.equal(thread?.developerInstructions, "system");
-      assert.deepEqual(thread?.dynamicTools, MANAGED_PLUGIN_DYNAMIC_TOOLS);
       assert.deepEqual(thread?.runtimeWorkspaceRoots, [process.cwd()]);
       assert.deepEqual(thread?.config, { mcp_servers: { peon: {
         url: "http://127.0.0.1:4570/mcp/core", env_http_headers: {}, http_headers: { "x-test": "value" },
