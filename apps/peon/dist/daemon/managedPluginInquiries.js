@@ -149,7 +149,7 @@ export class ManagedPluginInquiryService {
         const runtime = this.runtime;
         if (!runtime)
             return null;
-        const response = object(await runtime.request("plugin/list", { forceRefetch: false, marketplaceKinds: ["vertical"] }));
+        const response = object(await runtime.request("plugin/list", { forceRefetch: false }));
         const marketplaces = Array.isArray(response?.marketplaces) ? response.marketplaces.map(object).filter((item) => !!item) : [];
         for (const marketplace of marketplaces) {
             const summaries = Array.isArray(marketplace.plugins) ? marketplace.plugins.map(object).filter((item) => !!item) : [];

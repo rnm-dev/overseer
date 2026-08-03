@@ -53,6 +53,7 @@ test("PostHog inquiry reads native metadata, installs once, and redacts native a
   }, 7);
   const pending = await observedInquiry(service);
   assert.equal(pending.plugin.displayName, "PostHog");
+  assert.deepEqual(runtime.calls.find((call) => call.method === "plugin/list")?.params, { forceRefetch: false });
   assert.equal(JSON.stringify(pending).includes("native-secret-id"), false);
 
   const installed = await service.respond("session-1", pending.inquiryId, "operator@example.com", "install");

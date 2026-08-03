@@ -190,7 +190,7 @@ export class ManagedPluginInquiryService {
   private async lookupPlugin(pluginId: string): Promise<{ metadata: ManagedPluginMetadata; marketplaceName: string; marketplacePath: string | null } | null> {
     const runtime = this.runtime;
     if (!runtime) return null;
-    const response = object(await runtime.request("plugin/list", { forceRefetch: false, marketplaceKinds: ["vertical"] }));
+    const response = object(await runtime.request("plugin/list", { forceRefetch: false }));
     const marketplaces = Array.isArray(response?.marketplaces) ? response.marketplaces.map(object).filter((item): item is Record<string, unknown> => !!item) : [];
     for (const marketplace of marketplaces) {
       const summaries = Array.isArray(marketplace.plugins) ? marketplace.plugins.map(object).filter((item): item is Record<string, unknown> => !!item) : [];
