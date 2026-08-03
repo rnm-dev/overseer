@@ -464,6 +464,8 @@ export const en: Record<string, string> = {
   "sessions.project.statusSummary": "Project session status",
   "sessions.project.workingCount": "Working sessions: {count}",
   "sessions.project.unreadCount": "Unread sessions: {count}",
+  "sessions.project.openWorking": "Open a working session ({count})",
+  "sessions.project.openUnread": "Open an unread session ({count})",
   "socket.control": "Control Channel",
   "socket.connected": "connected",
   "socket.disconnected": "disconnected",

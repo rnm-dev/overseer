@@ -28,31 +28,90 @@ export function projectSessionStatusCounts(sessions: SessionLite[]): ProjectSess
   }), { working: 0, unread: 0 });
 }
 
-export function CollapsedProjectStatusBadges({ sessions }: { sessions: SessionLite[] }) {
+function StatusBadge({
+  className,
+  hoverClassName,
+  edge,
+  count,
+  label,
+  linkLabel,
+  target,
+  sessionTo,
+  onNavigateIntent,
+}: {
+  className: string;
+  hoverClassName: string;
+  edge: string;
+  count: number;
+  label: string;
+  linkLabel: string;
+  target: SessionLite | undefined;
+  sessionTo?: (session: SessionLite) => string;
+  onNavigateIntent?: (session: SessionLite) => void;
+}) {
+  const body = (
+    <>
+      <span className={rowEdgeClass(edge, undefined)} aria-hidden />
+      {count}
+    </>
+  );
+  if (!target || !sessionTo) {
+    return <span className={className} title={label} aria-label={label}>{body}</span>;
+  }
+  return (
+    <Link
+      to={sessionTo(target)}
+      className={`${className} cursor-pointer transition-colors ${hoverClassName} focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-accent/60`}
+      title={linkLabel}
+      aria-label={linkLabel}
+      onPointerEnter={() => onNavigateIntent?.(target)}
+      onPointerDown={() => onNavigateIntent?.(target)}
+      onFocus={() => onNavigateIntent?.(target)}
+    >
+      {body}
+    </Link>
+  );
+}
+
+export function CollapsedProjectStatusBadges({
+  sessions,
+  sessionTo,
+  onNavigateIntent,
+}: {
+  sessions: SessionLite[];
+  sessionTo?: (session: SessionLite) => string;
+  onNavigateIntent?: (session: SessionLite) => void;
+}) {
   const t = useT();
   const counts = projectSessionStatusCounts(sessions);
   if (!counts.working && !counts.unread) return null;
   return (
     <div className="flex items-center gap-1 px-1" aria-label={t("sessions.project.statusSummary")}>
       {counts.working > 0 && (
-        <span
+        <StatusBadge
           className="relative flex h-5 min-w-5 items-center justify-center rounded-sm bg-accent/[0.06] px-1.5 pl-2 font-mono text-[0.625rem] font-semibold tabular-nums text-accent-strong"
-          title={t("sessions.project.workingCount", { count: counts.working })}
-          aria-label={t("sessions.project.workingCount", { count: counts.working })}
-        >
-          <span className={rowEdgeClass(sessionStatusEdgeClass("running"), undefined)} aria-hidden />
-          {counts.working}
-        </span>
+          hoverClassName="hover:bg-accent/20 hover:text-accent-strong"
+          edge={sessionStatusEdgeClass("running")}
+          count={counts.working}
+          label={t("sessions.project.workingCount", { count: counts.working })}
+          linkLabel={t("sessions.project.openWorking", { count: counts.working })}
+          target={sessions.find((session) => session.status === "running")}
+          sessionTo={sessionTo}
+          onNavigateIntent={onNavigateIntent}
+        />
       )}
       {counts.unread > 0 && (
-        <span
+        <StatusBadge
           className="relative flex h-5 min-w-5 items-center justify-center rounded-sm bg-warning/[0.06] px-1.5 pl-2 font-mono text-[0.625rem] font-semibold tabular-nums text-warning-strong"
-          title={t("sessions.project.unreadCount", { count: counts.unread })}
-          aria-label={t("sessions.project.unreadCount", { count: counts.unread })}
-        >
-          <span className={rowEdgeClass(sessionStatusEdgeClass("completed", true), undefined)} aria-hidden />
-          {counts.unread}
-        </span>
+          hoverClassName="hover:bg-warning/20 hover:text-warning-strong"
+          edge={sessionStatusEdgeClass("completed", true)}
+          count={counts.unread}
+          label={t("sessions.project.unreadCount", { count: counts.unread })}
+          linkLabel={t("sessions.project.openUnread", { count: counts.unread })}
+          target={sessions.find((session) => session.attentionUnread)}
+          sessionTo={sessionTo}
+          onNavigateIntent={onNavigateIntent}
+        />
       )}
     </div>
   );
@@ -176,7 +235,13 @@ export function ProjectGroupedSessionList({
                 <span className="flex h-7 min-w-0 flex-1 items-center truncate px-2 font-body typo-chat-message font-semibold text-ink">{label}</span>
               )}
               <div className="ml-auto flex flex-none items-center" role="toolbar" aria-label={label}>
-                {!isExpanded && <CollapsedProjectStatusBadges sessions={group.sessions} />}
+                {!isExpanded && (
+                  <CollapsedProjectStatusBadges
+                    sessions={group.sessions}
+                    sessionTo={sessionTo}
+                    onNavigateIntent={onNavigateIntent}
+                  />
+                )}
                 <Link
                   to={newSessionTo(project)}
                   title={t("newSession.new")}

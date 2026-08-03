@@ -464,6 +464,8 @@ export const ru: Record<string, string> = {
   "sessions.project.statusSummary": "Статус сессий проекта",
   "sessions.project.workingCount": "Работающих сессий: {count}",
   "sessions.project.unreadCount": "Непрочитанных сессий: {count}",
+  "sessions.project.openWorking": "Открыть работающую сессию ({count})",
+  "sessions.project.openUnread": "Открыть непрочитанную сессию ({count})",
   "socket.control": "Control Channel",
   "socket.connected": "подключён",
   "socket.disconnected": "отключён",

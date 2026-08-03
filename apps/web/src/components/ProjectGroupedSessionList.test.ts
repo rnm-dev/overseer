@@ -53,6 +53,29 @@ test("collapsed project status badges count and style working and unread session
   assert.match(markup, /bg-warning status-edge status-edge--warning/);
   assert.match(markup, /Working sessions: 2/);
   assert.match(markup, /Unread sessions: 2/);
+  assert.doesNotMatch(markup, /<a /);
+});
+
+test("collapsed project status badges link to the first working and unread session when navigation is available", () => {
+  const sessions = [
+    { id: "idle", status: "completed" },
+    { id: "running", status: "running" },
+    { id: "unread", status: "completed", attentionUnread: true },
+  ];
+
+  const markup = renderToStaticMarkup(React.createElement(
+    I18nProvider,
+    null,
+    React.createElement(MemoryRouter, null, React.createElement(CollapsedProjectStatusBadges, {
+      sessions,
+      sessionTo: (session: { id: string }) => `/sessions/${session.id}`,
+    })),
+  ));
+
+  assert.match(markup, /aria-label="Open a working session \(1\)" href="\/sessions\/running"/);
+  assert.match(markup, /aria-label="Open an unread session \(1\)" href="\/sessions\/unread"/);
+  assert.match(markup, /cursor-pointer transition-colors hover:bg-accent\/20 hover:text-accent-strong/);
+  assert.match(markup, /cursor-pointer transition-colors hover:bg-warning\/20 hover:text-warning-strong/);
 });
 
 test("grouped sidebar renders collapsible project toolbars, limits rows, and ends with the new-project ghost", () => {
