@@ -89,7 +89,6 @@ export class ManagedPluginInquiryService {
   private readonly waiters = new Map<string, Waiter[]>();
   private readonly reconcileTimers = new Map<string, NodeJS.Timeout>();
   private readonly authChecks = new Set<string>();
-  private readonly authLaunched = new Set<string>();
   private runtime: CodexAppServerRuntime | null = null;
   private runtimeHealthListener: ((health: CodexAppServerHealth) => void) | null = null;
 
@@ -186,50 +185,12 @@ export class ManagedPluginInquiryService {
         }) : [];
       inquiry.authPolicy = authPolicy; inquiry.appsNeedingAuth = apps;
       if (apps.length) {
-        inquiry.status = "auth_required"; inquiry.updatedAt = new Date(this.now()).toISOString(); this.persist(); this.scheduleReconcile(inquiry.inquiryId);
+        inquiry.status = "auth_required"; inquiry.updatedAt = new Date(this.now()).toISOString(); this.persist(); this.scheduleReconcile(inquiry.inquiryId); void this.pollAuth(inquiry);
       } else this.terminal(inquiry, "installed", null, actor, true);
       return publicInquiry(inquiry);
     } catch {
       return this.fail(inquiry, "INQUIRY_FAILED", actor);
     }
-  }
-
-  async authLaunch(sessionId: string, inquiryId: string, appId: string, actor: string): Promise<string> {
-    const inquiry = this.require(sessionId, inquiryId);
-    if (inquiry.respondedBy !== actor) throw new ManagedPluginInquiryError(403, "INQUIRY_ACTOR_MISMATCH", "inquiry was answered by another operator");
-    if (!inquiry.appsNeedingAuth.some((app) => app.id === appId)) {
-      throw new ManagedPluginInquiryError(409, "AUTH_NOT_REQUIRED", "connector authentication is not required");
-    }
-    if (inquiry.status !== "auth_required") throw new ManagedPluginInquiryError(409, "AUTH_LAUNCH_UNAVAILABLE", "connector authentication launch is no longer available");
-    const health = this.runtime?.getHealth();
-    if (!this.runtime || health?.status !== "healthy" || health.generation !== inquiry.runtimeGeneration) {
-      throw new ManagedPluginInquiryError(409, "AUTH_LAUNCH_UNAVAILABLE", "connector authentication launch is no longer available");
-    }
-    const session = this.listSessions().find((candidate) => candidate.id === sessionId);
-    if (!session || session.status !== "running" || session.backendSessionId !== inquiry.threadId || session.backendTurnId !== inquiry.turnId) {
-      throw new ManagedPluginInquiryError(409, "AUTH_LAUNCH_UNAVAILABLE", "connector authentication launch is no longer available");
-    }
-    let response: Record<string, unknown> | null;
-    try {
-      response = object(await this.runtime.request("app/read", { appIds: [appId], includeTools: false }));
-    } catch {
-      throw new ManagedPluginInquiryError(409, "AUTH_LAUNCH_UNAVAILABLE", "connector authentication launch is no longer available");
-    }
-    if (this.runtime.getHealth().generation !== inquiry.runtimeGeneration) throw new ManagedPluginInquiryError(409, "AUTH_LAUNCH_UNAVAILABLE", "connector authentication launch is no longer available");
-    const app = (Array.isArray(response?.apps) ? response.apps : []).map(object).find((item) => item?.id === appId);
-    const launchUrl = this.safeAuthLaunchUrl(app?.installUrl);
-    if (!launchUrl) throw new ManagedPluginInquiryError(409, "AUTH_LAUNCH_UNAVAILABLE", "connector authentication launch is no longer available");
-    this.authLaunched.add(inquiryId);
-    void this.pollAuth(inquiry);
-    return launchUrl;
-  }
-
-  private safeAuthLaunchUrl(value: unknown): string | null {
-    if (typeof value !== "string" || value.length > 8_192) return null;
-    try {
-      const url = new URL(value);
-      return url.protocol === "https:" && !!url.hostname && !url.username && !url.password ? url.toString() : null;
-    } catch { return null; }
   }
 
   private async lookupPlugin(pluginId: string): Promise<{ metadata: ManagedPluginMetadata; marketplaceName: string; marketplacePath: string | null; catalogPluginName: string } | null> {
@@ -288,7 +249,6 @@ export class ManagedPluginInquiryService {
     const timer = this.reconcileTimers.get(inquiry.inquiryId);
     if (timer) clearTimeout(timer);
     this.reconcileTimers.delete(inquiry.inquiryId);
-    this.authLaunched.delete(inquiry.inquiryId);
     this.authChecks.delete(inquiry.inquiryId);
     for (const waiter of this.waiters.get(inquiry.inquiryId) ?? []) waiter.resolve({
       contentItems: [{ type: "inputText", text: success ? "The operator installed the managed plugin." : "The managed plugin installation was not approved." }], success,
@@ -314,7 +274,7 @@ export class ManagedPluginInquiryService {
       if (Date.parse(inquiry.expiresAt) <= now) { this.fail(inquiry, "INQUIRY_EXPIRED", null); continue; }
       const session = this.listSessions().find((candidate) => candidate.id === inquiry.sessionId);
       if (!session || session.status !== "running" || session.backendSessionId !== inquiry.threadId || session.backendTurnId !== inquiry.turnId) this.fail(inquiry, "INQUIRY_TURN_ENDED", null);
-      else if (inquiry.status === "auth_required" && this.authLaunched.has(inquiry.inquiryId)) void this.pollAuth(inquiry);
+      else if (inquiry.status === "auth_required") void this.pollAuth(inquiry);
     }
   }
   private async pollAuth(inquiry: StoredInquiry): Promise<void> {

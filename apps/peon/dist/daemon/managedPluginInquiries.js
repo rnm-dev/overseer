@@ -36,7 +36,6 @@ export class ManagedPluginInquiryService {
     waiters = new Map();
     reconcileTimers = new Map();
     authChecks = new Set();
-    authLaunched = new Set();
     runtime = null;
     runtimeHealthListener = null;
     constructor(file = path.join(stateDir(), "managed-plugin-inquiries-v1.json"), listSessions, now = Date.now) {
@@ -148,6 +147,7 @@ export class ManagedPluginInquiryService {
                 inquiry.updatedAt = new Date(this.now()).toISOString();
                 this.persist();
                 this.scheduleReconcile(inquiry.inquiryId);
+                void this.pollAuth(inquiry);
             }
             else
                 this.terminal(inquiry, "installed", null, actor, true);
@@ -155,51 +155,6 @@ export class ManagedPluginInquiryService {
         }
         catch {
             return this.fail(inquiry, "INQUIRY_FAILED", actor);
-        }
-    }
-    async authLaunch(sessionId, inquiryId, appId, actor) {
-        const inquiry = this.require(sessionId, inquiryId);
-        if (inquiry.respondedBy !== actor)
-            throw new ManagedPluginInquiryError(403, "INQUIRY_ACTOR_MISMATCH", "inquiry was answered by another operator");
-        if (!inquiry.appsNeedingAuth.some((app) => app.id === appId)) {
-            throw new ManagedPluginInquiryError(409, "AUTH_NOT_REQUIRED", "connector authentication is not required");
-        }
-        if (inquiry.status !== "auth_required")
-            throw new ManagedPluginInquiryError(409, "AUTH_LAUNCH_UNAVAILABLE", "connector authentication launch is no longer available");
-        const health = this.runtime?.getHealth();
-        if (!this.runtime || health?.status !== "healthy" || health.generation !== inquiry.runtimeGeneration) {
-            throw new ManagedPluginInquiryError(409, "AUTH_LAUNCH_UNAVAILABLE", "connector authentication launch is no longer available");
-        }
-        const session = this.listSessions().find((candidate) => candidate.id === sessionId);
-        if (!session || session.status !== "running" || session.backendSessionId !== inquiry.threadId || session.backendTurnId !== inquiry.turnId) {
-            throw new ManagedPluginInquiryError(409, "AUTH_LAUNCH_UNAVAILABLE", "connector authentication launch is no longer available");
-        }
-        let response;
-        try {
-            response = object(await this.runtime.request("app/read", { appIds: [appId], includeTools: false }));
-        }
-        catch {
-            throw new ManagedPluginInquiryError(409, "AUTH_LAUNCH_UNAVAILABLE", "connector authentication launch is no longer available");
-        }
-        if (this.runtime.getHealth().generation !== inquiry.runtimeGeneration)
-            throw new ManagedPluginInquiryError(409, "AUTH_LAUNCH_UNAVAILABLE", "connector authentication launch is no longer available");
-        const app = (Array.isArray(response?.apps) ? response.apps : []).map(object).find((item) => item?.id === appId);
-        const launchUrl = this.safeAuthLaunchUrl(app?.installUrl);
-        if (!launchUrl)
-            throw new ManagedPluginInquiryError(409, "AUTH_LAUNCH_UNAVAILABLE", "connector authentication launch is no longer available");
-        this.authLaunched.add(inquiryId);
-        void this.pollAuth(inquiry);
-        return launchUrl;
-    }
-    safeAuthLaunchUrl(value) {
-        if (typeof value !== "string" || value.length > 8_192)
-            return null;
-        try {
-            const url = new URL(value);
-            return url.protocol === "https:" && !!url.hostname && !url.username && !url.password ? url.toString() : null;
-        }
-        catch {
-            return null;
         }
     }
     async lookupPlugin(pluginId) {
@@ -268,7 +223,6 @@ export class ManagedPluginInquiryService {
         if (timer)
             clearTimeout(timer);
         this.reconcileTimers.delete(inquiry.inquiryId);
-        this.authLaunched.delete(inquiry.inquiryId);
         this.authChecks.delete(inquiry.inquiryId);
         for (const waiter of this.waiters.get(inquiry.inquiryId) ?? [])
             waiter.resolve({
@@ -303,7 +257,7 @@ export class ManagedPluginInquiryService {
             const session = this.listSessions().find((candidate) => candidate.id === inquiry.sessionId);
             if (!session || session.status !== "running" || session.backendSessionId !== inquiry.threadId || session.backendTurnId !== inquiry.turnId)
                 this.fail(inquiry, "INQUIRY_TURN_ENDED", null);
-            else if (inquiry.status === "auth_required" && this.authLaunched.has(inquiry.inquiryId))
+            else if (inquiry.status === "auth_required")
                 void this.pollAuth(inquiry);
         }
     }

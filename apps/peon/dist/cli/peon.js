@@ -26,6 +26,31 @@ const SYSTEMD_USER_DIR = path.join(os.homedir(), ".config", "systemd", "user");
 const LAUNCHD_USER_DIR = path.join(os.homedir(), "Library", "LaunchAgents");
 const STATE_DIR = path.join(process.env.XDG_STATE_HOME ?? path.join(os.homedir(), ".local", "state"), ".peon");
 const IS_MACOS = process.platform === "darwin";
+const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "::1"]);
+function isLoopbackUrl(value) {
+    try {
+        return LOOPBACK_HOSTS.has(new URL(value ?? "").hostname.replace(/^\[|\]$/g, ""));
+    }
+    catch {
+        return false;
+    }
+}
+function enrollmentAddress(publicControlUrl, listenAddress) {
+    const advertised = publicControlUrl?.trim();
+    try {
+        const listener = parseListenAddress(listenAddress ?? "");
+        if (advertised && !isLoopbackUrl(advertised))
+            return advertised;
+        if (!LOOPBACK_HOSTS.has(listener.host) && listener.host !== "0.0.0.0" && listener.host !== "::") {
+            return `http://${listener.canonical}`;
+        }
+    }
+    catch {
+        // Keep the configured public URL (or the existing not-configured message)
+        // when an old/manual listenAddress cannot be parsed.
+    }
+    return advertised || listenAddress?.trim() || "not configured";
+}
 // Where the daemon tees the detached updater's output — mirror the daemon's own
 // `path.join(stateDir(), "update.log")` (see xdgPaths.ts) so `peon update` can
 // read back what actually happened rather than reporting a blind success.
@@ -466,7 +491,7 @@ async function main() {
                 process.exit(1);
             }
             const mins = body.expiresAt ? Math.max(1, Math.round((body.expiresAt - Date.now()) / 60_000)) : null;
-            const address = current.publicControlUrl?.trim() || current.listenAddress?.trim() || "not configured";
+            const address = enrollmentAddress(current.publicControlUrl, current.listenAddress);
             console.log("Pairing phrase armed. Add this Peon from Overseer with:\n");
             console.log(`  address  : ${address}`);
             console.log(`  phrase   : ${body.phrase ?? ""}`);
@@ -478,7 +503,7 @@ async function main() {
         case "remote": {
             const sub = rest[0] ?? "status";
             const current = (await (await fetch(`${BASE}/api/v1/settings`)).json());
-            const isLoopbackHost = (host) => ["127.0.0.1", "localhost", "::1"].includes(host);
+            const isLoopbackHost = (host) => LOOPBACK_HOSTS.has(host);
             const patchSettings = async (patch) => {
                 const res = await fetch(`${BASE}/api/v1/settings`, {
                     method: "PATCH",
@@ -541,7 +566,12 @@ async function main() {
                     console.error(error instanceof Error ? error.message : "invalid listen address");
                     process.exit(1);
                 }
-                await patchSettings({ listenAddress: address.canonical });
+                const patch = { listenAddress: address.canonical };
+                if (isLoopbackUrl(current.publicControlUrl) && !isLoopbackHost(address.host)
+                    && address.host !== "0.0.0.0" && address.host !== "::") {
+                    patch.publicControlUrl = `http://${address.canonical}`;
+                }
+                await patchSettings(patch);
                 console.log(`remote access enabled — the daemon will listen on ${address.canonical}; loopback remains available.`);
                 await restartBothServices(rest.includes("--force"));
             }

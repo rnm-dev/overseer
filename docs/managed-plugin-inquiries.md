@@ -35,8 +35,6 @@ All reads and mutations use direct authenticated Fleet HTTP over mesh:
 - `GET /api/v1/sessions/:sessionId/inquiries/:inquiryId`
 - `POST /api/v1/sessions/:sessionId/inquiries/:inquiryId/respond` with
   `{ "action": "install" | "cancel" }`
-- `GET /api/v1/sessions/:sessionId/inquiries/:inquiryId/auth/:appId`
-  returns the in-memory connector launch target only to authenticated Overseer.
 
 Overseer exposes the same suffix below
 `/api/workspaces/:workspaceId/peons/:peonId`. Its normal workspace, Peon and
@@ -54,16 +52,14 @@ IDs, runtime handles, marketplace paths, provider errors, and app `installUrl`
 values are private Peon state and never appear in the public inquiry envelope.
 
 When installation returns `appsNeedingAuth`, Peon retains only safe app
-summaries. The operator that accepted the inquiry may
-open the app-specific Overseer launch route; Overseer repeats the normal workspace,
-Peon and session authorization, asks Peon as that immutable actor, validates the
-target returned just-in-time by native `app/read`, and answers the browser with
-a no-store `303` redirect. The URL is
-never present in inquiry JSON, persisted state, transcript, events or client
-logs or Peon memory. The small internal Fleet JSON response carrying it is
-consumed by Overseer and is never relayed to the public client. Peon keeps the originating tool call waiting and polls
-native `app/installed` with `forceRefresh: true`; only when every required app
-is `callable` does it mark the inquiry installed and let the turn continue. A
+summaries. Native Codex currently exposes no standardized hosted-app OAuth
+launch method: `app/read.installUrl` is a ChatGPT catalog page, not an OAuth
+start URL. Overseer therefore does not expose an auth-launch route or present
+that catalog URL as a Sign in action. Clients briefly direct the operator to
+ChatGPT Apps and link only to the fixed `https://chatgpt.com/apps` origin.
+Peon keeps the originating tool call waiting and polls native `app/installed`
+with `forceRefresh: true`; only when every required app is `callable` does it
+mark the inquiry installed and let the turn continue. A
 turn end, expiry, daemon/runtime-generation change fails the waiting inquiry.
 
 States are `pending`, `installing`, `installed`, `auth_required`, `cancelled`,
@@ -88,7 +84,7 @@ safe history but converts any pending/installing row to
 `INQUIRY_RUNTIME_LOST`; native handles are deliberately not resumable.
 
 The Peon state file is mode `0600` and atomically replaced. It contains only the
-bounded public metadata/result plus private fencing identities. Auth URLs,
+bounded public metadata/result plus private fencing identities. Catalog/auth URLs,
 tokens, provider payloads and free-form native errors are neither persisted nor
 returned, logged, projected, added to transcripts/analytics, or sent through
 notifications.

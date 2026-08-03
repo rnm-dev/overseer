@@ -16,9 +16,8 @@ const tone = {
   refused: { icon: X, color: "text-danger" },
 } as const;
 
-export function PluginInquiryCard({ inquiry, authHrefForApp, onInstall, onCancel }: {
+export function PluginInquiryCard({ inquiry, onInstall, onCancel }: {
   inquiry: PluginInstallInquiry;
-  authHrefForApp: (appId: string) => string;
   onInstall: () => void;
   onCancel: () => void;
 }) {
@@ -48,12 +47,11 @@ export function PluginInquiryCard({ inquiry, authHrefForApp, onInstall, onCancel
         </div>
       )}
       {inquiry.status === "auth_required" && (
-        <div className="mt-3 flex flex-wrap justify-start gap-2">
-          {inquiry.appsNeedingAuth.map((app) => (
-            <a key={app.id} className="btn btn-accent btn-sm" href={authHrefForApp(app.id)} target="_blank" rel="noreferrer">
-              {inquiry.appsNeedingAuth.length > 1 ? t("pluginInquiry.signInTo", { app: app.name }) : t("pluginInquiry.signIn")}
-            </a>
-          ))}
+        <div className="mt-2.5 flex items-center justify-between gap-3 text-xs text-ink-muted">
+          <span>{t("pluginInquiry.connectInChatGpt")}</span>
+          <a className="shrink-0 font-medium text-accent-strong hover:underline" href="https://chatgpt.com/apps" target="_blank" rel="noreferrer">
+            {t("pluginInquiry.openApps")}
+          </a>
         </div>
       )}
     </section>

@@ -180,25 +180,6 @@ export function registerSessionRoutes(router: express.Router): void {
       body: { action },
     }), res);
   }));
-  router.get(`${wp}/sessions/:sid/inquiries/:inquiryId/auth/:appId`, withWorkspaceSession(async (req, res, c) => {
-    const sid = encodeURIComponent(String(req.params.sid));
-    const inquiryId = encodeURIComponent(String(req.params.inquiryId));
-    const appId = encodeURIComponent(String(req.params.appId));
-    const result = await callPeon(connOfRecord(c.record), "GET", `/sessions/${sid}/inquiries/${inquiryId}/auth/${appId}`, {
-      actor: c.operator.email,
-    });
-    if (!result.ok || !result.json || typeof result.json !== "object") return relay(result, res);
-    const launchUrl = (result.json as { launchUrl?: unknown }).launchUrl;
-    try {
-      const target = new URL(typeof launchUrl === "string" ? launchUrl : "");
-      if (target.protocol !== "https:" || !target.hostname || target.username || target.password) throw new Error("unsafe launch URL");
-      res.setHeader("Cache-Control", "no-store");
-      res.setHeader("Referrer-Policy", "no-referrer");
-      return res.redirect(303, target.toString());
-    } catch {
-      return res.status(502).json({ error: "Peon returned an invalid connector authentication URL", code: "INVALID_AUTH_LAUNCH" });
-    }
-  }));
   router.get(`${wp}/sessions/:sid/transcript`, withWorkspaceSession(async (req, res, c) => {
     const sid = String(req.params.sid);
     if (!(await canAccessIndexedSessionNow(c.workspaceId, c.userId, c.record.peonId, sid))) {

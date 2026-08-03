@@ -170,7 +170,7 @@ class PluginInquiryCard extends StatelessWidget {
                     inquiry.appsNeedingAuth.isNotEmpty) ...[
                   const SizedBox(height: 10),
                   Text(
-                    'Sign in to ${inquiry.appsNeedingAuth.map((app) => app.name).join(', ')} to finish setup.',
+                    'Connect ${inquiry.appsNeedingAuth.map((app) => app.name).join(', ')} in ChatGPT Apps. This updates automatically.',
                     style: AppTypography.body(
                       fontSize: 13,
                       color: Theme.of(context).colorScheme.onSurfaceVariant,

@@ -24,7 +24,6 @@ class FakeRuntime extends EventEmitter {
       authPolicy: "ON_INSTALL", installPolicy: "AVAILABLE", source: { type: "remote" },
     } } };
     if (method === "plugin/install") return { authPolicy: "ON_INSTALL", appsNeedingAuth: [{ id: "posthog", name: "PostHog", installUrl: "https://secret.example/token" }] };
-    if (method === "app/read") return { apps: [{ id: "posthog", name: "PostHog", installUrl: "https://secret.example/token" }] };
     if (method === "app/installed") return { apps: [{ id: "posthog", enabled: true, callable: true }] };
     throw new Error(`unexpected ${method}`);
   }
@@ -65,8 +64,6 @@ test("PostHog inquiry reads native metadata, installs once, and redacts native a
   assert.equal(installed.status, "auth_required");
   assert.deepEqual(installed.appsNeedingAuth, [{ id: "posthog", name: "PostHog", category: null, description: null }]);
   assert.equal(JSON.stringify(installed).includes("secret.example"), false);
-  assert.equal(await service.authLaunch("session-1", pending.inquiryId, "posthog", "operator@example.com"), "https://secret.example/token");
-  await assert.rejects(() => service.authLaunch("session-1", pending.inquiryId, "posthog", "other@example.com"), /another operator/);
   assert.equal((await nativeResponse as { success: boolean }).success, true);
 
   const duplicate = await service.respond("session-1", pending.inquiryId, "operator@example.com", "install");
@@ -75,10 +72,14 @@ test("PostHog inquiry reads native metadata, installs once, and redacts native a
   assert.equal((runtime.calls.find((call) => call.method === "plugin/install")?.params as { pluginName: string }).pluginName, "plugin_asdk_app_posthog");
 });
 
-test("connector auth launch rejects unsafe URLs and is not restored from durable state", async () => {
+test("connector auth state is not restored across a daemon generation", async () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "peon-inquiry-auth-"));
   const file = path.join(dir, "inquiries.json");
   const runtime = new FakeRuntime();
+  runtime.request = async (method: string, params: unknown) => {
+    if (method === "app/installed") return { apps: [{ id: "posthog", enabled: true, callable: false }] };
+    return FakeRuntime.prototype.request.call(runtime, method, params);
+  };
   const service = new ManagedPluginInquiryService(file, () => [runningSession()]);
   service.bindRuntime(runtime as unknown as CodexAppServerRuntime);
   void service.handleDynamicToolCall({ tool: "request_plugin_install", arguments: { plugin_id: "posthog@openai-curated-remote" }, threadId: "thread-1", turnId: "turn-1" }, 7);
@@ -86,21 +87,8 @@ test("connector auth launch rejects unsafe URLs and is not restored from durable
   await service.respond("session-1", pending.inquiryId, "operator@example.com", "install");
   const restored = new ManagedPluginInquiryService(file, () => [runningSession()]);
   restored.bindRuntime(runtime as unknown as CodexAppServerRuntime);
-  await assert.rejects(() => restored.authLaunch("session-1", pending.inquiryId, "posthog", "operator@example.com"), /no longer available/);
-
-  runtime.request = async (method: string, params: unknown) => {
-    runtime.calls.push({ method, params });
-    if (method === "app/read") return { apps: [{ id: "posthog", name: "PostHog", installUrl: "javascript:alert(1)" }] };
-    return FakeRuntime.prototype.request.call(runtime, method, params);
-  };
-  const unsafeFile = path.join(dir, "unsafe.json");
-  const unsafe = new ManagedPluginInquiryService(unsafeFile, () => [runningSession()]);
-  unsafe.bindRuntime(runtime as unknown as CodexAppServerRuntime);
-  void unsafe.handleDynamicToolCall({ tool: "request_plugin_install", arguments: { plugin_id: "posthog@openai-curated-remote" }, threadId: "thread-1", turnId: "turn-1" }, 7);
-  const unsafePending = await observedInquiry(unsafe);
-  const result = await unsafe.respond("session-1", unsafePending.inquiryId, "operator@example.com", "install");
-  assert.equal(result.status, "auth_required");
-  await assert.rejects(() => unsafe.authLaunch("session-1", unsafePending.inquiryId, "posthog", "operator@example.com"), /no longer available/);
+  assert.equal(restored.get("session-1", pending.inquiryId).status, "failed");
+  assert.equal(restored.get("session-1", pending.inquiryId).terminalCode, "INQUIRY_RUNTIME_LOST");
 });
 
 test("expiry, actor mismatch, turn completion, restart and stale generations fail closed", async () => {

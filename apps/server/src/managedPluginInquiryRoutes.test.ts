@@ -13,7 +13,7 @@ test("managed plugin inquiries use only the workspace Peon Fleet HTTP surface", 
   assert.equal(has(collection, "get"), true);
   assert.equal(has(`${collection}/:inquiryId`, "get"), true);
   assert.equal(has(`${collection}/:inquiryId/respond`, "post"), true);
-  assert.equal(has(`${collection}/:inquiryId/auth/:appId`, "get"), true);
+  assert.equal(has(`${collection}/:inquiryId/auth/:appId`, "get"), false);
   assert.equal(router.stack.some((layer) => String(layer.route?.path ?? "").includes("inquiries")
     && layer.route?.methods?.delete), false);
 });
