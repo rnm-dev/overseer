@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ApiError, api } from "../../../api";
 
 export const PLUGIN_INQUIRY_CAPABILITY = "managed-plugin-inquiry-v1";
@@ -109,6 +109,7 @@ export function isActivePluginInquiry(inquiry: Pick<PluginInstallInquiry, "statu
 
 export function usePluginInquiries(base: string, sid: string, supported: boolean) {
   const [inquiries, setInquiries] = useState<PluginInstallInquiry[]>([]);
+  const activeInquiries = useMemo(() => inquiries.filter(isActivePluginInquiry), [inquiries]);
   const [loading, setLoading] = useState(supported);
   const [loadFailed, setLoadFailed] = useState(false);
   const inFlight = useRef(new Set<string>());
@@ -197,5 +198,5 @@ export function usePluginInquiries(base: string, sid: string, supported: boolean
     }
   }, [base, refresh, sid]);
 
-  return { inquiries: inquiries.filter(isActivePluginInquiry), loading, loadFailed, refresh, respond };
+  return { inquiries: activeInquiries, loading, loadFailed, refresh, respond };
 }
