@@ -38,7 +38,19 @@ interface Props {
   sessionReasoningEffort: string | null;
 }
 
-export const SESSION_COMPOSER_DOCK_CLASS = "theme-transcript-composer-fade session-composer fixed bottom-0 left-0 z-40 pt-4 md:left-[var(--peon-sidebar-width)]";
+export const SESSION_COMPOSER_DOCK_CLASS = "session-composer fixed bottom-0 left-0 z-40 md:left-[var(--peon-sidebar-width)]";
+// The fade belongs to the composer alone: queued messages stack above it on
+// their own bubbles, so adding one never drags the shade up the transcript.
+export const SESSION_COMPOSER_FADE_CLASS = "theme-transcript-composer-fade pt-4";
+const SESSION_COMPOSER_WIDTH_CLASS = "mx-auto max-w-[76rem] px-2 sm:px-6";
+export const COMPOSER_FOOTER_PADDING = 100;
+
+// How much transcript tail the dock hides. Queued messages grow the dock, and
+// the transcript has to clear all of it; half the viewport is the ceiling, so a
+// long queue can never swallow the conversation it belongs to.
+export function composerFooterHeight(dockHeight: number, viewportHeight: number): number {
+  return Math.max(COMPOSER_FOOTER_PADDING, Math.min(dockHeight, viewportHeight / 2));
+}
 
 export function SessionComposerDock(props: Props) {
   const {
@@ -56,7 +68,7 @@ export function SessionComposerDock(props: Props) {
   const inheritedEffortId = defaultEffortIdFor(composerEfforts);
   return createPortal(
     <div ref={setComposerNode} className={SESSION_COMPOSER_DOCK_CLASS}>
-      <div className="mx-auto max-w-[76rem] px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:px-6 sm:pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+      <div className={SESSION_COMPOSER_WIDTH_CLASS}>
     <QueueList
       items={queueItems}
       removing={removingQueueItems}
@@ -65,6 +77,9 @@ export function SessionComposerDock(props: Props) {
       onSendNow={(id) => void sendQueuedItemNow(id)}
       t={t}
     />
+      </div>
+      <div className={SESSION_COMPOSER_FADE_CLASS}>
+        <div className={`${SESSION_COMPOSER_WIDTH_CLASS} pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:pb-[max(0.75rem,env(safe-area-inset-bottom))]`}>
     <Composer
       value={input}
       onChange={setInput}
@@ -120,6 +135,7 @@ export function SessionComposerDock(props: Props) {
         ) : undefined
       }
     />
+        </div>
       </div>
     </div>,
     document.body,

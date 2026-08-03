@@ -17,6 +17,9 @@ export const OWN_ATTACHMENT_CLASS = "theme-user-message-ink bg-surface/25 hover:
 export const OTHER_ATTACHMENT_CLASS = "on-surface text-ink hover:bg-surface-active/60";
 export const TOOL_ROW_LAYOUT_CLASS = "grid w-fit min-w-0 max-w-[85%] grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-1.5 py-0.5 typo-chat-system-message";
 export const TOOL_ROW_CLASS = `${TOOL_ROW_LAYOUT_CLASS} rounded text-left transition-colors hover:bg-surface-hover/70 hover:text-ink`;
+// The 2px rule under a tool row is centered on that row's size-4 icon column ((16-2)/2 = 7px),
+// and its text resumes where the row's label does (16px icon + gap-x-1.5 - 7px - 2px = 13px).
+export const TOOL_DETAIL_RULE_CLASS = "ml-[7px] border-l-2 pl-[13px]";
 
 export function attachmentMeta(attachment: MessageAttachment): string {
   const label = attachment.name || attachment.path?.split(/[\\/]/).pop() || "attachment";
@@ -506,7 +509,7 @@ function ActionResult({ text, error, t }: { text: string; error?: boolean; t: T 
   if (!text.trim()) return null;
   return (
       <div className="flex justify-start">
-      <div className={`max-w-[85%] border-l-2 pl-3 typo-chat-system-message ${error ? "border-danger/60 text-danger" : "border-edge-strong text-ink-faint"}`}>
+      <div className={`max-w-[85%] ${TOOL_DETAIL_RULE_CLASS} typo-chat-system-message ${error ? "border-danger/60 text-danger" : "border-edge-strong text-ink-faint"}`}>
         <pre className="whitespace-pre-wrap break-words typo-chat-system-message">{shown}</pre>
         {long && (
           <button onClick={() => setOpen(!open)} className="mt-1 text-ink-muted transition-colors hover:text-accent-strong">

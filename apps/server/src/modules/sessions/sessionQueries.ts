@@ -100,6 +100,10 @@ export async function listSessions(opts: ListOptions): Promise<{ sessions: Sessi
     params.push(opts.peonId);
     where.push(`sessions.peon_id = $${params.length}`);
   }
+  if (opts.projectKey) {
+    params.push(opts.projectKey);
+    where.push(`sessions.project_key = $${params.length}`);
+  }
   if (opts.status) {
     params.push(opts.status);
     where.push(`sessions.status = $${params.length}`);

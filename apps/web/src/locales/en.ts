@@ -553,7 +553,6 @@ export const en: Record<string, string> = {
   "pluginInquiry.signIn": "Sign in",
   "pluginInquiry.signInTo": "Sign in to {app}",
   "pluginInquiry.managed": "Managed plugin",
-  "pluginInquiry.loading": "Checking plugin requests…",
   "pluginInquiry.loadFailed": "Plugin request unavailable",
   "pluginInquiry.retry": "Retry",
   "pluginInquiry.status.pending": "Approval needed",

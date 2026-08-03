@@ -553,7 +553,6 @@ export const ru: Record<string, string> = {
   "pluginInquiry.signIn": "Войти",
   "pluginInquiry.signInTo": "Войти в {app}",
   "pluginInquiry.managed": "Управляемый плагин",
-  "pluginInquiry.loading": "Проверяем запросы плагинов…",
   "pluginInquiry.loadFailed": "Запрос плагина недоступен",
   "pluginInquiry.retry": "Повторить",
   "pluginInquiry.status.pending": "Нужно решение",

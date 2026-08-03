@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import { ItemView, OTHER_ATTACHMENT_CLASS, OTHER_USER_BUBBLE_AUTHOR_CLASS, OTHER_USER_BUBBLE_CLASS, OTHER_USER_BUBBLE_TIME_CLASS, OWN_ATTACHMENT_CLASS, OWN_USER_BUBBLE_CLASS, OWN_USER_BUBBLE_TIME_CLASS, TOOL_ROW_CLASS, TOOL_ROW_LAYOUT_CLASS, attachmentMeta, editDiff, editFileName, editOperation, editStats, editStatsFromInput, isCompactUserMessage, isOwnMessageAuthor, simpleToolFileName, simpleToolKind, userMessageAvatar } from "./peon/session/messageParts";
+import { ItemView, OTHER_ATTACHMENT_CLASS, OTHER_USER_BUBBLE_AUTHOR_CLASS, OTHER_USER_BUBBLE_CLASS, OTHER_USER_BUBBLE_TIME_CLASS, OWN_ATTACHMENT_CLASS, OWN_USER_BUBBLE_CLASS, OWN_USER_BUBBLE_TIME_CLASS, TOOL_DETAIL_RULE_CLASS, TOOL_ROW_CLASS, TOOL_ROW_LAYOUT_CLASS, attachmentMeta, editDiff, editFileName, editOperation, editStats, editStatsFromInput, isCompactUserMessage, isOwnMessageAuthor, simpleToolFileName, simpleToolKind, userMessageAvatar } from "./peon/session/messageParts";
 import { flattenEvents, gapClass, gapPaddingClass, toolHasOutputSection } from "./peon/session/parsing";
 
 const t = ((key: string) => key) as Parameters<typeof ItemView>[0]["t"];
@@ -148,6 +148,17 @@ test("tool rows align to the transcript edge with a fixed icon grid", () => {
   assert.match(TOOL_ROW_CLASS, /\bgrid\b/);
   assert.match(TOOL_ROW_CLASS, /grid-cols-\[auto_minmax\(0,1fr\)_auto\]/);
   assert.doesNotMatch(TOOL_ROW_CLASS, /\bpx-/);
+});
+
+test("a tool detail rule is centered on the icon column above it", () => {
+  const iconColumn = 16;
+  const gap = 6;
+  const rule = 2;
+  const marginLeft = Number(/ml-\[(\d+)px\]/.exec(TOOL_DETAIL_RULE_CLASS)?.[1]);
+  const paddingLeft = Number(/pl-\[(\d+)px\]/.exec(TOOL_DETAIL_RULE_CLASS)?.[1]);
+  assert.match(TOOL_DETAIL_RULE_CLASS, /\bborder-l-2\b/);
+  assert.equal(marginLeft + rule / 2, iconColumn / 2);
+  assert.equal(marginLeft + rule + paddingLeft, iconColumn + gap);
 });
 
 test("technical and simple system rows share the same compact vertical rhythm", () => {

@@ -156,6 +156,9 @@ export function registerFleetRoutes(router: express.Router): void {
     withWorkspace(async (req, res, ctx) => {
       const peonId = typeof req.query.peonId === "string" ? req.query.peonId : undefined;
       const status = typeof req.query.status === "string" ? req.query.status : undefined;
+      // A project page asks for its own sessions rather than filtering whatever
+      // page the sidebar happens to hold.
+      const projectKey = typeof req.query.projectKey === "string" && req.query.projectKey ? req.query.projectKey : undefined;
       const mine = req.query.mine === "true" || req.query.mine === "1";
       const limit = Number.parseInt(String(req.query.limit ?? "50"), 10) || 50;
       const offset = Number.parseInt(String(req.query.offset ?? "0"), 10) || 0;
@@ -168,9 +171,10 @@ export function registerFleetRoutes(router: express.Router): void {
       const { sessions, total } = await listSessions({
         workspaceId: ctx.workspaceId,
         peonId,
+        projectKey,
         status,
         authors: mine ? [req.user!.email, req.user!.githubLogin ?? ""] : undefined,
-        perPeonLimit: peonId ? undefined : 50,
+        perPeonLimit: peonId || projectKey ? undefined : 50,
         perProjectLimit,
         limit,
         offset,

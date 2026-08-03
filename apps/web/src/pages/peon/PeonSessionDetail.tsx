@@ -25,7 +25,7 @@ import type { PreviewTarget } from "./session/PreviewPanel";
 import { useSessionTranscript } from "./session/useSessionTranscript";
 import { useSessionComposer, type ComposerGhost } from "./session/useSessionComposer";
 import { SessionHeader, sessionHeaderIdentityData } from "./session/SessionHeader";
-import { SessionComposerDock } from "./session/SessionComposerDock";
+import { COMPOSER_FOOTER_PADDING, SessionComposerDock, composerFooterHeight } from "./session/SessionComposerDock";
 import { SessionOverlays } from "./session/SessionOverlays";
 import { nextSessionAfterDeletion } from "./session/nextSession";
 import { stopOutcome } from "./session/stopOutcome";
@@ -36,7 +36,7 @@ import {
 import { lockSessionDocument } from "./session/sessionViewport";
 import { loadToolDisplayMode } from "../../sessionToolDisplay";
 import { isSuccessfulRunResult, onSelectedSoundPackChange, playPeonSound, playWorkSound, stopWorkSound } from "../../peonSounds";
-import { PluginInquiryCard, PluginInquiryLoading } from "./session/PluginInquiryCard";
+import { PluginInquiryCard, PluginInquiryLoadFailed } from "./session/PluginInquiryCard";
 import { inquiryAuthPath, inquiryInsertionIndex, PLUGIN_INQUIRY_CAPABILITY, usePluginInquiries, type PluginInstallInquiry } from "./session/pluginInquiries";
 
 // author: Viktor
@@ -49,7 +49,7 @@ type VirtualTranscriptRow =
   | { key: string; kind: "item"; item: Item; paddingClass: string }
   | { key: string; kind: "ghost"; ghost: ComposerGhost; paddingClass: string }
   | { key: string; kind: "inquiry"; inquiry: PluginInstallInquiry; paddingClass: string }
-  | { key: string; kind: "inquiry-loading"; failed: boolean; paddingClass: string }
+  | { key: string; kind: "inquiry-load-failed"; paddingClass: string }
   | { key: string; kind: "working"; paddingClass: string }
   | { key: string; kind: "footer"; height: number };
 
@@ -85,7 +85,6 @@ export function PeonSessionDetail() {
 function PeonSessionDetailPage() {
   const { locale, t } = useI18n();
   const { user } = useAuth();
-  const COMPOSER_FOOTER_PADDING = 100;
   const { peon, base, wsId, orderedSessionIds, selectedSession, sessionHref, sessionsHomeHref, onSessionDeleted, onSessionRunningChange } = usePeon();
   const { sid = "" } = useParams();
   const { subscribe, viewersFor } = useLiveSocket();
@@ -288,11 +287,15 @@ function PeonSessionDetailPage() {
   }, [sessionProvider]);
   useEffect(() => {
     if (!composerNode) return;
-    const measure = () => setComposerHeight(Math.min(composerNode.getBoundingClientRect().height, COMPOSER_FOOTER_PADDING));
+    const measure = () => setComposerHeight(composerFooterHeight(composerNode.getBoundingClientRect().height, window.innerHeight));
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(composerNode);
-    return () => observer.disconnect();
+    window.addEventListener("resize", measure);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", measure);
+    };
   }, [composerNode]);
   const onSnapshotRunning = useCallback(() => {
     // A transcript whose last event is a run signal describes the same stuck
@@ -652,8 +655,8 @@ function PeonSessionDetailPage() {
         paddingClass: items.length === 0 ? "" : gapPaddingClass(items[items.length - 1]!.kind === "user", true),
       });
     }
-    if (pluginInquiries.loading || pluginInquiries.loadFailed) {
-      rows.push({ key: "plugin-inquiries-loading", kind: "inquiry-loading", failed: pluginInquiries.loadFailed, paddingClass: "pt-6" });
+    if (pluginInquiries.loadFailed) {
+      rows.push({ key: "plugin-inquiries-load-failed", kind: "inquiry-load-failed", paddingClass: "pt-6" });
     }
     let insertedInquiries = 0;
     for (const inquiry of [...pluginInquiries.inquiries].sort((a, b) => a.createdAt.localeCompare(b.createdAt))) {
@@ -673,7 +676,7 @@ function PeonSessionDetailPage() {
     }
     rows.push({ key: "session-footer", kind: "footer", height: composerHeight + 40 });
     return rows;
-  }, [composerHeight, ghost, items, liveWork, pluginInquiries.inquiries, pluginInquiries.loadFailed, pluginInquiries.loading]);
+  }, [composerHeight, ghost, items, liveWork, pluginInquiries.inquiries, pluginInquiries.loadFailed]);
   const [virtualWindow, setVirtualWindow] = useState(() => createTranscriptVirtualWindow(sessionKey, virtualRows));
   let displayedVirtualWindow = virtualWindow;
   if (virtualWindow.sessionKey !== sessionKey || virtualWindow.rows !== virtualRows) {
@@ -840,9 +843,9 @@ function PeonSessionDetailPage() {
                   />
                 </div>
               );
-              if (row.kind === "inquiry-loading") return (
+              if (row.kind === "inquiry-load-failed") return (
                 <div data-plugin-inquiry-row className={`mx-auto w-full max-w-6xl px-3 sm:px-6 ${row.paddingClass}`}>
-                  <PluginInquiryLoading failed={row.failed} onRetry={() => void pluginInquiries.refresh()} />
+                  <PluginInquiryLoadFailed onRetry={() => void pluginInquiries.refresh()} />
                 </div>
               );
               if (row.kind === "inquiry") return (

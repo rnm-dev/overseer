@@ -69,6 +69,7 @@ export interface SessionSyncCheckpoint {
 export interface ListOptions {
   workspaceId?: string;
   peonId?: string;
+  projectKey?: string;
   status?: string;
   authors?: string[];
   access?: { userId: string };

@@ -4,7 +4,7 @@ import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { I18nProvider } from "../i18n";
 import { COMPOSER_ICON_ACTION_CLASS, COMPOSER_SHELL_CLASS, COMPOSER_TEXT_ACTION_CLASS, Composer, MAX_TEXTAREA_HEIGHT, isFileDrag } from "./peon/Composer";
-import { SESSION_COMPOSER_DOCK_CLASS } from "./peon/session/SessionComposerDock";
+import { COMPOSER_FOOTER_PADDING, SESSION_COMPOSER_DOCK_CLASS, SESSION_COMPOSER_FADE_CLASS, composerFooterHeight } from "./peon/session/SessionComposerDock";
 
 (globalThis as typeof globalThis & { React: typeof React }).React = React;
 
@@ -42,8 +42,21 @@ test("composer exposes the shared file drop zone", () => {
 });
 
 test("composer dock uses the package-owned transcript fade", () => {
-  assert.match(SESSION_COMPOSER_DOCK_CLASS, /\btheme-transcript-composer-fade\b/);
-  assert.doesNotMatch(SESSION_COMPOSER_DOCK_CLASS, /from-void|via-void/);
+  assert.match(SESSION_COMPOSER_FADE_CLASS, /\btheme-transcript-composer-fade\b/);
+  assert.doesNotMatch(SESSION_COMPOSER_FADE_CLASS, /from-void|via-void/);
+  // The fade wraps the composer alone, so queued messages stacking above it
+  // leave the shade where it was instead of pushing it up the transcript.
+  assert.doesNotMatch(SESSION_COMPOSER_DOCK_CLASS, /\btheme-transcript-composer-fade\b/);
+});
+
+test("the transcript reserves room for queued messages stacked above the composer", () => {
+  const composerOnly = 92;
+  const withQueue = 320;
+  assert.equal(composerFooterHeight(composerOnly, 900), COMPOSER_FOOTER_PADDING);
+  assert.equal(composerFooterHeight(withQueue, 900), withQueue);
+  // A queue taller than the viewport still leaves half the screen for the
+  // conversation it was queued against.
+  assert.equal(composerFooterHeight(withQueue, 400), 200);
 });
 
 test("composer dock leaves its right edge to the scrollbar-aware stylesheet", () => {

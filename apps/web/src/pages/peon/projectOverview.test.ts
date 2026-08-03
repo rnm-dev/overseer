@@ -35,6 +35,19 @@ test("recent project sessions filter by project, order by activity, and stay bou
   );
 });
 
+test("recent project sessions include rows the sidebar page never reached", () => {
+  const sidebar = [{ id: "in-page", peonId: "nova", projectKey: "OVSR", status: "running", lastActivityAt: 300, syncedAt: 9 }];
+  const projectPage = [
+    { id: "in-page", peonId: "nova", projectKey: "OVSR", status: "done", lastActivityAt: 300, syncedAt: 4 },
+    { id: "beyond-page", peonId: "nova", projectKey: "OVSR", lastActivityAt: 100, syncedAt: 4 },
+  ];
+
+  const recent = recentProjectSessions(sidebar, "OVSR", 8, projectPage);
+  assert.deepEqual(recent.map((session) => session.id), ["in-page", "beyond-page"]);
+  // The sidebar row is the live one, so its status wins over the fetched page.
+  assert.equal(recent[0].status, "running");
+});
+
 test("project recent sessions reuse sidebar rows with status, presence hook, and session navigation", () => {
   const html = renderToStaticMarkup(React.createElement(
     I18nProvider,

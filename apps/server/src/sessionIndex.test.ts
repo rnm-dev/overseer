@@ -184,6 +184,23 @@ test("grouped session hydration returns the newest bounded slice of every projec
   ]);
 });
 
+test("a project-scoped query reaches sessions older than any sidebar page", async () => {
+  const mem = newDb();
+  const adapter = mem.adapters.createPg();
+  await initDb(new adapter.Pool() as unknown as pg.Pool);
+
+  await upsertSession("workspace", "peon", { id: "other-new", projectKey: "project-b", lastActivityAt: 90 });
+  for (let index = 0; index < 30; index += 1) {
+    await upsertSession("workspace", "peon", { id: `noise-${index}`, projectKey: "project-b", lastActivityAt: 50 + index });
+  }
+  await upsertSession("workspace", "peon", { id: "a-old", projectKey: "project-a", lastActivityAt: 10 });
+  await upsertSession("workspace", "peon", { id: "a-older", projectKey: "project-a", lastActivityAt: 5 });
+
+  const result = await listSessions({ peonId: "peon", projectKey: "project-a", limit: 8, offset: 0 });
+  assert.equal(result.total, 2);
+  assert.deepEqual(result.sessions.map((session) => session.sessionId), ["a-old", "a-older"]);
+});
+
 test("Peon collection reconciliation indexes summaries without exposing cached raw data", async () => {
   const mem = newDb();
   const adapter = mem.adapters.createPg();

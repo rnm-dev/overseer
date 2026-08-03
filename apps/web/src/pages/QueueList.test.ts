@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { QUEUE_ACTION_CLASS, QUEUE_HOURGLASS_CLASS, QueueList } from "./peon/session/QueueList";
+import { QUEUE_ACTION_CLASS, QUEUE_CONTENT_MIN_HEIGHT_CLASS, QUEUE_HOURGLASS_CLASS, QueueList } from "./peon/session/QueueList";
 import type { QueueItem } from "./peon/session/queue";
 
 (globalThis as typeof globalThis & { React: typeof React }).React = React;
@@ -57,6 +57,22 @@ test("every queued item exposes an accessible send-now action", () => {
   assert.match(html, /width="15"[^>]*lucide-trash2/);
   assert.match(html, /plan\.md/);
   assert.doesNotMatch(html, /gpt-5|high|full-access/);
+});
+
+test("a single-line queued message is centered against the action buttons", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(QueueList, {
+      items: [{ ...queuedItem, attachments: [] }],
+      removing: new Set<string>(),
+      sending: new Set<string>(),
+      onRemove: () => {},
+      onSendNow: () => {},
+      t: (key) => key,
+    }),
+  );
+  assert.match(QUEUE_CONTENT_MIN_HEIGHT_CLASS, /\bmin-h-7\b/);
+  assert.match(html, new RegExp(`flex min-w-0 flex-1 flex-col justify-center ${QUEUE_CONTENT_MIN_HEIGHT_CLASS}`));
+  assert.match(QUEUE_ACTION_CLASS, /\bh-7\b/);
 });
 
 test("send-now action is disabled while that queued item is being dispatched", () => {

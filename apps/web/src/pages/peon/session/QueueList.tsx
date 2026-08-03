@@ -4,6 +4,8 @@ import type { Translate } from "../../../i18n";
 
 export const QUEUE_ACTION_CLASS = "flex h-7 min-w-7 items-center justify-center rounded-md bg-black/10 text-[11px] font-medium text-white transition-colors hover:bg-black/20 hover:text-white disabled:cursor-wait disabled:opacity-40";
 export const QUEUE_HOURGLASS_CLASS = "mt-1 shrink-0 text-warning-strong/70";
+// Matches the action buttons' h-7 so a single-line message centers against them instead of hanging at the top.
+export const QUEUE_CONTENT_MIN_HEIGHT_CLASS = "min-h-7";
 
 export function QueueList({ items, removing, sending, onRemove, onSendNow, t }: {
   items: QueueItem[];
@@ -19,18 +21,22 @@ export function QueueList({ items, removing, sending, onRemove, onSendNow, t }: 
       <ol className="max-h-56 space-y-2 overflow-y-auto">
         {items.map((item) => (
           <li key={item.id} className="ml-auto flex w-full min-w-0 max-w-none items-start gap-2 rounded-xl rounded-br-sm bg-warning-deep/55 px-3 py-2 shadow-lg backdrop-blur-md md:w-auto md:max-w-[80%]">
-            <Hourglass
-              size={13}
-              strokeWidth={1.75}
-              className={`${QUEUE_HOURGLASS_CLASS} ${sending.has(item.id) ? "animate-pulse text-warning-strong" : ""}`}
-              aria-hidden
-            />
-            <div className="min-w-0 flex-1">
-              <div className="whitespace-pre-wrap break-words typo-chat-message text-ink">{item.prompt}</div>
-              <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 font-body text-[11px] text-ink/60">
-                {(item.attachments ?? []).map((attachment, attachmentIndex) => (
-                  <span key={`${attachment.path ?? attachment.name ?? "attachment"}:${attachmentIndex}`}>📎 {attachmentLabel(attachment)}</span>
-                ))}
+            <div className={`flex min-w-0 flex-1 flex-col justify-center ${QUEUE_CONTENT_MIN_HEIGHT_CLASS}`}>
+              <div className="flex min-w-0 gap-2">
+                <Hourglass
+                  size={13}
+                  strokeWidth={1.75}
+                  className={`${QUEUE_HOURGLASS_CLASS} ${sending.has(item.id) ? "animate-pulse text-warning-strong" : ""}`}
+                  aria-hidden
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="whitespace-pre-wrap break-words typo-chat-message text-ink">{item.prompt}</div>
+                  <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 font-body text-[11px] text-ink/60">
+                    {(item.attachments ?? []).map((attachment, attachmentIndex) => (
+                      <span key={`${attachment.path ?? attachment.name ?? "attachment"}:${attachmentIndex}`}>📎 {attachmentLabel(attachment)}</span>
+                    ))}
+                  </div>
+                </div>
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-1">

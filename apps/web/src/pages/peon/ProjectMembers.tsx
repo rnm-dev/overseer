@@ -22,6 +22,8 @@ interface Access {
   projects: { peonId: string; projectKey: string; projectId?: string | null }[];
 }
 
+export const PROJECT_MEMBER_LIST_CLASS = "divide-y divide-edge/60";
+
 export function ProjectMembers() {
   const t = useT();
   const { key = "" } = useParams();
@@ -97,7 +99,7 @@ export function ProjectMembers() {
         </div>
         {members === null ? <div className="grid min-h-40 place-items-center"><div className="loading-spinner" /></div> : <>
           {owners.length > 0 && <div className="border-b border-edge bg-surface/25 px-5 py-3"><p className="font-mono text-[0.68rem] text-ink-faint">{t("proj.members.owners", { n: owners.length })}</p></div>}
-          {regularMembers.length === 0 ? <p className="p-8 text-center font-mono text-sm text-ink-faint">{t("proj.members.empty")}</p> : <ul className="divide-y divide-iron-800">
+          {regularMembers.length === 0 ? <p className="p-8 text-center font-mono text-sm text-ink-faint">{t("proj.members.empty")}</p> : <ul className={PROJECT_MEMBER_LIST_CLASS}>
             {regularMembers.map((member) => {
               const access = accessByMember[member.userId];
               const checked = access?.projects.some((item) => item.peonId === peon.peonId && (projectId ? item.projectId === projectId : item.projectKey === key)) ?? false;

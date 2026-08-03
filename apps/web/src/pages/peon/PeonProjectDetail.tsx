@@ -11,19 +11,24 @@ import { ProjectTabs } from "./ProjectTabs";
 import { type ProjectDetail } from "./peonApi";
 import { ProjectDocumentation } from "./ProjectDocumentation";
 import { ProjectQuickLinksCard } from "./ProjectQuickLinks";
-import type { SessionLite } from "./sessionList";
+import { mergeSessions, sessionFromIndex, type IndexedSessionLite, type SessionLite } from "./sessionList";
 import { prefetchTranscriptSnapshot } from "./session/transcriptSnapshotCache";
 
 // author: Viktor
 
 const RECENT_PROJECT_SESSION_LIMIT = 8;
 
+// The sidebar holds one page of the peon's sessions, so a project whose work is
+// older than that page has none of its rows there. The card asks the index for
+// its own project-scoped page and merges the sidebar's rows over it, which keeps
+// live socket updates (status, attention) authoritative for the rows it does hold.
 export function recentProjectSessions(
   sessions: SessionLite[],
   projectKey: string,
   limit = RECENT_PROJECT_SESSION_LIMIT,
+  projectPage: SessionLite[] = [],
 ): SessionLite[] {
-  return sessions
+  return mergeSessions(projectPage, sessions)
     .filter((session) => session.projectKey === projectKey)
     .sort((left, right) => (right.lastActivityAt ?? right.startedAt ?? 0) - (left.lastActivityAt ?? left.startedAt ?? 0))
     .slice(0, Math.max(0, limit));
@@ -32,6 +37,7 @@ export function recentProjectSessions(
 export function ProjectRecentSessions({
   projectKey,
   peonId,
+  wsId,
   newSessionTo,
   sessions,
   loading,
@@ -44,6 +50,7 @@ export function ProjectRecentSessions({
 }: {
   projectKey: string;
   peonId: string;
+  wsId?: string;
   newSessionTo: string;
   sessions: SessionLite[];
   loading: boolean;
@@ -55,7 +62,28 @@ export function ProjectRecentSessions({
   paginationSupported?: boolean;
 }) {
   const t = useT();
-  const recent = recentProjectSessions(sessions, projectKey);
+  const [projectPage, setProjectPage] = useState<SessionLite[] | null>(null);
+  const [projectPageError, setProjectPageError] = useState(false);
+
+  useEffect(() => {
+    if (!wsId || !peonId || !projectKey) return;
+    let alive = true;
+    setProjectPage(null);
+    setProjectPageError(false);
+    api<{ sessions: IndexedSessionLite[] }>(
+      `/workspaces/${encodeURIComponent(wsId)}/sessions?peonId=${encodeURIComponent(peonId)}`
+      + `&projectKey=${encodeURIComponent(projectKey)}&limit=${RECENT_PROJECT_SESSION_LIMIT}`,
+    )
+      .then((result) => alive && setProjectPage((result.sessions ?? []).map(sessionFromIndex)))
+      .catch(() => alive && setProjectPageError(true));
+    return () => {
+      alive = false;
+    };
+  }, [peonId, projectKey, wsId]);
+
+  const recent = recentProjectSessions(sessions, projectKey, RECENT_PROJECT_SESSION_LIMIT, projectPage ?? []);
+  const pending = loading || (wsId ? projectPage === null && !projectPageError : false);
+  const failed = error && (wsId ? projectPageError : true);
 
   return (
     <Card className="overflow-hidden">
@@ -80,11 +108,11 @@ export function ProjectRecentSessions({
             onRename={onRename}
             onDelete={onDelete}
           />
-        ) : loading ? (
+        ) : pending ? (
           <div className="grid min-h-28 place-items-center">
             <span className="loading-spinner scale-75" role="status" aria-label={t("sessions.loading")} />
           </div>
-        ) : error ? (
+        ) : failed ? (
           <p className="px-3 py-8 text-center font-mono text-xs text-danger">⚠ {t("error.loadFailed")}</p>
         ) : (
           <p className="px-3 py-8 text-center font-body text-xs text-ink-faint">{t("peon.dash.noSessions")}</p>
@@ -150,6 +178,7 @@ export function PeonProjectDetail() {
       <ProjectRecentSessions
           projectKey={key}
           peonId={peon.peonId}
+          wsId={peonContext.wsId}
           newSessionTo={newSessionTo}
           sessions={sessions}
           loading={sessionsLoading}
