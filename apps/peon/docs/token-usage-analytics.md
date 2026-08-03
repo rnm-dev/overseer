@@ -45,6 +45,12 @@ Historical usage is a session rollup, so user/project/time attribution is marked
 An aggregate containing both available and missing usage is marked `mixed`; one with no available
 usage is `missing`.
 
+Period analytics use two explicit time authorities. `promptCount` follows the persisted
+`user_message.createdAt` (falling back to the session start only for undated historical turns),
+while session count, turns, usage, duration, outcomes, cost, and storage follow the session's
+`startedAt`. Consequently, prompts made during the requested period in an older shared session
+are counted without assigning that session's entire lifetime token rollup to the period.
+
 The analytics response carries Peon's stable `peonId`, the semantics version, canonical buckets,
 processed tokens, coverage, and attribution quality. This lets Overseer ingest/replay records
 idempotently without reproducing Claude or Codex arithmetic. Unknown future semantics versions

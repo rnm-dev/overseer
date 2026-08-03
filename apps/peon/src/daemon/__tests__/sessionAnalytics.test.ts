@@ -197,6 +197,53 @@ test("analytics attributes shared-session prompts to each transcript turn author
   assert.match(bob.attribution.note, /unsigned historical turns fall back to the session initiator/);
 });
 
+test("period analytics count prompt activity in sessions that started before the period", () => {
+  const priorSession = record({
+    id: "prior-session",
+    startedAt: Date.parse("2026-07-16T10:15:00.000Z"),
+    endedAt: null,
+    status: "running",
+    outcome: null,
+    lastActivityAt: Date.parse("2026-07-17T11:30:00.000Z"),
+    lastUserMessageAt: Date.parse("2026-07-17T11:30:00.000Z"),
+  });
+  const transcript = [
+    { type: "user_message" as const, text: "initial", author: "alice@example.com", createdAt: priorSession.startedAt },
+    { type: "user_message" as const, text: "today one", author: "bob@example.com", createdAt: Date.parse("2026-07-17T09:00:00.000Z") },
+    { type: "user_message" as const, text: "today two", author: "bob@example.com", createdAt: Date.parse("2026-07-17T11:30:00.000Z") },
+  ];
+  const query = parseSessionAnalyticsQuery({ period: "day", groupBy: "time,user,project", timeBucket: "day" }, NOW);
+  const result = analyticsForSessions(
+    [priorSession],
+    query,
+    { totalBytes: 500, bySessionId: new Map([[priorSession.id, 400]]) },
+    NOW,
+    () => transcript,
+  );
+
+  assert.equal(result.totals.promptCount, 2);
+  assert.equal(result.totals.sessionCount, 0);
+  assert.equal(result.totals.processedTokens, 0);
+  assert.equal(result.totals.storageBytes, 0);
+  assert.deepEqual(result.rows.map((row) => ({
+    user: row.user,
+    project: row.projectKey,
+    timeStart: row.timeStart,
+    prompts: row.promptCount,
+    sessions: row.sessionCount,
+    tokens: row.processedTokens,
+  })), [{
+    user: "bob@example.com",
+    project: "peon",
+    timeStart: "2026-07-17T00:00:00.000Z",
+    prompts: 2,
+    sessions: 0,
+    tokens: 0,
+  }]);
+  assert.equal(result.attribution.promptTime, "user_message_created_at");
+  assert.match(result.attribution.note, /Session-level usage.+remain selected by session start/);
+});
+
 test("stats and analytics use identical canonical totals and expose provider/model filtering", () => {
   const records = [
     record({

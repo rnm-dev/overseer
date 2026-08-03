@@ -138,9 +138,8 @@ function bucketRange(timestamp, bucket) {
                 : Date.UTC(startDate.getUTCFullYear(), startDate.getUTCMonth() + 1, 1);
     return { start, end };
 }
-function addRecord(metrics, record, storageBytes, now, promptCount) {
+function addSessionMetrics(metrics, record, storageBytes, now) {
     metrics.sessionCount += 1;
-    metrics.promptCount += promptCount;
     metrics.turnCount += record.turnCount;
     metrics.storageBytes += storageBytes;
     metrics.wallDurationMs += Math.max(0, (record.endedAt ?? now) - record.startedAt);
@@ -176,6 +175,9 @@ function addRecord(metrics, record, storageBytes, now, promptCount) {
     metrics.providerDurationMs += usage.durationMs ?? 0;
     metrics.totalCostUsd += usage.totalCostUsd ?? 0;
 }
+function addPrompts(metrics, promptCount) {
+    metrics.promptCount += promptCount;
+}
 function finishUsageQuality(metrics) {
     metrics.usageCoveragePercent = metrics.sessionCount === 0
         ? 0
@@ -198,77 +200,90 @@ function matches(record, filters) {
         return false;
     return true;
 }
-function promptCountsByAuthor(record, transcript) {
+function promptOccurrences(record, transcript) {
     const userTurns = transcript.filter((event) => event.type === "user_message");
     const fallbackAuthor = record.initiator ?? "unknown";
     if (userTurns.length === 0) {
-        return new Map([[fallbackAuthor, 1 + record.followUpPrompts.length + record.queuedFollowUps.length]]);
+        return Array.from({ length: 1 + record.followUpPrompts.length + record.queuedFollowUps.length }, () => ({ author: fallbackAuthor, createdAt: record.startedAt }));
     }
-    const counts = new Map();
-    for (const turn of userTurns) {
+    return userTurns.map((turn) => {
         const author = typeof turn.author === "string" && turn.author.trim() ? turn.author.trim() : fallbackAuthor;
-        counts.set(author, (counts.get(author) ?? 0) + 1);
-    }
-    return counts;
+        const createdAt = typeof turn.createdAt === "number" && Number.isFinite(turn.createdAt)
+            ? turn.createdAt
+            : record.startedAt;
+        return { author, createdAt };
+    });
 }
 export function analyticsForSessions(records, query, storage = { totalBytes: 0, bySessionId: new Map() }, now = Date.now(), transcriptReader = readTranscript) {
     const allRecords = [...records];
     const knownStorageBytes = allRecords.reduce((sum, record) => sum + (storage.bySessionId.get(record.id) ?? 0), 0);
     const totals = emptyMetrics();
     const grouped = new Map();
-    for (const record of allRecords) {
-        if (record.startedAt < query.from || record.startedAt >= query.to || !matches(record, query.filters))
-            continue;
-        const authorCounts = promptCountsByAuthor(record, transcriptReader(record.id, record.agent));
-        const selectedAuthorCounts = query.filters.user
-            ? new Map([...authorCounts].filter(([author]) => query.filters.user.includes(author)))
-            : authorCounts;
-        if (selectedAuthorCounts.size === 0)
-            continue;
-        const selectedPromptCount = [...selectedAuthorCounts.values()].reduce((sum, count) => sum + count, 0);
-        const bytes = storage.bySessionId.get(record.id) ?? 0;
-        addRecord(totals, record, bytes, now, selectedPromptCount);
-        const groupedAuthors = query.groupBy.includes("user") ? selectedAuthorCounts : new Map([["", selectedPromptCount]]);
-        for (const [groupedAuthor, groupedPromptCount] of groupedAuthors) {
-            const parts = [];
-            const dimensions = {};
-            for (const dimension of query.groupBy) {
-                if (dimension === "user") {
-                    dimensions.user = groupedAuthor;
-                    parts.push(`user:${dimensions.user}`);
-                }
-                else if (dimension === "project") {
-                    dimensions.projectId = record.projectId;
-                    dimensions.projectKey = record.projectKey;
-                    parts.push(`project:${record.projectId ?? (record.projectKey ? `key:${record.projectKey}` : "unknown")}`);
-                }
-                else if (dimension === "time") {
-                    const range = bucketRange(record.startedAt, query.timeBucket);
-                    dimensions.timeStart = new Date(range.start).toISOString();
-                    dimensions.timeEnd = new Date(range.end).toISOString();
-                    parts.push(`time:${range.start}`);
-                }
-                else if (dimension === "agent") {
-                    dimensions.agent = record.agent;
-                    parts.push(`agent:${record.agent}`);
-                }
-                else if (dimension === "model") {
-                    dimensions.model = record.model ?? "unknown";
-                    parts.push(`model:${dimensions.model}`);
-                }
-                else if (dimension === "status") {
-                    dimensions.status = record.status;
-                    parts.push(`status:${record.status}`);
-                }
-                else {
-                    dimensions.outcome = outcomeOf(record);
-                    parts.push(`outcome:${dimensions.outcome}`);
-                }
+    const groupedRow = (record, author, timestamp) => {
+        const parts = [];
+        const dimensions = {};
+        for (const dimension of query.groupBy) {
+            if (dimension === "user") {
+                dimensions.user = author;
+                parts.push(`user:${author}`);
             }
-            const key = parts.join("\0");
-            const row = grouped.get(key) ?? Object.assign(emptyMetrics(), dimensions);
-            addRecord(row, record, bytes, now, groupedPromptCount);
-            grouped.set(key, row);
+            else if (dimension === "project") {
+                dimensions.projectId = record.projectId;
+                dimensions.projectKey = record.projectKey;
+                parts.push(`project:${record.projectId ?? (record.projectKey ? `key:${record.projectKey}` : "unknown")}`);
+            }
+            else if (dimension === "time") {
+                const range = bucketRange(timestamp, query.timeBucket);
+                dimensions.timeStart = new Date(range.start).toISOString();
+                dimensions.timeEnd = new Date(range.end).toISOString();
+                parts.push(`time:${range.start}`);
+            }
+            else if (dimension === "agent") {
+                dimensions.agent = record.agent;
+                parts.push(`agent:${record.agent}`);
+            }
+            else if (dimension === "model") {
+                dimensions.model = record.model ?? "unknown";
+                parts.push(`model:${dimensions.model}`);
+            }
+            else if (dimension === "status") {
+                dimensions.status = record.status;
+                parts.push(`status:${record.status}`);
+            }
+            else {
+                dimensions.outcome = outcomeOf(record);
+                parts.push(`outcome:${dimensions.outcome}`);
+            }
+        }
+        const key = parts.join("\0");
+        const row = grouped.get(key) ?? Object.assign(emptyMetrics(), dimensions);
+        grouped.set(key, row);
+        return row;
+    };
+    for (const record of allRecords) {
+        if (!matches(record, query.filters) || record.startedAt >= query.to)
+            continue;
+        const lastPossibleUserMessageAt = record.lastUserMessageAt ?? record.lastActivityAt;
+        if (lastPossibleUserMessageAt < query.from)
+            continue;
+        const selectedPrompts = promptOccurrences(record, transcriptReader(record.id, record.agent)).filter((prompt) => prompt.createdAt >= query.from
+            && prompt.createdAt < query.to
+            && (!query.filters.user || query.filters.user.includes(prompt.author)));
+        if (selectedPrompts.length === 0)
+            continue;
+        const sessionInRange = record.startedAt >= query.from;
+        const bytes = storage.bySessionId.get(record.id) ?? 0;
+        addPrompts(totals, selectedPrompts.length);
+        if (sessionInRange)
+            addSessionMetrics(totals, record, bytes, now);
+        const periodAuthors = [...new Set(selectedPrompts.map((prompt) => prompt.author))];
+        if (sessionInRange) {
+            const sessionAuthors = query.groupBy.includes("user") ? periodAuthors : [""];
+            for (const author of sessionAuthors)
+                addSessionMetrics(groupedRow(record, author, record.startedAt), record, bytes, now);
+        }
+        for (const prompt of selectedPrompts) {
+            addPrompts(groupedRow(record, query.groupBy.includes("user") ? prompt.author : "", prompt.createdAt), 1);
         }
     }
     const rows = [...grouped.values()].sort((a, b) => {
@@ -288,9 +303,10 @@ export function analyticsForSessions(records, query, storage = { totalBytes: 0, 
         timeZone: "UTC",
         attribution: {
             time: "session_started_at",
+            promptTime: "user_message_created_at",
             user: "transcript_turn_author",
             project: "session_project_id",
-            note: "Prompt counts use each transcript turn's author; unsigned historical turns fall back to the session initiator. Session-level usage, duration, outcome, and storage are repeated for each participating author because exact per-message usage is unavailable.",
+            note: "Prompt counts use each transcript turn's author and Peon-recorded creation time; unsigned historical turns fall back to the session initiator, and undated turns fall back to the session start. Session-level usage, duration, outcome, and storage remain selected by session start and are repeated for each participating author in that period because exact per-message usage is unavailable.",
         },
         filters: query.filters,
         totals,

@@ -518,14 +518,18 @@ stable response. It accepts either `period=day|yesterday|week|month|all` (defaul
 start Monday. Exact-match filters use repeated or comma-separated `user`,
 `project`, `agent`, `status`, and `outcome` parameters; `project` matches either
 the stable project id or current key, and `unknown` selects missing attribution.
-Sessions are included by `startedAt`. Rows and `totals` expose session, prompt,
-turn, token, provider-duration, wall-duration, outcome, reported-cost, usage
-coverage, and current artifact-byte metrics. `storage.totalBytes` is the whole
-session store and `storage.unattributedBytes` covers artifacts not matched to a
-known session. Historical shared-session usage is attributed to the session
-initiator because providers did not persist per-message usage; the response's
-`attribution` object states this explicitly. Invalid combinations return `400
-BAD_REQUEST`.
+Prompt counts are included by each persisted `user_message.createdAt`, so a
+prompt remains visible in its actual period even when its session started
+earlier. Undated historical turns fall back to the session start. Session-level
+metrics (`sessionCount`, turns, tokens, provider/wall duration, outcome, cost,
+usage coverage, storage) remain included by `startedAt`, because historical
+provider usage is only a whole-session rollup and cannot be split truthfully by
+message. A prompt from an older session can therefore contribute to
+`promptCount` without importing that session's lifetime usage into the period.
+`storage.totalBytes` is the whole session store and `storage.unattributedBytes`
+covers artifacts not matched to a known session. The response's `attribution`
+object exposes both time authorities and the user-attribution caveat. Invalid
+combinations return `400 BAD_REQUEST`.
 
 `POST /control/update` triggers this Peon's self-update through the same detached updater used locally: `git pull`
 + tsx-watch reload on a source checkout, authenticated Overseer archive download,
