@@ -53,6 +53,7 @@ interface StoredInquiry extends ManagedPluginInquiry {
   runtimeGeneration: number;
   marketplaceName: string;
   marketplacePath: string | null;
+  catalogPluginName?: string;
 }
 
 interface StoreFile { version: 1; inquiries: StoredInquiry[] }
@@ -79,7 +80,7 @@ function safeStrings(value: unknown, limit = 16): string[] {
 }
 function publicInquiry(inquiry: StoredInquiry): ManagedPluginInquiry {
   const { threadId: _thread, turnId: _turn, runtimeGeneration: _generation, marketplaceName: _marketplace,
-    marketplacePath: _path, ...result } = inquiry;
+    marketplacePath: _path, catalogPluginName: _catalogPluginName, ...result } = inquiry;
   return result;
 }
 
@@ -126,7 +127,7 @@ export class ManagedPluginInquiryService {
     const inquiry: StoredInquiry = {
       version: "inquiry-v1", inquiryId: randomUUID(), kind: "managed_plugin_install", status: "pending",
       sessionId: session.id, threadId: call.threadId, turnId: call.turnId, runtimeGeneration: generation,
-      marketplaceName: plugin.marketplaceName, marketplacePath: plugin.marketplacePath,
+      marketplaceName: plugin.marketplaceName, marketplacePath: plugin.marketplacePath, catalogPluginName: plugin.catalogPluginName,
       plugin: plugin.metadata, createdAt: new Date(timestamp).toISOString(),
       expiresAt: new Date(timestamp + MANAGED_PLUGIN_INQUIRY_TTL_MS).toISOString(), updatedAt: new Date(timestamp).toISOString(),
       respondedBy: null, terminalCode: null, authPolicy: null, appsNeedingAuth: [],
@@ -169,7 +170,7 @@ export class ManagedPluginInquiryService {
     inquiry.status = "installing"; inquiry.respondedBy = actor; inquiry.updatedAt = new Date(this.now()).toISOString(); this.persist();
     try {
       const response = object(await runtime.request("plugin/install", {
-        pluginName: inquiry.plugin.name,
+        pluginName: inquiry.catalogPluginName ?? inquiry.plugin.name,
         marketplacePath: inquiry.marketplacePath,
         remoteMarketplaceName: inquiry.marketplacePath ? null : inquiry.marketplaceName,
       }, 120_000));
@@ -187,7 +188,7 @@ export class ManagedPluginInquiryService {
     }
   }
 
-  private async lookupPlugin(pluginId: string): Promise<{ metadata: ManagedPluginMetadata; marketplaceName: string; marketplacePath: string | null } | null> {
+  private async lookupPlugin(pluginId: string): Promise<{ metadata: ManagedPluginMetadata; marketplaceName: string; marketplacePath: string | null; catalogPluginName: string } | null> {
     const runtime = this.runtime;
     if (!runtime) return null;
     const response = object(await runtime.request("plugin/list", { forceRefetch: false }));
@@ -198,9 +199,10 @@ export class ManagedPluginInquiryService {
       if (!summary || !this.validSummary(summary)) continue;
       const marketplaceName = String(marketplace.name);
       const marketplacePath = bounded(marketplace.path, 4_096);
-      const detail = object(await runtime.request("plugin/read", { pluginName: summary.name, marketplacePath, remoteMarketplaceName: marketplacePath ? null : marketplaceName }));
+      const catalogPluginName = marketplacePath ? summary.name : bounded(summary.remotePluginId, 320) ?? summary.name;
+      const detail = object(await runtime.request("plugin/read", { pluginName: catalogPluginName, marketplacePath, remoteMarketplaceName: marketplacePath ? null : marketplaceName }));
       const plugin = object(detail?.plugin); const iface = object(summary.interface); const detailSummary = object(plugin?.summary) ?? summary;
-      return { marketplaceName, marketplacePath, metadata: {
+      return { marketplaceName, marketplacePath, catalogPluginName, metadata: {
         id: String(detailSummary.id), name: String(detailSummary.name),
         displayName: bounded(iface?.displayName, 160) ?? String(detailSummary.name),
         description: bounded(plugin?.description, 2_000) ?? bounded(iface?.shortDescription, 1_000),

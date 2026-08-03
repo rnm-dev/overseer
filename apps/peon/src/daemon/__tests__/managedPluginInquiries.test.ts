@@ -15,7 +15,7 @@ class FakeRuntime extends EventEmitter {
   async request(method: string, params: unknown) {
     this.calls.push({ method, params });
     if (method === "plugin/list") return { marketplaces: [{ name: "openai-curated-remote", path: null, plugins: [{
-      id: "posthog@openai-curated-remote", name: "posthog", installed: false, enabled: false,
+      id: "posthog@openai-curated-remote", remotePluginId: "plugin_asdk_app_posthog", name: "posthog", installed: false, enabled: false,
       authPolicy: "ON_INSTALL", installPolicy: "AVAILABLE", source: { type: "remote" },
       interface: { displayName: "PostHog", shortDescription: "Product analytics", developerName: "PostHog", category: "Analytics", capabilities: ["events"] },
     }] }] };
@@ -54,6 +54,9 @@ test("PostHog inquiry reads native metadata, installs once, and redacts native a
   const pending = await observedInquiry(service);
   assert.equal(pending.plugin.displayName, "PostHog");
   assert.deepEqual(runtime.calls.find((call) => call.method === "plugin/list")?.params, { forceRefetch: false });
+  assert.deepEqual(runtime.calls.find((call) => call.method === "plugin/read")?.params, {
+    pluginName: "plugin_asdk_app_posthog", marketplacePath: null, remoteMarketplaceName: "openai-curated-remote",
+  });
   assert.equal(JSON.stringify(pending).includes("native-secret-id"), false);
 
   const installed = await service.respond("session-1", pending.inquiryId, "operator@example.com", "install");
@@ -65,6 +68,7 @@ test("PostHog inquiry reads native metadata, installs once, and redacts native a
   const duplicate = await service.respond("session-1", pending.inquiryId, "operator@example.com", "install");
   assert.deepEqual(duplicate, installed);
   assert.equal(runtime.calls.filter((call) => call.method === "plugin/install").length, 1);
+  assert.equal((runtime.calls.find((call) => call.method === "plugin/install")?.params as { pluginName: string }).pluginName, "plugin_asdk_app_posthog");
 });
 
 test("expiry, actor mismatch, turn completion, restart and stale generations fail closed", async () => {

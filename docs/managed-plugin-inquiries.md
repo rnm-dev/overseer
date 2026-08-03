@@ -24,6 +24,11 @@ generates a UUID `inquiryId`, persists the safe operator state, and waits. It
 does not call `plugin/install` until an authenticated operator submits `action:
 "install"`.
 
+For a remote marketplace, the opaque `remotePluginId` returned by `plugin/list`
+is the native `pluginName` accepted by both `plugin/read` and `plugin/install`;
+the short catalog name is display metadata only. Peon persists that opaque value
+inside the fenced inquiry but never exposes it through the operator API.
+
 All reads and mutations use direct authenticated Fleet HTTP over mesh:
 
 - `GET /api/v1/sessions/:sessionId/inquiries`
