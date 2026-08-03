@@ -158,11 +158,10 @@ class _TranscriptBodyState extends State<_TranscriptBody> {
             final hasTopControl = state.hasOlder || state.message != null;
             final hasWorking = widget.showWorking;
             final ghost = widget.ghost;
+            // A refresh in flight says nothing: only a failed one earns a row.
             final inquiryRows =
                 widget.inquiries.inquiries.length +
-                ((widget.inquiries.loading || widget.inquiries.refreshFailed)
-                    ? 1
-                    : 0);
+                (widget.inquiries.refreshFailed ? 1 : 0);
             final workingGap = transcriptWorkingGap(
               items.lastOrNull,
               afterGhost: ghost != null,
@@ -190,21 +189,15 @@ class _TranscriptBodyState extends State<_TranscriptBody> {
                 }
                 final inquiryIndex = index - (hasWorking ? 1 : 0);
                 if (inquiryIndex >= 0 && inquiryIndex < inquiryRows) {
-                  if (inquiryIndex == 0 &&
-                      (widget.inquiries.loading ||
-                          widget.inquiries.refreshFailed)) {
-                    return _PluginInquiryRefreshRow(
-                      failed: widget.inquiries.refreshFailed,
+                  if (inquiryIndex == 0 && widget.inquiries.refreshFailed) {
+                    return _PluginInquiryRefreshFailedRow(
                       online: widget.inquiryOnline,
                       onRetry: widget.onInquiryRefresh,
                     );
                   }
                   final dataInquiryIndex =
                       inquiryIndex -
-                      ((widget.inquiries.loading ||
-                              widget.inquiries.refreshFailed)
-                          ? 1
-                          : 0);
+                      (widget.inquiries.refreshFailed ? 1 : 0);
                   final inquiry = widget.inquiries.inquiries[dataInquiryIndex];
                   return Padding(
                     key: ValueKey('plugin-inquiry-${inquiry.inquiryId}'),
@@ -291,14 +284,12 @@ class _TranscriptBodyState extends State<_TranscriptBody> {
   }
 }
 
-class _PluginInquiryRefreshRow extends StatelessWidget {
-  const _PluginInquiryRefreshRow({
-    required this.failed,
+class _PluginInquiryRefreshFailedRow extends StatelessWidget {
+  const _PluginInquiryRefreshFailedRow({
     required this.online,
     required this.onRetry,
   });
 
-  final bool failed;
   final bool online;
   final Future<void> Function() onRetry;
 
@@ -310,27 +301,18 @@ class _PluginInquiryRefreshRow extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          if (!failed)
-            const SizedBox(
-              width: 14,
-              height: 14,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            ),
-          if (!failed) const SizedBox(width: 8),
           Flexible(
             child: Text(
-              failed
-                  ? online
-                        ? 'Plugin requests could not be refreshed.'
-                        : 'Plugin requests will refresh after reconnecting.'
-                  : 'Checking plugin requests…',
+              online
+                  ? 'Plugin requests could not be refreshed.'
+                  : 'Plugin requests will refresh after reconnecting.',
               style: AppTypography.body(
                 fontSize: 12,
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ),
           ),
-          if (failed && online) ...[
+          if (online) ...[
             const SizedBox(width: 8),
             AppButton(
               size: AppButtonSize.sm,
