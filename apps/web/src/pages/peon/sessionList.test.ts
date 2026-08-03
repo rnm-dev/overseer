@@ -52,6 +52,10 @@ test("mergeSessions keeps equal session ids from different Peons and rejects sta
   ]);
 });
 
+test("indexed session normalization preserves stable project identity for grouped lists", () => {
+  assert.equal(sessionFromIndex({ sessionId: "s1", projectId: "project-1", projectKey: "renamed" }).projectId, "project-1");
+});
+
 test("mergeSessions deduplicates overlapping pages and applies newer summaries", () => {
   assert.deepEqual(mergeSessions(
     [{ id: "one", title: "old" }, { id: "two" }],

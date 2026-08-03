@@ -5,6 +5,7 @@ export interface SessionLite {
   title?: string | null;
   promptPreview?: string | null;
   lastMessagePreview?: string | null;
+  projectId?: string | null;
   projectKey?: string | null;
   startedAt?: number | null;
   endedAt?: number | null;
@@ -27,6 +28,7 @@ export interface IndexedSessionLite {
   title?: string | null;
   promptPreview?: string | null;
   preview?: string | null;
+  projectId?: string | null;
   projectKey?: string | null;
   startedAt?: number | null;
   endedAt?: number | null;
@@ -57,6 +59,7 @@ export function sessionFromIndex(session: IndexedSessionLite): SessionLite {
     title: session.title,
     promptPreview: session.promptPreview ?? session.preview,
     lastMessagePreview: session.preview,
+    ...(session.projectId !== undefined ? { projectId: session.projectId } : {}),
     projectKey: session.projectKey,
     startedAt: session.startedAt,
     endedAt: session.endedAt,

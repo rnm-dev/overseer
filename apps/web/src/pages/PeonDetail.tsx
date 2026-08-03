@@ -8,7 +8,15 @@ import { useMobileDrawer } from "../hooks/useMobileDrawer";
 import { useT } from "../i18n";
 import { useLiveSocket, type SessionLiveEvent } from "../liveSocket";
 import { PeonScopeSwitcher } from "../components/PeonScopeSwitcher";
+import { ProjectGroupedSessionList } from "../components/ProjectGroupedSessionList";
 import { FadingTitle, SessionSidebarList } from "../components/SessionSidebarList";
+import {
+  loadSessionListDisplayMode,
+  loadSessionListProjectLimit,
+  saveSessionListDisplayMode,
+  saveSessionListProjectLimit,
+  SessionListDisplayControl,
+} from "../components/SessionListDisplayControl";
 import { ProjectSidebarSection } from "../components/ProjectSidebarSection";
 import { SIDEBAR_SECTION_ACTION_CLASS, SidebarSectionHeader } from "../components/SidebarSectionHeader";
 import { PeonConnectionStatusDot } from "../components/PeonConnectionStatusDot";
@@ -85,6 +93,8 @@ export function PeonDetail() {
   const [projects, setProjects] = useState<ProjectLite[] | null>(null);
   const [projectError, setProjectError] = useState(false);
   const [showNewProject, setShowNewProject] = useState(false);
+  const [sessionListMode, setSessionListMode] = useState(loadSessionListDisplayMode);
+  const [sessionsPerProject, setSessionsPerProject] = useState(loadSessionListProjectLimit);
   const { drawerOpen, setDrawerOpen } = useMobileDrawer();
   const [sidebarWidth, setSidebarWidth] = useState(savedSidebarWidth);
   const [resizing, setResizing] = useState(false);
@@ -330,6 +340,13 @@ export function PeonDetail() {
       );
     }
   };
+  const prefetchSession = (session: SessionLite) => {
+    void prefetchTranscriptSnapshot(
+      base,
+      session.id,
+      peon.capabilities.includes("transcript-pagination-v1"),
+    ).catch(() => {});
+  };
 
   const ctx: PeonContext = {
     peon: displayedPeon,
@@ -401,55 +418,98 @@ export function PeonDetail() {
         </div>
 
         <div ref={sessionScrollNode} className="min-h-0 flex-1 overflow-y-auto pb-24">
-          <ProjectSidebarSection
-            projects={sidebarProjects}
-            error={projectError}
-            to={(project) => `projects/${encodeURIComponent(project.key)}`}
-            onNew={isOwner ? () => setShowNewProject(true) : undefined}
+          <SessionListDisplayControl
+            mode={sessionListMode}
+            projectLimit={sessionsPerProject}
+            onModeChange={(mode) => {
+              setSessionListMode(mode);
+              saveSessionListDisplayMode(mode);
+            }}
+            onProjectLimitChange={(limit) => {
+              setSessionsPerProject(limit);
+              saveSessionListProjectLimit(limit);
+            }}
           />
-
-          {/* sessions list */}
-          <section>
-            <SidebarSectionHeader
-              label={t("peon.tab.sessions")}
-              action={(
-                <Link to={newSessionTo} className={SIDEBAR_SECTION_ACTION_CLASS}>
-                  {t("newSession.new")}
-                </Link>
-              )}
-            />
-            <div>
-              {ordered.length === 0 && !sessionsLoading && !sessionPageError ? (
-                <p className="px-3 py-2 font-body text-xs text-ink-faint">{t("peon.dash.noSessions")}</p>
+          {sessionListMode === "grouped" ? (
+            <section>
+              {projects === null && !projectError ? (
+                <div className="flex min-h-12 items-center justify-center">
+                  <span className="loading-spinner scale-75" role="status" aria-label={t("projects.loading")} />
+                </div>
+              ) : projectError && (sidebarProjects?.length ?? 0) === 0 && ordered.length === 0 ? (
+                <p className="px-3 py-3 font-body text-xs text-ink-faint">{t("error.loadFailed")}</p>
               ) : (
-                <>
-                  <SessionSidebarList
-                    sessions={ordered}
-                    to={(session) => `sessions/${session.id}`}
-                    peonIdFor={() => peonId}
-                    viewersFor={viewersFor}
-                    onNavigateIntent={(session) => {
-                      void prefetchTranscriptSnapshot(
-                        base,
-                        session.id,
-                        peon.capabilities.includes("transcript-pagination-v1"),
-                      ).catch(() => {});
-                    }}
-                    onRename={renameSession}
-                    onDelete={deleteSession}
-                  />
-                  <div ref={sessionLoadSentinel} className="flex min-h-8 items-center justify-center px-3 py-2" aria-live="polite">
-                    {sessionsLoading && <span className="loading-spinner scale-75" role="status" aria-label={t("sessions.loading")} />}
-                    {sessionPageError && (
-                      <button type="button" className="font-body text-[0.68rem] text-ink-muted hover:text-accent-strong" onClick={() => void loadNextSessions()}>
-                        {t("sessions.retry")}
-                      </button>
-                    )}
-                  </div>
-                </>
+                <ProjectGroupedSessionList
+                  projects={sidebarProjects ?? []}
+                  sessions={ordered}
+                  projectLimit={sessionsPerProject}
+                  peonId={peonId}
+                  viewersFor={viewersFor}
+                  projectTo={(project) => `projects/${encodeURIComponent(project.key)}`}
+                  sessionTo={(session) => `sessions/${session.id}`}
+                  newSessionTo={(project) => project ? `sessions/new?project=${encodeURIComponent(project.key)}` : "sessions/new"}
+                  onNewProject={isOwner ? () => setShowNewProject(true) : undefined}
+                  onNavigateIntent={prefetchSession}
+                  onRename={renameSession}
+                  onDelete={deleteSession}
+                />
               )}
-            </div>
-          </section>
+              <div ref={sessionLoadSentinel} className="flex min-h-8 items-center justify-center px-3 py-2" aria-live="polite">
+                {sessionsLoading && <span className="loading-spinner scale-75" role="status" aria-label={t("sessions.loading")} />}
+                {sessionPageError && (
+                  <button type="button" className="font-body text-[0.68rem] text-ink-muted hover:text-accent-strong" onClick={() => void loadNextSessions()}>
+                    {t("sessions.retry")}
+                  </button>
+                )}
+              </div>
+            </section>
+          ) : (
+            <>
+              <ProjectSidebarSection
+                projects={sidebarProjects}
+                error={projectError}
+                to={(project) => `projects/${encodeURIComponent(project.key)}`}
+                onNew={isOwner ? () => setShowNewProject(true) : undefined}
+              />
+
+              {/* The original flat session list remains available as a display mode. */}
+              <section>
+                <SidebarSectionHeader
+                  label={t("peon.tab.sessions")}
+                  action={(
+                    <Link to={newSessionTo} className={SIDEBAR_SECTION_ACTION_CLASS}>
+                      {t("newSession.new")}
+                    </Link>
+                  )}
+                />
+                <div>
+                  {ordered.length === 0 && !sessionsLoading && !sessionPageError ? (
+                    <p className="px-3 py-2 font-body text-xs text-ink-faint">{t("peon.dash.noSessions")}</p>
+                  ) : (
+                    <>
+                      <SessionSidebarList
+                        sessions={ordered}
+                        to={(session) => `sessions/${session.id}`}
+                        peonIdFor={() => peonId}
+                        viewersFor={viewersFor}
+                        onNavigateIntent={prefetchSession}
+                        onRename={renameSession}
+                        onDelete={deleteSession}
+                      />
+                      <div ref={sessionLoadSentinel} className="flex min-h-8 items-center justify-center px-3 py-2" aria-live="polite">
+                        {sessionsLoading && <span className="loading-spinner scale-75" role="status" aria-label={t("sessions.loading")} />}
+                        {sessionPageError && (
+                          <button type="button" className="font-body text-[0.68rem] text-ink-muted hover:text-accent-strong" onClick={() => void loadNextSessions()}>
+                            {t("sessions.retry")}
+                          </button>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              </section>
+            </>
+          )}
         </div>
         {showNewProject && <NewProjectDialog base={base} onClose={() => {
           setShowNewProject(false);

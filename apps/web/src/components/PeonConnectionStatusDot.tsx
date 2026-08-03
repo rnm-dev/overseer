@@ -121,12 +121,12 @@ export function PeonConnectionStatusDot(props: Props) {
                 : null;
               return (
                 <span key={channel.name} className={`flex items-center gap-2 px-1 py-1.5 ${index > 0 ? "border-t border-edge/80" : ""}`}>
-                  <StatusDot state={channel.active ? "on" : "off"} />
+                  <StatusDot state={channel.active ? "on" : "busy"} />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate font-display text-[0.72rem] font-semibold text-ink">{channel.name}</span>
                     {uptime && <span className="block font-mono text-[0.58rem] leading-tight text-ink-faint">{uptime}</span>}
                   </span>
-                  <span className={`font-mono text-[0.58rem] uppercase tracking-[0.08em] ${channel.active ? "text-accent-strong" : "text-ink-faint"}`}>
+                  <span className={`font-mono text-[0.58rem] uppercase tracking-[0.08em] ${channel.active ? "text-accent-strong" : "text-warning"}`}>
                     {channel.active ? connected : disconnected}
                   </span>
                 </span>

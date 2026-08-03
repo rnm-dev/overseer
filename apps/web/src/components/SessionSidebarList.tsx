@@ -77,6 +77,7 @@ export function SessionSidebarList({
   onDelete,
   onNavigateIntent,
   appearance = "sidebar",
+  flushTop = false,
 }: {
   sessions: SessionLite[];
   to: (session: SessionLite) => string;
@@ -87,6 +88,7 @@ export function SessionSidebarList({
   onDelete: (session: SessionLite) => Promise<void>;
   onNavigateIntent?: (session: SessionLite) => void;
   appearance?: "sidebar" | "panel";
+  flushTop?: boolean;
 }) {
   const t = useT();
   const { locale } = useI18n();
@@ -211,7 +213,7 @@ export function SessionSidebarList({
   }, [sessions]);
 
   return (
-    <ul className="py-1">
+    <ul className={flushTop ? "pb-1" : "py-1"}>
       {sessions.map((session) => {
         const key = sessionIdentity(session);
         const flash = flashes.get(key);
