@@ -274,10 +274,11 @@ export class ProjectStore extends EventEmitter {
     }
     // Point a project at a different dir and ensure it exists, same as insert()
     // does on import/create — a session runs in this dir, so it can't dangle.
-    // (The old dir is left untouched; this is a re-point, not a move.)
+    // (The old dir is left untouched; this is a re-point, not a move.) Unlike
+    // insert(), no docs are written: an existing directory belongs to the
+    // operator, and a docs read already tolerates a project without them.
     if (patch.dir && patch.dir !== current.dir) {
       mkdirSync(patch.dir, { recursive: true });
-      ensureProjectDocs(patch.dir, patch.label ?? current.label);
     }
     // Re-assert the immutable identity at runtime as well as in the patch type,
     // so an untyped/internal caller can never mutate it accidentally.

@@ -34,7 +34,7 @@ function failProjectService(res: express.Response, error: unknown): void {
     fail(res, error.status, error.code, error.message);
     return;
   }
-  fail(res, 500, "INTERNAL", "failed to read project documentation");
+  fail(res, 500, "INTERNAL", "project request failed");
 }
 
 function projectListRows(projectService: ProjectService, sessionProjectReader: SessionProjectReader): FleetProjectListRecord[] {

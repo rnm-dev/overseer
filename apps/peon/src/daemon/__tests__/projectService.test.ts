@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -104,6 +104,34 @@ test("project service rejects invalid create and settings input before changing 
     (error: unknown) => error instanceof ProjectServiceError && error.kind === "BAD_REQUEST",
   );
   assert.equal(service.settings(created.key).dir, created.dir);
+});
+
+test("re-pointing a project adopts a directory without writing docs into it", (t) => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "peon-project-repoint-"));
+  const target = path.join(root, "target");
+  t.after(() => {
+    chmodSync(target, 0o700);
+    rmSync(root, { recursive: true, force: true });
+  });
+  const store = new ProjectStore(path.join(root, "projects.json"));
+  const service = new ProjectService(store, {
+    list: () => [],
+    renameProjectKey: () => 0,
+    start: () => ({ id: "onboarding-session" }),
+    rename: () => undefined,
+  });
+
+  const created = service.create({ label: "Repoint Project", dir: path.join(root, "original") });
+  // An existing directory the operator already owns: no docs, and read-only, so
+  // any attempt to write into it would fail rather than silently succeed.
+  mkdirSync(target);
+  chmodSync(target, 0o500);
+
+  const updated = service.updateSettings(created.key, { dir: target });
+  assert.equal(updated.dir, target);
+  assert.equal(service.settings(created.key).dir, target);
+  assert.deepEqual(readdirSync(target), []);
+  assert.equal(service.detail(created.key).documentation.exists, false);
 });
 
 test("project creation survives an onboarding session start failure", (t) => {
