@@ -73,6 +73,7 @@ export interface ListOptions {
   authors?: string[];
   access?: { userId: string };
   perPeonLimit?: number;
+  perProjectLimit?: number;
   limit: number;
   offset: number;
 }

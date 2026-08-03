@@ -134,6 +134,26 @@ export async function listSessions(opts: ListOptions): Promise<{ sessions: Sessi
 
   const limit = Math.min(Math.max(1, opts.limit), 200);
   const offset = Math.max(0, opts.offset);
+  if (opts.perProjectLimit !== undefined) {
+    const perProjectLimit = Math.min(Math.max(1, opts.perProjectLimit), 99);
+    const { rows } = await query<SessionRow>(
+      `SELECT DISTINCT ${sessionProjection} ${fromSql} ${whereSql}
+       ORDER BY sessions.last_activity_at DESC NULLS LAST, sessions.session_id`,
+      params,
+    );
+    const counts = new Map<string, number>();
+    const sessions = rows.filter((row) => {
+      const project = row.project_id
+        ? `id:${row.project_id}`
+        : row.project_key ? `key:${row.project_key}` : "unassigned";
+      const bucket = `${row.peon_id}\0${project}`;
+      const count = counts.get(bucket) ?? 0;
+      if (count >= perProjectLimit) return false;
+      counts.set(bucket, count + 1);
+      return true;
+    });
+    return { sessions: sessions.map(rowToIndexRow), total };
+  }
   if (opts.perPeonLimit !== undefined) {
     const perPeonLimit = Math.min(Math.max(1, opts.perPeonLimit), 50);
     const { rows } = await query<SessionRow>(

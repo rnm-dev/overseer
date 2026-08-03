@@ -157,6 +157,33 @@ test("workspace hydration caps each Peon independently and keeps global activity
   assert.deepEqual(result.sessions.map((session) => session.sessionId), ["p1-50", "p2-40", "p1-30", "p2-20"]);
 });
 
+test("grouped session hydration returns the newest bounded slice of every project", async () => {
+  const mem = newDb();
+  const adapter = mem.adapters.createPg();
+  await initDb(new adapter.Pool() as unknown as pg.Pool);
+
+  const rows = [
+    ["a-new", "project-a", 80], ["b-new", "project-b", 70],
+    ["a-middle", "project-a", 60], ["b-middle", "project-b", 50],
+    ["a-old", "project-a", 40], ["none-new", null, 30],
+    ["b-old", "project-b", 20], ["none-old", null, 10],
+  ] as const;
+  for (const [id, projectId, activity] of rows) {
+    await upsertSession("workspace", "peon", {
+      id,
+      projectId,
+      projectKey: projectId,
+      lastActivityAt: activity,
+    });
+  }
+
+  const result = await listSessions({ peonId: "peon", perProjectLimit: 2, limit: 50, offset: 0 });
+  assert.equal(result.total, 8);
+  assert.deepEqual(result.sessions.map((session) => session.sessionId), [
+    "a-new", "b-new", "a-middle", "b-middle", "none-new", "none-old",
+  ]);
+});
+
 test("Peon collection reconciliation indexes summaries without exposing cached raw data", async () => {
   const mem = newDb();
   const adapter = mem.adapters.createPg();

@@ -159,12 +159,19 @@ export function registerFleetRoutes(router: express.Router): void {
       const mine = req.query.mine === "true" || req.query.mine === "1";
       const limit = Number.parseInt(String(req.query.limit ?? "50"), 10) || 50;
       const offset = Number.parseInt(String(req.query.offset ?? "0"), 10) || 0;
+      const requestedPerProjectLimit = typeof req.query.perProjectLimit === "string"
+        ? Number.parseInt(req.query.perProjectLimit, 10)
+        : Number.NaN;
+      const perProjectLimit = peonId && Number.isFinite(requestedPerProjectLimit)
+        ? Math.min(99, Math.max(1, requestedPerProjectLimit))
+        : undefined;
       const { sessions, total } = await listSessions({
         workspaceId: ctx.workspaceId,
         peonId,
         status,
         authors: mine ? [req.user!.email, req.user!.githubLogin ?? ""] : undefined,
         perPeonLimit: peonId ? undefined : 50,
+        perProjectLimit,
         limit,
         offset,
         access: ctx.role === "member" ? { userId: ctx.userId } : undefined,

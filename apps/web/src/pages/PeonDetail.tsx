@@ -54,6 +54,13 @@ const MAX_SIDEBAR_WIDTH = 480;
 const WORKING_TITLE_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 const SESSION_PAGE_SIZE = 50;
 
+export function sessionListRequestPath(workspaceId: string, peonId: string, mode: "grouped" | "flat", projectLimit: number, offset: number): string {
+  const base = `/workspaces/${workspaceId}/sessions?peonId=${encodeURIComponent(peonId)}`;
+  return mode === "grouped"
+    ? `${base}&perProjectLimit=${projectLimit}`
+    : `${base}&limit=${SESSION_PAGE_SIZE}&offset=${offset}`;
+}
+
 export function isProjectPath(pathname: string): boolean {
   return /\/projects\/[^/]+(?:\/.*)?$/.test(pathname);
 }
@@ -195,12 +202,13 @@ export function PeonDetail() {
     setSessionsLoading(true);
     setSessionPageError(false);
     try {
+      const grouped = sessionListMode === "grouped";
       const result = await api<{ sessions: IndexedSessionLite[]; total: number }>(
-        `/workspaces/${wsId}/sessions?peonId=${encodeURIComponent(peonId)}&limit=${SESSION_PAGE_SIZE}&offset=${offset}`,
+        sessionListRequestPath(wsId!, peonId, sessionListMode, sessionsPerProject, offset),
       );
       if (sessionLoadEpoch.current !== epoch) return;
       const page = (result.sessions ?? []).map(sessionFromIndex);
-      const nextOffset = offset + page.length;
+      const nextOffset = grouped ? page.length : offset + page.length;
       nextSessionOffset.current = page.length === 0 ? result.total : nextOffset;
       setSessionOffset(nextSessionOffset.current);
       setSessionTotal(result.total);
@@ -213,7 +221,7 @@ export function PeonDetail() {
         setSessionsLoading(false);
       }
     }
-  }, [peonId, wsId]);
+  }, [peonId, sessionListMode, sessionsPerProject, wsId]);
 
   // Sessions for the sidebar come from Overseer's local paginated index. The
   // index is continuously reconciled with Peon, avoiding a full-list transfer
@@ -239,7 +247,7 @@ export function PeonDetail() {
   useEffect(() => {
     const root = sessionScrollNode.current;
     const target = sessionLoadSentinel.current;
-    if (!root || !target || !hasMoreSessions || sessionsLoading || sessionPageError) return;
+    if (sessionListMode !== "flat" || !root || !target || !hasMoreSessions || sessionsLoading || sessionPageError) return;
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries.some((entry) => entry.isIntersecting)) void loadNextSessions();
@@ -248,7 +256,7 @@ export function PeonDetail() {
     );
     observer.observe(target);
     return () => observer.disconnect();
-  }, [hasMoreSessions, loadNextSessions, sessionPageError, sessionsLoading]);
+  }, [hasMoreSessions, loadNextSessions, sessionListMode, sessionPageError, sessionsLoading]);
 
   // Session summaries arrive over the resumable workspace socket after the
   // initial indexed page is hydrated.
@@ -454,14 +462,13 @@ export function PeonDetail() {
                   onDelete={deleteSession}
                 />
               )}
-              <div ref={sessionLoadSentinel} className="flex min-h-8 items-center justify-center px-3 py-2" aria-live="polite">
-                {sessionsLoading && <span className="loading-spinner scale-75" role="status" aria-label={t("sessions.loading")} />}
-                {sessionPageError && (
+              {sessionPageError && (
+                <div className="flex min-h-8 items-center justify-center px-3 py-2" aria-live="polite">
                   <button type="button" className="font-body text-[0.68rem] text-ink-muted hover:text-accent-strong" onClick={() => void loadNextSessions()}>
                     {t("sessions.retry")}
                   </button>
-                )}
-              </div>
+                </div>
+              )}
             </section>
           ) : (
             <>
