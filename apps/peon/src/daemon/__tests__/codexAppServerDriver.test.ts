@@ -103,6 +103,15 @@ describe("Codex app-server driver", () => {
       assert.equal(resumed.events.find((event) => event.type === "result")?.model, "fake-model");
       const rerouted = await collect(instance, options({ model: "gpt-5.4", prompt: "hello [REROUTE]" }));
       assert.equal(rerouted.events.find((event) => event.type === "result")?.model, "rerouted-model");
+      // A follow-up on another model: the resumed thread still answers with the
+      // model it was created with, and `turn/start` is what actually decides.
+      const switched = await collect(instance, options({
+        resume: true, backendSessionId: "persisted-thread", model: "gpt-5.6-sol",
+      }));
+      assert.equal(switched.events.find((event) => event.type === "result")?.model, "gpt-5.6-sol");
+      const turn = (await instance.request<Array<{ method: string; params: Record<string, unknown> }>>("test/requests"))
+        .filter((request) => request.method === "turn/start").at(-1)?.params;
+      assert.equal(turn?.model, "gpt-5.6-sol");
     } finally {
       await instance.stop();
     }

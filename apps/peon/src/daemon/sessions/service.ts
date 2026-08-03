@@ -182,6 +182,8 @@ export const sessions: SessionCatalogReader & SessionLifecycleContract & Session
       backendTurnStatus: null,
       model: opts.model ?? null,
       reasoningEffort: opts.reasoningEffort ?? null,
+      createdModel: opts.model ?? null,
+      createdReasoningEffort: opts.reasoningEffort ?? null,
       projectId,
       projectKey: resolvedProjectKey,
       candidateProjectKeys,
@@ -251,8 +253,9 @@ export const sessions: SessionCatalogReader & SessionLifecycleContract & Session
     attachments: AttachmentInfo[] = [],
     permissionMode?: string,
     author?: string,
-    // One-shot model override for this follow-up turn; omitted ⇒ session/global
-    // default. Does not change record.model.
+    // Explicit model for this follow-up; omitted ⇒ session/global default. An
+    // explicit one is pinned onto the record by runProcess, so the choice holds
+    // for the rest of the conversation rather than for a single turn.
     model?: string,
     reasoningEffort?: ReasoningEffort,
     commandId?: string,

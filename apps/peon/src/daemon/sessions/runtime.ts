@@ -312,8 +312,9 @@ export function classifyFromResultEvent(
 // busy-but-completed session resumable, each spawn through here grants another
 // maxTurns' worth of headroom (`record.turnBudget += maxTurns`) — a fresh
 // start gets one portion, every follow-up message adds one more.
-// `perTurnModel` and `perTurnReasoningEffort` are one-shot follow-up overrides;
-// when omitted, the spawn falls back to the session/daemon or CLI defaults.
+// `perTurnModel` and `perTurnReasoningEffort` are explicit follow-up selections
+// and become the session's own defaults; when omitted, the spawn falls back to
+// the session/daemon or CLI defaults.
 export function appendUserTurn(
   record: SessionRecord,
   prompt: string,
@@ -420,6 +421,26 @@ export function runProcess(
     ?? currentSettings.ai.defaultReasoningEffort
     ?? undefined;
   const reasoningEffort = narrowReasoningEffort(requestedReasoningEffort, record.agent, model);
+
+  // An explicit selection is sticky. The operator picked it in the composer for
+  // this conversation, not for one message, and every surface that reads the
+  // record — the composer's own fallback, the run indicator, a reloaded page —
+  // would otherwise keep naming the model the session was started with. Only an
+  // override is pinned: the resolution above also falls back to the daemon-wide
+  // default, and pinning that would freeze a session against later changes.
+  let selectionChanged = false;
+  if (perTurnModel && record.model !== model) {
+    record.model = model;
+    selectionChanged = true;
+  }
+  if (perTurnReasoningEffort && record.reasoningEffort !== (reasoningEffort ?? null)) {
+    record.reasoningEffort = reasoningEffort ?? null;
+    selectionChanged = true;
+  }
+  if (selectionChanged) {
+    persistSummary(record);
+    sessionState.emitter.emit("change", record);
+  }
 
   // Grant each logical turn one portion. A defensive replay of the same
   // zero-turn Claude invocation must not silently expand the session budget.

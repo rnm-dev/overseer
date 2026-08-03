@@ -71,8 +71,12 @@ export interface SessionRecord {
   backendTurnId: string | null;
   backendRuntimeGeneration: number | null;
   backendTurnStatus: BackendTurnStatus | null;
+  /** Latest explicit selection: a follow-up that names a model pins it here for the rest of the conversation. */
   model: string | null;
   reasoningEffort: ReasoningEffort | null;
+  /** The selection this session was *created* with. Immutable, so spawn idempotency keeps comparing like with like. */
+  createdModel?: string | null;
+  createdReasoningEffort?: ReasoningEffort | null;
   /** Stable project identity; null only for ad-hoc or unresolvable legacy sessions. */
   projectId: string | null;
   projectKey: string | null;

@@ -425,7 +425,13 @@ export function createCodexAppServerRun(opts: AgentRunOptions, runtime: CodexApp
         threadId = nativeThreadId;
         emit({ type: "system", subtype: "init", session_id: threadId, model: typeof thread.model === "string" ? thread.model : opts.model });
       }
-      if (typeof thread.model === "string" && thread.model) actualModel = thread.model;
+      // A resumed thread answers with the model it was created with, which is
+      // not what this turn asked for: `turn/start` below carries the override
+      // and decides. Letting the thread's history rename the run is what made a
+      // follow-up on a different model report — and bill — the old one. A
+      // fresh thread keeps taking the server's canonical answer, and
+      // `model/rerouted` still outranks both.
+      if ((!opts.resume || !opts.model) && typeof thread.model === "string" && thread.model) actualModel = thread.model;
       if (!threadId || finished) return;
       releaseThread = await acquireThread(threadId);
       if (finished) { releaseThread(); releaseThread = null; return; }
