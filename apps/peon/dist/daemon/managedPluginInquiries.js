@@ -4,6 +4,8 @@ import path from "node:path";
 import { stateDir } from "./xdgPaths.js";
 export const MANAGED_PLUGIN_INQUIRY_CAPABILITY = "managed-plugin-inquiry-v1";
 export const MANAGED_PLUGIN_INQUIRY_TTL_MS = 10 * 60_000;
+const MANAGED_PLUGIN_IDS = new Set(["posthog@openai-curated-remote"]);
+const INQUIRY_RECONCILE_MS = 1_000;
 export class ManagedPluginInquiryError extends Error {
     status;
     code;
@@ -32,6 +34,7 @@ export class ManagedPluginInquiryService {
     now;
     records = new Map();
     waiters = new Map();
+    reconcileTimers = new Map();
     runtime = null;
     runtimeHealthListener = null;
     constructor(file = path.join(stateDir(), "managed-plugin-inquiries-v1.json"), listSessions, now = Date.now) {
@@ -58,6 +61,8 @@ export class ManagedPluginInquiryService {
         const pluginId = bounded(args?.plugin_id, 160);
         if (!pluginId)
             return { contentItems: [{ type: "inputText", text: "The managed plugin id is invalid." }], success: false };
+        if (!MANAGED_PLUGIN_IDS.has(pluginId))
+            return { contentItems: [{ type: "inputText", text: "The requested plugin is not managed by this Peon." }], success: false };
         const session = this.listSessions().find((candidate) => candidate.backendSessionId === call.threadId);
         if (!session || session.status !== "running" || session.backendTurnId !== call.turnId) {
             return { contentItems: [{ type: "inputText", text: "The originating session turn is no longer active." }], success: false };
@@ -80,6 +85,7 @@ export class ManagedPluginInquiryService {
         };
         this.records.set(inquiry.inquiryId, inquiry);
         this.persist();
+        this.scheduleReconcile(inquiry.inquiryId);
         return this.wait(inquiry.inquiryId);
     }
     list(sessionId) {
@@ -178,7 +184,11 @@ export class ManagedPluginInquiryService {
             ? call : null;
     }
     wait(id) {
-        return new Promise((resolve) => { this.waiters.set(id, { resolve }); });
+        return new Promise((resolve) => {
+            const waiting = this.waiters.get(id) ?? [];
+            waiting.push({ resolve });
+            this.waiters.set(id, waiting);
+        });
     }
     require(sessionId, inquiryId) {
         const inquiry = this.records.get(inquiryId);
@@ -196,8 +206,30 @@ export class ManagedPluginInquiryService {
         inquiry.respondedBy ??= actor;
         inquiry.updatedAt = new Date(this.now()).toISOString();
         this.persist();
-        this.waiters.get(inquiry.inquiryId)?.resolve({ contentItems: [{ type: "inputText", text: success ? "The operator installed the managed plugin." : "The managed plugin installation was not approved." }], success });
+        const timer = this.reconcileTimers.get(inquiry.inquiryId);
+        if (timer)
+            clearTimeout(timer);
+        this.reconcileTimers.delete(inquiry.inquiryId);
+        for (const waiter of this.waiters.get(inquiry.inquiryId) ?? [])
+            waiter.resolve({
+                contentItems: [{ type: "inputText", text: success ? "The operator installed the managed plugin." : "The managed plugin installation was not approved." }], success,
+            });
         this.waiters.delete(inquiry.inquiryId);
+    }
+    scheduleReconcile(inquiryId) {
+        if (this.reconcileTimers.has(inquiryId))
+            return;
+        const timer = setTimeout(() => {
+            this.reconcileTimers.delete(inquiryId);
+            const inquiry = this.records.get(inquiryId);
+            if (!inquiry || (inquiry.status !== "pending" && inquiry.status !== "installing"))
+                return;
+            this.reconcile();
+            if (inquiry.status === "pending" || inquiry.status === "installing")
+                this.scheduleReconcile(inquiryId);
+        }, INQUIRY_RECONCILE_MS);
+        timer.unref?.();
+        this.reconcileTimers.set(inquiryId, timer);
     }
     reconcile() {
         const now = this.now();
