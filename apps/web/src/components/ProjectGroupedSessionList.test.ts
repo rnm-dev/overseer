@@ -6,8 +6,10 @@ import { MemoryRouter } from "react-router";
 import { I18nProvider } from "../i18n";
 import { NotificationsProvider } from "../notifications";
 import {
+  CollapsedProjectStatusBadges,
   groupSessionsByProject,
   loadExpandedProjectGroups,
+  projectSessionStatusCounts,
   ProjectGroupedSessionList,
   saveExpandedProjectGroups,
 } from "./ProjectGroupedSessionList";
@@ -29,6 +31,28 @@ test("sessions group by stable project id with key and unassigned fallbacks", ()
 
   assert.deepEqual(groups.map((group) => group.id), ["id:p-a", "id:p-z", "unassigned"]);
   assert.deepEqual(groups.map((group) => group.sessions.map((session) => session.id)), [["legacy"], ["stable"], ["none"]]);
+});
+
+test("collapsed project status badges count and style working and unread sessions independently", () => {
+  const sessions = [
+    { id: "running-unread", status: "running", attentionUnread: true },
+    { id: "running", status: "running" },
+    { id: "unread", status: "completed", attentionUnread: true },
+    { id: "idle", status: "completed" },
+  ];
+  assert.deepEqual(projectSessionStatusCounts(sessions), { working: 2, unread: 2 });
+
+  const markup = renderToStaticMarkup(React.createElement(
+    I18nProvider,
+    null,
+    React.createElement(CollapsedProjectStatusBadges, { sessions }),
+  ));
+  assert.match(markup, /bg-accent\/\[0\.06\]/);
+  assert.match(markup, /bg-warning\/\[0\.06\]/);
+  assert.match(markup, /bg-accent-strong status-edge status-edge--accent/);
+  assert.match(markup, /bg-warning status-edge status-edge--warning/);
+  assert.match(markup, /Working sessions: 2/);
+  assert.match(markup, /Unread sessions: 2/);
 });
 
 test("grouped sidebar renders collapsible project toolbars, limits rows, and ends with the new-project ghost", () => {
@@ -73,8 +97,10 @@ test("grouped sidebar renders collapsible project toolbars, limits rows, and end
   assert.match(markup, />First</);
   assert.match(markup, />Second</);
   assert.doesNotMatch(markup, /Hidden by limit/);
-  assert.ok(markup.indexOf("Second") < markup.lastIndexOf("+ New project"));
-  assert.match(markup, /border-dashed/);
+  assert.ok(markup.indexOf("Second") < markup.lastIndexOf("New project"));
+  assert.match(markup, /group flex h-7 w-full items-stretch border-b border-dashed/);
+  assert.match(markup, /grid w-7 flex-none place-items-center border-r border-dashed border-edge/);
+  assert.doesNotMatch(markup, />\+ New project</);
 });
 
 test("expanded project preferences are validated and persisted", () => {

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Check, List, PanelsTopLeft } from "lucide-react";
+import { Check, List, Minus, PanelsTopLeft, Plus } from "lucide-react";
 import { useT } from "../i18n";
 import { SIDEBAR_SECTION_ACTION_CLASS, SidebarSectionHeader } from "./SidebarSectionHeader";
 
@@ -8,7 +8,13 @@ export type SessionListDisplayMode = "grouped" | "flat";
 
 export const SESSION_LIST_MODE_STORAGE_KEY = "overseer:session-list:display-mode";
 export const SESSION_LIST_LIMIT_STORAGE_KEY = "overseer:session-list:project-limit";
-export const SESSION_LIST_LIMIT_OPTIONS = [3, 5, 10] as const;
+export const SESSION_LIST_LIMIT_MIN = 1;
+export const SESSION_LIST_LIMIT_MAX = 99;
+
+export function normalizeSessionListProjectLimit(value: number): number {
+  if (!Number.isFinite(value)) return 5;
+  return Math.min(SESSION_LIST_LIMIT_MAX, Math.max(SESSION_LIST_LIMIT_MIN, Math.round(value)));
+}
 
 export function loadSessionListDisplayMode(storage?: Pick<Storage, "getItem">): SessionListDisplayMode {
   try {
@@ -32,7 +38,7 @@ export function loadSessionListProjectLimit(storage?: Pick<Storage, "getItem">):
   try {
     const target = storage ?? (typeof window === "undefined" ? undefined : window.localStorage);
     const value = Number(target?.getItem(SESSION_LIST_LIMIT_STORAGE_KEY));
-    return SESSION_LIST_LIMIT_OPTIONS.includes(value as (typeof SESSION_LIST_LIMIT_OPTIONS)[number]) ? value : 5;
+    return Number.isInteger(value) && value >= SESSION_LIST_LIMIT_MIN && value <= SESSION_LIST_LIMIT_MAX ? value : 5;
   } catch {
     return 5;
   }
@@ -41,7 +47,7 @@ export function loadSessionListProjectLimit(storage?: Pick<Storage, "getItem">):
 export function saveSessionListProjectLimit(limit: number, storage?: Pick<Storage, "setItem">): void {
   try {
     const target = storage ?? (typeof window === "undefined" ? undefined : window.localStorage);
-    target?.setItem(SESSION_LIST_LIMIT_STORAGE_KEY, String(limit));
+    target?.setItem(SESSION_LIST_LIMIT_STORAGE_KEY, String(normalizeSessionListProjectLimit(limit)));
   } catch {
     // See saveSessionListDisplayMode.
   }
@@ -159,19 +165,40 @@ export function SessionListDisplayControl({
             <div className="px-2 pb-2 font-display text-[0.62rem] font-semibold uppercase tracking-[0.16em] text-ink-faint">
               {t("sessions.display.limit")}
             </div>
-            <div className="grid grid-cols-3 gap-1 px-1">
-              {SESSION_LIST_LIMIT_OPTIONS.map((limit) => (
-                <button
-                  key={limit}
-                  type="button"
-                  role={mobile ? undefined : "menuitemradio"}
-                  aria-checked={mobile ? undefined : projectLimit === limit}
-                  className={`min-h-9 rounded-lg font-mono text-xs transition-colors ${projectLimit === limit ? "bg-accent/15 text-accent-strong" : "bg-ink/5 text-ink-muted hover:bg-surface-hover hover:text-ink"}`}
-                  onClick={() => onProjectLimitChange(limit)}
-                >
-                  {limit}
-                </button>
-              ))}
+            <div className="mx-1 flex h-9 overflow-hidden rounded-lg border border-edge-strong bg-ink/5">
+              <button
+                type="button"
+                aria-label={t("sessions.display.limit.decrease")}
+                disabled={projectLimit <= SESSION_LIST_LIMIT_MIN}
+                className="grid w-10 flex-none place-items-center border-r border-edge text-ink-muted transition-colors hover:bg-surface-hover hover:text-ink disabled:cursor-not-allowed disabled:text-ink-faint/40"
+                onClick={() => onProjectLimitChange(normalizeSessionListProjectLimit(projectLimit - 1))}
+              >
+                <Minus size={14} aria-hidden />
+              </button>
+              <input
+                type="number"
+                inputMode="numeric"
+                min={SESSION_LIST_LIMIT_MIN}
+                max={SESSION_LIST_LIMIT_MAX}
+                step={1}
+                value={projectLimit}
+                aria-label={t("sessions.display.limit")}
+                className="min-w-0 flex-1 border-0 bg-transparent px-2 text-center font-mono text-xs tabular-nums text-ink outline-none [appearance:textfield] focus:bg-accent/5 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                onChange={(event) => {
+                  if (Number.isFinite(event.currentTarget.valueAsNumber)) {
+                    onProjectLimitChange(normalizeSessionListProjectLimit(event.currentTarget.valueAsNumber));
+                  }
+                }}
+              />
+              <button
+                type="button"
+                aria-label={t("sessions.display.limit.increase")}
+                disabled={projectLimit >= SESSION_LIST_LIMIT_MAX}
+                className="grid w-10 flex-none place-items-center border-l border-edge text-ink-muted transition-colors hover:bg-surface-hover hover:text-ink disabled:cursor-not-allowed disabled:text-ink-faint/40"
+                onClick={() => onProjectLimitChange(normalizeSessionListProjectLimit(projectLimit + 1))}
+              >
+                <Plus size={14} aria-hidden />
+              </button>
             </div>
           </div>
         )}

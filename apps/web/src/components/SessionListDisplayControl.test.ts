@@ -7,6 +7,7 @@ import {
   displayMenuPosition,
   loadSessionListDisplayMode,
   loadSessionListProjectLimit,
+  normalizeSessionListProjectLimit,
   saveSessionListDisplayMode,
   saveSessionListProjectLimit,
   SessionListDisplayControl,
@@ -14,7 +15,7 @@ import {
 
 (globalThis as typeof globalThis & { React: typeof React }).React = React;
 
-test("session display preferences default to grouped and accept only supported limits", () => {
+test("session display preferences default to grouped and accept bounded integer limits", () => {
   const values = new Map<string, string>();
   const storage = {
     getItem: (key: string) => values.get(key) ?? null,
@@ -27,7 +28,12 @@ test("session display preferences default to grouped and accept only supported l
   assert.equal(loadSessionListDisplayMode(storage), "flat");
   assert.equal(loadSessionListProjectLimit(storage), 10);
   values.set("overseer:session-list:project-limit", "17");
+  assert.equal(loadSessionListProjectLimit(storage), 17);
+  values.set("overseer:session-list:project-limit", "100");
   assert.equal(loadSessionListProjectLimit(storage), 5);
+  assert.equal(normalizeSessionListProjectLimit(0), 1);
+  assert.equal(normalizeSessionListProjectLimit(7.6), 8);
+  assert.equal(normalizeSessionListProjectLimit(120), 99);
 });
 
 test("desktop display menu stays inside the viewport", () => {

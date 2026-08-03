@@ -5,7 +5,8 @@ import { useT } from "../i18n";
 import { visibleProjects, type ProjectLite } from "../pages/peon/projectList";
 import type { SessionLite } from "../pages/peon/sessionList";
 import type { PresenceUser } from "../liveSocket";
-import { SessionSidebarList } from "./SessionSidebarList";
+import { rowEdgeClass } from "./SidebarSectionHeader";
+import { sessionStatusEdgeClass, SessionSidebarList } from "./SessionSidebarList";
 
 export const GROUPED_PROJECTS_EXPANDED_STORAGE_KEY = "overseer:session-list:expanded-projects";
 
@@ -13,6 +14,48 @@ export interface ProjectSessionGroup {
   id: string;
   project: ProjectLite | null;
   sessions: SessionLite[];
+}
+
+export interface ProjectSessionStatusCounts {
+  working: number;
+  unread: number;
+}
+
+export function projectSessionStatusCounts(sessions: SessionLite[]): ProjectSessionStatusCounts {
+  return sessions.reduce<ProjectSessionStatusCounts>((counts, session) => ({
+    working: counts.working + (session.status === "running" ? 1 : 0),
+    unread: counts.unread + (session.attentionUnread ? 1 : 0),
+  }), { working: 0, unread: 0 });
+}
+
+export function CollapsedProjectStatusBadges({ sessions }: { sessions: SessionLite[] }) {
+  const t = useT();
+  const counts = projectSessionStatusCounts(sessions);
+  if (!counts.working && !counts.unread) return null;
+  return (
+    <div className="flex items-center gap-1 px-1" aria-label={t("sessions.project.statusSummary")}>
+      {counts.working > 0 && (
+        <span
+          className="relative flex h-5 min-w-5 items-center justify-center rounded-sm bg-accent/[0.06] px-1.5 pl-2 font-mono text-[0.625rem] font-semibold tabular-nums text-accent-strong"
+          title={t("sessions.project.workingCount", { count: counts.working })}
+          aria-label={t("sessions.project.workingCount", { count: counts.working })}
+        >
+          <span className={rowEdgeClass(sessionStatusEdgeClass("running"), undefined)} aria-hidden />
+          {counts.working}
+        </span>
+      )}
+      {counts.unread > 0 && (
+        <span
+          className="relative flex h-5 min-w-5 items-center justify-center rounded-sm bg-warning/[0.06] px-1.5 pl-2 font-mono text-[0.625rem] font-semibold tabular-nums text-warning-strong"
+          title={t("sessions.project.unreadCount", { count: counts.unread })}
+          aria-label={t("sessions.project.unreadCount", { count: counts.unread })}
+        >
+          <span className={rowEdgeClass(sessionStatusEdgeClass("completed", true), undefined)} aria-hidden />
+          {counts.unread}
+        </span>
+      )}
+    </div>
+  );
 }
 
 function projectIdentity(project: Pick<ProjectLite, "projectId" | "key">): string {
@@ -133,6 +176,7 @@ export function ProjectGroupedSessionList({
                 <span className="flex h-7 min-w-0 flex-1 items-center truncate px-2 font-body typo-chat-message font-semibold text-ink">{label}</span>
               )}
               <div className="ml-auto flex flex-none items-center" role="toolbar" aria-label={label}>
+                {!isExpanded && <CollapsedProjectStatusBadges sessions={group.sessions} />}
                 <Link
                   to={newSessionTo(project)}
                   title={t("newSession.new")}
@@ -166,11 +210,11 @@ export function ProjectGroupedSessionList({
       {onNewProject && (
         <button
           type="button"
-          className="group flex min-h-12 w-full items-center gap-2 border-b border-dashed border-edge px-3 text-left text-ink-faint transition-colors hover:bg-accent/5 hover:text-accent-strong focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-accent/60"
+          className="group flex h-7 w-full items-stretch border-b border-dashed border-edge text-left text-ink-faint transition-colors hover:bg-accent/5 hover:text-accent-strong focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-accent/60"
           onClick={onNewProject}
         >
-          <span className="grid h-7 w-7 place-items-center rounded-md border border-dashed border-current opacity-70"><Plus size={14} aria-hidden /></span>
-          <span className="font-display text-[0.68rem] font-semibold uppercase tracking-[0.1em]">{t("newProject.new")}</span>
+          <span className="grid w-7 flex-none place-items-center border-r border-dashed border-edge opacity-70"><Plus size={14} aria-hidden /></span>
+          <span className="flex min-w-0 items-center px-2 font-display text-[0.68rem] font-semibold uppercase tracking-[0.1em]">{t("newProject.title")}</span>
         </button>
       )}
     </div>
