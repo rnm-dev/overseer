@@ -14,7 +14,8 @@ Direct authenticated Fleet HTTP over mesh is the sole authority for:
   efforts, provider quota/capabilities, fixed-period stats and filtered
   analytics;
 - session start, detail, history, follow-up, queue, cancel and selected
-  lifecycle operations documented elsewhere;
+  lifecycle operations documented elsewhere, including durable managed-plugin
+  inquiry reads and explicit install/cancel responses;
 - filesystem and project directory listings;
 - project catalog/detail/settings/documentation/skills/quick links and lifecycle
   mutations (the `project-catalog-v1` socket remains realtime-only);

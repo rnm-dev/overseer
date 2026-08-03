@@ -62,7 +62,7 @@ const defaultSubscribe = (listener: () => void): (() => void) => {
 };
 
 function capabilities(fileTransferRoot: string): string[] {
-  const caps = ["sessions", "session-pagination-v1", "transcript-pagination-v1", "control", "sse"];
+  const caps = ["sessions", "session-pagination-v1", "transcript-pagination-v1", "managed-plugin-inquiry-v1", "control", "sse"];
   if (fileTransferRoot.trim()) caps.push("files");
   return caps;
 }

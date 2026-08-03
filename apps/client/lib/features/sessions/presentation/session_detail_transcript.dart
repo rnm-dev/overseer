@@ -3,6 +3,11 @@ part of 'session_detail_page.dart';
 class _TranscriptBody extends StatefulWidget {
   const _TranscriptBody({
     required this.transcript,
+    required this.inquiries,
+    required this.inquiryOnline,
+    required this.onInquiryInstall,
+    required this.onInquiryCancel,
+    required this.onInquiryRefresh,
     required this.ghost,
     required this.operator,
     required this.viewers,
@@ -19,6 +24,11 @@ class _TranscriptBody extends StatefulWidget {
   });
 
   final AsyncValue<TranscriptState> transcript;
+  final PluginInquiryState inquiries;
+  final bool inquiryOnline;
+  final ValueChanged<PluginInstallInquiry> onInquiryInstall;
+  final ValueChanged<PluginInstallInquiry> onInquiryCancel;
+  final Future<void> Function() onInquiryRefresh;
   final ComposerGhost? ghost;
   final OperatorIdentity? operator;
   final List<PresenceViewer> viewers;
@@ -74,7 +84,8 @@ class _TranscriptBodyState extends State<_TranscriptBody> {
     final transcriptChanged =
         oldWidget.transcript.value != widget.transcript.value ||
         oldWidget.ghost != widget.ghost ||
-        oldWidget.showWorking != widget.showWorking;
+        oldWidget.showWorking != widget.showWorking ||
+        oldWidget.inquiries.inquiries != widget.inquiries.inquiries;
     if (!transcriptChanged || !_scrollController.hasClients) return;
 
     final position = _scrollController.position;
@@ -134,7 +145,10 @@ class _TranscriptBodyState extends State<_TranscriptBody> {
             }
             if (state.events.isEmpty &&
                 !widget.showWorking &&
-                widget.ghost == null) {
+                widget.ghost == null &&
+                widget.inquiries.inquiries.isEmpty &&
+                !widget.inquiries.loading &&
+                !widget.inquiries.refreshFailed) {
               return _TranscriptEmpty(
                 message: state.message,
                 onRetry: widget.onRefresh,
@@ -144,6 +158,11 @@ class _TranscriptBodyState extends State<_TranscriptBody> {
             final hasTopControl = state.hasOlder || state.message != null;
             final hasWorking = widget.showWorking;
             final ghost = widget.ghost;
+            final inquiryRows =
+                widget.inquiries.inquiries.length +
+                ((widget.inquiries.loading || widget.inquiries.refreshFailed)
+                    ? 1
+                    : 0);
             final workingGap = transcriptWorkingGap(
               items.lastOrNull,
               afterGhost: ghost != null,
@@ -151,7 +170,8 @@ class _TranscriptBodyState extends State<_TranscriptBody> {
             // The list is reversed, so leading indices are the newest rows: the
             // working indicator sits below the ghost, which sits below the last
             // committed message.
-            final leading = (hasWorking ? 1 : 0) + (ghost != null ? 1 : 0);
+            final leading =
+                (hasWorking ? 1 : 0) + inquiryRows + (ghost != null ? 1 : 0);
             return ListView.builder(
               key: const Key('transcript-list'),
               controller: _scrollController,
@@ -168,7 +188,45 @@ class _TranscriptBodyState extends State<_TranscriptBody> {
                     child: _workingContent(state.events.lastOrNull),
                   );
                 }
-                if (ghost != null && index == (hasWorking ? 1 : 0)) {
+                final inquiryIndex = index - (hasWorking ? 1 : 0);
+                if (inquiryIndex >= 0 && inquiryIndex < inquiryRows) {
+                  if (inquiryIndex == 0 &&
+                      (widget.inquiries.loading ||
+                          widget.inquiries.refreshFailed)) {
+                    return _PluginInquiryRefreshRow(
+                      failed: widget.inquiries.refreshFailed,
+                      online: widget.inquiryOnline,
+                      onRetry: widget.onInquiryRefresh,
+                    );
+                  }
+                  final dataInquiryIndex =
+                      inquiryIndex -
+                      ((widget.inquiries.loading ||
+                              widget.inquiries.refreshFailed)
+                          ? 1
+                          : 0);
+                  final inquiry = widget.inquiries.inquiries[dataInquiryIndex];
+                  return Padding(
+                    key: ValueKey('plugin-inquiry-${inquiry.inquiryId}'),
+                    padding: const EdgeInsets.only(top: 16),
+                    child: Center(
+                      child: PluginInquiryCard(
+                        inquiry: inquiry,
+                        online: widget.inquiryOnline,
+                        acting: widget.inquiries.acting.contains(
+                          inquiry.inquiryId,
+                        ),
+                        actionFailed: widget.inquiries.actionFailed.contains(
+                          inquiry.inquiryId,
+                        ),
+                        onInstall: () => widget.onInquiryInstall(inquiry),
+                        onCancel: () => widget.onInquiryCancel(inquiry),
+                      ),
+                    ),
+                  );
+                }
+                if (ghost != null &&
+                    index == (hasWorking ? 1 : 0) + inquiryRows) {
                   return _TranscriptGhost(
                     ghost: ghost,
                     operator: widget.operator,
@@ -231,6 +289,60 @@ class _TranscriptBodyState extends State<_TranscriptBody> {
       ],
     );
   }
+}
+
+class _PluginInquiryRefreshRow extends StatelessWidget {
+  const _PluginInquiryRefreshRow({
+    required this.failed,
+    required this.online,
+    required this.onRetry,
+  });
+
+  final bool failed;
+  final bool online;
+  final Future<void> Function() onRetry;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    liveRegion: true,
+    child: Padding(
+      padding: const EdgeInsets.only(top: 16),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          if (!failed)
+            const SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+          if (!failed) const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              failed
+                  ? online
+                        ? 'Plugin requests could not be refreshed.'
+                        : 'Plugin requests will refresh after reconnecting.'
+                  : 'Checking plugin requests…',
+              style: AppTypography.body(
+                fontSize: 12,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          if (failed && online) ...[
+            const SizedBox(width: 8),
+            AppButton(
+              size: AppButtonSize.sm,
+              variant: AppButtonVariant.ghost,
+              onPressed: () => onRetry(),
+              child: const Text('Retry'),
+            ),
+          ],
+        ],
+      ),
+    ),
+  );
 }
 
 class _TranscriptWorkingIndicator extends StatefulWidget {

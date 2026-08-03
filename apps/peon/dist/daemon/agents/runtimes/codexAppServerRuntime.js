@@ -187,10 +187,11 @@ export class CodexAppServerRuntime extends EventEmitter {
         }
         this.sendMessage({ method, ...(params === undefined ? {} : { params }) }, this.generation);
     }
-    registerRequestHandler(method, handler) {
-        this.requestHandlers.set(method, handler);
+    registerRequestHandler(method, handler, timeoutMs = this.options.requestTimeoutMs) {
+        const registered = { handler, timeoutMs: positiveInteger(timeoutMs, this.options.requestTimeoutMs) };
+        this.requestHandlers.set(method, registered);
         return () => {
-            if (this.requestHandlers.get(method) === handler)
+            if (this.requestHandlers.get(method) === registered)
                 this.requestHandlers.delete(method);
         };
     }
@@ -434,8 +435,8 @@ export class CodexAppServerRuntime extends EventEmitter {
             this.sendMessage({ id, error: { code: -32001, message: "Peon app-server client overloaded; retry later." } }, generation);
             return;
         }
-        const handler = this.requestHandlers.get(method);
-        if (!handler) {
+        const registered = this.requestHandlers.get(method);
+        if (!registered) {
             this.sendMessage({ id, error: { code: -32601, message: `No Peon handler registered for ${method}` } }, generation);
             return;
         }
@@ -443,9 +444,9 @@ export class CodexAppServerRuntime extends EventEmitter {
         let handlerTimer;
         try {
             const result = await Promise.race([
-                Promise.resolve(handler(params, { method, generation })),
+                Promise.resolve(registered.handler(params, { method, generation })),
                 new Promise((_resolve, reject) => {
-                    handlerTimer = setTimeout(() => reject(new CodexAppServerError("request_timeout", `Peon handler for ${method} timed out after ${this.options.requestTimeoutMs}ms`)), this.options.requestTimeoutMs);
+                    handlerTimer = setTimeout(() => reject(new CodexAppServerError("request_timeout", `Peon handler for ${method} timed out after ${registered.timeoutMs}ms`)), registered.timeoutMs);
                     handlerTimer.unref?.();
                 }),
             ]);

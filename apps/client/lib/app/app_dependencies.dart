@@ -29,6 +29,8 @@ import 'package:overseer_mobile/features/ai_stats/data/dio_ai_stats_repository.d
 import 'package:overseer_mobile/features/fleet/application/fleet_controller.dart';
 import 'package:overseer_mobile/features/fleet/data/dio_fleet_repository.dart';
 import 'package:overseer_mobile/features/fleet/data/web_socket_fleet_live_service.dart';
+import 'package:overseer_mobile/features/inquiries/application/plugin_inquiry_controller.dart';
+import 'package:overseer_mobile/features/inquiries/data/dio_plugin_inquiry_repository.dart';
 import 'package:overseer_mobile/features/projects/application/projects_controller.dart';
 import 'package:overseer_mobile/features/projects/application/project_detail_controller.dart';
 import 'package:overseer_mobile/features/projects/data/default_project_repository.dart';
@@ -184,6 +186,10 @@ class AppDependencies extends StatelessWidget {
             clock: ref.watch(appClockProvider),
           );
         }),
+        pluginInquiryRepositoryProvider.overrideWith(
+          (ref) =>
+              DioPluginInquiryRepository(ref.watch(overseerHttpClientProvider)),
+        ),
         projectRepositoryProvider.overrideWith((ref) {
           final session = ref.watch(authControllerProvider).session;
           if (session == null) {

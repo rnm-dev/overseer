@@ -36,6 +36,8 @@ import {
 import { lockSessionDocument } from "./session/sessionViewport";
 import { loadToolDisplayMode } from "../../sessionToolDisplay";
 import { isSuccessfulRunResult, onSelectedSoundPackChange, playPeonSound, playWorkSound, stopWorkSound } from "../../peonSounds";
+import { PluginInquiryCard, PluginInquiryLoading } from "./session/PluginInquiryCard";
+import { PLUGIN_INQUIRY_CAPABILITY, usePluginInquiries, type PluginInstallInquiry } from "./session/pluginInquiries";
 
 // author: Viktor
 // The transcript parsing/render pieces live in ./session/*; this file owns the
@@ -46,6 +48,8 @@ const FILE_PANES_STORAGE_KEY = "overseer.open-session-file-panes";
 type VirtualTranscriptRow =
   | { key: string; kind: "item"; item: Item; paddingClass: string }
   | { key: string; kind: "ghost"; ghost: ComposerGhost; paddingClass: string }
+  | { key: string; kind: "inquiry"; inquiry: PluginInstallInquiry; paddingClass: string }
+  | { key: string; kind: "inquiry-loading"; failed: boolean; paddingClass: string }
   | { key: string; kind: "working"; paddingClass: string }
   | { key: string; kind: "footer"; height: number };
 
@@ -89,6 +93,8 @@ function PeonSessionDetailPage() {
   const { catalog, supported: modelsSupported } = useModels(base);
   const sessionKey = `${peon.peonId}:${sid}`;
   const transcriptPaginationSupported = peon.capabilities.includes("transcript-pagination-v1");
+  const pluginInquiriesSupported = peon.capabilities.includes(PLUGIN_INQUIRY_CAPABILITY);
+  const pluginInquiries = usePluginInquiries(base, sid, pluginInquiriesSupported);
   const filePanePageKey = `${wsId}:${sessionKey}`;
   const currentSessionKeyRef = useRef(sessionKey);
   const [simpleTools] = useState(() => loadToolDisplayMode() === "simple");
@@ -646,6 +652,12 @@ function PeonSessionDetailPage() {
         paddingClass: items.length === 0 ? "" : gapPaddingClass(items[items.length - 1]!.kind === "user", true),
       });
     }
+    if (pluginInquiries.loading || pluginInquiries.loadFailed) {
+      rows.push({ key: "plugin-inquiries-loading", kind: "inquiry-loading", failed: pluginInquiries.loadFailed, paddingClass: "pt-6" });
+    }
+    for (const inquiry of pluginInquiries.inquiries) {
+      rows.push({ key: `plugin-inquiry:${inquiry.inquiryId}`, kind: "inquiry", inquiry, paddingClass: "pt-6" });
+    }
     if (liveWork) {
       const previousIsUser = ghost || (items.length > 0 && items[items.length - 1]!.kind === "user");
       rows.push({
@@ -658,7 +670,7 @@ function PeonSessionDetailPage() {
     }
     rows.push({ key: "session-footer", kind: "footer", height: composerHeight + 40 });
     return rows;
-  }, [composerHeight, ghost, items, liveWork]);
+  }, [composerHeight, ghost, items, liveWork, pluginInquiries.inquiries, pluginInquiries.loadFailed, pluginInquiries.loading]);
   const [virtualWindow, setVirtualWindow] = useState(() => createTranscriptVirtualWindow(sessionKey, virtualRows));
   let displayedVirtualWindow = virtualWindow;
   if (virtualWindow.sessionKey !== sessionKey || virtualWindow.rows !== virtualRows) {
@@ -776,7 +788,7 @@ function PeonSessionDetailPage() {
               <div className="loading-spinner" />
             </div>
           )
-        ) : history.length === 0 && live.length === 0 && !liveWork ? (
+        ) : history.length === 0 && live.length === 0 && !liveWork && !pluginInquiries.loading && !pluginInquiries.loadFailed && pluginInquiries.inquiries.length === 0 ? (
           <p className="grid h-full place-items-center pt-12 text-center font-mono text-sm text-ink-faint">{t("session.empty")}</p>
         ) : (
           <Virtuoso
@@ -822,6 +834,20 @@ function PeonSessionDetailPage() {
                     authorAvatarUrl={user?.avatarUrl ?? undefined}
                     attachments={row.ghost.attachments}
                     createdAt={row.ghost.createdAt}
+                  />
+                </div>
+              );
+              if (row.kind === "inquiry-loading") return (
+                <div data-plugin-inquiry-row className={`mx-auto w-full max-w-6xl px-3 sm:px-6 ${row.paddingClass}`}>
+                  <PluginInquiryLoading failed={row.failed} onRetry={() => void pluginInquiries.refresh()} />
+                </div>
+              );
+              if (row.kind === "inquiry") return (
+                <div data-plugin-inquiry-row className={`mx-auto w-full max-w-6xl px-3 sm:px-6 ${row.paddingClass}`}>
+                  <PluginInquiryCard
+                    inquiry={row.inquiry}
+                    onInstall={() => void pluginInquiries.respond(row.inquiry, "install")}
+                    onCancel={() => void pluginInquiries.respond(row.inquiry, "cancel")}
                   />
                 </div>
               );

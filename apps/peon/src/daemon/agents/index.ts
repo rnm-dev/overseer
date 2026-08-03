@@ -1,4 +1,6 @@
 export { runAgent, normalizeStoredAgentEvent } from "./executor.js";
+export { configureManagedPluginToolHandler, getCodexAppServerRuntime } from "./codexAppServer.js";
+export type { CodexAppServerHealth, CodexAppServerRuntime } from "./runtimes/codexAppServerRuntime.js";
 export {
   agentServices,
   registerAgentDriver,

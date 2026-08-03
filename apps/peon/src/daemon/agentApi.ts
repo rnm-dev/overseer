@@ -19,7 +19,12 @@ import { pairing } from "./pairing.js";
 import { ensurePeonId } from "./peonIdentity.js";
 import { peonPublicUrl } from "./peonAddress.js";
 import { modelCatalog } from "./modelCatalog.js";
-import { agentServices, getAgentDriver, getAgentServiceDriver } from "./agents/index.js";
+import { agentServices, configureManagedPluginToolHandler, getAgentDriver, getAgentServiceDriver, getCodexAppServerRuntime } from "./agents/index.js";
+import {
+  ManagedPluginInquiryError,
+  ManagedPluginInquiryService,
+  MANAGED_PLUGIN_INQUIRY_CAPABILITY,
+} from "./managedPluginInquiries.js";
 import { updateChecker } from "./updateChecker.js";
 import { applyUpdate, checkUpdate, updateOperationStatus } from "./updateOperations.js";
 import type { QuotaProvider } from "./providerQuota.js";
@@ -64,6 +69,13 @@ let daemonConfigurationState: DaemonConfigurationState | undefined;
 function configurationState(): DaemonConfigurationState {
   return daemonConfigurationState ??= new DaemonConfigurationState();
 }
+
+const managedPluginInquiries = new ManagedPluginInquiryService(undefined, () => sessions.list());
+configureManagedPluginToolHandler(async (params, generation) => {
+  const runtime = getCodexAppServerRuntime(settings.get().codexCommand);
+  managedPluginInquiries.bindRuntime(runtime);
+  return managedPluginInquiries.handleDynamicToolCall(params, generation);
+});
 
 // Stable machine-readable error codes. The overseer branches on these, never
 // on the English `error` string (which the human `/api` handlers match on with
@@ -221,6 +233,7 @@ function agentStatusView() {
     activeSessionCount: sessions.activeCount(),
     sessionCount: sessions.list().length,
     filesEnabled: Boolean(settings.get().fileTransferRoot),
+    capabilities: [MANAGED_PLUGIN_INQUIRY_CAPABILITY],
     agentAuth: (() => {
       const s = getAgentDriver("claude-code")?.services.status?.() as { authState?: string; available?: boolean; checkedAt?: number } | undefined;
       return { authState: s?.authState, available: s?.available, checkedAt: s?.checkedAt };
@@ -424,6 +437,36 @@ export function createAgentRouter(options: AgentRouterOptions = {}): express.Rou
       defaultAgent: s.defaultAgent,
       providers: modelCatalog(s.defaultAgent, s.ai.defaultModel, s.ai.defaultReasoningEffort),
     });
+  });
+
+  router.get("/sessions/:id/inquiries", (req, res) => {
+    if (!sessions.get(req.params.id)) return fail(res, 404, "UNKNOWN_SESSION", "unknown session");
+    res.setHeader("Cache-Control", "no-store");
+    res.json({ version: "inquiry-v1", inquiries: managedPluginInquiries.list(req.params.id) });
+  });
+
+  router.get("/sessions/:id/inquiries/:inquiryId", (req, res) => {
+    try {
+      res.setHeader("Cache-Control", "no-store");
+      res.json(managedPluginInquiries.get(req.params.id, req.params.inquiryId));
+    } catch (error) {
+      if (error instanceof ManagedPluginInquiryError) return res.status(error.status).json({ error: error.message, code: error.code });
+      throw error;
+    }
+  });
+
+  router.post("/sessions/:id/inquiries/:inquiryId/respond", async (req, res) => {
+    try {
+      const actor = req.actor;
+      if (!actor) return fail(res, 400, "BAD_REQUEST", "Peon-Actor is required");
+      const action = req.body?.action;
+      if (action !== "install" && action !== "cancel") return fail(res, 400, "BAD_REQUEST", "action must be install or cancel");
+      res.setHeader("Cache-Control", "no-store");
+      res.json(await managedPluginInquiries.respond(req.params.id, req.params.inquiryId, actor, action));
+    } catch (error) {
+      if (error instanceof ManagedPluginInquiryError) return res.status(error.status).json({ error: error.message, code: error.code });
+      throw error;
+    }
   });
 
   // Shared windows stay provider-level; scoped windows include modelIds.

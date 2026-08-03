@@ -158,6 +158,28 @@ export function registerSessionRoutes(router: express.Router): void {
       projectRoot: project?.dir ?? null,
     });
   }));
+  router.get(`${wp}/sessions/:sid/inquiries`, withWorkspaceSession(async (req, res, c) => {
+    res.setHeader("Cache-Control", "no-store");
+    const sid = encodeURIComponent(String(req.params.sid));
+    relay(await callPeon(connOfRecord(c.record), "GET", `/sessions/${sid}/inquiries`, { actor: c.operator.email }), res);
+  }));
+  router.get(`${wp}/sessions/:sid/inquiries/:inquiryId`, withWorkspaceSession(async (req, res, c) => {
+    res.setHeader("Cache-Control", "no-store");
+    const sid = encodeURIComponent(String(req.params.sid));
+    const inquiryId = encodeURIComponent(String(req.params.inquiryId));
+    relay(await callPeon(connOfRecord(c.record), "GET", `/sessions/${sid}/inquiries/${inquiryId}`, { actor: c.operator.email }), res);
+  }));
+  router.post(`${wp}/sessions/:sid/inquiries/:inquiryId/respond`, withWorkspaceSession(async (req, res, c) => {
+    res.setHeader("Cache-Control", "no-store");
+    const action = req.body?.action;
+    if (action !== "install" && action !== "cancel") return res.status(400).json({ error: "action must be install or cancel", code: "BAD_REQUEST" });
+    const sid = encodeURIComponent(String(req.params.sid));
+    const inquiryId = encodeURIComponent(String(req.params.inquiryId));
+    relay(await callPeon(connOfRecord(c.record), "POST", `/sessions/${sid}/inquiries/${inquiryId}/respond`, {
+      actor: c.operator.email,
+      body: { action },
+    }), res);
+  }));
   router.get(`${wp}/sessions/:sid/transcript`, withWorkspaceSession(async (req, res, c) => {
     const sid = String(req.params.sid);
     if (!(await canAccessIndexedSessionNow(c.workspaceId, c.userId, c.record.peonId, sid))) {

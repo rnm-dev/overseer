@@ -21,8 +21,8 @@ export function formatChannelUptime(durationMs: number): string {
   return `${seconds}s`;
 }
 
-export function peonConnectionDotState({ online, controlConnected }: Props): "on" | "off" {
-  return (controlConnected ?? online) ? "on" : "off";
+export function peonConnectionDotState({ online, controlConnected }: Props): "on" | "busy" {
+  return (controlConnected ?? online) ? "on" : "busy";
 }
 
 export function PeonConnectionStatusDot(props: Props) {

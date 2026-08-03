@@ -10,6 +10,7 @@ import {
 import { codexCommandToolName, normalizeCodexFileChanges } from "./codex.js";
 import { guardToolOutput } from "../sessionPayloadGuard.js";
 import type { AgentContextUsage } from "../sessionWarningTypes.js";
+import { MANAGED_PLUGIN_INQUIRY_TTL_MS } from "../managedPluginInquiries.js";
 
 interface ThreadResponse {
   thread?: { id?: unknown };
@@ -31,6 +32,12 @@ interface TokenUsage {
 let runtimeSlot: { command: string; runtime: CodexAppServerRuntime } | null = null;
 const activeThreadTurns = new Map<string, Promise<void>>();
 const configuredRequestPolicies = new WeakSet<CodexAppServerRuntime>();
+let managedPluginToolHandler: ((params: unknown, generation: number) => Promise<unknown>) | null = null;
+
+export function configureManagedPluginToolHandler(handler: (params: unknown, generation: number) => Promise<unknown>): void {
+  managedPluginToolHandler = handler;
+  if (runtimeSlot) configureUnattendedRequests(runtimeSlot.runtime, true);
+}
 
 function unavailableHumanInput(kind: string): never {
   throw new Error(`${kind} is unavailable in unattended Peon sessions`);
@@ -50,12 +57,17 @@ const unattendedRequestHandlers: Record<string, () => unknown> = {
   execCommandApproval: () => ({ decision: "denied" }),
 };
 
-function configureUnattendedRequests(runtime: CodexAppServerRuntime): void {
-  if (configuredRequestPolicies.has(runtime)) return;
+function configureUnattendedRequests(runtime: CodexAppServerRuntime, refresh = false): void {
+  if (configuredRequestPolicies.has(runtime) && !refresh) return;
   configuredRequestPolicies.add(runtime);
   for (const [method, handler] of Object.entries(unattendedRequestHandlers)) {
     runtime.registerRequestHandler(method, handler);
   }
+  if (managedPluginToolHandler) runtime.registerRequestHandler(
+    "item/tool/call",
+    (params, context) => managedPluginToolHandler!(params, context.generation),
+    MANAGED_PLUGIN_INQUIRY_TTL_MS + 5_000,
+  );
 }
 
 function sandboxMode(opts: AgentRunOptions): "read-only" | "danger-full-access" {

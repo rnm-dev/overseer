@@ -112,6 +112,8 @@ Feature documentation:
   runtime lifecycle;
 - [sessions.md](sessions.md): session cache, pagination, and live state;
 - [transcripts.md](transcripts.md): transcript cache, composer, queue, and tail;
+- [plugin-inquiries.md](plugin-inquiries.md): managed-plugin confirmation,
+  recovery, terminal states, and security boundaries;
 - [voice-input.md](voice-input.md): native dictation capture, upload, composer
   behavior, and real-device QA;
 - [localization.md](localization.md): locale resolution, translation resources,

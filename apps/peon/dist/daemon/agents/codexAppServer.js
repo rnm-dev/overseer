@@ -3,9 +3,16 @@ import { readFileSync } from "node:fs";
 import { CodexAppServerRuntime, CODEX_APP_SERVER_LIMITS, } from "./runtimes/codexAppServerRuntime.js";
 import { codexCommandToolName, normalizeCodexFileChanges } from "./codex.js";
 import { guardToolOutput } from "../sessionPayloadGuard.js";
+import { MANAGED_PLUGIN_INQUIRY_TTL_MS } from "../managedPluginInquiries.js";
 let runtimeSlot = null;
 const activeThreadTurns = new Map();
 const configuredRequestPolicies = new WeakSet();
+let managedPluginToolHandler = null;
+export function configureManagedPluginToolHandler(handler) {
+    managedPluginToolHandler = handler;
+    if (runtimeSlot)
+        configureUnattendedRequests(runtimeSlot.runtime, true);
+}
 function unavailableHumanInput(kind) {
     throw new Error(`${kind} is unavailable in unattended Peon sessions`);
 }
@@ -22,13 +29,15 @@ const unattendedRequestHandlers = {
     applyPatchApproval: () => ({ decision: "denied" }),
     execCommandApproval: () => ({ decision: "denied" }),
 };
-function configureUnattendedRequests(runtime) {
-    if (configuredRequestPolicies.has(runtime))
+function configureUnattendedRequests(runtime, refresh = false) {
+    if (configuredRequestPolicies.has(runtime) && !refresh)
         return;
     configuredRequestPolicies.add(runtime);
     for (const [method, handler] of Object.entries(unattendedRequestHandlers)) {
         runtime.registerRequestHandler(method, handler);
     }
+    if (managedPluginToolHandler)
+        runtime.registerRequestHandler("item/tool/call", (params, context) => managedPluginToolHandler(params, context.generation), MANAGED_PLUGIN_INQUIRY_TTL_MS + 5_000);
 }
 function sandboxMode(opts) {
     return opts.permissionMode === "plan" ? "read-only" : "danger-full-access";

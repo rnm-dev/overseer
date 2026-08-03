@@ -41,5 +41,5 @@ test("HTTP inventory cannot change socket-owned online state", () => {
 
 test("connection dot follows the sole control/realtime socket", () => {
   assert.equal(peonConnectionDotState({ online: true, controlConnected: true }), "on");
-  assert.equal(peonConnectionDotState({ online: false, controlConnected: false }), "off");
+  assert.equal(peonConnectionDotState({ online: false, controlConnected: false }), "busy");
 });

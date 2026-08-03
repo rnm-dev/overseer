@@ -419,7 +419,6 @@ export function PeonDetail() {
               )}
             />
             <div>
-              {!online && <p className="px-3 py-2 font-body text-xs text-ink-faint">{t("peon.offlineNote")}</p>}
               {ordered.length === 0 && !sessionsLoading && !sessionPageError ? (
                 <p className="px-3 py-2 font-body text-xs text-ink-faint">{t("peon.dash.noSessions")}</p>
               ) : (

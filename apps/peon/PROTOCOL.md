@@ -44,6 +44,13 @@ Errors are always `{ "error": "<human message>", "code": "<STABLE_CODE>" }` —
 indicates that an authenticated caller selected a host path the Peon process
 cannot read, or a path a project-file policy intentionally excludes.
 
+Managed-plugin inquiry routes additionally use `UNKNOWN_INQUIRY` and
+`INQUIRY_ACTOR_MISMATCH` as request errors. Durable terminal records carry
+`INQUIRY_CANCELLED`, `INQUIRY_EXPIRED`, `INQUIRY_TURN_ENDED`,
+`INQUIRY_RUNTIME_LOST`, `INQUIRY_STALE_GENERATION`, or `INQUIRY_FAILED` in
+their `terminalCode`. `Peon-Actor` is required for the inquiry response
+mutation.
+
 ## Pairing and enrollment (`/enroll`)
 
 How a Peon gets its `overseerToken` in the first place. The Overseer
@@ -138,6 +145,9 @@ PATCH /api/v1/projects/:key/quick-links/:id update title and/or URL
 DELETE /api/v1/projects/:key/quick-links/:id delete one link
 GET   /api/v1/sessions                   list all sessions; ?limit=&cursor= enables keyset pagination
 GET   /api/v1/sessions/:id               one session
+GET   /api/v1/sessions/:id/inquiries     managed-plugin inquiry-v1 records for recovery
+GET   /api/v1/sessions/:id/inquiries/:inquiryId one managed-plugin inquiry
+POST  /api/v1/sessions/:id/inquiries/:inquiryId/respond explicit { action: "install"|"cancel" }
 PATCH /api/v1/sessions/:id               rename; body { title: string|null } (empty/null clears)
 DELETE /api/v1/sessions/:id              delete a session (record + files); 409 if running
 GET   /api/v1/sessions/:id/transcript    full event transcript; `?limit=&cursor=` enables pagination

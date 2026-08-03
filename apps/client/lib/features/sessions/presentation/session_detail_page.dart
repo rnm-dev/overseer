@@ -16,6 +16,10 @@ import '../../../core/live/presence.dart';
 import '../../../core/config/app_config.dart';
 import '../../fleet/application/fleet_controller.dart';
 import '../../fleet/application/fleet_live_service.dart';
+import '../../inquiries/application/plugin_inquiry_controller.dart';
+import '../../inquiries/domain/plugin_inquiry.dart';
+import '../../inquiries/domain/plugin_inquiry_repository.dart';
+import '../../inquiries/presentation/plugin_inquiry_card.dart';
 import '../../../shared/design/colors.dart';
 import '../../../shared/design/motion.dart';
 import '../../../shared/design/typography.dart';
@@ -260,6 +264,28 @@ class _SessionDetailPageState extends _SessionDetailAttachmentHost
     final transcript = transcriptScope == null
         ? null
         : ref.watch(transcriptControllerProvider(transcriptScope));
+    final fleet = ref.watch(fleetControllerProvider).value;
+    final currentPeon = fleet
+        ?.where((workspace) => workspace.workspace.id == workspaceId)
+        .expand((workspace) => workspace.peons)
+        .where((candidate) => candidate.id == peonId)
+        .firstOrNull;
+    final inquiryScope = currentSession == null
+        ? null
+        : PluginInquiryScope(
+            workspaceId: workspaceId,
+            peonId: peonId,
+            sessionId: currentSession.sessionId,
+            supported:
+                currentPeon?.capabilities.contains(
+                  'managed-plugin-inquiry-v1',
+                ) ??
+                false,
+            online: currentPeon?.online ?? false,
+          );
+    final inquiries = inquiryScope == null
+        ? null
+        : ref.watch(pluginInquiryControllerProvider(inquiryScope));
     final composer = ref.watch(
       sessionComposerControllerProvider(composerScope),
     );
@@ -386,6 +412,29 @@ class _SessionDetailPageState extends _SessionDetailAttachmentHost
                   else
                     _TranscriptBody(
                       transcript: transcript!,
+                      inquiries: inquiries!,
+                      inquiryOnline: inquiryScope!.online,
+                      onInquiryInstall: (inquiry) => ref
+                          .read(
+                            pluginInquiryControllerProvider(
+                              inquiryScope,
+                            ).notifier,
+                          )
+                          .respond(inquiry, PluginInquiryDecision.install),
+                      onInquiryCancel: (inquiry) => ref
+                          .read(
+                            pluginInquiryControllerProvider(
+                              inquiryScope,
+                            ).notifier,
+                          )
+                          .respond(inquiry, PluginInquiryDecision.cancel),
+                      onInquiryRefresh: () => ref
+                          .read(
+                            pluginInquiryControllerProvider(
+                              inquiryScope,
+                            ).notifier,
+                          )
+                          .refresh(),
                       ghost: _visibleGhost(composerState, transcript.value),
                       operator: ref.watch(authControllerProvider).session?.user,
                       viewers: viewers,

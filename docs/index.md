@@ -11,6 +11,14 @@ Codex execution now uses only the native `codex-app-server` driver. The former
 `agent: "codex"` transcripts remain readable but cannot be resumed because
 their conversation identity is not compatible with app-server threads.
 
+Managed Codex plugins use the durable `managed-plugin-inquiry-v1` operator
+confirmation flow. Peon normalizes native plugin metadata, fences the inquiry
+to the active session/turn/runtime generation, and invokes `plugin/install`
+only after an authenticated explicit Install response; PostHog is the first
+covered plugin, with no plugin-specific UI contract. The Fleet HTTP routes,
+states, stable failures and redaction boundary are in [managed plugin
+inquiries](managed-plugin-inquiries.md).
+
 The cross-platform Flutter operator client now lives in `apps/client` (iOS,
 Android, macOS, Windows and Linux). Its development and feature documentation
 starts at [client documentation](client/index.md).
