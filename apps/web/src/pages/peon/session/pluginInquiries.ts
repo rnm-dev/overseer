@@ -55,6 +55,10 @@ export function inquiryResponsePath(base: string, sid: string, inquiryId: string
   return `${inquiryCollectionPath(base, sid)}/${encodeURIComponent(inquiryId)}/respond`;
 }
 
+export function inquiryAuthPath(base: string, sid: string, inquiryId: string, appId: string): string {
+  return `/api${inquiryCollectionPath(base, sid)}/${encodeURIComponent(inquiryId)}/auth/${encodeURIComponent(appId)}`;
+}
+
 export function respondToPluginInquiry(base: string, sid: string, inquiryId: string, action: "install" | "cancel", requestId: string, request: ApiRequest = api) {
   return request<PluginInstallInquiry>(inquiryResponsePath(base, sid, inquiryId), {
     method: "POST",

@@ -484,6 +484,19 @@ export function createAgentRouter(options: AgentRouterOptions = {}): express.Rou
     }
   });
 
+  router.get("/sessions/:id/inquiries/:inquiryId/auth/:appId", async (req, res) => {
+    try {
+      const actor = req.actor;
+      if (!actor) return fail(res, 400, "BAD_REQUEST", "Peon-Actor is required");
+      res.setHeader("Cache-Control", "no-store");
+      res.setHeader("Referrer-Policy", "no-referrer");
+      res.json({ launchUrl: await managedPluginInquiries.authLaunch(req.params.id, req.params.inquiryId, req.params.appId, actor) });
+    } catch (error) {
+      if (error instanceof ManagedPluginInquiryError) return res.status(error.status).json({ error: error.message, code: error.code });
+      throw error;
+    }
+  });
+
   // Shared windows stay provider-level; scoped windows include modelIds.
   router.get("/quota", async (req, res) => {
     res.json(await agentServices.quotas(req.query.refresh === "1"));

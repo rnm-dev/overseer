@@ -37,7 +37,7 @@ import { lockSessionDocument } from "./session/sessionViewport";
 import { loadToolDisplayMode } from "../../sessionToolDisplay";
 import { isSuccessfulRunResult, onSelectedSoundPackChange, playPeonSound, playWorkSound, stopWorkSound } from "../../peonSounds";
 import { PluginInquiryCard, PluginInquiryLoading } from "./session/PluginInquiryCard";
-import { PLUGIN_INQUIRY_CAPABILITY, usePluginInquiries, type PluginInstallInquiry } from "./session/pluginInquiries";
+import { inquiryAuthPath, PLUGIN_INQUIRY_CAPABILITY, usePluginInquiries, type PluginInstallInquiry } from "./session/pluginInquiries";
 
 // author: Viktor
 // The transcript parsing/render pieces live in ./session/*; this file owns the
@@ -846,6 +846,7 @@ function PeonSessionDetailPage() {
                 <div data-plugin-inquiry-row className={`mx-auto w-full max-w-6xl px-3 sm:px-6 ${row.paddingClass}`}>
                   <PluginInquiryCard
                     inquiry={row.inquiry}
+                    authHrefForApp={(appId) => inquiryAuthPath(base, sid, row.inquiry.inquiryId, appId)}
                     onInstall={() => void pluginInquiries.respond(row.inquiry, "install")}
                     onCancel={() => void pluginInquiries.respond(row.inquiry, "cancel")}
                   />

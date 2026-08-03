@@ -550,6 +550,8 @@ export const ru: Record<string, string> = {
   "action.cancel": "Отмена",
   "pluginInquiry.action": "Установить управляемый плагин?",
   "pluginInquiry.install": "Установить",
+  "pluginInquiry.signIn": "Войти",
+  "pluginInquiry.signInTo": "Войти в {app}",
   "pluginInquiry.managed": "Управляемый плагин",
   "pluginInquiry.loading": "Проверяем запросы плагинов…",
   "pluginInquiry.loadFailed": "Запрос плагина недоступен",

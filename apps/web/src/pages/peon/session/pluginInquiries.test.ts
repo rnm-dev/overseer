@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { ApiError } from "../../../api";
 import {
+  inquiryAuthPath,
   inquiryCollectionPath,
   inquiryResponsePath,
   PLUGIN_INQUIRY_CAPABILITY,
@@ -32,6 +33,7 @@ test("plugin inquiry API paths encode session and public inquiry ids", () => {
   const base = "/workspaces/ws/peons/peon";
   assert.equal(inquiryCollectionPath(base, "session/one"), `${base}/sessions/session%2Fone/inquiries`);
   assert.equal(inquiryResponsePath(base, "session/one", "inquiry/two"), `${base}/sessions/session%2Fone/inquiries/inquiry%2Ftwo/respond`);
+  assert.equal(inquiryAuthPath(base, "session/one", "inquiry/two", "app/three"), `/api${base}/sessions/session%2Fone/inquiries/inquiry%2Ftwo/auth/app%2Fthree`);
 });
 
 test("plugin response sends the backend action contract with an opaque idempotency header", async () => {

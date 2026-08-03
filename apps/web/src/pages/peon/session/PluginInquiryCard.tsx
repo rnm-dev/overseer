@@ -16,8 +16,9 @@ const tone = {
   refused: { icon: X, color: "text-danger" },
 } as const;
 
-export function PluginInquiryCard({ inquiry, onInstall, onCancel }: {
+export function PluginInquiryCard({ inquiry, authHrefForApp, onInstall, onCancel }: {
   inquiry: PluginInstallInquiry;
+  authHrefForApp: (appId: string) => string;
   onInstall: () => void;
   onCancel: () => void;
 }) {
@@ -44,6 +45,15 @@ export function PluginInquiryCard({ inquiry, onInstall, onCancel }: {
         <div className={PLUGIN_INQUIRY_ACTIONS_CLASS}>
           <Button variant="secondary" size="sm" onClick={onCancel}>{t("action.cancel")}</Button>
           <Button size="sm" onClick={onInstall}>{t("pluginInquiry.install")}</Button>
+        </div>
+      )}
+      {inquiry.status === "auth_required" && (
+        <div className="mt-3 flex flex-wrap justify-start gap-2">
+          {inquiry.appsNeedingAuth.map((app) => (
+            <a key={app.id} className="btn btn-accent btn-sm" href={authHrefForApp(app.id)} target="_blank" rel="noreferrer">
+              {inquiry.appsNeedingAuth.length > 1 ? t("pluginInquiry.signInTo", { app: app.name }) : t("pluginInquiry.signIn")}
+            </a>
+          ))}
         </div>
       )}
     </section>

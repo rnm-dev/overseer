@@ -550,6 +550,8 @@ export const en: Record<string, string> = {
   "action.cancel": "Cancel",
   "pluginInquiry.action": "Install this managed plugin?",
   "pluginInquiry.install": "Install",
+  "pluginInquiry.signIn": "Sign in",
+  "pluginInquiry.signInTo": "Sign in to {app}",
   "pluginInquiry.managed": "Managed plugin",
   "pluginInquiry.loading": "Checking plugin requests…",
   "pluginInquiry.loadFailed": "Plugin request unavailable",

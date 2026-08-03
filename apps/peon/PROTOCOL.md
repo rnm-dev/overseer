@@ -148,6 +148,7 @@ GET   /api/v1/sessions/:id               one session
 GET   /api/v1/sessions/:id/inquiries     managed-plugin inquiry-v1 records for recovery
 GET   /api/v1/sessions/:id/inquiries/:inquiryId one managed-plugin inquiry
 POST  /api/v1/sessions/:id/inquiries/:inquiryId/respond explicit { action: "install"|"cancel" }
+GET   /api/v1/sessions/:id/inquiries/:inquiryId/auth/:appId connector auth launch (authenticated Overseer only)
 PATCH /api/v1/sessions/:id               rename; body { title: string|null } (empty/null clears)
 DELETE /api/v1/sessions/:id              delete a session (record + files); 409 if running
 GET   /api/v1/sessions/:id/transcript    full event transcript; `?limit=&cursor=` enables pagination
