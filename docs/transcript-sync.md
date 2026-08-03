@@ -119,6 +119,20 @@ degradation and best-effort timestamp/author enrichment. The client subscribes
 to the live tail separately, and the tail's existing replay/deduplication rules
 close races without making the history page part of reverse demand.
 
+Authorship renders the same on every path. The wire carries one author string —
+`Peon-Actor`, deliberately the canonical email — and the display name and avatar
+are local profile metadata resolved when an event is served, never stored beside
+it: the paginated page, the SSE route and the websocket projected tail (replay
+and live alike) all expand that string into `authorEmail`, `authorGithubLogin`
+and `authorAvatarUrl` from one identity lookup cached for a minute. Matching is
+case-insensitive, matching what the client compares. An actor belonging to no
+operator — `local-cli`, `system`, a removed user — passes through unenriched and
+renders as its literal string, and enrichment stays best-effort: a frame is
+never withheld because local profile metadata could not be read. Peons without
+`transcript-sync-v1` still stream through the legacy per-Peon SSE passthrough,
+which forwards opaque frames and therefore shows the raw actor until the page is
+reloaded.
+
 The transcript channel hello is an exact fixed contract, including
 `subscriptions: 64`; a different or missing limit is a protocol error when the
 canonical catalog+durable dependencies are present. Overseer counts each unique

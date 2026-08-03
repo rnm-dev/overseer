@@ -48,26 +48,83 @@ export function addUserMessageMetadata(
     const candidate = index >= 0 ? candidates[index]! : null;
     if (candidate) cursor = index + 1;
 
-    const identity = typeof event.author === "string"
-      ? identities.find((item) => item.email === event.author || item.githubLogin === event.author)
-      : undefined;
-
-    return {
+    return withAuthorIdentity({
       ...event,
       ...(candidate && typeof event.createdAt !== "number" ? { createdAt: candidate.createdAt } : {}),
       ...(candidate?.commandId && typeof event.commandId !== "string" ? { commandId: candidate.commandId } : {}),
-      ...(identity ? {
-        author: identity.email,
-        authorEmail: identity.email,
-        ...(identity.githubLogin ? { authorGithubLogin: identity.githubLogin } : {}),
-        ...(identity.avatarUrl ? { authorAvatarUrl: identity.avatarUrl } : {}),
-      } : {}),
-    };
+    }, identities);
   });
 }
 
+function matchIdentity(author: unknown, identities: AuthorIdentity[]): AuthorIdentity | undefined {
+  if (typeof author !== "string") return undefined;
+  // The browser compares its own identity case-insensitively; an actor string
+  // whose case differs from the stored row must not silently lose its profile.
+  const key = author.trim().toLowerCase();
+  if (!key) return undefined;
+  return identities.find((item) => item.email.toLowerCase() === key || item.githubLogin?.toLowerCase() === key);
+}
+
+// One rendering of authorship for every surface. The wire carries a single
+// author string (Peon-Actor, deliberately the canonical email); the display
+// name and avatar are local profile metadata resolved at read time, never
+// stored beside the event.
+export function withAuthorIdentity<T extends TranscriptEvent>(event: T, identities: AuthorIdentity[]): T {
+  const identity = matchIdentity(event.author, identities);
+  if (!identity) return event;
+  return {
+    ...event,
+    author: identity.email,
+    authorEmail: identity.email,
+    ...(identity.githubLogin ? { authorGithubLogin: identity.githubLogin } : {}),
+    ...(identity.avatarUrl ? { authorAvatarUrl: identity.avatarUrl } : {}),
+  };
+}
+
+const IDENTITY_TTL_MS = 60_000;
+let identityCache: { at: number; identities: AuthorIdentity[] } | null = null;
+let identityLoad: Promise<AuthorIdentity[]> | null = null;
+
+async function loadAuthorIdentities(): Promise<AuthorIdentity[]> {
+  const rows = await query<{ email: string; github_login: string | null; avatar_url: string | null }>(
+    `SELECT email, github_login, avatar_url FROM users`,
+  );
+  return rows.rows.map((row) => ({ email: row.email, githubLogin: row.github_login, avatarUrl: row.avatar_url }));
+}
+
+// Live transcript frames arrive one at a time and would otherwise cost a users
+// scan each. A minute of staleness only delays a freshly linked GitHub profile.
+export async function authorIdentities(): Promise<AuthorIdentity[]> {
+  if (identityCache && Date.now() - identityCache.at < IDENTITY_TTL_MS) return identityCache.identities;
+  identityLoad ??= loadAuthorIdentities()
+    .then((identities) => {
+      identityCache = { at: Date.now(), identities };
+      return identities;
+    })
+    .finally(() => {
+      identityLoad = null;
+    });
+  return identityLoad;
+}
+
+export function resetAuthorIdentityCache(): void {
+  identityCache = null;
+  identityLoad = null;
+}
+
+// Best-effort: a transcript frame is never withheld because local profile
+// metadata could not be read.
+export async function enrichLiveTranscriptEvent<T extends TranscriptEvent>(event: T): Promise<T> {
+  if (typeof event.author !== "string") return event;
+  try {
+    return withAuthorIdentity(event, await authorIdentities());
+  } catch {
+    return event;
+  }
+}
+
 export async function enrichTranscriptMetadata(peonId: string, sessionId: string, events: TranscriptEvent[]): Promise<TranscriptEvent[]> {
-  const [sessionResult, followupResult, identityResult] = await Promise.all([
+  const [sessionResult, followupResult, identities] = await Promise.all([
     query<{ started_at: number | null }>(
       `SELECT started_at FROM sessions WHERE peon_id=$1 AND session_id=$2`,
       [peonId, sessionId],
@@ -78,9 +135,7 @@ export async function enrichTranscriptMetadata(peonId: string, sessionId: string
        ORDER BY created_at`,
       [peonId, sessionId],
     ),
-    query<{ email: string; github_login: string | null; avatar_url: string | null }>(
-      `SELECT email, github_login, avatar_url FROM users`,
-    ),
+    authorIdentities(),
   ]);
 
   const candidates: MessageCandidate[] = [];
@@ -101,9 +156,5 @@ export async function enrichTranscriptMetadata(peonId: string, sessionId: string
       commandId: row.command_id,
     });
   }
-  return addUserMessageMetadata(
-    events,
-    candidates,
-    identityResult.rows.map((row) => ({ email: row.email, githubLogin: row.github_login, avatarUrl: row.avatar_url })),
-  );
+  return addUserMessageMetadata(events, candidates, identities);
 }

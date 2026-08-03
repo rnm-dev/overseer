@@ -9,7 +9,7 @@ import {
 import { ownerOnly, relay, withWorkspacePeon } from "../helpers.js";
 import { mintWebPreview } from "../../webPreview.js";
 import { runIdempotentFollowup, validCommandId } from "../../followupIdempotency.js";
-import { enrichTranscriptMetadata } from "../../transcriptTimestamps.js";
+import { enrichLiveTranscriptEvent, enrichTranscriptMetadata } from "../../transcriptTimestamps.js";
 import { indexAcceptedSession } from "../../modules/acceptedSession/index.js";
 import { cancelSessionRun } from "../../modules/sessionCancel/index.js";
 import { deleteIndexedSession, getIndexedSession } from "../../sessionIndex.js";
@@ -502,8 +502,11 @@ async function streamProjectedTranscript(
   res.setHeader("Connection", "keep-alive");
   res.flushHeaders();
   const seen = new Set<string>();
-  const writeEvent = (event: Record<string, unknown>): boolean =>
-    writeProjectedTranscriptSseEvent(res, event, seen);
+  // The same authorship the paginated transcript renders: a live frame carries
+  // only the actor string, so resolve the profile here rather than letting a
+  // message change its name and avatar on the next reload.
+  const writeEvent = async (event: Record<string, unknown>): Promise<boolean> =>
+    writeProjectedTranscriptSseEvent(res, await enrichLiveTranscriptEvent(event), seen);
   let ready = false;
   let pendingBytes = 0;
   const pending: LiveEvent[] = [];
@@ -525,7 +528,7 @@ async function streamProjectedTranscript(
       return;
     }
     if (payload.event && typeof payload.event === "object" && !Array.isArray(payload.event)) {
-      writeEvent(payload.event as Record<string, unknown>);
+      await writeEvent(payload.event as Record<string, unknown>);
     }
   };
   const enqueue = (live: LiveEvent): void => {
@@ -556,7 +559,7 @@ async function streamProjectedTranscript(
         res.end();
         break;
       }
-      if (!writeEvent(event)) break;
+      if (!(await writeEvent(event))) break;
     }
     for (const live of pending.sort((left, right) => left.cursor - right.cursor)) enqueue(live);
     pending.length = 0;

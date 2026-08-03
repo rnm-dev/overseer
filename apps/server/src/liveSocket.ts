@@ -32,6 +32,7 @@ import {
   transcriptConnectionBus,
 } from "./peonTranscriptSync.js";
 import { canAccessIndexedSessionNow } from "./access.js";
+import { enrichLiveTranscriptEvent } from "./transcriptTimestamps.js";
 
 // The north-bound (overseer→client) transport: one authenticated WebSocket per
 // app, multiplexing presence + live session tails, resumable by cursor.
@@ -710,7 +711,7 @@ async function subscribe(client: Client, peonId: string, sessionId: string, requ
           closeRevokedTail(client, ctrl, tail);
           return;
         }
-        sendProjectedEvent(client, tail, event);
+        await sendProjectedEvent(client, tail, event);
       }
       while (tail.pending.length > 0) {
         const pending = tail.pending.splice(0).sort((left, right) => left.cursor - right.cursor);
@@ -792,12 +793,12 @@ function unsubscribe(client: Client, sessionId: string): void {
   client.tails.delete(sessionId);
 }
 
-function sendProjectedTail(client: Client, tail: ReverseTailState, live: LiveEvent): void {
+async function sendProjectedTail(client: Client, tail: ReverseTailState, live: LiveEvent): Promise<void> {
   const payload = live.payload && typeof live.payload === "object"
     ? live.payload as { event?: unknown }
     : null;
   if (!payload?.event || typeof payload.event !== "object" || Array.isArray(payload.event)) return;
-  sendProjectedEvent(client, tail, payload.event as Record<string, unknown>);
+  await sendProjectedEvent(client, tail, payload.event as Record<string, unknown>);
 }
 
 async function currentTranscriptAccess(client: Client, peonId: string, sessionId: string): Promise<boolean> {
@@ -837,21 +838,24 @@ async function deliverProjectedTail(
     send(client.ws, { type: "tailEnd", peonId: tail.peonId, sessionId: tail.sessionId });
     return false;
   }
-  sendProjectedTail(client, tail, live);
+  await sendProjectedTail(client, tail, live);
   return true;
 }
 
-function sendProjectedEvent(client: Client, tail: ReverseTailState, event: Record<string, unknown>): void {
+async function sendProjectedEvent(client: Client, tail: ReverseTailState, event: Record<string, unknown>): Promise<void> {
   const eventId = typeof event.eventId === "string" ? event.eventId : null;
   if (!eventId || tail.seen.has(eventId)) return;
   tail.seen.add(eventId);
+  // Authorship is resolved on the way out, exactly as the paginated transcript
+  // resolves it: the projection stores only the actor string the Peon sent.
+  const enriched = await enrichLiveTranscriptEvent(event);
   send(client.ws, {
     type: "tail",
     peonId: tail.peonId,
     sessionId: tail.sessionId,
     event: "event",
     id: eventId,
-    data: JSON.stringify(event),
+    data: JSON.stringify(enriched),
   });
 }
 
