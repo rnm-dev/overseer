@@ -58,3 +58,32 @@ test("enroll and pair arm the same one-time phrase flow", async () => {
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }
 });
+
+test("pair prefers a concrete remote listener over a stale loopback public URL", async () => {
+  const server = http.createServer((req, res) => {
+    res.setHeader("content-type", "application/json");
+    if (req.method === "GET" && req.url === "/api/v1/settings") {
+      res.end(JSON.stringify({
+        publicControlUrl: "http://127.0.0.1:4570",
+        listenAddress: "194.238.43.159:4570",
+      }));
+      return;
+    }
+    if (req.method === "POST" && req.url === "/api/v1/pairing/arm") {
+      res.end(JSON.stringify({ ok: true, phrase: "axe-dark-zaela-hellscream", expiresAt: Date.now() + 15 * 60_000 }));
+      return;
+    }
+    res.statusCode = 404;
+    res.end(JSON.stringify({ error: "not found" }));
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const controlUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  try {
+    const result = await runCli(["pair"], controlUrl);
+    assert.equal(result.code, 0, result.stderr);
+    assert.match(result.stdout, /address\s+: http:\/\/194\.238\.43\.159:4570/);
+    assert.doesNotMatch(result.stdout, /address\s+: http:\/\/127\.0\.0\.1:4570/);
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
