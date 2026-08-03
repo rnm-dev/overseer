@@ -50,7 +50,9 @@ test("terminal and running states cannot trigger duplicate actions", () => {
 
 test("card follows theme primitives and collapses actions on narrow phones", () => {
   assert.match(PLUGIN_INQUIRY_CARD_CLASS, /\bsurface\b/);
-  assert.match(PLUGIN_INQUIRY_CARD_CLASS, /\bmax-w-xl\b/);
+  assert.match(PLUGIN_INQUIRY_CARD_CLASS, /\bmr-auto\b/);
+  assert.doesNotMatch(PLUGIN_INQUIRY_CARD_CLASS, /\bmx-auto\b/);
+  assert.match(PLUGIN_INQUIRY_CARD_CLASS, /\bmax-w-md\b/);
   assert.match(PLUGIN_INQUIRY_ACTIONS_CLASS, /max-\[360px\]:grid-cols-1/);
   assert.match(PLUGIN_INQUIRY_ACTIONS_CLASS, /grid-cols-2/);
 });

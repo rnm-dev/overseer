@@ -3,8 +3,8 @@ import { Button } from "../../../ui";
 import { useI18n } from "../../../i18n";
 import type { PluginInstallInquiry } from "./pluginInquiries";
 
-export const PLUGIN_INQUIRY_CARD_CLASS = "plugin-inquiry-card surface mx-auto w-full max-w-xl overflow-hidden p-4 sm:p-5";
-export const PLUGIN_INQUIRY_ACTIONS_CLASS = "mt-4 grid grid-cols-2 gap-2 max-[360px]:grid-cols-1";
+export const PLUGIN_INQUIRY_CARD_CLASS = "plugin-inquiry-card surface mr-auto w-full max-w-md overflow-hidden p-3 sm:p-4";
+export const PLUGIN_INQUIRY_ACTIONS_CLASS = "mt-3 grid grid-cols-2 gap-2 max-[360px]:grid-cols-1";
 
 const tone = {
   installed: { icon: Check, color: "text-accent-strong" },
@@ -28,9 +28,9 @@ export function PluginInquiryCard({ inquiry, onInstall, onCancel }: {
   const Icon = terminal?.icon ?? (pending || installing ? PackagePlus : ShieldCheck);
   return (
     <section className={PLUGIN_INQUIRY_CARD_CLASS} aria-labelledby={`plugin-inquiry-${inquiry.inquiryId}`} aria-live="polite" data-plugin-inquiry-status={inquiry.status}>
-      <div className="flex items-start gap-3">
-        <span className={`grid size-9 shrink-0 place-items-center rounded-lg bg-surface-hover ${terminal?.color ?? "text-accent-strong"}`} aria-hidden="true">
-          <Icon size={18} className={installing ? "animate-pulse motion-reduce:animate-none" : ""} />
+      <div className="flex items-start gap-2.5">
+        <span className={`grid size-8 shrink-0 place-items-center rounded-lg bg-surface-hover ${terminal?.color ?? "text-accent-strong"}`} aria-hidden="true">
+          <Icon size={16} className={installing ? "animate-pulse motion-reduce:animate-none" : ""} />
         </span>
         <div className="min-w-0 flex-1">
           <p className="font-display text-[0.62rem] font-semibold uppercase tracking-[0.16em] text-ink-faint">{inquiry.plugin.category ?? t("pluginInquiry.managed")}</p>
@@ -39,7 +39,7 @@ export function PluginInquiryCard({ inquiry, onInstall, onCancel }: {
         </div>
         <span className={`shrink-0 text-xs font-medium ${terminal?.color ?? "text-ink-muted"}`}>{t(`pluginInquiry.status.${inquiry.status}`)}</span>
       </div>
-      {pending && <p className="mt-3 text-sm text-ink-muted">{t("pluginInquiry.action")}</p>}
+      {pending && <p className="mt-2.5 text-sm text-ink-muted">{t("pluginInquiry.action")}</p>}
       {pending && (
         <div className={PLUGIN_INQUIRY_ACTIONS_CLASS}>
           <Button variant="secondary" size="sm" onClick={onCancel}>{t("action.cancel")}</Button>
