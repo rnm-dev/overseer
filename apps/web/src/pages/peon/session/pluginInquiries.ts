@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, api } from "../../../api";
 
 export const PLUGIN_INQUIRY_CAPABILITY = "managed-plugin-inquiry-v1";
@@ -103,13 +103,18 @@ export function stableInquiryError(error: unknown): PluginInquiryStatus {
   return "failed";
 }
 
-export function isActivePluginInquiry(inquiry: Pick<PluginInstallInquiry, "status">): boolean {
-  return inquiry.status === "pending" || inquiry.status === "installing" || inquiry.status === "auth_required";
+export function inquiryInsertionIndex(items: object[], createdAt: string): number {
+  const timestamp = Date.parse(createdAt);
+  if (!Number.isFinite(timestamp)) return items.length;
+  const later = items.findIndex((item) => {
+    const itemTimestamp = (item as { createdAt?: unknown }).createdAt;
+    return typeof itemTimestamp === "number" && itemTimestamp > timestamp;
+  });
+  return later === -1 ? items.length : later;
 }
 
 export function usePluginInquiries(base: string, sid: string, supported: boolean) {
   const [inquiries, setInquiries] = useState<PluginInstallInquiry[]>([]);
-  const activeInquiries = useMemo(() => inquiries.filter(isActivePluginInquiry), [inquiries]);
   const [loading, setLoading] = useState(supported);
   const [loadFailed, setLoadFailed] = useState(false);
   const inFlight = useRef(new Set<string>());
@@ -198,5 +203,5 @@ export function usePluginInquiries(base: string, sid: string, supported: boolean
     }
   }, [base, refresh, sid]);
 
-  return { inquiries: activeInquiries, loading, loadFailed, refresh, respond };
+  return { inquiries, loading, loadFailed, refresh, respond };
 }

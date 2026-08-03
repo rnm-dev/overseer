@@ -37,7 +37,7 @@ import { lockSessionDocument } from "./session/sessionViewport";
 import { loadToolDisplayMode } from "../../sessionToolDisplay";
 import { isSuccessfulRunResult, onSelectedSoundPackChange, playPeonSound, playWorkSound, stopWorkSound } from "../../peonSounds";
 import { PluginInquiryCard, PluginInquiryLoading } from "./session/PluginInquiryCard";
-import { inquiryAuthPath, PLUGIN_INQUIRY_CAPABILITY, usePluginInquiries, type PluginInstallInquiry } from "./session/pluginInquiries";
+import { inquiryAuthPath, inquiryInsertionIndex, PLUGIN_INQUIRY_CAPABILITY, usePluginInquiries, type PluginInstallInquiry } from "./session/pluginInquiries";
 
 // author: Viktor
 // The transcript parsing/render pieces live in ./session/*; this file owns the
@@ -655,8 +655,11 @@ function PeonSessionDetailPage() {
     if (pluginInquiries.loading || pluginInquiries.loadFailed) {
       rows.push({ key: "plugin-inquiries-loading", kind: "inquiry-loading", failed: pluginInquiries.loadFailed, paddingClass: "pt-6" });
     }
-    for (const inquiry of pluginInquiries.inquiries) {
-      rows.push({ key: `plugin-inquiry:${inquiry.inquiryId}`, kind: "inquiry", inquiry, paddingClass: "pt-6" });
+    let insertedInquiries = 0;
+    for (const inquiry of [...pluginInquiries.inquiries].sort((a, b) => a.createdAt.localeCompare(b.createdAt))) {
+      const itemIndex = inquiryInsertionIndex(items, inquiry.createdAt);
+      rows.splice(itemIndex + insertedInquiries, 0, { key: `plugin-inquiry:${inquiry.inquiryId}`, kind: "inquiry", inquiry, paddingClass: "pt-6" });
+      insertedInquiries += 1;
     }
     if (liveWork) {
       const previousIsUser = ghost || (items.length > 0 && items[items.length - 1]!.kind === "user");

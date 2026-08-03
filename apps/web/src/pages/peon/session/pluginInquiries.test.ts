@@ -4,8 +4,8 @@ import { ApiError } from "../../../api";
 import {
   inquiryAuthPath,
   inquiryCollectionPath,
+  inquiryInsertionIndex,
   inquiryResponsePath,
-  isActivePluginInquiry,
   PLUGIN_INQUIRY_CAPABILITY,
   parsePluginInquiries,
   respondToPluginInquiry,
@@ -75,7 +75,8 @@ test("runtime loss and stale generation render as stale, not generic failure", (
   }
 });
 
-test("only actionable inquiries remain visible in the transcript", () => {
-  for (const status of ["pending", "installing", "auth_required"] as const) assert.equal(isActivePluginInquiry({ ...pending, status }), true);
-  for (const status of ["installed", "expired", "cancelled", "failed", "stale", "refused"] as const) assert.equal(isActivePluginInquiry({ ...pending, status }), false);
+test("historical inquiries stay beside their creation time instead of following new messages", () => {
+  const items = [{ createdAt: 100 }, { createdAt: 200 }, { createdAt: 400 }];
+  assert.equal(inquiryInsertionIndex(items, new Date(250).toISOString()), 2);
+  assert.equal(inquiryInsertionIndex(items, new Date(500).toISOString()), 3);
 });
