@@ -8,6 +8,23 @@ let runtimeSlot = null;
 const activeThreadTurns = new Map();
 const configuredRequestPolicies = new WeakSet();
 let managedPluginToolHandler = null;
+export const MANAGED_PLUGIN_DYNAMIC_TOOLS = [{
+        type: "function",
+        name: "request_plugin_install",
+        description: "Request explicit operator approval to install an available managed Codex plugin. Use this when the requested plugin is not installed; do not claim that an installation was requested unless this tool call succeeds.",
+        inputSchema: {
+            type: "object",
+            additionalProperties: false,
+            required: ["plugin_id"],
+            properties: {
+                plugin_id: {
+                    type: "string",
+                    enum: ["posthog@openai-curated-remote"],
+                    description: "The exact managed plugin id to install.",
+                },
+            },
+        },
+    }];
 export function configureManagedPluginToolHandler(handler) {
     managedPluginToolHandler = handler;
     if (runtimeSlot)
@@ -379,6 +396,7 @@ export function createCodexAppServerRun(opts, runtime) {
                 approvalsReviewer: "user",
                 sandbox: sandboxMode(opts),
                 developerInstructions: opts.systemPromptAppend,
+                dynamicTools: MANAGED_PLUGIN_DYNAMIC_TOOLS,
                 ...(config ? { config } : {}),
             };
             if (opts.resume) {
