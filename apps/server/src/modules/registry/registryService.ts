@@ -1,4 +1,4 @@
-import { query } from "../../db.js";
+import { query } from "../../infrastructure/db/index.js";
 import { isPeonConnected, peonConnectionStartedAt } from "../../peonConnections.js";
 import { baseUrl, legacyCallbackUrl } from "../../infrastructure/peonHttp/index.js";
 import type { AddressSource, PeonLoad, PeonRecord, PeonView, RegisterInput } from "./registryTypes.js";

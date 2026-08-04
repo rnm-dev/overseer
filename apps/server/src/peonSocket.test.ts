@@ -6,7 +6,7 @@ import type pg from "pg";
 import { newDb } from "pg-mem";
 import WebSocket from "ws";
 import { bindPeon, mintCredential, revokeCredentialForPeon } from "./credentials.js";
-import { initDb, query } from "./db.js";
+import { initDb, query } from "./infrastructure/db/index.js";
 import { attachLiveSocket } from "./liveSocket.js";
 import { attachPeonSocket } from "./peonSocket.js";
 import { registry, toView } from "./registry.js";

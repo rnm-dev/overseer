@@ -19,7 +19,7 @@ export interface Config {
   // Public base URL of the operator surface. The SPA's OAuth callback lives
   // here, so it must match how the app is actually reached.
   publicUrl: string;
-  // GitHub OAuth app credentials (github.ts). The SPA drives the redirect; the
+  // GitHub OAuth app credentials (infrastructure/github). The SPA drives the redirect; the
   // server does the code→token exchange with the secret, never exposed to the client.
   githubClientId: string;
   githubClientSecret: string;

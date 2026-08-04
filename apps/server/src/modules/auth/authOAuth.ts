@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
-import { query } from "../../db.js";
-import { exchangeCodeForProfile } from "../../github.js";
+import { query } from "../../infrastructure/db/index.js";
+import { exchangeCodeForProfile } from "../../infrastructure/github/index.js";
 import { ensureDefaultWorkspace } from "../../workspaces.js";
 import { ensureUserFromGithub, getUserById } from "./authUsers.js";
 import { issueDevice } from "./authDevices.js";

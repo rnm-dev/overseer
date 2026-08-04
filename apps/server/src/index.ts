@@ -1,5 +1,5 @@
 import { config, configWarnings } from "./config.js";
-import { initDb } from "./db.js";
+import { initDb } from "./infrastructure/db/index.js";
 import { createServer } from "./server.js";
 import { startReconciler } from "./sessionIndex.js";
 import { attachLiveSocket } from "./liveSocket.js";

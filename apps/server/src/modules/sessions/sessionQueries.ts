@@ -1,4 +1,4 @@
-import { query } from "../../db.js";
+import { query } from "../../infrastructure/db/index.js";
 import { registry, toView } from "../../registry.js";
 import type { ListOptions, OperatorRecentSession, SessionCatalogState, SessionIndexRow } from "./sessionTypes.js";
 

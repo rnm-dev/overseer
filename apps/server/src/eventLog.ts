@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { query, type Transaction } from "./db.js";
+import { query, type Transaction } from "./infrastructure/db/index.js";
 import type { AppendInput, EventKind, LiveEvent } from "./shared/liveEvent.js";
 export type { AppendInput, EventKind, LiveEvent } from "./shared/liveEvent.js";
 

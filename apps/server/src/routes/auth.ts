@@ -17,7 +17,7 @@ import {
   verifyDeviceToken,
 } from "../modules/auth/index.js";
 import type { PasswordSignInResult } from "../modules/auth/index.js";
-import { GithubAuthError } from "../github.js";
+import { GithubAuthError } from "../infrastructure/github/index.js";
 import { getInvitePreview } from "../workspaces.js";
 import { bearer, clientInfo } from "./helpers.js";
 

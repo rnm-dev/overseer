@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { query } from "./db.js";
+import { query } from "./infrastructure/db/index.js";
 import { membership, type Role } from "./workspaces.js";
 import { canAccessPeon, canAccessProject } from "./access.js";
 import {

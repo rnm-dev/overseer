@@ -3,7 +3,7 @@ import { once } from "node:events";
 import { test } from "node:test";
 import type pg from "pg";
 import { newDb } from "pg-mem";
-import { initDb, query } from "./db.js";
+import { initDb, query } from "./infrastructure/db/index.js";
 import { bus, readEventsSince } from "./eventLog.js";
 import { eventVisible, type AccessClient } from "./liveAccess.js";
 import {

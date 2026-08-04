@@ -1,6 +1,6 @@
-import { query } from "../../db.js";
+import { query } from "../../infrastructure/db/index.js";
 import { randomUUID } from "node:crypto";
-import type { GithubProfile } from "../../github.js";
+import type { GithubProfile } from "../../infrastructure/github/index.js";
 import type { UserRecord } from "./authTypes.js";
 
 interface UserRow {

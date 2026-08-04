@@ -6,7 +6,7 @@ import { after, afterEach, before, test } from "node:test";
 import type pg from "pg";
 import { newDb } from "pg-mem";
 import { config } from "./config.js";
-import { initDb, query } from "./db.js";
+import { initDb, query } from "./infrastructure/db/index.js";
 import { resolveVoiceConfig } from "./infrastructure/voice/index.js";
 import { resetVoiceQuota } from "./modules/voice/index.js";
 import { createServer } from "./server.js";

@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import type pg from "pg";
 import { newDb } from "pg-mem";
-import { initDb } from "./db.js";
+import { initDb } from "./infrastructure/db/index.js";
 import { runIdempotentFollowup, validCommandId } from "./followupIdempotency.js";
 
 test("accepts UUID and legacy opaque follow-up command IDs", () => {

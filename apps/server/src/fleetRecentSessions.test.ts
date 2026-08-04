@@ -5,7 +5,7 @@ import { after, test } from "node:test";
 import type pg from "pg";
 import { newDb } from "pg-mem";
 import { issueDevice } from "./modules/auth/index.js";
-import { initDb, query, setPool } from "./db.js";
+import { initDb, query, setPool } from "./infrastructure/db/index.js";
 import { replaceMemberAccess } from "./access.js";
 import { registry } from "./registry.js";
 import { createServer } from "./server.js";

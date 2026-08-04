@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import pg from "pg";
 import { newDb } from "pg-mem";
 import WebSocket from "ws";
-import { initDb, query, setPool } from "./db.js";
+import { initDb, query, setPool } from "./infrastructure/db/index.js";
 import { consumeWebSocketTicket, issueDevice, issueWebSocketTicket, verifyDeviceToken } from "./modules/auth/index.js";
 import { createWorkspace } from "./workspaces.js";
 import { registry } from "./registry.js";

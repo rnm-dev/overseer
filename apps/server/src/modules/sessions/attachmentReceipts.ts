@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { query } from "../../db.js";
+import { query } from "../../infrastructure/db/index.js";
 import type { ReverseCommandActor } from "../reverseCommands/reverseCommandTypes.js";
 
 const RECEIPT_TTL_MS = 60 * 60_000;

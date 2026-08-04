@@ -1,4 +1,4 @@
-import { query, transaction, transactionWithAdvisoryLock, type Transaction } from "../../db.js";
+import { query, transaction, transactionWithAdvisoryLock, type Transaction } from "../../infrastructure/db/index.js";
 import { insertEvent, publishCommittedEvent, type LiveEvent } from "../../eventLog.js";
 import {
   assertSafeReverseCommandResult,

@@ -1,5 +1,5 @@
 import pg from "pg";
-import { config } from "./config.js";
+import { config } from "../../config.js";
 import { MIGRATIONS } from "./migrations.js";
 
 // Postgres is the overseer's single system-of-record. This module owns the

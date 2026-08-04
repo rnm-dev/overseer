@@ -1,4 +1,4 @@
-import { query, transaction, type Transaction } from "./db.js";
+import { query, transaction, type Transaction } from "./infrastructure/db/index.js";
 import { insertEvent, publishCommittedEvent, type LiveEvent } from "./eventLog.js";
 import { toView, type PeonRecord } from "./registry.js";
 

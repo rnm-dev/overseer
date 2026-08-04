@@ -1,6 +1,6 @@
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { config } from "../../config.js";
-import { query } from "../../db.js";
+import { query } from "../../infrastructure/db/index.js";
 import { disableLiveActivitiesForDevice } from "../../liveActivity.js";
 import type { AuthContext, ClientInfo, DeviceView } from "./authTypes.js";
 

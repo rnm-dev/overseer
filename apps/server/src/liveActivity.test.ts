@@ -6,7 +6,7 @@ import { after, before, beforeEach, test } from "node:test";
 import type pg from "pg";
 import { newDb } from "pg-mem";
 import { config } from "./config.js";
-import { initDb, query } from "./db.js";
+import { initDb, query } from "./infrastructure/db/index.js";
 import { appendEvent } from "./eventLog.js";
 import { configureEventDelivery } from "./app/eventDelivery.js";
 import { appleDate } from "./infrastructure/push/index.js";

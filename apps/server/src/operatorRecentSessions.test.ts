@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type pg from "pg";
 import { newDb } from "pg-mem";
-import { initDb, query, setPool } from "./db.js";
+import { initDb, query, setPool } from "./infrastructure/db/index.js";
 import { replaceMemberAccess } from "./access.js";
 import { clampRecentSessionsLimit, listOperatorRecentSessions } from "./sessionIndex.js";
 import { completeNextSessionAttention, markSessionAttentionRead, recordSessionRequest } from "./sessionAttention.js";

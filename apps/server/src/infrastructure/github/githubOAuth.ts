@@ -1,4 +1,4 @@
-import { config } from "./config.js";
+import { config } from "../../config.js";
 
 // GitHub OAuth identity exchange. GitHub returns every client flow to the same
 // frontend HTTPS callback, which submits the authorization code to the API. The

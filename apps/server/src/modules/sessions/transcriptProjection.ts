@@ -1,5 +1,5 @@
 import { Buffer } from "node:buffer";
-import { query, transaction, type Transaction } from "../../db.js";
+import { query, transaction, type Transaction } from "../../infrastructure/db/index.js";
 import { insertEvent, publishCommittedEvent, type LiveEvent } from "../../eventLog.js";
 
 export const TRANSCRIPT_SESSION_EVENT_LIMIT = 20_000;

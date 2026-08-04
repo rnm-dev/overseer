@@ -4,7 +4,7 @@ import { after, test } from "node:test";
 import assert from "node:assert/strict";
 import type pg from "pg";
 import { newDb } from "pg-mem";
-import { setPool } from "./db.js";
+import { setPool } from "./infrastructure/db/index.js";
 import { registry } from "./registry.js";
 import { createServer } from "./server.js";
 import { mintWebPreview } from "./webPreview.js";

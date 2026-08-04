@@ -5,7 +5,7 @@ import { after, before, test } from "node:test";
 import type pg from "pg";
 import { newDb } from "pg-mem";
 import { bindPeon, mintCredential } from "./credentials.js";
-import { initDb, query } from "./db.js";
+import { initDb, query } from "./infrastructure/db/index.js";
 import { issueDevice, WEB_SESSION_COOKIE } from "./modules/auth/index.js";
 import { registry } from "./registry.js";
 import { replaceMemberAccess } from "./access.js";

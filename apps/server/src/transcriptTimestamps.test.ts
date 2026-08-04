@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import type pg from "pg";
 import { newDb } from "pg-mem";
-import { initDb, query } from "./db.js";
+import { initDb, query } from "./infrastructure/db/index.js";
 import {
   addUserMessageMetadata,
   enrichLiveTranscriptEvent,

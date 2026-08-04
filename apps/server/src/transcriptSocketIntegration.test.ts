@@ -8,7 +8,7 @@ import { newDb } from "pg-mem";
 import WebSocket from "ws";
 import { replaceMemberAccess } from "./access.js";
 import { bindPeon, mintCredential } from "./credentials.js";
-import { initDb, query } from "./db.js";
+import { initDb, query } from "./infrastructure/db/index.js";
 import { attachLiveSocket } from "./liveSocket.js";
 import {
   issueDevice,

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type pg from "pg";
 import { newDb } from "pg-mem";
-import { initDb } from "./db.js";
+import { initDb } from "./infrastructure/db/index.js";
 import { baseUrl, legacyCallbackUrl, registry } from "./registry.js";
 
 async function freshDb(): Promise<void> {

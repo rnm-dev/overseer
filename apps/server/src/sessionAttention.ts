@@ -1,5 +1,5 @@
 import { appendEvent } from "./eventLog.js";
-import { query, transaction } from "./db.js";
+import { query, transaction } from "./infrastructure/db/index.js";
 import { isUserViewingSession } from "./modules/presence/index.js";
 import { cancelPendingPush } from "./push.js";
 import type { SessionAttentionPayload } from "./modules/sessions/index.js";

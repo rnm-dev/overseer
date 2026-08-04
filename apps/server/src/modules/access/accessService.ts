@@ -1,4 +1,4 @@
-import { query, transaction } from "../../db.js";
+import { query, transaction } from "../../infrastructure/db/index.js";
 import type { Role } from "../../workspaces.js";
 import type { AccessQuery, MemberAccess } from "./accessTypes.js";
 

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { query, withAdvisoryLock } from "./db.js";
+import { query, withAdvisoryLock } from "./infrastructure/db/index.js";
 import { membership } from "./workspaces.js";
 import { canAccessPeon, canAccessProject } from "./access.js";
 import { fcmEnabled, fcmSender, plainText, PushDeliveryError, type PushMessage } from "./infrastructure/push/index.js";

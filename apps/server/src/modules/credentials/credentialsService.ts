@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID } from "node:crypto";
-import { query, transaction } from "../../db.js";
+import { query, transaction } from "../../infrastructure/db/index.js";
 import { evictPeonConnection } from "../../peonConnections.js";
 import type { Minted, PeonCredential } from "./credentialsTypes.js";
 

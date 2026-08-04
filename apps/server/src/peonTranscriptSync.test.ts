@@ -4,7 +4,7 @@ import { test } from "node:test";
 import type pg from "pg";
 import { newDb } from "pg-mem";
 import { WebSocket } from "ws";
-import { initDb } from "./db.js";
+import { initDb } from "./infrastructure/db/index.js";
 import { claimSessionSyncGeneration } from "./sessionIndex.js";
 import {
   getTranscriptState,
