@@ -1,4 +1,4 @@
-import type { PeonCallResult } from "../peonClient/peonClientTypes.js";
+import type { PeonCallResult } from "../peonClient/index.js";
 
 // The Peon answers 409 SESSION_NOT_RUNNING when the session it was asked to
 // cancel has no active run.

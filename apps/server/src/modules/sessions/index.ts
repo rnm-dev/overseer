@@ -5,3 +5,6 @@ export * from "./sessionQueries.js";
 export * from "./transcriptProjection.js";
 export * from "./livePreviewState.js";
 export * from "./livePreviewConsumer.js";
+export type { SessionAttentionPayload } from "./sessionAttentionTypes.js";
+export * from "./acceptedSessionService.js";
+export * from "./sessionCancelService.js";

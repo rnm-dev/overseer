@@ -7,12 +7,14 @@ import { attachPeonSocket } from "./peonSocket.js";
 import { pruneEvents } from "./eventLog.js";
 import { startPushWorker } from "./push.js";
 import { pruneTranscriptProjection } from "./modules/sessions/index.js";
+import { configureEventDelivery } from "./app/eventDelivery.js";
 
 // Fail loud if Postgres is unreachable — the overseer has no meaningful degraded
 // mode without its system-of-record, so a bad DATABASE_URL should stop the boot
 // rather than serve half-broken.
 async function main(): Promise<void> {
   await initDb();
+  configureEventDelivery();
   const app = createServer();
   const server = app.listen(config.port, config.host, () => {
     console.log(`overseer: listening on http://${config.host}:${config.port}`);

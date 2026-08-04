@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { cancelSessionRun } from "./modules/sessionCancel/index.js";
+import { cancelSessionRun } from "./modules/sessions/index.js";
 
 const ok = { status: 200, ok: true, json: { ok: true } };
 const notRunning = { status: 409, ok: false, json: { error: "session is not the active running session", code: "SESSION_NOT_RUNNING" } };

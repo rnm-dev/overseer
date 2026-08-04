@@ -4,6 +4,7 @@ import type pg from "pg";
 import { newDb } from "pg-mem";
 import { initDb, query } from "./db.js";
 import { appendEvent } from "./eventLog.js";
+import { configureEventDelivery } from "./app/eventDelivery.js";
 import { completeNextSessionAttention, markSessionAttentionRead, recordSessionRequest } from "./sessionAttention.js";
 import { setPushPreferences, upsertPushSubscription } from "./push.js";
 
@@ -12,6 +13,7 @@ import { setPushPreferences, upsertPushSubscription } from "./push.js";
 // far larger set of events that must stay silent.
 
 async function setup() {
+  configureEventDelivery();
   const mem = newDb();
   const adapter = mem.adapters.createPg();
   await initDb(new adapter.Pool() as unknown as pg.Pool);

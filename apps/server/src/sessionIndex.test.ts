@@ -5,7 +5,7 @@ import test from "node:test";
 import type pg from "pg";
 import { newDb } from "pg-mem";
 import { initDb, query } from "./db.js";
-import { indexAcceptedSession } from "./modules/acceptedSession/index.js";
+import { indexAcceptedSession } from "./modules/sessions/index.js";
 import {
   applySocketSessionEvent,
   applySocketSessionSnapshot,

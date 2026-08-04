@@ -10,14 +10,14 @@ import { ownerOnly, relay, withWorkspacePeon } from "../helpers.js";
 import { mintWebPreview } from "../../webPreview.js";
 import { runIdempotentFollowup, validCommandId } from "../../followupIdempotency.js";
 import { enrichLiveTranscriptEvent, enrichTranscriptMetadata } from "../../transcriptTimestamps.js";
-import { indexAcceptedSession } from "../../modules/acceptedSession/index.js";
-import { cancelSessionRun } from "../../modules/sessionCancel/index.js";
 import { deleteIndexedSession, getIndexedSession } from "../../sessionIndex.js";
 import { cancelSessionRequest, markSessionAttentionRead, recordSessionRequest } from "../../sessionAttention.js";
 import { getIndexedProject, getIndexedProjectById } from "../../projectIndex.js";
 import { bus, type LiveEvent } from "../../eventLog.js";
 import {
+  cancelSessionRun,
   getTranscriptState,
+  indexAcceptedSession,
   readTranscriptAfter,
   type TranscriptState,
 } from "../../modules/sessions/index.js";

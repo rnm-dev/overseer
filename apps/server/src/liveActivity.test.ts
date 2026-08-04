@@ -8,6 +8,7 @@ import { newDb } from "pg-mem";
 import { config } from "./config.js";
 import { initDb, query } from "./db.js";
 import { appendEvent } from "./eventLog.js";
+import { configureEventDelivery } from "./app/eventDelivery.js";
 import { appleDate } from "./infrastructure/push/index.js";
 import {
   aggregateActivityId,
@@ -100,6 +101,7 @@ after(async () => {
 });
 
 beforeEach(async () => {
+  configureEventDelivery();
   sent = [];
   const mem = newDb();
   const adapter = mem.adapters.createPg();

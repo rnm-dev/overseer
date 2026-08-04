@@ -3,8 +3,8 @@ import { query, withAdvisoryLock } from "./db.js";
 import { membership } from "./workspaces.js";
 import { canAccessPeon, canAccessProject } from "./access.js";
 import { fcmEnabled, fcmSender, plainText, PushDeliveryError, type PushMessage } from "./infrastructure/push/index.js";
-import type { LiveEvent } from "./eventLog.js";
-import type { SessionAttentionPayload } from "./sessionAttention.js";
+import type { LiveEvent } from "./shared/liveEvent.js";
+import type { SessionAttentionPayload } from "./modules/sessions/index.js";
 
 export type PushProvider = "expo" | "fcm" | "apns";
 export type PushPlatform = "ios" | "android";

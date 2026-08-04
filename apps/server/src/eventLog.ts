@@ -1,7 +1,7 @@
 import { EventEmitter } from "node:events";
 import { query, type Transaction } from "./db.js";
-import { enqueuePushForEvent } from "./push.js";
-import { syncLiveActivitiesForEvent } from "./liveActivity.js";
+import type { AppendInput, EventKind, LiveEvent } from "./shared/liveEvent.js";
+export type { AppendInput, EventKind, LiveEvent } from "./shared/liveEvent.js";
 
 // The append-only event log — the single choke point that both persists a
 // resumable, ordered stream (global `cursor`) and fans out live to connected WS
@@ -9,31 +9,19 @@ import { syncLiveActivitiesForEvent } from "./liveActivity.js";
 // appendEvent(): it writes a row, then emits it. liveSocket.ts is the consumer.
 // author: Viktor
 
-export type EventKind = "session" | "project" | "peon" | "attention" | "command" | "transcript" | "configuration";
-
-export interface LiveEvent {
-  cursor: number;
-  workspaceId: string;
-  peonId: string;
-  sessionId: string | null;
-  kind: EventKind;
-  payload: unknown;
-  createdAt: number;
-}
-
 // One process-wide bus; every WS connection adds a listener, so lift the cap.
 export const bus = new EventEmitter();
 bus.setMaxListeners(0);
 
-export interface AppendInput {
-  workspaceId: string;
-  peonId: string;
-  sessionId?: string | null;
-  kind: EventKind;
-  payload: unknown;
-}
-
 type EventWriter = Pick<Transaction, "query">;
+export type CommittedEventConsumer = (event: LiveEvent) => Promise<void> | void;
+
+let committedEventConsumers: readonly CommittedEventConsumer[] = [];
+
+/** Set by application composition before events can be produced. */
+export function configureCommittedEventConsumers(consumers: readonly CommittedEventConsumer[]): void {
+  committedEventConsumers = consumers;
+}
 
 export async function insertEvent(writer: EventWriter, e: AppendInput): Promise<LiveEvent> {
   const createdAt = Date.now();
@@ -56,14 +44,7 @@ export async function insertEvent(writer: EventWriter, e: AppendInput): Promise<
 
 export async function publishCommittedEvent(event: LiveEvent): Promise<void> {
   bus.emit("event", event);
-  await enqueuePushForEvent(event);
-  // The Live Activity aggregate is recomputed from committed state on every
-  // event that can move it — the counter on the operator's lock screen must not
-  // depend on a delta arriving. A failure here is never allowed to fail the
-  // write that produced the event.
-  await syncLiveActivitiesForEvent(event).catch((error) => {
-    console.warn("live activity: refresh failed:", error instanceof Error ? error.message : String(error));
-  });
+  for (const consume of committedEventConsumers) await consume(event);
 }
 
 export async function appendEvent(e: AppendInput): Promise<LiveEvent> {

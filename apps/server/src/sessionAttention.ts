@@ -2,19 +2,8 @@ import { appendEvent } from "./eventLog.js";
 import { query, transaction } from "./db.js";
 import { isUserViewingSession } from "./modules/presence/index.js";
 import { cancelPendingPush } from "./push.js";
-
-export interface SessionAttentionPayload {
-  userId: string;
-  peonId: string;
-  sessionId: string;
-  unread: boolean;
-  // The operator has an accepted request whose execution has not completed.
-  // Derived from `resolved_at`, never from `state` — see below.
-  hasOutstandingRequest: boolean;
-  lastRequestedAt: number | null;
-  completedAt: number | null;
-  updatedAt: number;
-}
+import type { SessionAttentionPayload } from "./modules/sessions/index.js";
+export type { SessionAttentionPayload } from "./modules/sessions/index.js";
 
 export interface SessionAttentionProjection {
   unread: boolean;

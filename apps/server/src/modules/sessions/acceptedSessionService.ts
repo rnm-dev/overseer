@@ -1,5 +1,5 @@
-import type { PeonCallResult } from "../peonClient/peonClientTypes.js";
-import { upsertSession } from "../../sessionIndex.js";
+import type { PeonCallResult } from "../peonClient/index.js";
+import { upsertSession } from "./sessionProjection.js";
 
 type SessionWriter = typeof upsertSession;
 

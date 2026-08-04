@@ -11,7 +11,7 @@ import {
   startAlert,
   type LiveActivityContentState,
 } from "./infrastructure/push/index.js";
-import type { LiveEvent } from "./eventLog.js";
+import type { LiveEvent } from "./shared/liveEvent.js";
 
 // One Live Activity per operator per device connection — an aggregate of
 // everything that operator has running, never one activity per session. That
