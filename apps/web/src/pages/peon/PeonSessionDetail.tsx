@@ -39,7 +39,8 @@ import { loadToolDisplayMode } from "../../sessionToolDisplay";
 import { isSuccessfulRunResult, onSelectedSoundPackChange, playPeonSound, playWorkSound, stopWorkSound } from "../../peonSounds";
 import { PluginInquiryCard, PluginInquiryLoadFailed } from "./session/PluginInquiryCard";
 import { DropdownMenu, menuItemClass } from "../../ui";
-import { createSessionBranch, sessionLineage } from "./session/sessionBranch";
+import { sessionLineage } from "./session/sessionBranch";
+import { useSessionBranch } from "./session/useSessionBranch";
 import { inquiryInsertionIndex, PLUGIN_INQUIRY_CAPABILITY, usePluginInquiries, type PluginInstallInquiry } from "./session/pluginInquiries";
 
 // author: Viktor
@@ -180,8 +181,6 @@ function PeonSessionDetailPage() {
   const [turnCount, setTurnCount] = useState<number | null>(null);
   const [sessionUsage, setSessionUsage] = useState<unknown>(null);
   const [lineage, setLineage] = useState<{ sourceSessionId: string; relation: "branch" | "subsession"; title: string | null } | null>(null);
-  const [branching, setBranching] = useState(false);
-  const [branchError, setBranchError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [savingName, setSavingName] = useState(false);
@@ -236,6 +235,16 @@ function PeonSessionDetailPage() {
   // the Peon answers again.
   const controlConnected = peon.controlConnected ?? peon.online;
   const liveWork = running && controlConnected;
+  const { branching, branchError, branchSession } = useSessionBranch({
+    base,
+    sessionId: sid,
+    sessionKey,
+    peonId: peon.peonId,
+    sessionHref,
+    navigate,
+    disabled: liveWork,
+    t,
+  });
   const runningModel = activeRun.sessionKey === sessionKey ? activeRun.model : null;
   const runningReasoningEffort = activeRun.sessionKey === sessionKey ? activeRun.reasoningEffort : null;
   const runRevisionRef = useRef<Map<string, number>>(new Map());
@@ -557,11 +566,6 @@ function PeonSessionDetailPage() {
   }, [base, sid, sessionKey, metaTick, setRunning, setRunningSelection]);
 
   useEffect(() => {
-    setBranchError(null);
-    setBranching(false);
-  }, [sessionKey]);
-
-  useEffect(() => {
     if (!lineage?.sourceSessionId || lineage.title !== null) return;
     let alive = true;
     api<{ title?: string | null; promptPreview?: string | null; prompt?: string | null }>(`${base}/sessions/${encodeURIComponent(lineage.sourceSessionId)}`)
@@ -576,19 +580,6 @@ function PeonSessionDetailPage() {
       });
     return () => { alive = false; };
   }, [base, lineage]);
-
-  const branchSession = useCallback(async () => {
-    if (branching || liveWork) return;
-    setBranching(true);
-    setBranchError(null);
-    try {
-      const created = await createSessionBranch(base, sid);
-      navigate(sessionHref?.(peon.peonId, created.id) ?? `/peons/${encodeURIComponent(peon.peonId)}/sessions/${encodeURIComponent(created.id)}`);
-    } catch (error) {
-      setBranchError(error instanceof ApiError ? error.message : t("session.branch.failed"));
-      setBranching(false);
-    }
-  }, [base, branching, liveWork, navigate, peon.peonId, sessionHref, sid, t]);
 
   async function remove() {
     setDeleting(true);
