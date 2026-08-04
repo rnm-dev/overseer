@@ -1,7 +1,7 @@
 import express from "express";
 import { config } from "../../config.js";
 import { registry, toView, type PeonRecord } from "../../registry.js";
-import { callPeon, connOfRecord, normalizePeonUrl, PROTOCOL } from "../../peonClient.js";
+import { callPeon, connOfRecord, normalizePeonUrl, PROTOCOL } from "../../infrastructure/peonHttp/index.js";
 import { clampRecentSessionsLimit, getSessionCatalogStates, listOperatorRecentSessions, listSessions } from "../../sessionIndex.js";
 import { bindPeon, deRecruitPeon, mintCredential, revokeCredential } from "../../credentials.js";
 import { ownerOnly, withWorkspace } from "../helpers.js";

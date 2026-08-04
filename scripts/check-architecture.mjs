@@ -5,9 +5,10 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join, normalize, relative, resolve, sep } from 'node:path';
 import process from 'node:process';
 
-const repositoryRoot = resolve(import.meta.dirname, '..');
+const repositoryRoot = resolve(process.env.ARCHITECTURE_CHECK_ROOT ?? resolve(import.meta.dirname, '..'));
 const serverSource = join(repositoryRoot, 'apps/server/src');
-const policy = JSON.parse(readFileSync(join(repositoryRoot, 'scripts/architecture-policy.json'), 'utf8'));
+const policyPath = process.env.ARCHITECTURE_CHECK_POLICY ?? join(repositoryRoot, 'scripts/architecture-policy.json');
+const policy = JSON.parse(readFileSync(policyPath, 'utf8'));
 const sourceExtensions = ['.ts', '.tsx', '.mts', '.cts'];
 const testSuffix = /(?:\.test|\.spec)\.[cm]?tsx?$/;
 const genericNames = new Set(policy.genericFileNames);

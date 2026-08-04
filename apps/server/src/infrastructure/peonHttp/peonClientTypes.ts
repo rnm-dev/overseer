@@ -1,5 +1,4 @@
 import type { Request as ExpressRequest, Response as ExpressResponse } from "express";
-import type { PeonRecord } from "../registry/registryTypes.js";
 
 export interface PeonConn {
   baseUrl: string;
@@ -32,7 +31,6 @@ export interface PeonNetworkError {
   code: string;
 }
 
-export type PeonRecordAdapter = PeonRecord;
 export type PeonToChunksCb = (text: string) => void;
 export type PeonProxyResult = Promise<void>;
 

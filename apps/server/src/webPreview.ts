@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import path from "node:path";
 import type { NextFunction, Request, RequestHandler, Response } from "express";
 import { config } from "./config.js";
-import { connOfRecord, PEON_API_PATH } from "./peonClient.js";
+import { connOfRecord, PEON_API_PATH } from "./infrastructure/peonHttp/index.js";
 import { registry } from "./registry.js";
 import { canAccessIndexedSessionNow } from "./modules/access/accessService.js";
 

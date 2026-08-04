@@ -1,14 +1,14 @@
 import express from "express";
 import { registry, toView } from "../../registry.js";
-import { callPeon, connOfRecord, normalizePeonUrl, proxyFileDownload, proxyFileUpload, proxyGet, proxyUpload } from "../../peonClient.js";
+import { callPeon, connOfRecord, normalizePeonUrl, proxyFileDownload, proxyFileUpload, proxyGet, proxyUpload } from "../../infrastructure/peonHttp/index.js";
 import { reconcilePeon } from "../../sessionIndex.js";
 import { allowedProjects, canAccessProject, projectMemberCounts } from "../../access.js";
 import { ownerOnly, relay, restSegments, withWorkspacePeon } from "../helpers.js";
 import {
   folderBrowseSelector,
+  projectDocsFromSnapshot,
   projectFileProxyQuery,
 } from "../../modules/projects/index.js";
-import { projectDocsFromSnapshot } from "../../modules/projectDocs/index.js";
 import { appendEvent } from "../../eventLog.js";
 import { auditSafeFileErrorBody } from "../../fileErrorSafety.js";
 import { FileSandboxError, resolveAttachmentPath, resolveSandboxSegments } from "../../peonFileSandbox.js";

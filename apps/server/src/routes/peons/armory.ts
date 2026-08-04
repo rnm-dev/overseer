@@ -1,5 +1,5 @@
 import express from "express";
-import { callPeon, connOfRecord } from "../../peonClient.js";
+import { callPeon, connOfRecord } from "../../infrastructure/peonHttp/index.js";
 import { relay, withWorkspacePeon } from "../helpers.js";
 
 const root = "/workspaces/:wsId/peons/:id/armory";

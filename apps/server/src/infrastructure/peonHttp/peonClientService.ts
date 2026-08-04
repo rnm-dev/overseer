@@ -1,8 +1,7 @@
 import { Readable } from "node:stream";
 import { randomUUID } from "node:crypto";
 import type { Request as ExpressRequest, Response as ExpressResponse } from "express";
-import { baseUrl } from "../../registry.js";
-import type { PeonRecord } from "../registry/registryTypes.js";
+import { baseUrl, type PeonConnectionRecord } from "./peonAddress.js";
 import type {
   PeonCallOptions,
   PeonCallResult,
@@ -13,7 +12,7 @@ import type {
 export const PROTOCOL = 1;
 export const PEON_API_PATH = "/api/v1";
 
-export function connOfRecord(record: PeonRecord): PeonConn {
+export function connOfRecord(record: PeonConnectionRecord): PeonConn {
   return { baseUrl: baseUrl(record), token: record.token };
 }
 

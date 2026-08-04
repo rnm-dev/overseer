@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { projectDocsFromSnapshot } from "./modules/projectDocs/index.js";
+import { projectDocsFromSnapshot } from "./modules/projects/index.js";
 import { parseProjectDocumentationSnapshot } from "./modules/reverseCommands/reverseCommandTypes.js";
 import { peonsRouter } from "./routes/peons.js";
 

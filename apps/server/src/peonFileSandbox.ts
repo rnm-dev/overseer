@@ -1,5 +1,4 @@
-import { callPeon } from "./peonClient.js";
-import type { PeonConn } from "./modules/peonClient/peonClientTypes.js";
+import { callPeon, type PeonConn } from "./infrastructure/peonHttp/index.js";
 import { PATH_ESCAPE_PUBLIC_MESSAGE } from "./fileErrorSafety.js";
 
 // The Fleet file API is rooted at the Peon's `fileTransferRoot`, so every

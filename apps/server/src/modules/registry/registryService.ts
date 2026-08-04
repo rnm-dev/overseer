@@ -1,6 +1,11 @@
 import { query } from "../../db.js";
 import { isPeonConnected, peonConnectionStartedAt } from "../../peonConnections.js";
+import { baseUrl, legacyCallbackUrl } from "../../infrastructure/peonHttp/index.js";
 import type { AddressSource, PeonLoad, PeonRecord, PeonView, RegisterInput } from "./registryTypes.js";
+
+// Legacy root registry callers retain these exports while the transport owns
+// callback-address derivation.
+export { baseUrl, legacyCallbackUrl };
 
 // The peon registry — Postgres-backed (`peons` table). `online` and `baseUrl` are
 // derived, never stored.
@@ -158,20 +163,6 @@ export const registry = {
     return rows.map(rowToRecord);
   },
 };
-
-export function baseUrl(record: PeonRecord): string {
-  const callbackUrl = legacyCallbackUrl(record);
-  if (!callbackUrl) throw new Error(`Peon ${record.peonId} has no legacy callback address`);
-  return callbackUrl;
-}
-
-export function legacyCallbackUrl(record: PeonRecord): string | null {
-  if (record.publicUrl) return record.publicUrl;
-  if (!record.address || !Number.isInteger(record.controlPort)
-    || record.controlPort < 1 || record.controlPort > 65_535) return null;
-  const host = record.address.includes(":") ? `[${record.address}]` : record.address;
-  return `http://${host}:${record.controlPort}`;
-}
 
 function urlParts(publicUrl: string): { hostname: string; port: number } | null {
   try {

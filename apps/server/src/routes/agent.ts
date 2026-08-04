@@ -4,7 +4,7 @@ import { reconcilePeon, ingestEvents } from "../sessionIndex.js";
 import { appendEvent, broadcast } from "../eventLog.js";
 import { bindPeon } from "../credentials.js";
 import { bearer, credentialAuth, sourceAddress } from "./helpers.js";
-import { normalizePeonUrl } from "../peonClient.js";
+import { normalizePeonUrl } from "../infrastructure/peonHttp/index.js";
 
 // NORTH-BOUND — mounted at /api/v1/peons. Called by peons (peonRegistrar.ts /
 // peonEventPusher.ts). Auth: the peon's per-peon recruitment credential, which

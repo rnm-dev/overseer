@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { query } from "./db.js";
-import type { PeonCallResult } from "./peonClient.js";
+import type { PeonCallResult } from "./infrastructure/peonHttp/index.js";
 
 const LEASE_MS = 35_000;
 

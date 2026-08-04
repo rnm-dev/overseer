@@ -1,4 +1,4 @@
-import type { PeonCallResult } from "../peonClient/index.js";
+import type { PeonCallResult } from "../../infrastructure/peonHttp/index.js";
 import { upsertSession } from "./sessionProjection.js";
 
 type SessionWriter = typeof upsertSession;

@@ -1,7 +1,7 @@
 import { config } from "../../config.js";
 import { query, transaction, type Transaction } from "../../db.js";
 import { registry, toView, type PeonRecord } from "../../registry.js";
-import { callPeon, connOfRecord } from "../../peonClient.js";
+import { callPeon, connOfRecord } from "../../infrastructure/peonHttp/index.js";
 import { insertEvent, publishCommittedEvent, type LiveEvent } from "../../eventLog.js";
 import { normalizeSessionSummary } from "./sessionNormalization.js";
 import { completeNextSessionAttention, deleteSessionAttention } from "../../sessionAttention.js";

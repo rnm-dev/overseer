@@ -1,1 +1,1 @@
-export * from "./modules/peonClient/index.js";
+export * from "./infrastructure/peonHttp/index.js";

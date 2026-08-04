@@ -1,6 +1,6 @@
 import express from "express";
 import type { PeonRecord } from "../../registry.js";
-import { callPeon, connOfRecord, proxyGet, proxyStream } from "../../peonClient.js";
+import { callPeon, connOfRecord, proxyGet, proxyStream } from "../../infrastructure/peonHttp/index.js";
 import {
   allowedProjects,
   canAccessIndexedSessionNow,

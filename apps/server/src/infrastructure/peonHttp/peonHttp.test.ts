@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { after, test } from "node:test";
-import { createServer } from "./server.js";
-import { callPeon, classifyPeonNetworkError, normalizePeonUrl, normalizeProxyError } from "./peonClient.js";
+import { createServer } from "../../server.js";
+import { callPeon, classifyPeonNetworkError, normalizePeonUrl, normalizeProxyError } from "./index.js";
 
 const servers: http.Server[] = [];
 after(async () => Promise.all(servers.map((server) => new Promise<void>((resolve) => server.close(() => resolve())))));
