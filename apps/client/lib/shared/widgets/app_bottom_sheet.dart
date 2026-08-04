@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../design/colors.dart';
 import '../design/motion.dart';
 import '../design/typography.dart';
 
@@ -20,7 +19,7 @@ Future<T?> showAppBottomSheet<T>({
     isScrollControlled: true,
     showDragHandle: false,
     backgroundColor: Colors.transparent,
-    barrierColor: AppColors.voidColor.withValues(alpha: 0.72),
+    barrierColor: Theme.of(context).colorScheme.scrim.withValues(alpha: 0.72),
     sheetAnimationStyle: MediaQuery.disableAnimationsOf(context)
         ? const AnimationStyle(
             duration: Duration.zero,
@@ -52,8 +51,9 @@ class AppBottomSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Material(
-      color: AppColors.iron900,
+      color: colors.surfaceContainerHighest,
       clipBehavior: Clip.antiAlias,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
@@ -71,9 +71,9 @@ class AppBottomSheet extends StatelessWidget {
                   key: handleKey,
                   width: 42,
                   height: 5,
-                  decoration: const BoxDecoration(
-                    color: AppColors.iron600,
-                    borderRadius: BorderRadius.all(Radius.circular(99)),
+                  decoration: BoxDecoration(
+                    color: colors.outline,
+                    borderRadius: const BorderRadius.all(Radius.circular(99)),
                   ),
                 ),
               ),
@@ -86,7 +86,9 @@ class AppBottomSheet extends StatelessWidget {
                         child: Text(
                           title,
                           key: const Key('app-bottom-sheet-title'),
-                          style: AppTypography.sectionTitle(),
+                          style: AppTypography.sectionTitle(
+                            color: colors.onSurface,
+                          ),
                         ),
                       ),
                       ?trailing,

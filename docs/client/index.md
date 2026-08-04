@@ -118,6 +118,8 @@ Feature documentation:
   behavior, and real-device QA;
 - [localization.md](localization.md): locale resolution, translation resources,
   current coverage, and migration rules;
+- [themes.md](themes.md): bundled theme packages and device-local,
+  per-Overseer selection;
 - [project-detail.md](project-detail.md): project navigation and settings;
 - [project-files.md](project-files.md): project tree and shared file viewer;
 - [peon-settings.md](peon-settings.md): General, Agent, and Armory settings;

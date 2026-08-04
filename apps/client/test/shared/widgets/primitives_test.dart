@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:overseer_mobile/shared/design/colors.dart';
+import 'package:overseer_mobile/shared/design/theme.dart';
 import 'package:overseer_mobile/shared/widgets/app_button.dart';
 import 'package:overseer_mobile/shared/widgets/app_card.dart';
 import 'package:overseer_mobile/shared/widgets/app_list_tile.dart';
@@ -17,7 +18,8 @@ void main() {
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(
-      const MaterialApp(
+      MaterialApp(
+        theme: AppTheme.dark,
         home: Scaffold(
           body: Column(
             children: [
@@ -48,7 +50,8 @@ void main() {
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(
-      const MaterialApp(
+      MaterialApp(
+        theme: AppTheme.dark,
         home: Scaffold(
           body: AppCard(key: ValueKey('card'), child: Text('Grouped content')),
         ),
@@ -72,6 +75,7 @@ void main() {
       var taps = 0;
       await tester.pumpWidget(
         MaterialApp(
+          theme: AppTheme.dark,
           home: Scaffold(
             body: AppListTile(
               key: const ValueKey('list-tile'),
@@ -118,6 +122,7 @@ void main() {
     var clicked = false;
     await tester.pumpWidget(
       MaterialApp(
+        theme: AppTheme.dark,
         home: Scaffold(
           body: Surface(
             key: const ValueKey("surface"),
@@ -146,6 +151,7 @@ void main() {
     var pressed = 0;
     await tester.pumpWidget(
       MaterialApp(
+        theme: AppTheme.dark,
         home: Scaffold(
           body: AppButton(
             key: const ValueKey("loading-button"),
@@ -169,6 +175,7 @@ void main() {
   ) async {
     await tester.pumpWidget(
       MaterialApp(
+        theme: AppTheme.dark,
         home: Scaffold(
           body: AppButton(
             key: const ValueKey("button"),
@@ -194,6 +201,7 @@ void main() {
     (WidgetTester tester) async {
       await tester.pumpWidget(
         MaterialApp(
+          theme: AppTheme.dark,
           home: Scaffold(
             body: AppTextField(
               key: const ValueKey("field"),
@@ -225,6 +233,7 @@ void main() {
   ) async {
     await tester.pumpWidget(
       MaterialApp(
+        theme: AppTheme.dark,
         home: Scaffold(
           body: Column(
             children: [
@@ -268,6 +277,7 @@ void main() {
   ) async {
     await tester.pumpWidget(
       MaterialApp(
+        theme: AppTheme.dark,
         home: Scaffold(
           body: StatusDot(
             key: const ValueKey("status-dot"),

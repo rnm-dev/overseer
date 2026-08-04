@@ -1,29 +1,55 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import ironwood from "./packages/ironwood/theme.json" with { type: "json" };
-import { BUNDLED_THEMES, DEFAULT_THEME_ID, loadTheme, resolveTheme, saveTheme, THEME_STORAGE_KEY } from "./themeRegistry";
-import { validateThemePackage } from "./themePackage";
+import {
+  DEFAULT_THEME,
+  DEFAULT_THEME_ID,
+  fetchThemeCatalog,
+  loadThemeId,
+  resolveTheme,
+  saveTheme,
+  THEME_STORAGE_KEY,
+} from "./themeRegistry";
+import { validateThemePackage, type ThemePackageManifest } from "./themePackage";
 
-test("bundled theme packages satisfy the versioned contract", () => {
-  assert.equal(validateThemePackage(ironwood).id, DEFAULT_THEME_ID);
-  assert.deepEqual(BUNDLED_THEMES.map((theme) => theme.id), ["org.overseer.ironwood", "org.overseer.parchment", "org.overseer.sterling", "org.overseer.neon-nocturne", "org.overseer.amber-terminal", "org.overseer.candy-static"]);
+const parchment: ThemePackageManifest = {
+  ...DEFAULT_THEME,
+  id: "org.overseer.parchment",
+  name: "Parchment",
+  appearance: "light",
+  tokens: { "--ov-color-scheme": "light", "--ov-canvas": "#f3efe4" },
+};
+
+test("server theme manifests satisfy the versioned token contract", () => {
+  assert.equal(validateThemePackage(DEFAULT_THEME).id, DEFAULT_THEME_ID);
+  assert.equal(validateThemePackage(parchment).appearance, "light");
 });
 
 test("unknown and unavailable themes fall back to Ironwood", () => {
-  assert.equal(resolveTheme("org.example.missing").id, DEFAULT_THEME_ID);
-  assert.equal(loadTheme({ getItem: () => "org.example.missing", setItem() {} }).id, DEFAULT_THEME_ID);
-  assert.equal(loadTheme({ getItem: () => { throw new Error("blocked"); }, setItem() {} }).id, DEFAULT_THEME_ID);
+  assert.equal(resolveTheme("org.example.missing", [DEFAULT_THEME, parchment]).id, DEFAULT_THEME_ID);
+  assert.equal(loadThemeId({ getItem: () => "org.example.missing", setItem() {} }), "org.example.missing");
+  assert.equal(loadThemeId({ getItem: () => { throw new Error("blocked"); }, setItem() {} }), DEFAULT_THEME_ID);
 });
 
 test("theme selection persists only the package id", () => {
   const stored = new Map<string, string>();
   const storage = { getItem: (key: string) => stored.get(key) ?? null, setItem: (key: string, value: string) => stored.set(key, value) };
-  saveTheme(BUNDLED_THEMES[1], storage);
+  saveTheme(parchment, storage);
   assert.equal(stored.get(THEME_STORAGE_KEY), "org.overseer.parchment");
-  assert.equal(loadTheme(storage).appearance, "light");
 });
 
-test("theme manifests reject executable and escaping entrypoints", () => {
-  assert.throws(() => validateThemePackage({ ...ironwood, entrypoints: { web: "../evil.css" } }), /relative package path/);
-  assert.throws(() => validateThemePackage({ ...ironwood, entrypoints: { web: "theme.js" } }), /relative package path|web entrypoint/);
+test("theme manifests reject executable CSS tokens", () => {
+  assert.throws(() => validateThemePackage({ ...parchment, tokens: { ...parchment.tokens, "--ov-logo": "url(https://evil.example/x)" } }), /Unsafe/);
+  assert.throws(() => validateThemePackage({ ...parchment, tokens: { ...parchment.tokens, "--evil": "red" } }), /Invalid/);
+});
+
+test("theme catalog is loaded from the server and validated", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    format: "overseer-theme-v1",
+    defaultThemeId: DEFAULT_THEME_ID,
+    themes: [DEFAULT_THEME, parchment],
+  }), { status: 200, headers: { "content-type": "application/json" } });
+  const catalog = await fetchThemeCatalog();
+  assert.deepEqual(catalog.themes.map((theme) => theme.id), [DEFAULT_THEME_ID, parchment.id]);
 });

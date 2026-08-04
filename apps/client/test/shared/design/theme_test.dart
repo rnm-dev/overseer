@@ -5,9 +5,26 @@ import 'package:overseer_mobile/shared/design/colors.dart';
 import 'package:overseer_mobile/shared/design/motion.dart';
 import 'package:overseer_mobile/shared/design/spacing.dart';
 import 'package:overseer_mobile/shared/design/theme.dart';
+import 'package:overseer_mobile/features/themes/domain/app_theme_package.dart';
 import 'package:overseer_mobile/shared/design/typography.dart';
 
 void main() {
+  test('bundled light and dark packages map to semantic ThemeData', () {
+    final parchment = AppTheme.fromPackage(
+      AppThemePackages.resolve('org.overseer.parchment'),
+    );
+    final neon = AppTheme.fromPackage(
+      AppThemePackages.resolve('org.overseer.neon-nocturne'),
+    );
+
+    expect(parchment.brightness, Brightness.light);
+    expect(parchment.scaffoldBackgroundColor, const Color(0xfff3efe4));
+    expect(parchment.colorScheme.primary, const Color(0xff597c3c));
+    expect(neon.brightness, Brightness.dark);
+    expect(neon.scaffoldBackgroundColor, const Color(0xff08071a));
+    expect(neon.colorScheme.primary, const Color(0xff28c6dc));
+  });
+
   group('AppTheme.dark', () {
     test('uses the global twelve-pixel screen gutter', () {
       final spacing = AppTheme.dark.extension<AppSpacing>();

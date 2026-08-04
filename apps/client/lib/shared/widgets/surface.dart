@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-import 'package:overseer_mobile/shared/design/colors.dart';
 import 'package:overseer_mobile/shared/design/motion.dart';
+import 'package:overseer_mobile/features/themes/domain/app_theme_package.dart';
 
 enum SurfaceVariant { standard, subtle, inset, lit }
 
@@ -33,39 +33,39 @@ class Surface extends StatefulWidget {
 
   bool get _isInteractive => interactive || onTap != null;
 
-  Color _baseBackground() {
+  Color _baseBackground(ColorScheme colors) {
     switch (variant) {
       case SurfaceVariant.standard:
-        return AppColors.iron900;
+        return colors.surfaceContainerHighest;
       case SurfaceVariant.subtle:
-        return AppColors.iron900.withValues(alpha: 0.6);
+        return colors.surfaceContainerHighest.withValues(alpha: 0.6);
       case SurfaceVariant.inset:
-        return AppColors.iron950.withValues(alpha: 0.58);
+        return colors.surface.withValues(alpha: 0.58);
       case SurfaceVariant.lit:
-        return AppColors.iron900;
+        return colors.surfaceContainerHighest;
     }
   }
 
-  Color _baseBorderColor() {
+  Color _baseBorderColor(ColorScheme colors, AppThemePackage package) {
     switch (variant) {
       case SurfaceVariant.standard:
       case SurfaceVariant.subtle:
-        return AppColors.iron800;
+        return colors.outlineVariant;
       case SurfaceVariant.inset:
-        return AppColors.iron700.withValues(alpha: 0.8);
+        return colors.outline.withValues(alpha: 0.8);
       case SurfaceVariant.lit:
-        return AppColors.felDeep;
+        return package.accentDeep;
     }
   }
 
-  Color _hoveredBackground() {
-    return Color.lerp(_baseBackground(), AppColors.fel, 0.03) ??
-        _baseBackground();
+  Color _hoveredBackground(ColorScheme colors) {
+    return Color.lerp(_baseBackground(colors), colors.primary, 0.03) ??
+        _baseBackground(colors);
   }
 
-  Color _hoveredBorder() {
-    return Color.lerp(_baseBorderColor(), AppColors.fel, 0.4) ??
-        _baseBorderColor();
+  Color _hoveredBorder(ColorScheme colors, AppThemePackage package) {
+    return Color.lerp(_baseBorderColor(colors, package), colors.primary, 0.4) ??
+        _baseBorderColor(colors, package);
   }
 
   @override
@@ -82,12 +82,16 @@ class _SurfaceState extends State<Surface> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final package =
+        Theme.of(context).extension<AppThemePalette>()?.package ??
+        AppThemePackages.bundled.first;
     final Color backgroundColor = _isHovered && widget._isInteractive
-        ? widget._hoveredBackground()
-        : widget._baseBackground();
+        ? widget._hoveredBackground(colors)
+        : widget._baseBackground(colors);
     final Color borderColor = _isHovered && widget._isInteractive
-        ? widget._hoveredBorder()
-        : widget._baseBorderColor();
+        ? widget._hoveredBorder(colors, package)
+        : widget._baseBorderColor(colors, package);
 
     final decoration = BoxDecoration(
       color: backgroundColor,
@@ -118,7 +122,7 @@ class _SurfaceState extends State<Surface> {
           borderRadius: widget.borderRadius,
           mouseCursor: SystemMouseCursors.click,
           overlayColor: WidgetStatePropertyAll(
-            AppColors.fel.withValues(alpha: 0.12),
+            colors.primary.withValues(alpha: 0.12),
           ),
           child: content,
         ),

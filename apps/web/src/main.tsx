@@ -9,7 +9,6 @@ import { ThemeProvider } from "./features/themes/ThemeProvider";
 import { rememberNativeCallback } from "./nativeLoginMode";
 import { trackScrollbarWidth } from "./scrollbarWidth";
 import "./index.css";
-import "./features/themes/packages/themes.css";
 
 // Before the router runs: an unauthenticated deep entry redirects to /login and
 // drops the query string, which is where the mobile app's callback lives.

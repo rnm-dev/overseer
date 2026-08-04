@@ -10,14 +10,18 @@ export interface ThemePackageManifest {
   author: string;
   description: string;
   appearance: ThemeAppearance;
-  entrypoints: { web: string; flutter?: string };
-  assets?: Record<string, string>;
-  capabilities?: string[];
+  capabilities: string[];
+  tokens: Record<string, string>;
 }
 
 const PACKAGE_ID = /^[a-z0-9]+(?:[.-][a-z0-9]+)+$/;
 const VERSION = /^\d+\.\d+\.\d+$/;
-const SAFE_PATH = /^(?![./])(?:[a-zA-Z0-9_-]+\/)*[a-zA-Z0-9_.-]+$/;
+const TOKEN_NAME = /^--(?:ov|font)-[a-z0-9-]+$/;
+const UNSAFE_VALUE = /[;{}<>]|url\s*\(|@import|expression\s*\(/i;
+
+function containsControlCharacter(value: string): boolean {
+  return [...value].some((character) => character.charCodeAt(0) < 0x20);
+}
 
 export function validateThemePackage(value: unknown): ThemePackageManifest {
   if (!value || typeof value !== "object") throw new Error("Theme manifest must be an object");
@@ -29,11 +33,14 @@ export function validateThemePackage(value: unknown): ThemePackageManifest {
   if (!manifest.description?.trim()) throw new Error("Theme description is required");
   if (!manifest.version || !VERSION.test(manifest.version)) throw new Error("Theme version must use x.y.z");
   if (manifest.appearance !== "dark" && manifest.appearance !== "light") throw new Error("Theme appearance must be dark or light");
-  if (!manifest.entrypoints?.web || !SAFE_PATH.test(manifest.entrypoints.web)) throw new Error("Theme web entrypoint must be a relative package path");
-  if (!manifest.entrypoints.web.endsWith(".css")) throw new Error("Theme web entrypoint must be CSS");
-  if (manifest.entrypoints.flutter && !SAFE_PATH.test(manifest.entrypoints.flutter)) throw new Error("Theme Flutter entrypoint must be a relative package path");
-  for (const path of Object.values(manifest.assets ?? {})) {
-    if (!SAFE_PATH.test(path)) throw new Error(`Unsafe theme asset path: ${path}`);
+  if (!Array.isArray(manifest.capabilities)) throw new Error("Theme capabilities are required");
+  if (!manifest.tokens || typeof manifest.tokens !== "object" || Array.isArray(manifest.tokens)) throw new Error("Theme tokens are required");
+  const entries = Object.entries(manifest.tokens);
+  if (!entries.length || entries.length > 96) throw new Error("Theme token count is invalid");
+  for (const [name, value] of entries) {
+    if (!TOKEN_NAME.test(name)) throw new Error(`Invalid theme token: ${name}`);
+    if (typeof value !== "string" || value.length > 2048 || containsControlCharacter(value) || UNSAFE_VALUE.test(value)) throw new Error(`Unsafe theme token: ${name}`);
   }
+  if (manifest.tokens["--ov-color-scheme"] !== manifest.appearance) throw new Error("Theme appearance token does not match manifest");
   return manifest as ThemePackageManifest;
 }

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import 'package:overseer_mobile/shared/design/colors.dart';
 import 'package:overseer_mobile/shared/design/motion.dart';
 import 'package:overseer_mobile/shared/design/typography.dart';
 
@@ -67,7 +66,7 @@ class AppButton extends StatelessWidget {
     };
   }
 
-  ButtonStyle _style() {
+  ButtonStyle _style(ColorScheme colors) {
     return ButtonStyle(
       padding: WidgetStatePropertyAll(_padding()),
       minimumSize: WidgetStatePropertyAll(
@@ -85,38 +84,37 @@ class AppButton extends StatelessWidget {
         final bool isEnabled = !states.contains(WidgetState.disabled);
         if (!isEnabled) {
           return switch (variant) {
-            AppButtonVariant.primary => AppColors.fel.withValues(alpha: 0.35),
-            AppButtonVariant.secondary => AppColors.iron800.withValues(
-              alpha: 0.45,
-            ),
+            AppButtonVariant.primary => colors.primary.withValues(alpha: 0.35),
+            AppButtonVariant.secondary =>
+              colors.surfaceContainerHighest.withValues(alpha: 0.45),
             AppButtonVariant.ghost => Colors.transparent,
-            AppButtonVariant.danger => AppColors.blood.withValues(alpha: 0.35),
+            AppButtonVariant.danger => colors.error.withValues(alpha: 0.35),
           };
         }
 
         return switch (variant) {
-          AppButtonVariant.primary => AppColors.fel,
-          AppButtonVariant.secondary => AppColors.rowSurface,
+          AppButtonVariant.primary => colors.primary,
+          AppButtonVariant.secondary => colors.surfaceContainerHighest,
           AppButtonVariant.ghost => Colors.transparent,
-          AppButtonVariant.danger => AppColors.blood,
+          AppButtonVariant.danger => colors.error,
         };
       }),
       foregroundColor: WidgetStateProperty.resolveWith((states) {
         final bool isEnabled = !states.contains(WidgetState.disabled);
         if (!isEnabled) {
           return switch (variant) {
-            AppButtonVariant.primary => AppColors.felInk.withValues(alpha: 0.5),
-            AppButtonVariant.secondary => AppColors.boneDim,
-            AppButtonVariant.ghost => AppColors.boneDim,
-            AppButtonVariant.danger => AppColors.bone.withValues(alpha: 0.5),
+            AppButtonVariant.primary => colors.onPrimary.withValues(alpha: 0.5),
+            AppButtonVariant.secondary => colors.onSurfaceVariant,
+            AppButtonVariant.ghost => colors.onSurfaceVariant,
+            AppButtonVariant.danger => colors.onError.withValues(alpha: 0.5),
           };
         }
 
         return switch (variant) {
-          AppButtonVariant.primary => AppColors.felInk,
-          AppButtonVariant.secondary => AppColors.bone,
-          AppButtonVariant.ghost => AppColors.boneDim,
-          AppButtonVariant.danger => AppColors.bone,
+          AppButtonVariant.primary => colors.onPrimary,
+          AppButtonVariant.secondary => colors.onSurface,
+          AppButtonVariant.ghost => colors.onSurfaceVariant,
+          AppButtonVariant.danger => colors.onError,
         };
       }),
       side: WidgetStateProperty.resolveWith((states) {
@@ -124,13 +122,13 @@ class AppButton extends StatelessWidget {
         return switch (variant) {
           AppButtonVariant.secondary => BorderSide(
             color: isEnabled
-                ? AppColors.iron600
-                : AppColors.iron700.withValues(alpha: 0.45),
+                ? colors.outline
+                : colors.outlineVariant.withValues(alpha: 0.45),
           ),
           AppButtonVariant.danger => BorderSide(
             color: isEnabled
-                ? AppColors.rust
-                : AppColors.rust.withValues(alpha: 0.45),
+                ? colors.errorContainer
+                : colors.errorContainer.withValues(alpha: 0.45),
           ),
           _ => BorderSide.none,
         };
@@ -141,14 +139,14 @@ class AppButton extends StatelessWidget {
           return null;
         }
         return switch (variant) {
-          AppButtonVariant.primary => AppColors.felBright.withValues(
-            alpha: 0.2,
-          ),
-          AppButtonVariant.secondary => AppColors.iron700.withValues(
+          AppButtonVariant.primary => colors.primary.withValues(alpha: 0.2),
+          AppButtonVariant.secondary => colors.outlineVariant.withValues(
             alpha: 0.25,
           ),
-          AppButtonVariant.ghost => AppColors.iron800.withValues(alpha: 0.24),
-          AppButtonVariant.danger => AppColors.blood.withValues(alpha: 0.2),
+          AppButtonVariant.ghost => colors.outlineVariant.withValues(
+            alpha: 0.24,
+          ),
+          AppButtonVariant.danger => colors.error.withValues(alpha: 0.2),
         };
       }),
       mouseCursor: WidgetStatePropertyAll(
@@ -165,41 +163,42 @@ class AppButton extends StatelessWidget {
     };
   }
 
-  Widget _spinner() {
+  Widget _spinner(ColorScheme colors) {
     return SizedBox(
       width: 15,
       height: 15,
       child: CircularProgressIndicator(
         strokeWidth: 2,
-        valueColor: AlwaysStoppedAnimation<Color>(_spinnerColor()),
+        valueColor: AlwaysStoppedAnimation<Color>(_spinnerColor(colors)),
       ),
     );
   }
 
-  Color _spinnerColor() {
+  Color _spinnerColor(ColorScheme colors) {
     if (!loading) {
-      return AppColors.bone;
+      return colors.onSurface;
     }
 
     return switch (variant) {
-      AppButtonVariant.primary => AppColors.felInk,
-      AppButtonVariant.secondary => AppColors.felBright,
-      AppButtonVariant.ghost => AppColors.boneDim,
-      AppButtonVariant.danger => AppColors.bone,
+      AppButtonVariant.primary => colors.onPrimary,
+      AppButtonVariant.secondary => colors.primary,
+      AppButtonVariant.ghost => colors.onSurfaceVariant,
+      AppButtonVariant.danger => colors.onError,
     };
   }
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     final button = TextButton(
       onPressed: _enabled ? onPressed : null,
-      style: _style(),
+      style: _style(colors),
       onHover: null,
       child: Row(
         mainAxisSize: MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          if (loading) _spinner(),
+          if (loading) _spinner(colors),
           if (loading) const SizedBox(width: 8),
           ?leading,
           if (leading != null) const SizedBox(width: 8),

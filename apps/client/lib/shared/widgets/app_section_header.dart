@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import 'package:overseer_mobile/shared/design/colors.dart';
 import 'package:overseer_mobile/shared/design/typography.dart';
 
 /// A quiet heading that introduces a group of standalone rows or content.
@@ -23,6 +22,7 @@ class AppSectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Padding(
       padding: padding,
       child: Row(
@@ -32,14 +32,17 @@ class AppSectionHeader extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: AppTypography.sectionTitle()),
+                Text(
+                  title,
+                  style: AppTypography.sectionTitle(color: colors.onSurface),
+                ),
                 if (subtitle != null && subtitle!.isNotEmpty) ...[
                   const SizedBox(height: 3),
                   Text(
                     subtitle!,
                     style: AppTypography.body(
                       fontSize: 12,
-                      color: AppColors.boneDim,
+                      color: colors.onSurfaceVariant,
                       height: 1.35,
                     ),
                   ),

@@ -11,6 +11,7 @@ import { pushRouter } from "./routes/push.js";
 import { webPreviewHandler } from "./webPreview.js";
 import { projectViewerRouter } from "./routes/projectViewer.js";
 import { voiceRouter } from "./routes/voice.js";
+import { themesRouter } from "./routes/themes.js";
 
 // The overseer's two-sided HTTP surface:
 //
@@ -92,6 +93,9 @@ export function createServer({ production = process.env.NODE_ENV === "production
   // Public auth endpoints (GitHub OAuth) sit BEFORE the operator guard — they're
   // how a client gets a token.
   api.use(publicAuthRouter());
+  // Theme manifests contain only bounded presentation tokens and are needed
+  // before sign-in so login and connection restoration use the same theme.
+  api.use(themesRouter());
 
   // The operator auth guard — everything below requires a device token.
   api.use(operatorAuth);

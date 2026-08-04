@@ -13,6 +13,8 @@ import 'package:overseer_mobile/features/fleet/domain/fleet_models.dart';
 import 'package:overseer_mobile/features/fleet/domain/fleet_repository.dart';
 import 'package:overseer_mobile/features/fleet/presentation/fleet_overview.dart';
 import 'package:overseer_mobile/features/sessions/sessions.dart';
+import 'package:overseer_mobile/features/themes/application/connection_theme_controller.dart';
+import 'package:overseer_mobile/features/themes/domain/app_theme_package.dart';
 import 'package:overseer_mobile/features/auth/domain/auth_models.dart';
 import 'package:overseer_mobile/shared/design/colors.dart';
 import 'package:overseer_mobile/shared/design/spacing.dart';
@@ -86,7 +88,7 @@ void main() {
     );
     expect(
       find.descendant(of: settingsSection, matching: find.byType(AppListTile)),
-      findsNWidgets(3),
+      findsNWidgets(4),
     );
     expect(
       tester.getTopLeft(find.text('RNM')).dx,
@@ -102,6 +104,7 @@ void main() {
       tester.getSize(find.byKey(const Key('peon-new-session-kanat'))).height,
       44,
     );
+    expect(tester.getSize(find.byKey(const Key('theme-setting'))).height, 56);
     expect(tester.getSize(find.byKey(const Key('sound-setting'))).height, 56);
     expect(
       tester.getSize(find.byKey(const Key('notification-setting'))).height,
@@ -179,6 +182,46 @@ void main() {
     await tester.tap(find.byKey(const Key('peon-kanat')));
     await tester.pump();
     expect(openedPeonCount, 1);
+  });
+
+  testWidgets('selects a bundled connection theme from main settings', (
+    tester,
+  ) async {
+    final store = MemoryConnectionThemeStore();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          fleetRepositoryProvider.overrideWithValue(
+            _FakeFleetRepository(result: const []),
+          ),
+          connectionThemeStoreProvider.overrideWithValue(store),
+          themeConnectionIdProvider.overrideWithValue('dev-overseer'),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.dark,
+          home: const Scaffold(
+            body: FleetOverview(
+              compact: true,
+              user: OperatorIdentity(email: 'dev@example.com'),
+              onSignOut: _signOut,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('theme-setting')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Candy Static').last);
+    await tester.pumpAndSettle();
+
+    expect(
+      await store.readSelection('dev-overseer'),
+      'org.overseer.candy-static',
+    );
+    expect(find.text('Candy Static'), findsOneWidget);
+    expect(AppThemePackages.resolve('missing').id, AppThemePackages.defaultId);
   });
 
   testWidgets('shows loading and empty states', (tester) async {

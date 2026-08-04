@@ -1,87 +1,95 @@
 import 'package:flutter/material.dart';
 
-import 'colors.dart';
 import 'motion.dart';
 import 'spacing.dart';
 import 'typography.dart';
+import '../../features/themes/domain/app_theme_package.dart';
 
 @immutable
 class AppTheme {
   const AppTheme._();
 
-  static ThemeData get dark {
+  static ThemeData get dark => fromPackage(AppThemePackages.bundled.first);
+
+  static ThemeData fromPackage(AppThemePackage package) {
+    final p = package;
     final colorScheme =
         ColorScheme.fromSeed(
-          brightness: Brightness.dark,
-          seedColor: AppColors.fel,
+          brightness: p.appearance,
+          seedColor: p.accent,
         ).copyWith(
-          primary: AppColors.fel,
-          onPrimary: AppColors.felInk,
-          primaryContainer: AppColors.felDim,
-          onPrimaryContainer: AppColors.bone,
-          secondary: AppColors.forge,
-          onSecondary: AppColors.voidColor,
-          secondaryContainer: AppColors.forgeDeep,
-          onSecondaryContainer: AppColors.bone,
-          tertiary: AppColors.ember,
-          onTertiary: AppColors.felInk,
-          tertiaryContainer: AppColors.boneFaint,
-          onTertiaryContainer: AppColors.voidColor,
-          error: AppColors.blood,
-          onError: AppColors.bone,
-          errorContainer: AppColors.rust,
-          onErrorContainer: AppColors.bone,
-          surface: AppColors.iron950,
-          onSurface: AppColors.bone,
-          surfaceContainerHighest: AppColors.iron900,
-          outline: AppColors.iron600,
-          outlineVariant: AppColors.iron700,
-          shadow: AppColors.voidColor,
-          scrim: AppColors.voidColor,
-          inverseSurface: AppColors.bone,
-          onInverseSurface: AppColors.voidColor,
-          inversePrimary: AppColors.felBright,
-          surfaceTint: AppColors.fel,
+          primary: p.accent,
+          onPrimary: p.onAccent,
+          primaryContainer: p.accentMuted,
+          onPrimaryContainer: p.ink,
+          secondary: p.warning,
+          onSecondary: p.canvas,
+          secondaryContainer: p.warningDeep,
+          onSecondaryContainer: p.ink,
+          tertiary: p.warningStrong,
+          onTertiary: p.onAccent,
+          tertiaryContainer: p.inkFaint,
+          onTertiaryContainer: p.canvas,
+          error: p.danger,
+          onError: p.ink,
+          errorContainer: p.dangerDeep,
+          onErrorContainer: p.ink,
+          surface: p.surface,
+          onSurface: p.ink,
+          surfaceContainerHighest: p.surfaceRaised,
+          outline: p.edgeStrong,
+          outlineVariant: p.edge,
+          shadow: p.canvas,
+          scrim: p.canvas,
+          inverseSurface: p.ink,
+          onInverseSurface: p.canvas,
+          inversePrimary: p.accentStrong,
+          surfaceTint: p.accent,
         );
 
-    final base = ThemeData.dark(useMaterial3: true);
+    final base = ThemeData(brightness: p.appearance, useMaterial3: true);
 
     return base.copyWith(
-      brightness: Brightness.dark,
+      brightness: p.appearance,
       colorScheme: colorScheme,
-      scaffoldBackgroundColor: AppColors.voidColor,
-      canvasColor: AppColors.voidColor,
-      cardColor: AppColors.iron900,
-      dividerColor: AppColors.iron700,
-      hoverColor: AppColors.fel.withValues(alpha: 0.10),
-      focusColor: AppColors.fel.withValues(alpha: 0.10),
-      highlightColor: AppColors.fel.withValues(alpha: 0.14),
-      splashColor: AppColors.fel.withValues(alpha: 0.14),
-      textTheme: AppTypography.textTheme,
-      extensions: const [AppSpacing(screenHorizontal: 12)],
-      iconTheme: const IconThemeData(color: AppColors.bone),
-      appBarTheme: const AppBarTheme(
-        backgroundColor: AppColors.voidColor,
-        foregroundColor: AppColors.bone,
+      scaffoldBackgroundColor: p.canvas,
+      canvasColor: p.canvas,
+      cardColor: p.surfaceRaised,
+      dividerColor: p.edge,
+      hoverColor: p.accent.withValues(alpha: 0.10),
+      focusColor: p.accent.withValues(alpha: 0.10),
+      highlightColor: p.accent.withValues(alpha: 0.14),
+      splashColor: p.accent.withValues(alpha: 0.14),
+      textTheme: AppTypography.textTheme.apply(
+        bodyColor: p.ink,
+        displayColor: p.ink,
+      ),
+      extensions: [const AppSpacing(screenHorizontal: 12), AppThemePalette(p)],
+      iconTheme: IconThemeData(color: p.ink),
+      appBarTheme: AppBarTheme(
+        backgroundColor: p.canvas,
+        foregroundColor: p.ink,
         elevation: 0,
         surfaceTintColor: Colors.transparent,
       ),
-      cardTheme: const CardThemeData(
-        color: AppColors.iron900,
+      cardTheme: CardThemeData(
+        color: p.surfaceRaised,
         elevation: 0,
         margin: EdgeInsets.all(0),
-        shape: RoundedRectangleBorder(borderRadius: AppMotion.surfaceShape),
+        shape: const RoundedRectangleBorder(
+          borderRadius: AppMotion.surfaceShape,
+        ),
       ),
       dialogTheme: DialogThemeData(
-        backgroundColor: AppColors.iron900,
-        surfaceTintColor: AppColors.felDim,
+        backgroundColor: p.surfaceRaised,
+        surfaceTintColor: p.accentMuted,
         shape: const RoundedRectangleBorder(
           borderRadius: AppMotion.surfaceShape,
         ),
       ),
       bottomSheetTheme: BottomSheetThemeData(
-        backgroundColor: AppColors.iron900,
-        surfaceTintColor: AppColors.felDim,
+        backgroundColor: p.surfaceRaised,
+        surfaceTintColor: p.accentMuted,
         shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(
             top: Radius.circular(AppMotion.surfaceRadius),
@@ -89,37 +97,37 @@ class AppTheme {
         ),
       ),
       snackBarTheme: SnackBarThemeData(
-        backgroundColor: AppColors.iron800,
-        contentTextStyle: AppTypography.body(color: AppColors.bone),
+        backgroundColor: p.surfaceHover,
+        contentTextStyle: AppTypography.body(color: p.ink),
         shape: const RoundedRectangleBorder(
           borderRadius: AppMotion.surfaceShape,
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: AppColors.rowSurface,
+        fillColor: p.surfaceHover,
         border: const OutlineInputBorder(borderRadius: AppMotion.controlShape),
-        enabledBorder: const OutlineInputBorder(
+        enabledBorder: OutlineInputBorder(
           borderRadius: AppMotion.controlShape,
-          borderSide: BorderSide(color: AppColors.iron600),
+          borderSide: BorderSide(color: p.edgeStrong),
         ),
-        focusedBorder: const OutlineInputBorder(
+        focusedBorder: OutlineInputBorder(
           borderRadius: AppMotion.controlShape,
-          borderSide: BorderSide(color: AppColors.felBright),
+          borderSide: BorderSide(color: p.accentStrong),
         ),
-        errorBorder: const OutlineInputBorder(
+        errorBorder: OutlineInputBorder(
           borderRadius: AppMotion.controlShape,
-          borderSide: BorderSide(color: AppColors.blood),
+          borderSide: BorderSide(color: p.danger),
         ),
-        focusedErrorBorder: const OutlineInputBorder(
+        focusedErrorBorder: OutlineInputBorder(
           borderRadius: AppMotion.controlShape,
-          borderSide: BorderSide(color: AppColors.rust),
+          borderSide: BorderSide(color: p.dangerDeep),
         ),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
-          backgroundColor: AppColors.fel,
-          foregroundColor: AppColors.felInk,
+          backgroundColor: p.accent,
+          foregroundColor: p.onAccent,
           shape: const RoundedRectangleBorder(
             borderRadius: AppMotion.controlShape,
           ),
@@ -131,8 +139,8 @@ class AppTheme {
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
-          backgroundColor: AppColors.fel,
-          foregroundColor: AppColors.felInk,
+          backgroundColor: p.accent,
+          foregroundColor: p.onAccent,
           shape: const RoundedRectangleBorder(
             borderRadius: AppMotion.controlShape,
           ),
@@ -143,8 +151,8 @@ class AppTheme {
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
-          foregroundColor: AppColors.felBright,
-          side: const BorderSide(color: AppColors.fel),
+          foregroundColor: p.accentStrong,
+          side: BorderSide(color: p.accent),
           shape: const RoundedRectangleBorder(
             borderRadius: AppMotion.controlShape,
           ),
@@ -155,16 +163,16 @@ class AppTheme {
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
-          foregroundColor: AppColors.felBright,
+          foregroundColor: p.accentStrong,
           shape: const RoundedRectangleBorder(
             borderRadius: AppMotion.controlShape,
           ),
           textStyle: AppTypography.body(fontWeight: FontWeight.w600),
         ),
       ),
-      listTileTheme: const ListTileThemeData(
-        iconColor: AppColors.bone,
-        textColor: AppColors.bone,
+      listTileTheme: ListTileThemeData(
+        iconColor: p.ink,
+        textColor: p.ink,
         tileColor: Colors.transparent,
       ),
     );

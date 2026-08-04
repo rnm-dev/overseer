@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../design/colors.dart';
 import '../design/motion.dart';
 import 'app_bottom_sheet.dart';
 
@@ -52,7 +51,7 @@ class AppOptionSheetTile extends StatelessWidget {
       child: Material(
         color: selected
             ? Theme.of(context).highlightColor
-            : AppColors.rowSurface,
+            : Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: AppMotion.optionShape,
         child: InkWell(
           onTap: onTap,

@@ -3,7 +3,6 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
-import '../design/colors.dart';
 import '../design/motion.dart';
 import '../design/typography.dart';
 import '../layout/responsive_breakpoints.dart';
@@ -76,6 +75,7 @@ class _AdaptiveSelectionPickerState<T extends Object>
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     final compact =
         ResponsiveBreakpoints.sizeFor(MediaQuery.sizeOf(context).width) ==
         ResponsiveLayoutSize.compact;
@@ -100,16 +100,16 @@ class _AdaptiveSelectionPickerState<T extends Object>
       controller: _menuController,
       alignmentOffset: const Offset(-136, 8),
       style: MenuStyle(
-        backgroundColor: const WidgetStatePropertyAll(AppColors.iron900),
+        backgroundColor: WidgetStatePropertyAll(colors.surfaceContainerHighest),
         surfaceTintColor: const WidgetStatePropertyAll(Colors.transparent),
         elevation: const WidgetStatePropertyAll(16),
         shadowColor: WidgetStatePropertyAll(
-          AppColors.voidColor.withValues(alpha: 0.62),
+          colors.shadow.withValues(alpha: 0.62),
         ),
         padding: const WidgetStatePropertyAll(EdgeInsets.all(8)),
-        shape: const WidgetStatePropertyAll(
+        shape: WidgetStatePropertyAll(
           RoundedRectangleBorder(
-            side: BorderSide(color: AppColors.iron700),
+            side: BorderSide(color: colors.outlineVariant),
             borderRadius: BorderRadius.all(Radius.circular(14)),
           ),
         ),
@@ -123,9 +123,9 @@ class _AdaptiveSelectionPickerState<T extends Object>
               padding: const WidgetStatePropertyAll(
                 EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               ),
-              foregroundColor: const WidgetStatePropertyAll(AppColors.bone),
+              foregroundColor: WidgetStatePropertyAll(colors.onSurface),
               overlayColor: WidgetStatePropertyAll(
-                AppColors.fel.withValues(alpha: 0.12),
+                colors.primary.withValues(alpha: 0.12),
               ),
               shape: const WidgetStatePropertyAll(
                 RoundedRectangleBorder(
@@ -180,6 +180,7 @@ class _PickerTrigger extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Semantics(
       button: true,
       expanded: expanded,
@@ -190,7 +191,7 @@ class _PickerTrigger extends StatelessWidget {
           onTap: onTap,
           borderRadius: const BorderRadius.all(Radius.circular(10)),
           overlayColor: WidgetStatePropertyAll(
-            AppColors.fel.withValues(alpha: 0.1),
+            colors.primary.withValues(alpha: 0.1),
           ),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
@@ -212,10 +213,10 @@ class _PickerTrigger extends StatelessWidget {
                   turns: expanded ? 0.5 : 0,
                   duration: AppMotion.base,
                   curve: AppMotion.iosQuick,
-                  child: const Icon(
+                  child: Icon(
                     LucideIcons.chevronDown,
                     size: 18,
-                    color: AppColors.boneDim,
+                    color: colors.onSurfaceVariant,
                   ),
                 ),
               ],
@@ -339,23 +340,22 @@ class _OptionContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Row(
       children: [
         Expanded(
           child: Text(
             label,
-            style: AppTypography.optionLabel(selected: selected),
+            style: AppTypography.optionLabel(
+              selected: selected,
+            ).copyWith(color: selected ? colors.primary : colors.onSurface),
           ),
         ),
         AnimatedScale(
           scale: selected ? 1 : 0,
           duration: AppMotion.fast,
           curve: AppMotion.softSettle,
-          child: const Icon(
-            LucideIcons.check,
-            size: 20,
-            color: AppColors.felBright,
-          ),
+          child: Icon(LucideIcons.check, size: 20, color: colors.primary),
         ),
       ],
     );

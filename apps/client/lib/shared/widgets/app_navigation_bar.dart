@@ -3,8 +3,6 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
-import '../design/colors.dart';
-
 class AppNavigationBar extends StatelessWidget {
   static const double fixedContentHeight = 56;
 
@@ -33,14 +31,15 @@ class AppNavigationBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     final topInset = applyTopSafeArea
         ? math.max(0.0, MediaQuery.paddingOf(context).top - topInsetReduction)
         : 0.0;
 
     return DecoratedBox(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         border: Border(
-          bottom: BorderSide(color: AppColors.iron800, width: 0.5),
+          bottom: BorderSide(color: colors.outlineVariant, width: 0.5),
         ),
       ),
       child: Padding(
@@ -65,10 +64,10 @@ class AppNavigationBar extends StatelessWidget {
                       minimumSize: const Size(36, 40),
                       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
-                    icon: const Icon(
+                    icon: Icon(
                       LucideIcons.arrowLeft,
                       size: 18,
-                      color: AppColors.boneDim,
+                      color: colors.onSurfaceVariant,
                     ),
                   ),
                   const SizedBox(width: 4),

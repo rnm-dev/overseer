@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:overseer_mobile/l10n/l10n.dart';
 import 'package:go_router/go_router.dart';
 import 'package:overseer_mobile/core/notifications/notification_routing.dart';
@@ -9,6 +10,7 @@ import 'package:overseer_mobile/features/auth/domain/auth_models.dart';
 import 'package:overseer_mobile/shared/design/theme.dart';
 import 'package:overseer_mobile/features/shell/shell.dart';
 import 'package:overseer_mobile/features/sessions/presentation/session_detail_page.dart';
+import 'package:overseer_mobile/features/themes/application/connection_theme_controller.dart';
 
 import 'peon_deep_link_page.dart';
 import 'project_files_route_page.dart';
@@ -250,23 +252,31 @@ class _OverseerMobileAppState extends State<OverseerMobileApp> {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp.router(
-      onGenerateTitle: (context) => context.l10n.appTitle,
-      localizationsDelegates: const [
-        AppLocalizations.delegate,
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-      ],
-      supportedLocales: AppLocalizations.supportedLocales,
-      theme: AppTheme.dark,
-      routerConfig: _router,
-      builder: (context, child) => ForegroundNotificationSurface(
-        notification: widget.foregroundNotification,
-        onOpen: widget.onOpenNotification,
-        onDismiss: widget.onDismissNotification,
-        child: child ?? const SizedBox.shrink(),
-      ),
+    return Consumer(
+      builder: (context, ref, _) {
+        final controller = ref.watch(connectionThemeControllerProvider);
+        return ListenableBuilder(
+          listenable: controller,
+          builder: (context, _) => MaterialApp.router(
+            onGenerateTitle: (context) => context.l10n.appTitle,
+            localizationsDelegates: const [
+              AppLocalizations.delegate,
+              GlobalMaterialLocalizations.delegate,
+              GlobalWidgetsLocalizations.delegate,
+              GlobalCupertinoLocalizations.delegate,
+            ],
+            supportedLocales: AppLocalizations.supportedLocales,
+            theme: AppTheme.fromPackage(controller.theme),
+            routerConfig: _router,
+            builder: (context, child) => ForegroundNotificationSurface(
+              notification: widget.foregroundNotification,
+              onOpen: widget.onOpenNotification,
+              onDismiss: widget.onDismissNotification,
+              child: child ?? const SizedBox.shrink(),
+            ),
+          ),
+        );
+      },
     );
   }
 }

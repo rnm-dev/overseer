@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import 'package:overseer_mobile/shared/design/colors.dart';
 import 'package:overseer_mobile/shared/design/motion.dart';
 import 'package:overseer_mobile/shared/design/typography.dart';
 
@@ -80,23 +79,24 @@ class AppListTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     final sectionSurface = variant == AppListTileVariant.sectionSurface;
     final shape = sectionSurface ? BorderRadius.zero : AppMotion.listTileShape;
     final backgroundColor = selected
-        ? AppColors.felDim.withAlpha(78)
+        ? colors.primaryContainer.withAlpha(78)
         : Colors.transparent;
     final surfaceColor = sectionSurface
-        ? AppColors.bone.withValues(alpha: 0.05)
-        : AppColors.rowSurface;
+        ? colors.onSurface.withValues(alpha: 0.05)
+        : colors.surfaceContainerHighest;
     final borderColor = selected
-        ? AppColors.fel
+        ? colors.primary
         : sectionSurface
         ? Colors.transparent
-        : AppColors.iron800;
+        : colors.outlineVariant;
     final titleColor = enabled
-        ? (selected ? AppColors.felBright : AppColors.bone)
-        : AppColors.boneFaint;
-    final subtitleColor = enabled ? AppColors.boneDim : AppColors.boneFaint;
+        ? (selected ? colors.primary : colors.onSurface)
+        : colors.onSurfaceVariant;
+    final subtitleColor = colors.onSurfaceVariant;
 
     return Semantics(
       container: true,
@@ -107,23 +107,23 @@ class AppListTile extends StatelessWidget {
       hint: semanticsHint,
       excludeSemantics: semanticsLabel != null,
       child: Material(
-        color: enabled ? surfaceColor : AppColors.iron950,
+        color: enabled ? surfaceColor : colors.surface,
         borderRadius: shape,
         child: InkWell(
           onTap: _interactive ? onTap : null,
           onLongPress: _interactive ? onLongPress : null,
           borderRadius: shape,
           overlayColor: WidgetStatePropertyAll(
-            AppColors.fel.withValues(alpha: 0.1),
+            colors.primary.withValues(alpha: 0.1),
           ),
           child: AnimatedContainer(
             duration: AppMotion.fast,
             constraints: BoxConstraints(minHeight: _minimumHeight),
             padding: _padding,
             decoration: BoxDecoration(
-              color: enabled ? backgroundColor : AppColors.iron950,
+              color: enabled ? backgroundColor : colors.surface,
               border: Border.all(
-                color: enabled ? borderColor : AppColors.iron800,
+                color: enabled ? borderColor : colors.outlineVariant,
                 width: sectionSurface ? 0 : 0.75,
               ),
               borderRadius: shape,

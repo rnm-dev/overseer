@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:dio/dio.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
@@ -43,6 +44,9 @@ import 'package:overseer_mobile/features/settings/application/sound_pack_control
 import 'package:overseer_mobile/features/settings/data/audioplayers_sound_preview_player.dart';
 import 'package:overseer_mobile/features/settings/data/audioplayers_work_sound_player.dart';
 import 'package:overseer_mobile/features/settings/data/shared_preferences_sound_preference_store.dart';
+import 'package:overseer_mobile/features/themes/application/connection_theme_controller.dart';
+import 'package:overseer_mobile/features/themes/data/shared_preferences_connection_theme_store.dart';
+import 'package:overseer_mobile/features/themes/data/dio_connection_theme_catalog_source.dart';
 import 'package:overseer_mobile/features/sessions/application/sessions_controller.dart';
 import 'package:overseer_mobile/features/sessions/application/attachment_clipboard_provider.dart';
 import 'package:overseer_mobile/features/sessions/application/session_composer_controller.dart';
@@ -86,6 +90,17 @@ class AppDependencies extends StatelessWidget {
             defaultTargetPlatform == TargetPlatform.iOS);
     return ProviderScope(
       overrides: [
+        themeConnectionIdProvider.overrideWithValue(
+          overseerConnectionStorageId(connection.serverUrl),
+        ),
+        connectionThemeStoreProvider.overrideWithValue(
+          SharedPreferencesConnectionThemeStore(),
+        ),
+        connectionThemeCatalogSourceProvider.overrideWith((ref) {
+          final dio = Dio(BaseOptions(baseUrl: config.apiUrl.toString()));
+          ref.onDispose(() => dio.close(force: true));
+          return DioConnectionThemeCatalogSource(dio);
+        }),
         overseerServerUrlProvider.overrideWithValue(config.serverUrl),
         appDiagnosticsProvider.overrideWithValue(
           const DebugPrintAppDiagnostics(),

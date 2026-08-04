@@ -14,6 +14,8 @@ import '../../../shared/widgets/presence_stack.dart';
 import '../../auth/domain/auth_models.dart';
 import '../../sessions/sessions.dart';
 import '../../settings/application/sound_pack_controller.dart';
+import '../../themes/application/connection_theme_controller.dart';
+import '../../themes/domain/app_theme_package.dart';
 import '../../settings/application/notification_permission_controller.dart';
 import '../../settings/domain/sound_pack.dart';
 import '../application/fleet_controller.dart';
@@ -222,60 +224,92 @@ class _SettingsSection extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final soundPack = ref.watch(soundPackControllerProvider);
     final selectedPack = soundPack.value ?? SoundPack.peon;
+    final themeController = ref.watch(connectionThemeControllerProvider);
 
-    return Column(
-      key: const Key('settings-section'),
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        const AppSectionHeader(title: 'Settings'),
-        const SizedBox(height: _FleetSectionMetrics.headerGap),
-        AdaptiveSelectionPicker<SoundPack>(
-          key: const Key('sound-pack-menu'),
-          title: 'Sounds',
-          value: selectedPack,
-          options: [
-            for (final pack in SoundPack.values)
-              SelectionOption(value: pack, label: pack.label),
-          ],
-          onSelected: ref.read(soundPackControllerProvider.notifier).select,
-          triggerBuilder: (context, selectedLabel, expanded, onTap) {
-            return _SettingsRow(
-              key: const Key('sound-setting'),
-              leading: selectedPack == SoundPack.mute
-                  ? LucideIcons.volumeX
-                  : LucideIcons.volume2,
-              label: 'Sounds',
-              onTap: onTap,
-              trailing: _SettingValue(label: selectedLabel, expanded: expanded),
-            );
-          },
-        ),
-        const SizedBox(height: _FleetSectionMetrics.rowGap),
-        const _NotificationSettingsRow(),
-        const SizedBox(height: _FleetSectionMetrics.rowGap),
-        _SettingsRow(
-          key: const Key('user-card'),
-          leading: LucideIcons.circleUserRound,
-          label: user.email,
-          onTap: () async {
-            final confirmed = await showAppConfirmationBottomSheet(
-              context: context,
-              title: 'Sign out?',
-              message:
-                  'You will need to sign in with GitHub again to access '
-                  'your workspaces on this device.',
-              confirmLabel: 'Sign out',
-              destructive: true,
-            );
-            if (confirmed) await onSignOut();
-          },
-          trailing: Text(
-            'Sign out',
-            key: const Key('sign-out'),
-            style: AppTypography.controlValue(),
+    return ListenableBuilder(
+      listenable: themeController,
+      builder: (context, _) => Column(
+        key: const Key('settings-section'),
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const AppSectionHeader(title: 'Settings'),
+          const SizedBox(height: _FleetSectionMetrics.headerGap),
+          AdaptiveSelectionPicker<AppThemePackage>(
+            key: const Key('theme-menu'),
+            title: 'Theme',
+            value: themeController.theme,
+            options: [
+              for (final theme in themeController.themes)
+                SelectionOption(value: theme, label: theme.name),
+            ],
+            onSelected: themeController.select,
+            triggerBuilder: (context, selectedLabel, expanded, onTap) {
+              return _SettingsRow(
+                key: const Key('theme-setting'),
+                leading: LucideIcons.palette,
+                label: 'Theme',
+                onTap: onTap,
+                trailing: _SettingValue(
+                  label: selectedLabel,
+                  expanded: expanded,
+                ),
+              );
+            },
           ),
-        ),
-      ],
+          const SizedBox(height: _FleetSectionMetrics.rowGap),
+          AdaptiveSelectionPicker<SoundPack>(
+            key: const Key('sound-pack-menu'),
+            title: 'Sounds',
+            value: selectedPack,
+            options: [
+              for (final pack in SoundPack.values)
+                SelectionOption(value: pack, label: pack.label),
+            ],
+            onSelected: ref.read(soundPackControllerProvider.notifier).select,
+            triggerBuilder: (context, selectedLabel, expanded, onTap) {
+              return _SettingsRow(
+                key: const Key('sound-setting'),
+                leading: selectedPack == SoundPack.mute
+                    ? LucideIcons.volumeX
+                    : LucideIcons.volume2,
+                label: 'Sounds',
+                onTap: onTap,
+                trailing: _SettingValue(
+                  label: selectedLabel,
+                  expanded: expanded,
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: _FleetSectionMetrics.rowGap),
+          const _NotificationSettingsRow(),
+          const SizedBox(height: _FleetSectionMetrics.rowGap),
+          _SettingsRow(
+            key: const Key('user-card'),
+            leading: LucideIcons.circleUserRound,
+            label: user.email,
+            onTap: () async {
+              final confirmed = await showAppConfirmationBottomSheet(
+                context: context,
+                title: 'Sign out?',
+                message:
+                    'You will need to sign in with GitHub again to access '
+                    'your workspaces on this device.',
+                confirmLabel: 'Sign out',
+                destructive: true,
+              );
+              if (confirmed) await onSignOut();
+            },
+            trailing: Text(
+              'Sign out',
+              key: const Key('sign-out'),
+              style: AppTypography.controlValue(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -312,6 +346,7 @@ class _NotificationSettingsRowState
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     final status = ref.watch(notificationPermissionControllerProvider);
     final enabled = status == NotificationPermissionStatus.enabled;
     final interactive =
@@ -334,8 +369,8 @@ class _NotificationSettingsRowState
             value: enabled,
             onChanged: interactive ? _handleToggle : null,
             materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            activeTrackColor: AppColors.fel,
-            inactiveTrackColor: AppColors.iron700,
+            activeTrackColor: colors.primary,
+            inactiveTrackColor: colors.outlineVariant,
           ),
         ),
       ),
@@ -360,54 +395,59 @@ class _NotificationSettingsRowState
   Future<void> _showSettingsHelp({required bool enabling}) {
     return showAppBottomSheet<void>(
       context: context,
-      builder: (sheetContext) => AppBottomSheet(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(4, 20, 4, 0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  enabling ? 'Enable notifications' : 'Manage notifications',
-                  key: const Key('notification-settings-title'),
-                  textAlign: TextAlign.center,
-                  style: AppTypography.sectionTitle(),
-                ),
-                const SizedBox(height: 14),
-                Text(
-                  enabling
-                      ? 'The system permission prompt is no longer available. '
-                            'Open this app’s settings, select Notifications, '
-                            'and allow notifications there.'
-                      : 'Notification access is controlled by the system. Open '
-                            'this app’s settings to turn notifications off.',
-                  key: const Key('notification-settings-description'),
-                  textAlign: TextAlign.center,
-                  style: AppTypography.body(
-                    fontSize: 14,
-                    height: 1.45,
-                    color: AppColors.boneDim,
+      builder: (sheetContext) {
+        final colors = Theme.of(sheetContext).colorScheme;
+        return AppBottomSheet(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4, 20, 4, 0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    enabling ? 'Enable notifications' : 'Manage notifications',
+                    key: const Key('notification-settings-title'),
+                    textAlign: TextAlign.center,
+                    style: AppTypography.sectionTitle(color: colors.onSurface),
                   ),
-                ),
-                const SizedBox(height: 20),
-                AppButton(
-                  key: const Key('open-notification-settings'),
-                  fullWidth: true,
-                  size: AppButtonSize.lg,
-                  borderRadius: AppMotion.optionShape,
-                  onPressed: () async {
-                    Navigator.of(sheetContext).pop();
-                    await ref
-                        .read(notificationPermissionControllerProvider.notifier)
-                        .openSettings();
-                  },
-                  child: const Text('Open system settings'),
-                ),
-              ],
+                  const SizedBox(height: 14),
+                  Text(
+                    enabling
+                        ? 'The system permission prompt is no longer available. '
+                              'Open this app’s settings, select Notifications, '
+                              'and allow notifications there.'
+                        : 'Notification access is controlled by the system. Open '
+                              'this app’s settings to turn notifications off.',
+                    key: const Key('notification-settings-description'),
+                    textAlign: TextAlign.center,
+                    style: AppTypography.body(
+                      fontSize: 14,
+                      height: 1.45,
+                      color: colors.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  AppButton(
+                    key: const Key('open-notification-settings'),
+                    fullWidth: true,
+                    size: AppButtonSize.lg,
+                    borderRadius: AppMotion.optionShape,
+                    onPressed: () async {
+                      Navigator.of(sheetContext).pop();
+                      await ref
+                          .read(
+                            notificationPermissionControllerProvider.notifier,
+                          )
+                          .openSettings();
+                    },
+                    child: const Text('Open system settings'),
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
-      ),
+          ],
+        );
+      },
     );
   }
 }
@@ -428,9 +468,10 @@ class _SettingsRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return AppListTile(
       title: label,
-      leading: Icon(leading, size: 20, color: AppColors.boneDim),
+      leading: Icon(leading, size: 20, color: colors.onSurfaceVariant),
       trailing: trailing,
       onTap: onTap,
       titleMaxLines: 1,
@@ -447,6 +488,7 @@ class _SettingValue extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -455,7 +497,7 @@ class _SettingValue extends StatelessWidget {
           child: Text(
             label,
             key: ValueKey(label),
-            style: AppTypography.controlValue(),
+            style: AppTypography.controlValue(color: colors.onSurfaceVariant),
           ),
         ),
         const SizedBox(width: 4),
@@ -463,10 +505,10 @@ class _SettingValue extends StatelessWidget {
           turns: expanded ? 0.5 : 0,
           duration: AppMotion.base,
           curve: AppMotion.iosQuick,
-          child: const Icon(
+          child: Icon(
             LucideIcons.chevronDown,
             size: 18,
-            color: AppColors.boneDim,
+            color: colors.onSurfaceVariant,
           ),
         ),
       ],
@@ -493,6 +535,7 @@ class _WorkspaceSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Column(
       key: Key('workspace-${fleet.workspace.id}'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -507,7 +550,7 @@ class _WorkspaceSection extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 4),
               child: Text(
                 'No peons available',
-                style: AppTypography.body(color: AppColors.boneDim),
+                style: AppTypography.body(color: colors.onSurfaceVariant),
               ),
             ),
           )
@@ -656,6 +699,7 @@ class _PeonNewSessionAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return SizedBox(
       height: 44,
       child: TextButton(
@@ -670,7 +714,7 @@ class _PeonNewSessionAction extends StatelessWidget {
           style: AppTypography.display(
             fontSize: 8.8,
             fontWeight: FontWeight.w600,
-            color: AppColors.boneDim,
+            color: colors.onSurfaceVariant,
             letterSpacing: 1.408,
             height: 1,
           ),
@@ -1105,22 +1149,23 @@ class _FleetError extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(
+            Icon(
               LucideIcons.cloudOff,
               size: 40,
-              color: AppColors.boneDim,
+              color: colors.onSurfaceVariant,
             ),
             const SizedBox(height: 14),
             Text(
               message,
               textAlign: TextAlign.center,
-              style: AppTypography.body(color: AppColors.boneDim),
+              style: AppTypography.body(color: colors.onSurfaceVariant),
             ),
             const SizedBox(height: 16),
             AppButton(
@@ -1142,18 +1187,19 @@ class _EmptyFleet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Padding(
-      padding: EdgeInsets.symmetric(vertical: 64),
+    final colors = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 64),
       child: Column(
         children: [
-          Icon(LucideIcons.serverOff, size: 44, color: AppColors.boneDim),
-          SizedBox(height: 14),
-          Text('No workspaces available'),
-          SizedBox(height: 6),
+          Icon(LucideIcons.serverOff, size: 44, color: colors.onSurfaceVariant),
+          const SizedBox(height: 14),
+          const Text('No workspaces available'),
+          const SizedBox(height: 6),
           Text(
             'Your workspaces will appear here once you have access.',
             textAlign: TextAlign.center,
-            style: TextStyle(color: AppColors.boneDim),
+            style: TextStyle(color: colors.onSurfaceVariant),
           ),
         ],
       ),
