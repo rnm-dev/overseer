@@ -4,6 +4,7 @@ import type { MessageAttachment } from "./parsing";
 
 export interface QueueItem {
   id: string;
+  type: "queue" | "steer";
   sessionId: string;
   prompt: string;
   attachments: MessageAttachment[];
@@ -49,7 +50,7 @@ const queuePath = (base: string, sessionId: string) => `${base}/sessions/${encod
 
 export async function getSessionQueue(base: string, sessionId: string, request: ApiRequest = api): Promise<QueueItem[]> {
   const response = await request<{ items?: QueueItem[] }>(queuePath(base, sessionId));
-  return response.items ?? [];
+  return (response.items ?? []).map((item) => ({ ...item, type: item.type === "steer" ? "steer" : "queue" }));
 }
 
 export function enqueueSessionFollowup(base: string, sessionId: string, input: EnqueueInput, request: ApiRequest = api) {
@@ -60,6 +61,11 @@ export function removeSessionQueueItem(base: string, sessionId: string, itemId: 
   return request(`${queuePath(base, sessionId)}/${encodeURIComponent(itemId)}`, { method: "DELETE" });
 }
 
+export function steerSessionQueueItem(base: string, sessionId: string, itemId: string, request: ApiRequest = api) {
+  return request(`${queuePath(base, sessionId)}/${encodeURIComponent(itemId)}/steer`, { method: "POST" });
+}
+
+/** @deprecated Use steerSessionQueueItem. */
 export function sendSessionQueueItemNow(base: string, sessionId: string, itemId: string, request: ApiRequest = api) {
   return request(`${queuePath(base, sessionId)}/${encodeURIComponent(itemId)}/send`, { method: "POST" });
 }

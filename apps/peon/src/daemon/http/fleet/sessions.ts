@@ -18,9 +18,11 @@ import { fail, type ErrorCode } from "./error.js";
 // - DELETE /sessions/:id
 // - POST /sessions
 // - POST /sessions/:id/followup
+// - POST /sessions/:id/branch
 // - POST /sessions/:id/queue
 // - GET /sessions/:id/queue
 // - PATCH /sessions/:id/queue/:itemId
+// - POST /sessions/:id/queue/:itemId/steer
 // - POST /sessions/:id/queue/:itemId/send
 // - DELETE /sessions/:id/queue/:itemId
 // - POST /sessions/:id/cancel
@@ -36,9 +38,11 @@ export const INCLUDED_FLEET_SESSION_ROUTES = [
   "DELETE /sessions/:id",
   "POST /sessions",
   "POST /sessions/:id/followup",
+  "POST /sessions/:id/branch",
   "POST /sessions/:id/queue",
   "GET /sessions/:id/queue",
   "PATCH /sessions/:id/queue/:itemId",
+  "POST /sessions/:id/queue/:itemId/steer",
   "POST /sessions/:id/queue/:itemId/send",
   "DELETE /sessions/:id/queue/:itemId",
   "POST /sessions/:id/cancel",
@@ -303,6 +307,38 @@ export function attachSessionRoutes(router: express.Router, options: FleetSessio
     }
   });
 
+  router.post("/sessions/:id/branch", async (req, res) => {
+    const source = sessions.get(req.params.id);
+    if (!source) return fail(res, 404, "UNKNOWN_SESSION", "unknown session");
+    const headerId = req.headers["peon-request-id"];
+    const bodyId = req.body?.id;
+    const id = [typeof headerId === "string" ? headerId : "", typeof bodyId === "string" ? bodyId : ""].find((value) => UUID_RE.test(value));
+    if (id) {
+      const existing = sessions.get(id);
+      if (existing) return res.status(200).json(toPublicSessionRecord(existing));
+    }
+    const title = req.body?.title;
+    if (title !== undefined && (typeof title !== "string" || !title.trim())) return fail(res, 400, "BAD_REQUEST", "title must be a non-empty string");
+    const lastTurnId = req.body?.lastTurnId;
+    if (lastTurnId !== undefined && (typeof lastTurnId !== "string" || !lastTurnId.trim())) return fail(res, 400, "BAD_REQUEST", "lastTurnId must be a non-empty string");
+    try {
+      const record = await sessions.branch(source.id, {
+        id: id || undefined,
+        title,
+        lastTurnId,
+        author: req.actor ?? undefined,
+      });
+      res.status(201).json(toPublicSessionRecord(record));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message === "session agent does not support branching") return fail(res, 409, "BRANCH_UNSUPPORTED", message);
+      if (message === "session has no backend conversation") return fail(res, 409, "BRANCH_SOURCE_UNAVAILABLE", message);
+      if (message === "session agent does not support branching at a turn") return fail(res, 409, "BRANCH_TURN_UNSUPPORTED", message);
+      if (message === "unknown or incomplete branch turn") return fail(res, 400, "BAD_REQUEST", message);
+      fail(res, 500, "INTERNAL", message);
+    }
+  });
+
   router.post("/sessions/:id/queue", (req, res) => {
     const record = sessions.get(req.params.id);
     if (!record) return fail(res, 404, "UNKNOWN_SESSION", "unknown session");
@@ -350,7 +386,16 @@ export function attachSessionRoutes(router: express.Router, options: FleetSessio
     res.json(result);
   });
 
+  router.post("/sessions/:id/queue/:itemId/steer", (req, res) => {
+    const result = sessions.steerQueued(req.params.id, req.params.itemId);
+    if (result === "unknown_session") return fail(res, 404, "UNKNOWN_SESSION", "unknown session");
+    if (result === "not_found") return fail(res, 404, "UNKNOWN_QUEUE_ITEM", "unknown queue item");
+    res.json({ ok: true });
+  });
+
   router.post("/sessions/:id/queue/:itemId/send", (req, res) => {
+    res.set("Deprecation", "true");
+    res.set("Link", `</api/v1/sessions/${encodeURIComponent(req.params.id)}/queue/${encodeURIComponent(req.params.itemId)}/steer>; rel="successor-version"`);
     const result = sessions.sendQueuedNow(req.params.id, req.params.itemId);
     if (result === "unknown_session") return fail(res, 404, "UNKNOWN_SESSION", "unknown session");
     if (result === "not_found") return fail(res, 404, "UNKNOWN_QUEUE_ITEM", "unknown queue item");

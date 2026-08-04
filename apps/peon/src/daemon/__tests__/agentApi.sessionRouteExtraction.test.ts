@@ -215,7 +215,7 @@ function createHarness() {
 }
 
 test("route inventory includes expected session JSON families", () => {
-  assert.equal(INCLUDED_FLEET_SESSION_ROUTES.length, 12);
+  assert.equal(INCLUDED_FLEET_SESSION_ROUTES.length, 14);
 });
 
 test("list sessions with pagination delegates to session service", async () => {

@@ -11,11 +11,13 @@ import {
   removeWaitingQueueItem,
   sendSessionQueueItemNow,
   sendWaitingQueueItemNow,
+  steerSessionQueueItem,
   type QueueItem,
 } from "./queue";
 
 const item = (id: string, extra: Partial<QueueItem> = {}): QueueItem => ({
   id,
+  type: "queue",
   sessionId: "session/1",
   prompt: `prompt ${id}`,
   attachments: [],
@@ -37,16 +39,18 @@ function recorder(response: unknown = {}) {
   return { calls, request };
 }
 
-test("queue API client preserves Fleet FIFO order and targets an encoded item for remove or send now", async () => {
+test("queue API client preserves Fleet FIFO order and targets an encoded item for remove, steer, or deprecated send now", async () => {
   const first = item("1");
   const second = item("2");
   const fake = recorder({ items: [first, second] });
   assert.deepEqual(await getSessionQueue("/peon", "session/1", fake.request), [first, second]);
   await removeSessionQueueItem("/peon", "session/1", "item/2", fake.request);
+  await steerSessionQueueItem("/peon", "session/1", "item/2", fake.request);
   await sendSessionQueueItemNow("/peon", "session/1", "item/2", fake.request);
   assert.deepEqual(fake.calls.map(({ path, options }) => [path, options?.method]), [
     ["/peon/sessions/session%2F1/queue", undefined],
     ["/peon/sessions/session%2F1/queue/item%2F2", "DELETE"],
+    ["/peon/sessions/session%2F1/queue/item%2F2/steer", "POST"],
     ["/peon/sessions/session%2F1/queue/item%2F2/send", "POST"],
   ]);
 });

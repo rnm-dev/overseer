@@ -40,6 +40,8 @@ export function restoreFromDisk(): void {
 
     record.followUpPrompts ??= [];
     record.queuedFollowUps ??= [];
+    const hadQueueTypes = record.queuedFollowUps.every((item) => item.type === "queue" || item.type === "steer");
+    for (const item of record.queuedFollowUps) item.type ??= "queue";
     const hadPendingSystemPrompts = Object.prototype.hasOwnProperty.call(record, "pendingSystemPrompts");
     record.pendingSystemPrompts ??= [];
     record.taskKey ??= null;
@@ -55,7 +57,7 @@ export function restoreFromDisk(): void {
     record.spawnRequestId ??= null;
     record.parentCompletionNotifiedAt ??= null;
     record.parentCompletionNotificationPending ??= false;
-    if (!hadOrchestrationFields || !hadPendingSystemPrompts) persistSummary(record);
+    if (!hadOrchestrationFields || !hadPendingSystemPrompts || !hadQueueTypes) persistSummary(record);
     record.title ??= null;
     record.candidateProjectKeys ??= [];
     record.agent ??= "claude-code";

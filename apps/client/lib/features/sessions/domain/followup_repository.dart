@@ -154,7 +154,7 @@ abstract interface class FollowupRepository {
   Future<void> refreshQueue(FollowupScope scope);
   Future<void> editQueued(FollowupScope scope, String itemId, String prompt);
   Future<void> removeQueued(FollowupScope scope, String itemId);
-  Future<void> sendQueuedNow(FollowupScope scope, String itemId);
+  Future<void> steerQueued(FollowupScope scope, String itemId);
   Future<ModelsCatalog?> fetchModelCatalog(FollowupScope scope);
 
   Future<FollowupDelivery> submit({

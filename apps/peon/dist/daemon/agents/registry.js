@@ -2,8 +2,8 @@ import path from "node:path";
 import { storedTimestampMetadata } from "../agentEventMetadata.js";
 import { claudeCodeAuth } from "../claudeCodeAuth.js";
 import { CODEX_OUTCOME_SCHEMA, OUTCOME_SCHEMA } from "../sessionPrompts.js";
-import { normalizeClaudeCodeEvent, runClaudeCode } from "./claudeCode.js";
-import { codexAppServerHealth, reconcileCodexAppServerTurn, runCodexAppServer, shutdownCodexAppServerRuntime } from "./codexAppServer.js";
+import { forkClaudeCodeSession, normalizeClaudeCodeEvent, runClaudeCode } from "./claudeCode.js";
+import { codexAppServerHealth, forkCodexAppServerThread, reconcileCodexAppServerTurn, runCodexAppServer, shutdownCodexAppServerRuntime } from "./codexAppServer.js";
 import { getClaudeQuota, getCodexQuota } from "../providerQuota.js";
 import { getClaudeCapabilities, getCodexCapabilities } from "../providerCapabilities.js";
 export const REASONING_EFFORTS = ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"];
@@ -130,13 +130,14 @@ registerAgentDriver({
     outcomeSchema: (expects) => expects ? OUTCOME_SCHEMA : undefined, normalizeOutcome: (value) => normalizeOutcome(value, false),
     normalizeStoredEvent(raw) { const common = previewEvent(raw); const event = common ?? normalizeClaudeCodeEvent(raw); return event ? { ...event, ...storedTimestampMetadata(raw) } : null; },
     run: runClaudeCode,
+    forkConversation: forkClaudeCodeSession,
     interrupt: (run) => run.kill(), shutdown: (run) => run.kill(),
     auth: {
         observeSuccess: () => claudeCodeAuth.clearObservedFailure(),
         observeFailure: (message) => { if (claudeCodeAuth.isLikelyAuthFailure(message))
             claudeCodeAuth.recordPossibleAuthFailure(message, Date.now()); },
     },
-    capabilities: { steering: false, cancellation: true, recovery: true, quota: true, status: true, cliUpdate: true },
+    capabilities: { steering: false, cancellation: true, recovery: true, quota: true, status: true, cliUpdate: true, branching: true, branchAtTurn: false },
     services: {
         status: () => claudeCodeAuth.getState(), quota: getClaudeQuota,
         capabilities: getClaudeCapabilities, cliUpdate: { packageName: "@anthropic-ai/claude-code" },
@@ -161,10 +162,11 @@ registerAgentDriver({
         return true;
     },
     reconcile: reconcileCodexAppServerTurn,
+    forkConversation: forkCodexAppServerThread,
     interrupt: (run) => run.kill(), shutdown: (run) => run.kill(),
     shutdownRuntime: shutdownCodexAppServerRuntime,
     auth: { observeSuccess() { }, observeFailure() { } },
-    capabilities: { steering: true, cancellation: true, recovery: true, quota: true, status: true, cliUpdate: true },
+    capabilities: { steering: true, cancellation: true, recovery: true, quota: true, status: true, cliUpdate: true, branching: true, branchAtTurn: true },
     services: {
         status: () => codexAppServerHealth(), quota: getCodexQuota,
         capabilities: getCodexCapabilities, cliUpdate: { packageName: "@openai/codex" },

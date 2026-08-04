@@ -6,7 +6,7 @@ import { composerDraftKey, saveComposerDraft, useComposerDraft, useComposerDraft
 import { attachmentUploadPath } from "../fileLinks";
 import type { ModelsCatalog } from "../models";
 import type { MessageAttachment } from "./parsing";
-import { createQueueReconciler, enqueueSessionFollowup, getSessionQueue, removeSessionQueueItem, removeWaitingQueueItem, sendSessionQueueItemNow, sendWaitingQueueItemNow, type QueueActivityTracker, type QueueItem } from "./queue";
+import { createQueueReconciler, enqueueSessionFollowup, getSessionQueue, removeSessionQueueItem, removeWaitingQueueItem, steerSessionQueueItem, sendWaitingQueueItemNow, type QueueActivityTracker, type QueueItem } from "./queue";
 import { createSubmissionGate } from "./submissionGate";
 
 const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
@@ -270,7 +270,7 @@ export function useSessionComposer({
     }
   }
 
-  async function enqueue(startNow: boolean) {
+  async function enqueue() {
     const text = input.trim();
     if (!text && files.length === 0) return;
     const submission = submissionGateRef.current.begin(sessionKey);
@@ -291,7 +291,6 @@ export function useSessionComposer({
         ...(overrideModel ? { model: overrideModel } : {}),
         ...(overrideReasoningEffort ? { reasoningEffort: overrideReasoningEffort } : {}),
         commandId,
-        startNow,
       });
       // Peon owns FIFO order. Never insert the response optimistically; fetch the
       // authoritative list after acceptance (the stream change is a second guard).
@@ -332,7 +331,7 @@ export function useSessionComposer({
     }
   }
 
-  async function sendQueuedItemNow(itemId: string) {
+  async function steerQueuedItem(itemId: string) {
     if (sendingQueueItems.has(itemId) || removingQueueItems.has(itemId)) return;
     const queued = queueItems.find((item) => item.id === itemId);
     const wasRunning = running;
@@ -349,7 +348,7 @@ export function useSessionComposer({
     try {
       const accepted = await sendWaitingQueueItemNow(
         itemId,
-        (id) => sendSessionQueueItemNow(base, sid, id),
+        (id) => steerSessionQueueItem(base, sid, id),
         () => queueReconcilerRef.current?.reconcile() ?? Promise.resolve(),
         (err) => notifyError(err, { title: t("session.queue.sendFailed"), fallback: t("error.generic") }),
       );
@@ -404,6 +403,6 @@ export function useSessionComposer({
 
   return {
     input, setInput, files, setFiles, sending, sendError, setSendError, ghost,
-    queueItems, removingQueueItems, sendingQueueItems, filesEnabled, send, enqueue, removeQueuedItem, sendQueuedItemNow,
+    queueItems, removingQueueItems, steeringQueueItems: sendingQueueItems, filesEnabled, send, enqueue, removeQueuedItem, steerQueuedItem,
   };
 }

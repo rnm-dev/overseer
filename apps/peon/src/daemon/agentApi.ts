@@ -309,6 +309,7 @@ export function createAgentRouter(options: AgentRouterOptions = {}): express.Rou
     get: (id) => sessions.get(id),
     rename: (id, title) => sessions.rename(id, title),
     start: (sessionOptions) => sessions.start(sessionOptions),
+    branch: (id, branchOptions) => sessions.branch(id, branchOptions),
     resume: (id, prompt, attachments, permissionMode, author, model, reasoningEffort, commandId) => sessions.resume(
       id, prompt, attachments, permissionMode, author, model, reasoningEffort, commandId,
     ),
@@ -317,6 +318,7 @@ export function createAgentRouter(options: AgentRouterOptions = {}): express.Rou
     ),
     queued: (id) => sessions.queued(id),
     editQueued: (id, itemId, prompt) => sessions.editQueued(id, itemId, prompt),
+    steerQueued: (id, itemId) => sessions.steerQueued(id, itemId),
     sendQueuedNow: (id, itemId) => sessions.sendQueuedNow(id, itemId),
     removeQueued: (id, itemId) => sessions.removeQueued(id, itemId),
     cancel: (id) => sessions.cancel(id),

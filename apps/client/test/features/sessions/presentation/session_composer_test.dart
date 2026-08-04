@@ -316,7 +316,6 @@ void main() {
                 ),
               ],
               onSubmit: () {},
-              onStopAndRun: () {},
             ),
           ),
         ),
@@ -332,16 +331,17 @@ void main() {
     final capability = tester.getRect(
       find.byKey(const Key('session-composer-capabilities-visual')),
     );
-    final sendNow = tester.getRect(
-      find.byKey(const Key('session-composer-stop-and-run-visual')),
-    );
     final queue = tester.getRect(
       find.byKey(const Key('session-composer-submit-visual')),
     );
 
     expect(voice.left - attach.right, AppSpacing.xxs + 2);
     expect(capability.left - voice.right, AppSpacing.xxs + 2);
-    expect(queue.left - sendNow.right, AppSpacing.xxs + 2);
+    expect(
+      find.byKey(const Key('session-composer-stop-and-run')),
+      findsNothing,
+    );
+    expect(queue.right, lessThanOrEqualTo(tester.view.physicalSize.width));
   });
 
   testWidgets('combines agent, model, and effort in one radio sheet', (
@@ -541,7 +541,6 @@ void main() {
                   ),
                 ],
                 onSubmit: () {},
-                onStopAndRun: () {},
               ),
             ),
           ),
@@ -550,7 +549,7 @@ void main() {
 
       expect(
         find.byKey(const Key('session-composer-stop-and-run')),
-        findsOneWidget,
+        findsNothing,
       );
       expect(find.byKey(const Key('session-composer-error')), findsOneWidget);
       expect(find.text('⚠ Could not send'), findsOneWidget);
@@ -573,95 +572,61 @@ void main() {
             .onPressed,
         isNull,
       );
-      expect(
-        tester
-            .widget<IconButton>(
-              find.byKey(const Key('session-composer-stop-and-run')),
-            )
-            .onPressed,
-        isNull,
-      );
     },
   );
 
-  testWidgets('enables queue and send-now together while running', (
-    tester,
-  ) async {
-    final controller = TextEditingController();
-    addTearDown(controller.dispose);
-    var queued = 0;
-    var sentNow = 0;
+  testWidgets(
+    'offers queue without a composer-level send-now action while running',
+    (tester) async {
+      final controller = TextEditingController();
+      addTearDown(controller.dispose);
+      var queued = 0;
 
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: AppTheme.dark,
-        home: Scaffold(
-          body: Align(
-            alignment: Alignment.bottomCenter,
-            child: SessionComposer(
-              controller: controller,
-              running: true,
-              onSubmit: () => queued++,
-              onStopAndRun: () => sentNow++,
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.dark,
+          home: Scaffold(
+            body: Align(
+              alignment: Alignment.bottomCenter,
+              child: SessionComposer(
+                controller: controller,
+                running: true,
+                onSubmit: () => queued++,
+              ),
             ),
           ),
         ),
-      ),
-    );
+      );
 
-    final queueFinder = find.byKey(const Key('session-composer-submit'));
-    final sendNowFinder = find.byKey(
-      const Key('session-composer-stop-and-run'),
-    );
-    expect(tester.widget<IconButton>(queueFinder).onPressed, isNull);
-    expect(tester.widget<IconButton>(sendNowFinder).onPressed, isNull);
+      final queueFinder = find.byKey(const Key('session-composer-submit'));
+      expect(tester.widget<IconButton>(queueFinder).onPressed, isNull);
+      expect(
+        find.byKey(const Key('session-composer-stop-and-run')),
+        findsNothing,
+      );
 
-    await tester.enterText(
-      find.byKey(const Key('session-composer-input')),
-      'Next task',
-    );
-    await tester.pump();
+      await tester.enterText(
+        find.byKey(const Key('session-composer-input')),
+        'Next task',
+      );
+      await tester.pump();
 
-    expect(tester.widget<IconButton>(queueFinder).onPressed, isNotNull);
-    expect(tester.widget<IconButton>(sendNowFinder).onPressed, isNotNull);
-    expect(find.byTooltip('Queue'), findsOneWidget);
-    expect(find.byTooltip('Send now'), findsOneWidget);
+      expect(tester.widget<IconButton>(queueFinder).onPressed, isNotNull);
+      expect(find.byTooltip('Queue'), findsOneWidget);
+      expect(find.byTooltip('Send now'), findsNothing);
+      expect(
+        find.descendant(
+          of: queueFinder,
+          matching: find.byIcon(LucideIcons.listPlus),
+        ),
+        findsOneWidget,
+      );
 
-    final queueVisual = tester.widget<Container>(
-      find.byKey(const Key('session-composer-submit-visual')),
-    );
-    final sendNowVisual = tester.widget<Container>(
-      find.byKey(const Key('session-composer-stop-and-run-visual')),
-    );
-    expect(queueVisual.decoration, sendNowVisual.decoration);
-    expect(
-      find.descendant(
-        of: queueFinder,
-        matching: find.byIcon(LucideIcons.listPlus),
-      ),
-      findsOneWidget,
-    );
-    expect(
-      find.descendant(
-        of: sendNowFinder,
-        matching: find.byIcon(LucideIcons.sendHorizontal),
-      ),
-      findsOneWidget,
-    );
-
-    await tester.tap(queueFinder);
-    await tester.pump();
-    expect(queued, 1);
-
-    await tester.enterText(
-      find.byKey(const Key('session-composer-input')),
-      'Run immediately',
-    );
-    await tester.pump();
-    await tester.tap(sendNowFinder);
-    await tester.pump();
-    expect(sentNow, 1);
-  });
+      await tester.tap(queueFinder);
+      await tester.pump();
+      expect(queued, 1);
+    },
+  );
 
   testWidgets('accepts rich image content inserted by the keyboard', (
     tester,
@@ -737,7 +702,7 @@ void main() {
                   queuedAt: 1,
                 ),
               ],
-              onSendQueuedNow: (id) async => sent = id,
+              onSteerQueued: (id) async => sent = id,
               onRemoveQueued: (id) async => removed = id,
               onEditQueued: (id, prompt) async => edited = '$id:$prompt',
             ),
@@ -769,7 +734,8 @@ void main() {
         tester.view.physicalSize.height / tester.view.devicePixelRatio * 0.8,
       ),
     );
-    expect(find.byKey(const Key('session-queue-dialog-send')), findsOneWidget);
+    expect(find.byKey(const Key('session-queue-dialog-steer')), findsOneWidget);
+    expect(find.text('Steer'), findsOneWidget);
     expect(
       find.byKey(const Key('session-queue-dialog-delete')),
       findsOneWidget,
@@ -792,7 +758,7 @@ void main() {
 
     await tester.tap(find.byKey(const Key('session-queue-open-queue-1')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('session-queue-dialog-send')));
+    await tester.tap(find.byKey(const Key('session-queue-dialog-steer')));
     await tester.pumpAndSettle();
     expect(sent, 'queue-1');
 

@@ -1504,7 +1504,7 @@ class _TestFollowupRepository implements FollowupRepository {
   Future<void> removeQueued(FollowupScope scope, String itemId) async {}
 
   @override
-  Future<void> sendQueuedNow(FollowupScope scope, String itemId) async {}
+  Future<void> steerQueued(FollowupScope scope, String itemId) async {}
 
   @override
   Future<FollowupDelivery> submit({

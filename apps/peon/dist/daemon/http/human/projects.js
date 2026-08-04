@@ -9,7 +9,7 @@ function sendProjectError(res, error, includeCode = true) {
         res.status(error.status).json({ error: error.message, code: error.code });
         return;
     }
-    res.status(500).json({ error: "failed to read project documentation", code: "INTERNAL" });
+    res.status(500).json({ error: "project request failed", code: "INTERNAL" });
 }
 export function createHumanProjectsRouter(options) {
     const router = express.Router();

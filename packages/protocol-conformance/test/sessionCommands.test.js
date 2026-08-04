@@ -31,7 +31,7 @@ test("direct HTTP session operations are absent from the reverse contract on bot
     assert.equal(advertised.includes("session.delete"), false);
     for (const operation of [
       "session.queue.add", "session.queue.list", "session.queue.edit",
-      "session.queue.remove", "session.queue.send-now",
+      "session.queue.remove", "session.queue.steer", "session.queue.send-now",
     ]) assert.equal(advertised.includes(operation), false, operation);
   }
 });
@@ -77,5 +77,6 @@ test("all public queue routes use the single Fleet HTTP path", async () => {
     '"PATCH",',
     '"DELETE",',
     '/queue/${encodeURIComponent(String(req.params.itemId))}/send',
+    '/queue/${encodeURIComponent(String(req.params.itemId))}/steer',
   ]) assert.ok(queueRoutes.includes(fragment), fragment);
 });

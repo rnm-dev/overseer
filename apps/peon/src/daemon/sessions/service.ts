@@ -23,6 +23,7 @@ import type {
 } from "../sessionTypes.js";
 import {
   attachmentsDir,
+  appendTranscriptEvent,
   discardTranscript,
   flushTranscript,
   persistSummary,
@@ -62,6 +63,8 @@ import type {
 } from "./contracts.js";
 
 export { attachmentsDir } from "./sessionArtifacts.js";
+
+const pendingSessionBranches = new Map<string, Promise<SessionRecord>>();
 
 export type {
   AttachmentInfo,
@@ -108,8 +111,12 @@ function startQueuedDispatchNow(record: SessionRecord): void {
   if (sessionState.resumePending.has(record.id)) return;
   const run = sessionState.activeRuns.get(record.id);
   if (!run) return;
-  // Wait for the current provider process to release its conversation state
-  // before dispatching the (possibly reordered) queue head.
+  // Providers without an in-flight steering primitive (currently Claude Code)
+  // redirect by interruption plus a resume of the same provider conversation.
+  // Wait for the current process to release its conversation state before
+  // dispatching the selected, possibly reordered queue head. Codex's ordinary
+  // live follow-up path can use native turn/steer through resume(); this queue
+  // path keeps the selected item durable until the replacement run starts.
   sessionState.resumePending.add(record.id);
   sessionState.steerPending.delete(record.id);
   sessionState.activeRuns.delete(record.id);
@@ -220,6 +227,78 @@ export const sessions: SessionCatalogReader & SessionLifecycleContract & Session
 
     runProcess(record, opts.prompt, false, opts.attachments ?? [], opts.permissionMode, opts.author, undefined, undefined, opts.commandId);
     return record;
+  },
+
+  async branch(id, opts = {}): Promise<SessionRecord> {
+    const source = sessionState.records.get(id);
+    if (!source) throw new Error("unknown session");
+    const driver = requireAgentDriver(source.agent);
+    if (!driver.forkConversation || !driver.capabilities.branching) throw new Error("session agent does not support branching");
+    if (!source.backendSessionId) throw new Error("session has no backend conversation");
+    if (opts.lastTurnId && !driver.capabilities.branchAtTurn) throw new Error("session agent does not support branching at a turn");
+    const sourceTranscript = readTranscript(source.id, source.agent);
+    const branchTurnIndex = opts.lastTurnId
+      ? sourceTranscript.findIndex((event) => event.backend_turn_id === opts.lastTurnId && event.type === "result")
+      : sourceTranscript.length - 1;
+    if (opts.lastTurnId && branchTurnIndex < 0) throw new Error("unknown or incomplete branch turn");
+    const newId = opts.id ?? randomUUID();
+    const existing = sessionState.records.get(newId);
+    if (existing) return existing;
+    const pending = pendingSessionBranches.get(newId);
+    if (pending) return pending;
+    const operation = (async () => {
+      const fork = await driver.forkConversation!({
+        command: driver.command(settings.get()),
+        backendSessionId: source.backendSessionId!,
+        targetSessionId: newId,
+        cwd: source.dir,
+        ...(opts.lastTurnId ? { lastTurnId: opts.lastTurnId } : {}),
+      });
+      const now = Date.now();
+      const inheritedTranscript = sourceTranscript.slice(0, branchTurnIndex + 1);
+      const record: SessionRecord = {
+        ...structuredClone(source),
+        id: newId,
+        title: opts.title?.trim() || (source.title ? `${source.title} (branch)` : null),
+        backendSessionId: fork.backendSessionId,
+        backendTurnId: null,
+        backendRuntimeGeneration: null,
+        backendTurnStatus: null,
+        initiator: opts.author ?? null,
+        branchedFromSessionId: source.id,
+        parentSessionId: null,
+        spawnDepth: 0,
+        spawnRequestId: null,
+        parentCompletionNotifiedAt: null,
+        parentCompletionNotificationPending: false,
+        queuedFollowUps: [],
+        pendingSystemPrompts: [],
+        status: "completed",
+        outcome: null,
+        startedAt: now,
+        endedAt: now,
+        usage: null,
+        usageByModel: {},
+        contextUsage: null,
+        autoResumeAttempts: 0,
+        lastActivityAt: now,
+        eventCount: inheritedTranscript.length,
+      };
+      sessionState.records.set(record);
+      for (const event of inheritedTranscript) {
+        appendTranscriptEvent(record.id, event, () => typeof event.createdAt === "number" ? event.createdAt : now);
+      }
+      await flushTranscript(record.id);
+      persistSummary(record);
+      sessionState.emitter.emit("change", record);
+      return record;
+    })();
+    pendingSessionBranches.set(newId, operation);
+    try {
+      return await operation;
+    } finally {
+      if (pendingSessionBranches.get(newId) === operation) pendingSessionBranches.delete(newId);
+    }
   },
 
   // "Is any session running at all" — sessions themselves run concurrently, so
@@ -370,7 +449,7 @@ export const sessions: SessionCatalogReader & SessionLifecycleContract & Session
     const record = sessionState.records.get(id);
     if (!record) throw new Error("unknown session");
     const item: QueuedFollowUp = {
-      id: randomUUID(), sessionId: id, prompt, attachments,
+      id: randomUUID(), type: "queue", sessionId: id, prompt, attachments,
       permissionMode: permissionMode ?? null,
       author: author ?? null,
       model: model ?? null,
@@ -450,11 +529,12 @@ export const sessions: SessionCatalogReader & SessionLifecycleContract & Session
     return record;
   },
 
-  sendQueuedNow(id: string, itemId: string): "sent" | "not_found" | "unknown_session" {
+  steerQueued(id: string, itemId: string): "steered" | "not_found" | "unknown_session" {
     const record = sessionState.records.get(id);
     if (!record) return "unknown_session";
     const index = record.queuedFollowUps.findIndex((item) => item.id === itemId);
     if (index < 0) return "not_found";
+    record.queuedFollowUps[index]!.type = "steer";
     if (index > 0) {
       const [item] = record.queuedFollowUps.splice(index, 1);
       record.queuedFollowUps.unshift(item);
@@ -464,8 +544,64 @@ export const sessions: SessionCatalogReader & SessionLifecycleContract & Session
     // the operator selected while preserving every other item's order.
     persistSummary(record);
     sessionState.emitter.emit("change", record);
+
+    const run = record.status === "running" ? sessionState.activeRuns.get(id) : undefined;
+    const driver = run ? requireAgentDriver(record.agent) : undefined;
+    if (run && driver?.steer && !sessionState.resumePending.has(id) && !sessionState.steerPending.has(id)) {
+      const selected = record.queuedFollowUps[0]!;
+      let settled = false;
+      const accepted = () => {
+        if (settled || !sessionState.steerPending.has(id)) return;
+        settled = true;
+        sessionState.steerPending.delete(id);
+        const acceptedIndex = record.queuedFollowUps.findIndex((item) => item.id === selected.id);
+        if (acceptedIndex < 0) return;
+        record.queuedFollowUps.splice(acceptedIndex, 1);
+        record.followUpPrompts.push(selected.prompt);
+        appendUserTurn(
+          record,
+          selected.prompt,
+          selected.attachments,
+          selected.permissionMode ?? undefined,
+          selected.author ?? undefined,
+          selected.model ?? undefined,
+          selected.reasoningEffort ?? undefined,
+          selected.commandId ?? undefined,
+        );
+        persistSummary(record);
+        sessionState.emitter.emit("change", record);
+        if (record.status === "completed") scheduleQueuedDispatch(record);
+      };
+      const rejected = (_error: unknown) => {
+        if (settled || !sessionState.steerPending.has(id)) return;
+        settled = true;
+        sessionState.steerPending.delete(id);
+        // The selected item is still the durable queue head. Fall back to the
+        // same interrupt-and-resume redirect used by Claude Code.
+        startQueuedDispatchNow(record);
+      };
+      sessionState.steerPending.add(id);
+      if (driver.steer(run, {
+        prompt: buildAugmentedPrompt(selected.prompt, selected.attachments),
+        attachments: selected.attachments,
+        permissionMode: selected.permissionMode ?? undefined,
+        author: selected.author ?? undefined,
+        model: selected.model ?? undefined,
+        reasoningEffort: selected.reasoningEffort ?? undefined,
+        commandId: selected.commandId ?? undefined,
+      }, { accepted, rejected })) {
+        return "steered";
+      }
+      sessionState.steerPending.delete(id);
+    }
     startQueuedDispatchNow(record);
-    return "sent";
+    return "steered";
+  },
+
+  /** @deprecated Use steerQueued. */
+  sendQueuedNow(id: string, itemId: string): "sent" | "not_found" | "unknown_session" {
+    const result = sessions.steerQueued(id, itemId);
+    return result === "steered" ? "sent" : result;
   },
 
   // Sets (or, with null/empty, clears) a session's human-given display name.

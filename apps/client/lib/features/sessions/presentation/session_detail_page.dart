@@ -604,8 +604,6 @@ class _SessionDetailPageState extends _SessionDetailAttachmentHost
                             onSubmit: () => isNewSession
                                 ? _startSession(composerScope)
                                 : _submitComposer(composerScope),
-                            onStopAndRun: () =>
-                                _submitComposer(composerScope, startNow: true),
                             onRemoveQueued: (itemId) => ref
                                 .read(
                                   sessionComposerControllerProvider(
@@ -620,13 +618,13 @@ class _SessionDetailPageState extends _SessionDetailAttachmentHost
                                   ).notifier,
                                 )
                                 .editQueued(itemId, prompt),
-                            onSendQueuedNow: (itemId) => ref
+                            onSteerQueued: (itemId) => ref
                                 .read(
                                   sessionComposerControllerProvider(
                                     composerScope,
                                   ).notifier,
                                 )
-                                .sendQueuedNow(itemId),
+                                .steerQueued(itemId),
                           ),
                         ),
                       ),

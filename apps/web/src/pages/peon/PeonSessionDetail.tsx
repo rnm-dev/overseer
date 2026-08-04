@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { createPortal } from "react-dom";
 import { useNavigate, useParams } from "react-router";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
+import { GitFork, LoaderCircle, MoreHorizontal } from "lucide-react";
 import { api, ApiError, isPeonNeedsUpdate } from "../../api";
 import { shouldAcknowledgeAttention } from "./sessionAttentionRead";
 import { useI18n } from "../../i18n";
@@ -37,6 +38,8 @@ import { lockSessionDocument } from "./session/sessionViewport";
 import { loadToolDisplayMode } from "../../sessionToolDisplay";
 import { isSuccessfulRunResult, onSelectedSoundPackChange, playPeonSound, playWorkSound, stopWorkSound } from "../../peonSounds";
 import { PluginInquiryCard, PluginInquiryLoadFailed } from "./session/PluginInquiryCard";
+import { DropdownMenu, menuItemClass } from "../../ui";
+import { createSessionBranch, sessionLineage } from "./session/sessionBranch";
 import { inquiryInsertionIndex, PLUGIN_INQUIRY_CAPABILITY, usePluginInquiries, type PluginInstallInquiry } from "./session/pluginInquiries";
 
 // author: Viktor
@@ -46,6 +49,7 @@ import { inquiryInsertionIndex, PLUGIN_INQUIRY_CAPABILITY, usePluginInquiries, t
 const FILE_PANES_STORAGE_KEY = "overseer.open-session-file-panes";
 
 type VirtualTranscriptRow =
+  | { key: string; kind: "lineage"; sourceSessionId: string; relation: "branch" | "subsession"; title: string | null; paddingClass: string }
   | { key: string; kind: "item"; item: Item; paddingClass: string }
   | { key: string; kind: "ghost"; ghost: ComposerGhost; paddingClass: string }
   | { key: string; kind: "inquiry"; inquiry: PluginInstallInquiry; paddingClass: string }
@@ -55,6 +59,32 @@ type VirtualTranscriptRow =
 
 function TranscriptListHeader() {
   return <div className="h-12" aria-hidden="true" />;
+}
+
+function BranchMessageMenu({ branching, disabled, error, onBranch, t }: {
+  branching: boolean;
+  disabled: boolean;
+  error: string | null;
+  onBranch: () => void;
+  t: ReturnType<typeof useI18n>["t"];
+}) {
+  return (
+    <div className="mt-1 flex items-center gap-2 pl-0.5">
+      <DropdownMenu
+        label={t("session.branch.menu")}
+        buttonClassName="grid h-6 w-6 place-items-center rounded text-ink-faint transition-colors hover:bg-surface-raised hover:text-ink disabled:opacity-40"
+        menuAlignClassName="left-0"
+        menuWidthClassName="w-36"
+        trigger={<MoreHorizontal size={15} aria-hidden />}
+      >
+        {(close) => <button type="button" role="menuitem" disabled={disabled || branching} className={`${menuItemClass()} !flex items-center gap-2`} onClick={() => { close(); onBranch(); }}>
+          {branching ? <LoaderCircle size={13} className="animate-spin" aria-hidden /> : <GitFork size={13} aria-hidden />}
+          {branching ? t("session.branch.creating") : t("session.branch.action")}
+        </button>}
+      </DropdownMenu>
+      {error && <span role="alert" className="font-body text-[0.625rem] text-danger">{error}</span>}
+    </div>
+  );
 }
 
 function storedOpenFilePanes(): Set<string> {
@@ -149,6 +179,9 @@ function PeonSessionDetailPage() {
   const [loadedMetadataKey, setLoadedMetadataKey] = useState<string | null>(null);
   const [turnCount, setTurnCount] = useState<number | null>(null);
   const [sessionUsage, setSessionUsage] = useState<unknown>(null);
+  const [lineage, setLineage] = useState<{ sourceSessionId: string; relation: "branch" | "subsession"; title: string | null } | null>(null);
+  const [branching, setBranching] = useState(false);
+  const [branchError, setBranchError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [savingName, setSavingName] = useState(false);
@@ -443,7 +476,7 @@ function PeonSessionDetailPage() {
   );
   const {
     input, setInput, files, setFiles, sending, sendError, setSendError, ghost,
-    queueItems, removingQueueItems, sendingQueueItems, filesEnabled, send, enqueue, removeQueuedItem, sendQueuedItemNow,
+    queueItems, removingQueueItems, steeringQueueItems, filesEnabled, send, enqueue, removeQueuedItem, steerQueuedItem,
   } = useSessionComposer({
     base,
     sid,
@@ -476,7 +509,7 @@ function PeonSessionDetailPage() {
   useEffect(() => {
     let alive = true;
     const runRevision = runRevisionRef.current.get(sessionKey) ?? 0;
-    api<{ title?: string | null; prompt?: string | null; promptPreview?: string | null; projectKey?: string | null; projectId?: string | null; projectRoot?: string | null; status?: string | null; agent?: string | null; backendSessionId?: string | null; model?: string | null; reasoningEffort?: string | null; permissionMode?: string | null; turnCount?: number | null; usage?: unknown }>(
+    api<{ title?: string | null; prompt?: string | null; promptPreview?: string | null; projectKey?: string | null; projectId?: string | null; projectRoot?: string | null; status?: string | null; agent?: string | null; backendSessionId?: string | null; model?: string | null; reasoningEffort?: string | null; permissionMode?: string | null; turnCount?: number | null; usage?: unknown; branchedFromSessionId?: string | null; parentSessionId?: string | null }>(
       `${base}/sessions/${encodeURIComponent(sid)}`,
     )
       .then((s) => {
@@ -491,6 +524,8 @@ function PeonSessionDetailPage() {
         setProjectRoot(s.projectRoot ?? null);
         setTurnCount(typeof s.turnCount === "number" ? s.turnCount : null);
         setSessionUsage(s.usage ?? null);
+        const source = sessionLineage(s);
+        setLineage(source ? { ...source, title: null } : null);
         setSessionAgent(s.agent ?? null);
         setSessionReasoningEffort(s.reasoningEffort ?? null);
         setSessionPermissionMode(s.permissionMode ?? null);
@@ -520,6 +555,40 @@ function PeonSessionDetailPage() {
       alive = false;
     };
   }, [base, sid, sessionKey, metaTick, setRunning, setRunningSelection]);
+
+  useEffect(() => {
+    setBranchError(null);
+    setBranching(false);
+  }, [sessionKey]);
+
+  useEffect(() => {
+    if (!lineage?.sourceSessionId || lineage.title !== null) return;
+    let alive = true;
+    api<{ title?: string | null; promptPreview?: string | null; prompt?: string | null }>(`${base}/sessions/${encodeURIComponent(lineage.sourceSessionId)}`)
+      .then((source) => {
+        if (!alive) return;
+        setLineage((current) => current?.sourceSessionId === lineage.sourceSessionId
+          ? { ...current, title: source.title?.trim() || source.promptPreview?.trim() || source.prompt?.trim() || lineage.sourceSessionId }
+          : current);
+      })
+      .catch(() => {
+        if (alive) setLineage((current) => current?.sourceSessionId === lineage.sourceSessionId ? { ...current, title: lineage.sourceSessionId } : current);
+      });
+    return () => { alive = false; };
+  }, [base, lineage]);
+
+  const branchSession = useCallback(async () => {
+    if (branching || liveWork) return;
+    setBranching(true);
+    setBranchError(null);
+    try {
+      const created = await createSessionBranch(base, sid);
+      navigate(sessionHref?.(peon.peonId, created.id) ?? `/peons/${encodeURIComponent(peon.peonId)}/sessions/${encodeURIComponent(created.id)}`);
+    } catch (error) {
+      setBranchError(error instanceof ApiError ? error.message : t("session.branch.failed"));
+      setBranching(false);
+    }
+  }, [base, branching, liveWork, navigate, peon.peonId, sessionHref, sid, t]);
 
   async function remove() {
     setDeleting(true);
@@ -623,6 +692,12 @@ function PeonSessionDetailPage() {
     [visibleEvents],
   );
   const turnTotal = turnCount ?? transcriptTurns;
+  const lastAssistantItemKey = useMemo(() => {
+    for (let index = items.length - 1; index >= 0; index--) {
+      if (items[index]?.kind === "text") return items[index]!.key;
+    }
+    return null;
+  }, [items]);
   const usageSummary = useMemo(() => {
     const fromSession = usageBreakdown(sessionUsage);
     if (fromSession) return fromSession;
@@ -664,6 +739,7 @@ function PeonSessionDetailPage() {
       rows.splice(itemIndex + insertedInquiries, 0, { key: `plugin-inquiry:${inquiry.inquiryId}`, kind: "inquiry", inquiry, paddingClass: "pt-6" });
       insertedInquiries += 1;
     }
+    if (lineage) rows.unshift({ key: "session-lineage", kind: "lineage", ...lineage, paddingClass: "pb-6" });
     if (liveWork) {
       const previousIsUser = ghost || (items.length > 0 && items[items.length - 1]!.kind === "user");
       rows.push({
@@ -676,7 +752,7 @@ function PeonSessionDetailPage() {
     }
     rows.push({ key: "session-footer", kind: "footer", height: composerHeight + 40 });
     return rows;
-  }, [composerHeight, ghost, items, liveWork, pluginInquiries.inquiries, pluginInquiries.loadFailed]);
+  }, [composerHeight, ghost, items, lineage, liveWork, pluginInquiries.inquiries, pluginInquiries.loadFailed]);
   const [virtualWindow, setVirtualWindow] = useState(() => createTranscriptVirtualWindow(sessionKey, virtualRows));
   let displayedVirtualWindow = virtualWindow;
   if (virtualWindow.sessionKey !== sessionKey || virtualWindow.rows !== virtualRows) {
@@ -814,6 +890,17 @@ function PeonSessionDetailPage() {
             followOutput={handleFollowOutput}
             itemContent={(_index, row) => {
               if (row.kind === "footer") return <div style={{ height: row.height }} aria-hidden="true" />;
+              if (row.kind === "lineage") return (
+                <div data-session-lineage className={`mx-auto w-full max-w-6xl px-3 sm:px-6 ${row.paddingClass}`}>
+                  <div className="flex items-center gap-2 rounded-lg border border-edge/80 bg-surface-raised/50 px-3 py-2 font-body text-xs text-ink-muted">
+                    <GitFork size={14} className="flex-none text-accent-strong" aria-hidden />
+                    <span>{t(row.relation === "branch" ? "session.lineage.branched" : "session.lineage.subsession")}</span>
+                    <button type="button" className="min-w-0 truncate text-accent-strong underline decoration-dotted underline-offset-2 hover:text-ink" onClick={() => navigate(sessionHref?.(peon.peonId, row.sourceSessionId) ?? `/peons/${encodeURIComponent(peon.peonId)}/sessions/${encodeURIComponent(row.sourceSessionId)}`)}>
+                      {row.title ?? t("session.lineage.loading")}
+                    </button>
+                  </div>
+                </div>
+              );
               if (row.kind === "item") {
                 return (
                   <div data-transcript-row className={`mx-auto w-full max-w-6xl px-3 sm:px-6 ${row.paddingClass}`}>
@@ -828,6 +915,9 @@ function PeonSessionDetailPage() {
                       onOpenProjectFile={onOpenProjectFileItem}
                       projectViewer={projectViewer}
                     />
+                    {row.item.key === lastAssistantItemKey && (
+                      <BranchMessageMenu branching={branching} disabled={liveWork} error={branchError} onBranch={() => void branchSession()} t={t} />
+                    )}
                   </div>
                 );
               }
@@ -906,9 +996,9 @@ function PeonSessionDetailPage() {
         setComposerNode={setComposerNode}
         queueItems={queueItems}
         removingQueueItems={removingQueueItems}
-        sendingQueueItems={sendingQueueItems}
+        steeringQueueItems={steeringQueueItems}
         removeQueuedItem={removeQueuedItem}
-        sendQueuedItemNow={sendQueuedItemNow}
+        steerQueuedItem={steerQueuedItem}
         input={input}
         setInput={setInput}
         running={running}

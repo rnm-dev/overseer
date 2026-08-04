@@ -114,7 +114,7 @@ test("analytics combines user, stable project identity, and time while preservin
       endedAt: null,
       followUpPrompts: [],
       queuedFollowUps: [{
-        id: "queued", sessionId: "session-2", prompt: "queued", attachments: [], permissionMode: null,
+        id: "queued", type: "queue", sessionId: "session-2", prompt: "queued", attachments: [], permissionMode: null,
         author: "bob@example.com", model: null, reasoningEffort: null, commandId: null, queuedAt: NOW,
       }],
       pendingSystemPrompts: [],

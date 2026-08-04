@@ -7,12 +7,12 @@ export const QUEUE_HOURGLASS_CLASS = "mt-1 shrink-0 theme-queued-message-icon";
 // Matches the action buttons' h-7 so a single-line message centers against them instead of hanging at the top.
 export const QUEUE_CONTENT_MIN_HEIGHT_CLASS = "min-h-7";
 
-export function QueueList({ items, removing, sending, onRemove, onSendNow, t }: {
+export function QueueList({ items, removing, steering, onRemove, onSteer, t }: {
   items: QueueItem[];
   removing: ReadonlySet<string>;
-  sending: ReadonlySet<string>;
+  steering: ReadonlySet<string>;
   onRemove: (id: string) => void;
-  onSendNow: (id: string) => void;
+  onSteer: (id: string) => void;
   t: Translate;
 }) {
   if (!items.length) return null;
@@ -26,7 +26,7 @@ export function QueueList({ items, removing, sending, onRemove, onSendNow, t }: 
                 <Hourglass
                   size={13}
                   strokeWidth={1.75}
-                  className={`${QUEUE_HOURGLASS_CLASS} ${sending.has(item.id) ? "animate-pulse theme-queued-message-icon-active" : ""}`}
+                  className={`${QUEUE_HOURGLASS_CLASS} ${steering.has(item.id) ? "animate-pulse theme-queued-message-icon-active" : ""}`}
                   aria-hidden
                 />
                 <div className="min-w-0 flex-1">
@@ -43,18 +43,18 @@ export function QueueList({ items, removing, sending, onRemove, onSendNow, t }: 
               <button
                 type="button"
                 className={`${QUEUE_ACTION_CLASS} sm:gap-1 sm:px-2`}
-                disabled={sending.has(item.id) || removing.has(item.id)}
-                onClick={() => onSendNow(item.id)}
-                title={t("session.queue.sendNow")}
-                aria-label={t("session.queue.sendNow")}
+                disabled={steering.has(item.id) || removing.has(item.id)}
+                onClick={() => onSteer(item.id)}
+                title={t("session.queue.steer")}
+                aria-label={t("session.queue.steer")}
               >
-                <Send size={13} className={sending.has(item.id) ? "animate-pulse" : undefined} aria-hidden />
-                <span className="hidden sm:inline">{t("session.queue.sendNow")}</span>
+                <Send size={13} className={steering.has(item.id) ? "animate-pulse" : undefined} aria-hidden />
+                <span className="hidden sm:inline">{t("session.queue.steer")}</span>
               </button>
               <button
                 type="button"
                 className={`${QUEUE_ACTION_CLASS} hover:bg-danger/15`}
-                disabled={removing.has(item.id) || sending.has(item.id)}
+                disabled={removing.has(item.id) || steering.has(item.id)}
                 onClick={() => onRemove(item.id)}
                 title={t("session.queue.remove")}
                 aria-label={t("session.queue.remove")}

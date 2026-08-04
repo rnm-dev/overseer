@@ -85,10 +85,9 @@ class SessionComposer extends StatefulWidget {
     this.attachments = const [],
     this.onRemoveAttachment,
     this.onSubmit,
-    this.onStopAndRun,
     this.onRemoveQueued,
     this.onEditQueued,
-    this.onSendQueuedNow,
+    this.onSteerQueued,
     this.dictation,
     this.onVoiceStart,
     this.onVoiceStop,
@@ -125,10 +124,9 @@ class SessionComposer extends StatefulWidget {
   final List<NewSessionAttachment> attachments;
   final ValueChanged<int>? onRemoveAttachment;
   final VoidCallback? onSubmit;
-  final VoidCallback? onStopAndRun;
   final Future<void> Function(String itemId)? onRemoveQueued;
   final Future<void> Function(String itemId, String prompt)? onEditQueued;
-  final Future<void> Function(String itemId)? onSendQueuedNow;
+  final Future<void> Function(String itemId)? onSteerQueued;
   final VoiceDictationState? dictation;
   final VoidCallback? onVoiceStart;
   final VoidCallback? onVoiceStop;
@@ -244,7 +242,7 @@ class _SessionComposerState extends State<SessionComposer> {
                   sending: widget.sendingQueuedItems,
                   onEdit: widget.onEditQueued,
                   onRemove: widget.onRemoveQueued,
-                  onSendNow: widget.onSendQueuedNow,
+                  onSteer: widget.onSteerQueued,
                 ),
               ),
             AnimatedContainer(
@@ -461,19 +459,6 @@ class _SessionComposerState extends State<SessionComposer> {
                         ),
                       ],
                       if (widget.providers.isEmpty) const Spacer(),
-                      if (widget.running) ...[
-                        _ComposerSubmitButton(
-                          buttonKey: const Key('session-composer-stop-and-run'),
-                          visualKey: const Key(
-                            'session-composer-stop-and-run-visual',
-                          ),
-                          tooltip: l10n.sendNow,
-                          icon: LucideIcons.sendHorizontal,
-                          alignment: Alignment.centerRight,
-                          enabled: _canSubmit && widget.onStopAndRun != null,
-                          onPressed: widget.onStopAndRun,
-                        ),
-                      ],
                       _ComposerSubmitButton(
                         buttonKey: const Key('session-composer-submit'),
                         visualKey: const Key('session-composer-submit-visual'),

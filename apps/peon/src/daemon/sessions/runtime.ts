@@ -78,7 +78,12 @@ export function scheduleQueuedDispatch(record: SessionRecord): void {
   queueMicrotask(() => {
     sessionState.queueDispatchPending.delete(record.id);
     if (sessionState.records.get(record.id) !== record) return;
-    if (record.status !== "completed" || sessionState.activeRuns.has(record.id) || sessionState.resumePending.has(record.id)) return;
+    if (
+      record.status !== "completed"
+      || sessionState.activeRuns.has(record.id)
+      || sessionState.resumePending.has(record.id)
+      || sessionState.steerPending.has(record.id)
+    ) return;
     const item = record.queuedFollowUps.shift();
     // Keep triggers durable until the provider process has actually started.
     // A setup/configuration failure must not acknowledge invisible work that

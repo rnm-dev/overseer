@@ -48,6 +48,7 @@ export interface SessionLifecycleContract {
   isBusy(): boolean;
   activeCount(): number;
   start(options: StartSessionOptions): SessionRecord;
+  branch(id: string, options?: { id?: string; title?: string; lastTurnId?: string; author?: string }): Promise<SessionRecord>;
   resume(
     id: string,
     prompt: string,
@@ -86,16 +87,18 @@ export interface SessionQueueContract {
   ): SessionRecord;
   enqueueSystem(id: string, prompt: string, commandId?: string): SessionRecord;
   editQueued(id: string, itemId: string, prompt: string): SessionRecord | "not_found" | "unknown_session";
+  steerQueued(id: string, itemId: string): "steered" | "not_found" | "unknown_session";
+  /** @deprecated Use steerQueued. */
   sendQueuedNow(id: string, itemId: string): "sent" | "not_found" | "unknown_session";
   removeQueued(id: string, itemId: string): "removed" | "not_found" | "unknown_session";
 }
 
 export type SessionJsonService =
   & Pick<SessionCatalogReader, "get" | "list" | "page">
-  & Pick<SessionLifecycleContract, "start" | "resume" | "rename" | "cancel" | "delete">
+  & Pick<SessionLifecycleContract, "start" | "branch" | "resume" | "rename" | "cancel" | "delete">
   & Pick<
     SessionQueueContract,
-    "queued" | "enqueue" | "editQueued" | "sendQueuedNow" | "removeQueued"
+    "queued" | "enqueue" | "editQueued" | "steerQueued" | "sendQueuedNow" | "removeQueued"
   >;
 
 export interface SessionTranscriptEventContract {

@@ -290,11 +290,11 @@ abstract class AppLocalizations {
   /// **'Attach files'**
   String get attachFiles;
 
-  /// No description provided for @sendNow.
+  /// No description provided for @steer.
   ///
   /// In en, this message translates to:
-  /// **'Send now'**
-  String get sendNow;
+  /// **'Steer'**
+  String get steer;
 
   /// No description provided for @queue.
   ///

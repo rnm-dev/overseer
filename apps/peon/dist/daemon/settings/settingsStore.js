@@ -1,9 +1,28 @@
-import { existsSync, mkdirSync, readFileSync, rmdirSync, statSync, } from "node:fs";
+import { accessSync, constants, existsSync, mkdirSync, readFileSync, rmdirSync, statSync, } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { configDir } from "../xdgPaths.js";
 import { ensurePrivateDirectory, secureExistingPrivateFile, writePrivateFileDurably, } from "../durablePrivateFile.js";
 const SETTINGS_PATH = path.join(configDir(), "settings.json");
+function commandAvailableOnPath(command) {
+    const candidates = command.includes("/") || command.includes("\\")
+        ? [command]
+        : (process.env.PATH ?? "").split(path.delimiter).filter(Boolean).flatMap((directory) => {
+            if (process.platform !== "win32")
+                return [path.join(directory, command)];
+            const extensions = (process.env.PATHEXT ?? ".EXE;.CMD;.BAT;.COM").split(";");
+            return extensions.map((extension) => path.join(directory, `${command}${extension.toLowerCase()}`));
+        });
+    return candidates.some((candidate) => {
+        try {
+            accessSync(candidate, constants.X_OK);
+            return true;
+        }
+        catch {
+            return false;
+        }
+    });
+}
 function assertTestWriteIsIsolated(settingsPath) {
     const runningTests = Boolean(process.env.NODE_TEST_CONTEXT
         || process.env.PEON_TEST_RUN
@@ -40,9 +59,11 @@ const DEFAULT_SETTINGS = {
 };
 export class SettingsStore {
     settingsPath;
+    commandAvailable;
     current;
-    constructor(settingsPath = SETTINGS_PATH) {
+    constructor(settingsPath = SETTINGS_PATH, commandAvailable = commandAvailableOnPath) {
         this.settingsPath = settingsPath;
+        this.commandAvailable = commandAvailable;
         this.current = this.read();
     }
     get() {
@@ -70,7 +91,8 @@ export class SettingsStore {
     }
     read() {
         secureExistingPrivateFile(this.settingsPath);
-        const fromFile = existsSync(this.settingsPath)
+        const hasSettingsFile = existsSync(this.settingsPath);
+        const fromFile = hasSettingsFile
             ? JSON.parse(readFileSync(this.settingsPath, "utf8"))
             : {};
         // `codex` was the retired `codex exec --json` driver. Its model catalog is
@@ -93,13 +115,22 @@ export class SettingsStore {
             fromFile.listenAddress = `${legacy.bindHost.includes(":") ? `[${legacy.bindHost}]` : legacy.bindHost}:${port}`;
         }
         delete legacy.bindHost;
+        const initialDefaults = !hasSettingsFile
+            && !this.commandAvailable(DEFAULT_SETTINGS.agentCommand)
+            && this.commandAvailable(DEFAULT_SETTINGS.codexCommand)
+            ? {
+                ...DEFAULT_SETTINGS,
+                defaultAgent: "codex-app-server",
+                ai: { ...DEFAULT_SETTINGS.ai, defaultModel: "gpt-5.6-sol", defaultReasoningEffort: "low" },
+            }
+            : DEFAULT_SETTINGS;
         return {
-            ...DEFAULT_SETTINGS,
+            ...initialDefaults,
             ...fromFile,
             // `ai` is the one nested (object-valued) setting; the top-level spread is
             // shallow, so deep-merge it here — an on-disk file written before a new
             // ai sub-key existed still inherits that key's default instead of a hole.
-            ai: { ...DEFAULT_SETTINGS.ai, ...(fromFile.ai ?? {}) },
+            ai: { ...initialDefaults.ai, ...(fromFile.ai ?? {}) },
         };
     }
     writeAtomically(value) {

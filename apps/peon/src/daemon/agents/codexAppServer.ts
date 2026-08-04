@@ -159,6 +159,26 @@ export async function shutdownCodexAppServerRuntime(): Promise<void> {
   if (current) await current.runtime.stop();
 }
 
+export async function forkCodexAppServerThread(input: {
+  command: string;
+  backendSessionId: string;
+  targetSessionId: string;
+  cwd: string;
+  lastTurnId?: string;
+}, runtimeOverride?: CodexAppServerRuntime): Promise<{ backendSessionId: string }> {
+  const runtime = runtimeOverride ?? getCodexAppServerRuntime(input.command);
+  await runtime.start();
+  const response = await runtime.request<ThreadResponse>("thread/fork", {
+    threadId: input.backendSessionId,
+    ...(input.lastTurnId ? { lastTurnId: input.lastTurnId } : {}),
+  });
+  const backendSessionId = response.thread?.id;
+  if (typeof backendSessionId !== "string" || !backendSessionId) {
+    throw new Error("Codex app-server returned no thread id for fork");
+  }
+  return { backendSessionId };
+}
+
 export async function reconcileCodexAppServerTurn(
   input: AgentReconcileInput,
   runtimeOverride?: CodexAppServerRuntime,

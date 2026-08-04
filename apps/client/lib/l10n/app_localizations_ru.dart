@@ -114,7 +114,7 @@ class AppLocalizationsRu extends AppLocalizations {
   String get attachFiles => 'Прикрепить файлы';
 
   @override
-  String get sendNow => 'Отправить сейчас';
+  String get steer => 'Направить';
 
   @override
   String get queue => 'В очередь';

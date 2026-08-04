@@ -255,7 +255,16 @@ export function createHumanSessionsRouter(options: HumanSessionRouterOptions): e
     res.json(result);
   });
 
+  router.post("/sessions/:id/queue/:itemId/steer", (req, res) => {
+    const result = service.steerQueued(req.params.id, req.params.itemId);
+    if (result === "unknown_session") return res.status(404).json({ error: "unknown session" });
+    if (result === "not_found") return res.status(404).json({ error: "unknown queue item" });
+    res.json({ ok: true });
+  });
+
   router.post("/sessions/:id/queue/:itemId/send", (req, res) => {
+    res.set("Deprecation", "true");
+    res.set("Link", `</api/v1/sessions/${encodeURIComponent(req.params.id)}/queue/${encodeURIComponent(req.params.itemId)}/steer>; rel="successor-version"`);
     const result = service.sendQueuedNow(req.params.id, req.params.itemId);
     if (result === "unknown_session") return res.status(404).json({ error: "unknown session" });
     if (result === "not_found") return res.status(404).json({ error: "unknown queue item" });

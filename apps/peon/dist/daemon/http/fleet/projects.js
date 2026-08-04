@@ -9,7 +9,7 @@ function failProjectService(res, error) {
         fail(res, error.status, error.code, error.message);
         return;
     }
-    fail(res, 500, "INTERNAL", "failed to read project documentation");
+    fail(res, 500, "INTERNAL", "project request failed");
 }
 function projectListRows(projectService, sessionProjectReader) {
     const rows = new Map();

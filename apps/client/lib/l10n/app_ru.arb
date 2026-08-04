@@ -32,7 +32,7 @@
   "message": "Сообщение",
   "sendMessageHint": "Напишите сообщение…",
   "attachFiles": "Прикрепить файлы",
-  "sendNow": "Отправить сейчас",
+  "steer": "Направить",
   "queue": "В очередь",
   "send": "Отправить",
   "queuedMessages": "{count, plural, one{{count} сообщение ожидает отправки} few{{count} сообщения ожидают отправки} many{{count} сообщений ожидают отправки} other{{count} сообщения ожидают отправки}}"

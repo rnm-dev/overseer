@@ -33,7 +33,7 @@
   "message": "Message",
   "sendMessageHint": "Send a message…",
   "attachFiles": "Attach files",
-  "sendNow": "Send now",
+  "steer": "Steer",
   "queue": "Queue",
   "send": "Send",
   "queuedMessages": "{count, plural, =1{1 message waiting to send} other{{count} messages waiting to send}}",

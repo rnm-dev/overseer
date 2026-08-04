@@ -121,3 +121,45 @@ export function createClaudeCodeEventNormalizer(
 export function runClaudeCode(opts: AgentRunOptions): AgentRun {
   return spawnJsonAgent(opts.command, buildClaudeCodeArgs(opts), opts.cwd, createClaudeCodeEventNormalizer(opts));
 }
+
+export function forkClaudeCodeSession(input: {
+  command: string;
+  backendSessionId: string;
+  targetSessionId: string;
+  cwd: string;
+}): Promise<{ backendSessionId: string }> {
+  return new Promise((resolve, reject) => {
+    let reportedSessionId: string | null = null;
+    let providerError: string | null = null;
+    const run = spawnJsonAgent(input.command, [
+      "-p", "",
+      "--output-format", "stream-json",
+      "--verbose",
+      "--permission-mode", "bypassPermissions",
+      "--resume", input.backendSessionId,
+      "--fork-session",
+      "--session-id", input.targetSessionId,
+      "--setting-sources", "project",
+      "--strict-mcp-config",
+    ], input.cwd, (raw, emit) => {
+      if (typeof raw.session_id === "string") reportedSessionId = raw.session_id;
+      if (raw.type === "result" && raw.is_error === true) {
+        providerError = Array.isArray(raw.errors) ? raw.errors.map(String).join("; ") : String(raw.result ?? "Claude session fork failed");
+      }
+      emit({ type: "system", subtype: "provider_event" });
+    });
+    const timeout = setTimeout(() => {
+      run.kill();
+      reject(new Error("Claude session fork timed out"));
+    }, 30_000);
+    timeout.unref();
+    run.emitter.once("exit", (exit) => {
+      clearTimeout(timeout);
+      if (providerError) return reject(new Error(providerError));
+      if (exit.spawnError) return reject(new Error(exit.spawnError));
+      if (exit.code !== 0) return reject(new Error(`Claude session fork exited with code ${String(exit.code)}`));
+      if (reportedSessionId !== input.targetSessionId) return reject(new Error("Claude session fork returned an unexpected session id"));
+      resolve({ backendSessionId: reportedSessionId });
+    });
+  });
+}

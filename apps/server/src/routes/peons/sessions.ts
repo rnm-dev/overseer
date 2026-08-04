@@ -258,6 +258,28 @@ export function registerSessionRoutes(router: express.Router): void {
     const sid = String(req.params.sid);
     relay(await callPeon(connOfRecord(c.record), "PATCH", `/sessions/${encodeURIComponent(sid)}`, { actor: c.operator.email, body: req.body }), res);
   }));
+  router.post(`${wp}/sessions/:sid/branch`, withWorkspaceSession(async (req, res, c) => {
+    const requestId = req.headers["peon-request-id"];
+    if (!validCommandId(requestId)) return res.status(400).json({ error: "Peon-Request-Id must be a non-empty idempotency key of at most 255 characters", code: "BAD_REQUEST" });
+    const sid = String(req.params.sid);
+    const result = await callPeon(connOfRecord(c.record), "POST", `/sessions/${encodeURIComponent(sid)}/branch`, {
+      actor: c.operator.email,
+      body: req.body,
+      requestId,
+    });
+    const branchedSessionId = acceptedSessionId(result);
+    if (branchedSessionId) {
+      await recordSessionRequest({
+        workspaceId: c.workspaceId,
+        userId: c.userId,
+        peonId: c.record.peonId,
+        sessionId: branchedSessionId,
+        occurrenceKey: `branch:${requestId}`,
+      }).catch(() => undefined);
+    }
+    await indexAcceptedSession(result, c.workspaceId, c.record.peonId);
+    relay(result, res);
+  }));
   router.post(`${wp}/sessions/:sid/followup`, withWorkspaceSession(async (req, res, c) => {
     const commandId = req.headers["peon-request-id"];
     if (!validCommandId(commandId)) return res.status(400).json({ error: "Peon-Request-Id must be a non-empty idempotency key of at most 255 characters", code: "BAD_REQUEST" });
@@ -294,7 +316,31 @@ export function registerSessionRoutes(router: express.Router): void {
     }
     relay(result, res);
   }));
+  router.post(`${wp}/sessions/:sid/queue/:itemId/steer`, withWorkspaceSession(async (req, res, c) => {
+    const sid = String(req.params.sid);
+    const result = await callPeon(
+      connOfRecord(c.record),
+      "POST",
+      `/sessions/${encodeURIComponent(sid)}/queue/${encodeURIComponent(String(req.params.itemId))}/steer`,
+      { actor: c.operator.email },
+    );
+    if (result.ok) {
+      const indexed = await indexAcceptedSession(result, c.workspaceId, c.record.peonId);
+      if (!indexed) {
+        const snapshot = await callPeon(
+          connOfRecord(c.record),
+          "GET",
+          `/sessions/${encodeURIComponent(sid)}`,
+          { actor: c.operator.email },
+        );
+        await indexAcceptedSession(snapshot, c.workspaceId, c.record.peonId);
+      }
+    }
+    relay(result, res);
+  }));
   router.post(`${wp}/sessions/:sid/queue/:itemId/send`, withWorkspaceSession(async (req, res, c) => {
+    res.set("Deprecation", "true");
+    res.set("Link", `<${req.baseUrl}${req.path.replace(/\/send$/, "/steer")}>; rel="successor-version"`);
     const sid = String(req.params.sid);
     const result = await callPeon(
       connOfRecord(c.record),

@@ -21,6 +21,7 @@ export interface AttachmentInfo {
 
 export interface QueuedFollowUp {
   id: string;
+  type: "queue" | "steer";
   sessionId: string;
   prompt: string;
   attachments: AttachmentInfo[];
@@ -84,6 +85,8 @@ export interface SessionRecord {
   taskKey: string | null;
   taskTitle: string | null;
   initiator: string | null;
+  /** Peon session whose provider context was copied to create this session. */
+  branchedFromSessionId?: string | null;
   /** Direct Peon session that delegated this work; null for human/fleet-created roots. */
   parentSessionId: string | null;
   /** Persisted delegation depth. MCP orchestration currently permits roots only (depth zero). */

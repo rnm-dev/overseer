@@ -199,13 +199,13 @@ class DefaultFollowupRepository implements FollowupRepository {
   }
 
   @override
-  Future<void> sendQueuedNow(FollowupScope scope, String itemId) {
+  Future<void> steerQueued(FollowupScope scope, String itemId) {
     return _mutateQueue(
       scope,
       itemId,
       method: 'POST',
-      suffix: '/send',
-      fallback: 'Queued message could not be sent.',
+      suffix: '/steer',
+      fallback: 'Queued message could not steer the active turn.',
     );
   }
 

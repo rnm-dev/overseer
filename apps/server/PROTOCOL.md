@@ -152,10 +152,12 @@ GET   /api/v1/sessions/:id/file/stream   SSE watch selected file (`changed`, `fa
 POST  /api/v1/sessions/:id/preview       persist/broadcast preview handoff; body { path }
 POST  /api/v1/sessions                   start; body { prompt, dir?, projectKey?, expectsOutcome?, agent?, permissionMode?, model?, reasoningEffort?, attachments? }
 POST  /api/v1/sessions/:id/followup      continue; body { prompt, permissionMode?, model?, reasoningEffort?, attachments? }
+POST  /api/v1/sessions/:id/branch        copy Codex context into a new durable session; body { title?, lastTurnId? }
 POST  /api/v1/sessions/:id/queue         enqueue; same fields plus startNow? (default false)
-GET   /api/v1/sessions/:id/queue         persisted FIFO queue; response { items: QueuedFollowUp[] }
+GET   /api/v1/sessions/:id/queue         persisted FIFO queue; items carry type: "queue"|"steer"
 PATCH /api/v1/sessions/:id/queue/:itemId edit a waiting item's prompt; body { prompt }
-POST  /api/v1/sessions/:id/queue/:itemId/send move one waiting item to the head and send it now
+POST  /api/v1/sessions/:id/queue/:itemId/steer mark one item as steer, move it to the head, and dispatch it now
+POST  /api/v1/sessions/:id/queue/:itemId/send deprecated compatibility alias for /steer
 DELETE /api/v1/sessions/:id/queue/:itemId remove a waiting item
 POST  /api/v1/sessions/:id/cancel        cancel the active run
 POST  /api/v1/control/pause | /resume    toggle settings.paused
@@ -541,6 +543,16 @@ the existing record with `200` instead of spawning a second run. A dropped
 response is therefore safe to retry. (Attachments are resolved *after* the
 idempotency check, so a replay never re-decodes an inline image.)
 
+`POST /sessions/:id/branch` uses Codex app-server's persistent `thread/fork` or
+Claude Code's `--resume <source> --fork-session --session-id <new>` flow.
+It creates a completed Peon session with a new backend conversation, copies the
+authoritative transcript, preserves the source project, model, reasoning and working directory, and exposes
+`branchedFromSessionId`. An optional `lastTurnId` branches through that native
+turn (inclusive) for Codex; Claude returns `409 BRANCH_TURN_UNSUPPORTED` for
+that option. Supply a UUID through `Peon-Request-Id` (or body `id`) for a
+retry-safe result. Agents without branching return `409 BRANCH_UNSUPPORTED`; a
+session whose backend conversation is not known returns `409 BRANCH_SOURCE_UNAVAILABLE`.
+
 ### Message attachments (files + images/vision)
 
 `POST /sessions`, `POST /sessions/:id/followup`, and
@@ -782,9 +794,12 @@ The peon **runs sessions concurrently with no ceiling and no serialization**
   `PATCH /sessions/:id/queue/:itemId` replaces a waiting item's non-empty
   prompt without changing its position, attachments, attribution, model, or
   other dispatch metadata.
-  `POST /sessions/:id/queue/:itemId/send` atomically moves that waiting item to
-  the head, persists the reordered queue, and stops the current turn so the
-  selected item runs next; all other items retain their relative order.
+  `POST /sessions/:id/queue/:itemId/steer` atomically changes the item's
+  `type` from `queue` to `steer`, moves it to the head, persists the reordered
+  queue, and steers the running session so the selected item runs next; its ID
+  is unchanged and all other items retain their relative order. The former
+  `/send` route is a deprecated compatibility alias and returns `Deprecation:
+  true` plus a successor `Link` header.
   Queue changes are included in the session SSE `change` frames. Use the
   explicit GET/PATCH/DELETE queue routes for reconciliation, editing, and
   removal.

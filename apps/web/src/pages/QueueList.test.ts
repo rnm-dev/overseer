@@ -9,6 +9,7 @@ import type { QueueItem } from "./peon/session/queue";
 
 const queuedItem: QueueItem = {
   id: "second",
+  type: "queue",
   sessionId: "session",
   prompt: "Send this before the first item",
   attachments: [{ type: "file", path: "/tmp/plan.md", name: "plan.md" }],
@@ -20,19 +21,19 @@ const queuedItem: QueueItem = {
   queuedAt: 2,
 };
 
-test("every queued item exposes an accessible send-now action", () => {
+test("every queued item exposes an accessible steer action", () => {
   const html = renderToStaticMarkup(
     React.createElement(QueueList, {
       items: [queuedItem],
       removing: new Set<string>(),
-      sending: new Set<string>(),
+      steering: new Set<string>(),
       onRemove: () => {},
-      onSendNow: () => {},
-      t: (key) => key === "session.queue.sendNow" ? "Отправить сейчас" : key,
+      onSteer: () => {},
+      t: (key) => key === "session.queue.steer" ? "Направить" : key,
     }),
   );
-  assert.match(html, /aria-label="Отправить сейчас"/);
-  assert.match(html, /class="hidden sm:inline">Отправить сейчас<\/span>/);
+  assert.match(html, /aria-label="Направить"/);
+  assert.match(html, /class="hidden sm:inline">Направить<\/span>/);
   assert.match(html, /lucide-hourglass/);
   assert.match(html, /width="13"[^>]*lucide-hourglass/);
   assert.doesNotMatch(html, /size-8[^>]*>[\s\S]*?lucide-hourglass/);
@@ -65,9 +66,9 @@ test("a single-line queued message is centered against the action buttons", () =
     React.createElement(QueueList, {
       items: [{ ...queuedItem, attachments: [] }],
       removing: new Set<string>(),
-      sending: new Set<string>(),
+      steering: new Set<string>(),
       onRemove: () => {},
-      onSendNow: () => {},
+      onSteer: () => {},
       t: (key) => key,
     }),
   );
@@ -76,16 +77,16 @@ test("a single-line queued message is centered against the action buttons", () =
   assert.match(QUEUE_ACTION_CLASS, /\bh-7\b/);
 });
 
-test("send-now action is disabled while that queued item is being dispatched", () => {
+test("steer action is disabled while that queued item is being dispatched", () => {
   const html = renderToStaticMarkup(
     React.createElement(QueueList, {
       items: [queuedItem],
       removing: new Set<string>(),
-      sending: new Set([queuedItem.id]),
+      steering: new Set([queuedItem.id]),
       onRemove: () => {},
-      onSendNow: () => {},
-      t: (key) => key === "session.queue.sendNow" ? "Send now" : key,
+      onSteer: () => {},
+      t: (key) => key === "session.queue.steer" ? "Steer" : key,
     }),
   );
-  assert.match(html, /<button[^>]*disabled=""[^>]*aria-label="Send now"/);
+  assert.match(html, /<button[^>]*disabled=""[^>]*aria-label="Steer"/);
 });

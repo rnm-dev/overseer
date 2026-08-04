@@ -493,18 +493,17 @@ class SessionComposerController extends AsyncNotifier<SessionComposerState> {
     }
   }
 
-  Future<void> removeQueued(String itemId) =>
-      _runQueueAction(itemId, sendNow: false);
+  Future<void> removeQueued(String itemId) => _runQueueAction(itemId);
 
-  Future<void> sendQueuedNow(String itemId) =>
-      _runQueueAction(itemId, sendNow: true);
+  Future<void> steerQueued(String itemId) =>
+      _runQueueAction(itemId, steer: true);
 
   Future<void> editQueued(String itemId, String prompt) =>
       _runQueueAction(itemId, editPrompt: prompt);
 
   Future<void> _runQueueAction(
     String itemId, {
-    bool sendNow = false,
+    bool steer = false,
     String? editPrompt,
   }) async {
     final current = state.value;
@@ -515,7 +514,7 @@ class SessionComposerController extends AsyncNotifier<SessionComposerState> {
           ...current.queueActions,
           itemId: editPrompt != null
               ? QueuedFollowupAction.editing
-              : sendNow
+              : steer
               ? QueuedFollowupAction.sending
               : QueuedFollowupAction.removing,
         },
@@ -526,8 +525,8 @@ class SessionComposerController extends AsyncNotifier<SessionComposerState> {
       final repository = ref.read(followupRepositoryProvider);
       if (editPrompt != null) {
         await repository.editQueued(scope, itemId, editPrompt);
-      } else if (sendNow) {
-        await repository.sendQueuedNow(scope, itemId);
+      } else if (steer) {
+        await repository.steerQueued(scope, itemId);
       } else {
         await repository.removeQueued(scope, itemId);
       }
@@ -893,7 +892,7 @@ class _UnavailableFollowupRepository implements FollowupRepository {
   Future<void> removeQueued(FollowupScope scope, String itemId) async {}
 
   @override
-  Future<void> sendQueuedNow(FollowupScope scope, String itemId) async {}
+  Future<void> steerQueued(FollowupScope scope, String itemId) async {}
 
   @override
   Future<ModelsCatalog?> fetchModelCatalog(FollowupScope scope) async => null;

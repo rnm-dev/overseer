@@ -363,8 +363,9 @@ test("fleet session queue uses the same bearer profile, preserves actor, and unk
   assert.equal(enqueued.status, 201);
   assert.equal(Object.hasOwn(await enqueued.clone().json() as object, "pendingSystemPrompts"), false);
   const listed = await fetch(`${base}/api/v1/sessions/${id}/queue`, { headers });
-  const queue = (await listed.json()) as { items: Array<{ id: string; author: string; prompt: string }> };
+  const queue = (await listed.json()) as { items: Array<{ id: string; type: string; author: string; prompt: string }> };
   assert.equal(queue.items.length, 1);
+  assert.equal(queue.items[0].type, "queue");
   assert.equal(queue.items[0].author, "overseer-user");
   assert.equal(queue.items[0].prompt, "queued from Overseer");
 
@@ -400,19 +401,23 @@ test("fleet session queue uses the same bearer profile, preserves actor, and unk
   const secondEnqueued = await fetch(`${base}/api/v1/sessions/${id}/queue`, {
     method: "POST",
     headers,
-    body: JSON.stringify({ prompt: "send this one now" }),
+    body: JSON.stringify({ prompt: "steer with this one" }),
   });
   assert.equal(secondEnqueued.status, 201);
-  const queueWithSecond = (await secondEnqueued.json()) as { queuedFollowUps: Array<{ id: string; prompt: string }> };
-  const selected = queueWithSecond.queuedFollowUps.find((item) => item.prompt === "send this one now");
+  const queueWithSecond = (await secondEnqueued.json()) as { queuedFollowUps: Array<{ id: string; type: string; prompt: string }> };
+  const selected = queueWithSecond.queuedFollowUps.find((item) => item.prompt === "steer with this one");
   assert.ok(selected);
 
-  const sent = await fetch(`${base}/api/v1/sessions/${id}/queue/${selected.id}/send`, { method: "POST", headers });
-  assert.equal(sent.status, 200);
-  assert.deepEqual(await sent.json(), { ok: true });
+  const steered = await fetch(`${base}/api/v1/sessions/${id}/queue/${selected.id}/steer`, { method: "POST", headers });
+  assert.equal(steered.status, 200);
+  assert.deepEqual(await steered.json(), { ok: true });
+  assert.equal(sessions.get(id)?.queuedFollowUps.at(0)?.id, selected.id);
+  assert.equal(sessions.get(id)?.queuedFollowUps.at(0)?.type, "steer");
 
   const unknownItem = await fetch(`${base}/api/v1/sessions/${id}/queue/not-an-item/send`, { method: "POST", headers });
   assert.equal(unknownItem.status, 404);
+  assert.equal(unknownItem.headers.get("deprecation"), "true");
+  assert.match(unknownItem.headers.get("link") ?? "", /\/steer/);
   assert.deepEqual(await unknownItem.json(), { error: "unknown queue item", code: "UNKNOWN_QUEUE_ITEM" });
 
   const humanUnknownItem = await fetch(`${base}/api/v1/sessions/${id}/queue/not-an-item/send`, { method: "POST" });

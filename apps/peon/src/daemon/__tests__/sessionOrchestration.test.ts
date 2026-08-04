@@ -421,6 +421,7 @@ test("completion triggers skip roots but automated child turns notify despite qu
   child.status = "completed";
   child.endedAt = 20;
   child.queuedFollowUps.push({
+    type: "queue",
     id: "waiting",
     sessionId: child.id,
     prompt: "more work",

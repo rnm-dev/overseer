@@ -56,6 +56,21 @@ input.on("line", (line) => {
     send({ id: message.id, result: { thread: { id: message.params.threadId }, model: "fake-model", reasoningEffort: null } });
     return;
   }
+  if (message.method === "thread/fork") {
+    const sourceTurns = threadTurns.get(message.params.threadId);
+    if (!sourceTurns) {
+      send({ id: message.id, error: { code: -32000, message: "thread not found" } });
+      return;
+    }
+    const threadId = `thread-${++threadCounter}`;
+    const lastTurnIndex = message.params.lastTurnId
+      ? sourceTurns.findIndex((turn) => turn.id === message.params.lastTurnId)
+      : sourceTurns.length - 1;
+    threadTurns.set(threadId, structuredClone(sourceTurns.slice(0, lastTurnIndex + 1)));
+    send({ id: message.id, result: { thread: { id: threadId, forkedFromId: message.params.threadId } } });
+    send({ method: "thread/started", params: { thread: { id: threadId, forkedFromId: message.params.threadId } } });
+    return;
+  }
   if (message.method === "turn/start") {
     const turnId = `turn-${++turnCounter}`;
     const threadId = message.params.threadId;

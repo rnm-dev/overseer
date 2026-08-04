@@ -113,7 +113,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get attachFiles => 'Attach files';
 
   @override
-  String get sendNow => 'Send now';
+  String get steer => 'Steer';
 
   @override
   String get queue => 'Queue';

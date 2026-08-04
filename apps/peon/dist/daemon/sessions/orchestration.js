@@ -298,8 +298,13 @@ function sameSpawn(record, item) {
         && record.title === (item.name ?? null)
         && record.projectKey === item.projectKey
         && record.agent === item.agent
-        && record.model === (item.model ?? null)
-        && record.reasoningEffort === (item.reasoningEffort ?? null);
+        // Against what the child was *created* with: a follow-up may since have
+        // pinned a different model, and a legitimate replay of the spawn request
+        // must not read as a conflicting one. Records written before this field
+        // existed fall back to their current selection.
+        && (record.createdModel === undefined ? record.model : record.createdModel) === (item.model ?? null)
+        && (record.createdReasoningEffort === undefined ? record.reasoningEffort : record.createdReasoningEffort)
+            === (item.reasoningEffort ?? null);
 }
 function object(value) {
     if (!value || typeof value !== "object" || Array.isArray(value)) {

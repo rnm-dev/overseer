@@ -7,7 +7,7 @@ import { describe, it } from "node:test";
 import type { AgentEvent, AgentRun, AgentRunOptions, AgentSteerInput } from "../agents/index.js";
 import { getAgentDriver, listAgentDrivers } from "../agents/index.js";
 import { CodexAppServerRuntime } from "../agents/runtimes/codexAppServerRuntime.js";
-import { createCodexAppServerRun, reconcileCodexAppServerTurn } from "../agents/codexAppServer.js";
+import { createCodexAppServerRun, forkCodexAppServerThread, reconcileCodexAppServerTurn } from "../agents/codexAppServer.js";
 import { modelCatalog, narrowNewSessionAgent } from "../modelCatalog.js";
 
 const fixture = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures", "fakeCodexAppServer.mjs");
@@ -86,6 +86,19 @@ async function steer(run: AgentRun, input: AgentSteerInput): Promise<void> {
 }
 
 describe("Codex app-server driver", () => {
+  it("forks a persisted thread through the native app-server method", async () => {
+    const instance = runtime();
+    try {
+      const first = await collect(instance, options());
+      const backendSessionId = String(first.events.find((event) => event.type === "system" && event.subtype === "init")?.session_id);
+      const fork = await forkCodexAppServerThread({ command: process.execPath, backendSessionId }, instance);
+      assert.notEqual(fork.backendSessionId, backendSessionId);
+      const requests = await instance.request<Array<{ method: string; params: Record<string, unknown> }>>("test/requests");
+      assert.deepEqual(requests.find((request) => request.method === "thread/fork")?.params, { threadId: backendSessionId });
+    } finally {
+      await instance.stop();
+    }
+  });
   it("registers app-server as the only Codex driver", () => {
     assert.equal(getAgentDriver("codex"), undefined);
     assert.equal(getAgentDriver("codex-app-server")?.legacy, undefined);

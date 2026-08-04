@@ -380,11 +380,13 @@ void main() {
   test(
     'reconciles an item already popped by the Peon without an error',
     () async {
+      String? mutationPath;
       final dio = Dio(BaseOptions(baseUrl: 'https://overseer.example/api/'));
       dio.interceptors.add(
         InterceptorsWrapper(
           onRequest: (options, handler) {
             if (options.method == 'POST') {
+              mutationPath = options.path;
               handler.reject(
                 DioException.badResponse(
                   statusCode: 404,
@@ -418,7 +420,8 @@ void main() {
         dio: dio,
       );
 
-      await expectLater(repository.sendQueuedNow(scope, 'gone'), completes);
+      await expectLater(repository.steerQueued(scope, 'gone'), completes);
+      expect(mutationPath, endsWith('/queue/gone/steer'));
     },
   );
 

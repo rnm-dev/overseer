@@ -8,7 +8,7 @@ class _QueuedFollowupList extends StatelessWidget {
     required this.sending,
     required this.onEdit,
     required this.onRemove,
-    required this.onSendNow,
+    required this.onSteer,
   });
 
   final List<QueuedFollowup> items;
@@ -17,7 +17,7 @@ class _QueuedFollowupList extends StatelessWidget {
   final Set<String> sending;
   final Future<void> Function(String itemId, String prompt)? onEdit;
   final Future<void> Function(String itemId)? onRemove;
-  final Future<void> Function(String itemId)? onSendNow;
+  final Future<void> Function(String itemId)? onSteer;
 
   @override
   Widget build(BuildContext context) {
@@ -56,7 +56,7 @@ class _QueuedFollowupList extends StatelessWidget {
                         item: item,
                         onEdit: onEdit,
                         onRemove: onRemove,
-                        onSendNow: onSendNow,
+                        onSteer: onSteer,
                       ),
                 borderRadius: const BorderRadius.only(
                   topLeft: Radius.circular(12),
@@ -144,7 +144,7 @@ Future<void> _showQueuedFollowupDialog(
   required QueuedFollowup item,
   required Future<void> Function(String itemId, String prompt)? onEdit,
   required Future<void> Function(String itemId)? onRemove,
-  required Future<void> Function(String itemId)? onSendNow,
+  required Future<void> Function(String itemId)? onSteer,
 }) {
   return showGeneralDialog<void>(
     context: context,
@@ -156,7 +156,7 @@ Future<void> _showQueuedFollowupDialog(
       item: item,
       onEdit: onEdit,
       onRemove: onRemove,
-      onSendNow: onSendNow,
+      onSteer: onSteer,
     ),
     transitionBuilder: (_, animation, _, child) {
       final curved = CurvedAnimation(
@@ -180,13 +180,13 @@ class _QueuedFollowupDialog extends StatefulWidget {
     required this.item,
     required this.onEdit,
     required this.onRemove,
-    required this.onSendNow,
+    required this.onSteer,
   });
 
   final QueuedFollowup item;
   final Future<void> Function(String itemId, String prompt)? onEdit;
   final Future<void> Function(String itemId)? onRemove;
-  final Future<void> Function(String itemId)? onSendNow;
+  final Future<void> Function(String itemId)? onSteer;
 
   @override
   State<_QueuedFollowupDialog> createState() => _QueuedFollowupDialogState();
@@ -399,17 +399,17 @@ class _QueuedFollowupDialogState extends State<_QueuedFollowupDialog> {
                         children: [
                           Expanded(
                             child: AppButton(
-                              key: const Key('session-queue-dialog-send'),
-                              onPressed: busy || widget.onSendNow == null
+                              key: const Key('session-queue-dialog-steer'),
+                              onPressed: busy || widget.onSteer == null
                                   ? null
                                   : () => _run(
-                                      'send',
-                                      () => widget.onSendNow!(widget.item.id),
+                                      'steer',
+                                      () => widget.onSteer!(widget.item.id),
                                     ),
-                              loading: _busyAction == 'send',
+                              loading: _busyAction == 'steer',
                               size: AppButtonSize.sm,
                               fullWidth: true,
-                              child: const Text('Send now'),
+                              child: Text(context.l10n.steer),
                             ),
                           ),
                           const SizedBox(width: 6),

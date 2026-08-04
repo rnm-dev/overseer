@@ -10,13 +10,13 @@ interface Props {
   setComposerNode: Dispatch<SetStateAction<HTMLDivElement | null>>;
   queueItems: QueueItem[];
   removingQueueItems: ReadonlySet<string>;
-  sendingQueueItems: ReadonlySet<string>;
+  steeringQueueItems: ReadonlySet<string>;
   removeQueuedItem: (id: string) => Promise<void>;
-  sendQueuedItemNow: (id: string) => Promise<void>;
+  steerQueuedItem: (id: string) => Promise<void>;
   input: string;
   setInput: (value: string) => void;
   running: boolean;
-  enqueue: (startNow: boolean) => Promise<void>;
+  enqueue: () => Promise<void>;
   send: () => Promise<void>;
   sending: boolean;
   controlConnected: boolean;
@@ -54,7 +54,7 @@ export function composerFooterHeight(dockHeight: number, viewportHeight: number)
 
 export function SessionComposerDock(props: Props) {
   const {
-    setComposerNode, queueItems, removingQueueItems, sendingQueueItems, removeQueuedItem, sendQueuedItemNow,
+    setComposerNode, queueItems, removingQueueItems, steeringQueueItems, removeQueuedItem, steerQueuedItem,
     input, setInput, running, enqueue, send, sending, controlConnected, files, setFiles,
     setAttachmentPreview, filesEnabled, sendError, setSendError,
     modelsSupported, catalog, sessionKey, sessionProvider, overrideModel,
@@ -72,9 +72,9 @@ export function SessionComposerDock(props: Props) {
     <QueueList
       items={queueItems}
       removing={removingQueueItems}
-      sending={sendingQueueItems}
+      steering={steeringQueueItems}
       onRemove={(id) => void removeQueuedItem(id)}
-      onSendNow={(id) => void sendQueuedItemNow(id)}
+      onSteer={(id) => void steerQueuedItem(id)}
       t={t}
     />
       </div>
@@ -83,7 +83,7 @@ export function SessionComposerDock(props: Props) {
     <Composer
       value={input}
       onChange={setInput}
-      onSubmit={() => void (running ? enqueue(false) : send())}
+      onSubmit={() => void (running ? enqueue() : send())}
       placeholder={t("session.compose.placeholder")}
       submitTitle={running ? t("session.queue.action") : t("session.compose.send")}
       submitIcon={running ? "queue" : "send"}
@@ -96,13 +96,6 @@ export function SessionComposerDock(props: Props) {
       filesEnabled={filesEnabled}
       error={sendError}
       onErrorChange={setSendError}
-      secondaryAction={running ? {
-        label: t("session.queue.stop"),
-        mobileIcon: "zap",
-        onClick: () => void enqueue(true),
-        disabled: sending || (!input.trim() && files.length === 0),
-        pending: sending,
-      } : undefined}
       rightExtra={
         modelsSupported && catalog && catalog.providers.length > 0 ? (
           <>
