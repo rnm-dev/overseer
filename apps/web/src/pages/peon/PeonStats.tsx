@@ -15,6 +15,7 @@ import {
   fmtReset,
   sum,
   analyticsRows,
+  usageIsPerTurn,
   type Analytics,
   type AnalyticsRow,
   type ByModel,
@@ -214,7 +215,9 @@ export function PeonStats() {
       </div>
       {analyticsError && <p className="border-l-2 border-danger bg-danger/5 py-2 pl-3 font-mono text-sm text-danger">⚠ {t("peon.stats.breakdownUnavailable")}</p>}
       {(analytics.users?.attribution?.note || analytics.projects?.attribution?.note) && (
-        <p className="font-mono text-xs text-ink-faint">{t("peon.stats.attributionNote")}</p>
+        <p className="font-mono text-xs text-ink-faint">
+          {t(usageIsPerTurn(analytics.users, analytics.projects) ? "peon.stats.attributionNote" : "peon.stats.attributionNoteLegacy")}
+        </p>
       )}
 
       <div className="grid gap-4 xl:grid-cols-2">

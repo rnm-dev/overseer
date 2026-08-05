@@ -41,15 +41,32 @@ Missing or malformed provider usage is unavailable, not zero. Peon exposes sessi
 such as `missing_token_usage`, `invalid_token_usage`, and `overlapping_codex_cache`.
 
 Historical session files are normalized when read and are never destructively rewritten.
-Historical usage is a session rollup, so user/project/time attribution is marked `estimated`.
-An aggregate containing both available and missing usage is marked `mixed`; one with no available
-usage is `missing`.
 
-Period analytics use two explicit time authorities. `promptCount` follows the persisted
-`user_message.createdAt` (falling back to the session start only for undated historical turns),
-while session count, turns, usage, duration, outcomes, cost, and storage follow the session's
-`startedAt`. Consequently, prompts made during the requested period in an older shared session
-are counted without assigning that session's entire lifetime token rollup to the period.
+Usage is attributed per turn. Every invocation ends with one `result` event carrying that
+invocation's usage — the same payload the session record folds into its rollup — so analytics
+replays the transcript, attributes each result event to the author of the user message preceding
+it, and dates it by the event's Peon-stamped `createdAt`. The session record stays authoritative
+and its rollup is the budget: turns are counted newest-first and only while the record can still
+account for them, and whatever the rollup holds beyond the transcript's result events is
+attributed as one remainder to the session initiator at `startedAt` — which is where a session
+with a pruned, absent, or pre-dating transcript lands whole. The budget is what keeps a branch
+honest: it inherits a verbatim copy of its source's transcript, result events included, while
+starting with no usage of its own, so the inherited turns stay charged to the session that ran
+them. Rows therefore sum to the period's totals, and a
+follow-up sent today into a session started last week is charged to today and to its own author.
+
+Attribution quality reads that reconciliation: `exact` when every counted token came from the
+turn that spent it, `estimated` when a session-start remainder was involved, `mixed` when some
+session in the aggregate has no readable usage at all, and `missing` when none has. The counts
+behind it are `usageTurnsAttributed` and `usageSessionsEstimated`.
+
+Period analytics therefore use three explicit time authorities, named in the response's
+`attribution` block. `promptCount` follows the persisted `user_message.createdAt` (falling back
+to the session start only for undated historical turns); tokens, cost, and provider duration
+follow `transcript_result_created_at`; session count, turns, wall duration, outcomes, and storage
+follow the session's `startedAt` and are still repeated per participating author when grouped by
+user. `/stats` remains a session-start summary of the sessions started in its period and does not
+share the per-turn window.
 
 The analytics response carries Peon's stable `peonId`, the semantics version, canonical buckets,
 processed tokens, coverage, and attribution quality. This lets Overseer ingest/replay records

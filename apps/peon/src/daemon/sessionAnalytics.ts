@@ -1,6 +1,6 @@
 import type { CodingAgent } from "./modelCatalog.js";
 import { listAgentDrivers } from "./agents/index.js";
-import type { SessionRecord, SessionStatus } from "./sessionTypes.js";
+import type { SessionRecord, SessionStatus, SessionUsage } from "./sessionTypes.js";
 import { ensurePeonId } from "./peonIdentity.js";
 import { normalizeTokenUsage, TOKEN_USAGE_SEMANTICS_VERSION } from "./tokenUsage.js";
 import { readTranscript } from "./sessions/index.js";
@@ -44,6 +44,10 @@ export interface AnalyticsMetrics {
   sessionsWithUsage: number;
   sessionsMissingUsage: number;
   usageCoveragePercent: number;
+  // Turns whose usage was read from their own transcript result event, and
+  // sessions whose usage could only be attributed as one session-start lump.
+  usageTurnsAttributed: number;
+  usageSessionsEstimated: number;
   attributionQuality: "exact" | "estimated" | "mixed" | "missing";
   usageRejections: Partial<Record<import("./tokenUsage.js").TokenUsageRejectionReason, number>>;
   runningCount: number;
@@ -75,6 +79,7 @@ export interface SessionAnalytics {
   attribution: {
     time: "session_started_at";
     promptTime: "user_message_created_at";
+    usageTime: "transcript_result_created_at";
     user: "transcript_turn_author";
     project: "session_project_id";
     note: string;
@@ -180,7 +185,8 @@ function emptyMetrics(): AnalyticsMetrics {
     processedTokens: 0, uncachedInputTokens: 0, cachedInputTokens: 0, cacheWriteInputTokens: 0,
     providerDurationMs: 0, wallDurationMs: 0, totalCostUsd: 0, storageBytes: 0,
     sessionsWithUsage: 0, sessionsMissingUsage: 0,
-    usageCoveragePercent: 0, attributionQuality: "missing",
+    usageCoveragePercent: 0, usageTurnsAttributed: 0, usageSessionsEstimated: 0,
+    attributionQuality: "missing",
     usageRejections: {},
     runningCount: 0, successCount: 0, failureCount: 0, needsHumanCount: 0, noOutcomeCount: 0,
   };
@@ -207,6 +213,10 @@ function bucketRange(timestamp: number, bucket: AnalyticsTimeBucket): { start: n
   return { start, end };
 }
 
+// Session-shaped metrics — how many sessions ran, for how long, to what end,
+// and how much of their usage is readable at all. Selected by session start.
+// Token sums are deliberately absent here: they are attributed per turn by
+// addUsageMetrics, at the time the turn actually spent them.
 function addSessionMetrics(metrics: AnalyticsMetrics, record: SessionRecord, storageBytes: number, now: number): void {
   metrics.sessionCount += 1;
   metrics.turnCount += record.turnCount;
@@ -221,12 +231,22 @@ function addSessionMetrics(metrics: AnalyticsMetrics, record: SessionRecord, sto
   const canonical = normalizeTokenUsage(record.agent, record.usage, ({ reason }) => {
     metrics.usageRejections[reason] = (metrics.usageRejections[reason] ?? 0) + 1;
   });
-  if (!canonical) {
-    metrics.sessionsMissingUsage += 1;
-    return;
-  }
-  metrics.sessionsWithUsage += 1;
-  const usage = record.usage!;
+  if (canonical) metrics.sessionsWithUsage += 1;
+  else metrics.sessionsMissingUsage += 1;
+}
+
+// One usage occurrence: either a single transcript turn, or the reconciliation
+// remainder of a session whose transcript could not account for its record.
+function addUsageMetrics(metrics: AnalyticsMetrics, agent: CodingAgent, occurrence: UsageOccurrence): void {
+  const usage = occurrence.usage;
+  const canonical = normalizeTokenUsage(agent, usage);
+  // Raw provider fields are only trustworthy alongside a canonical reading;
+  // a rejected usage payload was already counted by addSessionMetrics.
+  if (!canonical) return;
+  // A remainder holding only leftover cost or duration is still worth adding,
+  // but it is not a token attribution and must not degrade the quality reading.
+  if (occurrence.exact) metrics.usageTurnsAttributed += 1;
+  else if (canonical.processedTokens > 0) metrics.usageSessionsEstimated += 1;
   metrics.inputTokens += usage.inputTokens ?? 0;
   metrics.outputTokens += usage.outputTokens ?? 0;
   metrics.cacheCreationTokens += usage.cacheCreationInputTokens ?? 0;
@@ -248,9 +268,16 @@ function finishUsageQuality(metrics: AnalyticsMetrics): void {
   metrics.usageCoveragePercent = metrics.sessionCount === 0
     ? 0
     : (metrics.sessionsWithUsage / metrics.sessionCount) * 100;
+  // "exact" means every counted token came from the turn that spent it; a
+  // session that had to be attributed as one session-start lump, or one whose
+  // usage could not be read at all, degrades the reading.
   metrics.attributionQuality = metrics.sessionsWithUsage === 0
     ? "missing"
-    : metrics.sessionsMissingUsage > 0 ? "mixed" : "estimated";
+    : metrics.sessionsMissingUsage > 0
+      ? "mixed"
+      : metrics.usageSessionsEstimated === 0 && metrics.usageTurnsAttributed > 0
+        ? "exact"
+        : "estimated";
 }
 
 function matches(record: SessionRecord, filters: AnalyticsQuery["filters"]): boolean {
@@ -284,6 +311,106 @@ function promptOccurrences(record: SessionRecord, transcript: readonly AgentEven
       : record.startedAt;
     return { author, createdAt };
   });
+}
+
+interface UsageOccurrence {
+  author: string;
+  createdAt: number;
+  usage: SessionUsage;
+  // True when the usage came from the turn's own result event, false for the
+  // session-start remainder described in usageOccurrences().
+  exact: boolean;
+}
+
+function usageField(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+// Every invocation ends with one result event carrying that invocation's usage
+// — the same payload sessions/runtime.ts folds into record.usage. Reading it
+// back is what makes per-turn attribution possible; the field names are the
+// CLI's, not ours.
+function resultEventUsage(event: AgentEvent): SessionUsage | null {
+  const raw = event.usage as Record<string, unknown> | undefined;
+  const usage: SessionUsage = {
+    inputTokens: usageField(raw?.input_tokens),
+    outputTokens: usageField(raw?.output_tokens),
+    cacheCreationInputTokens: usageField(raw?.cache_creation_input_tokens),
+    cacheReadInputTokens: usageField(raw?.cache_read_input_tokens),
+    durationMs: usageField(event.duration_ms),
+    totalCostUsd: usageField(event.total_cost_usd),
+  };
+  const hasTokens = usage.inputTokens !== null || usage.outputTokens !== null
+    || usage.cacheCreationInputTokens !== null || usage.cacheReadInputTokens !== null;
+  return hasTokens ? usage : null;
+}
+
+// What record.usage still holds that the transcript did not account for.
+// Transcripts can be pruned, predate a field, or be missing entirely, and the
+// record is the authoritative total — so the difference is attributed rather
+// than dropped. Clamped at zero: a transcript may legitimately hold more than
+// the record if the record lost a fold.
+function residualUsage(total: SessionUsage | null | undefined, counted: readonly UsageOccurrence[]): SessionUsage | null {
+  if (!total) return null;
+  const remainder = (pick: (usage: SessionUsage) => number | null | undefined): number => Math.max(
+    0,
+    (pick(total) ?? 0) - counted.reduce((sum, occurrence) => sum + (pick(occurrence.usage) ?? 0), 0),
+  );
+  const usage: SessionUsage = {
+    inputTokens: remainder((value) => value.inputTokens),
+    outputTokens: remainder((value) => value.outputTokens),
+    cacheCreationInputTokens: remainder((value) => value.cacheCreationInputTokens),
+    cacheReadInputTokens: remainder((value) => value.cacheReadInputTokens),
+    durationMs: remainder((value) => value.durationMs),
+    totalCostUsd: remainder((value) => value.totalCostUsd),
+  };
+  return Object.values(usage).some((value) => (value ?? 0) > 0) ? usage : null;
+}
+
+// Usage placed on the timeline: each turn at the moment its result committed
+// and against the author of the user message that asked for it, plus at most
+// one session-start remainder for whatever the transcript could not explain.
+//
+// The record's own rollup is the budget, never exceeded. A branched session
+// inherits a verbatim copy of its source's transcript — including that
+// source's result events — while starting with no usage of its own, so turns
+// are counted newest-first and only while the record can still account for
+// them. Inherited turns fall outside the budget and stay charged to the
+// session that actually ran them.
+function usageOccurrences(record: SessionRecord, transcript: readonly AgentEvent[]): UsageOccurrence[] {
+  const fallbackAuthor = record.initiator ?? "unknown";
+  let author = fallbackAuthor;
+  const candidates: { occurrence: UsageOccurrence; processedTokens: number }[] = [];
+  for (const event of transcript) {
+    if (event.type === "user_message") {
+      author = typeof event.author === "string" && event.author.trim() ? event.author.trim() : fallbackAuthor;
+      continue;
+    }
+    if (event.type !== "result") continue;
+    const usage = resultEventUsage(event);
+    if (!usage) continue;
+    const canonical = normalizeTokenUsage(record.agent, usage);
+    if (!canonical) continue;
+    const createdAt = typeof event.createdAt === "number" && Number.isFinite(event.createdAt)
+      ? event.createdAt
+      : record.startedAt;
+    candidates.push({
+      occurrence: { author, createdAt, usage, exact: true },
+      processedTokens: canonical.processedTokens,
+    });
+  }
+
+  let remaining = record.usage ? normalizeTokenUsage(record.agent, record.usage)?.processedTokens ?? 0 : 0;
+  const occurrences: UsageOccurrence[] = [];
+  for (let index = candidates.length - 1; index >= 0; index -= 1) {
+    const candidate = candidates[index]!;
+    if (candidate.processedTokens > remaining) break;
+    remaining -= candidate.processedTokens;
+    occurrences.unshift(candidate.occurrence);
+  }
+  const residual = residualUsage(record.usage, occurrences);
+  if (residual) occurrences.push({ author: fallbackAuthor, createdAt: record.startedAt, usage: residual, exact: false });
+  return occurrences;
 }
 
 export function analyticsForSessions(
@@ -336,26 +463,34 @@ export function analyticsForSessions(
 
   for (const record of allRecords) {
     if (!matches(record, query.filters) || record.startedAt >= query.to) continue;
-    const lastPossibleUserMessageAt = record.lastUserMessageAt ?? record.lastActivityAt;
-    if (lastPossibleUserMessageAt < query.from) continue;
-    const selectedPrompts = promptOccurrences(record, transcriptReader(record.id, record.agent)).filter((prompt) =>
-      prompt.createdAt >= query.from
-      && prompt.createdAt < query.to
-      && (!query.filters.user || query.filters.user.includes(prompt.author)),
-    );
-    if (selectedPrompts.length === 0) continue;
+    // A turn can commit its usage after the last user message — take the
+    // record's whole activity span as the widest thing the period can touch.
+    const lastPossibleActivityAt = Math.max(record.lastActivityAt, record.lastUserMessageAt ?? 0, record.startedAt);
+    if (lastPossibleActivityAt < query.from) continue;
+    const transcript = transcriptReader(record.id, record.agent);
+    const inPeriod = (occurrence: { author: string; createdAt: number }): boolean =>
+      occurrence.createdAt >= query.from
+      && occurrence.createdAt < query.to
+      && (!query.filters.user || query.filters.user.includes(occurrence.author));
+    const selectedPrompts = promptOccurrences(record, transcript).filter(inPeriod);
+    const selectedUsage = usageOccurrences(record, transcript).filter(inPeriod);
+    if (selectedPrompts.length === 0 && selectedUsage.length === 0) continue;
     const sessionInRange = record.startedAt >= query.from;
     const bytes = storage.bySessionId.get(record.id) ?? 0;
     addPrompts(totals, selectedPrompts.length);
+    for (const usage of selectedUsage) addUsageMetrics(totals, record.agent, usage);
     if (sessionInRange) addSessionMetrics(totals, record, bytes, now);
 
-    const periodAuthors = [...new Set(selectedPrompts.map((prompt) => prompt.author))];
+    const periodAuthors = [...new Set([...selectedPrompts, ...selectedUsage].map((occurrence) => occurrence.author))];
     if (sessionInRange) {
       const sessionAuthors = query.groupBy.includes("user") ? periodAuthors : [""];
       for (const author of sessionAuthors) addSessionMetrics(groupedRow(record, author, record.startedAt), record, bytes, now);
     }
     for (const prompt of selectedPrompts) {
       addPrompts(groupedRow(record, query.groupBy.includes("user") ? prompt.author : "", prompt.createdAt), 1);
+    }
+    for (const usage of selectedUsage) {
+      addUsageMetrics(groupedRow(record, query.groupBy.includes("user") ? usage.author : "", usage.createdAt), record.agent, usage);
     }
   }
 
@@ -376,9 +511,10 @@ export function analyticsForSessions(
     attribution: {
       time: "session_started_at",
       promptTime: "user_message_created_at",
+      usageTime: "transcript_result_created_at",
       user: "transcript_turn_author",
       project: "session_project_id",
-      note: "Prompt counts use each transcript turn's author and Peon-recorded creation time; unsigned historical turns fall back to the session initiator, and undated turns fall back to the session start. Session-level usage, duration, outcome, and storage remain selected by session start and are repeated for each participating author in that period because exact per-message usage is unavailable.",
+      note: "Prompt counts use each transcript turn's author and Peon-recorded creation time; unsigned historical turns fall back to the session initiator, and undated turns fall back to the session start. Token, cost, and provider duration figures use each turn's own result event, attributed to the author of the user message that asked for it; whatever a session's transcript cannot account for is attributed to its initiator at session start, which is where every session with no readable transcript lands. Session counts, wall duration, outcome, and storage remain selected by session start and are repeated for each participating author in that period.",
     },
     filters: query.filters,
     totals,

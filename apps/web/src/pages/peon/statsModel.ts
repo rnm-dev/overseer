@@ -41,7 +41,15 @@ export interface Analytics {
   rows?: AnalyticsRow[];
   attribution?: {
     note?: string;
+    // Present only on Peons that attribute usage per turn. Older daemons still
+    // credit a session's whole usage to whoever started it, which is a
+    // different sentence to show the operator.
+    usageTime?: string;
   };
+}
+
+export function usageIsPerTurn(...analytics: (Analytics | null)[]): boolean {
+  return analytics.some((entry) => entry?.attribution?.usageTime === "transcript_result_created_at");
 }
 
 export function analyticsRows(rows?: AnalyticsRow[]): AnalyticsRow[] {

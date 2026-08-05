@@ -43,6 +43,21 @@ control WebSocket; stored projection state is explicitly fresh, stale or
 offline. The field classification, redaction and query bounds are in
 [reverse runtime capabilities](runtime-capabilities.md).
 
+Analytics usage is attributed to the turn that spent it, not to the session
+that started first. Peon replays a session's transcript, charges each `result`
+event's tokens, cost and provider duration to the author of the user message
+preceding it, and dates them by that event's stamped `createdAt`; the session
+record stays authoritative, so whatever its rollup holds beyond the transcript's
+result events is charged to the initiator at session start — which is where a
+session with a pruned or pre-dating transcript lands whole. Session counts,
+wall duration, outcomes and storage still follow session start, and `/stats`
+remains a session-start summary that does not share the per-turn window. Before
+this, a follow-up sent today into yesterday's session showed prompts with zero
+tokens, while a session started inside the period credited its whole rollup to
+every author who wrote in it. Peon's own
+`apps/peon/docs/token-usage-analytics.md` holds the canonical buckets and the
+`exact`/`estimated`/`mixed`/`missing` quality rule.
+
 Pluggable speech-to-text for the composer (Groq first, provider seam for open source): the server side is implemented — `POST /api/v1/voice/transcriptions` plus `GET /api/v1/voice/capabilities` — and stays disabled until `OVERSEER_VOICE` and a key are configured. Both dev and production are configured with the same Groq key and verified end to end (565 ms warm on dev, 775 ms through the public origin). They share a free-tier budget of 1000 requests/day and cannot see each other's spend, so it is split by `OVERSEER_VOICE_REQUESTS_PER_DAY`: 800 in production (`apps/server/config/deploy.yml`), 200 on dev. No client records audio yet. Configuration reference and the measured latencies are in [voice input](voice-input.md).
 
 Push notifications fire on exactly one signal — a `session_attention` occurrence turning unread, meaning a turn the user initiated finished while they were not watching it — and deliver through Expo and, since 2026-07-27, FCM HTTP v1. Dev and production hold different Firebase projects (`overseer-dev-f24fe` and `overseer-9fe46`); both are live and verified against Google, and production has real Android and iOS device tokens registered. Expo is being retired as the transport in favour of native FCM tokens (OVSR-206). Credentials, encodings and the retirement rules for dead device tokens are in [push notifications](push-notifications.md).
