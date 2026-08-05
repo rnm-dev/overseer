@@ -42,7 +42,9 @@ export function projectViewerHref(href: string, context: ProjectViewerContext): 
   const decoded = decodedPath(href, context.currentOrigin);
   if (!decoded) return null;
   const root = context.projectRoot.replace(/\\/g, "/").replace(/\/+$/, "");
-  const candidate = decoded.path.replace(/\\/g, "/");
+  // Agents cite files as /path/file.ts:312 or :312:4; the position is not part
+  // of the name on disk, and keeping it makes the Peon answer 404.
+  const candidate = decoded.path.replace(/\\/g, "/").replace(/:\d+(?::\d+)?$/, "");
   if (!root || candidate === root || !candidate.startsWith(`${root}/`)) return null;
   const relative = candidate.slice(root.length + 1);
   const segments = relative.split("/");

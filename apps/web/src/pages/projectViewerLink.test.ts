@@ -31,6 +31,21 @@ test("project files map from absolute host paths to stable browser viewer URLs",
   );
 });
 
+test("cited source positions never become part of the file name", () => {
+  assert.equal(
+    projectViewerHref("/rnm/websitev2/apps/backend/src/app.ts:312", context),
+    "/view/peon%2Fid/project%20id/apps/backend/src/app.ts",
+  );
+  assert.equal(
+    projectViewerHref("/rnm/websitev2/apps/backend/src/app.ts:312:4", context),
+    "/view/peon%2Fid/project%20id/apps/backend/src/app.ts",
+  );
+  assert.equal(
+    projectViewerHref("file:///rnm/websitev2/docs/index.html#L12", context),
+    "/view/peon%2Fid/project%20id/docs/index.html#L12",
+  );
+});
+
 test("external, sibling, root, relative, and traversing links are never rewritten", () => {
   assert.equal(projectViewerHref("https://example.com/rnm/websitev2/docs/index.html", context), null);
   assert.equal(projectViewerHref("/rnm/websitev20/docs/index.html", context), null);
