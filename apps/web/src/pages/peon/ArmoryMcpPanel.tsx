@@ -61,7 +61,7 @@ export function ArmoryMcpPanel({ details, loading, error, configured, enabled, o
                   </div>
                 </summary>
                 <div className="border-t border-edge-strong/70 px-4 py-3"><h5 className="font-display text-[0.68rem] font-bold uppercase tracking-wider text-ink-faint">Input properties</h5>
-                  {properties.length === 0 ? <p className="mt-1.5 text-xs text-ink-muted">No input properties.</p> : <dl className="mt-1 divide-y divide-iron-700/60">{properties.map(([name, property]) => <div key={name} className="grid gap-0.5 py-2 sm:grid-cols-[minmax(8rem,0.7fr)_minmax(0,2fr)] sm:gap-3"><dt className="min-w-0"><span className="break-all font-mono text-xs text-ink">{name}</span><span className="ml-2 font-mono text-[0.6rem] uppercase text-ink-faint">{propertyType(property)}</span>{required.has(name) && <Badge tone="amber">Required</Badge>}</dt><dd className="text-xs leading-5 text-ink-muted">{property.description || "No description returned."}</dd></div>)}</dl>}
+                  {properties.length === 0 ? <p className="mt-1.5 text-xs text-ink-muted">No input properties.</p> : <dl className="mt-1 divide-y divide-edge">{properties.map(([name, property]) => <div key={name} className="grid gap-0.5 py-2 sm:grid-cols-[minmax(8rem,0.7fr)_minmax(0,2fr)] sm:gap-3"><dt className="min-w-0"><span className="break-all font-mono text-xs text-ink">{name}</span><span className="ml-2 font-mono text-[0.6rem] uppercase text-ink-faint">{propertyType(property)}</span>{required.has(name) && <Badge tone="amber">Required</Badge>}</dt><dd className="text-xs leading-5 text-ink-muted">{property.description || "No description returned."}</dd></div>)}</dl>}
                 </div>
               </details>
             </Card>;

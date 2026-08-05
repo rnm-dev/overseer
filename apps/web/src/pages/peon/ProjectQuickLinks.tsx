@@ -148,7 +148,7 @@ export function ProjectQuickLinksEditor({
       <div className="space-y-2.5 p-3">
         {drafts.length === 0 && <p className="px-1 py-1 text-xs text-ink-faint">{t("proj.quickLinks.empty")}</p>}
         {drafts.length > 0 && (
-          <div className="divide-y divide-iron-800 overflow-hidden rounded-lg border border-edge">
+          <div className="divide-y divide-edge overflow-hidden rounded-lg border border-edge">
             {drafts.map((link) => {
               const dirty = link.draftTitle.trim() !== link.title || link.draftUrl.trim() !== link.url;
               return (

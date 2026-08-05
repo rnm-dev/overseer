@@ -436,7 +436,7 @@ function CapabilityGroup({ label, items }: { label: string; items: CapabilityIte
       {items.length === 0 ? (
         <p className="pb-3 font-mono text-xs text-ink-faint">{t("peon.capabilities.empty")}</p>
       ) : (
-        <ul className="divide-y divide-iron-800 pb-2">
+        <ul className="divide-y divide-edge pb-2">
           {items.map((item) => (
             <li key={item.id} className="py-2.5">
               <div className="flex items-start justify-between gap-3">

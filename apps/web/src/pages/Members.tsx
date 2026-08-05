@@ -254,7 +254,7 @@ export function Members() {
               {loading ? (
                 <div className="grid min-h-40 place-items-center"><div className="loading-spinner" /></div>
               ) : (
-                <ul className="divide-y divide-iron-800">
+                <ul className="divide-y divide-edge">
                   {members.map((member) => (
                     <li key={member.userId} className="transition-colors hover:bg-surface-hover/20">
                     <div className="group flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
@@ -312,7 +312,7 @@ export function Members() {
                 <h2 className="font-display text-sm font-semibold text-ink">{t("members.pendingTitle")}</h2>
                 <p className="mt-0.5 font-mono text-[0.68rem] text-ink-faint">{t("members.pendingHint")}</p>
               </div>
-              <ul className="divide-y divide-iron-800">
+              <ul className="divide-y divide-edge">
                 {invites.map((invite) => (
                   <li key={invite.id} className="flex flex-col gap-3 px-5 py-4 transition-colors hover:bg-surface-hover/20 sm:flex-row sm:items-center sm:justify-between">
                     <div className="min-w-0">

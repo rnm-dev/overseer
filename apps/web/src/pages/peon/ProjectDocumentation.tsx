@@ -255,7 +255,7 @@ function DocumentationEmpty({ title, detail }: { title: string; detail: string }
 function DocumentationFileList({ entries, emptyLabel }: { entries: DocumentationEntry[]; emptyLabel: string }) {
   if (!entries.length) return <p className="px-6 py-9 text-center font-mono text-xs text-ink-faint">{emptyLabel}</p>;
   return (
-    <ul className="divide-y divide-iron-800/80" aria-label="docs">
+    <ul className="divide-y divide-edge" aria-label="docs">
       {entries.map((entry) => (
         <li key={`${entry.type}:${entry.name}`} className="group flex min-h-11 items-center gap-3 px-5 py-2.5 transition-colors hover:bg-accent/[0.035] sm:px-6">
           {entry.type === "directory" ? <Folder size={16} className="shrink-0 fill-accent/10 text-accent-deep" aria-hidden /> : <FileTypeIcon name={entry.name} size={16} />}
