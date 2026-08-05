@@ -1,7 +1,7 @@
 import { randomBytes, randomUUID, scrypt as scryptCallback, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
 import { query } from "../../infrastructure/db/index.js";
-import { ensureDefaultWorkspace } from "../../workspaces.js";
+import { ensureDefaultWorkspace } from "../workspaces/index.js";
 import { issueDevice } from "./authDevices.js";
 import { getUserById } from "./authUsers.js";
 import type { ClientInfo, PasswordSignInResult, UserRecord } from "./authTypes.js";

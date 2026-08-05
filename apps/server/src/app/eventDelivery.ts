@@ -1,4 +1,4 @@
-import { configureCommittedEventConsumers, type CommittedEventConsumer } from "../eventLog.js";
+import { configureCommittedEventConsumers, type CommittedEventConsumer } from "../infrastructure/events/index.js";
 import { syncLiveActivitiesForEvent } from "../liveActivity.js";
 import { enqueuePushForEvent } from "../push.js";
 

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import type pg from "pg";
 import { newDb } from "pg-mem";
 import { initDb, query } from "./infrastructure/db/index.js";
-import { appendEvent } from "./eventLog.js";
+import { appendEvent } from "./infrastructure/events/index.js";
 import { configureEventDelivery } from "./app/eventDelivery.js";
 import { completeNextSessionAttention, markSessionAttentionRead, recordSessionRequest } from "./sessionAttention.js";
 import { setPushPreferences, upsertPushSubscription } from "./push.js";

@@ -2,7 +2,7 @@ import { config } from "../../infrastructure/config/index.js";
 import { query, transaction, type Transaction } from "../../infrastructure/db/index.js";
 import { registry, toView, type PeonRecord } from "../fleet/index.js";
 import { callPeon, connOfRecord } from "../../infrastructure/peonHttp/index.js";
-import { insertEvent, publishCommittedEvent, type LiveEvent } from "../../eventLog.js";
+import { insertEvent, publishCommittedEvent, type LiveEvent } from "../../infrastructure/events/index.js";
 import { normalizeSessionSummary } from "./sessionNormalization.js";
 import { completeNextSessionAttention, deleteSessionAttention } from "../../sessionAttention.js";
 import type {

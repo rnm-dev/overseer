@@ -4,7 +4,7 @@ import { test } from "node:test";
 import type pg from "pg";
 import { newDb } from "pg-mem";
 import { initDb, query } from "./infrastructure/db/index.js";
-import { bus, readEventsSince } from "./eventLog.js";
+import { bus, readEventsSince } from "./infrastructure/events/index.js";
 import { eventVisible, type AccessClient } from "./liveAccess.js";
 import {
   claimSessionSyncGeneration,

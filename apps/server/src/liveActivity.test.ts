@@ -7,7 +7,7 @@ import type pg from "pg";
 import { newDb } from "pg-mem";
 import { config } from "./infrastructure/config/index.js";
 import { initDb, query } from "./infrastructure/db/index.js";
-import { appendEvent } from "./eventLog.js";
+import { appendEvent } from "./infrastructure/events/index.js";
 import { configureEventDelivery } from "./app/eventDelivery.js";
 import { appleDate } from "./infrastructure/push/index.js";
 import {

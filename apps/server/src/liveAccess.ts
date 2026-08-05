@@ -1,5 +1,5 @@
 import { listMemberAccess } from "./access.js";
-import type { LiveEvent } from "./eventLog.js";
+import type { LiveEvent } from "./infrastructure/events/index.js";
 import { membership, type Role } from "./workspaces.js";
 
 export interface AccessClient {

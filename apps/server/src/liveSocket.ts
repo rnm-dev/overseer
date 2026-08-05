@@ -6,7 +6,7 @@ import { consumeWebSocketTicket } from "./modules/auth/index.js";
 import { membership, type Role } from "./workspaces.js";
 import { registry, toView } from "./registry.js";
 import { getIndexedSession } from "./sessionIndex.js";
-import { bus, latestCursor, oldestCursor, readEventsSince, type LiveEvent } from "./eventLog.js";
+import { bus, latestCursor, oldestCursor, readEventsSince, type LiveEvent } from "./infrastructure/events/index.js";
 import { callPeon, connOfRecord, streamPeonTo } from "./infrastructure/peonHttp/index.js";
 import { eventVisible, peonVisible, projectVisible, refreshClientAccess, sessionVisible } from "./liveAccess.js";
 import {

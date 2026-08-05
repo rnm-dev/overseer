@@ -9,7 +9,7 @@ import {
   projectDocsFromSnapshot,
   projectFileProxyQuery,
 } from "../../modules/projects/index.js";
-import { appendEvent } from "../../eventLog.js";
+import { appendEvent } from "../../infrastructure/events/index.js";
 import { auditSafeFileErrorBody } from "../../fileErrorSafety.js";
 import { FileSandboxError, resolveAttachmentPath, resolveSandboxSegments } from "../../peonFileSandbox.js";
 import {

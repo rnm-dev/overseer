@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { query, transaction } from "../infrastructure/db/index.js";
-import { insertEvent, publishCommittedEvent, type LiveEvent } from "../eventLog.js";
+import { insertEvent, publishCommittedEvent, type LiveEvent } from "../infrastructure/events/index.js";
 import { getPeonConnection, peonConnectionSupports } from "./fleet/index.js";
 
 export const RUNTIME_STATE_CAPABILITY = "runtime-state-v1";

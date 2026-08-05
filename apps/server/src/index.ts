@@ -4,7 +4,7 @@ import { createServer } from "./server.js";
 import { startReconciler } from "./sessionIndex.js";
 import { attachLiveSocket } from "./liveSocket.js";
 import { attachPeonSocket } from "./peonSocket.js";
-import { pruneEvents } from "./eventLog.js";
+import { pruneEvents } from "./infrastructure/events/index.js";
 import { startPushWorker } from "./push.js";
 import { pruneTranscriptProjection } from "./modules/sessions/index.js";
 import { configureEventDelivery } from "./app/eventDelivery.js";
@@ -24,7 +24,7 @@ async function main(): Promise<void> {
     // any drift a restart introduced.
     startReconciler();
     startPushWorker();
-    // Keep the resumable event log bounded (see eventLog.ts).
+    // Keep the resumable event log bounded.
     setInterval(() => void pruneEvents().catch(() => null), 5 * 60_000);
     setInterval(() => void pruneTranscriptProjection().catch(() => null), 5 * 60_000);
   });

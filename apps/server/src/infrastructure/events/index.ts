@@ -1,7 +1,7 @@
 import { EventEmitter } from "node:events";
-import { query, type Transaction } from "./infrastructure/db/index.js";
-import type { AppendInput, EventKind, LiveEvent } from "./shared/liveEvent.js";
-export type { AppendInput, EventKind, LiveEvent } from "./shared/liveEvent.js";
+import { query, type Transaction } from "../db/index.js";
+import type { AppendInput, EventKind, LiveEvent } from "../../shared/liveEvent.js";
+export type { AppendInput, EventKind, LiveEvent } from "../../shared/liveEvent.js";
 
 // The append-only event log — the single choke point that both persists a
 // resumable, ordered stream (global `cursor`) and fans out live to connected WS

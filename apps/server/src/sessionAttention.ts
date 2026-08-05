@@ -1,4 +1,4 @@
-import { appendEvent } from "./eventLog.js";
+import { appendEvent } from "./infrastructure/events/index.js";
 import { query, transaction } from "./infrastructure/db/index.js";
 import { isUserViewingSession } from "./modules/presence/index.js";
 import { cancelPendingPush } from "./push.js";

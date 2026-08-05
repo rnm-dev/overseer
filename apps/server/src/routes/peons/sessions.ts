@@ -13,9 +13,11 @@ import { enrichLiveTranscriptEvent, enrichTranscriptMetadata } from "../../trans
 import { deleteIndexedSession, getIndexedSession } from "../../sessionIndex.js";
 import { cancelSessionRequest, markSessionAttentionRead, recordSessionRequest } from "../../sessionAttention.js";
 import { getIndexedProject, getIndexedProjectById } from "../../projectIndex.js";
-import { bus, type LiveEvent } from "../../eventLog.js";
+import { bus, type LiveEvent } from "../../infrastructure/events/index.js";
 import {
   cancelSessionRun,
+  branchSession,
+  dispatchQueuedSessionItem,
   getTranscriptState,
   indexAcceptedSession,
   readTranscriptAfter,
@@ -262,22 +264,17 @@ export function registerSessionRoutes(router: express.Router): void {
     const requestId = req.headers["peon-request-id"];
     if (!validCommandId(requestId)) return res.status(400).json({ error: "Peon-Request-Id must be a non-empty idempotency key of at most 255 characters", code: "BAD_REQUEST" });
     const sid = String(req.params.sid);
-    const result = await callPeon(connOfRecord(c.record), "POST", `/sessions/${encodeURIComponent(sid)}/branch`, {
+    const result = await branchSession({
+      conn: connOfRecord(c.record),
+      workspaceId: c.workspaceId,
+      userId: c.userId,
+      peonId: c.record.peonId,
+      sessionId: sid,
       actor: c.operator.email,
-      body: req.body,
       requestId,
+      body: req.body,
+      recordRequest: recordSessionRequest,
     });
-    const branchedSessionId = acceptedSessionId(result);
-    if (branchedSessionId) {
-      await recordSessionRequest({
-        workspaceId: c.workspaceId,
-        userId: c.userId,
-        peonId: c.record.peonId,
-        sessionId: branchedSessionId,
-        occurrenceKey: `branch:${requestId}`,
-      }).catch(() => undefined);
-    }
-    await indexAcceptedSession(result, c.workspaceId, c.record.peonId);
     relay(result, res);
   }));
   router.post(`${wp}/sessions/:sid/followup`, withWorkspaceSession(async (req, res, c) => {
@@ -317,52 +314,29 @@ export function registerSessionRoutes(router: express.Router): void {
     relay(result, res);
   }));
   router.post(`${wp}/sessions/:sid/queue/:itemId/steer`, withWorkspaceSession(async (req, res, c) => {
-    const sid = String(req.params.sid);
-    const result = await callPeon(
-      connOfRecord(c.record),
-      "POST",
-      `/sessions/${encodeURIComponent(sid)}/queue/${encodeURIComponent(String(req.params.itemId))}/steer`,
-      { actor: c.operator.email },
-    );
-    if (result.ok) {
-      const indexed = await indexAcceptedSession(result, c.workspaceId, c.record.peonId);
-      if (!indexed) {
-        const snapshot = await callPeon(
-          connOfRecord(c.record),
-          "GET",
-          `/sessions/${encodeURIComponent(sid)}`,
-          { actor: c.operator.email },
-        );
-        await indexAcceptedSession(snapshot, c.workspaceId, c.record.peonId);
-      }
-    }
+    const result = await dispatchQueuedSessionItem({
+      conn: connOfRecord(c.record),
+      workspaceId: c.workspaceId,
+      peonId: c.record.peonId,
+      sessionId: String(req.params.sid),
+      itemId: String(req.params.itemId),
+      actor: c.operator.email,
+      operation: "steer",
+    });
     relay(result, res);
   }));
   router.post(`${wp}/sessions/:sid/queue/:itemId/send`, withWorkspaceSession(async (req, res, c) => {
     res.set("Deprecation", "true");
     res.set("Link", `<${req.baseUrl}${req.path.replace(/\/send$/, "/steer")}>; rel="successor-version"`);
-    const sid = String(req.params.sid);
-    const result = await callPeon(
-      connOfRecord(c.record),
-      "POST",
-      `/sessions/${encodeURIComponent(sid)}/queue/${encodeURIComponent(String(req.params.itemId))}/send`,
-      { actor: c.operator.email },
-    );
-    if (result.ok) {
-      const indexed = await indexAcceptedSession(result, c.workspaceId, c.record.peonId);
-      if (!indexed) {
-        // Older Peons acknowledge the queue mutation without returning the
-        // updated SessionRecord. Pull one authoritative summary so every open
-        // Overseer client receives the running transition immediately.
-        const snapshot = await callPeon(
-          connOfRecord(c.record),
-          "GET",
-          `/sessions/${encodeURIComponent(sid)}`,
-          { actor: c.operator.email },
-        );
-        await indexAcceptedSession(snapshot, c.workspaceId, c.record.peonId);
-      }
-    }
+    const result = await dispatchQueuedSessionItem({
+      conn: connOfRecord(c.record),
+      workspaceId: c.workspaceId,
+      peonId: c.record.peonId,
+      sessionId: String(req.params.sid),
+      itemId: String(req.params.itemId),
+      actor: c.operator.email,
+      operation: "send",
+    });
     relay(result, res);
   }));
   router.patch(`${wp}/sessions/:sid/queue/:itemId`, withWorkspaceSession(async (req, res, c) => {

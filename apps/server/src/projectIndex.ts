@@ -1,5 +1,5 @@
 import { query, transaction, type Transaction } from "./infrastructure/db/index.js";
-import { insertEvent, publishCommittedEvent, type LiveEvent } from "./eventLog.js";
+import { insertEvent, publishCommittedEvent, type LiveEvent } from "./infrastructure/events/index.js";
 import { toView, type PeonRecord } from "./registry.js";
 
 export interface PeonProject {

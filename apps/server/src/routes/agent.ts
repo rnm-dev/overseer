@@ -1,7 +1,7 @@
 import express from "express";
 import { registry, toView, type PeonLoad } from "../registry.js";
 import { reconcilePeon, ingestEvents } from "../sessionIndex.js";
-import { appendEvent, broadcast } from "../eventLog.js";
+import { appendEvent, broadcast } from "../infrastructure/events/index.js";
 import { bindPeon } from "../credentials.js";
 import { bearer, credentialAuth, sourceAddress } from "./helpers.js";
 import { normalizePeonUrl } from "../infrastructure/peonHttp/index.js";

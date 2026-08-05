@@ -1,7 +1,7 @@
 import type { IncomingMessage, Server } from "node:http";
 import type { Duplex } from "node:stream";
 import { WebSocket, WebSocketServer } from "ws";
-import { broadcast } from "./eventLog.js";
+import { broadcast } from "./infrastructure/events/index.js";
 import {
   activatePeonCommandConnection,
   claimPeonConnection,

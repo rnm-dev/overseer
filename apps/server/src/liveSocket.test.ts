@@ -13,7 +13,7 @@ import { registry } from "./registry.js";
 import { attachLiveSocket, parseSse } from "./liveSocket.js";
 import { resetAudioFocus } from "./modules/presence/index.js";
 import { listSessions, upsertSession } from "./sessionIndex.js";
-import { broadcast, readEventsSince } from "./eventLog.js";
+import { broadcast, readEventsSince } from "./infrastructure/events/index.js";
 
 function listen(server: http.Server): Promise<number> {
   return new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve((server.address() as AddressInfo).port)));

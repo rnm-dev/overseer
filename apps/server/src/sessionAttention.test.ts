@@ -16,7 +16,7 @@ import {
   sessionAttentionStates,
 } from "./sessionAttention.js";
 import { heartbeatPresence, removePresence } from "./modules/presence/index.js";
-import { bus, type LiveEvent } from "./eventLog.js";
+import { bus, type LiveEvent } from "./infrastructure/events/index.js";
 import { eventVisible, type AccessClient } from "./liveAccess.js";
 import type { SessionAttentionPayload } from "./sessionAttention.js";
 
