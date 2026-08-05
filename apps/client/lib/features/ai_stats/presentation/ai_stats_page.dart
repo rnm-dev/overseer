@@ -117,6 +117,7 @@ class _PeriodPicker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Row(
       children: [
         for (final (index, value) in AiStatsPeriod.values.indexed) ...[
@@ -135,8 +136,8 @@ class _PeriodPicker extends StatelessWidget {
                   decoration: BoxDecoration(
                     border: Border.all(
                       color: value == period
-                          ? AppColors.fel
-                          : AppColors.iron800,
+                          ? colors.primary
+                          : colors.outlineVariant,
                     ),
                     borderRadius: BorderRadius.circular(5),
                   ),
@@ -151,8 +152,8 @@ class _PeriodPicker extends StatelessWidget {
                           fontSize: 10,
                           fontWeight: FontWeight.w700,
                           color: value == period
-                              ? AppColors.felBright
-                              : AppColors.boneDim,
+                              ? colors.primary
+                              : colors.onSurfaceVariant,
                           letterSpacing: 1,
                         ),
                       ),
@@ -191,7 +192,7 @@ class _HeadlineStats extends StatelessWidget {
               width: width,
               value: _count(stats.totalOutputTokens),
               label: 'Output',
-              tone: AppColors.forge,
+              tone: Theme.of(context).colorScheme.tertiary,
             ),
             _StatPlate(
               width: width,
@@ -210,23 +211,24 @@ class _StatPlate extends StatelessWidget {
     required this.width,
     required this.value,
     required this.label,
-    this.tone = AppColors.bone,
+    this.tone,
   });
 
   final double width;
   final String value;
   final String label;
-  final Color tone;
+  final Color? tone;
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Container(
       width: width,
       key: Key('stats-${label.toLowerCase()}'),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
       decoration: BoxDecoration(
-        color: AppColors.iron950,
-        border: Border.all(color: AppColors.iron800),
+        color: colors.surfaceContainerHighest,
+        border: Border.all(color: colors.outlineVariant),
         borderRadius: BorderRadius.circular(7),
       ),
       child: Column(
@@ -238,7 +240,7 @@ class _StatPlate extends StatelessWidget {
             style: AppTypography.mono(
               fontSize: 20,
               fontWeight: FontWeight.w600,
-              color: tone,
+              color: tone ?? colors.onSurface,
             ),
           ),
           const SizedBox(height: 4),
@@ -246,7 +248,7 @@ class _StatPlate extends StatelessWidget {
             label.toUpperCase(),
             style: AppTypography.display(
               fontSize: 9,
-              color: AppColors.boneDim,
+              color: colors.onSurfaceVariant,
               letterSpacing: 1.3,
             ),
           ),
@@ -389,6 +391,7 @@ class _ProviderCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final colors = Theme.of(context).colorScheme;
     final scope = AiProviderScope(
       workspaceId: workspaceId,
       peonId: peonId,
@@ -407,9 +410,9 @@ class _ProviderCard extends ConsumerWidget {
 
     return Material(
       key: Key('stats-provider-${provider.apiValue}'),
-      color: AppColors.iron950,
+      color: colors.surfaceContainerHighest,
       shape: RoundedRectangleBorder(
-        side: const BorderSide(color: AppColors.iron800),
+        side: BorderSide(color: colors.outlineVariant),
         borderRadius: BorderRadius.circular(7),
       ),
       child: Padding(
@@ -458,7 +461,7 @@ class _ProviderCard extends ConsumerWidget {
                             'Signed in as $email',
                             style: AppTypography.mono(
                               fontSize: 10.5,
-                              color: AppColors.boneDim,
+                              color: colors.onSurfaceVariant,
                             ),
                           ),
                         ),
@@ -501,7 +504,7 @@ class _ProviderCard extends ConsumerWidget {
                   child: _MiniStat(
                     value: _count(recordedTokens),
                     label: 'Tokens',
-                    tone: AppColors.forge,
+                    tone: colors.tertiary,
                   ),
                 ),
                 const SizedBox(width: 7),
@@ -520,7 +523,7 @@ class _ProviderCard extends ConsumerWidget {
                   'No recorded usage for this period.',
                   style: AppTypography.mono(
                     fontSize: 11,
-                    color: AppColors.boneFaint,
+                    color: colors.onSurfaceVariant,
                   ),
                 ),
               )
@@ -548,7 +551,7 @@ class _ProviderCard extends ConsumerWidget {
                               '${_duration(model.totalDurationMs)}',
                               style: AppTypography.mono(
                                 fontSize: 10.5,
-                                color: AppColors.boneFaint,
+                                color: colors.onSurfaceVariant,
                               ),
                             ),
                           ],
@@ -566,7 +569,7 @@ class _ProviderCard extends ConsumerWidget {
                       'No account limits reported.',
                       style: AppTypography.mono(
                         fontSize: 11,
-                        color: AppColors.boneFaint,
+                        color: colors.onSurfaceVariant,
                       ),
                     )
                   : Column(
@@ -586,12 +589,12 @@ class _ProviderCard extends ConsumerWidget {
                 'No account limits reported.',
                 style: AppTypography.mono(
                   fontSize: 11,
-                  color: AppColors.boneFaint,
+                  color: colors.onSurfaceVariant,
                 ),
               ),
             ),
             const SizedBox(height: 18),
-            const Divider(height: 1, color: AppColors.iron800),
+            Divider(height: 1, color: colors.outlineVariant),
             const SizedBox(height: 13),
             const _CardSectionTitle('CAPABILITIES'),
             const SizedBox(height: 3),
@@ -614,7 +617,7 @@ class _CardSectionTitle extends StatelessWidget {
       label,
       style: AppTypography.display(
         fontSize: 9,
-        color: AppColors.boneDim,
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
         letterSpacing: 1.4,
       ),
     );
@@ -622,23 +625,20 @@ class _CardSectionTitle extends StatelessWidget {
 }
 
 class _MiniStat extends StatelessWidget {
-  const _MiniStat({
-    required this.value,
-    required this.label,
-    this.tone = AppColors.bone,
-  });
+  const _MiniStat({required this.value, required this.label, this.tone});
 
   final String value;
   final String label;
-  final Color tone;
+  final Color? tone;
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 10),
       decoration: BoxDecoration(
-        color: AppColors.iron900,
-        border: Border.all(color: AppColors.iron800),
+        color: colors.surface,
+        border: Border.all(color: colors.outlineVariant),
         borderRadius: BorderRadius.circular(5),
       ),
       child: Column(
@@ -651,7 +651,7 @@ class _MiniStat extends StatelessWidget {
             style: AppTypography.mono(
               fontSize: 14,
               fontWeight: FontWeight.w600,
-              color: tone,
+              color: tone ?? colors.onSurface,
             ),
           ),
           const SizedBox(height: 3),
@@ -660,7 +660,7 @@ class _MiniStat extends StatelessWidget {
             maxLines: 1,
             style: AppTypography.display(
               fontSize: 8,
-              color: AppColors.boneDim,
+              color: colors.onSurfaceVariant,
               letterSpacing: 1,
             ),
           ),
@@ -699,7 +699,7 @@ class _QuotaWindowRow extends StatelessWidget {
                 '${window.usedPercent.toStringAsFixed(0)}%',
                 style: AppTypography.mono(
                   fontSize: 11,
-                  color: AppColors.boneDim,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
               ),
             ],
@@ -710,14 +710,17 @@ class _QuotaWindowRow extends StatelessWidget {
             child: LinearProgressIndicator(
               minHeight: 7,
               value: percent / 100,
-              color: AppColors.fel,
-              backgroundColor: AppColors.iron900,
+              color: Theme.of(context).colorScheme.primary,
+              backgroundColor: Theme.of(context).colorScheme.surface,
             ),
           ),
           const SizedBox(height: 5),
           Text(
             'Resets in ${_reset(window.resetsAt)}',
-            style: AppTypography.mono(fontSize: 10, color: AppColors.boneFaint),
+            style: AppTypography.mono(
+              fontSize: 10,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
           ),
         ],
       ),
@@ -735,12 +738,20 @@ class _InlineError extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(top: 10),
       padding: const EdgeInsets.only(left: 9),
-      decoration: const BoxDecoration(
-        border: Border(left: BorderSide(color: AppColors.blood, width: 2)),
+      decoration: BoxDecoration(
+        border: Border(
+          left: BorderSide(
+            color: Theme.of(context).colorScheme.error,
+            width: 2,
+          ),
+        ),
       ),
       child: Text(
         message,
-        style: AppTypography.mono(fontSize: 10.5, color: AppColors.blood),
+        style: AppTypography.mono(
+          fontSize: 10.5,
+          color: Theme.of(context).colorScheme.error,
+        ),
       ),
     );
   }
@@ -785,14 +796,15 @@ class _CapabilityGroup extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Theme(
-      data: Theme.of(context).copyWith(dividerColor: AppColors.iron800),
+      data: Theme.of(context).copyWith(dividerColor: colors.outlineVariant),
       child: ExpansionTile(
         tilePadding: EdgeInsets.zero,
         childrenPadding: const EdgeInsets.only(bottom: 8),
         minTileHeight: 46,
-        iconColor: AppColors.boneDim,
-        collapsedIconColor: AppColors.boneDim,
+        iconColor: colors.onSurfaceVariant,
+        collapsedIconColor: colors.onSurfaceVariant,
         title: Text(label, style: AppTypography.display(fontSize: 11)),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
@@ -800,14 +812,14 @@ class _CapabilityGroup extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
               decoration: BoxDecoration(
-                color: AppColors.iron900,
+                color: colors.surface,
                 borderRadius: BorderRadius.circular(4),
               ),
               child: Text(
                 '${items.length}',
                 style: AppTypography.mono(
                   fontSize: 10,
-                  color: AppColors.boneDim,
+                  color: colors.onSurfaceVariant,
                 ),
               ),
             ),
@@ -823,7 +835,7 @@ class _CapabilityGroup extends StatelessWidget {
                 'None reported.',
                 style: AppTypography.mono(
                   fontSize: 11,
-                  color: AppColors.boneFaint,
+                  color: colors.onSurfaceVariant,
                 ),
               ),
             )
@@ -851,8 +863,10 @@ class _CapabilityRow extends StatelessWidget {
     ];
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 9),
-      decoration: const BoxDecoration(
-        border: Border(top: BorderSide(color: AppColors.iron800)),
+      decoration: BoxDecoration(
+        border: Border(
+          top: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -879,7 +893,7 @@ class _CapabilityRow extends StatelessWidget {
               metadata.join(' · '),
               style: AppTypography.mono(
                 fontSize: 10,
-                color: AppColors.boneFaint,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ),
           ],

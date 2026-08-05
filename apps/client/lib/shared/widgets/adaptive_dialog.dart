@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
-import 'package:overseer_mobile/shared/design/colors.dart';
 import 'package:overseer_mobile/shared/design/motion.dart';
 import 'package:overseer_mobile/shared/layout/responsive_breakpoints.dart';
 import 'package:overseer_mobile/shared/widgets/app_bottom_sheet.dart';
@@ -58,7 +57,7 @@ Future<T?> showAdaptiveAppDialog<T>({
     barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
     barrierColor: Colors.black54,
     transitionDuration: reducedMotion ? Duration.zero : AppMotion.panelOpen,
-    pageBuilder: (_, _, _) {
+    pageBuilder: (dialogContext, _, _) {
       return SafeArea(
         child: Center(
           child: ConstrainedBox(
@@ -68,7 +67,7 @@ Future<T?> showAdaptiveAppDialog<T>({
               shape: const RoundedRectangleBorder(
                 borderRadius: BorderRadius.all(Radius.circular(14)),
               ),
-              backgroundColor: AppColors.iron900,
+              backgroundColor: Theme.of(dialogContext).colorScheme.surface,
               child: _AdaptiveAppDialogPanel(
                 title: title,
                 contentBuilder: builder,
@@ -127,7 +126,7 @@ class _AdaptiveAppDialogPanel extends StatelessWidget {
     }
 
     return Material(
-      color: AppColors.iron900,
+      color: Theme.of(context).colorScheme.surface,
       child: SafeArea(
         top: false,
         minimum: EdgeInsets.only(

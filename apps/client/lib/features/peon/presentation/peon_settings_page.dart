@@ -114,10 +114,7 @@ class _PeonSettingsPageState extends ConsumerState<PeonSettingsPage> {
               };
             },
             loading: () => const Center(
-              child: CircularProgressIndicator(
-                strokeWidth: 1.7,
-                color: AppColors.felBright,
-              ),
+              child: CircularProgressIndicator(strokeWidth: 1.7),
             ),
             error: (error, _) => _Notice(
               icon: LucideIcons.cloudOff,
@@ -156,7 +153,11 @@ class _Notice extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 30, color: AppColors.boneFaint),
+          Icon(
+            icon,
+            size: 30,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
           const SizedBox(height: 12),
           Text(
             title,
@@ -172,7 +173,7 @@ class _Notice extends StatelessWidget {
             textAlign: TextAlign.center,
             style: AppTypography.body(
               fontSize: 11,
-              color: AppColors.boneFaint,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
               height: 1.4,
             ),
           ),

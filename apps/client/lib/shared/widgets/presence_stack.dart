@@ -142,7 +142,9 @@ class _PresenceStackState extends State<PresenceStack> {
         boxShadow: [
           if (widget.softShadow)
             BoxShadow(
-              color: AppColors.iron950.withValues(alpha: 0.88),
+              color: Theme.of(
+                context,
+              ).colorScheme.shadow.withValues(alpha: 0.28),
               blurRadius: 18,
               spreadRadius: 5,
               offset: const Offset(0, 3),

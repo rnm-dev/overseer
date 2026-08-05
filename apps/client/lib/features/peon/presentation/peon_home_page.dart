@@ -15,6 +15,7 @@ import '../../projects/application/projects_controller.dart';
 import '../../projects/domain/project_models.dart';
 import '../../sessions/application/sessions_controller.dart';
 import '../../sessions/domain/session_models.dart';
+import '../../themes/domain/app_theme_package.dart';
 import 'peon_settings_page.dart';
 import '../../../shared/design/colors.dart';
 import '../../../shared/design/typography.dart';
@@ -234,6 +235,7 @@ class _ProjectsSectionState extends ConsumerState<_ProjectsSection> {
 
   @override
   Widget build(BuildContext context) {
+    final palette = Theme.of(context).extension<AppThemePalette>()!.package;
     final scope = ProjectsScope(
       workspaceId: widget.workspaceId,
       peonId: widget.peonId,
@@ -272,14 +274,14 @@ class _ProjectsSectionState extends ConsumerState<_ProjectsSection> {
                           ? LucideIcons.chevronDown
                           : LucideIcons.chevronRight,
                       size: 11,
-                      color: AppColors.boneFaint,
+                      color: palette.inkMuted,
                     ),
                     label: Text(
                       'PROJECTS',
                       style: AppTypography.display(
                         fontSize: 8.8,
                         fontWeight: FontWeight.w600,
-                        color: AppColors.boneFaint,
+                        color: palette.inkMuted,
                         letterSpacing: 1.408,
                         height: 1,
                       ),
@@ -306,7 +308,7 @@ class _ProjectsSectionState extends ConsumerState<_ProjectsSection> {
                       style: AppTypography.display(
                         fontSize: 8.8,
                         fontWeight: FontWeight.w600,
-                        color: AppColors.boneDim,
+                        color: palette.inkMuted,
                         letterSpacing: 1.408,
                         height: 1,
                       ),
@@ -817,6 +819,7 @@ class _HeaderTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Semantics(
       label: label,
       selected: selected,
@@ -834,13 +837,13 @@ class _HeaderTab extends StatelessWidget {
               width: 36,
               height: 36,
               decoration: BoxDecoration(
-                color: selected ? AppColors.rowSurface : Colors.transparent,
+                color: selected ? colors.primaryContainer : Colors.transparent,
                 borderRadius: const BorderRadius.all(Radius.circular(8)),
               ),
               child: Icon(
                 icon,
                 size: 18,
-                color: selected ? AppColors.felBright : AppColors.boneDim,
+                color: selected ? colors.primary : colors.onSurfaceVariant,
               ),
             ),
           ),
@@ -863,6 +866,7 @@ class _SectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = Theme.of(context).extension<AppThemePalette>()!.package;
     final section = title.toLowerCase();
     return _SectionHeaderSurface(
       section: section,
@@ -877,7 +881,7 @@ class _SectionHeader extends StatelessWidget {
                 style: AppTypography.display(
                   fontSize: 8.8,
                   fontWeight: FontWeight.w600,
-                  color: AppColors.boneFaint,
+                  color: palette.inkMuted,
                   letterSpacing: 1.408,
                   height: 1,
                 ),
@@ -899,7 +903,7 @@ class _SectionHeader extends StatelessWidget {
               style: AppTypography.display(
                 fontSize: 8.8,
                 fontWeight: FontWeight.w600,
-                color: AppColors.boneDim,
+                color: palette.inkMuted,
                 letterSpacing: 1.408,
                 height: 1,
               ),
@@ -938,9 +942,13 @@ class _SectionHeaderSurface extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = Theme.of(context).extension<AppThemePalette>()!.package;
     return Container(
       key: Key('$section-section-header'),
-      decoration: BoxDecoration(color: AppColors.bone.withValues(alpha: 0.05)),
+      decoration: BoxDecoration(
+        color: palette.surfaceHover.withValues(alpha: 0.92),
+        border: Border(bottom: BorderSide(color: palette.edge)),
+      ),
       child: Padding(
         key: Key('$section-section-header-padding'),
         padding: const EdgeInsets.symmetric(horizontal: 12),

@@ -21,6 +21,7 @@ class _QueuedFollowupList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Semantics(
       label: 'Queued follow-ups',
       container: true,
@@ -38,96 +39,111 @@ class _QueuedFollowupList extends StatelessWidget {
             final isRemoving = removing.contains(item.id);
             final isSending = sending.contains(item.id);
             final busy = isEditing || isRemoving || isSending;
-            return Material(
-              key: Key('session-queue-item-${item.id}'),
-              color: AppColors.iron900.withValues(alpha: 0.78),
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(12),
-                topRight: Radius.circular(12),
-                bottomLeft: Radius.circular(12),
-                bottomRight: Radius.circular(3),
-              ),
-              child: InkWell(
-                key: Key('session-queue-open-${item.id}'),
-                onTap: busy
-                    ? null
-                    : () => _showQueuedFollowupDialog(
-                        context,
-                        item: item,
-                        onEdit: onEdit,
-                        onRemove: onRemove,
-                        onSteer: onSteer,
-                      ),
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(12),
-                  topRight: Radius.circular(12),
-                  bottomLeft: Radius.circular(12),
-                  bottomRight: Radius.circular(3),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.only(top: 3),
-                        child: busy
-                            ? const SizedBox.square(
-                                dimension: 13,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 1.8,
-                                  color: AppColors.ember,
-                                ),
-                              )
-                            : Icon(
-                                LucideIcons.hourglass,
-                                size: 13,
-                                color: AppColors.ember.withValues(alpha: 0.7),
-                              ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            AppMarkdownPreview(
-                              key: Key('session-queue-markdown-${item.id}'),
-                              data: item.prompt,
-                              style: AppTypography.chatMessage(height: 1.35),
-                              maxLines: 3,
-                              overflow: TextOverflow.ellipsis,
-                              softWrap: true,
-                            ),
-                            if (item.attachments.isNotEmpty) ...[
-                              const SizedBox(height: 4),
-                              Wrap(
-                                spacing: 8,
-                                runSpacing: 3,
-                                children: [
-                                  for (final attachment in item.attachments)
-                                    Text(
-                                      '📎 ${attachment.label}',
-                                      style: AppTypography.mono(
-                                        fontSize: 10,
-                                        color: AppColors.boneFaint,
-                                      ),
+            const shape = BorderRadius.only(
+              topLeft: Radius.circular(12),
+              topRight: Radius.circular(12),
+              bottomLeft: Radius.circular(12),
+              bottomRight: Radius.circular(3),
+            );
+            return ClipRRect(
+              borderRadius: shape,
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                child: Material(
+                  key: Key('session-queue-item-${item.id}'),
+                  color: colors.primaryContainer.withValues(alpha: 0.72),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: shape,
+                    side: BorderSide(
+                      color: colors.primary.withValues(alpha: 0.18),
+                    ),
+                  ),
+                  child: InkWell(
+                    key: Key('session-queue-open-${item.id}'),
+                    onTap: busy
+                        ? null
+                        : () => _showQueuedFollowupDialog(
+                            context,
+                            item: item,
+                            onEdit: onEdit,
+                            onRemove: onRemove,
+                            onSteer: onSteer,
+                          ),
+                    borderRadius: shape,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.only(top: 3),
+                            child: busy
+                                ? SizedBox.square(
+                                    dimension: 13,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 1.8,
+                                      color: colors.onPrimaryContainer,
                                     ),
+                                  )
+                                : Icon(
+                                    LucideIcons.hourglass,
+                                    size: 13,
+                                    color: colors.onPrimaryContainer.withValues(
+                                      alpha: 0.72,
+                                    ),
+                                  ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                AppMarkdownPreview(
+                                  key: Key('session-queue-markdown-${item.id}'),
+                                  data: item.prompt,
+                                  style: AppTypography.chatMessage(
+                                    color: colors.onPrimaryContainer,
+                                    height: 1.35,
+                                  ),
+                                  maxLines: 3,
+                                  overflow: TextOverflow.ellipsis,
+                                  softWrap: true,
+                                ),
+                                if (item.attachments.isNotEmpty) ...[
+                                  const SizedBox(height: 4),
+                                  Wrap(
+                                    spacing: 8,
+                                    runSpacing: 3,
+                                    children: [
+                                      for (final attachment in item.attachments)
+                                        Text(
+                                          '📎 ${attachment.label}',
+                                          style: AppTypography.mono(
+                                            fontSize: 10,
+                                            color: colors.onPrimaryContainer
+                                                .withValues(alpha: 0.7),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
                                 ],
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Padding(
+                            padding: const EdgeInsets.only(top: 2),
+                            child: Icon(
+                              LucideIcons.maximize2,
+                              size: 14,
+                              color: colors.onPrimaryContainer.withValues(
+                                alpha: 0.72,
                               ),
-                            ],
-                          ],
-                        ),
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(width: 6),
-                      const Padding(
-                        padding: EdgeInsets.only(top: 2),
-                        child: Icon(
-                          LucideIcons.maximize2,
-                          size: 14,
-                          color: AppColors.boneFaint,
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
                 ),
               ),
@@ -461,13 +477,14 @@ class _AttachmentChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Container(
       constraints: const BoxConstraints(maxWidth: 190),
       padding: const EdgeInsets.fromLTRB(8, 5, 4, 5),
       decoration: BoxDecoration(
-        color: AppColors.iron900,
+        color: colors.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(7),
-        border: Border.all(color: AppColors.iron800),
+        border: Border.all(color: colors.outlineVariant),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -475,7 +492,7 @@ class _AttachmentChip extends StatelessWidget {
           Icon(
             attachment.type == 'image' ? LucideIcons.image : LucideIcons.file,
             size: 13,
-            color: AppColors.boneFaint,
+            color: colors.onSurfaceVariant,
           ),
           const SizedBox(width: 6),
           Flexible(
@@ -483,7 +500,7 @@ class _AttachmentChip extends StatelessWidget {
               attachment.name,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: AppTypography.mono(fontSize: 11, color: AppColors.boneDim),
+              style: AppTypography.mono(fontSize: 11, color: colors.onSurface),
             ),
           ),
           IconButton(
@@ -495,11 +512,7 @@ class _AttachmentChip extends StatelessWidget {
               minimumSize: const Size(28, 28),
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
             ),
-            icon: const Icon(
-              LucideIcons.x,
-              size: 13,
-              color: AppColors.boneFaint,
-            ),
+            icon: Icon(LucideIcons.x, size: 13, color: colors.onSurfaceVariant),
           ),
         ],
       ),
@@ -658,6 +671,7 @@ class _VoiceDictationButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     final recording = state.phase == VoiceDictationPhase.recording;
     final transcribing = state.phase == VoiceDictationPhase.transcribing;
     return IconButton(
@@ -681,9 +695,11 @@ class _VoiceDictationButton extends StatelessWidget {
         minimumSize: const Size(38, 44),
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
         foregroundColor: recording || transcribing
-            ? AppColors.blood
-            : AppColors.boneFaint,
-        disabledForegroundColor: AppColors.boneFaint.withValues(alpha: 0.45),
+            ? colors.error
+            : colors.onSurfaceVariant,
+        disabledForegroundColor: colors.onSurfaceVariant.withValues(
+          alpha: 0.45,
+        ),
       ),
       icon: Container(
         key: const Key('session-composer-voice-visual'),
@@ -691,8 +707,8 @@ class _VoiceDictationButton extends StatelessWidget {
         height: 32,
         decoration: BoxDecoration(
           color: recording || transcribing
-              ? AppColors.blood.withValues(alpha: 0.14)
-              : AppColors.iron900,
+              ? colors.error.withValues(alpha: 0.14)
+              : colors.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(8),
         ),
         alignment: Alignment.center,
@@ -727,6 +743,7 @@ class _ComposerIconButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return IconButton(
       tooltip: tooltip,
       onPressed: onPressed,
@@ -736,15 +753,15 @@ class _ComposerIconButton extends StatelessWidget {
       style: IconButton.styleFrom(
         minimumSize: const Size(38, 44),
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        foregroundColor: AppColors.boneFaint,
-        disabledForegroundColor: AppColors.boneFaint.withValues(alpha: 0.3),
+        foregroundColor: colors.onSurfaceVariant,
+        disabledForegroundColor: colors.onSurfaceVariant.withValues(alpha: 0.3),
       ),
       icon: Container(
         key: visualKey,
         width: 32,
         height: 32,
         decoration: BoxDecoration(
-          color: AppColors.iron900,
+          color: colors.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(8),
         ),
         alignment: Alignment.center,
@@ -777,6 +794,7 @@ class _ComposerSubmitButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return IconButton(
       key: buttonKey,
       tooltip: tooltip,
@@ -787,24 +805,24 @@ class _ComposerSubmitButton extends StatelessWidget {
       style: IconButton.styleFrom(
         minimumSize: const Size(38, 44),
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        foregroundColor: enabled ? AppColors.felInk : AppColors.boneFaint,
-        disabledForegroundColor: AppColors.boneFaint,
+        foregroundColor: enabled ? colors.onPrimary : colors.onSurfaceVariant,
+        disabledForegroundColor: colors.onSurfaceVariant,
       ),
       icon: Container(
         key: visualKey,
         width: 32,
         height: 32,
         decoration: BoxDecoration(
-          color: enabled ? AppColors.fel : AppColors.iron900,
+          color: enabled ? colors.primary : colors.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(8),
         ),
         alignment: Alignment.center,
         child: pending
-            ? const SizedBox.square(
+            ? SizedBox.square(
                 dimension: 15,
                 child: CircularProgressIndicator(
                   strokeWidth: 2,
-                  color: AppColors.boneDim,
+                  color: colors.onPrimary,
                 ),
               )
             : Icon(icon, size: 15),
@@ -962,6 +980,7 @@ class _ComposerCapabilityPickerState extends State<_ComposerCapabilityPicker> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     final provider = _provider;
     final agentLabel = provider.label;
     final modelLabel = capabilityLabel(
@@ -992,7 +1011,7 @@ class _ComposerCapabilityPickerState extends State<_ComposerCapabilityPicker> {
               height: 32,
               padding: const EdgeInsets.symmetric(horizontal: 8),
               decoration: BoxDecoration(
-                color: AppColors.iron900,
+                color: colors.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Row(
@@ -1006,7 +1025,7 @@ class _ComposerCapabilityPickerState extends State<_ComposerCapabilityPicker> {
                       maxLines: 1,
                       style: AppTypography.body(
                         fontSize: AppTypography.composerCapabilityTextSize,
-                        color: AppColors.boneDim,
+                        color: colors.onSurfaceVariant,
                       ),
                     ),
                   ),
@@ -1014,7 +1033,7 @@ class _ComposerCapabilityPickerState extends State<_ComposerCapabilityPicker> {
                   Icon(
                     _open ? LucideIcons.chevronUp : LucideIcons.chevronDown,
                     size: 12,
-                    color: AppColors.boneFaint,
+                    color: colors.onSurfaceVariant,
                   ),
                 ],
               ),

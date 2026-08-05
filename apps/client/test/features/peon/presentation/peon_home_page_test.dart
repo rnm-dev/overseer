@@ -18,6 +18,7 @@ import 'package:overseer_mobile/features/sessions/presentation/session_detail_pa
 import 'package:overseer_mobile/features/sessions/presentation/session_list.dart';
 import 'package:overseer_mobile/shared/design/colors.dart';
 import 'package:overseer_mobile/shared/design/theme.dart';
+import 'package:overseer_mobile/features/themes/domain/app_theme_package.dart';
 import 'package:overseer_mobile/shared/design/typography.dart';
 import 'package:overseer_mobile/shared/widgets/app_navigation_bar.dart';
 import 'package:overseer_mobile/shared/widgets/app_option_bottom_sheet.dart';
@@ -35,6 +36,25 @@ Widget _testPeonHomePage() => PeonHomePage(
   onNewSession: _openPeonNewSession,
   sessionListBuilder: _buildPeonSessionList,
 );
+
+void _expectSelectedPeonTabUsesTheme(
+  WidgetTester tester,
+  String label,
+  ThemeData theme,
+) {
+  final surface = tester.widget<Container>(
+    find.byKey(Key('peon-tab-${label.toLowerCase()}-surface')),
+  );
+  final decoration = surface.decoration! as BoxDecoration;
+  expect(decoration.color, theme.colorScheme.primaryContainer);
+  final icon = tester.widget<Icon>(
+    find.descendant(
+      of: find.byKey(Key('peon-tab-${label.toLowerCase()}-surface')),
+      matching: find.byType(Icon),
+    ),
+  );
+  expect(icon.color, theme.colorScheme.primary);
+}
 
 void _openPeonNewSession(
   BuildContext context, {
@@ -70,6 +90,48 @@ Widget _buildPeonSessionList(
 }
 
 void main() {
+  testWidgets('selected Peon tab follows a light theme', (tester) async {
+    final theme = AppTheme.fromPackage(AppThemePackages.bundled[1]);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          sessionRepositoryProvider.overrideWithValue(
+            _PendingSessionRepository(),
+          ),
+          projectRepositoryProvider.overrideWithValue(
+            _PendingProjectRepository(),
+          ),
+        ],
+        child: MaterialApp(theme: theme, home: _testPeonHomePage()),
+      ),
+    );
+    await tester.pump();
+
+    _expectSelectedPeonTabUsesTheme(tester, 'Work', theme);
+    final statsIcon = tester.widget<Icon>(
+      find.descendant(
+        of: find.byKey(const Key('peon-tab-stats-surface')),
+        matching: find.byType(Icon),
+      ),
+    );
+    expect(statsIcon.color, theme.colorScheme.onSurfaceVariant);
+
+    final package = AppThemePackages.bundled[1];
+    final header = tester.widget<Container>(
+      find.byKey(const Key('projects-section-header')),
+    );
+    final headerDecoration = header.decoration! as BoxDecoration;
+    expect(
+      headerDecoration.color,
+      package.surfaceHover.withValues(alpha: 0.92),
+    );
+    expect(headerDecoration.border?.bottom.color, package.edge);
+    expect(
+      tester.widget<Text>(find.text('PROJECTS')).style?.color,
+      package.inkMuted,
+    );
+  });
+
   testWidgets('shows shimmer skeletons while projects and sessions load', (
     tester,
   ) async {

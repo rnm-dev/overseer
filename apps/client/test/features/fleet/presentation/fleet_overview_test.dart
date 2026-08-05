@@ -498,7 +498,12 @@ void main() {
     expect(signedOut, isFalse);
     final titleFinder = find.text('Sign out?');
     final title = tester.widget<Text>(titleFinder);
-    expect(title.style, AppTypography.sectionTitle());
+    expect(
+      title.style,
+      AppTypography.sectionTitle(
+        color: Theme.of(tester.element(titleFinder)).colorScheme.onSurface,
+      ),
+    );
     final confirmButton = tester.widget<AppButton>(
       find.byKey(const Key('confirmation-confirm')),
     );

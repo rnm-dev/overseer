@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../design/colors.dart';
 import '../design/motion.dart';
 import '../design/typography.dart';
 import 'app_bottom_sheet.dart';
@@ -57,7 +56,7 @@ class _ConfirmationSheet extends StatelessWidget {
                 textAlign: TextAlign.center,
                 style: AppTypography.body(
                   fontSize: 14,
-                  color: AppColors.boneDim,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                   height: 1.45,
                 ),
               ),

@@ -17,11 +17,15 @@ void main() {
       ),
     );
 
-    final title = tester.widget<Text>(
-      find.byKey(const Key('app-bottom-sheet-title')),
-    );
+    final titleFinder = find.byKey(const Key('app-bottom-sheet-title'));
+    final title = tester.widget<Text>(titleFinder);
     expect(title.data, 'Sheet title');
-    expect(title.style, AppTypography.sectionTitle());
+    expect(
+      title.style,
+      AppTypography.sectionTitle(
+        color: Theme.of(tester.element(titleFinder)).colorScheme.onSurface,
+      ),
+    );
     expect(
       tester.getTopLeft(find.byKey(const Key('app-bottom-sheet-title'))).dx,
       tester.getTopLeft(find.text('Body')).dx,

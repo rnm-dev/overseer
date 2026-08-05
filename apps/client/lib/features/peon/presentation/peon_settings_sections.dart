@@ -8,10 +8,11 @@ class _SectionTabs extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Container(
       height: 48,
-      decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: AppColors.iron800)),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: colors.outlineVariant)),
       ),
       child: Row(
         children: [
@@ -27,7 +28,7 @@ class _SectionTabs extends StatelessWidget {
                       bottom: BorderSide(
                         width: 2,
                         color: selected == section
-                            ? AppColors.fel
+                            ? colors.primary
                             : Colors.transparent,
                       ),
                     ),
@@ -42,8 +43,8 @@ class _SectionTabs extends StatelessWidget {
                       fontSize: 13,
                       fontWeight: FontWeight.w700,
                       color: selected == section
-                          ? AppColors.felBright
-                          : AppColors.boneDim,
+                          ? colors.primary
+                          : colors.onSurfaceVariant,
                     ),
                   ),
                 ),
@@ -699,71 +700,74 @@ class _CliUpdateCard extends StatelessWidget {
   final VoidCallback onInstall;
 
   @override
-  Widget build(BuildContext context) => Container(
-    key: Key('peon-cli-${item.provider.apiValue}'),
-    constraints: const BoxConstraints(minHeight: 112),
-    padding: const EdgeInsets.all(12),
-    decoration: BoxDecoration(
-      color: AppColors.iron950,
-      border: Border.all(color: AppColors.iron700),
-      borderRadius: BorderRadius.circular(8),
-    ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                item.provider.label,
-                style: AppTypography.display(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      key: Key('peon-cli-${item.provider.apiValue}'),
+      constraints: const BoxConstraints(minHeight: 112),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: colors.surfaceContainerHighest,
+        border: Border.all(color: colors.outlineVariant),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  item.provider.label,
+                  style: AppTypography.display(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
+              _StatusPill(
+                text: loading
+                    ? 'UPDATING'
+                    : item.updateAvailable == true
+                    ? 'AVAILABLE'
+                    : 'CURRENT',
+                warning: item.updateAvailable == true,
+              ),
+            ],
+          ),
+          const SizedBox(height: 9),
+          Text(
+            'INSTALLED  ${item.currentVersion ?? '—'}\n'
+            'LATEST     ${item.latestVersion ?? '—'}',
+            style: AppTypography.mono(
+              fontSize: 10.5,
+              color: colors.onSurfaceVariant,
+              height: 1.5,
             ),
-            _StatusPill(
-              text: loading
-                  ? 'UPDATING'
-                  : item.updateAvailable == true
-                  ? 'AVAILABLE'
-                  : 'CURRENT',
-              warning: item.updateAvailable == true,
+          ),
+          if (item.error case final error?) ...[
+            const SizedBox(height: 8),
+            Text(
+              '⚠ $error',
+              style: AppTypography.mono(fontSize: 10.5, color: colors.error),
             ),
           ],
-        ),
-        const SizedBox(height: 9),
-        Text(
-          'INSTALLED  ${item.currentVersion ?? '—'}\n'
-          'LATEST     ${item.latestVersion ?? '—'}',
-          style: AppTypography.mono(
-            fontSize: 10.5,
-            color: AppColors.boneDim,
-            height: 1.5,
-          ),
-        ),
-        if (item.error case final error?) ...[
-          const SizedBox(height: 8),
-          Text(
-            '⚠ $error',
-            style: AppTypography.mono(fontSize: 10.5, color: AppColors.blood),
-          ),
-        ],
-        const SizedBox(height: 10),
-        Align(
-          alignment: Alignment.centerRight,
-          child: AppButton(
-            loading: loading,
-            disabled: disabled || item.updateAvailable != true,
-            onPressed: onInstall,
-            child: Text(
-              item.updateAvailable == true ? 'Install update' : 'Up to date',
+          const SizedBox(height: 10),
+          Align(
+            alignment: Alignment.centerRight,
+            child: AppButton(
+              loading: loading,
+              disabled: disabled || item.updateAvailable != true,
+              onPressed: onInstall,
+              child: Text(
+                item.updateAvailable == true ? 'Install update' : 'Up to date',
+              ),
             ),
           ),
-        ),
-      ],
-    ),
-  );
+        ],
+      ),
+    );
+  }
 }
 
 class _ArmorySettings extends ConsumerWidget {
@@ -776,12 +780,8 @@ class _ArmorySettings extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final value = ref.watch(armoryControllerProvider(scope));
     return value.when(
-      loading: () => const Center(
-        child: CircularProgressIndicator(
-          strokeWidth: 1.7,
-          color: AppColors.felBright,
-        ),
-      ),
+      loading: () =>
+          const Center(child: CircularProgressIndicator(strokeWidth: 1.7)),
       error: (error, _) => _Notice(
         icon: LucideIcons.cloudOff,
         title: 'Could not load Armory',
@@ -950,6 +950,7 @@ class _ArmoryPackageCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     final installed = package.installed;
     final configured =
         installed?.configurationStatus == 'verified' ||
@@ -959,11 +960,11 @@ class _ArmoryPackageCard extends StatelessWidget {
       constraints: const BoxConstraints(minHeight: 132),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: AppColors.iron950,
+        color: colors.surfaceContainerHighest,
         border: Border.all(
           color: installed?.enabled == true
-              ? AppColors.fel.withValues(alpha: 0.5)
-              : AppColors.iron700,
+              ? colors.primary.withValues(alpha: 0.5)
+              : colors.outlineVariant,
         ),
         borderRadius: BorderRadius.circular(8),
       ),
@@ -972,10 +973,10 @@ class _ArmoryPackageCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Icon(
+              Icon(
                 LucideIcons.package,
                 size: 19,
-                color: AppColors.boneFaint,
+                color: colors.onSurfaceVariant,
               ),
               const SizedBox(width: 9),
               Expanded(
@@ -1005,7 +1006,7 @@ class _ArmoryPackageCard extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: AppTypography.body(
                 fontSize: 11,
-                color: AppColors.boneDim,
+                color: colors.onSurfaceVariant,
                 height: 1.35,
               ),
             ),
@@ -1018,7 +1019,7 @@ class _ArmoryPackageCard extends StatelessWidget {
                       '${package.latestVersion == null ? '' : ' · Latest ${package.latestVersion}'}',
             style: AppTypography.mono(
               fontSize: 10.5,
-              color: AppColors.boneFaint,
+              color: colors.onSurfaceVariant,
             ),
           ),
           if (active) ...[
@@ -1031,9 +1032,9 @@ class _ArmoryPackageCard extends StatelessWidget {
           ],
           if (installed?.lastError != null) ...[
             const SizedBox(height: 8),
-            const Text(
+            Text(
               '⚠ The latest package operation failed.',
-              style: TextStyle(color: AppColors.blood, fontSize: 11),
+              style: TextStyle(color: colors.error, fontSize: 11),
             ),
           ],
           const SizedBox(height: 10),
@@ -1044,13 +1045,16 @@ class _ArmoryPackageCard extends StatelessWidget {
             children: [
               if (installed == null)
                 AppButton(
+                  size: AppButtonSize.sm,
+                  variant: AppButtonVariant.secondary,
                   disabled: !online || busy || !package.available,
                   onPressed: () => onAction(ArmoryAction.install),
                   child: const Text('Install'),
                 )
               else ...[
                 AppButton(
-                  variant: AppButtonVariant.ghost,
+                  size: AppButtonSize.sm,
+                  variant: AppButtonVariant.secondary,
                   disabled:
                       !online || busy || (!installed.enabled && !configured),
                   onPressed: () => onAction(
@@ -1062,12 +1066,15 @@ class _ArmoryPackageCard extends StatelessWidget {
                 ),
                 if (package.updateAvailable == true)
                   AppButton(
+                    size: AppButtonSize.sm,
+                    variant: AppButtonVariant.secondary,
                     disabled: !online || busy,
                     onPressed: () => onAction(ArmoryAction.update),
                     child: const Text('Update'),
                   ),
                 AppButton(
-                  variant: AppButtonVariant.danger,
+                  size: AppButtonSize.sm,
+                  variant: AppButtonVariant.dangerGhost,
                   disabled: !online || busy,
                   onPressed: () => onAction(ArmoryAction.uninstall),
                   child: const Text('Uninstall'),
@@ -1088,25 +1095,19 @@ class _StatusPill extends StatelessWidget {
   final bool warning;
 
   @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
-    decoration: BoxDecoration(
-      color: (warning ? AppColors.forge : AppColors.fel).withValues(alpha: 0.1),
-      borderRadius: BorderRadius.circular(20),
-      border: Border.all(
-        color: (warning ? AppColors.forge : AppColors.fel).withValues(
-          alpha: 0.45,
-        ),
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final tone = warning ? colors.tertiary : colors.primary;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+      decoration: BoxDecoration(
+        color: tone.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: tone.withValues(alpha: 0.45)),
       ),
-    ),
-    child: Text(
-      text,
-      style: AppTypography.mono(
-        fontSize: 8.5,
-        color: warning ? AppColors.ember : AppColors.felBright,
-      ),
-    ),
-  );
+      child: Text(text, style: AppTypography.mono(fontSize: 8.5, color: tone)),
+    );
+  }
 }
 
 class _InlineNotice extends StatelessWidget {
@@ -1178,6 +1179,7 @@ class _Picker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1187,12 +1189,12 @@ class _Picker extends StatelessWidget {
             fontSize: 10,
             fontWeight: FontWeight.w700,
             letterSpacing: 2,
-            color: AppColors.boneDim,
+            color: colors.onSurfaceVariant,
           ),
         ),
         const SizedBox(height: 5),
         Material(
-          color: AppColors.iron950,
+          color: colors.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(8),
           child: InkWell(
             onTap: onTap,
@@ -1201,7 +1203,7 @@ class _Picker extends StatelessWidget {
               height: 44,
               padding: const EdgeInsets.symmetric(horizontal: 12),
               decoration: BoxDecoration(
-                border: Border.all(color: AppColors.iron700),
+                border: Border.all(color: colors.outlineVariant),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Row(
@@ -1213,14 +1215,14 @@ class _Picker extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: AppTypography.body(
                         fontSize: 14,
-                        color: AppColors.bone,
+                        color: colors.onSurface,
                       ),
                     ),
                   ),
-                  const Icon(
+                  Icon(
                     LucideIcons.chevronDown,
                     size: 15,
-                    color: AppColors.boneDim,
+                    color: colors.onSurfaceVariant,
                   ),
                 ],
               ),
@@ -1255,7 +1257,7 @@ class _SettingsCard extends StatelessWidget {
             subtitle,
             style: AppTypography.body(
               fontSize: 12,
-              color: AppColors.boneDim,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
               height: 1.4,
             ),
           ),
@@ -1286,7 +1288,10 @@ class _SaveRow extends StatelessWidget {
         if (saved)
           Text(
             '⚡ Saved',
-            style: AppTypography.mono(fontSize: 11, color: AppColors.felBright),
+            style: AppTypography.mono(
+              fontSize: 11,
+              color: Theme.of(context).colorScheme.primary,
+            ),
           ),
         if (saved) const SizedBox(width: 10),
         AppButton(
@@ -1311,7 +1316,10 @@ class _Detail extends StatelessWidget {
     padding: const EdgeInsets.only(top: 4),
     child: Text(
       '$label  $value',
-      style: AppTypography.mono(fontSize: 10.5, color: AppColors.boneFaint),
+      style: AppTypography.mono(
+        fontSize: 10.5,
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
+      ),
     ),
   );
 }
@@ -1326,12 +1334,20 @@ class _InlineStatus extends StatelessWidget {
     margin: const EdgeInsets.only(bottom: 12),
     padding: const EdgeInsets.all(10),
     decoration: BoxDecoration(
-      color: AppColors.fel.withValues(alpha: 0.07),
-      border: const Border(left: BorderSide(color: AppColors.fel, width: 2)),
+      color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.07),
+      border: Border(
+        left: BorderSide(
+          color: Theme.of(context).colorScheme.primary,
+          width: 2,
+        ),
+      ),
     ),
     child: Text(
       text,
-      style: AppTypography.mono(fontSize: 11, color: AppColors.felBright),
+      style: AppTypography.mono(
+        fontSize: 11,
+        color: Theme.of(context).colorScheme.primary,
+      ),
     ),
   );
 }
@@ -1345,12 +1361,17 @@ class _ErrorText extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.all(10),
     decoration: BoxDecoration(
-      color: AppColors.blood.withValues(alpha: 0.06),
-      border: const Border(left: BorderSide(color: AppColors.blood, width: 2)),
+      color: Theme.of(context).colorScheme.error.withValues(alpha: 0.06),
+      border: Border(
+        left: BorderSide(color: Theme.of(context).colorScheme.error, width: 2),
+      ),
     ),
     child: Text(
       '⚠ $message',
-      style: AppTypography.mono(fontSize: 11, color: AppColors.blood),
+      style: AppTypography.mono(
+        fontSize: 11,
+        color: Theme.of(context).colorScheme.error,
+      ),
     ),
   );
 }

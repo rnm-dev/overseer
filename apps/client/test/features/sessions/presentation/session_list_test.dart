@@ -122,6 +122,17 @@ void main() {
       ),
     );
     expect(richText.text.toPlainText(), 'Fixed with code • next');
+    final inlineSpans = <InlineSpan>[];
+    richText.text.visitChildren((span) {
+      inlineSpans.add(span);
+      return true;
+    });
+    expect(
+      inlineSpans.whereType<TextSpan>().map(
+        (span) => span.style?.backgroundColor,
+      ),
+      everyElement(isNull),
+    );
     expect(
       tester.widget<Text>(find.text('Markdown session')).style?.fontSize,
       14,

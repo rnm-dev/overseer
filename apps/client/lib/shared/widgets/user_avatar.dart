@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 
-import 'package:overseer_mobile/shared/design/colors.dart';
-
 enum UserAvatarSize { xs, sm, md, lg, xl }
 
 @immutable
@@ -54,6 +52,7 @@ class UserAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     final hasSource = src != null && src!.trim().isNotEmpty;
     Widget avatar = SizedBox(
       width: _diameter,
@@ -69,15 +68,15 @@ class UserAvatar extends StatelessWidget {
                     height: double.infinity,
                     fit: BoxFit.cover,
                     excludeFromSemantics: true,
-                    errorBuilder: (_, _, _) => _fallback(),
+                    errorBuilder: (_, _, _) => _fallback(colors),
                   )
-                : _fallback(),
+                : _fallback(colors),
           ),
           IgnorePointer(
             child: DecoratedBox(
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                border: Border.all(color: AppColors.iron950),
+                border: Border.all(color: colors.surface),
               ),
             ),
           ),
@@ -98,17 +97,17 @@ class UserAvatar extends StatelessWidget {
     return SizedBox(width: _diameter, height: _diameter, child: avatar);
   }
 
-  Widget _fallback() {
+  Widget _fallback(ColorScheme colors) {
     return Container(
       alignment: Alignment.center,
-      color: AppColors.iron900,
+      color: colors.surfaceContainerHighest,
       child: Text(
         _initial,
         maxLines: 1,
         style: TextStyle(
           fontSize: _fontSize,
           fontWeight: FontWeight.w700,
-          color: AppColors.bone,
+          color: colors.onSurface,
           fontFamily: "monospace",
           height: 1,
         ),

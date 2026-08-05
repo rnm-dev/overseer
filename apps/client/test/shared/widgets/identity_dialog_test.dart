@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:overseer_mobile/shared/widgets/adaptive_dialog.dart';
+import 'package:overseer_mobile/shared/design/theme.dart';
+import 'package:overseer_mobile/features/themes/domain/app_theme_package.dart';
 import 'package:overseer_mobile/shared/widgets/presence_stack.dart';
 import 'package:overseer_mobile/shared/widgets/user_avatar.dart';
 
@@ -159,6 +161,41 @@ void main() {
     expect(decoration.boxShadow!.first.blurRadius, 18);
     expect(decoration.boxShadow!.first.spreadRadius, 5);
     expect(decoration.boxShadow!.first.offset, const Offset(0, 3));
+  });
+
+  testWidgets('PresenceStack soft shadow follows a light theme', (
+    tester,
+  ) async {
+    final theme = AppTheme.fromPackage(AppThemePackages.bundled[1]);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: theme,
+        home: const Scaffold(
+          body: PresenceStack(
+            softShadow: true,
+            viewers: [
+              PresencePerson(userId: 'viewer-1', displayName: 'Viewer'),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    final decoration = tester
+        .widgetList<DecoratedBox>(
+          find.descendant(
+            of: find.byKey(const ValueKey('presence-viewer-1')),
+            matching: find.byType(DecoratedBox),
+          ),
+        )
+        .map((box) => box.decoration)
+        .whereType<BoxDecoration>()
+        .firstWhere((decoration) => decoration.boxShadow?.length == 2);
+
+    expect(
+      decoration.boxShadow!.first.color,
+      theme.colorScheme.shadow.withValues(alpha: 0.28),
+    );
   });
 
   Future<void> openDialog(

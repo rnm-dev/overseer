@@ -6,7 +6,6 @@ import 'package:overseer_mobile/features/sessions/domain/followup_repository.dar
 import 'package:overseer_mobile/features/sessions/domain/new_session_repository.dart';
 import 'package:overseer_mobile/features/sessions/application/voice_dictation_controller.dart';
 import 'package:overseer_mobile/features/sessions/presentation/session_composer.dart';
-import 'package:overseer_mobile/shared/design/colors.dart';
 import 'package:overseer_mobile/shared/design/spacing.dart';
 import 'package:overseer_mobile/shared/design/theme.dart';
 import 'package:overseer_mobile/shared/design/typography.dart';
@@ -285,7 +284,14 @@ void main() {
       find.byKey(const Key('session-composer-shell')),
     );
     final decoration = shell.foregroundDecoration! as BoxDecoration;
-    expect(decoration.border, Border.all(color: AppColors.felBright));
+    expect(
+      decoration.border,
+      Border.all(
+        color: Theme.of(
+          tester.element(find.byKey(const Key('session-composer-shell'))),
+        ).colorScheme.primary,
+      ),
+    );
   });
 
   testWidgets('keeps equal gaps between adjacent composer controls', (

@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:markdown/markdown.dart' as md;
 
-import '../design/colors.dart';
 import '../design/typography.dart';
 
 /// Selectable GitHub-Flavored Markdown for conversational content.
@@ -27,7 +26,7 @@ class AppMarkdown extends StatelessWidget {
     return MarkdownBody(
       data: data,
       selectable: selectable,
-      styleSheet: _messageStyleSheet(textStyle),
+      styleSheet: _messageStyleSheet(context, textStyle),
       onTapLink: onTapLink == null
           ? null
           : (_, href, _) {
@@ -62,7 +61,7 @@ class AppMarkdownPreview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return RichText(
-      text: _inlineMarkdownSpan(data, style),
+      text: _inlineMarkdownSpan(context, data, style),
       maxLines: maxLines,
       overflow: overflow,
       softWrap: softWrap,
@@ -71,19 +70,23 @@ class AppMarkdownPreview extends StatelessWidget {
   }
 }
 
-MarkdownStyleSheet _messageStyleSheet(TextStyle textStyle) {
+MarkdownStyleSheet _messageStyleSheet(
+  BuildContext context,
+  TextStyle textStyle,
+) {
+  final colors = Theme.of(context).colorScheme;
   final fontSize = textStyle.fontSize ?? 14;
-  final headingColor = textStyle.color ?? AppColors.bone;
+  final headingColor = textStyle.color ?? colors.onSurface;
   return MarkdownStyleSheet(
     a: textStyle.copyWith(
-      color: AppColors.felBright,
+      color: colors.primary,
       decoration: TextDecoration.underline,
     ),
     p: textStyle,
     code: AppTypography.mono(
       fontSize: fontSize * 0.86,
-      color: AppColors.ember,
-    ).copyWith(backgroundColor: AppColors.iron900),
+      color: colors.tertiary,
+    ).copyWith(backgroundColor: Colors.transparent, shadows: const []),
     h1: AppTypography.display(
       fontSize: fontSize * 1.43,
       fontWeight: FontWeight.w700,
@@ -117,7 +120,7 @@ MarkdownStyleSheet _messageStyleSheet(TextStyle textStyle) {
     h6: AppTypography.display(
       fontSize: fontSize * 0.93,
       fontWeight: FontWeight.w700,
-      color: AppColors.boneDim,
+      color: colors.onSurfaceVariant,
       height: 1.25,
     ),
     em: const TextStyle(fontStyle: FontStyle.italic),
@@ -125,16 +128,16 @@ MarkdownStyleSheet _messageStyleSheet(TextStyle textStyle) {
     del: const TextStyle(decoration: TextDecoration.lineThrough),
     blockSpacing: 10,
     listIndent: 22,
-    listBullet: textStyle.copyWith(color: AppColors.boneDim),
-    blockquote: textStyle.copyWith(color: AppColors.boneDim, height: 1.5),
+    listBullet: textStyle.copyWith(color: colors.onSurfaceVariant),
+    blockquote: textStyle.copyWith(color: colors.onSurfaceVariant, height: 1.5),
     blockquotePadding: const EdgeInsets.fromLTRB(12, 4, 8, 4),
-    blockquoteDecoration: const BoxDecoration(
-      border: Border(left: BorderSide(color: AppColors.felDeep, width: 3)),
+    blockquoteDecoration: BoxDecoration(
+      border: Border(left: BorderSide(color: colors.primary, width: 3)),
     ),
     codeblockPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
     codeblockDecoration: BoxDecoration(
-      color: AppColors.iron950,
-      border: Border.all(color: AppColors.iron800),
+      color: colors.surfaceContainerHighest,
+      border: Border.all(color: colors.outlineVariant),
       borderRadius: BorderRadius.circular(7),
     ),
     tableHead: AppTypography.display(
@@ -144,17 +147,22 @@ MarkdownStyleSheet _messageStyleSheet(TextStyle textStyle) {
     ),
     tableBody: textStyle.copyWith(
       fontSize: fontSize * 0.86,
-      color: AppColors.boneDim,
+      color: colors.onSurfaceVariant,
     ),
-    tableBorder: TableBorder.all(color: AppColors.iron800),
+    tableBorder: TableBorder.all(color: colors.outlineVariant),
     tableCellsPadding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
-    horizontalRuleDecoration: const BoxDecoration(
-      border: Border(top: BorderSide(color: AppColors.iron700)),
+    horizontalRuleDecoration: BoxDecoration(
+      border: Border(top: BorderSide(color: colors.outline)),
     ),
   );
 }
 
-TextSpan _inlineMarkdownSpan(String source, TextStyle baseStyle) {
+TextSpan _inlineMarkdownSpan(
+  BuildContext context,
+  String source,
+  TextStyle baseStyle,
+) {
+  final colors = Theme.of(context).colorScheme;
   final document = md.Document(
     extensionSet: md.ExtensionSet.gitHubFlavored,
     encodeHtml: false,
@@ -163,12 +171,12 @@ TextSpan _inlineMarkdownSpan(String source, TextStyle baseStyle) {
   final children = <InlineSpan>[];
   for (final node in nodes) {
     if (children.isNotEmpty) children.add(const TextSpan(text: ' '));
-    children.add(_inlineNode(node));
+    children.add(_inlineNode(node, colors));
   }
   return TextSpan(style: baseStyle, children: children);
 }
 
-InlineSpan _inlineNode(md.Node node) {
+InlineSpan _inlineNode(md.Node node, ColorScheme colors) {
   if (node is md.Text) {
     return TextSpan(text: node.text.replaceAll(RegExp(r'\s+'), ' '));
   }
@@ -185,7 +193,7 @@ InlineSpan _inlineNode(md.Node node) {
         for (final (index, item) in items.indexed) ...[
           if (index > 0) const TextSpan(text: '  '),
           TextSpan(text: ordered ? '${index + 1}. ' : '• '),
-          _inlineNode(item),
+          _inlineNode(item, colors),
         ],
       ],
     );
@@ -195,11 +203,9 @@ InlineSpan _inlineNode(md.Node node) {
     'strong' => const TextStyle(fontWeight: FontWeight.w700),
     'em' => const TextStyle(fontStyle: FontStyle.italic),
     'del' => const TextStyle(decoration: TextDecoration.lineThrough),
-    'code' || 'pre' => AppTypography.mono(
-      color: AppColors.ember,
-    ).copyWith(backgroundColor: AppColors.iron900),
-    'a' => const TextStyle(
-      color: AppColors.felBright,
+    'code' || 'pre' => AppTypography.mono(color: colors.tertiary),
+    'a' => TextStyle(
+      color: colors.primary,
       decoration: TextDecoration.underline,
     ),
     'h1' ||
@@ -214,7 +220,7 @@ InlineSpan _inlineNode(md.Node node) {
     style: style,
     children: [
       for (final child in node.children ?? const <md.Node>[])
-        _inlineNode(child),
+        _inlineNode(child, colors),
     ],
   );
 }

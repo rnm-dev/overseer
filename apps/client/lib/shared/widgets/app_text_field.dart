@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import 'package:overseer_mobile/shared/design/colors.dart';
 import 'package:overseer_mobile/shared/design/motion.dart';
 import 'package:overseer_mobile/shared/design/typography.dart';
 
@@ -67,12 +66,9 @@ class AppTextField extends StatelessWidget {
   final EdgeInsets scrollPadding;
   final List<TextInputFormatter>? inputFormatters;
 
-  TextStyle get _textStyle => mono
-      ? AppTypography.mono(fontSize: 15, color: AppColors.bone)
-      : AppTypography.body(fontSize: 15, color: AppColors.bone);
-
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     final labelText = label?.trim();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -86,7 +82,7 @@ class AppTextField extends StatelessWidget {
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
                 letterSpacing: 0.15,
-                color: AppColors.boneDim,
+                color: colors.onSurfaceVariant,
               ),
             ),
           ),
@@ -112,33 +108,38 @@ class AppTextField extends StatelessWidget {
           textCapitalization: textCapitalization,
           scrollPadding: scrollPadding,
           inputFormatters: inputFormatters,
-          style: _textStyle,
-          decoration: _inputDecoration(),
+          style: mono
+              ? AppTypography.mono(fontSize: 15, color: colors.onSurface)
+              : AppTypography.body(fontSize: 15, color: colors.onSurface),
+          decoration: _inputDecoration(colors),
         ),
       ],
     );
   }
 
-  InputDecoration _inputDecoration() {
+  InputDecoration _inputDecoration(ColorScheme colors) {
     return InputDecoration(
       hintText: hint,
-      hintStyle: AppTypography.body(fontSize: 15, color: AppColors.boneFaint),
+      hintStyle: AppTypography.body(
+        fontSize: 15,
+        color: colors.onSurfaceVariant.withValues(alpha: 0.72),
+      ),
       errorText: errorText,
       errorMaxLines: 3,
       errorStyle: AppTypography.body(
         fontSize: 12,
-        color: AppColors.blood,
+        color: colors.error,
         height: 1.2,
       ),
       helperText: errorText == null ? helperText : null,
       helperMaxLines: 3,
       helperStyle: AppTypography.body(
         fontSize: 12,
-        color: AppColors.boneDim,
+        color: colors.onSurfaceVariant,
         height: 1.2,
       ),
       filled: true,
-      fillColor: AppColors.rowSurface,
+      fillColor: colors.surfaceContainerHighest,
       contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
       prefixIcon: prefix == null
           ? null
@@ -154,25 +155,25 @@ class AppTextField extends StatelessWidget {
             ),
       prefixIconConstraints: const BoxConstraints(minWidth: 0, minHeight: 0),
       suffixIconConstraints: const BoxConstraints(minWidth: 0, minHeight: 0),
-      enabledBorder: const OutlineInputBorder(
+      enabledBorder: OutlineInputBorder(
         borderRadius: AppMotion.controlShape,
-        borderSide: BorderSide(color: AppColors.iron700),
+        borderSide: BorderSide(color: colors.outlineVariant),
       ),
-      focusedBorder: const OutlineInputBorder(
+      focusedBorder: OutlineInputBorder(
         borderRadius: AppMotion.controlShape,
-        borderSide: BorderSide(color: AppColors.felDeep),
+        borderSide: BorderSide(color: colors.primary),
       ),
-      errorBorder: const OutlineInputBorder(
+      errorBorder: OutlineInputBorder(
         borderRadius: AppMotion.controlShape,
-        borderSide: BorderSide(color: AppColors.blood),
+        borderSide: BorderSide(color: colors.error),
       ),
-      focusedErrorBorder: const OutlineInputBorder(
+      focusedErrorBorder: OutlineInputBorder(
         borderRadius: AppMotion.controlShape,
-        borderSide: BorderSide(color: AppColors.rust),
+        borderSide: BorderSide(color: colors.error),
       ),
-      border: const OutlineInputBorder(
+      border: OutlineInputBorder(
         borderRadius: AppMotion.controlShape,
-        borderSide: BorderSide(color: AppColors.iron700),
+        borderSide: BorderSide(color: colors.outlineVariant),
       ),
       isDense: true,
       counterText: "",

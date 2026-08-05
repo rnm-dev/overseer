@@ -35,6 +35,7 @@ import '../../projects/projects.dart';
 import '../../settings/application/sound_pack_controller.dart';
 import '../../settings/domain/sound_pack.dart';
 import '../../settings/domain/work_sound_player.dart';
+import '../../themes/domain/app_theme_package.dart';
 import '../application/attachment_clipboard_provider.dart';
 import '../application/session_details_controller.dart';
 import '../application/session_composer_controller.dart';
@@ -1289,6 +1290,10 @@ class _SessionHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final projectKey = session.projectKey?.trim();
     final stats = _statsLabel(details);
+    final theme = Theme.of(context);
+    final subtitleColor =
+        theme.extension<AppThemePalette>()?.package.inkFaint ??
+        theme.colorScheme.onSurfaceVariant;
     return AppNavigationBar(
       key: const Key('session-navbar'),
       showBackButton: true,
@@ -1340,9 +1345,9 @@ class _SessionHeader extends StatelessWidget {
                       softWrap: false,
                       style: AppTypography.mono(
                         fontSize: 11,
-                        color: AppColors.boneFaint,
-                        height: 1.2,
-                      ),
+                        color: subtitleColor,
+                        height: 1,
+                      ).copyWith(shadows: const []),
                     ),
                   ),
           ),

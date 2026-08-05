@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -206,9 +208,10 @@ class _SessionComposerState extends State<SessionComposer> {
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
+    final colors = Theme.of(context).colorScheme;
     final borderColor = _focusNode.hasFocus
-        ? AppColors.felBright
-        : AppColors.iron800;
+        ? colors.primary
+        : colors.outlineVariant;
     final dictationActive =
         widget.dictation?.phase == VoiceDictationPhase.recording ||
         widget.dictation?.phase == VoiceDictationPhase.transcribing;
@@ -219,9 +222,9 @@ class _SessionComposerState extends State<SessionComposer> {
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: [
-            AppColors.voidColor.withValues(alpha: 0),
-            AppColors.voidColor.withValues(alpha: 0.9),
-            AppColors.voidColor,
+            colors.surface.withValues(alpha: 0),
+            colors.surface.withValues(alpha: 0.9),
+            colors.surface,
           ],
           stops: const [0, 0.34, 1],
         ),
@@ -255,18 +258,18 @@ class _SessionComposerState extends State<SessionComposer> {
                 AppSpacing.xxs,
               ),
               decoration: BoxDecoration(
-                color: AppColors.iron950,
+                color: colors.surfaceContainerHighest,
                 borderRadius: AppMotion.surfaceShape,
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.48),
+                    color: colors.shadow.withValues(alpha: 0.28),
                     blurRadius: 28,
                     spreadRadius: -14,
                     offset: const Offset(0, -6),
                   ),
                   if (_focusNode.hasFocus)
                     BoxShadow(
-                      color: AppColors.felBright.withValues(alpha: 0.18),
+                      color: colors.primary.withValues(alpha: 0.18),
                       blurRadius: 0,
                       spreadRadius: 1,
                     ),
@@ -288,7 +291,7 @@ class _SessionComposerState extends State<SessionComposer> {
                         key: const Key('session-composer-error'),
                         style: AppTypography.mono(
                           fontSize: 11,
-                          color: AppColors.blood,
+                          color: colors.error,
                         ),
                       ),
                     ),
@@ -297,10 +300,10 @@ class _SessionComposerState extends State<SessionComposer> {
                       padding: const EdgeInsets.fromLTRB(4, 2, 4, 4),
                       child: Row(
                         children: [
-                          const Icon(
+                          Icon(
                             LucideIcons.hourglass,
                             size: 12,
-                            color: AppColors.ember,
+                            color: colors.tertiary,
                           ),
                           const SizedBox(width: 6),
                           Text(
@@ -308,7 +311,7 @@ class _SessionComposerState extends State<SessionComposer> {
                             key: const Key('session-composer-queued'),
                             style: AppTypography.mono(
                               fontSize: 11,
-                              color: AppColors.boneDim,
+                              color: colors.onSurfaceVariant,
                             ),
                           ),
                         ],
@@ -322,7 +325,7 @@ class _SessionComposerState extends State<SessionComposer> {
                         key: const Key('session-composer-pending-label'),
                         style: AppTypography.mono(
                           fontSize: 11,
-                          color: AppColors.boneDim,
+                          color: colors.onSurfaceVariant,
                         ),
                       ),
                     ),
@@ -399,7 +402,7 @@ class _SessionComposerState extends State<SessionComposer> {
                               hintText: l10n.sendMessageHint,
                               hintStyle: AppTypography.body(
                                 fontSize: AppTypography.composerInputFontSize,
-                                color: AppColors.boneFaint,
+                                color: colors.onSurfaceVariant,
                               ),
                               filled: false,
                               isDense: true,

@@ -1,6 +1,20 @@
 import 'package:flutter/material.dart';
 
-import '../design/colors.dart';
+import '../../features/themes/domain/app_theme_package.dart';
+
+({Color base, Color highlight}) _shimmerColors(BuildContext context) {
+  final theme = Theme.of(context);
+  final package = theme.extension<AppThemePalette>()?.package;
+  if (package == null) {
+    return (
+      base: theme.colorScheme.surfaceContainerHighest,
+      highlight: theme.colorScheme.outlineVariant,
+    );
+  }
+  return theme.brightness == Brightness.light
+      ? (base: package.surfaceHover, highlight: package.surfaceActive)
+      : (base: package.surfaceRaised, highlight: package.surfaceHover);
+}
 
 class LoadingShimmer extends StatefulWidget {
   const LoadingShimmer({super.key, required this.label, required this.child});
@@ -27,6 +41,7 @@ class _LoadingShimmerState extends State<LoadingShimmer>
 
   @override
   Widget build(BuildContext context) {
+    final shimmer = _shimmerColors(context);
     final reduceMotion =
         MediaQuery.maybeOf(context)?.disableAnimations ?? false;
 
@@ -46,11 +61,7 @@ class _LoadingShimmerState extends State<LoadingShimmer>
                 shaderCallback: (bounds) => LinearGradient(
                   begin: Alignment(position - 1, 0),
                   end: Alignment(position + 1, 0),
-                  colors: const [
-                    AppColors.iron800,
-                    AppColors.iron700,
-                    AppColors.iron800,
-                  ],
+                  colors: [shimmer.base, shimmer.highlight, shimmer.base],
                   stops: const [0.25, 0.5, 0.75],
                 ).createShader(bounds),
                 child: child,
@@ -77,11 +88,12 @@ class ShimmerBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final shimmer = _shimmerColors(context);
     return Container(
       width: width,
       height: height,
       decoration: BoxDecoration(
-        color: AppColors.iron800,
+        color: shimmer.base,
         borderRadius: borderRadius,
       ),
     );

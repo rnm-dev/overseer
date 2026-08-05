@@ -106,6 +106,7 @@ class _TranscriptBodyState extends State<_TranscriptBody> {
   }
 
   Widget _workingContent(TranscriptEvent? latestEvent) {
+    final colors = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -120,7 +121,7 @@ class _TranscriptBodyState extends State<_TranscriptBody> {
             child: Text(
               '⚠ $error',
               key: const Key('transcript-stop-error'),
-              style: AppTypography.mono(fontSize: 10, color: AppColors.ember),
+              style: AppTypography.mono(fontSize: 10, color: colors.error),
             ),
           ),
       ],
@@ -196,8 +197,7 @@ class _TranscriptBodyState extends State<_TranscriptBody> {
                     );
                   }
                   final dataInquiryIndex =
-                      inquiryIndex -
-                      (widget.inquiries.refreshFailed ? 1 : 0);
+                      inquiryIndex - (widget.inquiries.refreshFailed ? 1 : 0);
                   final inquiry = widget.inquiries.inquiries[dataInquiryIndex];
                   return Padding(
                     key: ValueKey('plugin-inquiry-${inquiry.inquiryId}'),
@@ -382,6 +382,7 @@ class _TranscriptWorkingIndicatorState
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     final startedAt = _workingStartedAt(widget.activity.startedAt);
     final duration = _formatWorkingDuration(_now.difference(startedAt));
     return Row(
@@ -413,9 +414,9 @@ class _TranscriptWorkingIndicatorState
                                               ) +
                                               1) /
                                           2),
-                              child: const DecoratedBox(
+                              child: DecoratedBox(
                                 decoration: BoxDecoration(
-                                  color: AppColors.felBright,
+                                  color: colors.primary,
                                   shape: BoxShape.circle,
                                 ),
                                 child: SizedBox.square(dimension: 4),
@@ -435,7 +436,7 @@ class _TranscriptWorkingIndicatorState
                       overflow: TextOverflow.ellipsis,
                       style: AppTypography.mono(
                         fontSize: 10,
-                        color: AppColors.felBright,
+                        color: colors.primary,
                       ),
                     ),
                   ),
@@ -445,7 +446,7 @@ class _TranscriptWorkingIndicatorState
                     key: const Key('transcript-working-duration'),
                     style: AppTypography.mono(
                       fontSize: 10,
-                      color: AppColors.boneFaint,
+                      color: colors.onSurfaceVariant,
                     ),
                   ),
                 ],
@@ -461,8 +462,8 @@ class _TranscriptWorkingIndicatorState
             minimumSize: const Size(0, 36),
             padding: const EdgeInsets.symmetric(horizontal: 5),
             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            foregroundColor: AppColors.ember,
-            disabledForegroundColor: AppColors.ember.withValues(alpha: 0.4),
+            foregroundColor: colors.tertiary,
+            disabledForegroundColor: colors.tertiary.withValues(alpha: 0.4),
             textStyle: AppTypography.mono(fontSize: 10),
           ),
           icon: const Text('■', style: TextStyle(fontSize: 9, height: 1)),
@@ -550,6 +551,7 @@ class _DelayedTranscriptLoadingPillState
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return IgnorePointer(
       child: AnimatedSlide(
         key: const Key('transcript-loading-slide'),
@@ -573,11 +575,11 @@ class _DelayedTranscriptLoadingPillState
                   child: DecoratedBox(
                     key: const Key('transcript-loading-pill'),
                     decoration: BoxDecoration(
-                      color: AppColors.iron900.withValues(alpha: 0.88),
-                      borderRadius: BorderRadius.circular(999),
-                      border: Border.all(
-                        color: AppColors.bone.withValues(alpha: 0.08),
+                      color: colors.surfaceContainerHighest.withValues(
+                        alpha: 0.92,
                       ),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: colors.outlineVariant),
                     ),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(
@@ -589,11 +591,11 @@ class _DelayedTranscriptLoadingPillState
                         children: [
                           TickerMode(
                             enabled: _isVisible,
-                            child: const SizedBox.square(
+                            child: SizedBox.square(
                               dimension: 12,
                               child: CircularProgressIndicator(
                                 strokeWidth: 1.5,
-                                color: AppColors.boneDim,
+                                color: colors.onSurfaceVariant,
                               ),
                             ),
                           ),
@@ -603,7 +605,7 @@ class _DelayedTranscriptLoadingPillState
                             style: AppTypography.body(
                               fontSize: 11,
                               fontWeight: FontWeight.w500,
-                              color: AppColors.boneDim,
+                              color: colors.onSurfaceVariant,
                             ),
                           ),
                         ],

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import 'package:overseer_mobile/shared/design/colors.dart';
 import 'package:overseer_mobile/shared/design/typography.dart';
 
 /// Shared introductory hierarchy for focused setup and authentication pages.
@@ -33,7 +32,7 @@ class AppPageHeader extends StatelessWidget {
             textAlign: textAlign,
             style: AppTypography.body(
               fontSize: 14,
-              color: AppColors.boneDim,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
               height: 1.45,
             ),
           ),

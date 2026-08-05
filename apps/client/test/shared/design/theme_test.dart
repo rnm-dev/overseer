@@ -25,6 +25,32 @@ void main() {
     expect(neon.colorScheme.primary, const Color(0xff28c6dc));
   });
 
+  test('light themes use their dark ink for inherited typography', () {
+    for (final id in const [
+      'org.overseer.parchment',
+      'org.overseer.sterling',
+      'org.overseer.candy-static',
+    ]) {
+      final package = AppThemePackages.resolve(id);
+      final theme = AppTheme.fromPackage(package);
+
+      expect(theme.colorScheme.onSurface, package.ink, reason: id);
+      expect(theme.textTheme.bodyMedium?.color, package.ink, reason: id);
+      expect(theme.textTheme.titleLarge?.color, package.ink, reason: id);
+    }
+  });
+
+  test('standalone typography inherits the active theme color', () {
+    expect(AppTypography.display().color, isNull);
+    expect(AppTypography.body().color, isNull);
+    expect(AppTypography.chatMessage().color, isNull);
+    expect(AppTypography.mono().color, isNull);
+    expect(AppTypography.sectionLabel().color, isNull);
+    expect(AppTypography.controlValue().color, isNull);
+    expect(AppTypography.metadata().color, isNull);
+    expect(AppTypography.optionLabel(selected: false).color, isNull);
+  });
+
   group('AppTheme.dark', () {
     test('uses the global twelve-pixel screen gutter', () {
       final spacing = AppTheme.dark.extension<AppSpacing>();

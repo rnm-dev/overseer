@@ -558,11 +558,12 @@ class _Skeleton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Container(
       width: width,
       height: height,
       decoration: BoxDecoration(
-        color: AppColors.iron800,
+        color: colors.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(3),
       ),
     );

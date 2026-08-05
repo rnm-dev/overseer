@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
-import '../../../shared/design/colors.dart';
 import '../../../shared/design/typography.dart';
 import '../../../shared/formatters/activity_timestamp.dart';
 import '../../../shared/widgets/app_markdown.dart';
@@ -66,6 +65,7 @@ class _UserBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     final mine = _isOwnMessage(item, operator);
     final author =
         item.authorGithubLogin ?? item.authorEmail ?? item.author ?? 'Operator';
@@ -87,8 +87,10 @@ class _UserBubble extends StatelessWidget {
             child: DecoratedBox(
               key: Key('transcript-user-${item.key}'),
               decoration: BoxDecoration(
-                color: mine ? AppColors.forgeDeep : AppColors.iron950,
-                border: mine ? null : Border.all(color: AppColors.iron800),
+                color: mine
+                    ? colors.primaryContainer
+                    : colors.surfaceContainerHighest,
+                border: mine ? null : Border.all(color: colors.outlineVariant),
                 borderRadius: const BorderRadius.only(
                   topLeft: Radius.circular(12),
                   topRight: Radius.circular(12),
@@ -117,7 +119,7 @@ class _UserBubble extends StatelessWidget {
                           style: AppTypography.body(
                             fontSize: 11,
                             fontWeight: FontWeight.w600,
-                            color: AppColors.felBright,
+                            color: colors.primary,
                             height: 1.15,
                           ),
                         ),
@@ -189,10 +191,14 @@ class _UserText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return AppMarkdown(
       data: text,
       onTapLink: onOpenLink,
-      textStyle: AppTypography.chatMessage(color: AppColors.bone, height: 1.35),
+      textStyle: AppTypography.chatMessage(
+        color: colors.onPrimaryContainer,
+        height: 1.35,
+      ),
     );
   }
 }
@@ -205,13 +211,14 @@ class _Timestamp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Text(
       text,
       style: AppTypography.body(
         fontSize: 10,
         color: mine
-            ? AppColors.bone.withValues(alpha: 0.6)
-            : AppColors.boneFaint,
+            ? colors.onPrimaryContainer.withValues(alpha: 0.65)
+            : colors.onSurfaceVariant,
         height: 1.1,
       ),
     );
@@ -226,6 +233,7 @@ class _Avatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     final initial = label.trim().isEmpty ? '?' : label.trim()[0].toUpperCase();
     return Container(
       width: 28,
@@ -233,8 +241,8 @@ class _Avatar extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: AppColors.fel.withValues(alpha: 0.15),
-        border: Border.all(color: AppColors.fel.withValues(alpha: 0.35)),
+        color: colors.primaryContainer,
+        border: Border.all(color: colors.primary.withValues(alpha: 0.35)),
       ),
       child: imageUrl?.trim().isNotEmpty == true
           ? Image.network(
@@ -254,12 +262,13 @@ class _AvatarInitial extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Text(
       initial,
       style: AppTypography.body(
         fontSize: 11,
         fontWeight: FontWeight.w700,
-        color: AppColors.felBright,
+        color: colors.onPrimaryContainer,
       ),
     );
   }
@@ -278,10 +287,11 @@ class _AttachmentPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Material(
       color: mine
-          ? AppColors.iron950.withValues(alpha: 0.25)
-          : AppColors.rowSurface,
+          ? colors.onPrimaryContainer.withValues(alpha: 0.08)
+          : colors.surface,
       borderRadius: BorderRadius.circular(8),
       child: InkWell(
         key: Key('transcript-attachment-${attachment.label}'),
@@ -298,8 +308,8 @@ class _AttachmentPill extends StatelessWidget {
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: mine
-                      ? AppColors.bone.withValues(alpha: 0.1)
-                      : AppColors.forge.withValues(alpha: 0.1),
+                      ? colors.onPrimaryContainer.withValues(alpha: 0.1)
+                      : colors.primaryContainer,
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Icon(
@@ -308,8 +318,8 @@ class _AttachmentPill extends StatelessWidget {
                       : LucideIcons.paperclip,
                   size: 14,
                   color: mine
-                      ? AppColors.bone.withValues(alpha: 0.8)
-                      : AppColors.forge,
+                      ? colors.onPrimaryContainer.withValues(alpha: 0.8)
+                      : colors.primary,
                 ),
               ),
               const SizedBox(width: 10),
@@ -333,8 +343,8 @@ class _AttachmentPill extends StatelessWidget {
                       style: AppTypography.mono(
                         fontSize: 10,
                         color: mine
-                            ? AppColors.bone.withValues(alpha: 0.55)
-                            : AppColors.boneFaint,
+                            ? colors.onPrimaryContainer.withValues(alpha: 0.6)
+                            : colors.onSurfaceVariant,
                       ),
                     ),
                   ],
@@ -356,6 +366,7 @@ class _AssistantText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     final timestamp = formatActivityTimestamp(item.createdAt);
     return Column(
       key: Key('transcript-text-${item.key}'),
@@ -366,7 +377,7 @@ class _AssistantText extends StatelessWidget {
           data: item.text,
           onTapLink: onOpenLink,
           textStyle: AppTypography.chatMessage(
-            color: AppColors.bone,
+            color: colors.onSurface,
             height: 1.55,
           ),
         ),
@@ -382,7 +393,7 @@ class _AssistantText extends StatelessWidget {
                     timestamp,
                     style: AppTypography.body(
                       fontSize: 10,
-                      color: AppColors.boneFaint,
+                      color: colors.onSurfaceVariant,
                     ),
                   ),
                 if (timestamp != null && item.resultMeta != null)
@@ -390,7 +401,7 @@ class _AssistantText extends StatelessWidget {
                     '·',
                     style: AppTypography.body(
                       fontSize: 10,
-                      color: AppColors.boneFaint,
+                      color: colors.onSurfaceVariant,
                     ),
                   ),
                 if (item.resultMeta case final meta?)
@@ -400,8 +411,8 @@ class _AssistantText extends StatelessWidget {
                     style: AppTypography.body(
                       fontSize: 10,
                       color: meta.isError
-                          ? AppColors.blood
-                          : AppColors.boneFaint,
+                          ? colors.error
+                          : colors.onSurfaceVariant,
                     ),
                   ),
               ],
@@ -426,6 +437,7 @@ class _ThinkingRowState extends State<_ThinkingRow> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Align(
       alignment: Alignment.centerLeft,
       child: ConstrainedBox(
@@ -444,7 +456,7 @@ class _ThinkingRowState extends State<_ThinkingRow> {
                 '✦ ${_thinkingLabel(widget.item.text)} ${open ? '▾' : '▸'}',
                 style: AppTypography.mono(
                   fontSize: AppTypography.systemMessageFontSize,
-                  color: AppColors.boneFaint,
+                  color: colors.onSurfaceVariant,
                   height: 1.35,
                 ),
               ),
@@ -453,16 +465,16 @@ class _ThinkingRowState extends State<_ThinkingRow> {
               Container(
                 margin: const EdgeInsets.only(top: 4),
                 padding: const EdgeInsets.only(left: 12),
-                decoration: const BoxDecoration(
+                decoration: BoxDecoration(
                   border: Border(
-                    left: BorderSide(color: AppColors.iron800, width: 2),
+                    left: BorderSide(color: colors.outlineVariant, width: 2),
                   ),
                 ),
                 child: Text(
                   widget.item.text,
                   style: AppTypography.mono(
                     fontSize: AppTypography.systemMessageFontSize,
-                    color: AppColors.boneFaint,
+                    color: colors.onSurfaceVariant,
                     height: 1.35,
                   ).copyWith(fontStyle: FontStyle.italic),
                 ),
@@ -481,6 +493,7 @@ class _ToolRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     final failed = item.result?.isError == true;
     final operation = item.name?.trim().toLowerCase() == 'edit'
         ? transcriptEditOperation(item.input)
@@ -514,13 +527,13 @@ class _ToolRow extends StatelessWidget {
                   null => LucideIcons.terminal,
                 },
                 size: 11,
-                color: failed ? AppColors.blood : AppColors.felBright,
+                color: failed ? colors.error : colors.primary,
               ),
               const SizedBox(width: 4),
               Text(
                 label,
                 style: AppTypography.monoCode(
-                  color: failed ? AppColors.blood : AppColors.felBright,
+                  color: failed ? colors.error : colors.primary,
                 ).copyWith(fontSize: 11),
               ),
               if (operation != null && stats != null) ...[
@@ -535,7 +548,7 @@ class _ToolRow extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: AppTypography.monoCode(
-                      color: failed ? AppColors.blood : AppColors.boneFaint,
+                      color: failed ? colors.error : colors.onSurfaceVariant,
                     ).copyWith(fontSize: 11),
                   ),
                 ),
@@ -550,12 +563,14 @@ class _ToolRow extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(vertical: 3),
                   child: Text(
                     'Details',
-                    style: AppTypography.monoCode(color: AppColors.boneFaint)
-                        .copyWith(
+                    style:
+                        AppTypography.monoCode(
+                          color: colors.onSurfaceVariant,
+                        ).copyWith(
                           fontSize: 11,
                           decoration: TextDecoration.underline,
                           decorationStyle: TextDecorationStyle.dotted,
-                          decorationColor: AppColors.boneFaint,
+                          decorationColor: colors.onSurfaceVariant,
                           decorationThickness: 1,
                         ),
                   ),
@@ -577,8 +592,9 @@ class _EditStats extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     final base = AppTypography.monoCode(
-      color: AppColors.boneFaint,
+      color: colors.onSurfaceVariant,
     ).copyWith(fontSize: 11);
     return Text.rich(
       TextSpan(
@@ -588,14 +604,14 @@ class _EditStats extends StatelessWidget {
           if (operation != TranscriptEditOperation.delete)
             TextSpan(
               text: '+${stats.added}',
-              style: base.copyWith(color: AppColors.felBright),
+              style: base.copyWith(color: colors.primary),
             ),
           if (operation == TranscriptEditOperation.edit)
             const TextSpan(text: ','),
           if (operation != TranscriptEditOperation.create)
             TextSpan(
               text: '−${stats.removed}',
-              style: base.copyWith(color: AppColors.blood),
+              style: base.copyWith(color: colors.error),
             ),
           const TextSpan(text: ')'),
         ],
@@ -618,6 +634,7 @@ class _ActionResultState extends State<_ActionResult> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     final long = widget.item.text.length > 300;
     final shown = open || !long
         ? widget.item.text
@@ -629,8 +646,10 @@ class _ActionResultState extends State<_ActionResult> {
           maxWidth: MediaQuery.sizeOf(context).width * 0.85,
         ),
         padding: const EdgeInsets.only(left: 12),
-        decoration: const BoxDecoration(
-          border: Border(left: BorderSide(color: AppColors.iron700, width: 2)),
+        decoration: BoxDecoration(
+          border: Border(
+            left: BorderSide(color: colors.outlineVariant, width: 2),
+          ),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -639,7 +658,7 @@ class _ActionResultState extends State<_ActionResult> {
             Text(
               shown,
               style: AppTypography.monoCode(
-                color: AppColors.boneFaint,
+                color: colors.onSurfaceVariant,
                 height: 1.4,
               ).copyWith(fontSize: 11),
             ),
@@ -651,7 +670,7 @@ class _ActionResultState extends State<_ActionResult> {
                   child: Text(
                     open ? 'Less' : 'More',
                     style: AppTypography.monoCode(
-                      color: AppColors.boneDim,
+                      color: colors.primary,
                     ).copyWith(fontSize: 11),
                   ),
                 ),
@@ -670,11 +689,12 @@ class _Notice extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Text(
       item.text,
       style: AppTypography.mono(
         fontSize: AppTypography.systemMessageFontSize,
-        color: item.isError ? AppColors.blood : AppColors.boneFaint,
+        color: item.isError ? colors.error : colors.onSurfaceVariant,
       ),
     );
   }
@@ -688,6 +708,7 @@ class _PreviewCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     final filename = item.path.replaceAll('\\', '/').split('/').last;
     final timestamp = formatActivityTimestamp(item.createdAt);
     return Align(
@@ -704,19 +725,13 @@ class _PreviewCard extends StatelessWidget {
             ),
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
             decoration: BoxDecoration(
-              color: AppColors.fel.withValues(alpha: 0.07),
-              border: Border.all(
-                color: AppColors.felDeep.withValues(alpha: 0.5),
-              ),
+              color: colors.primaryContainer.withValues(alpha: 0.45),
+              border: Border.all(color: colors.primary.withValues(alpha: 0.45)),
               borderRadius: BorderRadius.circular(6),
             ),
             child: Row(
               children: [
-                const Icon(
-                  LucideIcons.image,
-                  size: 15,
-                  color: AppColors.felBright,
-                ),
+                Icon(LucideIcons.image, size: 15, color: colors.primary),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Column(
@@ -726,14 +741,14 @@ class _PreviewCard extends StatelessWidget {
                         filename,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: AppTypography.monoCode(color: AppColors.bone),
+                        style: AppTypography.monoCode(color: colors.onSurface),
                       ),
                       if (item.author != null || timestamp != null)
                         Text(
                           [?item.author, ?timestamp].join(' · '),
                           style: AppTypography.body(
                             fontSize: 10,
-                            color: AppColors.boneFaint,
+                            color: colors.onSurfaceVariant,
                           ),
                         ),
                     ],
@@ -755,10 +770,11 @@ class _RawText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Text(
       item.text,
       style: AppTypography.monoCode(
-        color: AppColors.boneFaint,
+        color: colors.onSurfaceVariant,
         height: 1.4,
       ).copyWith(fontSize: 11),
     );

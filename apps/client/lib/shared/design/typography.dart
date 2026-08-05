@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'colors.dart';
 
 @immutable
 class AppTypography {
@@ -29,7 +28,7 @@ class AppTypography {
       fontFamily: fontFamily,
       fontSize: fontSize,
       fontWeight: fontWeight ?? FontWeight.w600,
-      color: color ?? AppColors.bone,
+      color: color,
       height: height,
       letterSpacing: letterSpacing,
     );
@@ -46,7 +45,7 @@ class AppTypography {
       fontFamily: fontFamily,
       fontSize: fontSize,
       fontWeight: fontWeight ?? FontWeight.w400,
-      color: color ?? AppColors.bone,
+      color: color,
       height: height,
       letterSpacing: letterSpacing,
     );
@@ -60,7 +59,7 @@ class AppTypography {
     return body(
       fontSize: chatMessageFontSize,
       fontWeight: fontWeight ?? FontWeight.w400,
-      color: color ?? AppColors.bone,
+      color: color,
       height: height ?? 1.35,
     );
   }
@@ -77,7 +76,7 @@ class AppTypography {
       fontFamilyFallback: monoFallbacks,
       fontSize: fontSize,
       fontWeight: fontWeight ?? FontWeight.w400,
-      color: color ?? AppColors.bone,
+      color: color,
       height: height,
       letterSpacing: letterSpacing,
     );
@@ -104,7 +103,7 @@ class AppTypography {
     return display(
       fontSize: 17,
       fontWeight: FontWeight.w600,
-      color: color ?? AppColors.bone,
+      color: color,
       height: 1.25,
       letterSpacing: -0.15,
     );
@@ -114,7 +113,7 @@ class AppTypography {
     return display(
       fontSize: 24,
       fontWeight: FontWeight.w700,
-      color: color ?? AppColors.bone,
+      color: color,
       height: 1.2,
       letterSpacing: -0.35,
     );
@@ -124,7 +123,7 @@ class AppTypography {
     return body(
       fontSize: 11,
       fontWeight: FontWeight.w600,
-      color: color ?? AppColors.boneDim,
+      color: color,
       height: 1.2,
       letterSpacing: 1.1,
     );
@@ -144,18 +143,18 @@ class AppTypography {
   }
 
   static TextStyle controlValue({Color? color}) {
-    return mono(fontSize: 13, color: color ?? AppColors.boneDim);
+    return mono(fontSize: 13, color: color);
   }
 
   static TextStyle metadata({Color? color}) {
-    return mono(fontSize: 12, color: color ?? AppColors.boneDim);
+    return mono(fontSize: 12, color: color);
   }
 
   static TextStyle optionLabel({required bool selected}) {
     return body(
       fontSize: 14,
       fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-      color: selected ? AppColors.felBright : AppColors.bone,
+      color: null,
     );
   }
 

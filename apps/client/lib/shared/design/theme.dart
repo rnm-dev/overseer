@@ -36,6 +36,7 @@ class AppTheme {
           onErrorContainer: p.ink,
           surface: p.surface,
           onSurface: p.ink,
+          onSurfaceVariant: p.inkMuted,
           surfaceContainerHighest: p.surfaceRaised,
           outline: p.edgeStrong,
           outlineVariant: p.edge,

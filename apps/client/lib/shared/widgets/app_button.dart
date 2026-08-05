@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:overseer_mobile/shared/design/motion.dart';
 import 'package:overseer_mobile/shared/design/typography.dart';
 
-enum AppButtonVariant { primary, secondary, ghost, danger }
+enum AppButtonVariant { primary, secondary, ghost, danger, dangerGhost }
 
 enum AppButtonSize { sm, md, lg }
 
@@ -89,6 +89,7 @@ class AppButton extends StatelessWidget {
               colors.surfaceContainerHighest.withValues(alpha: 0.45),
             AppButtonVariant.ghost => Colors.transparent,
             AppButtonVariant.danger => colors.error.withValues(alpha: 0.35),
+            AppButtonVariant.dangerGhost => Colors.transparent,
           };
         }
 
@@ -97,6 +98,7 @@ class AppButton extends StatelessWidget {
           AppButtonVariant.secondary => colors.surfaceContainerHighest,
           AppButtonVariant.ghost => Colors.transparent,
           AppButtonVariant.danger => colors.error,
+          AppButtonVariant.dangerGhost => Colors.transparent,
         };
       }),
       foregroundColor: WidgetStateProperty.resolveWith((states) {
@@ -107,6 +109,7 @@ class AppButton extends StatelessWidget {
             AppButtonVariant.secondary => colors.onSurfaceVariant,
             AppButtonVariant.ghost => colors.onSurfaceVariant,
             AppButtonVariant.danger => colors.onError.withValues(alpha: 0.5),
+            AppButtonVariant.dangerGhost => colors.error.withValues(alpha: 0.5),
           };
         }
 
@@ -115,6 +118,7 @@ class AppButton extends StatelessWidget {
           AppButtonVariant.secondary => colors.onSurface,
           AppButtonVariant.ghost => colors.onSurfaceVariant,
           AppButtonVariant.danger => colors.onError,
+          AppButtonVariant.dangerGhost => colors.error,
         };
       }),
       side: WidgetStateProperty.resolveWith((states) {
@@ -130,6 +134,7 @@ class AppButton extends StatelessWidget {
                 ? colors.errorContainer
                 : colors.errorContainer.withValues(alpha: 0.45),
           ),
+          AppButtonVariant.dangerGhost => BorderSide.none,
           _ => BorderSide.none,
         };
       }),
@@ -147,6 +152,7 @@ class AppButton extends StatelessWidget {
             alpha: 0.24,
           ),
           AppButtonVariant.danger => colors.error.withValues(alpha: 0.2),
+          AppButtonVariant.dangerGhost => colors.error.withValues(alpha: 0.12),
         };
       }),
       mouseCursor: WidgetStatePropertyAll(
@@ -184,6 +190,7 @@ class AppButton extends StatelessWidget {
       AppButtonVariant.secondary => colors.primary,
       AppButtonVariant.ghost => colors.onSurfaceVariant,
       AppButtonVariant.danger => colors.onError,
+      AppButtonVariant.dangerGhost => colors.error,
     };
   }
 

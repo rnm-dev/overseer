@@ -23,6 +23,7 @@ import 'package:overseer_mobile/features/sessions/domain/new_session_repository.
 import 'package:overseer_mobile/features/sessions/domain/session_models.dart';
 import 'package:overseer_mobile/features/sessions/domain/session_repository.dart';
 import 'package:overseer_mobile/features/sessions/presentation/session_detail_page.dart';
+import 'package:overseer_mobile/features/themes/domain/app_theme_package.dart';
 import 'package:overseer_mobile/shared/design/colors.dart';
 import 'package:overseer_mobile/shared/design/theme.dart';
 import 'package:overseer_mobile/shared/models/ai_capabilities.dart';
@@ -790,6 +791,55 @@ void main() {
     expect(find.text('3 turns·1.2K input·456 output'), findsOneWidget);
   });
 
+  testWidgets('navbar subtitle uses clean manifest ink in light themes', (
+    tester,
+  ) async {
+    final theme = AppTheme.fromPackage(AppThemePackages.bundled[1]);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          sessionDetailsProvider.overrideWith(
+            (ref, scope) async => const SessionDetails(
+              turnCount: 3,
+              usage: SessionUsage(
+                inputTokens: 1200,
+                outputTokens: 456,
+                cacheCreationInputTokens: 0,
+                cacheReadInputTokens: 0,
+              ),
+            ),
+          ),
+          transcriptControllerProvider.overrideWith2(
+            (scope) => _TestTranscriptController(
+              scope,
+              const TranscriptState(events: []),
+            ),
+          ),
+        ],
+        child: MaterialApp(
+          theme: theme,
+          home: const SessionDetailPage(
+            session: SessionSummary(
+              workspaceId: 'workspace',
+              peonId: 'peon',
+              sessionId: 'session',
+              title: 'Build the session screen',
+              syncedAt: 1,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final subtitle = tester.widget<Text>(
+      find.byKey(const Key('session-stats')),
+    );
+    expect(subtitle.style?.color, AppThemePackages.bundled[1].inkFaint);
+    expect(subtitle.style?.height, 1);
+    expect(subtitle.style?.shadows, isEmpty);
+  });
+
   testWidgets('falls back to the cached session display title', (tester) async {
     await tester.pumpWidget(
       ProviderScope(
@@ -1276,9 +1326,9 @@ void main() {
       find.byKey(const Key('transcript-working-duration')),
     );
     expect(label.style?.fontSize, 10);
-    expect(label.style?.color, AppColors.felBright);
+    expect(label.style?.color, AppTheme.dark.colorScheme.primary);
     expect(duration.style?.fontSize, 10);
-    expect(duration.style?.color, AppColors.boneFaint);
+    expect(duration.style?.color, AppTheme.dark.colorScheme.onSurfaceVariant);
     expect(
       find.byKey(const Key('transcript-working-flow-bash-event')),
       findsOneWidget,
