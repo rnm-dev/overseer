@@ -22,11 +22,13 @@ Where it is set:
 | Where | Value | File |
 | --- | --- | --- |
 | Dev (nid-dev) | `1` | `.env`, read by `docker-compose.yml` (gitignored) |
-| Production | `0` | `apps/server/config/deploy.yml`, stated explicitly |
+| Production | `1` | `apps/server/config/deploy.yml`, stated explicitly |
 
-Production states the `0` rather than relying on the default. Opening local
+Production states its value rather than relying on the default. Opening local
 accounts on the public origin is a decision, and the file where production
-configuration lives should show that the decision was made.
+configuration lives should show that the decision was made. It was made on
+2026-08-05: production accepts local accounts, which — because the switch is
+one switch — means open registration there, as GitHub sign-up already was.
 
 ## What a client sees
 

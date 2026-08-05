@@ -63,7 +63,7 @@ env:
     # Email + password sign-in beside GitHub. Stated explicitly rather than left
     # to the default: opening local accounts on the production origin is a
     # decision, not something a config file should do quietly.
-    OVERSEER_PASSWORD_AUTH: 0
+    OVERSEER_PASSWORD_AUTH: 1
     OVERSEER_PREVIEW_DOMAIN: preview.overseer.rnm.dev
     OVERSEER_PREVIEW_TOKEN_TTL_MS: 600000
     OVERSEER_OFFLINE_AFTER_MS: 45000
