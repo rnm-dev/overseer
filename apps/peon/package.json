@@ -1,6 +1,6 @@
 {
   "name": "@rnm-dev/peon",
-  "version": "0.12.3",
+  "version": "0.12.4",
   "description": "peon — autonomous coding agent daemon and CLI, managed through Overseer",
   "license": "MIT",
   "author": "RNM Dev",
