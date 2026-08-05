@@ -11,6 +11,7 @@ import 'package:markdown/markdown.dart' as md;
 import 'package:pdfrx/pdfrx.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
+import '../../features/themes/domain/app_theme_package.dart';
 import '../design/colors.dart';
 import '../design/typography.dart';
 import 'app_button.dart';
@@ -93,12 +94,13 @@ class FileViewModeSwitch extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Container(
       key: const Key('file-view-mode'),
       padding: const EdgeInsets.all(2),
       decoration: BoxDecoration(
-        color: AppColors.iron950,
-        border: Border.all(color: AppColors.iron700),
+        color: colors.surface,
+        border: Border.all(color: colors.outlineVariant),
         borderRadius: BorderRadius.circular(7),
       ),
       child: Row(
@@ -133,11 +135,13 @@ class _ModeButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final palette = Theme.of(context).extension<AppThemePalette>()?.package;
     return Semantics(
       button: true,
       selected: selected,
       child: Material(
-        color: selected ? AppColors.felDim : Colors.transparent,
+        color: selected ? colors.primaryContainer : Colors.transparent,
         borderRadius: BorderRadius.circular(5),
         child: InkWell(
           onTap: onPressed,
@@ -151,7 +155,9 @@ class _ModeButton extends StatelessWidget {
                   label,
                   style: AppTypography.mono(
                     fontSize: 10,
-                    color: selected ? AppColors.felBright : AppColors.boneFaint,
+                    color: selected
+                        ? colors.onPrimaryContainer
+                        : palette?.inkFaint ?? colors.onSurfaceVariant,
                   ),
                 ),
               ),
@@ -178,7 +184,7 @@ class _MarkdownPreview extends StatelessWidget {
           data: source,
           selectable: true,
           builders: {'pre': _MarkdownCodeBlockBuilder()},
-          styleSheet: _markdownStyleSheet(),
+          styleSheet: _markdownStyleSheet(context),
         ),
       ),
     );
@@ -424,13 +430,19 @@ class _ViewerMessage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final palette = Theme.of(context).extension<AppThemePalette>()?.package;
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(28),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 30, color: AppColors.boneFaint),
+            Icon(
+              icon,
+              size: 30,
+              color: palette?.inkFaint ?? colors.onSurfaceVariant,
+            ),
             const SizedBox(height: 12),
             Text(
               title,
@@ -438,6 +450,7 @@ class _ViewerMessage extends StatelessWidget {
               style: AppTypography.display(
                 fontSize: 15,
                 fontWeight: FontWeight.w600,
+                color: colors.onSurface,
               ),
             ),
             const SizedBox(height: 6),
@@ -446,7 +459,7 @@ class _ViewerMessage extends StatelessWidget {
               textAlign: TextAlign.center,
               style: AppTypography.body(
                 fontSize: 13,
-                color: AppColors.boneFaint,
+                color: palette?.inkFaint ?? colors.onSurfaceVariant,
               ),
             ),
             if (action != null) ...[const SizedBox(height: 16), action!],
@@ -457,51 +470,77 @@ class _ViewerMessage extends StatelessWidget {
   }
 }
 
-MarkdownStyleSheet _markdownStyleSheet() => MarkdownStyleSheet(
-  a: AppTypography.body(fontSize: 13, color: AppColors.felBright),
-  p: AppTypography.body(fontSize: 13, color: AppColors.bone, height: 1.55),
-  code: AppTypography.mono(
-    fontSize: 11,
-    color: AppColors.ember,
-  ).copyWith(backgroundColor: AppColors.iron800),
-  h1: AppTypography.display(fontSize: 24, fontWeight: FontWeight.w700),
-  h2: AppTypography.display(fontSize: 20, fontWeight: FontWeight.w700),
-  h3: AppTypography.display(fontSize: 17, fontWeight: FontWeight.w700),
-  h4: AppTypography.display(fontSize: 15, fontWeight: FontWeight.w700),
-  h5: AppTypography.display(fontSize: 14, fontWeight: FontWeight.w700),
-  h6: AppTypography.display(
-    fontSize: 13,
-    fontWeight: FontWeight.w700,
-    color: AppColors.boneDim,
-  ),
-  em: const TextStyle(fontStyle: FontStyle.italic),
-  strong: const TextStyle(fontWeight: FontWeight.w700),
-  del: const TextStyle(decoration: TextDecoration.lineThrough),
-  blockSpacing: 12,
-  listIndent: 24,
-  listBullet: AppTypography.body(fontSize: 13, color: AppColors.boneDim),
-  blockquote: AppTypography.body(
-    fontSize: 13,
-    color: AppColors.boneDim,
-    height: 1.5,
-  ),
-  blockquotePadding: const EdgeInsets.fromLTRB(14, 8, 10, 8),
-  blockquoteDecoration: const BoxDecoration(
-    color: AppColors.iron950,
-    border: Border(left: BorderSide(color: AppColors.felDeep, width: 3)),
-  ),
-  tableHead: AppTypography.body(
-    fontSize: 12,
-    fontWeight: FontWeight.w700,
-    color: AppColors.bone,
-  ),
-  tableBody: AppTypography.body(fontSize: 12, color: AppColors.boneDim),
-  tableBorder: TableBorder.all(color: AppColors.iron700),
-  tableCellsPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-  horizontalRuleDecoration: const BoxDecoration(
-    border: Border(top: BorderSide(color: AppColors.iron700)),
-  ),
-);
+MarkdownStyleSheet _markdownStyleSheet(BuildContext context) {
+  final colors = Theme.of(context).colorScheme;
+  return MarkdownStyleSheet(
+    a: AppTypography.body(fontSize: 13, color: colors.primary),
+    p: AppTypography.body(fontSize: 13, color: colors.onSurface, height: 1.55),
+    code: AppTypography.mono(
+      fontSize: 11,
+      color: colors.secondary,
+    ).copyWith(backgroundColor: colors.surfaceContainerHighest),
+    h1: AppTypography.display(
+      fontSize: 24,
+      fontWeight: FontWeight.w700,
+      color: colors.onSurface,
+    ),
+    h2: AppTypography.display(
+      fontSize: 20,
+      fontWeight: FontWeight.w700,
+      color: colors.onSurface,
+    ),
+    h3: AppTypography.display(
+      fontSize: 17,
+      fontWeight: FontWeight.w700,
+      color: colors.onSurface,
+    ),
+    h4: AppTypography.display(
+      fontSize: 15,
+      fontWeight: FontWeight.w700,
+      color: colors.onSurface,
+    ),
+    h5: AppTypography.display(
+      fontSize: 14,
+      fontWeight: FontWeight.w700,
+      color: colors.onSurface,
+    ),
+    h6: AppTypography.display(
+      fontSize: 13,
+      fontWeight: FontWeight.w700,
+      color: colors.onSurfaceVariant,
+    ),
+    em: const TextStyle(fontStyle: FontStyle.italic),
+    strong: const TextStyle(fontWeight: FontWeight.w700),
+    del: const TextStyle(decoration: TextDecoration.lineThrough),
+    blockSpacing: 12,
+    listIndent: 24,
+    listBullet: AppTypography.body(
+      fontSize: 13,
+      color: colors.onSurfaceVariant,
+    ),
+    blockquote: AppTypography.body(
+      fontSize: 13,
+      color: colors.onSurfaceVariant,
+      height: 1.5,
+    ),
+    blockquotePadding: const EdgeInsets.fromLTRB(14, 8, 10, 8),
+    blockquoteDecoration: BoxDecoration(
+      color: colors.surface,
+      border: Border(left: BorderSide(color: colors.primary, width: 3)),
+    ),
+    tableHead: AppTypography.body(
+      fontSize: 12,
+      fontWeight: FontWeight.w700,
+      color: colors.onSurface,
+    ),
+    tableBody: AppTypography.body(fontSize: 12, color: colors.onSurfaceVariant),
+    tableBorder: TableBorder.all(color: colors.outlineVariant),
+    tableCellsPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+    horizontalRuleDecoration: BoxDecoration(
+      border: Border(top: BorderSide(color: colors.outlineVariant)),
+    ),
+  );
+}
 
 bool get _supportsEmbeddedBrowser =>
     !kIsWeb &&

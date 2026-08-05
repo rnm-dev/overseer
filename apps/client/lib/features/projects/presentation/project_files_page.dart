@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
-import '../../../shared/design/colors.dart';
 import '../../../shared/design/typography.dart';
 import '../../../shared/widgets/app_button.dart';
 import '../../../shared/widgets/app_navigation_bar.dart';
@@ -38,10 +37,11 @@ class ProjectFilesPage extends ConsumerWidget {
         ? null
         : ref.watch(projectFilesControllerProvider(scope));
     final state = files?.value;
+    final colors = Theme.of(context).colorScheme;
 
     return Scaffold(
       key: const Key('project-files-page'),
-      backgroundColor: AppColors.background,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(
         top: false,
         child: Column(
@@ -70,7 +70,7 @@ class ProjectFilesPage extends ConsumerWidget {
                       softWrap: false,
                       style: AppTypography.mono(
                         fontSize: 9,
-                        color: AppColors.forge,
+                        color: colors.secondary,
                         height: 1.2,
                       ),
                     ),
@@ -96,17 +96,17 @@ class ProjectFilesPage extends ConsumerWidget {
                         height: 40,
                       ),
                       icon: state?.refreshing == true
-                          ? const SizedBox.square(
+                          ? SizedBox.square(
                               dimension: 16,
                               child: CircularProgressIndicator(
                                 strokeWidth: 1.5,
-                                color: AppColors.felBright,
+                                color: colors.primary,
                               ),
                             )
-                          : const Icon(
+                          : Icon(
                               LucideIcons.refreshCw,
                               size: 17,
-                              color: AppColors.boneDim,
+                              color: colors.onSurfaceVariant,
                             ),
                     ),
             ),
@@ -277,6 +277,7 @@ class _FileTreeRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     final content = Padding(
       padding: EdgeInsets.fromLTRB(8 + depth * 16, 0, 8, 0),
       child: Row(
@@ -287,10 +288,10 @@ class _FileTreeRow extends StatelessWidget {
                 ? AnimatedRotation(
                     turns: open ? 0.25 : 0,
                     duration: const Duration(milliseconds: 150),
-                    child: const Icon(
+                    child: Icon(
                       LucideIcons.chevronRight,
                       size: 13,
-                      color: AppColors.boneFaint,
+                      color: colors.onSurfaceVariant,
                     ),
                   )
                 : null,
@@ -300,7 +301,7 @@ class _FileTreeRow extends StatelessWidget {
                 ? (open ? LucideIcons.folderOpen : LucideIcons.folder)
                 : _fileIcon(entry.name),
             size: 16,
-            color: entry.isDirectory ? AppColors.felDeep : AppColors.boneFaint,
+            color: entry.isDirectory ? colors.primary : colors.onSurfaceVariant,
           ),
           const SizedBox(width: 7),
           Expanded(
@@ -308,7 +309,7 @@ class _FileTreeRow extends StatelessWidget {
               entry.name,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: AppTypography.mono(fontSize: 12, color: AppColors.boneDim),
+              style: AppTypography.mono(fontSize: 12, color: colors.onSurface),
             ),
           ),
           if (!entry.isDirectory && entry.size != null)
@@ -316,7 +317,7 @@ class _FileTreeRow extends StatelessWidget {
               _formatFileSize(entry.size!),
               style: AppTypography.mono(
                 fontSize: 10,
-                color: AppColors.boneFaint,
+                color: colors.onSurfaceVariant,
               ),
             ),
         ],
@@ -350,10 +351,11 @@ class _DirectoryLoading extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Padding(
       key: const Key('project-directory-loading'),
       padding: EdgeInsets.only(left: 34 + depth * 16),
-      child: const SizedBox(
+      child: SizedBox(
         height: 34,
         child: Align(
           alignment: Alignment.centerLeft,
@@ -361,7 +363,7 @@ class _DirectoryLoading extends StatelessWidget {
             dimension: 14,
             child: CircularProgressIndicator(
               strokeWidth: 1.5,
-              color: AppColors.felBright,
+              color: colors.primary,
             ),
           ),
         ),
@@ -383,22 +385,19 @@ class _DirectoryError extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Padding(
       padding: EdgeInsets.fromLTRB(34 + depth * 16, 4, 8, 4),
       child: Row(
         children: [
-          const Icon(
-            LucideIcons.triangleAlert,
-            size: 14,
-            color: AppColors.blood,
-          ),
+          Icon(LucideIcons.triangleAlert, size: 14, color: colors.error),
           const SizedBox(width: 7),
           Expanded(
             child: Text(
               message,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: AppTypography.mono(fontSize: 10, color: AppColors.blood),
+              style: AppTypography.mono(fontSize: 10, color: colors.error),
             ),
           ),
           IconButton(
@@ -417,6 +416,7 @@ class _TreeLoading extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return ListView(
       key: const Key('project-files-loading'),
       padding: const EdgeInsets.all(16),
@@ -426,13 +426,13 @@ class _TreeLoading extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: 9),
           child: Row(
             children: [
-              const SizedBox(
+              SizedBox(
                 width: 16,
                 height: 16,
                 child: DecoratedBox(
                   decoration: BoxDecoration(
-                    color: AppColors.iron700,
-                    borderRadius: BorderRadius.all(Radius.circular(3)),
+                    color: colors.surfaceContainerHighest,
+                    borderRadius: const BorderRadius.all(Radius.circular(3)),
                   ),
                 ),
               ),
@@ -442,12 +442,14 @@ class _TreeLoading extends StatelessWidget {
                   alignment: Alignment.centerLeft,
                   child: FractionallySizedBox(
                     widthFactor: 0.45 + (index % 3) * 0.12,
-                    child: const SizedBox(
+                    child: SizedBox(
                       height: 10,
                       child: DecoratedBox(
                         decoration: BoxDecoration(
-                          color: AppColors.iron800,
-                          borderRadius: BorderRadius.all(Radius.circular(8)),
+                          color: colors.outlineVariant,
+                          borderRadius: const BorderRadius.all(
+                            Radius.circular(8),
+                          ),
                         ),
                       ),
                     ),
@@ -477,13 +479,14 @@ class _FilesEmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(28),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 28, color: AppColors.boneFaint),
+            Icon(icon, size: 28, color: colors.onSurfaceVariant),
             const SizedBox(height: 12),
             Text(
               title,
@@ -491,6 +494,7 @@ class _FilesEmptyState extends StatelessWidget {
               style: AppTypography.display(
                 fontSize: 15,
                 fontWeight: FontWeight.w600,
+                color: colors.onSurface,
               ),
             ),
             const SizedBox(height: 6),
@@ -499,7 +503,7 @@ class _FilesEmptyState extends StatelessWidget {
               textAlign: TextAlign.center,
               style: AppTypography.body(
                 fontSize: 13,
-                color: AppColors.boneFaint,
+                color: colors.onSurfaceVariant,
               ),
             ),
             if (action != null) ...[const SizedBox(height: 16), action!],

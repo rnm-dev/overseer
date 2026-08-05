@@ -135,6 +135,13 @@ class AppThemePalette extends ThemeExtension<AppThemePalette> {
 
   final AppThemePackage package;
 
+  Color get optionSurface => package.appearance == Brightness.light
+      ? Color.alphaBlend(
+          package.surfaceHover.withValues(alpha: 0.22),
+          package.surfaceRaised,
+        )
+      : package.surfaceRaised;
+
   @override
   AppThemePalette copyWith({AppThemePackage? package}) =>
       AppThemePalette(package ?? this.package);

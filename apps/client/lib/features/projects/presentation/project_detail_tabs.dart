@@ -18,10 +18,11 @@ class _ProjectTabs extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Container(
       height: 48,
-      decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: AppColors.iron800)),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: colors.outlineVariant)),
       ),
       child: ListView.separated(
         padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -45,7 +46,7 @@ class _ProjectTabs extends StatelessWidget {
                   border: Border(
                     bottom: BorderSide(
                       width: 2,
-                      color: active ? AppColors.felBright : Colors.transparent,
+                      color: active ? colors.primary : Colors.transparent,
                     ),
                   ),
                 ),
@@ -54,7 +55,7 @@ class _ProjectTabs extends StatelessWidget {
                   style: AppTypography.display(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
-                    color: active ? AppColors.felBright : AppColors.boneFaint,
+                    color: active ? colors.primary : colors.onSurfaceVariant,
                   ),
                 ),
               ),
@@ -78,6 +79,7 @@ class _CompactHeaderAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return IconButton(
       tooltip: label,
       onPressed: onPressed,
@@ -85,8 +87,8 @@ class _CompactHeaderAction extends StatelessWidget {
       style: IconButton.styleFrom(
         minimumSize: const Size.square(44),
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        foregroundColor: AppColors.felBright,
-        disabledForegroundColor: AppColors.boneDim,
+        foregroundColor: colors.primary,
+        disabledForegroundColor: colors.onSurfaceVariant,
       ),
       icon: const Icon(LucideIcons.plus, size: 20),
     );

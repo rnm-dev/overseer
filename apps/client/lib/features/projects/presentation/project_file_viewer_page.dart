@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../core/platform/html_preview_launcher.dart';
-import '../../../shared/design/colors.dart';
 import '../../../shared/design/typography.dart';
 import '../../../shared/widgets/app_button.dart';
 import '../../../shared/widgets/app_navigation_bar.dart';
@@ -46,12 +45,13 @@ class _ProjectFileViewerPageState extends ConsumerState<ProjectFileViewerPage> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     final file = ref.watch(projectFileViewerControllerProvider(_scope));
     final htmlPreviewLauncher = ref.watch(htmlPreviewLauncherProvider);
     final switchable = isMarkdownFile(widget.path) || isHtmlFile(widget.path);
     return Scaffold(
       key: const Key('project-file-viewer-page'),
-      backgroundColor: AppColors.background,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(
         top: false,
         child: Column(
@@ -65,7 +65,7 @@ class _ProjectFileViewerPageState extends ConsumerState<ProjectFileViewerPage> {
                   Icon(
                     fileViewerIconForPath(widget.path),
                     size: 16,
-                    color: AppColors.forge,
+                    color: colors.secondary,
                   ),
                   const SizedBox(width: 8),
                   Expanded(
@@ -76,7 +76,7 @@ class _ProjectFileViewerPageState extends ConsumerState<ProjectFileViewerPage> {
                       overflow: TextOverflow.ellipsis,
                       style: AppTypography.mono(
                         fontSize: 11,
-                        color: AppColors.boneDim,
+                        color: colors.onSurfaceVariant,
                       ),
                     ),
                   ),
@@ -135,12 +135,12 @@ class _ViewerLoading extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Center(
+    return Center(
       child: SizedBox.square(
         dimension: 24,
         child: CircularProgressIndicator(
           strokeWidth: 2,
-          color: AppColors.felBright,
+          color: Theme.of(context).colorScheme.primary,
         ),
       ),
     );
@@ -162,13 +162,14 @@ class _ViewerMessage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(28),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 30, color: AppColors.boneFaint),
+            Icon(icon, size: 30, color: colors.onSurfaceVariant),
             const SizedBox(height: 12),
             Text(
               title,
@@ -176,6 +177,7 @@ class _ViewerMessage extends StatelessWidget {
               style: AppTypography.display(
                 fontSize: 15,
                 fontWeight: FontWeight.w600,
+                color: colors.onSurface,
               ),
             ),
             const SizedBox(height: 6),
@@ -184,7 +186,7 @@ class _ViewerMessage extends StatelessWidget {
               textAlign: TextAlign.center,
               style: AppTypography.body(
                 fontSize: 13,
-                color: AppColors.boneFaint,
+                color: colors.onSurfaceVariant,
               ),
             ),
             if (action != null) ...[const SizedBox(height: 16), action!],

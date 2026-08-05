@@ -105,6 +105,7 @@ class _ProjectDetailPageState extends ConsumerState<ProjectDetailPage> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     final detail = ref.watch(projectDetailControllerProvider(_scope));
     final state = detail.value;
     final project = state?.project ?? widget.project;
@@ -116,7 +117,7 @@ class _ProjectDetailPageState extends ConsumerState<ProjectDetailPage> {
     ];
     return Scaffold(
       key: const Key('project-detail-page'),
-      backgroundColor: AppColors.background,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(
         top: false,
         child: Column(
@@ -134,10 +135,10 @@ class _ProjectDetailPageState extends ConsumerState<ProjectDetailPage> {
                       width: 48,
                       height: 48,
                     ),
-                    icon: const Icon(
+                    icon: Icon(
                       LucideIcons.arrowLeft,
                       size: 18,
-                      color: AppColors.boneDim,
+                      color: colors.onSurfaceVariant,
                     ),
                   ),
                   const SizedBox(width: 4),
@@ -191,14 +192,14 @@ class _ProjectDetailPageState extends ConsumerState<ProjectDetailPage> {
                   children: [
                     Positioned.fill(child: _body(state)),
                     if (state.loading)
-                      const Positioned(
+                      Positioned(
                         top: 12,
                         right: 16,
                         child: SizedBox.square(
                           dimension: 16,
                           child: CircularProgressIndicator(
                             strokeWidth: 1.5,
-                            color: AppColors.felBright,
+                            color: colors.primary,
                           ),
                         ),
                       ),
@@ -556,6 +557,7 @@ class _ProjectPaneHeaderSurface extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return ClipRect(
       child: BackdropFilter(
         key: const Key('project-overview-path-blur'),
@@ -565,7 +567,7 @@ class _ProjectPaneHeaderSurface extends StatelessWidget {
         ),
         child: SizedBox.expand(
           child: ColoredBox(
-            color: AppColors.bone.withValues(alpha: 0.05),
+            color: colors.onSurface.withValues(alpha: 0.05),
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 12, 0),
               child: Row(
@@ -579,7 +581,7 @@ class _ProjectPaneHeaderSurface extends StatelessWidget {
                       style: AppTypography.display(
                         fontSize: 8.8,
                         fontWeight: FontWeight.w600,
-                        color: AppColors.boneFaint,
+                        color: colors.onSurfaceVariant,
                         letterSpacing: 1.408,
                         height: 1,
                       ),
@@ -599,7 +601,7 @@ class _ProjectPaneHeaderSurface extends StatelessWidget {
                         style: AppTypography.display(
                           fontSize: 8.8,
                           fontWeight: FontWeight.w600,
-                          color: AppColors.boneDim,
+                          color: colors.onSurfaceVariant,
                           letterSpacing: 1.408,
                           height: 1,
                         ),
