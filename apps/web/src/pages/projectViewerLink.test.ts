@@ -46,11 +46,32 @@ test("cited source positions never become part of the file name", () => {
   );
 });
 
-test("external, sibling, root, relative, and traversing links are never rewritten", () => {
+test("a path named the way the project names it resolves against the project root", () => {
+  assert.equal(
+    projectViewerHref("docs/index.html", context),
+    "/view/peon%2Fid/project%20id/docs/index.html",
+  );
+  assert.equal(
+    projectViewerHref("./docs/[ДЗП] Деньги/spec.md#L4", context),
+    `/view/peon%2Fid/project%20id/docs/${encodeURIComponent("[ДЗП] Деньги")}/spec.md#L4`,
+  );
+  assert.equal(
+    projectViewerHref(".claude/settings.json", context),
+    "/view/peon%2Fid/project%20id/.claude/settings.json",
+  );
+  assert.equal(projectViewerHref("docs/../secret.html", context), null);
+});
+
+test("scheme-less web addresses stay ordinary links", () => {
+  assert.equal(projectViewerHref("example.com/pricing", context), null);
+  assert.equal(projectViewerHref("mailto:ops@rnm.dev", context), null);
+  assert.equal(projectViewerHref("//cdn.example.com/app.js", context), null);
+});
+
+test("external, sibling, root, and traversing links are never rewritten", () => {
   assert.equal(projectViewerHref("https://example.com/rnm/websitev2/docs/index.html", context), null);
   assert.equal(projectViewerHref("/rnm/websitev20/docs/index.html", context), null);
   assert.equal(projectViewerHref("/rnm/websitev2", context), null);
-  assert.equal(projectViewerHref("docs/index.html", context), null);
   assert.equal(projectViewerHref("/rnm/websitev2/docs/../secret.html", context), null);
 });
 
