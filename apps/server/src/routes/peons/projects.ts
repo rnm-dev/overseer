@@ -6,20 +6,18 @@ import { allowedProjects, canAccessProject, projectMemberCounts } from "../../ac
 import { ownerOnly, relay, restSegments, withWorkspacePeon } from "../helpers.js";
 import {
   folderBrowseSelector,
-  projectDocsFromSnapshot,
-  projectFileProxyQuery,
-} from "../../modules/projects/index.js";
-import { appendEvent } from "../../infrastructure/events/index.js";
-import { auditSafeFileErrorBody } from "../../fileErrorSafety.js";
-import { FileSandboxError, resolveAttachmentPath, resolveSandboxSegments } from "../../peonFileSandbox.js";
-import {
   forgetIndexedProject,
   getIndexedProject,
   getIndexedProjectById,
   getProjectCatalogState,
   hasCanonicalProjectCatalog,
+  projectDocsFromSnapshot,
+  projectFileProxyQuery,
   refreshIndexedProjectQuickLinks,
-} from "../../projectIndex.js";
+} from "../../modules/projects/index.js";
+import { appendEvent } from "../../infrastructure/events/index.js";
+import { auditSafeFileErrorBody } from "../../fileErrorSafety.js";
+import { FileSandboxError, resolveAttachmentPath, resolveSandboxSegments } from "../../peonFileSandbox.js";
 
 export function registerProjectRoutes(router: express.Router): void {
   const wp = "/workspaces/:wsId/peons/:id";

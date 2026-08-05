@@ -71,3 +71,9 @@ export interface AuthContext {
   avatarUrl: string | null;
   deviceId: string;
 }
+
+/** Canonical user identity attached to authenticated server-side actions. */
+export interface AuthenticatedActor {
+  userId: string;
+  email: string;
+}

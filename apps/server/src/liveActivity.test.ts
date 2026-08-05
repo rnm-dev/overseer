@@ -16,6 +16,7 @@ import {
   liveActivityAggregate,
   registerLiveActivityStartToken,
 } from "./liveActivity.js";
+import { revokeDevice } from "./modules/auth/index.js";
 import { completeNextSessionAttention, recordSessionRequest } from "./modules/sessions/index.js";
 import { createServer } from "./server.js";
 
@@ -279,6 +280,24 @@ test("after the last run ends, the next one starts a fresh aggregate", async () 
   assert.equal(sent.at(-1)?.token, START_TOKEN);
   assert.equal(sent.at(-1)?.state.runningCount, 1);
   assert.equal(sent.at(-1)?.state.completedCount, 1, "the finished run is still unread, and says so");
+});
+
+test("device revocation ends its active aggregate before disabling its FCM recipient", async () => {
+  await start();
+  await indexSession("s1", 1_000);
+  await recordSessionRequest({ workspaceId: "w1", userId: "u1", peonId: "p1", sessionId: "s1", occurrenceKey: "create:1", requestedAt: 1_000 });
+  await bind();
+
+  assert.equal(await revokeDevice("u1", "d1"), true);
+  assert.equal(sent.at(-1)?.event, "end", "revocation must retire what the revoked device is still showing");
+  assert.equal(sent.at(-1)?.recipient, FCM_TOKEN, "the end must be sent while the device registration is still usable");
+
+  const subscriptions = await query<{ disabled_at: number | null }>(`SELECT disabled_at FROM push_subscriptions WHERE device_id='d1'`);
+  assert.ok(subscriptions.rows[0]?.disabled_at, "ordinary pushes are disabled after the terminal activity delivery");
+  const tokens = await query<{ active: number }>(
+    `SELECT COUNT(*)::int AS active FROM live_activity_tokens WHERE device_id='d1' AND disabled_at IS NULL`,
+  );
+  assert.equal(tokens.rows[0]?.active, 0, "revocation retires both ActivityKit token kinds");
 });
 
 test("a device with no FCM registration has no delivery path, and is left alone", async () => {

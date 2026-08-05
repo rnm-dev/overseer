@@ -5,13 +5,13 @@ import {
   canonicalJson,
   type DurableReverseCommandResult,
   type JsonObject,
-  type ReverseCommandActor,
   type ReverseCommandOperation,
   type ReverseCommandRecord,
   type ReverseCommandResultFrame,
   type ReverseCommandState,
   type ReverseCommandTarget,
 } from "./reverseCommandTypes.js";
+import type { AuthenticatedActor } from "../auth/index.js";
 
 export interface ReverseCommandLimits {
   globalPending: number;
@@ -73,7 +73,7 @@ export interface NewReverseCommand {
   commandId: string;
   operation: ReverseCommandOperation;
   requestHash: string;
-  actor: ReverseCommandActor;
+  actor: AuthenticatedActor;
   target: ReverseCommandTarget;
   payload: JsonObject;
   expected: JsonObject | null;

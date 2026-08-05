@@ -11,7 +11,7 @@ import { attachLiveSocket } from "./liveSocket.js";
 import { attachPeonSocket } from "./peonSocket.js";
 import { registry, toView } from "./registry.js";
 import { getSessionCatalogStates, listSessions, upsertSession } from "./sessionIndex.js";
-import { listIndexedProjects } from "./projectIndex.js";
+import { listIndexedProjects } from "./modules/projects/index.js";
 
 function listen(server: http.Server): Promise<number> {
   return new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve((server.address() as AddressInfo).port)));

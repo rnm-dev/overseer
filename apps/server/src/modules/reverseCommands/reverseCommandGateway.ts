@@ -1,11 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { WebSocket } from "ws";
 import { canAccessPeon, canAccessProject } from "../access/index.js";
-import { getUserById, type AuthContext } from "../auth/index.js";
+import { getUserById, type AuthContext, type AuthenticatedActor } from "../auth/index.js";
 import { membership } from "../workspaces/index.js";
 import { registry } from "../fleet/index.js";
 import { getIndexedSession } from "../sessions/index.js";
-import { getIndexedProjectById } from "../../projectIndex.js";
+import { getIndexedProjectById } from "../projects/index.js";
 import {
   getPeonConnection,
   isCurrentPeonConnection,
@@ -48,7 +48,6 @@ import {
   safeReverseCommandView,
   type DurableReverseCommandResult,
   type JsonObject,
-  type ReverseCommandActor,
   type ReverseCommandOperation,
   type ReverseCommandRecord,
   type ReverseCommandTarget,
@@ -412,7 +411,7 @@ export class ReverseCommandGateway {
     }
     const canonicalUser = await getUserById(input.auth.userId);
     if (!canonicalUser) throw new ReverseCommandGatewayError(401, "UNAUTHORIZED", "authenticated user no longer exists");
-    const actor: ReverseCommandActor = { userId: canonicalUser.id, email: canonicalUser.email };
+    const actor: AuthenticatedActor = { userId: canonicalUser.id, email: canonicalUser.email };
     const commandId = input.commandId ?? this.id();
     if (!isCanonicalUuid(commandId)) {
       throw new ReverseCommandGatewayError(400, "BAD_COMMAND", "commandId must be a canonical UUID");

@@ -1,7 +1,7 @@
 import express from "express";
 import { canAccessPeon, canAccessProject } from "../access.js";
 import { connOfRecord, proxyGet } from "../infrastructure/peonHttp/index.js";
-import { getIndexedProjectById } from "../projectIndex.js";
+import { getIndexedProjectById } from "../modules/projects/index.js";
 import { registry } from "../registry.js";
 import { membership } from "../workspaces.js";
 import { userOf } from "./helpers.js";

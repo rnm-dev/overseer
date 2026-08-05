@@ -43,6 +43,12 @@ test("terminal write receipts remain stable for direct Fleet HTTP session reques
   };
   const first = await recordCommittedAttachmentReceipt(input);
   const replay = await recordCommittedAttachmentReceipt(input);
+  assert.deepEqual(first, {
+    transferId: TRANSFER,
+    path: input.path,
+    size: input.size,
+    sha256: input.sha256,
+  });
   assert.deepEqual(replay, first);
 });
 

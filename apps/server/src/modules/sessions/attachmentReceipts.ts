@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { query } from "../../infrastructure/db/index.js";
-import type { ReverseCommandActor } from "../reverseCommands/reverseCommandTypes.js";
+import type { AuthenticatedActor } from "../auth/index.js";
 
 const RECEIPT_TTL_MS = 60 * 60_000;
 const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
@@ -24,7 +24,7 @@ export interface CommittedAttachmentReceipt {
 export async function recordCommittedAttachmentReceipt(input: {
   workspaceId: string;
   peonId: string;
-  actor: ReverseCommandActor;
+  actor: AuthenticatedActor;
   transferId: string;
   path: string;
   size: number;
@@ -64,5 +64,5 @@ export async function recordCommittedAttachmentReceipt(input: {
   if (!row) {
     throw new AttachmentReceiptError("TRANSFER_ID_REUSE", "attachment transfer ID was reused with different committed metadata");
   }
-  return { transferId: row.receipt_id, path: row.path, size: Number(row.size), sha256: row.sha256 };
+  return { transferId: row.transfer_id, path: row.path, size: Number(row.size), sha256: row.sha256 };
 }

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type pg from "pg";
 import { newDb } from "pg-mem";
-import { initDb, query } from "./infrastructure/db/index.js";
+import { initDb, query } from "../../infrastructure/db/index.js";
 import {
   applySocketProjectEvent,
   applySocketProjectSnapshot,
@@ -14,8 +14,8 @@ import {
   normalizeProjectQuickLinks,
   refreshIndexedProjectQuickLinks,
   releaseProjectSyncGeneration,
-} from "./projectIndex.js";
-import { claimSessionSyncGeneration } from "./sessionIndex.js";
+} from "./projectProjection.js";
+import { claimSessionSyncGeneration } from "../../sessionIndex.js";
 
 async function fixture() {
   const mem = newDb();

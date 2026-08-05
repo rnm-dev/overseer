@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import type { AuthenticatedActor } from "../auth/index.js";
 
 export const REVERSE_COMMAND_CAPABILITY = "reverse-command-v1";
 export const REVERSE_COMMAND_MAX_FRAME_BYTES = 60 * 1024;
@@ -32,10 +33,8 @@ export type JsonValue =
   | { [key: string]: JsonValue };
 export type JsonObject = { [key: string]: JsonValue };
 
-export interface ReverseCommandActor {
-  userId: string;
-  email: string;
-}
+/** @deprecated Use AuthenticatedActor from the auth module for new server code. */
+export type ReverseCommandActor = AuthenticatedActor;
 
 export interface ReverseCommandTarget {
   peonId: string;
@@ -50,7 +49,7 @@ export interface ReverseCommandEnvelope {
   commandId: string;
   operation: ReverseCommandOperation;
   target: ReverseCommandTarget;
-  actor: ReverseCommandActor;
+  actor: AuthenticatedActor;
   payload: JsonObject;
   expected?: JsonObject | null;
   requestedAt: number;
@@ -100,7 +99,7 @@ export interface ReverseCommandRecord {
   commandId: string;
   operation: ReverseCommandOperation;
   requestHash: string;
-  actor: ReverseCommandActor;
+  actor: AuthenticatedActor;
   target: ReverseCommandTarget;
   payload: JsonObject;
   expected: JsonObject | null;
@@ -157,7 +156,7 @@ export function canonicalJson(value: JsonValue): string {
 export function reverseCommandRequestHash(input: {
   operation: ReverseCommandOperation;
   target: ReverseCommandTarget;
-  actor: ReverseCommandActor;
+  actor: AuthenticatedActor;
   payload: JsonObject;
   expected?: JsonObject | null;
 }): string {

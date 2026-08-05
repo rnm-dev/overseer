@@ -164,38 +164,6 @@ export async function removeLiveActivityToken(scope: LiveActivityScope, kind: Li
   return (rowCount ?? 0) > 0;
 }
 
-/**
- * Sign-out and device revocation. The activity is ended first where that is
- * still possible — a revoked device that keeps showing live session counts is
- * exactly what revocation is supposed to stop — and both token kinds are
- * disabled either way.
- */
-export async function disableLiveActivitiesForDevice(userId: string, deviceId: string): Promise<void> {
-  const now = Date.now();
-  const { rows } = await query<{ connection_id: string; state: LiveActivityState }>(
-    `SELECT connection_id, state FROM live_activity_claims WHERE user_id=$1 AND device_id=$2 AND state <> 'idle'`,
-    [userId, deviceId],
-  );
-  for (const row of rows) {
-    const scope = { userId, deviceId, connectionId: row.connection_id };
-    const token = await tokenFor(scope, "update");
-    const registration = await registrationTokenFor(scope);
-    if (token && registration) {
-      const claim = await loadClaim(scope);
-      await sendLiveActivity(registration, token, liveActivityPayload({
-        event: "end",
-        now,
-        state: { runningCount: 0, completedCount: claim?.completed_count ?? 0, oldestStartedAt: null, updatedAt: now },
-      })).catch((error) => console.warn("live activity: ending on device revocation failed:", describe(error)));
-    }
-    await releaseClaim(scope, 0, now);
-  }
-  await query(
-    `UPDATE live_activity_tokens SET disabled_at=$3 WHERE user_id=$1 AND device_id=$2 AND disabled_at IS NULL`,
-    [userId, deviceId, now],
-  );
-}
-
 // ---------------------------------------------------------------------------
 // The aggregate
 // ---------------------------------------------------------------------------

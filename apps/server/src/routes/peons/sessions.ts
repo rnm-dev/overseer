@@ -12,7 +12,7 @@ import { runIdempotentFollowup, validCommandId } from "../../followupIdempotency
 import { enrichLiveTranscriptEvent, enrichTranscriptMetadata } from "../../transcriptTimestamps.js";
 import { deleteIndexedSession, getIndexedSession } from "../../sessionIndex.js";
 import { cancelSessionRequest, markSessionAttentionRead, recordSessionRequest } from "../../modules/sessions/index.js";
-import { getIndexedProject, getIndexedProjectById } from "../../projectIndex.js";
+import { getIndexedProject, getIndexedProjectById } from "../../modules/projects/index.js";
 import { bus, type LiveEvent } from "../../infrastructure/events/index.js";
 import {
   cancelSessionRun,

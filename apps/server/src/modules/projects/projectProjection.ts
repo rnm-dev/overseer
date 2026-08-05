@@ -1,6 +1,6 @@
-import { query, transaction, type Transaction } from "./infrastructure/db/index.js";
-import { insertEvent, publishCommittedEvent, type LiveEvent } from "./infrastructure/events/index.js";
-import { toView, type PeonRecord } from "./registry.js";
+import { query, transaction, type Transaction } from "../../infrastructure/db/index.js";
+import { insertEvent, publishCommittedEvent, type LiveEvent } from "../../infrastructure/events/index.js";
+import { toView, type PeonRecord } from "../fleet/index.js";
 
 export interface PeonProject {
   projectId: string;

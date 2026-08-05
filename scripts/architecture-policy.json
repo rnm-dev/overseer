@@ -2,9 +2,6 @@
   "genericFileNames": ["utils.ts", "utils.tsx", "helpers.ts", "helpers.tsx", "common.ts", "common.tsx", "manager.ts", "manager.tsx"],
   "allowedGenericFiles": ["apps/server/src/routes/helpers.ts"],
   "allowedBoundaryViolations": [
-    "apps/server/src/modules/auth/authDevices.ts -> apps/server/src/liveActivity.ts",
-    "apps/server/src/modules/reverseCommands/reverseCommandGateway.ts -> apps/server/src/projectIndex.ts",
-    "apps/server/src/modules/sessions/attachmentReceipts.ts -> apps/server/src/modules/reverseCommands/reverseCommandTypes.ts"
   ],
   "allowedRuntimeCycleComponents": [],
   "allowedRootDomainFiles": [
@@ -24,7 +21,6 @@
     "peonSocket.ts",
     "peonSocketAuth.ts",
     "peonTranscriptSync.ts",
-    "projectIndex.ts",
     "push.ts",
     "registry.ts",
     "server.ts",

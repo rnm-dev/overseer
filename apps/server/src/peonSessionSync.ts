@@ -20,7 +20,7 @@ import {
   normalizeProjectQuickLinks,
   type PeonProject,
   type ProjectSyncCheckpoint,
-} from "./projectIndex.js";
+} from "./modules/projects/index.js";
 import type { PeonRecord } from "./registry.js";
 import {
   parseDurableReverseCommandResult,
