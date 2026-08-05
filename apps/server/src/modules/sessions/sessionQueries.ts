@@ -1,5 +1,5 @@
 import { query } from "../../infrastructure/db/index.js";
-import { registry, toView } from "../../registry.js";
+import { registry, toView } from "../fleet/index.js";
 import type { ListOptions, OperatorRecentSession, SessionCatalogState, SessionIndexRow } from "./sessionTypes.js";
 
 export async function getSessionCatalogStates(workspaceId: string, peonId?: string): Promise<SessionCatalogState[]> {

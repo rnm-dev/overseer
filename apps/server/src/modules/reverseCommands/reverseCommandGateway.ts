@@ -3,7 +3,7 @@ import { WebSocket } from "ws";
 import { canAccessPeon, canAccessProject } from "../access/index.js";
 import { getUserById, type AuthContext } from "../auth/index.js";
 import { membership } from "../workspaces/index.js";
-import { registry } from "../registry/index.js";
+import { registry } from "../fleet/index.js";
 import { getIndexedSession } from "../sessions/sessionQueries.js";
 import { getIndexedProjectById } from "../../projectIndex.js";
 import {
@@ -12,7 +12,7 @@ import {
   peonConnectionGeneration,
   peonConnectionSupports,
   peonConnectionSupportsCommand,
-} from "../../peonConnections.js";
+} from "../fleet/index.js";
 import {
   commitDurableReverseCommandResult,
   commitEphemeralReverseCommandResult,

@@ -1,5 +1,5 @@
 import express from "express";
-import { config } from "../config.js";
+import { config } from "../infrastructure/config/index.js";
 import {
   isSupportedMediaType,
   normalizeMediaType,

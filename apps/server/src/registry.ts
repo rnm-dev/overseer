@@ -1,1 +1,1 @@
-export * from "./modules/registry/index.js";
+export * from "./modules/fleet/index.js";

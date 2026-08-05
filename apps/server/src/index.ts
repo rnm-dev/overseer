@@ -1,4 +1,4 @@
-import { config, configWarnings } from "./config.js";
+import { config, configWarnings } from "./infrastructure/config/index.js";
 import { initDb } from "./infrastructure/db/index.js";
 import { createServer } from "./server.js";
 import { startReconciler } from "./sessionIndex.js";

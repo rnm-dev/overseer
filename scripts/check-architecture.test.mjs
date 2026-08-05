@@ -62,6 +62,28 @@ test('rejects module imports of root compatibility facades', () => {
   assert.match(result.output, /imports root compatibility facade/);
 });
 
+test('rejects infrastructure imports of product modules, including public indexes', () => {
+  const result = fixture({
+    'modules/sessions/index.ts': 'export const session = true;\n',
+    'infrastructure/peonHttp/client.ts': "import { session } from '../../modules/sessions/index.js';\nexport const client = session;\n"
+  });
+  assert.equal(result.passed, false);
+  assert.match(result.output, /infrastructure must not depend on product modules/);
+});
+
+test('rejects module imports of routes, adapters, and app composition', () => {
+  const result = fixture({
+    'routes/http.ts': 'export const route = true;\n',
+    'adapters/socket.ts': 'export const socket = true;\n',
+    'app/bootstrap.ts': 'export const app = true;\n',
+    'modules/sessions/routeCaller.ts': "import { route } from '../../routes/http.js';\nexport const session = route;\n",
+    'modules/auth/adapterCaller.ts': "import { socket } from '../../adapters/socket.js';\nexport const auth = socket;\n",
+    'modules/projects/appCaller.ts': "import { app } from '../../app/bootstrap.js';\nexport const project = app;\n"
+  });
+  assert.equal(result.passed, false);
+  assert.match(result.output, /modules must not depend on app composition or transports/);
+});
+
 test('rejects runtime dependency cycles but permits type-only cycles', () => {
   const runtime = fixture({
     'modules/sessions/a.ts': "import { b } from './b.js';\nexport const a = b;\n",

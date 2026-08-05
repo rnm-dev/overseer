@@ -5,7 +5,7 @@ import { after, test } from "node:test";
 import type pg from "pg";
 import { newDb } from "pg-mem";
 import { issueDevice } from "./modules/auth/index.js";
-import { config } from "./config.js";
+import { config } from "./infrastructure/config/index.js";
 import { initDb, query } from "./infrastructure/db/index.js";
 import { createServer } from "./server.js";
 import { createWorkspace } from "./workspaces.js";

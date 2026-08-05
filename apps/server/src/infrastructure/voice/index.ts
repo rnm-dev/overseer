@@ -1,4 +1,4 @@
-import { config } from "../../config.js";
+import { config } from "../config/index.js";
 import { createSpeechToTextProvider, createTextPolishProvider } from "./providers/openaiCompatible.js";
 import { runVoicePipeline, type VoicePipelineInput, type VoicePipelineResult } from "./voicePipeline.js";
 import { VOICE_MEDIA_TYPES } from "./voiceMedia.js";

@@ -1,5 +1,5 @@
 import express from "express";
-import { config } from "../../config.js";
+import { config } from "../../infrastructure/config/index.js";
 import { registry, toView, type PeonRecord } from "../../registry.js";
 import { callPeon, connOfRecord, normalizePeonUrl, PROTOCOL } from "../../infrastructure/peonHttp/index.js";
 import { clampRecentSessionsLimit, getSessionCatalogStates, listOperatorRecentSessions, listSessions } from "../../sessionIndex.js";

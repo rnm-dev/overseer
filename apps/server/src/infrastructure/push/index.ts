@@ -1,4 +1,4 @@
-import { config } from "../../config.js";
+import { config } from "../config/index.js";
 import { createFcmSender, type PushSender } from "./fcm.js";
 import type { FcmServiceAccount } from "./pushConfig.js";
 

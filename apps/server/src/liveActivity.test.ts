@@ -5,7 +5,7 @@ import type { AddressInfo } from "node:net";
 import { after, before, beforeEach, test } from "node:test";
 import type pg from "pg";
 import { newDb } from "pg-mem";
-import { config } from "./config.js";
+import { config } from "./infrastructure/config/index.js";
 import { initDb, query } from "./infrastructure/db/index.js";
 import { appendEvent } from "./eventLog.js";
 import { configureEventDelivery } from "./app/eventDelivery.js";

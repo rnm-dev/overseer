@@ -3,7 +3,7 @@ import {
   peonConnectionVersion,
   peonConnectionSupports,
   peonConnectionSupportsCommand,
-} from "../peonConnections.js";
+} from "./fleet/index.js";
 import {
   runSelectedTransport,
   reverseRolloutPolicyFromEnv,

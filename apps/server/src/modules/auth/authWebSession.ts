@@ -1,5 +1,5 @@
 import type { Request, Response } from "express";
-import { config } from "../../config.js";
+import { config } from "../../infrastructure/config/index.js";
 
 export const WEB_SESSION_COOKIE = "__Host-overseer_session";
 

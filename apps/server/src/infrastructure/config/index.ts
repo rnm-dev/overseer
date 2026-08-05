@@ -2,8 +2,8 @@
 // operator key: peons connect with per-peon credentials (credentials.ts),
 // operators with device tokens (auth.ts). peonCallbackUrl is the Tailscale URL the
 // overseer hands a peon at recruitment so it knows where to phone home.
-import { resolvePushConfig, type PushConfig } from "./infrastructure/push/pushConfig.js";
-import { resolveVoiceConfig, type VoiceConfig } from "./infrastructure/voice/voiceConfig.js";
+import { resolvePushConfig, type PushConfig } from "../push/pushConfig.js";
+import { resolveVoiceConfig, type VoiceConfig } from "../voice/voiceConfig.js";
 
 export interface Config {
   port: number;

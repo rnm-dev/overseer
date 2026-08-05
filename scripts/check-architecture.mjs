@@ -30,6 +30,19 @@ function moduleName(path) {
   return parts.length > 1 && parts[0] !== '..' ? parts[0] : null;
 }
 
+function isInside(path, directory) {
+  const pathFromDirectory = relative(join(serverSource, directory), path);
+  return pathFromDirectory !== '' && !pathFromDirectory.startsWith(`..${sep}`) && pathFromDirectory !== '..';
+}
+
+function isInfrastructureFile(path) {
+  return isInside(path, 'infrastructure');
+}
+
+function isAppOrTransportFile(path) {
+  return ['app', 'routes', 'adapters'].some((directory) => isInside(path, directory));
+}
+
 function resolveImport(from, specifier) {
   if (!specifier.startsWith('.')) return null;
   const candidate = resolve(from, '..', specifier);
@@ -100,6 +113,12 @@ for (const file of files) {
     }
     if (currentModule && !targetModule && relative(serverSource, imported.target).split(sep).length === 1 && !policy.allowedBoundaryViolations.includes(boundary)) {
       errors.push(`${sourcePath(file)} imports root compatibility facade ${sourcePath(imported.target)} from inside modules/.`);
+    }
+    if (isInfrastructureFile(file) && targetModule) {
+      errors.push(`${sourcePath(file)} imports product module ${sourcePath(imported.target)}; infrastructure must not depend on product modules.`);
+    }
+    if (currentModule && isAppOrTransportFile(imported.target)) {
+      errors.push(`${sourcePath(file)} imports route, adapter, or app composition ${sourcePath(imported.target)}; modules must not depend on app composition or transports.`);
     }
     if (!imported.isTypeOnly && graph.has(imported.target)) graph.get(file).push(imported.target);
   }
