@@ -10,7 +10,7 @@ import { replaceMemberAccess } from "./access.js";
 import { registry } from "./registry.js";
 import { createServer } from "./server.js";
 import { createWorkspace } from "./workspaces.js";
-import { recordSessionRequest } from "./sessionAttention.js";
+import { recordSessionRequest } from "./modules/sessions/index.js";
 
 const servers: http.Server[] = [];
 after(async () => Promise.all(servers.map((server) => new Promise<void>((resolve) => server.close(() => resolve())))));

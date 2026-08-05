@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { folderBrowseSelector } from "./modules/projects/index.js";
-import { PeonOperationError } from "./peonOperationChannel.js";
+import { FolderBrowseError, folderBrowseSelector } from "./modules/projects/index.js";
 import { peonsRouter } from "./routes/peons.js";
 
 test("folder browse selector defaults to the filesystem root and validates the public bound", () => {
@@ -12,12 +11,12 @@ test("folder browse selector defaults to the filesystem root and validates the p
 
   for (const limit of ["0", "-1", "2.5", "501", "many"]) {
     assert.throws(() => folderBrowseSelector("/", limit), (error: unknown) =>
-      error instanceof PeonOperationError && error.code === "BAD_REQUEST" && error.status === 400);
+      error instanceof FolderBrowseError && error.code === "BAD_REQUEST" && error.status === 400);
   }
   assert.throws(() => folderBrowseSelector(["/", "/etc"], undefined), (error: unknown) =>
-    error instanceof PeonOperationError && error.code === "BAD_REQUEST");
+    error instanceof FolderBrowseError && error.code === "BAD_REQUEST");
   assert.throws(() => folderBrowseSelector("relative/path", undefined), (error: unknown) =>
-    error instanceof PeonOperationError && error.code === "BAD_REQUEST");
+    error instanceof FolderBrowseError && error.code === "BAD_REQUEST");
 });
 
 test("the new-project directory picker keeps its authenticated peon-scoped route", () => {

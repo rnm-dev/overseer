@@ -3,14 +3,8 @@
   "allowedGenericFiles": ["apps/server/src/routes/helpers.ts"],
   "allowedBoundaryViolations": [
     "apps/server/src/modules/auth/authDevices.ts -> apps/server/src/liveActivity.ts",
-    "apps/server/src/modules/projects/folderBrowse.ts -> apps/server/src/peonOperationChannel.ts",
-    "apps/server/src/modules/reverseCommands/reverseCommandGateway.ts -> apps/server/src/modules/sessions/sessionQueries.ts",
     "apps/server/src/modules/reverseCommands/reverseCommandGateway.ts -> apps/server/src/projectIndex.ts",
-    "apps/server/src/modules/sessions/attachmentReceipts.ts -> apps/server/src/modules/reverseCommands/reverseCommandTypes.ts",
-    "apps/server/src/modules/sessions/sessionProjection.ts -> apps/server/src/sessionAttention.ts",
-    "apps/server/src/peonSessionSync.ts -> apps/server/src/modules/sessions/sessionProjection.ts",
-    "apps/server/src/peonSessionSync.ts -> apps/server/src/modules/sessions/sessionTypes.ts",
-    "apps/server/src/webPreview.ts -> apps/server/src/modules/access/accessService.ts"
+    "apps/server/src/modules/sessions/attachmentReceipts.ts -> apps/server/src/modules/reverseCommands/reverseCommandTypes.ts"
   ],
   "allowedRuntimeCycleComponents": [],
   "allowedRootDomainFiles": [
@@ -26,7 +20,6 @@
     "peonClient.ts",
     "peonConnections.ts",
     "peonFileSandbox.ts",
-    "peonOperationChannel.ts",
     "peonSessionSync.ts",
     "peonSocket.ts",
     "peonSocketAuth.ts",
@@ -35,7 +28,6 @@
     "push.ts",
     "registry.ts",
     "server.ts",
-    "sessionAttention.ts",
     "sessionIndex.ts",
     "transcriptTimestamps.ts",
     "webPreview.ts",

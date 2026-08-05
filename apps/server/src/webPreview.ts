@@ -4,7 +4,7 @@ import type { NextFunction, Request, RequestHandler, Response } from "express";
 import { config } from "./infrastructure/config/index.js";
 import { connOfRecord, PEON_API_PATH } from "./infrastructure/peonHttp/index.js";
 import { registry } from "./registry.js";
-import { canAccessIndexedSessionNow } from "./modules/access/accessService.js";
+import { canAccessIndexedSessionNow } from "./modules/access/index.js";
 
 const SANDBOX = "sandbox allow-scripts allow-forms allow-modals allow-downloads";
 const MIN_TTL_MS = 30_000;

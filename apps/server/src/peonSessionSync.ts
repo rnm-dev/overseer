@@ -7,8 +7,9 @@ import {
   commitSnapshotCoveredSessionEvent,
   markSessionSyncing,
   releaseSessionSyncGeneration,
-} from "./modules/sessions/sessionProjection.js";
-import type { PeonSession, SessionSyncCheckpoint } from "./modules/sessions/sessionTypes.js";
+  type PeonSession,
+  type SessionSyncCheckpoint,
+} from "./modules/sessions/index.js";
 import {
   applySocketProjectEvent,
   applySocketProjectSnapshot,

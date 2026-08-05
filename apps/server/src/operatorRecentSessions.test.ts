@@ -5,7 +5,7 @@ import { newDb } from "pg-mem";
 import { initDb, query, setPool } from "./infrastructure/db/index.js";
 import { replaceMemberAccess } from "./access.js";
 import { clampRecentSessionsLimit, listOperatorRecentSessions } from "./sessionIndex.js";
-import { completeNextSessionAttention, markSessionAttentionRead, recordSessionRequest } from "./sessionAttention.js";
+import { completeNextSessionAttention, markSessionAttentionRead, recordSessionRequest } from "./modules/sessions/index.js";
 
 async function setup(): Promise<{ queries: () => number }> {
   const mem = newDb();

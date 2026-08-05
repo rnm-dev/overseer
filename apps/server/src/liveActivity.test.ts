@@ -16,7 +16,7 @@ import {
   liveActivityAggregate,
   registerLiveActivityStartToken,
 } from "./liveActivity.js";
-import { completeNextSessionAttention, recordSessionRequest } from "./sessionAttention.js";
+import { completeNextSessionAttention, recordSessionRequest } from "./modules/sessions/index.js";
 import { createServer } from "./server.js";
 
 // One Live Activity per operator per device connection, counting everything that

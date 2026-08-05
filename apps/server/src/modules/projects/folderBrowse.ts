@@ -1,4 +1,9 @@
-import { PeonOperationError } from "../../peonOperationChannel.js";
+export class FolderBrowseError extends Error {
+  constructor(public readonly code: string, message: string, public readonly status = 400) {
+    super(message);
+    this.name = "FolderBrowseError";
+  }
+}
 
 export interface FolderBrowseSelector {
   path: string;
@@ -9,7 +14,7 @@ export const DEFAULT_BROWSE_PATH = "/";
 
 function singleQueryValue(value: unknown): string | undefined {
   if (value === undefined) return undefined;
-  if (typeof value !== "string") throw new PeonOperationError("BAD_REQUEST", "query parameter must be a single value", 400);
+  if (typeof value !== "string") throw new FolderBrowseError("BAD_REQUEST", "query parameter must be a single value");
   return value;
 }
 
@@ -20,12 +25,12 @@ export function folderBrowseSelector(path: unknown, limit: unknown): FolderBrows
   const rawLimit = singleQueryValue(limit);
   const selector: FolderBrowseSelector = { path: rawPath?.trim() || DEFAULT_BROWSE_PATH };
   if (!/^(?:\/|[a-z]:[\\/])/i.test(selector.path)) {
-    throw new PeonOperationError("BAD_REQUEST", "path must be absolute", 400);
+    throw new FolderBrowseError("BAD_REQUEST", "path must be absolute");
   }
   if (rawLimit !== undefined && rawLimit !== "") {
     const parsed = Number(rawLimit);
     if (!Number.isSafeInteger(parsed) || parsed <= 0 || parsed > 500) {
-      throw new PeonOperationError("BAD_REQUEST", "limit must be an integer between 1 and 500", 400);
+      throw new FolderBrowseError("BAD_REQUEST", "limit must be an integer between 1 and 500");
     }
     selector.limit = parsed;
   }

@@ -11,7 +11,7 @@ import { mintWebPreview } from "../../webPreview.js";
 import { runIdempotentFollowup, validCommandId } from "../../followupIdempotency.js";
 import { enrichLiveTranscriptEvent, enrichTranscriptMetadata } from "../../transcriptTimestamps.js";
 import { deleteIndexedSession, getIndexedSession } from "../../sessionIndex.js";
-import { cancelSessionRequest, markSessionAttentionRead, recordSessionRequest } from "../../sessionAttention.js";
+import { cancelSessionRequest, markSessionAttentionRead, recordSessionRequest } from "../../modules/sessions/index.js";
 import { getIndexedProject, getIndexedProjectById } from "../../projectIndex.js";
 import { bus, type LiveEvent } from "../../infrastructure/events/index.js";
 import {

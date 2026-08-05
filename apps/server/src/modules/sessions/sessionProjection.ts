@@ -4,7 +4,7 @@ import { registry, toView, type PeonRecord } from "../fleet/index.js";
 import { callPeon, connOfRecord } from "../../infrastructure/peonHttp/index.js";
 import { insertEvent, publishCommittedEvent, type LiveEvent } from "../../infrastructure/events/index.js";
 import { normalizeSessionSummary } from "./sessionNormalization.js";
-import { completeNextSessionAttention, deleteSessionAttention } from "../../sessionAttention.js";
+import { completeNextSessionAttention, deleteSessionAttention } from "./sessionAttentionLifecycle.js";
 import type {
   PeonSession,
   ProjectSessionCount,

@@ -1,9 +1,9 @@
-import { appendEvent } from "./infrastructure/events/index.js";
-import { query, transaction } from "./infrastructure/db/index.js";
-import { isUserViewingSession } from "./modules/presence/index.js";
-import { cancelPendingPush } from "./push.js";
-import type { SessionAttentionPayload } from "./modules/sessions/index.js";
-export type { SessionAttentionPayload } from "./modules/sessions/index.js";
+import { appendEvent } from "../../infrastructure/events/index.js";
+import { query, transaction } from "../../infrastructure/db/index.js";
+import { cancelPendingPush } from "../../infrastructure/push/index.js";
+import { isUserViewingSession } from "../presence/index.js";
+import type { SessionAttentionPayload } from "./sessionAttentionTypes.js";
+export type { SessionAttentionPayload } from "./sessionAttentionTypes.js";
 
 export interface SessionAttentionProjection {
   unread: boolean;

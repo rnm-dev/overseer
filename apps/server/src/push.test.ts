@@ -5,7 +5,7 @@ import { newDb } from "pg-mem";
 import { initDb, query } from "./infrastructure/db/index.js";
 import { appendEvent } from "./infrastructure/events/index.js";
 import { configureEventDelivery } from "./app/eventDelivery.js";
-import { completeNextSessionAttention, markSessionAttentionRead, recordSessionRequest } from "./sessionAttention.js";
+import { completeNextSessionAttention, markSessionAttentionRead, recordSessionRequest } from "./modules/sessions/index.js";
 import { setPushPreferences, upsertPushSubscription } from "./push.js";
 
 // A push is one person's alert about one finished turn, not a mirror of the

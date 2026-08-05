@@ -6,7 +6,7 @@ import { clampRecentSessionsLimit, getSessionCatalogStates, listOperatorRecentSe
 import { bindPeon, deRecruitPeon, mintCredential, revokeCredential } from "../../credentials.js";
 import { ownerOnly, withWorkspace } from "../helpers.js";
 import { canAccessPeon, listMemberAccess } from "../../access.js";
-import { sessionAttentionStates } from "../../sessionAttention.js";
+import { sessionAttentionStates } from "../../modules/sessions/index.js";
 
 function enrollmentFallback(status: number, code: string): string {
   if (code === "DNS_FAILURE") return "the Peon domain could not be resolved";

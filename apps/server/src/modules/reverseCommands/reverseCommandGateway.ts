@@ -4,7 +4,7 @@ import { canAccessPeon, canAccessProject } from "../access/index.js";
 import { getUserById, type AuthContext } from "../auth/index.js";
 import { membership } from "../workspaces/index.js";
 import { registry } from "../fleet/index.js";
-import { getIndexedSession } from "../sessions/sessionQueries.js";
+import { getIndexedSession } from "../sessions/index.js";
 import { getIndexedProjectById } from "../../projectIndex.js";
 import {
   getPeonConnection,

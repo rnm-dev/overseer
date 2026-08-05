@@ -14,11 +14,11 @@ import {
   markSessionAttentionRead,
   recordSessionRequest,
   sessionAttentionStates,
-} from "./sessionAttention.js";
+} from "./modules/sessions/index.js";
 import { heartbeatPresence, removePresence } from "./modules/presence/index.js";
 import { bus, type LiveEvent } from "./infrastructure/events/index.js";
 import { eventVisible, type AccessClient } from "./liveAccess.js";
-import type { SessionAttentionPayload } from "./sessionAttention.js";
+import type { SessionAttentionPayload } from "./modules/sessions/index.js";
 
 // Collect the operator-scoped attention events the mobile cache lives on.
 function recordAttentionEvents(): { events: LiveEvent[]; payloads: SessionAttentionPayload[]; stop: () => void } {
