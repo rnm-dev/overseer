@@ -6,7 +6,7 @@ import { MemoryRouter } from "react-router";
 import { ApiError } from "../api";
 import { ArmoryLifecyclePanel } from "../pages/peon/ArmoryLifecyclePanel";
 import { ArmoryProfilesPanel } from "../pages/peon/ArmoryProfilesPanel";
-import { ProjectPackageAssignmentCard, UNASSIGNMENT_CONTEXT_COPY } from "../pages/peon/ProjectArmoryPackages";
+import { ADD_PROFILE_OPTION, ProjectPackageAssignmentCard, UNASSIGNMENT_CONTEXT_COPY } from "../pages/peon/ProjectArmoryPackages";
 import {
   ARMORY_PROJECT_PACKAGES_CAPABILITY,
   ArmoryRequestGate,
@@ -170,7 +170,8 @@ test("assignment UI reuses only compatible ready profiles and presents invalid a
   const assignment = { projectId, packageId: packageItem.id, profileId: mismatch.profileId };
   const markup = renderToStaticMarkup(createElement(MemoryRouter, null, createElement(ProjectPackageAssignmentCard, {
     item: packageItem, assignment, profiles: [verified, unverified, missing, mismatch], busy: false,
-    settingsLink: "/peons/p/settings/armory/google-drive", onAssign: async () => {}, onRemove: async () => {},
+    settingsLink: "/peons/p/settings/armory/google-drive", newProfileLink: "/peons/p/projects/site/tools/new-profile?package=google-drive",
+    onAssign: async () => {}, onRemove: async () => {},
   })));
   assert.match(markup, /Assigned · unavailable/);
   assert.match(markup, /Assigned profile type does not match google-service-account/);
@@ -181,13 +182,18 @@ test("assignment UI reuses only compatible ready profiles and presents invalid a
   assert.match(markup, /<option[^>]*disabled=""[^>]*>Staging Google — unverified/);
   assert.match(markup, /<span class="sr-only">Profile for Google Drive/);
   assert.match(markup, /Remove assignment/);
+  // Selecting a profile is the save; the card offers no submit control.
+  assert.doesNotMatch(markup, /Update profile|Assign to project/);
+  assert.match(markup, /Selecting a profile saves it for this project/);
+  assert.match(markup, new RegExp(`<option value="${ADD_PROFILE_OPTION}">Add new profile`));
 });
 
 test("credential-free packages assign null without a fake profile and unassignment copy scopes changes to future turns", () => {
   const credentialFree = { ...packageItem, id: "filesystem-tools", displayName: "Filesystem", installed: { ...packageItem.installed!, packageId: "filesystem-tools", profileRequirement: null } };
   const markup = renderToStaticMarkup(createElement(MemoryRouter, null, createElement(ProjectPackageAssignmentCard, {
     item: credentialFree, assignment: null, profiles: [], busy: false,
-    settingsLink: "/peons/p/settings/armory/filesystem-tools", onAssign: async () => {}, onRemove: async () => {},
+    settingsLink: "/peons/p/settings/armory/filesystem-tools", newProfileLink: "/peons/p/projects/site/tools/new-profile?package=filesystem-tools",
+    onAssign: async () => {}, onRemove: async () => {},
   })));
   assert.match(markup, /Credential-free package/);
   assert.match(markup, /Assign to project/);

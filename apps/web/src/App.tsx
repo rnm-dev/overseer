@@ -29,6 +29,7 @@ const ProjectMembers = lazy(() => import("./pages/peon/ProjectMembers").then((m)
 const ProjectFileBrowser = lazy(() => import("./pages/peon/ProjectFileBrowser").then((m) => ({ default: m.ProjectFileBrowser })));
 const ProjectSkills = lazy(() => import("./pages/peon/ProjectSkills").then((m) => ({ default: m.ProjectSkills })));
 const ProjectArmoryPackages = lazy(() => import("./pages/peon/ProjectArmoryPackages").then((m) => ({ default: m.ProjectArmoryPackages })));
+const ProjectArmoryProfileNew = lazy(() => import("./pages/peon/ProjectArmoryProfileNew").then((m) => ({ default: m.ProjectArmoryProfileNew })));
 const ProjectSettings = lazy(() => import("./pages/peon/ProjectSettings").then((m) => ({ default: m.ProjectSettings })));
 
 function LegacyPeonArmoryRedirect() {
@@ -135,6 +136,7 @@ export function App() {
           <Route path="projects/:key/files" element={<ProjectFileBrowser />} />
           <Route path="projects/:key/skills" element={<ProjectSkills />} />
           <Route path="projects/:key/tools" element={<ProjectArmoryPackages />} />
+          <Route path="projects/:key/tools/new-profile" element={<ProjectArmoryProfileNew />} />
           <Route path="projects/:key/packages" element={<Navigate to="../tools" relative="path" replace />} />
           <Route path="projects/:key/members" element={<ProjectMembers />} />
           <Route path="projects/:key/settings" element={<ProjectSettings />} />

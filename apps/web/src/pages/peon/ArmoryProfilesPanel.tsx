@@ -31,7 +31,7 @@ function profileTone(profile: ArmoryProfile): "green" | "amber" | "red" | undefi
   return "amber";
 }
 
-function ProfileField({ field, value, configured, error, disabled, onValue }: {
+export function ProfileField({ field, value, configured, error, disabled, onValue }: {
   field: ArmoryConfigurationField;
   value: string;
   configured: boolean;

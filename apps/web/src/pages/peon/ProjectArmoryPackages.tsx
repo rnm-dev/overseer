@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useParams } from "react-router";
+import { Link, useNavigate, useParams } from "react-router";
 import { ApiError, api } from "../../api";
 import { Badge, Button, Card, Dialog } from "../../ui";
 import { usePeon } from "./context";
@@ -34,26 +34,37 @@ function profileOptionLabel(profile: ArmoryProfile, item: ArmoryPackageSummary):
   return `${profile.name} — verified`;
 }
 
-export function ProjectPackageAssignmentCard({ item, assignment, profiles, busy, settingsLink, onAssign, onRemove }: {
+export const ADD_PROFILE_OPTION = "__add_profile__";
+
+export function ProjectPackageAssignmentCard({ item, assignment, profiles, busy, settingsLink, newProfileLink, onAssign, onRemove }: {
   item: ArmoryPackageSummary;
   assignment: ArmoryProjectAssignment | null;
   profiles: ArmoryProfile[];
   busy: boolean;
   settingsLink: string;
+  newProfileLink: string;
   onAssign: (profileId: string | null) => Promise<void>;
   onRemove: () => Promise<void>;
 }) {
+  const navigate = useNavigate();
   const requirement = item.installed?.profileRequirement ?? null;
   const compatible = requirement ? matchingArmoryProfiles(profiles, requirement) : [];
   const readyProfiles = requirement ? compatible.filter((profile) => armoryProfileReadiness(profile, requirement) === "ready") : [];
   const assignedProfile = assignment?.profileId ? profiles.find((profile) => profile.profileId === assignment.profileId) ?? null : null;
   const assignedReadiness = assignedProfile && requirement ? armoryProfileReadiness(assignedProfile, requirement) : null;
-  const [selected, setSelected] = useState(assignment?.profileId ?? readyProfiles[0]?.profileId ?? "");
+  const [selected, setSelected] = useState(assignment?.profileId ?? "");
   const [removeOpen, setRemoveOpen] = useState(false);
   const packageReady = item.installed?.state === "ready";
-  const firstReadyProfileId = readyProfiles[0]?.profileId;
 
-  useEffect(() => { setSelected(assignment?.profileId ?? firstReadyProfileId ?? ""); }, [assignment?.profileId, firstReadyProfileId]);
+  useEffect(() => { setSelected(assignment?.profileId ?? ""); }, [assignment?.profileId]);
+
+  // Choosing a profile is the whole action: it saves immediately, so the card
+  // has no separate submit control.
+  const choose = (value: string) => {
+    if (value === ADD_PROFILE_OPTION) return navigate(newProfileLink);
+    setSelected(value);
+    if (value && value !== (assignment?.profileId ?? "")) void onAssign(value);
+  };
 
   let problem: string | null = null;
   if (!packageReady) problem = `Package is unavailable while its state is ${item.installed?.state?.replace(/_/g, " ") ?? "unknown"}.`;
@@ -74,14 +85,15 @@ export function ProjectPackageAssignmentCard({ item, assignment, profiles, busy,
     <div className="mt-4 border-t border-edge pt-4">
       {requirement ? <>
         <p className="font-mono text-xs text-ink-faint">Profile type · {requirement.type}</p>
-        <label className="mt-2 block"><span className="sr-only">Profile for {item.displayName || item.id}</span><select className="field w-full" value={selected} disabled={busy || !packageReady} onChange={(event) => setSelected(event.target.value)}><option value="">Select a verified profile…</option>{compatible.map((profile) => <option key={profile.profileId} value={profile.profileId} disabled={armoryProfileReadiness(profile, requirement) !== "ready"}>{profileOptionLabel(profile, item)}</option>)}</select></label>
-        {compatible.length === 0 ? <p role="status" className="mt-2 text-sm text-warning-strong">No profile has the exact required type. <Link className="text-accent-strong hover:underline" to={settingsLink}>Create and configure one in Armory.</Link></p>
+        <label className="mt-2 block"><span className="sr-only">Profile for {item.displayName || item.id}</span><select className="field w-full" value={selected} disabled={busy || !packageReady} onChange={(event) => choose(event.target.value)}><option value="">Select a verified profile…</option>{compatible.map((profile) => <option key={profile.profileId} value={profile.profileId} disabled={armoryProfileReadiness(profile, requirement) !== "ready"}>{profileOptionLabel(profile, item)}</option>)}<option value={ADD_PROFILE_OPTION}>Add new profile…</option></select></label>
+        <p className="mt-1 text-xs text-ink-faint">{busy ? "Saving…" : "Selecting a profile saves it for this project."}</p>
+        {compatible.length === 0 ? <p role="status" className="mt-2 text-sm text-warning-strong">No profile has the exact required type. <Link className="text-accent-strong hover:underline" to={newProfileLink}>Add one now</Link> or <Link className="text-accent-strong hover:underline" to={settingsLink}>manage profiles in Armory.</Link></p>
           : readyProfiles.length === 0 ? <p role="status" className="mt-2 text-sm text-warning-strong">Compatible profiles are missing fields, unverified, or invalid. <Link className="text-accent-strong hover:underline" to={settingsLink}>Open Armory to make one ready.</Link></p> : null}
       </> : <p className="text-sm text-ink-muted">Credential-free package. Its assignment deliberately uses no profile.</p>}
       {problem && <p role="alert" className="mt-3 border-l-2 border-danger bg-danger/5 px-3 py-2 text-sm text-danger">{problem}</p>}
       <div className="mt-4 flex flex-wrap gap-2">
-        {assignment ? <>{requirement && <Button type="button" disabled={busy || !selected || selected === assignment.profileId} onClick={() => void onAssign(selected)}>{busy ? "Saving…" : "Update profile"}</Button>}<Button type="button" variant="secondary" disabled={busy} aria-haspopup="dialog" onClick={() => setRemoveOpen(true)}>{busy ? "Removing…" : "Remove assignment"}</Button></>
-          : <Button type="button" disabled={busy || !packageReady || (requirement ? !selected : false)} onClick={() => void onAssign(requirement ? selected : null)}>{busy ? "Assigning…" : "Assign to project"}</Button>}
+        {assignment ? <Button type="button" variant="secondary" disabled={busy} aria-haspopup="dialog" onClick={() => setRemoveOpen(true)}>{busy ? "Removing…" : "Remove assignment"}</Button>
+          : !requirement ? <Button type="button" disabled={busy || !packageReady} onClick={() => void onAssign(null)}>{busy ? "Assigning…" : "Assign to project"}</Button> : null}
       </div>
     </div>
     {removeOpen && <Dialog title="Remove assignment?" onClose={() => setRemoveOpen(false)} dismissible={!busy}><p className="text-sm leading-relaxed text-ink-muted">{UNASSIGNMENT_CONTEXT_COPY}</p><div className="mt-5 flex justify-end gap-2"><Button type="button" variant="secondary" disabled={busy} onClick={() => setRemoveOpen(false)}>Cancel</Button><Button type="button" variant="secondary" className="!border-danger/50 !text-danger hover:!bg-danger/10" disabled={busy} onClick={() => void onRemove()}>{busy ? "Removing…" : "Confirm removal"}</Button></div></Dialog>}
@@ -157,7 +169,7 @@ export function ProjectArmoryPackages() {
             : packages.length === 0 ? <Card className="p-6 text-center text-sm text-ink-muted">No Armory packages are installed on this Peon.</Card>
               : <>
                 {error && <div role="alert" className="border-l-2 border-danger bg-danger/5 px-4 py-3 text-sm text-danger">{error instanceof Error ? error.message : "Assignment action failed."}{error instanceof ApiError ? ` (${error.code})` : ""}</div>}
-                <div className="grid gap-4 lg:grid-cols-2">{packages.map((item) => <ProjectPackageAssignmentCard key={item.id} item={item} profiles={profiles} assignment={byPackage.get(item.id) ?? null} busy={busy.has(item.id)} settingsLink={`/peons/${encodeURIComponent(peon.peonId)}/settings/armory/${encodeURIComponent(item.id)}`} onAssign={(profileId) => mutate(item.id, profileId, false)} onRemove={() => mutate(item.id, null, true)} />)}</div>
+                <div className="grid gap-4 lg:grid-cols-2">{packages.map((item) => <ProjectPackageAssignmentCard key={item.id} item={item} profiles={profiles} assignment={byPackage.get(item.id) ?? null} busy={busy.has(item.id)} settingsLink={`/peons/${encodeURIComponent(peon.peonId)}/settings/armory/${encodeURIComponent(item.id)}`} newProfileLink={`/peons/${encodeURIComponent(peon.peonId)}/projects/${encodeURIComponent(key)}/tools/new-profile?package=${encodeURIComponent(item.id)}`} onAssign={(profileId) => mutate(item.id, profileId, false)} onRemove={() => mutate(item.id, null, true)} />)}</div>
                 <Card className="border-accent/25 bg-accent/[0.03] p-4 text-sm leading-relaxed text-ink-muted">{UNASSIGNMENT_CONTEXT_COPY}</Card>
               </>}
     </section>

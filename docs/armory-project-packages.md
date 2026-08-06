@@ -94,6 +94,15 @@ Assignment lives in the project's **Tools** tab (`/peons/:peonId/projects/:key/t
 whose **Armory** section lists every installed package and the profile it uses in
 this project. The earlier `/packages` path redirects there.
 
+Choosing a profile in a package's select is itself the mutation — it issues the
+`PUT` assignment immediately, so the card has no submit control; removal keeps
+its confirmation. The select also offers **Add new profile…**, which opens
+`/tools/new-profile?package=<packageId>`: a form that takes a name plus the
+package's configuration fields and then creates, configures, verifies and
+assigns the profile in one pass. Values stay write-only and are scrubbed after
+each settled attempt; a failed configure or verify leaves the created profile
+for the Peon's Armory page to finish rather than assigning it.
+
 ## Fleet HTTP routes
 
 All reads and mutations use authenticated direct Fleet HTTP. Overseer relays
