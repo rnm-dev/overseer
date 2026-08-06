@@ -77,6 +77,23 @@ test("a single-line queued message is centered against the action buttons", () =
   assert.match(QUEUE_ACTION_CLASS, /\bh-7\b/);
 });
 
+test("a scrollable queue ends flush against the composer fade", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(QueueList, {
+      items: [queuedItem, { ...queuedItem, id: "third" }],
+      removing: new Set<string>(),
+      steering: new Set<string>(),
+      onRemove: () => {},
+      onSteer: () => {},
+      t: (key) => key,
+    }),
+  );
+  // The fade's own top padding is the entire gap; a margin here would leave the
+  // clipped last item floating over an empty strip.
+  assert.doesNotMatch(html, /<section[^>]*\bmb-\d/);
+  assert.match(html, /<ol class="max-h-56 space-y-2 overflow-y-auto"/);
+});
+
 test("steer action is disabled while that queued item is being dispatched", () => {
   const html = renderToStaticMarkup(
     React.createElement(QueueList, {

@@ -16,8 +16,11 @@ export function QueueList({ items, removing, steering, onRemove, onSteer, t }: {
   t: Translate;
 }) {
   if (!items.length) return null;
+  // No bottom margin on the section: the composer fade's own shoulder is the
+  // whole gap, so a scrolled queue's clipped last item sits on the fade instead
+  // of hanging over a dead strip three times wider than the space between items.
   return (
-    <section className="mb-3" aria-label={t("session.queue.title")}>
+    <section aria-label={t("session.queue.title")}>
       <ol className="max-h-56 space-y-2 overflow-y-auto">
         {items.map((item) => (
           <li key={item.id} className="ml-auto flex w-full min-w-0 max-w-none items-start gap-2 rounded-xl rounded-br-sm theme-queued-message px-3 py-2 shadow-lg backdrop-blur-md md:w-auto md:max-w-[80%]">
