@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { ApiError, api } from "../../api";
-import { Badge, Button, Card, Dialog } from "../../ui";
+import { Badge, Button, Card } from "../../ui";
 import { usePeon } from "./context";
 import { ProjectPageHeader } from "./ProjectPageHeader";
 import { ProjectTabs } from "./ProjectTabs";
@@ -35,6 +35,8 @@ function profileOptionLabel(profile: ArmoryProfile, item: ArmoryPackageSummary):
 }
 
 export const ADD_PROFILE_OPTION = "__add_profile__";
+export const DISABLED_OPTION = "";
+export const ENABLED_OPTION = "__enabled__";
 
 export function ProjectPackageAssignmentCard({ item, assignment, profiles, busy, settingsLink, newProfileLink, onAssign, onRemove }: {
   item: ArmoryPackageSummary;
@@ -52,18 +54,20 @@ export function ProjectPackageAssignmentCard({ item, assignment, profiles, busy,
   const readyProfiles = requirement ? compatible.filter((profile) => armoryProfileReadiness(profile, requirement) === "ready") : [];
   const assignedProfile = assignment?.profileId ? profiles.find((profile) => profile.profileId === assignment.profileId) ?? null : null;
   const assignedReadiness = assignedProfile && requirement ? armoryProfileReadiness(assignedProfile, requirement) : null;
-  const [selected, setSelected] = useState(assignment?.profileId ?? "");
-  const [removeOpen, setRemoveOpen] = useState(false);
+  // The dropdown is the whole control: DISABLED_OPTION means no assignment,
+  // any other value assigns immediately. There is no submit or remove button.
+  const current = assignment ? (requirement ? assignment.profileId ?? "" : ENABLED_OPTION) : DISABLED_OPTION;
+  const [selected, setSelected] = useState(current);
   const packageReady = item.installed?.state === "ready";
 
-  useEffect(() => { setSelected(assignment?.profileId ?? ""); }, [assignment?.profileId]);
+  useEffect(() => { setSelected(current); }, [current]);
 
-  // Choosing a profile is the whole action: it saves immediately, so the card
-  // has no separate submit control.
   const choose = (value: string) => {
     if (value === ADD_PROFILE_OPTION) return navigate(newProfileLink);
+    if (value === selected) return;
     setSelected(value);
-    if (value && value !== (assignment?.profileId ?? "")) void onAssign(value);
+    if (value === DISABLED_OPTION) void onRemove();
+    else void onAssign(value === ENABLED_OPTION ? null : value);
   };
 
   let problem: string | null = null;
@@ -83,20 +87,17 @@ export function ProjectPackageAssignmentCard({ item, assignment, profiles, busy,
     </div>
     <p className="mt-3 text-sm leading-relaxed text-ink-muted">{item.summary || "Installed Armory package."}</p>
     <div className="mt-4 border-t border-edge pt-4">
-      {requirement ? <>
-        <p className="font-mono text-xs text-ink-faint">Profile type · {requirement.type}</p>
-        <label className="mt-2 block"><span className="sr-only">Profile for {item.displayName || item.id}</span><select className="field w-full" value={selected} disabled={busy || !packageReady} onChange={(event) => choose(event.target.value)}><option value="">Select a verified profile…</option>{compatible.map((profile) => <option key={profile.profileId} value={profile.profileId} disabled={armoryProfileReadiness(profile, requirement) !== "ready"}>{profileOptionLabel(profile, item)}</option>)}<option value={ADD_PROFILE_OPTION}>Add new profile…</option></select></label>
-        <p className="mt-1 text-xs text-ink-faint">{busy ? "Saving…" : "Selecting a profile saves it for this project."}</p>
-        {compatible.length === 0 ? <p role="status" className="mt-2 text-sm text-warning-strong">No profile has the exact required type. <Link className="text-accent-strong hover:underline" to={newProfileLink}>Add one now</Link> or <Link className="text-accent-strong hover:underline" to={settingsLink}>manage profiles in Armory.</Link></p>
-          : readyProfiles.length === 0 ? <p role="status" className="mt-2 text-sm text-warning-strong">Compatible profiles are missing fields, unverified, or invalid. <Link className="text-accent-strong hover:underline" to={settingsLink}>Open Armory to make one ready.</Link></p> : null}
-      </> : <p className="text-sm text-ink-muted">Credential-free package. Its assignment deliberately uses no profile.</p>}
+      {requirement && <p className="font-mono text-xs text-ink-faint">Profile type · {requirement.type}</p>}
+      <label className="mt-2 block"><span className="sr-only">{requirement ? `Profile for ${item.displayName || item.id}` : `Availability of ${item.displayName || item.id}`}</span><select className="field w-full" value={selected} disabled={busy || (!packageReady && !assignment)} onChange={(event) => choose(event.target.value)}>
+        <option value={DISABLED_OPTION}>Disabled</option>
+        {requirement ? <>{compatible.map((profile) => <option key={profile.profileId} value={profile.profileId} disabled={armoryProfileReadiness(profile, requirement) !== "ready"}>{profileOptionLabel(profile, item)}</option>)}<option value={ADD_PROFILE_OPTION}>Add new profile…</option></>
+          : <option value={ENABLED_OPTION}>Enabled</option>}
+      </select></label>
+      <p className="mt-1 text-xs text-ink-faint">{busy ? "Saving…" : requirement ? "Selecting a profile enables this package for the project’s next turns. Disabled removes it." : "Credential-free package: it deliberately uses no profile. Changes apply to the project’s next turns."}</p>
+      {requirement && (compatible.length === 0 ? <p role="status" className="mt-2 text-sm text-warning-strong">No profile has the exact required type. <Link className="text-accent-strong hover:underline" to={newProfileLink}>Add one now</Link> or <Link className="text-accent-strong hover:underline" to={settingsLink}>manage profiles in Armory.</Link></p>
+        : readyProfiles.length === 0 ? <p role="status" className="mt-2 text-sm text-warning-strong">Compatible profiles are missing fields, unverified, or invalid. <Link className="text-accent-strong hover:underline" to={settingsLink}>Open Armory to make one ready.</Link></p> : null)}
       {problem && <p role="alert" className="mt-3 border-l-2 border-danger bg-danger/5 px-3 py-2 text-sm text-danger">{problem}</p>}
-      <div className="mt-4 flex flex-wrap gap-2">
-        {assignment ? <Button type="button" variant="secondary" disabled={busy} aria-haspopup="dialog" onClick={() => setRemoveOpen(true)}>{busy ? "Removing…" : "Remove assignment"}</Button>
-          : !requirement ? <Button type="button" disabled={busy || !packageReady} onClick={() => void onAssign(null)}>{busy ? "Assigning…" : "Assign to project"}</Button> : null}
-      </div>
     </div>
-    {removeOpen && <Dialog title="Remove assignment?" onClose={() => setRemoveOpen(false)} dismissible={!busy}><p className="text-sm leading-relaxed text-ink-muted">{UNASSIGNMENT_CONTEXT_COPY}</p><div className="mt-5 flex justify-end gap-2"><Button type="button" variant="secondary" disabled={busy} onClick={() => setRemoveOpen(false)}>Cancel</Button><Button type="button" variant="secondary" className="!border-danger/50 !text-danger hover:!bg-danger/10" disabled={busy} onClick={() => void onRemove()}>{busy ? "Removing…" : "Confirm removal"}</Button></div></Dialog>}
   </Card>;
 }
 

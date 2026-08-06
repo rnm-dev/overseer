@@ -6,7 +6,7 @@ import { MemoryRouter } from "react-router";
 import { ApiError } from "../api";
 import { ArmoryLifecyclePanel } from "../pages/peon/ArmoryLifecyclePanel";
 import { ArmoryProfilesPanel } from "../pages/peon/ArmoryProfilesPanel";
-import { ADD_PROFILE_OPTION, ProjectPackageAssignmentCard, UNASSIGNMENT_CONTEXT_COPY } from "../pages/peon/ProjectArmoryPackages";
+import { ADD_PROFILE_OPTION, ENABLED_OPTION, ProjectPackageAssignmentCard, UNASSIGNMENT_CONTEXT_COPY } from "../pages/peon/ProjectArmoryPackages";
 import {
   ARMORY_PROJECT_PACKAGES_CAPABILITY,
   ArmoryRequestGate,
@@ -181,10 +181,10 @@ test("assignment UI reuses only compatible ready profiles and presents invalid a
   assert.doesNotMatch(markup, />GitHub —/);
   assert.match(markup, /<option[^>]*disabled=""[^>]*>Staging Google — unverified/);
   assert.match(markup, /<span class="sr-only">Profile for Google Drive/);
-  assert.match(markup, /Remove assignment/);
-  // Selecting a profile is the save; the card offers no submit control.
-  assert.doesNotMatch(markup, /Update profile|Assign to project/);
-  assert.match(markup, /Selecting a profile saves it for this project/);
+  // The dropdown is the only control: Disabled means unassigned, and there is
+  // no submit, assign or remove button.
+  assert.doesNotMatch(markup, /Update profile|Assign to project|Remove assignment|<button/);
+  assert.match(markup, /<option value=""[^>]*>Disabled<\/option>/);
   assert.match(markup, new RegExp(`<option value="${ADD_PROFILE_OPTION}">Add new profile`));
 });
 
@@ -196,8 +196,10 @@ test("credential-free packages assign null without a fake profile and unassignme
     onAssign: async () => {}, onRemove: async () => {},
   })));
   assert.match(markup, /Credential-free package/);
-  assert.match(markup, /Assign to project/);
-  assert.doesNotMatch(markup, /<select|fake profile|default profile/i);
+  // Its dropdown is availability only: Disabled or Enabled, never a profile.
+  assert.match(markup, /<option value=""[^>]*>Disabled<\/option>/);
+  assert.match(markup, new RegExp(`<option value="${ENABLED_OPTION}">Enabled</option>`));
+  assert.doesNotMatch(markup, /<button|Add new profile|fake profile|default profile/i);
   assert.match(UNASSIGNMENT_CONTEXT_COPY, /future turns/);
   assert.match(UNASSIGNMENT_CONTEXT_COPY, /reduce context and token use/);
   assert.match(UNASSIGNMENT_CONTEXT_COPY, /active turn does not change/i);
