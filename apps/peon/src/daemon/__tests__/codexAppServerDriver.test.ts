@@ -143,7 +143,8 @@ describe("Codex app-server driver", () => {
         mcpConfigPath,
         attachments: [{ path: "/tmp/example.png", mimetype: "image/png" }, { path: "/tmp/notes.txt", mimetype: "text/plain" }],
       });
-      await collect(instance, runOptions);
+      const first = await collect(instance, runOptions);
+      const backendSessionId = String(first.events.find((event) => event.type === "system" && event.subtype === "init")?.session_id);
       const requests = await instance.request<Array<{ method: string; params: Record<string, unknown> }>>("test/requests");
       const thread = requests.find((request) => request.method === "thread/start")?.params;
       const turn = requests.find((request) => request.method === "turn/start")?.params;
@@ -162,12 +163,20 @@ describe("Codex app-server driver", () => {
         { type: "text", text: "hello", text_elements: [] },
         { type: "localImage", path: "/tmp/example.png" },
       ]);
-      await collect(instance, options({ resume: true, backendSessionId: "persisted-thread", systemPromptAppend: "updated system" }));
+      await collect(instance, options({
+        resume: true,
+        backendSessionId,
+        systemPromptAppend: "updated system",
+        mcpConfigPath,
+      }));
       const updatedRequests = await instance.request<Array<{ method: string; params: Record<string, unknown> }>>("test/requests");
-      const resumedThread = updatedRequests.filter((request) => request.method === "thread/resume").at(-1)?.params;
+      const resumedThread = updatedRequests.filter((request) => request.method === "thread/fork").at(-1)?.params;
       const defaultTurn = updatedRequests.filter((request) => request.method === "turn/start").at(-1)?.params;
       assert.equal(resumedThread?.developerInstructions, "updated system");
       assert.equal(resumedThread?.sandbox, "danger-full-access");
+      assert.deepEqual(resumedThread?.config, { mcp_servers: { peon: {
+        url: "http://127.0.0.1:4570/mcp/core", env_http_headers: {}, http_headers: { "x-test": "value" },
+      } } });
       assert.deepEqual(defaultTurn?.sandboxPolicy, { type: "dangerFullAccess" });
     } finally {
       await instance.stop();
