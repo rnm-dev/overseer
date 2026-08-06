@@ -18,21 +18,21 @@ import {
 const POLL_INTERVAL_MS = 1_000;
 export const UNINSTALL_PRESERVATION_COPY = "This removes the package runtime. Credentials, managed home, configuration, and ownership metadata are preserved.";
 
-function stateLabel(installed: InstalledPackage | null): string {
+function stateLabel(installed: InstalledPackage | null, projectPackages: boolean): string {
   if (!installed) return "Not installed";
   if (installed.state === "installing") return "Installing";
   if (installed.state === "removing") return "Uninstalling";
   if (installed.state === "error" || installed.lastError) return "Error";
-  if (installed.state === "needs_configuration" || installed.configurationStatus === "missing") return "Needs configuration";
+  if (!projectPackages && (installed.state === "needs_configuration" || installed.configurationStatus === "missing")) return "Needs configuration";
   if (installed.state === "verifying" || installed.configurationStatus === "unverified") return "Verifying";
   if (installed.configurationStatus === "invalid") return "Invalid configuration";
-  return installed.enabled ? "Enabled" : "Disabled";
+  return projectPackages ? "Installed" : installed.enabled ? "Enabled" : "Disabled";
 }
 
-function stateTone(installed: InstalledPackage | null): "green" | "amber" | "red" | undefined {
+function stateTone(installed: InstalledPackage | null, projectPackages: boolean): "green" | "amber" | "red" | undefined {
   if (!installed) return undefined;
   if (installed.state === "error" || installed.lastError || installed.configurationStatus === "invalid") return "red";
-  return installed.enabled ? "green" : "amber";
+  return projectPackages && installed.state === "ready" ? "green" : installed.enabled ? "green" : "amber";
 }
 
 function operationName(operation: ArmoryOperation): string {
@@ -40,13 +40,14 @@ function operationName(operation: ArmoryOperation): string {
   return operation.kind.charAt(0).toUpperCase() + operation.kind.slice(1);
 }
 
-export function ArmoryLifecyclePanel({ base, packageId, installed, versions = [], latestVersion = null, updateAvailable = false, onRefresh }: {
+export function ArmoryLifecyclePanel({ base, packageId, installed, versions = [], latestVersion = null, updateAvailable = false, projectPackages = false, onRefresh }: {
   base: string;
   packageId: string;
   installed: InstalledPackage | null;
   versions?: ArmoryCatalogVersion[];
   latestVersion?: string | null;
   updateAvailable?: boolean | null;
+  projectPackages?: boolean;
   onRefresh: () => Promise<unknown>;
 }) {
   const [operation, setOperation] = useState<ArmoryOperation | null>(null);
@@ -143,8 +144,8 @@ export function ArmoryLifecyclePanel({ base, packageId, installed, versions = []
   return <Card className="p-5">
     <div className="flex flex-wrap items-start justify-between gap-4">
       <div>
-        <div className="flex flex-wrap items-center gap-2"><h2 className="font-display text-lg font-bold text-ink">Package lifecycle</h2><Badge tone={stateTone(installed)}>{stateLabel(installed)}</Badge></div>
-        <p className="mt-2 text-sm text-ink-muted">{!installed ? "Choose a version and install it on this Peon." : installed.enabled ? "This package is active on the Peon." : configured ? "Configuration is ready, but the package is not active." : "Complete and verify configuration before enabling this package."}</p>
+        <div className="flex flex-wrap items-center gap-2"><h2 className="font-display text-lg font-bold text-ink">Package lifecycle</h2><Badge tone={stateTone(installed, projectPackages)}>{stateLabel(installed, projectPackages)}</Badge></div>
+        <p className="mt-2 text-sm text-ink-muted">{!installed ? "Choose a version and install it on this Peon." : projectPackages ? "Installed Peon-wide. Assign it from a project’s Packages tab to make it available in subsequent turns." : installed.enabled ? "This package is active on the Peon." : configured ? "Configuration is ready, but the package is not active." : "Complete and verify configuration before enabling this package."}</p>
       </div>
       {!installed ? <div className="flex flex-wrap items-end gap-2">
         {versions.length > 1 && <label className="block"><span className="mb-1 block font-mono text-[0.68rem] text-ink-faint">Version</span><select className="field !w-auto !py-2 text-sm" value={selectedVersion} disabled={busy} onChange={(event) => setSelectedVersion(event.target.value)}>{versions.map((version) => <option key={version.version} value={version.version}>{version.version}{version.version === latestVersion ? " (latest)" : ""}</option>)}</select></label>}
@@ -152,14 +153,14 @@ export function ArmoryLifecyclePanel({ base, packageId, installed, versions = []
       </div> : <div className="flex flex-wrap gap-2">
         {updateAvailable === true && latestVersion && <Button type="button" disabled={busy} onClick={() => void begin("update")}>{submitting ? "Submitting…" : `Update to ${latestVersion}`}</Button>}
         <Button type="button" variant="secondary" disabled={busy} className="!border-danger/40 !text-danger hover:!bg-danger/10" onClick={() => setUninstallOpen(true)}>Uninstall</Button>
-        <Button type="button" variant={installed.enabled ? "secondary" : undefined} disabled={busy || (!installed.enabled && Boolean(enableReason))} title={!installed.enabled && enableReason ? enableReason : undefined} onClick={() => void begin(installed.enabled ? "disable" : "enable")}>{submitting ? "Submitting…" : installed.enabled ? "Disable package" : "Enable package"}</Button>
+        {!projectPackages && <Button type="button" variant={installed.enabled ? "secondary" : undefined} disabled={busy || (!installed.enabled && Boolean(enableReason))} title={!installed.enabled && enableReason ? enableReason : undefined} onClick={() => void begin(installed.enabled ? "disable" : "enable")}>{submitting ? "Submitting…" : installed.enabled ? "Disable package" : "Enable package"}</Button>}
       </div>}
     </div>
 
     {installed && <dl className="mt-5 grid gap-4 border-t border-edge-strong pt-4 sm:grid-cols-3">
-      <div><dt className="font-mono text-xs text-ink-faint">Runtime</dt><dd className="mt-1 text-sm text-ink">{installed.enabled ? "Enabled" : "Disabled"}</dd></div>
+      {!projectPackages && <div><dt className="font-mono text-xs text-ink-faint">Runtime</dt><dd className="mt-1 text-sm text-ink">{installed.enabled ? "Enabled" : "Disabled"}</dd></div>}
       <div><dt className="font-mono text-xs text-ink-faint">Package state</dt><dd className="mt-1 text-sm capitalize text-ink">{installed.state.replace(/_/g, " ")}</dd></div>
-      <div><dt className="font-mono text-xs text-ink-faint">Configuration</dt><dd className="mt-1 text-sm capitalize text-ink">{installed.configurationStatus.replace(/_/g, " ")}</dd></div>
+      {projectPackages ? <div><dt className="font-mono text-xs text-ink-faint">Profile requirement</dt><dd className="mt-1 text-sm text-ink">{installed.profileRequirement?.type || "Credential-free"}</dd></div> : <div><dt className="font-mono text-xs text-ink-faint">Configuration</dt><dd className="mt-1 text-sm capitalize text-ink">{installed.configurationStatus?.replace(/_/g, " ") || "unknown"}</dd></div>}
     </dl>}
 
     {operation && <div className={`mt-4 border-l-2 px-3 py-2 text-sm ${failed ? "border-danger bg-danger/5 text-danger" : operation.status === "success" ? "border-accent bg-accent/5 text-accent-strong" : "border-warning bg-warning/5 text-warning-strong"}`} role="status">

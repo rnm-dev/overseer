@@ -12,5 +12,6 @@ export * from "./hookRunner.js";
 export * from "./operationCoordinator.js";
 export * from "./redaction.js";
 export * from "./paths.js";
+export * from "./projectPackages.js";
 export * from "./stores.js";
 export * from "./uninstaller.js";

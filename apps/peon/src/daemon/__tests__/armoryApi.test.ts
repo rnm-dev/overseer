@@ -184,6 +184,14 @@ test("overseer API exposes Armory packages through bearer authentication", async
   assert.deepEqual(await result.json(), response);
 });
 
+test("profile and assignment resources stay capability-gated on legacy Peons", async () => {
+  const result = await fetch(`${base}/api/v1/armory/profiles`, {
+    headers: { Authorization: `Bearer ${token}`, "Peon-Protocol": "1" },
+  });
+  assert.equal(result.status, 409);
+  assert.equal(((await result.json()) as { code: string }).code, "UNSUPPORTED_CAPABILITY");
+});
+
 test("operator and overseer package detail routes share the same representation", async () => {
   const human = await fetch(`${base}/api/v1/armory/packages/aws`);
   const fleet = await fetch(`${base}/api/v1/armory/packages/aws`, {

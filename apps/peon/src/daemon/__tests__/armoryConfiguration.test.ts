@@ -58,7 +58,7 @@ async function activeFixture(overrides: Partial<ArmoryManifest> = {}): Promise<{
 
 const values = { name: "demo", token: "super-secret", region: "east", file: "file-secret" };
 
-test("configuration runs bounded hooks, stores only metadata ordinarily, records ownership, and restarts runtime", async () => {
+test("legacy configuration drains package runtime without restoring global activation", async () => {
   const fixture = await activeFixture();
   await writeFile(path.join(fixture.packageDir, "configure.mjs"), `
     import fs from "node:fs/promises";
@@ -84,7 +84,7 @@ test("configuration runs bounded hooks, stores only metadata ordinarily, records
   assert.equal(operation.kind, "configure");
   const completed = await service.operations.wait(operation.id);
   assert.equal(completed.status, "success");
-  assert.deepEqual(runtimeCalls, ["stop", "health", "start"]);
+  assert.deepEqual(runtimeCalls, ["stop", "health"]);
   assert.equal((await fixture.stores.installed.get("configured"))?.configurationStatus, "verified");
   assert.deepEqual((await service.schema("configured")).configured, { name: true, token: true, region: true, file: true });
   assert.equal((await readFile(path.join(fixture.home, "config.json"), "utf8")).includes(values.token), true);

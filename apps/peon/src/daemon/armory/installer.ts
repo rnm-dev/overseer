@@ -92,9 +92,6 @@ export class ArmoryPackageInstallService implements ArmoryPackageInstallApi {
     if (!active || !installed) {
       throw new ArmoryOperationError("PACKAGE_NOT_ACTIVE", `Armory package is not installed: ${packageId}`);
     }
-    if (installed.enabled && !this.options.runtime) {
-      throw new ArmoryOperationError("MCP_RUNTIME_UNAVAILABLE", "Armory MCP runtime is unavailable");
-    }
     const selected = await this.resolve(packageId, options);
     if (!semver.gt(selected.version, active.version)) {
       throw new ArmoryOperationError("NO_UPDATE_AVAILABLE", `Armory package ${packageId} has no update newer than ${active.version}`);
@@ -160,6 +157,7 @@ export class ArmoryInstaller {
       const extraction = resolveContainedPath(staging, "extracted");
       const expectedRoot = `${selection.packageId}-${selection.version}`;
       const previous = await stores.installed.get(selection.packageId);
+      const projectPackagesActive = (await stores.projectPackages.read()).migrationCompletedAt !== null;
       const previousActivation = await readActivation(stores, selection.packageId);
       const journal: InstallJournal = {
         schemaVersion: 1,
@@ -172,13 +170,12 @@ export class ArmoryInstaller {
         previousInstalled: previous,
       };
       let activated = false;
-      let runtimeStopped = false;
       let movedDestination: string | null = null;
       let rollbackIncomplete = false;
       try {
         await mkdir(staging, { recursive: false, mode: 0o700 });
         await writeInstallJournal(staging, journal);
-        await markOperationStarted(stores, selection, operation.operationId, previous, this.now());
+        await markOperationStarted(stores, selection, operation.operationId, previous, this.now(), projectPackagesActive);
         await operation.update("downloading", 10, "Downloading release archive");
         await downloadArchive({
           selection,
@@ -214,15 +211,13 @@ export class ArmoryInstaller {
         await syncDirectory(path.dirname(destination));
         await writeInstallJournal(staging, { ...journal, phase: "version_moved" });
 
-        if (kind === "update" && previous?.enabled) {
-          if (!this.options.runtime) throw new ArmoryOperationError("MCP_RUNTIME_UNAVAILABLE", "Armory MCP runtime is unavailable");
+        if (kind === "update" && this.options.runtime) {
           await operation.update("stopping", 85, "Stopping the previous package version");
           await this.options.runtime.stop(selection.packageId);
-          runtimeStopped = true;
           await writeInstallJournal(staging, { ...journal, phase: "runtime_stopped" });
         }
         await operation.update("activating", 90, "Activating package version");
-        const installed = installedRecord(selection, manifest, operation.operationId, previous, this.now());
+        const installed = installedRecord(selection, manifest, operation.operationId, previous, this.now(), projectPackagesActive);
         await stores.installed.set(installed);
         const installedSnapshot = { ...installed, activeOperationId: null };
         const activation: ArmoryActivation = {
@@ -239,14 +234,6 @@ export class ArmoryInstaller {
         activated = true;
         await stores.installed.set(installedSnapshot);
         await writeInstallJournal(staging, { ...journal, phase: "activation_committed" });
-        if (kind === "update" && previous?.enabled && this.options.runtime) {
-          await operation.update("health_check", 94, "Checking the updated package");
-          await this.options.runtime.healthCheck(selection.packageId);
-          await stores.installed.set({ ...installedSnapshot, enabled: true, activeOperationId: operation.operationId, updatedAt: this.now() });
-          await operation.update("starting", 97, "Starting the updated package");
-          await this.options.runtime.start(selection.packageId);
-          await stores.installed.update(selection.packageId, (record) => ({ ...record, activeOperationId: null, updatedAt: this.now() }));
-        }
         if (kind === "update") await writeInstallJournal(staging, { ...journal, phase: "runtime_started" });
       } catch (error) {
         if (activated && kind === "update" && previous && previousActivation) {
@@ -254,7 +241,6 @@ export class ArmoryInstaller {
             await this.options.runtime?.stop(selection.packageId);
             await writeActivation(stores, previousActivation);
             await stores.installed.set({ ...previous, activeOperationId: null, updatedAt: this.now(), lastError: null });
-            if (previous.enabled) await this.options.runtime?.start(selection.packageId);
             if (movedDestination) await removeDurably(movedDestination);
             movedDestination = null;
           } catch (rollbackError) {
@@ -266,14 +252,7 @@ export class ArmoryInstaller {
             try { await removeDurably(movedDestination); }
             catch { rollbackIncomplete = true; }
           }
-          await restoreInstalledAfterFailure(stores, selection, previous, error, this.now());
-          if (runtimeStopped && previous?.enabled) {
-            try { await this.options.runtime?.start(selection.packageId); }
-            catch (restartError) {
-              rollbackIncomplete = true;
-              throw new ArmoryOperationError("UPDATE_ROLLBACK_FAILED", `Updated package failed and the previous version could not be restarted: ${safeErrorMessage(restartError)}`, { cause: error });
-            }
-          }
+          await restoreInstalledAfterFailure(stores, selection, previous, error, this.now(), projectPackagesActive);
         }
         throw error;
       } finally {
@@ -289,6 +268,7 @@ async function markOperationStarted(
   operationId: string,
   previous: InstalledArmoryPackage | null,
   now: number,
+  projectPackagesActive: boolean,
 ): Promise<void> {
   if (previous) {
     await stores.installed.set({ ...previous, activeOperationId: operationId, updatedAt: now, lastError: null });
@@ -297,12 +277,11 @@ async function markOperationStarted(
   await stores.installed.set({
     id: selection.packageId,
     version: selection.version,
-    enabled: false,
+    ...(!projectPackagesActive ? { enabled: false, configurationStatus: "not_required" as const } : {}),
     state: "installing",
     installedAt: now,
     updatedAt: now,
     sourceDigest: selection.archive.sha256,
-    configurationStatus: "not_required",
     lastError: null,
     activeOperationId: operationId,
     capabilities: selection.capabilities,
@@ -315,6 +294,7 @@ function installedRecord(
   operationId: string,
   previous: InstalledArmoryPackage | null,
   now: number,
+  projectPackagesActive: boolean,
 ): InstalledArmoryPackage {
   const configurationStatus = manifest.configuration
     ? previous?.configurationStatus === "verified" ? "verified" as const : "missing" as const
@@ -322,12 +302,11 @@ function installedRecord(
   return {
     id: selection.packageId,
     version: selection.version,
-    enabled: false,
-    state: configurationStatus === "missing" ? "needs_configuration" : "ready",
+    ...(!projectPackagesActive ? { enabled: false, configurationStatus } : {}),
+    state: !projectPackagesActive && configurationStatus === "missing" ? "needs_configuration" : "ready",
     installedAt: previous?.installedAt ?? now,
     updatedAt: now,
     sourceDigest: selection.archive.sha256,
-    configurationStatus,
     lastError: null,
     activeOperationId: operationId,
     capabilities: { mcp: Boolean(manifest.mcp) },
@@ -340,6 +319,7 @@ async function restoreInstalledAfterFailure(
   previous: InstalledArmoryPackage | null,
   error: unknown,
   now: number,
+  projectPackagesActive: boolean,
 ): Promise<void> {
   const message = error instanceof ArmoryOperationError ? error.message : "Armory installation failed";
   if (previous) {
@@ -349,12 +329,11 @@ async function restoreInstalledAfterFailure(
   await stores.installed.set({
     id: selection.packageId,
     version: selection.version,
-    enabled: false,
+    ...(!projectPackagesActive ? { enabled: false, configurationStatus: "not_required" as const } : {}),
     state: "error",
     installedAt: now,
     updatedAt: now,
     sourceDigest: selection.archive.sha256,
-    configurationStatus: "not_required",
     lastError: message.slice(0, 4000),
     activeOperationId: null,
     capabilities: selection.capabilities,
@@ -460,7 +439,22 @@ function safeErrorMessage(error: unknown): string {
 
 export async function recoverInterruptedArmoryOperations(stores: ArmoryStores, now = Date.now()): Promise<number> {
   await initializeArmoryDirectories(stores.paths);
+  const projectPackagesActive = (await stores.projectPackages.read()).migrationCompletedAt !== null;
   const operations = await stores.operations.list();
+  const interruptedProfileOperations = operations.filter((operation) =>
+    (operation.kind === "profile_configure" || operation.kind === "profile_verify")
+    && (operation.status === "queued" || operation.status === "running"));
+  for (const operation of interruptedProfileOperations) {
+    await stores.operations.save({
+      ...operation,
+      status: "failure",
+      phase: "failed",
+      progress: null,
+      message: "Profile operation was interrupted by daemon restart; retry explicitly",
+      errorCode: "INTERRUPTED_OPERATION",
+      finishedAt: now,
+    });
+  }
   const activeOperationIds = new Set((await stores.installed.list()).flatMap((record) => record.activeOperationId ? [record.activeOperationId] : []));
   const journals = await collectInstallJournals(stores.paths.stagingDir);
   const interrupted = operations.filter((operation) => (operation.kind === "install" || operation.kind === "update") && (operation.status === "queued" || operation.status === "running" || activeOperationIds.has(operation.id) || journals.has(operation.id)));
@@ -478,7 +472,7 @@ export async function recoverInterruptedArmoryOperations(stores: ArmoryStores, n
         const committed = installed?.version === journal.version ? installed : activation.installed;
         await stores.installed.set({
           ...committed,
-          enabled: journal.previousInstalled?.enabled ?? false,
+          ...(!projectPackagesActive ? { enabled: journal.previousInstalled?.enabled ?? false } : {}),
           activeOperationId: null,
           lastError: null,
           updatedAt: now,
@@ -551,14 +545,14 @@ export async function recoverInterruptedArmoryOperations(stores: ArmoryStores, n
       await stores.installed.set({
         ...installed,
         state: "error",
-        enabled: false,
+        ...(!projectPackagesActive ? { enabled: false, configurationStatus: installed.configurationStatus ?? "not_required" as const } : {}),
         activeOperationId: null,
         lastError: "Installation was interrupted before activation",
         updatedAt: now,
       });
     }
   }
-  return interrupted.length;
+  return interrupted.length + interruptedProfileOperations.length;
 }
 
 async function collectInstallJournals(stagingRoot: string): Promise<Map<string, InstallJournal>> {
@@ -574,6 +568,22 @@ async function collectInstallJournals(stagingRoot: string): Promise<Map<string, 
 
 export async function getArmoryActivation(stores: ArmoryStores, packageId: string): Promise<ArmoryActivation | null> {
   return readActivation(stores, packageId);
+}
+
+export async function retireLegacyArmoryActivationState(stores: ArmoryStores): Promise<void> {
+  for (const record of await stores.installed.list()) {
+    const activation = await readActivation(stores, record.id);
+    if (!activation) continue;
+    const legacy = activation.installed as InstalledArmoryPackage & { enabled?: boolean; configurationStatus?: string };
+    const { enabled: _enabled, configurationStatus: _configurationStatus, ...installed } = legacy;
+    await writeActivation(stores, {
+      ...activation,
+      installed: {
+        ...installed,
+        state: installed.state === "needs_configuration" || installed.state === "verifying" ? "ready" : installed.state,
+      },
+    });
+  }
 }
 
 function currentPlatform(): { os: "darwin" | "linux"; arch: "x64" | "arm64" } {

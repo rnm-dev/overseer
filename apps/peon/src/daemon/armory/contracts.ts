@@ -13,9 +13,12 @@ export const MAX_MCP_STARTUP_MS = 15_000;
 export const MAX_LIFECYCLE_MS = 120_000;
 export const MAX_TOOL_CALL_MS = 60_000;
 export const MAX_OPERATION_HISTORY = 100;
+export const MAX_ARMORY_PROFILES = 100;
+export const MAX_ARMORY_ASSIGNMENTS_PER_PROJECT = 100;
 
 const packageId = z.string().regex(/^[a-z0-9][a-z0-9-]{0,62}$/);
-const fieldId = z.string().regex(/^[A-Za-z][A-Za-z0-9_]{0,62}$/);
+const fieldId = z.string().regex(/^[A-Za-z][A-Za-z0-9_]{0,127}$/);
+const profileType = z.string().regex(/^[a-z][a-z0-9.-]{0,63}$/);
 const semanticVersion = z.string().refine((value) => semver.valid(value, { loose: false }) === value, "invalid semantic version");
 const sha256 = z.string().regex(/^[0-9a-f]{64}$/);
 const relativePath = z.string().min(1).refine((value) => {
@@ -138,6 +141,10 @@ export const armoryManifestSchema = z.object({
     managedPaths: z.array(relativePath),
     environment: z.record(z.string().regex(/^[A-Z][A-Z0-9_]{0,127}$/), relativePath).optional(),
   }).strict().optional(),
+  profile: z.object({
+    type: profileType,
+    requiredFields: z.array(fieldId).max(64).refine((fields) => new Set(fields).size === fields.length, "duplicate required field id"),
+  }).strict().optional(),
   lifecycle: z.object({ postInstall: armoryCommandSchema.optional(), preUninstall: armoryCommandSchema.optional() }).strict().optional(),
   mcp: z.object({
     command: armoryCommandSchema,
@@ -164,17 +171,27 @@ export const armoryManifestSchema = z.object({
       if (name === "PATH" || name.startsWith("PEON_ARMORY_")) ctx.addIssue({ code: "custom", path: ["configuration", "environment", name], message: "reserved environment variable" });
     }
   }
+  if (manifest.profile) {
+    if (!manifest.configuration) {
+      ctx.addIssue({ code: "custom", path: ["profile"], message: "profile declarations require configuration fields" });
+    } else {
+      const fields = new Set(manifest.configuration.fields.map((field) => field.id));
+      for (const [index, required] of manifest.profile.requiredFields.entries()) {
+        if (!fields.has(required)) ctx.addIssue({ code: "custom", path: ["profile", "requiredFields", index], message: "required field is not declared in configuration fields" });
+      }
+    }
+  }
 });
 
 export const installedArmoryPackageSchema = z.object({
   id: packageId,
   version: semanticVersion,
-  enabled: z.boolean(),
+  enabled: z.boolean().optional(),
   state: z.enum(["installing", "needs_configuration", "verifying", "ready", "error", "removing"]),
   installedAt: z.number().int().nonnegative(),
   updatedAt: z.number().int().nonnegative(),
   sourceDigest: sha256,
-  configurationStatus: z.enum(["not_required", "missing", "unverified", "verified", "invalid"]),
+  configurationStatus: z.enum(["not_required", "missing", "unverified", "verified", "invalid"]).optional(),
   lastError: z.string().max(4000).nullable(),
   activeOperationId: z.string().uuid().nullable(),
   capabilities: z.object({ mcp: z.boolean() }).strict().optional(),
@@ -183,7 +200,7 @@ export const installedArmoryPackageSchema = z.object({
 export const armoryOperationSchema = z.object({
   id: z.string().uuid(),
   packageId,
-  kind: z.enum(["install", "update", "configure", "verify", "delete_configuration", "enable", "disable", "uninstall"]),
+  kind: z.enum(["install", "update", "configure", "verify", "delete_configuration", "enable", "disable", "uninstall", "profile_configure", "profile_verify"]),
   status: z.enum(["queued", "running", "success", "failure", "needs_human"]),
   phase: z.string().min(1).max(120),
   progress: z.number().int().min(0).max(100).nullable(),
@@ -257,6 +274,61 @@ export const credentialStateSchema = z.object({
   }).strict()).default({}),
 }).strict();
 
+export const armoryProfileStatusSchema = z.enum(["missing", "unverified", "verified", "invalid"]);
+export const armoryProfileRequirementSchema = z.object({
+  type: profileType,
+  requiredFields: z.array(fieldId).max(64).refine((fields) => new Set(fields).size === fields.length, "duplicate required field id"),
+}).strict();
+export const armoryProfileSchema = z.object({
+  profileId: z.string().uuid(),
+  type: profileType,
+  name: z.string().trim().min(1).max(80),
+  status: armoryProfileStatusSchema,
+  configuredFields: z.record(fieldId, z.literal(true)).refine((fields) => Object.keys(fields).length <= 64, "too many configured fields"),
+}).strict();
+export const armoryAssignmentSchema = z.object({
+  projectId: z.string().uuid(),
+  packageId,
+  profileId: z.string().uuid().nullable(),
+}).strict();
+
+const storedArmoryProfileSchema = z.object({
+  profileId: z.string().uuid(),
+  type: profileType,
+  name: z.string().trim().min(1).max(80),
+  status: armoryProfileStatusSchema,
+  values: z.record(fieldId, z.string().max(1024 * 1024)).refine((values) => Object.keys(values).length <= 64, "too many profile fields"),
+  createdAt: z.number().int().nonnegative(),
+  updatedAt: z.number().int().nonnegative(),
+}).strict();
+
+export const armoryProjectPackagesStateSchema = z.object({
+  schemaVersion: z.literal(1),
+  migrationCompletedAt: z.number().int().nonnegative().nullable(),
+  profiles: z.record(z.string().uuid(), storedArmoryProfileSchema),
+  assignments: z.array(armoryAssignmentSchema).max(10_000),
+  legacyProfileByPackage: z.record(packageId, z.string().uuid()),
+}).strict().superRefine((state, ctx) => {
+  for (const [profileId, profile] of Object.entries(state.profiles)) {
+    if (profile.profileId !== profileId) ctx.addIssue({ code: "custom", path: ["profiles", profileId, "profileId"], message: "profile id must match profile key" });
+  }
+  const assignments = new Set<string>();
+  const perProject = new Map<string, number>();
+  for (const [index, assignment] of state.assignments.entries()) {
+    const key = `${assignment.projectId}\0${assignment.packageId}`;
+    if (assignments.has(key)) ctx.addIssue({ code: "custom", path: ["assignments", index], message: "duplicate project package assignment" });
+    assignments.add(key);
+    const count = (perProject.get(assignment.projectId) ?? 0) + 1;
+    perProject.set(assignment.projectId, count);
+    if (count > MAX_ARMORY_ASSIGNMENTS_PER_PROJECT) ctx.addIssue({ code: "custom", path: ["assignments", index], message: "too many project assignments" });
+    if (assignment.profileId !== null && !state.profiles[assignment.profileId]) ctx.addIssue({ code: "custom", path: ["assignments", index, "profileId"], message: "assignment references an unknown profile" });
+  }
+  if (Object.keys(state.profiles).length > MAX_ARMORY_PROFILES) ctx.addIssue({ code: "custom", path: ["profiles"], message: "too many profiles" });
+  for (const [legacyPackageId, profileId] of Object.entries(state.legacyProfileByPackage)) {
+    if (!state.profiles[profileId]) ctx.addIssue({ code: "custom", path: ["legacyProfileByPackage", legacyPackageId], message: "legacy alias references an unknown profile" });
+  }
+});
+
 export const catalogCacheStateSchema = z.object({
   schemaVersion: z.literal(1),
   registryUrl: z.url().nullable(),
@@ -286,6 +358,12 @@ export type ArmorySettings = z.infer<typeof armorySettingsSchema>;
 export type InstalledState = z.infer<typeof installedStateSchema>;
 export type OwnershipState = z.infer<typeof ownershipStateSchema>;
 export type CredentialState = z.infer<typeof credentialStateSchema>;
+export type ArmoryProfile = z.infer<typeof armoryProfileSchema>;
+export type ArmoryProfileRequirement = z.infer<typeof armoryProfileRequirementSchema>;
+export type ArmoryProfileStatus = z.infer<typeof armoryProfileStatusSchema>;
+export type ArmoryAssignment = z.infer<typeof armoryAssignmentSchema>;
+export type StoredArmoryProfile = z.infer<typeof storedArmoryProfileSchema>;
+export type ArmoryProjectPackagesState = z.infer<typeof armoryProjectPackagesStateSchema>;
 export type CatalogCacheState = z.infer<typeof catalogCacheStateSchema>;
 
 export function parseArmoryCatalog(value: unknown): ArmoryCatalog { return armoryCatalogSchema.parse(value); }

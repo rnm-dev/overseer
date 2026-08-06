@@ -5,6 +5,7 @@ import { PROTOCOL_VERSION } from "../protocol.js";
 import { ensurePeonId } from "../peonIdentity.js";
 import { peonPublicUrl } from "../peonAddress.js";
 import { parseListenAddress } from "../../shared/listenAddress.js";
+import { ARMORY_PROJECT_PACKAGES_CAPABILITY } from "../armory/index.js";
 
 // The outbound half of the overseer protocol: this peon announcing *itself* to
 // a central overseer (fleet control plane), so the registry self-populates and
@@ -62,7 +63,7 @@ const defaultSubscribe = (listener: () => void): (() => void) => {
 };
 
 function capabilities(fileTransferRoot: string): string[] {
-  const caps = ["sessions", "session-pagination-v1", "transcript-pagination-v1", "managed-plugin-inquiry-v1", "control", "sse"];
+  const caps = ["sessions", "session-pagination-v1", "transcript-pagination-v1", "managed-plugin-inquiry-v1", ARMORY_PROJECT_PACKAGES_CAPABILITY, "control", "sse"];
   if (fileTransferRoot.trim()) caps.push("files");
   return caps;
 }

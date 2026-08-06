@@ -32,7 +32,6 @@ async function fixture(): Promise<{ root: string; stores: ArmoryStores }> {
     stores: createArmoryStores({ data: path.join(root, "data"), state: path.join(root, "state"), config: path.join(root, "config") }),
   };
 }
-
 function manifest(id: string, version: string): Record<string, unknown> {
   return {
     schemaVersion: 1,
@@ -104,13 +103,35 @@ test("installs verified versions side by side and atomically advances activation
   assert.equal((await stores.installed.get("demo"))?.activeOperationId, null);
 });
 
-test("updates an enabled package and starts the new version without losing enablement", async () => {
+test("installs after profile migration create no activation state or implicit assignment", async () => {
+  const { stores } = await fixture();
+  await stores.projectPackages.write({
+    schemaVersion: 1,
+    migrationCompletedAt: 1,
+    profiles: {},
+    assignments: [],
+    legacyProfileByPackage: {},
+  });
+  const archive = packageArchive("demo", "1.0.0");
+  const installer = new ArmoryInstaller({ stores, fetchImpl: responseFor(archive) });
+  const operation = await installer.install(selection("demo", "1.0.0", archive));
+  assert.equal((await installer.operations.wait(operation.id)).status, "success");
+  const installed = (await stores.installed.get("demo"))!;
+  assert.equal("enabled" in installed, false);
+  assert.equal("configurationStatus" in installed, false);
+  const activation = (await getArmoryActivation(stores, "demo"))!;
+  assert.equal("enabled" in activation.installed, false);
+  assert.equal("configurationStatus" in activation.installed, false);
+  assert.deepEqual((await stores.projectPackages.read()).assignments, []);
+});
+
+test("updates drain the previous artifact without restoring package-wide activation", async () => {
   const { stores } = await fixture();
   const v1 = packageArchive("demo", "1.0.0");
   const initial = new ArmoryInstaller({ stores, fetchImpl: responseFor(v1) });
   const installed = await initial.install(selection("demo", "1.0.0", v1));
   assert.equal((await initial.operations.wait(installed.id)).status, "success");
-  await stores.installed.update("demo", (record) => ({ ...record, enabled: true }));
+  await stores.projectPackages.write({ schemaVersion: 1, migrationCompletedAt: 1, profiles: {}, assignments: [], legacyProfileByPackage: {} });
 
   const calls: string[] = [];
   const runtime = {
@@ -122,61 +143,9 @@ test("updates an enabled package and starts the new version without losing enabl
   const updater = new ArmoryInstaller({ stores, runtime, fetchImpl: responseFor(v2) });
   const update = await updater.install(selection("demo", "2.0.0", v2), "update");
   assert.equal((await updater.operations.wait(update.id)).status, "success");
-  assert.deepEqual(calls, ["stop:demo", "health:demo", "start:demo"]);
+  assert.deepEqual(calls, ["stop:demo"]);
   assert.equal((await stores.installed.get("demo"))?.version, "2.0.0");
-  assert.equal((await stores.installed.get("demo"))?.enabled, true);
-});
-
-test("failed updated runtime health check restores and restarts the previous version", async () => {
-  const { stores } = await fixture();
-  const v1 = packageArchive("demo", "1.0.0");
-  const initial = new ArmoryInstaller({ stores, fetchImpl: responseFor(v1) });
-  const installed = await initial.install(selection("demo", "1.0.0", v1));
-  assert.equal((await initial.operations.wait(installed.id)).status, "success");
-  await stores.installed.update("demo", (record) => ({ ...record, enabled: true }));
-
-  const calls: string[] = [];
-  const runtime = {
-    stop: async (id: string) => { calls.push(`stop:${id}`); },
-    healthCheck: async (id: string) => { calls.push(`health:${id}`); throw new ArmoryOperationError("MCP_START_FAILED", "new runtime failed"); },
-    start: async (id: string) => { calls.push(`start:${id}`); },
-  };
-  const v2 = packageArchive("demo", "2.0.0");
-  const updater = new ArmoryInstaller({ stores, runtime, fetchImpl: responseFor(v2) });
-  const update = await updater.install(selection("demo", "2.0.0", v2), "update");
-  const result = await updater.operations.wait(update.id);
-  assert.equal(result.status, "failure");
-  assert.equal(result.errorCode, "MCP_START_FAILED");
-  assert.deepEqual(calls, ["stop:demo", "health:demo", "stop:demo", "start:demo"]);
-  assert.equal((await getArmoryActivation(stores, "demo"))?.version, "1.0.0");
-  assert.equal((await stores.installed.get("demo"))?.version, "1.0.0");
-  assert.equal((await stores.installed.get("demo"))?.enabled, true);
-  await assert.rejects(stat(packageVersionPath(stores.paths, "demo", "2.0.0")), { code: "ENOENT" });
-});
-
-test("an incomplete live rollback retains its journal for idempotent startup recovery", async () => {
-  const { stores } = await fixture();
-  const v1 = packageArchive("demo", "1.0.0");
-  const initial = new ArmoryInstaller({ stores, fetchImpl: responseFor(v1) });
-  const installed = await initial.install(selection("demo", "1.0.0", v1));
-  assert.equal((await initial.operations.wait(installed.id)).status, "success");
-  await stores.installed.update("demo", (record) => ({ ...record, enabled: true }));
-  const runtime = {
-    stop: async () => undefined,
-    healthCheck: async () => { throw new ArmoryOperationError("MCP_START_FAILED", "new runtime failed"); },
-    start: async () => { throw new ArmoryOperationError("MCP_START_FAILED", "previous runtime restart failed"); },
-  };
-  const v2 = packageArchive("demo", "2.0.0");
-  const updater = new ArmoryInstaller({ stores, runtime, fetchImpl: responseFor(v2) });
-  const update = await updater.install(selection("demo", "2.0.0", v2), "update");
-  const failed = await updater.operations.wait(update.id);
-  assert.equal(failed.errorCode, "UPDATE_ROLLBACK_FAILED");
-  assert.equal((await stat(resolveContainedPath(stores.paths.stagingDir, update.id))).isDirectory(), true);
-
-  assert.equal(await recoverInterruptedArmoryOperations(stores, 4500), 1);
-  assert.equal((await getArmoryActivation(stores, "demo"))?.version, "1.0.0");
-  assert.equal((await stores.installed.get("demo"))?.enabled, true);
-  await assert.rejects(stat(resolveContainedPath(stores.paths.stagingDir, update.id)), { code: "ENOENT" });
+  assert.equal("enabled" in (await stores.installed.get("demo"))!, false);
 });
 
 test("install service resolves an operator-requested catalog version and rejects reinstall", async () => {

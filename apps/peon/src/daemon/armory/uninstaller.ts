@@ -7,6 +7,7 @@ import { ArmoryHookRunner } from "./hookRunner.js";
 import { getArmoryActivation } from "./installer.js";
 import { ArmoryOperationError, ArmoryOperationCoordinator } from "./operationCoordinator.js";
 import { assertPackageId, packageActivationPath, packageVersionPath, resolveContainedPath } from "./paths.js";
+import { removeProjectPackageAssignmentsForUninstall } from "./projectPackages.js";
 import { initializeArmoryDirectories, type ArmoryStores } from "./stores.js";
 
 const JOURNAL_FILE = "uninstall-transaction.json";
@@ -47,6 +48,7 @@ export class ArmoryUninstallService implements ArmoryPackageUninstallApi {
     const packageId = assertPackageId(packageIdValue);
     const result = await this.operations.start(packageId, "uninstall", async (operation) => {
       const active = await loadActivePackage(this.options.stores, packageId);
+      const projectPackagesActive = (await this.options.stores.projectPackages.read()).migrationCompletedAt !== null;
       const staging = resolveContainedPath(this.options.stores.paths.stagingDir, operation.operationId);
       let hookCompleted = false;
       await writeJournal(staging, {
@@ -59,7 +61,7 @@ export class ArmoryUninstallService implements ArmoryPackageUninstallApi {
       });
       await this.options.stores.installed.set({
         ...active.activation.installed,
-        enabled: false,
+        ...(!projectPackagesActive ? { enabled: false } : {}),
         state: "removing",
         activeOperationId: operation.operationId,
         lastError: null,
@@ -172,6 +174,7 @@ async function removeActivation(stores: ArmoryStores, packageId: string): Promis
 async function finishCommittedUninstall(stores: ArmoryStores, packageId: string): Promise<void> {
   await removeDurably(resolveContainedPath(stores.paths.packagesDir, assertPackageId(packageId)));
   await stores.installed.remove(packageId);
+  await removeProjectPackageAssignmentsForUninstall(stores, packageId);
 }
 
 async function removeDurably(target: string): Promise<void> {
@@ -181,9 +184,10 @@ async function removeDurably(target: string): Promise<void> {
 
 async function restoreAfterUninstallFailure(stores: ArmoryStores, installed: InstalledArmoryPackage, error: unknown, now: number): Promise<void> {
   const message = error instanceof ArmoryOperationError ? error.message : "Armory uninstall failed";
+  const projectPackagesActive = (await stores.projectPackages.read()).migrationCompletedAt !== null;
   await stores.installed.set({
     ...installed,
-    enabled: false,
+    ...(!projectPackagesActive ? { enabled: false } : {}),
     activeOperationId: null,
     lastError: message.slice(0, 4000),
     updatedAt: now,

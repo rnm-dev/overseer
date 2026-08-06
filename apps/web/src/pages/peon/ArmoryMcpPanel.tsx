@@ -10,20 +10,23 @@ export function discoveredTools(details: ArmoryMcpDetails): ArmoryMcpTool[] {
   return details.tools ?? details.discovery?.tools ?? details.discovery?.result?.tools ?? [];
 }
 
-export function ArmoryMcpPanel({ details, loading, error, configured, enabled, onRetry }: {
+export function ArmoryMcpPanel({ details, loading, error, configured, enabled, assignmentManaged = false, onRetry }: {
   details: ArmoryMcpDetails | null;
   loading: boolean;
   error: unknown;
   configured: boolean;
   enabled: boolean;
+  assignmentManaged?: boolean;
   onRetry: () => void;
 }) {
   if (loading) return <div className="grid min-h-40 place-items-center" aria-label="Loading MCP details"><div className="loading-spinner" /></div>;
 
   const status = details?.runtime?.status ?? details?.status ?? (!enabled ? "disabled" : "unavailable");
   const tools = details ? discoveredTools(details) : [];
-  const discoveryPending = status !== "running" || !configured || !enabled;
-  const unavailableMessage = !configured
+  const discoveryPending = assignmentManaged ? status !== "running" : status !== "running" || !configured || !enabled;
+  const unavailableMessage = assignmentManaged
+    ? "Tools are available only in projects where this package is assigned. Assignment changes apply to subsequent turns."
+    : !configured
     ? "Configure and enable this package to see its available tools."
     : !enabled
       ? "Enable this package to see its available tools."

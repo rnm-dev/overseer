@@ -1,6 +1,21 @@
 import { randomUUID } from "node:crypto";
 import { assertPackageId } from "./paths.js";
 const packageLocks = new Map();
+export async function withArmoryPackageLock(directory, packageId, ownerId, runner) {
+    const id = assertPackageId(packageId);
+    const lockKey = `${directory}\0${id}`;
+    const blockingOperation = packageLocks.get(lockKey);
+    if (blockingOperation)
+        throw new ArmoryOperationError("OPERATION_IN_PROGRESS", `Package ${id} already has a mutating operation in progress`);
+    packageLocks.set(lockKey, ownerId);
+    try {
+        return await runner();
+    }
+    finally {
+        if (packageLocks.get(lockKey) === ownerId)
+            packageLocks.delete(lockKey);
+    }
+}
 export class ArmoryOperationError extends Error {
     code;
     constructor(code, message, options) {

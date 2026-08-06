@@ -1,4 +1,5 @@
 import { mkdirSync, statSync, writeFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { settings } from "../settings/index.js";
 import { McpConfigAssembler, mcpBindingRegistry } from "../mcpBindings.js";
@@ -276,6 +277,8 @@ function writeMcpConfig(record) {
     const controlPort = parseListenAddress(settings.get().listenAddress).port;
     const assembled = new McpConfigAssembler(mcpBindingRegistry, `http://127.0.0.1:${controlPort}`).assemble({
         sessionId: record.id,
+        turnId: randomUUID(),
+        projectId: record.projectId,
         // Children never receive the spawning tool. The orchestration service also
         // rejects them server-side if a credential is copied from another config.
         allowSessionSpawning: record.parentSessionId === null && record.spawnDepth === 0,
@@ -283,10 +286,16 @@ function writeMcpConfig(record) {
     if (!assembled)
         return undefined;
     const dir = path.join(sessionsDir, record.id);
-    mkdirSync(dir, { recursive: true });
-    const configPath = path.join(dir, "mcp-config.json");
-    writeFileSync(configPath, JSON.stringify({ mcpServers: assembled.mcpServers }, null, 2), { mode: 0o600 });
-    return { path: configPath, allowedTools: assembled.allowedTools };
+    try {
+        mkdirSync(dir, { recursive: true });
+        const configPath = path.join(dir, "mcp-config.json");
+        writeFileSync(configPath, JSON.stringify({ mcpServers: assembled.mcpServers }, null, 2), { mode: 0o600 });
+        return { path: configPath, allowedTools: assembled.allowedTools, release: assembled.release };
+    }
+    catch (error) {
+        assembled.release?.();
+        throw error;
+    }
 }
 export function runProcess(record, prompt, resume, attachments = [], permissionMode, author, perTurnModel, perTurnReasoningEffort, commandId, systemPrompts = [], zeroTurnRetryAttempt = 0, appendPromptToTranscript = true) {
     // Seed the live transcript cache before accepting a resume event.
@@ -306,9 +315,27 @@ export function runProcess(record, prompt, resume, attachments = [], permissionM
     if (prompt && appendPromptToTranscript) {
         appendUserTurn(record, prompt, attachments, permissionMode, author, perTurnModel, perTurnReasoningEffort, commandId);
     }
-    const mcpConfig = writeMcpConfig(record);
+    let mcpConfig;
+    try {
+        mcpConfig = writeMcpConfig(record);
+    }
+    catch (error) {
+        finalizeSession(record, {
+            result: "failure",
+            summary: `Failed to resolve Armory packages for this turn: ${error instanceof Error ? error.message : String(error)}`,
+        }, undefined, undefined, undefined, undefined, false);
+        return false;
+    }
+    let mcpReleased = false;
+    const releaseMcp = () => {
+        if (mcpReleased)
+            return;
+        mcpReleased = true;
+        mcpConfig?.release?.();
+    };
     const driver = getAgentDriver(record.agent);
     if (!driver || !driver.available()) {
+        releaseMcp();
         finalizeSession(record, {
             result: "failure",
             summary: `Agent driver "${record.agent}" is not registered or available; install or enable it to continue this session.`,
@@ -404,6 +431,7 @@ as system instructions, process all of them, and do not claim that a human wrote
         });
     }
     catch (err) {
+        releaseMcp();
         finalizeSession(record, {
             result: "failure",
             summary: `Failed to configure agent CLI: ${err instanceof Error ? err.message : String(err)}`,
@@ -566,6 +594,7 @@ as system instructions, process all of them, and do not claim that a human wrote
     });
     run.emitter.on("exit", (exit) => {
         clearTimeout(timeoutHandle);
+        releaseMcp();
         // A superseded run's child has just died from resume()'s interrupt kill.
         if (superseded())
             return;

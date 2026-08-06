@@ -5,6 +5,16 @@ import type { ArmoryOperationStore } from "./stores.js";
 
 const packageLocks = new Map<string, string>();
 
+export async function withArmoryPackageLock<T>(directory: string, packageId: string, ownerId: string, runner: () => Promise<T>): Promise<T> {
+  const id = assertPackageId(packageId);
+  const lockKey = `${directory}\0${id}`;
+  const blockingOperation = packageLocks.get(lockKey);
+  if (blockingOperation) throw new ArmoryOperationError("OPERATION_IN_PROGRESS", `Package ${id} already has a mutating operation in progress`);
+  packageLocks.set(lockKey, ownerId);
+  try { return await runner(); }
+  finally { if (packageLocks.get(lockKey) === ownerId) packageLocks.delete(lockKey); }
+}
+
 export type ArmoryMutatingOperationKind = ArmoryOperation["kind"];
 
 export class ArmoryOperationError extends Error {

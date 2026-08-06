@@ -28,6 +28,7 @@ const WorkspaceSessionsEmpty = lazy(() => import("./pages/WorkspaceSessions").th
 const ProjectMembers = lazy(() => import("./pages/peon/ProjectMembers").then((m) => ({ default: m.ProjectMembers })));
 const ProjectFileBrowser = lazy(() => import("./pages/peon/ProjectFileBrowser").then((m) => ({ default: m.ProjectFileBrowser })));
 const ProjectSkills = lazy(() => import("./pages/peon/ProjectSkills").then((m) => ({ default: m.ProjectSkills })));
+const ProjectArmoryPackages = lazy(() => import("./pages/peon/ProjectArmoryPackages").then((m) => ({ default: m.ProjectArmoryPackages })));
 const ProjectSettings = lazy(() => import("./pages/peon/ProjectSettings").then((m) => ({ default: m.ProjectSettings })));
 
 function LegacyPeonArmoryRedirect() {
@@ -133,6 +134,7 @@ export function App() {
           <Route path="projects/:key" element={<PeonProjectDetail />} />
           <Route path="projects/:key/files" element={<ProjectFileBrowser />} />
           <Route path="projects/:key/skills" element={<ProjectSkills />} />
+          <Route path="projects/:key/packages" element={<ProjectArmoryPackages />} />
           <Route path="projects/:key/members" element={<ProjectMembers />} />
           <Route path="projects/:key/settings" element={<ProjectSettings />} />
           <Route path="stats" element={<PeonStats />} />

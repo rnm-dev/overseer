@@ -78,6 +78,7 @@ must not cross into another Peon/workspace or escape browser isolation.
 | Session/project projections and audit | Integrity, safe allowlist, actor/workspace scope |
 | Project, sandbox, attachment and artifact bytes | Confidentiality to ACL; containment; bounded ranges/credit |
 | Peon host paths/configuration | Not browser-visible unless explicitly part of an authorized product surface |
+| Armory profile values and project assignments | Values are write-only and package/profile/process scoped; assignment integrity is bound to immutable project ID |
 | Control-plane availability | Bounded queues, frames, timeouts and priority lanes |
 
 ## Data flow and trust boundaries
@@ -176,6 +177,8 @@ acceptance, heartbeat, status reconciliation, or durable ACKs.
 | Send result/acceptance from another Peon/generation | Fence and close/reject without resolving command | gateway/socket generation tests |
 | Steal/replay revoked credential | Upgrade/request rejected; both sockets evicted | transfer/socket credential tests |
 | Expose credential in view/error/preview | Sentinel absent from browser/API/close reason | security gate, settings and preview tests |
+| Read an Armory profile value or reuse it across package/project scope | Safe views expose only configured booleans; profile/package/project checks and turn snapshots fence runtime reuse | `armory-project-packages-v1` contract tests; rollout suites tracked by OVSR-357/358/359/361 |
+| Recreate global activation through compatibility paths | Capability-gated assignments only; legacy enable/disable is side-effect-free `410 ARMORY_ACTIVATION_RETIRED` | `armoryProjectPackagesProtocolContract.test.ts` and mixed-version rollout suite |
 
 ### P1: frame, durable stream, and resource abuse
 
@@ -226,6 +229,12 @@ Peon coverage:
 The command and enrollment files are executable characterization against the
 current reviewed contract and implementations. A green run does **not** approve
 unfinished tasks or operational rollout.
+
+The profile/assignment security boundary is specified in [Armory project
+packages](armory-project-packages.md). Until the implementation and rollout
+suites tracked there ship, its contract tests prove schema, safe-fixture,
+migration and canonical-contract invariants only; the Peon must not advertise
+the capability.
 
 Run one new cross-boundary file:
 

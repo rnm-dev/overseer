@@ -2,17 +2,14 @@ import { SESSION_MCP_HEADER, sessionMcpCredential } from "./sessionMcpAuth.js";
 function serverName(value) {
     return value.replaceAll("-", "_");
 }
-/** Tracks the Armory MCP endpoints that are currently healthy and enabled. */
+/** Connects per-turn MCP assembly to the assignment-scoped Armory runtime. */
 export class McpBindingRegistry {
-    armoryPackages = new Set();
-    exposeArmoryPackage(packageId) {
-        this.armoryPackages.add(packageId);
+    armoryProvider = null;
+    registerArmoryProvider(provider) {
+        this.armoryProvider = provider;
     }
-    hideArmoryPackage(packageId) {
-        this.armoryPackages.delete(packageId);
-    }
-    armoryPackageIds() {
-        return [...this.armoryPackages].sort();
+    snapshotArmoryTurn(context) {
+        return this.armoryProvider?.snapshotTurn(context);
     }
 }
 /** Builds the complete, scoped MCP configuration for one agent turn. */
@@ -37,13 +34,19 @@ export class McpConfigAssembler {
                 [SESSION_MCP_HEADER]: sessionMcpCredential(context.sessionId),
             }));
         }
-        for (const packageId of this.registry.armoryPackageIds()) {
-            const name = `armory_${serverName(packageId)}`;
-            bindings.push(this.localBinding(name, `/mcp/armory/${encodeURIComponent(packageId)}`));
+        const armoryLease = context?.projectId && context.turnId
+            ? this.registry.snapshotArmoryTurn({ sessionId: context.sessionId, turnId: context.turnId, projectId: context.projectId })
+            : undefined;
+        for (const binding of armoryLease?.bindings ?? []) {
+            const name = `armory_${serverName(binding.packageId)}`;
+            bindings.push(this.localBinding(name, `/mcp/armory/${encodeURIComponent(binding.bindingId)}`, {
+                [SESSION_MCP_HEADER]: sessionMcpCredential(context.sessionId),
+            }));
         }
         return {
             mcpServers: Object.fromEntries(bindings.map((binding) => [binding.name, binding.config])),
             allowedTools: bindings.map((binding) => binding.allowedTools).join(","),
+            ...(armoryLease ? { release: () => armoryLease.release() } : {}),
         };
     }
     localBinding(name, route, headers = {}) {

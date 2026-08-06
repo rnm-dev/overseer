@@ -14,7 +14,7 @@ import { agentServices, configureManagedPluginToolHandler, getAgentDriver, getAg
 import { ManagedPluginInquiryError, ManagedPluginInquiryService, MANAGED_PLUGIN_INQUIRY_CAPABILITY, } from "./managedPluginInquiries.js";
 import { updateChecker } from "./updateChecker.js";
 import { applyUpdate, checkUpdate, updateOperationStatus } from "./updateOperations.js";
-import { createArmoryReadRouter } from "./armory/index.js";
+import { ARMORY_PROJECT_PACKAGES_CAPABILITY, createArmoryReadRouter } from "./armory/index.js";
 import { FileAccessService } from "./files/index.js";
 import { parseTranscriptPageRequest, parseTranscriptResumeEventId, transcriptResumeIndex, TranscriptPaginationError } from "./transcriptPagination.js";
 import { analyticsForSessions, parseSessionAnalyticsQuery, SessionAnalyticsQueryError } from "./sessionAnalytics.js";
@@ -170,7 +170,7 @@ function agentStatusView() {
         activeSessionCount: sessions.activeCount(),
         sessionCount: sessions.list().length,
         filesEnabled: Boolean(settings.get().fileTransferRoot),
-        capabilities: [MANAGED_PLUGIN_INQUIRY_CAPABILITY],
+        capabilities: [MANAGED_PLUGIN_INQUIRY_CAPABILITY, ARMORY_PROJECT_PACKAGES_CAPABILITY],
         agentAuth: (() => {
             const s = getAgentDriver("claude-code")?.services.status?.();
             return { authState: s?.authState, available: s?.available, checkedAt: s?.checkedAt };

@@ -2,7 +2,13 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { peonsRouter } from "./routes/peons.js";
-import { normalizeArmoryResult, safeConfigurationResult } from "./routes/peons/armory.js";
+import {
+  normalizeArmoryResult,
+  safeAssignmentResult,
+  safeConfigurationResult,
+  safeProfileOperationResult,
+  safeProfileResult,
+} from "./routes/peons/armory.js";
 
 test("Armory exposes discovery, configuration, and lifecycle mutation routes", () => {
   const router = peonsRouter() as unknown as { stack: Array<{ route?: { path?: string; methods?: Record<string, boolean> } }> };
@@ -20,12 +26,23 @@ test("Armory exposes discovery, configuration, and lifecycle mutation routes", (
   assert.equal(has(`${root}/packages/:packageId/configuration`, "delete"), true);
   assert.equal(has(`${root}/packages/:packageId/configuration/verify`, "post"), true);
   assert.equal(has(`${root}/packages/:packageId/mcp`, "get"), true);
+  assert.equal(has(`${root}/profiles`, "get"), true);
+  assert.equal(has(`${root}/profiles`, "post"), true);
+  assert.equal(has(`${root}/profiles/:profileId`, "patch"), true);
+  assert.equal(has(`${root}/profiles/:profileId`, "delete"), true);
+  assert.equal(has(`${root}/profiles/:profileId/configuration`, "put"), true);
+  assert.equal(has(`${root}/profiles/:profileId/verify`, "post"), true);
+  assert.equal(has(`${root}/projects/:projectId/assignments`, "get"), true);
+  assert.equal(has(`${root}/projects/:projectId/assignments/:packageId`, "put"), true);
+  assert.equal(has(`${root}/projects/:projectId/assignments/:packageId`, "delete"), true);
+  // These paths remain mounted only for mixed fleets. Capable Peons receive a
+  // local, side-effect-free ARMORY_ACTIVATION_RETIRED response.
   assert.equal(has(`${root}/packages/:packageId/enable`, "post"), true);
   assert.equal(has(`${root}/packages/:packageId/disable`, "post"), true);
   assert.equal(has(`${root}/settings`, "get"), true);
   assert.equal(has(`${root}/operations/:operationId`, "get"), true);
   for (const route of routes) {
-    for (const method of Object.keys(route.methods ?? {})) assert.ok(["get", "post", "put", "delete"].includes(method));
+    for (const method of Object.keys(route.methods ?? {})) assert.ok(["get", "post", "put", "patch", "delete"].includes(method));
   }
 });
 
@@ -33,7 +50,7 @@ test("Armory production routes have one direct Fleet HTTP authority", () => {
   const source = readFileSync(new URL("./routes/peons/armory.ts", import.meta.url), "utf8");
   assert.doesNotMatch(source, /reverseCommand|runReverseCommandTransport|armoryCall/);
   assert.match(source, /import \{ callPeon, connOfRecord \}/);
-  assert.equal((source.match(/\bcallPeon\(/g) ?? []).length, 14);
+  assert.equal((source.match(/\bcallPeon\(/g) ?? []).length, 23);
   for (const operation of [
     "inventory", "settings", "package", "configuration", "mcp", "operation",
     "refresh", "install", "update", "enable", "disable", "configure", "verify",
@@ -56,6 +73,64 @@ test("Armory configuration relays suppress submitted values in errors and operat
   assert.doesNotMatch(JSON.stringify(operation), new RegExp(secret));
   assert.deepEqual((operation.json as { operation: { phase: string; message: string; errorCode: null } }).operation, {
     id: "op", kind: "configure", status: "failure", phase: "configuration", message: "", errorCode: null,
+  });
+});
+
+test("typed Armory relays reconstruct bounded safe resources and operations", () => {
+  const profileId = "57ba5e9e-3ed2-4a92-919f-9f60ee69a450";
+  const projectId = "87b68e30-a923-48b4-9a58-f561a2390083";
+  const operationId = "f09663fc-fc80-4314-a7e6-70b14dd29473";
+  const secret = "profile_value_must_not_escape";
+  assert.deepEqual(safeProfileResult({
+    status: 200,
+    json: { profileId, type: "google-service-account", name: "Shared", status: "verified", configuredFields: { serviceAccountJson: true }, values: { serviceAccountJson: secret } },
+  }).json, {
+    profileId, type: "google-service-account", name: "Shared", status: "verified", configuredFields: { serviceAccountJson: true },
+  });
+  assert.deepEqual(safeAssignmentResult({
+    status: 200,
+    json: { projectId, packageId: "google-drive", profileId, unexpected: secret },
+  }).json, { projectId, packageId: "google-drive", profileId });
+  assert.deepEqual(safeProfileOperationResult({
+    status: 202,
+    json: { operationId, kind: "profile_configure", status: "queued", code: null, diagnostics: secret },
+  }).json, { operationId, kind: "profile_configure", status: "queued", code: null });
+  assert.deepEqual(safeProfileResult({
+    status: 200,
+    json: { profiles: Array.from({ length: 101 }, () => ({ profileId, type: "type", name: "Name", status: "missing", configuredFields: {} })) },
+  }, true), {
+    status: 502,
+    json: { error: "Peon returned an unsafe Armory response.", code: "UNSAFE_ARMORY_RESULT" },
+  });
+  assert.deepEqual(safeProfileResult({ status: 409, json: { error: secret, code: "PROFILE_IN_USE", diagnostics: secret } }), {
+    status: 409,
+    json: { error: "Peon rejected the Armory request.", code: "PROFILE_IN_USE" },
+    requestId: undefined,
+  });
+  assert.doesNotMatch(JSON.stringify(safeProfileResult({
+    status: 502,
+    json: { error: secret, code: "PEON_UNREACHABLE" },
+  })), new RegExp(secret));
+});
+
+test("profile operation polling strips diagnostics and rejects unsafe custom codes", () => {
+  const operationId = "f09663fc-fc80-4314-a7e6-70b14dd29473";
+  const secret = "PROFILE_SECRET_SENTINEL";
+  assert.deepEqual(safeConfigurationResult({
+    status: 200,
+    json: { operation: { operationId, kind: "profile_verify", status: "failed", code: "PROFILE_NOT_VERIFIED", diagnostics: secret } },
+  }), {
+    status: 200,
+    json: { operation: { operationId, kind: "profile_verify", status: "failed", code: "PROFILE_NOT_VERIFIED" } },
+  });
+  const rejected = safeProfileOperationResult({
+    status: 400,
+    json: { error: secret, code: secret },
+  }, true);
+  assert.doesNotMatch(JSON.stringify(rejected), new RegExp(secret));
+  assert.deepEqual(rejected.json, {
+    error: "Peon rejected the profile configuration request.",
+    code: "ARMORY_REQUEST_FAILED",
   });
 });
 

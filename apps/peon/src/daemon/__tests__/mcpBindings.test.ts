@@ -5,20 +5,26 @@ import { SESSION_MCP_HEADER, verifySessionMcpCredential } from "../sessionMcpAut
 
 test("MCP assembler combines project quick links with scoped Armory bindings", () => {
   const registry = new McpBindingRegistry();
-  registry.exposeArmoryPackage("google-analytics");
-  registry.exposeArmoryPackage("aws");
+  registry.registerArmoryProvider({ snapshotTurn: () => ({
+    bindings: [
+      { packageId: "google-analytics", bindingId: "binding-google" },
+      { packageId: "aws", bindingId: "binding-aws" },
+    ],
+    release: () => undefined,
+  }) });
   const assembler = new McpConfigAssembler(registry, "http://127.0.0.1:4570");
 
-  const result = assembler.assemble();
+  const result = assembler.assemble({ sessionId: "session", turnId: "turn", projectId: "project", allowSessionSpawning: false });
 
   assert.deepEqual(result?.mcpServers, {
     peon_projects: { type: "http", url: "http://127.0.0.1:4570/mcp/projects", headers: {} },
-    armory_aws: { type: "http", url: "http://127.0.0.1:4570/mcp/armory/aws", headers: {} },
-    armory_google_analytics: { type: "http", url: "http://127.0.0.1:4570/mcp/armory/google-analytics", headers: {} },
+    peon_plugins: { type: "http", url: "http://127.0.0.1:4570/mcp/plugins", headers: { [SESSION_MCP_HEADER]: result?.mcpServers.peon_plugins?.headers[SESSION_MCP_HEADER]! } },
+    armory_aws: { type: "http", url: "http://127.0.0.1:4570/mcp/armory/binding-aws", headers: { [SESSION_MCP_HEADER]: result?.mcpServers.armory_aws?.headers[SESSION_MCP_HEADER]! } },
+    armory_google_analytics: { type: "http", url: "http://127.0.0.1:4570/mcp/armory/binding-google", headers: { [SESSION_MCP_HEADER]: result?.mcpServers.armory_google_analytics?.headers[SESSION_MCP_HEADER]! } },
   });
   assert.equal(
     result?.allowedTools,
-    "mcp__peon_projects__*,mcp__armory_aws__*,mcp__armory_google_analytics__*",
+    "mcp__peon_projects__*,mcp__peon_plugins__*,mcp__armory_google_analytics__*,mcp__armory_aws__*",
   );
 });
 

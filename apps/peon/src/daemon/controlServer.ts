@@ -165,7 +165,7 @@ export function createControlServer(options: ControlServerOptions = {}) {
     next();
   });
 
-  // Local coding agents use enabled Armory MCP packages. Mounted before the
+  // Local coding agents use assignment-scoped Armory MCP turn bindings. Mounted before the
   // local-only API gate because the MCP router has a stricter boundary of
   // its own: genuine loopback, no browser Origin, and a loopback Host header.
   app.use("/mcp", createScopedMcpRouter({ armoryRuntime, projectService, sessionOrchestration, requestManagedPluginInstall }));

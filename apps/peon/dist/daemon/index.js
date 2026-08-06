@@ -46,6 +46,7 @@ try {
     const recovered = await recoverInterruptedArmoryOperations(armoryStores);
     if (recovered)
         console.warn(`recovered ${recovered} interrupted Armory operation(s)`);
+    await composition.armoryApi.projectPackages?.initializeMigration();
     await armoryRuntime.reconcile();
 }
 catch (error) {

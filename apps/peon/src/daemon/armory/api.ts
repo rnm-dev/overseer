@@ -6,6 +6,7 @@ import { ArmoryPackageInstallService, type ArmoryPackageInstallApi, type ArmoryU
 import type { ArmoryMcpLifecycleService } from "./mcpRuntime.js";
 import { ArmoryInventoryError, armoryInventory, type ArmoryInventoryReader } from "./inventory.js";
 import { ArmoryOperationError } from "./operationCoordinator.js";
+import { ArmoryProjectPackagesError, ArmoryProjectPackagesService } from "./projectPackages.js";
 import { createArmoryStores, type ArmoryOperationStore, type ArmorySettingsStore } from "./stores.js";
 import type { ArmoryPackageUninstallApi } from "./uninstaller.js";
 
@@ -25,6 +26,8 @@ export interface ArmoryApiServices {
   uninstaller?: ArmoryPackageUninstallApi;
   lifecycle?: Pick<ArmoryMcpLifecycleService, "enable" | "disable">;
   mcp?: { describe(packageId: string): Promise<unknown> };
+  projectPackages?: ArmoryProjectPackagesService;
+  projectPackagesCapability?: boolean;
   allowMutations?: boolean;
 }
 
@@ -40,6 +43,17 @@ const configurationBodySchema = z.object({
   values: z.record(z.string(), z.string().max(1024 * 1024)),
   confirmHostWrites: z.boolean().optional(),
 }).strict();
+
+const createProfileBodySchema = z.object({
+  type: z.string().regex(/^[a-z][a-z0-9.-]{0,63}$/),
+  name: z.string().trim().min(1).max(80),
+}).strict();
+
+const renameProfileBodySchema = z.object({ name: z.string().trim().min(1).max(80) }).strict();
+const profileConfigurationBodySchema = z.object({
+  values: z.record(z.string().regex(/^[A-Za-z][A-Za-z0-9_]{0,127}$/), z.string().max(1024 * 1024)).refine((values) => Object.keys(values).length <= 64, "too many profile fields"),
+}).strict();
+const assignmentBodySchema = z.object({ profileId: z.string().uuid().nullable() }).strict();
 
 const deleteConfigurationBodySchema = z.object({
   includeHost: z.boolean().optional(),
@@ -99,15 +113,22 @@ export function createArmoryReadRouter(
   const configuration = options.configuration ?? new ArmoryConfigurationService({ stores });
   const operations = options.operations ?? stores.operations;
   const installer = options.installer ?? new ArmoryPackageInstallService({ stores, inventory, runtime: options.runtime });
+  const projectPackages = () => {
+    if (!options.projectPackagesCapability || !options.projectPackages) {
+      throw new ArmoryProjectPackagesError(409, "UNSUPPORTED_CAPABILITY", "Peon does not advertise armory-project-packages-v1");
+    }
+    return options.projectPackages;
+  };
 
   const list = async (req: express.Request, res: express.Response) => {
     try {
-      res.json(await inventory.list({
+      const result = await inventory.list({
         q: singleQuery(req.query.q),
         installedOnly: installedOnly(req.query.installed),
         limit: limit(req.query.limit),
         cursor: singleQuery(req.query.cursor),
-      }));
+      });
+      res.json(options.projectPackagesCapability ? await safeCapableInventory(result, projectPackages()) : result);
     } catch (error) {
       sendError(res, error);
     }
@@ -119,38 +140,92 @@ export function createArmoryReadRouter(
     try { res.json(safeSettings(await settings.read())); }
     catch (error) { sendError(res, error); }
   });
+  router.get("/profiles", async (_req, res) => {
+    try { res.json(await projectPackages().listProfiles()); }
+    catch (error) { sendError(res, error); }
+  });
+  router.get("/projects/:projectId/assignments", async (req, res) => {
+    try { res.json(await projectPackages().listAssignments(req.params.projectId)); }
+    catch (error) { sendError(res, error); }
+  });
   router.get("/packages/:id/configuration", async (req, res) => {
     try {
-      const schema = await configuration.schema(req.params.id);
+      const schema = options.projectPackagesCapability
+        ? await projectPackages().legacyConfigurationSchema(req.params.id)
+        : await configuration.schema(req.params.id);
       res.json({ packageId: req.params.id, ...schema });
     } catch (error) {
       sendError(res, error);
     }
   });
   router.get("/packages/:id", async (req, res) => {
-    try { res.json(await inventory.get(req.params.id)); }
+    try {
+      const result = await inventory.get(req.params.id);
+      res.json(options.projectPackagesCapability ? await safeCapableInventory(result, projectPackages()) : result);
+    }
     catch (error) { sendError(res, error); }
   });
   router.get("/packages/:id/mcp", async (req, res) => {
     try {
       if (!options.mcp) throw new ArmoryInventoryError("NOT_FOUND", "Armory MCP runtime is unavailable");
-      res.json(await options.mcp.describe(req.params.id));
+      const detail = await options.mcp.describe(req.params.id);
+      if (options.projectPackagesCapability && detail && typeof detail === "object") {
+        const { enabled: _enabled, ...safe } = detail as Record<string, unknown>;
+        res.json(safe);
+      } else res.json(detail);
     } catch (error) { sendError(res, error); }
   });
   router.get("/operations/:id", async (req, res) => {
     try {
       const operation = await operations.get(req.params.id);
       if (!operation) throw new ArmoryInventoryError("NOT_FOUND", `Armory operation not found: ${req.params.id}`);
-      res.json({ operation });
+      res.json({ operation: operation.kind === "profile_configure" || operation.kind === "profile_verify" ? toProfileOperation(operation) : operation });
     } catch (error) {
       sendError(res, error);
     }
   });
 
   if (options.allowMutations) {
+    router.post("/profiles", async (req, res) => {
+      try {
+        const body = createProfileBodySchema.parse(req.body);
+        res.status(201).json(await projectPackages().createProfile(body.type, body.name));
+      } catch (error) { sendError(res, error); }
+    });
+    router.patch("/profiles/:profileId", async (req, res) => {
+      try {
+        const body = renameProfileBodySchema.parse(req.body);
+        res.json(await projectPackages().renameProfile(req.params.profileId, body.name));
+      } catch (error) { sendError(res, error); }
+    });
+    router.delete("/profiles/:profileId", async (req, res) => {
+      try { res.json(await projectPackages().deleteProfile(req.params.profileId)); }
+      catch (error) { sendError(res, error); }
+    });
+    router.put("/profiles/:profileId/configuration", async (req, res) => {
+      try {
+        const body = profileConfigurationBodySchema.parse(req.body);
+        res.status(202).json(toProfileOperation(await projectPackages().configureProfile(req.params.profileId, body.values)));
+      } catch (error) { sendError(res, error); }
+    });
+    router.post("/profiles/:profileId/verify", async (req, res) => {
+      try { res.status(202).json(toProfileOperation(await projectPackages().verifyProfile(req.params.profileId))); }
+      catch (error) { sendError(res, error); }
+    });
+    router.put("/projects/:projectId/assignments/:packageId", async (req, res) => {
+      try {
+        const body = assignmentBodySchema.parse(req.body);
+        res.json(await projectPackages().setAssignment(req.params.projectId, req.params.packageId, body.profileId));
+      } catch (error) { sendError(res, error); }
+    });
+    router.delete("/projects/:projectId/assignments/:packageId", async (req, res) => {
+      try { res.json(await projectPackages().removeAssignment(req.params.projectId, req.params.packageId)); }
+      catch (error) { sendError(res, error); }
+    });
     router.post("/refresh", async (_req, res) => {
       try {
-        res.json(await inventory.list({ limit: 100, forceRefresh: true }));
+        const result = await inventory.list({ limit: 100, forceRefresh: true });
+        res.json(options.projectPackagesCapability ? await safeCapableInventory(result, projectPackages()) : result);
       } catch (error) {
         sendError(res, error);
       }
@@ -175,6 +250,7 @@ export function createArmoryReadRouter(
     });
     router.post("/packages/:id/enable", async (req, res) => {
       try {
+        if (options.projectPackagesCapability) throw new ArmoryProjectPackagesError(410, "ARMORY_ACTIVATION_RETIRED", "Package enablement is replaced by project assignments");
         if (!options.lifecycle) throw new ArmoryOperationError("MCP_RUNTIME_UNAVAILABLE", "Armory MCP runtime is unavailable");
         const operation = await options.lifecycle.enable(req.params.id);
         res.status(202).json({ operation });
@@ -182,6 +258,7 @@ export function createArmoryReadRouter(
     });
     router.post("/packages/:id/disable", async (req, res) => {
       try {
+        if (options.projectPackagesCapability) throw new ArmoryProjectPackagesError(410, "ARMORY_ACTIVATION_RETIRED", "Package enablement is replaced by project assignments");
         if (!options.lifecycle) throw new ArmoryOperationError("MCP_RUNTIME_UNAVAILABLE", "Armory MCP runtime is unavailable");
         const operation = await options.lifecycle.disable(req.params.id);
         res.status(202).json({ operation });
@@ -211,7 +288,9 @@ export function createArmoryReadRouter(
   if (options.allowMutations) {
     router.post("/packages/:id/configuration/verify", async (req, res) => {
       try {
-        const operation = await configuration.verify(req.params.id);
+        const operation = options.projectPackagesCapability
+          ? await projectPackages().verifyLegacyPackageProfile(req.params.id)
+          : await configuration.verify(req.params.id);
         res.status(202).json({ operation });
       } catch (error) {
         sendError(res, error);
@@ -220,7 +299,9 @@ export function createArmoryReadRouter(
     router.put("/packages/:id/configuration", async (req, res) => {
       try {
         const body = configurationBodySchema.parse(req.body);
-        const operation = await configuration.configure(req.params.id, body.values, { confirmHostWrites: body.confirmHostWrites });
+        const operation = options.projectPackagesCapability
+          ? await projectPackages().configureLegacyPackageProfile(req.params.id, body.values)
+          : await configuration.configure(req.params.id, body.values, { confirmHostWrites: body.confirmHostWrites });
         res.status(202).json({ operation });
       } catch (error) {
         sendError(res, error);
@@ -229,7 +310,9 @@ export function createArmoryReadRouter(
     router.delete("/packages/:id/configuration", async (req, res) => {
       try {
         const body = deleteConfigurationBodySchema.parse(req.body ?? {});
-        const operation = await configuration.deleteConfiguration(req.params.id, body);
+        const operation = options.projectPackagesCapability
+          ? await projectPackages().clearLegacyPackageProfile(req.params.id)
+          : await configuration.deleteConfiguration(req.params.id, body);
         res.status(202).json({ operation });
       } catch (error) {
         sendError(res, error);
@@ -241,6 +324,10 @@ export function createArmoryReadRouter(
 }
 
 function sendError(res: express.Response, error: unknown): void {
+  if (error instanceof ArmoryProjectPackagesError) {
+    res.status(error.status).json({ error: error.message.slice(0, 4000), code: error.code });
+    return;
+  }
   if (error instanceof ArmoryInventoryError) {
     res.status(error.code === "NOT_FOUND" ? 404 : 400).json({ error: error.message, code: error.code });
     return;
@@ -261,4 +348,38 @@ function sendError(res: express.Response, error: unknown): void {
   }
   console.error("Armory API request failed:", error);
   res.status(500).json({ error: "Armory API request failed", code: "INTERNAL" });
+}
+
+function toProfileOperation(operation: ArmoryOperation) {
+  return {
+    operationId: operation.id,
+    kind: operation.kind,
+    status: operation.status === "success" ? "succeeded" : operation.status === "failure" ? "failed" : operation.status,
+    code: operation.errorCode,
+  };
+}
+
+async function safeCapableInventory<T extends { packages?: Array<{ id: string; installed: unknown }>; package?: { id: string; installed: unknown } }>(
+  view: T,
+  service: ArmoryProjectPackagesService,
+): Promise<T> {
+  if (view.packages) {
+    return {
+      ...view,
+      packages: await Promise.all(view.packages.map(async (entry) => ({
+        ...entry,
+        installed: entry.installed ? await service.installedPackageView(entry.id) : null,
+      }))),
+    };
+  }
+  if (view.package) {
+    return {
+      ...view,
+      package: {
+        ...view.package,
+        installed: view.package.installed ? await service.installedPackageView(view.package.id) : null,
+      },
+    };
+  }
+  return view;
 }

@@ -76,7 +76,9 @@ test("all public queue routes use the single Fleet HTTP path", async () => {
     '"POST", `/sessions/${encodeURIComponent(sid)}/queue`',
     '"PATCH",',
     '"DELETE",',
-    '/queue/${encodeURIComponent(String(req.params.itemId))}/send',
-    '/queue/${encodeURIComponent(String(req.params.itemId))}/steer',
+    "router.post(`${wp}/sessions/:sid/queue/:itemId/send`",
+    "router.post(`${wp}/sessions/:sid/queue/:itemId/steer`",
+    'operation: "send"',
+    'operation: "steer"',
   ]) assert.ok(queueRoutes.includes(fragment), fragment);
 });

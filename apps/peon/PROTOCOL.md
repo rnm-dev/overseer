@@ -129,11 +129,17 @@ GET   /api/v1/armory/packages/:id         one Armory package's catalog and local
 GET   /api/v1/armory/packages/:id/mcp     MCP capability, runtime state, endpoint, and live tool descriptions
 GET   /api/v1/armory/packages/:id/configuration  safe field schema + configured-field metadata
 POST  /api/v1/armory/packages/:id/install  start a durable catalog install
-POST  /api/v1/armory/packages/:id/enable   enable and health-check package MCP
-POST  /api/v1/armory/packages/:id/disable  hide and stop package MCP
+POST  /api/v1/armory/packages/:id/enable   legacy Peon only; retired by armory-project-packages-v1
+POST  /api/v1/armory/packages/:id/disable  legacy Peon only; retired by armory-project-packages-v1
 DELETE /api/v1/armory/packages/:id         durable ordinary uninstall; preserves configuration
 GET   /api/v1/armory/settings             registry and agent-install policy (no credentials)
 GET   /api/v1/armory/operations/:id       safe asynchronous operation status
+GET|POST /api/v1/armory/profiles              capability-gated reusable typed profiles
+PATCH|DELETE /api/v1/armory/profiles/:profileId
+PUT   /api/v1/armory/profiles/:profileId/configuration
+POST  /api/v1/armory/profiles/:profileId/verify
+GET   /api/v1/armory/projects/:projectId/assignments
+GET|PUT|DELETE /api/v1/armory/projects/:projectId/assignments/:packageId
 GET   /api/v1/stats                       usage/cost/outcome rollups; ?period=day|yesterday|week|month
 GET   /api/v1/analytics                   flexible user/project/time session analytics
 GET   /api/v1/projects/:key               project detail with docs/index.md and recursive docs tree
@@ -175,6 +181,26 @@ The authenticated Fleet HTTP routes above are the sole remote Armory
 authority. Armory reads and mutations are not `reverse-command-v1` operations;
 there is no transport selector or fallback. The control WebSocket carries no
 Armory result projection or lifecycle event.
+
+`armory-project-packages-v1` is the exact capability for the profile and
+assignment resources. Its normative JSON Schema and fixtures are repository
+documentation in `docs/protocol/armory-project-packages-v1/`; the product,
+migration, turn-start and security rules are in the
+repository's `docs/armory-project-packages.md`. Installation is Peon-wide, but
+assignment presence is the only package-availability decision for a project.
+A credentialed package declares one profile type and an assignment names one
+verified Peon-wide profile of that exact type. The same profile may serve
+multiple compatible packages and projects. A credential-free assignment
+carries `profileId: null`. No assignment means the package contributes no
+process/provider, tools, descriptions, instructions, configuration or
+credentials to the new turn. There is no canonical `enabled` property or
+enable/disable operation in this capability. Existing Fleet request-id,
+locking, operation and safe-error conventions apply without another global
+revision or idempotency protocol. Assignments are captured before each provider
+turn; later changes affect later turns only.
+Legacy enable/disable calls against a capable Peon return `410
+ARMORY_ACTIVATION_RETIRED` without an operation or state. Legacy configuration
+routes may temporarily alias the migrated package profile and never expose values.
 
 Project and session representations carry an immutable `projectId` alongside
 the compatibility `key`/`projectKey` fields. Project keys remain mutable routing
@@ -447,7 +473,7 @@ Together, the overseer-facing AI data is available as:
 - `GET /api/v1/capabilities/:provider` — installed plugin, skill, and MCP names with enablement, version/origin, and transport metadata. Secrets and connection parameters are never returned.
 - `GET /api/v1/armory/packages?q=&installed=&limit=&cursor=` — merged official-catalog and local installation state. Installed packages remain visible when the registry is offline; `registry` reports live, cached, or unavailable state.
 - `POST /api/v1/armory/refresh` — explicitly revalidates the catalog and returns up to 100 merged package records with the same registry metadata. Failed live refreshes retain last-known-good cached data when available.
-- `GET /api/v1/armory/packages/:id` — the same safe representation for one package, including its optional square `iconUrl`, requirements, versions, enablement/configuration state, and update availability. Configuration values are never returned.
+- `GET /api/v1/armory/packages/:id` — the same safe representation for one package, including its optional square `iconUrl`, requirements, versions, installation state, and update availability. Under `armory-project-packages-v1` it contains no enablement or package-level configuration state. Configuration values are never returned.
 - `GET /api/v1/armory/packages/:id/configuration` — package-declared field labels, types, choices, validation, host-write warnings, and boolean configured-field metadata. Values are never returned.
 - `DELETE /api/v1/armory/packages/:id` — starts an asynchronous ordinary uninstall. The runtime is hidden and drained before files are removed, the pre-uninstall hook is not replayed blindly after interruption, and credentials, managed home, and ownership records are preserved. `purge: true` is rejected because ownership-safe purge is not part of this endpoint yet.
 - `GET /api/v1/armory/settings` — configured/effective registry URL and the agent-install allowlist. The fleet profile is read-only; only the operator profile may change settings or submit/delete package configuration.

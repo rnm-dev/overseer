@@ -2,6 +2,7 @@ import { mkdir, readdir, rm, stat } from "node:fs/promises";
 import {
   armoryCredentialMetadataSchema,
   armoryOperationSchema,
+  armoryProjectPackagesStateSchema,
   armorySettingsSchema,
   credentialStateSchema,
   installedArmoryPackageSchema,
@@ -10,6 +11,7 @@ import {
   ownershipStateSchema,
   type ArmoryCredentialMetadata,
   type ArmoryOperation,
+  type ArmoryProjectPackagesState,
   type ArmoryOwnershipEntry,
   type ArmorySettings,
   type CredentialState,
@@ -24,6 +26,13 @@ const defaultInstalledState: InstalledState = { schemaVersion: 1, packages: {} }
 const defaultOwnershipState: OwnershipState = { schemaVersion: 1, packages: {} };
 const defaultCredentialState: CredentialState = { schemaVersion: 1, packages: {} };
 const defaultSettings: ArmorySettings = { schemaVersion: 1, registryUrl: "https://raw.githubusercontent.com/rnm-dev/armory/main/armory.json", agentInstallAllowlist: [] };
+const defaultProjectPackagesState: ArmoryProjectPackagesState = {
+  schemaVersion: 1,
+  migrationCompletedAt: null,
+  profiles: {},
+  assignments: [],
+  legacyProfileByPackage: {},
+};
 
 export class InstalledPackageStore {
   private readonly store: AtomicJsonStore<InstalledState>;
@@ -61,6 +70,20 @@ export class InstalledPackageStore {
       delete packages[id];
       return { ...state, packages };
     });
+  }
+
+  async retireLegacyActivationState(): Promise<void> {
+    await this.store.update((state) => ({
+      ...state,
+      packages: Object.fromEntries(Object.entries(state.packages).map(([id, record]) => {
+        const legacy = record as InstalledArmoryPackage & { enabled?: boolean; configurationStatus?: string };
+        const { enabled: _enabled, configurationStatus: _configurationStatus, ...current } = legacy;
+        return [id, {
+          ...current,
+          state: current.state === "needs_configuration" || current.state === "verifying" ? "ready" : current.state,
+        } as InstalledArmoryPackage];
+      })),
+    }));
   }
 }
 
@@ -111,6 +134,21 @@ export class ArmoryCredentialStore {
       delete packages[id];
       return { ...state, packages };
     });
+  }
+
+  async snapshot(): Promise<CredentialState> { return structuredClone(await this.store.read()); }
+  async clear(): Promise<void> { await this.store.write(defaultCredentialState); }
+}
+
+export class ArmoryProjectPackageStore {
+  private readonly store: AtomicJsonStore<ArmoryProjectPackagesState>;
+  constructor(filePath: string) {
+    this.store = new AtomicJsonStore({ filePath, schema: armoryProjectPackagesStateSchema, defaults: () => defaultProjectPackagesState, mode: 0o600 });
+  }
+  read(): Promise<ArmoryProjectPackagesState> { return this.store.read(); }
+  write(state: ArmoryProjectPackagesState): Promise<void> { return this.store.write(state); }
+  update(mutate: (current: ArmoryProjectPackagesState) => ArmoryProjectPackagesState | Promise<ArmoryProjectPackagesState>): Promise<ArmoryProjectPackagesState> {
+    return this.store.update(mutate);
   }
 }
 
@@ -200,6 +238,7 @@ export interface ArmoryStores {
   settings: ArmorySettingsStore;
   credentials: ArmoryCredentialStore;
   ownership: OwnershipLedgerStore;
+  projectPackages: ArmoryProjectPackageStore;
 }
 
 export function createArmoryStores(roots?: ArmoryPathRoots): ArmoryStores {
@@ -211,6 +250,7 @@ export function createArmoryStores(roots?: ArmoryPathRoots): ArmoryStores {
     settings: new ArmorySettingsStore(paths.settingsFile),
     credentials: new ArmoryCredentialStore(paths.credentialsFile),
     ownership: new OwnershipLedgerStore(paths.ownershipFile),
+    projectPackages: new ArmoryProjectPackageStore(paths.projectPackagesFile),
   };
 }
 

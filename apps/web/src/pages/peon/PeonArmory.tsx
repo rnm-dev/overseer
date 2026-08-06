@@ -7,6 +7,7 @@ import { usePeon } from "./context";
 import { ArmoryConfigurationPanel } from "./ArmoryConfigurationPanel";
 import { ArmoryMcpPanel } from "./ArmoryMcpPanel";
 import { ArmoryLifecyclePanel } from "./ArmoryLifecyclePanel";
+import { ArmoryProfilesPanel } from "./ArmoryProfilesPanel";
 import {
   ARMORY_SEARCH_DEBOUNCE_MS,
   activeArmoryCapabilities,
@@ -15,14 +16,17 @@ import {
   getArmoryInventory,
   getArmoryMcp,
   getArmoryPackage,
+  getArmoryProfiles,
   getArmorySettings,
   isMcpCapable,
   refreshArmory,
+  supportsArmoryProjectPackages,
   type ArmoryConfiguration,
   type ArmoryInventoryResponse,
   type ArmoryMcpDetails,
   type ArmoryPackageDetailResponse,
   type ArmoryPackageSummary,
+  type ArmoryProfile,
   type ArmoryRegistry,
   type ArmorySettings,
   type ArmoryView,
@@ -102,9 +106,10 @@ function CapabilityChips({ item }: { item: ArmoryPackageSummary }) {
   return <div className="flex flex-wrap gap-1.5">{capabilities.map((capability) => <Badge key={capability} tone="green">{capability.toUpperCase()}</Badge>)}</div>;
 }
 
-function PackageBadges({ item }: { item: ArmoryPackageSummary }) {
+function PackageBadges({ item, projectPackages = false }: { item: ArmoryPackageSummary; projectPackages?: boolean }) {
   if (!item.installed) return item.updateAvailable ? <Badge tone="amber">Update available</Badge> : null;
   const installed = item.installed;
+  if (projectPackages) return <div className="flex flex-wrap gap-1.5">{installed.state === "error" && <Badge tone="red">Unavailable</Badge>}{item.updateAvailable && <Badge tone="amber">Update available</Badge>}</div>;
   const hasError = installed.state === "error" || installed.configurationStatus === "invalid" || Boolean(installed.lastError);
   const needsConfiguration = !hasError && (installed.state === "needs_configuration" || installed.configurationStatus === "missing");
   const disabled = !hasError && !needsConfiguration && !installed.enabled;
@@ -130,8 +135,8 @@ export function isPackageReady(item: ArmoryPackageSummary): boolean {
   );
 }
 
-export function PackageCard({ item }: { item: ArmoryPackageSummary }) {
-  const ready = isPackageReady(item);
+export function PackageCard({ item, projectPackages = false }: { item: ArmoryPackageSummary; projectPackages?: boolean }) {
+  const ready = !projectPackages && isPackageReady(item);
   const icon = safeUrl(item.iconUrl || item.icon);
   return (
     <li>
@@ -147,8 +152,8 @@ export function PackageCard({ item }: { item: ArmoryPackageSummary }) {
               </div>
             </div>
             <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-              <PackageBadges item={item} />
-              <div className="relative grid size-9 place-items-center" role="img" aria-label={ready ? "Installed and running" : item.installed ? "Installed but not running" : "Not installed"}>
+              <PackageBadges item={item} projectPackages={projectPackages} />
+              <div className="relative grid size-9 place-items-center" role="img" aria-label={ready ? "Installed and running" : item.installed ? projectPackages ? "Installed" : "Installed but not running" : "Not installed"}>
                 {ready && <Cpu className="absolute animate-pulse text-accent blur-[5px] motion-reduce:animate-none" size={22} strokeWidth={3} aria-hidden />}
                 <Cpu className={ready ? "relative z-10 text-accent-strong drop-shadow-[0_0_6px_rgba(143,239,63,0.95)]" : "relative z-10 text-ink-disabled"} size={20} strokeWidth={2.2} aria-hidden />
               </div>
@@ -157,7 +162,7 @@ export function PackageCard({ item }: { item: ArmoryPackageSummary }) {
           <p className="mt-3 line-clamp-3 flex-1 text-sm leading-relaxed text-ink-muted">{item.summary || (item.available ? "No description provided." : "This installed package is no longer present in the current catalog.")}</p>
           <div className="mt-4 flex flex-wrap items-center justify-between gap-2 font-mono text-[0.7rem] text-ink-faint">
             <CapabilityChips item={item} />
-            <span className={ready ? "text-accent-strong/80" : ""}>{ready ? `Enabled · ${item.installed?.version}` : item.installed ? `${item.installed.enabled ? "Enabled" : "Disabled"} · ${item.installed.version}` : "Not installed"}{item.latestVersion && !ready ? ` · Latest ${item.latestVersion}` : ""}</span>
+            <span className={ready ? "text-accent-strong/80" : ""}>{ready ? `Enabled · ${item.installed?.version}` : item.installed ? projectPackages ? `Installed · ${item.installed.version}` : `${item.installed.enabled ? "Enabled" : "Disabled"} · ${item.installed.version}` : "Not installed"}{item.latestVersion && !ready ? ` · Latest ${item.latestVersion}` : ""}</span>
           </div>
         </Card>
       </Link>
@@ -181,6 +186,7 @@ function MarketplaceList() {
   const refreshController = useRef<AbortController | null>(null);
   const gate = useRef(new ArmoryRequestGate());
   const controller = useRef<AbortController | null>(null);
+  const projectPackages = supportsArmoryProjectPackages(peon.capabilities);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedQuery(query), ARMORY_SEARCH_DEBOUNCE_MS);
@@ -291,7 +297,7 @@ function MarketplaceList() {
       ) : inventory?.packages.length === 0 && !unavailableEmpty ? (
         <Card className="px-6 py-12 text-center"><p className="text-sm text-ink-muted">No packages match this {view} view{debouncedQuery ? " and search" : ""}.</p></Card>
       ) : (
-        <ul className="grid gap-4 md:grid-cols-2">{inventory?.packages.map((item) => <PackageCard key={item.id} item={item} />)}</ul>
+        <ul className="grid gap-4 md:grid-cols-2">{inventory?.packages.map((item) => <PackageCard key={item.id} item={item} projectPackages={projectPackages} />)}</ul>
       )}
 
       {inventory?.nextCursor && <div className="flex justify-center"><Button type="button" variant="secondary" disabled={loadingMore} onClick={() => void load(inventory.nextCursor, true)}>{loadingMore ? "Loading…" : "Load more"}</Button></div>}
@@ -314,21 +320,32 @@ function PackageDetail({ packageId }: { packageId: string }) {
   const [tab, setTab] = useState<"overview" | "mcp">("overview");
   const [error, setError] = useState<unknown>(null);
   const [configurationError, setConfigurationError] = useState<unknown>(null);
+  const [profiles, setProfiles] = useState<ArmoryProfile[]>([]);
+  const [profilesError, setProfilesError] = useState<unknown>(null);
+  const [profilesLoading, setProfilesLoading] = useState(false);
   const gate = useRef(new ArmoryRequestGate());
   const controller = useRef<AbortController | null>(null);
+  const projectPackages = supportsArmoryProjectPackages(peon.capabilities);
   const load = useCallback(async (quiet = false) => {
     controller.current?.abort();
     const abort = new AbortController();
     controller.current = abort;
     const token = gate.current.begin();
-    if (!quiet) { setDetail(null); setConfiguration(null); setMcp(null); setError(null); }
+    if (!quiet) { setDetail(null); setConfiguration(null); setMcp(null); setProfiles([]); setError(null); }
     setConfigurationError(null);
     setMcpError(null);
+    setProfilesError(null);
     try {
       const request = <T,>(path: string) => api<T>(path, { signal: abort.signal });
       const value = await getArmoryPackage(base, packageId, request);
       if (!gate.current.current(token)) return;
       setDetail(value);
+      if (projectPackages) {
+        setProfilesLoading(true);
+        try { const result = await getArmoryProfiles(base, request); if (gate.current.current(token)) setProfiles(result.profiles); }
+        catch (err) { if (!abort.signal.aborted && gate.current.current(token)) setProfilesError(err); }
+        finally { if (gate.current.current(token)) setProfilesLoading(false); }
+      }
       const mcpCapable = isMcpCapable(value.package) || isMcpCapable(value.catalog);
       if (mcpCapable) {
         setMcpLoading(true);
@@ -345,7 +362,7 @@ function PackageDetail({ packageId }: { packageId: string }) {
         catch (err) { if (!abort.signal.aborted && gate.current.current(token)) setConfigurationError(err); }
       } else setConfiguration(null);
     } catch (err) { if (!abort.signal.aborted && gate.current.current(token)) setError(err); }
-  }, [base, packageId]);
+  }, [base, packageId, projectPackages]);
   const refresh = useCallback(() => load(true), [load]);
   useEffect(() => {
     const requestGate = gate.current;
@@ -364,13 +381,13 @@ function PackageDetail({ packageId }: { packageId: string }) {
     <div className="space-y-6">
       <Link to=".." relative="path" className="font-mono text-xs text-ink-muted hover:text-accent-strong">← Armory</Link>
       <RegistryNotices registry={detail.registry} settings={null} />
-      <header><div className="flex flex-wrap items-start justify-between gap-4"><div className="flex items-center gap-3"><div className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-lg border border-edge-strong bg-surface-raised text-ink-faint">{icon ? <img src={icon} alt="" className="h-full w-full object-cover" /> : <PackageIcon size={23} aria-hidden />}</div><div><h1 className="font-display text-2xl font-extrabold text-ink">{catalog?.displayName || item.displayName || item.id}</h1><p className="mt-1 font-mono text-xs text-ink-faint">{item.id} · {peon.name || peon.hostname || peon.peonId}</p></div></div><div className="flex flex-wrap gap-1.5"><CapabilityChips item={item} /><PackageBadges item={item} /></div></div><p className="mt-4 max-w-3xl text-sm leading-relaxed text-ink-muted">{catalog?.summary || item.summary || "Catalog metadata is unavailable for this installed package."}</p>{docs && <a className="mt-3 inline-flex items-center gap-1.5 font-mono text-xs text-accent-strong hover:underline" href={docs} target="_blank" rel="noreferrer">Documentation <ExternalLink size={13} /></a>}</header>
+      <header><div className="flex flex-wrap items-start justify-between gap-4"><div className="flex items-center gap-3"><div className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-lg border border-edge-strong bg-surface-raised text-ink-faint">{icon ? <img src={icon} alt="" className="h-full w-full object-cover" /> : <PackageIcon size={23} aria-hidden />}</div><div><h1 className="font-display text-2xl font-extrabold text-ink">{catalog?.displayName || item.displayName || item.id}</h1><p className="mt-1 font-mono text-xs text-ink-faint">{item.id} · {peon.name || peon.hostname || peon.peonId}</p></div></div><div className="flex flex-wrap gap-1.5"><CapabilityChips item={item} /><PackageBadges item={item} projectPackages={projectPackages} /></div></div><p className="mt-4 max-w-3xl text-sm leading-relaxed text-ink-muted">{catalog?.summary || item.summary || "Catalog metadata is unavailable for this installed package."}</p>{docs && <a className="mt-3 inline-flex items-center gap-1.5 font-mono text-xs text-accent-strong hover:underline" href={docs} target="_blank" rel="noreferrer">Documentation <ExternalLink size={13} /></a>}</header>
       {mcpCapable && <div className="flex border-b border-edge-strong" role="tablist" aria-label="Package details"><button type="button" role="tab" aria-selected={tab === "overview"} onClick={() => setTab("overview")} className={`border-b-2 px-4 py-2 font-display text-sm font-bold ${tab === "overview" ? "border-accent text-accent-strong" : "border-transparent text-ink-muted hover:text-ink"}`}>Overview</button><button type="button" role="tab" aria-selected={tab === "mcp"} onClick={() => setTab("mcp")} className={`border-b-2 px-4 py-2 font-display text-sm font-bold ${tab === "mcp" ? "border-accent text-accent-strong" : "border-transparent text-ink-muted hover:text-ink"}`}>MCP</button></div>}
-      {tab === "mcp" && mcpCapable ? <ArmoryMcpPanel details={mcp} loading={mcpLoading} error={mcpError} configured={Boolean(configured)} enabled={Boolean(item.installed?.enabled)} onRetry={() => void refresh()} /> : <>
-        <ArmoryLifecyclePanel base={base} packageId={packageId} installed={item.installed} versions={catalog?.versions ?? []} latestVersion={catalog?.latest || item.latestVersion} updateAvailable={item.updateAvailable} onRefresh={refresh} />
-        <Card className="p-5"><dl className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4"><DetailRow label="Latest version">{catalog?.latest || item.latestVersion || "Unavailable"}</DetailRow><DetailRow label="Installed version">{item.installed?.version || "Not installed"}</DetailRow><DetailRow label="Configuration">{item.installed?.configurationStatus?.replace(/_/g, " ") || "Not installed"}</DetailRow><DetailRow label="Credentials required">{(catalog?.requirements || item.requirements)?.credentials ? "Yes" : "No"}</DetailRow><DetailRow label="Host writes required">{(catalog?.requirements || item.requirements)?.hostWrites ? "Yes" : "No"}</DetailRow>{item.installed && <><DetailRow label="Installed">{formatDate(item.installed.installedAt)}</DetailRow><DetailRow label="Updated">{formatDate(item.installed.updatedAt)}</DetailRow></>}</dl>{item.installed?.lastError && <p className="mt-5 border-l-2 border-danger bg-danger/5 px-3 py-2 text-sm text-danger">The latest package operation failed.</p>}</Card>
+      {tab === "mcp" && mcpCapable ? <ArmoryMcpPanel details={mcp} loading={mcpLoading} error={mcpError} configured={Boolean(configured)} enabled={Boolean(item.installed?.enabled)} assignmentManaged={projectPackages} onRetry={() => void refresh()} /> : <>
+        <ArmoryLifecyclePanel base={base} packageId={packageId} installed={item.installed} versions={catalog?.versions ?? []} latestVersion={catalog?.latest || item.latestVersion} updateAvailable={item.updateAvailable} projectPackages={projectPackages} onRefresh={refresh} />
+        <Card className="p-5"><dl className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4"><DetailRow label="Latest version">{catalog?.latest || item.latestVersion || "Unavailable"}</DetailRow><DetailRow label="Installed version">{item.installed?.version || "Not installed"}</DetailRow>{!projectPackages && <DetailRow label="Configuration">{item.installed?.configurationStatus?.replace(/_/g, " ") || "Not installed"}</DetailRow>}<DetailRow label="Credentials required">{projectPackages ? item.installed?.profileRequirement ? "Yes" : "No" : (catalog?.requirements || item.requirements)?.credentials ? "Yes" : "No"}</DetailRow>{projectPackages && item.installed && <DetailRow label="Profile type">{item.installed.profileRequirement?.type || "Credential-free"}</DetailRow>}<DetailRow label="Host writes required">{(catalog?.requirements || item.requirements)?.hostWrites ? "Yes" : "No"}</DetailRow>{item.installed && !projectPackages && <><DetailRow label="Installed">{formatDate(item.installed.installedAt)}</DetailRow><DetailRow label="Updated">{formatDate(item.installed.updatedAt)}</DetailRow></>}</dl>{item.installed?.lastError && <p className="mt-5 border-l-2 border-danger bg-danger/5 px-3 py-2 text-sm text-danger">The latest package operation failed.</p>}</Card>
         <section><h2 className="mb-3 font-display text-lg font-bold text-ink">Catalog versions</h2>{!catalog ? <Card className="p-5 text-sm text-ink-muted">This is an installed-only package. It is not present in the current catalog.</Card> : <div className="space-y-3">{catalog.versions.map((version) => <Card key={version.version} className="p-4"><div className="flex flex-wrap items-center justify-between gap-2"><h3 className="font-display text-sm font-bold text-ink">Version {version.version}</h3><span className="font-mono text-xs text-ink-faint">Requires Peon {version.minPeonVersion}+</span></div><div className="mt-3 flex flex-wrap gap-2">{version.platforms.map((platform) => <Badge key={`${platform.os}-${platform.arch}`}>{platform.os} / {platform.arch}</Badge>)}</div><details className="mt-3 text-xs text-ink-faint"><summary className="cursor-pointer font-mono">Technical archive details</summary><dl className="mt-2 space-y-1 font-mono"><div className="break-all">URL: {safeUrl(version.archive.url) ?? "Unavailable"}</div><div>Size: {version.archive.size.toLocaleString()} bytes</div><div className="break-all">SHA-256: {version.archive.sha256}</div></dl></details></Card>)}</div>}</section>
-        <ArmoryConfigurationPanel key={`${base}:${packageId}`} base={base} packageId={packageId} installed={item.installed} schema={configuration} schemaError={configurationError} onRetrySchema={() => void refresh()} onRefresh={refresh} />
+        {projectPackages ? item.installed?.profileRequirement ? <ArmoryProfilesPanel base={base} requirement={item.installed.profileRequirement} schema={configuration} profiles={profiles} loading={profilesLoading} error={profilesError || configurationError} onRefresh={refresh} /> : item.installed ? <Card className="p-5 text-sm text-ink-muted">This credential-free package needs no profile. Assign it from a project’s Packages tab.</Card> : null : <ArmoryConfigurationPanel key={`${base}:${packageId}`} base={base} packageId={packageId} installed={item.installed} schema={configuration} schemaError={configurationError} onRetrySchema={() => void refresh()} onRefresh={refresh} />}
       </>}
     </div>
   );

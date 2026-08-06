@@ -67,8 +67,7 @@ export class ArmoryConfigurationService {
       const ownership = await stores.ownership.list(packageId);
       const hostHome = this.options.hostHome ?? os.homedir();
       const hostRoots = await prepareHostWrites(active.manifest, ownership, options.confirmHostWrites ?? false, hostHome);
-      const wasEnabled = active.installed.enabled;
-      if (wasEnabled) await this.options.runtime?.stop(packageId);
+      await this.options.runtime?.stop(packageId);
       await stores.installed.set({ ...active.installed, state: "verifying", configurationStatus: "unverified", activeOperationId: operation.operationId, updatedAt: this.now() });
       try {
         await stores.credentials.set(packageId, values, this.now());
@@ -98,9 +97,8 @@ export class ArmoryConfigurationService {
         }
         await this.options.runtime?.healthCheck(packageId);
         await stores.installed.set({ ...active.installed, state: "ready", configurationStatus: "verified", activeOperationId: null, lastError: null, updatedAt: this.now() });
-        if (wasEnabled) await this.options.runtime?.start(packageId);
       } catch (error) {
-        await stores.installed.set({ ...active.installed, enabled: wasEnabled ? false : active.installed.enabled, state: "needs_configuration", configurationStatus: "invalid", activeOperationId: null, lastError: safeConfigurationError(error), updatedAt: this.now() }).catch(() => undefined);
+        await stores.installed.set({ ...active.installed, state: "needs_configuration", configurationStatus: "invalid", activeOperationId: null, lastError: safeConfigurationError(error), updatedAt: this.now() }).catch(() => undefined);
         throw error;
       }
     });
@@ -121,7 +119,7 @@ export class ArmoryConfigurationService {
         await this.options.runtime?.healthCheck(packageId);
         await this.options.stores.installed.set({ ...active.installed, state: "ready", configurationStatus: "verified", activeOperationId: null, lastError: null, updatedAt: this.now() });
       } catch (error) {
-        await this.options.stores.installed.set({ ...active.installed, enabled: false, state: "needs_configuration", configurationStatus: "invalid", activeOperationId: null, lastError: safeConfigurationError(error), updatedAt: this.now() }).catch(() => undefined);
+        await this.options.stores.installed.set({ ...active.installed, state: "needs_configuration", configurationStatus: "invalid", activeOperationId: null, lastError: safeConfigurationError(error), updatedAt: this.now() }).catch(() => undefined);
         throw error;
       }
     });
@@ -130,7 +128,7 @@ export class ArmoryConfigurationService {
   async deleteConfiguration(packageId: string, options: DeleteArmoryConfigurationOptions = {}): Promise<ArmoryOperation> {
     return this.operations.start(packageId, "delete_configuration", async (operation) => {
       const active = await loadActivePackage(this.options.stores, packageId);
-      if (active.installed.enabled) await this.options.runtime?.stop(packageId);
+      await this.options.runtime?.stop(packageId);
       const entries = await this.options.stores.ownership.list(packageId);
       const configuration = active.manifest.configuration;
       const home = resolveContainedPath(this.options.stores.paths.homesDir, packageId);
@@ -143,7 +141,7 @@ export class ArmoryConfigurationService {
       for (const entry of selected.sort((a, b) => b.path.length - a.path.length)) await removeOwnedPath(entry);
       await this.options.stores.credentials.delete(packageId);
       await this.options.stores.ownership.replace(packageId, entries.filter((entry) => !selected.includes(entry)));
-      await this.options.stores.installed.set({ ...active.installed, enabled: false, state: "needs_configuration", configurationStatus: "missing", activeOperationId: null, lastError: null, updatedAt: this.now() });
+      await this.options.stores.installed.set({ ...active.installed, state: "needs_configuration", configurationStatus: "missing", activeOperationId: null, lastError: null, updatedAt: this.now() });
     });
   }
 }

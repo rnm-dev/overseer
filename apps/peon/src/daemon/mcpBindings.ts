@@ -13,26 +13,43 @@ export interface McpHttpBinding {
 export interface AssembledMcpConfig {
   mcpServers: Record<string, McpHttpBinding["config"]>;
   allowedTools: string;
+  release?: () => void;
+}
+
+export interface ArmoryTurnContext {
+  sessionId: string;
+  turnId: string;
+  projectId: string;
+}
+
+export interface ArmoryTurnBinding {
+  packageId: string;
+  bindingId: string;
+}
+
+export interface ArmoryTurnBindingLease {
+  bindings: ArmoryTurnBinding[];
+  release(): void;
+}
+
+export interface ArmoryTurnBindingProvider {
+  snapshotTurn(context: ArmoryTurnContext): ArmoryTurnBindingLease;
 }
 
 function serverName(value: string): string {
   return value.replaceAll("-", "_");
 }
 
-/** Tracks the Armory MCP endpoints that are currently healthy and enabled. */
+/** Connects per-turn MCP assembly to the assignment-scoped Armory runtime. */
 export class McpBindingRegistry {
-  private readonly armoryPackages = new Set<string>();
+  private armoryProvider: ArmoryTurnBindingProvider | null = null;
 
-  exposeArmoryPackage(packageId: string): void {
-    this.armoryPackages.add(packageId);
+  registerArmoryProvider(provider: ArmoryTurnBindingProvider): void {
+    this.armoryProvider = provider;
   }
 
-  hideArmoryPackage(packageId: string): void {
-    this.armoryPackages.delete(packageId);
-  }
-
-  armoryPackageIds(): string[] {
-    return [...this.armoryPackages].sort();
+  snapshotArmoryTurn(context: ArmoryTurnContext): ArmoryTurnBindingLease | undefined {
+    return this.armoryProvider?.snapshotTurn(context);
   }
 }
 
@@ -43,7 +60,7 @@ export class McpConfigAssembler {
     private readonly controlBaseUrl: string,
   ) {}
 
-  assemble(context?: { sessionId: string; allowSessionSpawning: boolean }): AssembledMcpConfig | undefined {
+  assemble(context?: { sessionId: string; turnId?: string; projectId?: string | null; allowSessionSpawning: boolean }): AssembledMcpConfig | undefined {
     const bindings: McpHttpBinding[] = [
       this.localBinding("peon_projects", "/mcp/projects"),
     ];
@@ -58,14 +75,20 @@ export class McpConfigAssembler {
       }));
     }
 
-    for (const packageId of this.registry.armoryPackageIds()) {
-      const name = `armory_${serverName(packageId)}`;
-      bindings.push(this.localBinding(name, `/mcp/armory/${encodeURIComponent(packageId)}`));
+    const armoryLease = context?.projectId && context.turnId
+      ? this.registry.snapshotArmoryTurn({ sessionId: context.sessionId, turnId: context.turnId, projectId: context.projectId })
+      : undefined;
+    for (const binding of armoryLease?.bindings ?? []) {
+      const name = `armory_${serverName(binding.packageId)}`;
+      bindings.push(this.localBinding(name, `/mcp/armory/${encodeURIComponent(binding.bindingId)}`, {
+        [SESSION_MCP_HEADER]: sessionMcpCredential(context!.sessionId),
+      }));
     }
 
     return {
       mcpServers: Object.fromEntries(bindings.map((binding) => [binding.name, binding.config])),
       allowedTools: bindings.map((binding) => binding.allowedTools).join(","),
+      ...(armoryLease ? { release: () => armoryLease.release() } : {}),
     };
   }
 

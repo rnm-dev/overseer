@@ -47,6 +47,7 @@ try {
   if (recoveredUninstalls) console.warn(`recovered ${recoveredUninstalls} interrupted Armory uninstall(s)`);
   const recovered = await recoverInterruptedArmoryOperations(armoryStores);
   if (recovered) console.warn(`recovered ${recovered} interrupted Armory operation(s)`);
+  await composition.armoryApi.projectPackages?.initializeMigration();
   await armoryRuntime.reconcile();
 } catch (error) {
   console.error("failed to initialize Armory runtime:", error);

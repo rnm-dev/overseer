@@ -18,6 +18,7 @@ export function createArmoryPaths(roots = { data: dataDir(), state: stateDir(), 
         catalogCacheFile: path.join(stateRoot, "catalog-cache.json"),
         settingsFile: path.join(roots.config, "armory-settings.json"),
         credentialsFile: path.join(roots.config, "armory-credentials.json"),
+        projectPackagesFile: path.join(roots.config, "armory-project-packages.json"),
     };
 }
 export function assertPackageId(value) {

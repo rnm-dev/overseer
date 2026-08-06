@@ -3,8 +3,11 @@
 Armory request/response traffic has one authority: Overseer calls Peon's
 authenticated Fleet HTTP API directly through mesh. Public browser/mobile
 routes, workspace membership checks and Peon ACLs are unchanged. There is no
-capability selector, reverse-command path, legacy fallback or retry onto a
-second transport.
+reverse-command path, transport selector, legacy fallback or retry onto a
+second transport. The new profile/assignment resource family is gated by the
+exact `armory-project-packages-v1` capability; absence means upgrade required,
+not a fallback onto global activation. Its canonical model is [Armory project
+packages](armory-project-packages.md).
 
 ## Routes
 
@@ -20,17 +23,51 @@ one-for-one onto these Peon Fleet routes:
 - `POST /api/v1/armory/refresh`
 - `POST /api/v1/armory/packages/:id/install`
 - `POST /api/v1/armory/packages/:id/update`
-- `POST /api/v1/armory/packages/:id/enable`
-- `POST /api/v1/armory/packages/:id/disable`
 - `PUT /api/v1/armory/packages/:id/configuration`
 - `POST /api/v1/armory/packages/:id/configuration/verify`
 - `DELETE /api/v1/armory/packages/:id/configuration`
 - `DELETE /api/v1/armory/packages/:id`
 
+After `armory-project-packages-v1` is advertised, Peon additionally owns:
+
+- `GET|POST /api/v1/armory/profiles`
+- `PATCH|DELETE /api/v1/armory/profiles/:profileId`
+- `PUT /api/v1/armory/profiles/:profileId/configuration`
+- `POST /api/v1/armory/profiles/:profileId/verify`
+- `GET /api/v1/armory/projects/:projectId/assignments`
+- `PUT|DELETE /api/v1/armory/projects/:projectId/assignments/:packageId`
+
+The authenticated public counterparts remain under the workspace and Peon
+scope:
+
+- `GET|POST .../armory/profiles`
+- `PATCH|DELETE .../armory/profiles/:profileId`
+- `PUT .../armory/profiles/:profileId/configuration`
+- `POST .../armory/profiles/:profileId/verify`
+- `GET .../armory/projects/:projectId/assignments`
+- `PUT|DELETE .../armory/projects/:projectId/assignments/:packageId`
+
+Overseer validates lowercase UUID profile/project IDs, package and field IDs,
+strict bounded bodies, and the 100-record list limits before or after the Fleet
+call as appropriate. Project assignment routes additionally enforce the
+caller's immutable-project grant; inaccessible projects use the existing
+`404 UNKNOWN_PROJECT` concealment before Peon is contacted. Successful results
+are rebuilt from the contract's safe fields, so an unexpected `values` or
+diagnostics member cannot cross the public boundary.
+
+The old `POST .../enable` and `POST .../disable` routes belong only to legacy
+Peons. For a Peon advertising the new capability, Overseer returns bounded `410
+ARMORY_ACTIVATION_RETIRED` without contacting Peon; Peon independently provides
+the same side-effect-free response at its Fleet boundary. Legacy configuration
+routes may temporarily address the migrated profile created from that
+package's old configuration; they are aliases, not another store.
+
 Every request carries the server-derived `Peon-Actor`; Fleet authentication
-uses the Peon's enrolled credential. HTTP retries retain `Peon-Request-Id`.
-Peon's durable operation IDs and operation store remain the authority for
-long-running work and restart recovery.
+uses the Peon's enrolled credential. Typed-profile and assignment mutations
+forward the caller's stable `Peon-Request-Id`; when one is absent the existing
+Fleet client generates one, without adding another idempotency ledger. Peon's
+durable operation IDs and operation store remain the authority for profile
+configure/verify polling, long-running work and restart recovery.
 
 ## Preserved safety
 
@@ -38,12 +75,18 @@ Inventory stays cursor-bounded and capped at 100 packages. Package,
 configuration, MCP and operation responses retain their existing bounded safe
 representations. Configuration reads expose schemas and configured booleans,
 never stored values. Overseer still strips unsafe configuration failures and
-free-form configure diagnostics before returning them to a client.
+free-form configure diagnostics before returning them to a client. The typed
+profile boundary also normalizes configuration/verification errors and
+operation results to allowlisted codes and safe fields. Submitted profile
+values exist only in the authenticated configure request body while it is
+relayed; Overseer does not store, cache, project, log or return them.
 
 Package locks, transactional staging, dependency checks, hooks, rollback,
-runtime drain/reconcile, durable operation state and interrupted-operation
-recovery remain inside Peon. Moving transport does not move those authorities.
-Stable Peon HTTP status/code pairs pass through the existing relay.
+profile/assignment revisions, runtime drain/reconcile, durable operation state
+and interrupted-operation recovery remain inside Peon. Moving transport does
+not move those authorities. Stable Peon HTTP status/code pairs pass through the
+existing relay. Configuration values flow only on writes and are never stored
+or logged by Overseer.
 
 Armory has no realtime WebSocket projection or event in the current UI. The UI
 refreshes authoritative HTTP reads and polls durable operations. If a future

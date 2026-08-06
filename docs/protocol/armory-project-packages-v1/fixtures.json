@@ -1,0 +1,91 @@
+{
+  "contractVersion": 1,
+  "capability": "armory-project-packages-v1",
+  "safeExamples": [
+    {
+      "schema": "installedPackage",
+      "value": {
+        "packageId": "google-drive",
+        "version": "1.2.0",
+        "state": "ready",
+        "profileRequirement": {
+          "type": "google-service-account",
+          "requiredFields": ["serviceAccountJson"]
+        }
+      }
+    },
+    {
+      "schema": "profile",
+      "value": {
+        "profileId": "57ba5e9e-3ed2-4a92-919f-9f60ee69a450",
+        "type": "google-service-account",
+        "name": "Production Google",
+        "status": "verified",
+        "configuredFields": { "serviceAccountJson": true }
+      }
+    },
+    {
+      "schema": "assignment",
+      "value": {
+        "projectId": "87b68e30-a923-48b4-9a58-f561a2390083",
+        "packageId": "google-drive",
+        "profileId": "57ba5e9e-3ed2-4a92-919f-9f60ee69a450"
+      }
+    },
+    {
+      "schema": "assignment",
+      "value": {
+        "projectId": "87b68e30-a923-48b4-9a58-f561a2390083",
+        "packageId": "filesystem-tools",
+        "profileId": null
+      }
+    }
+  ],
+  "writeOnlyExamples": [
+    {
+      "schema": "configureProfileRequest",
+      "value": {
+        "values": { "serviceAccountJson": "<write-only>" }
+      }
+    },
+    {
+      "schema": "setAssignmentRequest",
+      "value": {
+        "profileId": "57ba5e9e-3ed2-4a92-919f-9f60ee69a450"
+      }
+    }
+  ],
+  "routes": [
+    { "method": "GET", "path": "/api/v1/armory/profiles", "response": "profileList" },
+    { "method": "POST", "path": "/api/v1/armory/profiles", "request": "createProfileRequest", "response": "profile" },
+    { "method": "PATCH", "path": "/api/v1/armory/profiles/:profileId", "request": "updateProfileRequest", "response": "profile" },
+    { "method": "DELETE", "path": "/api/v1/armory/profiles/:profileId", "response": "profile" },
+    { "method": "PUT", "path": "/api/v1/armory/profiles/:profileId/configuration", "request": "configureProfileRequest", "response": "operation" },
+    { "method": "POST", "path": "/api/v1/armory/profiles/:profileId/verify", "response": "operation" },
+    { "method": "GET", "path": "/api/v1/armory/projects/:projectId/assignments", "response": "assignmentList" },
+    { "method": "PUT", "path": "/api/v1/armory/projects/:projectId/assignments/:packageId", "request": "setAssignmentRequest", "response": "assignment" },
+    { "method": "DELETE", "path": "/api/v1/armory/projects/:projectId/assignments/:packageId", "response": "assignment" }
+  ],
+  "stableErrors": {
+    "BAD_REQUEST": 400,
+    "PROJECT_NOT_FOUND": 404,
+    "PACKAGE_NOT_INSTALLED": 404,
+    "PROFILE_NOT_FOUND": 404,
+    "PROFILE_IN_USE": 409,
+    "PROFILE_TYPE_MISMATCH": 409,
+    "PROFILE_FIELDS_MISSING": 409,
+    "PROFILE_NOT_VERIFIED": 409,
+    "PACKAGE_NOT_READY": 409,
+    "UNSUPPORTED_CAPABILITY": 409,
+    "ARMORY_ACTIVATION_RETIRED": 410
+  },
+  "migration": {
+    "rules": [
+      "create-one-typed-profile-for-each-legacy-package-configuration-without-deduplicating-secrets",
+      "assign-each-legacy-enabled-installed-package-to-every-existing-project",
+      "assign-no-legacy-disabled-package",
+      "create-no-assignment-for-new-projects-or-new-installs",
+      "retain-no-enable-disable-state-after-commit"
+    ]
+  }
+}

@@ -1,0 +1,174 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ovrseer:protocol:armory-project-packages-v1",
+  "title": "Armory project packages v1",
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "packageId": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]{0,127}$"
+    },
+    "profileType": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9.-]{0,63}$",
+      "examples": ["google-service-account"]
+    },
+    "fieldId": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9_]{0,127}$"
+    },
+    "configuredFields": {
+      "type": "object",
+      "propertyNames": { "$ref": "#/$defs/fieldId" },
+      "additionalProperties": { "const": true },
+      "maxProperties": 64
+    },
+    "profileRequirement": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "requiredFields"],
+          "properties": {
+            "type": { "$ref": "#/$defs/profileType" },
+            "requiredFields": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/fieldId" },
+              "uniqueItems": true,
+              "maxItems": 64
+            }
+          }
+        }
+      ]
+    },
+    "installedPackage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["packageId", "version", "state", "profileRequirement"],
+      "properties": {
+        "packageId": { "$ref": "#/$defs/packageId" },
+        "version": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "state": { "enum": ["installing", "ready", "error", "removing"] },
+        "profileRequirement": { "$ref": "#/$defs/profileRequirement" }
+      }
+    },
+    "profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profileId", "type", "name", "status", "configuredFields"],
+      "properties": {
+        "profileId": { "$ref": "#/$defs/uuid" },
+        "type": { "$ref": "#/$defs/profileType" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "status": { "enum": ["missing", "unverified", "verified", "invalid"] },
+        "configuredFields": { "$ref": "#/$defs/configuredFields" }
+      }
+    },
+    "assignment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["projectId", "packageId", "profileId"],
+      "properties": {
+        "projectId": { "$ref": "#/$defs/uuid" },
+        "packageId": { "$ref": "#/$defs/packageId" },
+        "profileId": {
+          "oneOf": [
+            { "$ref": "#/$defs/uuid" },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "profileList": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profiles"],
+      "properties": {
+        "profiles": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/profile" },
+          "maxItems": 100
+        }
+      }
+    },
+    "assignmentList": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["assignments"],
+      "properties": {
+        "assignments": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/assignment" },
+          "maxItems": 100
+        }
+      }
+    },
+    "createProfileRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "name"],
+      "properties": {
+        "type": { "$ref": "#/$defs/profileType" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 80 }
+      }
+    },
+    "updateProfileRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 80 }
+      }
+    },
+    "configureProfileRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["values"],
+      "properties": {
+        "values": {
+          "type": "object",
+          "propertyNames": { "$ref": "#/$defs/fieldId" },
+          "additionalProperties": { "type": "string", "maxLength": 1048576 },
+          "maxProperties": 64
+        }
+      }
+    },
+    "setAssignmentRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profileId"],
+      "properties": {
+        "profileId": {
+          "oneOf": [
+            { "$ref": "#/$defs/uuid" },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "operation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operationId", "kind", "status"],
+      "properties": {
+        "operationId": { "$ref": "#/$defs/uuid" },
+        "kind": { "enum": ["profile_configure", "profile_verify"] },
+        "status": { "enum": ["queued", "running", "succeeded", "failed"] },
+        "code": { "type": ["string", "null"], "maxLength": 128 }
+      }
+    },
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["error", "code"],
+      "properties": {
+        "error": { "type": "string", "maxLength": 4000 },
+        "code": { "type": "string", "maxLength": 128 }
+      }
+    }
+  }
+}

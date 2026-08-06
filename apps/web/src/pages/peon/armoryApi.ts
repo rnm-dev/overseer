@@ -11,16 +11,74 @@ export interface ArmoryRegistry {
 }
 
 export interface InstalledPackage {
-  id: string;
+  id?: string;
+  packageId?: string;
   version: string;
-  enabled: boolean;
+  enabled?: boolean;
   state: "installing" | "needs_configuration" | "verifying" | "ready" | "error" | "removing";
-  installedAt: number;
-  updatedAt: number;
-  sourceDigest: string;
-  configurationStatus: "not_required" | "missing" | "unverified" | "verified" | "invalid";
-  lastError: string | null;
-  activeOperationId: string | null;
+  installedAt?: number;
+  updatedAt?: number;
+  sourceDigest?: string;
+  configurationStatus?: "not_required" | "missing" | "unverified" | "verified" | "invalid";
+  lastError?: string | null;
+  activeOperationId?: string | null;
+  profileRequirement?: ArmoryProfileRequirement | null;
+}
+
+export const ARMORY_PROJECT_PACKAGES_CAPABILITY = "armory-project-packages-v1";
+
+export interface ArmoryProfileRequirement {
+  type: string;
+  requiredFields: string[];
+}
+
+export interface ArmoryProfile {
+  profileId: string;
+  type: string;
+  name: string;
+  status: "missing" | "unverified" | "verified" | "invalid";
+  configuredFields: Record<string, true>;
+}
+
+export interface ArmoryProfileListResponse { profiles: ArmoryProfile[] }
+
+export interface ArmoryProjectAssignment {
+  projectId: string;
+  packageId: string;
+  profileId: string | null;
+}
+
+export interface ArmoryAssignmentListResponse { assignments: ArmoryProjectAssignment[] }
+
+export interface ArmoryProfileOperation {
+  operationId: string;
+  kind: "profile_configure" | "profile_verify";
+  status: "queued" | "running" | "succeeded" | "failed";
+  code: string | null;
+}
+
+export interface ArmoryProfileOperationResponse { operation: ArmoryProfileOperation }
+
+export function supportsArmoryProjectPackages(capabilities: string[] | null | undefined): boolean {
+  return capabilities?.includes(ARMORY_PROJECT_PACKAGES_CAPABILITY) === true;
+}
+
+export function matchingArmoryProfiles(profiles: ArmoryProfile[], requirement: ArmoryProfileRequirement): ArmoryProfile[] {
+  return profiles.filter((profile) => profile.type === requirement.type);
+}
+
+export function missingArmoryProfileFields(profile: ArmoryProfile, requirement: ArmoryProfileRequirement): string[] {
+  return requirement.requiredFields.filter((field) => profile.configuredFields[field] !== true);
+}
+
+export type ArmoryProfileReadiness = "ready" | "missing_fields" | "unverified" | "invalid" | "type_mismatch";
+
+export function armoryProfileReadiness(profile: ArmoryProfile, requirement: ArmoryProfileRequirement): ArmoryProfileReadiness {
+  if (profile.type !== requirement.type) return "type_mismatch";
+  if (missingArmoryProfileFields(profile, requirement).length > 0 || profile.status === "missing") return "missing_fields";
+  if (profile.status === "invalid") return "invalid";
+  if (profile.status !== "verified") return "unverified";
+  return "ready";
 }
 
 export interface ArmoryPackageSummary {
@@ -247,6 +305,77 @@ export function getArmorySettings(base: string, request: ApiRequest = api) {
   return request<ArmorySettings>(`${base}/armory/settings`);
 }
 
+export function getArmoryProfiles(base: string, request: ApiRequest = api) {
+  return request<ArmoryProfileListResponse>(`${base}/armory/profiles`);
+}
+
+export function createArmoryProfile(base: string, type: string, name: string, request: ApiRequest = api) {
+  return request<ArmoryProfile>(`${base}/armory/profiles`, {
+    method: "POST",
+    body: JSON.stringify({ type, name }),
+  });
+}
+
+export function renameArmoryProfile(base: string, profileId: string, name: string, request: ApiRequest = api) {
+  return request<ArmoryProfile>(`${base}/armory/profiles/${encodeURIComponent(profileId)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ name }),
+  });
+}
+
+export function deleteArmoryProfile(base: string, profileId: string, request: ApiRequest = api) {
+  return request<ArmoryProfile>(`${base}/armory/profiles/${encodeURIComponent(profileId)}`, { method: "DELETE" });
+}
+
+export async function configureArmoryProfile(base: string, profileId: string, values: Record<string, string>, request: ApiRequest = api) {
+  try {
+    return await request<ArmoryProfileOperation>(`${base}/armory/profiles/${encodeURIComponent(profileId)}/configuration`, {
+      method: "PUT",
+      body: JSON.stringify({ values }),
+    });
+  } catch (error) {
+    if (error instanceof ApiError) {
+      const safeCodes = new Set(["BAD_REQUEST", "PROFILE_NOT_FOUND", "OPERATION_IN_PROGRESS", "PROFILE_FIELDS_MISSING", "PROFILE_NOT_VERIFIED", "UNSUPPORTED_CAPABILITY"]);
+      throw new ApiError(error.status, safeCodes.has(error.code) ? error.code : "PROFILE_CONFIGURATION_REJECTED", "Peon rejected the profile configuration request.", error.requestId);
+    }
+    // Deliberately discard the cause because a transport error may contain the
+    // submitted write-only body.
+    // eslint-disable-next-line preserve-caught-error
+    throw new Error("Peon rejected the profile configuration request.");
+  }
+}
+
+export function verifyArmoryProfile(base: string, profileId: string, request: ApiRequest = api) {
+  return request<ArmoryProfileOperation>(`${base}/armory/profiles/${encodeURIComponent(profileId)}/verify`, { method: "POST" });
+}
+
+export function getArmoryProfileOperation(base: string, operationId: string, request: ApiRequest = api) {
+  return request<ArmoryProfileOperationResponse>(`${base}/armory/operations/${encodeURIComponent(operationId)}`);
+}
+
+export function getArmoryProjectAssignments(base: string, projectId: string, request: ApiRequest = api) {
+  return request<ArmoryAssignmentListResponse>(`${base}/armory/projects/${encodeURIComponent(projectId)}/assignments`);
+}
+
+export function setArmoryProjectAssignment(base: string, projectId: string, packageId: string, profileId: string | null, request: ApiRequest = api) {
+  return request<ArmoryProjectAssignment>(`${base}/armory/projects/${encodeURIComponent(projectId)}/assignments/${encodeURIComponent(packageId)}`, {
+    method: "PUT",
+    body: JSON.stringify({ profileId }),
+  });
+}
+
+export function removeArmoryProjectAssignment(base: string, projectId: string, packageId: string, request: ApiRequest = api) {
+  return request<ArmoryProjectAssignment>(`${base}/armory/projects/${encodeURIComponent(projectId)}/assignments/${encodeURIComponent(packageId)}`, { method: "DELETE" });
+}
+
+export function profileOperationActive(operation: ArmoryProfileOperation | null): boolean {
+  return operation?.status === "queued" || operation?.status === "running";
+}
+
+export function clearSettledArmoryProfileValues(): Record<string, string> {
+  return {};
+}
+
 // A monotonically increasing scope token lets UI requests ignore a response
 // started for a previous Peon, query, filter, cursor chain, or package detail.
 export class ArmoryRequestGate {
@@ -267,6 +396,7 @@ export class ArmoryActionGate {
     this.active = true;
     return ++this.generation;
   }
+  locked(): boolean { return this.active; }
   current(token: number): boolean { return this.active && token === this.generation; }
   finish(token: number): boolean {
     if (!this.current(token)) return false;
@@ -305,6 +435,14 @@ export function validateArmoryConfiguration(schema: ArmoryConfiguration, values:
         // return MANIFEST_INVALID or authoritative field validation.
       }
     }
+  }
+  return errors;
+}
+
+export function validateArmoryProfileConfiguration(schema: ArmoryConfiguration, profile: ArmoryProfile, values: Record<string, string>): ConfigurationErrors {
+  const errors = validateArmoryConfiguration(schema, values);
+  for (const field of schema.fields) {
+    if (field.required && profile.configuredFields[field.id] === true && (values[field.id] ?? "") === "") delete errors[field.id];
   }
   return errors;
 }

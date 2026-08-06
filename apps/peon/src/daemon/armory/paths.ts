@@ -17,6 +17,7 @@ export interface ArmoryPaths {
   catalogCacheFile: string;
   settingsFile: string;
   credentialsFile: string;
+  projectPackagesFile: string;
 }
 
 export interface ArmoryPathRoots {
@@ -42,6 +43,7 @@ export function createArmoryPaths(roots: ArmoryPathRoots = { data: dataDir(), st
     catalogCacheFile: path.join(stateRoot, "catalog-cache.json"),
     settingsFile: path.join(roots.config, "armory-settings.json"),
     credentialsFile: path.join(roots.config, "armory-credentials.json"),
+    projectPackagesFile: path.join(roots.config, "armory-project-packages.json"),
   };
 }
 

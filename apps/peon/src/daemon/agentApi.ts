@@ -28,7 +28,7 @@ import {
 import { updateChecker } from "./updateChecker.js";
 import { applyUpdate, checkUpdate, updateOperationStatus } from "./updateOperations.js";
 import type { QuotaProvider } from "./providerQuota.js";
-import { createArmoryReadRouter, type ArmoryApiServices, type ArmoryInventoryReader } from "./armory/index.js";
+import { ARMORY_PROJECT_PACKAGES_CAPABILITY, createArmoryReadRouter, type ArmoryApiServices, type ArmoryInventoryReader } from "./armory/index.js";
 import { AtomicFileUpload, type FileAccessContract, FileAccessService, moveProjectFile } from "./files/index.js";
 import { parseTranscriptPageRequest, parseTranscriptResumeEventId, transcriptResumeIndex, TranscriptPaginationError } from "./transcriptPagination.js";
 import { analyticsForSessions, parseSessionAnalyticsQuery, SessionAnalyticsQueryError } from "./sessionAnalytics.js";
@@ -248,7 +248,7 @@ function agentStatusView() {
     activeSessionCount: sessions.activeCount(),
     sessionCount: sessions.list().length,
     filesEnabled: Boolean(settings.get().fileTransferRoot),
-    capabilities: [MANAGED_PLUGIN_INQUIRY_CAPABILITY],
+    capabilities: [MANAGED_PLUGIN_INQUIRY_CAPABILITY, ARMORY_PROJECT_PACKAGES_CAPABILITY],
     agentAuth: (() => {
       const s = getAgentDriver("claude-code")?.services.status?.() as { authState?: string; available?: boolean; checkedAt?: number } | undefined;
       return { authState: s?.authState, available: s?.available, checkedAt: s?.checkedAt };

@@ -14,7 +14,13 @@ export function createScopedMcpRouter(options) {
             return res.status(403).json({ error: "MCP is available on loopback only" });
         next();
     });
-    router.use("/armory/:packageId", createProviderRouter((req) => armoryProvider(options.armoryRuntime, String(req.params.packageId))));
+    router.use("/armory/:bindingId", (req, res, next) => {
+        const sessionId = verifySessionMcpCredential(req.headers[SESSION_MCP_HEADER]);
+        if (!sessionId)
+            return res.status(401).json({ error: "invalid Armory turn capability" });
+        res.locals.armorySessionId = sessionId;
+        next();
+    }, createProviderRouter((req) => armoryProvider(options.armoryRuntime, String(req.params.bindingId), String(req.res?.locals.armorySessionId ?? ""))));
     if (options.projectService) {
         router.use("/projects", createProviderRouter(() => projectProvider(options.projectService)));
     }
@@ -98,10 +104,10 @@ function createProviderRouter(resolveProvider) {
     router.delete("/", (_req, res) => methodNotAllowed(res));
     return router;
 }
-function armoryProvider(runtime, packageId) {
+function armoryProvider(runtime, bindingId, sessionId) {
     return {
-        listTools: () => runtime.listTools(packageId),
-        callTool: (name, args, signal) => runtime.callTool(packageId, name, args, signal),
+        listTools: () => runtime.listTools(bindingId, sessionId),
+        callTool: (name, args, signal) => runtime.callTool(bindingId, sessionId, name, args, signal),
     };
 }
 const QUICK_LINK_TOOLS = [

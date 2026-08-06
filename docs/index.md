@@ -89,6 +89,19 @@ redacted, while Peon's package locks, transactional installer, durable
 operation store and restart recovery remain authoritative — see
 [Armory over Fleet HTTP](armory-reverse.md).
 
+The next Armory contract separates Peon-wide installation from reusable typed
+profiles and immutable-project assignments. Under
+`armory-project-packages-v1`, assignment presence is the only availability
+decision: a credentialed package declares an accepted profile type such as
+`google-service-account`, and the same verified profile can serve multiple
+compatible packages and projects. Credential-free assignments carry
+`profileId: null`, while unassigned packages contribute nothing to a new turn.
+The contract removes canonical enable/disable state and migrates existing
+availability without guessing that two stored credentials are identical. The
+small wire contract and implementation invariants are in [Armory profiles and
+project packages](armory-project-packages.md). The capability must not be
+advertised before Peon's storage and runtime implement it.
+
 Project administration and resources use one direct authenticated Fleet HTTP
 authority through mesh: catalog, suggest/create, stable-ID detail/settings,
 documentation, skill discovery, quick-link CRUD, update and delete. Selected
