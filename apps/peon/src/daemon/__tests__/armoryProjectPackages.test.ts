@@ -86,7 +86,7 @@ test("manifest profile declarations use the settled exact type and required-fiel
   assert.throws(() => parseArmoryManifest({ ...parsed, profile: { type: "google-service-account", requiredFields: ["serviceAccountJson", "serviceAccountJson"] } }));
 });
 
-test("migration creates independent typed profiles and preserves only legacy-enabled availability", async () => {
+test("migration preserves compatible profiles but leaves every package unassigned by default", async () => {
   const { stores, manifests, service } = fixture();
   for (const id of ["drive", "calendar", "filesystem"]) {
     await stores.installed.set(installed(id, {
@@ -118,12 +118,7 @@ test("migration creates independent typed profiles and preserves only legacy-ena
   assert.equal(profiles.length, 2);
   assert.notEqual(migrated.legacyProfileByPackage.drive, migrated.legacyProfileByPackage.calendar);
   assert.deepEqual(profiles.map((profile) => profile.values.serviceAccountJson), ["same-secret", "same-secret"]);
-  assert.deepEqual(migrated.assignments, [
-    { projectId: PROJECT_A, packageId: "drive", profileId: migrated.legacyProfileByPackage.drive },
-    { projectId: PROJECT_B, packageId: "drive", profileId: migrated.legacyProfileByPackage.drive },
-    { projectId: PROJECT_A, packageId: "filesystem", profileId: null },
-    { projectId: PROJECT_B, packageId: "filesystem", profileId: null },
-  ]);
+  assert.deepEqual(migrated.assignments, []);
   assert.deepEqual((await stores.credentials.snapshot()).packages, {});
   assert.equal(Object.hasOwn(await stores.installed.get("drive") as object, "enabled"), false);
   assert.equal(Object.hasOwn(await stores.installed.get("drive") as object, "configurationStatus"), false);
@@ -146,15 +141,19 @@ test("migration creates independent typed profiles and preserves only legacy-ena
   assert.equal(JSON.stringify(await service.legacyConfigurationSchema("drive")).includes("replacement-secret"), false);
 });
 
-test("migration stops safely when legacy configuration has no declared profile type", async () => {
+test("migration discards obsolete legacy configuration when a package has no profile contract", async () => {
   const { stores, manifests, service } = fixture();
   await stores.installed.set(installed("legacy", { configurationStatus: "verified" }));
   manifests.set("legacy", manifest("legacy"));
   await stores.credentials.set("legacy", { serviceAccountJson: "must-survive" }, 100);
-  await assert.rejects(service.initializeMigration(), (error: unknown) => error instanceof ArmoryProjectPackagesError && error.code === "ARMORY_MIGRATION_BLOCKED");
-  assert.deepEqual(await stores.credentials.values("legacy"), { serviceAccountJson: "must-survive" });
-  assert.equal((await stores.projectPackages.read()).migrationCompletedAt, null);
-  assert.equal((await stores.installed.get("legacy"))?.enabled, false);
+  await service.initializeMigration();
+  const migrated = await stores.projectPackages.read();
+  assert.equal(migrated.migrationCompletedAt, 500);
+  assert.deepEqual(migrated.profiles, {});
+  assert.deepEqual(migrated.assignments, []);
+  assert.deepEqual(migrated.legacyProfileByPackage, {});
+  assert.deepEqual((await stores.credentials.snapshot()).packages, {});
+  assert.equal(Object.hasOwn(await stores.installed.get("legacy") as object, "enabled"), false);
 });
 
 test("profile lifecycle is redacted and assignments enforce type, fields, verification, and references", async () => {
