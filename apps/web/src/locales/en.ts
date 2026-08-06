@@ -293,6 +293,8 @@ export const en: Record<string, string> = {
   "peon.quota.accountLimits": "Account limits",
   "peon.quota.noLimits": "No account limit data available.",
   "peon.quota.resets": "Resets in {countdown}",
+  "peon.quota.absent.title": "{provider} is not set up on this machine",
+  "peon.quota.absent.body": "No account, limits, capabilities or recorded usage were found. Install the CLI on this Peon and sign in, then refresh.",
   "peon.capabilities.inventory": "Capabilities",
   "peon.capabilities.plugins": "Plugins",
   "peon.capabilities.skills": "Skills",

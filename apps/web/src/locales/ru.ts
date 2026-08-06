@@ -293,6 +293,8 @@ export const ru: Record<string, string> = {
   "peon.quota.accountLimits": "Лимиты аккаунта",
   "peon.quota.noLimits": "Данные о лимитах аккаунта недоступны.",
   "peon.quota.resets": "Сброс через {countdown}",
+  "peon.quota.absent.title": "{provider} не настроен на этой машине",
+  "peon.quota.absent.body": "Не найдено ни аккаунта, ни лимитов, ни возможностей, ни учтённого использования. Установите CLI на этом Peon, войдите в аккаунт и обновите.",
   "peon.capabilities.inventory": "Возможности",
   "peon.capabilities.plugins": "Плагины",
   "peon.capabilities.skills": "Навыки",

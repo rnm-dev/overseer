@@ -315,6 +315,40 @@ function ProviderUsage({
   const quotaError = quota.error ?? (quota.data?.status === "error" ? quota.data.error : null);
   const refreshing = quota.loading || capabilities.loading;
 
+  // Peon has no authoritative "this CLI is installed" signal — both drivers report
+  // available() === true unconditionally. So an absent agent is recognised by its
+  // probes settling with nothing at all: no account, no limits, no capabilities,
+  // no usage. Hydrating that into zeroed plates and a red `spawn claude ENOENT`
+  // reads as a broken card; one empty state says the true thing instead.
+  const settled = Boolean(quota.data ?? quota.error) && Boolean(capabilities.data ?? capabilities.error);
+  const capabilityCount =
+    (capabilities.data?.plugins.length ?? 0) + (capabilities.data?.skills.length ?? 0) + (capabilities.data?.mcps.length ?? 0);
+  const absent =
+    settled &&
+    effectiveStatus !== "ok" &&
+    (quota.data?.windows.length ?? 0) === 0 &&
+    capabilityCount === 0 &&
+    models.length === 0;
+  const absentReason = quotaError ?? capabilities.error ?? capabilities.data?.error ?? null;
+
+  if (absent) {
+    return (
+      <Card className="flex min-h-80 flex-col px-5 py-4">
+        <div className="flex items-start justify-between gap-3">
+          <h3 className="font-display text-sm font-bold uppercase tracking-[0.12em] text-ink-muted">{providerName}</h3>
+          <Button variant="ghost" size="sm" disabled={refreshing} onClick={onRefresh}>
+            {refreshing ? t("peon.quota.refreshing") : t("peon.quota.refresh")}
+          </Button>
+        </div>
+        <div className="flex flex-1 flex-col items-center justify-center gap-2 py-10 text-center">
+          <p className="font-display text-sm font-medium text-ink">{t("peon.quota.absent.title", { provider: providerName })}</p>
+          <p className="max-w-xs font-mono text-xs text-ink-faint">{t("peon.quota.absent.body")}</p>
+          {absentReason && <p className="max-w-xs break-words font-mono text-[0.68rem] text-ink-faint/70">{absentReason}</p>}
+        </div>
+      </Card>
+    );
+  }
+
   return (
     <Card className="flex min-h-80 flex-col px-5 py-4">
       <div className="flex items-start justify-between gap-3">
