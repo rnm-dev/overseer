@@ -404,23 +404,25 @@ class _AttachmentOption extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final palette = Theme.of(context).extension<AppThemePalette>()?.package;
     return ListTile(
       onTap: onTap,
       shape: RoundedRectangleBorder(borderRadius: AppMotion.optionShape),
-      tileColor: AppColors.iron950,
-      leading: Icon(icon, size: 20, color: AppColors.felBright),
+      tileColor: palette?.surfaceHover ?? colors.surfaceContainerHighest,
+      leading: Icon(icon, size: 20, color: colors.primary),
       title: Text(
         title,
         style: AppTypography.body(fontWeight: FontWeight.w600),
       ),
       subtitle: Text(
         subtitle,
-        style: AppTypography.body(fontSize: 12, color: AppColors.boneFaint),
+        style: AppTypography.body(fontSize: 12, color: colors.onSurfaceVariant),
       ),
-      trailing: const Icon(
+      trailing: Icon(
         LucideIcons.chevronRight,
         size: 16,
-        color: AppColors.boneFaint,
+        color: colors.onSurfaceVariant,
       ),
     );
   }

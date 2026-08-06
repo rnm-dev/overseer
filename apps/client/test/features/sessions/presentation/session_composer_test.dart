@@ -6,10 +6,12 @@ import 'package:overseer_mobile/features/sessions/domain/followup_repository.dar
 import 'package:overseer_mobile/features/sessions/domain/new_session_repository.dart';
 import 'package:overseer_mobile/features/sessions/application/voice_dictation_controller.dart';
 import 'package:overseer_mobile/features/sessions/presentation/session_composer.dart';
+import 'package:overseer_mobile/features/themes/domain/app_theme_package.dart';
 import 'package:overseer_mobile/shared/design/spacing.dart';
 import 'package:overseer_mobile/shared/design/theme.dart';
 import 'package:overseer_mobile/shared/design/typography.dart';
 import 'package:overseer_mobile/shared/models/ai_capabilities.dart';
+import 'package:overseer_mobile/shared/widgets/app_button.dart';
 import 'package:overseer_mobile/shared/widgets/app_markdown.dart';
 
 void main() {
@@ -32,9 +34,10 @@ void main() {
     final controller = TextEditingController(text: 'half typed');
     addTearDown(controller.dispose);
 
+    final package = AppThemePackages.resolve('org.overseer.parchment');
     await tester.pumpWidget(
       MaterialApp(
-        theme: AppTheme.dark,
+        theme: AppTheme.fromPackage(package),
         home: Scaffold(
           body: SessionComposer(
             controller: controller,
@@ -677,13 +680,14 @@ void main() {
   ) async {
     final controller = TextEditingController();
     addTearDown(controller.dispose);
+    final package = AppThemePackages.resolve('org.overseer.parchment');
     String? sent;
     String? removed;
     String? edited;
 
     await tester.pumpWidget(
       MaterialApp(
-        theme: AppTheme.dark,
+        theme: AppTheme.fromPackage(package),
         home: Scaffold(
           body: Align(
             alignment: Alignment.bottomCenter,
@@ -734,6 +738,13 @@ void main() {
     await tester.tap(find.byKey(const Key('session-queue-open-queue-1')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('session-queue-dialog')), findsOneWidget);
+    final dialog = tester.widget<ConstrainedBox>(
+      find.byKey(const Key('session-queue-dialog')),
+    );
+    final surface = dialog.child! as DecoratedBox;
+    final decoration = surface.decoration as BoxDecoration;
+    expect(decoration.color, package.surfaceRaised);
+    expect(decoration.border, Border.all(color: package.edge));
     expect(
       tester.getSize(find.byKey(const Key('session-queue-dialog'))).height,
       lessThanOrEqualTo(
@@ -745,6 +756,14 @@ void main() {
     expect(
       find.byKey(const Key('session-queue-dialog-delete')),
       findsOneWidget,
+    );
+    expect(
+      tester
+          .widget<AppButton>(
+            find.byKey(const Key('session-queue-dialog-delete')),
+          )
+          .variant,
+      AppButtonVariant.dangerGhost,
     );
     expect(find.byKey(const Key('session-queue-dialog-edit')), findsOneWidget);
 

@@ -4,6 +4,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../../shared/design/typography.dart';
 import '../../../shared/formatters/activity_timestamp.dart';
 import '../../../shared/widgets/app_markdown.dart';
+import '../../../l10n/app_localizations.dart';
 import '../../auth/domain/auth_models.dart';
 import 'tool_details_bottom_sheet.dart';
 import 'transcript_items.dart';
@@ -495,88 +496,64 @@ class _ToolRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final failed = item.result?.isError == true;
-    final operation = item.name?.trim().toLowerCase() == 'edit'
-        ? transcriptEditOperation(item.input)
-        : null;
-    final stats = operation == null ? null : transcriptEditStats(item.input);
-    final label = operation == null
-        ? item.name ?? 'Tool'
-        : switch (operation) {
-            TranscriptEditOperation.create => 'Create',
-            TranscriptEditOperation.edit => 'Edit',
-            TranscriptEditOperation.delete => 'Delete',
-          };
-    final summary = transcriptToolSummary(item.input, name: item.name);
+    final kind = _toolActivityKind(item.name);
+    final filename = switch (kind) {
+      _ToolActivityKind.read ||
+      _ToolActivityKind.search ||
+      _ToolActivityKind.edit => transcriptEditFileName(item.input),
+      _ => null,
+    };
+    final label = _toolActivityLabel(context, kind);
+    final activity = filename == null ? label : '$label · $filename';
     return Align(
       alignment: Alignment.centerLeft,
       child: ConstrainedBox(
         constraints: BoxConstraints(
           maxWidth: MediaQuery.sizeOf(context).width * 0.85,
         ),
-        child: Padding(
+        child: InkWell(
           key: Key('transcript-tool-${item.key}'),
-          padding: const EdgeInsets.symmetric(vertical: 2),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                switch (operation) {
-                  TranscriptEditOperation.create => LucideIcons.filePlus,
-                  TranscriptEditOperation.delete => LucideIcons.fileX,
-                  TranscriptEditOperation.edit => LucideIcons.pencil,
-                  null => LucideIcons.terminal,
-                },
-                size: 11,
-                color: failed ? colors.error : colors.primary,
-              ),
-              const SizedBox(width: 4),
-              Text(
-                label,
-                style: AppTypography.monoCode(
-                  color: failed ? colors.error : colors.primary,
-                ).copyWith(fontSize: 11),
-              ),
-              if (operation != null && stats != null) ...[
-                const SizedBox(width: 3),
-                _EditStats(operation: operation, stats: stats),
-              ],
-              if (summary.isNotEmpty) ...[
-                const SizedBox(width: 5),
+          onTap: () => showToolDetailsBottomSheet(context: context, item: item),
+          borderRadius: BorderRadius.circular(4),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 2),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  _toolActivityIcon(kind),
+                  size: 13,
+                  color: failed
+                      ? colors.error
+                      : item.result == null
+                      ? colors.tertiary
+                      : colors.primary,
+                ),
+                const SizedBox(width: 6),
                 Flexible(
                   child: Text(
-                    summary,
+                    activity,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: AppTypography.monoCode(
+                    style: AppTypography.mono(
+                      fontSize: AppTypography.systemMessageFontSize,
                       color: failed ? colors.error : colors.onSurfaceVariant,
-                    ).copyWith(fontSize: 11),
+                      height: 1.4,
+                    ),
                   ),
                 ),
+                if (failed) ...[
+                  const SizedBox(width: 4),
+                  Text(
+                    '· ${_toolActivityFailedLabel(context)}',
+                    style: AppTypography.mono(
+                      fontSize: AppTypography.systemMessageFontSize,
+                      color: colors.error,
+                    ),
+                  ),
+                ],
               ],
-              const SizedBox(width: 6),
-              InkWell(
-                key: Key('transcript-tool-details-${item.key}'),
-                onTap: () =>
-                    showToolDetailsBottomSheet(context: context, item: item),
-                borderRadius: BorderRadius.circular(3),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 3),
-                  child: Text(
-                    'Details',
-                    style:
-                        AppTypography.monoCode(
-                          color: colors.onSurfaceVariant,
-                        ).copyWith(
-                          fontSize: 11,
-                          decoration: TextDecoration.underline,
-                          decorationStyle: TextDecorationStyle.dotted,
-                          decorationColor: colors.onSurfaceVariant,
-                          decorationThickness: 1,
-                        ),
-                  ),
-                ),
-              ),
-            ],
+            ),
           ),
         ),
       ),
@@ -584,41 +561,56 @@ class _ToolRow extends StatelessWidget {
   }
 }
 
-class _EditStats extends StatelessWidget {
-  const _EditStats({required this.operation, required this.stats});
+enum _ToolActivityKind { read, search, web, edit, analysis, command, generic }
 
-  final TranscriptEditOperation operation;
-  final TranscriptEditStats stats;
+_ToolActivityKind _toolActivityKind(String? name) =>
+    switch (name?.trim().toLowerCase()) {
+      'read' => _ToolActivityKind.read,
+      'grep' || 'glob' => _ToolActivityKind.search,
+      'webfetch' || 'websearch' => _ToolActivityKind.web,
+      'edit' || 'write' || 'notebookedit' => _ToolActivityKind.edit,
+      'task' || 'agent' => _ToolActivityKind.analysis,
+      'bash' => _ToolActivityKind.command,
+      _ => _ToolActivityKind.generic,
+    };
 
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    final base = AppTypography.monoCode(
-      color: colors.onSurfaceVariant,
-    ).copyWith(fontSize: 11);
-    return Text.rich(
-      TextSpan(
-        style: base,
-        children: [
-          const TextSpan(text: '('),
-          if (operation != TranscriptEditOperation.delete)
-            TextSpan(
-              text: '+${stats.added}',
-              style: base.copyWith(color: colors.primary),
-            ),
-          if (operation == TranscriptEditOperation.edit)
-            const TextSpan(text: ','),
-          if (operation != TranscriptEditOperation.create)
-            TextSpan(
-              text: '−${stats.removed}',
-              style: base.copyWith(color: colors.error),
-            ),
-          const TextSpan(text: ')'),
-        ],
-      ),
-    );
-  }
-}
+String _toolActivityLabel(BuildContext context, _ToolActivityKind kind) =>
+    switch ((
+      Localizations.of<AppLocalizations>(context, AppLocalizations),
+      kind,
+    )) {
+      (final l10n?, _ToolActivityKind.read) => l10n.toolActivityRead,
+      (final l10n?, _ToolActivityKind.search) => l10n.toolActivitySearch,
+      (final l10n?, _ToolActivityKind.web) => l10n.toolActivityWeb,
+      (final l10n?, _ToolActivityKind.edit) => l10n.toolActivityEdit,
+      (final l10n?, _ToolActivityKind.analysis) => l10n.toolActivityAnalysis,
+      (final l10n?, _ToolActivityKind.command) => l10n.toolActivityCommand,
+      (final l10n?, _ToolActivityKind.generic) => l10n.toolActivityGeneric,
+      (_, _ToolActivityKind.read) => 'Opened a file',
+      (_, _ToolActivityKind.search) => 'Searched the materials',
+      (_, _ToolActivityKind.web) => 'Checked external sources',
+      (_, _ToolActivityKind.edit) => 'Updated a file',
+      (_, _ToolActivityKind.analysis) => 'Performed additional analysis',
+      (_, _ToolActivityKind.command) => 'Performed a technical operation',
+      (_, _ToolActivityKind.generic) => 'Performed an action',
+    };
+
+String _toolActivityFailedLabel(BuildContext context) =>
+    Localizations.of<AppLocalizations>(
+      context,
+      AppLocalizations,
+    )?.toolActivityFailedShort ??
+    'failed';
+
+IconData _toolActivityIcon(_ToolActivityKind kind) => switch (kind) {
+  _ToolActivityKind.read => LucideIcons.fileText,
+  _ToolActivityKind.search => LucideIcons.search,
+  _ToolActivityKind.web => LucideIcons.globe2,
+  _ToolActivityKind.edit => LucideIcons.filePenLine,
+  _ToolActivityKind.analysis => LucideIcons.bot,
+  _ToolActivityKind.command => LucideIcons.terminal,
+  _ToolActivityKind.generic => LucideIcons.wrench,
+};
 
 class _ActionResult extends StatefulWidget {
   const _ActionResult({required this.item});

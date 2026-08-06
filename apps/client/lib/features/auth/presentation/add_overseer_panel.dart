@@ -93,10 +93,10 @@ class _AddOverseerPanelState extends State<AddOverseerPanel> {
             hint: l10n.overseerUrlHint,
             helperText: l10n.overseerUrlHelper,
             errorText: _errorText,
-            prefix: const Icon(
+            prefix: Icon(
               LucideIcons.globe,
               size: 18,
-              color: AppColors.boneDim,
+              color: AppThemePalette.of(context).inkMuted,
             ),
             enabled: !_submitting,
             keyboardType: TextInputType.url,

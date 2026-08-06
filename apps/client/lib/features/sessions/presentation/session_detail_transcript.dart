@@ -435,7 +435,7 @@ class _TranscriptWorkingIndicatorState
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: AppTypography.mono(
-                        fontSize: 10,
+                        fontSize: AppTypography.systemMessageFontSize,
                         color: colors.primary,
                       ),
                     ),
@@ -445,7 +445,7 @@ class _TranscriptWorkingIndicatorState
                     '· $duration',
                     key: const Key('transcript-working-duration'),
                     style: AppTypography.mono(
-                      fontSize: 10,
+                      fontSize: AppTypography.systemMessageFontSize,
                       color: colors.onSurfaceVariant,
                     ),
                   ),
@@ -464,7 +464,9 @@ class _TranscriptWorkingIndicatorState
             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
             foregroundColor: colors.tertiary,
             disabledForegroundColor: colors.tertiary.withValues(alpha: 0.4),
-            textStyle: AppTypography.mono(fontSize: 10),
+            textStyle: AppTypography.mono(
+              fontSize: AppTypography.systemMessageFontSize,
+            ),
           ),
           icon: const Text('■', style: TextStyle(fontSize: 9, height: 1)),
           label: Text(widget.stopping ? 'Stopping…' : 'Stop'),
@@ -645,7 +647,10 @@ class _TranscriptHistoryControl extends StatelessWidget {
               message,
               key: const Key('transcript-error'),
               textAlign: TextAlign.center,
-              style: AppTypography.body(fontSize: 12, color: AppColors.blood),
+              style: AppTypography.body(
+                fontSize: 12,
+                color: AppThemePalette.of(context).danger,
+              ),
             ),
           ),
         AppButton(
@@ -745,7 +750,9 @@ class _TranscriptEmpty extends StatelessWidget {
               textAlign: TextAlign.center,
               style: AppTypography.body(
                 fontSize: 14,
-                color: message == null ? AppColors.boneDim : AppColors.blood,
+                color: message == null
+                    ? AppThemePalette.of(context).inkMuted
+                    : AppThemePalette.of(context).danger,
               ),
             ),
             if (message != null) ...[

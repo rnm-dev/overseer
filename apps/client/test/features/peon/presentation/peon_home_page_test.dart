@@ -18,7 +18,6 @@ import 'package:overseer_mobile/features/sessions/presentation/session_detail_pa
 import 'package:overseer_mobile/features/sessions/presentation/session_list.dart';
 import 'package:overseer_mobile/shared/design/colors.dart';
 import 'package:overseer_mobile/shared/design/theme.dart';
-import 'package:overseer_mobile/features/themes/domain/app_theme_package.dart';
 import 'package:overseer_mobile/shared/design/typography.dart';
 import 'package:overseer_mobile/shared/widgets/app_navigation_bar.dart';
 import 'package:overseer_mobile/shared/widgets/app_option_bottom_sheet.dart';

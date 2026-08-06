@@ -203,6 +203,18 @@ void main() {
     expect(transcriptWorkingGap(secondAssistant, afterGhost: true), 24);
   });
 
+  test('matches web spacing for system activity and working rows', () {
+    const tool = TranscriptToolItem(key: 'tool', name: 'Read');
+    const thinking = TranscriptThinkingItem(key: 'thinking', text: 'Thinking');
+    const notice = TranscriptNoticeItem(key: 'notice', text: 'Notice');
+    const user = TranscriptUserItem(key: 'user', text: 'Prompt');
+
+    expect(transcriptItemGap(tool, thinking), 2);
+    expect(transcriptItemGap(thinking, notice), 2);
+    expect(transcriptWorkingGap(notice), 16);
+    expect(transcriptWorkingGap(user), 24);
+  });
+
   testWidgets('short user messages use content-sized bubbles', (tester) async {
     const item = TranscriptUserItem(key: 'short', text: 'OK');
     await tester.pumpWidget(
@@ -368,7 +380,7 @@ void main() {
     expect(transcriptWorkingActivity(null).label, isNotEmpty);
   });
 
-  testWidgets('renders compact edit stats and dotted Details control', (
+  testWidgets('renders plain-language tool activity and opens details', (
     tester,
   ) async {
     const item = TranscriptToolItem(
@@ -388,15 +400,14 @@ void main() {
       ),
     );
 
-    final edit = tester.widget<Text>(find.text('Edit'));
-    expect(edit.style?.fontSize, 11);
-    expect(find.text('(+2,−1)', findRichText: true), findsOneWidget);
-    final details = tester.widget<Text>(find.text('Details'));
-    expect(details.style?.fontSize, 11);
-    expect(details.style?.decoration, TextDecoration.underline);
-    expect(details.style?.decorationStyle, TextDecorationStyle.dotted);
+    final activity = tester.widget<Text>(
+      find.text('Updated a file · session.dart'),
+    );
+    expect(activity.style?.fontSize, AppTypography.systemMessageFontSize);
+    expect(find.text('Details'), findsNothing);
+    expect(find.text('(+2,−1)', findRichText: true), findsNothing);
 
-    await tester.tap(find.byKey(const Key('transcript-tool-details-edit')));
+    await tester.tap(find.byKey(const Key('transcript-tool-edit')));
     await tester.pumpAndSettle();
 
     expect(find.text('session.dart'), findsOneWidget);
@@ -475,7 +486,8 @@ void main() {
       ),
     );
 
-    await tester.tap(find.byKey(const Key('transcript-tool-details-bash')));
+    expect(find.text('Performed a technical operation'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('transcript-tool-bash')));
     await tester.pumpAndSettle();
 
     expect(find.text('Bash'), findsWidgets);

@@ -14,6 +14,7 @@ import '../../../shared/widgets/app_button.dart';
 import '../../../shared/widgets/app_markdown.dart';
 import '../../../shared/widgets/app_text_field.dart';
 import '../../../l10n/l10n.dart';
+import '../../themes/domain/app_theme_package.dart';
 import '../application/voice_dictation_controller.dart';
 import '../domain/followup_repository.dart';
 import '../domain/new_session_repository.dart';

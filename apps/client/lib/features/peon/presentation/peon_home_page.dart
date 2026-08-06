@@ -414,7 +414,7 @@ class _ProjectListState extends State<_ProjectList> {
               'No projects on this peon yet.',
               style: AppTypography.body(
                 fontSize: 12,
-                color: AppColors.boneFaint,
+                color: AppThemePalette.of(context).inkFaint,
               ),
             ),
           )
@@ -627,7 +627,9 @@ class _ProjectRow extends StatelessWidget {
                                     overflow: TextOverflow.ellipsis,
                                     style: AppTypography.body(
                                       fontSize: 9.6,
-                                      color: AppColors.boneFaint,
+                                      color: AppThemePalette.of(
+                                        context,
+                                      ).inkFaint,
                                     ),
                                   ),
                                 ),
@@ -637,7 +639,9 @@ class _ProjectRow extends StatelessWidget {
                                     '•',
                                     style: AppTypography.body(
                                       fontSize: 9.6,
-                                      color: AppColors.boneDim,
+                                      color: AppThemePalette.of(
+                                        context,
+                                      ).inkMuted,
                                     ),
                                   ),
                                   const SizedBox(width: 6),
@@ -651,7 +655,9 @@ class _ProjectRow extends StatelessWidget {
                                       overflow: TextOverflow.ellipsis,
                                       style: AppTypography.body(
                                         fontSize: 9.6,
-                                        color: AppColors.forge,
+                                        color: AppThemePalette.of(
+                                          context,
+                                        ).warning,
                                       ),
                                     ),
                                   ),
@@ -666,7 +672,7 @@ class _ProjectRow extends StatelessWidget {
                               activity,
                               style: AppTypography.body(
                                 fontSize: 9.6,
-                                color: AppColors.boneFaint,
+                                color: AppThemePalette.of(context).inkFaint,
                               ),
                             ),
                           ],
@@ -710,17 +716,24 @@ class _ProjectsNotice extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 6),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: AppColors.forgeDeep.withValues(alpha: 0.16),
+        color: AppThemePalette.of(context).warningDeep.withValues(alpha: 0.16),
         borderRadius: const BorderRadius.all(Radius.circular(8)),
       ),
       child: Row(
         children: [
-          const Icon(LucideIcons.cloudOff, size: 14, color: AppColors.ember),
+          Icon(
+            LucideIcons.cloudOff,
+            size: 14,
+            color: AppThemePalette.of(context).warningStrong,
+          ),
           const SizedBox(width: 7),
           Expanded(
             child: Text(
               message,
-              style: AppTypography.body(fontSize: 11, color: AppColors.ember),
+              style: AppTypography.body(
+                fontSize: 11,
+                color: AppThemePalette.of(context).warningStrong,
+              ),
             ),
           ),
           if (onRetry != null)
@@ -926,7 +939,9 @@ class _SessionListFallback extends StatelessWidget {
         child: Center(
           child: Text(
             'Session list unavailable in this context.',
-            style: AppTypography.body(color: AppColors.boneFaint),
+            style: AppTypography.body(
+              color: AppThemePalette.of(context).inkFaint,
+            ),
           ),
         ),
       ),

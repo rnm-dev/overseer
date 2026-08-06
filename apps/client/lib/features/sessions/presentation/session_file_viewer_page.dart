@@ -33,7 +33,7 @@ class _SessionFileViewerPageState extends ConsumerState<SessionFileViewerPage> {
     final switchable = isMarkdownFile(path) || isHtmlFile(path);
     return Scaffold(
       key: const Key('session-file-viewer-page'),
-      backgroundColor: AppColors.background,
+      backgroundColor: AppThemePalette.of(context).canvas,
       body: SafeArea(
         top: false,
         child: Column(
@@ -46,7 +46,7 @@ class _SessionFileViewerPageState extends ConsumerState<SessionFileViewerPage> {
                   Icon(
                     fileViewerIconForPath(path),
                     size: 16,
-                    color: AppColors.forge,
+                    color: AppThemePalette.of(context).warning,
                   ),
                   const SizedBox(width: 8),
                   Expanded(
@@ -57,7 +57,7 @@ class _SessionFileViewerPageState extends ConsumerState<SessionFileViewerPage> {
                       overflow: TextOverflow.ellipsis,
                       style: AppTypography.mono(
                         fontSize: 11,
-                        color: AppColors.boneDim,
+                        color: AppThemePalette.of(context).inkMuted,
                       ),
                     ),
                   ),
@@ -74,7 +74,9 @@ class _SessionFileViewerPageState extends ConsumerState<SessionFileViewerPage> {
             if (file.value?.truncated == true)
               Container(
                 width: double.infinity,
-                color: AppColors.ember.withValues(alpha: 0.08),
+                color: AppThemePalette.of(
+                  context,
+                ).warningStrong.withValues(alpha: 0.08),
                 padding: const EdgeInsets.symmetric(
                   horizontal: 14,
                   vertical: 6,
@@ -83,16 +85,16 @@ class _SessionFileViewerPageState extends ConsumerState<SessionFileViewerPage> {
                   'Preview truncated by the Peon',
                   style: AppTypography.mono(
                     fontSize: 10,
-                    color: AppColors.ember,
+                    color: AppThemePalette.of(context).warningStrong,
                   ),
                 ),
               ),
             Expanded(
               child: file.when(
-                loading: () => const Center(
+                loading: () => Center(
                   child: CircularProgressIndicator(
                     strokeWidth: 2,
-                    color: AppColors.felBright,
+                    color: AppThemePalette.of(context).accentStrong,
                   ),
                 ),
                 error: (error, _) => _ViewerError(
@@ -136,10 +138,10 @@ class _ViewerError extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(
+            Icon(
               LucideIcons.triangleAlert,
               size: 30,
-              color: AppColors.boneFaint,
+              color: AppThemePalette.of(context).inkFaint,
             ),
             const SizedBox(height: 12),
             Text(
@@ -155,7 +157,7 @@ class _ViewerError extends StatelessWidget {
               textAlign: TextAlign.center,
               style: AppTypography.body(
                 fontSize: 13,
-                color: AppColors.boneFaint,
+                color: AppThemePalette.of(context).inkFaint,
               ),
             ),
             const SizedBox(height: 16),

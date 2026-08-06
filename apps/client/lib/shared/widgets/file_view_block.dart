@@ -11,7 +11,6 @@ import 'package:markdown/markdown.dart' as md;
 import 'package:pdfrx/pdfrx.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
-import '../../features/themes/domain/app_theme_package.dart';
 import '../design/colors.dart';
 import '../design/typography.dart';
 import 'app_button.dart';

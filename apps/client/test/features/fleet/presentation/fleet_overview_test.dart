@@ -14,7 +14,6 @@ import 'package:overseer_mobile/features/fleet/domain/fleet_repository.dart';
 import 'package:overseer_mobile/features/fleet/presentation/fleet_overview.dart';
 import 'package:overseer_mobile/features/sessions/sessions.dart';
 import 'package:overseer_mobile/features/themes/application/connection_theme_controller.dart';
-import 'package:overseer_mobile/features/themes/domain/app_theme_package.dart';
 import 'package:overseer_mobile/features/auth/domain/auth_models.dart';
 import 'package:overseer_mobile/shared/design/colors.dart';
 import 'package:overseer_mobile/shared/design/spacing.dart';

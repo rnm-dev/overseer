@@ -758,7 +758,7 @@ class _MembersPane extends StatelessWidget {
                       '${owners == 1 ? 'has' : 'have'} access',
                       style: AppTypography.mono(
                         fontSize: 10,
-                        color: AppColors.boneFaint,
+                        color: AppThemePalette.of(context).inkFaint,
                       ),
                     ),
                   ),
@@ -833,9 +833,13 @@ class _SettingsHubState extends State<_SettingsHub> {
         Container(
           height: 48,
           padding: const EdgeInsets.symmetric(horizontal: 12),
-          decoration: const BoxDecoration(
-            color: AppColors.iron950,
-            border: Border(bottom: BorderSide(color: AppColors.iron800)),
+          decoration: BoxDecoration(
+            color: AppThemePalette.of(context).surface,
+            border: Border(
+              bottom: BorderSide(
+                color: AppThemePalette.of(context).surfaceHover,
+              ),
+            ),
           ),
           child: Row(
             children: [
@@ -906,7 +910,9 @@ class _SettingsSectionButton extends StatelessWidget {
                 style: AppTypography.display(
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
-                  color: selected ? AppColors.felBright : AppColors.boneFaint,
+                  color: selected
+                      ? AppThemePalette.of(context).accentStrong
+                      : AppThemePalette.of(context).inkFaint,
                 ),
               ),
             ),
@@ -1015,8 +1021,12 @@ class _SettingsPaneState extends State<_SettingsPane> {
               ),
               Container(
                 padding: const EdgeInsets.all(12),
-                decoration: const BoxDecoration(
-                  border: Border(top: BorderSide(color: AppColors.iron800)),
+                decoration: BoxDecoration(
+                  border: Border(
+                    top: BorderSide(
+                      color: AppThemePalette.of(context).surfaceHover,
+                    ),
+                  ),
                 ),
                 child: Row(
                   children: [
@@ -1025,7 +1035,7 @@ class _SettingsPaneState extends State<_SettingsPane> {
                         '⚡ Saved',
                         style: AppTypography.mono(
                           fontSize: 11,
-                          color: AppColors.felBright,
+                          color: AppThemePalette.of(context).accentStrong,
                         ),
                       ),
                     const Spacer(),

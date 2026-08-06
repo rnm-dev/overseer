@@ -4,28 +4,36 @@ import '../design/colors.dart';
 
 @immutable
 class SidebarStatusEdgeStyle {
-  const SidebarStatusEdgeStyle({required this.color, this.glowColor});
+  const SidebarStatusEdgeStyle._(this.tone);
 
-  static const idle = SidebarStatusEdgeStyle(color: Color(0x6664685A));
-
-  static const running = SidebarStatusEdgeStyle(
-    color: AppColors.felBright,
-    glowColor: AppColors.fel,
+  static const idle = SidebarStatusEdgeStyle._(SidebarStatusTone.idle);
+  static const running = SidebarStatusEdgeStyle._(SidebarStatusTone.running);
+  static const attention = SidebarStatusEdgeStyle._(
+    SidebarStatusTone.attention,
   );
+  static const failure = SidebarStatusEdgeStyle._(SidebarStatusTone.failure);
 
-  static const attention = SidebarStatusEdgeStyle(
-    color: AppColors.forge,
-    glowColor: AppColors.forge,
-  );
+  final SidebarStatusTone tone;
 
-  static const failure = SidebarStatusEdgeStyle(
-    color: AppColors.blood,
-    glowColor: AppColors.blood,
-  );
+  Color colorFor(AppThemePackage theme) => switch (tone) {
+    SidebarStatusTone.idle => theme.inkFaint.withValues(alpha: 0.4),
+    SidebarStatusTone.running => theme.accentStrong,
+    SidebarStatusTone.attention => theme.warning,
+    SidebarStatusTone.failure => theme.danger,
+  };
 
-  final Color color;
-  final Color? glowColor;
+  Color? glowColorFor(AppThemePackage theme) => switch (tone) {
+    SidebarStatusTone.idle => null,
+    SidebarStatusTone.running => theme.accent,
+    SidebarStatusTone.attention => theme.warning,
+    SidebarStatusTone.failure => theme.danger,
+  };
+
+  @Deprecated('Use colorFor with the active theme package.')
+  Color get color => colorFor(AppThemePackages.bundled.first);
 }
+
+enum SidebarStatusTone { idle, running, attention, failure }
 
 class SidebarStatusEdge extends StatefulWidget {
   const SidebarStatusEdge({
@@ -95,13 +103,16 @@ class _SidebarStatusEdgeState extends State<SidebarStatusEdge>
           animation: _controller,
           builder: (context, _) {
             final flare = _flareAt(_controller.value);
+            final theme = AppThemePalette.of(context);
+            final color = widget.style.colorFor(theme);
+            final glowColor = widget.style.glowColorFor(theme);
             return ColorFiltered(
               colorFilter: ColorFilter.matrix(_filterMatrix(flare)),
               child: Container(
                 width: 2,
                 decoration: BoxDecoration(
-                  color: widget.style.color,
-                  boxShadow: _shadows(flare),
+                  color: color,
+                  boxShadow: _shadows(flare, glowColor, theme.accent),
                 ),
               ),
             );
@@ -119,10 +130,13 @@ class _SidebarStatusEdgeState extends State<SidebarStatusEdge>
     return 1 - Curves.easeOut.transform((value - 0.14) / 0.86);
   }
 
-  List<BoxShadow>? _shadows(double flare) {
-    final glowColor = widget.style.glowColor;
+  List<BoxShadow>? _shadows(
+    double flare,
+    Color? glowColor,
+    Color fallbackGlow,
+  ) {
     if (flare > 0) {
-      final flareColor = glowColor ?? AppColors.fel;
+      final flareColor = glowColor ?? fallbackGlow;
       final startsGlowing = glowColor != null;
       return [
         BoxShadow(

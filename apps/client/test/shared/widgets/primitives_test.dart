@@ -267,9 +267,16 @@ void main() {
     );
     final successFill = (successBadge.decoration as BoxDecoration).color!;
     final errorFill = (errorBadge.decoration as BoxDecoration).color!;
+    final theme = AppThemePackages.bundled.first;
     expect(successFill != errorFill, true);
-    expect(successFill.toARGB32(), equals(const Color(0x2086AB63).toARGB32()));
-    expect(errorFill.toARGB32(), equals(const Color(0x1AD95F48).toARGB32()));
+    expect(
+      successFill.toARGB32(),
+      equals(theme.accent.withValues(alpha: 0.13).toARGB32()),
+    );
+    expect(
+      errorFill.toARGB32(),
+      equals(theme.danger.withValues(alpha: 0.10).toARGB32()),
+    );
   });
 
   testWidgets("StatusDot provides semantic label and state color", (

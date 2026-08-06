@@ -61,7 +61,7 @@ class PluginInquiryCard extends StatelessWidget {
                         borderRadius: BorderRadius.circular(9),
                       ),
                       alignment: Alignment.center,
-                      child: Icon(_icon, size: 18, color: _tone),
+                      child: Icon(_icon, size: 18, color: _tone(context)),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
@@ -109,7 +109,10 @@ class PluginInquiryCard extends StatelessWidget {
                     const SizedBox(width: 8),
                     Text(
                       status,
-                      style: AppTypography.body(fontSize: 12, color: _tone),
+                      style: AppTypography.body(
+                        fontSize: 12,
+                        color: _tone(context),
+                      ),
                     ),
                   ],
                 ),
@@ -185,15 +188,15 @@ class PluginInquiryCard extends StatelessWidget {
     );
   }
 
-  Color get _tone => switch (inquiry.status) {
-    PluginInquiryStatus.installed => AppColors.felBright,
+  Color _tone(BuildContext context) => switch (inquiry.status) {
+    PluginInquiryStatus.installed => AppThemePalette.of(context).accentStrong,
     PluginInquiryStatus.authRequired ||
-    PluginInquiryStatus.stale => AppColors.ember,
+    PluginInquiryStatus.stale => AppThemePalette.of(context).warningStrong,
     PluginInquiryStatus.failed ||
-    PluginInquiryStatus.refused => AppColors.blood,
+    PluginInquiryStatus.refused => AppThemePalette.of(context).danger,
     PluginInquiryStatus.expired ||
-    PluginInquiryStatus.cancelled => AppColors.boneDim,
-    _ => AppColors.felBright,
+    PluginInquiryStatus.cancelled => AppThemePalette.of(context).inkMuted,
+    _ => AppThemePalette.of(context).accentStrong,
   };
 
   IconData get _icon => switch (inquiry.status) {

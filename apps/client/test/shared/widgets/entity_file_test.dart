@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import 'package:overseer_mobile/shared/design/colors.dart';
+import 'package:overseer_mobile/shared/design/theme.dart';
 import 'package:overseer_mobile/shared/widgets/app_list_tile.dart';
 import 'package:overseer_mobile/shared/widgets/entity_list_tile.dart';
 import 'package:overseer_mobile/shared/widgets/file_type_icon.dart';
@@ -26,6 +27,7 @@ void main() {
     ) async {
       await tester.pumpWidget(
         MaterialApp(
+          theme: AppTheme.dark,
           home: Scaffold(
             body: Row(
               children: <Widget>[
@@ -42,10 +44,11 @@ void main() {
           .widgetList<Icon>(find.byType(Icon))
           .toList();
       expect(icons[0].icon, LucideIcons.fileCode);
-      expect(icons[0].color, AppColors.forge);
+      final theme = AppThemePackages.bundled.first;
+      expect(icons[0].color, theme.warning);
       expect(icons[1].icon, LucideIcons.fileCode);
-      expect(icons[1].color, AppColors.bone);
-      expect(icons[2].color, AppColors.boneFaint);
+      expect(icons[1].color, theme.ink);
+      expect(icons[2].color, theme.inkFaint);
     });
   });
 

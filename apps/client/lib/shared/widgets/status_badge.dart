@@ -17,7 +17,7 @@ class StatusBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final palette = _palette();
+    final palette = _palette(context);
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
@@ -38,27 +38,28 @@ class StatusBadge extends StatelessWidget {
     );
   }
 
-  _StatusBadgePalette _palette() {
+  _StatusBadgePalette _palette(BuildContext context) {
+    final theme = AppThemePalette.of(context);
     return switch (tone) {
-      StatusBadgeTone.neutral => const _StatusBadgePalette(
-        text: AppColors.boneDim,
-        fill: AppColors.iron800,
-        border: AppColors.iron700,
+      StatusBadgeTone.neutral => _StatusBadgePalette(
+        text: theme.inkMuted,
+        fill: theme.surfaceHover,
+        border: theme.surfaceActive,
       ),
-      StatusBadgeTone.success => const _StatusBadgePalette(
-        text: AppColors.felBright,
-        fill: Color(0x2086AB63),
-        border: Color(0x4D86AB63),
+      StatusBadgeTone.success => _StatusBadgePalette(
+        text: theme.accentStrong,
+        fill: theme.accent.withValues(alpha: 0.13),
+        border: theme.accent.withValues(alpha: 0.30),
       ),
-      StatusBadgeTone.warning => const _StatusBadgePalette(
-        text: AppColors.ember,
-        fill: Color(0x1AD99441),
-        border: Color(0x52D99441),
+      StatusBadgeTone.warning => _StatusBadgePalette(
+        text: theme.warningStrong,
+        fill: theme.warning.withValues(alpha: 0.10),
+        border: theme.warning.withValues(alpha: 0.32),
       ),
-      StatusBadgeTone.danger => const _StatusBadgePalette(
-        text: AppColors.blood,
-        fill: Color(0x1AD95F48),
-        border: Color(0x52D95F48),
+      StatusBadgeTone.danger => _StatusBadgePalette(
+        text: theme.danger,
+        fill: theme.danger.withValues(alpha: 0.10),
+        border: theme.danger.withValues(alpha: 0.32),
       ),
     };
   }

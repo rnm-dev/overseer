@@ -135,6 +135,15 @@ class AppThemePalette extends ThemeExtension<AppThemePalette> {
 
   final AppThemePackage package;
 
+  static AppThemePackage of(BuildContext context) {
+    final theme = Theme.of(context);
+    return theme.extension<AppThemePalette>()?.package ??
+        AppThemePackages.bundled.firstWhere(
+          (package) => package.appearance == theme.brightness,
+          orElse: () => AppThemePackages.bundled.first,
+        );
+  }
+
   Color get optionSurface => package.appearance == Brightness.light
       ? Color.alphaBlend(
           package.surfaceHover.withValues(alpha: 0.22),
