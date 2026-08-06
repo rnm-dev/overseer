@@ -120,7 +120,7 @@ export const en: Record<string, string> = {
   "proj.tab.overview": "Overview",
   "proj.tab.files": "Files",
   "proj.tab.skills": "Skills",
-  "proj.tab.packages": "Packages",
+  "proj.tab.tools": "Tools",
   "proj.tab.members": "Members",
   "proj.tab.settings": "Settings",
   "proj.files.title": "File browser",

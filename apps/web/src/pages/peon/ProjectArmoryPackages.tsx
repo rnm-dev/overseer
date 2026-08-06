@@ -147,7 +147,9 @@ export function ProjectArmoryPackages() {
   return <div className="space-y-4">
     <ProjectPageHeader showDesktopNewSession={false} />
     <ProjectTabs />
-    <header><h1 className="font-display text-xl font-extrabold text-ink">Project packages</h1><p className="mt-1 max-w-3xl text-sm leading-relaxed text-ink-muted">Assignment presence is the only package availability setting for this project. Changes apply to subsequent turns; an active turn keeps the package/profile snapshot it started with.</p></header>
+    <header><h1 className="font-display text-xl font-extrabold text-ink">Tools</h1><p className="mt-1 max-w-3xl text-sm leading-relaxed text-ink-muted">Tools this project's sessions can use.</p></header>
+    <section aria-labelledby="project-armory-section" className="space-y-4">
+    <header><h2 id="project-armory-section" className="font-display text-lg font-bold text-ink">Armory</h2><p className="mt-1 max-w-3xl text-sm leading-relaxed text-ink-muted">Pick the settings profile each installed package uses in this project. Assignment presence is the only package availability setting. Changes apply to subsequent turns; an active turn keeps the package/profile snapshot it started with.</p></header>
     {!capable ? <Card className="p-5"><h2 className="font-display text-base font-bold text-ink">Legacy Armory</h2><p className="mt-2 text-sm text-ink-muted">This Peon does not support project package assignments. Its existing package state remains available from the read-only/legacy Armory experience; the new profile and assignment routes are not used.</p></Card>
       : !peon.online ? <p className="border-l-2 border-danger bg-danger/5 px-4 py-3 font-mono text-sm text-danger">This Peon is offline — project assignments are unavailable.</p>
         : loading ? <Card className="grid min-h-40 place-items-center"><span className="loading-spinner" role="status" aria-label="Loading project packages" /></Card>
@@ -158,5 +160,6 @@ export function ProjectArmoryPackages() {
                 <div className="grid gap-4 lg:grid-cols-2">{packages.map((item) => <ProjectPackageAssignmentCard key={item.id} item={item} profiles={profiles} assignment={byPackage.get(item.id) ?? null} busy={busy.has(item.id)} settingsLink={`/peons/${encodeURIComponent(peon.peonId)}/settings/armory/${encodeURIComponent(item.id)}`} onAssign={(profileId) => mutate(item.id, profileId, false)} onRemove={() => mutate(item.id, null, true)} />)}</div>
                 <Card className="border-accent/25 bg-accent/[0.03] p-4 text-sm leading-relaxed text-ink-muted">{UNASSIGNMENT_CONTEXT_COPY}</Card>
               </>}
+    </section>
   </div>;
 }

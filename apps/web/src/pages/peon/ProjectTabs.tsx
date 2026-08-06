@@ -14,7 +14,7 @@ export function ProjectTabs() {
     { to: `${base}/files`, label: t("proj.tab.files") },
     { to: `${base}/skills`, label: t("proj.tab.skills") },
   ];
-  if (supportsArmoryProjectPackages(peon.capabilities)) tabs.push({ to: `${base}/packages`, label: t("proj.tab.packages") });
+  if (supportsArmoryProjectPackages(peon.capabilities)) tabs.push({ to: `${base}/tools`, label: t("proj.tab.tools") });
   if (isOwner) {
     tabs.push(
       { to: `${base}/members`, label: t("proj.tab.members") },

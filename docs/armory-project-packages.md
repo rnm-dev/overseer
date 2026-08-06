@@ -88,6 +88,12 @@ negotiation. A package cannot read a profile merely because it declares the
 same type: Peon supplies values only when an operator assigns that exact
 profile to that package in that project.
 
+## Operator surface
+
+Assignment lives in the project's **Tools** tab (`/peons/:peonId/projects/:key/tools`),
+whose **Armory** section lists every installed package and the profile it uses in
+this project. The earlier `/packages` path redirects there.
+
 ## Fleet HTTP routes
 
 All reads and mutations use authenticated direct Fleet HTTP. Overseer relays

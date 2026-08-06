@@ -134,7 +134,8 @@ export function App() {
           <Route path="projects/:key" element={<PeonProjectDetail />} />
           <Route path="projects/:key/files" element={<ProjectFileBrowser />} />
           <Route path="projects/:key/skills" element={<ProjectSkills />} />
-          <Route path="projects/:key/packages" element={<ProjectArmoryPackages />} />
+          <Route path="projects/:key/tools" element={<ProjectArmoryPackages />} />
+          <Route path="projects/:key/packages" element={<Navigate to="../tools" relative="path" replace />} />
           <Route path="projects/:key/members" element={<ProjectMembers />} />
           <Route path="projects/:key/settings" element={<ProjectSettings />} />
           <Route path="stats" element={<PeonStats />} />
