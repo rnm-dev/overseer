@@ -94,9 +94,13 @@ Assignment lives in the project's **Tools** tab (`/peons/:peonId/projects/:key/t
 whose **Armory** section lists every installed package and the profile it uses in
 this project. The earlier `/packages` path redirects there.
 
-Choosing a profile in a package's select is itself the mutation — it issues the
-`PUT` assignment immediately, so the card has no submit control; removal keeps
-its confirmation. The select also offers **Add new profile…**, which opens
+One dropdown per package is the whole control, and choosing in it is the
+mutation. **Disabled** is the unassigned state and issues `DELETE`; any profile
+issues `PUT` immediately. A credential-free package's dropdown is
+Disabled/**Enabled**, where Enabled assigns `profileId: null`. There is no
+assign, update or remove button and no removal dialog — the section's standing
+note explains that a change only affects the project's next turns. The
+profile dropdown also offers **Add new profile…**, which opens
 `/tools/new-profile?package=<packageId>`: a form that takes a name plus the
 package's configuration fields and then creates, configures, verifies and
 assigns the profile in one pass. Values stay write-only and are scrubbed after
