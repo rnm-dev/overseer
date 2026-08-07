@@ -65,6 +65,25 @@ test("append snapshots nested event data and deletion wins over queued persisten
   assert.equal(existsSync(transcriptPath(id)), false);
 });
 
+test("a canonical branch copy can preserve an event id and reply provenance", async () => {
+  const id = "branch-preserved-identity";
+  const eventId = "source_event_123";
+  appendTranscriptEvent(id, {
+    type: "assistant",
+    message: { content: [{ type: "text", text: "selected source text" }] },
+  }, () => 788, eventId);
+  appendTranscriptEvent(id, {
+    type: "user_message",
+    text: "Please address this selection",
+    replyTo: { eventId, selectedText: "selected source text" },
+  }, () => 789, "reply_event_456");
+  await flushTranscript(id);
+  forgetTranscript(id);
+  const entries = readTranscriptEntries(id, "claude-code");
+  assert.deepEqual(entries.map((entry) => entry.id), [eventId, "reply_event_456"]);
+  assert.deepEqual(entries[1]?.event.replyTo, { eventId, selectedText: "selected source text" });
+});
+
 test("reverse publication notification crosses only after the canonical JSONL append", async () => {
   const id = "commit-boundary";
   const committed: string[] = [];

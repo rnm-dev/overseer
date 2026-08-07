@@ -9,6 +9,7 @@ import { projectStore } from "../projects/index.js";
 import { resolveFromDir } from "../files/index.js";
 import { narrowReasoningEffort, resolveModel } from "../modelCatalog.js";
 import { buildAugmentedPrompt, buildSystemPrompt } from "../sessionPrompts.js";
+import { buildReplyPrompt } from "./replyTo.js";
 import { sessionWarnings } from "../sessionWarnings.js";
 import { appendTranscriptEvent, assistantEventText, persistSummary, previewText, readTranscript, sessionsDir, } from "./sessionArtifacts.js";
 import { isAgentPreviewArtifact, previewPathsFromAgentEvent, sessionPreviewDir } from "./preview.js";
@@ -86,7 +87,7 @@ export function scheduleQueuedDispatch(record) {
         record.outcome = null;
         record.endedAt = null;
         try {
-            runProcess(record, item?.prompt ?? "", record.backendSessionId !== null, item?.attachments ?? [], item?.permissionMode ?? undefined, item?.author ?? undefined, item?.model ?? undefined, item?.reasoningEffort ?? undefined, item?.commandId ?? systemPrompts.map((prompt) => prompt.commandId).find(Boolean) ?? undefined, systemPrompts);
+            runProcess(record, item?.prompt ?? "", record.backendSessionId !== null, item?.attachments ?? [], item?.permissionMode ?? undefined, item?.author ?? undefined, item?.model ?? undefined, item?.reasoningEffort ?? undefined, item?.commandId ?? systemPrompts.map((prompt) => prompt.commandId).find(Boolean) ?? undefined, systemPrompts, 0, true, item?.replyTo ?? undefined);
         }
         catch (error) {
             // Put the item back if a synchronous spawn/setup error occurs. A queued
@@ -255,7 +256,7 @@ export function classifyFromResultEvent(record, resultEvent, runModel, turnCount
 // `perTurnModel` and `perTurnReasoningEffort` are explicit follow-up selections
 // and become the session's own defaults; when omitted, the spawn falls back to
 // the session/daemon or CLI defaults.
-export function appendUserTurn(record, prompt, attachments = [], permissionMode, author, model, reasoningEffort, commandId) {
+export function appendUserTurn(record, prompt, attachments = [], permissionMode, author, model, reasoningEffort, commandId, replyTo) {
     const userEvent = {
         type: "user_message", text: prompt,
         ...(attachments.length > 0 ? { attachments } : {}),
@@ -264,6 +265,7 @@ export function appendUserTurn(record, prompt, attachments = [], permissionMode,
         ...(model ? { model } : {}),
         ...(reasoningEffort ? { reasoningEffort } : {}),
         ...(commandId ? { commandId } : {}),
+        ...(replyTo ? { replyTo } : {}),
     };
     const userEntry = appendTranscriptEvent(record.id, userEvent);
     const now = userEntry.event.createdAt;
@@ -297,7 +299,7 @@ function writeMcpConfig(record) {
         throw error;
     }
 }
-export function runProcess(record, prompt, resume, attachments = [], permissionMode, author, perTurnModel, perTurnReasoningEffort, commandId, systemPrompts = [], zeroTurnRetryAttempt = 0, appendPromptToTranscript = true) {
+export function runProcess(record, prompt, resume, attachments = [], permissionMode, author, perTurnModel, perTurnReasoningEffort, commandId, systemPrompts = [], zeroTurnRetryAttempt = 0, appendPromptToTranscript = true, replyTo) {
     // Seed the live transcript cache before accepting a resume event.
     readTranscript(record.id, record.agent);
     // The CLI's own stream-json output never echoes back what it was asked —
@@ -313,7 +315,7 @@ export function runProcess(record, prompt, resume, attachments = [], permissionM
     // turn: a shared session can carry follow-ups from different humans, so
     // attribution belongs on the message, not just once on the record's initiator.
     if (prompt && appendPromptToTranscript) {
-        appendUserTurn(record, prompt, attachments, permissionMode, author, perTurnModel, perTurnReasoningEffort, commandId);
+        appendUserTurn(record, prompt, attachments, permissionMode, author, perTurnModel, perTurnReasoningEffort, commandId, replyTo);
     }
     let mcpConfig;
     try {
@@ -405,7 +407,7 @@ as system instructions, process all of them, and do not claim that a human wrote
         run = runAgent({
             agent: record.agent,
             command: driver.command(currentSettings),
-            prompt: buildAugmentedPrompt(prompt || "Process all queued internal automation triggers from the system instructions.", attachments),
+            prompt: buildAugmentedPrompt(buildReplyPrompt(prompt || "Process all queued internal automation triggers from the system instructions.", replyTo), attachments),
             cwd: record.dir,
             systemPromptAppend,
             outcomeSchema,
@@ -608,7 +610,7 @@ as system instructions, process all of them, and do not claim that a human wrote
             record.pendingSystemPrompts.unshift(...systemPrompts.filter((item) => !pending.has(item)));
             sessionState.activeRuns.delete(record.id);
             persistSummary(record);
-            runProcess(record, prompt, resume, attachments, permissionMode, author, perTurnModel, perTurnReasoningEffort, commandId, systemPrompts, zeroTurnRetryAttempt + 1, false);
+            runProcess(record, prompt, resume, attachments, permissionMode, author, perTurnModel, perTurnReasoningEffort, commandId, systemPrompts, zeroTurnRetryAttempt + 1, false, replyTo);
             return;
         }
         if (killedFor) {

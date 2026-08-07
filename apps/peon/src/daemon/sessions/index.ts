@@ -9,6 +9,7 @@ export {
   type AttachmentInfo,
   type PendingSystemPrompt,
   type QueuedFollowUp,
+  type ReplyTo,
   type SessionOutcome,
   type SessionRecord,
   type SessionStats,
@@ -17,6 +18,7 @@ export {
   type StatsPeriod,
 } from "./service.js";
 export { toPublicSessionRecord, type PublicSessionRecord } from "./publicView.js";
+export { parseReplyTo, ReplyToError } from "./replyTo.js";
 export {
   flushTranscript,
   previewText,

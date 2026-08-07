@@ -6,6 +6,10 @@ while `/api/v1/themes.css` is deterministically generated from the same
 manifests for web; both clients retain only bounded fallbacks. The contract and
 security limits are in [theme catalog](themes.md).
 
+Selected-text replies attach one optional durable `replyTo` object to Peon's
+authoritative user message; the bounds, validation and provider prompt envelope
+are in [selected-text replies](selected-text-replies.md).
+
 Peon is now a CLI-only managed daemon: its local dashboard, magic-link users
 and login sessions have been removed, and all operator authentication and UI
 belong to Overseer. The remaining local API is loopback-only for CLI use;

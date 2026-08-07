@@ -224,11 +224,19 @@ export function persistSummary(record: SessionRecord): void {
   }
 }
 
-export function appendTranscriptEvent(id: string, event: AgentEvent, now: () => number = Date.now): TranscriptEntry {
+export function appendTranscriptEvent(
+  id: string,
+  event: AgentEvent,
+  now: () => number = Date.now,
+  preservedEventId?: string,
+): TranscriptEntry {
   // Stamp at the commit boundary so persisted history, transcript snapshots,
   // and the live SSE event all carry the same Peon-authored receive time.
   const committedEvent: AgentEvent = { ...structuredClone(event), createdAt: now() };
-  const entry = { id: randomUUID(), event: committedEvent };
+  // Branches copy Peon's canonical transcript, including event identity. That
+  // keeps a copied user_message.replyTo.eventId resolvable inside the branch.
+  // Normal appends always mint a new ID; never accept an unsafe persisted ID.
+  const entry = { id: preservedEventId && SAFE_TRANSCRIPT_EVENT_ID.test(preservedEventId) ? preservedEventId : randomUUID(), event: committedEvent };
   const cached = transcriptCache.get(id);
   if (cached) cached.push(entry);
   else transcriptCache.set(id, [entry]);

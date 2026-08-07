@@ -1,7 +1,7 @@
 import type { AgentEvent } from "../agents/index.js";
 import type { CodingAgent, ReasoningEffort } from "../modelCatalog.js";
 import type { SessionPage } from "../sessionPagination.js";
-import type { AttachmentInfo, QueuedFollowUp, SessionOutcome, SessionRecord, SessionStats, StatsPeriod } from "../sessionTypes.js";
+import type { AttachmentInfo, QueuedFollowUp, ReplyTo, SessionOutcome, SessionRecord, SessionStats, StatsPeriod } from "../sessionTypes.js";
 
 export interface StartSessionOptions {
   prompt: string;
@@ -59,6 +59,7 @@ export interface SessionLifecycleContract {
     reasoningEffort?: ReasoningEffort,
     commandId?: string,
     notifyParentOnComplete?: boolean,
+    replyTo?: ReplyTo,
   ): SessionRecord;
   rename(id: string, title: string | null): SessionRecord | undefined;
   renameProjectKey(oldKey: string, newKey: string): number;
@@ -73,6 +74,7 @@ export interface SessionLifecycleContract {
 }
 
 export interface SessionQueueContract {
+  validateReplyTo(id: string, replyTo: ReplyTo | undefined): ReplyTo | undefined;
   queued(id: string): QueuedFollowUp[] | undefined;
   enqueue(
     id: string,
@@ -84,9 +86,10 @@ export interface SessionQueueContract {
     reasoningEffort?: ReasoningEffort,
     commandId?: string,
     startNow?: boolean,
+    replyTo?: ReplyTo,
   ): SessionRecord;
   enqueueSystem(id: string, prompt: string, commandId?: string): SessionRecord;
-  editQueued(id: string, itemId: string, prompt: string): SessionRecord | "not_found" | "unknown_session";
+  editQueued(id: string, itemId: string, prompt: string, replyTo?: ReplyTo | null): SessionRecord | "not_found" | "unknown_session";
   steerQueued(id: string, itemId: string): "steered" | "not_found" | "unknown_session";
   /** @deprecated Use steerQueued. */
   sendQueuedNow(id: string, itemId: string): "sent" | "not_found" | "unknown_session";
@@ -98,7 +101,7 @@ export type SessionJsonService =
   & Pick<SessionLifecycleContract, "start" | "branch" | "resume" | "rename" | "cancel" | "delete">
   & Pick<
     SessionQueueContract,
-    "queued" | "enqueue" | "editQueued" | "steerQueued" | "sendQueuedNow" | "removeQueued"
+    "validateReplyTo" | "queued" | "enqueue" | "editQueued" | "steerQueued" | "sendQueuedNow" | "removeQueued"
   >;
 
 export interface SessionTranscriptEventContract {

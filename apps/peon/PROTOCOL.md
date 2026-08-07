@@ -163,11 +163,11 @@ GET   /api/v1/sessions/:id/file/raw      raw bytes for any regular file; ?path= 
 GET   /api/v1/sessions/:id/file/stream   SSE watch selected file (`changed`, `failed`)
 POST  /api/v1/sessions/:id/preview       persist/broadcast preview handoff; body { path }
 POST  /api/v1/sessions                   start; body { prompt, dir?, projectKey?, expectsOutcome?, agent?, permissionMode?, model?, reasoningEffort?, attachments? }
-POST  /api/v1/sessions/:id/followup      continue; body { prompt, permissionMode?, model?, reasoningEffort?, attachments? }
+POST  /api/v1/sessions/:id/followup      continue; body { prompt, permissionMode?, model?, reasoningEffort?, attachments?, replyTo? }
 POST  /api/v1/sessions/:id/branch        copy Codex context into a new durable session; body { title?, lastTurnId? }
 POST  /api/v1/sessions/:id/queue         enqueue; same fields plus startNow? (default false)
 GET   /api/v1/sessions/:id/queue         persisted FIFO queue; items carry type: "queue"|"steer"
-PATCH /api/v1/sessions/:id/queue/:itemId edit a waiting item's prompt; body { prompt }
+PATCH /api/v1/sessions/:id/queue/:itemId edit a waiting item's prompt; body { prompt, replyTo? }
 POST  /api/v1/sessions/:id/queue/:itemId/steer mark one item as steer, move it to the head, and dispatch it now
 POST  /api/v1/sessions/:id/queue/:itemId/send deprecated compatibility alias for /steer
 DELETE /api/v1/sessions/:id/queue/:itemId remove a waiting item
@@ -402,6 +402,35 @@ the control API. Ordering is preserved and graceful shutdown flushes the queue;
 an abrupt process or host failure can lose only the accepted-but-not-yet-flushed
 tail. Deleting a session captures and drains any pending append before a final
 unlink, so late I/O cannot resurrect its transcript.
+
+### Selected-text replies (`replyTo`)
+
+`POST /sessions/:id/followup` and `POST /sessions/:id/queue` accept an optional
+`replyTo: { eventId, selectedText }`. A queue edit may replace it with the same
+object or clear it with `replyTo: null`; omitting it preserves the queued
+item's existing reply metadata. The queue response exposes the metadata, and a
+steered item carries it unchanged through native steering or the
+interrupt-and-resume fallback.
+
+`eventId` identifies one event in the same Peon transcript. In V1 the source
+must be a text-bearing `assistant` or `user_message`; `system`, tool, result,
+preview, stderr and warning events are not replyable. `selectedText` is the
+exact operator-visible selection, preserved without trimming, whitespace
+normalization or Unicode normalization. It must contain non-whitespace text,
+at most 8,192 Unicode code points and 16 KiB UTF-8. Event IDs are bounded
+safe transcript IDs (at most 256 characters). Malformed values return `400
+BAD_REPLY_TO`; an unknown event returns `404 REPLY_SOURCE_NOT_FOUND`; a known
+event in another session returns `400 REPLY_SOURCE_WRONG_SESSION`; and an
+ineligible source returns `400 REPLY_SOURCE_NOT_REPLYABLE`.
+
+Peon persists `replyTo` only on the resulting authoritative `user_message`.
+It does not persist rendered offsets or use provider-native reply semantics.
+Before either provider starts or accepts a steer, Peon deterministically wraps
+the selection as quoted context and separately labels the operator's new
+message. Thus the transcript retains the original prompt while Codex and
+Claude receive unambiguous context. Legacy user messages and queue records
+without `replyTo` remain valid and behave exactly as before; branching copies
+the canonical transcript, including any stored metadata.
 
 A `preview` event is an explicit user-facing artifact handoff:
 

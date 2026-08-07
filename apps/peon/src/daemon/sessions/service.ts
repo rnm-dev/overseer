@@ -20,6 +20,7 @@ import type {
   SessionStatus,
   SessionUsage,
   StatsPeriod,
+  ReplyTo,
 } from "../sessionTypes.js";
 import {
   attachmentsDir,
@@ -61,6 +62,7 @@ import type {
   SessionQueueContract,
   SessionTranscriptEventContract,
 } from "./contracts.js";
+import { ReplyToError, buildReplyPrompt, isReplyableEvent } from "./replyTo.js";
 
 export { attachmentsDir } from "./sessionArtifacts.js";
 
@@ -75,6 +77,7 @@ export type {
   SessionStats,
   SessionStatus,
   SessionUsage,
+  ReplyTo,
   StatsPeriod,
 } from "../sessionTypes.js";
 
@@ -236,9 +239,9 @@ export const sessions: SessionCatalogReader & SessionLifecycleContract & Session
     if (!driver.forkConversation || !driver.capabilities.branching) throw new Error("session agent does not support branching");
     if (!source.backendSessionId) throw new Error("session has no backend conversation");
     if (opts.lastTurnId && !driver.capabilities.branchAtTurn) throw new Error("session agent does not support branching at a turn");
-    const sourceTranscript = readTranscript(source.id, source.agent);
+    const sourceTranscript = readTranscriptEntries(source.id, source.agent);
     const branchTurnIndex = opts.lastTurnId
-      ? sourceTranscript.findIndex((event) => event.backend_turn_id === opts.lastTurnId && event.type === "result")
+      ? sourceTranscript.findIndex(({ event }) => event.backend_turn_id === opts.lastTurnId && event.type === "result")
       : sourceTranscript.length - 1;
     if (opts.lastTurnId && branchTurnIndex < 0) throw new Error("unknown or incomplete branch turn");
     const newId = opts.id ?? randomUUID();
@@ -285,8 +288,13 @@ export const sessions: SessionCatalogReader & SessionLifecycleContract & Session
         eventCount: inheritedTranscript.length,
       };
       sessionState.records.set(record);
-      for (const event of inheritedTranscript) {
-        appendTranscriptEvent(record.id, event, () => typeof event.createdAt === "number" ? event.createdAt : now);
+      for (const entry of inheritedTranscript) {
+        appendTranscriptEvent(
+          record.id,
+          entry.event,
+          () => typeof entry.event.createdAt === "number" ? entry.event.createdAt : now,
+          entry.id,
+        );
       }
       await flushTranscript(record.id);
       persistSummary(record);
@@ -339,11 +347,13 @@ export const sessions: SessionCatalogReader & SessionLifecycleContract & Session
     reasoningEffort?: ReasoningEffort,
     commandId?: string,
     notifyParentOnComplete = false,
+    replyTo?: ReplyTo,
   ): SessionRecord {
     const record = sessionState.records.get(id);
     if (!record) {
       throw new Error("unknown session");
     }
+    replyTo = sessions.validateReplyTo(id, replyTo);
 
     // The actual (re)spawn, shared by both paths. Kept as a closure so the
     // interrupt path can defer it until the old child has fully exited — the
@@ -355,7 +365,7 @@ export const sessions: SessionCatalogReader & SessionLifecycleContract & Session
       record.status = "running";
       record.outcome = null;
       record.endedAt = null;
-      runProcess(record, prompt, true, attachments, permissionMode, author, model, reasoningEffort, commandId);
+      runProcess(record, prompt, true, attachments, permissionMode, author, model, reasoningEffort, commandId, [], 0, true, replyTo);
     };
 
     if (record.status === "running") {
@@ -380,7 +390,7 @@ export const sessions: SessionCatalogReader & SessionLifecycleContract & Session
           // pending fence, so those late acknowledgements are ignored above.
           record.followUpPrompts.push(prompt);
           record.parentCompletionNotificationPending = notifyParentOnComplete;
-          appendUserTurn(record, prompt, attachments, permissionMode, author, model, reasoningEffort, commandId);
+          appendUserTurn(record, prompt, attachments, permissionMode, author, model, reasoningEffort, commandId, replyTo);
           persistSummary(record);
           sessionState.emitter.emit("change", record);
         };
@@ -402,7 +412,7 @@ export const sessions: SessionCatalogReader & SessionLifecycleContract & Session
         };
         sessionState.steerPending.add(id);
         if (driver.steer?.(run, {
-          prompt: buildAugmentedPrompt(prompt, attachments),
+          prompt: buildAugmentedPrompt(buildReplyPrompt(prompt, replyTo), attachments),
           attachments,
           permissionMode,
           author,
@@ -445,9 +455,11 @@ export const sessions: SessionCatalogReader & SessionLifecycleContract & Session
     reasoningEffort?: ReasoningEffort,
     commandId?: string,
     startNow = false,
+    replyTo?: ReplyTo,
   ): SessionRecord {
     const record = sessionState.records.get(id);
     if (!record) throw new Error("unknown session");
+    replyTo = sessions.validateReplyTo(id, replyTo);
     const item: QueuedFollowUp = {
       id: randomUUID(), type: "queue", sessionId: id, prompt, attachments,
       permissionMode: permissionMode ?? null,
@@ -455,6 +467,7 @@ export const sessions: SessionCatalogReader & SessionLifecycleContract & Session
       model: model ?? null,
       reasoningEffort: reasoningEffort ?? null,
       commandId: commandId ?? null,
+      replyTo: replyTo ?? null,
       queuedAt: Date.now(),
     };
     record.queuedFollowUps.push(item);
@@ -499,6 +512,25 @@ export const sessions: SessionCatalogReader & SessionLifecycleContract & Session
     return record;
   },
 
+  validateReplyTo(id: string, replyTo: ReplyTo | undefined): ReplyTo | undefined {
+    if (!replyTo) return undefined;
+    const record = sessionState.records.get(id);
+    if (!record) throw new Error("unknown session");
+    const entry = readTranscriptEntries(id, record.agent).find((candidate) => candidate.id === replyTo.eventId);
+    if (!entry) {
+      for (const other of sessionState.records.values()) {
+        if (other.id !== id && readTranscriptEntries(other.id, other.agent).some((candidate) => candidate.id === replyTo.eventId)) {
+          throw new ReplyToError("REPLY_SOURCE_WRONG_SESSION", "replyTo.eventId belongs to a different session");
+        }
+      }
+      throw new ReplyToError("REPLY_SOURCE_NOT_FOUND", "replyTo.eventId was not found in this session");
+    }
+    if (!isReplyableEvent(entry.event)) {
+      throw new ReplyToError("REPLY_SOURCE_NOT_REPLYABLE", "replyTo.eventId is not a replyable transcript event");
+    }
+    return { ...replyTo };
+  },
+
   queued(id: string): QueuedFollowUp[] | undefined {
     return sessionState.records.get(id)?.queuedFollowUps.slice();
   },
@@ -518,12 +550,15 @@ export const sessions: SessionCatalogReader & SessionLifecycleContract & Session
     id: string,
     itemId: string,
     prompt: string,
+    replyTo?: ReplyTo | null,
   ): SessionRecord | "not_found" | "unknown_session" {
     const record = sessionState.records.get(id);
     if (!record) return "unknown_session";
     const item = record.queuedFollowUps.find((queued) => queued.id === itemId);
     if (!item) return "not_found";
+    if (replyTo) replyTo = sessions.validateReplyTo(id, replyTo);
     item.prompt = prompt;
+    if (replyTo !== undefined) item.replyTo = replyTo;
     persistSummary(record);
     sessionState.emitter.emit("change", record);
     return record;
@@ -567,6 +602,7 @@ export const sessions: SessionCatalogReader & SessionLifecycleContract & Session
           selected.model ?? undefined,
           selected.reasoningEffort ?? undefined,
           selected.commandId ?? undefined,
+          selected.replyTo ?? undefined,
         );
         persistSummary(record);
         sessionState.emitter.emit("change", record);
@@ -582,7 +618,7 @@ export const sessions: SessionCatalogReader & SessionLifecycleContract & Session
       };
       sessionState.steerPending.add(id);
       if (driver.steer(run, {
-        prompt: buildAugmentedPrompt(selected.prompt, selected.attachments),
+        prompt: buildAugmentedPrompt(buildReplyPrompt(selected.prompt, selected.replyTo ?? undefined), selected.attachments),
         attachments: selected.attachments,
         permissionMode: selected.permissionMode ?? undefined,
         author: selected.author ?? undefined,

@@ -19,6 +19,17 @@ export interface AttachmentInfo {
   mimetype: string;
 }
 
+/**
+ * A durable reference to text selected in one earlier transcript event.
+ * `selectedText` is intentionally the operator-visible selection, not an
+ * offset into provider output: Peon owns the transcript and can preserve this
+ * display context even when a client only has a paged slice loaded.
+ */
+export interface ReplyTo {
+  eventId: string;
+  selectedText: string;
+}
+
 export interface QueuedFollowUp {
   id: string;
   type: "queue" | "steer";
@@ -30,6 +41,7 @@ export interface QueuedFollowUp {
   model: string | null;
   reasoningEffort: ReasoningEffort | null;
   commandId: string | null;
+  replyTo: ReplyTo | null;
   queuedAt: number;
 }
 
