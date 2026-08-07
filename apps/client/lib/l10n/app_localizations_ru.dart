@@ -134,4 +134,31 @@ class AppLocalizationsRu extends AppLocalizations {
     );
     return '$_temp0';
   }
+
+  @override
+  String get toolActivityRead => 'Открыт файл';
+
+  @override
+  String get toolActivitySearch => 'Выполнен поиск по материалам';
+
+  @override
+  String get toolActivityWeb => 'Проверены внешние источники';
+
+  @override
+  String get toolActivityEdit => 'Изменён файл';
+
+  @override
+  String get toolActivityAnalysis => 'Проведён дополнительный анализ';
+
+  @override
+  String get toolActivityCommand => 'Выполнена техническая операция';
+
+  @override
+  String get toolActivityGeneric => 'Выполнено действие';
+
+  @override
+  String get toolActivityFailedShort => 'ошибка';
+
+  @override
+  String get showTechnicalDetails => 'Показать технические детали';
 }

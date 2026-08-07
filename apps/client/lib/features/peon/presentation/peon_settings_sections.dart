@@ -185,7 +185,7 @@ class _GeneralSettingsState extends ConsumerState<_GeneralSettings> {
                     'Source: $source',
                     style: AppTypography.mono(
                       fontSize: 10.5,
-                      color: AppColors.boneFaint,
+                      color: AppThemePalette.of(context).inkFaint,
                     ),
                   ),
                 ),
@@ -285,7 +285,7 @@ class _GeneralSettingsState extends ConsumerState<_GeneralSettings> {
             fontSize: 10,
             letterSpacing: 1.8,
             fontWeight: FontWeight.w700,
-            color: AppColors.blood,
+            color: AppThemePalette.of(context).danger,
           ),
         ),
         const SizedBox(height: 8),
@@ -550,7 +550,7 @@ class _AgentSettingsState extends ConsumerState<_AgentSettings> {
                       '⚡ Saved',
                       style: AppTypography.mono(
                         fontSize: 11,
-                        color: AppColors.felBright,
+                        color: AppThemePalette.of(context).accentStrong,
                       ),
                     ),
                   if (widget.state.soulSaved) const SizedBox(width: 10),
@@ -587,10 +587,10 @@ class _CliUpdatesPanel extends ConsumerWidget {
       subtitle:
           'Installed CLI versions used by Codex and Claude Code sessions.',
       child: value.when(
-        loading: () => const Center(
+        loading: () => Center(
           child: CircularProgressIndicator(
             strokeWidth: 1.7,
-            color: AppColors.felBright,
+            color: AppThemePalette.of(context).accentStrong,
           ),
         ),
         error: (error, _) => _ErrorText(error.toString()),
@@ -607,7 +607,7 @@ class _CliUpdatesPanel extends ConsumerWidget {
                   'Peon itself to enable this panel.',
                   style: AppTypography.mono(
                     fontSize: 11,
-                    color: AppColors.boneFaint,
+                    color: AppThemePalette.of(context).inkFaint,
                     height: 1.45,
                   ),
                 ),
@@ -657,7 +657,7 @@ class _CliUpdatesPanel extends ConsumerWidget {
                       : 'No cached provider update data is available.',
                   style: AppTypography.mono(
                     fontSize: 11,
-                    color: AppColors.boneFaint,
+                    color: AppThemePalette.of(context).inkFaint,
                   ),
                 ),
               if (state.message case final message?) ...[
@@ -780,8 +780,7 @@ class _ArmorySettings extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final value = ref.watch(armoryControllerProvider(scope));
     return value.when(
-      loading: () =>
-          const Center(child: CircularProgressIndicator(strokeWidth: 1.7)),
+      loading: () => Center(child: CircularProgressIndicator(strokeWidth: 1.7)),
       error: (error, _) => _Notice(
         icon: LucideIcons.cloudOff,
         title: 'Could not load Armory',
@@ -847,7 +846,7 @@ class _ArmorySettings extends ConsumerWidget {
                           'No cached Armory inventory is available.',
                       style: AppTypography.mono(
                         fontSize: 11,
-                        color: AppColors.boneFaint,
+                        color: AppThemePalette.of(context).inkFaint,
                       ),
                     ),
                   for (final package in inventory?.packages ?? const []) ...[
@@ -870,7 +869,7 @@ class _ArmorySettings extends ConsumerWidget {
                       'No packages are published in this catalog.',
                       style: AppTypography.mono(
                         fontSize: 11,
-                        color: AppColors.boneFaint,
+                        color: AppThemePalette.of(context).inkFaint,
                       ),
                     ),
                   if (state.message case final message?) ...[
@@ -1121,12 +1120,16 @@ class _InlineNotice extends StatelessWidget {
     margin: const EdgeInsets.only(bottom: 10),
     padding: const EdgeInsets.all(10),
     decoration: BoxDecoration(
-      color: (warning ? AppColors.forge : AppColors.fel).withValues(
-        alpha: 0.06,
-      ),
+      color:
+          (warning
+                  ? AppThemePalette.of(context).warning
+                  : AppThemePalette.of(context).accent)
+              .withValues(alpha: 0.06),
       border: Border(
         left: BorderSide(
-          color: warning ? AppColors.forge : AppColors.fel,
+          color: warning
+              ? AppThemePalette.of(context).warning
+              : AppThemePalette.of(context).accent,
           width: 2,
         ),
       ),
@@ -1135,7 +1138,9 @@ class _InlineNotice extends StatelessWidget {
       text,
       style: AppTypography.mono(
         fontSize: 10.5,
-        color: warning ? AppColors.ember : AppColors.boneDim,
+        color: warning
+            ? AppThemePalette.of(context).warningStrong
+            : AppThemePalette.of(context).inkMuted,
       ),
     ),
   );
@@ -1158,7 +1163,10 @@ Future<T?> _pick<T>(
           onTap: () => Navigator.of(context).pop(value),
           child: Text(
             label(value),
-            style: AppTypography.body(fontSize: 14, color: AppColors.bone),
+            style: AppTypography.body(
+              fontSize: 14,
+              color: AppThemePalette.of(context).ink,
+            ),
           ),
         ),
     ],

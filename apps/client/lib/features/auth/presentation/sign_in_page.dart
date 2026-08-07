@@ -42,9 +42,9 @@ class SignInPage extends StatelessWidget {
                     key: const Key('auth-back-to-connections'),
                     tooltip: l10n.backToOverseers,
                     onPressed: onBack,
-                    icon: const Icon(
+                    icon: Icon(
                       LucideIcons.arrowLeft,
-                      color: AppColors.bone,
+                      color: AppThemePalette.of(context).ink,
                     ),
                   ),
                 ),
@@ -70,7 +70,7 @@ class SignInPage extends StatelessWidget {
                               textAlign: TextAlign.center,
                               style: AppTypography.body(
                                 fontSize: 13,
-                                color: AppColors.blood,
+                                color: AppThemePalette.of(context).danger,
                                 height: 1.4,
                               ),
                             ),

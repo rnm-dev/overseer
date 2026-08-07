@@ -15,7 +15,6 @@ import '../../auth/domain/auth_models.dart';
 import '../../sessions/sessions.dart';
 import '../../settings/application/sound_pack_controller.dart';
 import '../../themes/application/connection_theme_controller.dart';
-import '../../themes/domain/app_theme_package.dart';
 import '../../settings/application/notification_permission_controller.dart';
 import '../../settings/domain/sound_pack.dart';
 import '../application/fleet_controller.dart';

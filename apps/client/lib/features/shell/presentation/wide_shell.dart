@@ -90,10 +90,10 @@ class _WideDetailPlaceholder extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Center(
+    return Center(
       child: Text(
         'Select a peon to view its sessions',
-        style: TextStyle(color: AppColors.boneDim),
+        style: TextStyle(color: AppThemePalette.of(context).inkMuted),
       ),
     );
   }

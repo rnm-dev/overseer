@@ -55,7 +55,7 @@ Future<T?> showAdaptiveAppDialog<T>({
     useRootNavigator: useRootNavigator,
     barrierDismissible: dismissible,
     barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
-    barrierColor: Colors.black54,
+    barrierColor: Theme.of(context).colorScheme.scrim.withValues(alpha: 0.54),
     transitionDuration: reducedMotion ? Duration.zero : AppMotion.panelOpen,
     pageBuilder: (dialogContext, _, _) {
       return SafeArea(

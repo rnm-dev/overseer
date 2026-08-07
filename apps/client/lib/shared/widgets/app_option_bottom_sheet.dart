@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../features/themes/domain/app_theme_package.dart';
 import '../design/motion.dart';
 import 'app_bottom_sheet.dart';
 
@@ -46,12 +47,15 @@ class AppOptionSheetTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final palette = theme.extension<AppThemePalette>();
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Material(
         color: selected
-            ? Theme.of(context).highlightColor
-            : Theme.of(context).colorScheme.surfaceContainerHighest,
+            ? theme.highlightColor
+            : palette?.optionSurface ??
+                  theme.colorScheme.surfaceContainerHighest,
         borderRadius: AppMotion.optionShape,
         child: InkWell(
           onTap: onTap,

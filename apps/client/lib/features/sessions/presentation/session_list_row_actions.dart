@@ -157,7 +157,9 @@ class SessionWorkItem extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                           style: AppTypography.body(
                             fontSize: 10.6,
-                            color: AppColors.forge.withValues(alpha: 0.8),
+                            color: AppThemePalette.of(
+                              context,
+                            ).warning.withValues(alpha: 0.8),
                           ),
                         ),
                       ),
@@ -173,7 +175,7 @@ class SessionWorkItem extends StatelessWidget {
                           softWrap: false,
                           style: AppTypography.body(
                             fontSize: 10.6,
-                            color: AppColors.boneFaint,
+                            color: AppThemePalette.of(context).inkFaint,
                           ),
                         ),
                       )
@@ -186,7 +188,7 @@ class SessionWorkItem extends StatelessWidget {
                         activity,
                         style: AppTypography.body(
                           fontSize: 10.6,
-                          color: AppColors.boneFaint,
+                          color: AppThemePalette.of(context).inkFaint,
                         ),
                       ),
                     ],
@@ -260,13 +262,13 @@ class SessionWorkItem extends StatelessWidget {
     return showMenu<_SessionMenuAction>(
       context: context,
       useRootNavigator: true,
-      color: AppColors.iron950,
+      color: AppThemePalette.of(context).surface,
       surfaceTintColor: Colors.transparent,
       elevation: 12,
       constraints: const BoxConstraints.tightFor(width: 160),
-      shape: const RoundedRectangleBorder(
+      shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.all(Radius.circular(8)),
-        side: BorderSide(color: AppColors.iron800),
+        side: BorderSide(color: AppThemePalette.of(context).surfaceHover),
       ),
       position: RelativeRect.fromLTRB(
         x,
@@ -282,17 +284,17 @@ class SessionWorkItem extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 12),
           child: Row(
             children: [
-              const Icon(
+              Icon(
                 LucideIcons.pencil,
                 size: 13,
-                color: AppColors.boneDim,
+                color: AppThemePalette.of(context).inkMuted,
               ),
               const SizedBox(width: 8),
               Text(
                 'Rename',
                 style: AppTypography.body(
                   fontSize: 12,
-                  color: AppColors.boneDim,
+                  color: AppThemePalette.of(context).inkMuted,
                 ),
               ),
             ],
@@ -305,11 +307,18 @@ class SessionWorkItem extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 12),
           child: Row(
             children: [
-              const Icon(LucideIcons.trash2, size: 13, color: AppColors.blood),
+              Icon(
+                LucideIcons.trash2,
+                size: 13,
+                color: AppThemePalette.of(context).danger,
+              ),
               const SizedBox(width: 8),
               Text(
                 'Delete',
-                style: AppTypography.body(fontSize: 12, color: AppColors.blood),
+                style: AppTypography.body(
+                  fontSize: 12,
+                  color: AppThemePalette.of(context).danger,
+                ),
               ),
             ],
           ),
@@ -414,10 +423,10 @@ class _SessionActionsBottomSheet extends StatelessWidget {
           onTap: () => Navigator.of(context).pop(_SessionMenuAction.rename),
           child: Row(
             children: [
-              const Icon(
+              Icon(
                 LucideIcons.pencil,
                 size: 20,
-                color: AppColors.boneDim,
+                color: AppThemePalette.of(context).inkMuted,
               ),
               const SizedBox(width: 12),
               Text('Rename', style: AppTypography.optionLabel(selected: false)),
@@ -429,13 +438,17 @@ class _SessionActionsBottomSheet extends StatelessWidget {
           onTap: () => Navigator.of(context).pop(_SessionMenuAction.delete),
           child: Row(
             children: [
-              const Icon(LucideIcons.trash2, size: 20, color: AppColors.blood),
+              Icon(
+                LucideIcons.trash2,
+                size: 20,
+                color: AppThemePalette.of(context).danger,
+              ),
               const SizedBox(width: 12),
               Text(
                 'Delete',
                 style: AppTypography.optionLabel(
                   selected: false,
-                ).copyWith(color: AppColors.blood),
+                ).copyWith(color: AppThemePalette.of(context).danger),
               ),
             ],
           ),

@@ -22,10 +22,24 @@ enum FileKind {
 }
 
 class _FileTypeAppearance {
-  const _FileTypeAppearance({required this.icon, required this.color});
+  const _FileTypeAppearance({required this.icon, required this.tone});
 
   final IconData icon;
-  final Color color;
+  final _FileTypeTone tone;
+}
+
+enum _FileTypeTone {
+  accent,
+  accentStrong,
+  accentMuted,
+  warning,
+  warningStrong,
+  warningDeep,
+  danger,
+  ink,
+  muted,
+  faint,
+  edgeStrong,
 }
 
 const Map<String, FileKind> _extensionKinds = <String, FileKind>{
@@ -138,67 +152,67 @@ const Map<FileKind, _FileTypeAppearance> _kindAppearance =
     <FileKind, _FileTypeAppearance>{
       FileKind.archive: _FileTypeAppearance(
         icon: LucideIcons.fileArchive,
-        color: AppColors.ember,
+        tone: _FileTypeTone.warningStrong,
       ),
       FileKind.audio: _FileTypeAppearance(
         icon: LucideIcons.audioLines,
-        color: AppColors.forge,
+        tone: _FileTypeTone.warning,
       ),
       FileKind.code: _FileTypeAppearance(
         icon: LucideIcons.fileCode,
-        color: AppColors.felBright,
+        tone: _FileTypeTone.accentStrong,
       ),
       FileKind.config: _FileTypeAppearance(
         icon: LucideIcons.settings,
-        color: AppColors.forgeDeep,
+        tone: _FileTypeTone.warningDeep,
       ),
       FileKind.data: _FileTypeAppearance(
         icon: LucideIcons.table,
-        color: AppColors.felDim,
+        tone: _FileTypeTone.accentMuted,
       ),
       FileKind.database: _FileTypeAppearance(
         icon: LucideIcons.database,
-        color: AppColors.iron500,
+        tone: _FileTypeTone.faint,
       ),
       FileKind.image: _FileTypeAppearance(
         icon: LucideIcons.image,
-        color: AppColors.ember,
+        tone: _FileTypeTone.warningStrong,
       ),
       FileKind.javascript: _FileTypeAppearance(
         icon: LucideIcons.fileCode,
-        color: AppColors.forge,
+        tone: _FileTypeTone.warning,
       ),
       FileKind.json: _FileTypeAppearance(
         icon: LucideIcons.fileJson,
-        color: AppColors.iron600,
+        tone: _FileTypeTone.edgeStrong,
       ),
       FileKind.shell: _FileTypeAppearance(
         icon: LucideIcons.terminal,
-        color: AppColors.bone,
+        tone: _FileTypeTone.ink,
       ),
       FileKind.stylesheet: _FileTypeAppearance(
         icon: LucideIcons.palette,
-        color: AppColors.forgeDeep,
+        tone: _FileTypeTone.warningDeep,
       ),
       FileKind.text: _FileTypeAppearance(
         icon: LucideIcons.fileText,
-        color: AppColors.boneDim,
+        tone: _FileTypeTone.muted,
       ),
       FileKind.typescript: _FileTypeAppearance(
         icon: LucideIcons.fileCode,
-        color: AppColors.bone,
+        tone: _FileTypeTone.ink,
       ),
       FileKind.video: _FileTypeAppearance(
         icon: LucideIcons.video,
-        color: AppColors.blood,
+        tone: _FileTypeTone.danger,
       ),
       FileKind.web: _FileTypeAppearance(
         icon: LucideIcons.globe,
-        color: AppColors.fel,
+        tone: _FileTypeTone.accent,
       ),
       FileKind.unknown: _FileTypeAppearance(
         icon: LucideIcons.file,
-        color: AppColors.boneFaint,
+        tone: _FileTypeTone.faint,
       ),
     };
 
@@ -239,8 +253,25 @@ class FileTypeIcon extends StatelessWidget {
     return Icon(
       appearance.icon,
       size: size,
-      color: color ?? appearance.color,
+      color: color ?? _resolveTone(context, appearance.tone),
       semanticLabel: semanticsLabel,
     );
   }
+}
+
+Color _resolveTone(BuildContext context, _FileTypeTone tone) {
+  final theme = AppThemePalette.of(context);
+  return switch (tone) {
+    _FileTypeTone.accent => theme.accent,
+    _FileTypeTone.accentStrong => theme.accentStrong,
+    _FileTypeTone.accentMuted => theme.accentMuted,
+    _FileTypeTone.warning => theme.warning,
+    _FileTypeTone.warningStrong => theme.warningStrong,
+    _FileTypeTone.warningDeep => theme.warningDeep,
+    _FileTypeTone.danger => theme.danger,
+    _FileTypeTone.ink => theme.ink,
+    _FileTypeTone.muted => theme.inkMuted,
+    _FileTypeTone.faint => theme.inkFaint,
+    _FileTypeTone.edgeStrong => theme.edgeStrong,
+  };
 }

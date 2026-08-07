@@ -31,7 +31,7 @@ Future<void> showVoiceInputAlertSheet({
                 textAlign: TextAlign.center,
                 style: AppTypography.body(
                   fontSize: 14,
-                  color: AppColors.boneDim,
+                  color: AppThemePalette.of(context).inkMuted,
                   height: 1.45,
                 ),
               ),

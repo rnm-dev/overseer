@@ -313,6 +313,60 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{count, plural, =1{1 message waiting to send} other{{count} messages waiting to send}}'**
   String queuedMessages(int count);
+
+  /// No description provided for @toolActivityRead.
+  ///
+  /// In en, this message translates to:
+  /// **'Opened a file'**
+  String get toolActivityRead;
+
+  /// No description provided for @toolActivitySearch.
+  ///
+  /// In en, this message translates to:
+  /// **'Searched the materials'**
+  String get toolActivitySearch;
+
+  /// No description provided for @toolActivityWeb.
+  ///
+  /// In en, this message translates to:
+  /// **'Checked external sources'**
+  String get toolActivityWeb;
+
+  /// No description provided for @toolActivityEdit.
+  ///
+  /// In en, this message translates to:
+  /// **'Updated a file'**
+  String get toolActivityEdit;
+
+  /// No description provided for @toolActivityAnalysis.
+  ///
+  /// In en, this message translates to:
+  /// **'Performed additional analysis'**
+  String get toolActivityAnalysis;
+
+  /// No description provided for @toolActivityCommand.
+  ///
+  /// In en, this message translates to:
+  /// **'Performed a technical operation'**
+  String get toolActivityCommand;
+
+  /// No description provided for @toolActivityGeneric.
+  ///
+  /// In en, this message translates to:
+  /// **'Performed an action'**
+  String get toolActivityGeneric;
+
+  /// No description provided for @toolActivityFailedShort.
+  ///
+  /// In en, this message translates to:
+  /// **'failed'**
+  String get toolActivityFailedShort;
+
+  /// No description provided for @showTechnicalDetails.
+  ///
+  /// In en, this message translates to:
+  /// **'Show technical details'**
+  String get showTechnicalDetails;
 }
 
 class _AppLocalizationsDelegate

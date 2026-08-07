@@ -9,6 +9,7 @@ import 'package:overseer_mobile/features/projects/domain/project_detail_models.d
 import 'package:overseer_mobile/features/projects/domain/project_models.dart';
 import 'package:overseer_mobile/features/projects/domain/project_repository.dart';
 import 'package:overseer_mobile/features/projects/presentation/project_files_page.dart';
+import 'package:overseer_mobile/features/themes/domain/app_theme_package.dart';
 import 'package:overseer_mobile/shared/design/theme.dart';
 
 void main() {
@@ -75,6 +76,36 @@ void main() {
 
     expect(find.text('No project files'), findsOneWidget);
     expect(find.byKey(const Key('project-files-refresh')), findsNothing);
+  });
+
+  testWidgets('uses the Parchment palette for the file browser', (
+    tester,
+  ) async {
+    final package = AppThemePackages.resolve('org.overseer.parchment');
+    final repository = _FilesRepository({
+      '': const [ProjectFileEntry(name: 'README.md', type: 'file', size: 120)],
+    });
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [projectRepositoryProvider.overrideWithValue(repository)],
+        child: MaterialApp(
+          theme: AppTheme.fromPackage(package),
+          home: const ProjectFilesPage(
+            workspaceId: 'workspace',
+            peonId: 'peon',
+            projectKey: 'overseer-mobile',
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final scaffold = tester.widget<Scaffold>(
+      find.byKey(const Key('project-files-page')),
+    );
+    final fileName = tester.widget<Text>(find.text('README.md'));
+    expect(scaffold.backgroundColor, package.canvas);
+    expect(fileName.style?.color, package.ink);
   });
 
   testWidgets('opens Markdown with Mermaid and switches to code mode', (

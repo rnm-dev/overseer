@@ -136,7 +136,7 @@ class SessionList extends ConsumerWidget {
                         dimension: 14,
                         child: CircularProgressIndicator(strokeWidth: 1.5),
                       )
-                    : const Icon(LucideIcons.chevronsDown, size: 16),
+                    : Icon(LucideIcons.chevronsDown, size: 16),
                 label: Text(
                   value.isLoadingMore ? 'Loading' : 'Load older sessions',
                 ),
@@ -839,17 +839,24 @@ class _SessionsNotice extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
       decoration: BoxDecoration(
-        color: AppColors.forgeDeep.withValues(alpha: 0.16),
+        color: AppThemePalette.of(context).warningDeep.withValues(alpha: 0.16),
         borderRadius: const BorderRadius.all(Radius.circular(10)),
       ),
       child: Row(
         children: [
-          Icon(icon, size: 16, color: AppColors.ember),
+          Icon(
+            icon,
+            size: 16,
+            color: AppThemePalette.of(context).warningStrong,
+          ),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
               message,
-              style: AppTypography.body(fontSize: 12, color: AppColors.ember),
+              style: AppTypography.body(
+                fontSize: 12,
+                color: AppThemePalette.of(context).warningStrong,
+              ),
             ),
           ),
           if (actionLabel != null)
@@ -875,13 +882,13 @@ class _SessionListEmptyState extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: const BoxDecoration(
-        color: AppColors.rowSurface,
+      decoration: BoxDecoration(
+        color: AppThemePalette.of(context).surfaceRaised,
         borderRadius: BorderRadius.all(Radius.circular(12)),
       ),
       child: Row(
         children: [
-          Icon(icon, color: AppColors.boneFaint),
+          Icon(icon, color: AppThemePalette.of(context).inkFaint),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -896,7 +903,7 @@ class _SessionListEmptyState extends StatelessWidget {
                   message,
                   style: AppTypography.body(
                     fontSize: 12,
-                    color: AppColors.boneDim,
+                    color: AppThemePalette.of(context).inkMuted,
                   ),
                 ),
               ],

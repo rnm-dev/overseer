@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:overseer_mobile/features/themes/domain/app_theme_package.dart';
 import 'package:overseer_mobile/shared/design/theme.dart';
 import 'package:overseer_mobile/shared/widgets/adaptive_selection_picker.dart';
 import 'package:overseer_mobile/shared/widgets/app_option_bottom_sheet.dart';
@@ -82,5 +83,52 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(selected, 'SCV');
+  });
+
+  testWidgets('uses a restrained option surface in Parchment sheets', (
+    tester,
+  ) async {
+    final package = AppThemePackages.resolve('org.overseer.parchment');
+    tester.view.physicalSize = const Size(390, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.fromPackage(package),
+        home: Scaffold(
+          body: AdaptiveSelectionPicker<String>(
+            title: 'Sounds',
+            value: 'Peon',
+            options: const [
+              SelectionOption(value: 'Peon', label: 'Peon'),
+              SelectionOption(value: 'SCV', label: 'SCV'),
+            ],
+            onSelected: (_) {},
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byType(AdaptiveSelectionPicker<String>));
+    await tester.pumpAndSettle();
+
+    final unselectedTile = tester.widget<Material>(
+      find
+          .descendant(
+            of: find.byKey(const Key('selection-option-SCV')),
+            matching: find.byType(Material),
+          )
+          .first,
+    );
+    expect(
+      unselectedTile.color,
+      AppTheme.fromPackage(package).extension<AppThemePalette>()!.optionSurface,
+    );
+    expect(unselectedTile.color, isNot(package.surfaceHover));
+    expect(unselectedTile.color, isNot(package.surfaceRaised));
   });
 }

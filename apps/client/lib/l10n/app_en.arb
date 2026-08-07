@@ -37,5 +37,14 @@
   "queue": "Queue",
   "send": "Send",
   "queuedMessages": "{count, plural, =1{1 message waiting to send} other{{count} messages waiting to send}}",
-  "@queuedMessages": {"placeholders": {"count": {"type": "int"}}}
+  "@queuedMessages": {"placeholders": {"count": {"type": "int"}}},
+  "toolActivityRead": "Opened a file",
+  "toolActivitySearch": "Searched the materials",
+  "toolActivityWeb": "Checked external sources",
+  "toolActivityEdit": "Updated a file",
+  "toolActivityAnalysis": "Performed additional analysis",
+  "toolActivityCommand": "Performed a technical operation",
+  "toolActivityGeneric": "Performed an action",
+  "toolActivityFailedShort": "failed",
+  "showTechnicalDetails": "Show technical details"
 }

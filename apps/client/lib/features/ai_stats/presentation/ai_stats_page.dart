@@ -275,7 +275,7 @@ class _TokenBreakdown extends StatelessWidget {
               '${stats.sessionsMissingUsage} run(s) missing usage data.',
               style: AppTypography.mono(
                 fontSize: 11,
-                color: AppColors.boneFaint,
+                color: AppThemePalette.of(context).inkFaint,
               ),
             ),
           ),
@@ -312,11 +312,17 @@ class _BreakdownValue extends StatelessWidget {
         children: [
           TextSpan(
             text: '$label ',
-            style: AppTypography.mono(fontSize: 11, color: AppColors.boneFaint),
+            style: AppTypography.mono(
+              fontSize: 11,
+              color: AppThemePalette.of(context).inkFaint,
+            ),
           ),
           TextSpan(
             text: _count(value),
-            style: AppTypography.mono(fontSize: 11, color: AppColors.boneDim),
+            style: AppTypography.mono(
+              fontSize: 11,
+              color: AppThemePalette.of(context).inkMuted,
+            ),
           ),
         ],
       ),
@@ -343,7 +349,7 @@ class _StatsNotice extends StatelessWidget {
               textAlign: TextAlign.center,
               style: AppTypography.mono(
                 fontSize: 13,
-                color: AppColors.boneFaint,
+                color: AppThemePalette.of(context).inkFaint,
               ),
             ),
             if (onRetry != null) ...[
@@ -365,12 +371,15 @@ class _OfflineBanner extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: AppColors.forgeDeep.withValues(alpha: 0.16),
+        color: AppThemePalette.of(context).warningDeep.withValues(alpha: 0.16),
         borderRadius: BorderRadius.circular(6),
       ),
       child: Text(
         'Offline · showing the last saved statistics.',
-        style: AppTypography.mono(fontSize: 11, color: AppColors.ember),
+        style: AppTypography.mono(
+          fontSize: 11,
+          color: AppThemePalette.of(context).warningStrong,
+        ),
       ),
     );
   }
@@ -824,7 +833,7 @@ class _CapabilityGroup extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 4),
-            const Icon(Icons.expand_more, size: 18),
+            Icon(Icons.expand_more, size: 18),
           ],
         ),
         children: [

@@ -1043,7 +1043,7 @@ class _NewSessionBody extends StatelessWidget {
                     textAlign: TextAlign.center,
                     style: AppTypography.body(
                       fontSize: 13,
-                      color: AppColors.boneDim,
+                      color: AppThemePalette.of(context).inkMuted,
                       height: 1.45,
                     ),
                   ),
@@ -1056,12 +1056,12 @@ class _NewSessionBody extends StatelessWidget {
                       onProjectSelected: onProjectSelected,
                       onRetry: onRetry,
                     ),
-                    loading: () => const Center(
+                    loading: () => Center(
                       child: SizedBox.square(
                         dimension: 22,
                         child: CircularProgressIndicator(
                           strokeWidth: 1.8,
-                          color: AppColors.felBright,
+                          color: AppThemePalette.of(context).accentStrong,
                         ),
                       ),
                     ),
@@ -1096,12 +1096,12 @@ class _ProjectSelectionContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (state.projects.isEmpty && state.isRefreshing) {
-      return const Center(
+      return Center(
         child: SizedBox.square(
           dimension: 22,
           child: CircularProgressIndicator(
             strokeWidth: 1.8,
-            color: AppColors.felBright,
+            color: AppThemePalette.of(context).accentStrong,
           ),
         ),
       );
@@ -1152,14 +1152,14 @@ class _ProjectSelectionRow extends StatelessWidget {
       child: Material(
         key: Key('new-session-project-${project.projectId}'),
         color: selected
-            ? AppColors.fel.withValues(alpha: 0.09)
-            : AppColors.iron950,
+            ? AppThemePalette.of(context).accent.withValues(alpha: 0.09)
+            : AppThemePalette.of(context).surface,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(10),
           side: BorderSide(
             color: selected
-                ? AppColors.fel.withValues(alpha: 0.7)
-                : AppColors.iron800,
+                ? AppThemePalette.of(context).accent.withValues(alpha: 0.7)
+                : AppThemePalette.of(context).surfaceHover,
           ),
         ),
         clipBehavior: Clip.antiAlias,
@@ -1174,7 +1174,9 @@ class _ProjectSelectionRow extends StatelessWidget {
                   Icon(
                     LucideIcons.folder,
                     size: 18,
-                    color: selected ? AppColors.felBright : AppColors.boneFaint,
+                    color: selected
+                        ? AppThemePalette.of(context).accentStrong
+                        : AppThemePalette.of(context).inkFaint,
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -1190,8 +1192,8 @@ class _ProjectSelectionRow extends StatelessWidget {
                             fontSize: 13,
                             fontWeight: FontWeight.w600,
                             color: selected
-                                ? AppColors.bone
-                                : AppColors.boneDim,
+                                ? AppThemePalette.of(context).ink
+                                : AppThemePalette.of(context).inkMuted,
                           ),
                         ),
                         if (project.name?.trim().isNotEmpty == true &&
@@ -1203,7 +1205,7 @@ class _ProjectSelectionRow extends StatelessWidget {
                             overflow: TextOverflow.ellipsis,
                             style: AppTypography.mono(
                               fontSize: 9.5,
-                              color: AppColors.boneFaint,
+                              color: AppThemePalette.of(context).inkFaint,
                             ),
                           ),
                         ],
@@ -1216,18 +1218,22 @@ class _ProjectSelectionRow extends StatelessWidget {
                     width: 20,
                     height: 20,
                     decoration: BoxDecoration(
-                      color: selected ? AppColors.forge : Colors.transparent,
+                      color: selected
+                          ? AppThemePalette.of(context).warning
+                          : Colors.transparent,
                       shape: BoxShape.circle,
                       border: Border.all(
-                        color: selected ? AppColors.forge : AppColors.iron700,
+                        color: selected
+                            ? AppThemePalette.of(context).warning
+                            : AppThemePalette.of(context).surfaceActive,
                       ),
                     ),
                     alignment: Alignment.center,
                     child: selected
-                        ? const Icon(
+                        ? Icon(
                             LucideIcons.check,
                             size: 12,
-                            color: AppColors.felInk,
+                            color: AppThemePalette.of(context).onAccent,
                           )
                         : null,
                   ),
@@ -1252,18 +1258,25 @@ class _ProjectSelectionNotice extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: AppColors.iron950,
+        color: AppThemePalette.of(context).surface,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: AppColors.iron800),
+        border: Border.all(color: AppThemePalette.of(context).surfaceHover),
       ),
       child: Row(
         children: [
-          const Icon(LucideIcons.folderX, size: 17, color: AppColors.boneFaint),
+          Icon(
+            LucideIcons.folderX,
+            size: 17,
+            color: AppThemePalette.of(context).inkFaint,
+          ),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
               message,
-              style: AppTypography.body(fontSize: 12, color: AppColors.boneDim),
+              style: AppTypography.body(
+                fontSize: 12,
+                color: AppThemePalette.of(context).inkMuted,
+              ),
             ),
           ),
           TextButton(onPressed: onRetry, child: const Text('Retry')),
@@ -1314,7 +1327,7 @@ class _SessionHeader extends StatelessWidget {
                     style: AppTypography.display(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
-                      color: AppColors.forge,
+                      color: AppThemePalette.of(context).warning,
                     ),
                   ),
                   const TextSpan(text: '  '),
@@ -1373,10 +1386,10 @@ class _SessionHeader extends StatelessWidget {
                 minimumSize: const Size(36, 40),
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
-              icon: const Icon(
+              icon: Icon(
                 LucideIcons.folderTree,
                 size: 18,
-                color: AppColors.boneDim,
+                color: AppThemePalette.of(context).inkMuted,
               ),
             ),
     );

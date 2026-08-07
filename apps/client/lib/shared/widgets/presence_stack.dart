@@ -150,7 +150,7 @@ class _PresenceStackState extends State<PresenceStack> {
               offset: const Offset(0, 3),
             ),
           BoxShadow(
-            color: AppColors.fel.withValues(alpha: 0.5),
+            color: AppThemePalette.of(context).accent.withValues(alpha: 0.5),
             blurRadius: 0,
             spreadRadius: 1,
           ),
@@ -168,8 +168,8 @@ class _PresenceStackState extends State<PresenceStack> {
         alignment: Alignment.center,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          color: AppColors.iron800,
-          border: Border.all(color: AppColors.iron950),
+          color: AppThemePalette.of(context).surfaceHover,
+          border: Border.all(color: AppThemePalette.of(context).surface),
         ),
         child: Text(
           "+$count",
@@ -180,7 +180,7 @@ class _PresenceStackState extends State<PresenceStack> {
               PresenceStackSize.md => 10,
             },
             fontWeight: FontWeight.w600,
-            color: AppColors.boneDim,
+            color: AppThemePalette.of(context).inkMuted,
             height: 1,
           ),
         ),

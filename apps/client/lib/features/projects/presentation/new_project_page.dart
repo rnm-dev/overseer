@@ -134,10 +134,13 @@ class _NewProjectPageState extends ConsumerState<NewProjectPage> {
                 ),
               ),
               DecoratedBox(
-                decoration: const BoxDecoration(
-                  color: AppColors.iron950,
+                decoration: BoxDecoration(
+                  color: AppThemePalette.of(context).surface,
                   border: Border(
-                    top: BorderSide(color: AppColors.iron800, width: 0.5),
+                    top: BorderSide(
+                      color: AppThemePalette.of(context).surfaceHover,
+                      width: 0.5,
+                    ),
                   ),
                 ),
                 child: SafeArea(
@@ -198,7 +201,7 @@ class _NewProjectPageState extends ConsumerState<NewProjectPage> {
               key: const Key('new-project-suggested-key'),
               style: AppTypography.mono(
                 fontSize: 11,
-                color: AppColors.boneFaint,
+                color: AppThemePalette.of(context).inkFaint,
               ),
             ),
           ),
@@ -238,7 +241,10 @@ class _NewProjectPageState extends ConsumerState<NewProjectPage> {
             child: Text(
               '⚠ $error',
               key: const Key('new-project-error'),
-              style: AppTypography.mono(fontSize: 12, color: AppColors.blood),
+              style: AppTypography.mono(
+                fontSize: 12,
+                color: AppThemePalette.of(context).danger,
+              ),
             ),
           ),
       ],

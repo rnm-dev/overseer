@@ -18,10 +18,11 @@ class _ProjectTabs extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Container(
       height: 48,
-      decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: AppColors.iron800)),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: colors.outlineVariant)),
       ),
       child: ListView.separated(
         padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -45,7 +46,7 @@ class _ProjectTabs extends StatelessWidget {
                   border: Border(
                     bottom: BorderSide(
                       width: 2,
-                      color: active ? AppColors.felBright : Colors.transparent,
+                      color: active ? colors.primary : Colors.transparent,
                     ),
                   ),
                 ),
@@ -54,7 +55,7 @@ class _ProjectTabs extends StatelessWidget {
                   style: AppTypography.display(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
-                    color: active ? AppColors.felBright : AppColors.boneFaint,
+                    color: active ? colors.primary : colors.onSurfaceVariant,
                   ),
                 ),
               ),
@@ -78,6 +79,7 @@ class _CompactHeaderAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return IconButton(
       tooltip: label,
       onPressed: onPressed,
@@ -85,10 +87,10 @@ class _CompactHeaderAction extends StatelessWidget {
       style: IconButton.styleFrom(
         minimumSize: const Size.square(44),
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        foregroundColor: AppColors.felBright,
-        disabledForegroundColor: AppColors.boneDim,
+        foregroundColor: colors.primary,
+        disabledForegroundColor: colors.onSurfaceVariant,
       ),
-      icon: const Icon(LucideIcons.plus, size: 20),
+      icon: Icon(LucideIcons.plus, size: 20),
     );
   }
 }
@@ -102,8 +104,8 @@ class _Surface extends StatelessWidget {
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: AppColors.rowSurface,
-        border: Border.all(color: AppColors.iron800),
+        color: AppThemePalette.of(context).surfaceRaised,
+        border: Border.all(color: AppThemePalette.of(context).surfaceHover),
         borderRadius: BorderRadius.circular(8),
       ),
       child: ClipRRect(borderRadius: BorderRadius.circular(8), child: child),
@@ -128,9 +130,14 @@ class _CardHeader extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [AppColors.fel.withValues(alpha: 0.07), Colors.transparent],
+          colors: [
+            AppThemePalette.of(context).accent.withValues(alpha: 0.07),
+            Colors.transparent,
+          ],
         ),
-        border: const Border(bottom: BorderSide(color: AppColors.iron800)),
+        border: Border(
+          bottom: BorderSide(color: AppThemePalette.of(context).surfaceHover),
+        ),
       ),
       child: Row(
         children: [
@@ -138,11 +145,19 @@ class _CardHeader extends StatelessWidget {
             width: 38,
             height: 38,
             decoration: BoxDecoration(
-              color: AppColors.fel.withValues(alpha: 0.1),
-              border: Border.all(color: AppColors.fel.withValues(alpha: 0.22)),
+              color: AppThemePalette.of(context).accent.withValues(alpha: 0.1),
+              border: Border.all(
+                color: AppThemePalette.of(
+                  context,
+                ).accent.withValues(alpha: 0.22),
+              ),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: Icon(icon, size: 19, color: AppColors.felBright),
+            child: Icon(
+              icon,
+              size: 19,
+              color: AppThemePalette.of(context).accentStrong,
+            ),
           ),
           const SizedBox(width: 11),
           Expanded(
@@ -163,7 +178,7 @@ class _CardHeader extends StatelessWidget {
                   subtitle,
                   style: AppTypography.body(
                     fontSize: 11,
-                    color: AppColors.boneFaint,
+                    color: AppThemePalette.of(context).inkFaint,
                   ),
                 ),
               ],
@@ -187,8 +202,8 @@ class _SkillCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: AppColors.iron950.withValues(alpha: 0.4),
-          border: Border.all(color: AppColors.iron800),
+          color: AppThemePalette.of(context).surface.withValues(alpha: 0.4),
+          border: Border.all(color: AppThemePalette.of(context).surfaceHover),
           borderRadius: BorderRadius.circular(7),
         ),
         child: Column(
@@ -206,7 +221,7 @@ class _SkillCard extends StatelessWidget {
               skill.description,
               style: AppTypography.body(
                 fontSize: 13,
-                color: AppColors.boneDim,
+                color: AppThemePalette.of(context).inkMuted,
                 height: 1.4,
               ),
             ),
@@ -216,7 +231,7 @@ class _SkillCard extends StatelessWidget {
                 path,
                 style: AppTypography.mono(
                   fontSize: 10,
-                  color: AppColors.boneFaint,
+                  color: AppThemePalette.of(context).inkFaint,
                 ),
               ),
             ],
@@ -245,8 +260,10 @@ class _MemberRow extends StatelessWidget {
     return Container(
       constraints: const BoxConstraints(minHeight: 64),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-      decoration: const BoxDecoration(
-        border: Border(top: BorderSide(color: AppColors.iron800)),
+      decoration: BoxDecoration(
+        border: Border(
+          top: BorderSide(color: AppThemePalette.of(context).surfaceHover),
+        ),
       ),
       child: Row(
         children: [
@@ -276,7 +293,7 @@ class _MemberRow extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: AppTypography.mono(
                       fontSize: 10,
-                      color: AppColors.boneFaint,
+                      color: AppThemePalette.of(context).inkFaint,
                     ),
                   ),
               ],
@@ -285,8 +302,8 @@ class _MemberRow extends StatelessWidget {
           Switch.adaptive(
             value: enabled,
             onChanged: busy ? null : onChanged,
-            activeTrackColor: AppColors.fel,
-            activeThumbColor: AppColors.felBright,
+            activeTrackColor: AppThemePalette.of(context).accent,
+            activeThumbColor: AppThemePalette.of(context).accentStrong,
           ),
         ],
       ),
@@ -307,8 +324,10 @@ class _DocumentationRow extends StatelessWidget {
       child: Container(
         constraints: const BoxConstraints(minHeight: 44),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        decoration: const BoxDecoration(
-          border: Border(top: BorderSide(color: AppColors.iron800)),
+        decoration: BoxDecoration(
+          border: Border(
+            top: BorderSide(color: AppThemePalette.of(context).surfaceHover),
+          ),
         ),
         child: Row(
           children: [
@@ -316,8 +335,8 @@ class _DocumentationRow extends StatelessWidget {
               entry.isDirectory ? LucideIcons.folder : LucideIcons.fileText,
               size: 16,
               color: entry.isDirectory
-                  ? AppColors.felDeep
-                  : AppColors.boneFaint,
+                  ? AppThemePalette.of(context).accentDeep
+                  : AppThemePalette.of(context).inkFaint,
             ),
             const SizedBox(width: 10),
             Expanded(
@@ -325,7 +344,7 @@ class _DocumentationRow extends StatelessWidget {
                 entry.name,
                 style: AppTypography.mono(
                   fontSize: 11,
-                  color: AppColors.boneDim,
+                  color: AppThemePalette.of(context).inkMuted,
                 ),
               ),
             ),
@@ -333,7 +352,7 @@ class _DocumentationRow extends StatelessWidget {
               entry.isDirectory ? 'DIR' : 'FILE',
               style: AppTypography.mono(
                 fontSize: 9,
-                color: AppColors.boneFaint,
+                color: AppThemePalette.of(context).inkFaint,
                 letterSpacing: 1.1,
               ),
             ),
@@ -356,7 +375,7 @@ class _MarkdownDocument extends StatelessWidget {
       data: source,
       textStyle: AppTypography.body(
         fontSize: 13,
-        color: AppColors.bone,
+        color: AppThemePalette.of(context).ink,
         height: 1.5,
       ),
       onTapLink: onTapLink,
@@ -389,7 +408,7 @@ class _Field extends StatelessWidget {
           style: AppTypography.body(
             fontSize: 9.5,
             fontWeight: FontWeight.w600,
-            color: AppColors.boneFaint,
+            color: AppThemePalette.of(context).inkFaint,
             letterSpacing: 1.2,
           ),
         ),
@@ -404,21 +423,28 @@ class _Field extends StatelessWidget {
               minLines: minLines,
               maxLines: maxLines,
               onChanged: onChanged,
-              style: AppTypography.body(fontSize: 13, color: AppColors.bone),
+              style: AppTypography.body(
+                fontSize: 13,
+                color: AppThemePalette.of(context).ink,
+              ),
               decoration: InputDecoration(
                 filled: true,
-                fillColor: AppColors.iron950,
+                fillColor: AppThemePalette.of(context).surface,
                 contentPadding: const EdgeInsets.symmetric(
                   horizontal: 12,
                   vertical: 11,
                 ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(6),
-                  borderSide: const BorderSide(color: AppColors.iron700),
+                  borderSide: BorderSide(
+                    color: AppThemePalette.of(context).surfaceActive,
+                  ),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(6),
-                  borderSide: const BorderSide(color: AppColors.fel),
+                  borderSide: BorderSide(
+                    color: AppThemePalette.of(context).accent,
+                  ),
                 ),
               ),
             ),
@@ -446,8 +472,8 @@ class _InlineNotice extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       color: error
-          ? AppColors.blood.withValues(alpha: 0.06)
-          : AppColors.iron900,
+          ? AppThemePalette.of(context).danger.withValues(alpha: 0.06)
+          : AppThemePalette.of(context).surfaceRaised,
       child: Row(
         children: [
           Expanded(
@@ -455,7 +481,9 @@ class _InlineNotice extends StatelessWidget {
               error ? '⚠ $message' : message,
               style: AppTypography.mono(
                 fontSize: 10,
-                color: error ? AppColors.blood : AppColors.boneFaint,
+                color: error
+                    ? AppThemePalette.of(context).danger
+                    : AppThemePalette.of(context).inkFaint,
               ),
             ),
           ),
@@ -486,7 +514,7 @@ class _EmptyPane extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 30, color: AppColors.boneFaint),
+            Icon(icon, size: 30, color: AppThemePalette.of(context).inkFaint),
             const SizedBox(height: 12),
             Text(
               title,
@@ -502,7 +530,7 @@ class _EmptyPane extends StatelessWidget {
               textAlign: TextAlign.center,
               style: AppTypography.body(
                 fontSize: 11,
-                color: AppColors.boneFaint,
+                color: AppThemePalette.of(context).inkFaint,
                 height: 1.4,
               ),
             ),
@@ -518,12 +546,12 @@ class _LoadingPane extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Center(
+    return Center(
       child: SizedBox.square(
         dimension: 22,
         child: CircularProgressIndicator(
           strokeWidth: 1.7,
-          color: AppColors.felBright,
+          color: AppThemePalette.of(context).accentStrong,
         ),
       ),
     );

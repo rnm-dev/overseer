@@ -36,7 +36,7 @@ Future<void> showToolDetailsBottomSheet({
                   _DetailSection(
                     title: 'COMMAND',
                     marker: '›_',
-                    markerColor: AppColors.felBright,
+                    markerColor: AppThemePalette.of(context).accentStrong,
                     text: _inputText(item, isEdit: isEdit),
                   ),
                 if (transcriptToolHasOutputSection(item.name)) ...[
@@ -45,8 +45,8 @@ Future<void> showToolDetailsBottomSheet({
                     title: 'OUTPUT',
                     marker: '↳',
                     markerColor: item.result?.isError == true
-                        ? AppColors.blood
-                        : AppColors.forge,
+                        ? AppThemePalette.of(context).danger
+                        : AppThemePalette.of(context).warning,
                     text: _outputText(item.result),
                     error: item.result?.isError == true,
                   ),
@@ -98,7 +98,9 @@ class _DetailStats extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final base = AppTypography.monoCode(color: AppColors.boneFaint);
+    final base = AppTypography.monoCode(
+      color: AppThemePalette.of(context).inkFaint,
+    );
     return Text.rich(
       key: const Key('tool-details-stats'),
       TextSpan(
@@ -107,12 +109,14 @@ class _DetailStats extends StatelessWidget {
           const TextSpan(text: '('),
           TextSpan(
             text: '−${stats.removed}',
-            style: base.copyWith(color: AppColors.blood),
+            style: base.copyWith(color: AppThemePalette.of(context).danger),
           ),
           const TextSpan(text: ','),
           TextSpan(
             text: '+${stats.added}',
-            style: base.copyWith(color: AppColors.felBright),
+            style: base.copyWith(
+              color: AppThemePalette.of(context).accentStrong,
+            ),
           ),
           const TextSpan(text: ')'),
         ],
@@ -142,12 +146,12 @@ class _DetailSection extends StatelessWidget {
       key: Key('tool-details-${title.toLowerCase()}'),
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: AppColors.iron950,
+        color: AppThemePalette.of(context).surface,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
           color: error
-              ? AppColors.blood.withValues(alpha: 0.35)
-              : AppColors.iron800,
+              ? AppThemePalette.of(context).danger.withValues(alpha: 0.35)
+              : AppThemePalette.of(context).surfaceHover,
         ),
       ),
       child: Column(
@@ -155,9 +159,13 @@ class _DetailSection extends StatelessWidget {
         children: [
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            decoration: const BoxDecoration(
-              color: AppColors.iron900,
-              border: Border(bottom: BorderSide(color: AppColors.iron800)),
+            decoration: BoxDecoration(
+              color: AppThemePalette.of(context).surfaceRaised,
+              border: Border(
+                bottom: BorderSide(
+                  color: AppThemePalette.of(context).surfaceHover,
+                ),
+              ),
             ),
             child: Row(
               children: [
@@ -174,7 +182,7 @@ class _DetailSection extends StatelessWidget {
                   style: AppTypography.display(
                     fontSize: 10,
                     fontWeight: FontWeight.w600,
-                    color: AppColors.boneDim,
+                    color: AppThemePalette.of(context).inkMuted,
                     letterSpacing: 1.8,
                   ),
                 ),
@@ -188,7 +196,9 @@ class _DetailSection extends StatelessWidget {
               child: SelectableText(
                 text,
                 style: AppTypography.monoCode(
-                  color: error ? AppColors.blood : AppColors.boneDim,
+                  color: error
+                      ? AppThemePalette.of(context).danger
+                      : AppThemePalette.of(context).inkMuted,
                   height: 1.5,
                 ),
               ),
@@ -213,9 +223,9 @@ class _DiffPanel extends StatelessWidget {
       ),
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: AppColors.iron950,
+          color: AppThemePalette.of(context).surface,
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: AppColors.iron800),
+          border: Border.all(color: AppThemePalette.of(context).surfaceHover),
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(10),
@@ -242,21 +252,23 @@ class _DiffRow extends StatelessWidget {
     final (marker, foreground, background) = switch (line.kind) {
       TranscriptDiffLineKind.add => (
         '+',
-        AppColors.felBright,
-        AppColors.fel.withValues(alpha: 0.15),
+        AppThemePalette.of(context).accentStrong,
+        AppThemePalette.of(context).accent.withValues(alpha: 0.15),
       ),
       TranscriptDiffLineKind.remove => (
         '−',
-        AppColors.blood,
-        AppColors.blood.withValues(alpha: 0.15),
+        AppThemePalette.of(context).danger,
+        AppThemePalette.of(context).danger.withValues(alpha: 0.15),
       ),
       TranscriptDiffLineKind.context => (
         ' ',
-        AppColors.boneDim,
+        AppThemePalette.of(context).inkMuted,
         Colors.transparent,
       ),
     };
-    final lineNumberStyle = AppTypography.monoCode(color: AppColors.boneFaint);
+    final lineNumberStyle = AppTypography.monoCode(
+      color: AppThemePalette.of(context).inkFaint,
+    );
     return ColoredBox(
       key: Key('tool-details-diff-line-$index'),
       color: background,

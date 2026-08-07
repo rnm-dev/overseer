@@ -18,7 +18,7 @@ class StatusDot extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final palette = _palette();
+    final palette = _palette(context);
 
     return Semantics(
       label: semanticLabel,
@@ -43,20 +43,19 @@ class StatusDot extends StatelessWidget {
     );
   }
 
-  _StatusDotPalette _palette() {
+  _StatusDotPalette _palette(BuildContext context) {
+    final theme = AppThemePalette.of(context);
     return switch (state) {
-      StatusDotState.online => const _StatusDotPalette(
-        color: AppColors.felBright,
-        glow: AppColors.fel,
+      StatusDotState.online => _StatusDotPalette(
+        color: theme.accentStrong,
+        glow: theme.accent,
       ),
-      StatusDotState.offline => const _StatusDotPalette(
-        color: AppColors.iron600,
+      StatusDotState.offline => _StatusDotPalette(color: theme.edgeStrong),
+      StatusDotState.busy => _StatusDotPalette(
+        color: theme.warning,
+        glow: theme.warning,
       ),
-      StatusDotState.busy => const _StatusDotPalette(
-        color: AppColors.forge,
-        glow: AppColors.forge,
-      ),
-      StatusDotState.error => const _StatusDotPalette(color: AppColors.blood),
+      StatusDotState.error => _StatusDotPalette(color: theme.danger),
     };
   }
 }

@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+export '../../features/themes/domain/app_theme_package.dart'
+    show AppThemePackage, AppThemePackages, AppThemePalette;
+
 @immutable
 class AppColors {
   const AppColors._();

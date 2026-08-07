@@ -166,7 +166,7 @@ Future<void> _showQueuedFollowupDialog(
     context: context,
     barrierDismissible: true,
     barrierLabel: 'Close queued message',
-    barrierColor: Colors.black.withValues(alpha: 0.72),
+    barrierColor: Theme.of(context).colorScheme.scrim.withValues(alpha: 0.52),
     transitionDuration: AppMotion.backdropFade,
     pageBuilder: (_, _, _) => _QueuedFollowupDialog(
       item: item,
@@ -241,6 +241,8 @@ class _QueuedFollowupDialogState extends State<_QueuedFollowupDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final palette = Theme.of(context).extension<AppThemePalette>()?.package;
     final height = MediaQuery.sizeOf(context).height * 0.8;
     final busy = _busyAction != null;
     return Dialog(
@@ -251,12 +253,12 @@ class _QueuedFollowupDialogState extends State<_QueuedFollowupDialog> {
         constraints: BoxConstraints(maxWidth: 560, maxHeight: height),
         child: DecoratedBox(
           decoration: BoxDecoration(
-            color: AppColors.iron950,
-            border: Border.all(color: AppColors.iron700),
+            color: palette?.surfaceRaised ?? colors.surfaceContainerHighest,
+            border: Border.all(color: colors.outlineVariant),
             borderRadius: AppMotion.surfaceShape,
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.48),
+                color: colors.shadow.withValues(alpha: 0.24),
                 blurRadius: 36,
                 offset: const Offset(0, 18),
               ),
@@ -285,12 +287,12 @@ class _QueuedFollowupDialogState extends State<_QueuedFollowupDialog> {
                       onPressed: busy
                           ? null
                           : () => Navigator.of(context).pop(),
-                      icon: const Icon(LucideIcons.x, size: 18),
+                      icon: Icon(LucideIcons.x, size: 18),
                     ),
                   ],
                 ),
               ),
-              const Divider(height: 1, color: AppColors.iron800),
+              Divider(height: 1, color: colors.outlineVariant),
               Flexible(
                 child: SingleChildScrollView(
                   key: const Key('session-queue-dialog-scroll'),
@@ -329,15 +331,18 @@ class _QueuedFollowupDialogState extends State<_QueuedFollowupDialog> {
                                   vertical: 6,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: AppColors.iron900,
-                                  border: Border.all(color: AppColors.iron700),
+                                  color:
+                                      palette?.surfaceHover ?? colors.surface,
+                                  border: Border.all(
+                                    color: colors.outlineVariant,
+                                  ),
                                   borderRadius: BorderRadius.circular(7),
                                 ),
                                 child: Text(
                                   '📎 ${attachment.label}',
                                   style: AppTypography.mono(
                                     fontSize: 11,
-                                    color: AppColors.boneDim,
+                                    color: colors.onSurfaceVariant,
                                   ),
                                 ),
                               ),
@@ -350,7 +355,7 @@ class _QueuedFollowupDialogState extends State<_QueuedFollowupDialog> {
                           _error!,
                           style: AppTypography.body(
                             fontSize: 12,
-                            color: AppColors.blood,
+                            color: colors.error,
                           ),
                         ),
                       ],
@@ -358,7 +363,7 @@ class _QueuedFollowupDialogState extends State<_QueuedFollowupDialog> {
                   ),
                 ),
               ),
-              const Divider(height: 1, color: AppColors.iron800),
+              Divider(height: 1, color: colors.outlineVariant),
               Padding(
                 padding: const EdgeInsets.all(12),
                 child: _editing
@@ -439,7 +444,7 @@ class _QueuedFollowupDialogState extends State<_QueuedFollowupDialog> {
                                       () => widget.onRemove!(widget.item.id),
                                     ),
                               loading: _busyAction == 'delete',
-                              variant: AppButtonVariant.danger,
+                              variant: AppButtonVariant.dangerGhost,
                               size: AppButtonSize.sm,
                               fullWidth: true,
                               child: const Text('Delete'),
@@ -534,18 +539,18 @@ class _VoiceDictationStatus extends StatelessWidget {
         child: Row(
           children: [
             const SizedBox(width: AppSpacing.xxs),
-            const SizedBox.square(
+            SizedBox.square(
               dimension: AppSpacing.sm,
               child: CircularProgressIndicator(
                 strokeWidth: 1.5,
-                color: AppColors.felBright,
+                color: AppThemePalette.of(context).accentStrong,
               ),
             ),
             const SizedBox(width: AppSpacing.xs),
             Text(
               'TRANSCRIBING',
               style: AppTypography.body(
-                color: AppColors.boneDim,
+                color: AppThemePalette.of(context).inkMuted,
                 fontSize: 10,
                 fontWeight: FontWeight.w600,
                 letterSpacing: 0.8,
@@ -571,7 +576,7 @@ class _VoiceDictationStatus extends StatelessWidget {
             'REC',
             style: AppTypography.body(
               fontSize: 10,
-              color: AppColors.blood,
+              color: AppThemePalette.of(context).danger,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -585,22 +590,28 @@ class _VoiceDictationStatus extends StatelessWidget {
               margin: const EdgeInsets.only(right: 2),
               decoration: BoxDecoration(
                 color: state.amplitude > index / 6
-                    ? AppColors.felBright
-                    : AppColors.iron700,
+                    ? AppThemePalette.of(context).accentStrong
+                    : AppThemePalette.of(context).surfaceActive,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
           const SizedBox(width: AppSpacing.xs),
           Text(
             '${seconds ~/ 60}:${(seconds % 60).toString().padLeft(2, '0')}',
-            style: AppTypography.body(fontSize: 11, color: AppColors.bone),
+            style: AppTypography.body(
+              fontSize: 11,
+              color: AppThemePalette.of(context).ink,
+            ),
           ),
           if (showCountdown) ...[
             const SizedBox(width: AppSpacing.xs),
             Text(
               '${remaining.inSeconds.clamp(0, 15)}s',
               key: const Key('session-composer-recording-countdown'),
-              style: AppTypography.body(fontSize: 10, color: AppColors.ember),
+              style: AppTypography.body(
+                fontSize: 10,
+                color: AppThemePalette.of(context).warningStrong,
+              ),
             ),
           ],
         ],
@@ -640,8 +651,8 @@ class _BlinkingRecordingDotState extends State<_BlinkingRecordingDot>
     final dot = Container(
       width: AppSpacing.xs,
       height: AppSpacing.xs,
-      decoration: const BoxDecoration(
-        color: AppColors.blood,
+      decoration: BoxDecoration(
+        color: AppThemePalette.of(context).danger,
         shape: BoxShape.circle,
       ),
     );
@@ -1078,7 +1089,7 @@ class _CapabilityRadioSection extends StatelessWidget {
               title,
               style: AppTypography.body(
                 fontSize: AppTypography.composerCapabilityTextSize,
-                color: AppColors.boneFaint,
+                color: AppThemePalette.of(context).inkFaint,
               ),
             ),
           ),
@@ -1100,7 +1111,7 @@ class _CapabilityRadioSection extends StatelessWidget {
                       choice.label,
                       style: AppTypography.body(
                         fontSize: AppTypography.composerCapabilityTextSize,
-                        color: AppColors.bone,
+                        color: AppThemePalette.of(context).ink,
                       ),
                     ),
                     dense: true,
@@ -1109,7 +1120,7 @@ class _CapabilityRadioSection extends StatelessWidget {
                       horizontal: -2,
                       vertical: -2,
                     ),
-                    activeColor: AppColors.felBright,
+                    activeColor: AppThemePalette.of(context).accentStrong,
                   ),
               ],
             ),

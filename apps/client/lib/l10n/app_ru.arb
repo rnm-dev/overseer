@@ -35,5 +35,14 @@
   "steer": "Направить",
   "queue": "В очередь",
   "send": "Отправить",
-  "queuedMessages": "{count, plural, one{{count} сообщение ожидает отправки} few{{count} сообщения ожидают отправки} many{{count} сообщений ожидают отправки} other{{count} сообщения ожидают отправки}}"
+  "queuedMessages": "{count, plural, one{{count} сообщение ожидает отправки} few{{count} сообщения ожидают отправки} many{{count} сообщений ожидают отправки} other{{count} сообщения ожидают отправки}}",
+  "toolActivityRead": "Открыт файл",
+  "toolActivitySearch": "Выполнен поиск по материалам",
+  "toolActivityWeb": "Проверены внешние источники",
+  "toolActivityEdit": "Изменён файл",
+  "toolActivityAnalysis": "Проведён дополнительный анализ",
+  "toolActivityCommand": "Выполнена техническая операция",
+  "toolActivityGeneric": "Выполнено действие",
+  "toolActivityFailedShort": "ошибка",
+  "showTechnicalDetails": "Показать технические детали"
 }

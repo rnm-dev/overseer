@@ -5,7 +5,6 @@ import 'package:overseer_mobile/shared/design/colors.dart';
 import 'package:overseer_mobile/shared/design/motion.dart';
 import 'package:overseer_mobile/shared/design/spacing.dart';
 import 'package:overseer_mobile/shared/design/theme.dart';
-import 'package:overseer_mobile/features/themes/domain/app_theme_package.dart';
 import 'package:overseer_mobile/shared/design/typography.dart';
 
 void main() {

@@ -42,6 +42,7 @@ import { DropdownMenu, menuItemClass } from "../../ui";
 import { sessionLineage } from "./session/sessionBranch";
 import { useSessionBranch } from "./session/useSessionBranch";
 import { inquiryInsertionIndex, PLUGIN_INQUIRY_CAPABILITY, usePluginInquiries, type PluginInstallInquiry } from "./session/pluginInquiries";
+import { indexedRunAssumptionDelay, shouldSeedIndexedRun } from "./session/runStatus";
 
 // author: Viktor
 // The transcript parsing/render pieces live in ./session/*; this file owns the
@@ -222,11 +223,15 @@ function PeonSessionDetailPage() {
   // session record, flipped on by sending a followup, off by a `result` frame.
   // Key active-run state to the session so navigating between session routes can
   // never flash the previous session's indicator before the new metadata lands.
-  const [activeRun, setActiveRun] = useState<{ sessionKey: string; running: boolean; model: string | null; reasoningEffort: string | null }>(() => ({
+  const [activeRun, setActiveRun] = useState<{ sessionKey: string; running: boolean; model: string | null; reasoningEffort: string | null; assumedAt: number | null }>(() => ({
     sessionKey,
-    running: false,
+    // The indexed summary is already on screen with the sidebar. Use it as the
+    // cache-first answer instead of hiding activity until the direct metadata
+    // request (or a transcript run signal) wins its independent request race.
+    running: selectedSession?.status === "running",
     model: null,
     reasoningEffort: null,
+    assumedAt: selectedSession?.status === "running" ? Date.now() : null,
   }));
   const running = activeRun.sessionKey === sessionKey && activeRun.running;
   // A run only exists while the Peon holding it is connected. If it dies mid-run
@@ -260,6 +265,20 @@ function PeonSessionDetailPage() {
   // is also true of a turn whose process vanished, so it must never outlive the
   // record read that was supposed to settle it.
   const unconfirmedRunRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    // The sidebar page can finish hydrating after this route mounts. Promote
+    // its running summary only while no direct/live evidence has arrived; the
+    // metadata GET and tail remain authoritative and can immediately clear it.
+    if (!shouldSeedIndexedRun({
+      indexedStatus: selectedSession?.status,
+      metadataStatusKnown: metadataStatusRef.current.has(sessionKey),
+      runRevision: runRevisionRef.current.get(sessionKey) ?? 0,
+      refuted: refutedRunRef.current.has(sessionKey),
+    })) return;
+    setActiveRun((previous) => previous.sessionKey === sessionKey && previous.running
+      ? previous
+      : { sessionKey, running: true, model: null, reasoningEffort: null, assumedAt: Date.now() });
+  }, [selectedSession?.status, sessionKey]);
   const setRunning = useCallback((next: boolean) => {
     // Only a live signal — a sent follow-up or a tail frame — turns a run back
     // on, and that is exactly what makes the Peon's record trustworthy again.
@@ -271,6 +290,7 @@ function PeonSessionDetailPage() {
       running: next,
       model: next && previous.sessionKey === sessionKey ? previous.model : null,
       reasoningEffort: next && previous.sessionKey === sessionKey ? previous.reasoningEffort : null,
+      assumedAt: null,
     }));
     onSessionRunningChange?.(peon.peonId, sid, next, Date.now());
   }, [onSessionRunningChange, peon.peonId, sessionKey, sid]);
@@ -282,8 +302,20 @@ function PeonSessionDetailPage() {
       running: previous.sessionKey === sessionKey && previous.running,
       model,
       reasoningEffort,
+      assumedAt: previous.sessionKey === sessionKey ? previous.assumedAt : null,
     }));
   }, [sessionKey]);
+  useEffect(() => {
+    if (activeRun.sessionKey !== sessionKey || !activeRun.running) return;
+    const delay = indexedRunAssumptionDelay(Date.now(), activeRun.assumedAt);
+    if (delay === null) return;
+    const timer = window.setTimeout(() => {
+      setActiveRun((current) => current.sessionKey === sessionKey && current.assumedAt !== null
+        ? { ...current, running: false, model: null, reasoningEffort: null, assumedAt: null }
+        : current);
+    }, delay);
+    return () => window.clearTimeout(timer);
+  }, [activeRun.assumedAt, activeRun.running, activeRun.sessionKey, sessionKey]);
   const [stopping, setStopping] = useState(false);
   const [stopNote, setStopNote] = useState<string | null>(null);
   const suppressCompletionSoundRef = useRef(false);
@@ -349,6 +381,7 @@ function PeonSessionDetailPage() {
       running: true,
       model: previous.sessionKey === sessionKey ? previous.model : null,
       reasoningEffort: previous.sessionKey === sessionKey ? previous.reasoningEffort : null,
+      assumedAt: previous.sessionKey === sessionKey ? previous.assumedAt : null,
     }));
   }, [sessionKey]);
   const onRunFinished = useCallback((event?: { type?: string; is_error?: boolean }) => {
@@ -558,7 +591,15 @@ function PeonSessionDetailPage() {
         // the absent status too, so a snapshot landing later stays quiet.
         metadataStatusRef.current.set(sessionKey, null);
         if ((runRevisionRef.current.get(sessionKey) ?? 0) !== runRevision) return;
-        if (unconfirmedRunRef.current.has(sessionKey)) setRunning(false);
+        if (unconfirmedRunRef.current.has(sessionKey)) {
+          setRunning(false);
+        } else {
+          // An indexed cache seed is useful only while its direct confirmation
+          // is pending. A stated transport failure retires it before the TTL.
+          setActiveRun((current) => current.sessionKey === sessionKey && current.assumedAt !== null
+            ? { ...current, running: false, model: null, reasoningEffort: null, assumedAt: null }
+            : current);
+        }
       });
     return () => {
       alive = false;

@@ -397,9 +397,26 @@ export function createCodexAppServerRun(opts, runtime) {
             if (opts.resume) {
                 if (!threadId)
                     throw new Error("codex app-server session cannot resume before its thread id is known");
-                const params = { threadId, ...threadOverrides };
-                warnForOutboundPayload(opts.sessionId, "thread/resume", params, emit);
-                thread = await runtime.request("thread/resume", params);
+                // MCP bindings are immutable turn leases. A resumed Codex thread keeps
+                // the MCP servers it was created with even when thread/resume carries a
+                // different config, leaving new packages invisible and old binding URLs
+                // stale. Forking preserves the complete native conversation while
+                // constructing a thread against this turn's exact MCP snapshot.
+                if (config) {
+                    const params = { threadId, ...threadOverrides, threadSource: "peon" };
+                    warnForOutboundPayload(opts.sessionId, "thread/fork", params, emit);
+                    thread = await runtime.request("thread/fork", params);
+                    const reboundThreadId = thread.thread?.id;
+                    if (typeof reboundThreadId !== "string" || !reboundThreadId)
+                        throw new Error("Codex app-server thread/fork returned no thread id");
+                    threadId = reboundThreadId;
+                    emit({ type: "system", subtype: "init", session_id: threadId, model: typeof thread.model === "string" ? thread.model : opts.model });
+                }
+                else {
+                    const params = { threadId, ...threadOverrides };
+                    warnForOutboundPayload(opts.sessionId, "thread/resume", params, emit);
+                    thread = await runtime.request("thread/resume", params);
+                }
             }
             else {
                 const params = {

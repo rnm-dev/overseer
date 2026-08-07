@@ -23,9 +23,9 @@ import 'package:overseer_mobile/features/sessions/domain/new_session_repository.
 import 'package:overseer_mobile/features/sessions/domain/session_models.dart';
 import 'package:overseer_mobile/features/sessions/domain/session_repository.dart';
 import 'package:overseer_mobile/features/sessions/presentation/session_detail_page.dart';
-import 'package:overseer_mobile/features/themes/domain/app_theme_package.dart';
 import 'package:overseer_mobile/shared/design/colors.dart';
 import 'package:overseer_mobile/shared/design/theme.dart';
+import 'package:overseer_mobile/shared/design/typography.dart';
 import 'package:overseer_mobile/shared/models/ai_capabilities.dart';
 import 'package:overseer_mobile/shared/widgets/app_navigation_bar.dart';
 import 'package:overseer_mobile/shared/widgets/presence_stack.dart';
@@ -359,6 +359,7 @@ void main() {
   testWidgets('offers file picking and clipboard paste for a new session', (
     tester,
   ) async {
+    final package = AppThemePackages.resolve('org.overseer.parchment');
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -371,7 +372,7 @@ void main() {
           projectRepositoryProvider.overrideWithValue(_TestProjectRepository()),
         ],
         child: MaterialApp(
-          theme: AppTheme.dark,
+          theme: AppTheme.fromPackage(package),
           home: const SessionDetailPage.newSession(
             workspaceId: 'workspace',
             peonId: 'peon',
@@ -395,6 +396,15 @@ void main() {
     );
     expect(find.byKey(const Key('session-attachment-paste')), findsOneWidget);
     expect(find.text('Paste from clipboard'), findsOneWidget);
+    final gallery = tester.widget<ListTile>(
+      find.descendant(
+        of: find.byKey(const Key('session-attachment-gallery')),
+        matching: find.byType(ListTile),
+      ),
+    );
+    expect(gallery.tileColor, package.surfaceHover);
+    expect((gallery.leading! as Icon).color, package.accent);
+    expect((gallery.trailing! as Icon).color, package.inkMuted);
 
     await tester.tap(find.byKey(const Key('session-attachment-paste')));
     await tester.pumpAndSettle();
@@ -1325,10 +1335,17 @@ void main() {
     final duration = tester.widget<Text>(
       find.byKey(const Key('transcript-working-duration')),
     );
-    expect(label.style?.fontSize, 10);
+    expect(label.style?.fontSize, AppTypography.systemMessageFontSize);
     expect(label.style?.color, AppTheme.dark.colorScheme.primary);
-    expect(duration.style?.fontSize, 10);
+    expect(duration.style?.fontSize, AppTypography.systemMessageFontSize);
     expect(duration.style?.color, AppTheme.dark.colorScheme.onSurfaceVariant);
+    final stop = tester.widget<TextButton>(
+      find.byKey(const Key('transcript-stop')),
+    );
+    expect(
+      stop.style?.textStyle?.resolve({})?.fontSize,
+      AppTypography.systemMessageFontSize,
+    );
     expect(
       find.byKey(const Key('transcript-working-flow-bash-event')),
       findsOneWidget,

@@ -155,7 +155,7 @@ class OverseerConnectionsPage extends StatelessWidget {
                   fullWidth: true,
                   size: AppButtonSize.lg,
                   variant: AppButtonVariant.secondary,
-                  leading: const Icon(LucideIcons.plus, size: 18),
+                  leading: Icon(LucideIcons.plus, size: 18),
                   child: Text(l10n.addOverseer),
                 ),
               ),
@@ -227,13 +227,13 @@ class OverseerConnectionsPage extends StatelessWidget {
     return showMenu<_ConnectionMenuAction>(
       context: context,
       useRootNavigator: true,
-      color: AppColors.iron950,
+      color: AppThemePalette.of(context).surface,
       surfaceTintColor: Colors.transparent,
       elevation: 12,
       constraints: const BoxConstraints.tightFor(width: 160),
-      shape: const RoundedRectangleBorder(
+      shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.all(Radius.circular(8)),
-        side: BorderSide(color: AppColors.iron800),
+        side: BorderSide(color: AppThemePalette.of(context).surfaceHover),
       ),
       position: RelativeRect.fromLTRB(
         x,
@@ -249,11 +249,18 @@ class OverseerConnectionsPage extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 12),
           child: Row(
             children: [
-              const Icon(LucideIcons.trash2, size: 13, color: AppColors.blood),
+              Icon(
+                LucideIcons.trash2,
+                size: 13,
+                color: AppThemePalette.of(context).danger,
+              ),
               const SizedBox(width: 8),
               Text(
                 l10n.delete,
-                style: AppTypography.body(fontSize: 12, color: AppColors.blood),
+                style: AppTypography.body(
+                  fontSize: 12,
+                  color: AppThemePalette.of(context).danger,
+                ),
               ),
             ],
           ),
@@ -284,7 +291,11 @@ class _ConnectionTile extends StatelessWidget {
       title: connection.title,
       subtitle: connection.serverUrl.toString(),
       semanticsHint: l10n.openOverseerHint,
-      leading: const Icon(LucideIcons.server, size: 20, color: AppColors.fel),
+      leading: Icon(
+        LucideIcons.server,
+        size: 20,
+        color: AppThemePalette.of(context).accent,
+      ),
       onTap: () => onSelect(connection),
       onLongPress: () => onLongPress(context),
     );
@@ -306,13 +317,17 @@ class _ConnectionActionsBottomSheet extends StatelessWidget {
           onTap: () => Navigator.of(context).pop(_ConnectionMenuAction.delete),
           child: Row(
             children: [
-              const Icon(LucideIcons.trash2, size: 20, color: AppColors.blood),
+              Icon(
+                LucideIcons.trash2,
+                size: 20,
+                color: AppThemePalette.of(context).danger,
+              ),
               const SizedBox(width: 12),
               Text(
                 l10n.delete,
                 style: AppTypography.optionLabel(
                   selected: false,
-                ).copyWith(color: AppColors.blood),
+                ).copyWith(color: AppThemePalette.of(context).danger),
               ),
             ],
           ),
@@ -341,14 +356,17 @@ class _EmptyConnections extends StatelessWidget {
             Text(
               l10n.savedServersAppearHere,
               textAlign: TextAlign.center,
-              style: AppTypography.body(fontSize: 13, color: AppColors.boneDim),
+              style: AppTypography.body(
+                fontSize: 13,
+                color: AppThemePalette.of(context).inkMuted,
+              ),
             ),
             const SizedBox(height: 20),
             AppButton(
               key: const Key('empty-add-overseer-button'),
               onPressed: onAdd,
               size: AppButtonSize.lg,
-              leading: const Icon(LucideIcons.plus, size: 18),
+              leading: Icon(LucideIcons.plus, size: 18),
               child: Text(l10n.addOverseer),
             ),
           ],

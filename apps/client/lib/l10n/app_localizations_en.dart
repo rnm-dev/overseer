@@ -131,4 +131,31 @@ class AppLocalizationsEn extends AppLocalizations {
     );
     return '$_temp0';
   }
+
+  @override
+  String get toolActivityRead => 'Opened a file';
+
+  @override
+  String get toolActivitySearch => 'Searched the materials';
+
+  @override
+  String get toolActivityWeb => 'Checked external sources';
+
+  @override
+  String get toolActivityEdit => 'Updated a file';
+
+  @override
+  String get toolActivityAnalysis => 'Performed additional analysis';
+
+  @override
+  String get toolActivityCommand => 'Performed a technical operation';
+
+  @override
+  String get toolActivityGeneric => 'Performed an action';
+
+  @override
+  String get toolActivityFailedShort => 'failed';
+
+  @override
+  String get showTechnicalDetails => 'Show technical details';
 }
