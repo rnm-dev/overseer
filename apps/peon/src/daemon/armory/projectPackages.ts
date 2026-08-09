@@ -72,57 +72,76 @@ export class ArmoryProjectPackagesService {
 
   async initializeMigration(): Promise<void> {
     const current = await this.options.stores.projectPackages.read();
-    if (current.migrationCompletedAt !== null) {
+    const credentials = await this.options.stores.credentials.snapshot();
+    if (current.migrationCompletedAt !== null && Object.keys(credentials.packages).length === 0) {
       await this.finishLegacyCleanup();
       return;
     }
 
-    const [installed, credentials] = await Promise.all([
-      this.options.stores.installed.list(),
-      this.options.stores.credentials.snapshot(),
-    ]);
+    const installed = await this.options.stores.installed.list();
     if ((await this.options.stores.operations.list()).some((operation) => operation.status === "queued" || operation.status === "running")) {
       throw new ArmoryProjectPackagesError(409, "OPERATION_IN_PROGRESS", "Armory migration requires all package operations to be idle");
     }
     const manifests = new Map<string, ArmoryManifest>();
     for (const record of installed) manifests.set(record.id, (await this.resolveManifest(record.id)).manifest);
 
-    const profiles: Record<string, StoredArmoryProfile> = {};
-    const legacyProfileByPackage: Record<string, string> = {};
+    const profiles: Record<string, StoredArmoryProfile> = structuredClone(current.profiles);
+    const legacyProfileByPackage: Record<string, string> = { ...current.legacyProfileByPackage };
+    const assignments = [...current.assignments];
+    const projects = this.options.projects.list();
     for (const [packageId, credential] of Object.entries(credentials.packages).sort(([left], [right]) => left.localeCompare(right))) {
       const manifest = manifests.get(packageId);
       if (!manifest) {
         throw new ArmoryProjectPackagesError(409, "ARMORY_MIGRATION_BLOCKED", `Legacy configuration belongs to an uninstalled package: ${packageId}`);
       }
-      // A legacy credential record cannot be represented safely when the
-      // installed package has no typed profile contract. It also must not
-      // block the default-deny migration: unassigned packages are never
-      // injected, and finishLegacyCleanup removes the obsolete secret.
-      if (!manifest.profile) continue;
+      if (!manifest.profile) {
+        throw new ArmoryProjectPackagesError(409, "ARMORY_MIGRATION_BLOCKED", `Legacy configuration cannot be represented by the installed package: ${packageId}`);
+      }
       const installedRecord = installed.find((record) => record.id === packageId)!;
-      const profileId = randomUUID();
-      const profile: StoredArmoryProfile = {
+      const existingProfileId = legacyProfileByPackage[packageId];
+      const profileId = existingProfileId ?? randomUUID();
+      const existingProfile = existingProfileId ? profiles[existingProfileId] : undefined;
+      if (existingProfile && existingProfile.type !== manifest.profile.type) {
+        throw new ArmoryProjectPackagesError(409, "ARMORY_MIGRATION_BLOCKED", `Migrated profile type no longer matches the installed package: ${packageId}`);
+      }
+      profiles[profileId] = existingProfile && existingProfile.updatedAt > credential.updatedAt ? existingProfile : {
         profileId,
         type: manifest.profile.type,
-        name: packageId,
+        name: existingProfile?.name ?? packageId,
         status: legacyProfileStatus(installedRecord.configurationStatus, credential.values),
         values: structuredClone(credential.values),
-        createdAt: credential.createdAt,
+        createdAt: existingProfile?.createdAt ?? credential.createdAt,
         updatedAt: credential.updatedAt,
       };
-      profiles[profileId] = profile;
       legacyProfileByPackage[packageId] = profileId;
+      if (current.migrationCompletedAt !== null || installedRecord.enabled === true) {
+        for (const project of projects) {
+          if (!assignments.some((assignment) => assignment.projectId === project.projectId && assignment.packageId === packageId)) {
+            assignments.push({ projectId: project.projectId, packageId, profileId });
+          }
+        }
+      }
+    }
+    if (current.migrationCompletedAt === null) {
+      for (const record of installed.filter((entry) => entry.enabled === true)) {
+        const manifest = manifests.get(record.id)!;
+        const profileId = manifest.profile ? legacyProfileByPackage[record.id] : null;
+        if (manifest.profile && !profileId) {
+          throw new ArmoryProjectPackagesError(409, "ARMORY_MIGRATION_BLOCKED", `Enabled package has no compatible legacy configuration: ${record.id}`);
+        }
+        for (const project of projects) {
+          if (!assignments.some((assignment) => assignment.projectId === project.projectId && assignment.packageId === record.id)) {
+            assignments.push({ projectId: project.projectId, packageId: record.id, profileId });
+          }
+        }
+      }
     }
 
     const migrated = armoryProjectPackagesStateSchema.parse({
       schemaVersion: 1,
-      migrationCompletedAt: this.now(),
+      migrationCompletedAt: current.migrationCompletedAt ?? this.now(),
       profiles,
-      // Legacy `enabled` was global and cannot express explicit project
-      // intent. Start every package unassigned; selecting a profile (or
-      // explicitly assigning a credential-free package) is the only action
-      // that makes it available to future turns.
-      assignments: [],
+      assignments,
       legacyProfileByPackage,
     });
     await this.options.stores.projectPackages.write(migrated);

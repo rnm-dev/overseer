@@ -105,6 +105,10 @@ availability without guessing that two stored credentials are identical. The
 small wire contract and implementation invariants are in [Armory profiles and
 project packages](armory-project-packages.md). The capability must not be
 advertised before Peon's storage and runtime implement it.
+Legacy migration preserves compatible credentials and global availability for
+all projects that already exist. A completed-but-empty migration repairs any
+remaining legacy credentials before cleanup; an incompatible credential blocks
+the migration and stays on disk rather than being discarded.
 
 Project administration and resources use one direct authenticated Fleet HTTP
 authority through mesh: catalog, suggest/create, stable-ID detail/settings,

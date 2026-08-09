@@ -161,6 +161,15 @@ Migration is atomic and retryable:
 4. Create no assignment for a legacy-disabled package.
 5. Remove the old enable/disable state after the migration commits.
 
+Restart recovery also reconciles a migration already marked complete with any
+legacy credentials that still remain. This covers an interrupted cleanup and
+the mixed-version case where credentials were written after an earlier empty
+migration: Peon creates the missing typed profile, restores the package's
+previous global availability across every existing project, commits that state,
+and only then clears the legacy credential store. A credential that cannot be
+represented by the installed manifest blocks cleanup and remains intact for an
+operator-assisted upgrade; it is never discarded to make migration progress.
+
 New projects and newly installed packages create no assignments. Legacy
 enable/disable calls against a capable Peon return bounded `410
 ARMORY_ACTIVATION_RETIRED` without changing state. Legacy configuration routes

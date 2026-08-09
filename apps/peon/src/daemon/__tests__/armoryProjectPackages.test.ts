@@ -86,7 +86,7 @@ test("manifest profile declarations use the settled exact type and required-fiel
   assert.throws(() => parseArmoryManifest({ ...parsed, profile: { type: "google-service-account", requiredFields: ["serviceAccountJson", "serviceAccountJson"] } }));
 });
 
-test("migration preserves compatible profiles but leaves every package unassigned by default", async () => {
+test("migration preserves compatible profiles and legacy availability for every existing project", async () => {
   const { stores, manifests, service } = fixture();
   for (const id of ["drive", "calendar", "filesystem"]) {
     await stores.installed.set(installed(id, {
@@ -118,7 +118,12 @@ test("migration preserves compatible profiles but leaves every package unassigne
   assert.equal(profiles.length, 2);
   assert.notEqual(migrated.legacyProfileByPackage.drive, migrated.legacyProfileByPackage.calendar);
   assert.deepEqual(profiles.map((profile) => profile.values.serviceAccountJson), ["same-secret", "same-secret"]);
-  assert.deepEqual(migrated.assignments, []);
+  assert.deepEqual(migrated.assignments, [
+    { projectId: PROJECT_A, packageId: "drive", profileId: migrated.legacyProfileByPackage.drive },
+    { projectId: PROJECT_B, packageId: "drive", profileId: migrated.legacyProfileByPackage.drive },
+    { projectId: PROJECT_A, packageId: "filesystem", profileId: null },
+    { projectId: PROJECT_B, packageId: "filesystem", profileId: null },
+  ]);
   assert.deepEqual((await stores.credentials.snapshot()).packages, {});
   assert.equal(Object.hasOwn(await stores.installed.get("drive") as object, "enabled"), false);
   assert.equal(Object.hasOwn(await stores.installed.get("drive") as object, "configurationStatus"), false);
@@ -141,19 +146,37 @@ test("migration preserves compatible profiles but leaves every package unassigne
   assert.equal(JSON.stringify(await service.legacyConfigurationSchema("drive")).includes("replacement-secret"), false);
 });
 
-test("migration discards obsolete legacy configuration when a package has no profile contract", async () => {
+test("migration retains and refuses legacy configuration when a package has no profile contract", async () => {
   const { stores, manifests, service } = fixture();
   await stores.installed.set(installed("legacy", { configurationStatus: "verified" }));
   manifests.set("legacy", manifest("legacy"));
   await stores.credentials.set("legacy", { serviceAccountJson: "must-survive" }, 100);
+  await assert.rejects(() => service.initializeMigration(), /cannot be represented/);
+  assert.equal((await stores.projectPackages.read()).migrationCompletedAt, null);
+  assert.deepEqual(Object.keys((await stores.credentials.snapshot()).packages), ["legacy"]);
+  assert.equal((await stores.installed.get("legacy"))?.enabled, false);
+});
+
+test("a completed empty migration repairs later legacy credentials instead of clearing them", async () => {
+  const { stores, manifests, service } = fixture();
+  await stores.installed.set(installed("drive", { configurationStatus: "verified" }));
+  manifests.set("drive", manifest("drive", { type: "google-service-account", requiredFields: ["serviceAccountJson"] }));
+  await stores.projectPackages.write({ schemaVersion: 1, migrationCompletedAt: 400, profiles: {}, assignments: [], legacyProfileByPackage: {} });
+  await stores.credentials.set("drive", { serviceAccountJson: "must-survive" }, 450);
+
   await service.initializeMigration();
-  const migrated = await stores.projectPackages.read();
-  assert.equal(migrated.migrationCompletedAt, 500);
-  assert.deepEqual(migrated.profiles, {});
-  assert.deepEqual(migrated.assignments, []);
-  assert.deepEqual(migrated.legacyProfileByPackage, {});
+  const repaired = await stores.projectPackages.read();
+  const profileId = repaired.legacyProfileByPackage.drive;
+  assert.equal(repaired.migrationCompletedAt, 400);
+  assert.deepEqual(repaired.profiles[profileId]?.values, { serviceAccountJson: "must-survive" });
+  assert.deepEqual(repaired.assignments, [
+    { projectId: PROJECT_A, packageId: "drive", profileId },
+    { projectId: PROJECT_B, packageId: "drive", profileId },
+  ]);
   assert.deepEqual((await stores.credentials.snapshot()).packages, {});
-  assert.equal(Object.hasOwn(await stores.installed.get("legacy") as object, "enabled"), false);
+
+  await service.initializeMigration();
+  assert.deepEqual(await stores.projectPackages.read(), repaired);
 });
 
 test("configuration fields stay readable for a package that has no migrated legacy profile", async () => {
