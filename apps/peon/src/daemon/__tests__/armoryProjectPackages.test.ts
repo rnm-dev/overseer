@@ -156,6 +156,18 @@ test("migration discards obsolete legacy configuration when a package has no pro
   assert.equal(Object.hasOwn(await stores.installed.get("legacy") as object, "enabled"), false);
 });
 
+test("configuration fields stay readable for a package that has no migrated legacy profile", async () => {
+  const { stores, manifests, service } = fixture();
+  await stores.installed.set(installed("drive"));
+  manifests.set("drive", manifest("drive", { type: "google-service-account", requiredFields: ["serviceAccountJson"] }));
+  await service.initializeMigration();
+
+  const schema = await service.legacyConfigurationSchema("drive");
+  assert.equal(schema.fields.some((field) => field.id === "serviceAccountJson"), true);
+  assert.deepEqual(schema.configured, {});
+  await assert.rejects(() => service.configureLegacyPackageProfile("drive", { serviceAccountJson: "x" }), /legacy profile/);
+});
+
 test("profile lifecycle is redacted and assignments enforce type, fields, verification, and references", async () => {
   const { stores, manifests, service } = fixture();
   await stores.installed.set(installed("drive"));

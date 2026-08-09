@@ -295,10 +295,14 @@ export class ArmoryProjectPackagesService {
 
   async legacyConfigurationSchema(packageId: string): Promise<{ fields: ArmoryConfigurationField[]; configured: Record<string, boolean>; hostWrites: string[] }> {
     const { manifest } = await this.resolveManifest(packageId);
-    const profile = await this.legacyProfile(packageId);
+    // The field contract belongs to the installed manifest, not to a profile.
+    // A package installed after the migration, or one that was never
+    // configured, has no legacy profile and must still be able to state which
+    // fields a new profile needs.
+    const profile = await this.legacyProfileOrNull(packageId);
     return {
       fields: manifest.configuration?.fields ?? [],
-      configured: safeProfile(profile).configuredFields,
+      configured: profile ? safeProfile(profile).configuredFields : {},
       hostWrites: manifest.permissions.hostPaths.filter((entry) => entry.mode === "write").map((entry) => entry.path),
     };
   }
@@ -354,9 +358,15 @@ export class ArmoryProjectPackagesService {
   }
 
   private async legacyProfile(packageId: string): Promise<StoredArmoryProfile> {
+    const profile = await this.legacyProfileOrNull(packageId);
+    if (!profile) throw new ArmoryProjectPackagesError(404, "PROFILE_NOT_FOUND", "Package has no migrated legacy profile");
+    return profile;
+  }
+
+  private async legacyProfileOrNull(packageId: string): Promise<StoredArmoryProfile | null> {
     const state = await this.readyState();
     const profileId = state.legacyProfileByPackage[assertPackageId(packageId)];
-    if (!profileId) throw new ArmoryProjectPackagesError(404, "PROFILE_NOT_FOUND", "Package has no migrated legacy profile");
+    if (!profileId) return null;
     return this.requireProfile(state, profileId);
   }
 
