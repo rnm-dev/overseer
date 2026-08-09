@@ -18,7 +18,7 @@ Dev builds use `https://overseer-dev.rnm.dev/login?callback=overseer-dev://oauth
 one source of truth, nothing to drift out of sync. Rules:
 
 - The value must be a non-`http(s)` deep link, or the SPA ignores it and stays
-  in plain web mode (`apps/web/src/nativeLoginMode.ts`).
+  in plain web mode (`apps/web/src/features/auth/nativeLoginMode.ts`).
 - The API matches it **exactly** against `OVERSEER_GITHUB_NATIVE_CALLBACKS`
   (`overseer://oauth/github` and `overseer-dev://oauth/github` today). Anything
   else gets `400 INVALID_CALLBACK` when sign-in starts, so the login page owns
@@ -30,7 +30,7 @@ one source of truth, nothing to drift out of sync. Rules:
   auth session shares the browser's cookies (§2), so the webview usually opens
   *already signed in*; the ordinary "signed in ⇒ go to the dashboard" redirect
   would render the whole of Overseer inside the app's sign-in sheet with no way
-  to reach the deep link. `loginRouteTarget` in `apps/web/src/nativeLoginMode.ts`
+  to reach the deep link. `loginRouteTarget` in `apps/web/src/features/auth/nativeLoginMode.ts`
   decides this and is covered by tests. The native flow is public and
   session-independent server-side, so the round trip below completes either way.
 

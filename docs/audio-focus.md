@@ -57,7 +57,7 @@ be looking at is irrelevant to which speaker should make a noise.
 has not connected, or one talking to an older overseer, must never mute itself
 waiting for permission.
 
-**Desktop web** — done, in `apps/web/src/audioFocus.ts` and `apps/web/src/liveSocket.tsx`.
+**Desktop web** — done, in `apps/web/src/realtime/audioFocus.ts` and `apps/web/src/realtime/liveSocket.tsx`.
 The tab id lives in `sessionStorage`, focus and visibility ride along with
 presence, and starting a session claims the sound outright.
 
@@ -83,15 +83,15 @@ does not steal it.
 
 ## The browser
 
-`apps/web/src/audioFocus.ts` holds this tab's id and its current verdict.
-`apps/web/src/peonSounds.ts` gates both the one-shot sounds and the working ambience
+`apps/web/src/realtime/audioFocus.ts` holds this tab's id and its current verdict.
+`apps/web/src/realtime/peonSounds.ts` gates both the one-shot sounds and the working ambience
 on it, and stops ambience already playing when the tab loses the sound mid-turn.
 
 **The default is to play.** A tab that has not connected yet, or one talking to
 an overseer that never mentions audio, must never end up silently muted.
 
 Starting a session claims the sound for the client it was started from
-(`claimAudioFocus()` in `apps/web/src/pages/peon/PeonNewSession.tsx`), which both
+(`claimAudioFocus()` in `apps/web/src/features/sessions/PeonNewSession.tsx`), which both
 takes effect locally at once and tells the overseer to quiet the others.
 
 ## What this does not cover

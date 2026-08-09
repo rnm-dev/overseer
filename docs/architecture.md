@@ -166,25 +166,33 @@ Frontend code follows the same feature-first rule:
 
 ```text
 apps/web/src/
-  app/                    # routes and provider composition
+  app/                    # App.tsx, main.tsx, index.css
   features/
-    auth/
     armory/
+    auth/
+    fleet/                # a Peon as an operator sees it
     projects/
     sessions/
     settings/
+    stats/
+    themes/
     workspaces/
-  realtime/               # transport and protocol adapters
+  realtime/               # live socket, presence, audio focus
   shared/                 # UI primitives, API client, i18n, generic hooks
 ```
+
+A feature owns its pages, its hooks, its API calls and its models together, and
+its tests sit beside them. There is no `pages/` or `components/` directory: a
+route component is a file in the feature it belongs to, and a component shared
+by several features lives in `shared/`.
 
 Page components coordinate feature hooks and components. Protocol state,
 request orchestration, and reusable domain transformations belong in dedicated
 feature modules rather than in route components.
 
-The frontend has not completed this directory migration. Its existing
-`pages/peon/session` feature grouping is a valid intermediate state; new logic
-should deepen feature ownership instead of adding more state to route components.
+The directory migration is done; what remains is depth, not layout. Several
+route components still hold state and orchestration that belongs in feature
+hooks and models — `features/sessions/PeonSessionDetail.tsx` most of all.
 
 ## Architecture fitness checks
 

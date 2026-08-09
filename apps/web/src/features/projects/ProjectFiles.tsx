@@ -1,0 +1,456 @@
+import { useCallback, useEffect, useRef, useState, type DragEvent } from "react";
+import { createPortal } from "react-dom";
+import { ChevronRight, Check, Copy, Download, ExternalLink, Folder, FolderOpen, LoaderCircle, RefreshCw, X } from "lucide-react";
+import { api, ApiError } from "../../shared/api";
+import { useT } from "../../shared/i18n";
+import { FileTypeIcon } from "./FileTypeIcon";
+import { FileDownloadButton, FileView, useFileContent } from "./FileView";
+import { encodeFilePath, fileDownloadUrl, fileName, formatFileSize, type FileSource } from "./fileLinks";
+import { requestProjectDirectory, type ProjectFileEntry } from "./projectDirectoryListing";
+
+export { formatFileSize } from "./fileLinks";
+
+interface DirectoryState {
+  loading: boolean;
+  entries: ProjectFileEntry[];
+  error?: string;
+}
+
+interface UploadState {
+  done: number;
+  total: number;
+  target: string;
+  error?: string;
+}
+
+interface MoveState {
+  source: string;
+  destination: string;
+  running: boolean;
+  error?: string;
+}
+
+const isDirectory = (entry: ProjectFileEntry) => entry.type === "dir" || entry.type === "directory";
+const sortEntries = (entries: ProjectFileEntry[]) => [...entries].sort((a, b) => isDirectory(a) === isDirectory(b) ? a.name.localeCompare(b.name) : isDirectory(a) ? -1 : 1);
+const sameEntries = (left: ProjectFileEntry[], right: ProjectFileEntry[]) => left.length === right.length && left.every((entry, index) => {
+  const other = right[index];
+  return !!other && entry.name === other.name && entry.type === other.type && entry.size === other.size && entry.mtimeMs === other.mtimeMs;
+});
+const hasDraggedFiles = (event: DragEvent) => Array.from(event.dataTransfer.types).includes("Files");
+const PROJECT_FILE_DRAG_TYPE = "application/x-overseer-project-file";
+const hasDraggedProjectFile = (event: DragEvent) => Array.from(event.dataTransfer.types).includes(PROJECT_FILE_DRAG_TYPE);
+const parentPath = (path: string) => path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
+const baseName = (path: string) => path.slice(path.lastIndexOf("/") + 1);
+
+// Keep a right-click menu inside the viewport wherever the pointer was: an
+// entry near the bottom edge would otherwise open below the fold.
+export function fileContextMenuPosition(clientX: number, clientY: number, viewportWidth: number, viewportHeight: number, itemCount: number) {
+  const width = 208;
+  const height = 16 + Math.max(1, itemCount) * 32;
+  const margin = 8;
+  return {
+    x: Math.max(margin, Math.min(clientX, viewportWidth - width - margin)),
+    y: Math.max(margin, Math.min(clientY, viewportHeight - height - margin)),
+  };
+}
+
+interface FileMenuState {
+  path: string;
+  size?: number;
+  x: number;
+  y: number;
+}
+
+export function ProjectFileTree({ filesBase, sourceFor, activePath, onOpenFile, onFileMoved, allowUpload = false, className = "" }: {
+  filesBase: string;
+  // How a tree path is named for reading and saving. The tree never assembles
+  // a file URL itself; fileLinks.ts owns that for every surface.
+  sourceFor: (path: string) => FileSource;
+  activePath?: string | null;
+  onOpenFile: (path: string, size?: number) => void;
+  onFileMoved?: (source: string, destination: string) => void;
+  allowUpload?: boolean;
+  className?: string;
+}) {
+  const t = useT();
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [menu, setMenu] = useState<FileMenuState | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [directories, setDirectories] = useState<Record<string, DirectoryState>>({});
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set([""]));
+  const [dropTarget, setDropTarget] = useState<string | null>(null);
+  const [dragSource, setDragSource] = useState<string | null>(null);
+  const [upload, setUpload] = useState<UploadState | null>(null);
+  const [move, setMove] = useState<MoveState | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const refreshingRef = useRef(false);
+  const uploadNoticeTimer = useRef<number | null>(null);
+
+  const load = useCallback(async (path: string) => {
+    setDirectories((current) => ({ ...current, [path]: { loading: true, entries: [] } }));
+    try {
+      const entries = await requestProjectDirectory(filesBase, path);
+      setDirectories((current) => ({
+        ...current,
+        [path]: {
+          loading: false,
+          entries: sortEntries(entries),
+        },
+      }));
+    } catch (error) {
+      setDirectories((current) => ({
+        ...current,
+        [path]: { loading: false, entries: [], error: error instanceof ApiError ? error.message : t("error.loadFailed") },
+      }));
+    }
+  }, [filesBase, t]);
+
+  // A manual refresh updates only directories the operator has expanded and
+  // does so silently, without collapsing the tree or flashing its loader.
+  const refreshDirectory = useCallback(async (path: string) => {
+    try {
+      const entries = sortEntries(await requestProjectDirectory(filesBase, path));
+      setDirectories((current) => {
+        const directory = current[path];
+        if (!directory || directory.loading || sameEntries(directory.entries, entries)) return current;
+        return { ...current, [path]: { loading: false, entries } };
+      });
+    } catch {
+      // A transient refresh failure must not replace a usable tree with an
+      // error. Explicit folder loads still surface errors normally.
+    }
+  }, [filesBase]);
+
+  useEffect(() => () => {
+    if (uploadNoticeTimer.current !== null) window.clearTimeout(uploadNoticeTimer.current);
+  }, []);
+
+  useEffect(() => {
+    if (!menu) return;
+    const close = (event: MouseEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) setMenu(null);
+    };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMenu(null);
+    };
+    const viewport = () => setMenu(null);
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", escape);
+    window.addEventListener("scroll", viewport, true);
+    window.addEventListener("resize", viewport);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", escape);
+      window.removeEventListener("scroll", viewport, true);
+      window.removeEventListener("resize", viewport);
+    };
+  }, [menu]);
+
+  const openMenu = (path: string, size: number | undefined, x: number, y: number) => {
+    setCopied(false);
+    setMenu({ path, size, ...fileContextMenuPosition(x, y, window.innerWidth, window.innerHeight, 3) });
+  };
+
+  const copyPath = async (path: string) => {
+    try {
+      await navigator.clipboard.writeText(path);
+      setCopied(true);
+      window.setTimeout(() => setMenu(null), 700);
+    } catch {
+      setMenu(null);
+    }
+  };
+
+  useEffect(() => {
+    setDirectories({});
+    setExpanded(new Set([""]));
+    load("");
+  }, [filesBase, load]);
+
+  const refreshExpanded = useCallback(async () => {
+    if (refreshingRef.current) return;
+    refreshingRef.current = true;
+    setRefreshing(true);
+    try {
+      await Promise.all([...expanded].map(refreshDirectory));
+    } finally {
+      refreshingRef.current = false;
+      setRefreshing(false);
+    }
+  }, [expanded, refreshDirectory]);
+
+  const toggle = async (path: string) => {
+    if (expanded.has(path)) {
+      setExpanded((current) => {
+        const next = new Set(current);
+        next.delete(path);
+        return next;
+      });
+      return;
+    }
+    if (!directories[path]) await load(path);
+    setExpanded((current) => new Set(current).add(path));
+  };
+
+  const uploadFiles = async (target: string, fileList: FileList) => {
+    const files = Array.from(fileList);
+    if (!allowUpload || files.length === 0 || (upload && upload.done < upload.total)) return;
+    if (uploadNoticeTimer.current !== null) window.clearTimeout(uploadNoticeTimer.current);
+    setDropTarget(null);
+    setUpload({ done: 0, total: files.length, target });
+    let error: string | undefined;
+    for (let index = 0; index < files.length; index++) {
+      const file = files[index]!;
+      const cleaned = file.name.replace(/[\\/\0]/g, "_");
+      const name = !cleaned || cleaned === "." || cleaned === ".." ? "file" : cleaned;
+      const destination = target ? `${target}/${name}` : name;
+      try {
+        await api(`${filesBase}/${encodeFilePath(destination)}`, {
+          method: "PUT",
+          body: file,
+          headers: { "content-type": "application/octet-stream" },
+        });
+        setDirectories((current) => {
+          const directory = current[target];
+          if (!directory || directory.loading || directory.error) return current;
+          const entries = sortEntries([...directory.entries.filter((entry) => entry.name !== name), { name, type: "file", size: file.size }]);
+          return { ...current, [target]: { ...directory, entries } };
+        });
+      } catch (uploadError) {
+        const message = uploadError instanceof ApiError && (uploadError.status === 404 || uploadError.status === 405)
+          ? t("proj.files.uploadUnsupported")
+          : uploadError instanceof Error ? uploadError.message : t("proj.files.uploadFailed");
+        error = `${file.name}: ${message}`;
+      } finally {
+        setUpload({ done: index + 1, total: files.length, target, error });
+      }
+    }
+    if (!error) uploadNoticeTimer.current = window.setTimeout(() => setUpload(null), 1600);
+  };
+
+  const moveFile = async (source: string, size: number | undefined, target: string) => {
+    if (!allowUpload || parentPath(source) === target || move?.running) {
+      setDropTarget(null);
+      setDragSource(null);
+      return;
+    }
+    if (uploadNoticeTimer.current !== null) window.clearTimeout(uploadNoticeTimer.current);
+    const name = baseName(source);
+    const destination = target ? `${target}/${name}` : name;
+    setDropTarget(null);
+    setMove({ source, destination, running: true });
+    try {
+      await api(`${filesBase}/${encodeFilePath(source)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ destination }),
+      });
+      setDirectories((current) => {
+        const next = { ...current };
+        const sourceParent = parentPath(source);
+        const sourceDirectory = next[sourceParent];
+        if (sourceDirectory && !sourceDirectory.loading && !sourceDirectory.error) {
+          next[sourceParent] = { ...sourceDirectory, entries: sourceDirectory.entries.filter((entry) => entry.name !== name) };
+        }
+        const targetDirectory = next[target];
+        if (targetDirectory && !targetDirectory.loading && !targetDirectory.error) {
+          next[target] = { ...targetDirectory, entries: sortEntries([...targetDirectory.entries.filter((entry) => entry.name !== name), { name, type: "file", size }]) };
+        }
+        return next;
+      });
+      onFileMoved?.(source, destination);
+      setMove({ source, destination, running: false });
+      uploadNoticeTimer.current = window.setTimeout(() => setMove(null), 1600);
+    } catch (moveError) {
+      const message = moveError instanceof ApiError && (moveError.status === 404 || moveError.status === 405)
+        ? t("proj.files.moveUnsupported")
+        : moveError instanceof Error ? moveError.message : t("proj.files.moveFailed");
+      setMove({ source, destination, running: false, error: message });
+    } finally {
+      setDragSource(null);
+    }
+  };
+
+  const acceptDrag = (event: DragEvent, target: string) => {
+    if (!allowUpload || (!hasDraggedFiles(event) && !hasDraggedProjectFile(event))) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.dataTransfer.dropEffect = hasDraggedProjectFile(event) ? "move" : "copy";
+    setDropTarget(target);
+  };
+
+  const dropInto = (event: DragEvent, target: string) => {
+    acceptDrag(event, target);
+    const raw = event.dataTransfer.getData(PROJECT_FILE_DRAG_TYPE);
+    if (raw) {
+      try {
+        const item = JSON.parse(raw) as { path?: unknown; size?: unknown };
+        if (typeof item.path === "string") void moveFile(item.path, typeof item.size === "number" ? item.size : undefined, target);
+      } catch {
+        setDropTarget(null);
+      }
+      return;
+    }
+    void uploadFiles(target, event.dataTransfer.files);
+  };
+
+  const renderDirectory = (path: string, depth: number) => {
+    const state = directories[path];
+    if (!state) return null;
+    if (state.loading) return <FileTreeLoader depth={depth} label={t("app.loading")} />;
+    if (state.error) return <div className="px-3 py-2 font-mono text-[0.68rem] text-danger" style={{ paddingLeft: 12 + depth * 16 }}>⚠ {state.error}</div>;
+    if (path === "" && state.entries.length === 0) return <p className="p-3 font-mono text-xs text-ink-faint">{t("proj.files.empty")}</p>;
+    return state.entries.map((entry) => {
+      const fullPath = path ? `${path}/${entry.name}` : entry.name;
+      const directory = isDirectory(entry);
+      const open = directory && expanded.has(fullPath);
+      const loading = directory && directories[fullPath]?.loading;
+      return (
+        <div key={fullPath}>
+          <button
+            type="button"
+            draggable={allowUpload && !directory}
+            onClick={() => directory ? void toggle(fullPath) : onOpenFile(fullPath, entry.size)}
+            onContextMenu={directory ? undefined : (event) => {
+              event.preventDefault();
+              openMenu(fullPath, entry.size, event.clientX, event.clientY);
+            }}
+            disabled={loading}
+            onDragEnter={directory ? (event) => acceptDrag(event, fullPath) : undefined}
+            onDragOver={directory ? (event) => acceptDrag(event, fullPath) : undefined}
+            onDragLeave={directory ? (event) => { event.stopPropagation(); if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropTarget(null); } : undefined}
+            onDrop={directory ? (event) => dropInto(event, fullPath) : undefined}
+            onDragStart={!directory ? (event) => {
+              event.dataTransfer.effectAllowed = "move";
+              event.dataTransfer.setData(PROJECT_FILE_DRAG_TYPE, JSON.stringify({ path: fullPath, size: entry.size }));
+              event.dataTransfer.setData("text/plain", entry.name);
+              setDragSource(fullPath);
+            } : undefined}
+            onDragEnd={!directory ? () => { setDragSource(null); setDropTarget(null); } : undefined}
+            className={`group flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left font-mono text-xs transition-[background-color,color,box-shadow,opacity] duration-150 ${dragSource === fullPath ? "opacity-40" : "opacity-100"} ${dropTarget === fullPath ? "bg-accent/20 text-ink shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--color-accent-deep)_85%,transparent),0_2px_10px_rgba(0,0,0,0.18)]" : activePath === fullPath ? "bg-surface-hover text-accent-strong" : "text-ink-muted hover:bg-surface-hover/85 hover:text-ink"}`}
+            style={{ paddingLeft: 8 + depth * 16 }}
+            title={fullPath}
+          >
+            {directory ? <ChevronRight size={13} className={`flex-none text-ink-faint transition-[transform,color] group-hover:text-ink-muted ${open ? "rotate-90" : ""}`} aria-hidden /> : <span className="w-[13px] flex-none" />}
+            {directory ? (loading ? <LoaderCircle size={15} className="flex-none animate-spin text-accent-strong" aria-hidden /> : open ? <FolderOpen size={15} className="flex-none text-accent-deep transition-colors group-hover:text-accent-strong" aria-hidden /> : <Folder size={15} className="flex-none text-accent-deep transition-colors group-hover:text-accent-strong" aria-hidden />) : <FileTypeIcon name={entry.name} className="transition-[color,filter] group-hover:brightness-125" />}
+            <span className="min-w-0 flex-1 truncate">{entry.name}</span>
+            {!directory && entry.size !== undefined && <span className="flex-none text-[0.62rem] text-ink-faint">{formatFileSize(entry.size)}</span>}
+          </button>
+          {open && renderDirectory(fullPath, depth + 1)}
+        </div>
+      );
+    });
+  };
+
+  return (
+    <div
+      className={`group/file-tree relative flex min-h-0 flex-col rounded-xl transition-[background-color,box-shadow] duration-150 ${dropTarget === "" ? "bg-accent/[0.06] shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--color-accent-deep)_75%,transparent)]" : ""} ${className}`}
+      onDragEnter={(event) => acceptDrag(event, "")}
+      onDragOver={(event) => acceptDrag(event, "")}
+      onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropTarget(null); }}
+      onDrop={(event) => dropInto(event, "")}
+    >
+      <button
+        type="button"
+        onClick={() => void refreshExpanded()}
+        disabled={refreshing}
+        className="absolute right-2 top-2 z-10 grid size-7 place-items-center rounded-md bg-surface/85 text-ink-faint opacity-70 shadow-sm backdrop-blur transition-[opacity,color,background-color] hover:bg-surface-hover hover:text-accent-strong hover:opacity-100 focus-visible:opacity-100 disabled:cursor-wait"
+        title={t("proj.files.refresh")}
+        aria-label={t("proj.files.refresh")}
+      >
+        <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} aria-hidden />
+      </button>
+      <div className="min-h-0 flex-1 overflow-y-auto p-1.5">{renderDirectory("", 0)}</div>
+      {dropTarget === "" && <div className="pointer-events-none absolute inset-x-3 bottom-3 rounded-lg bg-surface/95 px-3 py-2 text-center font-mono text-xs text-accent-strong shadow-lg">{dragSource ? t("proj.files.moveRoot") : t("proj.files.dropRoot")}</div>}
+      {upload && (
+        <div className={`flex flex-none items-center gap-2 bg-black/10 px-3 py-2 font-mono text-[0.68rem] ${upload.error ? "text-danger" : "text-ink-faint"}`} title={upload.error}>
+          {upload.done < upload.total && <LoaderCircle size={13} className="flex-none animate-spin text-accent-deep" aria-hidden />}
+          <span className="truncate">{upload.error || (upload.done < upload.total ? t("proj.files.uploading", { done: upload.done, total: upload.total }) : t("proj.files.uploaded", { n: upload.total }))}</span>
+        </div>
+      )}
+      {move && (
+        <div className={`flex flex-none items-center gap-2 bg-black/10 px-3 py-2 font-mono text-[0.68rem] ${move.error ? "text-danger" : "text-ink-faint"}`} title={move.error}>
+          {move.running && <LoaderCircle size={13} className="flex-none animate-spin text-accent-deep" aria-hidden />}
+          <span className="truncate">{move.error || (move.running ? t("proj.files.moving") : t("proj.files.moved"))}</span>
+        </div>
+      )}
+      {menu && createPortal(
+        <div
+          ref={menuRef}
+          role="menu"
+          aria-label={`${t("file.actions")}: ${fileName(menu.path)}`}
+          className="fixed z-[110] w-52 overflow-hidden rounded-lg border border-edge bg-surface py-1 shadow-xl"
+          style={{ left: menu.x, top: menu.y }}
+        >
+          <button type="button" role="menuitem" className={FILE_MENU_ITEM_CLASS} onClick={() => { setMenu(null); onOpenFile(menu.path, menu.size); }}>
+            <span className="min-w-0 flex-1 truncate">{t("file.open")}</span>
+            <ExternalLink size={12} className="flex-none text-ink-faint" aria-hidden />
+          </button>
+          <a
+            role="menuitem"
+            href={fileDownloadUrl(sourceFor(menu.path))}
+            download={fileName(menu.path)}
+            className={FILE_MENU_ITEM_CLASS}
+            onClick={() => setMenu(null)}
+          >
+            <span className="min-w-0 flex-1 truncate">{t("file.download")}</span>
+            <Download size={12} className="flex-none text-ink-faint" aria-hidden />
+          </a>
+          <button type="button" role="menuitem" className={FILE_MENU_ITEM_CLASS} onClick={() => void copyPath(menu.path)}>
+            <span className="min-w-0 flex-1 truncate">{t(copied ? "file.pathCopied" : "file.copyPath")}</span>
+            {copied ? <Check size={12} className="flex-none text-accent-strong" aria-hidden /> : <Copy size={12} className="flex-none text-ink-faint" aria-hidden />}
+          </button>
+        </div>,
+        document.body,
+      )}
+    </div>
+  );
+}
+
+const FILE_MENU_ITEM_CLASS = "flex w-full items-center gap-2 px-2.5 py-1.5 text-left font-body text-[0.7rem] text-ink-muted transition-colors hover:bg-surface-hover hover:text-ink focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-accent/60";
+
+function FileTreeLoader({ depth, label }: { depth: number; label: string }) {
+  const rows = depth === 0 ? ["68%", "52%", "76%", "44%", "61%"] : ["58%", "72%", "46%"];
+  return (
+    <div role="status" aria-label={label} className="space-y-0.5 py-0.5">
+      {rows.map((width, index) => (
+        <div
+          key={`${width}-${index}`}
+          className="flex h-7 items-center gap-2 rounded px-2"
+          style={{ paddingLeft: 8 + depth * 16, animationDelay: `${index * 90}ms` }}
+        >
+          <span className="h-2.5 w-2.5 flex-none animate-pulse rounded-sm bg-surface-active/70" style={{ animationDelay: `${index * 90}ms` }} />
+          <span className="h-2.5 animate-pulse rounded-full bg-surface-active/70" style={{ width, animationDelay: `${index * 90}ms` }} />
+        </div>
+      ))}
+      <span className="sr-only">{label}</span>
+    </div>
+  );
+}
+
+export function ProjectFilePreviewModal({ source, path, size, viewerUrl, onClose }: { source: FileSource; path: string; size?: number; viewerUrl?: string; onClose: () => void }) {
+  const t = useT();
+  // An HTML file is shown by the tokenized web preview instead of being read
+  // back as source, so the shared reader stays idle for it.
+  const browserHtml = !!viewerUrl && /\.html?$/i.test(path);
+  const content = useFileContent({ source, size, fallback: "text", enabled: !browserHtml });
+
+  return createPortal(
+    <div className="fixed inset-0 z-50 grid place-items-center bg-[radial-gradient(circle_at_50%_18%,rgba(149,201,103,0.08),transparent_38%),rgba(2,4,3,0.82)] p-4 backdrop-blur-md" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+      <section role="dialog" aria-modal="true" aria-label={path} className="relative flex h-[min(88vh,56rem)] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-edge-strong/80 bg-surface/95 shadow-[0_28px_90px_rgba(0,0,0,0.65),0_0_0_1px_rgba(149,201,103,0.04)]">
+        <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 z-10 h-px bg-gradient-to-r from-transparent via-accent/45 to-transparent" />
+        <header className="flex items-center gap-3 border-b border-edge bg-surface-raised/70 px-4 py-3.5">
+          <FileTypeIcon name={path} size={16} />
+          <span className="min-w-0 flex-1 truncate font-mono text-xs text-ink-muted" title={path}>{path}</span>
+          <FileDownloadButton source={source} />
+          <button type="button" onClick={onClose} className="grid h-8 w-8 place-items-center rounded-lg border border-transparent text-ink-faint transition-colors hover:border-edge-strong hover:bg-surface-hover hover:text-ink" aria-label={t("session.preview.close")}><X size={18} /></button>
+        </header>
+        <div className="min-h-0 flex-1 overflow-auto">
+          {browserHtml
+            ? <iframe sandbox="allow-scripts allow-forms allow-modals allow-downloads" src={viewerUrl} title={path} className="h-full min-h-[32rem] w-full border-0 bg-white" />
+            : <FileView content={content} />}
+        </div>
+      </section>
+    </div>,
+    document.body,
+  );
+}

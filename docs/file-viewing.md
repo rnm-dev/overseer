@@ -1,7 +1,7 @@
 # Showing a file
 
 Every file the web client displays is still named by `FileSource` in
-`apps/web/src/pages/peon/fileLinks.ts` and rendered by `FileView.tsx`. Public
+`apps/web/src/features/projects/fileLinks.ts` and rendered by `FileView.tsx`. Public
 browser and mobile routes are unchanged:
 
 | Source | Overseer route |
