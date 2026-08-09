@@ -567,8 +567,6 @@ export const ru: Record<string, string> = {
   "pluginInquiry.connectInChatGpt": "Подключите в ChatGPT Apps — статус обновится автоматически.",
   "pluginInquiry.openApps": "Открыть Apps",
   "pluginInquiry.managed": "Управляемый плагин",
-  "pluginInquiry.loadFailed": "Запрос плагина недоступен",
-  "pluginInquiry.retry": "Повторить",
   "pluginInquiry.status.pending": "Нужно решение",
   "pluginInquiry.status.installing": "Установка…",
   "pluginInquiry.status.installed": "Установлен",

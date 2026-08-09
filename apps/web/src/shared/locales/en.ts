@@ -567,8 +567,6 @@ export const en: Record<string, string> = {
   "pluginInquiry.connectInChatGpt": "Connect it in ChatGPT Apps; this updates automatically.",
   "pluginInquiry.openApps": "Open Apps",
   "pluginInquiry.managed": "Managed plugin",
-  "pluginInquiry.loadFailed": "Plugin request unavailable",
-  "pluginInquiry.retry": "Retry",
   "pluginInquiry.status.pending": "Approval needed",
   "pluginInquiry.status.installing": "Installing…",
   "pluginInquiry.status.installed": "Installed",

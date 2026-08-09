@@ -112,7 +112,6 @@ export function inquiryInsertionIndex(items: object[], createdAt: string): numbe
 export function usePluginInquiries(base: string, sid: string, supported: boolean) {
   const [inquiries, setInquiries] = useState<PluginInstallInquiry[]>([]);
   const [loading, setLoading] = useState(supported);
-  const [loadFailed, setLoadFailed] = useState(false);
   const inFlight = useRef(new Set<string>());
   const requestIds = useRef(new Map<string, string>());
   const scopeRef = useRef(`${base}:${sid}`);
@@ -125,9 +124,10 @@ export function usePluginInquiries(base: string, sid: string, supported: boolean
       const body = await api<InquiryListResponse>(inquiryCollectionPath(base, sid), { cache: "no-store", signal });
       if (scopeRef.current !== scope) return;
       setInquiries(parsePluginInquiries(body));
-      setLoadFailed(false);
-    } catch (error) {
-      if (scopeRef.current === scope && !(error instanceof DOMException && error.name === "AbortError")) setLoadFailed(true);
+    } catch {
+      // A failed poll says nothing about the inquiries themselves: keep the last
+      // known list and let the timer, focus and online listeners try again. A
+      // transient Peon outage is not something to put in front of the operator.
     } finally {
       if (scopeRef.current === scope && !signal?.aborted) setLoading(false);
     }
@@ -136,7 +136,6 @@ export function usePluginInquiries(base: string, sid: string, supported: boolean
   useEffect(() => {
     setInquiries([]);
     setLoading(supported);
-    setLoadFailed(false);
     inFlight.current.clear();
     requestIds.current.clear();
     if (!supported || !sid) return;
@@ -199,5 +198,5 @@ export function usePluginInquiries(base: string, sid: string, supported: boolean
     }
   }, [base, refresh, sid]);
 
-  return { inquiries, loading, loadFailed, refresh, respond };
+  return { inquiries, loading, refresh, respond };
 }

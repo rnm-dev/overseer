@@ -37,7 +37,7 @@ import {
 import { lockSessionDocument } from "./sessionViewport";
 import { loadToolDisplayMode } from "./sessionToolDisplay";
 import { isSuccessfulRunResult, onSelectedSoundPackChange, playPeonSound, playWorkSound, stopWorkSound } from "../../realtime/peonSounds";
-import { PluginInquiryCard, PluginInquiryLoadFailed } from "./PluginInquiryCard";
+import { PluginInquiryCard } from "./PluginInquiryCard";
 import { DropdownMenu, menuItemClass } from "../../shared/ui";
 import { sessionLineage } from "./sessionBranch";
 import { useSessionBranch } from "./useSessionBranch";
@@ -55,7 +55,6 @@ type VirtualTranscriptRow =
   | { key: string; kind: "item"; item: Item; paddingClass: string }
   | { key: string; kind: "ghost"; ghost: ComposerGhost; paddingClass: string }
   | { key: string; kind: "inquiry"; inquiry: PluginInstallInquiry; paddingClass: string }
-  | { key: string; kind: "inquiry-load-failed"; paddingClass: string }
   | { key: string; kind: "working"; paddingClass: string }
   | { key: string; kind: "footer"; height: number };
 
@@ -762,9 +761,6 @@ function PeonSessionDetailPage() {
         paddingClass: items.length === 0 ? "" : gapPaddingClass(items[items.length - 1]!.kind === "user", true),
       });
     }
-    if (pluginInquiries.loadFailed) {
-      rows.push({ key: "plugin-inquiries-load-failed", kind: "inquiry-load-failed", paddingClass: "pt-6" });
-    }
     let insertedInquiries = 0;
     for (const inquiry of [...pluginInquiries.inquiries].sort((a, b) => a.createdAt.localeCompare(b.createdAt))) {
       const itemIndex = inquiryInsertionIndex(items, inquiry.createdAt);
@@ -784,7 +780,7 @@ function PeonSessionDetailPage() {
     }
     rows.push({ key: "session-footer", kind: "footer", height: composerHeight + 40 });
     return rows;
-  }, [composerHeight, ghost, items, lineage, liveWork, pluginInquiries.inquiries, pluginInquiries.loadFailed]);
+  }, [composerHeight, ghost, items, lineage, liveWork, pluginInquiries.inquiries]);
   const [virtualWindow, setVirtualWindow] = useState(() => createTranscriptVirtualWindow(sessionKey, virtualRows));
   let displayedVirtualWindow = virtualWindow;
   if (virtualWindow.sessionKey !== sessionKey || virtualWindow.rows !== virtualRows) {
@@ -902,7 +898,7 @@ function PeonSessionDetailPage() {
               <div className="loading-spinner" />
             </div>
           )
-        ) : history.length === 0 && live.length === 0 && !liveWork && !pluginInquiries.loading && !pluginInquiries.loadFailed && pluginInquiries.inquiries.length === 0 ? (
+        ) : history.length === 0 && live.length === 0 && !liveWork && !pluginInquiries.loading && pluginInquiries.inquiries.length === 0 ? (
           <p className="grid h-full place-items-center pt-12 text-center font-mono text-sm text-ink-faint">{t("session.empty")}</p>
         ) : (
           <Virtuoso
@@ -963,11 +959,6 @@ function PeonSessionDetailPage() {
                     attachments={row.ghost.attachments}
                     createdAt={row.ghost.createdAt}
                   />
-                </div>
-              );
-              if (row.kind === "inquiry-load-failed") return (
-                <div data-plugin-inquiry-row className={`mx-auto w-full max-w-6xl px-3 sm:px-6 ${row.paddingClass}`}>
-                  <PluginInquiryLoadFailed onRetry={() => void pluginInquiries.refresh()} />
                 </div>
               );
               if (row.kind === "inquiry") return (

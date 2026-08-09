@@ -57,13 +57,3 @@ export function PluginInquiryCard({ inquiry, onInstall, onCancel }: {
     </section>
   );
 }
-
-export function PluginInquiryLoadFailed({ onRetry }: { onRetry: () => void }) {
-  const { t } = useI18n();
-  return (
-    <div className="mx-auto flex w-full max-w-xl items-center justify-between gap-3 rounded-xl border border-edge bg-surface-raised px-4 py-3 text-sm text-ink-muted" role="alert">
-      <span>{t("pluginInquiry.loadFailed")}</span>
-      <Button variant="ghost" size="sm" onClick={onRetry}>{t("pluginInquiry.retry")}</Button>
-    </div>
-  );
-}
