@@ -16,7 +16,15 @@ interface CachedTranscript {
 
 const cache = new Map<string, CachedTranscript>();
 const inFlight = new Map<string, Promise<TranscriptPage>>();
+let generation = 0;
 type TranscriptRequest = (path: string) => Promise<TranscriptResponse>;
+
+export class StaleTranscriptSnapshotError extends Error {
+  constructor() {
+    super("Transcript snapshot was invalidated");
+    this.name = "StaleTranscriptSnapshotError";
+  }
+}
 
 function cacheKey(base: string, sid: string, paginationSupported: boolean): string {
   return `${base}\0${sid}\0${paginationSupported ? "paginated" : "legacy"}`;
@@ -81,11 +89,16 @@ export function prefetchTranscriptSnapshot(
   }
   const pending = inFlight.get(key);
   if (pending) return pending;
+  const requestGeneration = generation;
 
   const promise = request(
     transcriptPageUrl(base, sid, paginationSupported),
   )
-    .then((response) => remember(key, parseTranscriptPage(response)))
+    .then((response) => {
+      const page = parseTranscriptPage(response);
+      if (requestGeneration !== generation) throw new StaleTranscriptSnapshotError();
+      return remember(key, page);
+    })
     .finally(() => {
       if (inFlight.get(key) === promise) inFlight.delete(key);
     });
@@ -93,7 +106,10 @@ export function prefetchTranscriptSnapshot(
   return promise;
 }
 
-export function clearTranscriptSnapshotCacheForTests(): void {
+export function clearTranscriptSnapshotCache(): void {
+  generation += 1;
   cache.clear();
   inFlight.clear();
 }
+
+export const clearTranscriptSnapshotCacheForTests = clearTranscriptSnapshotCache;

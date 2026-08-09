@@ -241,7 +241,7 @@
       "id": "transcripts",
       "capability": "transcript-sync-v1",
       "status": "covered",
-      "coverage": "canonical snapshot/live frames, barrier staging, shared demand/cancellation, durable atomic projection+inbox+browser event before ACK, drop/duplicate/reorder/reconnect/restart, epoch and generation fencing, bounds and corrupt input"
+      "coverage": "canonical snapshot/page/live/deletion frames, strict bounds, all 3x3 capability and exclusive downgrade cells, durable atomic projection+inbox+browser event before ACK, drop/duplicate/reorder/disconnect/restart, snapshot races, gaps, epoch/generation/cursor fencing, eviction/rebuild, pressure, slow consumer, malformed/oversized input and replay-payload mismatch"
     },
     {
       "id": "updates",

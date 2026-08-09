@@ -23,6 +23,7 @@ import { stateDir } from "../../runtime/xdgPaths.js";
 export const DEFAULT_PEON_SOCKET_OUTBOX_MESSAGES = 5_000;
 export const DEFAULT_PEON_SOCKET_OUTBOX_BYTES = 32 * 1024 * 1024;
 export const PEON_SOCKET_DURABLE_DELIVERY_CAPABILITY = "durable-delivery-v1";
+export const PEON_SOCKET_SELECTIVE_ACK_CAPABILITY = "durable-delivery-selective-ack-v1";
 
 export interface PeonSocketOutboxMessage {
   epoch: string;
@@ -49,6 +50,8 @@ interface OutboxState {
   negotiated: boolean;
   nextSequence: number;
   acknowledgedSequence: number;
+  selectiveAckUsed?: boolean;
+  selectivelyAcknowledged?: number[];
   messages: StoredMessage[];
 }
 
@@ -61,6 +64,7 @@ type JournalMutation =
   | { generation: number; type: "enqueue"; message: StoredMessage }
   | { generation: number; type: "coalesce"; message: StoredMessage }
   | { generation: number; type: "ack"; sequence: number }
+  | { generation: number; type: "selective_ack"; sequence: number }
   | { generation: number; type: "negotiated"; negotiated: boolean }
   | { generation: number; type: "destination"; destinationHash: string };
 
@@ -133,11 +137,18 @@ function validState(value: unknown): value is OutboxState {
     || typeof state.epoch !== "string" || state.epoch.length === 0
     || (state.destinationHash !== null && (typeof state.destinationHash !== "string" || !/^[a-f0-9]{64}$/.test(state.destinationHash)))
     || typeof state.negotiated !== "boolean"
+    || (state.selectiveAckUsed !== undefined && typeof state.selectiveAckUsed !== "boolean")
     || !Number.isSafeInteger(state.nextSequence) || (state.nextSequence ?? 0) < 1
     || !Number.isSafeInteger(state.acknowledgedSequence) || (state.acknowledgedSequence ?? -1) < 0
     || !Array.isArray(state.messages)) return false;
   const nextSequence = state.nextSequence as number;
   const acknowledgedSequence = state.acknowledgedSequence as number;
+  const selectivelyAcknowledged = state.selectivelyAcknowledged ?? [];
+  if (!Array.isArray(selectivelyAcknowledged)
+    || selectivelyAcknowledged.some((sequence, index) => !Number.isSafeInteger(sequence)
+      || sequence <= acknowledgedSequence || sequence >= nextSequence
+      || (index > 0 && sequence <= selectivelyAcknowledged[index - 1]!))) return false;
+  const retired = new Set(selectivelyAcknowledged);
   let previous = acknowledgedSequence;
   for (const message of state.messages) {
     if (!message || !Number.isSafeInteger(message.sequence) || message.sequence <= previous
@@ -150,6 +161,11 @@ function validState(value: unknown): value is OutboxState {
       || (message.dedupeKey !== undefined && typeof message.dedupeKey !== "string")
       || (message.coalesceKey !== undefined && typeof message.coalesceKey !== "string")) return false;
     previous = message.sequence;
+  }
+  if (state.messages.some((message) => retired.has(message.sequence))) return false;
+  const present = new Set(state.messages.map((message) => message.sequence));
+  for (let sequence = acknowledgedSequence + 1; sequence < nextSequence; sequence += 1) {
+    if (!present.has(sequence) && !retired.has(sequence)) return false;
   }
   return acknowledgedSequence < nextSequence;
 }
@@ -221,6 +237,14 @@ export class PeonSocketOutbox {
     return this.current.messages.map(({ sequence: _sequence, ...message }) => message);
   }
 
+  hasUsedSelectiveAcks(): boolean {
+    // Older checkpoints written during the additive rollout may have durable
+    // holes without the explicit marker. A non-empty hole set is equivalent
+    // evidence and must fence a legacy handshake resume after upgrade.
+    return this.current.selectiveAckUsed === true
+      || (this.current.selectivelyAcknowledged?.length ?? 0) > 0;
+  }
+
   bindDestination(destinationHash: string): boolean {
     if (!/^[a-f0-9]{64}$/.test(destinationHash)) return false;
     if (this.current.destinationHash === destinationHash) return true;
@@ -251,6 +275,8 @@ export class PeonSocketOutbox {
         negotiated: false,
         nextSequence: 1,
         acknowledgedSequence: 0,
+        selectiveAckUsed: false,
+        selectivelyAcknowledged: [],
         messages: [],
       };
       this.writeSlot(initial);
@@ -350,10 +376,48 @@ export class PeonSocketOutbox {
     const next = { ...this.current, messages: this.current.messages.filter((message) => message.sequence > sequence) };
     next.generation += 1;
     next.acknowledgedSequence = sequence;
+    next.selectivelyAcknowledged = (this.current.selectivelyAcknowledged ?? []).filter((retired) => retired > sequence);
     const nextBytes = this.messagesBytes(next.messages);
     if (!this.commit(next, { generation: next.generation, type: "ack", sequence }, nextBytes)) return false;
     this.rejectedForCapacity = false;
     return true;
+  }
+
+  acknowledgeSelective(epoch: string, cursor: string): boolean {
+    if (epoch !== this.current.epoch) return false;
+    const sequence = decodeCursor(cursor);
+    if (sequence === null || sequence >= this.current.nextSequence) return false;
+    if (sequence <= this.current.acknowledgedSequence
+      || (this.current.selectivelyAcknowledged ?? []).includes(sequence)) return true;
+    if (!this.current.messages.some((message) => message.sequence === sequence)) return false;
+    const retired = [...(this.current.selectivelyAcknowledged ?? []), sequence].sort((left, right) => left - right);
+    let acknowledgedSequence = this.current.acknowledgedSequence;
+    const retiredSet = new Set(retired);
+    while (retiredSet.delete(acknowledgedSequence + 1)) acknowledgedSequence += 1;
+    // A permanently blocked prefix must not let selective retirement create an
+    // unbounded on-disk hole set while newly admitted messages keep replacing
+    // the retired ones. Prefix compaction may consume the new retirement, so
+    // enforce the bound only on the residual holes that must be persisted.
+    if (retiredSet.size > this.maxMessages) return false;
+    const next = {
+      ...this.current,
+      generation: this.current.generation + 1,
+      acknowledgedSequence,
+      selectiveAckUsed: true,
+      selectivelyAcknowledged: [...retiredSet].sort((left, right) => left - right),
+      messages: this.current.messages.filter((message) => message.sequence !== sequence),
+    };
+    const nextBytes = this.messagesBytes(next.messages);
+    if (!this.commit(next, { generation: next.generation, type: "selective_ack", sequence }, nextBytes)) return false;
+    this.rejectedForCapacity = false;
+    return true;
+  }
+
+  isAcknowledged(epoch: string, cursor: string): boolean {
+    if (epoch !== this.current.epoch) return false;
+    const sequence = decodeCursor(cursor);
+    return sequence !== null && (sequence <= this.current.acknowledgedSequence
+      || (this.current.selectivelyAcknowledged ?? []).includes(sequence));
   }
 
   private accepted(message: StoredMessage): PeonSocketDurableResult {
@@ -475,6 +539,16 @@ export class PeonSocketOutbox {
         || mutation.sequence >= next.nextSequence) return null;
       next.acknowledgedSequence = mutation.sequence;
       next.messages = next.messages.filter((message) => message.sequence > mutation.sequence);
+      next.selectivelyAcknowledged = (next.selectivelyAcknowledged ?? []).filter((sequence) => sequence > mutation.sequence);
+    } else if (mutation.type === "selective_ack") {
+      if (!Number.isSafeInteger(mutation.sequence) || mutation.sequence <= next.acknowledgedSequence
+        || mutation.sequence >= next.nextSequence
+        || !next.messages.some((message) => message.sequence === mutation.sequence)) return null;
+      const retired = new Set([...(next.selectivelyAcknowledged ?? []), mutation.sequence]);
+      while (retired.delete(next.acknowledgedSequence + 1)) next.acknowledgedSequence += 1;
+      next.selectiveAckUsed = true;
+      next.selectivelyAcknowledged = [...retired].sort((left, right) => left - right);
+      next.messages = next.messages.filter((message) => message.sequence !== mutation.sequence);
     } else if (mutation.type === "negotiated") {
       if (typeof mutation.negotiated !== "boolean") return null;
       next.negotiated = mutation.negotiated;
@@ -569,6 +643,8 @@ export class PeonSocketOutbox {
       negotiated: false,
       nextSequence: 1,
       acknowledgedSequence: 0,
+      selectiveAckUsed: false,
+      selectivelyAcknowledged: [],
       messages: [],
     };
     this.writeSlot(initial);

@@ -13,7 +13,7 @@ import '../../../support/manual_app_time.dart';
 import 'package:overseer_mobile/core/time/app_time.dart';
 
 void main() {
-  test('authoritative queue item suppresses the matching optimistic ghost', () {
+  test('authoritative queue item suppresses the composer ghost', () {
     const ghost = ComposerGhost(
       commandId: 'command-1',
       text: 'Send now',
@@ -31,6 +31,27 @@ void main() {
       isFalse,
     );
   });
+
+  test(
+    'concurrent authoritative rows retire a ghost by count and never payload',
+    () {
+      const ghost = ComposerGhost(
+        commandId: 'web-command',
+        text: 'same text can be sent by anyone',
+        attachments: [],
+        createdAt: 1,
+        baselineUserMessages: 8,
+      );
+
+      expect(ghost.visibleAgainst(8), isTrue);
+      expect(
+        ghost.visibleAgainst(9),
+        isFalse,
+        reason: 'another operator row may retire it one beat early',
+      );
+      expect(ghost.visibleAgainst(10), isFalse);
+    },
+  );
 
   const scope = FollowupScope(
     workspaceId: 'workspace',
@@ -306,17 +327,17 @@ void main() {
   });
 
   test(
-    'keeps an unchanged retry id and replaces it when the payload changes',
+    'permanent refusals restore the draft and mint a new retry id',
     () async {
       final repository = _FakeFollowupRepository(
         draft: 'retry me',
         pending: const [],
         submitErrors: const [
-          FollowupException('not sent'),
-          FollowupException('not sent'),
-          FollowupException('not sent'),
-          FollowupException('not sent'),
-          FollowupException('not sent'),
+          FollowupException('not sent', statusCode: 400),
+          FollowupException('not sent', statusCode: 400),
+          FollowupException('not sent', statusCode: 400),
+          FollowupException('not sent', statusCode: 400),
+          FollowupException('not sent', statusCode: 400),
         ],
       );
       final container = ProviderContainer(
@@ -337,8 +358,8 @@ void main() {
         isFalse,
       );
       expect(
-        repository.submissions[0].commandId,
         repository.submissions[1].commandId,
+        isNot(repository.submissions[0].commandId),
       );
 
       controller.selectModel('gpt-5');
@@ -384,6 +405,38 @@ void main() {
       );
     },
   );
+
+  test('ambiguous follow-up failures retain the retry identity', () async {
+    final repository = _FakeFollowupRepository(
+      draft: 'retry me',
+      pending: const [],
+      submitErrors: const [
+        FollowupException('upload response was lost'),
+        FollowupException('upload response was lost'),
+      ],
+    );
+    final container = ProviderContainer(
+      overrides: [followupRepositoryProvider.overrideWithValue(repository)],
+    );
+    addTearDown(container.dispose);
+    final controller = container.read(
+      sessionComposerControllerProvider(scope).notifier,
+    );
+    await container.read(sessionComposerControllerProvider(scope).future);
+
+    expect(
+      await controller.submit(running: false, transcriptUserMessages: 0),
+      isFalse,
+    );
+    expect(
+      await controller.submit(running: false, transcriptUserMessages: 0),
+      isFalse,
+    );
+    expect(
+      repository.submissions[1].commandId,
+      repository.submissions[0].commandId,
+    );
+  });
 
   test(
     'clears the visible draft while a follow-up is being submitted',
@@ -445,6 +498,65 @@ void main() {
     expect(failed.draft, 'do not lose me');
     expect(failed.error, 'not sent');
     expect(repository.savedDraft, isNull);
+  });
+
+  test('bounds a delayed authoritative-row ghost to sixty seconds', () async {
+    final scheduler = ManualAppScheduler();
+    final submissionGate = Completer<void>();
+    final repository = _FakeFollowupRepository(
+      draft: 'accepted but publication is delayed',
+      pending: const [],
+      submissionGate: submissionGate,
+    );
+    final container = ProviderContainer(
+      overrides: [
+        followupRepositoryProvider.overrideWithValue(repository),
+        appSchedulerProvider.overrideWithValue(scheduler),
+      ],
+    );
+    addTearDown(container.dispose);
+    final subscription = container.listen(
+      sessionComposerControllerProvider(scope),
+      (_, _) {},
+      fireImmediately: true,
+    );
+    addTearDown(subscription.close);
+    final controller = container.read(
+      sessionComposerControllerProvider(scope).notifier,
+    );
+    await container.read(sessionComposerControllerProvider(scope).future);
+
+    final submission = controller.submit(
+      running: false,
+      transcriptUserMessages: 3,
+    );
+    expect(
+      container
+          .read(sessionComposerControllerProvider(scope))
+          .requireValue
+          .ghost,
+      isNotNull,
+    );
+
+    await scheduler.advance(const Duration(seconds: 59));
+    expect(
+      container
+          .read(sessionComposerControllerProvider(scope))
+          .requireValue
+          .ghost,
+      isNotNull,
+    );
+    await scheduler.advance(const Duration(seconds: 1));
+    expect(
+      container
+          .read(sessionComposerControllerProvider(scope))
+          .requireValue
+          .ghost,
+      isNull,
+    );
+
+    submissionGate.complete();
+    expect(await submission, isTrue);
   });
 
   test('edits an authoritative queued prompt in place', () async {

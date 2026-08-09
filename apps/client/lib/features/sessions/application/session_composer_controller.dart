@@ -31,6 +31,11 @@ enum QueuedFollowupAction { editing, removing, sending }
 /// hovering under it forever.
 const _ghostMaxLifetime = Duration(seconds: 60);
 
+bool _isExplicitFollowupRefusal(FollowupException error) {
+  final status = error.statusCode;
+  return status != null && status >= 400 && status < 500;
+}
+
 /// An attachment the operator sent, as far as the ghost needs to describe it.
 /// The bytes are deliberately not retained.
 class ComposerGhostAttachment {
@@ -386,6 +391,10 @@ class SessionComposerController extends AsyncNotifier<SessionComposerState> {
       if (running) unawaited(refreshQueue());
       return true;
     } on FollowupException catch (error) {
+      // Only an explicit HTTP 4xx refusal proves that this command
+      // identity cannot have been accepted. Upload/protocol failures without a
+      // status retain it so retrying the unchanged payload remains idempotent.
+      if (_isExplicitFollowupRefusal(error)) _resetFollowupIdentity();
       final latest = state.value ?? current;
       state = AsyncData(
         latest.copyWith(

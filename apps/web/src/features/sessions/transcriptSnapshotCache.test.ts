@@ -2,10 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   cachedTranscriptSnapshot,
+  clearTranscriptSnapshotCache,
   clearTranscriptSnapshotCacheForTests,
   prefetchTranscriptSnapshot,
   preparedTranscriptSnapshot,
   rememberTranscriptSnapshot,
+  StaleTranscriptSnapshotError,
 } from "./transcriptSnapshotCache";
 import type { TranscriptResponse } from "./transcriptPagination";
 
@@ -66,4 +68,28 @@ test("cache is bounded and keeps recently read transcripts", () => {
   }
   assert.equal(cachedTranscriptSnapshot("/peon", "session-0", true), null);
   assert.equal(cachedTranscriptSnapshot("/peon", "session-12", true)?.events[0]?.eventId, "event-12");
+});
+
+test("sign-out clearing drops cached pages and pending resume candidates", async () => {
+  clearTranscriptSnapshotCacheForTests();
+  let resolveRequest!: (value: TranscriptResponse) => void;
+  const pending = prefetchTranscriptSnapshot("/peon", "session-pending", true, () =>
+    new Promise<TranscriptResponse>((resolve) => {
+      resolveRequest = resolve;
+    }),
+  );
+  rememberTranscriptSnapshot("/peon", "session-cached", true, {
+    events: [{ type: "assistant", eventId: "event-private" }],
+    nextCursor: null,
+    hasMore: false,
+    paginated: true,
+  });
+
+  clearTranscriptSnapshotCache();
+
+  assert.equal(cachedTranscriptSnapshot("/peon", "session-cached", true), null);
+  assert.equal(preparedTranscriptSnapshot("/peon", "session-pending", true), null);
+  resolveRequest({ events: [], nextCursor: null, hasMore: false });
+  await assert.rejects(pending, StaleTranscriptSnapshotError);
+  assert.equal(cachedTranscriptSnapshot("/peon", "session-pending", true), null);
 });

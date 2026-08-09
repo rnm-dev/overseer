@@ -52,6 +52,66 @@ test("cumulative acknowledgements compact durably and tolerate acknowledgement r
   }
 });
 
+test("selective acknowledgements durably retire an independent cursor without crossing a blocked prefix", () => {
+  const { directory, fileBase, outbox } = fixture();
+  try {
+    const blocked = outbox.enqueue({ type: "transcript_live_event", sessionId: "blocked" });
+    const independent = outbox.enqueue({ type: "transcript_live_event", sessionId: "ready" });
+    const later = outbox.enqueue({ type: "runtime_state" });
+    assert.ok(blocked.accepted && independent.accepted && later.accepted);
+    assert.equal(outbox.acknowledgeSelective(independent.epoch, independent.cursor), true);
+    assert.equal(outbox.hasUsedSelectiveAcks(), true);
+    assert.deepEqual(outbox.pending().map((message) => message.cursor), [blocked.cursor, later.cursor]);
+    assert.equal(outbox.status().acknowledgedCursor, null);
+
+    const restarted = new PeonSocketOutbox({ fileBase });
+    assert.equal(restarted.hasUsedSelectiveAcks(), true);
+    assert.deepEqual(restarted.pending().map((message) => message.cursor), [blocked.cursor, later.cursor]);
+    assert.equal(restarted.acknowledgeSelective(blocked.epoch, blocked.cursor), true);
+    assert.equal(restarted.status().acknowledgedCursor, independent.cursor);
+    assert.deepEqual(restarted.pending().map((message) => message.cursor), [later.cursor]);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("selective acknowledgement holes remain bounded while a prefix is blocked", () => {
+  const { directory, outbox } = fixture({ maxMessages: 2, maxBytes: 100_000 });
+  try {
+    const blocked = outbox.enqueue({ type: "blocked" });
+    const second = outbox.enqueue({ type: "second" });
+    assert.ok(blocked.accepted && second.accepted);
+    assert.equal(outbox.acknowledgeSelective(second.epoch, second.cursor), true);
+    const third = outbox.enqueue({ type: "third" });
+    assert.ok(third.accepted);
+    assert.equal(outbox.acknowledgeSelective(third.epoch, third.cursor), true);
+    const fourth = outbox.enqueue({ type: "fourth" });
+    assert.ok(fourth.accepted);
+    assert.equal(outbox.acknowledgeSelective(fourth.epoch, fourth.cursor), false);
+    assert.deepEqual(outbox.pending().map((message) => message.cursor), [blocked.cursor, fourth.cursor]);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("a restarted selective outbox retains the marker needed for safe downgrade fencing", () => {
+  const { directory, fileBase, outbox } = fixture();
+  try {
+    const blocked = outbox.enqueue({ type: "blocked" });
+    const retired = outbox.enqueue({ type: "retired" });
+    const remaining = outbox.enqueue({ type: "remaining" });
+    assert.ok(blocked.accepted && retired.accepted && remaining.accepted);
+    assert.equal(outbox.acknowledgeSelective(retired.epoch, retired.cursor), true);
+
+    const restarted = new PeonSocketOutbox({ fileBase });
+    assert.deepEqual(restarted.pending().map((message) => message.cursor), [blocked.cursor, remaining.cursor]);
+    assert.equal(restarted.hasUsedSelectiveAcks(), true);
+    assert.equal(restarted.status().acknowledgedCursor, null);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test("deduplication and explicit coalescing preserve one ordered durable cursor", () => {
   const { directory, outbox } = fixture({ maxMessages: 1, maxBytes: 10_000 });
   try {

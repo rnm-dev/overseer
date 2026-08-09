@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { api, getToken, json, migrateLegacyWebSession, setToken } from "../../shared/api";
+import { clearTranscriptSnapshotCache } from "../sessions/transcriptSnapshotCache";
 import { getOrStartAuthBootstrap } from "./authBootstrap";
 import { forgetNativeCallback, nativeCallback } from "./nativeLoginMode";
 import { serverApprovedNativeRedirect } from "./nativeOauthRedirect";
@@ -96,11 +97,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async signInWithPassword(email, password) {
       const r = await api<{ user: User }>("/auth/password/login", json({ email, password }));
       forgetNativeCallback(sessionStorage);
+      clearTranscriptSnapshotCache();
       setUser(r.user);
     },
     async registerWithPassword(email, password) {
       const r = await api<{ user: User }>("/auth/password/register", json({ email, password }));
       forgetNativeCallback(sessionStorage);
+      clearTranscriptSnapshotCache();
       setUser(r.user);
     },
     async completeGithubCallback(code, state, error) {
@@ -116,6 +119,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       sessionStorage.removeItem(STATE_KEY);
       forgetNativeCallback(sessionStorage); // a finished web sign-in ⇒ not a webview
       if (!saved || saved !== state) throw new Error("sign-in state mismatch — please try again");
+      clearTranscriptSnapshotCache();
       setUser(r.user);
       return "web";
     },
@@ -125,6 +129,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } catch {
         /* revoke best-effort */
       }
+      clearTranscriptSnapshotCache();
       setUser(null);
     },
   };

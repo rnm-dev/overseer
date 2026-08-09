@@ -216,7 +216,7 @@ test("reverse transcript snapshot/live/replay reaches authorized browsers once a
     type: "hello",
     protocol: 1,
     peonId: "peon-1",
-    capabilities: ["session-catalog-v1", "durable-delivery-v1", "transcript-sync-v1"],
+    capabilities: ["session-catalog-v1", "durable-delivery-v1", "transcript-sync-v1", "durable-delivery-selective-ack-v1"],
     channels: {
       "session-catalog-v1": { epoch: "catalog", revision: 0, earliestSeq: 0, latestSeq: 0 },
       "transcript-sync-v1": {
@@ -246,7 +246,12 @@ test("reverse transcript snapshot/live/replay reaches authorized browsers once a
     },
   }));
   const helloAck = await peonFrames.waitFor((frame) => frame.type === "hello_ack");
-  assert.deepEqual(helloAck.capabilities, ["session-catalog-v1", "durable-delivery-v1", "transcript-sync-v1"]);
+  assert.deepEqual(helloAck.capabilities, [
+    "session-catalog-v1",
+    "durable-delivery-v1",
+    "transcript-sync-v1",
+    "durable-delivery-selective-ack-v1",
+  ]);
   const catalog = await peonFrames.waitFor((frame) => frame.type === "session_catalog_snapshot_request");
   peon.send(JSON.stringify({
     type: "session_catalog_snapshot_page",
@@ -346,7 +351,8 @@ test("reverse transcript snapshot/live/replay reaches authorized browsers once a
     payload: { type: "transcript_live_event", ...poisonedLive },
   };
   peon.send(JSON.stringify(live));
-  await peonFrames.waitFor((frame) => frame.type === "durable_ack" && frame.cursor === "cursor-2");
+  const selectiveAck = await peonFrames.waitFor((frame) => frame.type === "durable_ack" && frame.cursor === "cursor-2");
+  assert.equal(selectiveAck.cumulative, false);
   const second = await ownerFrames.waitFor((frame) => frame.type === "tail" && frame.id === "event-2");
   const secondEvent = JSON.parse(String(second.data)) as Record<string, unknown>;
   assert.equal(secondEvent.text, "live\uFFFDtext");

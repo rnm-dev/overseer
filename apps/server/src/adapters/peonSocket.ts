@@ -14,6 +14,7 @@ import {
   PeonCatalogSync,
   PROJECT_CATALOG_CAPABILITY,
   SESSION_CATALOG_CAPABILITY,
+  SELECTIVE_ACK_CAPABILITY,
   SessionSyncProtocolError,
   parseSessionCatalogHello,
 } from "./peonSessionSync.js";
@@ -190,6 +191,7 @@ export function attachPeonSocket(server: Server, options: PeonSocketOptions = {}
           const advertisesProjects = advertised.includes(PROJECT_CATALOG_CAPABILITY);
           const advertisesReverseCommands = advertised.includes(REVERSE_COMMAND_CAPABILITY);
           const advertisesTranscripts = advertised.includes(SESSION_TRANSCRIPT_CAPABILITY);
+          const advertisesSelectiveAcks = advertised.includes(SELECTIVE_ACK_CAPABILITY);
           const advertisesRuntime = advertised.includes(RUNTIME_STATE_CAPABILITY);
           const advertisedChannels = frame.channels && typeof frame.channels === "object" && !Array.isArray(frame.channels)
             ? frame.channels as Record<string, unknown>
@@ -218,6 +220,7 @@ export function attachPeonSocket(server: Server, options: PeonSocketOptions = {}
             && commandOperations.length > 0;
           const additionalCapabilities = [
             ...(supportsCanonical && advertisesTranscripts ? [SESSION_TRANSCRIPT_CAPABILITY] : []),
+            ...(supportsCanonical && advertisesTranscripts && advertisesSelectiveAcks ? [SELECTIVE_ACK_CAPABILITY] : []),
             ...(supportsCanonical && advertisesRuntime ? [RUNTIME_STATE_CAPABILITY] : []),
             ...(acceptsReverseCommands ? [REVERSE_COMMAND_CAPABILITY] : []),
           ];

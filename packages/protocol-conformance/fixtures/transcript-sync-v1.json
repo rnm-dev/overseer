@@ -37,6 +37,17 @@
       }
     },
     {
+      "name": "durable transcript deletion",
+      "surface": "transcript",
+      "schema": "transcript.live",
+      "limit": "durable",
+      "frame": {
+        "type": "durable_message", "epoch": "delivery-a", "cursor": "4",
+        "messageId": "00000000-0000-4000-8000-000000000155", "priority": "critical", "capability": "transcript-sync-v1",
+        "payload": { "type": "transcript_deleted", "sessionId": "session-a", "epoch": "te_fixture", "revision": 4 }
+      }
+    },
+    {
       "name": "last consumer cancels snapshot",
       "surface": "transcript",
       "schema": "transcript.cancel",

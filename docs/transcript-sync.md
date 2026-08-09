@@ -6,6 +6,102 @@ with `session-catalog-v1` and `durable-delivery-v1`. Peon remains authoritative;
 Postgres contains a bounded, rebuildable live-tail projection, not the history
 page read authority.
 
+## Convergence acceptance model
+
+The executable catalog is
+`packages/protocol-conformance/fixtures/transcript-acceptance-v1.json`. Stable
+IDs below are requirements, not implementation hints; a later hardening change
+passes only when its named invariant remains green and its applicable recovery
+scenario meets the named SLO.
+
+- **TCA-AUTHORITY:** Peon's durable transcript is the only canonical store.
+  History is read only through authenticated Fleet HTTP; `transcript-sync-v1`
+  supplies only a rebuildable live tail. Neither Postgres nor a client may
+  manufacture, edit or become authority for a transcript row.
+- **TCA-APPEND-VISIBILITY:** once Peon commits an append, every continuously
+  authorized and connected consumer eventually observes that exact event, in
+  transcript order. Before observation, the client may show a non-row ghost;
+  it must not claim the append is canonical.
+- **TCA-ACK-BOUNDARY:** Overseer ACKs only after inbox identity, projection,
+  per-session and Peon-wide frontiers, and ACL-scoped browser event are one
+  durable commit. A crash before commit yields no ACK; a crash after commit and
+  before ACK replays safely.
+- **TCA-REPLAY-IDENTITY:** `(Peon durable epoch, cursor, messageId)` identifies
+  delivery and `(sessionId, transcript epoch, seq, eventId)` identifies the
+  canonical append. Exact replay has one effect; reuse with different identity
+  or canonical payload fails closed without advancing or ACKing.
+- **TCA-SNAPSHOT-BARRIER:** only a complete contiguous `1..barrierSeq`
+  snapshot with one session, epoch, revision and barrier becomes visible.
+  Live events at or below the barrier must match projected identity and payload;
+  later events apply strictly after the atomic replacement.
+- **TCA-EPOCH:** a transcript epoch names one sequence space. Epoch change,
+  absent boundary, unavailable cursor or gap invalidates suffix proof and
+  requires a snapshot; no ACK crosses the gap.
+- **TCA-GENERATION:** every snapshot, append, ACK and correlated response is
+  fenced by the current control-socket generation. A replaced generation can
+  neither write, release new demand nor ACK.
+- **TCA-ACL-REVOCATION:** workspace, Peon, session and project access are read
+  authoritatively before every replay/live delivery. Revocation closes the tail
+  before the next event and creates no new Peon demand.
+- **TCA-BOUNDED-RETENTION:** snapshot, queue, projection, browser output and
+  subscription bounds fail closed. Eviction removes a whole projection, never
+  an ambiguous prefix, and later demand rebuilds from Peon while Fleet HTTP
+  history remains available.
+- **TCA-SESSION-ISOLATION:** one stalled, oversized or rebuilding session must
+  not prevent an unrelated healthy session on the same Peon from meeting its
+  recovery SLO. This is a required planned harness cell, not a claim about the
+  current Peon-wide ordered frontier.
+- **TCA-CLIENT-ROWS:** web and Flutter render only authoritative Peon rows,
+  deduplicate by event ID across page/replay/live overlap, discard state from a
+  replaced session or connection generation, and recover by page plus tail.
+
+### Measurable freshness and recovery SLOs
+
+The SLO population is authorized transcript demands where both endpoints stay
+available for the measurement window. Operator cancellation, ACL revocation,
+intentional unsubscribe and a Peon remaining offline are counted separately,
+not silently reported as successes. Targets apply at p99 over rolling 24-hour
+windows and to deterministic acceptance scenarios at the stated ceiling:
+
+| ID | Scenario and clock | Target |
+| --- | --- | ---: |
+| TCS-HEALTHY | Peon canonical append commit → authorized client applies the event | ≤ 2 s |
+| TCS-RECONNECT | replacement control socket ready → client reaches Peon's captured frontier | ≤ 5 s |
+| TCS-OVERSEER-RESTART | Overseer readiness after process restart → reconnected client reaches the captured frontier | ≤ 10 s |
+| TCS-PROJECTION-REBUILD | snapshot demand admitted for missing/evicted/gapped projection → client reaches the captured barrier plus ordered catch-up | ≤ 30 s |
+| TCS-LONG-OFFLINE | client tail connects with an unavailable/stale boundary → page and bounded tail reach the captured frontier | ≤ 30 s, excluding explicit user-driven older-page reads |
+
+“Current” always means a frontier captured at the scenario start, not an idle
+queue while new appends continue forever. Each sample records only component,
+outcome, recovery class, transport/capability cell, keyed hashes of workspace,
+Peon/session/epoch, generation, sequence gap, counts, bytes, duration and a
+stable failure code. Hash keys rotate with the deployment secret. Prompts,
+transcript/event bodies, credentials, paths and attachment content are forbidden
+from metrics, traces and diagnostics. High-cardinality hashes are for bounded
+debug samples, never unbounded metric labels.
+
+Current observable state consists of projection status/frontier/timestamps in
+`peon_transcript_sync`, durable cursor/inbox state, event and byte counts, and
+bounded Peon transcript-read diagnostics. These prove state and bounds but do
+not yet measure end-to-end client application time. Therefore all five SLO
+collectors remain explicitly `planned` in the executable catalog; later
+observability/client work must add correlated payload-free start/stop samples
+before claiming an SLO is met.
+
+### Supported mixed versions
+
+| Cell | Peon / Overseer / client | Required result |
+| --- | --- | --- |
+| MVC-CANONICAL | `transcript-sync-v1` / capable / projected-tail web or Flutter | Fleet HTTP history plus projected live tail; all invariants and SLOs apply |
+| MVC-LEGACY-PEON | no capability (legacy SSE) / dual-stack / legacy-tail client | Fleet HTTP history plus bounded legacy passthrough; authority, ACL, bounds and client-row invariants apply; reverse recovery SLOs are not claimed |
+| MVC-LEGACY-CLIENT | capable / capable / released legacy-compatible client | Existing public page/SSE/WS shapes remain compatible; no capability frame reaches the client |
+| MVC-UNSUPPORTED-SERVER | capable Peon / Overseer without transcript sync / any client | negotiate legacy passthrough where that released pair supports it, otherwise report offline; never partially activate projection semantics |
+
+“Released legacy” means the oldest web/Flutter builds in the supported release
+window declared by the deployment, not every historical build. A change to the
+window or any cell requires updating the executable fixture and its conformance
+test in the same change.
+
 ## Authority and ACL
 
 History and realtime deliberately have different read paths:
@@ -85,10 +181,37 @@ Events received during a snapshot remain behind the Peon-wide ordered durable
 frontier. After the atomic snapshot, events at or below its barrier are
 committed as covered delivery; newer events apply in order.
 
-An epoch change, missing checkpoint, sequence gap, `CURSOR_UNAVAILABLE`, or
-`RESYNC_REQUIRED` changes freshness to `syncing` or `gap` and requests a fresh
-snapshot. No ACK crosses the gap. Because the one durable queue is ordered,
-catalog, transcript and other durable payloads do not overtake it.
+An epoch change, missing checkpoint, sequence gap, oversized live envelope,
+`CURSOR_UNAVAILABLE`, or `RESYNC_REQUIRED` changes freshness to `syncing` or
+`gap` and requests a fresh snapshot. No ACK for that session crosses the gap.
+
+Peers that also negotiate `durable-delivery-selective-ack-v1` may commit and
+individually acknowledge other sessions and unrelated durable capabilities
+while that repair runs. Overseer keeps later events for the damaged session
+behind its first blocked cursor, preserving per-session order including
+deletion. The one 5,000-message/32 MiB Peon outbox remains the only durable
+store: an individual ACK fsyncs a bounded retired-cursor hole, removes only that
+message, and advances the cumulative frontier only after every earlier cursor
+is retired. On reconnect Overseer deliberately sends no cumulative delivery
+resume for this mode; remaining cursors replay and its durable inbox makes
+already committed duplicates silent. Thus a snapshot gap, unavailable cursor,
+rejected/oversized event, or slow repair cannot indefinitely block another
+session, catalog/runtime state, or a command result, while none can cause the
+blocked cursor to be deleted. Old peers do not negotiate the additive feature
+and retain the original Peon-wide cumulative frontier and ordering. On a
+downgrade after selective ACK was used in the current outbox epoch, Peon ignores
+the older Overseer's handshake cursor because it may lie beyond a hole; it
+replays the bounded remainder and resumes safe cumulative ACKs in wire order.
+
+The focused starvation reproduction queues a gap for session A, a ready event
+for session B, and then deletion for A. Under the v1 scheduler B remains behind
+A until its snapshot finishes (the snapshot lease is 60 seconds, and repeated
+repair failures can repeat that wait indefinitely). Under selective ACK the
+same serialized handler commits B on its first pass while retaining both A
+cursors in order; the executable test also restarts Peon's outbox between the
+out-of-order ACKs and proves that its cumulative frontier does not cross the
+hole. Memory remains capped at 1,000/8 MiB on Overseer and disk at
+5,000/32 MiB on Peon.
 
 On a normal reconnect, Overseer sends
 `transcript_subscribe {requestId,sessionId,epoch,afterSeq}`. Peon supplies the
@@ -163,10 +286,24 @@ The existing transcript REST shape remains `{events,nextCursor,hasMore}`.
 
 The web dashboard keeps a bounded in-memory cache of twelve recently opened
 newest pages and prefetches a transcript on pointer/focus intent. Switching
-back to a recent session paints that page immediately, subscribes from its
-cached `eventId` boundary and reconciles REST in the background. This is only a
-latency optimization: the authoritative page still replaces the cached page,
-and normal `eventId` deduplication covers overlap with the live tail.
+back to a recent session paints that page immediately, but establishes a
+live-tail boundary only from an in-flight or newly completed authoritative
+Fleet HTTP page. The cache is a latency optimization: normal `eventId`
+deduplication covers overlap with the live tail. It is erased on every sign-in
+boundary and sign-out; invalidation also rejects already in-flight prefetches so
+an old principal's response cannot become a resume candidate. Flutter likewise
+paints its durable, session-scoped cache immediately, but establishes a
+live-tail boundary only from the newest authoritative Fleet HTTP page obtained
+while opening. On either client, if that read fails, the tail subscribes without
+`lastEventId`; Overseer's bounded replay window re-anchors the client and stable
+`eventId` upserts remove overlap. A cached boundary is never promoted to
+authority merely because the device is offline or has restarted. Warm/cold
+selection, freshness metadata and mobile cache budgets remain the separate
+Instant relevant transcripts policy. Because the current Drift schema scopes
+private rows by workspace rather than operator, Flutter purges cached transcript
+events/metadata, authoritative queue snapshots, drafts and pending follow-ups
+whenever authentication becomes unauthenticated or a new sign-in succeeds; a
+valid same-user token restore keeps them for offline paint.
 
 Pagination cursors are opaque, route/session-owned and epoch-bound. Browser
 WebSocket and HTTP SSE tails replay strictly after `lastEventId`, then consume
@@ -202,3 +339,59 @@ Global retention evicts whole least-recently-read live-tail projections, never
 an older prefix that could be mistaken for complete replay state. A later live
 subscription deterministically rebuilds it from Peon's canonical JSONL
 transcript; history pages are unaffected.
+
+## Payload-safe observability
+
+Peon and Overseer expose process-local aggregate snapshots for transcript
+freshness and recovery instrumentation. They deliberately contain no Peon,
+workspace, project, session, event, delivery, actor or request identifiers and
+never accept transcript bodies, prompts, tool data, attachment names/paths or
+credentials. Labels are closed enums; unknown values collapse to `other` or
+`protocol_error`, so hostile or novel input cannot create a metric series.
+
+Peon measures durable admission latency/result and current outbox count, bytes
+and oldest age in exactly two capability buckets: `transcript-sync-v1` and
+`other`. Overseer measures delivery-to-commit-and-ACK, snapshot and catch-up
+duration/result; fixed counters cover gaps, epoch changes, resyncs, replay
+mismatches, eviction/rebuild, slow-client disconnects and recovery completion.
+Demand gauges report only session, consumer and shared-consumer totals.
+Durations use ten fixed buckets (`<=100 ms` through `<=60 s`, plus overflow),
+so percentile approximations remain measurable without creating dynamic metric
+series.
+
+An operations dashboard should graph p50/p95/p99 from the duration aggregates,
+outbox oldest age/count/bytes, recovery result rate, gap/resync/replay-mismatch
+rates, slow-client disconnects and active versus shared demand. Alerting should
+pair sustained outbox age with a non-zero backlog, alert immediately on replay
+mismatch, and use recovery failure/latency and gap/resync rates as burn-rate
+signals. Do not add identifier labels while building those views.
+
+No production alert threshold is selected yet. The first dev baseline must be
+collected during normal idle/active use and controlled reconnect, epoch-change,
+projection-eviction and slow-client scenarios. Record p50/p95/p99, maximum
+outbox age/bytes, recovery result counts and demand peaks for each scenario for
+at least one working day; choose thresholds only after that sample exists.
+The local unit baseline for the instrumentation itself is deterministic: a
+three-session demand sample totals six consumers and three shared consumers,
+and the redaction/cardinality suites collapse 1,000 attacker-controlled labels
+to one bounded series.
+
+At most four transcript snapshots execute concurrently per Peon. Up to the
+negotiated 64 unique subscriptions (including durable-only repairs) may wait in
+a FIFO queue behind those slots. Completing or failing a snapshot starts the
+next queued repair; a fifth simultaneous gap therefore cannot close the shared
+control socket or starve already-ready sessions. Releasing the last browser
+demand removes a queued browser-only rebuild, while a rebuild needed to retire
+a durable cursor remains queued.
+
+## Executable conformance
+
+The shared `@rnm-dev/protocol-conformance` workspace covers this contract with
+golden snapshot/page/live/deletion frames, the complete supported mixed-version
+matrix and deterministic fault scenarios. It exercises commit/ACK crash
+boundaries, gaps and stale generations, epoch and cursor recovery, snapshot/live
+races, eviction/rebuild, pressure and malformed or mismatched replay input.
+These tests assert one committed client effect, no ACK across a gap and eventual
+snapshot convergence while emitting only bounded, payload-free diagnostics.
+They run as part of the repository root `npm run verify` gate; see
+[protocol conformance and failure injection](protocol-conformance-harness.md).

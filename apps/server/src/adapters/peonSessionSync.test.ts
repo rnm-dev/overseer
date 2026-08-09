@@ -55,3 +55,58 @@ test("snapshot buffering rejects changed content under a durable cursor", () => 
       && error.message === "durable delivery cursor changed during catalog snapshots",
   );
 });
+
+test("requeued durable events retain bounded byte accounting", () => {
+  const harness = bufferHarness();
+  harness.bufferEvent({ ...durableEvent, session: { id: "session-1", status: "running", payload: "x".repeat(1024) } }, 0);
+
+  assert.ok(harness.bufferedBytes >= 1024);
+  assert.equal(harness.bufferedEvents.length, 1);
+});
+
+test("selective scheduling preserves one session order while draining unrelated durable work", async () => {
+  const applied: string[] = [];
+  const harness = Object.create(PeonCatalogSync.prototype) as BufferHarness & {
+    snapshot: null;
+    projectSnapshot: null;
+    selectiveAcks: boolean;
+    transcriptSync: {
+      hasActiveSnapshots(): boolean;
+      prepareDurable(event: { sessionId: string }): Promise<boolean>;
+    };
+    applyEvent(event: { deliveryCursor: string }): Promise<void>;
+    maybeDrainBuffered(): Promise<void>;
+  };
+  harness.snapshot = null;
+  harness.projectSnapshot = null;
+  harness.selectiveAcks = true;
+  harness.bufferedEventFingerprints = new Map();
+  harness.bufferedBytes = 0;
+  harness.transcriptSync = {
+    hasActiveSnapshots: () => true,
+    prepareDurable: async (event) => event.sessionId !== "blocked",
+  };
+  harness.applyEvent = async (event) => { applied.push(event.deliveryCursor); };
+  const transcript = (deliveryCursor: string, sessionId: string) => ({
+    channel: "transcript",
+    deliveryEpoch: "delivery",
+    deliveryCursor,
+    messageId: `00000000-0000-4000-8000-${deliveryCursor.padStart(12, "0")}`,
+    sessionId,
+    transcriptEpoch: "transcript",
+    seq: 1,
+    revision: 1,
+    eventId: `event-${deliveryCursor}`,
+    event: { type: "assistant", text: deliveryCursor },
+  });
+  harness.bufferedEvents = [
+    transcript("1", "blocked"),
+    transcript("2", "ready"),
+    { ...transcript("3", "blocked"), deleted: true },
+  ];
+
+  await harness.maybeDrainBuffered();
+
+  assert.deepEqual(applied, ["2"]);
+  assert.deepEqual(harness.bufferedEvents.map((event) => event.deliveryCursor), ["1", "3"]);
+});

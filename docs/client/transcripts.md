@@ -32,6 +32,12 @@ file bytes.
 The cache contains pages the operator has actually loaded plus live events. It
 does not eagerly download the entire transcript.
 
+The schema is workspace-scoped rather than user-scoped. When authentication
+becomes unauthenticated or a new sign-in succeeds, the client atomically purges
+transcript rows/metadata, queue snapshots, drafts, and pending follow-ups so a
+new principal cannot paint the previous operator's private data. A valid token
+restore for the same operator preserves the offline cache.
+
 ## Opening a session
 
 1. Read and watch cached events in ascending `orderKey`.
@@ -40,7 +46,8 @@ does not eagerly download the entire transcript.
    `GET /api/workspaces/:workspaceId/peons/:peonId/sessions/:sessionId/transcript`.
 4. Upsert the page by `eventId` in one Drift transaction.
 5. Subscribe to the session tail with the last event ID from that HTTP page.
-   If the request fails, fall back to the newest cached `eventId`.
+   If the request fails, subscribe without a boundary so the server supplies a
+   bounded recovery window; never promote the cached `eventId` to authority.
 
 Starting from the HTTP snapshot boundary makes the newest page appear as one
 cache transaction instead of replaying a potentially large gap one event at a

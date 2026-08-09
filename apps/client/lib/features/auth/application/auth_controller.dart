@@ -11,6 +11,12 @@ final authRepositoryProvider = Provider<AuthRepository>(
   ),
 );
 
+typedef SessionPrivateDataClearer = Future<void> Function();
+
+final sessionPrivateDataClearerProvider = Provider<SessionPrivateDataClearer>(
+  (ref) => () async {},
+);
+
 final authControllerProvider = NotifierProvider<AuthController, AuthState>(
   AuthController.new,
 );
@@ -25,10 +31,14 @@ class AuthController extends Notifier<AuthState> {
   Future<void> _restore() async {
     try {
       final session = await ref.read(authRepositoryProvider).restore();
+      if (session == null) {
+        await ref.read(sessionPrivateDataClearerProvider)();
+      }
       state = session == null
           ? const AuthState.unauthenticated()
           : AuthState.authenticated(session);
     } catch (error) {
+      await ref.read(sessionPrivateDataClearerProvider)();
       state = AuthState.unauthenticated(errorMessage: _message(error));
     }
   }
@@ -38,6 +48,7 @@ class AuthController extends Notifier<AuthState> {
     state = const AuthState.signingIn();
     try {
       final session = await ref.read(authRepositoryProvider).signIn();
+      await ref.read(sessionPrivateDataClearerProvider)();
       state = AuthState.authenticated(session);
     } catch (error) {
       state = AuthState.unauthenticated(errorMessage: _message(error));
@@ -45,8 +56,12 @@ class AuthController extends Notifier<AuthState> {
   }
 
   Future<void> signOut() async {
-    await ref.read(authRepositoryProvider).signOut();
-    state = const AuthState.unauthenticated();
+    try {
+      await ref.read(authRepositoryProvider).signOut();
+    } finally {
+      await ref.read(sessionPrivateDataClearerProvider)();
+      state = const AuthState.unauthenticated();
+    }
   }
 
   String _message(Object error) {

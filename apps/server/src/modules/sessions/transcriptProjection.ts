@@ -1,6 +1,7 @@
 import { Buffer } from "node:buffer";
 import { query, transaction, type Transaction } from "../../infrastructure/db/index.js";
 import { insertEvent, publishCommittedEvent, type LiveEvent } from "../../infrastructure/events/index.js";
+import { observeTranscriptEvent } from "./transcriptObservability.js";
 
 export const TRANSCRIPT_SESSION_EVENT_LIMIT = 20_000;
 export const TRANSCRIPT_SESSION_BYTE_LIMIT = 16 * 1024 * 1024;
@@ -548,6 +549,7 @@ export async function commitSnapshotCoveredTranscriptEvent(input: {
     if (!projected.rows[0]
       || projected.rows[0].event_id !== input.eventId
       || canonicalPayload(projected.rows[0].payload) !== canonicalPayload(event)) {
+      observeTranscriptEvent("replay_mismatch");
       throw new TranscriptProjectionError(
         "REPLAY_MISMATCH",
         "snapshot-covered transcript event does not match the committed projection",
@@ -796,6 +798,7 @@ export async function pruneTranscriptProjection(
     events -= Number(candidate.event_count);
     bytes -= Number(candidate.body_bytes);
     evicted += 1;
+    observeTranscriptEvent("eviction");
   }
   return evicted;
 }

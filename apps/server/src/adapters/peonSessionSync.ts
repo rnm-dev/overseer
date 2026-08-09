@@ -10,6 +10,7 @@ import {
   type PeonSession,
   type SessionSyncCheckpoint,
 } from "../modules/sessions/index.js";
+import { observeTranscriptDuration } from "../modules/sessions/index.js";
 import {
   applySocketProjectEvent,
   applySocketProjectSnapshot,
@@ -45,6 +46,7 @@ import {
 export const SESSION_CATALOG_CAPABILITY = "session-catalog-v1";
 export const PROJECT_CATALOG_CAPABILITY = "project-catalog-v1";
 export const DURABLE_DELIVERY_CAPABILITY = "durable-delivery-v1";
+export const SELECTIVE_ACK_CAPABILITY = "durable-delivery-selective-ack-v1";
 
 const PAGE_LIMIT = 100;
 const MAX_PAGE_ITEMS = 250;
@@ -128,6 +130,7 @@ export class PeonCatalogSync {
   private receivedDurableMessage = false;
   private enforceAdvertisedEarliestCursor = true;
   private readonly transcriptSync: PeonTranscriptSync | null;
+  private readonly selectiveAcks: boolean;
 
   constructor(
     private readonly record: PeonRecord,
@@ -142,6 +145,7 @@ export class PeonCatalogSync {
     this.transcriptSync = additionalCapabilities.includes(SESSION_TRANSCRIPT_CAPABILITY)
       ? new PeonTranscriptSync(record, ws, this.generation)
       : null;
+    this.selectiveAcks = additionalCapabilities.includes(SELECTIVE_ACK_CAPABILITY);
   }
 
   async start(beforeHelloAck?: () => Promise<void>): Promise<void> {
@@ -194,7 +198,7 @@ export class PeonCatalogSync {
         ...this.additionalCapabilities,
       ],
       channels,
-      delivery: deliveryResume ? {
+      delivery: deliveryResume && !this.selectiveAcks ? {
         epoch: deliveryResume.epoch,
         acknowledgedCursor: deliveryResume.acknowledgedCursor,
       } : undefined,
@@ -425,6 +429,11 @@ export class PeonCatalogSync {
   private async receiveDurableMessage(message: Record<string, unknown>, frameBytes: number): Promise<void> {
     const event = this.parseDurableEvent(message);
     if (event.channel === "transcript" && frameBytes > TRANSCRIPT_CHANNEL_HELLO.eventBytes) {
+      if (this.selectiveAcks && this.transcriptSync) {
+        await this.transcriptSync.repairDurable(event);
+        this.bufferEvent(event, frameBytes);
+        return;
+      }
       throw new SessionSyncProtocolError("transcript durable envelope exceeds negotiated eventBytes");
     }
     if (event.deliveryEpoch !== this.delivery.epoch) throw new SessionSyncProtocolError("durable delivery epoch mismatch");
@@ -434,7 +443,13 @@ export class PeonCatalogSync {
       throw new SessionSyncProtocolError("durable delivery cursor gap");
     }
     this.receivedDurableMessage = true;
-    if (this.snapshot || this.projectSnapshot || this.transcriptSync?.hasActiveSnapshots()) {
+    if (this.snapshot || this.projectSnapshot
+      || (!this.selectiveAcks && this.transcriptSync?.hasActiveSnapshots())) {
+      this.bufferEvent(event, frameBytes);
+      return;
+    }
+    if (event.channel === "transcript" && this.bufferedEvents.some((pending) =>
+      pending.channel === "transcript" && pending.sessionId === event.sessionId)) {
       this.bufferEvent(event, frameBytes);
       return;
     }
@@ -482,7 +497,11 @@ export class PeonCatalogSync {
       }
       return;
     }
-    this.bufferedBytes += frameBytes;
+    // Draining requeues a blocked session with frameBytes=0 because the wire
+    // frame is no longer available. Do not let repeated repair passes erase
+    // the memory charge for that parsed event: otherwise each pass can admit
+    // another full byte window until only the much looser item cap remains.
+    this.bufferedBytes += frameBytes > 0 ? frameBytes : Buffer.byteLength(fingerprint);
     if (this.bufferedBytes > MAX_SNAPSHOT_BYTES) throw new SessionSyncProtocolError("catalog snapshot byte limit exceeded");
     if (this.bufferedEvents.length >= MAX_BUFFERED_EVENTS) throw new SessionSyncProtocolError("too many events during catalog snapshots");
     this.bufferedEvents.push(event);
@@ -499,7 +518,7 @@ export class PeonCatalogSync {
         durable: event,
       });
       if (this.checkpoint) this.checkpoint = { ...this.checkpoint, delivery };
-      this.send({ type: "durable_ack", epoch: delivery.epoch, cursor: delivery.acknowledgedCursor });
+      this.sendDeliveryAck(event.deliveryEpoch, event.deliveryCursor, delivery.acknowledgedCursor);
       return;
     }
     if (event.channel === "runtime") {
@@ -510,10 +529,11 @@ export class PeonCatalogSync {
         durable: event,
       });
       if (this.checkpoint) this.checkpoint = { ...this.checkpoint, delivery };
-      this.send({ type: "durable_ack", epoch: delivery.epoch, cursor: delivery.acknowledgedCursor });
+      this.sendDeliveryAck(event.deliveryEpoch, event.deliveryCursor, delivery.acknowledgedCursor);
       return;
     }
     if (event.channel === "transcript") {
+      const startedAt = Date.now();
       if (!this.transcriptSync) throw new SessionSyncProtocolError("transcript capability not negotiated");
       let committed;
       try {
@@ -522,7 +542,8 @@ export class PeonCatalogSync {
         throw new SessionSyncProtocolError(error instanceof Error ? error.message : "transcript commit failed");
       }
       if (this.checkpoint) this.checkpoint = { ...this.checkpoint, delivery: committed.delivery };
-      this.send({ type: "durable_ack", epoch: committed.delivery.epoch, cursor: committed.delivery.acknowledgedCursor });
+      this.sendDeliveryAck(event.deliveryEpoch, event.deliveryCursor, committed.delivery.acknowledgedCursor);
+      observeTranscriptDuration("delivery_commit_ack", "success", Date.now() - startedAt);
       return;
     }
     const checkpoint = event.channel === "session" ? this.checkpoint?.catalog : this.projectCheckpoint?.catalog;
@@ -570,15 +591,17 @@ export class PeonCatalogSync {
       this.projectCheckpoint = { catalog: committed.catalog, previouslyReady: true };
       if (this.checkpoint) this.checkpoint = { ...this.checkpoint, delivery: committed.delivery };
     }
-    this.sendCommittedAcks(event.channel, committed);
+    this.sendCommittedAcks(event, committed);
   }
 
   private async maybeDrainBuffered(): Promise<void> {
-    if (this.snapshot || this.projectSnapshot || this.transcriptSync?.hasActiveSnapshots()) return;
+    if (this.snapshot || this.projectSnapshot
+      || (!this.selectiveAcks && this.transcriptSync?.hasActiveSnapshots())) return;
     const events = this.bufferedEvents;
     this.bufferedEvents = [];
     this.bufferedEventFingerprints.clear();
     this.bufferedBytes = 0;
+    const blockedTranscriptSessions = new Set<string>();
     for (let index = 0; index < events.length; index += 1) {
       const event = events[index]!;
       if (event.channel === "command" || event.channel === "runtime") {
@@ -587,9 +610,18 @@ export class PeonCatalogSync {
       }
       if (event.channel === "transcript") {
         if (!this.transcriptSync) throw new SessionSyncProtocolError("transcript capability not negotiated");
+        if (blockedTranscriptSessions.has(event.sessionId)) {
+          this.bufferEvent(event, 0);
+          continue;
+        }
         if (!(await this.transcriptSync.prepareDurable(event))) {
-          for (const pending of events.slice(index)) this.bufferEvent(pending, 0);
-          return;
+          this.bufferEvent(event, 0);
+          blockedTranscriptSessions.add(event.sessionId);
+          if (!this.selectiveAcks) {
+            for (const pending of events.slice(index + 1)) this.bufferEvent(pending, 0);
+            return;
+          }
+          continue;
         }
         await this.applyEvent(event);
         continue;
@@ -640,7 +672,7 @@ export class PeonCatalogSync {
       this.projectCheckpoint = { catalog: committed.catalog, previouslyReady: true };
       if (this.checkpoint) this.checkpoint = { ...this.checkpoint, delivery: committed.delivery };
     }
-    this.sendCommittedAcks(event.channel, committed);
+    this.sendCommittedAcks(event, committed);
   }
 
   private parseDurableEvent(message: Record<string, unknown>): DurableDeliveryEvent {
@@ -715,12 +747,18 @@ export class PeonCatalogSync {
     return this.projectSnapshot;
   }
 
-  private sendCommittedAcks(channel: DurableCatalogEvent["channel"], committed: {
+  private sendCommittedAcks(event: DurableCatalogEvent, committed: {
     catalog: { epoch: string; acknowledgedSeq: number };
     delivery: { epoch: string; acknowledgedCursor: string };
   }): void {
-    this.send({ type: "durable_ack", epoch: committed.delivery.epoch, cursor: committed.delivery.acknowledgedCursor });
-    this.send({ type: `${channel}_catalog_ack`, epoch: committed.catalog.epoch, acknowledgedSeq: committed.catalog.acknowledgedSeq });
+    this.sendDeliveryAck(event.deliveryEpoch, event.deliveryCursor, committed.delivery.acknowledgedCursor);
+    this.send({ type: `${event.channel}_catalog_ack`, epoch: committed.catalog.epoch, acknowledgedSeq: committed.catalog.acknowledgedSeq });
+  }
+
+  private sendDeliveryAck(epoch: string, cursor: string, cumulativeCursor: string): void {
+    this.send(this.selectiveAcks
+      ? { type: "durable_ack", epoch, cursor, cumulative: false }
+      : { type: "durable_ack", epoch, cursor: cumulativeCursor });
   }
 
   private armTimer(channel: DurableCatalogEvent["channel"]): void {

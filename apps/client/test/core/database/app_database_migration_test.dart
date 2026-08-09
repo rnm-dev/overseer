@@ -117,6 +117,54 @@ void main() {
         }),
       );
     });
+
+    test('authentication purge removes private session data only', () async {
+      final database = AppDatabase.forTesting(NativeDatabase.memory());
+      addTearDown(database.close);
+      await database.customStatement(
+        "INSERT INTO cached_transcript_events VALUES "
+        "('w','p','s','e',0,'user_message','{}',NULL,1)",
+      );
+      await database.customStatement(
+        "INSERT INTO cached_transcripts VALUES ('w','p','s',0,1)",
+      );
+      await database.customStatement(
+        "INSERT INTO cached_queued_followups VALUES "
+        "('w','p','s','q','{}',0,1)",
+      );
+      await database.customStatement(
+        "INSERT INTO pending_followup_commands "
+        "(command_id,workspace_id,peon_id,session_id,prompt,server_queue,"
+        "start_now,attachments_json,created_at) VALUES "
+        "('c','w','p','s','private',0,0,'[]',1)",
+      );
+      await database.customStatement(
+        "INSERT INTO composer_drafts VALUES ('w','p','s','private',1)",
+      );
+      await database.customStatement(
+        "INSERT INTO cached_sessions "
+        "(workspace_id,peon_id,session_id,synced_at) VALUES ('w','p','s',1)",
+      );
+
+      await database.clearSessionPrivateData();
+
+      for (final table in const [
+        'cached_transcript_events',
+        'cached_transcripts',
+        'cached_queued_followups',
+        'pending_followup_commands',
+        'composer_drafts',
+      ]) {
+        final count = await database
+            .customSelect('SELECT COUNT(*) AS count FROM $table')
+            .getSingle();
+        expect(count.read<int>('count'), 0, reason: table);
+      }
+      final sessions = await database
+          .customSelect('SELECT COUNT(*) AS count FROM cached_sessions')
+          .getSingle();
+      expect(sessions.read<int>('count'), 1);
+    });
   });
 }
 

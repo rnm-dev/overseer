@@ -285,9 +285,12 @@ export function useSessionTranscript({
       .catch(() => {
         if (!alive) return;
         // Without an authoritative newest window there is no safe eventId from
-        // which to start the tail. Keep any cached paint visible, report the
-        // failed history read, and do not subscribe from an invented boundary.
-        historyReadyRef.current = false;
+        // which to start the tail. Subscribe explicitly without one so the
+        // server supplies its bounded recovery window; cached event IDs remove
+        // overlap, while the history error still tells the operator that older
+        // pagination could not be revalidated.
+        historyReadyRef.current = true;
+        setTailStart({ sessionKey, id: null });
         setHistoryLoadError(true);
       });
     return () => {

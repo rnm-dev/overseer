@@ -93,6 +93,10 @@ function validateCatalogAck(frame, errors, prefix) {
 
 function transcriptEvent(value, errors, sessionId, epoch) {
   if (!isObject(value) || value.sessionId !== sessionId || value.epoch !== epoch) errors.push("invalid transcript event scope");
+  if (value?.type === "transcript_deleted") {
+    if (!integer(value.revision, 0)) errors.push("invalid transcript deletion revision");
+    return;
+  }
   if (!integer(value?.seq, 1) || value.revision !== value.seq) errors.push("transcript seq/revision mismatch");
   if (typeof value?.eventId !== "string" || !isObject(value?.event)) errors.push("invalid transcript event");
 }
@@ -120,7 +124,7 @@ function validateTranscriptDurable(frame, errors) {
   validateDurableMessage(frame, errors);
   if (frame.capability !== "transcript-sync-v1" || !isObject(frame.payload)) errors.push("invalid transcript durable capability");
   else transcriptEvent(frame.payload, errors, frame.payload.sessionId, frame.payload.epoch);
-  if (frame.payload?.type !== "transcript_live_event") errors.push("invalid transcript durable payload");
+  if (!["transcript_live_event", "transcript_deleted"].includes(frame.payload?.type)) errors.push("invalid transcript durable payload");
 }
 
 function validateTranscriptControl(frame, errors, type) {

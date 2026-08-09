@@ -18,6 +18,11 @@ import {
   type TranscriptDeliveryCheckpoint,
   type TranscriptEnvelope,
 } from "../modules/sessions/index.js";
+import {
+  observeTranscriptDemand,
+  observeTranscriptDuration,
+  observeTranscriptEvent,
+} from "../modules/sessions/index.js";
 
 export const SESSION_TRANSCRIPT_CAPABILITY = "transcript-sync-v1";
 
@@ -86,6 +91,7 @@ interface SnapshotState {
   pages: number;
   bytes: number;
   requiredForDelivery: boolean;
+  startedAt: number;
   timer: NodeJS.Timeout;
 }
 
@@ -119,6 +125,7 @@ export async function acquireTranscriptProjection(
 
 export class PeonTranscriptSync {
   private readonly snapshots = new Map<string, SnapshotState>();
+  private readonly pendingSnapshots = new Map<string, boolean>();
   private readonly retiredSnapshotRequests = new Map<string, string>();
   private readonly demands = new Map<string, number>();
   private readonly claimed = new Set<string>();
@@ -127,6 +134,7 @@ export class PeonTranscriptSync {
     sessionId: string;
     epoch: string;
     afterSeq: number;
+    startedAt: number;
     timer: NodeJS.Timeout;
   }>();
   private readonly readySessions = new Set<string>();
@@ -168,6 +176,7 @@ export class PeonTranscriptSync {
     }
     for (const snapshot of this.snapshots.values()) clearTimeout(snapshot.timer);
     this.snapshots.clear();
+    this.pendingSnapshots.clear();
     this.retiredSnapshotRequests.clear();
     for (const waiters of this.waiters.values()) {
       for (const waiter of waiters) {
@@ -177,6 +186,7 @@ export class PeonTranscriptSync {
     }
     this.waiters.clear();
     this.demands.clear();
+    this.refreshDemandMetrics();
     this.claimed.clear();
     this.readySessions.clear();
     for (const request of this.subscriptionRequests.values()) clearTimeout(request.timer);
@@ -198,11 +208,20 @@ export class PeonTranscriptSync {
     };
   }
 
+  demandCounts(): readonly number[] {
+    return [...this.demands.values()];
+  }
+
+  private refreshDemandMetrics(): void {
+    observeTranscriptDemand([...active.values()].flatMap((sync) => sync.demandCounts()));
+  }
+
   async acquire(sessionId: string): Promise<() => void> {
     const bounded = requiredString(sessionId, "sessionId", 512);
     const demand = this.demands.get(bounded) ?? 0;
     if (demand === 0) this.reserveSubscription(bounded);
     this.demands.set(bounded, demand + 1);
+    this.refreshDemandMetrics();
     try {
       if (demand > 0) {
         if (!this.readySessions.has(bounded)) await this.waitUntilReady(bounded);
@@ -256,6 +275,7 @@ export class PeonTranscriptSync {
       || state.epoch !== event.transcriptEpoch
       || state.acknowledgedSeq === null
       || event.seq > state.acknowledgedSeq + 1) {
+      observeTranscriptEvent(state.epoch && state.epoch !== event.transcriptEpoch ? "epoch_change" : "sequence_gap");
       await markTranscriptSyncState({
         peonId: this.record.peonId,
         sessionId: event.sessionId,
@@ -266,6 +286,17 @@ export class PeonTranscriptSync {
       return false;
     }
     return true;
+  }
+
+  async repairDurable(event: DurableTranscriptMessage): Promise<void> {
+    await this.ensureClaimed(event.sessionId);
+    await markTranscriptSyncState({
+      peonId: this.record.peonId,
+      sessionId: event.sessionId,
+      generation: this.generation,
+      status: "gap",
+    });
+    this.requestSnapshot(event.sessionId, true);
   }
 
   async commitDurable(event: DurableTranscriptMessage): Promise<TranscriptDeliveryCheckpoint> {
@@ -385,6 +416,7 @@ export class PeonTranscriptSync {
       return;
     }
     this.demands.delete(sessionId);
+    this.refreshDemandMetrics();
     this.readySessions.delete(sessionId);
     this.clearPendingSubscriptions(sessionId);
     const renewal = this.renewalTimers.get(sessionId);
@@ -398,16 +430,27 @@ export class PeonTranscriptSync {
       this.send({ type: "transcript_snapshot_cancel", requestId: snapshot.requestId, sessionId });
       this.failSnapshot(snapshot, new Error("transcript snapshot has no authorized consumer"));
     }
+    if (!snapshot) {
+      this.pendingSnapshots.delete(sessionId);
+      this.subscriptions.delete(sessionId);
+    }
   }
 
   private requestSnapshot(sessionId: string, requiredForDelivery: boolean, cursor?: string): void {
-    const alreadyReserved = this.subscriptions.has(sessionId);
     this.reserveSubscription(sessionId);
     let snapshot = this.snapshots.get(sessionId);
     if (!snapshot) {
       if (this.snapshots.size >= MAX_ACTIVE_SNAPSHOTS) {
-        if (!alreadyReserved) this.subscriptions.delete(sessionId);
-        throw new Error("too many active transcript snapshots");
+        // The subscription cap also bounds this queue. Keeping repair demand
+        // here avoids closing the Peon-wide control socket when five unrelated
+        // sessions gap at once; the first completed slot starts the next one.
+        // Required durable repair wins if a browser-only request was queued
+        // first for the same session.
+        this.pendingSnapshots.set(
+          sessionId,
+          requiredForDelivery || (this.pendingSnapshots.get(sessionId) ?? false),
+        );
+        return;
       }
       const timer = setTimeout(() => {
         const activeSnapshot = this.snapshots.get(sessionId);
@@ -431,9 +474,11 @@ export class PeonTranscriptSync {
         pages: 0,
         bytes: 0,
         requiredForDelivery,
+        startedAt: Date.now(),
         timer,
       };
       this.snapshots.set(sessionId, snapshot);
+      this.pendingSnapshots.delete(sessionId);
     } else if (requiredForDelivery) {
       snapshot.requiredForDelivery = true;
     }
@@ -503,6 +548,8 @@ export class PeonTranscriptSync {
       barrierSeq,
       events: snapshot.events,
     });
+    observeTranscriptDuration("snapshot", "success", Date.now() - snapshot.startedAt);
+    observeTranscriptEvent("rebuild");
     this.retireSnapshot(snapshot);
     this.send({ type: "transcript_snapshot_cancel", requestId: snapshot.requestId });
     this.resolveReady(snapshot.sessionId);
@@ -529,6 +576,7 @@ export class PeonTranscriptSync {
       this.subscriptionRequests.delete(requestId);
     }
     if ((code === "CURSOR_UNAVAILABLE" || code === "RESYNC_REQUIRED") && (snapshot || (this.demands.get(sessionId) ?? 0) > 0)) {
+      observeTranscriptEvent("resync");
       if (!snapshot) {
         await markTranscriptSyncState({
           peonId: this.record.peonId,
@@ -567,6 +615,16 @@ export class PeonTranscriptSync {
       if (!oldest) break;
       this.retiredSnapshotRequests.delete(oldest);
     }
+    this.startPendingSnapshot();
+  }
+
+  private startPendingSnapshot(): void {
+    if (this.disposed || this.snapshots.size >= MAX_ACTIVE_SNAPSHOTS) return;
+    const next = this.pendingSnapshots.entries().next().value as [string, boolean] | undefined;
+    if (!next) return;
+    const [sessionId, requiredForDelivery] = next;
+    this.pendingSnapshots.delete(sessionId);
+    this.requestSnapshot(sessionId, requiredForDelivery);
   }
 
   private findSnapshotByRequest(message: Record<string, unknown>): SnapshotState | null {
@@ -598,6 +656,8 @@ export class PeonTranscriptSync {
       ? message.expiresAt
       : Date.now() + 5 * 60_000;
     this.scheduleRenewal(sessionId, expiresAt);
+    observeTranscriptDuration("catchup", "success", Date.now() - expected.startedAt);
+    observeTranscriptEvent("recovery_complete");
     this.resolveReady(sessionId);
   }
 
@@ -723,7 +783,7 @@ export class PeonTranscriptSync {
       this.dispose();
     }, this.options.subscriptionResponseMs ?? READY_WAIT_MS);
     timer.unref();
-    this.subscriptionRequests.set(requestId, { sessionId, epoch, afterSeq, timer });
+    this.subscriptionRequests.set(requestId, { sessionId, epoch, afterSeq, startedAt: Date.now(), timer });
     return requestId;
   }
 

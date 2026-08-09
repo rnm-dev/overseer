@@ -35,6 +35,23 @@ test("newest snapshots update overlap and append durable unseen events", () => {
   assert.equal(merged.nextCursor, "older");
 });
 
+test("duplicate replay and newest-page overlap render each authoritative event once", () => {
+  const current = parseTranscriptPage({
+    events: [ev("1", "one"), ev("2", "tail replay")],
+    nextCursor: "older",
+    hasMore: true,
+  });
+  const replayedNewest = parseTranscriptPage({
+    events: [ev("2", "canonical"), ev("2", "canonical"), ev("3", "three")],
+    nextCursor: "between",
+    hasMore: true,
+  });
+
+  const merged = mergeNewestPage(current, replayedNewest);
+  assert.deepEqual(merged.events.map((event) => event.eventId), ["1", "2", "3"]);
+  assert.equal(merged.events[1]?.text, "canonical");
+});
+
 test("older pages prepend once and advance only to their server cursor", () => {
   const current = parseTranscriptPage({ events: [ev("3", "three"), ev("4", "four")], nextCursor: "before-3", hasMore: true });
   const older = parseTranscriptPage({ events: [ev("1", "one"), ev("2", "two"), ev("3", "three")], nextCursor: null, hasMore: false });

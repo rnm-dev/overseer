@@ -53,7 +53,10 @@ void main() {
 
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [authRepositoryProvider.overrideWithValue(repository)],
+        overrides: [
+          authRepositoryProvider.overrideWithValue(repository),
+          sessionPrivateDataClearerProvider.overrideWithValue(() async {}),
+        ],
         child: MaterialApp(
           theme: AppTheme.dark,
           home: const AuthGate(
@@ -89,6 +92,7 @@ void main() {
       ProviderScope(
         overrides: [
           authRepositoryProvider.overrideWithValue(_PendingAuthRepository()),
+          sessionPrivateDataClearerProvider.overrideWithValue(() async {}),
         ],
         child: MaterialApp(
           theme: AppTheme.dark,
@@ -116,6 +120,7 @@ void main() {
       ProviderScope(
         overrides: [
           authRepositoryProvider.overrideWithValue(_PendingAuthRepository()),
+          sessionPrivateDataClearerProvider.overrideWithValue(() async {}),
         ],
         child: MaterialApp(
           theme: AppTheme.dark,
@@ -146,7 +151,10 @@ void main() {
 
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [authRepositoryProvider.overrideWithValue(repository)],
+        overrides: [
+          authRepositoryProvider.overrideWithValue(repository),
+          sessionPrivateDataClearerProvider.overrideWithValue(() async {}),
+        ],
         child: MaterialApp(
           theme: AppTheme.dark,
           home: const AuthGate(
@@ -175,7 +183,10 @@ void main() {
 
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [authRepositoryProvider.overrideWithValue(repository)],
+        overrides: [
+          authRepositoryProvider.overrideWithValue(repository),
+          sessionPrivateDataClearerProvider.overrideWithValue(() async {}),
+        ],
         child: MaterialApp(
           theme: AppTheme.dark,
           home: const AuthGate(

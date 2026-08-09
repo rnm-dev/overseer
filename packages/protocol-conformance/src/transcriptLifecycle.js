@@ -15,6 +15,8 @@ export class TranscriptSyncHarness {
     this.inbox = new Set();
     this.browserEvents = new Set();
     this.acknowledged = new Set();
+    this.deliveryPayloads = new Map();
+    this.freshness = new Map();
   }
 
   acquire(sessionId) {
@@ -26,6 +28,7 @@ export class TranscriptSyncHarness {
       requestId, generation: this.transport.generation, epoch: null, barrier: null,
       events: [], ids: new Set(), bytes: 0,
     });
+    this.freshness.set(sessionId, "syncing");
     return { type: "transcript_snapshot_request", requestId, sessionId, limit: 100, subscribe: true };
   }
 
@@ -75,6 +78,7 @@ export class TranscriptSyncHarness {
       epoch: page.epoch, seq: page.barrierSeq, generation: this.transport.generation,
       events: stage.events,
     });
+    this.freshness.set(page.sessionId, "fresh");
     this.snapshots.delete(page.sessionId);
     return true;
   }
@@ -83,16 +87,53 @@ export class TranscriptSyncHarness {
     if (envelopeGeneration !== this.transport.generation) return false;
     const event = message.payload;
     const projection = this.projections.get(event.sessionId);
-    if (!projection || projection.epoch !== event.epoch) throw new TranscriptHarnessError("EPOCH_MISMATCH", "transcript epoch mismatch");
     const identity = `${message.epoch}:${message.cursor}:${message.messageId}`;
-    if (this.inbox.has(identity)) return true;
+    const canonicalPayload = canonicalJson(event);
+    if (this.inbox.has(identity)) {
+      if (this.deliveryPayloads.get(identity) !== canonicalPayload) {
+        this.diagnostics.add("transcript_replay_mismatch", { sessionId: event.sessionId, cursor: message.cursor });
+        throw new TranscriptHarnessError("REPLAY_MISMATCH", "durable identity payload changed");
+      }
+      return true;
+    }
+    if (!projection || projection.epoch !== event.epoch) {
+      this.#requireResync(event.sessionId, "epoch");
+      throw new TranscriptHarnessError("EPOCH_MISMATCH", "transcript epoch mismatch");
+    }
+    if (event.type === "transcript_deleted") {
+      if (!Number.isSafeInteger(event.revision) || event.revision < 0) {
+        throw new TranscriptHarnessError("PROTOCOL_ERROR", "invalid transcript deletion revision");
+      }
+      if (options.crashBeforeCommit) return false;
+      projection.events = [];
+      projection.deleted = true;
+      projection.seq = 0;
+      this.inbox.add(identity);
+      this.deliveryPayloads.set(identity, canonicalPayload);
+      this.browserEvents.add(`deleted:${event.sessionId}:${event.epoch}:${event.revision}`);
+      if (!options.crashAfterCommit) this.acknowledged.add(identity);
+      return true;
+    }
+    if (event.seq <= projection.seq) {
+      const projected = projection.events[event.seq - 1];
+      if (!projected || projected.eventId !== event.eventId || canonicalJson(projected) !== canonicalPayload) {
+        throw new TranscriptHarnessError("REPLAY_MISMATCH", "covered durable event differs from snapshot");
+      }
+      this.inbox.add(identity);
+      this.deliveryPayloads.set(identity, canonicalPayload);
+      if (!options.crashAfterCommit) this.acknowledged.add(identity);
+      return true;
+    }
     if (event.seq !== projection.seq + 1 || event.revision !== event.seq) {
+      this.#requireResync(event.sessionId, "gap");
       throw new TranscriptHarnessError("TRANSCRIPT_GAP", "transcript sequence gap");
     }
+    if (options.crashBeforeCommit) return false;
     // One synchronous boundary represents projection + inbox + ACL event-log commit.
     projection.events.push(structuredClone(event));
     projection.seq = event.seq;
     this.inbox.add(identity);
+    this.deliveryPayloads.set(identity, canonicalPayload);
     this.browserEvents.add(event.eventId);
     if (options.crashAfterCommit) return true;
     this.acknowledged.add(identity);
@@ -102,6 +143,9 @@ export class TranscriptSyncHarness {
   acknowledgeReplay(message) {
     const identity = `${message.epoch}:${message.cursor}:${message.messageId}`;
     if (!this.inbox.has(identity)) return false;
+    if (this.deliveryPayloads.get(identity) !== canonicalJson(message.payload)) {
+      throw new TranscriptHarnessError("REPLAY_MISMATCH", "durable identity payload changed");
+    }
     this.acknowledged.add(identity);
     return true;
   }
@@ -114,4 +158,56 @@ export class TranscriptSyncHarness {
       side, sessions: this.projections.size, inbox: this.inbox.size,
     });
   }
+
+  syncFailure(sessionId, code) {
+    if (!new Set(["CURSOR_UNAVAILABLE", "RESYNC_REQUIRED"]).has(code)) {
+      throw new TranscriptHarnessError("PROTOCOL_ERROR", `unsupported sync failure ${code}`);
+    }
+    this.#requireResync(sessionId, code);
+    if (!this.demands.has(sessionId)) this.demands.set(sessionId, 1);
+    return this.#replaceSnapshot(sessionId);
+  }
+
+  evict(sessionId) {
+    this.projections.delete(sessionId);
+    this.freshness.set(sessionId, "evicted");
+    this.diagnostics.add("transcript_projection_evicted", { sessionId });
+  }
+
+  state(sessionId) {
+    const projection = this.projections.get(sessionId);
+    return {
+      freshness: this.freshness.get(sessionId) ?? "absent",
+      epoch: projection?.epoch ?? null,
+      seq: projection?.seq ?? null,
+      effects: projection?.events.length ?? 0,
+      deleted: projection?.deleted === true,
+      inbox: this.inbox.size,
+      acknowledged: this.acknowledged.size,
+      browserEffects: this.browserEvents.size,
+    };
+  }
+
+  #requireResync(sessionId, reason) {
+    this.freshness.set(sessionId, reason === "gap" ? "gap" : "syncing");
+    this.diagnostics.add("transcript_resync_required", { sessionId, reason });
+  }
+
+  #replaceSnapshot(sessionId) {
+    this.snapshots.delete(sessionId);
+    const requestId = `00000000-0000-4000-8000-${String(this.demands.size + this.inbox.size + 200).padStart(12, "0")}`;
+    this.snapshots.set(sessionId, {
+      requestId, generation: this.transport.generation, epoch: null, barrier: null,
+      events: [], ids: new Set(), bytes: 0,
+    });
+    return { type: "transcript_snapshot_request", requestId, sessionId, limit: 100, subscribe: true };
+  }
+}
+
+function canonicalJson(value) {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
 }

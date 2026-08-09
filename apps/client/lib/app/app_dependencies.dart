@@ -121,6 +121,10 @@ class AppDependencies extends StatelessWidget {
           ref.onDispose(database.close);
           return database;
         }),
+        sessionPrivateDataClearerProvider.overrideWith(
+          (ref) =>
+              () => ref.read(appDatabaseProvider).clearSessionPrivateData(),
+        ),
         overseerHttpClientProvider.overrideWith((ref) {
           final session = ref.watch(authControllerProvider).session;
           if (session == null) {

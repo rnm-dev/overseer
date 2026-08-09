@@ -12,8 +12,10 @@ import {
   type PeonSocketFrame,
   type PeonSocketSender,
 } from "./peonSocketProtocol.js";
+import { observeOutboxPending, observeTranscriptAdmission } from "./transcriptObservability.js";
 import {
   PEON_SOCKET_DURABLE_DELIVERY_CAPABILITY,
+  PEON_SOCKET_SELECTIVE_ACK_CAPABILITY,
   PeonSocketOutbox,
   type PeonSocketOutboxStatus,
 } from "./peonSocketOutbox.js";
@@ -302,6 +304,7 @@ export class PeonSocketSupervisor {
           hello.capabilities = [...new Set([
             ...(Array.isArray(hello.capabilities) ? hello.capabilities.filter((value): value is string => typeof value === "string") : []),
             PEON_SOCKET_DURABLE_DELIVERY_CAPABILITY,
+            PEON_SOCKET_SELECTIVE_ACK_CAPABILITY,
           ])];
           hello.delivery = this.outbox.status();
         }
@@ -376,6 +379,8 @@ export class PeonSocketSupervisor {
       this.state.connectedAt = Date.now();
       this.state.lastError = null;
       durableAccepted = Array.isArray(frame.capabilities) && frame.capabilities.includes(PEON_SOCKET_DURABLE_DELIVERY_CAPABILITY);
+      const selectiveAckAccepted = Array.isArray(frame.capabilities)
+        && frame.capabilities.includes(PEON_SOCKET_SELECTIVE_ACK_CAPABILITY);
       this.acceptedCapabilities = new Set(
         Array.isArray(frame.capabilities)
           ? frame.capabilities.filter((value): value is string => typeof value === "string")
@@ -387,7 +392,15 @@ export class PeonSocketSupervisor {
         const acknowledgement = frame.delivery as PeonSocketFrame | undefined;
         const acknowledgedEpoch = acknowledgement?.epoch;
         const acknowledgedCursor = acknowledgement?.acknowledgedCursor;
-        if (acknowledgedEpoch === this.outbox.status().epoch && typeof acknowledgedCursor === "string") {
+        // A peer that does not understand selective holes may have persisted a
+        // later cursor as its old cumulative checkpoint. Never apply that
+        // handshake cursor after advertising selective ACK support; replay is
+        // safe and subsequent live cumulative ACKs from the legacy peer are
+        // authoritative again.
+        if (!selectiveAckAccepted
+          && !this.outbox.hasUsedSelectiveAcks()
+          && acknowledgedEpoch === this.outbox.status().epoch
+          && typeof acknowledgedCursor === "string") {
           if (!this.acknowledgeOutbox(acknowledgedEpoch, acknowledgedCursor)) {
             this.state.lastError = "invalid durable socket handshake acknowledgement";
           }
@@ -580,7 +593,11 @@ export class PeonSocketSupervisor {
   }
 
   private enqueueDurable(frame: PeonSocketFrame, options?: PeonSocketDurableOptions): PeonSocketDurableResult {
-    if (!this.outbox) return { accepted: false, code: "PERSIST_FAILED", error: "durable socket outbox is unavailable" };
+    const started = performance.now();
+    if (!this.outbox) {
+      observeTranscriptAdmission({ capability: options?.capability, elapsedMs: performance.now() - started, result: "persist_failed" });
+      return { accepted: false, code: "PERSIST_FAILED", error: "durable socket outbox is unavailable" };
+    }
     const coalescedCursor = options?.coalesceKey
       ? this.outbox.pendingForDelivery().find((message) => message.coalesceKey === options.coalesceKey)?.cursor
       : undefined;
@@ -591,6 +608,12 @@ export class PeonSocketSupervisor {
       ? { ...options, coalesceKey: undefined }
       : options;
     const result = this.outbox.enqueue(frame, safeOptions);
+    observeTranscriptAdmission({
+      capability: options?.capability,
+      elapsedMs: performance.now() - started,
+      result: result.accepted ? "accepted" : result.code === "OUTBOX_FULL" ? "outbox_full" : result.code === "PERSIST_FAILED" ? "persist_failed" : "invalid",
+    });
+    observeOutboxPending(this.outbox.pendingForDelivery());
     return result;
   }
 
@@ -628,8 +651,12 @@ export class PeonSocketSupervisor {
   }
 
   private handleOutboxAck(frame: PeonSocketFrame, socket: WebSocket, current: () => boolean): void {
+    const selective = frame.cumulative === false
+      && this.acceptedCapabilities.has(PEON_SOCKET_SELECTIVE_ACK_CAPABILITY);
     if (!this.outbox || typeof frame.epoch !== "string" || typeof frame.cursor !== "string"
-      || !this.acknowledgeOutbox(frame.epoch, frame.cursor)) {
+      || !(selective
+        ? this.acknowledgeOutboxSelective(frame.epoch, frame.cursor)
+        : this.acknowledgeOutbox(frame.epoch, frame.cursor))) {
       this.state.lastError = "invalid durable socket acknowledgement";
       return;
     }
@@ -638,6 +665,19 @@ export class PeonSocketSupervisor {
     if (this.outboxAckTimer) clearTimeout(this.outboxAckTimer);
     this.outboxAckTimer = null;
     this.flushOutbox(socket, current);
+  }
+
+  private acknowledgeOutboxSelective(epoch: string, cursor: string): boolean {
+    if (!this.outbox) return false;
+    // Selective ACKs may be replayed after the fsync but before the peer saw
+    // the connection result. They are harmless and must not require a second
+    // feature-channel transition for a cursor already durably retired.
+    if (this.outbox.isAcknowledged(epoch, cursor)) return true;
+    if (!this.multiplexer.durableAcknowledging(cursor)) return false;
+    if (!this.outbox.acknowledgeSelective(epoch, cursor)) return false;
+    observeOutboxPending(this.outbox.pendingForDelivery());
+    this.multiplexer.durableAcknowledged(cursor);
+    return true;
   }
 
   private acknowledgeOutbox(epoch: string, cursor: string): boolean {
@@ -649,6 +689,7 @@ export class PeonSocketSupervisor {
       if (!this.multiplexer.durableAcknowledging(removedCursor)) return false;
     }
     if (!this.outbox.acknowledge(epoch, cursor)) return false;
+    observeOutboxPending(this.outbox.pendingForDelivery());
     for (const removedCursor of acknowledged) this.multiplexer.durableAcknowledged(removedCursor);
     return true;
   }

@@ -33,6 +33,7 @@ import {
 } from "./peonTranscriptSync.js";
 import { canAccessIndexedSessionNow } from "../modules/access/index.js";
 import { enrichLiveTranscriptEvent } from "../modules/sessions/index.js";
+import { observeTranscriptEvent } from "../modules/sessions/index.js";
 
 // The north-bound (overseer→client) transport: one authenticated WebSocket per
 // app, multiplexing presence + live session tails, resumable by cursor.
@@ -136,6 +137,7 @@ export const send = (ws: WebSocket, msg: unknown): boolean => {
   // memory growth. Terminating is safe: durable state resumes by cursor and the
   // session tail reattaches on the fresh socket.
   if (ws.bufferedAmount > MAX_BUFFERED_BYTES) {
+    observeTranscriptEvent("slow_client_disconnect");
     ws.terminate();
     return false;
   }
@@ -711,7 +713,10 @@ async function subscribe(client: Client, peonId: string, sessionId: string, requ
           closeRevokedTail(client, ctrl, tail);
           return;
         }
-        await sendProjectedEvent(client, tail, event);
+        if (!(await sendProjectedEvent(client, tail, event))) {
+          closeRevokedTail(client, ctrl, tail);
+          return;
+        }
       }
       while (tail.pending.length > 0) {
         const pending = tail.pending.splice(0).sort((left, right) => left.cursor - right.cursor);
@@ -793,12 +798,12 @@ function unsubscribe(client: Client, sessionId: string): void {
   client.tails.delete(sessionId);
 }
 
-async function sendProjectedTail(client: Client, tail: ReverseTailState, live: LiveEvent): Promise<void> {
+async function sendProjectedTail(client: Client, tail: ReverseTailState, live: LiveEvent): Promise<boolean> {
   const payload = live.payload && typeof live.payload === "object"
     ? live.payload as { event?: unknown }
     : null;
-  if (!payload?.event || typeof payload.event !== "object" || Array.isArray(payload.event)) return;
-  await sendProjectedEvent(client, tail, payload.event as Record<string, unknown>);
+  if (!payload?.event || typeof payload.event !== "object" || Array.isArray(payload.event)) return true;
+  return sendProjectedEvent(client, tail, payload.event as Record<string, unknown>);
 }
 
 async function currentTranscriptAccess(client: Client, peonId: string, sessionId: string): Promise<boolean> {
@@ -838,17 +843,23 @@ async function deliverProjectedTail(
     send(client.ws, { type: "tailEnd", peonId: tail.peonId, sessionId: tail.sessionId });
     return false;
   }
-  await sendProjectedTail(client, tail, live);
+  if (!(await sendProjectedTail(client, tail, live))) {
+    closeRevokedTail(client, controller, tail);
+    return false;
+  }
   return true;
 }
 
-async function sendProjectedEvent(client: Client, tail: ReverseTailState, event: Record<string, unknown>): Promise<void> {
+async function sendProjectedEvent(client: Client, tail: ReverseTailState, event: Record<string, unknown>): Promise<boolean> {
   const eventId = typeof event.eventId === "string" ? event.eventId : null;
-  if (!eventId || tail.seen.has(eventId)) return;
-  tail.seen.add(eventId);
+  if (!eventId || tail.seen.has(eventId)) return true;
   // Authorship is resolved on the way out, exactly as the paginated transcript
   // resolves it: the projection stores only the actor string the Peon sent.
   const enriched = await enrichLiveTranscriptEvent(event);
+  // Enrichment is asynchronous. Re-read ACL after it so a revocation during
+  // that await cannot leak one final transcript row.
+  if (!(await currentTranscriptAccess(client, tail.peonId, tail.sessionId))) return false;
+  tail.seen.add(eventId);
   send(client.ws, {
     type: "tail",
     peonId: tail.peonId,
@@ -857,6 +868,7 @@ async function sendProjectedEvent(client: Client, tail: ReverseTailState, event:
     id: eventId,
     data: JSON.stringify(enriched),
   });
+  return true;
 }
 
 function broadcastPresence(clients: Set<Client>, workspaceId: string): void {

@@ -76,3 +76,10 @@ test("covered contracts are distinguished from explicitly blocked extension cell
   assert.deepEqual(blocked.map((entry) => entry.id), ["rollout"]);
   assert.ok(blocked.every((entry) => !entry.passed && entry.blockedBy.length > 20));
 });
+
+test("transcript-sync-v1 is exclusive to the one mutually current matrix cell", () => {
+  const report = runCapabilityMatrix(loadFixture("capability-matrix-v1.json"));
+  const realtime = report.cells.filter((cell) => cell.routes["session-transcript"] === "reverse-socket");
+  assert.deepEqual(realtime.map(({ peon, overseer }) => [peon, overseer]), [["current", "current"]]);
+  assert.equal(report.cells.filter((cell) => cell.routes["session-transcript"] === "legacy-http").length, 8);
+});

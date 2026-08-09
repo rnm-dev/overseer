@@ -405,7 +405,10 @@ class DefaultFollowupRepository implements FollowupRepository {
       await _complete(command.commandId);
       final data = error.response?.data;
       final message = data is Map ? data['error'] as String? : null;
-      throw FollowupException(message ?? 'Message could not be sent.');
+      throw FollowupException(
+        message ?? 'Message could not be sent.',
+        statusCode: error.response?.statusCode,
+      );
     }
   }
 

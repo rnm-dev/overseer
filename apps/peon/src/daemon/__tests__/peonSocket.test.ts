@@ -443,6 +443,44 @@ test("durable acknowledgement leaves outbox intact when a channel cannot persist
   }
 });
 
+test("downgrade ignores a stale cumulative resume after selective ACK created a hole", async () => {
+  const directory = mkdtempSync(path.join(os.tmpdir(), "peon-socket-selective-downgrade-"));
+  const outbox = new PeonSocketOutbox({ fileBase: path.join(directory, "outbox") });
+  const blocked = outbox.enqueue({ type: "durable_test_event", value: 1 });
+  const committedPastHole = outbox.enqueue({ type: "durable_test_event", value: 2 });
+  assert.ok(blocked.accepted && committedPastHole.accepted);
+  if (!blocked.accepted || !committedPastHole.accepted) return;
+  assert.equal(outbox.acknowledgeSelective(committedPastHole.epoch, committedPastHole.cursor), true);
+
+  const server = http.createServer();
+  const wss = new WebSocketServer({ noServer: true });
+  const sockets = new Set<WebSocket>();
+  wss.on("connection", (socket) => {
+    sockets.add(socket);
+    socket.once("close", () => sockets.delete(socket));
+    socket.once("message", () => socket.send(JSON.stringify({
+      type: "hello_ack",
+      protocol: 1,
+      capabilities: ["durable-test-v1", "durable-delivery-v1"],
+      delivery: { epoch: committedPastHole.epoch, acknowledgedCursor: committedPastHole.cursor },
+    })));
+  });
+  server.on("upgrade", (request, socket, head) => {
+    wss.handleUpgrade(request, socket, head, (client) => wss.emit("connection", client, request));
+  });
+  const base = await listen(server);
+  const supervisor = testSupervisor({ overseerUrl: base, overseerToken: "token" }, () => () => {}, [], outbox);
+  try {
+    supervisor.start();
+    await waitFor(() => supervisor.getState().connected, "socket did not connect after downgrade");
+    assert.deepEqual(outbox.pending().map((message) => message.cursor), [blocked.cursor]);
+  } finally {
+    supervisor.stop();
+    await closeServer(server, sockets);
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test("retains a durable head message until its owning capability is negotiated", async () => {
   const directory = mkdtempSync(path.join(os.tmpdir(), "peon-socket-capability-fence-"));
   const outbox = new PeonSocketOutbox({ fileBase: path.join(directory, "outbox") });

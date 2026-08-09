@@ -941,7 +941,7 @@ remain inactive.
   "type": "hello",
   "protocol": 1,
   "peonId": "<stable Peon id>",
-  "capabilities": ["session-catalog-v1", "project-catalog-v1", "transcript-sync-v1", "session-warning-v1", "reverse-command-v1", "durable-delivery-v1"],
+  "capabilities": ["session-catalog-v1", "project-catalog-v1", "transcript-sync-v1", "session-warning-v1", "reverse-command-v1", "durable-delivery-v1", "durable-delivery-selective-ack-v1"],
   "channels": {
     "session-catalog-v1": {
       "epoch": "<boot uuid>",
@@ -985,7 +985,7 @@ remain inactive.
 {
   "type": "hello_ack",
   "protocol": 1,
-  "capabilities": ["session-catalog-v1", "project-catalog-v1", "transcript-sync-v1", "session-warning-v1", "reverse-command-v1", "durable-delivery-v1"],
+  "capabilities": ["session-catalog-v1", "project-catalog-v1", "transcript-sync-v1", "session-warning-v1", "reverse-command-v1", "durable-delivery-v1", "durable-delivery-selective-ack-v1"],
   "channels": {
     "session-catalog-v1": {
       "epoch": "<last accepted boot uuid>",
@@ -1034,6 +1034,23 @@ acknowledgements therefore cause harmless duplicate delivery; Overseer dedupes b
 cumulative acknowledgement atomically compacts every message through its cursor.
 Stale duplicate acknowledgements are harmless; wrong epochs, malformed cursors,
 and future cursors never delete data.
+
+When both sides also negotiate `durable-delivery-selective-ack-v1`, Overseer
+may acknowledge one committed message without acknowledging earlier cursors:
+
+```json
+{ "type": "durable_ack", "epoch": "<durable epoch>", "cursor": "<committed cursor>", "cumulative": false }
+```
+
+Peon fsyncs that retired cursor and removes only its message. Retired holes are
+bounded by the existing 5,000-message outbox limit and compact into the
+cumulative frontier as soon as their prefix is retired. A selective-ACK hello
+does not carry a cumulative delivery resume; remaining messages replay and are
+deduplicated by the durable Overseer inbox. This additive mode is accepted only
+with `transcript-sync-v1`. If an outbox epoch has ever used a selective ACK and
+then reconnects to an older peer, Peon ignores that peer's handshake resume:
+the stored cursor may be past a selective hole. Remaining messages replay in
+order, after which live ACKs use the older cumulative behavior safely.
 
 Feature-owned durable messages persist their required `capability`. Peon sends a
 pending cursor only when that capability was accepted on the current connection.

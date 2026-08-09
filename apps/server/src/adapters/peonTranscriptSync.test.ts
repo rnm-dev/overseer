@@ -359,6 +359,36 @@ test("unique active and pending transcript subscriptions obey the per-Peon cap",
   });
 });
 
+test("a fifth durable repair waits for a bounded snapshot slot instead of closing the Peon socket", async () => {
+  const { socket, sync } = await setup({ subscriptionResponseMs: 30_000 });
+  const repairs = Array.from({ length: 5 }, (_, index) => sync.repairDurable({
+    ...durable(index + 1),
+    sessionId: `repair-${index + 1}`,
+  }));
+
+  await Promise.all(repairs);
+  const active = socket.frames.filter((frame) => frame.type === "transcript_snapshot_request");
+  assert.equal(active.length, 4);
+  assert.equal(active.some((frame) => frame.sessionId === "repair-5"), false);
+
+  const first = active[0]!;
+  await sync.handle({
+    type: "transcript_snapshot_page",
+    requestId: first.requestId,
+    sessionId: first.sessionId,
+    epoch: "epoch-1",
+    revision: 0,
+    barrierSeq: 0,
+    events: [],
+    nextCursor: null,
+    hasMore: false,
+  }, 128);
+
+  assert.equal(socket.frames.some((frame) =>
+    frame.type === "transcript_snapshot_request" && frame.sessionId === "repair-5"), true);
+  sync.dispose();
+});
+
 test("release clears a correlated renewal that is still awaiting its Peon response", async () => {
   const { socket, sync } = await setup({ subscriptionResponseMs: 5_000 });
   const initial = sync.acquire("s1");

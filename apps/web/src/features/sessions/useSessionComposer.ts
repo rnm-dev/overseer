@@ -39,6 +39,28 @@ export interface ComposerGhost {
   baselineUserMessages: number;
 }
 
+export function composerGhostVisible(ghost: ComposerGhost, userMessageCount: number): boolean {
+  return userMessageCount <= ghost.baselineUserMessages
+    && Date.now() < ghost.createdAt + GHOST_MAX_MS;
+}
+
+export class FollowupRequestIdentity {
+  private current: { identity: string; id: string } | null = null;
+
+  constructor(private readonly createId: () => string = () => crypto.randomUUID()) {}
+
+  forPayload(identity: string): string {
+    if (this.current?.identity === identity) return this.current.id;
+    const id = this.createId();
+    this.current = { identity, id };
+    return id;
+  }
+
+  clear(): void {
+    this.current = null;
+  }
+}
+
 export function composerActionErrorMessage(error: unknown, t: Translate): string | undefined {
   const code = error instanceof ApiError ? error.code : "";
   if (error instanceof ApiError && (code === "RESUME_IN_PROGRESS" || error.status === 409)) return t("session.compose.busy");
@@ -55,6 +77,10 @@ export function composerActionErrorMessage(error: unknown, t: Translate): string
 // the visible draft can make an already-accepted follow-up appear unsent.
 export function followupWasRefused(error: unknown): boolean {
   return error instanceof ApiError && error.status < 500;
+}
+
+export function shouldRestoreFollowupDraft(followupAttempted: boolean, error: unknown): boolean {
+  return !followupAttempted || followupWasRefused(error);
 }
 
 interface Args {
@@ -104,7 +130,8 @@ export function useSessionComposer({
   // a failed attempt so pressing Send again on the same message is deduplicated
   // by Overseer instead of posting a second follow-up, and is dropped as soon as
   // the payload changes or a send is accepted.
-  const requestIdRef = useRef<{ identity: string; id: string } | null>(null);
+  const requestIdentityRef = useRef<FollowupRequestIdentity | null>(null);
+  requestIdentityRef.current ??= new FollowupRequestIdentity();
   const [ghost, setGhost] = useState<ComposerGhost | null>(null);
   // Read during render so a send can capture the count before its own row can
   // possibly arrive, without waiting for an effect.
@@ -118,26 +145,22 @@ export function useSessionComposer({
   useEffect(() => {
     setSending(false);
     setGhost(null);
-    requestIdRef.current = null;
+    requestIdentityRef.current?.clear();
   }, [sessionKey]);
 
   useEffect(() => {
     if (!ghost) return;
-    if (userMessageCount > ghost.baselineUserMessages) return setGhost(null);
+    if (!composerGhostVisible(ghost, userMessageCount)) return setGhost(null);
     const id = window.setTimeout(() => setGhost(null), Math.max(0, ghost.createdAt + GHOST_MAX_MS - Date.now()));
     return () => window.clearTimeout(id);
   }, [ghost, userMessageCount]);
 
   function requestIdFor(identity: string): string {
-    const current = requestIdRef.current;
-    if (current?.identity === identity) return current.id;
-    const id = crypto.randomUUID();
-    requestIdRef.current = { identity, id };
-    return id;
+    return requestIdentityRef.current!.forPayload(identity);
   }
 
   function clearRequestId(): void {
-    requestIdRef.current = null;
+    requestIdentityRef.current?.clear();
   }
 
   // Whether file transfer is enabled on the peon. If it's off, auto-enable a
@@ -224,6 +247,7 @@ export function useSessionComposer({
     setStopNote(null);
     setInput("");
     setFiles([]);
+    let followupAttempted = false;
     try {
       // Upload each file to the sandbox, then send native attachments[] (peon
       // presents images as visual content to the agent via its Read tool).
@@ -235,6 +259,7 @@ export function useSessionComposer({
       if (overrideReasoningEffort) body.reasoningEffort = overrideReasoningEffort;
       const request = json(body);
       request.headers = { "Peon-Request-Id": clientId };
+      followupAttempted = true;
       await api(`${base}/sessions/${encodeURIComponent(sid)}/followup`, request);
       clearRequestId();
       if (currentSessionKeyRef.current === sessionKey) onWorkStarted();
@@ -243,17 +268,18 @@ export function useSessionComposer({
       // the next attempt is a new command and must not be answered from this
       // one's record. Only a 5xx or a lost connection leaves the outcome unknown
       // and keeps the request id for an idempotent retry.
-      const refused = followupWasRefused(err);
-      if (refused) clearRequestId();
+      const statedRefusal = followupAttempted && followupWasRefused(err);
+      const restoreDraft = shouldRestoreFollowupDraft(followupAttempted, err);
+      if (statedRefusal) clearRequestId();
       if (currentSessionKeyRef.current !== sessionKey) {
         // The operator moved on, so there is no composer to roll back into. A
         // stated refusal means the draft belongs back under this session's key;
         // an unknown outcome might still have been delivered, so stay out of the
         // way rather than invite a resend.
-        if (refused) saveComposerDraft(draftKey, text, pending);
+        if (restoreDraft) saveComposerDraft(draftKey, text, pending);
         return;
       }
-      if (refused) {
+      if (restoreDraft) {
         setGhost(null);
         setRunning(wasRunning);
         setRunningSelection(wasRunning ? prevModel : null, wasRunning ? prevReasoningEffort : null);

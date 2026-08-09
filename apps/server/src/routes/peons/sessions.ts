@@ -28,6 +28,7 @@ import {
   hasReverseTranscriptConnection,
 } from "../../adapters/peonTranscriptSync.js";
 import type { Role } from "../../modules/workspaces/index.js";
+import { observeTranscriptEvent } from "../../modules/sessions/index.js";
 
 function acceptedSessionId(result: { ok: boolean; json: unknown }): string | null {
   if (!result.ok || !result.json || typeof result.json !== "object") return null;
@@ -605,6 +606,7 @@ export function writeProjectedTranscriptSseEvent(
   if (seen.has(eventId)) return true;
   seen.add(eventId);
   if (res.writableLength > 8 * 1024 * 1024) {
+    observeTranscriptEvent("slow_client_disconnect");
     res.end();
     return false;
   }

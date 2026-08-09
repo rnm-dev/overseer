@@ -219,6 +219,18 @@ class AppDatabase extends _$AppDatabase {
   @override
   int get schemaVersion => 12;
 
+  /// Removes operator-authored and transcript payload data at an authentication
+  /// boundary. These tables are workspace-scoped rather than user-scoped, so
+  /// retaining them across principals could paint another operator's content
+  /// before the next ACL-checked refresh.
+  Future<void> clearSessionPrivateData() => transaction(() async {
+    await delete(cachedTranscriptEvents).go();
+    await delete(cachedTranscripts).go();
+    await delete(cachedQueuedFollowups).go();
+    await delete(pendingFollowupCommands).go();
+    await delete(composerDrafts).go();
+  });
+
   @override
   MigrationStrategy get migration => MigrationStrategy(
     onCreate: (migrator) => migrator.createAll(),

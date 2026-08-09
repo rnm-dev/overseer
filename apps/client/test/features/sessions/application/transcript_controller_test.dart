@@ -189,7 +189,7 @@ void main() {
     },
   );
 
-  test('falls back to the cached boundary when latest refresh fails', () async {
+  test('re-anchors without a boundary when latest refresh fails', () async {
     final latest = Completer<TranscriptPage>();
     final repository = _FakeSessionRepository(
       cached: TranscriptCache(
@@ -230,7 +230,7 @@ void main() {
       await Future<void>.delayed(Duration.zero);
     }
 
-    expect(live.subscriptions, ['cached-7']);
+    expect(live.subscriptions, [null]);
   });
 
   test('keeps running fenced across consecutive queued turns', () async {
