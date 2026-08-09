@@ -11,11 +11,11 @@ import {
   revokeInvite,
   updateMemberRole,
   type Role,
-} from "../workspaces.js";
+} from "../modules/workspaces/index.js";
 import { ownerOnly, userOf, withWorkspace } from "./requestContext.js";
-import { canAccessPeon, canAccessProject, listMemberAccess, replaceMemberAccess, type MemberAccess } from "../access.js";
-import { registry } from "../registry.js";
-import { getIndexedSession } from "../sessionIndex.js";
+import { canAccessPeon, canAccessProject, listMemberAccess, replaceMemberAccess, type MemberAccess } from "../modules/access/index.js";
+import { registry } from "../modules/fleet/index.js";
+import { getIndexedSession } from "../modules/sessions/index.js";
 import { heartbeatPresence, listVisiblePresence, removePresence } from "../modules/presence/index.js";
 
 // Workspaces (multi-tenant ACL) — mounted on /api AFTER operatorAuth. Routes

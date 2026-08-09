@@ -1,5 +1,5 @@
 import express from "express";
-import { canAccessProject } from "../../access.js";
+import { canAccessProject } from "../../modules/access/index.js";
 import { callPeon, connOfRecord } from "../../infrastructure/peonHttp/index.js";
 import { relay, withWorkspacePeon } from "../requestContext.js";
 

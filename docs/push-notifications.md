@@ -3,7 +3,7 @@
 Overseer delivers operator alerts through a durable outbox: `enqueuePushForEvent`
 writes one `push_outbox` row per eligible subscription, and a worker drains it
 every five seconds under an advisory lock, with exponential backoff per message.
-Server code lives in `src/push.ts`; the provider seam is
+Server code lives in `src/modules/notifications/pushNotifications.ts`; the provider seam is
 `src/infrastructure/push/`.
 
 ## What triggers a notification
@@ -106,7 +106,7 @@ account JSON is never committed; `.kamal/secrets` reads it at deploy time with
 ## iOS Live Activities
 
 A separate surface from notifications, with its own tokens and its own rules
-(`src/liveActivity.ts`, routes in `src/routes/push.ts`, payload builder in
+(`src/modules/notifications/liveActivity.ts`, routes in `src/routes/push.ts`, payload builder in
 `src/infrastructure/push/liveActivity.ts`). The whole contract is **one activity
 per operator per device connection** — an aggregate of everything that operator
 has running, never one activity per session.
@@ -176,7 +176,7 @@ has running, never one activity per session.
   registers native FCM tokens instead, each build flavor pointing at its own
   Firebase project, and iOS needs an APNs auth key uploaded to both projects
   first. Once no `expo` subscriptions remain in either database, the Expo sender
-  in `src/push.ts` can be deleted. Because of that direction, the service
+  in `src/modules/notifications/pushNotifications.ts` can be deleted. Because of that direction, the service
   account is deliberately **not** being uploaded to Expo/EAS credentials — that
   upload is only needed for the Expo-relayed Android path this replaces.
 

@@ -34,8 +34,8 @@ documentation instead of in this overview.
 
 Use the current Overseer server contract first:
 
-- `../../apps/server/src/server.ts` and `../../apps/server/src/routes/` for REST;
-- `../../apps/server/src/liveSocket.ts` for `/api/ws`;
+- `../../apps/server/src/app/server.ts` and `../../apps/server/src/routes/` for REST;
+- `../../apps/server/src/adapters/liveSocket.ts` for `/api/ws`;
 - server tests for edge cases and compatibility behavior.
 
 The web client at `../../apps/web` is the visual reference. Preserve

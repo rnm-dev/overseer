@@ -1,11 +1,11 @@
 import express from "express";
 import { config } from "../../infrastructure/config/index.js";
-import { registry, toView, type PeonRecord } from "../../registry.js";
+import { registry, toView, type PeonRecord } from "../../modules/fleet/index.js";
 import { callPeon, connOfRecord, normalizePeonUrl, PROTOCOL } from "../../infrastructure/peonHttp/index.js";
-import { clampRecentSessionsLimit, getSessionCatalogStates, listOperatorRecentSessions, listSessions } from "../../sessionIndex.js";
-import { bindPeon, deRecruitPeon, mintCredential, revokeCredential } from "../../credentials.js";
+import { clampRecentSessionsLimit, getSessionCatalogStates, listOperatorRecentSessions, listSessions } from "../../modules/sessions/index.js";
+import { bindPeon, deRecruitPeon, mintCredential, revokeCredential } from "../../modules/fleet/index.js";
 import { ownerOnly, withWorkspace } from "../requestContext.js";
-import { canAccessPeon, listMemberAccess } from "../../access.js";
+import { canAccessPeon, listMemberAccess } from "../../modules/access/index.js";
 import { sessionAttentionStates } from "../../modules/sessions/index.js";
 
 function enrollmentFallback(status: number, code: string): string {

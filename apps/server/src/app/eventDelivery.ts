@@ -1,6 +1,6 @@
 import { configureCommittedEventConsumers, type CommittedEventConsumer } from "../infrastructure/events/index.js";
-import { syncLiveActivitiesForEvent } from "../liveActivity.js";
-import { enqueuePushForEvent } from "../push.js";
+import { syncLiveActivitiesForEvent } from "../modules/notifications/index.js";
+import { enqueuePushForEvent } from "../modules/notifications/index.js";
 
 // Application composition owns the choice of side effects following a durable
 // event. The log itself only persists and broadcasts; it must not know about

@@ -11,7 +11,7 @@ import { parsePeonProjection, parsePeonProjections } from "./workspacePeons";
 
 // The selected workspace transport: resumable live events, presence, and session
 // tails. Fleet-dashboard workspaces use the same protocol via workspaceLive.ts.
-// See app/src/liveSocket.ts for the server side.
+// See apps/server/src/adapters/liveSocket.ts for the server side.
 // author: Viktor
 
 // Liveness watchdog: ping every PING_MS; if nothing at all arrives for STALE_MS,

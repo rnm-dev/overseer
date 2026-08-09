@@ -96,7 +96,7 @@ traffic. Keys:
   recruitment (`/enroll`), i.e. where peons phone home. Empty ⇒ only *manual*
   recruitment (operator pastes the minted token) works. There is **no shared fleet
   secret**: each peon gets a per-peon, workspace-scoped credential the overseer
-  mints (`apps/server/src/credentials.ts`). Operators authenticate only with device tokens.
+  mints (`apps/server/src/modules/fleet/credentialsService.ts`). Operators authenticate only with device tokens.
 - Auth (magic-link + OTP → device tokens; see `apps/server/src/auth.ts`):
   `OVERSEER_ADMIN_EMAIL` (seeds the first user on boot), `OVERSEER_PUBLIC_URL`
   (magic-link base), `OVERSEER_AUTH_DEV_ECHO=1` (**dev only** — echoes the OTP +
@@ -175,7 +175,7 @@ so a restart (which every reload is) keeps the schema in sync.
 
 - Dev Dockerfiles install deps + run watch servers; no `dist/`, no compile in dev.
   A prod single-container build (Express static-serving `web/dist`) is stubbed in
-  `src/server.ts` but not wired to a Dockerfile yet.
+  `src/app/server.ts` but not wired to a Dockerfile yet.
 - nid-dev disk was ~92% full at setup — watch it; prune old images with
   `docker image prune -f` if builds start failing on space.
 - **Done:** full-stack (Express API + React dashboard), passwordless auth

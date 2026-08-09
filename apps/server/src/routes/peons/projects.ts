@@ -1,8 +1,8 @@
 import express from "express";
-import { registry, toView } from "../../registry.js";
+import { registry, toView } from "../../modules/fleet/index.js";
 import { callPeon, connOfRecord, normalizePeonUrl, proxyFileDownload, proxyFileUpload, proxyGet, proxyUpload } from "../../infrastructure/peonHttp/index.js";
-import { reconcilePeon } from "../../sessionIndex.js";
-import { allowedProjects, canAccessProject, projectMemberCounts } from "../../access.js";
+import { reconcilePeon } from "../../modules/sessions/index.js";
+import { allowedProjects, canAccessProject, projectMemberCounts } from "../../modules/access/index.js";
 import { ownerOnly, relay, restSegments, withWorkspacePeon } from "../requestContext.js";
 import {
   folderBrowseSelector,
@@ -16,8 +16,8 @@ import {
   refreshIndexedProjectQuickLinks,
 } from "../../modules/projects/index.js";
 import { appendEvent } from "../../infrastructure/events/index.js";
-import { auditSafeFileErrorBody } from "../../fileErrorSafety.js";
-import { FileSandboxError, resolveAttachmentPath, resolveSandboxSegments } from "../../peonFileSandbox.js";
+import { auditSafeFileErrorBody } from "../../shared/fileErrorSafety.js";
+import { FileSandboxError, resolveAttachmentPath, resolveSandboxSegments } from "../../infrastructure/peonHttp/peonFileSandbox.js";
 
 export function registerProjectRoutes(router: express.Router): void {
   const wp = "/workspaces/:wsId/peons/:id";

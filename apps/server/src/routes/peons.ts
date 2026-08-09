@@ -3,7 +3,7 @@ import { registerFleetRoutes } from "./peons/fleet.js";
 import { registerSessionRoutes } from "./peons/sessions.js";
 import { registerProjectRoutes } from "./peons/projects.js";
 import { registerArmoryRoutes } from "./peons/armory.js";
-import { canAccessPeon } from "../access.js";
+import { canAccessPeon } from "../modules/access/index.js";
 import { reverseCommandGateway } from "../modules/reverseCommands/index.js";
 import { runAcceptedReverseReconciliation } from "../modules/reverseCommands/index.js";
 import { withWorkspace } from "./requestContext.js";

@@ -13,26 +13,6 @@
   "allowedBoundaryViolations": [],
   "allowedRuntimeCycleComponents": [],
   "allowedRootDomainFiles": [
-    "access.ts",
-    "credentials.ts",
-    "fileErrorSafety.ts",
-    "followupIdempotency.ts",
-    "index.ts",
-    "liveAccess.ts",
-    "liveActivity.ts",
-    "liveSocket.ts",
-    "peonConnections.ts",
-    "peonFileSandbox.ts",
-    "peonSessionSync.ts",
-    "peonSocket.ts",
-    "peonSocketAuth.ts",
-    "peonTranscriptSync.ts",
-    "push.ts",
-    "registry.ts",
-    "server.ts",
-    "sessionIndex.ts",
-    "transcriptTimestamps.ts",
-    "webPreview.ts",
-    "workspaces.ts"
+    "index.ts"
   ]
 }

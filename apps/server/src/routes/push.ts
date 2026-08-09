@@ -1,11 +1,11 @@
 import express from "express";
-import { getPushPreferences, listPushSubscriptions, removePushSubscription, setPushPreferences, upsertPushSubscription, type PushPlatform, type PushProvider } from "../push.js";
+import { getPushPreferences, listPushSubscriptions, removePushSubscription, setPushPreferences, upsertPushSubscription, type PushPlatform, type PushProvider } from "../modules/notifications/index.js";
 import {
   bindLiveActivityUpdateToken,
   liveActivityStatus,
   registerLiveActivityStartToken,
   removeLiveActivityToken,
-} from "../liveActivity.js";
+} from "../modules/notifications/index.js";
 import { withWorkspace } from "./requestContext.js";
 
 const providers = new Set<PushProvider>(["expo", "fcm", "apns"]);

@@ -33,7 +33,7 @@ re-derives it from the reconnects.
 
 ## The wire
 
-Ownership rides the existing live socket (`/api/ws`, `apps/server/src/liveSocket.ts`).
+Ownership rides the existing live socket (`/api/ws`, `apps/server/src/adapters/liveSocket.ts`).
 Four messages, all optional — a client that sends none of them behaves exactly as
 it did before this existed.
 

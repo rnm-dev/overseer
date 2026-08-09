@@ -1,9 +1,9 @@
 import express from "express";
-import { canAccessPeon, canAccessProject } from "../access.js";
+import { canAccessPeon, canAccessProject } from "../modules/access/index.js";
 import { connOfRecord, proxyGet } from "../infrastructure/peonHttp/index.js";
 import { getIndexedProjectById } from "../modules/projects/index.js";
-import { registry } from "../registry.js";
-import { membership } from "../workspaces.js";
+import { registry } from "../modules/fleet/index.js";
+import { membership } from "../modules/workspaces/index.js";
 import { userOf } from "./requestContext.js";
 
 export function projectViewerRouter(): express.Router {

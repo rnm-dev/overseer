@@ -1,7 +1,7 @@
 import { isIP } from "node:net";
 import express from "express";
-import { registry, type PeonRecord } from "../registry.js";
-import { membership, type Role } from "../workspaces.js";
+import { registry, type PeonRecord } from "../modules/fleet/index.js";
+import { membership, type Role } from "../modules/workspaces/index.js";
 import {
   requestHasTrustedOrigin,
   requiresCsrfOrigin,
@@ -9,8 +9,8 @@ import {
   verifyDeviceToken,
   webSessionToken,
 } from "../modules/auth/index.js";
-import { resolveCredential } from "../credentials.js";
-import { canAccessPeon } from "../access.js";
+import { resolveCredential } from "../modules/fleet/index.js";
+import { canAccessPeon } from "../modules/access/index.js";
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace

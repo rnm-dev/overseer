@@ -1,11 +1,11 @@
 import { config, configWarnings } from "./infrastructure/config/index.js";
 import { initDb } from "./infrastructure/db/index.js";
-import { createServer } from "./server.js";
-import { startReconciler } from "./sessionIndex.js";
-import { attachLiveSocket } from "./liveSocket.js";
-import { attachPeonSocket } from "./peonSocket.js";
+import { createServer } from "./app/server.js";
+import { startReconciler } from "./modules/sessions/index.js";
+import { attachLiveSocket } from "./adapters/liveSocket.js";
+import { attachPeonSocket } from "./adapters/peonSocket.js";
 import { pruneEvents } from "./infrastructure/events/index.js";
-import { startPushWorker } from "./push.js";
+import { startPushWorker } from "./modules/notifications/index.js";
 import { pruneTranscriptProjection } from "./modules/sessions/index.js";
 import { configureEventDelivery } from "./app/eventDelivery.js";
 

@@ -1,16 +1,16 @@
 import express from "express";
-import type { PeonRecord } from "../../registry.js";
+import type { PeonRecord } from "../../modules/fleet/index.js";
 import { callPeon, connOfRecord, proxyGet, proxyStream } from "../../infrastructure/peonHttp/index.js";
 import {
   allowedProjects,
   canAccessIndexedSessionNow,
   canAccessProject,
-} from "../../access.js";
+} from "../../modules/access/index.js";
 import { ownerOnly, relay, withWorkspacePeon } from "../requestContext.js";
-import { mintWebPreview } from "../../webPreview.js";
-import { runIdempotentFollowup, validCommandId } from "../../followupIdempotency.js";
-import { enrichLiveTranscriptEvent, enrichTranscriptMetadata } from "../../transcriptTimestamps.js";
-import { deleteIndexedSession, getIndexedSession } from "../../sessionIndex.js";
+import { mintWebPreview } from "../webPreview.js";
+import { runIdempotentFollowup, validCommandId } from "../../modules/sessions/index.js";
+import { enrichLiveTranscriptEvent, enrichTranscriptMetadata } from "../../modules/sessions/index.js";
+import { deleteIndexedSession, getIndexedSession } from "../../modules/sessions/index.js";
 import { cancelSessionRequest, markSessionAttentionRead, recordSessionRequest } from "../../modules/sessions/index.js";
 import { getIndexedProject, getIndexedProjectById } from "../../modules/projects/index.js";
 import { bus, type LiveEvent } from "../../infrastructure/events/index.js";
@@ -26,8 +26,8 @@ import {
 import {
   acquireTranscriptProjection,
   hasReverseTranscriptConnection,
-} from "../../peonTranscriptSync.js";
-import type { Role } from "../../workspaces.js";
+} from "../../adapters/peonTranscriptSync.js";
+import type { Role } from "../../modules/workspaces/index.js";
 
 function acceptedSessionId(result: { ok: boolean; json: unknown }): string | null {
   if (!result.ok || !result.json || typeof result.json !== "object") return null;

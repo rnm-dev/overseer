@@ -11,11 +11,14 @@ target structure when it is changed. Large directory-only rewrites are avoided.
 
 ```text
 src/
+  index.ts                # the process entry point, and the only root file
   app/                    # process bootstrap and application composition
+  adapters/               # WebSocket transports and protocol state machines
+  routes/                 # HTTP transport
   infrastructure/
     db/                   # pool, transactions, migrations
     github/               # external GitHub integration
-    peonHttp/             # outbound Peon HTTP client and stream proxies
+    peonHttp/             # outbound Peon HTTP client, stream proxies, file sandbox
     push/                 # notification delivery
     releases/             # release storage and publication
     voice/                # speech-to-text and text-polish provider seam
@@ -23,9 +26,12 @@ src/
     auth/
     access/
     fleet/
+    notifications/
     presence/
     projects/
+    reverseCommands/
     sessions/
+    themes/
     voice/
     workspaces/
   shared/                 # small, domain-neutral primitives only
@@ -35,8 +41,10 @@ Domain modules such as `sessions` and `projects` live directly under `modules`.
 They must not be grouped under abstract containers such as `catalogs`, because
 the domain name already describes the capability and its ownership.
 
-The current root-level files are legacy entry points. They may remain as thin
-compatibility facades while callers migrate to a module's public entry point.
+The source root holds `index.ts` and nothing else. The compatibility facades
+that once lived beside it are gone, and `scripts/check-architecture.mjs` keeps
+the root closed: a new capability starts in a module, an adapter, or
+infrastructure.
 
 ### Stable module taxonomy
 
@@ -48,7 +56,13 @@ these ownership categories rather than being created for a single use case.
   stay in a host-only HttpOnly cookie; native/mobile clients retain revocable
   device bearer tokens.
 - `access` owns cross-resource authorization policies and grants.
-- `fleet` owns Peon enrollment, registry state, and connection lifecycle.
+- `fleet` owns Peon enrollment, registry state, connection lifecycle, and the
+  durable runtime-state projection.
+- `notifications` owns who is told about what: push fan-out policy and the iOS
+  Live Activity aggregate. The delivery transports are an external system and
+  live in `infrastructure/push`.
+- `reverseCommands` owns the durable reverse command gateway, its registry, and
+  the transport-selection and rollout-readiness rules around it.
 - `presence` owns operator presence state and visibility.
 - `projects` owns project projections, metadata, documentation, and membership.
   Browser file links use `/view/:peonId/:projectId/*`: workspace membership is
@@ -62,15 +76,13 @@ these ownership categories rather than being created for a single use case.
 - `workspaces` owns workspaces, membership, and invitations.
 
 Code that communicates with an external system or provides a technical runtime
-facility belongs in `infrastructure`, not in a product module. In particular:
+facility belongs in `infrastructure`, not in a product module.
 
-- `acceptedSession` is a sessions use case and should move into `sessions`;
-- `projectDocs` belongs to `projects`;
-- `peonClient` is an outbound transport and should become `infrastructure/peonHttp`;
-- connection adapters and WebSocket protocol state machines may remain near app
-  composition until a precise `fleet` or infrastructure owner is established.
-
-These are migration destinations, not instructions for a directory-only rewrite.
+`adapters` holds the WebSocket transports and the protocol state machines that
+ride them: the operator live socket, the Peon socket and its authentication
+handshake, and the session and transcript synchronizers. They are transports,
+not a domain, so a module must not import them — the dependency runs the other
+way, exactly as it does for `routes`.
 
 ## Module contract
 
@@ -176,14 +188,21 @@ should deepen feature ownership instead of adding more state to route components
 
 ## Architecture fitness checks
 
-The architecture must eventually be enforced by lint or tests rather than by
-documentation alone. Checks should reject:
+The architecture is enforced by `scripts/check-architecture.mjs`, which
+`npm run verify` runs through `npm run architecture:check`. Its allowances live
+in `scripts/architecture-policy.json`, and every list in that file is now empty
+except the root entry point. It rejects:
 
 - imports of a module's internal files from outside that module;
-- imports of root compatibility facades from inside `src/modules`;
+- imports of root files from inside `src/modules`;
+- imports of routes, adapters, or app composition from inside `src/modules`;
+- imports of product modules from inside `src/infrastructure`;
 - runtime dependency cycles;
-- new root-level domain implementation files;
+- new root-level implementation files;
 - generic new filenames such as `utils.ts`, `helpers.ts`, or `manager.ts`.
+
+A file added to an allowance list is a debt, not a decision: the lists exist so
+a migration can land in steps, and they are expected to shrink back to empty.
 
 Type-only cycles should also be removed by moving the shared contract to its
 owner, even though they do not create a JavaScript runtime cycle.
@@ -192,13 +211,14 @@ owner, even though they do not create a JavaScript runtime cycle.
 
 Refactoring follows risk and ownership, not raw line count:
 
-1. Remove module-to-root-facade dependency indirection.
-2. Establish `modules/projects` from the current project index and project docs.
-3. Move accepted-session indexing into `modules/sessions`.
-4. Move outbound Peon HTTP/proxy code into `infrastructure/peonHttp`.
-5. Split large realtime files by protocol responsibility while preserving their
-   state-machine invariants and characterization tests.
-6. Continue extracting state and orchestration from large frontend route
+Priorities 1–4 — removing the root facades, establishing `modules/projects`,
+moving accepted-session indexing into `modules/sessions`, and moving outbound
+Peon HTTP into `infrastructure/peonHttp` — are done. What remains:
+
+1. Split large realtime files by protocol responsibility while preserving their
+   state-machine invariants and characterization tests. `adapters/liveSocket.ts`
+   and `adapters/peonSessionSync.ts` are the two that mix several protocols.
+2. Continue extracting state and orchestration from large frontend route
    components into feature hooks and models.
 
 Large protocol state machines are not split merely to satisfy a line limit. A

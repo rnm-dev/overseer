@@ -3,7 +3,7 @@
 // that reads one is built here. A surface that assembles its own path is how
 // `/files//tmp/peon-files/...` happened: an absolute Peon path joined onto a
 // route whose paths are relative to the file transfer sandbox. Overseer maps a
-// sandbox path back for us (src/peonFileSandbox.ts); the rule for which route
+// sandbox path back for us (src/infrastructure/peonHttp/peonFileSandbox.ts); the rule for which route
 // answers for which file lives in this module and nowhere else.
 
 export type FileSource =
