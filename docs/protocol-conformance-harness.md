@@ -43,6 +43,21 @@ The workspace `verify` script runs these Node tests. Because the package is a
 root npm workspace, `npm run verify` includes them through the root
 `npm run verify --workspaces --if-present` gate.
 
+## Session catalog convergence
+
+`fixtures/session-catalog-acceptance-v1.json` indexes the authority, snapshot,
+commit/ACK, replay, gap/epoch, generation, orphan-liveness, tombstone, offline,
+client-merge and bounded-recovery invariants in
+[session list and status synchronization](session-list-sync.md). Its objective
+SLO clocks and payload-free diagnostic dimensions are machine checked.
+
+`SessionCatalogHarness` reuses `DeterministicTransport` and injects
+snapshot/live races, duplicate replay, ACK loss, Peon/Overseer restart, stale
+generations, gaps, epoch rollover, crash boundaries, corrupt/oversized pages and
+deletion. Component coverage remains in Peon's catalog/orphan suites, Overseer's
+socket/projection suites, web's session-list merge suite and Flutter's repository
+and cached-repository suites.
+
 ## Transcript convergence acceptance
 
 `fixtures/transcript-acceptance-v1.json` is the executable index for the

@@ -35,6 +35,10 @@ export {
   TranscriptSyncHarness,
 } from "./transcriptLifecycle.js";
 export {
+  SessionCatalogHarness,
+  SessionCatalogHarnessError,
+} from "./sessionCatalogLifecycle.js";
+export {
   ProportionalLoadHarness,
   runDeterministicSoak,
 } from "./loadSlo.js";

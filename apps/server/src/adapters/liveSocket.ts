@@ -34,6 +34,7 @@ import {
 import { canAccessIndexedSessionNow } from "../modules/access/index.js";
 import { enrichLiveTranscriptEvent } from "../modules/sessions/index.js";
 import { observeTranscriptEvent } from "../modules/sessions/index.js";
+import { observeSessionCatalogDuration } from "../modules/sessions/index.js";
 
 // The north-bound (overseer→client) transport: one authenticated WebSocket per
 // app, multiplexing presence + live session tails, resumable by cursor.
@@ -74,6 +75,7 @@ interface Client {
   alive: boolean;
   closed: boolean;
   queuedMessages: number;
+  deliveredSessionCursors: Map<number, number | null>;
   messageQueue: Promise<void>;
   tails: Map<string, AbortController>;
   location: PresenceLocation | null;
@@ -117,6 +119,17 @@ const REPLAY_PAGE_SIZE = 1000;
 const MAX_SSE_FRAME_BYTES = 1024 * 1024;
 const MAX_PENDING_TRANSCRIPT_EVENTS = 1_000;
 const MAX_PENDING_TRANSCRIPT_BYTES = 8 * 1024 * 1024;
+const MAX_CLIENT_SESSION_APPLY_CLOCKS = 1_024;
+
+function rememberDeliveredSession(client: Client, event: LiveEvent, measureApply = true): void {
+  if (event.kind !== "session" || event.cursor <= 0) return;
+  client.deliveredSessionCursors.set(event.cursor, measureApply ? event.createdAt : null);
+  while (client.deliveredSessionCursors.size > MAX_CLIENT_SESSION_APPLY_CLOCKS) {
+    const oldest = client.deliveredSessionCursors.keys().next().value as number | undefined;
+    if (oldest === undefined) break;
+    client.deliveredSessionCursors.delete(oldest);
+  }
+}
 
 interface ReverseTailState {
   peonId: string;
@@ -243,6 +256,7 @@ export function attachLiveSocket(server: Server): WebSocketServer {
         alive: true,
         closed: false,
         queuedMessages: 0,
+        deliveredSessionCursors: new Map(),
         messageQueue: Promise.resolve(),
         tails: new Map(),
         location: null,
@@ -299,6 +313,7 @@ export function attachLiveSocket(server: Server): WebSocketServer {
         continue;
       }
       if ((c.live || presenceDuringSnapshot) && c.workspaceId === e.workspaceId && eventVisible(c, e)) {
+        rememberDeliveredSession(c, e);
         send(c.ws, { type: e.kind, cursor: e.cursor, payload: e.payload });
       }
     }
@@ -438,6 +453,15 @@ async function onMessage(client: Client, raw: string, wsCursor: Map<string, numb
     return;
   }
   if (!client.workspaceId) return; // everything else requires a workspace
+  if (msg.type === "session:applied") {
+    const cursor = Number(msg.cursor);
+    if (!Number.isSafeInteger(cursor) || cursor <= 0 || cursor > (wsCursor.get(client.workspaceId) ?? 0)) return;
+    if (!client.deliveredSessionCursors.has(cursor)) return;
+    const committedAt = client.deliveredSessionCursors.get(cursor);
+    client.deliveredSessionCursors.delete(cursor);
+    if (committedAt !== null && committedAt !== undefined) observeSessionCatalogDuration("client_apply", "success", Date.now() - committedAt);
+    return;
+  }
   if (msg.type === "resume") return resume(client, msg.cursor, wsCursor);
   if (msg.type === "presence:set") return setPresence(client, msg);
   if (msg.type === "subscribe" && msg.peonId && msg.sessionId) return subscribe(client, msg.peonId, msg.sessionId, msg.lastEventId);
@@ -555,7 +579,10 @@ async function replayWindow(client: Client, workspaceId: string, from: number, t
     for (const e of page) {
       if (client.closed || client.workspaceId !== workspaceId) return;
       if (e.kind === "transcript") continue;
-      if (eventVisible(client, e)) send(client.ws, { type: e.kind, cursor: e.cursor, payload: e.payload });
+      if (eventVisible(client, e)) {
+        rememberDeliveredSession(client, e, false);
+        send(client.ws, { type: e.kind, cursor: e.cursor, payload: e.payload });
+      }
     }
     cursor = page[page.length - 1]!.cursor;
     if (page.length < REPLAY_PAGE_SIZE) break;

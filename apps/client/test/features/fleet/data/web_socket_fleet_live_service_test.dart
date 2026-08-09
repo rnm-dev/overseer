@@ -12,6 +12,68 @@ import 'package:overseer_mobile/features/fleet/data/web_socket_fleet_live_servic
 import '../../../support/manual_app_time.dart';
 
 void main() {
+  test(
+    'acknowledges a session only after its durable projection applies',
+    () async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      final probes = StreamController<_SocketProbe>.broadcast();
+      final serverSubscription = server.listen((request) async {
+        probes.add(_SocketProbe(await WebSocketTransformer.upgrade(request)));
+      });
+      final dio = Dio(
+        BaseOptions(baseUrl: 'http://127.0.0.1:${server.port}/api/v1/'),
+      )..httpClientAdapter = _ImmediateFleetAdapter();
+      final service = WebSocketFleetLiveService(
+        serverUrl: Uri.parse('http://127.0.0.1:${server.port}'),
+        apiUrl: Uri.parse('http://127.0.0.1:${server.port}/api/v1/'),
+        token: 'test-token',
+        dio: dio,
+      );
+      addTearDown(() async {
+        await service.stop();
+        await probes.close();
+        await serverSubscription.cancel();
+        await server.close(force: true);
+      });
+
+      var applied = false;
+      await service.connect(
+        workspaceIds: const ['workspace-1'],
+        initialCursors: const {'workspace-1': 0},
+        onPeon: (_, _) {},
+        onSession: (_, cursor, _) async {
+          expect(cursor, 7);
+          await Future<void>.delayed(const Duration(milliseconds: 10));
+          applied = true;
+        },
+        onProject: (_, _, _) async {},
+        onCursor: (_, _) async {},
+        onActiveSessions: (_, _, _) {},
+        onActiveSessionSnapshot: (_, _) {},
+        onPresence: (_, _) {},
+      );
+      final probe = await probes.stream.first;
+      await probe.next('hello');
+      probe.socket.add(
+        jsonEncode({'type': 'snapshot', 'cursor': 0, 'presence': const []}),
+      );
+      probe.socket.add(
+        jsonEncode({
+          'type': 'session',
+          'cursor': 7,
+          'payload': {
+            'peonId': 'peon-1',
+            'sessionId': 'session-1',
+            'syncedAt': 7,
+          },
+        }),
+      );
+      final acknowledgement = await probe.next('session:applied');
+      expect(applied, isTrue);
+      expect(acknowledgement['cursor'], 7);
+    },
+  );
+
   test('reconnect backoff advances without wall-clock sleeping', () async {
     final scheduler = ManualAppScheduler();
     final diagnostics = _RecordingDiagnostics();

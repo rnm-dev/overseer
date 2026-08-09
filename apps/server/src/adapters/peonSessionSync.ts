@@ -11,6 +11,7 @@ import {
   type SessionSyncCheckpoint,
 } from "../modules/sessions/index.js";
 import { observeTranscriptDuration } from "../modules/sessions/index.js";
+import { observeSessionCatalogDuration, observeSessionCatalogEvent } from "../modules/sessions/index.js";
 import {
   applySocketProjectEvent,
   applySocketProjectSnapshot,
@@ -88,6 +89,7 @@ interface DurableCatalogEvent {
 type DurableDeliveryEvent = DurableCatalogEvent | DurableReverseCommandResult | DurableTranscriptMessage | DurableRuntimeState;
 
 interface SnapshotState {
+  startedAt: number;
   requestId: string;
   epoch: string | null;
   revision: number | null;
@@ -131,6 +133,7 @@ export class PeonCatalogSync {
   private enforceAdvertisedEarliestCursor = true;
   private readonly transcriptSync: PeonTranscriptSync | null;
   private readonly selectiveAcks: boolean;
+  private recoveryStartedAt = 0;
 
   constructor(
     private readonly record: PeonRecord,
@@ -149,6 +152,7 @@ export class PeonCatalogSync {
   }
 
   async start(beforeHelloAck?: () => Promise<void>): Promise<void> {
+    this.recoveryStartedAt = Date.now();
     this.checkpoint = await claimSessionSyncGeneration(this.record.peonId, this.generation);
     const catalogResume = this.checkpoint?.catalog?.epoch === this.catalog.epoch
       && this.checkpoint.catalog.acknowledgedSeq >= this.catalog.earliestSeq - 1
@@ -210,6 +214,8 @@ export class PeonCatalogSync {
     if (!catalogResume || !deliveryResume || !this.checkpoint?.previouslyReady) {
       await markSessionSyncing(this.record.peonId, this.generation);
       this.requestSnapshot();
+    } else {
+      observeSessionCatalogDuration("reconnect", "success", Date.now() - this.recoveryStartedAt);
     }
     if (this.projectCatalog && (!projectResume || !deliveryResume || !this.projectCheckpoint?.previouslyReady)) {
       await markProjectSyncing(this.record.peonId, this.generation);
@@ -271,6 +277,7 @@ export class PeonCatalogSync {
   private requestSnapshot(cursor?: string): void {
     if (!this.snapshot) {
       this.snapshot = {
+        startedAt: Date.now(),
         requestId: randomUUID(), epoch: null, revision: null, barrierSeq: null,
         seenCursors: new Set(), sessions: [], sessionIds: new Set(), pages: 0, bytes: 0,
       };
@@ -352,6 +359,9 @@ export class PeonCatalogSync {
       },
       previouslyReady: true,
     };
+    observeSessionCatalogDuration("snapshot", "success", Date.now() - snapshot.startedAt);
+    observeSessionCatalogDuration("reconnect", "success", Date.now() - this.recoveryStartedAt);
+    observeSessionCatalogEvent("rebuild");
     this.snapshot = null;
     this.send({ type: "session_catalog_ack", epoch, acknowledgedSeq: barrierSeq });
     await this.maybeDrainBuffered();

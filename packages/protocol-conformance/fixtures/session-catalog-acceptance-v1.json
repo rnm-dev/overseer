@@ -1,0 +1,28 @@
+{
+  "version": "session-catalog-convergence-acceptance-v1",
+  "authority": { "canonicalStore": "peon", "readPath": "fleet-http", "liveProjection": "session-catalog-v1" },
+  "invariants": [
+    { "id": "SCA-AUTHORITY", "coverage": ["conformance:topology", "conformance:sessionCatalog"], "status": "covered" },
+    { "id": "SCA-SNAPSHOT-BARRIER", "coverage": ["peon:sessionCatalogChannel", "server:peonSocket", "conformance:sessionCatalog"], "status": "covered" },
+    { "id": "SCA-COMMIT-BEFORE-ACK", "coverage": ["server:sessionProjection", "conformance:sessionCatalog"], "status": "covered" },
+    { "id": "SCA-REPLAY-IDENTITY", "coverage": ["server:sessionProjection", "conformance:sessionCatalog"], "status": "covered" },
+    { "id": "SCA-GAP-EPOCH-RECOVERY", "coverage": ["server:peonSocket", "conformance:sessionCatalog"], "status": "covered" },
+    { "id": "SCA-GENERATION-FENCE", "coverage": ["server:sessionProjection", "conformance:sessionCatalog"], "status": "covered" },
+    { "id": "SCA-ORPHAN-LIVENESS", "coverage": ["peon:sessionOrphanReconciliation"], "status": "covered" },
+    { "id": "SCA-TOMBSTONE-MONOTONICITY", "coverage": ["server:sessionProjection", "web:sessionList", "flutter:sessionRepository", "conformance:sessionCatalog"], "status": "covered" },
+    { "id": "SCA-OFFLINE-TRUTHFULNESS", "coverage": ["server:sessionProjection", "web:sessionList", "flutter:sessionRepository"], "status": "covered" },
+    { "id": "SCA-CLIENT-MONOTONICITY", "coverage": ["web:sessionList", "flutter:sessionRepository"], "status": "covered" },
+    { "id": "SCA-BOUNDED-RECOVERY", "coverage": ["peon:sessionCatalogChannel", "server:peonSocket", "conformance:sessionCatalog"], "status": "covered" }
+  ],
+  "slos": [
+    { "id": "SCS-HEALTHY", "start": "overseer_event_committed", "stop": "authorized_client_summary_applied", "targetMs": 2000, "percentile": 99, "status": "measured", "collector": "server:sessionCatalogObservability.client_apply" },
+    { "id": "SCS-RECONNECT", "start": "control_catalog_sync_started", "stop": "catalog_frontier_current", "targetMs": 5000, "percentile": 99, "status": "measured", "collector": "server:sessionCatalogObservability.reconnect" },
+    { "id": "SCS-RESTART", "start": "control_catalog_sync_started", "stop": "catalog_frontier_current", "targetMs": 10000, "percentile": 99, "status": "measured", "collector": "server:sessionCatalogObservability.reconnect" },
+    { "id": "SCS-REBUILD", "start": "snapshot_request_admitted", "stop": "catalog_frontier_current", "targetMs": 30000, "percentile": 99, "status": "measured", "collector": "server:sessionCatalogObservability.snapshot" },
+    { "id": "SCS-CLIENT-RESUME", "start": "client_foreground_connected", "stop": "visible_list_current", "targetMs": 5000, "percentile": 99, "status": "planned" }
+  ],
+  "diagnostics": {
+    "allowedDimensions": ["component", "outcome", "recoveryClass", "catalogState", "workspaceHash", "peonHash", "sessionHash", "epochHash", "generation", "sequenceGap", "summaryCount", "byteCount", "durationMs", "failureCode"],
+    "forbiddenDimensions": ["prompt", "preview", "title", "transcript", "eventPayload", "credentials", "path"]
+  }
+}

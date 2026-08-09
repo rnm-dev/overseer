@@ -13,6 +13,7 @@ import { registry } from "../modules/fleet/index.js";
 import { attachLiveSocket, parseSse } from "./liveSocket.js";
 import { resetAudioFocus } from "../modules/presence/index.js";
 import { listSessions, upsertSession } from "../modules/sessions/index.js";
+import { resetSessionCatalogObservabilityForTest, sessionCatalogObservabilitySnapshot } from "../modules/sessions/index.js";
 import { broadcast, readEventsSince } from "../infrastructure/events/index.js";
 
 function listen(server: http.Server): Promise<number> {
@@ -92,6 +93,43 @@ test("WebSocket tickets are short-lived credentials that can only be consumed on
 
   assert.equal((await consumeWebSocketTicket(issued.ticket))?.userId, "ticket-user");
   assert.equal(await consumeWebSocketTicket(issued.ticket), null);
+});
+
+test("session apply acknowledgements measure only known committed cursors", async () => {
+  const mem = newDb();
+  const adapter = mem.adapters.createPg();
+  await initDb(new adapter.Pool() as unknown as pg.Pool);
+  await query(`INSERT INTO users (id, email, created_at) VALUES ('apply-user', 'apply@example.test', 1)`);
+  const workspace = await createWorkspace("Apply", "apply-user");
+  const { token } = await issueDevice("apply-user", "test", { ip: null, userAgent: null });
+  const auth = await verifyDeviceToken(token);
+  assert.ok(auth);
+  const { ticket } = await issueWebSocketTicket(auth);
+  const server = http.createServer();
+  const wss = attachLiveSocket(server);
+  const port = await listen(server);
+  const ws = new WebSocket(`ws://127.0.0.1:${port}/api/ws?ticket=${encodeURIComponent(ticket)}`);
+  const collector = messageCollector(ws);
+  try {
+    await once(ws, "open");
+    ws.send(JSON.stringify({ type: "hello", workspaceId: workspace.id, cursor: 0 }));
+    await collector.waitFor((message) => message.type === "snapshot");
+    resetSessionCatalogObservabilityForTest();
+    await upsertSession(workspace.id, "apply-peon", { id: "apply-session", status: "completed", startedAt: 1, endedAt: 2, lastActivityAt: 2 });
+    const event = await collector.waitFor((message) => message.type === "session");
+    ws.send(JSON.stringify({ type: "session:applied", cursor: event.cursor }));
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    const snapshot = sessionCatalogObservabilitySnapshot() as { durations: Record<string, { count: number }> };
+    assert.equal(snapshot.durations["client_apply:success"]?.count, 1);
+    ws.send(JSON.stringify({ type: "session:applied", cursor: event.cursor }));
+    ws.send(JSON.stringify({ type: "session:applied", cursor: Number(event.cursor) + 1000 }));
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    assert.equal((sessionCatalogObservabilitySnapshot() as { durations: Record<string, { count: number }> }).durations["client_apply:success"]?.count, 1);
+  } finally {
+    ws.close();
+    wss.close();
+    await closeServer(server);
+  }
 });
 
 test("session live index rejects a stale reconcile after a terminal update", async () => {

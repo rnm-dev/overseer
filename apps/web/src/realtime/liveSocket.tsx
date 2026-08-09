@@ -332,6 +332,10 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
           bump(msg.cursor);
           if (msg.payload && typeof msg.payload === "object") {
             for (const onSession of sessionHandlers.current) onSession(msg.payload as SessionLiveEvent);
+            const cursor = Number(msg.cursor) || 0;
+            if (cursor > 0 && sockRef.current?.readyState === WebSocket.OPEN) {
+              sockRef.current.send(JSON.stringify({ type: "session:applied", cursor }));
+            }
           }
           break;
         }

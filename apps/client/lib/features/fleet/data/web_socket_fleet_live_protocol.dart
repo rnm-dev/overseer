@@ -90,6 +90,11 @@ extension _WebSocketFleetLiveProtocol on WebSocketFleetLiveService {
         } else {
           state.pendingSessions.add(payload);
         }
+        if (cursor > 0) {
+          state.channel?.sink.add(
+            jsonEncode({'type': 'session:applied', 'cursor': cursor}),
+          );
+        }
       }
       return;
     }
