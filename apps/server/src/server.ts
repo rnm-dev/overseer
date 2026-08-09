@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import express from "express";
 import { config } from "./infrastructure/config/index.js";
-import { operatorAuth } from "./routes/helpers.js";
+import { operatorAuth } from "./routes/requestContext.js";
 import { agentRouter } from "./routes/agent.js";
 import { accountRouter, publicAuthRouter } from "./routes/auth.js";
 import { workspacesRouter } from "./routes/workspaces.js";

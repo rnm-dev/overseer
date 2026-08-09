@@ -6,7 +6,7 @@ import {
   canAccessIndexedSessionNow,
   canAccessProject,
 } from "../../access.js";
-import { ownerOnly, relay, withWorkspacePeon } from "../helpers.js";
+import { ownerOnly, relay, withWorkspacePeon } from "../requestContext.js";
 import { mintWebPreview } from "../../webPreview.js";
 import { runIdempotentFollowup, validCommandId } from "../../followupIdempotency.js";
 import { enrichLiveTranscriptEvent, enrichTranscriptMetadata } from "../../transcriptTimestamps.js";

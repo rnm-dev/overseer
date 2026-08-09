@@ -1,12 +1,19 @@
 {
-  "genericFileNames": ["utils.ts", "utils.tsx", "helpers.ts", "helpers.tsx", "common.ts", "common.tsx", "manager.ts", "manager.tsx"],
-  "allowedGenericFiles": ["apps/server/src/routes/helpers.ts"],
-  "allowedBoundaryViolations": [
+  "genericFileNames": [
+    "utils.ts",
+    "utils.tsx",
+    "helpers.ts",
+    "helpers.tsx",
+    "common.ts",
+    "common.tsx",
+    "manager.ts",
+    "manager.tsx"
   ],
+  "allowedGenericFiles": [],
+  "allowedBoundaryViolations": [],
   "allowedRuntimeCycleComponents": [],
   "allowedRootDomainFiles": [
     "access.ts",
-    "auth.ts",
     "credentials.ts",
     "fileErrorSafety.ts",
     "followupIdempotency.ts",
@@ -14,7 +21,6 @@
     "liveAccess.ts",
     "liveActivity.ts",
     "liveSocket.ts",
-    "peonClient.ts",
     "peonConnections.ts",
     "peonFileSandbox.ts",
     "peonSessionSync.ts",

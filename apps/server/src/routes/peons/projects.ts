@@ -3,7 +3,7 @@ import { registry, toView } from "../../registry.js";
 import { callPeon, connOfRecord, normalizePeonUrl, proxyFileDownload, proxyFileUpload, proxyGet, proxyUpload } from "../../infrastructure/peonHttp/index.js";
 import { reconcilePeon } from "../../sessionIndex.js";
 import { allowedProjects, canAccessProject, projectMemberCounts } from "../../access.js";
-import { ownerOnly, relay, restSegments, withWorkspacePeon } from "../helpers.js";
+import { ownerOnly, relay, restSegments, withWorkspacePeon } from "../requestContext.js";
 import {
   folderBrowseSelector,
   forgetIndexedProject,

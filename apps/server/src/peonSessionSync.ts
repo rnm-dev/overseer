@@ -40,7 +40,7 @@ import {
   parseDurableRuntimeState,
   RUNTIME_STATE_CAPABILITY,
   type DurableRuntimeState,
-} from "./modules/runtimeProjection.js";
+} from "./modules/fleet/index.js";
 
 export const SESSION_CATALOG_CAPABILITY = "session-catalog-v1";
 export const PROJECT_CATALOG_CAPABILITY = "project-catalog-v1";

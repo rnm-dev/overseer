@@ -5,7 +5,7 @@ import {
   LIVE_PREVIEW_LIMITS,
   reduceLivePreview,
   type LivePreviewAsset,
-} from "./modules/sessions/livePreviewState.js";
+} from "./livePreviewState.js";
 
 const hash = "a".repeat(64);
 const html: LivePreviewAsset = {

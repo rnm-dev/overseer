@@ -2,11 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type pg from "pg";
 import { newDb } from "pg-mem";
-import { setPool } from "./infrastructure/db/index.js";
+import { setPool } from "../../infrastructure/db/index.js";
 import {
   AttachmentReceiptError,
   recordCommittedAttachmentReceipt,
-} from "./modules/sessions/attachmentReceipts.js";
+} from "./attachmentReceipts.js";
 
 const WORKSPACE = "workspace-a";
 const PEON = "123e4567-e89b-42d3-a456-426614174000";

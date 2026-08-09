@@ -7,7 +7,7 @@ capability-specific documents; this page only governs selection and rollout.
 
 ## Controls
 
-`apps/server/src/modules/transportSelection.ts` chooses exactly one handler
+`apps/server/src/modules/reverseCommands/transportSelection.ts` chooses exactly one handler
 before execution. A selected reverse handler never evaluates or retries the
 legacy handler. The global emergency switches remain:
 

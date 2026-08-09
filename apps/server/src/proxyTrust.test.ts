@@ -9,7 +9,7 @@ import type pg from "pg";
 import { newDb } from "pg-mem";
 import { config } from "./infrastructure/config/index.js";
 import { initDb } from "./infrastructure/db/index.js";
-import { clientInfo } from "./routes/helpers.js";
+import { clientInfo } from "./routes/requestContext.js";
 import { createServer } from "./server.js";
 
 interface JsonResponse {

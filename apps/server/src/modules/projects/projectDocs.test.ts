@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { projectDocsFromSnapshot } from "./modules/projects/index.js";
-import { parseProjectDocumentationSnapshot } from "./modules/reverseCommands/reverseCommandTypes.js";
-import { peonsRouter } from "./routes/peons.js";
+import { projectDocsFromSnapshot } from "./index.js";
+import { parseProjectDocumentationSnapshot } from "../reverseCommands/reverseCommandTypes.js";
+import { peonsRouter } from "../../routes/peons.js";
 
 test("project docs route uses the concise stable-ID URL", () => {
   const router = peonsRouter() as unknown as { stack: { route?: { path?: string; methods?: Record<string, boolean> } }[] };

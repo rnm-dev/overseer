@@ -10,7 +10,7 @@ import {
   type VoicePipelineResult,
 } from "../infrastructure/voice/index.js";
 import { authorizeDictation } from "../modules/voice/index.js";
-import { userOf } from "./helpers.js";
+import { userOf } from "./requestContext.js";
 
 // Dictation: audio in, cleaned text out.
 //

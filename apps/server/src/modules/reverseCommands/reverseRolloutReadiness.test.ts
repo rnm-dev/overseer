@@ -5,11 +5,11 @@ import {
   resetReverseRolloutReadinessForTest,
   reverseRolloutReadinessSnapshot,
   runAcceptedReverseReconciliation,
-} from "./modules/reverseRolloutReadiness.js";
+} from "./reverseRolloutReadiness.js";
 import {
   resetTransportTelemetryForTest,
-} from "./modules/transportSelection.js";
-import { readReverseCommandStatus } from "./routes/peons.js";
+} from "./transportSelection.js";
+import { readReverseCommandStatus } from "../../routes/peons.js";
 
 test("real command status route stays reverse-authoritative after rollback", async () => {
   resetReverseRolloutReadinessForTest();

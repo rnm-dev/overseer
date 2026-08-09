@@ -1,7 +1,7 @@
 import express from "express";
 import { canAccessProject } from "../../access.js";
 import { callPeon, connOfRecord } from "../../infrastructure/peonHttp/index.js";
-import { relay, withWorkspacePeon } from "../helpers.js";
+import { relay, withWorkspacePeon } from "../requestContext.js";
 
 const root = "/workspaces/:wsId/peons/:id/armory";
 const ARMORY_PROJECT_PACKAGES_CAPABILITY = "armory-project-packages-v1";

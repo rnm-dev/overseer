@@ -6,7 +6,7 @@ import {
   registerLiveActivityStartToken,
   removeLiveActivityToken,
 } from "../liveActivity.js";
-import { withWorkspace } from "./helpers.js";
+import { withWorkspace } from "./requestContext.js";
 
 const providers = new Set<PushProvider>(["expo", "fcm", "apns"]);
 const platforms = new Set<PushPlatform>(["ios", "android"]);

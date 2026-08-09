@@ -30,7 +30,7 @@ test("runtime-state-v1 remains a socket projection", async () => {
       "../../../apps/peon/src/daemon/overseer/socket/channels/runtimeStateChannel.ts",
       import.meta.url,
     ), "utf8"),
-    readFile(new URL("../../../apps/server/src/modules/runtimeProjection.ts", import.meta.url), "utf8"),
+    readFile(new URL("../../../apps/server/src/modules/fleet/runtimeProjection.ts", import.meta.url), "utf8"),
   ]);
   assert.ok(peonChannel.includes('RUNTIME_STATE_CAPABILITY = "runtime-state-v1"'));
   assert.ok(peonChannel.includes('type: "runtime_state"'));

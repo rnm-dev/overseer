@@ -19,7 +19,7 @@ import {
 import type { PasswordSignInResult } from "../modules/auth/index.js";
 import { GithubAuthError } from "../infrastructure/github/index.js";
 import { getInvitePreview } from "../workspaces.js";
-import { bearer, clientInfo } from "./helpers.js";
+import { bearer, clientInfo } from "./requestContext.js";
 
 const rateBuckets = new Map<string, number[]>();
 

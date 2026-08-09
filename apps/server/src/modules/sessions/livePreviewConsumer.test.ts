@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import test from "node:test";
-import { LivePreviewConsumer, type LivePreviewEvent, type LivePreviewKey } from "./modules/sessions/livePreviewConsumer.js";
+import { LivePreviewConsumer, type LivePreviewEvent, type LivePreviewKey } from "./livePreviewConsumer.js";
 
 const key: LivePreviewKey = {
   workspaceId: "workspace",

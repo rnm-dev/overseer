@@ -12,7 +12,7 @@ import {
   updateMemberRole,
   type Role,
 } from "../workspaces.js";
-import { ownerOnly, userOf, withWorkspace } from "./helpers.js";
+import { ownerOnly, userOf, withWorkspace } from "./requestContext.js";
 import { canAccessPeon, canAccessProject, listMemberAccess, replaceMemberAccess, type MemberAccess } from "../access.js";
 import { registry } from "../registry.js";
 import { getIndexedSession } from "../sessionIndex.js";

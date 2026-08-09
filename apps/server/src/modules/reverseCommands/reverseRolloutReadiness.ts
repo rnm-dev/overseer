@@ -4,7 +4,7 @@ import {
   transportTelemetrySnapshot,
   type PeonTransportReason,
 } from "./transportSelection.js";
-import { reverseCommandMetricsSnapshot } from "./reverseCommands/index.js";
+import { reverseCommandMetricsSnapshot } from "./reverseCommandMetrics.js";
 import {
   reverseRolloutEvidence,
   type ReverseRolloutEvidence,

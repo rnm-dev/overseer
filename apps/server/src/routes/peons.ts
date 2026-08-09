@@ -5,8 +5,8 @@ import { registerProjectRoutes } from "./peons/projects.js";
 import { registerArmoryRoutes } from "./peons/armory.js";
 import { canAccessPeon } from "../access.js";
 import { reverseCommandGateway } from "../modules/reverseCommands/index.js";
-import { runAcceptedReverseReconciliation } from "../modules/reverseRolloutReadiness.js";
-import { withWorkspace } from "./helpers.js";
+import { runAcceptedReverseReconciliation } from "../modules/reverseCommands/index.js";
+import { withWorkspace } from "./requestContext.js";
 
 export async function readReverseCommandStatus<T>(
   read: () => Promise<T>,

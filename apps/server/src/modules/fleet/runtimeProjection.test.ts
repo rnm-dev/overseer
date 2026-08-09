@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import test from "node:test";
-import { parseDurableRuntimeState } from "./modules/runtimeProjection.js";
+import { parseDurableRuntimeState } from "./runtimeProjection.js";
 
 function canonical(value: unknown): string {
   if (value === null || typeof value !== "object") return JSON.stringify(value);

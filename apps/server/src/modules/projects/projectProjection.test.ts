@@ -15,7 +15,7 @@ import {
   refreshIndexedProjectQuickLinks,
   releaseProjectSyncGeneration,
 } from "./projectProjection.js";
-import { claimSessionSyncGeneration } from "../../sessionIndex.js";
+import { claimSessionSyncGeneration } from "../sessions/index.js";
 
 async function fixture() {
   const mem = newDb();

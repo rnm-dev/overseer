@@ -31,7 +31,7 @@ import {
   type ReverseCommandGateway,
   type ReverseCommandOperation,
 } from "./modules/reverseCommands/index.js";
-import { RUNTIME_STATE_CAPABILITY } from "./modules/runtimeProjection.js";
+import { RUNTIME_STATE_CAPABILITY } from "./modules/fleet/index.js";
 
 const ENDPOINT = "/api/v1/peons/ws";
 const PROTOCOL = 1;
