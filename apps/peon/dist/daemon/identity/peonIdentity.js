@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { settings } from "./settings/index.js";
+import { settings } from "../settings/index.js";
 // The stable identity this peon reports to the overseer, shared by the outbound
 // registrar (peonRegistrar) and the inbound recruitment endpoint (agentApi.ts's
 // /enroll). It lives here — rather than on either of those — so /enroll can

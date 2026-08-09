@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { sessions } from "./sessions/index.js";
+import { sessions } from "./index.js";
 import { toSessionSummary } from "./sessionSummary.js";
 export const SESSION_CATALOG_CAPABILITY = "session-catalog-v1";
 export const MAX_SESSION_CATALOG_EVENTS = 1_000;

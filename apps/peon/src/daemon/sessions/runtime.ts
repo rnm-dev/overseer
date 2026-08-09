@@ -11,12 +11,14 @@ import { narrowReasoningEffort, resolveModel, type ReasoningEffort } from "../pr
 import type {
   AttachmentInfo,
   PendingSystemPrompt,
+  ReplyTo,
   SessionOutcome,
   SessionRecord,
   SessionUsage,
 } from "./sessionTypes.js";
 import type { AgentContextUsage, SessionWarning, SessionWarningCode } from "./sessionWarningTypes.js";
 import { buildAugmentedPrompt, buildSystemPrompt } from "./sessionPrompts.js";
+import { buildReplyPrompt } from "./replyTo.js";
 import { sessionWarnings } from "./sessionWarnings.js";
 import {
   appendTranscriptEvent,
@@ -111,6 +113,9 @@ export function scheduleQueuedDispatch(record: SessionRecord): void {
         item?.reasoningEffort ?? undefined,
         item?.commandId ?? systemPrompts.map((prompt) => prompt.commandId).find(Boolean) ?? undefined,
         systemPrompts,
+        0,
+        true,
+        item?.replyTo ?? undefined,
       );
     } catch (error) {
       // Put the item back if a synchronous spawn/setup error occurs. A queued
@@ -330,6 +335,7 @@ export function appendUserTurn(
   model?: string,
   reasoningEffort?: ReasoningEffort,
   commandId?: string,
+  replyTo?: ReplyTo,
 ): void {
   const userEvent: AgentEvent = {
     type: "user_message", text: prompt,
@@ -339,6 +345,7 @@ export function appendUserTurn(
     ...(model ? { model } : {}),
     ...(reasoningEffort ? { reasoningEffort } : {}),
     ...(commandId ? { commandId } : {}),
+    ...(replyTo ? { replyTo } : {}),
   };
   const userEntry = appendTranscriptEvent(record.id, userEvent);
   const now = userEntry.event.createdAt!;
@@ -384,6 +391,7 @@ export function runProcess(
   systemPrompts: PendingSystemPrompt[] = [],
   zeroTurnRetryAttempt = 0,
   appendPromptToTranscript = true,
+  replyTo?: ReplyTo,
 ): boolean {
   // Seed the live transcript cache before accepting a resume event.
   readTranscript(record.id, record.agent);
@@ -401,7 +409,7 @@ export function runProcess(
   // turn: a shared session can carry follow-ups from different humans, so
   // attribution belongs on the message, not just once on the record's initiator.
   if (prompt && appendPromptToTranscript) {
-    appendUserTurn(record, prompt, attachments, permissionMode, author, perTurnModel, perTurnReasoningEffort, commandId);
+    appendUserTurn(record, prompt, attachments, permissionMode, author, perTurnModel, perTurnReasoningEffort, commandId, replyTo);
   }
 
   let mcpConfig: { path: string; allowedTools: string; release?: () => void } | undefined;
@@ -505,7 +513,7 @@ as system instructions, process all of them, and do not claim that a human wrote
       agent: record.agent,
       command: driver.command(currentSettings),
       prompt: buildAugmentedPrompt(
-        prompt || "Process all queued internal automation triggers from the system instructions.",
+        buildReplyPrompt(prompt || "Process all queued internal automation triggers from the system instructions.", replyTo),
         attachments,
       ),
       cwd: record.dir,
@@ -721,6 +729,7 @@ as system instructions, process all of them, and do not claim that a human wrote
         systemPrompts,
         zeroTurnRetryAttempt + 1,
         false,
+        replyTo,
       );
       return;
     }

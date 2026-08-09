@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { closeSync, constants, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, writeFileSync, } from "node:fs";
 import path from "node:path";
-import { stateDir } from "../../xdgPaths.js";
+import { stateDir } from "../../runtime/xdgPaths.js";
 const DEFAULT_RETENTION_MS = 7 * 24 * 60 * 60 * 1_000;
 const DEFAULT_MAX_RECORDS = 10_000;
 const DEFAULT_MAX_BYTES = 32 * 1024 * 1024;

@@ -1,4 +1,4 @@
-import { sessionWarnings } from "../../../sessionWarnings.js";
+import { sessionWarnings } from "../../../sessions/index.js";
 export const SESSION_WARNING_CAPABILITY = "session-warning-v1";
 export class SessionWarningChannel {
     capability = SESSION_WARNING_CAPABILITY;

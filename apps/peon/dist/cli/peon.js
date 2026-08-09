@@ -6,7 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildDaemonUnit } from "./systemdUnits.js";
 import { buildLaunchAgent } from "./launchdUnits.js";
-import { configDir } from "../daemon/xdgPaths.js";
+import { configDir } from "../daemon/runtime/xdgPaths.js";
 import { parseListenAddress } from "../shared/listenAddress.js";
 import { SECURE_FILE_HELPER } from "../shared/runtimePrerequisites.js";
 function configuredControlPort() {

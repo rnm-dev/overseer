@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { canonicalModel, isModelForAgent, listConfiguredAgents, narrowNewSessionAgent, narrowReasoningEffort, providerDefaultModel, reasoningEffortsForModel, } from "../modelCatalog.js";
+import { canonicalModel, isModelForAgent, listConfiguredAgents, narrowNewSessionAgent, narrowReasoningEffort, providerDefaultModel, reasoningEffortsForModel, } from "../providers/modelCatalog.js";
 import { SettingsStore } from "./settingsStore.js";
 import { parseListenAddress } from "../../shared/listenAddress.js";
 function parseModelValue(value) {

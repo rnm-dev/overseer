@@ -1,6 +1,6 @@
 import os from "node:os";
-import { settings } from "./settings/index.js";
-import { parseListenAddress } from "../shared/listenAddress.js";
+import { settings } from "../settings/index.js";
+import { parseListenAddress } from "../../shared/listenAddress.js";
 function directControlUrl() {
     const hostname = os.hostname();
     const host = hostname.includes(":") && !hostname.startsWith("[") ? `[${hostname}]` : hostname;

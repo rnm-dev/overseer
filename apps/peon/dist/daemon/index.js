@@ -1,16 +1,16 @@
 import { createControlServer } from "./controlServer.js";
 import { settings } from "./settings/index.js";
-import { sdNotify } from "./sdNotify.js";
+import { sdNotify } from "./runtime/sdNotify.js";
 import { peonRegistrar, peonSocket } from "./overseer/index.js";
 import { sessions } from "./sessions/index.js";
-import { updateChecker } from "./updateChecker.js";
-import { claudeCodeAuth } from "./claudeCodeAuth.js";
-import { configDir, stateDir } from "./xdgPaths.js";
+import { updateChecker } from "./updates/updateChecker.js";
+import { claudeCodeAuth } from "./providers/claudeCodeAuth.js";
+import { configDir, stateDir } from "./runtime/xdgPaths.js";
 import { createDaemonCompositionRoot } from "./bootstrap/compositionRoot.js";
 import { recoverInterruptedArmoryOperations, recoverInterruptedArmoryUninstalls } from "./armory/index.js";
 import { shutdownAgentDriverRuntimes } from "./agents/index.js";
 import { controlListenerHosts, isLoopbackBindHost } from "./controlListeners.js";
-import { recoverUpdateOperation } from "./updateOperations.js";
+import { recoverUpdateOperation } from "./updates/updateOperations.js";
 import { parseListenAddress } from "../shared/listenAddress.js";
 // Interface to bind. Defaults to all interfaces so enrolled Overseers can use
 // authenticated Fleet HTTP. `peon remote off` opts into loopback-only access.

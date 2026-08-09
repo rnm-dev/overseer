@@ -216,17 +216,33 @@ function previewEvent(raw: Record<string, unknown>): AgentEvent | null {
       ...(typeof raw.author === "string" ? { author: raw.author } : {}), ...timestamps,
     };
   }
-  if (raw.type === "user_message") return {
-    type: "user_message", text: typeof raw.text === "string" ? raw.text : "",
-    ...(Array.isArray(raw.attachments) ? { attachments: raw.attachments } : {}),
-    ...(typeof raw.permissionMode === "string" ? { permissionMode: raw.permissionMode } : {}),
-    ...(typeof raw.author === "string" ? { author: raw.author } : {}),
-    ...(typeof raw.model === "string" ? { model: raw.model } : {}),
-    ...(typeof raw.reasoningEffort === "string" ? { reasoningEffort: raw.reasoningEffort } : {}),
-    ...(typeof raw.commandId === "string" ? { commandId: raw.commandId } : {}), ...timestamps,
-  };
+  if (raw.type === "user_message") {
+    const replyTo = storedReplyTo(raw.replyTo);
+    return {
+      type: "user_message", text: typeof raw.text === "string" ? raw.text : "",
+      ...(Array.isArray(raw.attachments) ? { attachments: raw.attachments } : {}),
+      ...(typeof raw.permissionMode === "string" ? { permissionMode: raw.permissionMode } : {}),
+      ...(typeof raw.author === "string" ? { author: raw.author } : {}),
+      ...(typeof raw.model === "string" ? { model: raw.model } : {}),
+      ...(typeof raw.reasoningEffort === "string" ? { reasoningEffort: raw.reasoningEffort } : {}),
+      ...(typeof raw.commandId === "string" ? { commandId: raw.commandId } : {}),
+      ...(replyTo ? { replyTo } : {}), ...timestamps,
+    };
+  }
   if (raw.type === "stderr") return { type: "stderr", text: typeof raw.text === "string" ? raw.text : String(raw.text ?? ""), ...timestamps };
   return null;
+}
+
+// This sits at the provider-normalization boundary because Claude's legacy
+// reader reconstructs user_message envelopes field-by-field. Keep durable
+// reply metadata through a restart while refusing malformed historical rows.
+function storedReplyTo(value: unknown): { eventId: string; selectedText: string } | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const replyTo = value as Record<string, unknown>;
+  if (typeof replyTo.eventId !== "string" || !/^[A-Za-z0-9_-]{1,256}$/.test(replyTo.eventId)) return null;
+  if (typeof replyTo.selectedText !== "string" || !replyTo.selectedText.trim()) return null;
+  if ([...replyTo.selectedText].length > 8_192 || Buffer.byteLength(replyTo.selectedText, "utf8") > 16 * 1024) return null;
+  return { eventId: replyTo.eventId, selectedText: replyTo.selectedText };
 }
 
 function canonicalStored(raw: Record<string, unknown>): AgentEvent | null {

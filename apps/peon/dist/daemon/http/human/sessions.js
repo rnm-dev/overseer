@@ -1,6 +1,7 @@
 import express from "express";
 import { createAttachmentUpload, describeUploadError, cleanupUploadedFiles, toAttachmentInfo } from "../../uploads.js";
-import { parseSessionPageRequest, SessionPaginationError } from "../../sessionPagination.js";
+import { parseSessionPageRequest, SessionPaginationError } from "../../sessions/index.js";
+import { parseReplyTo, ReplyToError } from "../../sessions/index.js";
 function withUploadErrors(mw) {
     return (req, res, next) => mw(req, res, (err) => (err ? res.status(400).json({ error: describeUploadError(err) }) : next()));
 }
@@ -8,6 +9,10 @@ function createUploadMiddleware(id) {
     return withUploadErrors(createAttachmentUpload((req) => id(req)));
 }
 const SESSION_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function validatedReplyTo(service, id, value) {
+    const replyTo = parseReplyTo(value);
+    return replyTo ? service.validateReplyTo(id, replyTo) : undefined;
+}
 function requireKnownSession(service) {
     return (req, res, next) => {
         const id = String(req.params.id);
@@ -123,6 +128,15 @@ export function createHumanSessionsRouter(options) {
         }
         const model = narrowModel(req.body?.model, record.agent);
         const reasoningEffort = narrowReasoningEffort(req.body?.reasoningEffort, record.agent, model ?? record.model);
+        let replyTo;
+        try {
+            replyTo = validatedReplyTo(service, String(req.params.id), req.body?.replyTo);
+        }
+        catch (error) {
+            if (error instanceof ReplyToError)
+                return res.status(error.code === "REPLY_SOURCE_NOT_FOUND" ? 404 : 400).json({ error: error.message, code: error.code });
+            throw error;
+        }
         const uploadedFiles = req.files ?? [];
         const files = toAttachmentInfo(uploadedFiles);
         if (!prompt) {
@@ -130,7 +144,7 @@ export function createHumanSessionsRouter(options) {
             return res.status(400).json({ error: "prompt is required" });
         }
         try {
-            const updated = service.resume(String(req.params.id), prompt, files, permissionMode, resolveSessionAuthor(req), model, reasoningEffort);
+            const updated = service.resume(String(req.params.id), prompt, files, permissionMode, resolveSessionAuthor(req), model, reasoningEffort, undefined, false, replyTo);
             res.status(201).json(toPublicSessionRecord(updated));
         }
         catch (error) {
@@ -157,6 +171,15 @@ export function createHumanSessionsRouter(options) {
         }
         const model = narrowModel(req.body?.model, record.agent);
         const reasoningEffort = narrowReasoningEffort(req.body?.reasoningEffort, record.agent, model ?? record.model);
+        let replyTo;
+        try {
+            replyTo = validatedReplyTo(service, record.id, req.body?.replyTo);
+        }
+        catch (error) {
+            if (error instanceof ReplyToError)
+                return res.status(error.code === "REPLY_SOURCE_NOT_FOUND" ? 404 : 400).json({ error: error.message, code: error.code });
+            throw error;
+        }
         const uploadedFiles = req.files ?? [];
         const files = toAttachmentInfo(uploadedFiles);
         if (!prompt) {
@@ -164,7 +187,7 @@ export function createHumanSessionsRouter(options) {
             return res.status(400).json({ error: "prompt is required" });
         }
         try {
-            const updated = service.enqueue(record.id, prompt, files, permissionMode, resolveSessionAuthor(req), model, reasoningEffort, undefined, req.body?.startNow === "true" || req.body?.startNow === true);
+            const updated = service.enqueue(record.id, prompt, files, permissionMode, resolveSessionAuthor(req), model, reasoningEffort, undefined, req.body?.startNow === "true" || req.body?.startNow === true, replyTo);
             res.status(201).json(toPublicSessionRecord(updated));
         }
         catch (error) {
@@ -183,7 +206,18 @@ export function createHumanSessionsRouter(options) {
         const prompt = typeof req.body?.prompt === "string" ? req.body.prompt.trim() : "";
         if (!prompt)
             return res.status(400).json({ error: "prompt is required" });
-        const result = service.editQueued(req.params.id, req.params.itemId, prompt);
+        let replyTo;
+        try {
+            replyTo = req.body && Object.prototype.hasOwnProperty.call(req.body, "replyTo")
+                ? req.body.replyTo === null ? null : validatedReplyTo(service, req.params.id, req.body.replyTo)
+                : undefined;
+        }
+        catch (error) {
+            if (error instanceof ReplyToError)
+                return res.status(error.code === "REPLY_SOURCE_NOT_FOUND" ? 404 : 400).json({ error: error.message, code: error.code });
+            throw error;
+        }
+        const result = service.editQueued(req.params.id, req.params.itemId, prompt, replyTo);
         if (result === "unknown_session")
             return res.status(404).json({ error: "unknown session" });
         if (result === "not_found")

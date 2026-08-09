@@ -1,4 +1,4 @@
-import { previewText } from "./sessions/index.js";
+import { previewText } from "./index.js";
 export function toSessionSummary(record) {
     const bounded = (value) => typeof value === "string" ? previewText(value) || null : null;
     const title = bounded(record.title);

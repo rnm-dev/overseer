@@ -3,8 +3,8 @@ import { createHash, randomUUID } from "node:crypto";
 import { appendFile, mkdir, open, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { normalizeStoredAgentEvent } from "../agents/index.js";
-import { stateDir } from "../xdgPaths.js";
-import { decodeTranscriptCursor, encodeIndexedTranscriptCursor, TranscriptPaginationError, } from "../transcriptPagination.js";
+import { stateDir } from "../runtime/xdgPaths.js";
+import { decodeTranscriptCursor, encodeIndexedTranscriptCursor, TranscriptPaginationError, } from "./transcriptPagination.js";
 // Cohesion note: this file is the current transcript/session-artifact
 // repository boundary. The index lifecycle intentionally lives beside the
 // authoritative JSONL append queue so append, page read, deletion, and crash
@@ -145,11 +145,14 @@ export function persistSummary(record) {
         rmSync(temporary, { force: true });
     }
 }
-export function appendTranscriptEvent(id, event, now = Date.now) {
+export function appendTranscriptEvent(id, event, now = Date.now, preservedEventId) {
     // Stamp at the commit boundary so persisted history, transcript snapshots,
     // and the live SSE event all carry the same Peon-authored receive time.
     const committedEvent = { ...structuredClone(event), createdAt: now() };
-    const entry = { id: randomUUID(), event: committedEvent };
+    // Branches copy Peon's canonical transcript, including event identity. That
+    // keeps a copied user_message.replyTo.eventId resolvable inside the branch.
+    // Normal appends always mint a new ID; never accept an unsafe persisted ID.
+    const entry = { id: preservedEventId && SAFE_TRANSCRIPT_EVENT_ID.test(preservedEventId) ? preservedEventId : randomUUID(), event: committedEvent };
     const cached = transcriptCache.get(id);
     if (cached)
         cached.push(entry);

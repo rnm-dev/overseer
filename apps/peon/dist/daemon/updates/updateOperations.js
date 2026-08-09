@@ -1,12 +1,12 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { isGitCheckout, readLocalSha } from "../shared/repo.js";
+import { isGitCheckout, readLocalSha } from "../../shared/repo.js";
 import { startSelfUpdate } from "./selfUpdate.js";
 import { readUpdateCommandReceipt, writeUpdateCommandReceipt } from "./updateCommandReceipt.js";
 import { readUpdateRuntimeIdentity } from "./updateRuntimeIdentity.js";
 import { updateChecker } from "./updateChecker.js";
-const PACKAGE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+const PACKAGE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 const REQUEST_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 let preflightActive = false;
 function runtimeIdentity() {

@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
-import { settings } from "./settings/index.js";
+import { settings } from "../settings/index.js";
 import { claudeCodeAuth } from "./claudeCodeAuth.js";
 const execFileAsync = promisify(execFile);
 const CACHE_MS = 60_000;

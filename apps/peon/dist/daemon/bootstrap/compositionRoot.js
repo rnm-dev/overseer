@@ -1,5 +1,5 @@
-import { modelCatalog } from "../modelCatalog.js";
-import { cliUpdates } from "../cliUpdates.js";
+import { modelCatalog } from "../providers/modelCatalog.js";
+import { cliUpdates } from "../updates/cliUpdates.js";
 import { createArmoryStores, ArmoryConfigurationService, ArmoryMcpLifecycleService, ArmoryMcpRuntime, ArmoryPackageInstallService, ArmoryProjectPackagesService, ArmoryUninstallService, armoryInventory } from "../armory/index.js";
 import { createProjectService, projectStore } from "../projects/index.js";
 import { settings } from "../settings/index.js";

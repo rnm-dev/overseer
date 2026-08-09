@@ -86,7 +86,7 @@ test("configured rollout uses app-server end to end while persisted sessions rem
   await waitForCompleted(initial.id, 1);
   const resumed = sessions.get(initial.id)!;
   assert.equal(resumed.agent, "codex-app-server");
-  assert.equal(resumed.backendSessionId, "thread-1");
+  assert.equal(resumed.backendSessionId, "thread-2");
   assert.ok(readTranscript(initial.id, "codex-app-server").some((event) =>
-    event.type === "assistant" && JSON.stringify(event).includes("reply:thread-1:second")));
+    event.type === "assistant" && JSON.stringify(event).includes("reply:thread-2:second")));
 });

@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { closeSync, constants, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, writeFileSync, } from "node:fs";
 import path from "node:path";
 import { PEON_SOCKET_MAX_FRAME_BYTES, } from "./peonSocketProtocol.js";
-import { stateDir } from "../../xdgPaths.js";
+import { stateDir } from "../../runtime/xdgPaths.js";
 export const DEFAULT_PEON_SOCKET_OUTBOX_MESSAGES = 5_000;
 export const DEFAULT_PEON_SOCKET_OUTBOX_BYTES = 32 * 1024 * 1024;
 export const PEON_SOCKET_DURABLE_DELIVERY_CAPABILITY = "durable-delivery-v1";

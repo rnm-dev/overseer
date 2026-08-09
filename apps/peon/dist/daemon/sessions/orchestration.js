@@ -1,5 +1,5 @@
-import { canonicalModel, narrowReasoningEffort } from "../modelCatalog.js";
-import { MAX_TRANSCRIPT_CURSOR_LENGTH, TranscriptPaginationError, } from "../transcriptPagination.js";
+import { canonicalModel, narrowReasoningEffort } from "../providers/modelCatalog.js";
+import { MAX_TRANSCRIPT_CURSOR_LENGTH, TranscriptPaginationError, } from "./transcriptPagination.js";
 export const MAX_SESSION_SPAWN_DEPTH = 1;
 export const MAX_SESSION_SPAWN_PROMPT_LENGTH = 50_000;
 export const MAX_SESSION_SPAWN_NAME_LENGTH = 120;

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { MAX_PUBLISHED_TRANSCRIPT_EVENT_BYTES, MAX_TRANSCRIPT_SNAPSHOT_BYTES, MAX_TRANSCRIPT_SNAPSHOT_EVENTS, TRANSCRIPT_SYNC_CAPABILITY, TranscriptPublicationError, transcriptLiveEventFrame, transcriptPublication, } from "../../../transcriptPublication.js";
-export { MAX_TRANSCRIPT_SNAPSHOT_BYTES, MAX_TRANSCRIPT_SNAPSHOT_EVENTS, } from "../../../transcriptPublication.js";
+import { MAX_PUBLISHED_TRANSCRIPT_EVENT_BYTES, MAX_TRANSCRIPT_SNAPSHOT_BYTES, MAX_TRANSCRIPT_SNAPSHOT_EVENTS, TRANSCRIPT_SYNC_CAPABILITY, TranscriptPublicationError, transcriptLiveEventFrame, transcriptPublication, } from "../../../sessions/index.js";
+export { MAX_TRANSCRIPT_SNAPSHOT_BYTES, MAX_TRANSCRIPT_SNAPSHOT_EVENTS, } from "../../../sessions/index.js";
 export const DEFAULT_TRANSCRIPT_SNAPSHOT_PAGE_LIMIT = 50;
 export const MAX_TRANSCRIPT_SNAPSHOT_PAGE_LIMIT = 100;
 export const MAX_TRANSCRIPT_SNAPSHOT_PAGE_BYTES = 768 * 1024;

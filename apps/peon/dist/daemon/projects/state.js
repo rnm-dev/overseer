@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { closeSync, constants, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, writeFileSync, } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { configDir } from "../xdgPaths.js";
+import { configDir } from "../runtime/xdgPaths.js";
 import { ensureProjectDocs, migrateProjectMetadata } from "./docs.js";
 const STATE_PATH = path.join(configDir(), "projects.json");
 export const PROJECTS_ROOT = path.join(os.homedir(), "Projects");

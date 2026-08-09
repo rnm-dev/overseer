@@ -1,8 +1,8 @@
 import { accessSync, constants, existsSync, mkdirSync, readFileSync, rmdirSync, statSync, } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { configDir } from "../xdgPaths.js";
-import { ensurePrivateDirectory, secureExistingPrivateFile, writePrivateFileDurably, } from "../durablePrivateFile.js";
+import { configDir } from "../runtime/xdgPaths.js";
+import { ensurePrivateDirectory, secureExistingPrivateFile, writePrivateFileDurably, } from "../runtime/durablePrivateFile.js";
 const SETTINGS_PATH = path.join(configDir(), "settings.json");
 function commandAvailableOnPath(command) {
     const candidates = command.includes("/") || command.includes("\\")

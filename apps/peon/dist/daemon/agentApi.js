@@ -1,29 +1,29 @@
 import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import { createReadStream, createWriteStream, existsSync, mkdirSync, promises as fsPromises, readdirSync, renameSync, statSync, unlinkSync } from "node:fs";
-import { eventLoopDelayStats } from "./eventLoopMonitor.js";
+import { eventLoopDelayStats } from "./runtime/eventLoopMonitor.js";
 import path from "node:path";
 import express from "express";
 import { DaemonConfigurationState, settings } from "./settings/index.js";
 import { sessionArtifactInventory, sessions, toPublicSessionRecord, } from "./sessions/index.js";
 import { createProjectService, projectStore } from "./projects/index.js";
-import { pairing } from "./pairing.js";
-import { ensurePeonId } from "./peonIdentity.js";
-import { peonPublicUrl } from "./peonAddress.js";
-import { modelCatalog } from "./modelCatalog.js";
+import { pairing } from "./identity/pairing.js";
+import { ensurePeonId } from "./identity/peonIdentity.js";
+import { peonPublicUrl } from "./identity/peonAddress.js";
+import { modelCatalog } from "./providers/modelCatalog.js";
 import { agentServices, configureManagedPluginToolHandler, getAgentDriver, getAgentServiceDriver, getCodexAppServerRuntime } from "./agents/index.js";
-import { ManagedPluginInquiryError, ManagedPluginInquiryService, MANAGED_PLUGIN_INQUIRY_CAPABILITY, } from "./managedPluginInquiries.js";
-import { updateChecker } from "./updateChecker.js";
-import { applyUpdate, checkUpdate, updateOperationStatus } from "./updateOperations.js";
+import { ManagedPluginInquiryError, ManagedPluginInquiryService, MANAGED_PLUGIN_INQUIRY_CAPABILITY, } from "./plugins/managedPluginInquiries.js";
+import { updateChecker } from "./updates/updateChecker.js";
+import { applyUpdate, checkUpdate, updateOperationStatus } from "./updates/updateOperations.js";
 import { ARMORY_PROJECT_PACKAGES_CAPABILITY, createArmoryReadRouter } from "./armory/index.js";
 import { FileAccessService } from "./files/index.js";
-import { parseTranscriptPageRequest, parseTranscriptResumeEventId, transcriptResumeIndex, TranscriptPaginationError } from "./transcriptPagination.js";
-import { analyticsForSessions, parseSessionAnalyticsQuery, SessionAnalyticsQueryError } from "./sessionAnalytics.js";
+import { parseTranscriptPageRequest, parseTranscriptResumeEventId, transcriptResumeIndex, TranscriptPaginationError } from "./sessions/index.js";
+import { analyticsForSessions, parseSessionAnalyticsQuery, SessionAnalyticsQueryError } from "./sessions/index.js";
 import { attachProjectRoutes } from "./http/fleet/projects.js";
 import { attachSessionRoutes } from "./http/fleet/sessions.js";
 import { attachFleetProjectFileRoutes } from "./http/fleet/files.js";
 import { attachFleetSessionFileRoutes } from "./http/fleet/sessionFiles.js";
 import { PROTOCOL_VERSION } from "./protocol.js";
-import { UnauthorizedRateLimiter } from "./unauthorizedRateLimit.js";
+import { UnauthorizedRateLimiter } from "./runtime/unauthorizedRateLimit.js";
 // The machine-facing control surface a "overseer" (fleet control plane) uses
 // to drive this peon — see PROTOCOL.md. It is deliberately a *separate* router
 // from the human `/api/v1/*` surface in controlServer.ts: its own auth (a shared
@@ -214,10 +214,11 @@ export function createAgentRouter(options = {}) {
         rename: (id, title) => sessions.rename(id, title),
         start: (sessionOptions) => sessions.start(sessionOptions),
         branch: (id, branchOptions) => sessions.branch(id, branchOptions),
-        resume: (id, prompt, attachments, permissionMode, author, model, reasoningEffort, commandId) => sessions.resume(id, prompt, attachments, permissionMode, author, model, reasoningEffort, commandId),
-        enqueue: (id, prompt, attachments, permissionMode, author, model, reasoningEffort, commandId, startNow) => sessions.enqueue(id, prompt, attachments, permissionMode, author, model, reasoningEffort, commandId, startNow),
+        validateReplyTo: (id, replyTo) => sessions.validateReplyTo(id, replyTo),
+        resume: (id, prompt, attachments, permissionMode, author, model, reasoningEffort, commandId, notifyParentOnComplete, replyTo) => sessions.resume(id, prompt, attachments, permissionMode, author, model, reasoningEffort, commandId, notifyParentOnComplete, replyTo),
+        enqueue: (id, prompt, attachments, permissionMode, author, model, reasoningEffort, commandId, startNow, replyTo) => sessions.enqueue(id, prompt, attachments, permissionMode, author, model, reasoningEffort, commandId, startNow, replyTo),
         queued: (id) => sessions.queued(id),
-        editQueued: (id, itemId, prompt) => sessions.editQueued(id, itemId, prompt),
+        editQueued: (id, itemId, prompt, replyTo) => sessions.editQueued(id, itemId, prompt, replyTo),
         steerQueued: (id, itemId) => sessions.steerQueued(id, itemId),
         sendQueuedNow: (id, itemId) => sessions.sendQueuedNow(id, itemId),
         removeQueued: (id, itemId) => sessions.removeQueued(id, itemId),

@@ -1,5 +1,5 @@
 import path from "node:path";
-import { configDir, dataDir, stateDir } from "../xdgPaths.js";
+import { configDir, dataDir, stateDir } from "../runtime/xdgPaths.js";
 const PACKAGE_ID = /^[a-z0-9][a-z0-9-]{0,62}$/;
 export function createArmoryPaths(roots = { data: dataDir(), state: stateDir(), config: configDir() }) {
     const dataRoot = path.join(roots.data, "armory");

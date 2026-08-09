@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { runCliUpdateWorker } from "../daemon/cliUpdates.js";
+import { runCliUpdateWorker } from "../daemon/updates/cliUpdates.js";
 import { getAgentDriver } from "../daemon/agents/index.js";
 function value(name) {
     const index = process.argv.indexOf(name);

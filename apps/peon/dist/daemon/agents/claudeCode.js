@@ -1,5 +1,5 @@
-import { sourceTimestampMetadata } from "../agentEventMetadata.js";
-import { guardToolOutput } from "../sessionPayloadGuard.js";
+import { sourceTimestampMetadata } from "../sessions/index.js";
+import { guardToolOutput } from "../sessions/index.js";
 import { spawnJsonAgent } from "./spawnJsonAgent.js";
 import { normalizeFileToolInput } from "./toolPaths.js";
 export function buildClaudeCodeArgs(opts) {

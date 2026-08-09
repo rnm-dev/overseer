@@ -2,14 +2,14 @@ import { spawn } from "node:child_process";
 import { mkdirSync, openSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { sessions } from "./sessions/index.js";
-import { stateDir } from "./xdgPaths.js";
-import { isGitCheckout } from "../shared/repo.js";
-import { backgroundSupervisor } from "../shared/backgroundSupervisor.js";
+import { sessions } from "../sessions/index.js";
+import { stateDir } from "../runtime/xdgPaths.js";
+import { isGitCheckout } from "../../shared/repo.js";
+import { backgroundSupervisor } from "../../shared/backgroundSupervisor.js";
 // Repo root of *this* install, whichever shape it is — the compiled updater
 // lives at dist/cli/update.js under it. Same computation controlServer used
 // before this logic moved here: dist/daemon/selfUpdate.js → .. → dist → .. → root.
-const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 // Launches the detached self-updater (dist/cli/update.js). Shared by the human
 // POST /api/v1/control/update and the fleet-facing POST /api/v1/control/update
 // so both trigger the exact same update, refusing (unless forced) while a

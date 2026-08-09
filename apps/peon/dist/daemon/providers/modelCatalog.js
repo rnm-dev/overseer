@@ -1,4 +1,4 @@
-import { getAgentDriver, listAgentDrivers, REASONING_EFFORTS, } from "./agents/index.js";
+import { getAgentDriver, listAgentDrivers, REASONING_EFFORTS, } from "../agents/index.js";
 export { REASONING_EFFORTS };
 export const DEFAULT_MODEL = "claude-sonnet-5";
 function allDrivers() {

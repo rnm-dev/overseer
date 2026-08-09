@@ -4,11 +4,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import semver from "semver";
-import { settings } from "./settings/index.js";
-import { REPO_GIT_URL, readLocalSha, isGitCheckout } from "../shared/repo.js";
-import { fetchLatestNpmRelease } from "../shared/npmRegistry.js";
+import { settings } from "../settings/index.js";
+import { REPO_GIT_URL, readLocalSha, isGitCheckout } from "../../shared/repo.js";
+import { fetchLatestNpmRelease } from "../../shared/npmRegistry.js";
 const execFileAsync = promisify(execFile);
-const PACKAGE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+const PACKAGE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 const GIT_TIMEOUT_MS = 30_000;
 const defaultReadSettings = () => settings.getUpdateCheckerSettings();
 async function readRemoteSha() {

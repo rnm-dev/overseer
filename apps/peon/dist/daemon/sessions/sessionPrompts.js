@@ -1,4 +1,4 @@
-import { PROJECT_DOCS_INDEX, readProjectDoc } from "./projects/index.js";
+import { PROJECT_DOCS_INDEX, readProjectDoc } from "../projects/index.js";
 export const OUTCOME_SCHEMA = {
     type: "object",
     properties: {

@@ -3,10 +3,11 @@ import { mkdirSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { ATTACHMENTS_MAX_COUNT, ATTACHMENTS_MAX_FILE_BYTES } from "../../uploads.js";
 import { listAgentDrivers } from "../../agents/index.js";
-import { narrowNewSessionAgent, narrowModel, narrowReasoningEffort } from "../../modelCatalog.js";
+import { narrowNewSessionAgent, narrowModel, narrowReasoningEffort } from "../../providers/modelCatalog.js";
+import { parseReplyTo, ReplyToError } from "../../sessions/index.js";
 import { toPublicSessionRecord } from "../../sessions/index.js";
-import { toSessionSummary } from "../../sessionSummary.js";
-import { parseSessionPageRequest, SessionPaginationError } from "../../sessionPagination.js";
+import { toSessionSummary } from "../../sessions/index.js";
+import { parseSessionPageRequest, SessionPaginationError } from "../../sessions/index.js";
 import { fail } from "./error.js";
 // Extracted fleet session JSON routes:
 // - GET /sessions (including pagination)
@@ -44,6 +45,17 @@ export const INCLUDED_FLEET_SESSION_ROUTES = [
     "DELETE /sessions/:id/queue/:itemId",
     "POST /sessions/:id/cancel",
 ];
+function validateReplyTo(sessions, sessionId, value) {
+    const replyTo = parseReplyTo(value);
+    return replyTo ? sessions.validateReplyTo(sessionId, replyTo) : undefined;
+}
+function failReplyTo(res, error) {
+    if (!(error instanceof ReplyToError))
+        return false;
+    const status = error.code === "REPLY_SOURCE_NOT_FOUND" ? 404 : 400;
+    fail(res, status, error.code, error.message);
+    return true;
+}
 const IMAGE_MIME_BY_EXT = {
     png: "image/png",
     jpg: "image/jpeg",
@@ -248,6 +260,15 @@ export function attachSessionRoutes(router, options) {
         const model = narrowModel(req.body?.model, record.agent);
         const reasoningEffort = narrowReasoningEffort(req.body?.reasoningEffort, record.agent, model ?? record.model);
         const commandId = typeof req.body?.commandId === "string" && req.body.commandId.trim() ? req.body.commandId.trim() : undefined;
+        let replyTo;
+        try {
+            replyTo = validateReplyTo(sessions, req.params.id, req.body?.replyTo);
+        }
+        catch (error) {
+            if (failReplyTo(res, error))
+                return;
+            throw error;
+        }
         let attachments;
         try {
             attachments = resolveAttachments(req.body?.attachments, getFileTransferRoot());
@@ -258,7 +279,7 @@ export function attachSessionRoutes(router, options) {
             throw err;
         }
         try {
-            const updated = sessions.resume(req.params.id, prompt, attachments, permissionMode, req.actor ?? undefined, model, reasoningEffort, commandId);
+            const updated = sessions.resume(req.params.id, prompt, attachments, permissionMode, req.actor ?? undefined, model, reasoningEffort, commandId, false, replyTo);
             res.status(201).json(toPublicSessionRecord(updated));
         }
         catch (error) {
@@ -321,6 +342,15 @@ export function attachSessionRoutes(router, options) {
         const model = narrowModel(req.body?.model, record.agent);
         const reasoningEffort = narrowReasoningEffort(req.body?.reasoningEffort, record.agent, model ?? record.model);
         const commandId = typeof req.body?.commandId === "string" && req.body.commandId.trim() ? req.body.commandId.trim() : undefined;
+        let replyTo;
+        try {
+            replyTo = validateReplyTo(sessions, record.id, req.body?.replyTo);
+        }
+        catch (error) {
+            if (failReplyTo(res, error))
+                return;
+            throw error;
+        }
         let attachments;
         try {
             attachments = resolveAttachments(req.body?.attachments, getFileTransferRoot());
@@ -330,8 +360,15 @@ export function attachSessionRoutes(router, options) {
                 return fail(res, error.status, error.code, error.message);
             throw error;
         }
-        const updated = sessions.enqueue(record.id, prompt, attachments, permissionMode, req.actor ?? undefined, model, reasoningEffort, commandId, req.body?.startNow === true);
-        res.status(201).json(toPublicSessionRecord(updated));
+        try {
+            const updated = sessions.enqueue(record.id, prompt, attachments, permissionMode, req.actor ?? undefined, model, reasoningEffort, commandId, req.body?.startNow === true, replyTo);
+            res.status(201).json(toPublicSessionRecord(updated));
+        }
+        catch (error) {
+            if (failReplyTo(res, error))
+                return;
+            throw error;
+        }
     });
     router.get("/sessions/:id/queue", (req, res) => {
         const queue = sessions.queued(req.params.id);
@@ -343,7 +380,18 @@ export function attachSessionRoutes(router, options) {
         const prompt = typeof req.body?.prompt === "string" ? req.body.prompt.trim() : "";
         if (!prompt)
             return fail(res, 400, "BAD_REQUEST", "prompt is required");
-        const result = sessions.editQueued(req.params.id, req.params.itemId, prompt);
+        let replyTo;
+        try {
+            replyTo = req.body && Object.prototype.hasOwnProperty.call(req.body, "replyTo")
+                ? req.body.replyTo === null ? null : validateReplyTo(sessions, req.params.id, req.body.replyTo)
+                : undefined;
+        }
+        catch (error) {
+            if (failReplyTo(res, error))
+                return;
+            throw error;
+        }
+        const result = sessions.editQueued(req.params.id, req.params.itemId, prompt, replyTo);
         if (result === "unknown_session")
             return fail(res, 404, "UNKNOWN_SESSION", "unknown session");
         if (result === "not_found")

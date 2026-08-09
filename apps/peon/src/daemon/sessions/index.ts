@@ -8,6 +8,7 @@ export {
   SYSTEM_AUTHOR,
 } from "./service.js";
 export { toPublicSessionRecord, type PublicSessionRecord } from "./publicView.js";
+export { parseReplyTo, ReplyToError } from "./replyTo.js";
 export {
   flushTranscript,
   previewText,
@@ -123,6 +124,7 @@ export {
   type BackendTurnStatus,
   type PendingSystemPrompt,
   type QueuedFollowUp,
+  type ReplyTo,
   type SessionContextUsage,
   type SessionOutcome,
   type SessionRecord,

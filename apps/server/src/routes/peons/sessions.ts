@@ -229,7 +229,7 @@ export function registerSessionRoutes(router: express.Router): void {
       // accept the session and then fail every run. Refuse to route new work there.
       // Older peons that don't report agentAuth (or report "unknown") pass through:
       // we only block on a definitively bad CLI so un-upgraded peons keep working.
-      const blocked = await agentAuthBlocked(c.record, req.body?.agent);
+      const blocked = await agentAuthBlocked(c.record, req.body?.agent, req.body?.model);
       if (blocked) {
         return res.status(409).json({
           error: blocked === "unauthenticated" ? "this peon's Claude CLI is not signed in — sessions would fail" : "this peon's Claude CLI is broken — sessions would fail",
@@ -619,11 +619,33 @@ export function writeProjectedTranscriptSseEvent(
 // authState ("broken" | "unauthenticated") when new work must NOT be routed there,
 // or null when it's fine to proceed — including when we can't tell (peon
 // unreachable, no agentAuth field on an older peon, or authState "unknown").
-async function agentAuthBlocked(record: PeonRecord, agent: unknown): Promise<"broken" | "unauthenticated" | null> {
-if (typeof agent === "string" && agent !== "claude-code") return null;
-const r = await callPeon(connOfRecord(record), "GET", "/status");
-if (!r.ok || !r.json || typeof r.json !== "object") return null;
-const auth = (r.json as { agentAuth?: unknown }).agentAuth;
-const state = auth && typeof auth === "object" ? (auth as { authState?: unknown }).authState : undefined;
-return state === "broken" || state === "unauthenticated" ? state : null;
+export function effectiveAgentForAdmission(catalog: unknown, agent: unknown, model: unknown): string | null {
+  if (typeof agent === "string" && agent) return agent;
+  if (!catalog || typeof catalog !== "object") return null;
+  const body = catalog as { defaultAgent?: unknown; providers?: unknown };
+  if (typeof model === "string" && Array.isArray(body.providers)) {
+    for (const provider of body.providers) {
+      if (!provider || typeof provider !== "object") continue;
+      const candidate = provider as { agent?: unknown; models?: unknown };
+      if (typeof candidate.agent !== "string" || !Array.isArray(candidate.models)) continue;
+      const matches = candidate.models.some((entry) => entry && typeof entry === "object"
+        && ((entry as { id?: unknown }).id === model || (entry as { alias?: unknown }).alias === model));
+      if (matches) return candidate.agent;
+    }
+  }
+  return typeof body.defaultAgent === "string" ? body.defaultAgent : null;
+}
+
+async function agentAuthBlocked(record: PeonRecord, agent: unknown, model: unknown): Promise<"broken" | "unauthenticated" | null> {
+  let effectiveAgent = typeof agent === "string" && agent ? agent : null;
+  if (!effectiveAgent) {
+    const catalog = await callPeon(connOfRecord(record), "GET", "/models");
+    effectiveAgent = effectiveAgentForAdmission(catalog.ok ? catalog.json : null, agent, model);
+  }
+  if (effectiveAgent && effectiveAgent !== "claude-code") return null;
+  const r = await callPeon(connOfRecord(record), "GET", "/status");
+  if (!r.ok || !r.json || typeof r.json !== "object") return null;
+  const auth = (r.json as { agentAuth?: unknown }).agentAuth;
+  const state = auth && typeof auth === "object" ? (auth as { authState?: unknown }).authState : undefined;
+  return state === "broken" || state === "unauthenticated" ? state : null;
 }

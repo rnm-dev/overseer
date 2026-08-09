@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { CommittedTranscriptLimitError, flushTranscript, readCommittedTranscriptEntriesBounded, sessions, subscribeTranscriptCommits, } from "./sessions/index.js";
+import { CommittedTranscriptLimitError, flushTranscript, readCommittedTranscriptEntriesBounded, sessions, subscribeTranscriptCommits, } from "./index.js";
 export const TRANSCRIPT_SYNC_CAPABILITY = "transcript-sync-v1";
 export const MAX_PUBLISHED_TRANSCRIPT_EVENT_BYTES = 192 * 1024;
 export const MAX_TRANSCRIPT_SNAPSHOT_EVENTS = 20_000;

@@ -1,6 +1,6 @@
 import { closeSync, constants, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, writeFileSync, } from "node:fs";
 import path from "node:path";
-import { stateDir } from "./xdgPaths.js";
+import { stateDir } from "../runtime/xdgPaths.js";
 const STATES = new Set(["running", "ready_to_attest", "succeeded", "failed"]);
 const REVISION = /^[0-9A-Za-z._:+-]{1,128}$/;
 const SHA256 = /^[0-9a-f]{64}$/;

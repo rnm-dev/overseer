@@ -1,4 +1,4 @@
-import { SESSION_CATALOG_CAPABILITY, SessionCatalogError, sessionCatalog, } from "../../../sessionCatalog.js";
+import { SESSION_CATALOG_CAPABILITY, SessionCatalogError, sessionCatalog, } from "../../../sessions/index.js";
 const FRAME_TYPES = new Set([
     "session_catalog_snapshot_request",
     "session_catalog_snapshot_cancel",

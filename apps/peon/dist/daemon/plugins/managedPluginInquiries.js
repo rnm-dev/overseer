@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { stateDir } from "./xdgPaths.js";
+import { stateDir } from "../runtime/xdgPaths.js";
 export const MANAGED_PLUGIN_INQUIRY_CAPABILITY = "managed-plugin-inquiry-v1";
 export const MANAGED_PLUGIN_INQUIRY_TTL_MS = 10 * 60_000;
 const MANAGED_PLUGIN_IDS = new Set(["posthog@openai-curated-remote"]);
