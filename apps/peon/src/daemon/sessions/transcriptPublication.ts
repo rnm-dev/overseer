@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { AgentEvent } from "../agents/index.js";
-import type { CodingAgent } from "../modelCatalog.js";
+import type { CodingAgent } from "../providers/modelCatalog.js";
 import {
   CommittedTranscriptLimitError,
   flushTranscript,

@@ -1,6 +1,6 @@
 import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import { createReadStream, createWriteStream, existsSync, mkdirSync, promises as fsPromises, readdirSync, renameSync, statSync, unlinkSync } from "node:fs";
-import { eventLoopDelayStats } from "./eventLoopMonitor.js";
+import { eventLoopDelayStats } from "./runtime/eventLoopMonitor.js";
 import path from "node:path";
 import express from "express";
 import { DaemonConfigurationState, settings, type SettingsPatchError } from "./settings/index.js";
@@ -15,19 +15,19 @@ import {
 } from "./sessions/index.js";
 import { ATTACHMENTS_MAX_COUNT, ATTACHMENTS_MAX_FILE_BYTES } from "./uploads.js";
 import { createProjectService, projectStore, type ProjectService } from "./projects/index.js";
-import { pairing } from "./pairing.js";
-import { ensurePeonId } from "./peonIdentity.js";
-import { peonPublicUrl } from "./peonAddress.js";
-import { modelCatalog } from "./modelCatalog.js";
+import { pairing } from "./identity/pairing.js";
+import { ensurePeonId } from "./identity/peonIdentity.js";
+import { peonPublicUrl } from "./identity/peonAddress.js";
+import { modelCatalog } from "./providers/modelCatalog.js";
 import { agentServices, configureManagedPluginToolHandler, getAgentDriver, getAgentServiceDriver, getCodexAppServerRuntime } from "./agents/index.js";
 import {
   ManagedPluginInquiryError,
   ManagedPluginInquiryService,
   MANAGED_PLUGIN_INQUIRY_CAPABILITY,
-} from "./managedPluginInquiries.js";
-import { updateChecker } from "./updateChecker.js";
-import { applyUpdate, checkUpdate, updateOperationStatus } from "./updateOperations.js";
-import type { QuotaProvider } from "./providerQuota.js";
+} from "./plugins/managedPluginInquiries.js";
+import { updateChecker } from "./updates/updateChecker.js";
+import { applyUpdate, checkUpdate, updateOperationStatus } from "./updates/updateOperations.js";
+import type { QuotaProvider } from "./providers/providerQuota.js";
 import { ARMORY_PROJECT_PACKAGES_CAPABILITY, createArmoryReadRouter, type ArmoryApiServices, type ArmoryInventoryReader } from "./armory/index.js";
 import { AtomicFileUpload, type FileAccessContract, FileAccessService, moveProjectFile } from "./files/index.js";
 import { parseTranscriptPageRequest, parseTranscriptResumeEventId, transcriptResumeIndex, TranscriptPaginationError } from "./sessions/index.js";
@@ -37,7 +37,7 @@ import { attachSessionRoutes, type FleetSessionService, type FleetSessionRouterD
 import { attachFleetProjectFileRoutes, type FleetProjectFileReader } from "./http/fleet/files.js";
 import { attachFleetSessionFileRoutes } from "./http/fleet/sessionFiles.js";
 import { PROTOCOL_VERSION } from "./protocol.js";
-import { UnauthorizedRateLimiter } from "./unauthorizedRateLimit.js";
+import { UnauthorizedRateLimiter } from "./runtime/unauthorizedRateLimit.js";
 
 // The machine-facing control surface a "overseer" (fleet control plane) uses
 // to drive this peon — see PROTOCOL.md. It is deliberately a *separate* router

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { UnauthorizedRateLimiter } from "../unauthorizedRateLimit.js";
+import { UnauthorizedRateLimiter } from "../runtime/unauthorizedRateLimit.js";
 
 test("only failed remote authorization attempts consume the bounded window", () => {
   let now = 1_000;

@@ -10,7 +10,7 @@ process.env.XDG_CONFIG_HOME = mkdtempSync(path.join(os.tmpdir(), "peon-test-conf
 process.env.XDG_STATE_HOME = mkdtempSync(path.join(os.tmpdir(), "peon-test-state-"));
 
 const { settings } = await import("../settings/index.js");
-const { updateChecker } = await import("../updateChecker.js");
+const { updateChecker } = await import("../updates/updateChecker.js");
 const { createAgentRouter } = await import("../agentApi.js");
 
 const token = "status-test-token";

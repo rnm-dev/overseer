@@ -6,7 +6,7 @@ import {
   type ModelInfo,
   type ReasoningEffort,
   type ReasoningEffortInfo,
-} from "./agents/index.js";
+} from "../agents/index.js";
 
 export { REASONING_EFFORTS };
 export type { CodingAgent, ModelInfo, ReasoningEffort, ReasoningEffortInfo };

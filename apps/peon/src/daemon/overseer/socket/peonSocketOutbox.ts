@@ -18,7 +18,7 @@ import { PEON_SOCKET_MAX_FRAME_BYTES, type
   PeonSocketFrame,
   PeonSocketPriority,
 } from "./peonSocketProtocol.js";
-import { stateDir } from "../../xdgPaths.js";
+import { stateDir } from "../../runtime/xdgPaths.js";
 
 export const DEFAULT_PEON_SOCKET_OUTBOX_MESSAGES = 5_000;
 export const DEFAULT_PEON_SOCKET_OUTBOX_BYTES = 32 * 1024 * 1024;

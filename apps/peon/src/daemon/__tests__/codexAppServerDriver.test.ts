@@ -8,7 +8,7 @@ import type { AgentEvent, AgentRun, AgentRunOptions, AgentSteerInput } from "../
 import { getAgentDriver, listAgentDrivers } from "../agents/index.js";
 import { CodexAppServerRuntime } from "../agents/runtimes/codexAppServerRuntime.js";
 import { createCodexAppServerRun, forkCodexAppServerThread, reconcileCodexAppServerTurn } from "../agents/codexAppServer.js";
-import { modelCatalog, narrowNewSessionAgent } from "../modelCatalog.js";
+import { modelCatalog, narrowNewSessionAgent } from "../providers/modelCatalog.js";
 
 const fixture = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures", "fakeCodexAppServer.mjs");
 

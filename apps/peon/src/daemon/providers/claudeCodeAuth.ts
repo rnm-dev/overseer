@@ -2,8 +2,8 @@ import { execFile } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
-import { settings } from "./settings/index.js";
-import { configDir } from "./xdgPaths.js";
+import { settings } from "../settings/index.js";
+import { configDir } from "../runtime/xdgPaths.js";
 
 const execFileAsync = promisify(execFile);
 

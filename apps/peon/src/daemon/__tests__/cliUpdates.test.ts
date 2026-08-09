@@ -4,7 +4,7 @@ import { mkdtempSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { CliUpdateError, CliUpdateManager, parseCliVersion } from "../cliUpdates.js";
+import { CliUpdateError, CliUpdateManager, parseCliVersion } from "../updates/cliUpdates.js";
 
 test("parses provider version output", () => {
   assert.equal(parseCliVersion("codex-cli 0.137.0"), "0.137.0");

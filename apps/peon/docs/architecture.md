@@ -88,9 +88,20 @@ src/
     armory/
       ...
 
+    updates/          # check, download, apply, roll back, and report a release
+    providers/        # model catalog, provider capability and quota probes
+    identity/         # Peon identity, reachable address, enrollment pairing
+    plugins/          # managed plugin inquiries
+    runtime/          # process facilities: xdg paths, sd_notify, rate limits
+
   cli/
   shared/
 ```
+
+The daemon root holds only the transports and the entry point — `agentApi.ts`,
+`controlServer.ts`, `controlListeners.ts`, `scopedMcp.ts`, `sessionMcpAuth.ts`,
+`mcpBindings.ts`, `uploads.ts`, `protocol.ts` and `index.ts`. A file that is not
+a transport belongs in a feature directory.
 
 This is a destination map, not a requirement to create empty directories. Add a directory only
 when code belonging to that boundary exists.

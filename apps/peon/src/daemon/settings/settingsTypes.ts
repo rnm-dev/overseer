@@ -1,4 +1,4 @@
-import type { CodingAgent, ReasoningEffort } from "../modelCatalog.js";
+import type { CodingAgent, ReasoningEffort } from "../providers/modelCatalog.js";
 
 export interface DaemonSettings {
   updateCheckIntervalMs: number;

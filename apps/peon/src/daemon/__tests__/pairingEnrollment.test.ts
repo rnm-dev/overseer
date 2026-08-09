@@ -10,7 +10,7 @@ process.env.XDG_CONFIG_HOME = mkdtempSync(path.join(os.tmpdir(), "peon-enrollmen
 process.env.XDG_STATE_HOME = mkdtempSync(path.join(os.tmpdir(), "peon-enrollment-state-"));
 
 const { settings } = await import("../settings/index.js");
-const { pairing } = await import("../pairing.js");
+const { pairing } = await import("../identity/pairing.js");
 const { createAgentRouter } = await import("../agentApi.js");
 const { registrationPayload } = await import("../overseer/peonRegistrar.js");
 

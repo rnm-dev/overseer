@@ -1,5 +1,5 @@
 import type { AgentEvent } from "../agents/index.js";
-import type { CodingAgent, ReasoningEffort } from "../modelCatalog.js";
+import type { CodingAgent, ReasoningEffort } from "../providers/modelCatalog.js";
 import type { SessionPage } from "./sessionPagination.js";
 import type { AttachmentInfo, QueuedFollowUp, SessionOutcome, SessionRecord, SessionStats, StatsPeriod } from "./sessionTypes.js";
 

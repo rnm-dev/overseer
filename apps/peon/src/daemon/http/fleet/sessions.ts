@@ -4,7 +4,7 @@ import path from "node:path";
 import express from "express";
 import { ATTACHMENTS_MAX_COUNT, ATTACHMENTS_MAX_FILE_BYTES } from "../../uploads.js";
 import { getAgentDriver, listAgentDrivers } from "../../agents/index.js";
-import { narrowNewSessionAgent, narrowModel, narrowReasoningEffort, type CodingAgent, type ReasoningEffort } from "../../modelCatalog.js";
+import { narrowNewSessionAgent, narrowModel, narrowReasoningEffort, type CodingAgent, type ReasoningEffort } from "../../providers/modelCatalog.js";
 import type { AttachmentInfo, SessionJsonService, SessionRecord } from "../../sessions/index.js";
 import { toPublicSessionRecord } from "../../sessions/index.js";
 import { toSessionSummary } from "../../sessions/index.js";

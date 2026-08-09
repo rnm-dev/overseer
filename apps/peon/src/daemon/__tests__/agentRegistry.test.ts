@@ -11,7 +11,7 @@ import {
   shutdownAgentDriverRuntimes,
   type AgentDriver,
 } from "../agents/index.js";
-import { modelCatalog, narrowNewSessionAgent } from "../modelCatalog.js";
+import { modelCatalog, narrowNewSessionAgent } from "../providers/modelCatalog.js";
 import { parseSessionAnalyticsQuery } from "../sessions/sessionAnalytics.js";
 
 describe("agent driver registry", () => {

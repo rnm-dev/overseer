@@ -1,4 +1,4 @@
-import { canonicalModel, narrowReasoningEffort, type AiProvider, type CodingAgent, type ReasoningEffort } from "../modelCatalog.js";
+import { canonicalModel, narrowReasoningEffort, type AiProvider, type CodingAgent, type ReasoningEffort } from "../providers/modelCatalog.js";
 import type { SessionOutcome, SessionRecord, SessionStatus } from "./sessionTypes.js";
 import {
   MAX_TRANSCRIPT_CURSOR_LENGTH,

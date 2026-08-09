@@ -8,7 +8,7 @@ import {
   sameUpdateReleaseIdentity,
   updateRuntimeIdentityPath,
   writeUpdateRuntimeIdentity,
-} from "../updateRuntimeIdentity.js";
+} from "../updates/updateRuntimeIdentity.js";
 
 test("replacement runtime identity preserves exact version, revision and SHA-256", () => {
   const root = mkdtempSync(path.join(os.tmpdir(), "peon-runtime-identity-"));

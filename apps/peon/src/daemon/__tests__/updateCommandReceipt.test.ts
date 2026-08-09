@@ -3,8 +3,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { readUpdateCommandReceipt, writeUpdateCommandReceipt } from "../updateCommandReceipt.js";
-import { recoverUpdateOperation, updateOperationStatus } from "../updateOperations.js";
+import { readUpdateCommandReceipt, writeUpdateCommandReceipt } from "../updates/updateCommandReceipt.js";
+import { recoverUpdateOperation, updateOperationStatus } from "../updates/updateOperations.js";
 
 function isolated(run: () => void): void {
   const directory = mkdtempSync(path.join(os.tmpdir(), "peon-update-http-"));

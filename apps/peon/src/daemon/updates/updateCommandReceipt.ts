@@ -3,7 +3,7 @@ import {
   readFileSync, renameSync, writeFileSync,
 } from "node:fs";
 import path from "node:path";
-import { stateDir } from "./xdgPaths.js";
+import { stateDir } from "../runtime/xdgPaths.js";
 
 export type UpdateCommandReceipt = {
   version: 1;

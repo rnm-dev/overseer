@@ -28,20 +28,20 @@ import { fileURLToPath } from "node:url";
 import semver from "semver";
 import { isGitCheckout } from "../shared/repo.js";
 import { fetchLatestNpmRelease, peonNpmSpec } from "../shared/npmRegistry.js";
-import { readUpdateCommandReceipt, writeUpdateCommandReceipt } from "../daemon/updateCommandReceipt.js";
+import { readUpdateCommandReceipt, writeUpdateCommandReceipt } from "../daemon/updates/updateCommandReceipt.js";
 import {
   readUpdateRuntimeIdentity,
   updateRuntimeIdentityPath,
   writeUpdateRuntimeIdentity,
   type UpdateReleaseIdentity,
-} from "../daemon/updateRuntimeIdentity.js";
+} from "../daemon/updates/updateRuntimeIdentity.js";
 import { globalInstallArgs, rollbackPackArgs } from "./npmGlobalInstall.js";
 import {
   daemonRestartCommand,
   printDaemonServiceStatus,
   restartDaemonService,
 } from "./serviceControl.js";
-import { configDir } from "../daemon/xdgPaths.js";
+import { configDir } from "../daemon/runtime/xdgPaths.js";
 import { parseListenAddress } from "../shared/listenAddress.js";
 
 const PACKAGE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");

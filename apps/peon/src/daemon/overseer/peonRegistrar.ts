@@ -2,8 +2,8 @@ import os from "node:os";
 import { settings, type PeonRegistrarSettings } from "../settings/index.js";
 import { sessions } from "../sessions/index.js";
 import { PROTOCOL_VERSION } from "../protocol.js";
-import { ensurePeonId } from "../peonIdentity.js";
-import { peonPublicUrl } from "../peonAddress.js";
+import { ensurePeonId } from "../identity/peonIdentity.js";
+import { peonPublicUrl } from "../identity/peonAddress.js";
 import { parseListenAddress } from "../../shared/listenAddress.js";
 import { ARMORY_PROJECT_PACKAGES_CAPABILITY } from "../armory/index.js";
 

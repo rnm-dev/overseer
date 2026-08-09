@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { settings } from "../../../settings/index.js";
 import { sessions } from "../../../sessions/index.js";
 import { listAgentDrivers } from "../../../agents/index.js";
-import { modelCatalog } from "../../../modelCatalog.js";
+import { modelCatalog } from "../../../providers/modelCatalog.js";
 import type { PeonSocketChannel, PeonSocketFrame, PeonSocketSender } from "../peonSocketProtocol.js";
 
 export const RUNTIME_STATE_CAPABILITY = "runtime-state-v1";

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { runCliUpdateWorker, type CliUpdateProvider } from "../daemon/cliUpdates.js";
+import { runCliUpdateWorker, type CliUpdateProvider } from "../daemon/updates/cliUpdates.js";
 import { getAgentDriver } from "../daemon/agents/index.js";
 
 function value(name: string): string {

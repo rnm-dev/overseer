@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import type { CodexAppServerHealth, CodexAppServerRuntime } from "./agents/index.js";
-import type { SessionRecord } from "./sessions/index.js";
-import { stateDir } from "./xdgPaths.js";
+import type { CodexAppServerHealth, CodexAppServerRuntime } from "../agents/index.js";
+import type { SessionRecord } from "../sessions/index.js";
+import { stateDir } from "../runtime/xdgPaths.js";
 
 export const MANAGED_PLUGIN_INQUIRY_CAPABILITY = "managed-plugin-inquiry-v1";
 export const MANAGED_PLUGIN_INQUIRY_TTL_MS = 10 * 60_000;

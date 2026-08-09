@@ -14,7 +14,7 @@ const projectDir = mkdtempSync(path.join(os.tmpdir(), "peon-session-project-id-p
 
 // xdgPaths appends `.peon`; prepare the legacy-compatible project store before
 // importing either singleton so session restoration can resolve its identity.
-const { configDir } = await import("../xdgPaths.js");
+const { configDir } = await import("../runtime/xdgPaths.js");
 mkdirSync(configDir(), { recursive: true });
 writeFileSync(path.join(configDir(), "projects.json"), JSON.stringify({
   projects: {

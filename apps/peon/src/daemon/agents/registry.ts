@@ -1,13 +1,13 @@
 import type { EventEmitter } from "node:events";
 import path from "node:path";
 import { storedTimestampMetadata } from "../sessions/index.js";
-import { claudeCodeAuth } from "../claudeCodeAuth.js";
+import { claudeCodeAuth } from "../providers/claudeCodeAuth.js";
 import { CODEX_OUTCOME_SCHEMA, OUTCOME_SCHEMA } from "../sessions/index.js";
 import type { DaemonSettings } from "../settings/index.js";
 import { forkClaudeCodeSession, normalizeClaudeCodeEvent, runClaudeCode } from "./claudeCode.js";
 import { codexAppServerHealth, forkCodexAppServerThread, reconcileCodexAppServerTurn, runCodexAppServer, shutdownCodexAppServerRuntime } from "./codexAppServer.js";
-import { getClaudeQuota, getCodexQuota, type ProviderQuotaSnapshot } from "../providerQuota.js";
-import { getClaudeCapabilities, getCodexCapabilities, type ProviderCapabilitiesSnapshot } from "../providerCapabilities.js";
+import { getClaudeQuota, getCodexQuota, type ProviderQuotaSnapshot } from "../providers/providerQuota.js";
+import { getClaudeCapabilities, getCodexCapabilities, type ProviderCapabilitiesSnapshot } from "../providers/providerCapabilities.js";
 import type { AgentContextUsage } from "../sessions/index.js";
 
 export type CodingAgent = string;

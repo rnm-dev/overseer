@@ -8,7 +8,7 @@ import {
   providerDefaultModel,
   reasoningEffortsForModel,
   resolveModel,
-} from "../modelCatalog.js";
+} from "../providers/modelCatalog.js";
 
 test("models and aliases are provider-aware and canonicalized", () => {
   assert.equal(canonicalModel("codex-app-server", "gpt-5.4"), "gpt-5.4");

@@ -10,12 +10,12 @@ import {
 import os from "node:os";
 import path from "node:path";
 import type { DaemonSettings } from "./settingsTypes.js";
-import { configDir } from "../xdgPaths.js";
+import { configDir } from "../runtime/xdgPaths.js";
 import {
   ensurePrivateDirectory,
   secureExistingPrivateFile,
   writePrivateFileDurably,
-} from "../durablePrivateFile.js";
+} from "../runtime/durablePrivateFile.js";
 
 const SETTINGS_PATH = path.join(configDir(), "settings.json");
 

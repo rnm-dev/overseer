@@ -3,7 +3,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
-import { settings } from "./settings/index.js";
+import { settings } from "../settings/index.js";
 import { QUOTA_PROVIDERS, type QuotaProvider } from "./providerQuota.js";
 
 const execFileAsync = promisify(execFile);

@@ -2,15 +2,15 @@ import { spawn } from "node:child_process";
 import { mkdirSync, openSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { sessions } from "./sessions/index.js";
-import { stateDir } from "./xdgPaths.js";
-import { isGitCheckout } from "../shared/repo.js";
-import { backgroundSupervisor } from "../shared/backgroundSupervisor.js";
+import { sessions } from "../sessions/index.js";
+import { stateDir } from "../runtime/xdgPaths.js";
+import { isGitCheckout } from "../../shared/repo.js";
+import { backgroundSupervisor } from "../../shared/backgroundSupervisor.js";
 
 // Repo root of *this* install, whichever shape it is — the compiled updater
 // lives at dist/cli/update.js under it. Same computation controlServer used
 // before this logic moved here: dist/daemon/selfUpdate.js → .. → dist → .. → root.
-const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 
 export interface SelfUpdateResult {
   // Whether the updater was actually launched.

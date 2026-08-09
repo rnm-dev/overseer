@@ -1,8 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
 import path from "node:path";
 import { existsSync, readFileSync } from "node:fs";
-import { writePrivateFileDurably, ensurePrivateDirectory, secureExistingPrivateFile } from "../durablePrivateFile.js";
-import { stateDir } from "../xdgPaths.js";
+import { writePrivateFileDurably, ensurePrivateDirectory, secureExistingPrivateFile } from "../runtime/durablePrivateFile.js";
+import { stateDir } from "../runtime/xdgPaths.js";
 import { settings, type DaemonConfigurationView, type SettingsService } from "./settingsService.js";
 
 export const DAEMON_CONFIGURATION_SCHEMA_VERSION = 1;

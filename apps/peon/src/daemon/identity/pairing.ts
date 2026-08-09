@@ -1,5 +1,5 @@
 import { createHash, randomInt, timingSafeEqual } from "node:crypto";
-import { settings } from "./settings/index.js";
+import { settings } from "../settings/index.js";
 
 // The one-time pairing secret that bootstraps recruitment (see PROTOCOL.md
 // "Recruitment"). Recruitment is chicken-and-egg: the overseer wants to hand a

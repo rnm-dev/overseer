@@ -6,12 +6,12 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import semver from "semver";
 import { z } from "zod";
-import { AtomicJsonStore } from "./armory/index.js";
-import { settings } from "./settings/index.js";
-import { stateDir } from "./xdgPaths.js";
-import { isGitCheckout } from "../shared/repo.js";
-import { backgroundSupervisor } from "../shared/backgroundSupervisor.js";
-import { getAgentDriver, listAgentDrivers } from "./agents/index.js";
+import { AtomicJsonStore } from "../armory/index.js";
+import { settings } from "../settings/index.js";
+import { stateDir } from "../runtime/xdgPaths.js";
+import { isGitCheckout } from "../../shared/repo.js";
+import { backgroundSupervisor } from "../../shared/backgroundSupervisor.js";
+import { getAgentDriver, listAgentDrivers } from "../agents/index.js";
 
 export type CliUpdateProvider = string;
 export function cliUpdateProviders(): CliUpdateProvider[] {
@@ -110,7 +110,7 @@ export class CliUpdateManager implements CliUpdateService {
       return parseCliVersion(await run("npm", ["view", packageName, "version", "--json"])) ?? "";
     });
     this.spawnWorker = options.spawnWorker ?? ((args, logPath) => {
-      const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+      const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
       const worker = path.join(root, "dist/cli/agentCliUpdateWorker.js");
       if (backgroundSupervisor(isGitCheckout(root)) === "detached") {
         return spawn(process.execPath, [worker, ...args], {

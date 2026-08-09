@@ -1,10 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync, statSync, watch } from "node:fs";
-import { eventLoopDelayStats } from "./eventLoopMonitor.js";
+import { eventLoopDelayStats } from "./runtime/eventLoopMonitor.js";
 import path from "node:path";
 import express from "express";
 import { settings } from "./settings/index.js";
-import { pairing } from "./pairing.js";
+import { pairing } from "./identity/pairing.js";
 import { sessionPresence } from "./sessions/index.js";
 import {
   sessionArtifactInventory,
@@ -14,19 +14,19 @@ import {
   toPublicSessionRecord,
   type SessionRecord,
 } from "./sessions/index.js";
-import { UnauthorizedRateLimiter } from "./unauthorizedRateLimit.js";
+import { UnauthorizedRateLimiter } from "./runtime/unauthorizedRateLimit.js";
 import { createProjectService, projectStore, type ProjectService } from "./projects/index.js";
-import { updateChecker } from "./updateChecker.js";
+import { updateChecker } from "./updates/updateChecker.js";
 import { createAgentRouter, requestManagedPluginInstall } from "./agentApi.js";
 import { createHumanProjectsRouter } from "./http/human/projects.js";
 import { createHumanSessionsRouter, type HumanSessionResponseHelpers, type HumanSessionService } from "./http/human/sessions.js";
 import { createScopedMcpRouter } from "./scopedMcp.js";
-import { modelCatalog, narrowNewSessionAgent, narrowModel, narrowReasoningEffort } from "./modelCatalog.js";
+import { modelCatalog, narrowNewSessionAgent, narrowModel, narrowReasoningEffort } from "./providers/modelCatalog.js";
 import { agentServices, getAgentDriver, getAgentServiceDriver, listAgentDrivers } from "./agents/index.js";
-import { startSelfUpdate } from "./selfUpdate.js";
+import { startSelfUpdate } from "./updates/selfUpdate.js";
 import { attachHumanFilesystemRoutes } from "./http/human/files.js";
 import { peonRegistrar, peonSocket } from "./overseer/index.js";
-import type { QuotaProvider } from "./providerQuota.js";
+import type { QuotaProvider } from "./providers/providerQuota.js";
 import { ArmoryMcpLifecycleService, ArmoryMcpRuntime, ArmoryUninstallService, createArmoryReadRouter, createArmoryStores, type ArmoryApiServices, type ArmoryInventoryReader } from "./armory/index.js";
 import {
   type FileAccessContract,
@@ -35,7 +35,7 @@ import {
 import { toSessionSummary } from "./sessions/index.js";
 import { paginateTranscript, parseTranscriptPageRequest, parseTranscriptResumeEventId, transcriptResumeIndex, TranscriptPaginationError } from "./sessions/index.js";
 import { analyticsForSessions, parseSessionAnalyticsQuery, SessionAnalyticsQueryError } from "./sessions/index.js";
-import { cliUpdates, CliUpdateError, type CliUpdateProvider, type CliUpdateService } from "./cliUpdates.js";
+import { cliUpdates, CliUpdateError, type CliUpdateProvider, type CliUpdateService } from "./updates/cliUpdates.js";
 
 const startedAt = Date.now();
 const SSE_HEARTBEAT_MS = Number(process.env.ACA_SSE_HEARTBEAT_MS) || 15_000;

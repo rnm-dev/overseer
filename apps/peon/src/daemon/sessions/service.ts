@@ -5,7 +5,7 @@ import path from "node:path";
 import { getAgentDriver, requireAgentDriver } from "../agents/index.js";
 import { projectStore } from "../projects/index.js";
 import { settings } from "../settings/index.js";
-import { type CodingAgent, type ReasoningEffort } from "../modelCatalog.js";
+import { type CodingAgent, type ReasoningEffort } from "../providers/modelCatalog.js";
 import type { AgentEvent } from "../agents/index.js";
 import { buildAugmentedPrompt } from "./sessionPrompts.js";
 import { paginateSessions } from "./sessionPagination.js";

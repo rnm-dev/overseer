@@ -7,7 +7,7 @@ import { runAgent, type AgentEvent, type AgentExit, type AgentRun } from "../age
 import { getAgentDriver, requireAgentDriver } from "../agents/index.js";
 import { projectStore } from "../projects/index.js";
 import { resolveFromDir } from "../files/index.js";
-import { narrowReasoningEffort, resolveModel, type ReasoningEffort } from "../modelCatalog.js";
+import { narrowReasoningEffort, resolveModel, type ReasoningEffort } from "../providers/modelCatalog.js";
 import type {
   AttachmentInfo,
   PendingSystemPrompt,

@@ -16,9 +16,9 @@ import { createHash, randomUUID } from "node:crypto";
 import { appendFile, mkdir, open, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { normalizeStoredAgentEvent, type AgentEvent } from "../agents/index.js";
-import type { CodingAgent } from "../modelCatalog.js";
+import type { CodingAgent } from "../providers/modelCatalog.js";
 import type { SessionRecord } from "./sessionTypes.js";
-import { stateDir } from "../xdgPaths.js";
+import { stateDir } from "../runtime/xdgPaths.js";
 import {
   decodeTranscriptCursor,
   encodeIndexedTranscriptCursor,

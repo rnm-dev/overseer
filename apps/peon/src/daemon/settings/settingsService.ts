@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import type { CodingAgent, ReasoningEffort } from "../modelCatalog.js";
+import type { CodingAgent, ReasoningEffort } from "../providers/modelCatalog.js";
 import {
   canonicalModel,
   isModelForAgent,
@@ -8,7 +8,7 @@ import {
   narrowReasoningEffort,
   providerDefaultModel,
   reasoningEffortsForModel,
-} from "../modelCatalog.js";
+} from "../providers/modelCatalog.js";
 import type { DaemonSettings } from "./settingsTypes.js";
 import { SettingsStore } from "./settingsStore.js";
 import { parseListenAddress } from "../../shared/listenAddress.js";

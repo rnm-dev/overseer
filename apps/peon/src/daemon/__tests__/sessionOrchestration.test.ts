@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import test from "node:test";
-import type { CodingAgent, ReasoningEffort } from "../modelCatalog.js";
+import type { CodingAgent, ReasoningEffort } from "../providers/modelCatalog.js";
 import {
   SessionOrchestrationService,
   SessionSpawnError,
