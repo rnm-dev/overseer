@@ -17,14 +17,14 @@ import { appendFile, mkdir, open, readFile, rename, rm, stat, writeFile } from "
 import path from "node:path";
 import { normalizeStoredAgentEvent, type AgentEvent } from "../agents/index.js";
 import type { CodingAgent } from "../modelCatalog.js";
-import type { SessionRecord } from "../sessionTypes.js";
+import type { SessionRecord } from "./sessionTypes.js";
 import { stateDir } from "../xdgPaths.js";
 import {
   decodeTranscriptCursor,
   encodeIndexedTranscriptCursor,
   TranscriptPaginationError,
   type TranscriptPage,
-} from "../transcriptPagination.js";
+} from "./transcriptPagination.js";
 
 // Cohesion note: this file is the current transcript/session-artifact
 // repository boundary. The index lifecycle intentionally lives beside the

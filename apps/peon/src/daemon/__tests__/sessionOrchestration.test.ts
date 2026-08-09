@@ -8,8 +8,8 @@ import {
   type SessionOrchestrationStore,
   type SessionSpawnOptions,
 } from "../sessions/orchestration.js";
-import type { SessionRecord } from "../sessionTypes.js";
-import { TranscriptPaginationError, type TranscriptPage } from "../transcriptPagination.js";
+import type { SessionRecord } from "../sessions/sessionTypes.js";
+import { TranscriptPaginationError, type TranscriptPage } from "../sessions/transcriptPagination.js";
 
 function record(overrides: Partial<SessionRecord> = {}): SessionRecord {
   return {

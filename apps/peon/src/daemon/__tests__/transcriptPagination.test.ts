@@ -11,7 +11,7 @@ import {
   parseTranscriptPageRequest,
   parseTranscriptResumeEventId,
   transcriptResumeIndex,
-} from "../transcriptPagination.js";
+} from "../sessions/transcriptPagination.js";
 
 function entries(count: number): TranscriptEntry[] {
   return Array.from({ length: count }, (_, i) => ({

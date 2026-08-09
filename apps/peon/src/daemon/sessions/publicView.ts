@@ -1,4 +1,4 @@
-import type { SessionRecord } from "../sessionTypes.js";
+import type { SessionRecord } from "./sessionTypes.js";
 
 type InternalSessionFields =
   | "pendingSystemPrompts"

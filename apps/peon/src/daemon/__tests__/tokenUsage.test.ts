@@ -4,8 +4,8 @@ import {
   normalizeTokenUsage,
   TOKEN_USAGE_SEMANTICS_VERSION,
   type TokenUsageDiagnostic,
-} from "../tokenUsage.js";
-import type { SessionUsage } from "../sessionTypes.js";
+} from "../sessions/tokenUsage.js";
+import type { SessionUsage } from "../sessions/sessionTypes.js";
 
 function usage(
   inputTokens: number | null,

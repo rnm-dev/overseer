@@ -3,7 +3,7 @@ import path from "node:path";
 import { getAgentDriver } from "../agents/index.js";
 import { projectStore } from "../projects/index.js";
 import { classifyFromResultEvent } from "./runtime.js";
-import type { SessionRecord } from "../sessionTypes.js";
+import type { SessionRecord } from "./sessionTypes.js";
 import { RESTART_INTERRUPTION_MARKER } from "./constants.js";
 import {
   eventCountFromTranscript,

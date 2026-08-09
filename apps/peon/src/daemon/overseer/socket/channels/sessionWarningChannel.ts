@@ -1,6 +1,6 @@
 import type { PeonSocketChannel, PeonSocketFrame, PeonSocketSender } from "../peonSocketProtocol.js";
-import { sessionWarnings } from "../../../sessionWarnings.js";
-import type { SessionWarning } from "../../../sessionWarningTypes.js";
+import { sessionWarnings } from "../../../sessions/index.js";
+import type { SessionWarning } from "../../../sessions/index.js";
 
 export const SESSION_WARNING_CAPABILITY = "session-warning-v1";
 

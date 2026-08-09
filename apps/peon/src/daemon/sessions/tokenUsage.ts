@@ -1,4 +1,4 @@
-import type { CodingAgent } from "./modelCatalog.js";
+import type { CodingAgent } from "../modelCatalog.js";
 import type { SessionUsage } from "./sessionTypes.js";
 
 export const TOKEN_USAGE_SEMANTICS_VERSION = 1 as const;

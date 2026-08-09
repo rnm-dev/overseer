@@ -7,9 +7,9 @@ import { projectStore } from "../projects/index.js";
 import { settings } from "../settings/index.js";
 import { type CodingAgent, type ReasoningEffort } from "../modelCatalog.js";
 import type { AgentEvent } from "../agents/index.js";
-import { buildAugmentedPrompt } from "../sessionPrompts.js";
-import { paginateSessions } from "../sessionPagination.js";
-import { statsForPeriod as calculateStatsForPeriod } from "../sessionStats.js";
+import { buildAugmentedPrompt } from "./sessionPrompts.js";
+import { paginateSessions } from "./sessionPagination.js";
+import { statsForPeriod as calculateStatsForPeriod } from "./sessionStats.js";
 import type {
   AttachmentInfo,
   PendingSystemPrompt,
@@ -20,7 +20,7 @@ import type {
   SessionStatus,
   SessionUsage,
   StatsPeriod,
-} from "../sessionTypes.js";
+} from "./sessionTypes.js";
 import {
   attachmentsDir,
   appendTranscriptEvent,
@@ -76,7 +76,7 @@ export type {
   SessionStatus,
   SessionUsage,
   StatsPeriod,
-} from "../sessionTypes.js";
+} from "./sessionTypes.js";
 
 export {
   AUTO_RESUME_PROMPT,

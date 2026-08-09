@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { PeonSocketDurableOptions, PeonSocketFrame, PeonSocketSender } from "../overseer/socket/peonSocketProtocol.js";
 import { SessionWarningChannel } from "../overseer/socket/channels/sessionWarningChannel.js";
-import { sessionWarnings } from "../sessionWarnings.js";
+import { sessionWarnings } from "../sessions/sessionWarnings.js";
 
 test("session warnings use the negotiated durable socket channel", () => {
   const frames: PeonSocketFrame[] = [];

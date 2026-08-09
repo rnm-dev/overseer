@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import type { AgentRun } from "../agents/index.js";
-import type { SessionRecord } from "../sessionTypes.js";
+import type { SessionRecord } from "../sessions/sessionTypes.js";
 
 process.env.XDG_CONFIG_HOME = mkdtempSync(path.join(os.tmpdir(), "peon-orphan-config-"));
 process.env.XDG_STATE_HOME = mkdtempSync(path.join(os.tmpdir(), "peon-orphan-state-"));

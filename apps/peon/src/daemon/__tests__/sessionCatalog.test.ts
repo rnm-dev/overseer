@@ -6,7 +6,7 @@ import {
   SESSION_CATALOG_SNAPSHOT_TTL_MS,
   SessionCatalog,
   SessionCatalogError,
-} from "../sessionCatalog.js";
+} from "../sessions/sessionCatalog.js";
 import type { SessionRecord } from "../sessions/index.js";
 
 function record(id: string, lastActivityAt: number): SessionRecord {

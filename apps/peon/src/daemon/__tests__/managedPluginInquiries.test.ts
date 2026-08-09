@@ -6,7 +6,7 @@ import path from "node:path";
 import test from "node:test";
 import type { CodexAppServerRuntime } from "../agents/runtimes/codexAppServerRuntime.js";
 import { ManagedPluginInquiryService } from "../managedPluginInquiries.js";
-import type { SessionRecord } from "../sessionTypes.js";
+import type { SessionRecord } from "../sessions/sessionTypes.js";
 
 class FakeRuntime extends EventEmitter {
   generation = 7;

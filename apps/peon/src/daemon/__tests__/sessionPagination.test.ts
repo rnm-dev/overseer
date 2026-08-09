@@ -5,7 +5,7 @@ import type { Server } from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { mkdtempSync } from "node:fs";
-import type { SessionRecord } from "../sessionTypes.js";
+import type { SessionRecord } from "../sessions/sessionTypes.js";
 
 process.env.XDG_CONFIG_HOME = mkdtempSync(path.join(os.tmpdir(), "peon-pagination-config-"));
 process.env.XDG_STATE_HOME = mkdtempSync(path.join(os.tmpdir(), "peon-pagination-state-"));
@@ -15,7 +15,7 @@ const {
   SessionPaginationError,
   paginateSessions,
   parseSessionPageRequest,
-} = await import("../sessionPagination.js");
+} = await import("../sessions/sessionPagination.js");
 const { settings } = await import("../settings/index.js");
 const { createAgentRouter } = await import("../agentApi.js");
 

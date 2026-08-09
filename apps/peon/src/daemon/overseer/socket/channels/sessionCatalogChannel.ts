@@ -5,7 +5,7 @@ import {
   sessionCatalog,
   type SessionCatalog,
   type SessionCatalogEvent,
-} from "../../../sessionCatalog.js";
+} from "../../../sessions/index.js";
 
 const FRAME_TYPES = new Set([
   "session_catalog_snapshot_request",

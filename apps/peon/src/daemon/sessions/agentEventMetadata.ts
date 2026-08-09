@@ -1,4 +1,4 @@
-import type { AgentEvent } from "./agents/index.js";
+import type { AgentEvent } from "../agents/index.js";
 
 // Provider timestamps are provenance, not Peon's canonical event clock. Keep
 // only RFC 3339-like strings that represent a real instant; adapters can then

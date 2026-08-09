@@ -16,7 +16,7 @@ import {
   TranscriptPublicationRepository,
   publishedTranscriptEvent,
   transcriptDurableEnvelopeBytes,
-} from "../transcriptPublication.js";
+} from "../sessions/transcriptPublication.js";
 import type { SessionRecord, TranscriptEntry } from "../sessions/index.js";
 
 function session(id: string, startedAt = 100): SessionRecord {

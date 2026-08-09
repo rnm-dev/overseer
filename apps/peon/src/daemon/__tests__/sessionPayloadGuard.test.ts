@@ -8,7 +8,7 @@ import {
   PAYLOAD_SAFE_TARGET_RATIO,
   utf8Prefix,
   utf8Suffix,
-} from "../sessionPayloadGuard.js";
+} from "../sessions/sessionPayloadGuard.js";
 
 test("UTF-8 slicing never returns a broken code point", () => {
   assert.equal(utf8Prefix("a😀b", 4), "a");

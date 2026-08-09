@@ -1,5 +1,5 @@
-import type { AgentEvent } from "./agents/index.js";
-import type { TranscriptEntry } from "./sessions/index.js";
+import type { AgentEvent } from "../agents/index.js";
+import type { TranscriptEntry } from "./index.js";
 
 export const DEFAULT_TRANSCRIPT_PAGE_LIMIT = 50;
 export const MAX_TRANSCRIPT_PAGE_LIMIT = 500;

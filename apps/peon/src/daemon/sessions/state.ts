@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
 import type { AgentRun } from "../agents/index.js";
-import type { SessionRecord } from "../sessionTypes.js";
+import type { SessionRecord } from "./sessionTypes.js";
 
 export const WARNING_COOLDOWN_MS = 5 * 60 * 1000;
 

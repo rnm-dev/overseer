@@ -5,9 +5,9 @@ import {
   analyticsForSessions,
   parseSessionAnalyticsQuery,
   SessionAnalyticsQueryError,
-} from "../sessionAnalytics.js";
-import { statsForPeriod } from "../sessionStats.js";
-import type { SessionRecord } from "../sessionTypes.js";
+} from "../sessions/sessionAnalytics.js";
+import { statsForPeriod } from "../sessions/sessionStats.js";
+import type { SessionRecord } from "../sessions/sessionTypes.js";
 
 const HOUR = 3_600_000;
 const NOW = Date.parse("2026-07-17T12:00:00.000Z");

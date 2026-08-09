@@ -5,7 +5,7 @@ import path from "node:path";
 import express from "express";
 import { settings } from "./settings/index.js";
 import { pairing } from "./pairing.js";
-import { sessionPresence } from "./sessionPresence.js";
+import { sessionPresence } from "./sessions/index.js";
 import {
   sessionArtifactInventory,
   SessionOrchestrationService,
@@ -32,9 +32,9 @@ import {
   type FileAccessContract,
   FileAccessService,
 } from "./files/index.js";
-import { toSessionSummary } from "./sessionSummary.js";
-import { paginateTranscript, parseTranscriptPageRequest, parseTranscriptResumeEventId, transcriptResumeIndex, TranscriptPaginationError } from "./transcriptPagination.js";
-import { analyticsForSessions, parseSessionAnalyticsQuery, SessionAnalyticsQueryError } from "./sessionAnalytics.js";
+import { toSessionSummary } from "./sessions/index.js";
+import { paginateTranscript, parseTranscriptPageRequest, parseTranscriptResumeEventId, transcriptResumeIndex, TranscriptPaginationError } from "./sessions/index.js";
+import { analyticsForSessions, parseSessionAnalyticsQuery, SessionAnalyticsQueryError } from "./sessions/index.js";
 import { cliUpdates, CliUpdateError, type CliUpdateProvider, type CliUpdateService } from "./cliUpdates.js";
 
 const startedAt = Date.now();

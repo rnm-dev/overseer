@@ -19,7 +19,7 @@ const {
   subscribeTranscriptCommits,
   transcriptPath,
 } = await import("../sessions/sessionArtifacts.js");
-const { paginateTranscript } = await import("../transcriptPagination.js");
+const { paginateTranscript } = await import("../sessions/transcriptPagination.js");
 
 test("legacy, duplicate, corrupt, and newly persisted rows keep stable distinct ids across reload", async () => {
   mkdirSync(sessionsDir, { recursive: true });

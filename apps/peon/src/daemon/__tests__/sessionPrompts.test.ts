@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import type { ProjectRecord } from "../projects/contracts.js";
-import { buildSystemPrompt, CODEX_OUTCOME_SCHEMA, OUTCOME_SCHEMA } from "../sessionPrompts.js";
+import { buildSystemPrompt, CODEX_OUTCOME_SCHEMA, OUTCOME_SCHEMA } from "../sessions/sessionPrompts.js";
 
 function assertStrictObjectSchemas(schema: unknown, location = "root"): void {
   if (!schema || typeof schema !== "object") return;

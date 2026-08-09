@@ -1,4 +1,4 @@
-import { previewText } from "./sessions/index.js";
+import { previewText } from "./index.js";
 import type { SessionOutcome, SessionRecord, SessionStatus } from "./sessionTypes.js";
 
 // Canonical representation for session collections and north-bound session

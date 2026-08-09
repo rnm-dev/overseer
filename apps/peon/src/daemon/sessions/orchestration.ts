@@ -1,10 +1,10 @@
 import { canonicalModel, narrowReasoningEffort, type AiProvider, type CodingAgent, type ReasoningEffort } from "../modelCatalog.js";
-import type { SessionOutcome, SessionRecord, SessionStatus } from "../sessionTypes.js";
+import type { SessionOutcome, SessionRecord, SessionStatus } from "./sessionTypes.js";
 import {
   MAX_TRANSCRIPT_CURSOR_LENGTH,
   TranscriptPaginationError,
   type TranscriptPage,
-} from "../transcriptPagination.js";
+} from "./transcriptPagination.js";
 
 export const MAX_SESSION_SPAWN_DEPTH = 1;
 export const MAX_SESSION_SPAWN_PROMPT_LENGTH = 50_000;

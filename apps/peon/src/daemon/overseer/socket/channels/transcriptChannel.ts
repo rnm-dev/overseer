@@ -11,12 +11,12 @@ import {
   type PublishedTranscriptEvent,
   type TranscriptPublicationRepository,
   type TranscriptPublicationUpdate,
-} from "../../../transcriptPublication.js";
+} from "../../../sessions/index.js";
 
 export {
   MAX_TRANSCRIPT_SNAPSHOT_BYTES,
   MAX_TRANSCRIPT_SNAPSHOT_EVENTS,
-} from "../../../transcriptPublication.js";
+} from "../../../sessions/index.js";
 
 export const DEFAULT_TRANSCRIPT_SNAPSHOT_PAGE_LIMIT = 50;
 export const MAX_TRANSCRIPT_SNAPSHOT_PAGE_LIMIT = 100;

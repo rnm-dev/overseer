@@ -8,8 +8,8 @@ import {
   type CodexAppServerNotification,
 } from "./runtimes/codexAppServerRuntime.js";
 import { codexCommandToolName, normalizeCodexFileChanges } from "./codex.js";
-import { guardToolOutput } from "../sessionPayloadGuard.js";
-import type { AgentContextUsage } from "../sessionWarningTypes.js";
+import { guardToolOutput } from "../sessions/index.js";
+import type { AgentContextUsage } from "../sessions/index.js";
 import { MANAGED_PLUGIN_INQUIRY_TTL_MS } from "../managedPluginInquiries.js";
 
 interface ThreadResponse {

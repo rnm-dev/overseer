@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import test from "node:test";
 import type { PeonSocketFrame, PeonSocketSender } from "../overseer/socket/peonSocketProtocol.js";
-import { SessionCatalog } from "../sessionCatalog.js";
+import { SessionCatalog } from "../sessions/sessionCatalog.js";
 import { SessionCatalogChannel } from "../overseer/socket/channels/sessionCatalogChannel.js";
 import type { SessionRecord } from "../sessions/index.js";
 

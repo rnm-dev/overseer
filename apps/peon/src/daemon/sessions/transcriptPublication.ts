@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import type { AgentEvent } from "./agents/index.js";
-import type { CodingAgent } from "./modelCatalog.js";
+import type { AgentEvent } from "../agents/index.js";
+import type { CodingAgent } from "../modelCatalog.js";
 import {
   CommittedTranscriptLimitError,
   flushTranscript,
@@ -11,7 +11,7 @@ import {
   type CommittedTranscriptReadLimits,
   type SessionRecord,
   type TranscriptEntry,
-} from "./sessions/index.js";
+} from "./index.js";
 
 export const TRANSCRIPT_SYNC_CAPABILITY = "transcript-sync-v1";
 export const MAX_PUBLISHED_TRANSCRIPT_EVENT_BYTES = 192 * 1024;

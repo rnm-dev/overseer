@@ -1,4 +1,4 @@
-import type { SessionRecord } from "../../../sessionTypes.js";
+import type { SessionRecord } from "../../../sessions/index.js";
 import type { PreviewRevisionPublisher } from "../previewRevisionPublisher.js";
 import type { PeonSocketFrame } from "../peonSocketProtocol.js";
 import type { ReverseCommandHandler, ValidCommand } from "./reverseCommandChannel.js";

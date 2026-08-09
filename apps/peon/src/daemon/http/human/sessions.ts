@@ -1,9 +1,9 @@
 import express from "express";
 import { createAttachmentUpload, describeUploadError, cleanupUploadedFiles, toAttachmentInfo } from "../../uploads.js";
-import { parseSessionPageRequest, SessionPaginationError } from "../../sessionPagination.js";
+import { parseSessionPageRequest, SessionPaginationError } from "../../sessions/index.js";
 import type { SessionJsonService, SessionRecord } from "../../sessions/index.js";
 import type { CodingAgent, ReasoningEffort } from "../../modelCatalog.js";
-import { type SessionSummary } from "../../sessionSummary.js";
+import { type SessionSummary } from "../../sessions/index.js";
 
 export type HumanSessionService = SessionJsonService;
 

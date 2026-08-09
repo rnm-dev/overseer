@@ -1,4 +1,4 @@
-import type { CodingAgent, ReasoningEffort } from "./modelCatalog.js";
+import type { CodingAgent, ReasoningEffort } from "../modelCatalog.js";
 
 export interface SessionOutcome {
   result: "success" | "failure" | "needs_human";

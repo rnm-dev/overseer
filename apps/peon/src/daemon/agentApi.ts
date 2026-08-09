@@ -30,8 +30,8 @@ import { applyUpdate, checkUpdate, updateOperationStatus } from "./updateOperati
 import type { QuotaProvider } from "./providerQuota.js";
 import { ARMORY_PROJECT_PACKAGES_CAPABILITY, createArmoryReadRouter, type ArmoryApiServices, type ArmoryInventoryReader } from "./armory/index.js";
 import { AtomicFileUpload, type FileAccessContract, FileAccessService, moveProjectFile } from "./files/index.js";
-import { parseTranscriptPageRequest, parseTranscriptResumeEventId, transcriptResumeIndex, TranscriptPaginationError } from "./transcriptPagination.js";
-import { analyticsForSessions, parseSessionAnalyticsQuery, SessionAnalyticsQueryError } from "./sessionAnalytics.js";
+import { parseTranscriptPageRequest, parseTranscriptResumeEventId, transcriptResumeIndex, TranscriptPaginationError } from "./sessions/index.js";
+import { analyticsForSessions, parseSessionAnalyticsQuery, SessionAnalyticsQueryError } from "./sessions/index.js";
 import { attachProjectRoutes, type SessionProjectReader } from "./http/fleet/projects.js";
 import { attachSessionRoutes, type FleetSessionService, type FleetSessionRouterDeps } from "./http/fleet/sessions.js";
 import { attachFleetProjectFileRoutes, type FleetProjectFileReader } from "./http/fleet/files.js";

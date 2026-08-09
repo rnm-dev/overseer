@@ -1,6 +1,6 @@
 import type { AgentEvent, AgentRun, AgentRunOptions } from "./executor.js";
-import { sourceTimestampMetadata } from "../agentEventMetadata.js";
-import { guardToolOutput, type GuardedToolOutput } from "../sessionPayloadGuard.js";
+import { sourceTimestampMetadata } from "../sessions/index.js";
+import { guardToolOutput, type GuardedToolOutput } from "../sessions/index.js";
 import { spawnJsonAgent } from "./spawnJsonAgent.js";
 import { normalizeFileToolInput } from "./toolPaths.js";
 

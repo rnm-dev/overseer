@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import os from "node:os";
 import test from "node:test";
-import { toSessionSummary } from "../sessionSummary.js";
-import type { SessionRecord } from "../sessionTypes.js";
+import { toSessionSummary } from "../sessions/sessionSummary.js";
+import type { SessionRecord } from "../sessions/sessionTypes.js";
 
 function record(overrides: Partial<SessionRecord> = {}): SessionRecord {
   return {

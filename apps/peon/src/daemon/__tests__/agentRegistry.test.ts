@@ -12,7 +12,7 @@ import {
   type AgentDriver,
 } from "../agents/index.js";
 import { modelCatalog, narrowNewSessionAgent } from "../modelCatalog.js";
-import { parseSessionAnalyticsQuery } from "../sessionAnalytics.js";
+import { parseSessionAnalyticsQuery } from "../sessions/sessionAnalytics.js";
 
 describe("agent driver registry", () => {
   it("owns built-in discovery, model validation and canonical lifecycle behavior", () => {

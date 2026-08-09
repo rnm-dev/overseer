@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { statsForPeriod } from "../sessionStats.js";
-import type { SessionRecord } from "../sessionTypes.js";
+import { statsForPeriod } from "../sessions/sessionStats.js";
+import type { SessionRecord } from "../sessions/sessionTypes.js";
 
 function usageRecord(
   id: string,

@@ -18,7 +18,7 @@ const {
   transcriptIndexPath,
   transcriptPath,
 } = await import("../sessions/sessionArtifacts.js");
-const { TranscriptPaginationError } = await import("../transcriptPagination.js");
+const { TranscriptPaginationError } = await import("../sessions/transcriptPagination.js");
 
 function row(index: number, payload = ""): string {
   return JSON.stringify({

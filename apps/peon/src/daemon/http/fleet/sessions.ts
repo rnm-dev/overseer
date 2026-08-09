@@ -7,8 +7,8 @@ import { getAgentDriver, listAgentDrivers } from "../../agents/index.js";
 import { narrowNewSessionAgent, narrowModel, narrowReasoningEffort, type CodingAgent, type ReasoningEffort } from "../../modelCatalog.js";
 import type { AttachmentInfo, SessionJsonService, SessionRecord } from "../../sessions/index.js";
 import { toPublicSessionRecord } from "../../sessions/index.js";
-import { toSessionSummary } from "../../sessionSummary.js";
-import { parseSessionPageRequest, SessionPaginationError } from "../../sessionPagination.js";
+import { toSessionSummary } from "../../sessions/index.js";
+import { parseSessionPageRequest, SessionPaginationError } from "../../sessions/index.js";
 import { fail, type ErrorCode } from "./error.js";
 
 // Extracted fleet session JSON routes:

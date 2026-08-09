@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { stateDir } from "./xdgPaths.js";
+import { stateDir } from "../xdgPaths.js";
 import type { SessionWarning } from "./sessionWarningTypes.js";
 
 export const SESSION_PAYLOAD_LIMIT_BYTES = 4 * 1024 * 1024;
