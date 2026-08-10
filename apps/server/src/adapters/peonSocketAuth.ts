@@ -2,6 +2,7 @@ import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 import { resolveCredential } from "../modules/fleet/index.js";
 import { registry, type PeonRecord } from "../modules/fleet/index.js";
+import { refuseUpgrade } from "./upgradeGuard.js";
 
 export interface AuthenticatedPeonUpgrade {
   record: PeonRecord;
@@ -13,9 +14,23 @@ function bearer(req: IncomingMessage): string {
 }
 
 function rejectUpgrade(socket: Duplex, status: 401 | 404 | 503, reason: string): void {
-  if (socket.destroyed) return;
-  socket.write(`HTTP/1.1 ${status} ${reason}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
-  socket.destroy();
+  refuseUpgrade(socket, status, reason);
+}
+
+// Names the Peon behind an upgrade we are about to refuse, so an outdated
+// daemon dialling a retired endpoint can be found and updated. Returns the
+// record's name and id only — never the credential it presented.
+export async function describePeonUpgrade(req: IncomingMessage): Promise<string | null> {
+  const token = bearer(req);
+  if (!token) return null;
+  try {
+    const credential = await resolveCredential(token);
+    if (!credential?.boundPeonId) return null;
+    const record = await registry.get(credential.boundPeonId);
+    return record ? `peon ${JSON.stringify(record.name)} (${record.peonId})` : `peon ${credential.boundPeonId}`;
+  } catch {
+    return null;
+  }
 }
 
 // Shared authentication boundary for every Peon-initiated WebSocket channel.

@@ -105,6 +105,21 @@ Modules own their domain types, validation, persistence operations, and use
 cases. HTTP routes and WebSocket adapters translate transport input and call the
 module API; they do not duplicate domain rules or write module tables directly.
 
+## WebSocket upgrades
+
+Every `upgrade` listener must claim the requests it owns **synchronously** —
+`claimUpgrade(req)` from `adapters/upgradeGuard.ts`, before any `await` — and
+`attachUpgradeFallback` is registered last in `index.ts`, after every real
+handler, where it refuses whatever nobody claimed with `400` and destroys the
+socket. A handler that claims a request owns closing it, including when its
+authentication never returns; `armUpgradeTimeout` bounds that wait.
+
+This is not tidiness. Once any `upgrade` listener exists, Node stops destroying
+unhandled upgrade sockets itself, so a listener that just `return`s on a foreign
+path leaks the descriptor for the life of the process. A retired endpoint that
+an outdated Peon still dials every 40 seconds accumulated 1,657 CLOSE_WAIT
+sockets in one production day, every one of them still held by Node.
+
 ## Dependency direction
 
 ```text

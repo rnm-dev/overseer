@@ -4,6 +4,8 @@ import { createServer } from "./app/server.js";
 import { startReconciler } from "./modules/sessions/index.js";
 import { attachLiveSocket } from "./adapters/liveSocket.js";
 import { attachPeonSocket } from "./adapters/peonSocket.js";
+import { attachUpgradeFallback } from "./adapters/upgradeGuard.js";
+import { describePeonUpgrade } from "./adapters/peonSocketAuth.js";
 import { pruneEvents } from "./infrastructure/events/index.js";
 import { startPushWorker } from "./modules/notifications/index.js";
 import { pruneTranscriptProjection } from "./modules/sessions/index.js";
@@ -31,6 +33,9 @@ async function main(): Promise<void> {
   // Resumable client transport shares the HTTP server (nginx upgrades /api/ws).
   attachLiveSocket(server);
   attachPeonSocket(server);
+  // Last, deliberately: it refuses every upgrade the two handlers above did not
+  // claim, so a retired endpoint an old daemon still dials cannot leak a socket.
+  attachUpgradeFallback(server, { identify: describePeonUpgrade });
 }
 
 main().catch((err) => {

@@ -9,6 +9,7 @@ import {
   releasePeonConnection,
 } from "../modules/fleet/index.js";
 import { authenticatePeonUpgrade } from "./peonSocketAuth.js";
+import { armUpgradeTimeout, claimUpgrade } from "./upgradeGuard.js";
 import {
   DURABLE_DELIVERY_CAPABILITY,
   PeonCatalogSync,
@@ -39,6 +40,7 @@ const PROTOCOL = 1;
 const MAX_PAYLOAD_BYTES = 1024 * 1024;
 const CONNECTION_CHECK_MS = 30_000;
 const HELLO_TIMEOUT_MS = 10_000;
+const UPGRADE_TIMEOUT_MS = 10_000;
 const MAX_QUEUED_MESSAGES = 64;
 const MAX_QUEUED_BYTES = 4 * 1024 * 1024;
 const MAX_GLOBAL_QUEUED_BYTES = 8 * 1024 * 1024;
@@ -104,13 +106,21 @@ export function attachPeonSocket(server: Server, options: PeonSocketOptions = {}
   const onUpgrade = (req: IncomingMessage, socket: Duplex, head: Buffer) => {
     const path = new URL(req.url ?? "", "http://overseer.local").pathname;
     if (path !== ENDPOINT) return;
+    claimUpgrade(req);
     socket.on("error", () => {});
 
     void (async () => {
-      const auth = await authenticatePeonUpgrade(req, socket);
-      if (!auth || socket.destroyed) return;
-      authenticated.set(req, auth);
-      wss.handleUpgrade(req, socket, head, (ws) => wss.emit("connection", ws, req));
+      // The claim above takes this socket out of the fallback's reach, so it
+      // also takes on closing it if the credential lookup never comes back.
+      const settled = armUpgradeTimeout(socket, UPGRADE_TIMEOUT_MS);
+      try {
+        const auth = await authenticatePeonUpgrade(req, socket);
+        if (!auth || socket.destroyed) return;
+        authenticated.set(req, auth);
+        wss.handleUpgrade(req, socket, head, (ws) => wss.emit("connection", ws, req));
+      } finally {
+        settled();
+      }
     })();
   };
   server.on("upgrade", onUpgrade);

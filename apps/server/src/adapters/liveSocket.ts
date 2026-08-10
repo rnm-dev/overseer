@@ -35,6 +35,7 @@ import { canAccessIndexedSessionNow } from "../modules/access/index.js";
 import { enrichLiveTranscriptEvent } from "../modules/sessions/index.js";
 import { observeTranscriptEvent } from "../modules/sessions/index.js";
 import { observeSessionCatalogDuration } from "../modules/sessions/index.js";
+import { claimUpgrade } from "./upgradeGuard.js";
 
 // The north-bound (overseer→client) transport: one authenticated WebSocket per
 // app, multiplexing presence + live session tails, resumable by cursor.
@@ -177,6 +178,7 @@ export function attachLiveSocket(server: Server): WebSocketServer {
   const onUpgrade = (req: IncomingMessage, socket: Duplex, head: Buffer) => {
     const path = new URL(req.url ?? "", "http://overseer.local").pathname;
     if (path !== "/api/ws") return;
+    claimUpgrade(req);
     wss.handleUpgrade(req, socket, head, (ws) => wss.emit("connection", ws, req));
   };
   server.on("upgrade", onUpgrade);
