@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:drift/drift.dart';
 
 import '../../../core/database/app_database.dart';
+import '../../../core/live/resource_projection.dart';
 import '../../../core/network/overseer_http_client.dart';
 import '../domain/project_detail_models.dart';
 import '../domain/project_models.dart';
@@ -304,13 +305,18 @@ class DefaultProjectRepository implements ProjectRepository {
     required int cursor,
     required Map<String, dynamic> projection,
   }) async {
-    final peonId = projection['peonId'];
-    final projectId = projection['projectId'];
-    if (peonId is! String || projectId is! String) {
+    final envelope = ResourceProjectionEnvelope.peonOwned(
+      workspaceId: workspaceId,
+      resourceIdKey: 'projectId',
+      projection: projection,
+    );
+    if (envelope == null) {
       await advanceCursor(workspaceId: workspaceId, cursor: cursor);
       return;
     }
-    final syncedAt = (projection['syncedAt'] as num?)?.toDouble() ?? 0;
+    final peonId = envelope.peonId!;
+    final projectId = envelope.resourceId;
+    final syncedAt = envelope.version;
     await database.transaction(() async {
       final existing =
           await (database.select(database.cachedProjects)..where(
@@ -320,11 +326,11 @@ class DefaultProjectRepository implements ProjectRepository {
                     row.projectId.equals(projectId),
               ))
               .getSingleOrNull();
-      if (existing != null && existing.syncedAt > syncedAt) {
+      if (existing != null && envelope.isOlderThan(existing.syncedAt)) {
         await _advanceCursorInTransaction(workspaceId, cursor);
         return;
       }
-      if (projection['deleted'] == true) {
+      if (envelope.deleted) {
         await database
             .into(database.cachedProjects)
             .insertOnConflictUpdate(

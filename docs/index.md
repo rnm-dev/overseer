@@ -47,6 +47,12 @@ control WebSocket; stored projection state is explicitly fresh, stale or
 offline. The field classification, redaction and query bounds are in
 [reverse runtime capabilities](runtime-capabilities.md).
 
+Catalog-like state uses one [resource synchronization](resource-synchronization.md)
+model across sessions, projects, Peon/runtime projections and workspaces:
+qualified identity, monotonic versions, generation/cursor fencing, bounded
+snapshot recovery and explicit freshness. Typed adapters preserve each
+resource's real authority; transcripts, files and commands remain specialized.
+
 Analytics usage is attributed to the turn that spent it, not to the session
 that started first. Peon replays a session's transcript, charges each `result`
 event's tokens, cost and provider duration to the author of the user message

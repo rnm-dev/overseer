@@ -43,6 +43,7 @@ import {
   RUNTIME_STATE_CAPABILITY,
   type DurableRuntimeState,
 } from "../modules/fleet/index.js";
+import { CatalogSnapshot, CatalogSnapshotError } from "./catalogSnapshot.js";
 
 export const SESSION_CATALOG_CAPABILITY = "session-catalog-v1";
 export const PROJECT_CATALOG_CAPABILITY = "project-catalog-v1";
@@ -88,39 +89,14 @@ interface DurableCatalogEvent {
 
 type DurableDeliveryEvent = DurableCatalogEvent | DurableReverseCommandResult | DurableTranscriptMessage | DurableRuntimeState;
 
-interface SnapshotState {
-  startedAt: number;
-  requestId: string;
-  epoch: string | null;
-  revision: number | null;
-  barrierSeq: number | null;
-  seenCursors: Set<string>;
-  sessions: PeonSession[];
-  sessionIds: Set<string>;
-  pages: number;
-  bytes: number;
-}
-
-interface ProjectSnapshotState {
-  requestId: string;
-  epoch: string | null;
-  revision: number | null;
-  barrierSeq: number | null;
-  seenCursors: Set<string>;
-  projects: PeonProject[];
-  projectIds: Set<string>;
-  pages: number;
-  bytes: number;
-}
-
 export class SessionSyncProtocolError extends Error {}
 
 // Connection-wide coordinator despite the historical filename: it owns the one
 // durable delivery frontier and dispatches typed payloads to independent
 // session/project catalog projections.
 export class PeonCatalogSync {
-  private snapshot: SnapshotState | null = null;
-  private projectSnapshot: ProjectSnapshotState | null = null;
+  private snapshot: CatalogSnapshot<PeonSession> | null = null;
+  private projectSnapshot: CatalogSnapshot<PeonProject> | null = null;
   private checkpoint: SessionSyncCheckpoint | null = null;
   private projectCheckpoint: ProjectSyncCheckpoint | null = null;
   private bufferedEvents: DurableDeliveryEvent[] = [];
@@ -276,11 +252,10 @@ export class PeonCatalogSync {
 
   private requestSnapshot(cursor?: string): void {
     if (!this.snapshot) {
-      this.snapshot = {
-        startedAt: Date.now(),
-        requestId: randomUUID(), epoch: null, revision: null, barrierSeq: null,
-        seenCursors: new Set(), sessions: [], sessionIds: new Set(), pages: 0, bytes: 0,
-      };
+      this.snapshot = new CatalogSnapshot("session", this.catalog.epoch, {
+        maxPageItems: MAX_PAGE_ITEMS, maxItems: MAX_SNAPSHOT_ITEMS,
+        maxPages: MAX_SNAPSHOT_PAGES, maxBytes: MAX_SNAPSHOT_BYTES,
+      });
     }
     const frame: Record<string, unknown> = {
       type: "session_catalog_snapshot_request",
@@ -294,8 +269,6 @@ export class PeonCatalogSync {
 
   private async receiveSnapshotPage(message: Record<string, unknown>, frameBytes: number): Promise<void> {
     const snapshot = this.requireActiveRequest(message);
-    snapshot.pages += 1;
-    if (snapshot.pages > MAX_SNAPSHOT_PAGES) throw new SessionSyncProtocolError("session snapshot page limit exceeded");
     if (!Array.isArray(message.sessions) || message.sessions.length > MAX_PAGE_ITEMS) {
       throw new SessionSyncProtocolError("invalid session catalog snapshot page");
     }
@@ -307,31 +280,16 @@ export class PeonCatalogSync {
     const nextCursor = optionalString(message.nextCursor, "nextCursor", 2_000);
     if (hasMore !== (nextCursor !== null)) throw new SessionSyncProtocolError("snapshot pagination mismatch");
 
-    if (snapshot.epoch === null) {
-      snapshot.epoch = epoch;
-      snapshot.revision = revision;
-      snapshot.barrierSeq = barrierSeq;
-    } else if (snapshot.epoch !== epoch || snapshot.revision !== revision || snapshot.barrierSeq !== barrierSeq) {
-      throw new SessionSyncProtocolError("snapshot epoch or barrier changed");
+    let result;
+    try {
+      result = snapshot.append({ epoch, revision, barrierSeq, hasMore, nextCursor, frameBytes,
+        rawItems: message.sessions, parse: parseSession, identity: (session) => session.id });
+    } catch (error) {
+      if (error instanceof CatalogSnapshotError) throw new SessionSyncProtocolError(error.message);
+      throw error;
     }
-    if (epoch !== this.catalog.epoch) throw new SessionSyncProtocolError("snapshot catalog epoch mismatch");
-
-    snapshot.bytes += frameBytes;
-    if (snapshot.bytes > MAX_SNAPSHOT_BYTES) throw new SessionSyncProtocolError("session snapshot byte limit exceeded");
-    const sessions = message.sessions.map(parseSession);
-    if (snapshot.sessions.length + sessions.length > MAX_SNAPSHOT_ITEMS) {
-      throw new SessionSyncProtocolError("session snapshot item limit exceeded");
-    }
-    for (const session of sessions) {
-      if (snapshot.sessionIds.has(session.id)) throw new SessionSyncProtocolError("duplicate session in snapshot");
-      snapshot.sessionIds.add(session.id);
-      snapshot.sessions.push(session);
-    }
-
-    if (hasMore) {
-      if (!nextCursor || snapshot.seenCursors.has(nextCursor)) throw new SessionSyncProtocolError("duplicate snapshot cursor");
-      snapshot.seenCursors.add(nextCursor);
-      this.requestSnapshot(nextCursor);
+    if (!result.complete) {
+      this.requestSnapshot(result.nextCursor ?? undefined);
       return;
     }
 
@@ -347,7 +305,7 @@ export class PeonCatalogSync {
       acknowledgedCursor: this.checkpoint?.delivery?.epoch === this.delivery.epoch
         ? this.checkpoint.delivery.acknowledgedCursor
         : null,
-      sessions: snapshot.sessions,
+      sessions: snapshot.items,
     });
     this.checkpoint = {
       catalog: { epoch, acknowledgedSeq: barrierSeq },
@@ -369,10 +327,10 @@ export class PeonCatalogSync {
 
   private requestProjectSnapshot(cursor?: string): void {
     if (!this.projectSnapshot) {
-      this.projectSnapshot = {
-        requestId: randomUUID(), epoch: null, revision: null, barrierSeq: null,
-        seenCursors: new Set(), projects: [], projectIds: new Set(), pages: 0, bytes: 0,
-      };
+      this.projectSnapshot = new CatalogSnapshot("project", this.projectCatalog!.epoch, {
+        maxPageItems: MAX_PAGE_ITEMS, maxItems: MAX_SNAPSHOT_ITEMS,
+        maxPages: MAX_SNAPSHOT_PAGES, maxBytes: MAX_SNAPSHOT_BYTES,
+      });
     }
     const frame: Record<string, unknown> = {
       type: "project_catalog_snapshot_request",
@@ -386,8 +344,6 @@ export class PeonCatalogSync {
 
   private async receiveProjectSnapshotPage(message: Record<string, unknown>, frameBytes: number): Promise<void> {
     const snapshot = this.requireActiveProjectRequest(message);
-    snapshot.pages += 1;
-    if (snapshot.pages > MAX_SNAPSHOT_PAGES) throw new SessionSyncProtocolError("project snapshot page limit exceeded");
     if (!Array.isArray(message.projects) || message.projects.length > MAX_PAGE_ITEMS) {
       throw new SessionSyncProtocolError("invalid project catalog snapshot page");
     }
@@ -397,27 +353,16 @@ export class PeonCatalogSync {
     if (typeof message.hasMore !== "boolean") throw new SessionSyncProtocolError("invalid hasMore");
     const nextCursor = optionalString(message.nextCursor, "nextCursor", 2_000);
     if (message.hasMore !== (nextCursor !== null)) throw new SessionSyncProtocolError("snapshot pagination mismatch");
-    if (snapshot.epoch === null) {
-      snapshot.epoch = epoch;
-      snapshot.revision = revision;
-      snapshot.barrierSeq = barrierSeq;
-    } else if (snapshot.epoch !== epoch || snapshot.revision !== revision || snapshot.barrierSeq !== barrierSeq) {
-      throw new SessionSyncProtocolError("project snapshot epoch or barrier changed");
+    let result;
+    try {
+      result = snapshot.append({ epoch, revision, barrierSeq, hasMore: message.hasMore, nextCursor, frameBytes,
+        rawItems: message.projects, parse: parseProject, identity: (project) => project.projectId });
+    } catch (error) {
+      if (error instanceof CatalogSnapshotError) throw new SessionSyncProtocolError(error.message);
+      throw error;
     }
-    if (!this.projectCatalog || epoch !== this.projectCatalog.epoch) throw new SessionSyncProtocolError("project snapshot catalog epoch mismatch");
-    snapshot.bytes += frameBytes;
-    if (snapshot.bytes > MAX_SNAPSHOT_BYTES) throw new SessionSyncProtocolError("project snapshot byte limit exceeded");
-    const projects = message.projects.map(parseProject);
-    if (snapshot.projects.length + projects.length > MAX_SNAPSHOT_ITEMS) throw new SessionSyncProtocolError("project snapshot item limit exceeded");
-    for (const project of projects) {
-      if (snapshot.projectIds.has(project.projectId)) throw new SessionSyncProtocolError("duplicate project in snapshot");
-      snapshot.projectIds.add(project.projectId);
-      snapshot.projects.push(project);
-    }
-    if (message.hasMore) {
-      if (!nextCursor || snapshot.seenCursors.has(nextCursor)) throw new SessionSyncProtocolError("duplicate project snapshot cursor");
-      snapshot.seenCursors.add(nextCursor);
-      this.requestProjectSnapshot(nextCursor);
+    if (!result.complete) {
+      this.requestProjectSnapshot(result.nextCursor ?? undefined);
       return;
     }
     await applySocketProjectSnapshot({
@@ -426,7 +371,7 @@ export class PeonCatalogSync {
       generation: this.generation,
       catalogEpoch: epoch,
       barrierSeq,
-      projects: snapshot.projects,
+      projects: snapshot.items,
     });
     this.projectCheckpoint = { catalog: { epoch, acknowledgedSeq: barrierSeq }, previouslyReady: true };
     this.projectSnapshot = null;
@@ -743,14 +688,14 @@ export class PeonCatalogSync {
       : { channel: "project", deliveryEpoch, deliveryCursor, messageId, catalogEpoch, seq, operation: "delete", projectId: requiredString(payload.deletedProjectId, "deletedProjectId", 512) };
   }
 
-  private requireActiveRequest(message: Record<string, unknown>): SnapshotState {
+  private requireActiveRequest(message: Record<string, unknown>): CatalogSnapshot<PeonSession> {
     if (!this.snapshot || message.requestId !== this.snapshot.requestId) {
       throw new SessionSyncProtocolError("session catalog request mismatch");
     }
     return this.snapshot;
   }
 
-  private requireActiveProjectRequest(message: Record<string, unknown>): ProjectSnapshotState {
+  private requireActiveProjectRequest(message: Record<string, unknown>): CatalogSnapshot<PeonProject> {
     if (!this.projectSnapshot || message.requestId !== this.projectSnapshot.requestId) {
       throw new SessionSyncProtocolError("project catalog request mismatch");
     }

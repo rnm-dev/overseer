@@ -1,3 +1,5 @@
+import { mergeResourceProjection } from "../../shared/resourceProjection.js";
+
 export interface SessionLite {
   peonId?: string;
   id: string;
@@ -123,11 +125,7 @@ export function sessionIdentity(session: Pick<SessionLite, "peonId" | "id">): st
 // fetched. The index's strictly increasing syncedAt version prevents a slower
 // HTTP response from rolling back a summary that already arrived over the socket.
 export function mergeSessions(current: SessionLite[], incoming: SessionLite[]): SessionLite[] {
-  const merged = new Map(current.map((session) => [sessionIdentity(session), session]));
-  for (const session of incoming) {
-    const key = sessionIdentity(session);
-    const previous = merged.get(key);
-    if (previous && previous.syncedAt != null && session.syncedAt != null && previous.syncedAt > session.syncedAt) continue;
+  return mergeResourceProjection(current, incoming, sessionIdentity, (session) => session.syncedAt, (previous, session) => {
     const next = { ...previous, ...session };
     if (previous?.localRunningSince != null) {
       const incomingActivity = Math.max(session.lastActivityAt ?? 0, session.endedAt ?? 0, session.startedAt ?? 0);
@@ -144,9 +142,8 @@ export function mergeSessions(current: SessionLite[], incoming: SessionLite[]): 
       next.attentionUnread = previous?.attentionUnread;
       next.attentionUpdatedAt = previous?.attentionUpdatedAt;
     }
-    merged.set(key, next);
-  }
-  return [...merged.values()];
+    return next;
+  });
 }
 
 export function applySessionEvent(current: SessionLite[], event: IndexedSessionEvent): SessionLite[] {

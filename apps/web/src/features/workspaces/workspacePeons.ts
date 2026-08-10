@@ -1,4 +1,5 @@
 import type { PeonLite } from "./workspace";
+import { mergeResourceProjection } from "../../shared/resourceProjection.js";
 
 export interface PeonProjection {
   peonId: string;
@@ -37,13 +38,13 @@ export function applyPeonProjection(
   projection: PeonProjection,
 ): Record<string, PeonLite[]> {
   const peons = current[workspaceId] ?? [];
-  const index = peons.findIndex((peon) => peon.peonId === projection.peonId);
-  const next: PeonLite = index >= 0
-    ? { ...peons[index], ...projection }
-    : { name: projection.name ?? null, ...projection };
-  const updated = index >= 0
-    ? peons.map((peon, itemIndex) => itemIndex === index ? next : peon)
-    : [...peons, next];
+  const incoming = projection as PeonLite;
+  const updated = mergeResourceProjection(peons, [incoming],
+    (peon) => peon.peonId,
+    (peon) => peon.controlConnectedAt,
+    (previous, peon) => previous
+      ? { ...previous, ...peon }
+      : { ...peon, name: peon.name ?? null });
   return { ...current, [workspaceId]: updated };
 }
 

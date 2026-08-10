@@ -39,6 +39,10 @@ export {
   SessionCatalogHarnessError,
 } from "./sessionCatalogLifecycle.js";
 export {
+  ResourceProjectionHarness,
+  ResourceProjectionHarnessError,
+} from "./resourceProjectionLifecycle.js";
+export {
   ProportionalLoadHarness,
   runDeterministicSoak,
 } from "./loadSlo.js";

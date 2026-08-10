@@ -1,0 +1,13 @@
+{
+  "version": "resource-sync-acceptance-v1",
+  "families": [
+    { "name": "session", "authority": "peon", "read": "fleet-http", "projection": "session-catalog-v1" },
+    { "name": "project", "authority": "peon", "read": "fleet-http", "projection": "project-catalog-v1" },
+    { "name": "peon-runtime", "authority": "peon", "read": "fleet-http", "projection": "runtime-state-v1" },
+    { "name": "workspace", "authority": "overseer", "read": "overseer-http", "projection": "workspace-event" }
+  ],
+  "shared": ["qualified-identity", "monotonic-version", "generation-fence", "cursor-resume", "freshness", "bounded-rebuild", "commit-before-ack", "payload-free-observability"],
+  "specialized": ["transcript-history-and-tail", "file-byte-streams", "commands"],
+  "freshness": ["syncing", "fresh", "stale", "offline"],
+  "limits": { "items": 10000, "bytes": 8388608, "diagnostics": 256 }
+}

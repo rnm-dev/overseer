@@ -58,6 +58,15 @@ deletion. Component coverage remains in Peon's catalog/orphan suites, Overseer's
 socket/projection suites, web's session-list merge suite and Flutter's repository
 and cached-repository suites.
 
+## Unified resource projections
+
+`fixtures/resource-sync-acceptance-v1.json` classifies sessions, projects,
+Peon/runtime state and workspaces by authority and transport. One
+`ResourceProjectionHarness` executes their shared qualified-identity,
+monotonic-version, cursor, generation, freshness, bounded-rebuild and
+commit-before-ACK lifecycle. This common test does not erase domain protocol
+tests or apply catalog semantics to transcript tails, byte streams or commands.
+
 ## Transcript convergence acceptance
 
 `fixtures/transcript-acceptance-v1.json` is the executable index for the

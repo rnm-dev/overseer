@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:drift/drift.dart';
 
 import '../../../core/database/app_database.dart';
+import '../../../core/live/resource_projection.dart';
 import '../../../core/network/overseer_http_client.dart';
 import '../../../core/time/app_time.dart';
 import '../domain/fleet_models.dart';
@@ -111,8 +112,13 @@ class DioFleetRepository implements CachedFleetRepository {
     required String workspaceId,
     required Map<String, dynamic> projection,
   }) async {
-    final peonId = projection['peonId'];
-    if (peonId is! String || peonId.isEmpty) return;
+    final envelope = ResourceProjectionEnvelope.peonOwned(
+      workspaceId: workspaceId,
+      resourceIdKey: 'peonId',
+      projection: projection,
+    );
+    if (envelope == null || envelope.resourceId.isEmpty) return;
+    final peonId = envelope.resourceId;
     final current =
         await (_database.select(_database.cachedFleetPeons)..where(
               (row) =>
@@ -225,10 +231,20 @@ class DioFleetRepository implements CachedFleetRepository {
     required double recentSnapshotStartedAt,
   }) async {
     final syncedAt = _clock.now().millisecondsSinceEpoch.toDouble();
+    final workspaceSnapshot = ResourceSnapshot<WorkspaceFleet>.validated(
+      authority: ResourceAuthority.overseer,
+      items: fleet,
+      identity: (item) => item.workspace.id,
+    );
     await _database.transaction(() async {
       await _database.delete(_database.cachedFleetPeons).go();
       await _database.delete(_database.cachedWorkspaces).go();
-      for (final item in fleet) {
+      for (final item in workspaceSnapshot.items) {
+        final peonSnapshot = ResourceSnapshot<Peon>.validated(
+          authority: ResourceAuthority.peon,
+          items: item.peons,
+          identity: (peon) => peon.id,
+        );
         await (_database.update(_database.cachedSessions)..where(
               (row) =>
                   row.workspaceId.equals(item.workspace.id) &
@@ -254,7 +270,7 @@ class DioFleetRepository implements CachedFleetRepository {
                 syncedAt: syncedAt,
               ),
             );
-        for (final peon in item.peons) {
+        for (final peon in peonSnapshot.items) {
           await _database
               .into(_database.cachedFleetPeons)
               .insert(

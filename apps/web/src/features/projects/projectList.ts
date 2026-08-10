@@ -1,3 +1,5 @@
+import { mergeResourceProjection, projectionIsStale } from "../../shared/resourceProjection.js";
+
 export interface ProjectLite {
   peonId?: string;
   projectId?: string | null;
@@ -28,19 +30,13 @@ function identity(project: Pick<ProjectLite, "peonId" | "projectId" | "key">): s
 }
 
 export function mergeProjects(current: ProjectLite[], incoming: ProjectLite[]): ProjectLite[] {
-  const merged = new Map(current.map((project) => [identity(project), project]));
-  for (const project of incoming) {
-    const key = identity(project);
-    const previous = merged.get(key);
-    if (previous?.syncedAt != null && project.syncedAt != null && previous.syncedAt > project.syncedAt) continue;
-    merged.set(key, { ...previous, ...project, deleted: false });
-  }
-  return [...merged.values()];
+  return mergeResourceProjection(current, incoming, identity, (project) => project.syncedAt,
+    (previous, project) => ({ ...previous, ...project, deleted: false }));
 }
 
 export function applyProjectEvent(current: ProjectLite[], event: ProjectLiveEvent): ProjectLite[] {
   const index = current.findIndex((project) => project.peonId === event.peonId && project.projectId === event.projectId);
-  if (index >= 0 && current[index]!.syncedAt != null && current[index]!.syncedAt! > event.syncedAt) return current;
+  if (index >= 0 && projectionIsStale(current[index]!.syncedAt, event.syncedAt)) return current;
   if (event.deleted) {
     const tombstone: ProjectLite = {
       ...(index >= 0 ? current[index] : {}),

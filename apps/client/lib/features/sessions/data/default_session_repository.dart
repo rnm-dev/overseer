@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:drift/drift.dart';
 
 import '../../../core/database/app_database.dart';
+import '../../../core/live/resource_projection.dart';
 import '../../../core/live/live_projection_sink.dart';
 import '../../../core/network/overseer_http_client.dart';
 import '../../../core/time/app_time.dart';
@@ -656,15 +657,20 @@ class DefaultSessionRepository
     required int cursor,
     required Map<String, dynamic> projection,
   }) async {
-    final peonId = projection['peonId'];
-    final sessionId = projection['sessionId'];
-    if (peonId is! String || sessionId is! String) {
+    final envelope = ResourceProjectionEnvelope.peonOwned(
+      workspaceId: workspaceId,
+      resourceIdKey: 'sessionId',
+      projection: projection,
+    );
+    if (envelope == null) {
       await advanceCursor(workspaceId: workspaceId, cursor: cursor);
       return;
     }
-    final syncedAt = (projection['syncedAt'] as num?)?.toDouble() ?? 0;
+    final peonId = envelope.peonId!;
+    final sessionId = envelope.resourceId;
+    final syncedAt = envelope.version;
     await database.transaction(() async {
-      if (projection['deleted'] == true) {
+      if (envelope.deleted) {
         await (database.delete(database.cachedSessions)..where(
               (row) =>
                   row.workspaceId.equals(workspaceId) &
