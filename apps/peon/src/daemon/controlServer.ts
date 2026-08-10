@@ -39,6 +39,33 @@ import { cliUpdates, CliUpdateError, type CliUpdateProvider, type CliUpdateServi
 
 const startedAt = Date.now();
 const SSE_HEARTBEAT_MS = Number(process.env.ACA_SSE_HEARTBEAT_MS) || 15_000;
+export const MCP_JSON_BODY_LIMIT_BYTES = 24 * 1024 * 1024;
+
+export function mcpJsonBodyParser(): express.RequestHandler {
+  return express.json({ limit: MCP_JSON_BODY_LIMIT_BYTES });
+}
+
+export function jsonBodyErrorHandler(
+  error: unknown,
+  _req: express.Request,
+  res: express.Response,
+  next: express.NextFunction,
+): void {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "type" in error &&
+    error.type === "entity.too.large"
+  ) {
+    res.status(413).json({ error: "request body is too large", code: "PAYLOAD_TOO_LARGE" });
+    return;
+  }
+  if (error instanceof SyntaxError && typeof error === "object" && error !== null && "body" in error) {
+    res.status(400).json({ error: "request body must be valid JSON", code: "BAD_REQUEST" });
+    return;
+  }
+  next(error);
+}
 
 // Joins ephemeral, in-memory viewer presence onto the persisted
 // SessionRecord for API responses only — SessionRecord itself (and what
@@ -120,6 +147,15 @@ export function createControlServer(options: ControlServerOptions = {}) {
     narrowModel: narrowModel,
     narrowReasoningEffort: narrowReasoningEffort,
   };
+  // MCP tool schemas may intentionally carry payloads larger than Express's
+  // default 100 KiB JSON limit (the legacy Google Play image upload accepts a
+  // 20 MiB Base64 string). Parse this loopback-only namespace first with its
+  // own bounded allowance; every other JSON route keeps the smaller default.
+  app.use(
+    "/mcp",
+    mcpJsonBodyParser(),
+    createScopedMcpRouter({ armoryRuntime, projectService, sessionOrchestration, requestManagedPluginInstall }),
+  );
   app.use(express.json());
 
   app.use((req, res, next) => {
@@ -164,11 +200,6 @@ export function createControlServer(options: ControlServerOptions = {}) {
     }
     next();
   });
-
-  // Local coding agents use assignment-scoped Armory MCP turn bindings. Mounted before the
-  // local-only API gate because the MCP router has a stricter boundary of
-  // its own: genuine loopback, no browser Origin, and a loopback Host header.
-  app.use("/mcp", createScopedMcpRouter({ armoryRuntime, projectService, sessionOrchestration, requestManagedPluginInstall }));
 
   app.use((req, res, next) => {
     if (isLoopback(req)) return next();
@@ -673,12 +704,7 @@ export function createControlServer(options: ControlServerOptions = {}) {
   // express.json() otherwise lets malformed request bodies fall through to
   // Express's default HTML error page. Pairing clients need the same stable,
   // actionable JSON envelope for transport errors as for route validation.
-  app.use((error: unknown, _req: express.Request, res: express.Response, next: express.NextFunction) => {
-    if (error instanceof SyntaxError && typeof error === "object" && error !== null && "body" in error) {
-      return res.status(400).json({ error: "request body must be valid JSON", code: "BAD_REQUEST" });
-    }
-    next(error);
-  });
+  app.use(jsonBodyErrorHandler);
 
   return app;
 }
