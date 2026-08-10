@@ -15,7 +15,7 @@ import '../../projects/application/projects_controller.dart';
 import '../../projects/domain/project_models.dart';
 import '../../sessions/application/sessions_controller.dart';
 import '../../sessions/domain/session_models.dart';
-import '../../themes/domain/app_theme_package.dart';
+import '../../themes/app_theme_package.dart';
 import 'peon_settings_page.dart';
 import '../../../shared/design/colors.dart';
 import '../../../shared/design/typography.dart';

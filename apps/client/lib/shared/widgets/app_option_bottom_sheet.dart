@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../features/themes/domain/app_theme_package.dart';
+import '../../features/themes/app_theme_package.dart';
 import '../design/motion.dart';
 import 'app_bottom_sheet.dart';
 

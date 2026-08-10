@@ -9,7 +9,7 @@ import 'package:overseer_mobile/features/projects/domain/project_detail_models.d
 import 'package:overseer_mobile/features/projects/domain/project_models.dart';
 import 'package:overseer_mobile/features/projects/domain/project_repository.dart';
 import 'package:overseer_mobile/features/projects/presentation/project_files_page.dart';
-import 'package:overseer_mobile/features/themes/domain/app_theme_package.dart';
+import 'package:overseer_mobile/features/themes/app_theme_package.dart';
 import 'package:overseer_mobile/shared/design/theme.dart';
 
 void main() {

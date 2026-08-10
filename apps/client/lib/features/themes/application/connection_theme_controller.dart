@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../domain/app_theme_package.dart';
+import '../app_theme_package.dart';
 
 abstract interface class ConnectionThemeStore {
   Future<String?> readSelection(String connectionId);

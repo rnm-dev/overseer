@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -65,8 +64,8 @@ class PluginInquiryController extends Notifier<PluginInquiryState> {
   PluginInquiryController(this.scope);
 
   final PluginInquiryScope scope;
-  Timer? _poll;
-  Timer? _expiry;
+  ScheduledTask? _poll;
+  ScheduledTask? _expiry;
   final Map<String, String> _requestIds = {};
   var _refreshVersion = 0;
 
@@ -83,14 +82,12 @@ class PluginInquiryController extends Notifier<PluginInquiryState> {
         .read(scope)
         .map((row) => row.effectiveAt(now))
         .toList(growable: false);
-    _expiry = Timer.periodic(
-      const Duration(seconds: 15),
-      (_) => _applyExpiry(),
-    );
+    final scheduler = ref.read(appSchedulerProvider);
+    _expiry = scheduler.periodic(const Duration(seconds: 15), _applyExpiry);
     if (!scope.online) {
       return PluginInquiryState(inquiries: cached, refreshFailed: true);
     }
-    _poll = Timer.periodic(const Duration(seconds: 15), (_) => refresh());
+    _poll = scheduler.periodic(const Duration(seconds: 15), refresh);
     Future<void>.microtask(() => refresh(initial: true));
     return PluginInquiryState(inquiries: cached, loading: cached.isEmpty);
   }

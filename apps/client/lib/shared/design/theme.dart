@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'motion.dart';
 import 'spacing.dart';
 import 'typography.dart';
-import '../../features/themes/domain/app_theme_package.dart';
+import '../../features/themes/app_theme_package.dart';
 
 @immutable
 class AppTheme {

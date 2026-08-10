@@ -177,15 +177,17 @@ void main() {
         token: 'test-token',
         dio: dio,
       );
-      await database.into(database.cachedProjects).insert(
-        CachedProjectsCompanion.insert(
-          workspaceId: 'workspace',
-          peonId: 'peon',
-          projectId: 'project',
-          projectKey: 'project',
-          sessionCount: const Value(2),
-        ),
-      );
+      await database
+          .into(database.cachedProjects)
+          .insert(
+            CachedProjectsCompanion.insert(
+              workspaceId: 'workspace',
+              peonId: 'peon',
+              projectId: 'project',
+              projectKey: 'project',
+              sessionCount: const Value(2),
+            ),
+          );
       await repository.applyLiveProjection(
         workspaceId: 'workspace',
         cursor: 1,
@@ -215,7 +217,9 @@ void main() {
         peonId: 'peon',
       );
       expect(cached, isEmpty);
-      final project = await database.select(database.cachedProjects).getSingle();
+      final project = await database
+          .select(database.cachedProjects)
+          .getSingle();
       expect(project.sessionCount, 1);
     },
   );
@@ -274,50 +278,56 @@ void main() {
     },
   );
 
-  test('live session projections assign authoritative project totals', () async {
-    await database.batch((batch) {
-      for (final project in [('one', 0), ('two', 7)]) {
-        batch.insert(
-          database.cachedProjects,
-          CachedProjectsCompanion.insert(
-            workspaceId: 'workspace',
-            peonId: 'peon',
-            projectId: project.$1,
-            projectKey: project.$1,
-            sessionCount: Value(project.$2),
-          ),
-        );
-      }
-    });
+  test(
+    'live session projections assign authoritative project totals',
+    () async {
+      await database.batch((batch) {
+        for (final project in [('one', 0), ('two', 7)]) {
+          batch.insert(
+            database.cachedProjects,
+            CachedProjectsCompanion.insert(
+              workspaceId: 'workspace',
+              peonId: 'peon',
+              projectId: project.$1,
+              projectKey: project.$1,
+              sessionCount: Value(project.$2),
+            ),
+          );
+        }
+      });
 
-    final projection = {
-      'peonId': 'peon',
-      'sessionId': 'session',
-      'projectId': 'one',
-      'projectKey': 'one',
-      'syncedAt': 10,
-      'projectSessionCounts': [
-        {'projectId': 'one', 'projectKey': 'one', 'sessionCount': 4},
-        {'projectId': 'two', 'projectKey': 'two', 'sessionCount': 8},
-      ],
-    };
-    await repository.applyLiveProjection(
-      workspaceId: 'workspace',
-      cursor: 1,
-      projection: projection,
-    );
-    await repository.applyLiveProjection(
-      workspaceId: 'workspace',
-      cursor: 1,
-      projection: projection,
-    );
+      final projection = {
+        'peonId': 'peon',
+        'sessionId': 'session',
+        'projectId': 'one',
+        'projectKey': 'one',
+        'syncedAt': 10,
+        'projectSessionCounts': [
+          {'projectId': 'one', 'projectKey': 'one', 'sessionCount': 4},
+          {'projectId': 'two', 'projectKey': 'two', 'sessionCount': 8},
+        ],
+      };
+      await repository.applyLiveProjection(
+        workspaceId: 'workspace',
+        cursor: 1,
+        projection: projection,
+      );
+      await repository.applyLiveProjection(
+        workspaceId: 'workspace',
+        cursor: 1,
+        projection: projection,
+      );
 
-    final projects = await database.select(database.cachedProjects).get();
-    expect({for (final project in projects) project.projectId: project.sessionCount}, {
-      'one': 4,
-      'two': 8,
-    });
-  });
+      final projects = await database.select(database.cachedProjects).get();
+      expect(
+        {
+          for (final project in projects)
+            project.projectId: project.sessionCount,
+        },
+        {'one': 4, 'two': 8},
+      );
+    },
+  );
 
   test(
     'attention projections update operator state without regressing session',

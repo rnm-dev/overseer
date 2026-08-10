@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:overseer_mobile/shared/design/motion.dart';
-import 'package:overseer_mobile/features/themes/domain/app_theme_package.dart';
+import 'package:overseer_mobile/features/themes/app_theme_package.dart';
 
 enum SurfaceVariant { standard, subtle, inset, lit }
 

@@ -6,7 +6,7 @@ import 'package:overseer_mobile/features/sessions/domain/followup_repository.dar
 import 'package:overseer_mobile/features/sessions/domain/new_session_repository.dart';
 import 'package:overseer_mobile/features/sessions/application/voice_dictation_controller.dart';
 import 'package:overseer_mobile/features/sessions/presentation/session_composer.dart';
-import 'package:overseer_mobile/features/themes/domain/app_theme_package.dart';
+import 'package:overseer_mobile/features/themes/app_theme_package.dart';
 import 'package:overseer_mobile/shared/design/spacing.dart';
 import 'package:overseer_mobile/shared/design/theme.dart';
 import 'package:overseer_mobile/shared/design/typography.dart';

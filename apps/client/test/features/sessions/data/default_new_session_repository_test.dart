@@ -21,14 +21,16 @@ void main() {
   test(
     'uploads attachments and creates the cached session idempotently',
     () async {
-      await database.into(database.cachedProjects).insert(
-        CachedProjectsCompanion.insert(
-          workspaceId: 'workspace',
-          peonId: 'peon',
-          projectId: 'project-id',
-          projectKey: 'project',
-        ),
-      );
+      await database
+          .into(database.cachedProjects)
+          .insert(
+            CachedProjectsCompanion.insert(
+              workspaceId: 'workspace',
+              peonId: 'peon',
+              projectId: 'project-id',
+              projectKey: 'project',
+            ),
+          );
       final requests = <RequestOptions>[];
       final progress = <NewSessionSubmissionProgress>[];
       final dio = Dio(BaseOptions(baseUrl: 'https://overseer.example/api/'));
@@ -103,56 +105,65 @@ void main() {
       )).getSingle();
       expect(cached.sessionId, 'created-session');
       expect(cached.syncedAt, clock.now().millisecondsSinceEpoch.toDouble());
-      final project = await database.select(database.cachedProjects).getSingle();
+      final project = await database
+          .select(database.cachedProjects)
+          .getSingle();
       expect(project.sessionCount, 1);
     },
   );
 
-  test('a retried accepted session id does not increment its project twice', () async {
-    await database.into(database.cachedProjects).insert(
-      CachedProjectsCompanion.insert(
-        workspaceId: 'workspace',
-        peonId: 'peon',
-        projectId: 'project-id',
-        projectKey: 'project',
-      ),
-    );
-    final dio = Dio(BaseOptions(baseUrl: 'https://overseer.example/api/'));
-    dio.interceptors.add(
-      InterceptorsWrapper(
-        onRequest: (options, handler) => handler.resolve(
-          Response<Map<String, dynamic>>(
-            requestOptions: options,
-            statusCode: 200,
-            data: {
-              'id': 'same-session',
-              'projectId': 'project-id',
-              'projectKey': 'project',
-            },
+  test(
+    'a retried accepted session id does not increment its project twice',
+    () async {
+      await database
+          .into(database.cachedProjects)
+          .insert(
+            CachedProjectsCompanion.insert(
+              workspaceId: 'workspace',
+              peonId: 'peon',
+              projectId: 'project-id',
+              projectKey: 'project',
+            ),
+          );
+      final dio = Dio(BaseOptions(baseUrl: 'https://overseer.example/api/'));
+      dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (options, handler) => handler.resolve(
+            Response<Map<String, dynamic>>(
+              requestOptions: options,
+              statusCode: 200,
+              data: {
+                'id': 'same-session',
+                'projectId': 'project-id',
+                'projectKey': 'project',
+              },
+            ),
           ),
         ),
-      ),
-    );
-    final repository = DefaultNewSessionRepository(
-      database: database,
-      apiUrl: Uri.parse('https://overseer.example/api/'),
-      token: 'token',
-      dio: dio,
-    );
-    final request = NewSessionRequest(
-      workspaceId: 'workspace',
-      peonId: 'peon',
-      requestId: 'request',
-      prompt: 'Do it',
-      projectKey: 'project',
-    );
+      );
+      final repository = DefaultNewSessionRepository(
+        database: database,
+        apiUrl: Uri.parse('https://overseer.example/api/'),
+        token: 'token',
+        dio: dio,
+      );
+      final request = NewSessionRequest(
+        workspaceId: 'workspace',
+        peonId: 'peon',
+        requestId: 'request',
+        prompt: 'Do it',
+        projectKey: 'project',
+      );
 
-    await repository.createSession(request);
-    await repository.createSession(request);
+      await repository.createSession(request);
+      await repository.createSession(request);
 
-    final project = await database.select(database.cachedProjects).getSingle();
-    expect(project.sessionCount, 1);
-  });
+      final project = await database
+          .select(database.cachedProjects)
+          .getSingle();
+      expect(project.sessionCount, 1);
+    },
+  );
 
   test('keeps upload failures specific and retryable', () async {
     final dio = Dio(BaseOptions(baseUrl: 'https://overseer.example/api/'));

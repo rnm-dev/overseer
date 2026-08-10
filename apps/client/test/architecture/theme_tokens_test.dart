@@ -24,6 +24,6 @@ void main() {
 }
 
 bool _allowlisted(String path) =>
-    path == 'lib/features/themes/domain/app_theme_package.dart' ||
+    path == 'lib/features/themes/app_theme_package.dart' ||
     path == 'lib/shared/design/colors.dart' ||
     path == 'lib/shared/widgets/file_view_block.dart';

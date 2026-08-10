@@ -39,9 +39,7 @@ Future<void> applyAuthoritativeProjectSessionCounts({
                 row.peonId.equals(project.peonId) &
                 row.projectId.equals(project.projectId),
           ))
-          .write(
-            CachedProjectsCompanion(sessionCount: Value(nextCount)),
-          );
+          .write(CachedProjectsCompanion(sessionCount: Value(nextCount)));
     }
   }
 }

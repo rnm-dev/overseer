@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:overseer_mobile/features/themes/application/connection_theme_controller.dart';
-import 'package:overseer_mobile/features/themes/domain/app_theme_package.dart';
+import 'package:overseer_mobile/features/themes/app_theme_package.dart';
 
 void main() {
   test('bundled registry mirrors the web package order and fallback', () {

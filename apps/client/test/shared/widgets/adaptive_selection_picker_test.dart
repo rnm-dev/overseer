@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:overseer_mobile/features/themes/domain/app_theme_package.dart';
+import 'package:overseer_mobile/features/themes/app_theme_package.dart';
 import 'package:overseer_mobile/shared/design/theme.dart';
 import 'package:overseer_mobile/shared/widgets/adaptive_selection_picker.dart';
 import 'package:overseer_mobile/shared/widgets/app_option_bottom_sheet.dart';

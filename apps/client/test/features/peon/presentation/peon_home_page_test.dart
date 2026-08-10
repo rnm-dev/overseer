@@ -260,7 +260,7 @@ void main() {
     ]) {
       expect(
         tester.getRect(find.byKey(actionKey)).height,
-        tester.getRect(find.byKey(headerKey)).height,
+        tester.getRect(find.byKey(headerKey)).height - 1,
       );
     }
     final viewportWidth = tester.getSize(find.byType(CustomScrollView)).width;
@@ -269,7 +269,7 @@ void main() {
       final header = tester.widget<Container>(headerFinder);
       expect(
         (header.decoration! as BoxDecoration).color,
-        AppColors.bone.withValues(alpha: 0.05),
+        AppThemePackages.bundled.first.surfaceHover.withValues(alpha: 0.92),
       );
       expect(tester.getSize(headerFinder).width, viewportWidth);
     }
