@@ -5,9 +5,14 @@ A two-page public site — a landing page and self-hosting documentation at
 of the Overseer monorepo it currently sits inside, and it shares no code, build,
 or deployment path with it. No database, no API, no auth, no backend.
 
-It has **no repository of its own yet**: `/rnm/overseer/site` is not a git
-checkout. OVSR-237 creates one and detaches the directory from this tree; the
-site does not join the [monorepo](monorepo.md).
+Its repository is **git@github.com:rnm-dev/overseer-website.git**, imported on
+2026-08-10 (branch `main`). The working copy is still `/rnm/overseer/site`,
+which is its own git checkout and remains gitignored by the surrounding
+monorepo, so the two trees never see each other's history. What OVSR-237 still
+owes: moving the directory out of `/rnm/overseer` entirely, repointing the
+`site` compose service at the new path, and taking
+[the PRD](public-website-prd.md) with it. The site does not join the
+[monorepo](monorepo.md).
 
 ## Stack
 
