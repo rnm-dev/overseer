@@ -2,6 +2,13 @@ import { createHash } from "node:crypto";
 import { query, transaction } from "../../infrastructure/db/index.js";
 import { insertEvent, publishCommittedEvent, type LiveEvent } from "../../infrastructure/events/index.js";
 import { getPeonConnection, peonConnectionSupports } from "./peonConnections.js";
+import {
+  advanceDeliveryCheckpoint,
+  assertProjectionGeneration,
+  projectionFreshness,
+  readDeliveryCheckpoint,
+  recordDurableInbox,
+} from "../resourceSync/index.js";
 
 export const RUNTIME_STATE_CAPABILITY = "runtime-state-v1";
 const MAX_RUNTIME_STATE_BYTES = 56 * 1024;
@@ -87,11 +94,7 @@ export async function commitRuntimeState(input: {
   workspaceId: string; peonId: string; syncGeneration: string; durable: DurableRuntimeState;
 }): Promise<{ epoch: string; acknowledgedCursor: string }> {
   const committed = await transaction(async (tx) => {
-    const sync = await tx.query(
-      `SELECT 1 FROM peon_session_sync WHERE peon_id=$1 AND generation=$2`,
-      [input.peonId, input.syncGeneration],
-    );
-    if (!sync.rows[0]) throw new Error("runtime state connection was replaced");
+    await assertProjectionGeneration(tx, input.peonId, input.syncGeneration, ["peon_session_sync"], "runtime state connection was replaced");
     const existing = await tx.query<{ epoch: string; revision: string; digest: string }>(
       `SELECT epoch,revision,digest FROM peon_runtime_state WHERE peon_id=$1 FOR UPDATE`, [input.peonId],
     );
@@ -107,13 +110,12 @@ export async function commitRuntimeState(input: {
     if (row?.epoch === input.durable.epoch && Number(row.revision) === input.durable.revision && row.digest !== input.durable.digest) {
       throw new Error("runtime revision digest changed");
     }
-    const inserted = await tx.query(
-      `INSERT INTO peon_session_inbox (peon_id,epoch,cursor,created_at,message_id)
-       VALUES ($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING RETURNING cursor`,
-      [input.peonId, input.durable.deliveryEpoch, input.durable.deliveryCursor, Date.now(), input.durable.messageId],
-    );
+    const inbox = await recordDurableInbox(tx, {
+      peonId: input.peonId, deliveryEpoch: input.durable.deliveryEpoch,
+      deliveryCursor: input.durable.deliveryCursor, messageId: input.durable.messageId,
+    });
     let event: LiveEvent | null = null;
-    if (inserted.rows[0] && (!row || row.epoch !== input.durable.epoch || Number(row.revision) < input.durable.revision)) {
+    if (inbox === "inserted" && (!row || row.epoch !== input.durable.epoch || Number(row.revision) < input.durable.revision)) {
       await tx.query(
         `INSERT INTO peon_runtime_state (peon_id,workspace_id,epoch,revision,digest,generated_at,received_at,state)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb)
@@ -135,23 +137,16 @@ export async function commitRuntimeState(input: {
         },
       });
     }
-    if (inserted.rows[0]) {
-      await tx.query(
-        `UPDATE peon_session_sync SET delivery_epoch=$3,acknowledged_cursor=$4,updated_at=$5
-         WHERE peon_id=$1 AND generation=$2`,
-        [input.peonId, input.syncGeneration, input.durable.deliveryEpoch, input.durable.deliveryCursor, Date.now()],
-      );
-    }
-    const checkpoint = await tx.query<{ delivery_epoch: string; acknowledged_cursor: string }>(
-      `SELECT delivery_epoch,acknowledged_cursor FROM peon_session_sync WHERE peon_id=$1 AND generation=$2`,
-      [input.peonId, input.syncGeneration],
-    );
-    const current = checkpoint.rows[0];
-    if (!current?.delivery_epoch || !current.acknowledged_cursor) {
+    if (inbox === "inserted") await advanceDeliveryCheckpoint(tx, {
+      peonId: input.peonId, generation: input.syncGeneration,
+      epoch: input.durable.deliveryEpoch, acknowledgedCursor: input.durable.deliveryCursor,
+    }, "runtime state connection was replaced");
+    const current = await readDeliveryCheckpoint(tx, input.peonId, input.syncGeneration);
+    if (!current || current.acknowledgedCursor === null) {
       throw new Error("runtime delivery checkpoint missing");
     }
     return {
-      delivery: { epoch: current.delivery_epoch, acknowledgedCursor: current.acknowledged_cursor },
+      delivery: { epoch: current.epoch, acknowledgedCursor: current.acknowledgedCursor },
       event,
     };
   });
@@ -177,7 +172,7 @@ export async function getRuntimeProjection(peonId: string): Promise<null | {
     digest: row.digest,
     generatedAt: Number(row.generated_at),
     receivedAt,
-    freshness: !online ? "offline" : Date.now() - receivedAt > 120_000 ? "stale" : "fresh",
+    freshness: projectionFreshness({ online, receivedAt, staleAfterMs: 120_000 }),
     state: row.state,
   };
 }

@@ -1,6 +1,7 @@
 import { query, transaction, type Transaction } from "../../infrastructure/db/index.js";
 import { insertEvent, publishCommittedEvent, type LiveEvent } from "../../infrastructure/events/index.js";
 import { toView, type PeonRecord } from "../fleet/index.js";
+import { advanceDeliveryCheckpoint, assertProjectionGeneration, recordDurableInbox } from "../resourceSync/index.js";
 
 export interface PeonProject {
   projectId: string;
@@ -52,11 +53,7 @@ function nextProjectSyncedAt(): number {
 }
 
 async function assertGeneration(tx: Transaction, peonId: string, generation: string): Promise<void> {
-  const [delivery, project] = await Promise.all([
-    tx.query(`SELECT peon_id FROM peon_session_sync WHERE peon_id=$1 AND generation=$2`, [peonId, generation]),
-    tx.query(`SELECT peon_id FROM peon_project_sync WHERE peon_id=$1 AND generation=$2`, [peonId, generation]),
-  ]);
-  if (!delivery.rows[0] || !project.rows[0]) throw new Error("project sync connection was replaced");
+  await assertProjectionGeneration(tx, peonId, generation, ["peon_session_sync", "peon_project_sync"], "project sync connection was replaced");
 }
 
 async function storeProject(
@@ -229,12 +226,7 @@ async function advanceDelivery(
   epoch: string,
   cursor: string,
 ): Promise<void> {
-  const { rows } = await tx.query(
-    `UPDATE peon_session_sync SET delivery_epoch=$3,acknowledged_cursor=$4,updated_at=$5
-     WHERE peon_id=$1 AND generation=$2 RETURNING peon_id`,
-    [peonId, generation, epoch, cursor, Date.now()],
-  );
-  if (!rows[0]) throw new Error("project sync connection was replaced");
+  await advanceDeliveryCheckpoint(tx, { peonId, generation, epoch, acknowledgedCursor: cursor }, "project sync connection was replaced");
 }
 
 export async function applySocketProjectSnapshot(input: {
@@ -292,22 +284,7 @@ async function insertInbox(tx: Transaction, input: {
   deliveryCursor: string;
   messageId: string;
 }): Promise<boolean> {
-  const { rows } = await tx.query(
-    `INSERT INTO peon_session_inbox (peon_id,epoch,cursor,created_at,message_id)
-     VALUES ($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING RETURNING cursor`,
-    [input.peonId, input.deliveryEpoch, input.deliveryCursor, Date.now(), input.messageId],
-  );
-  if (rows[0]) return true;
-  const replay = await tx.query<{ epoch: string; cursor: string; message_id: string | null }>(
-    `SELECT epoch,cursor,message_id FROM peon_session_inbox
-     WHERE peon_id=$1 AND ((epoch=$2 AND cursor=$3) OR message_id=$4)`,
-    [input.peonId, input.deliveryEpoch, input.deliveryCursor, input.messageId],
-  );
-  const row = replay.rows[0];
-  if (!row || row.epoch !== input.deliveryEpoch || row.cursor !== input.deliveryCursor || row.message_id !== input.messageId) {
-    throw new Error("durable message replay identity mismatch");
-  }
-  return false;
+  return (await recordDurableInbox(tx, input)) === "inserted";
 }
 
 export async function applySocketProjectEvent(input: {

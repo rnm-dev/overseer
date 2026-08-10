@@ -75,7 +75,7 @@ interface Client {
   alive: boolean;
   closed: boolean;
   queuedMessages: number;
-  deliveredSessionCursors: Map<number, number | null>;
+  deliveredResourceCursors: Map<number, { kind: "session" | "project" | "peon"; committedAt: number | null }>;
   messageQueue: Promise<void>;
   tails: Map<string, AbortController>;
   location: PresenceLocation | null;
@@ -119,15 +119,18 @@ const REPLAY_PAGE_SIZE = 1000;
 const MAX_SSE_FRAME_BYTES = 1024 * 1024;
 const MAX_PENDING_TRANSCRIPT_EVENTS = 1_000;
 const MAX_PENDING_TRANSCRIPT_BYTES = 8 * 1024 * 1024;
-const MAX_CLIENT_SESSION_APPLY_CLOCKS = 1_024;
+const MAX_CLIENT_RESOURCE_APPLY_CLOCKS = 1_024;
 
-function rememberDeliveredSession(client: Client, event: LiveEvent, measureApply = true): void {
-  if (event.kind !== "session" || event.cursor <= 0) return;
-  client.deliveredSessionCursors.set(event.cursor, measureApply ? event.createdAt : null);
-  while (client.deliveredSessionCursors.size > MAX_CLIENT_SESSION_APPLY_CLOCKS) {
-    const oldest = client.deliveredSessionCursors.keys().next().value as number | undefined;
+function rememberDeliveredResource(client: Client, event: LiveEvent, measureApply = true): void {
+  if (!(["session", "project", "peon"] as const).includes(event.kind as "session" | "project" | "peon") || event.cursor <= 0) return;
+  client.deliveredResourceCursors.set(event.cursor, {
+    kind: event.kind as "session" | "project" | "peon",
+    committedAt: measureApply ? event.createdAt : null,
+  });
+  while (client.deliveredResourceCursors.size > MAX_CLIENT_RESOURCE_APPLY_CLOCKS) {
+    const oldest = client.deliveredResourceCursors.keys().next().value as number | undefined;
     if (oldest === undefined) break;
-    client.deliveredSessionCursors.delete(oldest);
+    client.deliveredResourceCursors.delete(oldest);
   }
 }
 
@@ -256,7 +259,7 @@ export function attachLiveSocket(server: Server): WebSocketServer {
         alive: true,
         closed: false,
         queuedMessages: 0,
-        deliveredSessionCursors: new Map(),
+        deliveredResourceCursors: new Map(),
         messageQueue: Promise.resolve(),
         tails: new Map(),
         location: null,
@@ -313,7 +316,7 @@ export function attachLiveSocket(server: Server): WebSocketServer {
         continue;
       }
       if ((c.live || presenceDuringSnapshot) && c.workspaceId === e.workspaceId && eventVisible(c, e)) {
-        rememberDeliveredSession(c, e);
+        rememberDeliveredResource(c, e);
         send(c.ws, { type: e.kind, cursor: e.cursor, payload: e.payload });
       }
     }
@@ -425,7 +428,7 @@ function enqueueMessage(client: Client, raw: string, wsCursor: Map<string, numbe
 }
 
 async function onMessage(client: Client, raw: string, wsCursor: Map<string, number>): Promise<void> {
-  let msg: { type?: string; workspaceId?: string; cursor?: number; scope?: string; peonId?: string; sessionId?: string; lastEventId?: string; clientId?: string };
+  let msg: { type?: string; kind?: string; workspaceId?: string; cursor?: number; scope?: string; peonId?: string; sessionId?: string; lastEventId?: string; clientId?: string };
   try {
     msg = JSON.parse(raw);
   } catch {
@@ -453,13 +456,18 @@ async function onMessage(client: Client, raw: string, wsCursor: Map<string, numb
     return;
   }
   if (!client.workspaceId) return; // everything else requires a workspace
-  if (msg.type === "session:applied") {
+  if (msg.type === "session:applied" || msg.type === "resource:applied") {
     const cursor = Number(msg.cursor);
     if (!Number.isSafeInteger(cursor) || cursor <= 0 || cursor > (wsCursor.get(client.workspaceId) ?? 0)) return;
-    if (!client.deliveredSessionCursors.has(cursor)) return;
-    const committedAt = client.deliveredSessionCursors.get(cursor);
-    client.deliveredSessionCursors.delete(cursor);
-    if (committedAt !== null && committedAt !== undefined) observeSessionCatalogDuration("client_apply", "success", Date.now() - committedAt);
+    const delivered = client.deliveredResourceCursors.get(cursor);
+    if (!delivered) return;
+    const claimedKind = msg.type === "session:applied" ? "session" : String(msg.kind ?? "");
+    if (claimedKind !== delivered.kind) return;
+    client.deliveredResourceCursors.delete(cursor);
+    if (delivered.committedAt !== null) {
+      const stage = delivered.kind === "session" ? "client_apply" : `${delivered.kind}_apply`;
+      observeSessionCatalogDuration(stage, "success", Date.now() - delivered.committedAt);
+    }
     return;
   }
   if (msg.type === "resume") return resume(client, msg.cursor, wsCursor);
@@ -580,7 +588,7 @@ async function replayWindow(client: Client, workspaceId: string, from: number, t
       if (client.closed || client.workspaceId !== workspaceId) return;
       if (e.kind === "transcript") continue;
       if (eventVisible(client, e)) {
-        rememberDeliveredSession(client, e, false);
+        rememberDeliveredResource(client, e, false);
         send(client.ws, { type: e.kind, cursor: e.cursor, payload: e.payload });
       }
     }

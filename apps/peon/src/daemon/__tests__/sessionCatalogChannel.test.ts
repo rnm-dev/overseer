@@ -79,6 +79,7 @@ test("snapshot frames are correlated, fenced, paginated, and cancellable", () =>
   assert.equal(first.requestId, "sync-1");
   assert.equal(first.barrierSeq, 0);
   assert.equal((first.sessions as unknown[]).length, 1);
+  assert.equal("rows" in first, false);
   assert.equal(typeof first.nextCursor, "string");
 
   source.change(record("a", 4));

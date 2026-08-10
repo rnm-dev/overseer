@@ -9,5 +9,13 @@
   "shared": ["qualified-identity", "monotonic-version", "generation-fence", "cursor-resume", "freshness", "bounded-rebuild", "commit-before-ack", "payload-free-observability"],
   "specialized": ["transcript-history-and-tail", "file-byte-streams", "commands"],
   "freshness": ["syncing", "fresh", "stale", "offline"],
+  "appliedSlo": {
+    "families": ["session", "project", "peon-runtime"],
+    "start": "overseer_event_committed",
+    "stop": "authorized_client_projection_applied",
+    "targetMs": 2000,
+    "percentile": 99,
+    "replaySamples": false
+  },
   "limits": { "items": 10000, "bytes": 8388608, "diagnostics": 256 }
 }

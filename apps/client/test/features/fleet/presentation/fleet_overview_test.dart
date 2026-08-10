@@ -687,8 +687,8 @@ class _FakeNotificationPermissionGateway
 class _FakeFleetLiveService implements FleetLiveService {
   void Function(String, String, int)? _onActiveSessions;
   void Function(String, List<ActiveSession>?)? _onActiveSessionSnapshot;
-  Future<void> Function(String, int, Map<String, dynamic>)? _onSession;
-  Future<void> Function(String, int, Map<String, dynamic>)? _onProject;
+  Future<bool> Function(String, int, Map<String, dynamic>)? _onSession;
+  Future<bool> Function(String, int, Map<String, dynamic>)? _onProject;
   Future<void> Function(String, int)? _onCursor;
   void Function(String, List<PresenceEntry>)? _onPresence;
   Map<String, int>? initialCursors;
@@ -697,14 +697,14 @@ class _FakeFleetLiveService implements FleetLiveService {
   Future<void> connect({
     required List<String> workspaceIds,
     required Map<String, int> initialCursors,
-    required void Function(String, Map<String, dynamic>) onPeon,
-    required Future<void> Function(
+    required Future<bool> Function(String, int, Map<String, dynamic>) onPeon,
+    required Future<bool> Function(
       String workspaceId,
       int cursor,
       Map<String, dynamic> session,
     )
     onSession,
-    required Future<void> Function(
+    required Future<bool> Function(
       String workspaceId,
       int cursor,
       Map<String, dynamic> project,

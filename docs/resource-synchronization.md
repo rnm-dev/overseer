@@ -32,11 +32,15 @@ payload parser. The shared lifecycle is:
 5. enter `stale` on a gap or rebuild requirement and `offline` on transport
    loss, retaining the last authoritative rows.
 
-The server's `CatalogSnapshot<T>` is now the single paged snapshot/barrier and
-pressure implementation used by session and project catalogs. Runtime state is
-a bounded singleton projection on the same durable delivery frontier. Browser
-session and project lists share `mergeResourceProjection`; Flutter session and
-project repositories share `ResourceProjectionEnvelope` and advance their
+Peon's catalog producer channel and snapshot pager are now the single replay,
+ACK, bounded-page, barrier and pressure implementation used by session and
+project catalogs. Runtime state is a bounded singleton projection on the same
+durable delivery frontier. On Overseer, generation fencing, inbox replay
+identity, delivery checkpoints and freshness use one projection core; reverse
+command terminal delivery reuses the same bookkeeping while retaining its
+specialized command transaction and authority. Browser session and project
+lists share `mergeResourceProjection`; Flutter session, project and Peon
+repositories use one durable projection transaction and advance their
 workspace cursor in the same database transaction as the domain write.
 Flutter fleet refreshes validate workspace and Peon inventory through the same
 bounded, duplicate-safe `ResourceSnapshot` before atomically replacing their
@@ -55,4 +59,7 @@ for schema, ACL, persistence and wire compatibility.
 
 Diagnostics use fixed resource/stage/outcome labels and bounded durations or
 counts. Titles, prompts, previews, transcript content, paths, credentials and
-raw payloads are forbidden.
+raw payloads are forbidden. Web and Flutter clients acknowledge a generic
+`resource:applied` cursor only after the resource handler has committed; the
+server matches the exact resource kind and cursor and measures the live
+session/project/Peon apply clocks without counting replay delivery.

@@ -5,15 +5,19 @@ abstract interface class FleetLiveService {
   Future<void> connect({
     required List<String> workspaceIds,
     required Map<String, int> initialCursors,
-    required void Function(String workspaceId, Map<String, dynamic> peon)
+    required Future<bool> Function(
+      String workspaceId,
+      int cursor,
+      Map<String, dynamic> peon,
+    )
     onPeon,
-    required Future<void> Function(
+    required Future<bool> Function(
       String workspaceId,
       int cursor,
       Map<String, dynamic> session,
     )
     onSession,
-    required Future<void> Function(
+    required Future<bool> Function(
       String workspaceId,
       int cursor,
       Map<String, dynamic> project,

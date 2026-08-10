@@ -326,15 +326,20 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
           bump(msg.cursor);
           const peon = parsePeonProjection(msg.payload);
           if (peon) updatePeon(wsId, peon);
+          const cursor = Number(msg.cursor) || 0;
+          if (peon && cursor > 0 && sockRef.current?.readyState === WebSocket.OPEN) {
+            sockRef.current.send(JSON.stringify({ type: "resource:applied", kind: "peon", cursor }));
+          }
           break;
         }
         case "session": {
           bump(msg.cursor);
           if (msg.payload && typeof msg.payload === "object") {
+            const applied = sessionHandlers.current.size > 0;
             for (const onSession of sessionHandlers.current) onSession(msg.payload as SessionLiveEvent);
             const cursor = Number(msg.cursor) || 0;
-            if (cursor > 0 && sockRef.current?.readyState === WebSocket.OPEN) {
-              sockRef.current.send(JSON.stringify({ type: "session:applied", cursor }));
+            if (applied && cursor > 0 && sockRef.current?.readyState === WebSocket.OPEN) {
+              sockRef.current.send(JSON.stringify({ type: "resource:applied", kind: "session", cursor }));
             }
           }
           break;
@@ -342,7 +347,12 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
         case "project": {
           bump(msg.cursor);
           if (msg.payload && typeof msg.payload === "object") {
+            const applied = projectHandlers.current.size > 0;
             for (const onProject of projectHandlers.current) onProject(msg.payload as ProjectLiveEvent);
+            const cursor = Number(msg.cursor) || 0;
+            if (applied && cursor > 0 && sockRef.current?.readyState === WebSocket.OPEN) {
+              sockRef.current.send(JSON.stringify({ type: "resource:applied", kind: "project", cursor }));
+            }
           }
           break;
         }

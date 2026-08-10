@@ -11,6 +11,7 @@ test("all catalog-like families execute one authority-neutral convergence state 
     assert.equal(harness.apply({ identity: "one", version: 1, cursor: 3 }), true);
     assert.equal(harness.rows.get("one").version, 2);
     assert.equal(harness.apply({ identity: "two", version: 3, cursor: 4 }), true);
+    assert.equal(harness.state().appliedCursor, 4);
     harness.restart("overseer");
     assert.equal(harness.apply({ identity: "late", version: 4, cursor: 5 }, generation), false);
     assert.equal(harness.state().freshness, "stale");
@@ -24,5 +25,6 @@ test("shared resource core fails closed on gaps, corrupt snapshots, pressure and
   harness.replace([{ identity: "a", version: 1 }], 1);
   assert.equal(harness.apply({ identity: "b", version: 2, cursor: 2 }, undefined, { crashBeforeCommit: true }), false);
   assert.equal(harness.state().cursor, 1);
+  assert.equal(harness.state().appliedCursor, 0);
   assert.throws(() => harness.apply({ identity: "b", version: 2, cursor: 3 }), /cursor gap/);
 });

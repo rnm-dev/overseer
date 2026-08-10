@@ -12,6 +12,7 @@ import type {
   SessionSyncCheckpoint,
 } from "./sessionTypes.js";
 import { markTranscriptDeleted } from "./transcriptProjection.js";
+import { assertProjectionGeneration, recordDurableInbox } from "../resourceSync/index.js";
 
 // The aggregated session index — a materialized view of every peon's sessions,
 // so "all sessions across every peon" is one local Postgres query instead of a
@@ -385,11 +386,10 @@ async function advanceSessionCheckpoints(
 }
 
 async function assertSessionSyncGeneration(tx: Transaction, peonId: string, generation: string): Promise<void> {
-  const current = await tx.query<{ peon_id: string }>(
-    `SELECT peon_id FROM peon_session_sync WHERE peon_id=$1 AND generation=$2`,
-    [peonId, generation],
+  await assertProjectionGeneration(
+    tx, peonId, generation, ["peon_session_sync"],
+    new StaleSessionSyncGenerationError("session sync connection was replaced"),
   );
-  if (!current.rows[0]) throw new StaleSessionSyncGenerationError("session sync connection was replaced");
 }
 
 async function publishSyncMutations(mutations: StoredMutation[]): Promise<void> {
@@ -459,21 +459,8 @@ export async function applySocketSessionEvent(input: {
 }): Promise<{ catalog: { epoch: string; acknowledgedSeq: number }; delivery: { epoch: string; acknowledgedCursor: string } }> {
   const result = await transaction(async (tx) => {
     await assertSessionSyncGeneration(tx, input.peonId, input.generation);
-    const inserted = await tx.query<{ cursor: string }>(
-      `INSERT INTO peon_session_inbox (peon_id, epoch, cursor, created_at, message_id)
-       VALUES ($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING RETURNING cursor`,
-      [input.peonId, input.deliveryEpoch, input.deliveryCursor, Date.now(), input.messageId],
-    );
-    if (!inserted.rows[0]) {
-      const replay = await tx.query<{ epoch: string; cursor: string; message_id: string | null }>(
-        `SELECT epoch, cursor, message_id FROM peon_session_inbox
-         WHERE peon_id=$1 AND ((epoch=$2 AND cursor=$3) OR message_id=$4)`,
-        [input.peonId, input.deliveryEpoch, input.deliveryCursor, input.messageId],
-      );
-      const replayed = replay.rows[0];
-      if (!replayed || replayed.epoch !== input.deliveryEpoch || replayed.cursor !== input.deliveryCursor || replayed.message_id !== input.messageId) {
-        throw new Error("durable message replay identity mismatch");
-      }
+    const inbox = await recordDurableInbox(tx, input);
+    if (inbox === "replayed") {
       const current = await tx.query<{
         catalog_epoch: string | null; acknowledged_seq: number | string | null;
         delivery_epoch: string | null; acknowledged_cursor: string | null;
@@ -533,11 +520,7 @@ export async function commitSnapshotCoveredSessionEvent(input: {
 }): Promise<{ catalog: { epoch: string; acknowledgedSeq: number }; delivery: { epoch: string; acknowledgedCursor: string } }> {
   return transaction(async (tx) => {
     await assertSessionSyncGeneration(tx, input.peonId, input.generation);
-    const inserted = await tx.query<{ cursor: string }>(
-      `INSERT INTO peon_session_inbox (peon_id, epoch, cursor, created_at, message_id)
-       VALUES ($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING RETURNING cursor`,
-      [input.peonId, input.deliveryEpoch, input.deliveryCursor, Date.now(), input.messageId],
-    );
+    const inbox = await recordDurableInbox(tx, input);
     const current = await tx.query<{
       catalog_epoch: string | null; acknowledged_seq: number | string | null;
       delivery_epoch: string | null; acknowledged_cursor: string | null;
@@ -554,17 +537,7 @@ export async function commitSnapshotCoveredSessionEvent(input: {
     if (checkpoint.catalog_epoch === input.catalogEpoch && input.seq > Number(checkpoint.acknowledged_seq)) {
       throw new Error("event is not covered by the committed snapshot");
     }
-    if (!inserted.rows[0]) {
-      const replay = await tx.query<{ epoch: string; cursor: string; message_id: string | null }>(
-        `SELECT epoch, cursor, message_id FROM peon_session_inbox
-         WHERE peon_id=$1 AND ((epoch=$2 AND cursor=$3) OR message_id=$4)`,
-        [input.peonId, input.deliveryEpoch, input.deliveryCursor, input.messageId],
-      );
-      const row = replay.rows[0];
-      if (!row || row.epoch !== input.deliveryEpoch || row.cursor !== input.deliveryCursor || row.message_id !== input.messageId) {
-        throw new Error("durable message replay identity mismatch");
-      }
-    } else {
+    if (inbox === "inserted") {
       await advanceSessionCheckpoints(
         tx, input.peonId, input.generation, checkpoint.catalog_epoch, Number(checkpoint.acknowledged_seq),
         { epoch: input.deliveryEpoch, acknowledgedCursor: input.deliveryCursor },
@@ -573,8 +546,8 @@ export async function commitSnapshotCoveredSessionEvent(input: {
     return {
       catalog: { epoch: checkpoint.catalog_epoch, acknowledgedSeq: Number(checkpoint.acknowledged_seq) },
       delivery: {
-        epoch: inserted.rows[0] ? input.deliveryEpoch : checkpoint.delivery_epoch ?? input.deliveryEpoch,
-        acknowledgedCursor: inserted.rows[0] ? input.deliveryCursor : checkpoint.acknowledged_cursor ?? input.deliveryCursor,
+        epoch: inbox === "inserted" ? input.deliveryEpoch : checkpoint.delivery_epoch ?? input.deliveryEpoch,
+        acknowledgedCursor: inbox === "inserted" ? input.deliveryCursor : checkpoint.acknowledged_cursor ?? input.deliveryCursor,
       },
     };
   });

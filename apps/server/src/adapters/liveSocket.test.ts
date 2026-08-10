@@ -95,7 +95,7 @@ test("WebSocket tickets are short-lived credentials that can only be consumed on
   assert.equal(await consumeWebSocketTicket(issued.ticket), null);
 });
 
-test("session apply acknowledgements measure only known committed cursors", async () => {
+test("resource apply acknowledgements measure only the delivered kind and cursor", async () => {
   const mem = newDb();
   const adapter = mem.adapters.createPg();
   await initDb(new adapter.Pool() as unknown as pg.Pool);
@@ -117,12 +117,13 @@ test("session apply acknowledgements measure only known committed cursors", asyn
     resetSessionCatalogObservabilityForTest();
     await upsertSession(workspace.id, "apply-peon", { id: "apply-session", status: "completed", startedAt: 1, endedAt: 2, lastActivityAt: 2 });
     const event = await collector.waitFor((message) => message.type === "session");
-    ws.send(JSON.stringify({ type: "session:applied", cursor: event.cursor }));
+    ws.send(JSON.stringify({ type: "resource:applied", kind: "project", cursor: event.cursor }));
+    ws.send(JSON.stringify({ type: "resource:applied", kind: "session", cursor: event.cursor }));
     await new Promise((resolve) => setTimeout(resolve, 10));
     const snapshot = sessionCatalogObservabilitySnapshot() as { durations: Record<string, { count: number }> };
     assert.equal(snapshot.durations["client_apply:success"]?.count, 1);
-    ws.send(JSON.stringify({ type: "session:applied", cursor: event.cursor }));
-    ws.send(JSON.stringify({ type: "session:applied", cursor: Number(event.cursor) + 1000 }));
+    ws.send(JSON.stringify({ type: "resource:applied", kind: "session", cursor: event.cursor }));
+    ws.send(JSON.stringify({ type: "resource:applied", kind: "session", cursor: Number(event.cursor) + 1000 }));
     await new Promise((resolve) => setTimeout(resolve, 10));
     assert.equal((sessionCatalogObservabilitySnapshot() as { durations: Record<string, { count: number }> }).durations["client_apply:success"]?.count, 1);
   } finally {

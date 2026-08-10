@@ -18,7 +18,15 @@ void main() {
       expect(envelope?.authority, ResourceAuthority.peon);
       expect(envelope?.resourceId, 'session');
       expect(envelope?.deleted, isTrue);
+      expect(envelope?.hasVersion, isTrue);
       expect(envelope?.isOlderThan(5), isTrue);
+      final legacy = ResourceProjectionEnvelope.peonOwned(
+        workspaceId: 'workspace',
+        resourceIdKey: 'peonId',
+        projection: const {'peonId': 'peon'},
+      );
+      expect(legacy?.hasVersion, isFalse);
+      expect(legacy?.isOlderThan(1), isFalse);
       expect(
         ResourceProjectionEnvelope.peonOwned(
           workspaceId: 'workspace',
@@ -40,6 +48,14 @@ void main() {
           authority: ResourceAuthority.peon,
           items: const ['duplicate', 'duplicate'],
           identity: (item) => item,
+        ),
+        throwsFormatException,
+      );
+      expect(
+        () => ResourceSnapshot<int>.validated(
+          authority: ResourceAuthority.peon,
+          items: List<int>.generate(10001, (index) => index),
+          identity: (item) => '$item',
         ),
         throwsFormatException,
       );

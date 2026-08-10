@@ -40,13 +40,14 @@ void main() {
       await service.connect(
         workspaceIds: const ['workspace-1'],
         initialCursors: const {'workspace-1': 0},
-        onPeon: (_, _) {},
+        onPeon: (_, _, _) async => true,
         onSession: (_, cursor, _) async {
           expect(cursor, 7);
           await Future<void>.delayed(const Duration(milliseconds: 10));
           applied = true;
+          return true;
         },
-        onProject: (_, _, _) async {},
+        onProject: (_, _, _) async => true,
         onCursor: (_, _) async {},
         onActiveSessions: (_, _, _) {},
         onActiveSessionSnapshot: (_, _) {},
@@ -68,8 +69,9 @@ void main() {
           },
         }),
       );
-      final acknowledgement = await probe.next('session:applied');
+      final acknowledgement = await probe.next('resource:applied');
       expect(applied, isTrue);
+      expect(acknowledgement['kind'], 'session');
       expect(acknowledgement['cursor'], 7);
     },
   );
@@ -93,9 +95,9 @@ void main() {
     await service.connect(
       workspaceIds: const ['workspace-1'],
       initialCursors: const {'workspace-1': 0},
-      onPeon: (_, _) {},
-      onSession: (_, _, _) async {},
-      onProject: (_, _, _) async {},
+      onPeon: (_, _, _) async => true,
+      onSession: (_, _, _) async => true,
+      onProject: (_, _, _) async => true,
       onCursor: (_, _) async {},
       onActiveSessions: (_, _, _) {},
       onActiveSessionSnapshot: (_, _) {},
@@ -140,9 +142,9 @@ void main() {
       await service.connect(
         workspaceIds: const ['workspace-1'],
         initialCursors: const {'workspace-1': 0},
-        onPeon: (_, _) {},
-        onSession: (_, _, _) async {},
-        onProject: (_, _, _) async {},
+        onPeon: (_, _, _) async => true,
+        onSession: (_, _, _) async => true,
+        onProject: (_, _, _) async => true,
         onCursor: (_, _) async {},
         onActiveSessions: (_, _, _) {},
         onActiveSessionSnapshot: (_, _) {},
@@ -217,9 +219,9 @@ void main() {
       await service.connect(
         workspaceIds: const ['workspace-1'],
         initialCursors: const {'workspace-1': 0},
-        onPeon: (_, _) {},
-        onSession: (_, _, _) async {},
-        onProject: (_, _, _) async {},
+        onPeon: (_, _, _) async => true,
+        onSession: (_, _, _) async => true,
+        onProject: (_, _, _) async => true,
         onCursor: (_, _) async {},
         onActiveSessions: (_, _, _) {},
         onActiveSessionSnapshot: (_, _) {},
@@ -307,9 +309,9 @@ void main() {
       await service.connect(
         workspaceIds: const ['workspace-1'],
         initialCursors: const {'workspace-1': 0},
-        onPeon: (_, _) {},
-        onSession: (_, _, _) async {},
-        onProject: (_, _, _) async {},
+        onPeon: (_, _, _) async => true,
+        onSession: (_, _, _) async => true,
+        onProject: (_, _, _) async => true,
         onCursor: (_, _) async {},
         onActiveSessions: (_, peonId, count) {
           if (peonId != 'peon-1') return;

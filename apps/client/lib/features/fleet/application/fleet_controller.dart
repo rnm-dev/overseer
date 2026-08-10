@@ -109,18 +109,22 @@ class FleetController extends AsyncNotifier<List<WorkspaceFleet>> {
           initialCursors: cursors,
           onPeon: _applyPeon,
           onSession: (workspaceId, cursor, session) async {
-            await sink?.applyLiveProjection(
+            if (sink == null) return false;
+            await sink.applyLiveProjection(
               workspaceId: workspaceId,
               cursor: cursor,
               projection: session,
             );
+            return true;
           },
           onProject: (workspaceId, cursor, project) async {
-            await projectSink?.applyLiveProjection(
+            if (projectSink == null) return false;
+            await projectSink.applyLiveProjection(
               workspaceId: workspaceId,
               cursor: cursor,
               projection: project,
             );
+            return true;
           },
           onCursor: (workspaceId, cursor) async {
             await sink?.advanceCursor(workspaceId: workspaceId, cursor: cursor);
@@ -224,19 +228,24 @@ class FleetController extends AsyncNotifier<List<WorkspaceFleet>> {
     );
   }
 
-  void _applyPeon(String workspaceId, Map<String, dynamic> projection) {
+  Future<bool> _applyPeon(
+    String workspaceId,
+    int cursor,
+    Map<String, dynamic> projection,
+  ) async {
     final repository = ref.read(fleetRepositoryProvider);
+    var durable = false;
     if (repository is CachedFleetRepository) {
-      unawaited(
-        repository.applyPeonProjection(
-          workspaceId: workspaceId,
-          projection: projection,
-        ),
+      await repository.applyPeonProjection(
+        workspaceId: workspaceId,
+        cursor: cursor,
+        projection: projection,
       );
+      durable = true;
     }
     final current = state.value;
     final peonId = projection['peonId'];
-    if (current == null || peonId is! String) return;
+    if (current == null || peonId is! String) return durable;
 
     state = AsyncData([
       for (final fleet in current)
@@ -265,6 +274,7 @@ class FleetController extends AsyncNotifier<List<WorkspaceFleet>> {
             ],
           ),
     ]);
+    return durable;
   }
 
   void _applyActiveSessions(

@@ -42,9 +42,9 @@ class _RecordingLiveService implements FleetLiveService, FleetLiveLifecycle {
   Future<void> connect({
     required List<String> workspaceIds,
     required Map<String, int> initialCursors,
-    required void Function(String, Map<String, dynamic>) onPeon,
-    required Future<void> Function(String, int, Map<String, dynamic>) onSession,
-    required Future<void> Function(String, int, Map<String, dynamic>) onProject,
+    required Future<bool> Function(String, int, Map<String, dynamic>) onPeon,
+    required Future<bool> Function(String, int, Map<String, dynamic>) onSession,
+    required Future<bool> Function(String, int, Map<String, dynamic>) onProject,
     required Future<void> Function(String, int) onCursor,
     required void Function(String, String, int) onActiveSessions,
     required void Function(String, List<ActiveSession>?)

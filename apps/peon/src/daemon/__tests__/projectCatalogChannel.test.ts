@@ -71,6 +71,39 @@ test("resume replays exact persisted events and project ack is independent", () 
   assert.equal(output.frames.at(-1)?.code, "BAD_CURSOR");
 });
 
+test("resume keeps the persisted-ack rejection disconnect distinct from a bad incoming ack", () => {
+  const { root, store, catalog } = fixture();
+  store.createProject({ key: "alpha", label: "Alpha", dir: path.join(root, "alpha") });
+  catalog.acknowledge = () => false;
+  const channel = new ProjectCatalogChannel(catalog);
+  const output = capture();
+
+  channel.negotiated(true, {
+    channels: { "project-catalog-v1": { epoch: catalog.state().epoch, acknowledgedSeq: 0 } },
+  }, output.sender);
+
+  assert.deepEqual(output.disconnects, ["project catalog acknowledgement was rejected"]);
+  assert.deepEqual(output.frames, []);
+});
+
+test("persisted-ack failure retains the project retry loop", async () => {
+  const { root, store, catalog } = fixture();
+  const channel = new ProjectCatalogChannel(catalog, 10);
+  const output = capture();
+  channel.negotiated(true, {}, output.sender);
+  store.createProject({ key: "retry", label: "Retry", dir: path.join(root, "retry") });
+  const originalAcknowledge = catalog.acknowledge;
+  catalog.acknowledge = () => { throw new Error("disk failure"); };
+
+  channel.receive({ type: "project_catalog_ack", epoch: catalog.state().epoch, acknowledgedSeq: 1 }, output.sender);
+  await new Promise((resolve) => setTimeout(resolve, 25));
+
+  assert.deepEqual(output.disconnects, ["project catalog acknowledgement persistence failed"]);
+  assert.ok(output.durableFrames.length >= 2);
+  catalog.acknowledge = originalAcknowledge;
+  channel.disconnected(true);
+});
+
 test("snapshot and live events use separate frames with no unsafe rollups", () => {
   const { root, store, catalog, channel } = fixture();
   store.createProject({ key: "alpha", label: "Alpha", dir: path.join(root, "alpha") });
@@ -79,6 +112,7 @@ test("snapshot and live events use separate frames with no unsafe rollups", () =
   channel.receive({ type: "project_catalog_snapshot_request", requestId: "sync", limit: 10 }, output.sender);
   const page = output.frames.at(-1)!;
   assert.equal(page.type, "project_catalog_snapshot_page");
+  assert.equal("rows" in page, false);
   const project = (page.projects as PeonSocketFrame[])[0]!;
   assert.deepEqual(Object.keys(project).sort(), ["archivedAt", "dir", "key", "label", "projectId", "quickLinks"]);
 

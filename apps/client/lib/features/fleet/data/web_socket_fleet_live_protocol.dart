@@ -29,12 +29,21 @@ extension _WebSocketFleetLiveProtocol on WebSocketFleetLiveService {
         ..activeReplayEndsRemaining = snapshotCursor > resumeCursor ? 2 : 1;
       _onActiveSessionSnapshot?.call(workspaceId, null);
       state.pendingSessions.clear();
-      for (final peon in (decoded['peonPresence'] as List? ?? const [])) {
-        if (peon is Map<String, dynamic>) {
-          final peonId = peon['peonId'];
-          if (peonId is String) state.peonIds.add(peonId);
-          _onPeon?.call(workspaceId, peon);
-        }
+      final rawPeons = decoded['peonPresence'];
+      if (rawPeons is List && rawPeons.length > 10000) {
+        throw const FormatException('Peon snapshot exceeds its item limit');
+      }
+      final peonSnapshot = ResourceSnapshot<Map<String, dynamic>>.validated(
+        authority: ResourceAuthority.peon,
+        items: (rawPeons as List? ?? const []).whereType<Map>().map(
+          Map<String, dynamic>.from,
+        ),
+        identity: (peon) => peon['peonId'] as String? ?? '',
+      );
+      state.peonIds.clear();
+      for (final peon in peonSnapshot.items) {
+        state.peonIds.add(peon['peonId'] as String);
+        await _onPeon?.call(workspaceId, 0, peon);
       }
       _replacePresence(workspaceId, decoded['presence']);
       _diagnostics.record(
@@ -71,11 +80,21 @@ extension _WebSocketFleetLiveProtocol on WebSocketFleetLiveService {
     }
     if (type == 'peon') {
       final cursor = (decoded['cursor'] as num?)?.toInt() ?? 0;
-      if (cursor > 0) await _onCursor?.call(workspaceId, cursor);
-      _bumpCursor(workspaceId, state, cursor);
       final payload = decoded['payload'];
       if (payload is Map<String, dynamic>) {
-        _onPeon?.call(workspaceId, payload);
+        final applied = await _onPeon?.call(workspaceId, cursor, payload);
+        if (applied == true) {
+          _bumpCursor(workspaceId, state, cursor);
+          if (cursor > 0) {
+            state.channel?.sink.add(
+              jsonEncode({
+                'type': 'resource:applied',
+                'kind': 'peon',
+                'cursor': cursor,
+              }),
+            );
+          }
+        }
       }
       return;
     }
@@ -83,16 +102,22 @@ extension _WebSocketFleetLiveProtocol on WebSocketFleetLiveService {
       final cursor = (decoded['cursor'] as num?)?.toInt() ?? 0;
       final payload = decoded['payload'];
       if (payload is Map<String, dynamic>) {
-        await _onSession?.call(workspaceId, cursor, payload);
-        _bumpCursor(workspaceId, state, cursor);
+        final applied = await _onSession?.call(workspaceId, cursor, payload);
+        if (applied == true) {
+          _bumpCursor(workspaceId, state, cursor);
+        }
         if (state.activeSeeded) {
           _applySession(workspaceId, state, payload);
         } else {
           state.pendingSessions.add(payload);
         }
-        if (cursor > 0) {
+        if (applied == true && cursor > 0) {
           state.channel?.sink.add(
-            jsonEncode({'type': 'session:applied', 'cursor': cursor}),
+            jsonEncode({
+              'type': 'resource:applied',
+              'kind': 'session',
+              'cursor': cursor,
+            }),
           );
         }
       }
@@ -111,8 +136,19 @@ extension _WebSocketFleetLiveProtocol on WebSocketFleetLiveService {
       final cursor = (decoded['cursor'] as num?)?.toInt() ?? 0;
       final payload = decoded['payload'];
       if (payload is Map<String, dynamic>) {
-        await _onProject?.call(workspaceId, cursor, payload);
-        _bumpCursor(workspaceId, state, cursor);
+        final applied = await _onProject?.call(workspaceId, cursor, payload);
+        if (applied == true) {
+          _bumpCursor(workspaceId, state, cursor);
+          if (cursor > 0) {
+            state.channel?.sink.add(
+              jsonEncode({
+                'type': 'resource:applied',
+                'kind': 'project',
+                'cursor': cursor,
+              }),
+            );
+          }
+        }
       }
       return;
     }

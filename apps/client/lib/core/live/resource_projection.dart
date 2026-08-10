@@ -33,6 +33,7 @@ final class ResourceProjectionEnvelope {
     required this.workspaceId,
     required this.resourceId,
     required this.version,
+    required this.hasVersion,
     required this.deleted,
     this.peonId,
   });
@@ -42,6 +43,7 @@ final class ResourceProjectionEnvelope {
   final String? peonId;
   final String resourceId;
   final double version;
+  final bool hasVersion;
   final bool deleted;
 
   static ResourceProjectionEnvelope? peonOwned({
@@ -52,15 +54,18 @@ final class ResourceProjectionEnvelope {
     final peonId = projection['peonId'];
     final resourceId = projection[resourceIdKey];
     if (peonId is! String || resourceId is! String) return null;
+    final rawVersion = projection['syncedAt'];
     return ResourceProjectionEnvelope(
       authority: ResourceAuthority.peon,
       workspaceId: workspaceId,
       peonId: peonId,
       resourceId: resourceId,
-      version: (projection['syncedAt'] as num?)?.toDouble() ?? 0,
+      version: (rawVersion as num?)?.toDouble() ?? 0,
+      hasVersion: rawVersion is num,
       deleted: projection['deleted'] == true,
     );
   }
 
-  bool isOlderThan(double storedVersion) => version < storedVersion;
+  bool isOlderThan(double storedVersion) =>
+      hasVersion && version < storedVersion;
 }

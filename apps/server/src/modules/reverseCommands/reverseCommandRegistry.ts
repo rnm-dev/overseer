@@ -12,6 +12,12 @@ import {
   type ReverseCommandTarget,
 } from "./reverseCommandTypes.js";
 import type { AuthenticatedActor } from "../auth/index.js";
+import {
+  advanceDeliveryCheckpoint,
+  assertProjectionGeneration,
+  readDeliveryCheckpoint,
+  recordDurableInbox,
+} from "../resourceSync/index.js";
 
 export interface ReverseCommandLimits {
   globalPending: number;
@@ -561,12 +567,13 @@ export async function commitDurableReverseCommandResult(input: {
   durable: DurableReverseCommandResult;
 }): Promise<CommittedReverseCommandResult> {
   const committed = await transaction(async (tx) => {
-    const sync = await tx.query<{ delivery_epoch: string | null; acknowledged_cursor: string | null }>(
-      `SELECT delivery_epoch,acknowledged_cursor FROM peon_session_sync
-        WHERE peon_id=$1 AND generation=$2`,
-      [input.peonId, input.syncGeneration],
+    await assertProjectionGeneration(
+      tx,
+      input.peonId,
+      input.syncGeneration,
+      ["peon_session_sync"],
+      "reverse command connection was replaced",
     );
-    if (!sync.rows[0]) throw new Error("reverse command connection was replaced");
 
     const record = await findWith(tx, input.workspaceId, input.peonId, input.durable.result.commandId);
     if (!record || record.peonId !== input.peonId
@@ -580,34 +587,12 @@ export async function commitDurableReverseCommandResult(input: {
       throw new Error("reverse command terminal result changed");
     }
 
-    const inserted = await tx.query(
-      `INSERT INTO peon_session_inbox (peon_id,epoch,cursor,created_at,message_id)
-       VALUES ($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING RETURNING cursor`,
-      [
-        input.peonId,
-        input.durable.deliveryEpoch,
-        input.durable.deliveryCursor,
-        Date.now(),
-        input.durable.messageId,
-      ],
-    );
-    if (!inserted.rows[0]) {
-      const duplicate = await tx.query<{ epoch: string; cursor: string; message_id: string | null }>(
-        `SELECT epoch,cursor,message_id FROM peon_session_inbox
-          WHERE peon_id=$1 AND (message_id=$2 OR (epoch=$3 AND cursor=$4))`,
-        [
-          input.peonId,
-          input.durable.messageId,
-          input.durable.deliveryEpoch,
-          input.durable.deliveryCursor,
-        ],
-      );
-      const row = duplicate.rows[0];
-      if (!row || row.epoch !== input.durable.deliveryEpoch || row.cursor !== input.durable.deliveryCursor
-        || row.message_id !== input.durable.messageId) {
-        throw new Error("durable reverse command identity collision");
-      }
-    }
+    const inbox = await recordDurableInbox(tx, {
+      peonId: input.peonId,
+      deliveryEpoch: input.durable.deliveryEpoch,
+      deliveryCursor: input.durable.deliveryCursor,
+      messageId: input.durable.messageId,
+    });
 
     const now = Date.now();
     const updated = await tx.query<ReverseCommandRow>(
@@ -672,27 +657,21 @@ export async function commitDurableReverseCommandResult(input: {
       },
     }) : null;
 
-    if (inserted.rows[0]) {
-      const advanced = await tx.query(
-        `UPDATE peon_session_sync
-            SET delivery_epoch=$3,acknowledged_cursor=$4,updated_at=$5
-          WHERE peon_id=$1 AND generation=$2 RETURNING peon_id`,
-        [input.peonId, input.syncGeneration, input.durable.deliveryEpoch, input.durable.deliveryCursor, now],
-      );
-      if (!advanced.rows[0]) throw new Error("reverse command connection was replaced");
+    if (inbox === "inserted") {
+      await advanceDeliveryCheckpoint(tx, {
+        peonId: input.peonId,
+        generation: input.syncGeneration,
+        epoch: input.durable.deliveryEpoch,
+        acknowledgedCursor: input.durable.deliveryCursor,
+      }, "reverse command connection was replaced");
     }
-    const checkpoint = await tx.query<{ delivery_epoch: string | null; acknowledged_cursor: string | null }>(
-      `SELECT delivery_epoch,acknowledged_cursor FROM peon_session_sync
-        WHERE peon_id=$1 AND generation=$2`,
-      [input.peonId, input.syncGeneration],
-    );
-    const delivery = checkpoint.rows[0];
-    if (!delivery?.delivery_epoch || !delivery.acknowledged_cursor) {
+    const delivery = await readDeliveryCheckpoint(tx, input.peonId, input.syncGeneration);
+    if (!delivery?.acknowledgedCursor) {
       throw new Error("reverse command delivery checkpoint missing");
     }
     return {
       record: next,
-      delivery: { epoch: delivery.delivery_epoch, acknowledgedCursor: delivery.acknowledged_cursor },
+      delivery: { epoch: delivery.epoch, acknowledgedCursor: delivery.acknowledgedCursor },
       event,
       projectionEvent,
     };

@@ -6,6 +6,7 @@ import 'package:drift/drift.dart';
 import '../../../core/database/app_database.dart';
 import '../../../core/live/resource_projection.dart';
 import '../../../core/live/live_projection_sink.dart';
+import '../../../core/live/durable_projection_transaction.dart';
 import '../../../core/network/overseer_http_client.dart';
 import '../../../core/time/app_time.dart';
 import '../domain/session_models.dart';
@@ -25,6 +26,9 @@ class DefaultSessionRepository
   final AppDatabase database;
   final Dio _dio;
   final AppClock _clock;
+
+  DurableProjectionTransaction get _projectionTransaction =>
+      DurableProjectionTransaction(database);
 
   SimpleSelectStatement<$CachedSessionsTable, CachedSession> _sessionQuery({
     required String workspaceId,
@@ -669,46 +673,49 @@ class DefaultSessionRepository
     final peonId = envelope.peonId!;
     final sessionId = envelope.resourceId;
     final syncedAt = envelope.version;
-    await database.transaction(() async {
-      if (envelope.deleted) {
-        await (database.delete(database.cachedSessions)..where(
-              (row) =>
-                  row.workspaceId.equals(workspaceId) &
-                  row.peonId.equals(peonId) &
-                  row.sessionId.equals(sessionId) &
-                  row.syncedAt.isSmallerOrEqualValue(syncedAt),
-            ))
-            .go();
-      } else {
-        final session = _domainFromJson(workspaceId, projection);
-        final companion = _companion(
-          session,
-          includeAttentionState:
-              projection.containsKey('attentionUnread') ||
-              projection.containsKey('attentionUpdatedAt'),
-          includeOperatorState:
-              projection.containsKey('hasOutstandingRequest') ||
-              projection.containsKey('lastRequestedAt'),
+    await _projectionTransaction.commit(
+      workspaceId: workspaceId,
+      cursor: cursor,
+      write: () async {
+        if (envelope.deleted) {
+          await (database.delete(database.cachedSessions)..where(
+                (row) =>
+                    row.workspaceId.equals(workspaceId) &
+                    row.peonId.equals(peonId) &
+                    row.sessionId.equals(sessionId) &
+                    row.syncedAt.isSmallerOrEqualValue(syncedAt),
+              ))
+              .go();
+        } else {
+          final session = _domainFromJson(workspaceId, projection);
+          final companion = _companion(
+            session,
+            includeAttentionState:
+                projection.containsKey('attentionUnread') ||
+                projection.containsKey('attentionUpdatedAt'),
+            includeOperatorState:
+                projection.containsKey('hasOutstandingRequest') ||
+                projection.containsKey('lastRequestedAt'),
+          );
+          await database
+              .into(database.cachedSessions)
+              .insert(
+                companion,
+                onConflict: DoUpdate(
+                  (_) => companion,
+                  where: (old) =>
+                      old.syncedAt.isSmallerOrEqualValue(session.syncedAt),
+                ),
+              );
+        }
+        await applyAuthoritativeProjectSessionCounts(
+          database: database,
+          workspaceId: workspaceId,
+          peonId: peonId,
+          rawCounts: projection['projectSessionCounts'],
         );
-        await database
-            .into(database.cachedSessions)
-            .insert(
-              companion,
-              onConflict: DoUpdate(
-                (_) => companion,
-                where: (old) =>
-                    old.syncedAt.isSmallerOrEqualValue(session.syncedAt),
-              ),
-            );
-      }
-      await applyAuthoritativeProjectSessionCounts(
-        database: database,
-        workspaceId: workspaceId,
-        peonId: peonId,
-        rawCounts: projection['projectSessionCounts'],
-      );
-      await _advanceCursorInTransaction(workspaceId, cursor);
-    });
+      },
+    );
   }
 
   @override
@@ -743,54 +750,34 @@ class DefaultSessionRepository
           : const Value.absent(),
       attentionUpdatedAt: Value(updatedAt),
     );
-    await database.transaction(() async {
-      await database
-          .into(database.cachedSessions)
-          .insert(
-            companion,
-            onConflict: DoUpdate(
-              (_) => companion,
-              where: (old) =>
-                  old.attentionUpdatedAt.isSmallerOrEqualValue(updatedAt),
-            ),
-          );
-      await _advanceCursorInTransaction(workspaceId, cursor);
-    });
+    await _projectionTransaction.commit(
+      workspaceId: workspaceId,
+      cursor: cursor,
+      write: () async {
+        await database
+            .into(database.cachedSessions)
+            .insert(
+              companion,
+              onConflict: DoUpdate(
+                (_) => companion,
+                where: (old) =>
+                    old.attentionUpdatedAt.isSmallerOrEqualValue(updatedAt),
+              ),
+            );
+      },
+    );
   }
 
   @override
   Future<void> advanceCursor({
     required String workspaceId,
     required int cursor,
-  }) => database.transaction(
-    () => _advanceCursorInTransaction(workspaceId, cursor),
-  );
-
-  Future<void> _advanceCursorInTransaction(
-    String workspaceId,
-    int cursor,
-  ) async {
-    if (cursor <= 0) return;
-    await database
-        .into(database.liveCursors)
-        .insert(
-          LiveCursorsCompanion.insert(
-            workspaceId: workspaceId,
-            cursor: Value(cursor),
-          ),
-          onConflict: DoUpdate(
-            (_) => LiveCursorsCompanion(cursor: Value(cursor)),
-            where: (old) => old.cursor.isSmallerThanValue(cursor),
-          ),
-        );
-  }
+  }) =>
+      _projectionTransaction.advance(workspaceId: workspaceId, cursor: cursor);
 
   @override
   Future<int> cursorFor(String workspaceId) async {
-    final row = await (database.select(
-      database.liveCursors,
-    )..where((row) => row.workspaceId.equals(workspaceId))).getSingleOrNull();
-    return row?.cursor ?? 0;
+    return _projectionTransaction.cursorFor(workspaceId);
   }
 
   SessionSummary _domainFromJson(

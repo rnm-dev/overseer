@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { CatalogSnapshotPager } from "../catalog/snapshotPager.js";
 import { sessions, type SessionRecord } from "./index.js";
 import { toSessionSummary, type SessionSummary } from "./sessionSummary.js";
 
@@ -32,16 +33,6 @@ export interface SessionCatalogPage {
   hasMore: boolean;
 }
 
-interface Snapshot {
-  requestId: string;
-  revision: number;
-  barrierSeq: number;
-  summaries: SessionSummary[];
-  offsets: Map<string, number>;
-  nextCursors: Map<string, string | null>;
-  expiresAt: number;
-}
-
 interface SessionCatalogSource {
   list(): SessionRecord[];
   on(event: "change", listener: (record: SessionRecord) => void): unknown;
@@ -54,14 +45,33 @@ export class SessionCatalog {
   private seq = 0;
   private journal: SessionCatalogEvent[] = [];
   private listeners = new Set<(event: SessionCatalogEvent) => void>();
-  private snapshot: Snapshot | null = null;
-  private snapshotTimer: ReturnType<typeof setTimeout> | null = null;
+  private readonly snapshots: CatalogSnapshotPager<SessionSummary>;
   private started = false;
 
   constructor(
     private readonly source: SessionCatalogSource,
-    private readonly now: () => number = Date.now,
-  ) {}
+    now: () => number = Date.now,
+  ) {
+    this.snapshots = new CatalogSnapshotPager({
+      defaultPageLimit: DEFAULT_SESSION_CATALOG_PAGE_LIMIT,
+      maxPageLimit: MAX_SESSION_CATALOG_PAGE_LIMIT,
+      maxPageBytes: MAX_SESSION_CATALOG_PAGE_BYTES,
+      maxSnapshotRows: MAX_SESSION_CATALOG_SNAPSHOT_ROWS,
+      maxSnapshotBytes: MAX_SESSION_CATALOG_SNAPSHOT_BYTES,
+      ttlMs: SESSION_CATALOG_SNAPSHOT_TTL_MS,
+      state: () => this.state(),
+      rows: () => this.source.list().map(toSessionSummary),
+      error: (code, message) => new SessionCatalogError(code, message),
+      messages: {
+        unavailable: "session catalog snapshot is unavailable",
+        invalidCursor: "invalid session catalog cursor",
+        syncInProgress: "another session catalog snapshot is in progress",
+        tooLarge: "session catalog snapshot exceeds Peon memory bounds",
+        invalidLimit: "session catalog limit must be a positive integer",
+      },
+      now,
+    });
+  }
 
   start(): void {
     if (this.started) return;
@@ -98,78 +108,24 @@ export class SessionCatalog {
   }
 
   page(requestId: string, rawLimit: unknown, cursor?: string): SessionCatalogPage {
-    this.expireSnapshot();
-    const limit = this.limit(rawLimit);
-    if (!cursor) {
-      if (this.snapshot && this.snapshot.requestId !== requestId) {
-        throw new SessionCatalogError("SYNC_IN_PROGRESS", "another session catalog snapshot is in progress");
-      }
-      if (!this.snapshot) {
-        const summaries: SessionSummary[] = [];
-        let snapshotBytes = 0;
-        for (const record of this.source.list()) {
-          const summary = toSessionSummary(record);
-          snapshotBytes += Buffer.byteLength(JSON.stringify(summary));
-          if (summaries.length >= MAX_SESSION_CATALOG_SNAPSHOT_ROWS || snapshotBytes > MAX_SESSION_CATALOG_SNAPSHOT_BYTES) {
-            throw new SessionCatalogError("SNAPSHOT_TOO_LARGE", "session catalog snapshot exceeds Peon memory bounds");
-          }
-          summaries.push(summary);
-        }
-        this.snapshot = {
-          requestId,
-          revision: this.revision,
-          barrierSeq: this.seq,
-          summaries,
-          offsets: new Map([["", 0]]),
-          nextCursors: new Map(),
-          expiresAt: this.now() + SESSION_CATALOG_SNAPSHOT_TTL_MS,
-        };
-        this.scheduleSnapshotExpiry();
-      }
-    }
-    const snapshot = this.snapshot;
-    if (!snapshot || snapshot.requestId !== requestId) {
-      throw new SessionCatalogError("BAD_CURSOR", "session catalog snapshot is unavailable");
-    }
-    const key = cursor ?? "";
-    const offset = snapshot.offsets.get(key);
-    if (offset === undefined) throw new SessionCatalogError("BAD_CURSOR", "invalid session catalog cursor");
-
-    const sessionsPage: SessionSummary[] = [];
-    let pageBytes = 0;
-    for (const summary of snapshot.summaries.slice(offset, offset + limit)) {
-      const summaryBytes = Buffer.byteLength(JSON.stringify(summary));
-      if (sessionsPage.length > 0 && pageBytes + summaryBytes > MAX_SESSION_CATALOG_PAGE_BYTES) break;
-      sessionsPage.push(summary);
-      pageBytes += summaryBytes;
-    }
-    const nextOffset = offset + sessionsPage.length;
-    const hasMore = nextOffset < snapshot.summaries.length;
-    const cachedCursor = snapshot.nextCursors.get(key);
-    const nextCursor: string | null = cachedCursor === undefined ? (hasMore ? randomUUID() : null) : cachedCursor;
-    if (cachedCursor === undefined) {
-      snapshot.nextCursors.set(key, nextCursor);
-      if (nextCursor) snapshot.offsets.set(nextCursor, nextOffset);
-    }
-    snapshot.expiresAt = this.now() + SESSION_CATALOG_SNAPSHOT_TTL_MS;
-    this.scheduleSnapshotExpiry();
+    const snapshot = this.snapshots.page(requestId, rawLimit, cursor);
     return {
-      requestId,
-      epoch: this.epoch,
+      requestId: snapshot.requestId,
+      epoch: snapshot.epoch,
       revision: snapshot.revision,
       barrierSeq: snapshot.barrierSeq,
-      sessions: sessionsPage,
-      nextCursor,
-      hasMore,
+      sessions: snapshot.rows,
+      nextCursor: snapshot.nextCursor,
+      hasMore: snapshot.hasMore,
     };
   }
 
   cancel(requestId: string): void {
-    if (this.snapshot?.requestId === requestId) this.clearSnapshot();
+    this.snapshots.cancel(requestId);
   }
 
   cancelActiveSnapshot(): void {
-    this.clearSnapshot();
+    this.snapshots.cancelActive();
   }
 
   private append(value: { session: SessionSummary } | { deletedSessionId: string }): void {
@@ -183,33 +139,6 @@ export class SessionCatalog {
     for (const listener of this.listeners) listener(event);
   }
 
-  private expireSnapshot(): void {
-    if (this.snapshot && this.snapshot.expiresAt <= this.now()) this.clearSnapshot();
-  }
-
-  private scheduleSnapshotExpiry(): void {
-    if (this.snapshotTimer) clearTimeout(this.snapshotTimer);
-    this.snapshotTimer = setTimeout(() => {
-      this.snapshotTimer = null;
-      this.expireSnapshot();
-      if (this.snapshot) this.scheduleSnapshotExpiry();
-    }, SESSION_CATALOG_SNAPSHOT_TTL_MS);
-    this.snapshotTimer.unref();
-  }
-
-  private clearSnapshot(): void {
-    this.snapshot = null;
-    if (this.snapshotTimer) clearTimeout(this.snapshotTimer);
-    this.snapshotTimer = null;
-  }
-
-  private limit(raw: unknown): number {
-    if (raw === undefined) return DEFAULT_SESSION_CATALOG_PAGE_LIMIT;
-    if (!Number.isSafeInteger(raw) || (raw as number) <= 0) {
-      throw new SessionCatalogError("BAD_REQUEST", "session catalog limit must be a positive integer");
-    }
-    return Math.min(raw as number, MAX_SESSION_CATALOG_PAGE_LIMIT);
-  }
 }
 
 export class SessionCatalogError extends Error {

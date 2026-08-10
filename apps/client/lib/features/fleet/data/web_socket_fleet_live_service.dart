@@ -8,6 +8,7 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import '../../../core/diagnostics/app_diagnostics.dart';
 import '../../../core/live/active_sessions.dart';
 import '../../../core/live/presence.dart';
+import '../../../core/live/resource_projection.dart';
 import '../../../core/live/transcript_live_service.dart';
 import '../../../core/network/overseer_http_client.dart';
 import '../../../core/time/app_time.dart';
@@ -47,8 +48,13 @@ class WebSocketFleetLiveService
   final Random _random = Random();
 
   bool _stopped = true;
-  void Function(String workspaceId, Map<String, dynamic> peon)? _onPeon;
-  Future<void> Function(
+  Future<bool> Function(
+    String workspaceId,
+    int cursor,
+    Map<String, dynamic> peon,
+  )?
+  _onPeon;
+  Future<bool> Function(
     String workspaceId,
     int cursor,
     Map<String, dynamic> session,
@@ -60,7 +66,7 @@ class WebSocketFleetLiveService
     Map<String, dynamic> attention,
   )?
   _onAttention;
-  Future<void> Function(
+  Future<bool> Function(
     String workspaceId,
     int cursor,
     Map<String, dynamic> project,
@@ -77,15 +83,19 @@ class WebSocketFleetLiveService
   Future<void> connect({
     required List<String> workspaceIds,
     required Map<String, int> initialCursors,
-    required void Function(String workspaceId, Map<String, dynamic> peon)
+    required Future<bool> Function(
+      String workspaceId,
+      int cursor,
+      Map<String, dynamic> peon,
+    )
     onPeon,
-    required Future<void> Function(
+    required Future<bool> Function(
       String workspaceId,
       int cursor,
       Map<String, dynamic> session,
     )
     onSession,
-    required Future<void> Function(
+    required Future<bool> Function(
       String workspaceId,
       int cursor,
       Map<String, dynamic> project,

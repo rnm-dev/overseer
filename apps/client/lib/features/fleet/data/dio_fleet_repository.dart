@@ -5,6 +5,7 @@ import 'package:drift/drift.dart';
 
 import '../../../core/database/app_database.dart';
 import '../../../core/live/resource_projection.dart';
+import '../../../core/live/durable_projection_transaction.dart';
 import '../../../core/network/overseer_http_client.dart';
 import '../../../core/time/app_time.dart';
 import '../domain/fleet_models.dart';
@@ -22,6 +23,9 @@ class DioFleetRepository implements CachedFleetRepository {
   final AppDatabase _database;
   final Dio _dio;
   final AppClock _clock;
+
+  DurableProjectionTransaction get _projectionTransaction =>
+      DurableProjectionTransaction(_database);
 
   @override
   Future<List<WorkspaceFleet>> loadFleet() => refreshFleet();
@@ -110,6 +114,7 @@ class DioFleetRepository implements CachedFleetRepository {
   @override
   Future<void> applyPeonProjection({
     required String workspaceId,
+    required int cursor,
     required Map<String, dynamic> projection,
   }) async {
     final envelope = ResourceProjectionEnvelope.peonOwned(
@@ -117,54 +122,76 @@ class DioFleetRepository implements CachedFleetRepository {
       resourceIdKey: 'peonId',
       projection: projection,
     );
-    if (envelope == null || envelope.resourceId.isEmpty) return;
+    if (envelope == null || envelope.resourceId.isEmpty) {
+      await _projectionTransaction.advance(
+        workspaceId: workspaceId,
+        cursor: cursor,
+      );
+      return;
+    }
     final peonId = envelope.resourceId;
-    final current =
-        await (_database.select(_database.cachedFleetPeons)..where(
+    await _projectionTransaction.commit(
+      workspaceId: workspaceId,
+      cursor: cursor,
+      write: () async {
+        final current =
+            await (_database.select(_database.cachedFleetPeons)..where(
+                  (row) =>
+                      row.workspaceId.equals(workspaceId) &
+                      row.peonId.equals(peonId),
+                ))
+                .getSingleOrNull();
+        if (current == null) return;
+        if (envelope.isOlderThan(current.syncedAt)) return;
+        final capabilities = projection['capabilities'];
+        final load = projection['load'];
+        await (_database.update(_database.cachedFleetPeons)..where(
               (row) =>
                   row.workspaceId.equals(workspaceId) &
                   row.peonId.equals(peonId),
             ))
-            .getSingleOrNull();
-    if (current == null) return;
-    final capabilities = projection['capabilities'];
-    final load = projection['load'];
-    await (_database.update(_database.cachedFleetPeons)..where(
-          (row) =>
-              row.workspaceId.equals(workspaceId) & row.peonId.equals(peonId),
-        ))
-        .write(
-          CachedFleetPeonsCompanion(
-            name: Value(projection['name'] as String? ?? current.name),
-            hostname: Value(
-              projection['hostname'] as String? ?? current.hostname,
-            ),
-            baseUrl: Value(projection['baseUrl'] as String? ?? current.baseUrl),
-            addressSource: Value(
-              projection['addressSource'] as String? ?? current.addressSource,
-            ),
-            online: Value(projection['online'] as bool? ?? current.online),
-            lastSeen: Value(
-              (projection['lastSeen'] as num?)?.toDouble() ?? current.lastSeen,
-            ),
-            capabilitiesJson: Value(
-              capabilities is List
-                  ? jsonEncode(capabilities.whereType<String>().toList())
-                  : current.capabilitiesJson,
-            ),
-            activeSessions: Value(
-              load is Map<String, dynamic>
-                  ? (load['activeSessions'] as num?)?.toInt()
-                  : current.activeSessions,
-            ),
-            paused: Value(
-              load is Map<String, dynamic>
-                  ? load['paused'] as bool?
-                  : current.paused,
-            ),
-            syncedAt: Value(_clock.now().millisecondsSinceEpoch.toDouble()),
-          ),
-        );
+            .write(
+              CachedFleetPeonsCompanion(
+                name: Value(projection['name'] as String? ?? current.name),
+                hostname: Value(
+                  projection['hostname'] as String? ?? current.hostname,
+                ),
+                baseUrl: Value(
+                  projection['baseUrl'] as String? ?? current.baseUrl,
+                ),
+                addressSource: Value(
+                  projection['addressSource'] as String? ??
+                      current.addressSource,
+                ),
+                online: Value(projection['online'] as bool? ?? current.online),
+                lastSeen: Value(
+                  (projection['lastSeen'] as num?)?.toDouble() ??
+                      current.lastSeen,
+                ),
+                capabilitiesJson: Value(
+                  capabilities is List
+                      ? jsonEncode(capabilities.whereType<String>().toList())
+                      : current.capabilitiesJson,
+                ),
+                activeSessions: Value(
+                  load is Map<String, dynamic>
+                      ? (load['activeSessions'] as num?)?.toInt()
+                      : current.activeSessions,
+                ),
+                paused: Value(
+                  load is Map<String, dynamic>
+                      ? load['paused'] as bool?
+                      : current.paused,
+                ),
+                syncedAt: Value(
+                  envelope.hasVersion
+                      ? envelope.version
+                      : _clock.now().millisecondsSinceEpoch.toDouble(),
+                ),
+              ),
+            );
+      },
+    );
   }
 
   Future<List<WorkspaceFleet>> _readCachedFleet() async {

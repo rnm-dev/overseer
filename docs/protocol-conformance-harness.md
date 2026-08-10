@@ -67,6 +67,11 @@ monotonic-version, cursor, generation, freshness, bounded-rebuild and
 commit-before-ACK lifecycle. This common test does not erase domain protocol
 tests or apply catalog semantics to transcript tails, byte streams or commands.
 
+The apply-SLO cells cover sessions, projects and Peon/runtime state through the
+same generic client acknowledgement. An acknowledgement is possible only after
+the durable client projection and cursor commit, is matched to the exact kind
+and cursor, and excludes replay delivery from the live latency clock.
+
 ## Transcript convergence acceptance
 
 `fixtures/transcript-acceptance-v1.json` is the executable index for the

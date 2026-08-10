@@ -13,6 +13,7 @@ abstract interface class CachedFleetRepository implements FleetRepository {
 
   Future<void> applyPeonProjection({
     required String workspaceId,
+    required int cursor,
     required Map<String, dynamic> projection,
   });
 }

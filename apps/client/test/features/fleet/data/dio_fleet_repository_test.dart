@@ -49,6 +49,7 @@ void main() {
     );
     await repository.applyPeonProjection(
       workspaceId: 'workspace-1',
+      cursor: 1,
       projection: const {
         'peonId': 'peon-1',
         'online': true,
@@ -60,6 +61,70 @@ void main() {
     expect(updated.single.peons.single.displayName, 'Updated Peon');
     expect(updated.single.peons.single.online, isTrue);
   });
+
+  test(
+    'stale Peon projection cannot regress a row but checkpoints its cursor',
+    () async {
+      final database = AppDatabase.forTesting(NativeDatabase.memory());
+      addTearDown(database.close);
+      final repository = DioFleetRepository(
+        database: database,
+        apiUrl: Uri.parse('https://overseer.example/api/v1/'),
+        token: 'token',
+      );
+      await database
+          .into(database.cachedWorkspaces)
+          .insert(
+            CachedWorkspacesCompanion.insert(
+              workspaceId: 'workspace-1',
+              name: 'Workspace',
+              syncedAt: 1,
+            ),
+          );
+      await database
+          .into(database.cachedFleetPeons)
+          .insert(
+            CachedFleetPeonsCompanion.insert(
+              workspaceId: 'workspace-1',
+              peonId: 'peon-1',
+              online: false,
+              lastSeen: 0,
+              syncedAt: 1,
+            ),
+          );
+
+      await repository.applyPeonProjection(
+        workspaceId: 'workspace-1',
+        cursor: 10,
+        projection: const {
+          'peonId': 'peon-1',
+          'syncedAt': 10,
+          'name': 'Current',
+          'online': true,
+        },
+      );
+      await repository.applyPeonProjection(
+        workspaceId: 'workspace-1',
+        cursor: 11,
+        projection: const {
+          'peonId': 'peon-1',
+          'syncedAt': 9,
+          'name': 'Stale',
+          'online': false,
+        },
+      );
+
+      final row = await (database.select(
+        database.cachedFleetPeons,
+      )..where((row) => row.workspaceId.equals('workspace-1'))).getSingle();
+      expect(row.name, 'Current');
+      expect(row.online, isTrue);
+      final cursor = await (database.select(
+        database.liveCursors,
+      )..where((row) => row.workspaceId.equals('workspace-1'))).getSingle();
+      expect(cursor.cursor, 11);
+    },
+  );
 }
 
 class _FleetAdapter implements HttpClientAdapter {
