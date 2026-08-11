@@ -26,7 +26,7 @@ extension _WebSocketFleetLiveProtocol on WebSocketFleetLiveService {
         ..attempt = 0
         ..activeSeeded = false
         ..activeSeedComplete = false
-        ..activeReplayEndsRemaining = snapshotCursor > resumeCursor ? 2 : 1;
+        ..activeBarrierCursor = snapshotCursor;
       _onActiveSessionSnapshot?.call(workspaceId, null);
       state.pendingSessions.clear();
       final rawPeons = decoded['peonPresence'];
@@ -106,10 +106,15 @@ extension _WebSocketFleetLiveProtocol on WebSocketFleetLiveService {
         if (applied == true) {
           _bumpCursor(workspaceId, state, cursor);
         }
-        if (state.activeSeeded) {
-          _applySession(workspaceId, state, payload);
-        } else {
-          state.pendingSessions.add(payload);
+        // The REST seed is a current snapshot taken after the socket barrier.
+        // Replayed events at or before that barrier are already represented by
+        // it. Only later changes participate in active-session derivation.
+        if (cursor > state.activeBarrierCursor) {
+          if (state.activeSeeded) {
+            _applySession(workspaceId, state, payload);
+          } else {
+            state.pendingSessions.add(payload);
+          }
         }
         if (applied == true && cursor > 0) {
           state.channel?.sink.add(
@@ -156,16 +161,11 @@ extension _WebSocketFleetLiveProtocol on WebSocketFleetLiveService {
       final cursor = (decoded['cursor'] as num?)?.toInt() ?? 0;
       if (cursor > 0) await _onCursor?.call(workspaceId, cursor);
       _bumpCursor(workspaceId, state, cursor);
-      if (!state.activeSeeded && state.activeReplayEndsRemaining > 0) {
-        state.activeReplayEndsRemaining -= 1;
-        _publishActiveSessionsWhenReady(workspaceId, state);
-      }
       return;
     }
     if (type == 'sync') {
       final serverCursor = (decoded['cursor'] as num?)?.toInt() ?? 0;
       if (serverCursor > state.cursor) {
-        if (!state.activeSeeded) state.activeReplayEndsRemaining += 1;
         state.channel?.sink.add(
           jsonEncode({'type': 'resume', 'cursor': state.cursor}),
         );

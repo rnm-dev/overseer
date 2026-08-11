@@ -7,7 +7,6 @@ class _TranscriptBody extends StatefulWidget {
     required this.inquiryOnline,
     required this.onInquiryInstall,
     required this.onInquiryCancel,
-    required this.onInquiryRefresh,
     required this.ghost,
     required this.operator,
     required this.viewers,
@@ -28,7 +27,6 @@ class _TranscriptBody extends StatefulWidget {
   final bool inquiryOnline;
   final ValueChanged<PluginInstallInquiry> onInquiryInstall;
   final ValueChanged<PluginInstallInquiry> onInquiryCancel;
-  final Future<void> Function() onInquiryRefresh;
   final ComposerGhost? ghost;
   final OperatorIdentity? operator;
   final List<PresenceViewer> viewers;
@@ -148,8 +146,7 @@ class _TranscriptBodyState extends State<_TranscriptBody> {
                 !widget.showWorking &&
                 widget.ghost == null &&
                 widget.inquiries.inquiries.isEmpty &&
-                !widget.inquiries.loading &&
-                !widget.inquiries.refreshFailed) {
+                !widget.inquiries.loading) {
               return _TranscriptEmpty(
                 message: state.message,
                 onRetry: widget.onRefresh,
@@ -159,10 +156,7 @@ class _TranscriptBodyState extends State<_TranscriptBody> {
             final hasTopControl = state.hasOlder || state.message != null;
             final hasWorking = widget.showWorking;
             final ghost = widget.ghost;
-            // A refresh in flight says nothing: only a failed one earns a row.
-            final inquiryRows =
-                widget.inquiries.inquiries.length +
-                (widget.inquiries.refreshFailed ? 1 : 0);
+            final inquiryRows = widget.inquiries.inquiries.length;
             final workingGap = transcriptWorkingGap(
               items.lastOrNull,
               afterGhost: ghost != null,
@@ -190,15 +184,7 @@ class _TranscriptBodyState extends State<_TranscriptBody> {
                 }
                 final inquiryIndex = index - (hasWorking ? 1 : 0);
                 if (inquiryIndex >= 0 && inquiryIndex < inquiryRows) {
-                  if (inquiryIndex == 0 && widget.inquiries.refreshFailed) {
-                    return _PluginInquiryRefreshFailedRow(
-                      online: widget.inquiryOnline,
-                      onRetry: widget.onInquiryRefresh,
-                    );
-                  }
-                  final dataInquiryIndex =
-                      inquiryIndex - (widget.inquiries.refreshFailed ? 1 : 0);
-                  final inquiry = widget.inquiries.inquiries[dataInquiryIndex];
+                  final inquiry = widget.inquiries.inquiries[inquiryIndex];
                   return Padding(
                     key: ValueKey('plugin-inquiry-${inquiry.inquiryId}'),
                     padding: const EdgeInsets.only(top: 16),
@@ -207,9 +193,6 @@ class _TranscriptBodyState extends State<_TranscriptBody> {
                         inquiry: inquiry,
                         online: widget.inquiryOnline,
                         acting: widget.inquiries.acting.contains(
-                          inquiry.inquiryId,
-                        ),
-                        actionFailed: widget.inquiries.actionFailed.contains(
                           inquiry.inquiryId,
                         ),
                         onInstall: () => widget.onInquiryInstall(inquiry),
@@ -282,49 +265,6 @@ class _TranscriptBodyState extends State<_TranscriptBody> {
       ],
     );
   }
-}
-
-class _PluginInquiryRefreshFailedRow extends StatelessWidget {
-  const _PluginInquiryRefreshFailedRow({
-    required this.online,
-    required this.onRetry,
-  });
-
-  final bool online;
-  final Future<void> Function() onRetry;
-
-  @override
-  Widget build(BuildContext context) => Semantics(
-    liveRegion: true,
-    child: Padding(
-      padding: const EdgeInsets.only(top: 16),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Flexible(
-            child: Text(
-              online
-                  ? 'Plugin requests could not be refreshed.'
-                  : 'Plugin requests will refresh after reconnecting.',
-              style: AppTypography.body(
-                fontSize: 12,
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ),
-          if (online) ...[
-            const SizedBox(width: 8),
-            AppButton(
-              size: AppButtonSize.sm,
-              variant: AppButtonVariant.ghost,
-              onPressed: () => onRetry(),
-              child: const Text('Retry'),
-            ),
-          ],
-        ],
-      ),
-    ),
-  );
 }
 
 class _TranscriptWorkingIndicator extends StatefulWidget {

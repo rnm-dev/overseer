@@ -271,7 +271,7 @@ void main() {
   );
 
   test(
-    'publishes active counts only after the seed and both startup replays',
+    'seeds active sessions at the socket barrier and ignores older replay',
     () async {
       final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
       final socketReady = Completer<WebSocket>();
@@ -349,16 +349,26 @@ void main() {
       await resumeReceived.future;
       await adapter.sessionsRequested.future;
 
-      // The server finishes its snapshot-window replay first. The historical
-      // replay requested from cursor zero is still queued behind it.
+      // Replay completion is irrelevant to activity: the snapshot cursor is
+      // the explicit boundary.
       socket.add(jsonEncode({'type': 'resumeEnd', 'cursor': 10}));
+      socket.add(
+        jsonEncode({
+          'type': 'session',
+          'cursor': 11,
+          'payload': {
+            ..._runningSession('current-3', syncedAt: 40),
+            'status': 'completed',
+          },
+        }),
+      );
       adapter.completeSessions([
         _runningSession('current-1', syncedAt: 30),
         _runningSession('current-2', syncedAt: 31),
         _runningSession('current-3', syncedAt: 32),
       ]);
-      await Future<void>.delayed(const Duration(milliseconds: 20));
-      expect(counts, isEmpty);
+      await firstCount.future.timeout(const Duration(seconds: 1));
+      expect(counts, [2]);
 
       // These are historical transitions for a session that is completed now.
       // They must reconcile silently instead of flashing 4 then 3 in the UI.
@@ -381,27 +391,23 @@ void main() {
           }),
         );
       await Future<void>.delayed(const Duration(milliseconds: 20));
-      expect(counts, isEmpty);
-
-      socket.add(jsonEncode({'type': 'resumeEnd', 'cursor': 10}));
-      await firstCount.future.timeout(const Duration(seconds: 1));
-      expect(counts, [3]);
-      expect(snapshots.whereType<List<ActiveSession>>().single, hasLength(3));
+      expect(counts, [2]);
+      expect(snapshots.whereType<List<ActiveSession>>().single, hasLength(2));
 
       socket.add(
         jsonEncode({
           'type': 'session',
-          'cursor': 11,
+          'cursor': 12,
           'payload': _runningSession('live-4', syncedAt: 40),
         }),
       );
       await _waitFor(() => counts.length == 2);
-      expect(counts, [3, 4]);
+      expect(counts, [2, 3]);
 
       socket.add(
         jsonEncode({
           'type': 'attention',
-          'cursor': 12,
+          'cursor': 13,
           'payload': {
             'peonId': 'peon-1',
             'sessionId': 'live-4',
@@ -413,7 +419,7 @@ void main() {
       );
       await _waitFor(() => attentionEvents.isNotEmpty);
       expect(attentionEvents.single.workspaceId, 'workspace-1');
-      expect(attentionEvents.single.cursor, 12);
+      expect(attentionEvents.single.cursor, 13);
       expect(attentionEvents.single.payload['sessionId'], 'live-4');
     },
   );

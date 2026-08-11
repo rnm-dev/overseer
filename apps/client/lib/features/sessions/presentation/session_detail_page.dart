@@ -429,13 +429,6 @@ class _SessionDetailPageState extends _SessionDetailAttachmentHost
                             ).notifier,
                           )
                           .respond(inquiry, PluginInquiryDecision.cancel),
-                      onInquiryRefresh: () => ref
-                          .read(
-                            pluginInquiryControllerProvider(
-                              inquiryScope,
-                            ).notifier,
-                          )
-                          .refresh(),
                       ghost: _visibleGhost(composerState, transcript.value),
                       operator: ref.watch(authControllerProvider).session?.user,
                       viewers: viewers,

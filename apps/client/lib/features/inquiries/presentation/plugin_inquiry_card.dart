@@ -12,7 +12,6 @@ class PluginInquiryCard extends StatelessWidget {
     required this.inquiry,
     required this.online,
     required this.acting,
-    this.actionFailed = false,
     required this.onInstall,
     required this.onCancel,
   });
@@ -20,7 +19,6 @@ class PluginInquiryCard extends StatelessWidget {
   final PluginInstallInquiry inquiry;
   final bool online;
   final bool acting;
-  final bool actionFailed;
   final VoidCallback onInstall;
   final VoidCallback onCancel;
 
@@ -119,9 +117,7 @@ class PluginInquiryCard extends StatelessWidget {
                 if (actionable) ...[
                   const SizedBox(height: 10),
                   Text(
-                    actionFailed
-                        ? 'Could not confirm. Try again.'
-                        : online
+                    online
                         ? 'Install this managed plugin?'
                         : 'Reconnect to respond to this request.',
                     style: AppTypography.body(

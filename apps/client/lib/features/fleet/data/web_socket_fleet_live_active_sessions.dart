@@ -75,9 +75,7 @@ extension _WebSocketFleetLiveActiveSessions on WebSocketFleetLiveService {
     String workspaceId,
     _WorkspaceSocket state,
   ) {
-    if (state.activeSeeded ||
-        !state.activeSeedComplete ||
-        state.activeReplayEndsRemaining > 0) {
+    if (state.activeSeeded || !state.activeSeedComplete) {
       return;
     }
     for (final event in state.pendingSessions) {
