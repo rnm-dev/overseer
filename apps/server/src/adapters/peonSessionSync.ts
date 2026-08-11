@@ -7,6 +7,7 @@ import {
   commitSnapshotCoveredSessionEvent,
   markSessionSyncing,
   releaseSessionSyncGeneration,
+  TranscriptProjectionError,
   type PeonSession,
   type SessionSyncCheckpoint,
 } from "../modules/sessions/index.js";
@@ -494,6 +495,18 @@ export class PeonCatalogSync {
       try {
         committed = await this.transcriptSync.commitDurable(event);
       } catch (error) {
+        if (error instanceof TranscriptProjectionError
+          && error.code !== "STALE_GENERATION"
+          && error.code !== "BAD_CURSOR") {
+          // The canonical Peon transcript can legitimately require a fresh
+          // snapshot when an older projection assigned a different sequence
+          // to the same stable event identity. Keep the durable cursor queued,
+          // rebuild that one session, then let the covered-event path ACK it.
+          // Closing here makes the same poison cursor fail every reconnect.
+          await this.transcriptSync.repairDurable(event);
+          this.bufferEvent(event, 0);
+          return;
+        }
         throw new SessionSyncProtocolError(error instanceof Error ? error.message : "transcript commit failed");
       }
       if (this.checkpoint) this.checkpoint = { ...this.checkpoint, delivery: committed.delivery };

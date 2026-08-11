@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { TranscriptProjectionError } from "../modules/sessions/index.js";
 import { PeonCatalogSync, SessionSyncProtocolError } from "./peonSessionSync.js";
 
 interface BufferHarness {
@@ -62,6 +63,41 @@ test("requeued durable events retain bounded byte accounting", () => {
 
   assert.ok(harness.bufferedBytes >= 1024);
   assert.equal(harness.bufferedEvents.length, 1);
+});
+
+test("a transcript projection mismatch requests repair and buffers the durable cursor", async () => {
+  const repaired: string[] = [];
+  const harness = Object.create(PeonCatalogSync.prototype) as BufferHarness & {
+    checkpoint: null;
+    transcriptSync: {
+      commitDurable(): Promise<never>;
+      repairDurable(event: { sessionId: string }): Promise<void>;
+    };
+    applyEvent(event: Record<string, unknown>): Promise<void>;
+  };
+  harness.checkpoint = null;
+  harness.bufferedEvents = [];
+  harness.bufferedEventFingerprints = new Map();
+  harness.bufferedBytes = 0;
+  harness.transcriptSync = {
+    commitDurable: async () => {
+      throw new TranscriptProjectionError("REPLAY_MISMATCH", "event sequence changed");
+    },
+    repairDurable: async (event) => { repaired.push(event.sessionId); },
+  };
+  const event = {
+    channel: "transcript",
+    deliveryEpoch: "delivery-1",
+    deliveryCursor: "cursor-1",
+    messageId: "00000000-0000-4000-8000-000000000001",
+    sessionId: "session-1",
+  };
+
+  await harness.applyEvent(event);
+
+  assert.deepEqual(repaired, ["session-1"]);
+  assert.equal(harness.bufferedEvents.length, 1);
+  assert.equal(harness.bufferedEvents[0]?.deliveryCursor, "cursor-1");
 });
 
 test("selective scheduling preserves one session order while draining unrelated durable work", async () => {
