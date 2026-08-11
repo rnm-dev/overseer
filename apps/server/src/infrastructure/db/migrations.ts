@@ -932,4 +932,24 @@ export const MIGRATIONS: { id: string; statements: string[] }[] = [
       `DROP TABLE IF EXISTS peon_identity_bindings`,
     ],
   },
+  {
+    // OIDC beside GitHub and email/password. An OIDC identity is (issuer,
+    // subject) — a subject is only unique within the provider that minted it —
+    // so the unique index covers both columns, and re-pointing an instance at a
+    // different issuer cannot make its subjects collide with the old one's.
+    //
+    // The attempt row gains what the flow needs to be verifiable when the person
+    // returns: which provider it belongs to, the hashed nonce the id token must
+    // carry, and the PKCE verifier. Existing GitHub rows are 'github' by
+    // default, which is what they were.
+    id: "035_oidc_sign_in",
+    statements: [
+      `ALTER TABLE users ADD COLUMN IF NOT EXISTS oidc_issuer TEXT`,
+      `ALTER TABLE users ADD COLUMN IF NOT EXISTS oidc_subject TEXT`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS users_oidc_identity_idx ON users (oidc_issuer, oidc_subject)`,
+      `ALTER TABLE oauth_attempts ADD COLUMN IF NOT EXISTS provider TEXT NOT NULL DEFAULT 'github'`,
+      `ALTER TABLE oauth_attempts ADD COLUMN IF NOT EXISTS nonce_hash TEXT`,
+      `ALTER TABLE oauth_attempts ADD COLUMN IF NOT EXISTS code_verifier TEXT`,
+    ],
+  },
 ];

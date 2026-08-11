@@ -1,0 +1,174 @@
+# Sign-in methods
+
+Overseer has three doors: GitHub OAuth, [email + password](password-auth.md) and
+[OpenID Connect](#openid-connect). Whichever one an operator comes through, they
+end holding the same thing — a device token, as a browser cookie or a native
+bearer — so nothing past the door knows which one it was.
+
+Back to the [documentation index](index.md).
+
+## One resolver decides what exists
+
+`infrastructure/auth/authConfig.ts` turns the environment into `config.auth`,
+next to the resolvers `infrastructure/voice` and `infrastructure/push` already
+use. It is pure — the environment is an argument, not an import — so precedence
+is testable without touching `process.env`.
+
+A method is its settings or `null`. There is no separate enabled flag to
+disagree with them, and nothing outside the resolver re-derives availability:
+
+```
+config.auth.github    GithubAuthSettings | null   // id, secret, scope, redirect, native callbacks
+config.auth.oidc      OidcAuthSettings | null     // issuer, id, secret, scope, redirect, callbacks, label
+config.auth.password  boolean                     // OVERSEER_PASSWORD_AUTH=1
+```
+
+| Variable | Effect |
+| --- | --- |
+| `OVERSEER_GITHUB_CLIENT_ID` + `OVERSEER_GITHUB_CLIENT_SECRET` | both set → GitHub is on |
+| `OVERSEER_GITHUB_SCOPE` | default `read:user user:email` |
+| `OVERSEER_GITHUB_REDIRECT_URI` | default `${OVERSEER_PUBLIC_URL}/auth/github/callback` |
+| `OVERSEER_GITHUB_NATIVE_CALLBACKS` | allowlisted deep links, default `overseer://oauth/github` |
+| `OVERSEER_OIDC_ISSUER` + `OVERSEER_OIDC_CLIENT_ID` + `OVERSEER_OIDC_CLIENT_SECRET` | all three set → OIDC is on |
+| `OVERSEER_OIDC_SCOPE` | default `openid profile email`; `openid` is added if left out |
+| `OVERSEER_OIDC_REDIRECT_URI` | default `${OVERSEER_PUBLIC_URL}/auth/oidc/callback` |
+| `OVERSEER_OIDC_NATIVE_CALLBACKS` | allowlisted deep links, default `overseer://oauth/oidc` |
+| `OVERSEER_OIDC_LABEL` | what the button says, default the issuer's host |
+| `OVERSEER_PASSWORD_AUTH=1` | email + password is on, for registration and sign-in together |
+| `OVERSEER_DEVICE_TOKEN_TTL_MS` | lifetime of the token every door issues, default 90 days |
+
+The issuer must be `https` and is normalised once — trailing slash removed — so
+the `iss` claim can later be compared byte for byte. **Half a provider is no
+provider**, for either door.
+
+**Half a GitHub app is no GitHub app.** A client id without its secret used to
+leave the method advertising a client id to the SPA while every start route
+answered `503`, which sent a person to GitHub and back to a dead end. It now
+resolves to `null` with a startup warning naming the missing half. An instance
+with no method at all warns that nobody can log in.
+
+## One guard enforces it
+
+Admission to any sign-in route — is the method configured, has this address had
+enough attempts this minute — is `routes/authMethodAccess.ts`. Each method's
+settings are read through its guard there (`githubApp(res)`, `oidcProvider(res)`,
+`passwordAuthOpen(res)`), which either hands back the settings or writes the
+refusal. Every route of that method goes through it, including the ones
+completing a flow already in the air: turning the method off stops an
+outstanding state *or app code* from being redeemed, rather than only refusing
+new starts. The password routes check before they look at the body, so a correct
+password on a disabled instance still signs nobody in.
+
+## The doors are written once
+
+GitHub and OIDC are the same shape — start a flow, send the person away, take
+back a code against a single-use state, end holding an account — so
+`routes/authRedirectSignIn.ts` implements that shape once and names what differs
+in a descriptor per provider: its guard, its callback page, its denial code, its
+start and complete functions, and how its own failures map to a status. Adding a
+third redirect provider is a descriptor, not another copy of the flow.
+
+This is not deduplication for its own sake. Two hand-written copies of a sign-in
+flow drift, and the half that drifts is the error path — the one nobody
+exercises until it matters. Email + password, which is not a redirect flow, is
+`routes/authPasswordRoutes.ts`; `routes/auth.ts` composes the three and holds
+only what belongs to none of them.
+
+An identity can be proved and still not have an account: an unverified address,
+an address already linked to another subject. Those are `AccountLinkError` from
+`modules/auth`, not a provider's protocol error, because the rule is Overseer's
+and applies to every door — the transport answers them before it reaches any
+provider-specific mapping.
+
+Refusals keep their stable codes — `503 GITHUB_DISABLED`,
+`503 OIDC_DISABLED` and `503 PASSWORD_AUTH_DISABLED` — and the deepest layer holds the same line:
+`exchangeCodeForProfile` throws `GITHUB_DISABLED` rather than posting empty
+credentials to GitHub if a request ever reaches it past a guard.
+
+## What a client sees
+
+`GET /api/auth/methods` answers
+`{ "github": boolean, "password": boolean, "oidc": boolean, "oidcLabel": string | null }`
+without authentication, straight from `authMethodAvailability(config.auth)` plus
+the one thing a client cannot derive: what to call a provider only this instance
+knows about. The
+sign-in page renders from it rather than guessing, and shows neither door until
+the answer arrives so a disabled method never flashes into view; an unreachable
+API is treated as "both available", because a transient failure should leave the
+page usable rather than blank.
+
+There is no `GET /api/auth/github/config`. It existed so the SPA could check for
+a client id before starting, which is a second opinion on a question
+`POST /api/auth/github/start` already answers — one round trip and one published
+client id for nothing.
+
+## OpenID Connect
+
+The generic door. An instance names an issuer and a client, and everything else
+— endpoints, signing keys — comes from the provider's own discovery document at
+`${issuer}/.well-known/openid-configuration`, cached for an hour. Nothing about a
+provider is configured route by route, which is why adding a second provider
+later is configuration and not code.
+
+The first one deployed against it is `https://id.rnm.dev`: authorization code
+only, RS256 id tokens, PKCE `S256`, scopes `openid profile email workspace`.
+
+### The flow
+
+1. `POST /api/auth/oidc/start` (or `/native/start` with an allowlisted deep
+   link) mints an opaque state, a nonce and a PKCE verifier, stores all three
+   server-side against that state, and returns the provider's authorization URL.
+   The browser is handed the URL and the state — never the verifier, the nonce
+   or the client secret. Discovery happens *before* the attempt is stored, so an
+   unreachable provider fails the start instead of leaving a row nobody can redeem.
+2. The provider returns the person to `/auth/oidc/callback` in the SPA, which
+   submits code + state to `POST /api/auth/oidc`.
+3. The state is consumed once, and only at the door that minted it — an attempt
+   row carries its `provider`, so an OIDC state presented at `/api/auth/github`
+   is `400 BAD_STATE` rather than a cross-provider confusion.
+4. The code is exchanged at the token endpoint with `client_secret_basic` and
+   the PKCE verifier.
+5. The id token is verified locally before anything is believed: RS256 signature
+   against the discovered JWKS, then issuer, audience (and `azp` when there are
+   several), expiry and issued-at within a minute of skew, an age under ten
+   minutes, and this attempt's nonce.
+6. The identity becomes a session exactly as GitHub's does — default workspace,
+   then a cookie for a browser or a one-time app code for a native client, which
+   `POST /api/auth/oidc/native/exchange` redeems. That exchange is fenced by
+   provider like the state it grew from, so an app code minted at one door is not
+   spendable at the other's.
+
+### What is deliberately strict
+
+- **RS256 only.** An allowlist of one is how `alg: "none"` and the
+  HMAC-with-the-public-key confusion stop being reachable at all. Verification is
+  `node:crypto` over the published JWK — no JWT dependency, the same choice
+  scrypt represents for passwords.
+- **The nonce is required**, and only its digest is stored, so the binding
+  survives a look at the attempts table.
+- **An unverified email is refused.** Identity is `(issuer, subject)`, but email
+  is how an OIDC identity *meets* an account that already exists under another
+  door. A provider that lets a person claim any address would otherwise let them
+  claim an operator's account with it. `email_verified` absent means false.
+- **One account holds one OIDC identity.** A second subject arriving on a linked
+  address is `IDENTITY_CONFLICT`, not a silent re-point.
+- **A rotated signing key is refetched once**, then not again for a minute, so a
+  forged token cannot turn every verification into traffic at the provider.
+- **A provider that advertises its challenge methods without `S256`** is refused
+  at the start, where it is a configuration fault with a name, rather than at the
+  redirect. Advertising nothing is not a refusal: it still gets `S256`.
+
+### Failures
+
+`400` for anything the provider or the token said: `BAD_STATE`, `BAD_CODE`,
+`BAD_ID_TOKEN`, `NO_ID_TOKEN`, `NO_EMAIL`, `EMAIL_UNVERIFIED`,
+`IDENTITY_CONFLICT`, `UNKNOWN_KEY`, `OIDC_DENIED`. `502` for the provider being
+unreachable or describing itself wrongly: `PROVIDER_UNREACHABLE`,
+`PROVIDER_MALFORMED`, `ISSUER_MISMATCH`. Messages never carry the request that
+held the client secret or the token. A native flow receives the same codes
+through its deep link, because it is waiting on a redirect rather than a status.
+
+The executable version of all of this is `oidcIdToken.test.ts` (signature,
+claims, skew and key rotation against keys the suite generates) and
+`oidcRoutes.test.ts`, which drives the whole door against a provider that exists
+only inside the test.

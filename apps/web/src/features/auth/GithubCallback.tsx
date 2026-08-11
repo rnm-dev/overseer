@@ -1,15 +1,17 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
-import { useAuth } from "./auth";
+import { useAuth, type OauthProvider } from "./auth";
 import { ApiError } from "../../shared/api";
 import { useT } from "../../shared/i18n";
 
-// GitHub's shared frontend callback. It submits code + state to the API, which
-// either finishes web sign-in or tells the browser to open the native app.
+// The shared frontend callback for every redirect provider. It submits code +
+// state to the API, which either finishes web sign-in or tells the browser to
+// open the native app. One component serves both because the difference between
+// them is a path segment the router already knows.
 const PENDING_INVITE_KEY = "overseer_pending_invite";
 
-export function GithubCallback() {
-  const { completeGithubCallback } = useAuth();
+export function OauthCallback({ provider }: { provider: OauthProvider }) {
+  const { completeOauthCallback } = useAuth();
   const [params] = useSearchParams();
   const navigate = useNavigate();
   const t = useT();
@@ -21,12 +23,12 @@ export function GithubCallback() {
     done.current = true;
     const code = params.get("code");
     const state = params.get("state");
-    const githubError = params.get("error");
-    if (!state || (!code && !githubError)) {
+    const providerError = params.get("error");
+    if (!state || (!code && !providerError)) {
       setError(t("login.callbackFailed"));
       return;
     }
-    completeGithubCallback(code, state, githubError)
+    completeOauthCallback(provider, code, state, providerError)
       .then((flow) => {
         if (flow === "native") return;
         const pending = sessionStorage.getItem(PENDING_INVITE_KEY);
@@ -38,7 +40,7 @@ export function GithubCallback() {
         }
       })
       .catch((e) => setError(e instanceof ApiError ? e.message : t("login.callbackFailed")));
-  }, [params, completeGithubCallback, navigate, t]);
+  }, [params, provider, completeOauthCallback, navigate, t]);
 
   return (
     <div className="auth-scene">

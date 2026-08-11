@@ -24,7 +24,7 @@ export async function issueDevice(userId: string, label: string | null, client: 
   const id = randomUUID();
   const secret = randomBytes(32).toString("hex");
   const now = Date.now();
-  const expiresAt = now + config.deviceTokenTtlMs;
+  const expiresAt = now + config.auth.deviceTokenTtlMs;
   await query(
     `INSERT INTO devices (id, user_id, label, token_hash, created_at, last_seen_at, expires_at, revoked_at, client_ip, client_ua)
      VALUES ($1, $2, $3, $4, $5, $5, $6, NULL, $7, $8)`,

@@ -1,58 +1,51 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useNavigate } from "react-router";
 import { useAuth } from "./auth";
-import { api, ApiError } from "../../shared/api";
+import { noMethodsAvailable, redirectProvidersOf, useAuthMethods } from "./authMethods";
+import { ApiError } from "../../shared/api";
 import { useT } from "../../shared/i18n";
-import { Palette, Skull } from "lucide-react";
+import { KeyRound, Palette, Skull } from "lucide-react";
 import { GithubMark, LocaleSwitcher } from "../../shared/ui";
 import { useTheme } from "../themes/ThemeProvider";
 
-// Two doors into the same session: an email + password form, and GitHub. Both
-// end in the server's HttpOnly cookie, and an account registered here links to
-// a GitHub identity on the same address the first time it signs in that way.
+// Up to three doors into the same session: an email + password form, GitHub, and
+// the instance's OIDC provider. All end in the server's HttpOnly cookie, and
+// accounts meet on their email address — an account registered here links to a
+// GitHub or OIDC identity on the same address the first time it signs in that way.
 //
-// Which doors exist is the instance's decision (OVERSEER_PASSWORD_AUTH and the
-// GitHub app credentials), read from /auth/methods rather than assumed — the
-// page shows nothing it cannot actually complete. Until that answer arrives it
-// shows neither, so a disabled method never flashes into view.
+// Which doors exist is the instance's decision (OVERSEER_PASSWORD_AUTH, the
+// GitHub app credentials, OVERSEER_OIDC_*), read from /auth/methods rather than
+// assumed — the page shows nothing it cannot actually complete. Until that
+// answer arrives it shows none, so a disabled method never flashes into view.
+// The OIDC button carries the provider's name, because "OIDC" is a protocol and
+// not a place anyone recognises signing in to.
 //
 // The page carries no card and no logo: identity is the wordmark, the surface
 // is the void itself (.auth-* in index.css).
 
+// Matches Join.tsx: a visitor who arrived from an invite link resumes it once
+// signed in. The redirect providers do this in their callback page; the password
+// form has no callback, so it does it here.
+const PENDING_INVITE_KEY = "overseer_pending_invite";
+
 type Mode = "signIn" | "register";
 
-interface AuthMethods {
-  password: boolean;
-  github: boolean;
-}
-
 export function Login() {
-  const { loginWithGithub, signInWithPassword, registerWithPassword } = useAuth();
+  const { loginWithProvider, signInWithPassword, registerWithPassword } = useAuth();
   const { theme, themes, selectTheme } = useTheme();
   const t = useT();
+  const navigate = useNavigate();
   const [mode, setMode] = useState<Mode>("signIn");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [busy, setBusy] = useState<"github" | "password" | null>(null);
+  const [busy, setBusy] = useState<"github" | "oidc" | "password" | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [methods, setMethods] = useState<AuthMethods | null>(null);
-
-  useEffect(() => {
-    let active = true;
-    // An unreachable API is not "no sign-in methods" — fall back to both, so a
-    // transient failure leaves the page usable rather than blank.
-    void api<AuthMethods>("/auth/methods")
-      .catch(() => ({ password: true, github: true }))
-      .then((available) => {
-        if (active) setMethods(available);
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
+  const methods = useAuthMethods();
 
   const registering = mode === "register";
+  const redirectDoors = methods ? redirectProvidersOf(methods).length : 0;
 
-  async function attempt(what: "github" | "password", run: () => Promise<unknown>) {
+  async function attempt(what: "github" | "oidc" | "password", run: () => Promise<unknown>) {
     setBusy(what);
     setError(null);
     try {
@@ -65,9 +58,14 @@ export function Login() {
 
   function submit(event: React.FormEvent) {
     event.preventDefault();
-    void attempt("password", () =>
-      registering ? registerWithPassword(email, password) : signInWithPassword(email, password),
-    );
+    void attempt("password", async () => {
+      await (registering ? registerWithPassword(email, password) : signInWithPassword(email, password));
+      const pending = sessionStorage.getItem(PENDING_INVITE_KEY);
+      if (pending) {
+        sessionStorage.removeItem(PENDING_INVITE_KEY);
+        navigate(`/join/${pending}`, { replace: true });
+      }
+    });
   }
 
   return (
@@ -141,8 +139,8 @@ export function Login() {
           </p>
         )}
 
-        {/* The divider only earns its place when both doors are open. */}
-        {methods?.password && methods.github && (
+        {/* The divider only earns its place when the form has company. */}
+        {methods?.password && redirectDoors > 0 && (
           <p className="auth-divider" aria-hidden>
             <span className="auth-rule" />
             {t("login.or")}
@@ -153,16 +151,30 @@ export function Login() {
         {methods?.github && (
           <button
             type="button"
-            className={methods.password ? "auth-cta auth-cta--quiet" : "auth-cta"}
+            className={methods.password || methods.oidc ? "auth-cta auth-cta--quiet" : "auth-cta"}
             disabled={busy !== null}
-            onClick={() => void attempt("github", loginWithGithub)}
+            onClick={() => void attempt("github", () => loginWithProvider("github"))}
           >
             <GithubMark size={17} />
             {busy === "github" ? t("login.signingIn") : t("login.github")}
           </button>
         )}
 
-        {methods && !methods.password && !methods.github && (
+        {methods?.oidc && (
+          <button
+            type="button"
+            className={methods.password || methods.github ? "auth-cta auth-cta--quiet" : "auth-cta"}
+            disabled={busy !== null}
+            onClick={() => void attempt("oidc", () => loginWithProvider("oidc"))}
+          >
+            <KeyRound size={17} />
+            {t(busy === "oidc" ? "login.oidcSigningIn" : "login.oidc", {
+              provider: methods.oidcLabel ?? t("login.oidcProvider"),
+            })}
+          </button>
+        )}
+
+        {methods && noMethodsAvailable(methods) && (
           <p className="auth-error" role="alert">
             <Skull size={14} className="shrink-0" />
             {t("login.noMethods")}

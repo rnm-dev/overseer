@@ -13,10 +13,15 @@ let port: number;
 const originalFetch = globalThis.fetch;
 const originalConfig = {
   publicUrl: config.publicUrl,
-  githubClientId: config.githubClientId,
-  githubClientSecret: config.githubClientSecret,
-  githubRedirectUri: config.githubRedirectUri,
-  githubNativeCallbacks: config.githubNativeCallbacks,
+  auth: config.auth,
+};
+
+const githubApp = {
+  clientId: "github-client",
+  clientSecret: "github-secret",
+  scope: "read:user user:email",
+  redirectUri: "https://overseer.example/auth/github/callback",
+  nativeCallbacks: ["overseer-dev://oauth/github", "overseer://oauth/github"],
 };
 
 before(async () => {
@@ -25,16 +30,13 @@ before(async () => {
   await initDb(new adapter.Pool() as unknown as pg.Pool);
 
   config.publicUrl = "https://overseer.example";
-  config.githubClientId = "github-client";
-  config.githubClientSecret = "github-secret";
-  config.githubRedirectUri = "https://overseer.example/auth/github/callback";
-  config.githubNativeCallbacks = ["overseer-dev://oauth/github", "overseer://oauth/github"];
+  config.auth = { ...config.auth, github: githubApp };
 
   globalThis.fetch = async (input, init) => {
     const url = String(input);
     if (url === "https://github.com/login/oauth/access_token") {
       const body = JSON.parse(String(init?.body)) as { code: string; redirect_uri: string };
-      assert.equal(body.redirect_uri, config.githubRedirectUri);
+      assert.equal(body.redirect_uri, githubApp.redirectUri);
       return Response.json({ access_token: `token-${body.code}` });
     }
     if (url === "https://api.github.com/user") {
@@ -105,7 +107,7 @@ function started(response: TestResponse): { state: string; authorizationUrl: URL
   assert.equal(typeof state, "string");
   assert.equal(typeof authorizationUrl, "string");
   const authorize = new URL(authorizationUrl as string);
-  assert.equal(authorize.searchParams.get("redirect_uri"), config.githubRedirectUri);
+  assert.equal(authorize.searchParams.get("redirect_uri"), githubApp.redirectUri);
   assert.equal(authorize.searchParams.get("state"), state);
   return { state: state as string, authorizationUrl: authorize };
 }

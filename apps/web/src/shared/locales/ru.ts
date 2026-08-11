@@ -35,6 +35,9 @@ export const ru: Record<string, string> = {
   "login.noMethods": "На этом сервере не настроен ни один способ входа.",
   "login.github": "Войти через GitHub",
   "login.signingIn": "переход на GitHub…",
+  "login.oidcProvider": "провайдер",
+  "login.oidc": "Войти через {provider}",
+  "login.oidcSigningIn": "переход на {provider}…",
   "login.callback": "Завершаем вход…",
   "login.callbackFailed": "Не удалось войти. Попробуйте ещё раз.",
   "login.backToLogin": "назад ко входу",
@@ -527,7 +530,7 @@ export const ru: Record<string, string> = {
   "invites.shareTitle": "Присоединяйтесь к моему пространству Overseer",
 
   "join.invited": "Вас пригласили присоединиться к",
-  "join.signIn": "Войдите через GitHub, чтобы присоединиться",
+  "join.signIn": "Войдите, чтобы присоединиться",
   "join.joining": "Присоединение к {workspace}…",
   "join.invalid": "Эта ссылка-приглашение недействительна или истекла.",
   "join.backHome": "перейти в Overseer",

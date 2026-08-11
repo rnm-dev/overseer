@@ -1,5 +1,8 @@
 export type OAuthFlow = "web" | "native";
 
+/** Which door an attempt belongs to. Stored, so a state cannot be redeemed at the other one. */
+export type OAuthProvider = "github" | "oidc";
+
 export interface OauthStartResult {
   authorizationUrl: string;
   state: string;
@@ -7,7 +10,11 @@ export interface OauthStartResult {
 
 export interface OauthAttempt {
   flow: OAuthFlow;
+  provider: OAuthProvider;
   callbackUrl: string;
+  /** OIDC only: what the returning id token must carry, and the PKCE secret. */
+  nonceDigest: string | null;
+  codeVerifier: string | null;
 }
 
 export interface WebSignInResult {
@@ -31,6 +38,8 @@ export interface UserRecord {
   githubId: string | null;
   githubLogin: string | null;
   avatarUrl: string | null;
+  oidcIssuer: string | null;
+  oidcSubject: string | null;
 }
 
 export interface ClientInfo {

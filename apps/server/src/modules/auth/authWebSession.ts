@@ -33,7 +33,7 @@ export function webSessionToken(req: Request): string {
 export function setWebSessionCookie(res: Response, token: string, expiresAt?: number): void {
   res.cookie(WEB_SESSION_COOKIE, token, {
     ...COOKIE_OPTIONS,
-    expires: new Date(expiresAt ?? Date.now() + config.deviceTokenTtlMs),
+    expires: new Date(expiresAt ?? Date.now() + config.auth.deviceTokenTtlMs),
   });
 }
 

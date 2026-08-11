@@ -3,10 +3,13 @@ import { useNavigate, useParams } from "react-router";
 import { api } from "../../shared/api";
 import { useAuth } from "./auth";
 import { useT } from "../../shared/i18n";
-import { GithubMark, LocaleSwitcher } from "../../shared/ui";
+import { LocaleSwitcher } from "../../shared/ui";
 
 // Opening an invite link lands here. Signed-out visitors get a "sign in to join"
-// button (the token is stashed and resumed after the GitHub round-trip); signed-in
+// button that stashes the token and sends them to the sign-in page, because that
+// page is the one place that knows which doors this instance actually has —
+// naming a provider here would leave a dead button on an instance without it.
+// The stashed token is picked up again once they are signed in. Signed-in
 // visitors are accepted automatically and dropped into the workspace.
 const PENDING_INVITE_KEY = "overseer_pending_invite";
 const CURRENT_WS_KEY = "overseer_ws"; // matches workspace.tsx
@@ -15,7 +18,7 @@ type Preview = { workspaceName: string } | "invalid" | null;
 
 export function Join() {
   const { token } = useParams();
-  const { user, loginWithGithub } = useAuth();
+  const { user } = useAuth();
   const t = useT();
   const navigate = useNavigate();
   const [preview, setPreview] = useState<Preview>(null);
@@ -41,13 +44,9 @@ export function Join() {
       .catch(() => setError(t("error.joinFailed")));
   }, [user, token, preview, navigate, t]);
 
-  async function signInToJoin() {
+  function signInToJoin() {
     if (token) sessionStorage.setItem(PENDING_INVITE_KEY, token);
-    try {
-      await loginWithGithub();
-    } catch {
-      setError(t("error.generic"));
-    }
+    navigate("/login");
   }
 
   const workspaceName = preview && preview !== "invalid" ? preview.workspaceName : "";
@@ -76,7 +75,6 @@ export function Join() {
             <p className="auth-lede">{t("join.invited")}</p>
             <p className="auth-subject">{workspaceName}</p>
             <button type="button" className="auth-cta" onClick={signInToJoin}>
-              <GithubMark size={17} />
               {t("join.signIn")}
             </button>
           </>

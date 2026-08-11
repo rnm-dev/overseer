@@ -35,6 +35,9 @@ export const en: Record<string, string> = {
   "login.noMethods": "This instance has no sign-in method configured.",
   "login.github": "Sign in with GitHub",
   "login.signingIn": "redirecting to GitHub…",
+  "login.oidcProvider": "your provider",
+  "login.oidc": "Sign in with {provider}",
+  "login.oidcSigningIn": "redirecting to {provider}…",
   "login.callback": "Completing sign-in…",
   "login.callbackFailed": "Sign-in failed. Please try again.",
   "login.backToLogin": "back to sign in",
@@ -527,7 +530,7 @@ export const en: Record<string, string> = {
   "invites.shareTitle": "Join my Overseer workspace",
 
   "join.invited": "You've been invited to join",
-  "join.signIn": "Sign in with GitHub to join",
+  "join.signIn": "Sign in to join",
   "join.joining": "Joining {workspace}…",
   "join.invalid": "This invite link is invalid or has expired.",
   "join.backHome": "go to Overseer",

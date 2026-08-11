@@ -5,9 +5,11 @@ import { getOrStartAuthBootstrap } from "./authBootstrap";
 import { forgetNativeCallback, nativeCallback } from "./nativeLoginMode";
 import { serverApprovedNativeRedirect } from "./nativeOauthRedirect";
 
-// Auth state for the dashboard. GitHub returns every flow to this SPA; the SPA
-// submits code + state to the API, whose server-backed attempt determines whether
-// to finish web login or open the native app with a short-lived code.
+// Auth state for the dashboard. Every redirect provider — GitHub, and an
+// instance's OIDC provider — returns each flow to this SPA; the SPA submits code
+// + state to the API, whose server-backed attempt determines whether to finish
+// web login or open the native app with a short-lived code. The two differ only
+// in which pair of endpoints they use, so they share one code path here.
 // Web sessions use an HttpOnly cookie. Native clients retain bearer tokens.
 //
 // A webview launched by the mobile app carries a deep-link callback (see
@@ -21,11 +23,10 @@ export interface User {
   avatarUrl?: string | null;
 }
 
-interface GithubConfig {
-  clientId: string;
-}
+/** The redirect-based doors. Each owns `/auth/<provider>` and its two starts. */
+export type OauthProvider = "github" | "oidc";
 
-interface GithubStart {
+interface OauthStart {
   authorizationUrl: string;
   state: string;
 }
@@ -36,10 +37,15 @@ const STATE_KEY = "overseer_oauth_state";
 interface AuthState {
   user: User | null;
   ready: boolean; // finished the initial "am I already logged in?" check
-  loginWithGithub: () => Promise<void>;
+  loginWithProvider: (provider: OauthProvider) => Promise<void>;
   signInWithPassword: (email: string, password: string) => Promise<void>;
   registerWithPassword: (email: string, password: string) => Promise<void>;
-  completeGithubCallback: (code: string | null, state: string, error: string | null) => Promise<"web" | "native">;
+  completeOauthCallback: (
+    provider: OauthProvider,
+    code: string | null,
+    state: string,
+    error: string | null,
+  ) => Promise<"web" | "native">;
   logout: () => Promise<void>;
 }
 
@@ -82,13 +88,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const value: AuthState = {
     user,
     ready,
-    async loginWithGithub() {
-      const cfg = await api<GithubConfig>("/auth/github/config");
-      if (!cfg.clientId) throw new Error("GitHub sign-in is not configured");
+    async loginWithProvider(provider) {
+      // No preflight for "is this method configured": the start route below is
+      // the one authority on that and refuses with 503 itself, so asking first
+      // could only disagree with it.
       const callback = nativeCallback(sessionStorage);
       const started = callback
-        ? await api<GithubStart>("/auth/github/native/start", json({ callback }))
-        : await api<GithubStart>("/auth/github/start", { method: "POST" });
+        ? await api<OauthStart>(`/auth/${provider}/native/start`, json({ callback }))
+        : await api<OauthStart>(`/auth/${provider}/start`, { method: "POST" });
       sessionStorage.setItem(STATE_KEY, started.state);
       window.location.assign(started.authorizationUrl);
     },
@@ -106,12 +113,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       clearTranscriptSnapshotCache();
       setUser(r.user);
     },
-    async completeGithubCallback(code, state, error) {
+    async completeOauthCallback(provider, code, state, error) {
       const saved = sessionStorage.getItem(STATE_KEY);
       const r = await api<
         | { flow: "web"; user: User }
         | { flow: "native"; redirectUrl: string }
-      >("/auth/github", json({ code, state, error }));
+      >(`/auth/${provider}`, json({ code, state, error }));
       if (r.flow === "native") {
         window.location.assign(serverApprovedNativeRedirect(r.redirectUrl));
         return "native";

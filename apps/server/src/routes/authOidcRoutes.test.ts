@@ -1,0 +1,339 @@
+import assert from "node:assert/strict";
+import { createSign, generateKeyPairSync } from "node:crypto";
+import http from "node:http";
+import type { AddressInfo } from "node:net";
+import { after, before, test } from "node:test";
+import type pg from "pg";
+import { newDb } from "pg-mem";
+import { config } from "../infrastructure/config/index.js";
+import { initDb, query } from "../infrastructure/db/index.js";
+import { resetOidcDiscoveryCache } from "../infrastructure/oidc/index.js";
+import { createServer } from "../app/server.js";
+
+// The whole OIDC door, driven against a provider that exists only here: the
+// suite answers discovery, JWKS and the token endpoint, and signs id tokens with
+// a key it generates. Everything between the sign-in page and the session cookie
+// is the real path.
+
+const ISSUER = "https://id.rnm.test";
+const CLIENT_ID = "overseer";
+const CLIENT_SECRET = "overseer-secret";
+
+const { publicKey, privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+
+let server: http.Server;
+let port: number;
+const originalFetch = globalThis.fetch;
+const originalConfig = { publicUrl: config.publicUrl, auth: config.auth };
+
+// What the fake provider will put in the next id token, and what it recorded
+// about the request that asked for one.
+let issuedNonce: string | null = null;
+let lastAuthorizeParams: URLSearchParams | null = null;
+let lastTokenRequest: { body: URLSearchParams; authorization: string | null } | null = null;
+let claimOverrides: Record<string, unknown> = {};
+let challengeMethods: string[] = ["S256"];
+let tokenEndpointFailure: { status: number; body: unknown } | null = null;
+
+function segment(value: unknown): string {
+  return Buffer.from(JSON.stringify(value)).toString("base64url");
+}
+
+function idToken(): string {
+  const now = Math.floor(Date.now() / 1000);
+  const claims = {
+    iss: ISSUER,
+    sub: "provider-subject-1",
+    aud: CLIENT_ID,
+    iat: now,
+    exp: now + 300,
+    nonce: issuedNonce,
+    email: "operator@rnm.test",
+    email_verified: true,
+    name: "Operator",
+    ...claimOverrides,
+  };
+  const body = `${segment({ alg: "RS256", typ: "JWT", kid: "test-key" })}.${segment(claims)}`;
+  const signer = createSign("RSA-SHA256");
+  signer.update(body);
+  signer.end();
+  return `${body}.${signer.sign(privateKey).toString("base64url")}`;
+}
+
+before(async () => {
+  const mem = newDb();
+  const adapter = mem.adapters.createPg();
+  await initDb(new adapter.Pool() as unknown as pg.Pool);
+
+  config.publicUrl = "https://overseer.test";
+  config.auth = {
+    ...config.auth,
+    // Both redirect doors open, so the cross-provider test below exercises the
+    // fence rather than GitHub being switched off.
+    github: {
+      clientId: "github-client",
+      clientSecret: "github-secret",
+      scope: "read:user user:email",
+      redirectUri: "https://overseer.test/auth/github/callback",
+      nativeCallbacks: ["overseer://oauth/github"],
+    },
+    oidc: {
+      issuer: ISSUER,
+      clientId: CLIENT_ID,
+      clientSecret: CLIENT_SECRET,
+      scope: "openid profile email",
+      redirectUri: "https://overseer.test/auth/oidc/callback",
+      nativeCallbacks: ["overseer://oauth/oidc"],
+      label: "id.rnm.test",
+    },
+  };
+
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url === `${ISSUER}/.well-known/openid-configuration`) {
+      return Response.json({
+        issuer: ISSUER,
+        authorization_endpoint: `${ISSUER}/oauth/authorize`,
+        token_endpoint: `${ISSUER}/oauth/token`,
+        jwks_uri: `${ISSUER}/.well-known/jwks.json`,
+        code_challenge_methods_supported: challengeMethods,
+      });
+    }
+    if (url === `${ISSUER}/.well-known/jwks.json`) {
+      return Response.json({ keys: [{ ...publicKey.export({ format: "jwk" }), kid: "test-key", use: "sig", alg: "RS256" }] });
+    }
+    if (url === `${ISSUER}/oauth/token`) {
+      lastTokenRequest = {
+        body: new URLSearchParams(String(init?.body)),
+        authorization: new Headers(init?.headers).get("authorization"),
+      };
+      if (tokenEndpointFailure) {
+        return Response.json(tokenEndpointFailure.body, { status: tokenEndpointFailure.status });
+      }
+      return Response.json({ access_token: "opaque", token_type: "Bearer", id_token: idToken() });
+    }
+    throw new Error(`unexpected fetch: ${url}`);
+  }) as typeof fetch;
+
+  server = http.createServer(createServer());
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  port = (server.address() as AddressInfo).port;
+});
+
+after(async () => {
+  globalThis.fetch = originalFetch;
+  Object.assign(config, originalConfig);
+  resetOidcDiscoveryCache();
+  await new Promise<void>((resolve) => server.close(() => resolve()));
+});
+
+interface TestResponse {
+  status: number;
+  setCookie: string[];
+  body: Record<string, unknown>;
+}
+
+function request(path: string, method = "GET", body?: unknown): Promise<TestResponse> {
+  const encoded = body === undefined ? undefined : JSON.stringify(body);
+  return new Promise((resolve, reject) => {
+    const req = http.request({
+      hostname: "127.0.0.1",
+      port,
+      path,
+      method,
+      headers: encoded ? { "content-type": "application/json", "content-length": String(Buffer.byteLength(encoded)) } : {},
+    }, (res) => {
+      const chunks: Buffer[] = [];
+      res.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+      res.on("end", () => {
+        const text = Buffer.concat(chunks).toString("utf8");
+        resolve({
+          status: res.statusCode ?? 0,
+          setCookie: res.headers["set-cookie"] ?? [],
+          body: text && res.headers["content-type"]?.includes("json") ? (JSON.parse(text) as Record<string, unknown>) : {},
+        });
+      });
+    });
+    req.on("error", reject);
+    req.end(encoded);
+  });
+}
+
+/** Start a flow and act as the provider would: remember the nonce it was sent. */
+async function startWeb(): Promise<string> {
+  const started = await request("/api/auth/oidc/start", "POST");
+  assert.equal(started.status, 200, JSON.stringify(started.body));
+  const authorize = new URL(started.body.authorizationUrl as string);
+  lastAuthorizeParams = authorize.searchParams;
+  issuedNonce = authorize.searchParams.get("nonce");
+  return started.body.state as string;
+}
+
+test("the sign-in page is told the method exists, and what to call it", async () => {
+  const methods = await request("/api/auth/methods");
+  assert.equal(methods.body.oidc, true);
+  assert.equal(methods.body.oidcLabel, "id.rnm.test");
+});
+
+test("a start is built from discovery, with PKCE and a nonce, and secrets stay server-side", async () => {
+  const state = await startWeb();
+  const params = lastAuthorizeParams!;
+  assert.equal(params.get("response_type"), "code");
+  assert.equal(params.get("client_id"), CLIENT_ID);
+  assert.equal(params.get("redirect_uri"), "https://overseer.test/auth/oidc/callback");
+  assert.equal(params.get("scope"), "openid profile email");
+  assert.equal(params.get("state"), state);
+  assert.equal(params.get("code_challenge_method"), "S256");
+  assert.ok(params.get("code_challenge"));
+  assert.ok(params.get("nonce"));
+  // Nothing the browser is handed carries the client secret or the verifier.
+  const url = params.toString();
+  assert.equal(url.includes(CLIENT_SECRET), false);
+  assert.equal(url.includes("code_verifier"), false);
+});
+
+test("a completed flow verifies the token, creates the account and sets the session cookie", async () => {
+  const state = await startWeb();
+  const completed = await request("/api/auth/oidc", "POST", { state, code: "provider-code" });
+  assert.equal(completed.status, 200, JSON.stringify(completed.body));
+  assert.equal(completed.body.flow, "web");
+  assert.equal((completed.body.user as { email: string }).email, "operator@rnm.test");
+  assert.ok(completed.setCookie.some((cookie) => cookie.startsWith("__Host-overseer_session=")));
+  assert.equal(completed.setCookie.some((cookie) => cookie.toLowerCase().includes("httponly")), true);
+
+  // The exchange authenticated as the client and returned the PKCE verifier
+  // matching the challenge the provider was sent.
+  const sent = lastTokenRequest!;
+  assert.equal(sent.body.get("grant_type"), "authorization_code");
+  assert.equal(sent.body.get("code"), "provider-code");
+  assert.ok(sent.body.get("code_verifier"));
+  assert.equal(
+    sent.authorization,
+    `Basic ${Buffer.from(`${CLIENT_ID}:${CLIENT_SECRET}`).toString("base64")}`,
+  );
+
+  const stored = await query<{ email: string; oidc_issuer: string; oidc_subject: string }>(
+    `SELECT email, oidc_issuer, oidc_subject FROM users WHERE email = $1`,
+    ["operator@rnm.test"],
+  );
+  assert.equal(stored.rows.length, 1);
+  assert.equal(stored.rows[0]!.oidc_issuer, ISSUER);
+  assert.equal(stored.rows[0]!.oidc_subject, "provider-subject-1");
+});
+
+test("signing in again reuses the same account rather than creating a second", async () => {
+  const state = await startWeb();
+  const completed = await request("/api/auth/oidc", "POST", { state, code: "provider-code-2" });
+  assert.equal(completed.status, 200);
+  const stored = await query(`SELECT id FROM users WHERE oidc_subject = $1`, ["provider-subject-1"]);
+  assert.equal(stored.rows.length, 1);
+});
+
+test("a state is single-use", async () => {
+  const state = await startWeb();
+  assert.equal((await request("/api/auth/oidc", "POST", { state, code: "one" })).status, 200);
+  const replayed = await request("/api/auth/oidc", "POST", { state, code: "one" });
+  assert.equal(replayed.status, 400);
+  assert.equal(replayed.body.code, "BAD_STATE");
+});
+
+test("an OIDC state cannot be redeemed at the GitHub door", async () => {
+  const state = await startWeb();
+  const crossed = await request("/api/auth/github", "POST", { state, code: "provider-code" });
+  assert.equal(crossed.status, 400);
+  assert.equal(crossed.body.code, "BAD_STATE");
+});
+
+test("an unverified email is refused rather than linked", async () => {
+  claimOverrides = { email_verified: false, sub: "unverified-subject", email: "unverified@rnm.test" };
+  try {
+    const state = await startWeb();
+    const refused = await request("/api/auth/oidc", "POST", { state, code: "provider-code" });
+    assert.equal(refused.status, 400);
+    assert.equal(refused.body.code, "EMAIL_UNVERIFIED");
+    const stored = await query(`SELECT id FROM users WHERE email = $1`, ["unverified@rnm.test"]);
+    assert.equal(stored.rows.length, 0);
+  } finally {
+    claimOverrides = {};
+  }
+});
+
+test("a token minted for another attempt does not complete this one", async () => {
+  const state = await startWeb();
+  issuedNonce = "a-nonce-from-somewhere-else";
+  const refused = await request("/api/auth/oidc", "POST", { state, code: "provider-code" });
+  assert.equal(refused.status, 400);
+  assert.equal(refused.body.code, "BAD_ID_TOKEN");
+});
+
+test("a provider that refuses the code is reported as a bad code, not a server fault", async () => {
+  tokenEndpointFailure = { status: 400, body: { error: "invalid_grant" } };
+  try {
+    const state = await startWeb();
+    const refused = await request("/api/auth/oidc", "POST", { state, code: "already-used" });
+    assert.equal(refused.status, 400);
+    assert.equal(refused.body.code, "BAD_CODE");
+    assert.equal(String(refused.body.error).includes(CLIENT_SECRET), false);
+  } finally {
+    tokenEndpointFailure = null;
+  }
+});
+
+test("a native start must name an allowlisted deep link", async () => {
+  const refused = await request("/api/auth/oidc/native/start", "POST", { callback: "evil://steal" });
+  assert.equal(refused.status, 400);
+  assert.equal(refused.body.code, "INVALID_CALLBACK");
+  const accepted = await request("/api/auth/oidc/native/start", "POST", { callback: "overseer://oauth/oidc" });
+  assert.equal(accepted.status, 200);
+});
+
+test("with the method switched off every OIDC route is closed", async () => {
+  const configured = config.auth;
+  config.auth = { ...configured, oidc: null };
+  try {
+    for (const path of ["/api/auth/oidc/start", "/api/auth/oidc/native/start", "/api/auth/oidc", "/api/auth/oidc/native/exchange"]) {
+      const closed = await request(path, "POST", { code: "x", state: "y" });
+      assert.equal(closed.status, 503, path);
+      assert.equal(closed.body.code, "OIDC_DISABLED", path);
+    }
+    const methods = await request("/api/auth/methods");
+    assert.equal(methods.body.oidc, false);
+    assert.equal(methods.body.oidcLabel, null);
+  } finally {
+    config.auth = configured;
+  }
+});
+
+test("a native flow's app code is redeemable only at its own door", async () => {
+  const started = await request("/api/auth/oidc/native/start", "POST", { callback: "overseer://oauth/oidc" });
+  assert.equal(started.status, 200);
+  issuedNonce = new URL(started.body.authorizationUrl as string).searchParams.get("nonce");
+  const state = started.body.state as string;
+
+  const completed = await request("/api/auth/oidc", "POST", { state, code: "native-provider-code" });
+  assert.equal(completed.status, 200, JSON.stringify(completed.body));
+  const appCode = new URL(completed.body.redirectUrl as string).searchParams.get("code");
+  assert.ok(appCode);
+
+  // The GitHub door is open on this instance, and still cannot spend it.
+  const crossed = await request("/api/auth/github/native/exchange", "POST", { state, code: appCode });
+  assert.equal(crossed.status, 400);
+  assert.equal(crossed.body.code, "BAD_APP_CODE");
+
+  const redeemed = await request("/api/auth/oidc/native/exchange", "POST", { state, code: appCode });
+  assert.equal(redeemed.status, 200, JSON.stringify(redeemed.body));
+  assert.equal(typeof redeemed.body.token, "string");
+});
+
+test("a provider that cannot do S256 is refused at the start, not at the redirect", async () => {
+  challengeMethods = ["plain"];
+  resetOidcDiscoveryCache();
+  try {
+    const refused = await request("/api/auth/oidc/start", "POST");
+    assert.equal(refused.status, 502);
+    assert.equal(refused.body.code, "PROVIDER_MALFORMED");
+  } finally {
+    challengeMethods = ["S256"];
+    resetOidcDiscoveryCache();
+  }
+});

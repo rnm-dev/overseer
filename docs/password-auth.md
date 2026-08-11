@@ -4,7 +4,8 @@ GitHub OAuth is no longer the only door. An instance can also accept an email
 address and a password, for registration and for sign-in, and the two identities
 converge on one user row.
 
-Back to the [documentation index](index.md).
+Back to the [documentation index](index.md). How an instance decides which doors
+it has at all is in [sign-in methods](sign-in-methods.md).
 
 ## The switch
 

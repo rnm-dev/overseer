@@ -1,4 +1,4 @@
-import { config } from "../config/index.js";
+import type { GithubAuthSettings } from "../auth/index.js";
 
 // GitHub OAuth identity exchange. GitHub returns every client flow to the same
 // frontend HTTPS callback, which submits the authorization code to the API. The
@@ -22,15 +22,15 @@ export class GithubAuthError extends Error {
   }
 }
 
-async function ghToken(code: string, redirectUri: string): Promise<string> {
+async function ghToken(settings: GithubAuthSettings, code: string): Promise<string> {
   const res = await fetch("https://github.com/login/oauth/access_token", {
     method: "POST",
     headers: { accept: "application/json", "content-type": "application/json" },
     body: JSON.stringify({
-      client_id: config.githubClientId,
-      client_secret: config.githubClientSecret,
+      client_id: settings.clientId,
+      client_secret: settings.clientSecret,
       code,
-      redirect_uri: redirectUri,
+      redirect_uri: settings.redirectUri,
     }),
   });
   if (!res.ok) throw new GithubAuthError("EXCHANGE_FAILED", `github token endpoint returned ${res.status}`);
@@ -62,9 +62,12 @@ async function resolveEmail(user: { id: number; login: string; email: string | n
   return `${user.id}+${user.login}@users.noreply.github.com`;
 }
 
-// Exchange an OAuth code for the signed-in GitHub identity.
-export async function exchangeCodeForProfile(code: string, redirectUri = config.githubRedirectUri): Promise<GithubProfile> {
-  const accessToken = await ghToken(code, redirectUri);
+// Exchange an OAuth code for the signed-in GitHub identity. The app is passed
+// in rather than read from configuration here: infrastructure describes how to
+// talk to GitHub, and the caller that already resolved the method decides which
+// app is talking.
+export async function exchangeCodeForProfile(settings: GithubAuthSettings, code: string): Promise<GithubProfile> {
+  const accessToken = await ghToken(settings, code);
   const user = await ghGet<{ id: number; login: string; email: string | null; name: string | null; avatar_url: string | null }>("/user", accessToken);
   const email = await resolveEmail(user, accessToken);
   return {
