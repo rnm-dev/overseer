@@ -202,6 +202,53 @@ test("live transcript commit, browser event, inbox cursor, replay dedupe, and ga
   assert.equal((await getTranscriptState("p1", "s1"))?.acknowledgedSeq, 3);
 });
 
+test("a durable retry adopts an exact transcript row orphaned from its inbox checkpoint", async () => {
+  await database();
+  await claim("p1", "s1", "generation-1");
+  await commitTranscriptSnapshot({
+    workspaceId: "ws",
+    peonId: "p1",
+    sessionId: "s1",
+    generation: "generation-1",
+    epoch: "epoch-1",
+    revision: 1,
+    barrierSeq: 1,
+    events: [envelope(1)],
+  });
+  await query(
+    `INSERT INTO transcript_events
+       (peon_id,session_id,transcript_epoch,seq,event_id,payload,body_bytes,created_at)
+     VALUES ('p1','s1','epoch-1',2,'event-2',$1,$2,1)`,
+    [JSON.stringify(envelope(2).event), Buffer.byteLength(JSON.stringify(envelope(2).event))],
+  );
+
+  const recovered = await commitTranscriptEvent({
+    workspaceId: "ws",
+    peonId: "p1",
+    sessionId: "s1",
+    generation: "generation-1",
+    transcriptEpoch: "epoch-1",
+    seq: 2,
+    revision: 2,
+    eventId: "event-2",
+    event: envelope(2).event,
+    deliveryEpoch: "delivery",
+    deliveryCursor: "cursor-2",
+    messageId: "00000000-0000-4000-8000-000000000102",
+  });
+
+  assert.equal(recovered.delivery.acknowledgedCursor, "cursor-2");
+  assert.equal(recovered.browserEvent, null);
+  assert.equal((await getTranscriptState("p1", "s1"))?.acknowledgedSeq, 2);
+  assert.equal((await getTranscriptState("p1", "s1"))?.eventCount, 2);
+  assert.equal((await query<{ count: number }>(
+    `SELECT COUNT(*)::int AS count FROM peon_session_inbox WHERE cursor='cursor-2'`,
+  )).rows[0]?.count, 1);
+  assert.equal((await query<{ count: number }>(
+    `SELECT COUNT(*)::int AS count FROM transcript_events WHERE peon_id='p1' AND session_id='s1'`,
+  )).rows[0]?.count, 2);
+});
+
 test("snapshot and live transcript events recursively replace NUL without changing literal escape text", async () => {
   await database();
   await claim("p1", "s1", "generation-1");

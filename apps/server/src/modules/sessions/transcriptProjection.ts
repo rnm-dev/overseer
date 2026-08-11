@@ -450,6 +450,64 @@ export async function commitTranscriptEvent(input: {
       || Number(row.body_bytes) + bytes > TRANSCRIPT_SESSION_BYTE_LIMIT) {
       throw new TranscriptProjectionError("TRANSCRIPT_NOT_READY", "transcript projection requires rebuild");
     }
+    // Compatibility recovery for a commit made by an older deployment that
+    // wrote the canonical transcript row but did not leave the durable inbox
+    // checkpoint. Retrying that cursor must validate and adopt the exact row;
+    // blindly inserting it again trips transcript_events_identity_idx forever
+    // and turns one orphaned checkpoint into a reconnect loop.
+    const orphaned = await tx.query<{
+      transcript_epoch: string;
+      seq: number | string;
+      payload: Record<string, unknown>;
+    }>(
+      `SELECT transcript_epoch,seq,payload FROM transcript_events
+       WHERE peon_id=$1 AND session_id=$2 AND event_id=$3`,
+      [input.peonId, input.sessionId, input.eventId],
+    );
+    if (orphaned.rows[0]) {
+      const existing = orphaned.rows[0];
+      if (existing.transcript_epoch !== input.transcriptEpoch
+        || Number(existing.seq) !== input.seq
+        || canonicalPayload(existing.payload) !== canonicalPayload(event)) {
+        throw new TranscriptProjectionError("REPLAY_MISMATCH", "orphaned transcript event payload mismatch");
+      }
+      const freshInbox = await insertInbox(tx, input);
+      if (freshInbox) {
+        const totals = await tx.query<{ event_count: number | string; body_bytes: number | string }>(
+          `SELECT COUNT(*) AS event_count,COALESCE(SUM(body_bytes),0) AS body_bytes
+           FROM transcript_events WHERE peon_id=$1 AND session_id=$2`,
+          [input.peonId, input.sessionId],
+        );
+        const updated = await tx.query(
+          `UPDATE peon_transcript_sync SET acknowledged_seq=$4,revision=$5,
+             event_count=$6,body_bytes=$7,status='ready',updated_at=$8,last_accessed_at=$8
+           WHERE peon_id=$1 AND session_id=$2 AND generation=$3 RETURNING peon_id`,
+          [
+            input.peonId,
+            input.sessionId,
+            input.generation,
+            input.seq,
+            input.revision,
+            Number(totals.rows[0]?.event_count ?? 0),
+            Number(totals.rows[0]?.body_bytes ?? 0),
+            Date.now(),
+          ],
+        );
+        if (!updated.rows[0]) throw new TranscriptProjectionError("STALE_GENERATION", "transcript sync connection was replaced");
+        await advanceSharedDelivery(tx, input);
+      }
+      const delivery = freshInbox
+        ? { epoch: input.deliveryEpoch, acknowledgedCursor: input.deliveryCursor }
+        : await sharedDeliveryCheckpoint(tx, input.peonId, input.generation).then((checkpoint) => ({
+          epoch: checkpoint.epoch ?? input.deliveryEpoch,
+          acknowledgedCursor: checkpoint.cursor ?? input.deliveryCursor,
+        }));
+      return {
+        delivery,
+        transcript: { epoch: input.transcriptEpoch, acknowledgedSeq: input.seq },
+        browserEvent: null,
+      };
+    }
     const freshInbox = await insertInbox(tx, input);
     if (!freshInbox) throw new TranscriptProjectionError("REPLAY_MISMATCH", "concurrent durable transcript replay");
     await tx.query(
