@@ -25,8 +25,6 @@ void main() {
       )..httpClientAdapter = _ImmediateFleetAdapter();
       final service = WebSocketFleetLiveService(
         serverUrl: Uri.parse('http://127.0.0.1:${server.port}'),
-        apiUrl: Uri.parse('http://127.0.0.1:${server.port}/api/v1/'),
-        token: 'test-token',
         dio: dio,
       );
       addTearDown(() async {
@@ -84,8 +82,6 @@ void main() {
       ..httpClientAdapter = adapter;
     final service = WebSocketFleetLiveService(
       serverUrl: Uri.parse('https://overseer.example'),
-      apiUrl: Uri.parse('https://overseer.example/api/v1/'),
-      token: 'test-token',
       dio: dio,
       scheduler: scheduler,
       diagnostics: diagnostics,
@@ -128,8 +124,6 @@ void main() {
       )..httpClientAdapter = adapter;
       final service = WebSocketFleetLiveService(
         serverUrl: Uri.parse('http://127.0.0.1:${server.port}'),
-        apiUrl: Uri.parse('http://127.0.0.1:${server.port}/api/v1/'),
-        token: 'test-token',
         dio: dio,
       );
       addTearDown(() async {
@@ -205,8 +199,6 @@ void main() {
       )..httpClientAdapter = adapter;
       final service = WebSocketFleetLiveService(
         serverUrl: Uri.parse('http://127.0.0.1:${server.port}'),
-        apiUrl: Uri.parse('http://127.0.0.1:${server.port}/api/v1/'),
-        token: 'test-token',
         dio: dio,
       );
       addTearDown(() async {
@@ -284,8 +276,6 @@ void main() {
       )..httpClientAdapter = adapter;
       final service = WebSocketFleetLiveService(
         serverUrl: Uri.parse('http://127.0.0.1:${server.port}'),
-        apiUrl: Uri.parse('http://127.0.0.1:${server.port}/api/v1/'),
-        token: 'test-token',
         dio: dio,
       );
       addTearDown(() async {

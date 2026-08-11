@@ -15,12 +15,7 @@ void main() {
     final adapter = _FleetAdapter();
     final dio = Dio(BaseOptions(baseUrl: 'https://overseer.example/api/v1/'))
       ..httpClientAdapter = adapter;
-    final repository = DioFleetRepository(
-      database: database,
-      apiUrl: Uri.parse('https://overseer.example/api/v1/'),
-      token: 'token',
-      dio: dio,
-    );
+    final repository = DioFleetRepository(database: database, dio: dio);
 
     final refreshed = await repository.refreshFleet();
     expect(refreshed.single.workspace.name, 'Workspace One');
@@ -67,11 +62,7 @@ void main() {
     () async {
       final database = AppDatabase.forTesting(NativeDatabase.memory());
       addTearDown(database.close);
-      final repository = DioFleetRepository(
-        database: database,
-        apiUrl: Uri.parse('https://overseer.example/api/v1/'),
-        token: 'token',
-      );
+      final repository = DioFleetRepository(database: database, dio: Dio());
       await database
           .into(database.cachedWorkspaces)
           .insert(

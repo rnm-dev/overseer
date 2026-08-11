@@ -26,8 +26,7 @@ void main() {
   test('persists and clears a session-scoped draft', () async {
     final repository = DefaultFollowupRepository(
       database: database,
-      apiUrl: Uri.parse('https://overseer.example/api/'),
-      token: 'token',
+      dio: Dio(),
     );
 
     await repository.saveDraft(scope, 'durable draft');
@@ -65,8 +64,6 @@ void main() {
       );
       final repository = DefaultFollowupRepository(
         database: database,
-        apiUrl: Uri.parse('https://overseer.example/api/'),
-        token: 'token',
         dio: dio,
       );
 
@@ -152,8 +149,6 @@ void main() {
       );
       final repository = DefaultFollowupRepository(
         database: database,
-        apiUrl: Uri.parse('https://overseer.example/api/'),
-        token: 'token',
         dio: dio,
       );
 
@@ -240,12 +235,7 @@ void main() {
         ),
       ),
     );
-    final repository = DefaultFollowupRepository(
-      database: database,
-      apiUrl: Uri.parse('https://overseer.example/api/'),
-      token: 'token',
-      dio: dio,
-    );
+    final repository = DefaultFollowupRepository(database: database, dio: dio);
 
     final catalog = await repository.fetchModelCatalog(scope);
 
@@ -267,12 +257,7 @@ void main() {
         },
       ),
     );
-    final repository = DefaultFollowupRepository(
-      database: database,
-      apiUrl: Uri.parse('https://overseer.example/api/'),
-      token: 'token',
-      dio: dio,
-    );
+    final repository = DefaultFollowupRepository(database: database, dio: dio);
 
     expect(
       await repository.submit(
@@ -334,12 +319,7 @@ void main() {
         },
       ),
     );
-    final repository = DefaultFollowupRepository(
-      database: database,
-      apiUrl: Uri.parse('https://overseer.example/api/'),
-      token: 'token',
-      dio: dio,
-    );
+    final repository = DefaultFollowupRepository(database: database, dio: dio);
 
     await repository.refreshQueue(scope);
     final cached = await repository.watchQueue(scope).first;
@@ -415,8 +395,6 @@ void main() {
       );
       final repository = DefaultFollowupRepository(
         database: database,
-        apiUrl: Uri.parse('https://overseer.example/api/'),
-        token: 'token',
         dio: dio,
       );
 
@@ -468,12 +446,7 @@ void main() {
         },
       ),
     );
-    final repository = DefaultFollowupRepository(
-      database: database,
-      apiUrl: Uri.parse('https://overseer.example/api/'),
-      token: 'token',
-      dio: dio,
-    );
+    final repository = DefaultFollowupRepository(database: database, dio: dio);
     await repository.refreshQueue(scope);
     expect(await repository.watchQueue(scope).first, hasLength(1));
 
@@ -514,8 +487,6 @@ void main() {
       );
       final repository = DefaultFollowupRepository(
         database: database,
-        apiUrl: Uri.parse('https://overseer.example/api/'),
-        token: 'token',
         dio: dio,
       );
 

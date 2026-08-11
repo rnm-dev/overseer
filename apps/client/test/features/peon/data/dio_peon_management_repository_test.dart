@@ -63,8 +63,6 @@ void main() {
       );
       final repository = DioPeonManagementRepository(
         database: database,
-        apiUrl: Uri.parse('https://overseer.example/api/'),
-        token: 'token',
         dio: dio,
       );
 
@@ -145,8 +143,6 @@ void main() {
       );
       final repository = DioPeonManagementRepository(
         database: database,
-        apiUrl: Uri.parse('https://overseer.example/api/'),
-        token: 'token',
         dio: dio,
       );
 
@@ -190,8 +186,6 @@ void main() {
     );
     final repository = DioPeonManagementRepository(
       database: database,
-      apiUrl: Uri.parse('https://overseer.example/api/'),
-      token: 'token',
       dio: dio,
     );
 

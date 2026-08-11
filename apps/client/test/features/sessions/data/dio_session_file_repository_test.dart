@@ -23,11 +23,7 @@ void main() {
           },
         ),
       );
-      final repository = DioSessionFileRepository(
-        apiUrl: Uri.parse('https://overseer.example/api/'),
-        token: 'token',
-        dio: dio,
-      );
+      final repository = DioSessionFileRepository(dio: dio);
 
       final preview = await repository.fetchAttachment(
         workspaceId: 'workspace',
@@ -67,11 +63,7 @@ void main() {
         },
       ),
     );
-    final repository = DioSessionFileRepository(
-      apiUrl: Uri.parse('https://overseer.example/api/'),
-      token: 'token',
-      dio: dio,
-    );
+    final repository = DioSessionFileRepository(dio: dio);
 
     await repository.fetchAttachment(
       workspaceId: 'workspace',

@@ -55,11 +55,7 @@ void main() {
           },
         ),
       );
-      final repository = DioPeonSettingsRepository(
-        apiUrl: Uri.parse('https://overseer.example/api/'),
-        token: 'token',
-        dio: dio,
-      );
+      final repository = DioPeonSettingsRepository(dio: dio);
 
       final settings = await repository.fetchSettings(scope);
       final status = await repository.fetchStatus(scope);
@@ -97,11 +93,7 @@ void main() {
           },
         ),
       );
-      final repository = DioPeonSettingsRepository(
-        apiUrl: Uri.parse('https://overseer.example/api/'),
-        token: 'token',
-        dio: dio,
-      );
+      final repository = DioPeonSettingsRepository(dio: dio);
 
       await repository.updateSettings(scope, {'name': 'Renamed'});
       await repository.updateConnection(scope, 'https://peon.example');
@@ -130,11 +122,7 @@ void main() {
         ),
       ),
     );
-    final repository = DioPeonSettingsRepository(
-      apiUrl: Uri.parse('https://overseer.example/api/'),
-      token: 'token',
-      dio: dio,
-    );
+    final repository = DioPeonSettingsRepository(dio: dio);
 
     await expectLater(
       repository.checkForUpdate(scope),

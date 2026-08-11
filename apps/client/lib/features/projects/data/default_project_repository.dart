@@ -4,18 +4,12 @@ import 'package:drift/drift.dart';
 import '../../../core/database/app_database.dart';
 import '../../../core/live/resource_projection.dart';
 import '../../../core/live/durable_projection_transaction.dart';
-import '../../../core/network/overseer_http_client.dart';
 import '../domain/project_detail_models.dart';
 import '../domain/project_models.dart';
 import '../domain/project_repository.dart';
 
 class DefaultProjectRepository implements ProjectRepository {
-  DefaultProjectRepository({
-    required this.database,
-    required Uri apiUrl,
-    required String token,
-    Dio? dio,
-  }) : _dio = dio ?? createOverseerHttpClient(apiUrl: apiUrl, token: token);
+  DefaultProjectRepository({required this.database, required this._dio});
 
   final AppDatabase database;
   final Dio _dio;

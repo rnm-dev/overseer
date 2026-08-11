@@ -3,15 +3,10 @@ import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 
-import '../../../core/network/overseer_http_client.dart';
 import '../domain/session_file_repository.dart';
 
 class DioSessionFileRepository implements SessionFileRepository {
-  DioSessionFileRepository({
-    required Uri apiUrl,
-    required String token,
-    Dio? dio,
-  }) : _dio = dio ?? createOverseerHttpClient(apiUrl: apiUrl, token: token);
+  DioSessionFileRepository({required this._dio});
 
   final Dio _dio;
 

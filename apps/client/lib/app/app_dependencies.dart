@@ -169,38 +169,20 @@ class AppDependencies extends StatelessWidget {
           return service;
         }),
         aiStatsRepositoryProvider.overrideWith((ref) {
-          final session = ref.watch(authControllerProvider).session;
-          if (session == null) {
-            throw StateError('An authenticated session is required.');
-          }
           return DioAiStatsRepository(
             database: ref.watch(appDatabaseProvider),
-            apiUrl: config.apiUrl,
-            token: session.token,
             dio: ref.watch(overseerHttpClientProvider),
             clock: ref.watch(appClockProvider),
           );
         }),
         peonSettingsRepositoryProvider.overrideWith((ref) {
-          final session = ref.watch(authControllerProvider).session;
-          if (session == null) {
-            throw StateError('An authenticated session is required.');
-          }
           return DioPeonSettingsRepository(
-            apiUrl: config.apiUrl,
-            token: session.token,
             dio: ref.watch(overseerHttpClientProvider),
           );
         }),
         peonManagementRepositoryProvider.overrideWith((ref) {
-          final session = ref.watch(authControllerProvider).session;
-          if (session == null) {
-            throw StateError('An authenticated session is required.');
-          }
           return DioPeonManagementRepository(
             database: ref.watch(appDatabaseProvider),
-            apiUrl: config.apiUrl,
-            token: session.token,
             dio: ref.watch(overseerHttpClientProvider),
             clock: ref.watch(appClockProvider),
           );
@@ -210,49 +192,25 @@ class AppDependencies extends StatelessWidget {
               DioPluginInquiryRepository(ref.watch(overseerHttpClientProvider)),
         ),
         projectRepositoryProvider.overrideWith((ref) {
-          final session = ref.watch(authControllerProvider).session;
-          if (session == null) {
-            throw StateError('An authenticated session is required.');
-          }
           return DefaultProjectRepository(
             database: ref.watch(appDatabaseProvider),
-            apiUrl: config.apiUrl,
-            token: session.token,
             dio: ref.watch(overseerHttpClientProvider),
           );
         }),
         projectDetailRepositoryProvider.overrideWith((ref) {
-          final session = ref.watch(authControllerProvider).session;
-          if (session == null) {
-            throw StateError('An authenticated session is required.');
-          }
           return DioProjectDetailRepository(
-            apiUrl: config.apiUrl,
-            token: session.token,
             dio: ref.watch(overseerHttpClientProvider),
           );
         }),
         sessionRepositoryProvider.overrideWith((ref) {
-          final session = ref.watch(authControllerProvider).session;
-          if (session == null) {
-            throw StateError('An authenticated session is required.');
-          }
           return DefaultSessionRepository(
             database: ref.watch(appDatabaseProvider),
-            apiUrl: config.apiUrl,
-            token: session.token,
             dio: ref.watch(overseerHttpClientProvider),
             clock: ref.watch(appClockProvider),
           );
         }),
         sessionFileRepositoryProvider.overrideWith((ref) {
-          final session = ref.watch(authControllerProvider).session;
-          if (session == null) {
-            throw StateError('An authenticated session is required.');
-          }
           return DioSessionFileRepository(
-            apiUrl: config.apiUrl,
-            token: session.token,
             dio: ref.watch(overseerHttpClientProvider),
           );
         }),
@@ -282,27 +240,15 @@ class AppDependencies extends StatelessWidget {
           ),
         ),
         followupRepositoryProvider.overrideWith((ref) {
-          final session = ref.watch(authControllerProvider).session;
-          if (session == null) {
-            throw StateError('An authenticated session is required.');
-          }
           return DefaultFollowupRepository(
             database: ref.watch(appDatabaseProvider),
-            apiUrl: config.apiUrl,
-            token: session.token,
             dio: ref.watch(overseerHttpClientProvider),
             clock: ref.watch(appClockProvider),
           );
         }),
         newSessionRepositoryProvider.overrideWith((ref) {
-          final session = ref.watch(authControllerProvider).session;
-          if (session == null) {
-            throw StateError('An authenticated session is required.');
-          }
           return DefaultNewSessionRepository(
             database: ref.watch(appDatabaseProvider),
-            apiUrl: config.apiUrl,
-            token: session.token,
             dio: ref.watch(overseerHttpClientProvider),
             clock: ref.watch(appClockProvider),
           );
@@ -337,14 +283,8 @@ class AppDependencies extends StatelessWidget {
           return player;
         }),
         fleetRepositoryProvider.overrideWith((ref) {
-          final session = ref.watch(authControllerProvider).session;
-          if (session == null) {
-            throw StateError('An authenticated session is required.');
-          }
           return DioFleetRepository(
             database: ref.watch(appDatabaseProvider),
-            apiUrl: config.apiUrl,
-            token: session.token,
             dio: ref.watch(overseerHttpClientProvider),
             clock: ref.watch(appClockProvider),
           );
@@ -354,8 +294,6 @@ class AppDependencies extends StatelessWidget {
           if (session == null) return null;
           return WebSocketFleetLiveService(
             serverUrl: config.serverUrl,
-            apiUrl: config.apiUrl,
-            token: session.token,
             dio: ref.watch(overseerHttpClientProvider),
             clock: ref.watch(appClockProvider),
             scheduler: ref.watch(appSchedulerProvider),

@@ -57,12 +57,7 @@ void main() {
         },
       ),
     );
-    final repository = DioAiStatsRepository(
-      database: database,
-      apiUrl: Uri.parse('https://overseer.example/api/'),
-      token: 'token',
-      dio: dio,
-    );
+    final repository = DioAiStatsRepository(database: database, dio: dio);
 
     final stats = await repository.refreshStats(
       workspaceId: 'workspace',
@@ -115,12 +110,7 @@ void main() {
         },
       ),
     );
-    final repository = DioAiStatsRepository(
-      database: database,
-      apiUrl: Uri.parse('https://overseer.example/api/'),
-      token: 'token',
-      dio: dio,
-    );
+    final repository = DioAiStatsRepository(database: database, dio: dio);
 
     await repository.loadQuota(
       workspaceId: 'workspace',

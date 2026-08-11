@@ -10,7 +10,6 @@ import '../../../core/live/active_sessions.dart';
 import '../../../core/live/presence.dart';
 import '../../../core/live/resource_projection.dart';
 import '../../../core/live/transcript_live_service.dart';
-import '../../../core/network/overseer_http_client.dart';
 import '../../../core/time/app_time.dart';
 import '../application/fleet_live_service.dart';
 
@@ -28,13 +27,11 @@ class WebSocketFleetLiveService
         TranscriptLiveService {
   WebSocketFleetLiveService({
     required this.serverUrl,
-    required Uri apiUrl,
-    required String token,
-    Dio? dio,
+    required this._dio,
     this._clock = const SystemAppClock(),
     this._scheduler = const SystemAppScheduler(),
     this._diagnostics = const NoopAppDiagnostics(),
-  }) : _dio = dio ?? createOverseerHttpClient(apiUrl: apiUrl, token: token);
+  });
 
   static const _heartbeatInterval = Duration(seconds: 10);
   static const _staleInterval = Duration(seconds: 25);

@@ -166,6 +166,27 @@ void main() {
 
     expect(violations, isEmpty, reason: violations.join('\n'));
   });
+
+  test('authenticated HTTP clients are created only by app composition', () {
+    final violations = <String>[];
+    final featureFiles = Directory('lib/features')
+        .listSync(recursive: true)
+        .whereType<File>()
+        .where((file) => file.path.endsWith('.dart'));
+
+    for (final file in featureFiles) {
+      final path = file.path.replaceAll(r'\', '/');
+      final source = file.readAsStringSync();
+      if (source.contains('createOverseerHttpClient') ||
+          source.contains('core/network/overseer_http_client.dart')) {
+        violations.add(
+          '$path creates or imports the authenticated HTTP client',
+        );
+      }
+    }
+
+    expect(violations, isEmpty, reason: violations.join('\n'));
+  });
 }
 
 final _importPattern = RegExp(r'''(?:import|export)\s+['"]([^'"]+)['"]''');

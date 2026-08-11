@@ -2,17 +2,12 @@ import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 
-import '../../../core/network/overseer_http_client.dart';
 import '../domain/project_detail_models.dart';
 import '../domain/project_detail_repository.dart';
 import '../domain/project_models.dart';
 
 class DioProjectDetailRepository implements ProjectDetailRepository {
-  DioProjectDetailRepository({
-    required Uri apiUrl,
-    required String token,
-    Dio? dio,
-  }) : _dio = dio ?? createOverseerHttpClient(apiUrl: apiUrl, token: token);
+  DioProjectDetailRepository({required this._dio});
 
   final Dio _dio;
 

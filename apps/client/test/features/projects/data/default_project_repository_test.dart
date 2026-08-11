@@ -13,11 +13,7 @@ void main() {
 
   setUp(() {
     database = AppDatabase.forTesting(NativeDatabase.memory());
-    repository = DefaultProjectRepository(
-      database: database,
-      apiUrl: Uri.parse('https://overseer.example/api/'),
-      token: 'test-token',
-    );
+    repository = DefaultProjectRepository(database: database, dio: Dio());
   });
 
   tearDown(() => database.close());
@@ -53,12 +49,7 @@ void main() {
         },
       ),
     );
-    repository = DefaultProjectRepository(
-      database: database,
-      apiUrl: Uri.parse('https://overseer.example/api/'),
-      token: 'test-token',
-      dio: dio,
-    );
+    repository = DefaultProjectRepository(database: database, dio: dio);
 
     final snapshot = await repository.refreshProjects(
       workspaceId: 'workspace',
@@ -114,12 +105,7 @@ void main() {
         ),
       ),
     );
-    repository = DefaultProjectRepository(
-      database: database,
-      apiUrl: Uri.parse('https://overseer.example/api/'),
-      token: 'test-token',
-      dio: dio,
-    );
+    repository = DefaultProjectRepository(database: database, dio: dio);
 
     await repository.refreshProjects(workspaceId: 'workspace', peonId: 'peon');
 
@@ -152,12 +138,7 @@ void main() {
         },
       ),
     );
-    repository = DefaultProjectRepository(
-      database: database,
-      apiUrl: Uri.parse('https://overseer.example/api/'),
-      token: 'test-token',
-      dio: dio,
-    );
+    repository = DefaultProjectRepository(database: database, dio: dio);
 
     final suggestion = await repository.suggestProject(
       workspaceId: 'workspace',
@@ -191,12 +172,7 @@ void main() {
         },
       ),
     );
-    repository = DefaultProjectRepository(
-      database: database,
-      apiUrl: Uri.parse('https://overseer.example/api/'),
-      token: 'test-token',
-      dio: dio,
-    );
+    repository = DefaultProjectRepository(database: database, dio: dio);
 
     await repository.createProject(
       workspaceId: 'workspace',
@@ -238,12 +214,7 @@ void main() {
         },
       ),
     );
-    repository = DefaultProjectRepository(
-      database: database,
-      apiUrl: Uri.parse('https://overseer.example/api/'),
-      token: 'test-token',
-      dio: dio,
-    );
+    repository = DefaultProjectRepository(database: database, dio: dio);
 
     final directory = await repository.fetchDirectory(
       workspaceId: 'workspace one',
@@ -285,12 +256,7 @@ void main() {
         },
       ),
     );
-    repository = DefaultProjectRepository(
-      database: database,
-      apiUrl: Uri.parse('https://overseer.example/api/'),
-      token: 'test-token',
-      dio: dio,
-    );
+    repository = DefaultProjectRepository(database: database, dio: dio);
 
     final ProjectFilePreview file = await repository.fetchFile(
       workspaceId: 'workspace',
@@ -329,12 +295,7 @@ void main() {
         ),
       ),
     );
-    repository = DefaultProjectRepository(
-      database: database,
-      apiUrl: Uri.parse('https://overseer.example/api/'),
-      token: 'test-token',
-      dio: dio,
-    );
+    repository = DefaultProjectRepository(database: database, dio: dio);
 
     expect(
       () => repository.createProject(
@@ -427,12 +388,7 @@ void main() {
         ),
       ),
     );
-    repository = DefaultProjectRepository(
-      database: database,
-      apiUrl: Uri.parse('https://overseer.example/api/'),
-      token: 'test-token',
-      dio: dio,
-    );
+    repository = DefaultProjectRepository(database: database, dio: dio);
     await repository.refreshProjects(workspaceId: 'workspace', peonId: 'peon');
 
     expect(

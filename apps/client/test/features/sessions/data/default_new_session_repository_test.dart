@@ -61,8 +61,6 @@ void main() {
       final clock = MutableAppClock(DateTime.utc(2026, 7, 27, 10, 30));
       final repository = DefaultNewSessionRepository(
         database: database,
-        apiUrl: Uri.parse('https://overseer.example/api/'),
-        token: 'token',
         dio: dio,
         clock: clock,
       );
@@ -143,8 +141,6 @@ void main() {
       );
       final repository = DefaultNewSessionRepository(
         database: database,
-        apiUrl: Uri.parse('https://overseer.example/api/'),
-        token: 'token',
         dio: dio,
       );
       final request = NewSessionRequest(
@@ -179,8 +175,6 @@ void main() {
     );
     final repository = DefaultNewSessionRepository(
       database: database,
-      apiUrl: Uri.parse('https://overseer.example/api/'),
-      token: 'token',
       dio: dio,
     );
 
@@ -239,8 +233,6 @@ void main() {
     );
     final repository = DefaultNewSessionRepository(
       database: database,
-      apiUrl: Uri.parse('https://overseer.example/api/'),
-      token: 'token',
       dio: dio,
     );
 
@@ -292,8 +284,6 @@ void main() {
     );
     final repository = DefaultNewSessionRepository(
       database: database,
-      apiUrl: Uri.parse('https://overseer.example/api/'),
-      token: 'token',
       dio: dio,
     );
 

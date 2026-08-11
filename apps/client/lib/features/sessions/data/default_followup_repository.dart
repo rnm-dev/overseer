@@ -6,7 +6,6 @@ import 'package:dio/dio.dart';
 import 'package:drift/drift.dart';
 
 import '../../../core/database/app_database.dart';
-import '../../../core/network/overseer_http_client.dart';
 import '../../../core/time/app_time.dart';
 import '../../../shared/models/ai_capabilities.dart';
 import '../domain/followup_repository.dart';
@@ -15,13 +14,10 @@ import '../domain/new_session_repository.dart';
 class DefaultFollowupRepository implements FollowupRepository {
   DefaultFollowupRepository({
     required this.database,
-    required Uri apiUrl,
-    required String token,
-    Dio? dio,
+    required this._dio,
     Random? random,
     this._clock = const SystemAppClock(),
-  }) : _random = random ?? Random.secure(),
-       _dio = dio ?? createOverseerHttpClient(apiUrl: apiUrl, token: token);
+  }) : _random = random ?? Random.secure();
 
   final AppDatabase database;
   final Dio _dio;

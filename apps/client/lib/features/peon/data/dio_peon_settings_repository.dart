@@ -1,16 +1,11 @@
 import 'package:dio/dio.dart';
 
-import '../../../core/network/overseer_http_client.dart';
 import '../../../shared/models/ai_capabilities.dart';
 import '../domain/peon_settings_models.dart';
 import '../domain/peon_settings_repository.dart';
 
 class DioPeonSettingsRepository implements PeonSettingsRepository {
-  DioPeonSettingsRepository({
-    required Uri apiUrl,
-    required String token,
-    Dio? dio,
-  }) : _dio = dio ?? createOverseerHttpClient(apiUrl: apiUrl, token: token);
+  DioPeonSettingsRepository({required this._dio});
 
   final Dio _dio;
 

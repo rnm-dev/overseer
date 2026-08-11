@@ -11,11 +11,7 @@ void main() {
 
   setUp(() {
     database = AppDatabase.forTesting(NativeDatabase.memory());
-    repository = DefaultSessionRepository(
-      database: database,
-      apiUrl: Uri.parse('https://overseer.example/api/'),
-      token: 'test-token',
-    );
+    repository = DefaultSessionRepository(database: database, dio: Dio());
   });
 
   tearDown(() => database.close());
@@ -35,12 +31,7 @@ void main() {
           },
         ),
       );
-      repository = DefaultSessionRepository(
-        database: database,
-        apiUrl: Uri.parse('https://overseer.example/api/'),
-        token: 'test-token',
-        dio: dio,
-      );
+      repository = DefaultSessionRepository(database: database, dio: dio);
       await repository.applyLiveProjection(
         workspaceId: 'workspace',
         cursor: 1,
@@ -86,12 +77,7 @@ void main() {
         },
       ),
     );
-    repository = DefaultSessionRepository(
-      database: database,
-      apiUrl: Uri.parse('https://overseer.example/api/'),
-      token: 'test-token',
-      dio: dio,
-    );
+    repository = DefaultSessionRepository(database: database, dio: dio);
 
     await repository.cancelSession(
       workspaceId: 'workspace',
@@ -119,12 +105,7 @@ void main() {
         },
       ),
     );
-    repository = DefaultSessionRepository(
-      database: database,
-      apiUrl: Uri.parse('https://overseer.example/api/'),
-      token: 'test-token',
-      dio: dio,
-    );
+    repository = DefaultSessionRepository(database: database, dio: dio);
     await repository.applyLiveProjection(
       workspaceId: 'workspace',
       cursor: 1,
@@ -171,12 +152,7 @@ void main() {
           },
         ),
       );
-      repository = DefaultSessionRepository(
-        database: database,
-        apiUrl: Uri.parse('https://overseer.example/api/'),
-        token: 'test-token',
-        dio: dio,
-      );
+      repository = DefaultSessionRepository(database: database, dio: dio);
       await database
           .into(database.cachedProjects)
           .insert(
@@ -465,12 +441,7 @@ void main() {
         },
       ),
     );
-    repository = DefaultSessionRepository(
-      database: database,
-      apiUrl: Uri.parse('https://overseer.example/api/'),
-      token: 'test-token',
-      dio: dio,
-    );
+    repository = DefaultSessionRepository(database: database, dio: dio);
 
     final page = await repository.fetchPage(
       workspaceId: 'workspace',
@@ -526,12 +497,7 @@ void main() {
           },
         ),
       );
-      repository = DefaultSessionRepository(
-        database: database,
-        apiUrl: Uri.parse('https://overseer.example/api/'),
-        token: 'test-token',
-        dio: dio,
-      );
+      repository = DefaultSessionRepository(database: database, dio: dio);
       await repository.applyLiveProjection(
         workspaceId: 'workspace',
         cursor: 1,
@@ -601,12 +567,7 @@ void main() {
         },
       ),
     );
-    repository = DefaultSessionRepository(
-      database: database,
-      apiUrl: Uri.parse('https://overseer.example/api/'),
-      token: 'test-token',
-      dio: dio,
-    );
+    repository = DefaultSessionRepository(database: database, dio: dio);
 
     final details = await repository.fetchDetails(
       workspaceId: 'workspace',
@@ -685,12 +646,7 @@ void main() {
           },
         ),
       );
-      repository = DefaultSessionRepository(
-        database: database,
-        apiUrl: Uri.parse('https://overseer.example/api/'),
-        token: 'test-token',
-        dio: dio,
-      );
+      repository = DefaultSessionRepository(database: database, dio: dio);
 
       final latest = await repository.fetchLatestTranscript(
         workspaceId: 'workspace',
@@ -801,12 +757,7 @@ void main() {
         ),
       ),
     );
-    repository = DefaultSessionRepository(
-      database: database,
-      apiUrl: Uri.parse('https://overseer.example/api/'),
-      token: 'test-token',
-      dio: dio,
-    );
+    repository = DefaultSessionRepository(database: database, dio: dio);
 
     await repository.fetchLatestTranscript(
       workspaceId: 'workspace',

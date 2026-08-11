@@ -81,11 +81,7 @@ void main() {
           },
         ),
       );
-      final repository = DioProjectDetailRepository(
-        apiUrl: Uri.parse('https://overseer.example/api/'),
-        token: 'token',
-        dio: dio,
-      );
+      final repository = DioProjectDetailRepository(dio: dio);
 
       final project = await repository.fetchProject(
         workspaceId: 'workspace',
