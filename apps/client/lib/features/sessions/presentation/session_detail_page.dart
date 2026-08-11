@@ -102,7 +102,11 @@ class _SessionDetailPageState extends _SessionDetailAttachmentHost
   bool _composerMeasurementScheduled = false;
   bool _syncingComposer = false;
   bool _stopping = false;
-  double _composerHeight = 0;
+
+  // The composer resizes as the operator types. Only the body's bottom padding
+  // depends on that, so it is published rather than held in page state: a
+  // setState here would rebuild the transcript for a line of text.
+  final ValueNotifier<double> _composerHeight = ValueNotifier<double>(0);
   String? _stopError;
   String? _locallyStoppedSessionId;
   @override
@@ -154,6 +158,7 @@ class _SessionDetailPageState extends _SessionDetailAttachmentHost
     WidgetsBinding.instance.removeObserver(this);
     _restorePeonPresence();
     _composerController.dispose();
+    _composerHeight.dispose();
     super.dispose();
   }
 
@@ -361,6 +366,7 @@ class _SessionDetailPageState extends _SessionDetailAttachmentHost
         }
       });
     }
+    final queueActions = _QueueActionSets.of(composerState?.queueActions);
     final headerSession =
         currentSession ??
         SessionSummary(
@@ -395,7 +401,7 @@ class _SessionDetailPageState extends _SessionDetailAttachmentHost
                     _NewSessionBody(
                       projects: projects!,
                       selectedProjectKey: _selectedProjectKey,
-                      bottomPadding: _composerHeight,
+                      composerHeight: _composerHeight,
                       onProjectSelected: (projectKey) {
                         if (_startingSession ||
                             _selectedProjectKey == projectKey) {
@@ -432,7 +438,7 @@ class _SessionDetailPageState extends _SessionDetailAttachmentHost
                       ghost: _visibleGhost(composerState, transcript.value),
                       operator: ref.watch(authControllerProvider).session?.user,
                       viewers: viewers,
-                      bottomPadding: math.max(24, _composerHeight + 4),
+                      composerHeight: _composerHeight,
                       showWorking: isRunning,
                       stopping: _stopping,
                       stopError: _stopError,
@@ -484,36 +490,9 @@ class _SessionDetailPageState extends _SessionDetailAttachmentHost
                             running: isRunning,
                             queuedCount: composerState?.pending.length ?? 0,
                             queuedItems: composerState?.queue ?? const [],
-                            editingQueuedItems:
-                                composerState?.queueActions.entries
-                                    .where(
-                                      (entry) =>
-                                          entry.value ==
-                                          QueuedFollowupAction.editing,
-                                    )
-                                    .map((entry) => entry.key)
-                                    .toSet() ??
-                                const {},
-                            removingQueuedItems:
-                                composerState?.queueActions.entries
-                                    .where(
-                                      (entry) =>
-                                          entry.value ==
-                                          QueuedFollowupAction.removing,
-                                    )
-                                    .map((entry) => entry.key)
-                                    .toSet() ??
-                                const {},
-                            sendingQueuedItems:
-                                composerState?.queueActions.entries
-                                    .where(
-                                      (entry) =>
-                                          entry.value ==
-                                          QueuedFollowupAction.sending,
-                                    )
-                                    .map((entry) => entry.key)
-                                    .toSet() ??
-                                const {},
+                            editingQueuedItems: queueActions.editing,
+                            removingQueuedItems: queueActions.removing,
+                            sendingQueuedItems: queueActions.sending,
                             error:
                                 _attachmentError ??
                                 composerState?.error ??
@@ -639,8 +618,8 @@ class _SessionDetailPageState extends _SessionDetailAttachmentHost
         _composerMeasureKey.currentContext?.findRenderObject() as RenderBox?;
     if (renderBox == null || !renderBox.hasSize) return;
     final height = renderBox.size.height;
-    if ((height - _composerHeight).abs() < 0.5) return;
-    setState(() => _composerHeight = height);
+    if ((height - _composerHeight.value).abs() < 0.5) return;
+    _composerHeight.value = height;
   }
 
   /// The ghost is shown until the transcript grows past the count its send
@@ -680,7 +659,8 @@ class _SessionDetailPageState extends _SessionDetailAttachmentHost
 
   void _handleComposerChanged() {
     if (_syncingComposer || !mounted) return;
-    setState(() {});
+    // No setState: the composer listens to this controller itself, and the
+    // draft update below rebuilds whatever else depends on the text.
     final scope = FollowupScope(
       workspaceId: workspaceId,
       peonId: peonId,
@@ -987,83 +967,134 @@ class _SessionDetailPageState extends _SessionDetailAttachmentHost
   }
 }
 
+/// The queued items each pending action applies to, read in one pass over the
+/// queue instead of once per action.
+class _QueueActionSets {
+  const _QueueActionSets({
+    required this.editing,
+    required this.removing,
+    required this.sending,
+  });
+
+  static const empty = _QueueActionSets(
+    editing: {},
+    removing: {},
+    sending: {},
+  );
+
+  static _QueueActionSets of(Map<String, QueuedFollowupAction>? actions) {
+    if (actions == null || actions.isEmpty) return empty;
+    final editing = <String>{};
+    final removing = <String>{};
+    final sending = <String>{};
+    for (final entry in actions.entries) {
+      switch (entry.value) {
+        case QueuedFollowupAction.editing:
+          editing.add(entry.key);
+          break;
+        case QueuedFollowupAction.removing:
+          removing.add(entry.key);
+          break;
+        case QueuedFollowupAction.sending:
+          sending.add(entry.key);
+          break;
+      }
+    }
+    return _QueueActionSets(
+      editing: editing,
+      removing: removing,
+      sending: sending,
+    );
+  }
+
+  final Set<String> editing;
+  final Set<String> removing;
+  final Set<String> sending;
+}
+
 class _NewSessionBody extends StatelessWidget {
   const _NewSessionBody({
     required this.projects,
     required this.selectedProjectKey,
-    required this.bottomPadding,
+    required this.composerHeight,
     required this.onProjectSelected,
     required this.onRetry,
   });
 
   final AsyncValue<ProjectsState> projects;
   final String? selectedProjectKey;
-  final double bottomPadding;
+  final ValueListenable<double> composerHeight;
   final ValueChanged<String> onProjectSelected;
   final Future<void> Function() onRetry;
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      key: const Key('new-session-project-selection'),
-      builder: (context, constraints) => SingleChildScrollView(
-        key: const Key('new-session-project-scroll'),
-        padding: EdgeInsets.fromLTRB(28, 32, 28, 24 + bottomPadding),
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            minHeight: math.max(0, constraints.maxHeight - 56 - bottomPadding),
-          ),
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 430),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    'Select a project',
-                    key: const Key('new-session-project-title'),
-                    textAlign: TextAlign.center,
-                    style: AppTypography.display(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: -0.2,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Choose where this session should do its work.',
-                    textAlign: TextAlign.center,
-                    style: AppTypography.body(
-                      fontSize: 13,
-                      color: AppThemePalette.of(context).inkMuted,
-                      height: 1.45,
-                    ),
-                  ),
-                  const SizedBox(height: 22),
-                  projects.when(
-                    skipLoadingOnRefresh: true,
-                    data: (state) => _ProjectSelectionContent(
-                      state: state,
-                      selectedProjectKey: selectedProjectKey,
-                      onProjectSelected: onProjectSelected,
-                      onRetry: onRetry,
-                    ),
-                    loading: () => Center(
-                      child: SizedBox.square(
-                        dimension: 22,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 1.8,
-                          color: AppThemePalette.of(context).accentStrong,
-                        ),
+    return ValueListenableBuilder<double>(
+      valueListenable: composerHeight,
+      builder: (context, bottomPadding, _) => LayoutBuilder(
+        key: const Key('new-session-project-selection'),
+        builder: (context, constraints) => SingleChildScrollView(
+          key: const Key('new-session-project-scroll'),
+          padding: EdgeInsets.fromLTRB(28, 32, 28, 24 + bottomPadding),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              minHeight: math.max(
+                0,
+                constraints.maxHeight - 56 - bottomPadding,
+              ),
+            ),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 430),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      'Select a project',
+                      key: const Key('new-session-project-title'),
+                      textAlign: TextAlign.center,
+                      style: AppTypography.display(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: -0.2,
                       ),
                     ),
-                    error: (_, _) => _ProjectSelectionNotice(
-                      message: 'Could not open the project cache.',
-                      onRetry: onRetry,
+                    const SizedBox(height: 8),
+                    Text(
+                      'Choose where this session should do its work.',
+                      textAlign: TextAlign.center,
+                      style: AppTypography.body(
+                        fontSize: 13,
+                        color: AppThemePalette.of(context).inkMuted,
+                        height: 1.45,
+                      ),
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 22),
+                    projects.when(
+                      skipLoadingOnRefresh: true,
+                      data: (state) => _ProjectSelectionContent(
+                        state: state,
+                        selectedProjectKey: selectedProjectKey,
+                        onProjectSelected: onProjectSelected,
+                        onRetry: onRetry,
+                      ),
+                      loading: () => Center(
+                        child: SizedBox.square(
+                          dimension: 22,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 1.8,
+                            color: AppThemePalette.of(context).accentStrong,
+                          ),
+                        ),
+                      ),
+                      error: (_, _) => _ProjectSelectionNotice(
+                        message: 'Could not open the project cache.',
+                        onRetry: onRetry,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),

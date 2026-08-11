@@ -10,7 +10,7 @@ class _TranscriptBody extends StatefulWidget {
     required this.ghost,
     required this.operator,
     required this.viewers,
-    required this.bottomPadding,
+    required this.composerHeight,
     required this.showWorking,
     required this.stopping,
     required this.stopError,
@@ -30,7 +30,10 @@ class _TranscriptBody extends StatefulWidget {
   final ComposerGhost? ghost;
   final OperatorIdentity? operator;
   final List<PresenceViewer> viewers;
-  final double bottomPadding;
+
+  /// Listened to rather than passed by value: the composer resizes as the
+  /// operator types, and only the list's own padding depends on it.
+  final ValueListenable<double> composerHeight;
   final bool showWorking;
   final bool stopping;
   final String? stopError;
@@ -52,6 +55,19 @@ class _TranscriptBodyState extends State<_TranscriptBody> {
   final ScrollController _scrollController = ScrollController();
   var _requestingOlder = false;
   var _historyEdgeArmed = true;
+
+  // Flattening walks every event and every content block, while this widget
+  // rebuilds for reasons that have nothing to do with the transcript — a
+  // keystroke in the composer is one. The event list is replaced whenever it
+  // changes, so its identity is the whole cache key.
+  List<TranscriptEvent>? _flattenedFrom;
+  List<TranscriptItem> _flattened = const [];
+
+  List<TranscriptItem> _items(List<TranscriptEvent> events) {
+    if (identical(_flattenedFrom, events)) return _flattened;
+    _flattenedFrom = events;
+    return _flattened = flattenTranscriptEvents(events);
+  }
 
   @override
   void initState() {
@@ -152,7 +168,7 @@ class _TranscriptBodyState extends State<_TranscriptBody> {
                 onRetry: widget.onRefresh,
               );
             }
-            final items = flattenTranscriptEvents(state.events);
+            final items = _items(state.events);
             final hasTopControl = state.hasOlder || state.message != null;
             final hasWorking = widget.showWorking;
             final ghost = widget.ghost;
@@ -166,76 +182,84 @@ class _TranscriptBodyState extends State<_TranscriptBody> {
             // committed message.
             final leading =
                 (hasWorking ? 1 : 0) + inquiryRows + (ghost != null ? 1 : 0);
-            return ListView.builder(
-              key: const Key('transcript-list'),
-              controller: _scrollController,
-              reverse: true,
-              padding: EdgeInsets.fromLTRB(16, 16, 12, widget.bottomPadding),
-              itemCount: items.length + (hasTopControl ? 1 : 0) + leading,
-              itemBuilder: (context, index) {
-                if (hasWorking && index == 0) {
-                  return Padding(
-                    key: ValueKey(
-                      'transcript-working-flow-${state.events.lastOrNull?.eventId ?? 'empty'}',
-                    ),
-                    padding: EdgeInsets.only(top: workingGap),
-                    child: _workingContent(state.events.lastOrNull),
-                  );
-                }
-                final inquiryIndex = index - (hasWorking ? 1 : 0);
-                if (inquiryIndex >= 0 && inquiryIndex < inquiryRows) {
-                  final inquiry = widget.inquiries.inquiries[inquiryIndex];
-                  return Padding(
-                    key: ValueKey('plugin-inquiry-${inquiry.inquiryId}'),
-                    padding: const EdgeInsets.only(top: 16),
-                    child: Center(
-                      child: PluginInquiryCard(
-                        inquiry: inquiry,
-                        online: widget.inquiryOnline,
-                        acting: widget.inquiries.acting.contains(
-                          inquiry.inquiryId,
-                        ),
-                        onInstall: () => widget.onInquiryInstall(inquiry),
-                        onCancel: () => widget.onInquiryCancel(inquiry),
+            return ValueListenableBuilder<double>(
+              valueListenable: widget.composerHeight,
+              builder: (context, composerHeight, child) => ListView.builder(
+                key: const Key('transcript-list'),
+                controller: _scrollController,
+                reverse: true,
+                padding: EdgeInsets.fromLTRB(
+                  16,
+                  16,
+                  12,
+                  math.max(24, composerHeight + 4),
+                ),
+                itemCount: items.length + (hasTopControl ? 1 : 0) + leading,
+                itemBuilder: (context, index) {
+                  if (hasWorking && index == 0) {
+                    return Padding(
+                      key: ValueKey(
+                        'transcript-working-flow-${state.events.lastOrNull?.eventId ?? 'empty'}',
                       ),
+                      padding: EdgeInsets.only(top: workingGap),
+                      child: _workingContent(state.events.lastOrNull),
+                    );
+                  }
+                  final inquiryIndex = index - (hasWorking ? 1 : 0);
+                  if (inquiryIndex >= 0 && inquiryIndex < inquiryRows) {
+                    final inquiry = widget.inquiries.inquiries[inquiryIndex];
+                    return Padding(
+                      key: ValueKey('plugin-inquiry-${inquiry.inquiryId}'),
+                      padding: const EdgeInsets.only(top: 16),
+                      child: Center(
+                        child: PluginInquiryCard(
+                          inquiry: inquiry,
+                          online: widget.inquiryOnline,
+                          acting: widget.inquiries.acting.contains(
+                            inquiry.inquiryId,
+                          ),
+                          onInstall: () => widget.onInquiryInstall(inquiry),
+                          onCancel: () => widget.onInquiryCancel(inquiry),
+                        ),
+                      ),
+                    );
+                  }
+                  if (ghost != null &&
+                      index == (hasWorking ? 1 : 0) + inquiryRows) {
+                    return _TranscriptGhost(
+                      ghost: ghost,
+                      operator: widget.operator,
+                      topGap: items.isEmpty ? 0 : 16,
+                    );
+                  }
+                  final dataIndex = index - leading;
+                  if (dataIndex == items.length) {
+                    return _TranscriptHistoryControl(
+                      state: state,
+                      onRetry: widget.onRefresh,
+                      onLoadOlder: widget.onLoadOlder,
+                    );
+                  }
+                  final chronologicalIndex = items.length - 1 - dataIndex;
+                  final item = items[chronologicalIndex];
+                  final previous = chronologicalIndex > 0
+                      ? items[chronologicalIndex - 1]
+                      : null;
+                  return Padding(
+                    key: ValueKey(item.key),
+                    padding: EdgeInsets.only(
+                      top: transcriptItemGap(previous, item),
+                    ),
+                    child: TranscriptItemView(
+                      item: item,
+                      operator: widget.operator,
+                      onOpenAttachment: widget.onOpenAttachment,
+                      onOpenPreview: widget.onOpenPreview,
+                      onOpenLink: widget.onOpenLink,
                     ),
                   );
-                }
-                if (ghost != null &&
-                    index == (hasWorking ? 1 : 0) + inquiryRows) {
-                  return _TranscriptGhost(
-                    ghost: ghost,
-                    operator: widget.operator,
-                    topGap: items.isEmpty ? 0 : 16,
-                  );
-                }
-                final dataIndex = index - leading;
-                if (dataIndex == items.length) {
-                  return _TranscriptHistoryControl(
-                    state: state,
-                    onRetry: widget.onRefresh,
-                    onLoadOlder: widget.onLoadOlder,
-                  );
-                }
-                final chronologicalIndex = items.length - 1 - dataIndex;
-                final item = items[chronologicalIndex];
-                final previous = chronologicalIndex > 0
-                    ? items[chronologicalIndex - 1]
-                    : null;
-                return Padding(
-                  key: ValueKey(item.key),
-                  padding: EdgeInsets.only(
-                    top: transcriptItemGap(previous, item),
-                  ),
-                  child: TranscriptItemView(
-                    item: item,
-                    operator: widget.operator,
-                    onOpenAttachment: widget.onOpenAttachment,
-                    onOpenPreview: widget.onOpenPreview,
-                    onOpenLink: widget.onOpenLink,
-                  ),
-                );
-              },
+                },
+              ),
             );
           },
         ),
