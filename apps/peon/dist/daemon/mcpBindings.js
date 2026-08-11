@@ -46,6 +46,7 @@ export class McpConfigAssembler {
         return {
             mcpServers: Object.fromEntries(bindings.map((binding) => [binding.name, binding.config])),
             allowedTools: bindings.map((binding) => binding.allowedTools).join(","),
+            ...(armoryLease?.unavailable?.length ? { unavailableArmoryPackages: armoryLease.unavailable } : {}),
             ...(armoryLease ? { release: () => armoryLease.release() } : {}),
         };
     }

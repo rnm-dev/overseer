@@ -10,6 +10,7 @@ test("MCP assembler combines project quick links with scoped Armory bindings", (
       { packageId: "google-analytics", bindingId: "binding-google" },
       { packageId: "aws", bindingId: "binding-aws" },
     ],
+    unavailable: [{ packageId: "google-play", code: "PACKAGE_NOT_READY", message: "Google Play is updating" }],
     release: () => undefined,
   }) });
   const assembler = new McpConfigAssembler(registry, "http://127.0.0.1:4570");
@@ -26,6 +27,9 @@ test("MCP assembler combines project quick links with scoped Armory bindings", (
     result?.allowedTools,
     "mcp__peon_projects__*,mcp__peon_plugins__*,mcp__armory_google_analytics__*,mcp__armory_aws__*",
   );
+  assert.deepEqual(result?.unavailableArmoryPackages, [
+    { packageId: "google-play", code: "PACKAGE_NOT_READY", message: "Google Play is updating" },
+  ]);
 });
 
 test("MCP assembler always exposes the Peon project quick-links API", () => {

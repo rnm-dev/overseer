@@ -5,8 +5,9 @@ export async function withArmoryPackageLock(directory, packageId, ownerId, runne
     const id = assertPackageId(packageId);
     const lockKey = `${directory}\0${id}`;
     const blockingOperation = packageLocks.get(lockKey);
-    if (blockingOperation)
-        throw new ArmoryOperationError("OPERATION_IN_PROGRESS", `Package ${id} already has a mutating operation in progress`);
+    if (blockingOperation) {
+        throw operationInProgressError(id, blockingOperation, null);
+    }
     packageLocks.set(lockKey, ownerId);
     try {
         return await runner();
@@ -18,10 +19,12 @@ export async function withArmoryPackageLock(directory, packageId, ownerId, runne
 }
 export class ArmoryOperationError extends Error {
     code;
+    details;
     constructor(code, message, options) {
         super(message, options);
         this.code = code;
         this.name = "ArmoryOperationError";
+        this.details = options?.details;
     }
 }
 export class ArmoryOperationCoordinator {
@@ -37,7 +40,7 @@ export class ArmoryOperationCoordinator {
         const lockKey = `${this.store.directory}\0${id}`;
         const blockingOperation = packageLocks.get(lockKey);
         if (blockingOperation) {
-            throw new ArmoryOperationError("OPERATION_IN_PROGRESS", `Package ${id} already has a mutating operation in progress`);
+            throw operationInProgressError(id, blockingOperation, await this.store.get(blockingOperation), this.now());
         }
         const operation = {
             id: randomUUID(), packageId: id, kind, status: "queued", phase: "queued", progress: 0,
@@ -94,6 +97,30 @@ export class ArmoryOperationCoordinator {
         await this.store.save(current);
         return current;
     }
+}
+function operationInProgressError(packageId, operationId, operation, now = Date.now()) {
+    const phase = operation?.phase ?? "unknown";
+    const kind = operation?.kind ?? "mutating";
+    const status = operation?.status ?? "running";
+    const ageMs = operation?.startedAt === null || operation?.startedAt === undefined ? null : Math.max(0, now - operation.startedAt);
+    const progress = operation?.progress === null || operation?.progress === undefined ? "unknown progress" : `${operation.progress}%`;
+    const age = ageMs === null ? "unknown age" : `${Math.ceil(ageMs / 1000)}s old`;
+    const currentMessage = operation?.message ? ` Current step: ${operation.message}.` : "";
+    const recovery = "Wait for the blocking operation to finish. If it no longer advances, finish or cancel sessions using this package and restart the Peon to recover it, then retry.";
+    return new ArmoryOperationError("OPERATION_IN_PROGRESS", `Package ${packageId} is blocked by ${kind} operation ${operationId} (${status}, phase ${phase}, ${progress}, ${age}).${currentMessage} ${recovery}`, {
+        details: {
+            blockingOperationId: operationId,
+            packageId,
+            kind,
+            status,
+            phase,
+            progress: operation?.progress ?? null,
+            operationMessage: operation?.message ?? null,
+            startedAt: operation?.startedAt ?? null,
+            ageMs,
+            recovery,
+        },
+    });
 }
 function stableErrorCode(error) {
     if (error instanceof ArmoryOperationError && /^[A-Z][A-Z0-9_]{0,127}$/.test(error.code))

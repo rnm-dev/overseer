@@ -375,7 +375,7 @@ function sendError(res, error) {
                     : error.code === "PACKAGE_NOT_AVAILABLE" || error.code === "PACKAGE_NOT_FOUND" ? 404
                         : error.code === "PACKAGE_NOT_ACTIVE" ? 404
                             : 400;
-        res.status(status).json({ error: error.message, code: error.code });
+        res.status(status).json({ error: error.message, code: error.code, ...(error.details ? { details: error.details } : {}) });
         return;
     }
     console.error("Armory API request failed:", error);

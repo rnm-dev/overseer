@@ -13,6 +13,7 @@ import { createArmoryRedactor } from "./redaction.js";
 import { ARMORY_COMMAND_PATH } from "./runtimeEnvironment.js";
 import { mcpBindingRegistry, } from "../mcpBindings.js";
 const MAX_MCP_STARTUP_STDERR_BYTES = 16 * 1024;
+const DEFAULT_MCP_DRAIN_TIMEOUT_MS = 30_000;
 /** Owns assignment-scoped MCP children acquired by immutable provider-turn leases. */
 export class ArmoryMcpRuntime {
     stores;
@@ -26,16 +27,21 @@ export class ArmoryMcpRuntime {
     draining = new Map();
     drainResolvers = new Map();
     hookRunner = new ArmoryHookRunner();
+    drainTimeoutMs;
     closed = false;
-    constructor(stores, bindings = mcpBindingRegistry, _retry = {}) {
+    constructor(stores, bindings = mcpBindingRegistry, options = {}) {
         this.stores = stores;
         this.bindings = bindings;
+        this.drainTimeoutMs = options.drainTimeoutMs ?? DEFAULT_MCP_DRAIN_TIMEOUT_MS;
         this.bindings.registerArmoryProvider(this);
     }
     snapshotTurn(context) {
         if (this.closed)
             throw new ArmoryOperationError("MCP_DRAINING", "Armory MCP runtime is closed");
-        const selections = this.resolveTurnSelections(context.projectId);
+        const { selections, unavailable } = this.resolveTurnSelections(context.projectId);
+        for (const issue of unavailable) {
+            console.warn(`Armory package unavailable for session ${context.sessionId}: ${issue.packageId ?? "assignment store"} (${issue.code})`);
+        }
         const bindingIds = [];
         for (const selection of selections) {
             const bindingId = randomUUID();
@@ -47,6 +53,7 @@ export class ArmoryMcpRuntime {
         let released = false;
         return {
             bindings: selections.map((selection, index) => ({ packageId: selection.packageId, bindingId: bindingIds[index] })),
+            ...(unavailable.length > 0 ? { unavailable } : {}),
             release: () => {
                 if (released)
                     return;
@@ -89,7 +96,22 @@ export class ArmoryMcpRuntime {
             if (runtimeKeyPackageId(key) === packageId)
                 keys.add(key);
         }
-        await Promise.all([...keys].map((key) => this.drainRuntime(key)));
+        if (keys.size === 0)
+            return;
+        const activeLeases = [...keys].reduce((count, key) => count + (this.leaseCounts.get(key) ?? 0), 0);
+        let timer;
+        try {
+            await Promise.race([
+                Promise.all([...keys].map((key) => this.drainRuntime(key))),
+                new Promise((_resolve, reject) => {
+                    timer = setTimeout(() => reject(new ArmoryOperationError("MCP_DRAIN_TIMEOUT", `Timed out after ${this.drainTimeoutMs}ms waiting for ${activeLeases} active turn lease(s) across ${keys.size} runtime(s) to release for package ${packageId}. The update cannot stop the previous package safely. Finish or cancel sessions using this package, then retry the update.`, { details: { packageId, activeLeases, runtimes: keys.size, timeoutMs: this.drainTimeoutMs } })), this.drainTimeoutMs);
+                }),
+            ]);
+        }
+        finally {
+            if (timer)
+                clearTimeout(timer);
+        }
     }
     async close() {
         this.closed = true;
@@ -245,33 +267,51 @@ export class ArmoryMcpRuntime {
             const assignments = projectPackages.assignments
                 .filter((assignment) => assignment.projectId === projectId)
                 .sort((left, right) => left.packageId.localeCompare(right.packageId));
-            return assignments.flatMap((assignment) => {
-                const record = installed.packages[assignment.packageId];
-                if (!record)
-                    throw new ArmoryOperationError("PACKAGE_NOT_INSTALLED", `Assigned Armory package is not installed: ${assignment.packageId}`);
-                if (record.state !== "ready" || record.activeOperationId !== null) {
-                    throw new ArmoryOperationError("PACKAGE_NOT_READY", `Assigned Armory package is not ready: ${assignment.packageId}`);
+            const selections = [];
+            const unavailable = [];
+            for (const assignment of assignments) {
+                try {
+                    const record = installed.packages[assignment.packageId];
+                    if (!record)
+                        throw new ArmoryOperationError("PACKAGE_NOT_INSTALLED", `Assigned Armory package is not installed: ${assignment.packageId}`);
+                    if (record.state !== "ready" || record.activeOperationId !== null) {
+                        throw new ArmoryOperationError("PACKAGE_NOT_READY", `Assigned Armory package is not ready: ${assignment.packageId}`);
+                    }
+                    const activation = armoryActivationSchema.parse(JSON.parse(readFileSync(packageActivationPath(this.stores.paths, assignment.packageId), "utf8")));
+                    if (activation.version !== record.version || activation.sourceDigest !== record.sourceDigest) {
+                        throw new ArmoryOperationError("PACKAGE_NOT_READY", `Assigned Armory package activation is inconsistent: ${assignment.packageId}`);
+                    }
+                    const packageDir = packageVersionPath(this.stores.paths, assignment.packageId, activation.version);
+                    const manifest = parseArmoryManifest(JSON.parse(readFileSync(resolveContainedPath(packageDir, "armory.package.json"), "utf8")));
+                    if (manifest.id !== assignment.packageId || manifest.version !== activation.version) {
+                        throw new ArmoryOperationError("PACKAGE_NOT_READY", `Assigned Armory package manifest does not match its artifact: ${assignment.packageId}`);
+                    }
+                    const profile = assignment.profileId === null ? null : projectPackages.profiles[assignment.profileId];
+                    this.validateAssignment(manifest, assignment.profileId, profile);
+                    if (manifest.mcp)
+                        selections.push(this.selection(manifest, packageDir, activation.sourceDigest, profile));
                 }
-                const activation = armoryActivationSchema.parse(JSON.parse(readFileSync(packageActivationPath(this.stores.paths, assignment.packageId), "utf8")));
-                if (activation.version !== record.version || activation.sourceDigest !== record.sourceDigest) {
-                    throw new ArmoryOperationError("PACKAGE_NOT_READY", `Assigned Armory package activation is inconsistent: ${assignment.packageId}`);
+                catch (error) {
+                    unavailable.push({
+                        packageId: assignment.packageId,
+                        code: error instanceof ArmoryOperationError ? error.code : "PACKAGE_RESOLUTION_FAILED",
+                        message: error instanceof ArmoryOperationError
+                            ? error.message
+                            : `Assigned Armory package could not be resolved: ${assignment.packageId}`,
+                    });
                 }
-                const packageDir = packageVersionPath(this.stores.paths, assignment.packageId, activation.version);
-                const manifest = parseArmoryManifest(JSON.parse(readFileSync(resolveContainedPath(packageDir, "armory.package.json"), "utf8")));
-                if (manifest.id !== assignment.packageId || manifest.version !== activation.version) {
-                    throw new ArmoryOperationError("PACKAGE_NOT_READY", `Assigned Armory package manifest does not match its artifact: ${assignment.packageId}`);
-                }
-                const profile = assignment.profileId === null ? null : projectPackages.profiles[assignment.profileId];
-                this.validateAssignment(manifest, assignment.profileId, profile);
-                if (!manifest.mcp)
-                    return [];
-                return [this.selection(manifest, packageDir, activation.sourceDigest, profile)];
-            });
+            }
+            return { selections, unavailable };
         }
         catch (error) {
-            if (error instanceof ArmoryOperationError)
-                throw error;
-            throw new ArmoryOperationError("ARMORY_ASSIGNMENT_RESOLUTION_FAILED", "Armory project assignments could not be resolved safely", { cause: error });
+            return {
+                selections: [],
+                unavailable: [{
+                        packageId: null,
+                        code: error instanceof ArmoryOperationError ? error.code : "ARMORY_ASSIGNMENT_RESOLUTION_FAILED",
+                        message: "Armory project assignments could not be resolved safely; Armory tools are unavailable for this turn.",
+                    }],
+            };
         }
     }
     validateAssignment(manifest, profileId, profile) {

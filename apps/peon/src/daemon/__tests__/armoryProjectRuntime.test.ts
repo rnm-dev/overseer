@@ -230,12 +230,15 @@ test("profile materialization supplies only declared fields and redacts runtime 
   await runtime.close();
 });
 
-test("turn resolution revalidates profile type, required fields, verified state, readiness and artifact identity", async () => {
+test("turn resolution isolates invalid packages instead of aborting the whole turn", async () => {
   const { stores, runtime } = await fixture();
-  const expectCode = (code: string) => assert.throws(
-    () => runtime.snapshotTurn({ projectId: PROJECT_A, sessionId: "invalid", turnId: randomUUID() }),
-    (error: unknown) => error instanceof ArmoryOperationError && error.code === code,
-  );
+  const expectCode = (code: string) => {
+    const lease = runtime.snapshotTurn({ projectId: PROJECT_A, sessionId: "invalid", turnId: randomUUID() });
+    assert.deepEqual(lease.bindings, []);
+    assert.equal(lease.unavailable?.[0]?.packageId, "fixture-echo");
+    assert.equal(lease.unavailable?.[0]?.code, code);
+    lease.release();
+  };
   await stores.projectPackages.update((state) => ({ ...state, profiles: { ...state.profiles, [PROFILE_A]: { ...state.profiles[PROFILE_A]!, status: "unverified" } } }));
   expectCode("PROFILE_NOT_VERIFIED");
   await stores.projectPackages.update((state) => ({ ...state, profiles: { ...state.profiles, [PROFILE_A]: { ...state.profiles[PROFILE_A]!, status: "verified", type: "wrong-type" } } }));
@@ -249,6 +252,29 @@ test("turn resolution revalidates profile type, required fields, verified state,
   expectCode("PACKAGE_NOT_READY");
   await stores.installed.update("fixture-echo", (record) => ({ ...record, state: "ready", sourceDigest: "c".repeat(64) }));
   expectCode("PACKAGE_NOT_READY");
+  await runtime.close();
+});
+
+test("a broken assigned package does not hide healthy assigned packages", async () => {
+  const { stores, runtime } = await fixture();
+  await installPackage(stores, "broken-package", true);
+  await stores.installed.update("broken-package", (record) => ({ ...record, state: "installing", activeOperationId: randomUUID() }));
+  await stores.projectPackages.update((state) => ({
+    ...state,
+    assignments: [
+      ...state.assignments,
+      { projectId: PROJECT_A, packageId: "broken-package", profileId: null },
+    ],
+  }));
+
+  const lease = runtime.snapshotTurn({ projectId: PROJECT_A, sessionId: "degraded", turnId: "turn" });
+  assert.deepEqual(lease.bindings.map((entry) => entry.packageId), ["fixture-echo"]);
+  assert.deepEqual(lease.unavailable, [{
+    packageId: "broken-package",
+    code: "PACKAGE_NOT_READY",
+    message: "Assigned Armory package is not ready: broken-package",
+  }]);
+  lease.release();
   await runtime.close();
 });
 
@@ -276,4 +302,29 @@ test("artifact reconciliation drains only after in-flight turn leases release an
   assert.equal(next.bindings.length, 1);
   next.release();
   await restarted.close();
+});
+
+test("package drain times out with actionable lease diagnostics instead of stalling an update forever", async () => {
+  const { stores, registry } = await fixture();
+  const runtime = new ArmoryMcpRuntime(stores, registry, { drainTimeoutMs: 10 });
+  (runtime as unknown as { connectPackage(selection: Record<string, unknown>): Promise<unknown> }).connectPackage = async (selection) => ({
+    client: { close: async () => undefined },
+    transport: { close: async () => undefined, onclose: undefined },
+    selection,
+    tools: [],
+  });
+  const lease = runtime.snapshotTurn({ projectId: PROJECT_A, sessionId: "blocking-session", turnId: "turn" });
+  await runtime.listTools(binding(lease), "blocking-session");
+
+  await assert.rejects(runtime.stop("fixture-echo"), (error: unknown) => {
+    assert.ok(error instanceof ArmoryOperationError);
+    assert.equal(error.code, "MCP_DRAIN_TIMEOUT");
+    assert.match(error.message, /1 active turn lease/);
+    assert.match(error.message, /Finish or cancel sessions/);
+    assert.deepEqual(error.details, { packageId: "fixture-echo", activeLeases: 1, runtimes: 1, timeoutMs: 10 });
+    return true;
+  });
+
+  lease.release();
+  await runtime.close();
 });

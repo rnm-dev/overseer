@@ -5,6 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import type { ArmoryOperation, ArmorySettings } from "../armory/contracts.js";
 import type { ArmoryInventoryListView, ArmoryInventoryQuery, ArmoryInventoryReader } from "../armory/inventory.js";
+import { ArmoryOperationError } from "../armory/operationCoordinator.js";
 
 process.env.XDG_CONFIG_HOME = mkdtempSync(path.join(os.tmpdir(), "peon-armory-api-config-"));
 process.env.XDG_STATE_HOME = mkdtempSync(path.join(os.tmpdir(), "peon-armory-api-state-"));
@@ -324,6 +325,42 @@ test("package updates resolve through both operator and fleet profiles", async (
   });
   assert.equal(human.status, 202);
   assert.deepEqual(updateRequest, { id: "image-generator", version: undefined });
+});
+
+test("operation conflicts expose bounded blocking-operation diagnostics", async () => {
+  const originalUpdate = armoryApi.installer.update;
+  armoryApi.installer.update = async () => {
+    throw new ArmoryOperationError("OPERATION_IN_PROGRESS", "Package is blocked in phase stopping", {
+      details: {
+        blockingOperationId: operation.id,
+        kind: "update",
+        phase: "stopping",
+        progress: 85,
+        ageMs: 60_000,
+        recovery: "Finish or cancel sessions using this package, restart the Peon, then retry.",
+      },
+    });
+  };
+  try {
+    const result = await fetch(`${base}/api/v1/armory/packages/google-play/update`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}),
+    });
+    assert.equal(result.status, 409);
+    assert.deepEqual(await result.json(), {
+      error: "Package is blocked in phase stopping",
+      code: "OPERATION_IN_PROGRESS",
+      details: {
+        blockingOperationId: operation.id,
+        kind: "update",
+        phase: "stopping",
+        progress: 85,
+        ageMs: 60_000,
+        recovery: "Finish or cancel sessions using this package, restart the Peon, then retry.",
+      },
+    });
+  } finally {
+    armoryApi.installer.update = originalUpdate;
+  }
 });
 
 test("ordinary uninstall resolves through both profiles and purge is explicitly rejected", async () => {

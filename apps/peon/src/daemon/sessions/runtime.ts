@@ -355,7 +355,14 @@ export function appendUserTurn(
   sessionState.emitter.emit("event", { sessionId: record.id, event: userEntry.event, eventId: userEntry.id });
 }
 
-function writeMcpConfig(record: SessionRecord): { path: string; allowedTools: string; release?: () => void } | undefined {
+interface TurnMcpConfig {
+  path: string;
+  allowedTools: string;
+  unavailableArmoryPackages?: Array<{ packageId: string | null; code: string; message: string }>;
+  release?: () => void;
+}
+
+function writeMcpConfig(record: SessionRecord): TurnMcpConfig | undefined {
   const controlPort = parseListenAddress(settings.get().listenAddress).port;
   const assembled = new McpConfigAssembler(mcpBindingRegistry, `http://127.0.0.1:${controlPort}`).assemble({
     sessionId: record.id,
@@ -371,7 +378,12 @@ function writeMcpConfig(record: SessionRecord): { path: string; allowedTools: st
     mkdirSync(dir, { recursive: true });
     const configPath = path.join(dir, "mcp-config.json");
     writeFileSync(configPath, JSON.stringify({ mcpServers: assembled.mcpServers }, null, 2), { mode: 0o600 });
-    return { path: configPath, allowedTools: assembled.allowedTools, release: assembled.release };
+    return {
+      path: configPath,
+      allowedTools: assembled.allowedTools,
+      unavailableArmoryPackages: assembled.unavailableArmoryPackages,
+      release: assembled.release,
+    };
   } catch (error) {
     assembled.release?.();
     throw error;
@@ -412,7 +424,7 @@ export function runProcess(
     appendUserTurn(record, prompt, attachments, permissionMode, author, perTurnModel, perTurnReasoningEffort, commandId, replyTo);
   }
 
-  let mcpConfig: { path: string; allowedTools: string; release?: () => void } | undefined;
+  let mcpConfig: TurnMcpConfig | undefined;
   try {
     mcpConfig = writeMcpConfig(record);
   } catch (error) {
@@ -496,6 +508,12 @@ export function runProcess(
     currentSettings.ai.soul,
     author,
   );
+  if (mcpConfig?.unavailableArmoryPackages?.length) {
+    systemPromptAppend += `\n\nSome optional Armory tools are unavailable for this turn. Continue the task with the remaining
+tools; mention an unavailable package only if it is relevant to the request:\n${mcpConfig.unavailableArmoryPackages
+      .map((issue) => `- ${issue.packageId ?? "Armory"}: ${issue.message} (${issue.code})`)
+      .join("\n")}`;
+  }
   if (record.parentSessionId !== null || record.spawnDepth > 0) {
     systemPromptAppend += `\n\nThis is a delegated child session. Complete only the assigned task. Do not create,
 start, or delegate to any other Peon sessions, including through shell commands or HTTP APIs.`;

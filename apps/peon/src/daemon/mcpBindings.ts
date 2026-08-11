@@ -13,6 +13,7 @@ export interface McpHttpBinding {
 export interface AssembledMcpConfig {
   mcpServers: Record<string, McpHttpBinding["config"]>;
   allowedTools: string;
+  unavailableArmoryPackages?: ArmoryTurnUnavailable[];
   release?: () => void;
 }
 
@@ -27,8 +28,15 @@ export interface ArmoryTurnBinding {
   bindingId: string;
 }
 
+export interface ArmoryTurnUnavailable {
+  packageId: string | null;
+  code: string;
+  message: string;
+}
+
 export interface ArmoryTurnBindingLease {
   bindings: ArmoryTurnBinding[];
+  unavailable?: ArmoryTurnUnavailable[];
   release(): void;
 }
 
@@ -88,6 +96,7 @@ export class McpConfigAssembler {
     return {
       mcpServers: Object.fromEntries(bindings.map((binding) => [binding.name, binding.config])),
       allowedTools: bindings.map((binding) => binding.allowedTools).join(","),
+      ...(armoryLease?.unavailable?.length ? { unavailableArmoryPackages: armoryLease.unavailable } : {}),
       ...(armoryLease ? { release: () => armoryLease.release() } : {}),
     };
   }

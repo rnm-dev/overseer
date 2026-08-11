@@ -211,12 +211,20 @@ test("package operation lock rejects a second mutating operation", async () => {
     return new Response(archive, { status: 200, headers: { "content-length": String(archive.byteLength) } });
   }) as typeof fetch;
   const installer = new ArmoryInstaller({ stores, fetchImpl: delayedFetch });
-  const firstPromise = installer.install(selection("demo", "1.0.0", archive));
+  const first = await installer.install(selection("demo", "1.0.0", archive));
   await assert.rejects(
     installer.install(selection("demo", "1.0.0", archive)),
-    (error: unknown) => error instanceof ArmoryOperationError && error.code === "OPERATION_IN_PROGRESS",
+    (error: unknown) => {
+      assert.ok(error instanceof ArmoryOperationError);
+      assert.equal(error.code, "OPERATION_IN_PROGRESS");
+      assert.match(error.message, /blocked by install operation [0-9a-f-]+/);
+      assert.match(error.message, /phase/);
+      assert.match(error.message, /restart the Peon to recover/);
+      assert.equal(typeof error.details?.blockingOperationId, "string");
+      assert.equal(error.details?.packageId, "demo");
+      return true;
+    },
   );
-  const first = await firstPromise;
   release();
   assert.equal((await installer.operations.wait(first.id)).status, "success");
 });

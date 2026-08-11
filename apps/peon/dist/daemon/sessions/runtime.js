@@ -292,7 +292,12 @@ function writeMcpConfig(record) {
         mkdirSync(dir, { recursive: true });
         const configPath = path.join(dir, "mcp-config.json");
         writeFileSync(configPath, JSON.stringify({ mcpServers: assembled.mcpServers }, null, 2), { mode: 0o600 });
-        return { path: configPath, allowedTools: assembled.allowedTools, release: assembled.release };
+        return {
+            path: configPath,
+            allowedTools: assembled.allowedTools,
+            unavailableArmoryPackages: assembled.unavailableArmoryPackages,
+            release: assembled.release,
+        };
     }
     catch (error) {
         assembled.release?.();
@@ -392,6 +397,12 @@ export function runProcess(record, prompt, resume, attachments = [], permissionM
     const previewDir = sessionPreviewDir(record.id);
     const project = record.projectKey ? projectStore.get(record.projectKey) : undefined;
     let systemPromptAppend = buildSystemPrompt(record.expectsOutcome, candidates, previewDir, project, currentSettings.ai.soul, author);
+    if (mcpConfig?.unavailableArmoryPackages?.length) {
+        systemPromptAppend += `\n\nSome optional Armory tools are unavailable for this turn. Continue the task with the remaining
+tools; mention an unavailable package only if it is relevant to the request:\n${mcpConfig.unavailableArmoryPackages
+            .map((issue) => `- ${issue.packageId ?? "Armory"}: ${issue.message} (${issue.code})`)
+            .join("\n")}`;
+    }
     if (record.parentSessionId !== null || record.spawnDepth > 0) {
         systemPromptAppend += `\n\nThis is a delegated child session. Complete only the assigned task. Do not create,
 start, or delegate to any other Peon sessions, including through shell commands or HTTP APIs.`;
