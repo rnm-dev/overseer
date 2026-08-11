@@ -389,6 +389,16 @@ test("a fifth durable repair waits for a bounded snapshot slot instead of closin
   sync.dispose();
 });
 
+test("repeated durable repairs for one session share one in-flight first page", async () => {
+  const { socket, sync } = await setup({ subscriptionResponseMs: 30_000 });
+
+  await Promise.all([sync.repairDurable(durable(1)), sync.repairDurable(durable(2))]);
+
+  assert.equal(socket.frames.filter((frame) =>
+    frame.type === "transcript_snapshot_request" && frame.sessionId === "s1").length, 1);
+  sync.dispose();
+});
+
 test("release clears a correlated renewal that is still awaiting its Peon response", async () => {
   const { socket, sync } = await setup({ subscriptionResponseMs: 5_000 });
   const initial = sync.acquire("s1");

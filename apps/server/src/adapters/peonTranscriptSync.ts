@@ -439,6 +439,7 @@ export class PeonTranscriptSync {
   private requestSnapshot(sessionId: string, requiredForDelivery: boolean, cursor?: string): void {
     this.reserveSubscription(sessionId);
     let snapshot = this.snapshots.get(sessionId);
+    let created = false;
     if (!snapshot) {
       if (this.snapshots.size >= MAX_ACTIVE_SNAPSHOTS) {
         // The subscription cap also bounds this queue. Keeping repair demand
@@ -477,11 +478,17 @@ export class PeonTranscriptSync {
         startedAt: Date.now(),
         timer,
       };
+      created = true;
       this.snapshots.set(sessionId, snapshot);
       this.pendingSnapshots.delete(sessionId);
     } else if (requiredForDelivery) {
       snapshot.requiredForDelivery = true;
     }
+    // Multiple queued durable events for one broken transcript all converge on
+    // the same repair snapshot. Its first page is already in flight; sending
+    // the empty-cursor request again makes the Peon legitimately replay page
+    // one, which the receiver then mistakes for duplicate snapshot content.
+    if (!created && cursor === undefined) return;
     const frame: Record<string, unknown> = {
       type: "transcript_snapshot_request",
       requestId: snapshot.requestId,
