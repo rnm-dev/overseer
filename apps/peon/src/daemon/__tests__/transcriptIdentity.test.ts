@@ -14,6 +14,7 @@ const {
   forgetTranscript,
   readCommittedTranscriptEntries,
   readCommittedTranscriptEntriesBounded,
+  readCommittedTranscriptEntriesBoundedAsync,
   readTranscriptEntries,
   sessionsDir,
   subscribeTranscriptCommits,
@@ -134,6 +135,39 @@ test("bounded committed reader stops oversized canonical transcripts by bytes, l
       maxLineBytes: 128,
     }),
     (error: unknown) => error instanceof CommittedTranscriptLimitError && error.limit === "line_bytes",
+  );
+});
+
+test("daemon bounded reader yields while scanning cached transcript data", async () => {
+  const id = "async-bounded-committed-reader";
+  mkdirSync(sessionsDir, { recursive: true });
+  const rows = Array.from({ length: 4_000 }, (_, index) => JSON.stringify({
+    type: "user_message",
+    text: `${index}:${"x".repeat(1_024)}`,
+    _peonEventId: `async-bounded-${index}`,
+  }));
+  writeFileSync(transcriptPath(id), `${rows.join("\n")}\n`);
+
+  let unrelatedCompleted = false;
+  const read = readCommittedTranscriptEntriesBoundedAsync(id, "claude-code", {
+    maxEvents: 5_000,
+    maxSourceBytes: 8 * 1024 * 1024,
+    maxLineBytes: 2 * 1024,
+  });
+  await new Promise<void>((resolve) => setImmediate(() => {
+    unrelatedCompleted = true;
+    resolve();
+  }));
+  assert.equal(unrelatedCompleted, true);
+  assert.equal((await read).entries.length, rows.length);
+
+  await assert.rejects(
+    () => readCommittedTranscriptEntriesBoundedAsync(id, "claude-code", {
+      maxEvents: 2,
+      maxSourceBytes: 8 * 1024 * 1024,
+      maxLineBytes: 2 * 1024,
+    }),
+    (error: unknown) => error instanceof CommittedTranscriptLimitError && error.limit === "events",
   );
 });
 

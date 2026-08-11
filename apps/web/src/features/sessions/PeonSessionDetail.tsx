@@ -124,7 +124,6 @@ function PeonSessionDetailPage() {
   const sessionKey = `${peon.peonId}:${sid}`;
   const transcriptPaginationSupported = peon.capabilities.includes("transcript-pagination-v1");
   const pluginInquiriesSupported = peon.capabilities.includes(PLUGIN_INQUIRY_CAPABILITY);
-  const pluginInquiries = usePluginInquiries(base, sid, pluginInquiriesSupported);
   const filePanePageKey = `${wsId}:${sessionKey}`;
   const currentSessionKeyRef = useRef(sessionKey);
   const [simpleTools] = useState(() => loadToolDisplayMode() === "simple");
@@ -198,7 +197,7 @@ function PeonSessionDetailPage() {
 
 
   // Session default model (null ⇒ follows the peon's global default). Comes
-  // from the session record; refetched when a run ends (metaTick).
+  // from the session record; refetched once when a run ends (metaTick).
   const [sessionModel, setSessionModel] = useState<string | null>(null);
   const [sessionAgent, setSessionAgent] = useState<string | null>(null);
   const [sessionReasoningEffort, setSessionReasoningEffort] = useState<string | null>(null);
@@ -233,6 +232,9 @@ function PeonSessionDetailPage() {
     assumedAt: selectedSession?.status === "running" ? Date.now() : null,
   }));
   const running = activeRun.sessionKey === sessionKey && activeRun.running;
+  const controlReadScope = user?.email.toLowerCase() ?? "";
+  const pluginInquiries = usePluginInquiries(base, sid, pluginInquiriesSupported, running, controlReadScope);
+  const refreshPluginInquiries = pluginInquiries.refresh;
   // A run only exists while the Peon holding it is connected. If it dies mid-run
   // nothing can report the ending, so stop claiming live work rather than
   // animating forever; the record is re-read (and the index healed) as soon as
@@ -401,8 +403,12 @@ function PeonSessionDetailPage() {
   }, []);
   const onAgentUpdate = useCallback(() => playWorkSound(), []);
   const onQueueChange = useCallback(() => {
-    void queueReconcilerRef.current?.reconcile();
+    return queueReconcilerRef.current?.reconcile() ?? Promise.resolve();
   }, []);
+  const onTransportGap = useCallback(() => {
+    void queueReconcilerRef.current?.reconcile();
+    void refreshPluginInquiries();
+  }, [refreshPluginInquiries]);
   const onPreview = useCallback((target: PreviewTarget) => {
     setArtifactPreview(target);
   }, []);
@@ -431,6 +437,7 @@ function PeonSessionDetailPage() {
     onRunFinished,
     onAgentUpdate,
     onQueueChange,
+    onTransportGap,
     onPreview,
   });
 
@@ -538,6 +545,7 @@ function PeonSessionDetailPage() {
     currentSessionKeyRef,
     queueReconcilerRef,
     queueActivity: queueActivityRef.current,
+    controlReadScope,
     userMessageCount,
     onGhostCreated: handleGhostCreated,
     setRunning,

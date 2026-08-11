@@ -431,6 +431,9 @@ export class ArmoryMcpRuntime implements ArmoryPackageRuntimeController {
       env: {
         PATH: ARMORY_COMMAND_PATH,
         HOME: home,
+        // Armory packages run with an isolated HOME, but declared host paths
+        // such as ~/Projects must still resolve against the operator's home.
+        PEON_ARMORY_HOST_HOME: os.homedir(),
         PEON_ARMORY_PACKAGE_DIR: packageDir,
         PEON_ARMORY_HOME: home,
         ...providerEnvironment,

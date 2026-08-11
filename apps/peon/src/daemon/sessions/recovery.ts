@@ -67,11 +67,18 @@ export function restoreFromDisk(): void {
     record.agent ??= "claude-code";
     const restoredDriver = getAgentDriver(record.agent);
     record.backendSessionId = restoredDriver?.conversation.recoverBackendId(record.id, record.backendSessionId ?? null) ?? record.backendSessionId ?? null;
-    const transcript = readTranscript(record.id, record.agent);
-    const backendEvent = transcript.findLast((event) => typeof event.backend_turn_id === "string");
     const hadBackendState = Object.prototype.hasOwnProperty.call(record, "backendTurnId")
       && Object.prototype.hasOwnProperty.call(record, "backendRuntimeGeneration")
       && Object.prototype.hasOwnProperty.call(record, "backendTurnStatus");
+    // Modern summaries already carry the backend recovery tuple. Re-reading
+    // every historical JSONL here made startup scan the entire transcript
+    // archive (hundreds of MiB on long-lived Peons) before the event loop could
+    // answer health checks or WebSocket pings. Only legacy summaries need that
+    // migration read; interrupted runs still need their terminal transcript
+    // boundary to decide whether work actually finished before the restart.
+    const needsTranscript = !hadBackendState || record.status === "running";
+    const transcript = needsTranscript ? readTranscript(record.id, record.agent) : [];
+    const backendEvent = transcript.findLast((event) => typeof event.backend_turn_id === "string");
     record.backendTurnId = typeof record.backendTurnId === "string" ? record.backendTurnId
       : typeof backendEvent?.backend_turn_id === "string" ? backendEvent.backend_turn_id : null;
     record.backendSessionId = typeof record.backendSessionId === "string" ? record.backendSessionId

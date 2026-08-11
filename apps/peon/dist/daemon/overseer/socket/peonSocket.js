@@ -21,6 +21,12 @@ const DEFAULT_PING_INTERVAL_MS = 15_000;
 const DEFAULT_PONG_TIMEOUT_MS = 10_000;
 const DEFAULT_MAINTENANCE_INTERVAL_MS = 5_000;
 const CONTROL_MAX_BUFFERED_BYTES = 4 * 1024 * 1024;
+// Overseer accepts at most 64 queued control frames per Peon. Keep a smaller
+// application-level window so a restored durable backlog cannot fill that
+// queue before acknowledgements have a chance to advance it. WebSocket's
+// bufferedAmount is not sufficient here: the kernel can accept hundreds of
+// small writes before the receiver has processed even one of them.
+const MAX_IN_FLIGHT_OUTBOX_MESSAGES = 32;
 const OUTBOX_RETRY_MS = 50;
 const OUTBOX_ACK_TIMEOUT_MS = 10_000;
 function daemonVersion() {
@@ -388,7 +394,7 @@ export class PeonSocketSupervisor {
             // handler runs and schedules the next attempt.
             socket.terminate();
         });
-        socket.once("close", () => {
+        socket.once("close", (code, reason) => {
             if (!current())
                 return;
             this.socket = null;
@@ -400,6 +406,10 @@ export class PeonSocketSupervisor {
             this.clearOutboxTimers();
             this.sentOutboxCursors.clear();
             this.multiplexer.disconnected(false);
+            if (code !== 1000 && code !== 1001 && !this.state.lastError) {
+                const detail = reason.toString().trim();
+                this.state.lastError = `WebSocket closed (${code})${detail ? `: ${detail}` : ""}`;
+            }
             this.scheduleReconnect(generation);
         });
     }
@@ -564,6 +574,8 @@ export class PeonSocketSupervisor {
         for (const message of this.outbox.pendingForDelivery()) {
             if (this.sentOutboxCursors.has(message.cursor))
                 continue;
+            if (this.sentOutboxCursors.size >= MAX_IN_FLIGHT_OUTBOX_MESSAGES)
+                break;
             if (message.capability && !this.acceptedCapabilities.has(message.capability)) {
                 this.state.lastError = `durable delivery is waiting for capability ${message.capability}`;
                 return;

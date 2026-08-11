@@ -55,6 +55,26 @@ test("queue API client preserves Fleet FIFO order and targets an encoded item fo
   ]);
 });
 
+test("authenticated concurrent queue readers share only within one operator scope", async () => {
+  const resolvers: Array<(value: { items: QueueItem[] }) => void> = [];
+  let calls = 0;
+  const request: ApiRequest = async <T>() => {
+    calls += 1;
+    return new Promise<T>((resolve) => resolvers.push(resolve as (value: { items: QueueItem[] }) => void));
+  };
+
+  const first = getSessionQueue("/peon", "session-1", request, "operator-a");
+  const strictModeReplay = getSessionQueue("/peon", "session-1", request, "operator-a");
+  const otherOperator = getSessionQueue("/peon", "session-1", request, "operator-b");
+  assert.equal(calls, 2);
+
+  resolvers.shift()!({ items: [item("1")] });
+  resolvers.shift()!({ items: [item("2")] });
+  assert.deepEqual(await first, [item("1")]);
+  assert.deepEqual(await strictModeReplay, [item("1")]);
+  assert.deepEqual(await otherOperator, [item("2")]);
+});
+
 test("queued work keeps only its own session active across consecutive run results", () => {
   const activity = createQueueActivityTracker();
   activity.replace("peon-1:session-1", [item("1"), item("2")]);

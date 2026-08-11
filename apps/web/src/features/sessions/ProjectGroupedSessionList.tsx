@@ -6,7 +6,7 @@ import { visibleProjects, type ProjectLite } from "../projects/projectList";
 import type { SessionLite } from "./sessionList";
 import type { PresenceUser } from "../../realtime/liveSocket";
 import { rowEdgeClass } from "../../shared/SidebarSectionHeader";
-import { sessionStatusEdgeClass, SessionSidebarList } from "./SessionSidebarList";
+import { isNavigatePrefetchKey, sessionStatusEdgeClass, SessionSidebarList } from "./SessionSidebarList";
 
 export const GROUPED_PROJECTS_EXPANDED_STORAGE_KEY = "overseer:session-list:expanded-projects";
 
@@ -64,9 +64,10 @@ function StatusBadge({
       className={`${className} cursor-pointer transition-colors ${hoverClassName} focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-accent/60`}
       title={linkLabel}
       aria-label={linkLabel}
-      onPointerEnter={() => onNavigateIntent?.(target)}
       onPointerDown={() => onNavigateIntent?.(target)}
-      onFocus={() => onNavigateIntent?.(target)}
+      onKeyDown={(event) => {
+        if (isNavigatePrefetchKey(event.key)) onNavigateIntent?.(target);
+      }}
     >
       {body}
     </Link>

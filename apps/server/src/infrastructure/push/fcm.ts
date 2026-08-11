@@ -107,7 +107,7 @@ async function errorDetail(response: Response): Promise<{ message: string; statu
 // belonged here (INVALID_ARGUMENT on a send whose only variable is the token).
 // Everything else — quota, auth, upstream trouble — is worth another pass.
 function isPermanent(httpStatus: number, code: string): boolean {
-  if (code === "UNREGISTERED" || code === "NOT_FOUND" || code === "INVALID_ARGUMENT") return true;
+  if (code === "UNREGISTERED" || code === "NOT_FOUND" || code === "INVALID_ARGUMENT" || code === "SENDER_ID_MISMATCH") return true;
   return httpStatus === 404 || httpStatus === 400;
 }
 

@@ -48,9 +48,32 @@ export function createQueueActivityTracker(): QueueActivityTracker {
 
 const queuePath = (base: string, sessionId: string) => `${base}/sessions/${encodeURIComponent(sessionId)}/queue`;
 
-export async function getSessionQueue(base: string, sessionId: string, request: ApiRequest = api): Promise<QueueItem[]> {
-  const response = await request<{ items?: QueueItem[] }>(queuePath(base, sessionId));
-  return (response.items ?? []).map((item) => ({ ...item, type: item.type === "steer" ? "steer" : "queue" }));
+// StrictMode deliberately mounts effects twice in development. Keep the
+// authority read shared for the lifetime of the request so the replacement
+// lifecycle observes the same answer instead of issuing a second Fleet GET.
+const queueReads = new Map<string, Promise<QueueItem[]>>();
+const CONTROL_READ_TIMEOUT_MS = 15_000;
+
+export function getSessionQueue(
+  base: string,
+  sessionId: string,
+  request: ApiRequest = api,
+  ownerScope = "",
+): Promise<QueueItem[]> {
+  const path = queuePath(base, sessionId);
+  const key = ownerScope ? `${ownerScope}\0${path}` : null;
+  const existing = key ? queueReads.get(key) : null;
+  if (existing) return existing;
+  const controller = request === api ? new AbortController() : null;
+  const timeout = controller ? window.setTimeout(() => controller.abort(), CONTROL_READ_TIMEOUT_MS) : null;
+  const read = request<{ items?: QueueItem[] }>(path, controller ? { signal: controller.signal } : undefined)
+    .then((response) => (response.items ?? []).map((item) => ({ ...item, type: item.type === "steer" ? "steer" as const : "queue" as const })))
+    .finally(() => {
+      if (timeout !== null) window.clearTimeout(timeout);
+      if (key && queueReads.get(key) === read) queueReads.delete(key);
+    });
+  if (key) queueReads.set(key, read);
+  return read;
 }
 
 export function enqueueSessionFollowup(base: string, sessionId: string, input: EnqueueInput, request: ApiRequest = api) {

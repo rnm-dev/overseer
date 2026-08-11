@@ -170,6 +170,7 @@ export async function streamPeonTo(
   signal: AbortSignal,
   actor: string | null = null,
   lastEventId: string | null = null,
+  onReady: (() => void) | null = null,
 ): Promise<void> {
   const url = apiUrl(conn, pathname);
   const controller = new AbortController();
@@ -184,6 +185,7 @@ export async function streamPeonTo(
     });
     clearTimeout(connectTimer);
     if (!upstream.ok || !upstream.body) throw new Error(`peon stream ${upstream.status}`);
+    onReady?.();
     const reader = upstream.body.getReader();
     const decoder = new TextDecoder();
     for (;;) {

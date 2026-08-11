@@ -51,14 +51,16 @@ One compose file, dev-oriented. `docker compose up -d`:
 - **API** runs `tsx watch` — an edit to `apps/server/src` restarts the process.
 - **Web** runs the Vite dev server — an edit to `apps/web/src` **hot-reloads
   the browser** (true HMR). HMR speaks `wss:443` through Cloudflare (configured
-  in `web/vite.config.ts` `server.hmr`); `allowedHosts` includes `overseer.rnm.dev`.
+  in `web/vite.config.ts` `server.hmr`); `allowedHosts` includes
+  `overseer-dev.rnm.dev`.
 - Verified end-to-end: login (magic-link + OTP) → dashboard renders live.
 
 ## Serving
 
-- **Public URL:** https://overseer.rnm.dev
-- **HTML preview URL:** `https://<token>.preview.overseer.rnm.dev/*`. This needs
-  a proxied wildcard DNS record for `*.preview.overseer.rnm.dev`; nginx routes
+- **Public URL:** https://overseer-dev.rnm.dev
+- **HTML preview URL:** `https://<token>.preview.overseer-dev.rnm.dev/*`. This
+  needs a proxied wildcard DNS record for `*.preview.overseer-dev.rnm.dev`;
+  nginx routes
   the entire wildcard host to the API, which validates the expiring token and
   proxies only files beneath that preview's root.
 - **TLS:** terminated by **Cloudflare** (rnm.dev is proxied). nginx on the host
@@ -79,13 +81,31 @@ One compose file, dev-oriented. `docker compose up -d`:
 
 - **Operator/mobile API** (`/fleet/*` + WS) → public via nginx/Cloudflare. Done.
 - **Peon-facing API** (`/agent/v1/peons/*` register+heartbeat, and the
-  overseer→peon calls) is meant to be **tailnet-only**. ⚠️ **Tailscale is NOT
-  installed on nid-dev yet** and the container currently binds `0.0.0.0`
-  *inside* the container (host mapping is loopback-only, so nothing is exposed —
-  but there is also no tailnet path to NAT'd peons yet). Before wiring real
-  peons: `apt install tailscale && tailscale up`, then give the container the
-  tailnet and split the listeners. Until then, test with a peon reachable on
-  the same host/LAN.
+  overseer→peon calls) is **tailnet-only**. nid-dev is Tailscale node
+  `100.64.0.1`; the app container reaches Peons through the host's mesh routes.
+
+### Dev direct-path stability
+
+The self-hosted Headscale control plane runs on nid-01. Its
+`/etc/headscale/policy.hujson` applies the `randomize-client-port` node
+attribute only to the two dev-path endpoints, nid-dev (`100.64.0.1`) and
+Viktor's Mac/Peon (`100.64.0.3`). Both endpoints must carry the attribute:
+targeting only one side left the direct UDP path asymmetric and lossy. The
+production Overseer node (`100.64.0.5`) is deliberately not targeted.
+
+This replaced an observed 80–90% tailnet packet-loss condition with 0 loss in
+200 packets in each direction and about 9 ms average RTT. Do not work around a
+regression by pinning DERP with host firewall rules; first check
+`tailscale ping`, `tailscale status --json` (`RandomizeClientPort`) on both dev
+endpoints, and `headscale policy check -f /etc/headscale/policy.hujson` on
+nid-01.
+
+The pre-change Headscale config and final applied policy are backed up on
+nid-01 under `/root/headscale-backups/20260810-dev-randomize-client-port/`.
+Rollback is to restore `config.yaml.before` to `/etc/headscale/config.yaml`,
+move `/etc/headscale/policy.hujson` aside, and restart Headscale. This changes
+the shared control plane, so verify that only the two dev node addresses are
+targeted before every edit.
 
 ## Secrets (`.env`)
 

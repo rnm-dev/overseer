@@ -763,6 +763,7 @@ async function subscribe(client: Client, peonId: string, sessionId: string, requ
         }
       }
       tail.ready = true;
+      send(client.ws, { type: "tailReady", peonId, sessionId });
     } catch (error) {
       if (client.tails.get(sessionId) === ctrl) client.tails.delete(sessionId);
       ctrl.abort();
@@ -815,6 +816,10 @@ async function subscribe(client: Client, peonId: string, sessionId: string, requ
     ctrl.signal,
     client.actor,
     lastEventId,
+    () => {
+      if (client.tails.get(sessionId) !== ctrl || ctrl.signal.aborted) return;
+      send(client.ws, { type: "tailReady", peonId, sessionId });
+    },
   )
     .catch(() => {
       streamError ??= "peon unreachable";

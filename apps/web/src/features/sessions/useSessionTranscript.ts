@@ -26,12 +26,16 @@ import {
 import {
   TAIL_FALLBACK_CHECK_MS,
   replaceTranscriptRequest,
+  reconcileQueueAtTurnEnd,
   snapshotEndsRun,
+  tailUnhealthyAfterFrame,
+  transportGapRecoveryDue,
   transcriptReconcileMode,
 } from "./transcriptReconciliation";
 import {
   cachedTranscriptSnapshot,
   preparedTranscriptSnapshot,
+  readAuthoritativeTranscriptSnapshot,
   rememberTranscriptSnapshot,
 } from "./transcriptSnapshotCache";
 
@@ -49,7 +53,8 @@ interface Args {
   onSnapshotRunning: () => void;
   onRunFinished: (event?: Ev) => void;
   onAgentUpdate: (event: Ev) => void;
-  onQueueChange: () => void;
+  onQueueChange: () => Promise<void>;
+  onTransportGap: () => void;
   onPreview: (target: PreviewTarget) => void;
 }
 
@@ -68,6 +73,7 @@ export function useSessionTranscript({
   onRunFinished,
   onAgentUpdate,
   onQueueChange,
+  onTransportGap,
   onPreview,
 }: Args) {
   const initialSnapshotRef = useRef(
@@ -109,9 +115,9 @@ export function useSessionTranscript({
   const runningRef = useRef(running);
   runningRef.current = running;
   const reconciliationSessionRef = useRef(sessionKey);
-  const lastTailActivityAtRef = useRef<number | null>(Date.now());
   const tailUnhealthyRef = useRef(false);
   const lastFallbackReconcileAtRef = useRef<number | null>(null);
+  const lastControlGapRecoveryAtRef = useRef<number | null>(null);
   const latestReconcileControllerRef = useRef<AbortController | null>(null);
   const olderLoadControllerRef = useRef<AbortController | null>(null);
 
@@ -133,9 +139,9 @@ export function useSessionTranscript({
     seenTailEventIdsRef.current = new Set();
     seenRef.current = new Set();
     pendingLiveRef.current = [];
-    lastTailActivityAtRef.current = Date.now();
     tailUnhealthyRef.current = false;
     lastFallbackReconcileAtRef.current = null;
+    lastControlGapRecoveryAtRef.current = null;
     latestReconcileControllerRef.current?.abort();
     latestReconcileControllerRef.current = null;
     olderLoadControllerRef.current?.abort();
@@ -172,10 +178,15 @@ export function useSessionTranscript({
     appendLive(event, tailId, tailEventId);
     const signal = runSignalFromEvent(event);
     if (signal === "running") onRunningChange(true);
-    else if (signal === "idle") onRunFinished(event);
+    else if (signal === "idle") {
+      // Legacy Peons may auto-pop a queued follow-up without a `change` frame.
+      // Re-read once at the authoritative turn boundary, then decide whether
+      // this was the final result in the chain.
+      void reconcileQueueAtTurnEnd(onQueueChange, () => onRunFinished(event));
+    }
     if (isAgentWorkUpdate(event)) onAgentUpdate(event);
     return true;
-  }, [alreadyDelivered, appendLive, markDelivered, onAgentUpdate, onRunFinished, onRunningChange]);
+  }, [alreadyDelivered, appendLive, markDelivered, onAgentUpdate, onQueueChange, onRunFinished, onRunningChange]);
 
   const openFreshPreview = useCallback((event: Ev) => {
     if (event.type !== "preview" || typeof event.path !== "string" || !event.path || previewPinnedRef.current) return;
@@ -240,9 +251,9 @@ export function useSessionTranscript({
     latestReconcileControllerRef.current = null;
     olderLoadControllerRef.current?.abort();
     olderLoadControllerRef.current = null;
-    lastTailActivityAtRef.current = Date.now();
     tailUnhealthyRef.current = false;
     lastFallbackReconcileAtRef.current = null;
+    lastControlGapRecoveryAtRef.current = null;
     const cached = cachedTranscriptSnapshot(base, sid, paginationSupported);
     if (cached) {
       loadedTranscriptRef.current = cached;
@@ -268,7 +279,6 @@ export function useSessionTranscript({
         id: page.paginated && page.events.length ? eventId(page.events[page.events.length - 1]!) : null,
       });
       historyReadyRef.current = true;
-      lastTailActivityAtRef.current = Date.now();
       tailUnhealthyRef.current = false;
       const metadataStatus = metadataStatusRef.current.get(sessionKey);
       if (latestRunSignal(page.events) === "running" && (metadataStatus === undefined || metadataStatus === "running")) onSnapshotRunning();
@@ -280,7 +290,7 @@ export function useSessionTranscript({
     };
     const controller = new AbortController();
     const prepared = preparedTranscriptSnapshot(base, sid, paginationSupported);
-    (prepared ?? fetchLatestTranscript(controller.signal))
+    (prepared ?? readAuthoritativeTranscriptSnapshot(base, sid, paginationSupported))
       .then((page) => alive && ready(page))
       .catch(() => {
         if (!alive) return;
@@ -303,50 +313,56 @@ export function useSessionTranscript({
     };
   }, [applyAuthoritativeSnapshot, base, fetchLatestTranscript, metadataStatusRef, onSnapshotRunning, openFreshPreview, paginationSupported, pushFreshEvent, sessionKey, sid]);
 
+  const recoverControlPlaneGap = useCallback(() => {
+    if (document.visibilityState !== "visible") return;
+    const now = Date.now();
+    if (!transportGapRecoveryDue(now, lastControlGapRecoveryAtRef.current)) return;
+    lastControlGapRecoveryAtRef.current = now;
+    onTransportGap();
+  }, [onTransportGap]);
+
   useEffect(() => {
     const boundary = tailResumeBoundary(tailStart, sessionKey);
     if (!boundary.subscribe) return;
     return subscribe(peonId, sid, (frame) => {
-    if (frame.event === "tailEnd" || frame.event === "tailError") {
-      tailUnhealthyRef.current = true;
-      onQueueChange();
-      return;
-    }
-    lastTailActivityAtRef.current = Date.now();
-    tailUnhealthyRef.current = false;
-    if (frame.event === "change") {
-      onQueueChange();
-      return;
-    }
-    let event: Ev;
-    try {
-      event = JSON.parse(frame.data) as Ev;
-    } catch {
-      event = { type: "_raw", text: frame.data };
-    }
-    const tailEventId = paginationSupported && frame.id ? frame.id : null;
-    const tailId = paginationSupported ? null : numericTailId(frame.id);
-    if (!historyReadyRef.current) {
-      pendingLiveRef.current.push({ event, tailId, tailEventId });
-      return;
-    }
-    if (pushFreshEvent(event, tailId, tailEventId)) openFreshPreview(event);
+      tailUnhealthyRef.current = tailUnhealthyAfterFrame(frame.event);
+      if (tailUnhealthyRef.current) {
+        recoverControlPlaneGap();
+        return;
+      }
+      if (frame.event === "tailReady") return;
+      if (frame.event === "change") {
+        onQueueChange();
+        return;
+      }
+      let event: Ev;
+      try {
+        event = JSON.parse(frame.data) as Ev;
+      } catch {
+        event = { type: "_raw", text: frame.data };
+      }
+      const tailEventId = paginationSupported && frame.id ? frame.id : null;
+      const tailId = paginationSupported ? null : numericTailId(frame.id);
+      if (!historyReadyRef.current) {
+        pendingLiveRef.current.push({ event, tailId, tailEventId });
+        return;
+      }
+      if (pushFreshEvent(event, tailId, tailEventId)) openFreshPreview(event);
     }, paginationSupported ? boundary.lastEventId : undefined);
-  }, [onQueueChange, openFreshPreview, paginationSupported, peonId, pushFreshEvent, sessionKey, sid, subscribe, tailStart]);
+  }, [onQueueChange, openFreshPreview, paginationSupported, peonId, pushFreshEvent, recoverControlPlaneGap, sessionKey, sid, subscribe, tailStart]);
 
   useEffect(() => {
     if (!running) return;
     let alive = true;
     let inFlight = false;
     const reconcile = async () => {
-      if (!alive || inFlight || !historyReadyRef.current) return;
+      if (!alive || inFlight || !historyReadyRef.current || document.visibilityState !== "visible") return;
       const now = Date.now();
       const mode = transcriptReconcileMode({
         now,
         running,
         historyReady: historyReadyRef.current,
         tailUnhealthy: tailUnhealthyRef.current,
-        lastTailActivityAt: lastTailActivityAtRef.current,
         lastReconcileAt: lastFallbackReconcileAtRef.current,
       });
       if (mode === "none") return;
@@ -373,14 +389,23 @@ export function useSessionTranscript({
       }
     };
     const timer = window.setInterval(reconcile, TAIL_FALLBACK_CHECK_MS);
+    const recoverVisibleGap = () => {
+      if (document.visibilityState !== "visible" || !tailUnhealthyRef.current) return;
+      recoverControlPlaneGap();
+      void reconcile();
+    };
+    document.addEventListener("visibilitychange", recoverVisibleGap);
+    window.addEventListener("focus", recoverVisibleGap);
     void reconcile();
     return () => {
       alive = false;
       window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", recoverVisibleGap);
+      window.removeEventListener("focus", recoverVisibleGap);
       latestReconcileControllerRef.current?.abort();
       latestReconcileControllerRef.current = null;
     };
-  }, [applyAuthoritativeSnapshot, base, fetchLatestTranscript, metadataStatusRef, onRunFinished, running, sessionKey, sid]);
+  }, [applyAuthoritativeSnapshot, base, fetchLatestTranscript, metadataStatusRef, onRunFinished, recoverControlPlaneGap, running, sessionKey, sid]);
 
   const loadOlder = useCallback(async (): Promise<boolean> => {
     const current = loadedTranscriptRef.current;

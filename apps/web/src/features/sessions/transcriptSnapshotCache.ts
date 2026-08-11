@@ -75,18 +75,13 @@ export function preparedTranscriptSnapshot(
   return inFlight.get(key) ?? null;
 }
 
-export function prefetchTranscriptSnapshot(
+function startTranscriptSnapshotRequest(
   base: string,
   sid: string,
   paginationSupported: boolean,
-  request: TranscriptRequest = (path) => api<TranscriptResponse>(path),
-  now = Date.now(),
+  request: TranscriptRequest,
 ): Promise<TranscriptPage> {
   const key = cacheKey(base, sid, paginationSupported);
-  const cached = cache.get(key);
-  if (cached && now - cached.storedAt <= PREFETCH_FRESH_MS) {
-    return Promise.resolve(cached.page);
-  }
   const pending = inFlight.get(key);
   if (pending) return pending;
   const requestGeneration = generation;
@@ -104,6 +99,33 @@ export function prefetchTranscriptSnapshot(
     });
   inFlight.set(key, promise);
   return promise;
+}
+
+// Opening a session must revalidate paint-only cache data before choosing a
+// live-tail boundary. The request itself is still single-flighted so React
+// StrictMode's mount replay cannot duplicate a large Fleet HTTP transcript read.
+export function readAuthoritativeTranscriptSnapshot(
+  base: string,
+  sid: string,
+  paginationSupported: boolean,
+  request: TranscriptRequest = (path) => api<TranscriptResponse>(path),
+): Promise<TranscriptPage> {
+  return startTranscriptSnapshotRequest(base, sid, paginationSupported, request);
+}
+
+export function prefetchTranscriptSnapshot(
+  base: string,
+  sid: string,
+  paginationSupported: boolean,
+  request: TranscriptRequest = (path) => api<TranscriptResponse>(path),
+  now = Date.now(),
+): Promise<TranscriptPage> {
+  const key = cacheKey(base, sid, paginationSupported);
+  const cached = cache.get(key);
+  if (cached && now - cached.storedAt <= PREFETCH_FRESH_MS) {
+    return Promise.resolve(cached.page);
+  }
+  return startTranscriptSnapshotRequest(base, sid, paginationSupported, request);
 }
 
 export function clearTranscriptSnapshotCache(): void {

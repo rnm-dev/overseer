@@ -4,9 +4,12 @@ import { ApiError } from "../../shared/api";
 import {
   inquiryCollectionPath,
   inquiryInsertionIndex,
+  inquiryRecoveryEnabled,
   inquiryResponsePath,
+  ACTIVE_INQUIRY_RECOVERY_MS,
   PLUGIN_INQUIRY_CAPABILITY,
   parsePluginInquiries,
+  readPluginInquiries,
   respondToPluginInquiry,
   stableInquiryError,
   visiblePluginInquiry,
@@ -47,6 +50,26 @@ test("plugin response sends the backend action contract with an opaque idempoten
   assert.deepEqual(JSON.parse(String(call?.options?.body)), { action: "install" });
 });
 
+test("authenticated concurrent inquiry readers share only within one operator scope", async () => {
+  const resolvers: Array<(value: { inquiries: typeof pending[] }) => void> = [];
+  let calls = 0;
+  const request = async <T>() => {
+    calls += 1;
+    return new Promise<T>((resolve) => resolvers.push(resolve as (value: { inquiries: typeof pending[] }) => void));
+  };
+  const path = inquiryCollectionPath("/peon", "session-1");
+  const first = readPluginInquiries(path, "operator-a", request);
+  const strictModeReplay = readPluginInquiries(path, "operator-a", request);
+  const otherOperator = readPluginInquiries(path, "operator-b", request);
+  assert.equal(calls, 2);
+
+  resolvers.shift()!({ inquiries: [pending] });
+  resolvers.shift()!({ inquiries: [] });
+  assert.deepEqual(await first, { inquiries: [pending] });
+  assert.deepEqual(await strictModeReplay, { inquiries: [pending] });
+  assert.deepEqual(await otherOperator, { inquiries: [] });
+});
+
 test("inquiry parser accepts only the public standardized plugin shape", () => {
   assert.deepEqual(parsePluginInquiries({ inquiries: [pending] }, Date.parse("2029-01-01")), [pending]);
   assert.equal(visiblePluginInquiry({ ...pending, nativeRequestId: "must-not-matter" }, Date.parse("2029-01-01"))?.inquiryId, "inq-public-1");
@@ -77,4 +100,13 @@ test("historical inquiries stay beside their creation time instead of following 
   const items = [{ createdAt: 100 }, { createdAt: 200 }, { createdAt: 400 }];
   assert.equal(inquiryInsertionIndex(items, new Date(250).toISOString()), 2);
   assert.equal(inquiryInsertionIndex(items, new Date(500).toISOString()), 3);
+});
+
+test("legacy inquiry recovery is bounded to active visible turns", () => {
+  assert.equal(ACTIVE_INQUIRY_RECOVERY_MS, 30_000);
+  assert.equal(Math.floor(413_000 / ACTIVE_INQUIRY_RECOVERY_MS), 13);
+  assert.equal(inquiryRecoveryEnabled(true, "session-1", true, true), true);
+  assert.equal(inquiryRecoveryEnabled(true, "session-1", false, true), false);
+  assert.equal(inquiryRecoveryEnabled(true, "session-1", true, false), false);
+  assert.equal(inquiryRecoveryEnabled(false, "session-1", true, true), false);
 });

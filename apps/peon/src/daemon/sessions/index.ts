@@ -15,6 +15,7 @@ export {
   readTranscript,
   readCommittedTranscriptEntries,
   readCommittedTranscriptEntriesBounded,
+  readCommittedTranscriptEntriesBoundedAsync,
   sessionArtifactInventory,
   subscribeTranscriptCommits,
   CommittedTranscriptLimitError,

@@ -120,6 +120,21 @@ test("an asynchronous cold index rebuild yields to unrelated event-loop work", a
   assert.equal(page.events.length, 50);
 });
 
+test("concurrent identical transcript pages share one disk read", async () => {
+  const id = "coalesced-identical-page";
+  writeFileSync(transcriptPath(id), `${Array.from({ length: 200 }, (_, index) => row(index, "x".repeat(256))).join("\n")}\n`);
+  let reads = 0;
+  observeTranscriptReads(() => { reads += 1; });
+  const [first, second] = await Promise.all([
+    readTranscriptPage(id, "claude-code", { limit: 50 }),
+    readTranscriptPage(id, "claude-code", { limit: 50 }),
+  ]);
+  observeTranscriptReads(null);
+
+  assert.equal(reads, 1);
+  assert.deepEqual(first, second);
+});
+
 test("a forged indexed cursor is rejected without rebuilding or scanning the full index", async () => {
   const id = "forged-index-offset";
   writeFileSync(transcriptPath(id), `${Array.from({ length: 1_000 }, (_, index) => row(index)).join("\n")}\n`);

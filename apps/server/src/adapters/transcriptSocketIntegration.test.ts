@@ -334,6 +334,8 @@ test("reverse transcript snapshot/live/replay reaches authorized browsers once a
     afterSeq: 1,
     expiresAt: Date.now() + 300_000,
   }));
+  await ownerFrames.waitFor((frame) =>
+    frame.type === "tailReady" && frame.sessionId === "session-1");
 
   const poisonedLive = published(2);
   poisonedLive.event = {

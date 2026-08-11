@@ -54,6 +54,10 @@ export function sessionRenameDraft(session: SessionLite): string {
   return sessionDisplayTitle(session, "");
 }
 
+export function isNavigatePrefetchKey(key: string): boolean {
+  return key === "Enter";
+}
+
 // What a live session update can change in a row. Any of these moving means the
 // Peon told us something new about that session, which is what the flash marks.
 export function sessionRowFingerprint(session: SessionLite): string {
@@ -233,9 +237,10 @@ export function SessionSidebarList({
           >
             <NavLink
               to={to(session)}
-              onPointerEnter={() => onNavigateIntent?.(session)}
               onPointerDown={() => onNavigateIntent?.(session)}
-              onFocus={() => onNavigateIntent?.(session)}
+              onKeyDown={(event) => {
+                if (isNavigatePrefetchKey(event.key)) onNavigateIntent?.(session);
+              }}
               title={session.catalogStale ? t("session.catalogStaleTitle") : undefined}
               className={({ isActive }) => `relative block py-1.5 pl-3 pr-2 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/60 ${session.catalogStale ? "opacity-70" : ""} ${isActive ? "bg-accent/10" : appearance === "panel" ? "hover:bg-surface-hover/70" : "hover:bg-surface-raised"}`}
             >

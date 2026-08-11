@@ -229,6 +229,13 @@ advanced the same transcript epoch through that sequence. A lower frontier,
 epoch change or uncommitted jump is a protocol error; an ordinary non-empty
 catch-up never closes the shared control socket.
 
+After replay and catch-up reach that frontier, Overseer sends the subscribing
+browser `tailReady {peonId,sessionId}`. Legacy SSE passthrough sends the same
+acknowledgement after the upstream response is accepted. This frame carries no
+transcript data and advances no cursor; it lets a browser end transient-gap
+recovery even when the resumed tail is idle and therefore has no data frame to
+prove health.
+
 Demand is shared per Peon/session. Many browsers therefore create one Peon
 subscription, not one each. The last authorized consumer sends
 `transcript_unsubscribe` and cancels a demand-only snapshot. A snapshot needed

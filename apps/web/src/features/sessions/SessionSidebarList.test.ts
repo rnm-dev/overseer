@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router";
 import { I18nProvider } from "../../shared/i18n";
 import { NotificationsProvider } from "../../shared/notifications";
-import { sessionContextMenuPosition, sessionRenameDraft, sessionStatusEdgeClass, SessionSidebarList } from "./SessionSidebarList";
+import { isNavigatePrefetchKey, sessionContextMenuPosition, sessionRenameDraft, sessionStatusEdgeClass, SessionSidebarList } from "./SessionSidebarList";
 
 (globalThis as typeof globalThis & { React: typeof React }).React = React;
 
@@ -109,4 +109,10 @@ test("session status edges prioritize running green, then unread completion ambe
   assert.match(sessionStatusEdgeClass("completed", true), /bg-warning/);
   assert.match(sessionStatusEdgeClass("completed", true), /status-edge status-edge--warning/);
   assert.equal(sessionStatusEdgeClass("completed", false), "bg-ink-faint/40");
+});
+
+test("transcript prefetch requires an activation key instead of ordinary focus", () => {
+  assert.equal(isNavigatePrefetchKey("Enter"), true);
+  assert.equal(isNavigatePrefetchKey(" "), false);
+  assert.equal(isNavigatePrefetchKey("Tab"), false);
 });

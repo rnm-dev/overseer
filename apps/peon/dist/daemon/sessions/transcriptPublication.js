@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import { CommittedTranscriptLimitError, flushTranscript, readCommittedTranscriptEntriesBounded, sessions, subscribeTranscriptCommits, } from "./index.js";
+import { setImmediate as yieldToEventLoop } from "node:timers/promises";
+import { CommittedTranscriptLimitError, flushTranscript, readCommittedTranscriptEntriesBoundedAsync, sessions, subscribeTranscriptCommits, } from "./index.js";
 export const TRANSCRIPT_SYNC_CAPABILITY = "transcript-sync-v1";
 export const MAX_PUBLISHED_TRANSCRIPT_EVENT_BYTES = 192 * 1024;
 export const MAX_TRANSCRIPT_SNAPSHOT_EVENTS = 20_000;
@@ -222,7 +223,7 @@ export class TranscriptPublicationRepository {
             maxLineBytes: options.maxCanonicalLineBytes ?? MAX_TRANSCRIPT_CANONICAL_LINE_BYTES,
         };
         this.readCommitted = options.readCommitted
-            ?? ((sessionId, agent, limits) => readCommittedTranscriptEntriesBounded(sessionId, agent, limits));
+            ?? ((sessionId, agent, limits) => readCommittedTranscriptEntriesBoundedAsync(sessionId, agent, limits));
         this.flush = options.flush ?? flushTranscript;
         this.subscribeCommits = options.subscribeCommits ?? subscribeTranscriptCommits;
     }
@@ -327,6 +328,8 @@ export class TranscriptPublicationRepository {
         const published = [];
         let publishedBytes = 2;
         for (const [index, entry] of entries.entries()) {
+            if (index > 0 && index % 8 === 0)
+                await yieldToEventLoop();
             const event = publishedTranscriptEvent(record.id, epoch, index + 1, entry);
             const eventBytes = Buffer.byteLength(JSON.stringify(event));
             const nextBytes = publishedBytes + eventBytes + (published.length > 0 ? 1 : 0);

@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, api } from "../../shared/api";
 
 export const PLUGIN_INQUIRY_CAPABILITY = "managed-plugin-inquiry-v1";
-export const PLUGIN_INQUIRY_REFRESH_MS = 15_000;
 
 export type PluginInquiryStatus =
   | "pending"
@@ -46,6 +45,35 @@ export interface PluginInstallInquiry {
 
 interface InquiryListResponse { inquiries: PluginInstallInquiry[] }
 type ApiRequest = <T>(path: string, options?: RequestInit) => Promise<T>;
+const inquiryReads = new Map<string, Promise<InquiryListResponse>>();
+const CONTROL_READ_TIMEOUT_MS = 15_000;
+export const ACTIVE_INQUIRY_RECOVERY_MS = 30_000;
+
+export function inquiryRecoveryEnabled(supported: boolean, sid: string, running: boolean, visible: boolean): boolean {
+  return supported && sid.length > 0 && running && visible;
+}
+
+export function readPluginInquiries(
+  path: string,
+  ownerScope: string,
+  request: ApiRequest = api,
+): Promise<InquiryListResponse> {
+  const key = ownerScope ? `${ownerScope}\0${path}` : null;
+  const existing = key ? inquiryReads.get(key) : null;
+  if (existing) return existing;
+  const controller = request === api ? new AbortController() : null;
+  const timeout = controller ? window.setTimeout(() => controller.abort(), CONTROL_READ_TIMEOUT_MS) : null;
+  const read = request<InquiryListResponse>(path, {
+    cache: "no-store",
+    ...(controller ? { signal: controller.signal } : {}),
+  })
+    .finally(() => {
+      if (timeout !== null) window.clearTimeout(timeout);
+      if (key && inquiryReads.get(key) === read) inquiryReads.delete(key);
+    });
+  if (key) inquiryReads.set(key, read);
+  return read;
+}
 
 export function inquiryCollectionPath(base: string, sid: string): string {
   return `${base}/sessions/${encodeURIComponent(sid)}/inquiries`;
@@ -109,7 +137,7 @@ export function inquiryInsertionIndex(items: object[], createdAt: string): numbe
   return later === -1 ? items.length : later;
 }
 
-export function usePluginInquiries(base: string, sid: string, supported: boolean) {
+export function usePluginInquiries(base: string, sid: string, supported: boolean, running: boolean, ownerScope: string) {
   const [inquiries, setInquiries] = useState<PluginInstallInquiry[]>([]);
   const [loading, setLoading] = useState(supported);
   const inFlight = useRef(new Set<string>());
@@ -117,21 +145,21 @@ export function usePluginInquiries(base: string, sid: string, supported: boolean
   const scopeRef = useRef(`${base}:${sid}`);
   scopeRef.current = `${base}:${sid}`;
 
-  const refresh = useCallback(async (signal?: AbortSignal) => {
+  const refresh = useCallback(async () => {
     if (!supported || !sid) return;
     const scope = `${base}:${sid}`;
     try {
-      const body = await api<InquiryListResponse>(inquiryCollectionPath(base, sid), { cache: "no-store", signal });
+      const body = await readPluginInquiries(inquiryCollectionPath(base, sid), ownerScope);
       if (scopeRef.current !== scope) return;
       setInquiries(parsePluginInquiries(body));
     } catch {
-      // A failed poll says nothing about the inquiries themselves: keep the last
-      // known list and let the timer, focus and online listeners try again. A
-      // transient Peon outage is not something to put in front of the operator.
+      // A failed reconciliation says nothing about the inquiries themselves:
+      // keep the last known list. Active-turn compatibility or proven-gap
+      // recovery can try again without putting a transient outage in the UI.
     } finally {
-      if (scopeRef.current === scope && !signal?.aborted) setLoading(false);
+      if (scopeRef.current === scope) setLoading(false);
     }
-  }, [base, sid, supported]);
+  }, [base, ownerScope, sid, supported]);
 
   useEffect(() => {
     setInquiries([]);
@@ -139,21 +167,21 @@ export function usePluginInquiries(base: string, sid: string, supported: boolean
     inFlight.current.clear();
     requestIds.current.clear();
     if (!supported || !sid) return;
-    const controller = new AbortController();
-    void refresh(controller.signal);
-    const interval = window.setInterval(() => { if (document.visibilityState === "visible") void refresh(); }, PLUGIN_INQUIRY_REFRESH_MS);
-    const recover = () => { if (document.visibilityState === "visible") void refresh(); };
-    window.addEventListener("focus", recover);
-    window.addEventListener("online", recover);
-    document.addEventListener("visibilitychange", recover);
-    return () => {
-      controller.abort();
-      window.clearInterval(interval);
-      window.removeEventListener("focus", recover);
-      window.removeEventListener("online", recover);
-      document.removeEventListener("visibilitychange", recover);
-    };
+    void refresh();
   }, [refresh, sid, supported]);
+
+  // transcript-sync-v1 carries transcript commits but has no inquiry-change
+  // frame yet. While a turn is actively capable of opening an inquiry, retain
+  // one bounded legacy recovery read. Idle and background pages issue none;
+  // direct response bodies and transport-gap recovery remain immediate.
+  useEffect(() => {
+    if (!inquiryRecoveryEnabled(supported, sid, running, true)) return;
+    const recover = () => {
+      if (inquiryRecoveryEnabled(supported, sid, running, document.visibilityState === "visible")) void refresh();
+    };
+    const timer = window.setInterval(recover, ACTIVE_INQUIRY_RECOVERY_MS);
+    return () => window.clearInterval(timer);
+  }, [refresh, running, sid, supported]);
 
   useEffect(() => {
     const expiry = inquiries
@@ -186,7 +214,6 @@ export function usePluginInquiries(base: string, sid: string, supported: boolean
       const next = visiblePluginInquiry(result);
       if (next) setInquiries((current) => current.map((row) => row.inquiryId === next.inquiryId ? next : row));
       requestIds.current.delete(key);
-      await refresh();
     } catch (error) {
       if (scopeRef.current !== scope) return;
       setInquiries((current) => current.map((row) => row.inquiryId === inquiry.inquiryId
@@ -196,7 +223,7 @@ export function usePluginInquiries(base: string, sid: string, supported: boolean
     } finally {
       inFlight.current.delete(inquiry.inquiryId);
     }
-  }, [base, refresh, sid]);
+  }, [base, sid]);
 
   return { inquiries, loading, refresh, respond };
 }

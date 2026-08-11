@@ -103,6 +103,7 @@ interface Args {
   currentSessionKeyRef: MutableRefObject<string>;
   queueReconcilerRef: MutableRefObject<ReturnType<typeof createQueueReconciler> | null>;
   queueActivity: QueueActivityTracker;
+  controlReadScope: string;
   userMessageCount: number;
   onGhostCreated: () => void;
   setRunning: (running: boolean) => void;
@@ -116,7 +117,7 @@ export function useSessionComposer({
   runningReasoningEffort, sessionModel, sessionAgent, sessionReasoningEffort,
   sessionPermissionMode, overrideModel,
   overrideReasoningEffort, catalog, currentSessionKeyRef, queueReconcilerRef,
-  queueActivity, userMessageCount,
+  queueActivity, controlReadScope, userMessageCount,
   onGhostCreated,
   setRunning, setRunningSelection, setStopNote, onWorkStarted,
 }: Args) {
@@ -401,7 +402,7 @@ export function useSessionComposer({
     setRemovingQueueItems(new Set());
     setSendingQueueItems(new Set());
     const reconciler = createQueueReconciler(
-      () => getSessionQueue(base, sid),
+      () => getSessionQueue(base, sid, api, controlReadScope),
       (items) => {
         queueActivity.replace(sessionKey, items);
         setQueueItems(items);
@@ -413,19 +414,7 @@ export function useSessionComposer({
       reconciler.dispose();
       if (queueReconcilerRef.current === reconciler) queueReconcilerRef.current = null;
     };
-  }, [base, notifyError, queueActivity, queueReconcilerRef, sessionKey, sid, t]);
-
-  // `change` from the Peon is the fast path, but older Peons do not always emit
-  // it when they automatically pop the next follow-up. While the widget still
-  // shows queued work, periodically compare it with the authoritative queue so
-  // a missed dequeue signal cannot leave a stale item on screen indefinitely.
-  useEffect(() => {
-    if (queueItems.length === 0) return;
-    const reconcile = () => void queueReconcilerRef.current?.reconcile();
-    const timer = window.setInterval(reconcile, 2_000);
-    reconcile();
-    return () => window.clearInterval(timer);
-  }, [base, queueItems.length, queueReconcilerRef, sid]);
+  }, [base, controlReadScope, notifyError, queueActivity, queueReconcilerRef, sessionKey, sid, t]);
 
   return {
     input, setInput, files, setFiles, sending, sendError, setSendError, ghost,

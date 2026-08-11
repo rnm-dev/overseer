@@ -6,6 +6,7 @@ import {
   clearTranscriptSnapshotCacheForTests,
   prefetchTranscriptSnapshot,
   preparedTranscriptSnapshot,
+  readAuthoritativeTranscriptSnapshot,
   rememberTranscriptSnapshot,
   StaleTranscriptSnapshotError,
 } from "./transcriptSnapshotCache";
@@ -43,7 +44,7 @@ test("a completed prefetch remains paint-only so opening revalidates before tail
   const request = async (): Promise<TranscriptResponse> => {
     requests += 1;
     return {
-      events: [{ type: "assistant", eventId: "event-1", text: "cached" }],
+      events: [{ type: "assistant", eventId: `event-${requests}`, text: requests === 1 ? "cached" : "authoritative" }],
       nextCursor: null,
       hasMore: false,
     };
@@ -54,6 +55,28 @@ test("a completed prefetch remains paint-only so opening revalidates before tail
   assert.equal(requests, 1);
   assert.equal(preparedTranscriptSnapshot("/peon", "session-1", true), null);
   assert.equal(cachedTranscriptSnapshot("/peon", "session-1", true)?.events[0]?.eventId, "event-1");
+  const opened = await readAuthoritativeTranscriptSnapshot("/peon", "session-1", true, request);
+  assert.equal(requests, 2);
+  assert.equal(opened.events[0]?.eventId, "event-2");
+  assert.equal(opened.events[0]?.text, "authoritative");
+});
+
+test("concurrent authoritative readers share one transcript request", async () => {
+  clearTranscriptSnapshotCacheForTests();
+  let requests = 0;
+  let resolveRequest!: (value: TranscriptResponse) => void;
+  const request = () => {
+    requests += 1;
+    return new Promise<TranscriptResponse>((resolve) => {
+      resolveRequest = resolve;
+    });
+  };
+
+  const first = readAuthoritativeTranscriptSnapshot("/peon", "session-1", true, request);
+  const second = readAuthoritativeTranscriptSnapshot("/peon", "session-1", true, request);
+  assert.equal(requests, 1);
+  resolveRequest({ events: [], nextCursor: null, hasMore: false });
+  assert.equal(await first, await second);
 });
 
 test("cache is bounded and keeps recently read transcripts", () => {

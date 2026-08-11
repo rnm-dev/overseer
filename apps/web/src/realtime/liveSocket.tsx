@@ -396,6 +396,19 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
           handler.onFrame({ event: (msg as TailMsg).event ?? null, id: frameId, data: (msg as TailMsg).data ?? "" });
           break;
         }
+        case "tailReady": {
+          const sid = String(msg.sessionId ?? "");
+          const handler = tailHandlers.current.get(sid);
+          if (!handler || (msg.peonId && msg.peonId !== handler.peonId)) break;
+          const timer = tailRetryTimers.current.get(sid);
+          if (timer) {
+            window.clearTimeout(timer);
+            tailRetryTimers.current.delete(sid);
+          }
+          tailBackoff.current.delete(sid);
+          handler.onFrame({ event: "tailReady", id: null, data: "" });
+          break;
+        }
         case "tailEnd":
         case "tailError": {
           const sid = String(msg.sessionId ?? "");

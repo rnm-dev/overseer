@@ -1,10 +1,11 @@
 import { createHash } from "node:crypto";
+import { setImmediate as yieldToEventLoop } from "node:timers/promises";
 import type { AgentEvent } from "../agents/index.js";
 import type { CodingAgent } from "../providers/modelCatalog.js";
 import {
   CommittedTranscriptLimitError,
   flushTranscript,
-  readCommittedTranscriptEntriesBounded,
+  readCommittedTranscriptEntriesBoundedAsync,
   sessions,
   subscribeTranscriptCommits,
   type CommittedTranscriptRead,
@@ -311,7 +312,7 @@ export class TranscriptPublicationRepository {
       maxLineBytes: options.maxCanonicalLineBytes ?? MAX_TRANSCRIPT_CANONICAL_LINE_BYTES,
     };
     this.readCommitted = options.readCommitted
-      ?? ((sessionId, agent, limits) => readCommittedTranscriptEntriesBounded(sessionId, agent, limits));
+      ?? ((sessionId, agent, limits) => readCommittedTranscriptEntriesBoundedAsync(sessionId, agent, limits));
     this.flush = options.flush ?? flushTranscript;
     this.subscribeCommits = options.subscribeCommits ?? subscribeTranscriptCommits;
   }
@@ -418,6 +419,7 @@ export class TranscriptPublicationRepository {
     const published: PublishedTranscriptEvent[] = [];
     let publishedBytes = 2;
     for (const [index, entry] of entries.entries()) {
+      if (index > 0 && index % 8 === 0) await yieldToEventLoop();
       const event = publishedTranscriptEvent(record.id, epoch, index + 1, entry);
       const eventBytes = Buffer.byteLength(JSON.stringify(event));
       const nextBytes = publishedBytes + eventBytes + (published.length > 0 ? 1 : 0);

@@ -70,10 +70,11 @@ A provider with no credential is neither enqueued nor selected for delivery, so
 an instance without a service account behaves exactly as it did before FCM
 existed — no backlog of messages nothing can send.
 
-An unregistered device is distinguished from a transient failure: FCM
-`UNREGISTERED` / `NOT_FOUND` / `INVALID_ARGUMENT` and Expo `DeviceNotRegistered`
-retire the subscription (`push_subscriptions.disabled_at`) instead of retrying
-it hourly forever. Quota, auth and upstream faults stay retryable.
+An unregistered or wrong-project device is distinguished from a transient
+failure: FCM `UNREGISTERED` / `NOT_FOUND` / `INVALID_ARGUMENT` /
+`SENDER_ID_MISMATCH` and Expo `DeviceNotRegistered` retire the subscription
+(`push_subscriptions.disabled_at`) instead of retrying it hourly forever.
+Quota, auth and upstream faults stay retryable.
 
 ## Configuration
 

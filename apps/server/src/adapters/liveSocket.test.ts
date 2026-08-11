@@ -250,6 +250,11 @@ test("WebSocket handshake and session tails survive ordering and replacement rac
     const crlf = await collector.waitFor((message) => message.type === "tail" && message.sessionId === "crlf");
     assert.equal(crlf.data, "{\"kind\":\"crlf\"}");
     assert.equal(crlf.id, "7");
+    assert.ok(
+      collector.messages.findIndex((message) => message.type === "tailReady" && message.sessionId === "crlf")
+        < collector.messages.indexOf(crlf),
+      "the browser learns that an empty legacy tail is healthy before waiting for data",
+    );
     assert.equal(crlfResumeHeader, "event-6", "durable subscriptions resume after the paginated snapshot");
 
     ws.send(JSON.stringify({ type: "subscribe", peonId: "peon-1", sessionId: "replacement" }));

@@ -8,11 +8,10 @@ export interface TranscriptFallbackState {
   running: boolean;
   historyReady: boolean;
   tailUnhealthy: boolean;
-  lastTailActivityAt: number | null;
   lastReconcileAt: number | null;
 }
 
-export type TranscriptReconcileMode = "none" | "status" | "transcript";
+export type TranscriptReconcileMode = "none" | "transcript";
 
 // An authoritative newest page is the strongest statement about a run there is.
 // Once its result event is merged into history, the live tail frame repeating
@@ -28,15 +27,24 @@ export function replaceTranscriptRequest(previous: AbortController | null): Abor
   return new AbortController();
 }
 
-// Silence is normal while an agent is thinking. Check only the tiny session
-// record in that case; another full transcript is justified only when the tail
-// explicitly failed. If the status check observes completion, the caller also
-// takes one final authoritative transcript snapshot.
+export async function reconcileQueueAtTurnEnd(reconcile: () => Promise<void>, finish: () => void): Promise<void> {
+  await reconcile();
+  finish();
+}
+
+export function transportGapRecoveryDue(now: number, lastRecoveryAt: number | null): boolean {
+  return lastRecoveryAt === null || now - lastRecoveryAt >= TAIL_FALLBACK_SILENCE_MS;
+}
+
+export function tailUnhealthyAfterFrame(event: string | null): boolean {
+  return event === "tailEnd" || event === "tailError";
+}
+
+// Silence is normal while an agent is thinking. A healthy live transport is
+// therefore never a reason to read either session metadata or the transcript.
+// Only an explicit tail failure opens the bounded HTTP recovery path.
 export function transcriptReconcileMode(state: TranscriptFallbackState): TranscriptReconcileMode {
   if (!state.running || !state.historyReady) return "none";
   if (state.lastReconcileAt !== null && state.now - state.lastReconcileAt < TAIL_FALLBACK_SILENCE_MS) return "none";
-  if (state.tailUnhealthy) {
-    return "transcript";
-  }
-  return state.now - (state.lastTailActivityAt ?? 0) >= TAIL_FALLBACK_SILENCE_MS ? "status" : "none";
+  return state.tailUnhealthy ? "transcript" : "none";
 }

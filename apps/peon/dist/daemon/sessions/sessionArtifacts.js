@@ -2,6 +2,7 @@ import { closeSync, createReadStream, existsSync, lstatSync, mkdirSync, openSync
 import { createHash, randomUUID } from "node:crypto";
 import { appendFile, mkdir, open, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { setImmediate as yieldToEventLoop } from "node:timers/promises";
 import { normalizeStoredAgentEvent } from "../agents/index.js";
 import { stateDir } from "../runtime/xdgPaths.js";
 import { decodeTranscriptCursor, encodeIndexedTranscriptCursor, TranscriptPaginationError, } from "./transcriptPagination.js";
@@ -18,6 +19,28 @@ const appendQueues = new Map();
 const appendErrors = new Map();
 const discardedTranscripts = new Set();
 const transcriptCommitListeners = new Set();
+const inFlightTranscriptPages = new Map();
+// Transcript parsing allocates and normalizes rich agent events on the main
+// thread even when the underlying file reads are asynchronous. Bound the
+// number of readers across HTTP pagination and reverse projection so a burst
+// of browser recovery requests cannot starve control API responses or socket
+// pongs. Callers still retain per-session ordering through appendQueues.
+const MAX_CONCURRENT_TRANSCRIPT_READS = 2;
+let activeTranscriptReads = 0;
+const transcriptReadWaiters = [];
+async function withTranscriptReadPermit(operation) {
+    if (activeTranscriptReads >= MAX_CONCURRENT_TRANSCRIPT_READS) {
+        await new Promise((resolve) => transcriptReadWaiters.push(resolve));
+    }
+    activeTranscriptReads += 1;
+    try {
+        return await operation();
+    }
+    finally {
+        activeTranscriptReads -= 1;
+        transcriptReadWaiters.shift()?.();
+    }
+}
 const TRANSCRIPT_INDEX_VERSION = 1;
 const TRANSCRIPT_INDEX_READ_CHUNK = 64 * 1024;
 const TRANSCRIPT_INDEX_CACHE_LIMIT = 256;
@@ -511,6 +534,76 @@ export function readCommittedTranscriptEntriesBounded(id, agent, limits) {
         closeSync(handle);
     }
 }
+/**
+ * Non-blocking counterpart used by the reverse transcript projection. The
+ * sync reader remains available for offline tools and compatibility tests,
+ * but daemon request paths must not scan a complete JSONL file synchronously.
+ */
+export async function readCommittedTranscriptEntriesBoundedAsync(id, agent, limits) {
+    return withTranscriptReadPermit(async () => {
+        const file = transcriptPath(id);
+        let handle;
+        try {
+            handle = await open(file, "r");
+        }
+        catch (error) {
+            if (error.code === "ENOENT")
+                return { entries: [], sourceBytes: 0 };
+            throw error;
+        }
+        const entries = [];
+        const seen = new Set();
+        const chunk = Buffer.alloc(64 * 1024);
+        let carry = Buffer.alloc(0);
+        let sourceBytes = 0;
+        let lineNumber = 0;
+        const accept = (lineBytes) => {
+            if (lineBytes.length > limits.maxLineBytes)
+                throw new CommittedTranscriptLimitError("line_bytes");
+            const entry = parseTranscriptLine(id, agent, lineBytes.toString("utf8"), lineNumber, seen);
+            lineNumber += 1;
+            if (!entry)
+                return;
+            if (entries.length >= limits.maxEvents)
+                throw new CommittedTranscriptLimitError("events");
+            entries.push(entry);
+        };
+        try {
+            for (;;) {
+                const result = await handle.read(chunk, 0, chunk.length, null);
+                if (result.bytesRead === 0)
+                    break;
+                sourceBytes += result.bytesRead;
+                if (sourceBytes > limits.maxSourceBytes)
+                    throw new CommittedTranscriptLimitError("source_bytes");
+                const combined = carry.length > 0
+                    ? Buffer.concat([carry, chunk.subarray(0, result.bytesRead)])
+                    : Buffer.from(chunk.subarray(0, result.bytesRead));
+                let start = 0;
+                for (;;) {
+                    const newline = combined.indexOf(0x0a, start);
+                    if (newline < 0)
+                        break;
+                    accept(combined.subarray(start, newline));
+                    start = newline + 1;
+                }
+                carry = Buffer.from(combined.subarray(start));
+                if (carry.length > limits.maxLineBytes)
+                    throw new CommittedTranscriptLimitError("line_bytes");
+                // Cached filesystem reads can complete back-to-back in one turn. An
+                // explicit macrotask boundary keeps HTTP health and WebSocket liveness
+                // responsive during multi-megabyte snapshots.
+                await yieldToEventLoop();
+            }
+            if (carry.length > 0)
+                accept(carry);
+            return { entries, sourceBytes };
+        }
+        finally {
+            await handle.close();
+        }
+    });
+}
 export function readTranscriptEntries(id, agent) {
     const cached = transcriptCache.get(id);
     if (cached)
@@ -775,8 +868,16 @@ async function readTranscriptPageQueued(id, agent, cursorOptions) {
     }
 }
 export async function readTranscriptPage(id, agent, cursorOptions) {
+    const requestKey = `${id}\0${agent}\0${cursorOptions.limit}\0${cursorOptions.cursor ?? ""}`;
+    const inFlight = inFlightTranscriptPages.get(requestKey);
+    if (inFlight)
+        return inFlight;
     const previous = appendQueues.get(id) ?? Promise.resolve();
-    const operation = previous.catch(() => { }).then(() => readTranscriptPageQueued(id, agent, cursorOptions));
+    const operation = previous.catch(() => { }).then(() => withTranscriptReadPermit(() => readTranscriptPageQueued(id, agent, cursorOptions)));
+    inFlightTranscriptPages.set(requestKey, operation);
+    void operation.then(() => { if (inFlightTranscriptPages.get(requestKey) === operation)
+        inFlightTranscriptPages.delete(requestKey); }, () => { if (inFlightTranscriptPages.get(requestKey) === operation)
+        inFlightTranscriptPages.delete(requestKey); });
     appendQueues.set(id, operation.then(() => undefined, () => undefined));
     return operation;
 }

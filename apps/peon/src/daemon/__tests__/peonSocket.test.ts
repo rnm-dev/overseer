@@ -339,6 +339,70 @@ test("replays one durable message after disconnect until its cumulative acknowle
   }
 });
 
+test("windows a restored durable backlog until acknowledgements advance it", async () => {
+  const directory = mkdtempSync(path.join(os.tmpdir(), "peon-socket-window-"));
+  const outbox = new PeonSocketOutbox({ fileBase: path.join(directory, "outbox") });
+  for (let index = 0; index < 80; index += 1) {
+    assert.equal(outbox.enqueue({ type: "durable_test_event", value: index }).accepted, true);
+  }
+
+  const server = http.createServer();
+  const wss = new WebSocketServer({ noServer: true });
+  const sockets = new Set<WebSocket>();
+  const deliveries: Array<Record<string, unknown>> = [];
+  let peer: WebSocket | null = null;
+  wss.on("connection", (socket) => {
+    peer = socket;
+    sockets.add(socket);
+    socket.once("close", () => sockets.delete(socket));
+    socket.on("message", (data) => {
+      const frame = JSON.parse(data.toString()) as Record<string, unknown>;
+      if (frame.type === "hello") {
+        socket.send(JSON.stringify({
+          type: "hello_ack",
+          protocol: 1,
+          capabilities: ["durable-delivery-v1"],
+        }));
+      } else if (frame.type === "durable_message") {
+        deliveries.push(frame);
+      }
+    });
+  });
+  server.on("upgrade", (request, socket, head) => {
+    wss.handleUpgrade(request, socket, head, (client) => wss.emit("connection", client, request));
+  });
+
+  const base = await listen(server);
+  const supervisor = testSupervisor({ overseerUrl: base, overseerToken: "token" }, () => () => {}, [], outbox);
+  const acknowledge = (delivery: Record<string, unknown>) => {
+    assert(peer);
+    peer.send(JSON.stringify({
+      type: "durable_ack",
+      epoch: delivery.epoch,
+      cursor: delivery.cursor,
+    }));
+  };
+  try {
+    supervisor.start();
+    await waitFor(() => deliveries.length === 32, "initial durable window was not delivered");
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    assert.equal(deliveries.length, 32, "backlog flooded past the in-flight window");
+    assert.equal(supervisor.getState().connected, true);
+
+    acknowledge(deliveries[31]!);
+    await waitFor(() => deliveries.length === 64, "second durable window was not delivered");
+    acknowledge(deliveries[63]!);
+    await waitFor(() => deliveries.length === 80, "final durable window was not delivered");
+    acknowledge(deliveries[79]!);
+    await waitFor(() => outbox.status().pendingMessages === 0, "windowed backlog was not fully acknowledged");
+    assert.equal(supervisor.getState().connected, true);
+  } finally {
+    supervisor.stop();
+    await closeServer(server, sockets);
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test("handshake cumulative acknowledgement notifies channels for every removed cursor", async () => {
   const directory = mkdtempSync(path.join(os.tmpdir(), "peon-socket-handshake-ack-"));
   const outbox = new PeonSocketOutbox({ fileBase: path.join(directory, "outbox") });

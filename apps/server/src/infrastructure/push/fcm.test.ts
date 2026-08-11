@@ -131,6 +131,18 @@ test("an unregistered device is permanent, an upstream fault is not", async () =
   });
 });
 
+test("a token minted by another Firebase project is permanent", async () => {
+  stubFetch(() => Response.json(
+    { error: { status: "PERMISSION_DENIED", message: "SenderId mismatch", details: [{ errorCode: "SENDER_ID_MISMATCH" }] } },
+    { status: 403 },
+  ));
+  await assert.rejects(createFcmSender(ACCOUNT).send("wrong-project-token", MESSAGE), (err: PushDeliveryError) => {
+    assert.equal(err.permanent, true);
+    assert.match(err.message, /FCM responded 403: SenderId mismatch/);
+    return true;
+  });
+});
+
 test("a refused token exchange fails the send without retiring the device", async () => {
   globalThis.fetch = async () => Response.json({ error: "invalid_grant", error_description: "Invalid JWT Signature." }, { status: 400 });
   await assert.rejects(createFcmSender(ACCOUNT).send("device-token", MESSAGE), (err: PushDeliveryError) => {
