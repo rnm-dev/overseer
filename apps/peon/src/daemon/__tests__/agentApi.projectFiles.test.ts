@@ -427,6 +427,27 @@ test("rejects an oversized upload from Content-Length without retaining a partia
   assert.deepEqual(uploadTemps(projectDir), []);
 });
 
+test("an upload only creates missing folders when it asks to", async () => {
+  const withoutParents = await upload("/projects/proj1/files/dropped-folder/nested/file.txt", "no parents");
+  assert.equal(withoutParents.status, 404);
+  assert.equal((await withoutParents.json() as { code: string }).code, "PARENT_NOT_FOUND");
+  assert.equal(readdirSync(projectDir).includes("dropped-folder"), false);
+
+  const withParents = await upload("/projects/proj1/files/dropped-folder/nested/file.txt?parents=1", "with parents");
+  assert.equal(withParents.status, 201);
+  assert.equal(readFileSync(path.join(projectDir, "dropped-folder", "nested", "file.txt"), "utf8"), "with parents");
+});
+
+test("created upload parents stay inside the project root", async () => {
+  const escape = await upload("/projects/proj1/files/..%2Fescaped%2Ffile.txt?parents=1", "escaping");
+  assert.equal(escape.status, 400);
+  assert.equal((await escape.json() as { code: string }).code, "PATH_ESCAPE");
+
+  const throughLink = await upload("/projects/proj1/files/escape-link/nested/file.txt?parents=1", "through a link");
+  assert.notEqual(throughLink.status, 201);
+  assert.equal((await throughLink.json() as { code: string }).code, "PATH_ESCAPE");
+});
+
 test("upload failures use stable path, parent, and project error codes", async () => {
   const cases: Array<[string, string]> = [
     ["/projects/missing/files/file.txt", "UNKNOWN_PROJECT"],
@@ -471,6 +492,36 @@ test("moves a regular file into a nested folder and back to the project root", a
   assert.equal(back.status, 200);
   assert.equal(readFileSync(path.join(projectDir, "moved-back.txt"), "utf8"), "move body");
   assert.equal(readdirSync(path.join(projectDir, "src", "a dir with spaces")).includes("moved.txt"), false);
+});
+
+test("moves a whole folder, and refuses to move one inside itself", async () => {
+  mkdirSync(path.join(projectDir, "movable-folder", "nested"), { recursive: true });
+  writeFileSync(path.join(projectDir, "movable-folder", "nested", "leaf.txt"), "leaf body");
+
+  const moved = await move("/projects/proj1/files/movable-folder", "src/movable-folder");
+  assert.equal(moved.status, 200);
+  assert.equal((await moved.json() as { path: string }).path, "src/movable-folder");
+  assert.equal(readdirSync(projectDir).includes("movable-folder"), false);
+  assert.equal(readFileSync(path.join(projectDir, "src", "movable-folder", "nested", "leaf.txt"), "utf8"), "leaf body");
+
+  // The kernel is what refuses this; the daemon only has to name the refusal.
+  const intoItself = await move("/projects/proj1/files/src/movable-folder", "src/movable-folder/nested/movable-folder");
+  assert.equal(intoItself.status, 400);
+  assert.equal((await intoItself.json() as { code: string }).code, "INVALID_PATH");
+  assert.equal(readFileSync(path.join(projectDir, "src", "movable-folder", "nested", "leaf.txt"), "utf8"), "leaf body");
+
+  const back = await move("/projects/proj1/files/src/movable-folder", "movable-folder");
+  assert.equal(back.status, 200);
+  assert.equal(readFileSync(path.join(projectDir, "movable-folder", "nested", "leaf.txt"), "utf8"), "leaf body");
+});
+
+test("move refuses a destination that is an existing folder", async () => {
+  mkdirSync(path.join(projectDir, "occupied-folder"), { recursive: true });
+  writeFileSync(path.join(projectDir, "folder-clash.txt"), "clash");
+  const res = await move("/projects/proj1/files/folder-clash.txt", "occupied-folder");
+  assert.equal(res.status, 409);
+  assert.equal((await res.json() as { code: string }).code, "DESTINATION_EXISTS");
+  assert.equal(readFileSync(path.join(projectDir, "folder-clash.txt"), "utf8"), "clash");
 });
 
 test("move refuses an existing destination without modifying either file", async () => {
@@ -522,7 +573,6 @@ test("move rejects invalid sources and sandbox escapes with stable errors", asyn
   const cases: Array<[string, string, string]> = [
     ["/projects/missing/files/file.txt", "target.txt", "UNKNOWN_PROJECT"],
     ["/projects/proj1/files/no-such.txt", "target.txt", "NOT_FOUND"],
-    ["/projects/proj1/files/src", "target.txt", "INVALID_PATH"],
     ["/projects/proj1/files/escape-file", "target.txt", "PATH_ESCAPE"],
     ["/projects/proj1/files/README.md", "README.md", "INVALID_PATH"],
     ["/projects/proj1/files/README.md", "missing-parent/file.txt", "PARENT_NOT_FOUND"],

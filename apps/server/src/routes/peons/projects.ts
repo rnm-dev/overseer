@@ -397,7 +397,10 @@ export function registerProjectRoutes(router: express.Router): void {
   }));
   router.put(`${wp}/projects/:key/files/{*rest}`, withWorkspaceProject(async (req, res, c) => {
     const rest = restSegments(req).map(encodeURIComponent).join("/");
-    return proxyUpload(connOfRecord(c.record), `/projects/${encodeURIComponent(String(req.params.key))}/files/${rest}`, req, res, c.operator.email);
+    // Only the folder-upload hint travels with an upload; every other query
+    // parameter stays a browser concern and is not relayed.
+    const parents = req.query.parents !== undefined ? "?parents=1" : "";
+    return proxyUpload(connOfRecord(c.record), `/projects/${encodeURIComponent(String(req.params.key))}/files/${rest}${parents}`, req, res, c.operator.email);
   }));
   router.patch(`${wp}/projects/:key/files/{*rest}`, withWorkspaceProject(async (req, res, c) => {
     const rest = restSegments(req).map(encodeURIComponent).join("/");
