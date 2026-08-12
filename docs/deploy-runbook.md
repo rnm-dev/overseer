@@ -30,7 +30,7 @@ traffic or migrating production data until those steps are explicitly approved.
 | --- | --- | --- |
 | `overseer-postgres-data` | `/var/lib/postgresql/data` | PostgreSQL cluster |
 | `overseer-postgres-backups` | `/backups` | On-host database dumps |
-| `overseer-releases` | `/data/releases` | Published Peon release archives |
+| `overseer-releases` | `/data/releases` | Legacy release data retained for rollback/audit; current Peon updates use public npm |
 
 The backup volume is only the first recovery layer. Copy every cutover dump off
 the production host before restoring or switching traffic.
@@ -362,7 +362,8 @@ docker compose exec -T postgres \
 sha256sum backups/overseer-*.dump
 ```
 
-Archive the current release volume even when the `releases` table is empty:
+For historical cutovers that still carry legacy release data, archive the
+release volume even though current schema has no `releases` table:
 
 ```sh
 docker run --rm --read-only \
@@ -372,7 +373,8 @@ docker run --rm --read-only \
 sha256sum backups/overseer-releases.tgz
 ```
 
-Copy both artifacts to independent storage before continuing.
+Copy both artifacts to independent storage before continuing. This legacy
+archive is not an input to current Peon releases, which come from public npm.
 
 ## Approved data migration
 
@@ -380,7 +382,8 @@ This section is intentionally not executed during preparation.
 
 1. Put the source Overseer into a maintenance window so no writes can race the
    final dump.
-2. Produce and checksum a new final database dump and release archive.
+2. Produce and checksum a new final database dump and, when legacy release data
+   is present, its archive.
 3. Stream the dump over SSH into the production backup volume:
 
    ```sh
@@ -400,8 +403,8 @@ This section is intentionally not executed during preparation.
         /backups/overseer-final.dump'
    ```
 
-5. Restore release bytes into `overseer-releases`, preserving ownership for the
-   application `node` user:
+5. If the source carried legacy release bytes, restore them into
+   `overseer-releases`, preserving ownership for the application `node` user:
 
    ```sh
    ssh root@94.247.128.103 \
@@ -434,7 +437,8 @@ This section is intentionally not executed during preparation.
    `OVERSEER_TRUSTED_PROXIES=loopback,linklocal,uniquelocal` and keeps
    `proxy.forward_headers: true`.
 6. Verify `/healthz`, SPA assets, GitHub OAuth, WebSocket `/api/ws`, Peon
-   heartbeat/recruitment, a tokenized preview host, and release download.
+   heartbeat/recruitment, a tokenized preview host, and an owner-authorized Peon
+   update check.
 7. Keep the source stack and its volumes untouched through the rollback window.
 
 ## Rollback
@@ -484,8 +488,8 @@ Deployed images:
 
 | Image | Deployed | What it carried |
 | --- | --- | --- |
-| `vibze/overseer:f9b82819c6a88ffec666e1659ab746aac4fd1962` | 2026-08-10 (current) | An upgrade to a path no handler claims is refused with 400 and the socket destroyed, stopping the file-descriptor leak an outdated Peon caused by dialling the retired `/api/v1/peons/transfer/ws`. Built from a detached worktree of the pushed commit because the shared checkout held unrelated work in progress. |
-| `vibze/overseer:cdfb5ccc00e19021773db8657a7cee2312adca63` | 2026-08-05 (previous) | Transcript file links reach the project viewer in both shapes an agent writes them; the mobile client's workspace themes; the Peon 0.12.5 release preparation. |
+| `vibze/overseer:ef4e768620cdaf76ff58fda1cc433c610f7483e2` | 2026-08-12 (current) | Public-release web/server batch: transcript scroll-follow fixes, managed-plugin inquiry convergence and Peon 0.12.8 release preparation. |
+| `vibze/overseer:f9b82819c6a88ffec666e1659ab746aac4fd1962` | 2026-08-10 (previous) | An upgrade to a path no handler claims is refused with 400 and the socket destroyed, stopping the file-descriptor leak an outdated Peon caused by dialling the retired `/api/v1/peons/transfer/ws`. Built from a detached worktree of the pushed commit because the shared checkout held unrelated work in progress. |
 
 ### Everyday deploy
 

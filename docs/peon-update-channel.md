@@ -8,43 +8,46 @@ request authority.
 The machine routes are:
 
 - `POST /api/v1/control/check-update`;
-- `POST /api/v1/control/update`, with the approved
-  `{ version, revision, sha256 }` identity and optional `force`;
+- `POST /api/v1/control/update`, with only optional `{ force: true }`;
 - `GET /api/v1/control/update/:requestId`, returning a bounded pending or
   terminal view.
 
-`Peon-Request-Id` is the apply idempotency identity. The same ID and approved
-release replays the existing lifecycle. Reuse with different identity returns
-`409 REQUEST_ID_REUSED`; another check or apply while one is running or awaiting
-replacement attestation returns `409 UPDATE_IN_PROGRESS`.
+`Peon-Request-Id` is the apply idempotency identity. The same ID replays the
+existing lifecycle; another check or apply while one is running or awaiting
+replacement attestation returns `409 UPDATE_IN_PROGRESS`. Peon rejects unknown
+body fields instead of accepting caller-supplied release identity.
 
-Overseer resolves the approved release once and binds version, immutable
-release revision and SHA-256 into the apply request. The updater re-fetches
-authenticated release metadata immediately before download and returns
-`RELEASE_CHANGED` if that identity changed.
+For a global installation, Peon resolves `@rnm-dev/peon@latest` directly from
+the public npm registry. Apply repeats the check, snapshots the resulting exact
+version into its mode-0600 operation receipt, and the detached updater resolves
+`latest` again immediately before installation. If it changed,
+`RELEASE_CHANGED` stops the operation rather than installing a version different
+from the admitted one.
 
-Release metadata and the Overseer-served npm archive use authenticated Fleet
-HTTP. Bytes never use the control WebSocket, a transfer WebSocket or the
-reverse-command ledger. Streaming preserves Range, abort/backpressure, declared
-length and SHA-256 verification. Public npm is not the enrolled fleet update
-channel.
+Overseer does not store or serve Peon release metadata or package bytes. Its
+authenticated browser/mobile route authorizes the owner and relays only the
+bounded check/apply/status request over Fleet HTTP. npm supplies both metadata
+and bytes directly to Peon and performs its normal package-integrity
+verification. No update request or package byte enters the control WebSocket,
+a transfer WebSocket or the reverse-command ledger.
 
 The detached updater durably writes a mode-0600 receipt containing only request
-ID, initiating PID and expected version/revision/SHA-256. It downloads and
-verifies the exact archive, transactionally installs it, validates compiled
-output, writes the same bounded identity into the installed package and keeps a
-locally packed rollback archive. Duplicate delivery does not reinstall or
-restart.
+ID, initiating PID and expected version; revision and SHA-256 are null for npm
+releases. It installs the exact npm spec, validates every compiled JavaScript
+entry point, and keeps a locally packed rollback archive before replacement.
+Duplicate delivery does not reinstall or restart. A running session blocks the
+update unless the owner explicitly chooses force.
 
 Only a replacement daemon with a different PID may complete the operation. Its
-running package must report the exact approved version, revision and SHA-256;
-changed files, version alone, or a mismatched revision/digest fail with
-`ATTESTATION_MISMATCH`. Source checkouts are rejected because they cannot attest
-process replacement.
+running package must report the exact admitted version; npm releases carry null
+revision and SHA-256 fields. A mismatched version or non-replacement process
+fails with `ATTESTATION_MISMATCH`. Managed Fleet HTTP apply rejects source
+checkouts because they cannot attest process replacement; the operator-only CLI
+checkout path remains a separate fast-forward workflow.
 
 Stable bounded outcomes distinguish no update, registry unavailability,
-changed release, download or archive-integrity failure, policy rejection,
-install/restart failure with rollback, restart timeout and attestation mismatch.
-Credentials, URLs and free-form updater output stay out of receipts and API
-results. Realtime update-state notification may remain a WebSocket event, but
-it is not a request or command transport.
+changed release, policy rejection, install/restart failure with rollback,
+restart timeout and attestation mismatch. Credentials, registry URLs and
+free-form updater output stay out of receipts and API results. Realtime
+update-state notification may remain a WebSocket event, but it is not a request
+or command transport.

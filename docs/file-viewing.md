@@ -20,8 +20,7 @@ mesh. This is the only authority for:
 - sandbox and project file bodies, metadata and Range downloads;
 - attachment and project uploads;
 - project move/delete mutations;
-- session artifact metadata, raw/download bytes, preview handoff and watch SSE;
-- approved Peon release archive bytes.
+- session artifact metadata, raw/download bytes, preview handoff and watch SSE.
 
 There is no transfer WebSocket, transfer capability negotiation, socket
 fallback or reverse-command byte payload. Browser abort closes the upstream
@@ -31,6 +30,8 @@ limits, checksum validation, temporary-file cleanup and atomic commit.
 
 Directory listings use the same Fleet HTTP plane. Overseer strips only its
 private `directory=1` hint and preserves every other raw query parameter.
+Peon self-update packages are not file traffic: Peon fetches them directly from
+the public npm registry after an owner-authorized Fleet HTTP apply request.
 
 ## Attachment paths
 

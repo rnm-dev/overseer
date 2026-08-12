@@ -504,8 +504,8 @@ routes work only to peons reporting `ok`.
 The same response exposes the update check as `updateAvailable`,
 `updateCurrentVersion`, `updateLatestVersion`, `updateCurrentRevision`,
 `updateLatestRevision`, `updateCheckedAt`, and `updateCheckError`. Production
-global installs populate the SemVer fields from the installed package and
-Overseer's global release registry, with revision fields null. Source checkouts
+global installs populate the SemVer fields from the installed package and the
+public npm registry, with revision fields null. Source checkouts
 populate `updateCurrentVersion` plus the two Git revision fields; latest version
 is null because a remote commit need not be a published release. The overseer
 uses `updateAvailable` for actions and chooses version fields for release installs,

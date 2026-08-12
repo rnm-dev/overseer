@@ -72,8 +72,8 @@ repository — that content lives here.
   is `peon enroll` plus an operator-entered address and phrase.
 - [daemon configuration](daemon-configuration.md) — owner-only reads and
   revision-fenced patches over Fleet HTTP.
-- [Peon update channel](peon-update-channel.md) — checks, apply admission,
-  approved release metadata and archive bytes.
+- [Peon update channel](peon-update-channel.md) — owner-authorized check,
+  apply and status over Fleet HTTP; package metadata and bytes come from npm.
 - [Peon restart recovery](peon-restart-recovery.md) — the checklist when a Peon
   does not come back.
 - [reverse runtime capabilities](runtime-capabilities.md) — the `runtime-state-v1`

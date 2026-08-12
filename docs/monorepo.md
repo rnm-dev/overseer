@@ -112,12 +112,13 @@ it rather than kept private.
 `rnmdev` account owns it with 2FA enabled. Public packages therefore use the
 `@rnm-dev/` scope, matching the GitHub organisation.
 
-**Peon's release channel must not change.** In production a Peon is installed
-from an npm archive served by Overseer itself, verified by exact size and
-SHA-256 against enrollment credentials (`src/cli/update.ts`,
-`shared/releaseRegistry.ts`, the `/data/releases` volume). That is what makes a
-fleet-wide version gate possible. The public registry is the *installation and
-onboarding* channel; Overseer stays the *update* channel for an enrolled fleet.
+**Peon's release channel is public npm.** Production installs and enrolled
+fleet updates both resolve `@rnm-dev/peon` from npm. Overseer authorizes the
+owner's check/apply/status request and relays it to the selected Peon over Fleet
+HTTP, but never stores or streams release metadata or bytes. Peon binds an
+admitted update to an exact version, relies on npm integrity verification, and
+packs the current installation locally before replacement so rollback does not
+depend on the network.
 
 **Peon's checkout update mode assumes package root == repository root.**
 `PACKAGE_ROOT` and `isGitCheckout` need to be separated once the package sits in
@@ -168,11 +169,12 @@ Each step leaves the tree working.
 2. **OVSR-239** — `packages/protocol`; server and web move onto it, then publish
    it as `@rnm-dev/protocol`.
 3. **OVSR-240** — *released.* Peon lives in `apps/peon` as the
-   `@rnm-dev/peon` workspace; public `0.11.3` was published to npm on
-   2026-07-30 and verified by a clean registry install and rollback pack/install
-   from the compiled-only distribution. npm is the installation
-   channel only: enrolled fleet updates still use Overseer's authenticated,
-   size- and SHA-256-verified release registry.
+   `@rnm-dev/peon` workspace. Public `0.11.3` was published to npm on
+   2026-07-30; `0.12.8` was published and canary-updated on 2026-08-12. Both
+   were verified by clean registry installs, and the updater's locally packed
+   archive provides rollback for the compiled-only distribution. npm is the
+   installation and enrolled-fleet package channel; Overseer relays only the
+   authenticated control request.
 4. **OVSR-241** — *done locally.* The Flutter client is in `apps/client`, its
    GitHub Actions workflow is gone, and its documentation lives under
    `docs/client/`.

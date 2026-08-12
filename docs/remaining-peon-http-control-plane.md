@@ -22,8 +22,8 @@ Direct authenticated Fleet HTTP over mesh is the sole authority for:
 - sandbox/project file metadata, bodies, Range/download and uploads;
 - project file move/delete mutations;
 - session artifact metadata, raw/download, preview handoff and watch SSE;
-- authenticated update check/apply/status, release metadata and release archive
-  bytes.
+- authenticated update check/apply/status. Release metadata and package bytes
+  travel directly between Peon and the public npm registry.
 
 The control WebSocket remains for projections and realtime
 invalidation/events. Update-state notification may remain an event, but check,
@@ -46,9 +46,9 @@ validation, containment, filesystem permissions, size/checksum limits,
 temporary-file cleanup, atomic commit and mutation result.
 
 HTTP streaming preserves backpressure, abort cancellation, Range and download
-headers. Update archives retain authenticated release authorization, immutable
-version/revision/SHA-256 binding, declared size verification, transactional
-install, restart attestation, rollback archive and restart recovery.
+headers. Updates retain owner-authorized admission, exact-version binding,
+npm's package-integrity verification, transactional install,
+replacement-process attestation, a local rollback archive and restart recovery.
 
 ## Production call-site rule
 
