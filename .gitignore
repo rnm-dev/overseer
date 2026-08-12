@@ -11,12 +11,11 @@ dist/
 **/.kamal/env/
 
 # Workspace state that is not source: the database bind mount, dumps, service
-# account keys, environment files, and the instructions site — a separate
-# product still waiting for its own repository (OVSR-237).
+# account keys and environment files. The instructions site is no longer here
+# at all — it has its own repository, checked out at ../overseer-website.
 /postgres/
 /backups/
 /secrets/
-/site/
 /.env
 /.env.*
 /.claude/

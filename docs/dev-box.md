@@ -25,7 +25,6 @@ Host: **nid-dev** (`ssh NID-DEV`, root). Everything under `/rnm/overseer/`:
 │   └── web/             # @rnm-dev/overseer-web — React (Vite+TS) dashboard
 ├── infra/dev/Dockerfile # the shared dev image for both workspaces
 ├── docs/                # project documentation hub (docs/index.md)
-├── site/                # instructions site — separate product, gitignored (OVSR-237)
 └── postgres/
     └── data/            # bind-mounted Postgres 16 data dir (system-of-record)
 ```

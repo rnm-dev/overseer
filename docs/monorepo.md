@@ -147,23 +147,21 @@ not a git repository at all, so the documentation injected into every session
 was unversioned. OVSR-238 flattened it: the checkout is now `/rnm/overseer`
 itself, and `docs/`, `infra/`, `scripts/` and compose are versioned with the
 code. `.gitignore` covers what is state rather than source — `postgres/`,
-`backups/`, `secrets/`, `site/`, the env files and the deploy logs.
+`backups/`, `secrets/`, the env files and the deploy logs.
 
 ## Out of scope: the instructions site
 
-The site is a separate product and does **not** join the monorepo. It has to
-leave `/rnm/overseer` first (OVSR-237) — and note that it currently has no
-repository at all, despite what [instructions site](static-site.md) claims.
-Detaching it before the move keeps an unversioned directory out of the history
-merge.
+The site is a separate product and does **not** join the monorepo. OVSR-237
+gave it its own repository (`rnm-dev/overseer-website`) and moved it out of
+`/rnm/overseer` to `/rnm/overseer-website`, taking its documentation with it.
+Only the `site` dev service in compose still points at that sibling checkout.
 
 ## Order
 
 Each step leaves the tree working.
 
-0. **OVSR-237** — give the instructions site a repository and detach it from
-   compose and docs. Outside the monorepo; `site/` is gitignored until then, so
-   this no longer blocks anything.
+0. **OVSR-237** — *done.* The instructions site has its own repository and left
+   the tree for `/rnm/overseer-website`; compose builds it from there.
 1. **OVSR-238** — *done, merged to master, not yet deployed.* Flattened checkout root, npm
    workspaces, `apps/server` and `apps/web`, root `verify`, `infra/dev` image,
    rewritten compose mounts and Kamal build context.

@@ -110,13 +110,14 @@ services:
       - app
 
   # Instructions site — Vite + Tailwind v4 + Motion/Lenis. A separate product
-  # that does not join the monorepo: ./site is gitignored here and still has no
-  # repository of its own (OVSR-237). Production is a static build uploaded to
-  # Cloudflare Pages. This service is the dev server
-  # behind dev.ovrseer.org, with HMR over wss:443 (see site/vite.config.js).
+  # with its own repository (git@github.com:rnm-dev/overseer-website.git),
+  # checked out beside this tree at ../overseer-website; nothing of it is
+  # versioned here. Production is a static build uploaded to Cloudflare Pages.
+  # This service is only the dev server behind dev.ovrseer.org, with HMR over
+  # wss:443 (see ../overseer-website/vite.config.js).
   site:
     build:
-      context: ./site
+      context: ../overseer-website
     # Keep files created through the bind mount writable by the shared rnm group.
     command: sh -c 'umask 0002 && exec npm run dev'
     restart: unless-stopped
@@ -127,7 +128,7 @@ services:
     volumes:
       # Whole-dir mount so every source/config file hot-reloads. The anonymous
       # volume keeps the image's node_modules from being shadowed.
-      - ./site:/app
+      - ../overseer-website:/app
       - /app/node_modules
 
 volumes:
