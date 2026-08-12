@@ -181,3 +181,56 @@ test("mobile stop-and-queue action uses a compact lightning icon", () => {
   assert.match(markup, /class="hidden sm:inline">Queue &amp; stop/);
   assert.match(markup, /\bh-8 w-8\b/);
 });
+
+test("a draft carrying attachments by path shows them and can be sent with no text", () => {
+  const markup = renderToStaticMarkup(React.createElement(
+    I18nProvider,
+    null,
+    React.createElement(Composer, {
+      value: "",
+      onChange: () => undefined,
+      onSubmit: () => undefined,
+      placeholder: "Message",
+      submitTitle: "Send",
+      disabled: false,
+      files: [],
+      onFilesChange: () => undefined,
+      carried: [{ type: "file", path: "/tmp/peon-files/uploads/session/plan.md" }],
+      onCarriedChange: () => undefined,
+      onPreviewFile: () => undefined,
+      filesEnabled: true,
+      error: null,
+      onErrorChange: () => undefined,
+    }),
+  ));
+
+  // Named by its basename: the bytes are on the peon, not in this browser.
+  assert.match(markup, /plan\.md/);
+  assert.match(markup, /title="\/tmp\/peon-files\/uploads\/session\/plan\.md"/);
+  // A queued message pulled back in may carry attachments and no text — the
+  // submit button has to accept that as a message. The accent styling is only
+  // applied while it can be submitted.
+  assert.match(markup, /bg-accent text-on-accent/);
+});
+
+test("carrying nothing leaves the attachment row out entirely", () => {
+  const markup = renderToStaticMarkup(React.createElement(
+    I18nProvider,
+    null,
+    React.createElement(Composer, {
+      value: "hello",
+      onChange: () => undefined,
+      onSubmit: () => undefined,
+      placeholder: "Message",
+      submitTitle: "Send",
+      disabled: false,
+      files: [],
+      onFilesChange: () => undefined,
+      onPreviewFile: () => undefined,
+      filesEnabled: true,
+      error: null,
+      onErrorChange: () => undefined,
+    }),
+  ));
+  assert.doesNotMatch(markup, /📎/);
+});

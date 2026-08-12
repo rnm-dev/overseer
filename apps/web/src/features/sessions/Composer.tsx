@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Hourglass, Zap } from "lucide-react";
 import { useT } from "../../shared/i18n";
+import type { MessageAttachment } from "./parsing";
 
 // author: Viktor
 // The prompt box shared by PeonNewSession (starting a session) and
@@ -20,6 +21,12 @@ export const MAX_TEXTAREA_HEIGHT = 160;
 const isImage = (f: File) => IMAGE_TYPES.has(f.type);
 // Friendly chip label — pasted screenshots have a machine name; show a short one.
 const chipName = (f: File) => (/^pasted-\d+/.test(f.name) ? "Pasted image" : f.name);
+// An attachment the draft carries by path was committed on the peon before this
+// composer ever saw it, so there are no bytes here to name it by.
+export const carriedName = (attachment: MessageAttachment): string =>
+  attachment.name || attachment.path?.split(/[\\/]/).filter(Boolean).pop() || "file";
+
+export const COMPOSER_CHIP_CLASS = "flex items-center gap-1.5 rounded-md border border-edge-strong bg-surface py-1 pl-1.5 pr-2 font-mono text-xs text-ink-muted";
 
 export function isFileDrag(types: ArrayLike<string>): boolean {
   return Array.from(types).includes("Files");
@@ -53,6 +60,10 @@ export interface ComposerProps {
   autoFocus?: boolean;
   files: File[];
   onFilesChange: (files: File[]) => void;
+  // Attachments the draft carries by path instead of by bytes — a queued
+  // message pulled back in for editing brings its own along.
+  carried?: MessageAttachment[];
+  onCarriedChange?: (carried: MessageAttachment[]) => void;
   onPreviewFile: (url: string) => void;
   filesEnabled: boolean | null;
   // Local input/attachment validation stays next to the field. Failed remote
@@ -76,6 +87,8 @@ export function Composer({
   autoFocus,
   files,
   onFilesChange,
+  carried = [],
+  onCarriedChange,
   onPreviewFile,
   filesEnabled,
   error,
@@ -89,7 +102,7 @@ export function Composer({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const dragDepthRef = useRef(0);
   const [dragActive, setDragActive] = useState(false);
-  const canSubmit = !disabled && Boolean(value.trim() || files.length);
+  const canSubmit = !disabled && Boolean(value.trim() || files.length || carried.length);
   // Object URLs for image thumbnails; revoked when the file set changes/unmounts.
   const previews = useMemo(() => files.map((f) => (isImage(f) ? URL.createObjectURL(f) : null)), [files]);
   useEffect(() => () => previews.forEach((u) => u && URL.revokeObjectURL(u)), [previews]);
@@ -159,10 +172,26 @@ export function Composer({
         </div>
       )}
       {error && <div className="px-2 pb-1 pt-0.5 font-mono text-xs text-danger">⚠ {error}</div>}
-      {files.length > 0 && (
+      {(files.length > 0 || carried.length > 0) && (
         <div className="flex flex-wrap gap-1.5 px-1 pb-1.5 pt-1">
+          {carried.map((attachment, i) => (
+            <span key={`carried:${attachment.path}:${i}`} className={COMPOSER_CHIP_CLASS}>
+              <span className="shrink-0 text-ink-faint" aria-hidden>📎</span>
+              <span className="max-w-[130px] truncate" title={attachment.path}>{carriedName(attachment)}</span>
+              <button
+                type="button"
+                className="shrink-0 text-ink-faint transition-colors hover:text-danger"
+                title={t("session.compose.removeAttachment")}
+                aria-label={t("session.compose.removeAttachment")}
+                onClick={() => onCarriedChange?.(carried.filter((_, j) => j !== i))}
+                disabled={disabled || !onCarriedChange}
+              >
+                ×
+              </button>
+            </span>
+          ))}
           {files.map((f, i) => (
-            <span key={i} className="flex items-center gap-1.5 rounded-md border border-edge-strong bg-surface py-1 pl-1.5 pr-2 font-mono text-xs text-ink-muted">
+            <span key={i} className={COMPOSER_CHIP_CLASS}>
               {previews[i] ? (
                 <button type="button" title={t("session.compose.preview")} onClick={() => onPreviewFile(previews[i]!)} className="block h-4 w-4 shrink-0 overflow-hidden rounded-sm">
                   <img src={previews[i]!} alt="" className="h-full w-full object-cover" />

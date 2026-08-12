@@ -28,6 +28,7 @@ test("every queued item exposes an accessible steer action", () => {
       removing: new Set<string>(),
       steering: new Set<string>(),
       onRemove: () => {},
+      onEdit: () => {},
       onSteer: () => {},
       t: (key) => key === "session.queue.steer" ? "Направить" : key,
     }),
@@ -70,6 +71,7 @@ test("a single-line queued message is centered against the action buttons", () =
       removing: new Set<string>(),
       steering: new Set<string>(),
       onRemove: () => {},
+      onEdit: () => {},
       onSteer: () => {},
       t: (key) => key,
     }),
@@ -86,6 +88,7 @@ test("a scrollable queue ends flush against the composer fade", () => {
       removing: new Set<string>(),
       steering: new Set<string>(),
       onRemove: () => {},
+      onEdit: () => {},
       onSteer: () => {},
       t: (key) => key,
     }),
@@ -105,9 +108,43 @@ test("steer action is disabled while that queued item is being dispatched", () =
       removing: new Set<string>(),
       steering: new Set([queuedItem.id]),
       onRemove: () => {},
+      onEdit: () => {},
       onSteer: () => {},
       t: (key) => key === "session.queue.steer" ? "Steer" : key,
     }),
   );
   assert.match(html, /<button[^>]*disabled=""[^>]*aria-label="Steer"/);
+});
+
+test("every queued item can be pulled back into the composer for editing", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(QueueList, {
+      items: [queuedItem],
+      removing: new Set<string>(),
+      steering: new Set<string>(),
+      onRemove: () => {},
+      onEdit: () => {},
+      onSteer: () => {},
+      t: (key) => key === "session.queue.edit" ? "Редактировать" : key,
+    }),
+  );
+  assert.match(html, /aria-label="Редактировать"/);
+  assert.match(html, /lucide-pencil/);
+  // Icon only: the row already carries one labelled action and must stay narrow.
+  assert.doesNotMatch(html, /class="hidden sm:inline">Редактировать<\/span>/);
+});
+
+test("an item already being removed or steered cannot also be edited", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(QueueList, {
+      items: [queuedItem],
+      removing: new Set<string>(["second"]),
+      steering: new Set<string>(),
+      onRemove: () => {},
+      onEdit: () => {},
+      onSteer: () => {},
+      t: (key) => key,
+    }),
+  );
+  assert.equal(html.match(/<button[^>]*disabled/g)?.length, 3);
 });

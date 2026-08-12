@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Hourglass, Send, Trash2 } from "lucide-react";
+import { Hourglass, Pencil, Send, Trash2 } from "lucide-react";
 import { attachmentLabel, mergeQueueRows, type QueueItem, type QueueRow } from "./queue";
 import type { Translate } from "../../shared/i18n";
 
@@ -24,11 +24,12 @@ function useQueueRows(items: QueueItem[]): QueueRow[] {
   return rows;
 }
 
-export function QueueList({ items, removing, steering, onRemove, onSteer, t }: {
+export function QueueList({ items, removing, steering, onRemove, onEdit, onSteer, t }: {
   items: QueueItem[];
   removing: ReadonlySet<string>;
   steering: ReadonlySet<string>;
   onRemove: (id: string) => void;
+  onEdit: (id: string) => void;
   onSteer: (id: string) => void;
   t: Translate;
 }) {
@@ -61,6 +62,16 @@ export function QueueList({ items, removing, steering, onRemove, onSteer, t }: {
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-1">
+              <button
+                type="button"
+                className={QUEUE_ACTION_CLASS}
+                disabled={steering.has(item.id) || removing.has(item.id)}
+                onClick={() => onEdit(item.id)}
+                title={t("session.queue.edit")}
+                aria-label={t("session.queue.edit")}
+              >
+                <Pencil size={13} aria-hidden />
+              </button>
               <button
                 type="button"
                 className={`${QUEUE_ACTION_CLASS} sm:gap-1 sm:px-2`}

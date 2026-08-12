@@ -5,6 +5,7 @@ import {
   attachmentLabel,
   createQueueActivityTracker,
   createQueueReconciler,
+  draftWithQueuedItem,
   enqueueSessionFollowup,
   getSessionQueue,
   mergeQueueRows,
@@ -221,4 +222,58 @@ test("a steered row stays hidden across the snapshots Peon answers before it pop
 test("an unsteered queue list is passed through unchanged", () => {
   const items = [item("1"), item("2")];
   assert.equal(visibleQueueItems(items, new Map()), items);
+});
+
+test("editing a queued message puts its text and attachments in the composer", () => {
+  const queued = item("1", {
+    prompt: "Rewrite the migration",
+    attachments: [{ type: "file", path: "/tmp/peon-files/uploads/plan.md", name: "plan.md" }],
+  });
+
+  const draft = draftWithQueuedItem(queued, "", []);
+
+  assert.equal(draft.text, "Rewrite the migration");
+  // Carried by the path Peon already committed — the bytes are not re-uploaded.
+  assert.deepEqual(draft.carried.map((attachment) => attachment.path), ["/tmp/peon-files/uploads/plan.md"]);
+});
+
+test("editing a queued message never discards what was already drafted", () => {
+  const queued = item("1", {
+    prompt: "Rewrite the migration",
+    attachments: [{ type: "file", path: "/tmp/peon-files/uploads/plan.md" }],
+  });
+  const drafted = [{ type: "image" as const, path: "/tmp/peon-files/uploads/shot.png" }];
+
+  const draft = draftWithQueuedItem(queued, "  and drop the index  ", drafted);
+
+  assert.equal(draft.text, "Rewrite the migration\n\nand drop the index");
+  assert.deepEqual(draft.carried.map((attachment) => attachment.path), [
+    "/tmp/peon-files/uploads/plan.md",
+    "/tmp/peon-files/uploads/shot.png",
+  ]);
+});
+
+test("pulling the same attachment in twice sends it once", () => {
+  const attachment = { type: "file" as const, path: "/tmp/peon-files/uploads/plan.md" };
+  const draft = draftWithQueuedItem(item("1", { attachments: [attachment] }), "", [attachment]);
+  assert.equal(draft.carried.length, 1);
+});
+
+test("a carried draft cannot exceed one message's attachment limit", () => {
+  const many = Array.from({ length: 9 }, (_, i) => ({ type: "file" as const, path: `/tmp/peon-files/uploads/${i}.md` }));
+  const draft = draftWithQueuedItem(
+    item("1", { attachments: [{ type: "file", path: "/tmp/peon-files/uploads/queued.md" }] }),
+    "",
+    many,
+  );
+  assert.equal(draft.carried.length, 10);
+  // The queued message's own attachment is the one that cannot be dropped.
+  assert.equal(draft.carried[0]!.path, "/tmp/peon-files/uploads/queued.md");
+});
+
+test("an attachment with no path cannot be carried", () => {
+  // A locally picked File is described by name and size alone; there is nothing
+  // for Peon to resolve, so it must not silently become an empty attachment.
+  const draft = draftWithQueuedItem(item("1", { attachments: [{ type: "file", name: "picked.md" }] }), "", []);
+  assert.deepEqual(draft.carried, []);
 });

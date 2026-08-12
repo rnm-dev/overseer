@@ -48,6 +48,29 @@ item ID while changing its type and dispatch priority.
   state to be released, then resumes the same Claude conversation with the
   selected item. The item remains durable until the replacement run starts.
 
+### Editing a queued message is a pull, not a patch
+
+The web client edits a queued follow-up by taking it out of the queue and
+putting it in the composer — text and attachments together — where the ordinary
+composer actions apply to it again. Peon's `PATCH .../queue/:itemId` is
+deliberately unused for this: it carries a prompt and a `replyTo` and nothing
+else, so it cannot express an attachment change, and a row left standing in the
+queue while it is being rewritten can be popped mid-edit and delivered as it
+stood. The price is that an edited message loses its place and is queued again
+at the back — a visible consequence, unlike a silent double delivery.
+
+Attachments ride back by path. They are already committed under the peon's file
+transfer root, so the composer carries them as paths (chips beside the picked
+files, dropped one by one) instead of downloading and re-uploading bytes it
+already sent. `resolveAttachments` therefore accepts either form of a path
+inside the root: the root-relative one an upload receipt returns, or the
+absolute one a stored message keeps. Containment in the root is still what
+decides — an absolute path outside it is refused exactly as before.
+
+A message that Peon starts between the click and the request cannot be pulled:
+the delete is answered `UNKNOWN_QUEUE_ITEM`, the composer says so and stays
+empty rather than inviting a second copy of a turn already running.
+
 ## Model and reasoning effort are pinned to the conversation
 
 A model or effort named on a follow-up is a choice about the conversation, not

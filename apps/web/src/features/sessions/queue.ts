@@ -177,6 +177,45 @@ export function attachmentLabel(attachment: MessageAttachment): string {
   return attachment.path.split(/[\\/]/).filter(Boolean).pop() ?? attachment.path;
 }
 
+// The composer may not carry more attachments than one message is allowed.
+export const CARRIED_ATTACHMENTS_MAX = 10;
+
+export interface ComposerDraftPatch {
+  text: string;
+  carried: MessageAttachment[];
+}
+
+/**
+ * What the composer holds after a queued message is pulled back into it for
+ * editing. The queued text goes first and whatever was already drafted keeps
+ * its own paragraph below it: editing an item must never be the reason a
+ * half-written message disappears.
+ *
+ * Attachments are carried by path rather than re-uploaded — they are already
+ * committed under the peon's file transfer root — and deduplicated so pulling
+ * the same file in twice does not send it twice.
+ */
+export function draftWithQueuedItem(
+  item: QueueItem,
+  text: string,
+  carried: readonly MessageAttachment[],
+): ComposerDraftPatch {
+  const queued = (item.attachments ?? []).filter((attachment) => Boolean(attachment.path));
+  const merged: MessageAttachment[] = [];
+  const seen = new Set<string>();
+  for (const attachment of [...queued, ...carried.filter((attachment) => Boolean(attachment.path))]) {
+    const path = attachment.path!;
+    if (seen.has(path)) continue;
+    seen.add(path);
+    merged.push(attachment);
+  }
+  const drafted = text.trim();
+  return {
+    text: drafted ? `${item.prompt}\n\n${drafted}` : item.prompt,
+    carried: merged.slice(0, CARRIED_ATTACHMENTS_MAX),
+  };
+}
+
 export async function removeWaitingQueueItem(
   itemId: string,
   remove: (id: string) => Promise<unknown>,

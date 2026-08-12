@@ -5,6 +5,7 @@ import { Composer, supportsDesktopComposerFocus } from "./Composer";
 import { ModelSelect, ReasoningEffortSelect, defaultEffortIdFor, effortsForModel, inheritedModelId, type ModelProvider, type ModelsCatalog } from "../settings/models";
 import { QueueList } from "./QueueList";
 import type { QueueItem } from "./queue";
+import type { MessageAttachment } from "./parsing";
 
 interface Props {
   setComposerNode: Dispatch<SetStateAction<HTMLDivElement | null>>;
@@ -12,6 +13,7 @@ interface Props {
   removingQueueItems: ReadonlySet<string>;
   steeringQueueItems: ReadonlySet<string>;
   removeQueuedItem: (id: string) => Promise<void>;
+  editQueuedItem: (id: string) => Promise<void>;
   steerQueuedItem: (id: string) => Promise<void>;
   input: string;
   setInput: (value: string) => void;
@@ -22,6 +24,8 @@ interface Props {
   controlConnected: boolean;
   files: File[];
   setFiles: Dispatch<SetStateAction<File[]>>;
+  carried: MessageAttachment[];
+  setCarried: (carried: MessageAttachment[]) => void;
   setAttachmentPreview: Dispatch<SetStateAction<string | null>>;
   filesEnabled: boolean | null;
   sendError: string | null;
@@ -54,9 +58,9 @@ export function composerFooterHeight(dockHeight: number, viewportHeight: number)
 
 export function SessionComposerDock(props: Props) {
   const {
-    setComposerNode, queueItems, removingQueueItems, steeringQueueItems, removeQueuedItem, steerQueuedItem,
+    setComposerNode, queueItems, removingQueueItems, steeringQueueItems, removeQueuedItem, editQueuedItem, steerQueuedItem,
     input, setInput, running, enqueue, send, sending, controlConnected, files, setFiles,
-    setAttachmentPreview, filesEnabled, sendError, setSendError,
+    carried, setCarried, setAttachmentPreview, filesEnabled, sendError, setSendError,
     modelsSupported, catalog, sessionKey, sessionProvider, overrideModel,
     setOverrideModel, sessionModel, overrideReasoningEffort,
     setOverrideReasoningEffort, sessionReasoningEffort,
@@ -74,6 +78,7 @@ export function SessionComposerDock(props: Props) {
       removing={removingQueueItems}
       steering={steeringQueueItems}
       onRemove={(id) => void removeQueuedItem(id)}
+      onEdit={(id) => void editQueuedItem(id)}
       onSteer={(id) => void steerQueuedItem(id)}
       t={t}
     />
@@ -92,6 +97,8 @@ export function SessionComposerDock(props: Props) {
       autoFocus={supportsDesktopComposerFocus()}
       files={files}
       onFilesChange={setFiles}
+      carried={carried}
+      onCarriedChange={setCarried}
       onPreviewFile={setAttachmentPreview}
       filesEnabled={filesEnabled}
       error={sendError}

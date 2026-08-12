@@ -90,14 +90,23 @@ function narrowPermissionMode(value: unknown): "plan" | undefined {
 }
 
 function attachmentAbsPath(root: string, relPath: string): string {
-  const abs = resolveInRoot(root, relPath.split("/").filter(Boolean));
+  const abs = resolveAttachmentPath(root, relPath);
   if (!abs) throw new AttachmentError(400, "PATH_ESCAPE", `attachment path escapes the file transfer root: ${relPath}`);
   return abs;
 }
 
-function resolveInRoot(root: string, segments: string[]): string | null {
+/**
+ * An upload is answered with a path relative to the transfer root, but a stored
+ * message keeps the absolute one — so re-sending an attachment an operator
+ * already has (editing a queued message back into the composer) hands this the
+ * absolute form. Both are accepted; containment in the root is what decides,
+ * not which form was written, so an absolute path outside the root is still a
+ * refusal rather than a read of the wider filesystem.
+ */
+export function resolveAttachmentPath(root: string, given: string): string | null {
   const rootAbs = path.resolve(root);
-  const abs = path.resolve(rootAbs, segments.join("/"));
+  const segments = given.split("/").filter(Boolean);
+  const abs = path.resolve(given.startsWith("/") ? "/" : rootAbs, segments.join("/"));
   if (abs !== rootAbs && !abs.startsWith(rootAbs + path.sep)) return null;
   return abs;
 }
