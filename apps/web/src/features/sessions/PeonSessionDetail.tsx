@@ -34,6 +34,12 @@ import {
   createTranscriptVirtualWindow,
   updateTranscriptVirtualWindow,
 } from "./transcriptVirtualization";
+import {
+  TRANSCRIPT_AT_BOTTOM_PX,
+  shouldFollowTranscript,
+  transcriptDistanceFromBottom,
+  transcriptFollowOutput,
+} from "./transcriptFollow";
 import { lockSessionDocument } from "./sessionViewport";
 import { loadToolDisplayMode } from "./sessionToolDisplay";
 import { isSuccessfulRunResult, onSelectedSoundPackChange, playPeonSound, playWorkSound, stopWorkSound } from "../../realtime/peonSounds";
@@ -441,28 +447,29 @@ function PeonSessionDetailPage() {
     onPreview,
   });
 
-  const stickToBottomRef = useRef(true);
-  const sendScrollPendingRef = useRef(false);
-  const followScrollPendingRef = useRef(false);
-  const followScrollLeftBottomRef = useRef(false);
-  const followScrollTimerRef = useRef<number | null>(null);
+  const [followTranscript, setFollowTranscript] = useState(true);
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const virtuosoScrollerRef = useRef<HTMLElement | null>(null);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
-  const updateScrollToBottomVisibility = useCallback(() => {
-    if (sendScrollPendingRef.current || followScrollPendingRef.current) return;
+  const handleTranscriptScroll = useCallback(() => {
     const scroller = virtuosoScrollerRef.current;
     if (!scroller) return;
-    const distanceFromBottom = scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop;
-    setShowScrollToBottom(distanceFromBottom >= scroller.clientHeight);
+    const position = {
+      scrollHeight: scroller.scrollHeight,
+      clientHeight: scroller.clientHeight,
+      scrollTop: scroller.scrollTop,
+    };
+    const following = shouldFollowTranscript(position);
+    setFollowTranscript(following);
+    setShowScrollToBottom(!following && transcriptDistanceFromBottom(position) >= scroller.clientHeight);
   }, []);
   const handleScrollerRef = useCallback((ref: HTMLElement | Window | null) => {
     const previous = virtuosoScrollerRef.current;
-    if (previous) previous.removeEventListener("scroll", updateScrollToBottomVisibility);
+    if (previous) previous.removeEventListener("scroll", handleTranscriptScroll);
     const scroller = ref instanceof HTMLElement ? ref : null;
     virtuosoScrollerRef.current = scroller;
-    if (scroller) scroller.addEventListener("scroll", updateScrollToBottomVisibility, { passive: true });
-  }, [updateScrollToBottomVisibility]);
+    if (scroller) scroller.addEventListener("scroll", handleTranscriptScroll, { passive: true });
+  }, [handleTranscriptScroll]);
   const handleStartReached = useCallback(() => {
     // useSessionTranscript owns the synchronous single-flight guard. If a
     // short page still leaves the viewport at the top, Virtuoso may request
@@ -470,49 +477,6 @@ function PeonSessionDetailPage() {
     // duplicate request.
     if (hasOlder) void loadOlder();
   }, [hasOlder, loadOlder]);
-  const handleAtBottomChange = useCallback((atBottom: boolean) => {
-    if (sendScrollPendingRef.current) return;
-    if (followScrollPendingRef.current) {
-      if (!atBottom) {
-        followScrollLeftBottomRef.current = true;
-      } else if (followScrollLeftBottomRef.current) {
-        followScrollPendingRef.current = false;
-        followScrollLeftBottomRef.current = false;
-        if (followScrollTimerRef.current !== null) window.clearTimeout(followScrollTimerRef.current);
-        followScrollTimerRef.current = null;
-        stickToBottomRef.current = true;
-        setShowScrollToBottom(false);
-      }
-      return;
-    }
-    stickToBottomRef.current = atBottom;
-    if (atBottom) setShowScrollToBottom(false);
-    else updateScrollToBottomVisibility();
-  }, [updateScrollToBottomVisibility]);
-  const handleFollowOutput = useCallback((): "auto" | "smooth" | false => {
-    if (!stickToBottomRef.current) return false;
-    followScrollPendingRef.current = true;
-    followScrollLeftBottomRef.current = false;
-    if (followScrollTimerRef.current !== null) window.clearTimeout(followScrollTimerRef.current);
-    followScrollTimerRef.current = window.setTimeout(() => {
-      followScrollPendingRef.current = false;
-      followScrollLeftBottomRef.current = false;
-      followScrollTimerRef.current = null;
-      const scroller = virtuosoScrollerRef.current;
-      if (!scroller) return;
-      const atBottom = scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop <= 2;
-      stickToBottomRef.current = atBottom;
-      updateScrollToBottomVisibility();
-    }, 800);
-    return window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
-  }, [updateScrollToBottomVisibility]);
-  const handleGhostCreated = useCallback(() => {
-    // Keep the current canvas for the first painted frame. followOutput must
-    // stay disabled until Virtuoso has measured the ghost and working rows.
-    sendScrollPendingRef.current = true;
-    stickToBottomRef.current = false;
-  }, []);
-
   const visibleEvents = useMemo(
     () => combineVisibleTranscriptEvents(history ?? [], orderedLive),
     [history, orderedLive],
@@ -547,7 +511,6 @@ function PeonSessionDetailPage() {
     queueActivity: queueActivityRef.current,
     controlReadScope,
     userMessageCount,
-    onGhostCreated: handleGhostCreated,
     setRunning,
     setRunningSelection,
     setStopNote,
@@ -796,48 +759,15 @@ function PeonSessionDetailPage() {
     setVirtualWindow(displayedVirtualWindow);
   }
   const scrollToBottom = useCallback(() => {
-    stickToBottomRef.current = true;
+    setFollowTranscript(true);
     setShowScrollToBottom(false);
     const lastIndex = displayedVirtualWindow.firstItemIndex + displayedVirtualWindow.rows.length - 1;
-    virtuosoRef.current?.scrollToIndex({ index: lastIndex, align: "end", behavior: "smooth" });
+    virtuosoRef.current?.scrollToIndex({ index: lastIndex, align: "end", behavior: "auto" });
   }, [displayedVirtualWindow]);
-  useEffect(() => {
-    if (!ghost || !sendScrollPendingRef.current) return;
-    let secondFrame = 0;
-    const firstFrame = window.requestAnimationFrame(() => {
-      secondFrame = window.requestAnimationFrame(() => {
-        if (!sendScrollPendingRef.current) return;
-        sendScrollPendingRef.current = false;
-        stickToBottomRef.current = true;
-        setShowScrollToBottom(false);
-        const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-        const lastIndex = displayedVirtualWindow.firstItemIndex + displayedVirtualWindow.rows.length - 1;
-        virtuosoRef.current?.scrollToIndex({
-          index: lastIndex,
-          align: "end",
-          behavior: reduceMotion ? "auto" : "smooth",
-        });
-      });
-    });
-    return () => {
-      window.cancelAnimationFrame(firstFrame);
-      if (secondFrame) window.cancelAnimationFrame(secondFrame);
-    };
-  }, [displayedVirtualWindow.firstItemIndex, displayedVirtualWindow.rows.length, ghost]);
-  useEffect(() => {
-    sendScrollPendingRef.current = false;
-    followScrollPendingRef.current = false;
-    followScrollLeftBottomRef.current = false;
-    if (followScrollTimerRef.current !== null) window.clearTimeout(followScrollTimerRef.current);
-    followScrollTimerRef.current = null;
-    return () => {
-      if (followScrollTimerRef.current !== null) window.clearTimeout(followScrollTimerRef.current);
-    };
-  }, [sessionKey]);
   useEffect(() => () => {
     const scroller = virtuosoScrollerRef.current;
-    if (scroller) scroller.removeEventListener("scroll", updateScrollToBottomVisibility);
-  }, [updateScrollToBottomVisibility]);
+    if (scroller) scroller.removeEventListener("scroll", handleTranscriptScroll);
+  }, [handleTranscriptScroll]);
   const cancelRename = () => {
     setDraft(title ?? "");
     setRenameNote(null);
@@ -922,8 +852,8 @@ function PeonSessionDetailPage() {
             components={{ Header: TranscriptListHeader }}
             computeItemKey={(_index, row) => row.key}
             startReached={handleStartReached}
-            atBottomStateChange={handleAtBottomChange}
-            followOutput={handleFollowOutput}
+            atBottomThreshold={TRANSCRIPT_AT_BOTTOM_PX}
+            followOutput={transcriptFollowOutput(followTranscript)}
             itemContent={(_index, row) => {
               if (row.kind === "footer") return <div style={{ height: row.height }} aria-hidden="true" />;
               if (row.kind === "lineage") return (

@@ -188,6 +188,10 @@ durable outbox; Overseer commits projection + inbox cursor + ACL-scoped browser
 event before ACK, shares one realtime demand per Peon/session and fences socket
 generations.
 
+The web transcript has one [scroll-follow contract](transcript-scrolling.md):
+real scroller position is the only user-intent signal, following is instant,
+and a detached viewport disables both append and resize following.
+
 Deleting a project unregisters it and nothing more: the Peon drops its record (refusing with `409 PROJECT_RUNNING` while a session is running against it, and leaving already-recorded sessions with the project key they carry), while the directory and its files stay on disk. The owner-only Settings action needs the Peon online because the Peon owns the record. After a confirmed Fleet HTTP deletion, Overseer immediately evicts its cached project and access grants through `forgetIndexedProject` instead of waiting for the following catalog event; that event then becomes an idempotent no-op.
 
 Every file the web client shows — a message attachment, project file, documentation page or session artifact — is named by one `FileSource` and read by one renderer. Message attachments retain their dedicated public route because transcript paths may be absolute; Overseer safely maps them into `fileTransferRoot`. File bodies, Range/download, uploads/mutations, session artifacts/preview/watch and update archive bytes all stream through the direct authenticated Fleet HTTP API over mesh. Details are in [showing a file](file-viewing.md).
