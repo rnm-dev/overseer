@@ -213,7 +213,7 @@ running every unfinished claim/command test in the tree.
 
 Overseer coverage:
 
-- `apps/server/src/reverseFleetSecurity.test.ts`
+- `apps/server/src/app/reverseFleetSecurity.test.ts`
 - claim contract and service proof/replay/race/rotation/revocation tests
 - reverse-command contract/gateway, control socket and Fleet HTTP byte routes
 - attachment sandbox, folder browse, project viewer, preview and ACL tests
@@ -240,7 +240,7 @@ Run one new cross-boundary file:
 
 ```sh
 node --import tsx --test --test-concurrency=1 \
-  apps/server/src/reverseFleetSecurity.test.ts
+  apps/server/src/app/reverseFleetSecurity.test.ts
 ```
 
 Run the complete stable security gate:

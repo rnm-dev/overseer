@@ -52,9 +52,9 @@ The database is `postgres:5432/overseer`, user `overseer`, and is not
 host-published — reach it with `docker compose exec postgres psql`.
 
 There is **no seed script**: the schema self-migrates on boot (`initDb`/
-`MIGRATIONS` in `apps/server/src/db.ts`) and there is no env-seeded admin.
+`MIGRATIONS` in `apps/server/src/infrastructure/db/migrations.ts`) and there is no env-seeded admin.
 Sign-in is GitHub OAuth with open sign-up (`ensureUserFromGithub` in
-`apps/server/src/auth.ts`), plus email/password and OIDC where the instance
+`apps/server/src/modules/auth/authOAuth.ts`), plus email/password and OIDC where the instance
 enables them — see [sign-in methods](sign-in-methods.md). Access is gated by
 workspace membership.
 
@@ -76,7 +76,7 @@ empty, so nothing recoverable was in it.
 ## Full-stack shape
 
 Overseer is a full-stack app: **one Express backend** (the capable core — JSON
-API for web + mobile, peon control plane, soon WebSocket) and a **React SPA**
+API for web + mobile, peon control plane, the live WebSocket) and a **React SPA**
 that is just a client of it. See [server design notes](server-design.md) for the design rationale (not
 Next.js — keep the capable backend).
 
@@ -94,7 +94,7 @@ One compose file, dev-oriented. `docker compose up -d`:
 - **API** runs `tsx watch` — an edit to `apps/server/src` restarts the process.
 - **Web** runs the Vite dev server — an edit to `apps/web/src` **hot-reloads
   the browser** (true HMR). HMR speaks `wss:443` through Cloudflare (configured
-  in `web/vite.config.ts` `server.hmr`); `allowedHosts` includes
+  in `apps/web/vite.config.ts` `server.hmr`); `allowedHosts` includes
   `overseer-dev.rnm.dev`.
 - Verified end-to-end: sign-in → dashboard renders live.
 
@@ -113,7 +113,7 @@ One compose file, dev-oriented. `docker compose up -d`:
 - **nginx vhost:** `/etc/nginx/sites-enabled/overseer.rnm.dev`. Routes `/fleet`
   + `/agent` → API (`127.0.0.1:4580`) and everything else → Vite (`127.0.0.1:4581`).
   WebSocket/SSE upgrade enabled on all locations (`$connection_upgrade` map +
-  `proxy_read_timeout 24h`) — covers the future resumable WS, session tails, and
+  `proxy_read_timeout 24h`) — covers the live resumable WS, session tails and
   Vite HMR.
 - **Host ports:** API `127.0.0.1:4580`, web/Vite `127.0.0.1:4581`. Both
   loopback-only; the internet reaches them only via nginx.
@@ -160,7 +160,7 @@ traffic. Keys:
   recruitment (operator pastes the minted token) works. There is **no shared fleet
   secret**: each peon gets a per-peon, workspace-scoped credential the overseer
   mints (`apps/server/src/modules/fleet/credentialsService.ts`). Operators authenticate only with device tokens.
-- Auth → device tokens; see `apps/server/src/auth.ts` and
+- Auth → device tokens; see `apps/server/src/modules/auth/` and
   [sign-in methods](sign-in-methods.md). `OVERSEER_PUBLIC_URL` is the origin
   every door is built against; `OVERSEER_PASSWORD_AUTH=1` opens email/password
   (on here), and the `OVERSEER_OIDC_*` pair names an OIDC issuer and client.
@@ -232,18 +232,15 @@ the anon node_modules volume with `-V`, else the container keeps the stale one:
 cd /rnm/overseer && docker compose up -d --build -V
 ```
 
-Migrations run automatically on app boot (`initDb()` in `apps/server/src/db.ts`),
+Migrations run automatically on app boot (`initDb()` in `apps/server/src/infrastructure/db/index.ts`),
 so a restart (which every reload is) keeps the schema in sync.
 
-## Notes / TODO
+## Notes
 
-- Dev Dockerfiles install deps + run watch servers; no `dist/`, no compile in dev.
-  A prod single-container build (Express static-serving `web/dist`) is stubbed in
-  `src/app/server.ts` but not wired to a Dockerfile yet.
-- nid-dev disk was ~92% full at setup — watch it; prune old images with
-  `docker image prune -f` if builds start failing on space.
-- **Done:** full-stack (Express API + React dashboard), passwordless auth
-  (magic-link + OTP → device tokens), CORS for mobile.
-- Not yet done: Tailscale + tailnet binding; real email provider (Resend key);
-  the resumable WebSocket + event log (roadmap step 3); APNs/FCM. See
-  [server design notes](server-design.md) roadmap.
+- Dev images install dependencies and run watch servers: no `dist/`, no compile
+  step in dev. The production build is a different path entirely —
+  `apps/server/Dockerfile`, built and shipped by Kamal; see the [deploy
+  runbook](deploy-runbook.md).
+- **Disk is the standing risk on this box.** It was ~92% full at setup and is
+  still ~95% (23 GB free of 438 GB as of 2026-08-12). Prune with
+  `docker image prune -f` before blaming a failing build on anything else.

@@ -62,7 +62,7 @@ fault injection, and the OVSR-152 no-inbound soak. Therefore:
   window completes.
 
 The tests in
-`apps/peon/src/daemon/__tests__/reverseOnlyFleetMode.test.ts` cover safe
+`apps/peon/src/daemon/__tests__/fleetHttpMode.test.ts` cover safe
 migration, loopback enforcement, explicit compatibility recovery and proof
 that reverse-only starts no legacy callback registration/heartbeat. Root
 protocol conformance remains the owner of the cross-process NAT assertion and

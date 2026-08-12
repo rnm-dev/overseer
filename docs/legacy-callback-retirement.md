@@ -15,13 +15,13 @@ and may begin only after all of the following evidence exists:
 | Window completion | Audit date is on or after the published end | Cannot start until the window is published |
 | Post-window telemetry | Dated zero callback selections and attempts for every supported version and operation family | Missing |
 
-The executable record is
-`packages/protocol-conformance/fixtures/legacy-callback-retirement-gate-v1.json`.
-Its conformance test fails if the decision is changed to `ready` without
-evidence for every gate, with invalid window dates, or before the support-window
-end. While blocked, it also protects representative compatibility anchors,
-legacy schema declarations and local dashboard/CLI control anchors from
-accidental deletion.
+**There is no executable record yet.** The gate above is a written decision,
+not an enforced one: `packages/protocol-conformance/fixtures/` holds no
+retirement-gate fixture, and nothing in the suite fails if the decision is
+flipped to `ready` without evidence, with invalid window dates, or before the
+support-window end. Writing that fixture — including the compatibility,
+legacy-schema and CLI control anchors it must protect from accidental
+deletion — is part of OVSR-211 and must land before any deletion begins.
 
 ## Removal inventory
 

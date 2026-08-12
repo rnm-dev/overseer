@@ -150,7 +150,7 @@ has running, never one activity per session.
   together produce one start and one update instead of two activities. An end is
   sent only when `runningCount` reaches 0; the update token dies with the
   activity, so the next run goes through push-to-start again.
-- Covered end to end by `src/liveActivity.test.ts` (start/update/end across
+- Covered end to end by `apps/server/src/modules/notifications/liveActivity.test.ts` (start/update/end across
   parallel sessions and two workspaces, with FCM faked at the fetch boundary).
   Behaviour on a real iOS handset — foreground reconciliation and background
   APNs updates — is still unverified; no iOS client has registered a token.

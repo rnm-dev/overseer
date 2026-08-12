@@ -1,14 +1,18 @@
 # Voice input (dictation) — design and configuration
 
-Status: **the server is implemented; no client speaks to it yet.** The provider
-seam, the pipeline, the route and its guardrails are in the repo and covered by
-tests. What remains is capture: the web composer's mic button and the Flutter
-recorder. This document is both the design rationale and the operator-facing
-configuration reference — see [environment reference](#environment-reference).
+Status (2026-08-12): **the server and the Flutter client are implemented; the
+web composer still has no mic.** The provider seam, the pipeline, the route and
+its guardrails are in the repo and covered by tests, and the mobile app records
+natively and posts to the same endpoint — see [client voice
+input](client/voice-input.md) for the shipped client behaviour. What remains is
+capture in the browser: nothing in `apps/web/src` calls `getUserMedia` or
+`MediaRecorder`. This document is both the design rationale and the
+operator-facing configuration reference — see [environment
+reference](#environment-reference).
 
-Tracked in Heroboard: OVSR-184 (the server end to end, **done**) and OVSR-195
-(the Flutter app), plus OVSR-190 (glossary), deferred as a quality increment on
-top of a working pipeline.
+Tracked in Heroboard: OVSR-184 (the server end to end, **done**), OVSR-195 (the
+Flutter app, **done**) and OVSR-190 (glossary), deferred as a quality increment
+on top of a working pipeline.
 
 The "write your own provider" guide is deliberately not a voice task: it is a
 deliverable of publishing Overseer as open source, alongside the README, the
@@ -739,7 +743,7 @@ Tests follow the existing `node --test` style and touch no network. Fake
 providers exercise the pipeline (both ratio directions, the polish timeout
 fallback including a provider that ignores its abort signal, the silence
 blocklist, wrapper stripping); a stubbed `fetch` exercises the adapter's wire
-shape and error mapping; and `src/voiceRoutes.test.ts` drives the real server
+shape and error mapping; and `src/routes/voiceRoutes.test.ts` drives the real server
 with a `pg-mem` database for auth, membership, the caps, the rate limit and the
 stable error codes.
 
@@ -751,8 +755,9 @@ stable error codes.
    stage with guardrails, capabilities endpoint, quotas, tests, env reference.
    Verified live against Groq at 565 ms warm end to end; the dev instance is
    configured and serving dictation.
-3. **v1.5** — glossary/context assembly (OVSR-190), ru/en handling, the web mic
-   button, the Flutter recorder (OVSR-195), keyboard shortcut, cancel/retry UX.
+3. **v1.5** — the Flutter recorder (OVSR-195) is done. Still open:
+   glossary/context assembly (OVSR-190), ru/en handling, the web mic button,
+   a keyboard shortcut and the cancel/retry UX.
 4. **Later** — streaming partials over the existing WebSocket infrastructure,
    per-workspace BYO keys, additional bundled vendors.
 

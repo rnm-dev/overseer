@@ -27,8 +27,8 @@ repository — that content lives here.
 - [deploy runbook](deploy-runbook.md) — Kamal preparation, current production
   deployment, persistent-volume rules, cutover state and rollback.
 - [architecture](architecture.md) — how the code itself is organised.
-- [server design notes](server-design.md) — settled decisions, the robustness
-  model and the roadmap.
+- [server design notes](server-design.md) — the locked decisions, the
+  robustness model and why the projections exist.
 - [monorepo](monorepo.md) — why Peon, server, web and the Flutter client share
   one repository, the layout and naming, and what is still to move.
 - [client documentation](client/index.md) — the cross-platform Flutter client in
@@ -103,7 +103,8 @@ repository — that content lives here.
 - [theme catalog](themes.md) — one declarative source of truth for theme
   packages, feeding both the Flutter catalog and generated CSS.
 - [voice input](voice-input.md) — pluggable speech-to-text for the composer,
-  Groq first; configured in both environments, no client records audio yet.
+  Groq first; configured in both environments, recorded natively by the mobile
+  client, still without a mic in the web composer.
 - [push notifications](push-notifications.md) — one signal, Expo and FCM HTTP v1
   delivery, and the dormant iOS Live Activity surface.
 

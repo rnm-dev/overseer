@@ -20,8 +20,9 @@ Build toward these; don't relitigate without a reason.
   per-user/per-device auth. A machine credential must never be reachable from
   the internet.
 - **Postgres is the single system-of-record.** Everything durable lives there,
-  reached through `DATABASE_URL`, with migrations embedded in `db.ts`
-  (`MIGRATIONS`, tracked in `schema_migrations`) applied on boot under an
+  reached through `DATABASE_URL`, with migrations in
+  `apps/server/src/infrastructure/db/migrations.ts` (tracked in
+  `schema_migrations`) applied on boot under an
   advisory lock. Time columns are BIGINT epoch-ms — what Peons emit, so no
   conversion and no timezone ambiguity. **Redis is deliberately not used** until
   there is a second Overseer instance to fan events between; at one instance
