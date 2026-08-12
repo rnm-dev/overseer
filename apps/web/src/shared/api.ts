@@ -41,6 +41,54 @@ export async function api<T = unknown>(path: string, opts: RequestInit = {}): Pr
   return (await res.json()) as T;
 }
 
+// `fetch` cannot report how much of a request body has been sent, so an upload
+// that wants a progress bar goes through XHR instead. Everything else — the
+// same-origin cookie, the /api prefix, the ApiError shape — stays identical.
+export function apiUpload<T = unknown>(path: string, body: Blob, opts: {
+  headers?: Record<string, string>;
+  onProgress?: (sent: number, total: number) => void;
+  signal?: AbortSignal;
+} = {}): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open("PUT", `/api${path}`);
+    request.withCredentials = true;
+    for (const [name, value] of Object.entries(opts.headers ?? {})) request.setRequestHeader(name, value);
+
+    const parse = () => {
+      try {
+        return JSON.parse(request.responseText) as { code?: string; error?: string; message?: string; requestId?: string };
+      } catch {
+        return null;
+      }
+    };
+    const abort = () => request.abort();
+    opts.signal?.addEventListener("abort", abort);
+    const done = () => opts.signal?.removeEventListener("abort", abort);
+
+    request.upload.addEventListener("progress", (event) => {
+      if (event.lengthComputable) opts.onProgress?.(event.loaded, event.total);
+    });
+    request.addEventListener("load", () => {
+      done();
+      const failure = parse();
+      if (request.status < 200 || request.status >= 300) {
+        return reject(new ApiError(request.status, failure?.code ?? "ERROR", failure?.error || failure?.message || request.statusText || `request failed (${request.status})`, failure?.requestId));
+      }
+      resolve((failure ?? undefined) as T);
+    });
+    request.addEventListener("error", () => {
+      done();
+      reject(new ApiError(0, "NETWORK", "the upload could not reach the server"));
+    });
+    request.addEventListener("abort", () => {
+      done();
+      reject(new ApiError(0, "ABORTED", "the upload was cancelled"));
+    });
+    request.send(body);
+  });
+}
+
 export async function migrateLegacyWebSession(token: string): Promise<void> {
   const res = await fetch("/api/auth/web-session", {
     method: "POST",

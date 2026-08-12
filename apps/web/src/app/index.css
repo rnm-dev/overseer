@@ -397,6 +397,30 @@ html.peon-sidebar-resizing * {
   line-height: var(--line-height-code-snippet);
   tab-size: 2;
 }
+/* A whole file rendered as the pane's content is not a snippet inside a
+   document: it has no border or corners of its own. Tailwind utilities cannot
+   say this — they are layered, and .code-view is not, so they would lose. */
+/* Line numbers ride inside the scrolling box as one text node beside the code,
+   so both scroll together without a synchronised second scroller. */
+.code-view--numbered {
+  display: flex;
+  gap: 1rem;
+  white-space: pre;
+}
+.code-gutter {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  flex: none;
+  background: inherit;
+  color: var(--color-ink-faint);
+  text-align: right;
+  user-select: none;
+}
+.code-view--flush {
+  border: 0;
+  border-radius: 0;
+}
 .markdown-body pre code,
 .code-view code { background: transparent; padding: 0; font: inherit; white-space: pre; }
 .markdown-body pre .markdown-inline-code { border: 0; color: var(--color-ink-muted); }

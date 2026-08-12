@@ -49,6 +49,7 @@ export function SessionOverlays({
               activePath={projectFilePreview?.path}
               onOpenFile={(path, size) => setProjectFilePreview({ path, size })}
               onFileMoved={(source, destination) => setProjectFilePreview((current) => current?.path === source ? { ...current, path: destination } : current)}
+              onFileDeleted={(path) => setProjectFilePreview((current) => current?.path === path ? null : current)}
               allowUpload
               className="flex-1"
             />
