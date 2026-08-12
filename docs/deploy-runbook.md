@@ -488,8 +488,9 @@ Deployed images:
 
 | Image | Deployed | What it carried |
 | --- | --- | --- |
-| `vibze/overseer:ef4e768620cdaf76ff58fda1cc433c610f7483e2` | 2026-08-12 (current) | Public-release web/server batch: transcript scroll-follow fixes, managed-plugin inquiry convergence and Peon 0.12.8 release preparation. |
-| `vibze/overseer:f9b82819c6a88ffec666e1659ab746aac4fd1962` | 2026-08-10 (previous) | An upgrade to a path no handler claims is refused with 400 and the socket destroyed, stopping the file-descriptor leak an outdated Peon caused by dialling the retired `/api/v1/peons/transfer/ws`. Built from a detached worktree of the pushed commit because the shared checkout held unrelated work in progress. |
+| `vibze/overseer:027a13932e5133cc9a1c4a076105830291a3addb` | 2026-08-12 (current) | The project Files page as a working file surface: one reusable drag-and-drop layer behind both file trees, folder upload and folder move, upload placeholders with progress, context menus, deletion, a movable split, line numbers, image zoom and in-place text editing. Built from merged `master`; an earlier same-day build of the unmerged branch commit `3039245` carried the same application code. The Peon half of folder transfers ships separately through the npm update channel, so a Peon below 0.12.9 answers PARENT_NOT_FOUND for a nested upload and INVALID_PATH for a folder move — the client names both as "this Peon needs an update". |
+| `vibze/overseer:ef4e768620cdaf76ff58fda1cc433c610f7483e2` | 2026-08-12 | Public-release web/server batch: transcript scroll-follow fixes, managed-plugin inquiry convergence and Peon 0.12.8 release preparation. |
+| `vibze/overseer:f9b82819c6a88ffec666e1659ab746aac4fd1962` | 2026-08-10 | An upgrade to a path no handler claims is refused with 400 and the socket destroyed, stopping the file-descriptor leak an outdated Peon caused by dialling the retired `/api/v1/peons/transfer/ws`. Built from a detached worktree of the pushed commit because the shared checkout held unrelated work in progress. |
 
 ### Everyday deploy
 
