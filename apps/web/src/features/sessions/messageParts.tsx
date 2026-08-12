@@ -124,12 +124,14 @@ export function UserBubble({ text, author, authorEmail, authorGithubLogin, autho
   );
 }
 
-// Session-summary strip — sits right under the assistant's last message, so it
-// pulls up against the preceding item's bottom (negating the list's space-y gap)
-// instead of floating in its own row.
+// Session-summary strip for a turn that ended without a closing assistant
+// message — an interrupted run, say. When there is one, the summary is attached
+// to that message's meta line instead (parsing.ts), so this row always follows
+// something else and takes the list's ordinary gap: a negative margin here
+// printed it on top of the preceding row.
 function Notice({ tone, children }: { tone?: "neutral" | "error"; children: ReactNode }) {
   return (
-    <div className={`-mt-2.5 flex justify-start typo-chat-system-message ${tone === "error" ? "text-danger" : "text-ink-faint"}`}>{children}</div>
+    <div className={`flex justify-start typo-chat-system-message ${tone === "error" ? "text-danger" : "text-ink-faint"}`}>{children}</div>
   );
 }
 
