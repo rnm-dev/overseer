@@ -269,7 +269,11 @@ test("deployment configs canonicalize Cloudflare identity before the application
   assert.match(deploy, /^\s{6}- 127\.0\.0\.1$/m);
   assert.doesNotMatch(deploy, /^\s{6}- (?:0\.0\.0\.0|::)$/m);
   assert.match(compose, /OVERSEER_TRUSTED_PROXIES: \$\{OVERSEER_TRUSTED_PROXIES:-loopback,linklocal,uniquelocal\}/);
-  for (const documentation of [documentationIndex, proxyTrust, runbook, threatModel]) {
+  assert.match(
+    documentationIndex,
+    /\[trusted client IPs\]\(proxy-trust\.md\)/,
+  );
+  for (const documentation of [proxyTrust, runbook, threatModel]) {
     const normalized = documentation.replace(/\s+/g, " ");
     assert.match(
       normalized,
