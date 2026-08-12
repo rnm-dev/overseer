@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { query } from "../../infrastructure/db/index.js";
 import { exchangeCodeForProfile } from "../../infrastructure/github/index.js";
+import type { GithubAuthConfig } from "../../infrastructure/auth/authConfig.js";
 import { ensureDefaultWorkspace } from "../workspaces/index.js";
 import { ensureUserFromGithub, getUserById } from "./authUsers.js";
 import { issueDevice } from "./authDevices.js";
@@ -59,11 +60,11 @@ export async function completeGithubSignIn(
   attempt: OauthAttempt,
   state: string,
   code: string,
-  githubRedirectUri: string,
+  github: GithubAuthConfig,
   client: ClientInfo,
   now = Date.now(),
 ): Promise<OAuthSignInCompletion> {
-  const profile = await exchangeCodeForProfile(code, githubRedirectUri);
+  const profile = await exchangeCodeForProfile(code, github);
   const user = await ensureUserFromGithub(profile);
   await ensureDefaultWorkspace(user.id, user.email);
   if (attempt.flow === "native") {

@@ -4,6 +4,7 @@ import type { AddressInfo } from "node:net";
 import { after, before, test } from "node:test";
 import type pg from "pg";
 import { newDb } from "pg-mem";
+import { resolveAuthConfig } from "../infrastructure/auth/authConfig.js";
 import { config } from "../infrastructure/config/index.js";
 import { initDb } from "../infrastructure/db/index.js";
 import { createServer } from "../app/server.js";
@@ -13,10 +14,7 @@ let port: number;
 const originalFetch = globalThis.fetch;
 const originalConfig = {
   publicUrl: config.publicUrl,
-  githubClientId: config.githubClientId,
-  githubClientSecret: config.githubClientSecret,
-  githubRedirectUri: config.githubRedirectUri,
-  githubNativeCallbacks: config.githubNativeCallbacks,
+  auth: config.auth,
 };
 
 before(async () => {
@@ -25,16 +23,17 @@ before(async () => {
   await initDb(new adapter.Pool() as unknown as pg.Pool);
 
   config.publicUrl = "https://overseer.example";
-  config.githubClientId = "github-client";
-  config.githubClientSecret = "github-secret";
-  config.githubRedirectUri = "https://overseer.example/auth/github/callback";
-  config.githubNativeCallbacks = ["overseer-dev://oauth/github", "overseer://oauth/github"];
+  config.auth = resolveAuthConfig({
+    OVERSEER_GITHUB_CLIENT_ID: "github-client",
+    OVERSEER_GITHUB_CLIENT_SECRET: "github-secret",
+    OVERSEER_GITHUB_NATIVE_CALLBACKS: "overseer-dev://oauth/github,overseer://oauth/github",
+  }, config.publicUrl);
 
   globalThis.fetch = async (input, init) => {
     const url = String(input);
     if (url === "https://github.com/login/oauth/access_token") {
       const body = JSON.parse(String(init?.body)) as { code: string; redirect_uri: string };
-      assert.equal(body.redirect_uri, config.githubRedirectUri);
+      assert.equal(body.redirect_uri, config.auth.github?.redirectUri);
       return Response.json({ access_token: `token-${body.code}` });
     }
     if (url === "https://api.github.com/user") {
@@ -105,7 +104,7 @@ function started(response: TestResponse): { state: string; authorizationUrl: URL
   assert.equal(typeof state, "string");
   assert.equal(typeof authorizationUrl, "string");
   const authorize = new URL(authorizationUrl as string);
-  assert.equal(authorize.searchParams.get("redirect_uri"), config.githubRedirectUri);
+  assert.equal(authorize.searchParams.get("redirect_uri"), config.auth.github?.redirectUri);
   assert.equal(authorize.searchParams.get("state"), state);
   return { state: state as string, authorizationUrl: authorize };
 }
@@ -172,4 +171,33 @@ test("native OAuth uses the same frontend callback before opening the app scheme
   assert.equal(exchanged.status, 200);
   assert.equal((exchanged.body.user as { githubLogin: string }).githubLogin, "native-user");
   assert.equal(typeof exchanged.body.token, "string");
+});
+
+test("disabled and half-configured GitHub stay out of discovery and public SPA config", async () => {
+  const configured = config.auth;
+  try {
+    for (const env of [
+      { OVERSEER_GITHUB_CLIENT_ID: "client-only" },
+      { OVERSEER_GITHUB_CLIENT_SECRET: "secret-only" },
+      {},
+    ]) {
+      config.auth = resolveAuthConfig(env, config.publicUrl);
+
+      const methods = await request("/api/auth/methods");
+      assert.equal(methods.status, 200);
+      assert.equal(methods.body.github, false);
+
+      const publicConfig = await request("/api/auth/github/config");
+      assert.equal(publicConfig.status, 200);
+      assert.deepEqual(publicConfig.body, { clientId: "", scope: "", redirectUri: "" });
+
+      for (const route of ["/api/auth/github/start", "/api/auth/github/native/start"]) {
+        const refused = await request(route, "POST", { callback: "overseer://oauth/github" });
+        assert.equal(refused.status, 503);
+        assert.equal(refused.body.code, "GITHUB_DISABLED");
+      }
+    }
+  } finally {
+    config.auth = configured;
+  }
 });

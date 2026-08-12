@@ -16,21 +16,21 @@ import { createServer } from "../app/server.js";
 let server: http.Server;
 let port: number;
 const originalPublicUrl = config.publicUrl;
-const originalPasswordAuth = config.passwordAuthEnabled;
+const originalAuth = config.auth;
 
 before(async () => {
   const mem = newDb();
   const adapter = mem.adapters.createPg();
   await initDb(new adapter.Pool() as unknown as pg.Pool);
   config.publicUrl = "https://overseer.example";
-  config.passwordAuthEnabled = true;
+  config.auth = { ...config.auth, password: true };
   server = http.createServer(createServer());
   port = await new Promise<number>((resolve) => server.listen(0, "127.0.0.1", () => resolve((server.address() as AddressInfo).port)));
 });
 
 after(async () => {
   config.publicUrl = originalPublicUrl;
-  config.passwordAuthEnabled = originalPasswordAuth;
+  config.auth = originalAuth;
   await new Promise<void>((resolve) => server.close(() => resolve()));
 });
 
@@ -156,7 +156,7 @@ test("the environment switch closes both routes and drops the method from discov
   assert.equal(advertised.status, 200);
   assert.equal(advertised.body.password, true);
 
-  config.passwordAuthEnabled = false;
+  config.auth = { ...config.auth, password: false };
   try {
     const hidden = await request("/api/auth/methods");
     assert.equal(hidden.body.password, false);
@@ -169,7 +169,7 @@ test("the environment switch closes both routes and drops the method from discov
       assert.equal(refused.setCookie.length, 0);
     }
   } finally {
-    config.passwordAuthEnabled = true;
+    config.auth = { ...config.auth, password: true };
   }
 });
 

@@ -2,6 +2,7 @@
 // operator key: peons connect with per-peon credentials (credentials.ts),
 // operators with device tokens (auth.ts). peonCallbackUrl is the Tailscale URL the
 // overseer hands a peon at recruitment so it knows where to phone home.
+import { resolveAuthConfig, type AuthConfig } from "../auth/authConfig.js";
 import { resolvePushConfig, type PushConfig } from "../push/pushConfig.js";
 import { resolveVoiceConfig, type VoiceConfig } from "../voice/voiceConfig.js";
 
@@ -19,20 +20,9 @@ export interface Config {
   // Public base URL of the operator surface. The SPA's OAuth callback lives
   // here, so it must match how the app is actually reached.
   publicUrl: string;
-  // GitHub OAuth app credentials (infrastructure/github). The SPA drives the redirect; the
-  // server does the code→token exchange with the secret, never exposed to the client.
-  githubClientId: string;
-  githubClientSecret: string;
-  githubScope: string;
-  // The single frontend HTTPS callback registered with GitHub. Both web and
-  // native starts use it; the SPA submits code + state to the API, where
-  // server-backed state decides which client receives the result.
-  githubRedirectUri: string;
-  githubNativeCallbacks: string[];
-  // Email + password sign-in beside GitHub, off unless an operator asks for it.
-  // Registration and sign-in share the switch: an instance that does not want
-  // local accounts must not accept new ones either.
-  passwordAuthEnabled: boolean;
+  // The two supported sign-in methods resolve together. GitHub is null unless
+  // both credentials exist; password registration and sign-in share one switch.
+  auth: AuthConfig;
   // How long an issued device token lives.
   deviceTokenTtlMs: number;
   // Addresses/CIDRs of reverse proxies that may contribute
@@ -82,13 +72,7 @@ export const config: Config = {
   databaseUrl: process.env.DATABASE_URL ?? process.env.OVERSEER_DATABASE_URL ?? "",
   reconcileIntervalMs: num("OVERSEER_RECONCILE_INTERVAL_MS", 30_000),
   publicUrl,
-  githubClientId: process.env.OVERSEER_GITHUB_CLIENT_ID ?? "",
-  githubClientSecret: process.env.OVERSEER_GITHUB_CLIENT_SECRET ?? "",
-  githubScope: process.env.OVERSEER_GITHUB_SCOPE ?? "read:user user:email",
-  githubRedirectUri: process.env.OVERSEER_GITHUB_REDIRECT_URI ?? `${publicUrl}/auth/github/callback`,
-  githubNativeCallbacks: (process.env.OVERSEER_GITHUB_NATIVE_CALLBACKS ?? "overseer://oauth/github")
-    .split(",").map((value) => value.trim()).filter(Boolean),
-  passwordAuthEnabled: process.env.OVERSEER_PASSWORD_AUTH === "1",
+  auth: resolveAuthConfig(process.env, publicUrl),
   deviceTokenTtlMs: num("OVERSEER_DEVICE_TOKEN_TTL_MS", 90 * 24 * 60 * 60_000),
   trustedProxies: csv("OVERSEER_TRUSTED_PROXIES"),
   previewDomain: (process.env.OVERSEER_PREVIEW_DOMAIN ?? "preview.overseer.rnm.dev").toLowerCase().replace(/^\.+|\.+$/g, ""),
@@ -103,8 +87,7 @@ export function configWarnings(): string[] {
   const w: string[] = [];
   if (!config.peonCallbackUrl)
     w.push("OVERSEER_PEON_CALLBACK_URL is empty — Peon enrollment is disabled.");
-  if (!config.githubClientId || !config.githubClientSecret)
-    w.push("OVERSEER_GITHUB_CLIENT_ID / OVERSEER_GITHUB_CLIENT_SECRET are not both set — GitHub sign-in is disabled, so nobody can log in.");
+  w.push(...config.auth.warnings);
   if (process.env.NODE_ENV === "production" && config.trustedProxies.length === 0)
     w.push("OVERSEER_TRUSTED_PROXIES is empty — forwarded client addresses are ignored and public abuse limits use the socket peer.");
   // An unconfigured or half-configured voice stage is a boot-time warning, not

@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 import type pg from "pg";
 import { newDb } from "pg-mem";
+import { resolveAuthConfig } from "../infrastructure/auth/authConfig.js";
 import { config } from "../infrastructure/config/index.js";
 import { initDb } from "../infrastructure/db/index.js";
 import { clientInfo } from "./requestContext.js";
@@ -129,16 +130,17 @@ test("client attribution normalizes IP literals and rejects forwarded addresses 
 test("direct-origin forwarding headers cannot rotate auth rate keys", async () => {
   const original = {
     publicUrl: config.publicUrl,
-    githubClientId: config.githubClientId,
-    githubClientSecret: config.githubClientSecret,
+    auth: config.auth,
     trustedProxies: config.trustedProxies,
   };
   const mem = newDb();
   const adapter = mem.adapters.createPg();
   await initDb(new adapter.Pool() as unknown as pg.Pool);
   config.publicUrl = "https://overseer.example.test";
-  config.githubClientId = "proxy-trust-client";
-  config.githubClientSecret = "proxy-trust-secret";
+  config.auth = resolveAuthConfig({
+    OVERSEER_GITHUB_CLIENT_ID: "proxy-trust-client",
+    OVERSEER_GITHUB_CLIENT_SECRET: "proxy-trust-secret",
+  }, config.publicUrl);
   config.trustedProxies = [];
 
   const { port, server } = await listen();
@@ -158,18 +160,18 @@ test("direct-origin forwarding headers cannot rotate auth rate keys", async () =
 test("trusted Kamal keeps its appended direct peer authoritative across spoofed and malformed XFF", async () => {
   const original = {
     publicUrl: config.publicUrl,
-    githubClientId: config.githubClientId,
-    githubClientSecret: config.githubClientSecret,
-    githubNativeCallbacks: config.githubNativeCallbacks,
+    auth: config.auth,
     trustedProxies: config.trustedProxies,
   };
   const mem = newDb();
   const adapter = mem.adapters.createPg();
   await initDb(new adapter.Pool() as unknown as pg.Pool);
   config.publicUrl = "https://overseer.example.test";
-  config.githubClientId = "direct-kamal-client";
-  config.githubClientSecret = "direct-kamal-secret";
-  config.githubNativeCallbacks = ["overseer://oauth/github"];
+  config.auth = resolveAuthConfig({
+    OVERSEER_GITHUB_CLIENT_ID: "direct-kamal-client",
+    OVERSEER_GITHUB_CLIENT_SECRET: "direct-kamal-secret",
+    OVERSEER_GITHUB_NATIVE_CALLBACKS: "overseer://oauth/github",
+  }, config.publicUrl);
   config.trustedProxies = ["loopback", "linklocal", "uniquelocal"];
 
   const { port, server } = await listen();
@@ -208,12 +210,13 @@ test("trusted Kamal keeps its appended direct peer authoritative across spoofed 
 
 test("a validated proxy chain selects the first untrusted XFF address and rejects invalid proxy configuration", async () => {
   const original = {
-    githubClientId: config.githubClientId,
-    githubClientSecret: config.githubClientSecret,
+    auth: config.auth,
     trustedProxies: config.trustedProxies,
   };
-  config.githubClientId = "trusted-chain-client";
-  config.githubClientSecret = "trusted-chain-secret";
+  config.auth = resolveAuthConfig({
+    OVERSEER_GITHUB_CLIENT_ID: "trusted-chain-client",
+    OVERSEER_GITHUB_CLIENT_SECRET: "trusted-chain-secret",
+  }, config.publicUrl);
   config.trustedProxies = ["loopback", "192.0.2.0/24"];
   const { port, server } = await listen();
   try {

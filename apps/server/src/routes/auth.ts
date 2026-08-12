@@ -33,7 +33,7 @@ function limited(req: express.Request, operation: string, maximum: number): bool
 }
 
 function nativeCallback(value: unknown): string | null {
-  if (typeof value !== "string" || !config.githubNativeCallbacks.includes(value)) return null;
+  if (typeof value !== "string" || !config.auth.github?.nativeCallbacks.includes(value)) return null;
   try { return new URL(value).toString(); } catch { return null; }
 }
 
@@ -50,38 +50,45 @@ export function publicAuthRouter(): express.Router {
   // the form as well as the route behind it.
   router.get("/auth/methods", (_req, res) => {
     res.json({
-      password: config.passwordAuthEnabled,
-      github: Boolean(config.githubClientId && config.githubClientSecret),
+      password: config.auth.password,
+      github: Boolean(config.auth.github),
     });
   });
 
   router.get("/auth/github/config", (_req, res) => {
-    res.json({ clientId: config.githubClientId, scope: config.githubScope, redirectUri: config.githubRedirectUri });
+    const github = config.auth.github;
+    res.json({
+      clientId: github?.clientId ?? "",
+      scope: github?.scope ?? "",
+      redirectUri: github?.redirectUri ?? "",
+    });
   });
 
   router.post("/auth/github/start", async (req, res) => {
     if (limited(req, "web-start", 10)) return res.status(429).json({ error: "too many sign-in attempts", code: "RATE_LIMITED" });
-    if (!config.githubClientId || !config.githubClientSecret) return res.status(503).json({ error: "GitHub sign-in is not configured", code: "GITHUB_DISABLED" });
+    const github = config.auth.github;
+    if (!github) return res.status(503).json({ error: "GitHub sign-in is not configured", code: "GITHUB_DISABLED" });
     res.json(await startGithubAuthFlow({
       flow: "web",
       callback: `${config.publicUrl}/auth/github/callback`,
-      githubClientId: config.githubClientId,
-      githubScope: config.githubScope,
-      githubRedirectUri: config.githubRedirectUri,
+      githubClientId: github.clientId,
+      githubScope: github.scope,
+      githubRedirectUri: github.redirectUri,
     }));
   });
 
   router.post("/auth/github/native/start", async (req, res) => {
     if (limited(req, "native-start", 10)) return res.status(429).json({ error: "too many sign-in attempts", code: "RATE_LIMITED" });
-    if (!config.githubClientId || !config.githubClientSecret) return res.status(503).json({ error: "GitHub sign-in is not configured", code: "GITHUB_DISABLED" });
+    const github = config.auth.github;
+    if (!github) return res.status(503).json({ error: "GitHub sign-in is not configured", code: "GITHUB_DISABLED" });
     const callback = nativeCallback(req.body?.callback);
     if (!callback) return res.status(400).json({ error: "callback is not allowed", code: "INVALID_CALLBACK" });
     res.json(await startGithubAuthFlow({
       flow: "native",
       callback,
-      githubClientId: config.githubClientId,
-      githubScope: config.githubScope,
-      githubRedirectUri: config.githubRedirectUri,
+      githubClientId: github.clientId,
+      githubScope: github.scope,
+      githubRedirectUri: github.redirectUri,
     }));
   });
 
@@ -105,7 +112,7 @@ export function publicAuthRouter(): express.Router {
     res.status(503).json({ error: "email and password sign-in is not enabled", code: "PASSWORD_AUTH_DISABLED" });
 
   router.post("/auth/password/register", async (req, res) => {
-    if (!config.passwordAuthEnabled) return passwordAuthOff(res);
+    if (!config.auth.password) return passwordAuthOff(res);
     if (limited(req, "password-register", 5)) return res.status(429).json({ error: "too many sign-up attempts", code: "RATE_LIMITED" });
     try {
       const result = await registerWithPassword({ email: req.body?.email, password: req.body?.password, client: clientInfo(req) });
@@ -116,7 +123,7 @@ export function publicAuthRouter(): express.Router {
   });
 
   router.post("/auth/password/login", async (req, res) => {
-    if (!config.passwordAuthEnabled) return passwordAuthOff(res);
+    if (!config.auth.password) return passwordAuthOff(res);
     if (limited(req, "password-login", 10)) return res.status(429).json({ error: "too many sign-in attempts", code: "RATE_LIMITED" });
     try {
       const result = await signInWithPassword({ email: req.body?.email, password: req.body?.password, client: clientInfo(req) });
@@ -127,6 +134,8 @@ export function publicAuthRouter(): express.Router {
   });
 
   router.post("/auth/github", async (req, res) => {
+    const github = config.auth.github;
+    if (!github) return res.status(503).json({ error: "GitHub sign-in is not configured", code: "GITHUB_DISABLED" });
     const state = typeof req.body?.state === "string" ? req.body.state : "";
     const code = typeof req.body?.code === "string" ? req.body.code : "";
     const githubError = typeof req.body?.error === "string" ? req.body.error : "";
@@ -147,7 +156,7 @@ export function publicAuthRouter(): express.Router {
     }
     if (attempt.flow !== "web" && attempt.flow !== "native") return res.status(400).json({ error: "invalid OAuth flow", code: "BAD_STATE" });
     try {
-      const result = await completeGithubSignIn(attempt, state, code, config.githubRedirectUri, clientInfo(req));
+      const result = await completeGithubSignIn(attempt, state, code, github, clientInfo(req));
       if (result.flow === "native") return res.json({ flow: "native", redirectUrl: result.redirectUrl });
       setWebSessionCookie(res, result.token, result.device.expiresAt);
       return res.json({
