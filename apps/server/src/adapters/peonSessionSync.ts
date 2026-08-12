@@ -496,13 +496,12 @@ export class PeonCatalogSync {
         committed = await this.transcriptSync.commitDurable(event);
       } catch (error) {
         if (error instanceof TranscriptProjectionError
-          && error.code !== "STALE_GENERATION"
-          && error.code !== "BAD_CURSOR") {
-          // The canonical Peon transcript can legitimately require a fresh
-          // snapshot when an older projection assigned a different sequence
-          // to the same stable event identity. Keep the durable cursor queued,
-          // rebuild that one session, then let the covered-event path ACK it.
-          // Closing here makes the same poison cursor fail every reconnect.
+          && (error.code === "TRANSCRIPT_GAP"
+            || error.code === "TRANSCRIPT_EPOCH_CHANGED"
+            || error.code === "TRANSCRIPT_NOT_READY")) {
+          // A missing, stale, or gapped projection can legitimately require a
+          // fresh authoritative snapshot. Identity/payload replay mismatches
+          // are deliberately excluded: they must fail closed without an ACK.
           await this.transcriptSync.repairDurable(event);
           this.bufferEvent(event, 0);
           return;

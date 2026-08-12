@@ -65,7 +65,7 @@ test("requeued durable events retain bounded byte accounting", () => {
   assert.equal(harness.bufferedEvents.length, 1);
 });
 
-test("a transcript projection mismatch requests repair and buffers the durable cursor", async () => {
+test("a recoverable transcript projection gap requests repair and buffers the durable cursor", async () => {
   const repaired: string[] = [];
   const harness = Object.create(PeonCatalogSync.prototype) as BufferHarness & {
     checkpoint: null;
@@ -81,7 +81,7 @@ test("a transcript projection mismatch requests repair and buffers the durable c
   harness.bufferedBytes = 0;
   harness.transcriptSync = {
     commitDurable: async () => {
-      throw new TranscriptProjectionError("REPLAY_MISMATCH", "event sequence changed");
+      throw new TranscriptProjectionError("TRANSCRIPT_GAP", "event sequence changed");
     },
     repairDurable: async (event) => { repaired.push(event.sessionId); },
   };
@@ -98,6 +98,43 @@ test("a transcript projection mismatch requests repair and buffers the durable c
   assert.deepEqual(repaired, ["session-1"]);
   assert.equal(harness.bufferedEvents.length, 1);
   assert.equal(harness.bufferedEvents[0]?.deliveryCursor, "cursor-1");
+});
+
+test("a transcript replay mismatch fails closed without repair or buffering", async () => {
+  const repaired: string[] = [];
+  const harness = Object.create(PeonCatalogSync.prototype) as BufferHarness & {
+    checkpoint: null;
+    transcriptSync: {
+      commitDurable(): Promise<never>;
+      repairDurable(event: { sessionId: string }): Promise<void>;
+    };
+    applyEvent(event: Record<string, unknown>): Promise<void>;
+  };
+  harness.checkpoint = null;
+  harness.bufferedEvents = [];
+  harness.bufferedEventFingerprints = new Map();
+  harness.bufferedBytes = 0;
+  harness.transcriptSync = {
+    commitDurable: async () => {
+      throw new TranscriptProjectionError("REPLAY_MISMATCH", "durable transcript replay payload mismatch");
+    },
+    repairDurable: async (event) => { repaired.push(event.sessionId); },
+  };
+  const event = {
+    channel: "transcript",
+    deliveryEpoch: "delivery-1",
+    deliveryCursor: "cursor-1",
+    messageId: "00000000-0000-4000-8000-000000000001",
+    sessionId: "session-1",
+  };
+
+  await assert.rejects(
+    harness.applyEvent(event),
+    (error: unknown) => error instanceof SessionSyncProtocolError
+      && error.message === "durable transcript replay payload mismatch",
+  );
+  assert.deepEqual(repaired, []);
+  assert.equal(harness.bufferedEvents.length, 0);
 });
 
 test("selective scheduling preserves one session order while draining unrelated durable work", async () => {
