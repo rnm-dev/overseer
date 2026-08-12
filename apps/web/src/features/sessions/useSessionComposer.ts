@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
+import { useEffect, useMemo, useRef, useState, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
 import { api, ApiError, isPeonNeedsUpdate, json } from "../../shared/api";
 import type { Translate } from "../../shared/i18n";
 import { useNotifications } from "../../shared/notifications";
@@ -6,7 +6,7 @@ import { composerDraftKey, saveComposerDraft, useComposerDraft, useComposerDraft
 import { attachmentUploadPath } from "../projects/fileLinks";
 import type { ModelsCatalog } from "../settings/models";
 import type { MessageAttachment } from "./parsing";
-import { createQueueReconciler, enqueueSessionFollowup, getSessionQueue, removeSessionQueueItem, removeWaitingQueueItem, steerSessionQueueItem, sendWaitingQueueItemNow, type QueueActivityTracker, type QueueItem } from "./queue";
+import { createQueueReconciler, enqueueSessionFollowup, getSessionQueue, removeSessionQueueItem, removeWaitingQueueItem, pruneSteeredQueueItems, steerSessionQueueItem, sendWaitingQueueItemNow, visibleQueueItems, type QueueActivityTracker, type QueueItem } from "./queue";
 import { createSubmissionGate } from "./submissionGate";
 
 const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
@@ -142,6 +142,8 @@ export function useSessionComposer({
   const [queueItems, setQueueItems] = useState<QueueItem[]>([]);
   const [removingQueueItems, setRemovingQueueItems] = useState<Set<string>>(new Set());
   const [sendingQueueItems, setSendingQueueItems] = useState<Set<string>>(new Set());
+  // itemId → the moment hiding a steered row stops being justified.
+  const [steeredQueueItems, setSteeredQueueItems] = useState<ReadonlyMap<string, number>>(new Map());
   const [filesEnabled, setFilesEnabled] = useState<boolean | null>(null);
   useEffect(() => {
     setSending(false);
@@ -155,6 +157,20 @@ export function useSessionComposer({
     const id = window.setTimeout(() => setGhost(null), Math.max(0, ghost.createdAt + GHOST_MAX_MS - Date.now()));
     return () => window.clearTimeout(id);
   }, [ghost, userMessageCount]);
+
+  // A steer that never reaches the transcript must not leave its row hidden any
+  // longer than its ghost stands, so the queue goes back to showing the truth.
+  useEffect(() => {
+    if (!steeredQueueItems.size) return;
+    const soonest = Math.min(...steeredQueueItems.values());
+    const timer = window.setTimeout(
+      () => setSteeredQueueItems((current) => new Map([...current].filter(([, until]) => Date.now() < until))),
+      Math.max(0, soonest - Date.now()),
+    );
+    return () => window.clearTimeout(timer);
+  }, [steeredQueueItems]);
+
+  const visibleQueue = useMemo(() => visibleQueueItems(queueItems, steeredQueueItems), [queueItems, steeredQueueItems]);
 
   function requestIdFor(identity: string): string {
     return requestIdentityRef.current!.forPayload(identity);
@@ -366,6 +382,23 @@ export function useSessionComposer({
     const previousReasoningEffort = runningReasoningEffort;
     setSendingQueueItems((current) => new Set(current).add(itemId));
     setSendError(null);
+    // Steering is the composer's Send with the text already written: the row
+    // leaves the queue and stands under the transcript as the same single
+    // ghost, which retires on Peon's authoritative row like any other. The
+    // authoritative list stays the truth — this only hides the row until that
+    // list agrees, which for an interrupt-and-resume provider is several
+    // seconds after the request is answered.
+    const steerGhost: ComposerGhost | null = queued ? {
+      text: queued.prompt,
+      attachments: queued.attachments ?? [],
+      createdAt: Date.now(),
+      baselineUserMessages: userMessageCountRef.current,
+    } : null;
+    if (steerGhost) {
+      onGhostCreated();
+      setGhost(steerGhost);
+      setSteeredQueueItems((current) => new Map(current).set(itemId, Date.now() + GHOST_MAX_MS));
+    }
     setRunning(true);
     setRunningSelection(
       queued?.model || runningModel || sessionModel || (!sessionAgent ? catalog?.defaultModel : null) || null,
@@ -381,6 +414,15 @@ export function useSessionComposer({
       );
       if (accepted) onWorkStarted();
       else {
+        // Nothing was started by this click, so neither the placeholder nor the
+        // hidden row has a turn to stand for. A ghost some later send owns is
+        // left alone.
+        setGhost((current) => (current === steerGhost ? null : current));
+        setSteeredQueueItems((current) => {
+          const next = new Map(current);
+          next.delete(itemId);
+          return next;
+        });
         setRunning(wasRunning);
         setRunningSelection(wasRunning ? previousModel : null, wasRunning ? previousReasoningEffort : null);
       }
@@ -401,11 +443,13 @@ export function useSessionComposer({
     queueActivity.replace(sessionKey, []);
     setRemovingQueueItems(new Set());
     setSendingQueueItems(new Set());
+    setSteeredQueueItems(new Map());
     const reconciler = createQueueReconciler(
       () => getSessionQueue(base, sid, api, controlReadScope),
       (items) => {
         queueActivity.replace(sessionKey, items);
         setQueueItems(items);
+        setSteeredQueueItems((current) => (current.size ? pruneSteeredQueueItems(current, items, Date.now()) : current));
       },
     );
     queueReconcilerRef.current = reconciler;
@@ -418,6 +462,6 @@ export function useSessionComposer({
 
   return {
     input, setInput, files, setFiles, sending, sendError, setSendError, ghost,
-    queueItems, removingQueueItems, steeringQueueItems: sendingQueueItems, filesEnabled, send, enqueue, removeQueuedItem, steerQueuedItem,
+    queueItems: visibleQueue, removingQueueItems, steeringQueueItems: sendingQueueItems, filesEnabled, send, enqueue, removeQueuedItem, steerQueuedItem,
   };
 }

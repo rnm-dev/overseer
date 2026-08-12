@@ -128,6 +128,49 @@ export function createQueueReconciler(
   return { reconcile, dispose: () => { disposed = true; } };
 }
 
+// A steered item leaves the operator's list before Peon has popped it. The
+// steer request is answered as soon as the redirect is issued — for a provider
+// without a native in-flight steer that is only an interrupt — and the item
+// stays in the authoritative queue until the replacement run actually starts,
+// seconds later. Hiding the row therefore means ignoring every snapshot in
+// between, not just the one that happens to follow the request. The id is
+// dropped as soon as the authoritative list agrees, and expires regardless so a
+// steer that never lands cannot hide a still-queued message forever.
+export function pruneSteeredQueueItems(
+  steered: ReadonlyMap<string, number>,
+  items: readonly QueueItem[],
+  now: number,
+): Map<string, number> {
+  const live = new Set(items.map((item) => item.id));
+  return new Map([...steered].filter(([id, until]) => live.has(id) && now < until));
+}
+
+export function visibleQueueItems(items: QueueItem[], steered: ReadonlyMap<string, number>): QueueItem[] {
+  return steered.size ? items.filter((item) => !steered.has(item.id)) : items;
+}
+
+export interface QueueRow {
+  item: QueueItem;
+  leaving: boolean;
+}
+
+// An item that left the authoritative list keeps its place for the length of its
+// exit animation, so a steered or removed message collapses out of the queue
+// instead of blinking away under the rows below it. A row that comes back —
+// a refused steer, reconciled — is simply live again.
+export function mergeQueueRows(previous: readonly QueueRow[], items: readonly QueueItem[]): QueueRow[] {
+  const live = new Map(items.map((item) => [item.id, item]));
+  const rows: QueueRow[] = [];
+  const placed = new Set<string>();
+  for (const row of previous) {
+    const current = live.get(row.item.id);
+    if (current) placed.add(current.id);
+    rows.push(current ? { item: current, leaving: false } : { item: row.item, leaving: true });
+  }
+  for (const item of items) if (!placed.has(item.id)) rows.push({ item, leaving: false });
+  return rows;
+}
+
 export function attachmentLabel(attachment: MessageAttachment): string {
   if (attachment.name) return attachment.name;
   if (!attachment.path) return attachment.type === "image" ? "image" : "file";

@@ -1,11 +1,28 @@
+import { useEffect, useRef, useState } from "react";
 import { Hourglass, Send, Trash2 } from "lucide-react";
-import { attachmentLabel, type QueueItem } from "./queue";
+import { attachmentLabel, mergeQueueRows, type QueueItem, type QueueRow } from "./queue";
 import type { Translate } from "../../shared/i18n";
 
 export const QUEUE_ACTION_CLASS = "flex h-7 min-w-7 items-center justify-center rounded-md bg-black/10 text-[11px] font-medium text-white transition-colors hover:bg-black/20 hover:text-white disabled:cursor-wait disabled:opacity-40";
 export const QUEUE_HOURGLASS_CLASS = "mt-1 shrink-0 theme-queued-message-icon";
 // Matches the action buttons' h-7 so a single-line message centers against them instead of hanging at the top.
 export const QUEUE_CONTENT_MIN_HEIGHT_CLASS = "min-h-7";
+// Kept in step with the queue-row-leave keyframes.
+export const QUEUE_EXIT_MS = 220;
+
+function useQueueRows(items: QueueItem[]): QueueRow[] {
+  const [rows, setRows] = useState<QueueRow[]>(() => items.map((item) => ({ item, leaving: false })));
+  const rowsRef = useRef(rows);
+  rowsRef.current = rows;
+  useEffect(() => {
+    const merged = mergeQueueRows(rowsRef.current, items);
+    setRows(merged);
+    if (!merged.some((row) => row.leaving)) return;
+    const timer = window.setTimeout(() => setRows((current) => current.filter((row) => !row.leaving)), QUEUE_EXIT_MS);
+    return () => window.clearTimeout(timer);
+  }, [items]);
+  return rows;
+}
 
 export function QueueList({ items, removing, steering, onRemove, onSteer, t }: {
   items: QueueItem[];
@@ -15,15 +32,16 @@ export function QueueList({ items, removing, steering, onRemove, onSteer, t }: {
   onSteer: (id: string) => void;
   t: Translate;
 }) {
-  if (!items.length) return null;
+  const rows = useQueueRows(items);
+  if (!rows.length) return null;
   // No bottom margin on the section: the composer fade's own shoulder is the
   // whole gap, so a scrolled queue's clipped last item sits on the fade instead
   // of hanging over a dead strip three times wider than the space between items.
   return (
     <section aria-label={t("session.queue.title")}>
-      <ol className="max-h-56 space-y-2 overflow-y-auto">
-        {items.map((item) => (
-          <li key={item.id} className="ml-auto flex w-full min-w-0 max-w-none items-start gap-2 rounded-xl rounded-br-sm theme-queued-message px-3 py-2 shadow-lg backdrop-blur-md md:w-auto md:max-w-[80%]">
+      <ol className="flex max-h-56 flex-col gap-2 overflow-y-auto">
+        {rows.map(({ item, leaving }) => (
+          <li key={item.id} className={`ml-auto flex w-fit min-w-0 max-w-full items-start gap-2 rounded-xl rounded-br-sm theme-queued-message px-3 py-2 shadow-lg backdrop-blur-md md:max-w-[80%]${leaving ? " queue-row-leaving" : ""}`}>
             <div className={`flex min-w-0 flex-1 flex-col justify-center ${QUEUE_CONTENT_MIN_HEIGHT_CLASS}`}>
               <div className="flex min-w-0 gap-2">
                 <Hourglass

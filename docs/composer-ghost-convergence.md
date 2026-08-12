@@ -17,6 +17,25 @@ start-now transition. Queue submissions made through the ordinary running-turn
 path never create a ghost because the authoritative queue widget is already the
 pending representation.
 
+Steering a queued item is the exception, because that row stops being the
+pending representation the moment it is steered. In the web client the click
+creates the same single ghost from the queued prompt and attachments and hides
+the row from the local queue list at once. Nothing else about the contract
+changes — the ghost still retires on transcript growth rather than on the 2xx —
+and a steer that was not accepted un-hides its row and drops its own ghost
+unless a later send already owns the slot. The Flutter client still leaves the
+queued row in place until Peon pops it.
+
+Hiding that row must outlast the request. A steer is answered as soon as the
+redirect is issued, and a provider without a native in-flight steer redirects by
+interrupting the run, so the item stays in Peon's authoritative queue until the
+replacement run starts — seconds later on Claude Code. A client that trusts the
+snapshot following its own request therefore shows the row again beside the
+message it has already rendered. The web client hides a steered id until the
+authoritative list itself no longer contains it, and expires the id after the
+same 60 seconds that bound the ghost, so a steer that never lands cannot hide a
+still-queued message forever.
+
 The count must cover the complete local cache, not only the bounded visible
 page. Newest-page REST reconciliation and replayed tail frames are deduplicated
 by authoritative `eventId` before they affect that count or render rows.

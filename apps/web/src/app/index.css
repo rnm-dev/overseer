@@ -1477,6 +1477,26 @@ html.peon-sidebar-resizing * {
   to { opacity: 1; transform: none; }
 }
 
+/* A steered or removed queue row collapses out of the dock while its message
+   arrives under the transcript. The negative end margin swallows the flex gap
+   the collapsed row would otherwise still hold open. */
+.queue-row-leaving {
+  overflow: hidden;
+  pointer-events: none;
+  animation: queue-row-leave 0.22s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+@keyframes queue-row-leave {
+  from { opacity: 1; max-height: 14rem; transform: none; }
+  to {
+    opacity: 0;
+    max-height: 0;
+    transform: translateY(-4px) scale(0.98);
+    padding-top: 0;
+    padding-bottom: 0;
+    margin-bottom: -0.5rem;
+  }
+}
+
 .loading-spinner {
   width: 28px;
   height: 28px;
@@ -1518,6 +1538,10 @@ html.peon-sidebar-resizing * {
 @media (prefers-reduced-motion: reduce) {
   .reveal, .loading-spinner {
     animation: none !important;
+  }
+  .queue-row-leaving {
+    animation: none !important;
+    display: none;
   }
   .thinking-dots span {
     animation: none !important;
