@@ -5,13 +5,17 @@ import {
   attachmentLabel,
   createQueueActivityTracker,
   createQueueReconciler,
+  draftWithQueuedItem,
   enqueueSessionFollowup,
   getSessionQueue,
+  mergeQueueRows,
+  pruneSteeredQueueItems,
   removeSessionQueueItem,
   removeWaitingQueueItem,
   sendSessionQueueItemNow,
   sendWaitingQueueItemNow,
   steerSessionQueueItem,
+  visibleQueueItems,
   type QueueItem,
 } from "./queue";
 
@@ -166,4 +170,110 @@ test("UNKNOWN_QUEUE_ITEM after a pop is reconciled without surfacing an error", 
 test("queued attachment labels retain names and fall back to path basenames", () => {
   assert.equal(attachmentLabel({ type: "file", name: "notes.md", path: "uploads/hash" }), "notes.md");
   assert.equal(attachmentLabel({ type: "image", path: "uploads/session/screenshot.png" }), "screenshot.png");
+});
+
+test("a departed queue item keeps its place to animate out, and a restored one is live again", () => {
+  const first = item("1");
+  const second = item("2");
+  const third = item("3");
+  const shown = mergeQueueRows([], [first, second, third]);
+  assert.deepEqual(shown, [
+    { item: first, leaving: false },
+    { item: second, leaving: false },
+    { item: third, leaving: false },
+  ]);
+
+  // The steered head leaves in place instead of the rows below it jumping up.
+  const steered = mergeQueueRows(shown, [second, third]);
+  assert.deepEqual(steered.map((row) => [row.item.id, row.leaving]), [["1", true], ["2", false], ["3", false]]);
+
+  // A refused steer reconciles the item back: it is an ordinary row once more.
+  const restored = mergeQueueRows(steered, [first, second, third]);
+  assert.deepEqual(restored.map((row) => [row.item.id, row.leaving]), [["1", false], ["2", false], ["3", false]]);
+
+  // Newly queued items append after everything already on screen.
+  const fourth = item("4");
+  assert.deepEqual(
+    mergeQueueRows(restored, [first, second, third, fourth]).map((row) => row.item.id),
+    ["1", "2", "3", "4"],
+  );
+});
+
+test("a steered row stays hidden across the snapshots Peon answers before it pops", () => {
+  const first = item("1");
+  const second = item("2");
+  const now = 1_000;
+  // Steering is answered as soon as the redirect is issued; for a provider that
+  // redirects by interrupting, the item is still queued for seconds afterwards.
+  const steered = new Map([["1", now + 60_000]]);
+  assert.deepEqual(visibleQueueItems([first, second], steered), [second]);
+
+  const stillQueued = pruneSteeredQueueItems(steered, [first, second], now + 2_000);
+  assert.deepEqual([...stillQueued.keys()], ["1"]);
+  assert.deepEqual(visibleQueueItems([first, second], stillQueued), [second]);
+
+  // Once the authoritative list agrees, nothing is left to hide.
+  assert.equal(pruneSteeredQueueItems(stillQueued, [second], now + 3_000).size, 0);
+
+  // A steer that never lands cannot hide a still-queued message forever.
+  assert.equal(pruneSteeredQueueItems(steered, [first, second], now + 61_000).size, 0);
+});
+
+test("an unsteered queue list is passed through unchanged", () => {
+  const items = [item("1"), item("2")];
+  assert.equal(visibleQueueItems(items, new Map()), items);
+});
+
+test("editing a queued message puts its text and attachments in the composer", () => {
+  const queued = item("1", {
+    prompt: "Rewrite the migration",
+    attachments: [{ type: "file", path: "/tmp/peon-files/uploads/plan.md", name: "plan.md" }],
+  });
+
+  const draft = draftWithQueuedItem(queued, "", []);
+
+  assert.equal(draft.text, "Rewrite the migration");
+  // Carried by the path Peon already committed — the bytes are not re-uploaded.
+  assert.deepEqual(draft.carried.map((attachment) => attachment.path), ["/tmp/peon-files/uploads/plan.md"]);
+});
+
+test("editing a queued message never discards what was already drafted", () => {
+  const queued = item("1", {
+    prompt: "Rewrite the migration",
+    attachments: [{ type: "file", path: "/tmp/peon-files/uploads/plan.md" }],
+  });
+  const drafted = [{ type: "image" as const, path: "/tmp/peon-files/uploads/shot.png" }];
+
+  const draft = draftWithQueuedItem(queued, "  and drop the index  ", drafted);
+
+  assert.equal(draft.text, "Rewrite the migration\n\nand drop the index");
+  assert.deepEqual(draft.carried.map((attachment) => attachment.path), [
+    "/tmp/peon-files/uploads/plan.md",
+    "/tmp/peon-files/uploads/shot.png",
+  ]);
+});
+
+test("pulling the same attachment in twice sends it once", () => {
+  const attachment = { type: "file" as const, path: "/tmp/peon-files/uploads/plan.md" };
+  const draft = draftWithQueuedItem(item("1", { attachments: [attachment] }), "", [attachment]);
+  assert.equal(draft.carried.length, 1);
+});
+
+test("a carried draft cannot exceed one message's attachment limit", () => {
+  const many = Array.from({ length: 9 }, (_, i) => ({ type: "file" as const, path: `/tmp/peon-files/uploads/${i}.md` }));
+  const draft = draftWithQueuedItem(
+    item("1", { attachments: [{ type: "file", path: "/tmp/peon-files/uploads/queued.md" }] }),
+    "",
+    many,
+  );
+  assert.equal(draft.carried.length, 10);
+  // The queued message's own attachment is the one that cannot be dropped.
+  assert.equal(draft.carried[0]!.path, "/tmp/peon-files/uploads/queued.md");
+});
+
+test("an attachment with no path cannot be carried", () => {
+  // A locally picked File is described by name and size alone; there is nothing
+  // for Peon to resolve, so it must not silently become an empty attachment.
+  const draft = draftWithQueuedItem(item("1", { attachments: [{ type: "file", name: "picked.md" }] }), "", []);
+  assert.deepEqual(draft.carried, []);
 });

@@ -28,6 +28,7 @@ test("every queued item exposes an accessible steer action", () => {
       removing: new Set<string>(),
       steering: new Set<string>(),
       onRemove: () => {},
+      onEdit: () => {},
       onSteer: () => {},
       t: (key) => key === "session.queue.steer" ? "Направить" : key,
     }),
@@ -41,9 +42,11 @@ test("every queued item exposes an accessible steer action", () => {
   assert.match(html, /theme-queued-message/);
   assert.doesNotMatch(html, /bg-warning-deep/);
   assert.match(html, /backdrop-blur-md/);
-  assert.match(html, /\bw-full\b/);
-  assert.match(html, /\bmax-w-none\b/);
-  assert.match(html, /\bmd:w-auto\b/);
+  // A short phrase gets a short bubble. `w-fit` also opts the row out of the
+  // flex column's stretch, which `w-auto` would silently accept.
+  assert.match(html, /\bw-fit\b/);
+  assert.match(html, /\bmax-w-full\b/);
+  assert.doesNotMatch(html, /\bmax-w-none\b|\bmd:w-auto\b|class="[^"]*\sw-full\b/);
   assert.match(html, /md:max-w-\[80%\]/);
   assert.match(QUEUE_ACTION_CLASS, /\bh-7\b/);
   assert.match(QUEUE_ACTION_CLASS, /\bmin-w-7\b/);
@@ -68,6 +71,7 @@ test("a single-line queued message is centered against the action buttons", () =
       removing: new Set<string>(),
       steering: new Set<string>(),
       onRemove: () => {},
+      onEdit: () => {},
       onSteer: () => {},
       t: (key) => key,
     }),
@@ -84,6 +88,7 @@ test("a scrollable queue ends flush against the composer fade", () => {
       removing: new Set<string>(),
       steering: new Set<string>(),
       onRemove: () => {},
+      onEdit: () => {},
       onSteer: () => {},
       t: (key) => key,
     }),
@@ -91,7 +96,9 @@ test("a scrollable queue ends flush against the composer fade", () => {
   // The fade's own top padding is the entire gap; a margin here would leave the
   // clipped last item floating over an empty strip.
   assert.doesNotMatch(html, /<section[^>]*\bmb-\d/);
-  assert.match(html, /<ol class="max-h-56 space-y-2 overflow-y-auto"/);
+  // A flex gap rather than space-y: the leaving row's animation cancels exactly
+  // one gap as it collapses, which sibling margins cannot do.
+  assert.match(html, /<ol class="flex max-h-56 flex-col gap-2 overflow-y-auto"/);
 });
 
 test("steer action is disabled while that queued item is being dispatched", () => {
@@ -101,9 +108,43 @@ test("steer action is disabled while that queued item is being dispatched", () =
       removing: new Set<string>(),
       steering: new Set([queuedItem.id]),
       onRemove: () => {},
+      onEdit: () => {},
       onSteer: () => {},
       t: (key) => key === "session.queue.steer" ? "Steer" : key,
     }),
   );
   assert.match(html, /<button[^>]*disabled=""[^>]*aria-label="Steer"/);
+});
+
+test("every queued item can be pulled back into the composer for editing", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(QueueList, {
+      items: [queuedItem],
+      removing: new Set<string>(),
+      steering: new Set<string>(),
+      onRemove: () => {},
+      onEdit: () => {},
+      onSteer: () => {},
+      t: (key) => key === "session.queue.edit" ? "Редактировать" : key,
+    }),
+  );
+  assert.match(html, /aria-label="Редактировать"/);
+  assert.match(html, /lucide-pencil/);
+  // Icon only: the row already carries one labelled action and must stay narrow.
+  assert.doesNotMatch(html, /class="hidden sm:inline">Редактировать<\/span>/);
+});
+
+test("an item already being removed or steered cannot also be edited", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(QueueList, {
+      items: [queuedItem],
+      removing: new Set<string>(["second"]),
+      steering: new Set<string>(),
+      onRemove: () => {},
+      onEdit: () => {},
+      onSteer: () => {},
+      t: (key) => key,
+    }),
+  );
+  assert.equal(html.match(/<button[^>]*disabled/g)?.length, 3);
 });

@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useState, type SetStateAction } from "react";
+import type { MessageAttachment } from "./parsing";
 
 const DRAFT_PREFIX = "overseer:composer-draft";
+// Attachments a draft carries by path — already committed on the peon, so
+// unlike a picked File they are a few bytes of JSON and belong next to the text
+// half rather than in IndexedDB.
+const CARRIED_SUFFIX = ":carried";
 
 // Attachments cannot ride in localStorage next to the text — a File is not
 // serialisable and a single one may be 25 MB. IndexedDB stores File objects
@@ -120,8 +125,9 @@ export function composerDraftKey(workspaceId: string, peonId: string, sessionId:
 // stays mounted — but a composer that navigates away on submit unmounts before
 // that effect could run, and a send that fails after the operator moved on has
 // no mounted composer at all.
-export function saveComposerDraft(key: string, value: string, files: File[]): void {
+export function saveComposerDraft(key: string, value: string, files: File[], carried: readonly MessageAttachment[] = []): void {
   writeDraft(key, value);
+  writeCarriedAttachments(key, carried);
   void writeDraftFiles(key, files);
 }
 
@@ -135,6 +141,50 @@ export function clearComposerDraft(key: string): void {
 // this separate from clearComposerDraft so its text draft can still survive.
 export function clearComposerDraftFiles(key: string): void {
   void writeDraftFiles(key, NO_FILES);
+}
+
+const NO_CARRIED: MessageAttachment[] = [];
+
+function isCarried(value: unknown): value is MessageAttachment {
+  return Boolean(value) && typeof value === "object" && typeof (value as MessageAttachment).path === "string";
+}
+
+export function readCarriedAttachments(key: string): MessageAttachment[] {
+  try {
+    const raw = window.localStorage.getItem(key + CARRIED_SUFFIX);
+    if (!raw) return NO_CARRIED;
+    const parsed: unknown = JSON.parse(raw);
+    const carried = Array.isArray(parsed) ? parsed.filter(isCarried) : [];
+    return carried.length ? carried : NO_CARRIED;
+  } catch {
+    return NO_CARRIED;
+  }
+}
+
+export function writeCarriedAttachments(key: string, carried: readonly MessageAttachment[]): void {
+  try {
+    if (carried.length) window.localStorage.setItem(key + CARRIED_SUFFIX, JSON.stringify(carried));
+    else window.localStorage.removeItem(key + CARRIED_SUFFIX);
+  } catch {
+    // Best-effort, like every other draft write.
+  }
+}
+
+// The text half and the carried half are one draft: a session switch or a
+// reload must show both or neither.
+export function useCarriedAttachments(key: string): [MessageAttachment[], (carried: MessageAttachment[]) => void] {
+  const [draft, setDraft] = useState(() => ({ key, carried: readCarriedAttachments(key) }));
+
+  useEffect(() => {
+    if (draft.key !== key) setDraft({ key, carried: readCarriedAttachments(key) });
+  }, [draft.key, key]);
+
+  const setCarried = useCallback((carried: MessageAttachment[]) => {
+    writeCarriedAttachments(key, carried);
+    setDraft({ key, carried });
+  }, [key]);
+
+  return [draft.key === key ? draft.carried : readCarriedAttachments(key), setCarried];
 }
 
 export function useComposerDraft(key: string, initialValue?: string, persist = true): [string, (value: string) => void] {

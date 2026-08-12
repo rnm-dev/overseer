@@ -487,8 +487,8 @@ function PeonSessionDetailPage() {
     [visibleEvents],
   );
   const {
-    input, setInput, files, setFiles, sending, sendError, setSendError, ghost,
-    queueItems, removingQueueItems, steeringQueueItems, filesEnabled, send, enqueue, removeQueuedItem, steerQueuedItem,
+    input, setInput, files, setFiles, carried, setCarried, sending, sendError, setSendError, ghost,
+    queueItems, removingQueueItems, steeringQueueItems, filesEnabled, send, enqueue, removeQueuedItem, editQueuedItem, steerQueuedItem,
   } = useSessionComposer({
     base,
     sid,
@@ -987,6 +987,7 @@ function PeonSessionDetailPage() {
         removingQueueItems={removingQueueItems}
         steeringQueueItems={steeringQueueItems}
         removeQueuedItem={removeQueuedItem}
+        editQueuedItem={editQueuedItem}
         steerQueuedItem={steerQueuedItem}
         input={input}
         setInput={setInput}
@@ -997,6 +998,8 @@ function PeonSessionDetailPage() {
         controlConnected={peon.controlConnected ?? peon.online}
         files={files}
         setFiles={setFiles}
+        carried={carried}
+        setCarried={setCarried}
         setAttachmentPreview={setAttachmentPreview}
         filesEnabled={filesEnabled}
         sendError={sendError}

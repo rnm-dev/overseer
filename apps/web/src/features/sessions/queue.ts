@@ -128,10 +128,92 @@ export function createQueueReconciler(
   return { reconcile, dispose: () => { disposed = true; } };
 }
 
+// A steered item leaves the operator's list before Peon has popped it. The
+// steer request is answered as soon as the redirect is issued — for a provider
+// without a native in-flight steer that is only an interrupt — and the item
+// stays in the authoritative queue until the replacement run actually starts,
+// seconds later. Hiding the row therefore means ignoring every snapshot in
+// between, not just the one that happens to follow the request. The id is
+// dropped as soon as the authoritative list agrees, and expires regardless so a
+// steer that never lands cannot hide a still-queued message forever.
+export function pruneSteeredQueueItems(
+  steered: ReadonlyMap<string, number>,
+  items: readonly QueueItem[],
+  now: number,
+): Map<string, number> {
+  const live = new Set(items.map((item) => item.id));
+  return new Map([...steered].filter(([id, until]) => live.has(id) && now < until));
+}
+
+export function visibleQueueItems(items: QueueItem[], steered: ReadonlyMap<string, number>): QueueItem[] {
+  return steered.size ? items.filter((item) => !steered.has(item.id)) : items;
+}
+
+export interface QueueRow {
+  item: QueueItem;
+  leaving: boolean;
+}
+
+// An item that left the authoritative list keeps its place for the length of its
+// exit animation, so a steered or removed message collapses out of the queue
+// instead of blinking away under the rows below it. A row that comes back —
+// a refused steer, reconciled — is simply live again.
+export function mergeQueueRows(previous: readonly QueueRow[], items: readonly QueueItem[]): QueueRow[] {
+  const live = new Map(items.map((item) => [item.id, item]));
+  const rows: QueueRow[] = [];
+  const placed = new Set<string>();
+  for (const row of previous) {
+    const current = live.get(row.item.id);
+    if (current) placed.add(current.id);
+    rows.push(current ? { item: current, leaving: false } : { item: row.item, leaving: true });
+  }
+  for (const item of items) if (!placed.has(item.id)) rows.push({ item, leaving: false });
+  return rows;
+}
+
 export function attachmentLabel(attachment: MessageAttachment): string {
   if (attachment.name) return attachment.name;
   if (!attachment.path) return attachment.type === "image" ? "image" : "file";
   return attachment.path.split(/[\\/]/).filter(Boolean).pop() ?? attachment.path;
+}
+
+// The composer may not carry more attachments than one message is allowed.
+export const CARRIED_ATTACHMENTS_MAX = 10;
+
+export interface ComposerDraftPatch {
+  text: string;
+  carried: MessageAttachment[];
+}
+
+/**
+ * What the composer holds after a queued message is pulled back into it for
+ * editing. The queued text goes first and whatever was already drafted keeps
+ * its own paragraph below it: editing an item must never be the reason a
+ * half-written message disappears.
+ *
+ * Attachments are carried by path rather than re-uploaded — they are already
+ * committed under the peon's file transfer root — and deduplicated so pulling
+ * the same file in twice does not send it twice.
+ */
+export function draftWithQueuedItem(
+  item: QueueItem,
+  text: string,
+  carried: readonly MessageAttachment[],
+): ComposerDraftPatch {
+  const queued = (item.attachments ?? []).filter((attachment) => Boolean(attachment.path));
+  const merged: MessageAttachment[] = [];
+  const seen = new Set<string>();
+  for (const attachment of [...queued, ...carried.filter((attachment) => Boolean(attachment.path))]) {
+    const path = attachment.path!;
+    if (seen.has(path)) continue;
+    seen.add(path);
+    merged.push(attachment);
+  }
+  const drafted = text.trim();
+  return {
+    text: drafted ? `${item.prompt}\n\n${drafted}` : item.prompt,
+    carried: merged.slice(0, CARRIED_ATTACHMENTS_MAX),
+  };
 }
 
 export async function removeWaitingQueueItem(

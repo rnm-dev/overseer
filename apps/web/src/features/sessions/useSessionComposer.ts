@@ -1,12 +1,12 @@
-import { useEffect, useRef, useState, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
+import { useEffect, useMemo, useRef, useState, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
 import { api, ApiError, isPeonNeedsUpdate, json } from "../../shared/api";
 import type { Translate } from "../../shared/i18n";
 import { useNotifications } from "../../shared/notifications";
-import { composerDraftKey, saveComposerDraft, useComposerDraft, useComposerDraftFiles } from "./drafts";
+import { composerDraftKey, saveComposerDraft, useCarriedAttachments, useComposerDraft, useComposerDraftFiles } from "./drafts";
 import { attachmentUploadPath } from "../projects/fileLinks";
 import type { ModelsCatalog } from "../settings/models";
 import type { MessageAttachment } from "./parsing";
-import { createQueueReconciler, enqueueSessionFollowup, getSessionQueue, removeSessionQueueItem, removeWaitingQueueItem, steerSessionQueueItem, sendWaitingQueueItemNow, type QueueActivityTracker, type QueueItem } from "./queue";
+import { createQueueReconciler, draftWithQueuedItem, enqueueSessionFollowup, getSessionQueue, removeSessionQueueItem, removeWaitingQueueItem, pruneSteeredQueueItems, steerSessionQueueItem, sendWaitingQueueItemNow, visibleQueueItems, type QueueActivityTracker, type QueueItem } from "./queue";
 import { createSubmissionGate } from "./submissionGate";
 
 const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
@@ -125,6 +125,10 @@ export function useSessionComposer({
   const draftKey = composerDraftKey(wsId, peonId, sid);
   const [input, setInput] = useComposerDraft(draftKey);
   const [files, setFiles] = useComposerDraftFiles(draftKey);
+  // Attachments already committed on the peon that this draft is carrying —
+  // what a queued message brings with it when it is edited back into the
+  // composer. They are re-sent by path; there are no bytes to upload again.
+  const [carried, setCarried] = useCarriedAttachments(draftKey);
   const [sending, setSending] = useState(false);
   const submissionGateRef = useRef(createSubmissionGate());
   // One request id per pending payload, as the mobile client does it. It outlives
@@ -142,6 +146,8 @@ export function useSessionComposer({
   const [queueItems, setQueueItems] = useState<QueueItem[]>([]);
   const [removingQueueItems, setRemovingQueueItems] = useState<Set<string>>(new Set());
   const [sendingQueueItems, setSendingQueueItems] = useState<Set<string>>(new Set());
+  // itemId → the moment hiding a steered row stops being justified.
+  const [steeredQueueItems, setSteeredQueueItems] = useState<ReadonlyMap<string, number>>(new Map());
   const [filesEnabled, setFilesEnabled] = useState<boolean | null>(null);
   useEffect(() => {
     setSending(false);
@@ -155,6 +161,20 @@ export function useSessionComposer({
     const id = window.setTimeout(() => setGhost(null), Math.max(0, ghost.createdAt + GHOST_MAX_MS - Date.now()));
     return () => window.clearTimeout(id);
   }, [ghost, userMessageCount]);
+
+  // A steer that never reaches the transcript must not leave its row hidden any
+  // longer than its ghost stands, so the queue goes back to showing the truth.
+  useEffect(() => {
+    if (!steeredQueueItems.size) return;
+    const soonest = Math.min(...steeredQueueItems.values());
+    const timer = window.setTimeout(
+      () => setSteeredQueueItems((current) => new Map([...current].filter(([, until]) => Date.now() < until))),
+      Math.max(0, soonest - Date.now()),
+    );
+    return () => window.clearTimeout(timer);
+  }, [steeredQueueItems]);
+
+  const visibleQueue = useMemo(() => visibleQueueItems(queueItems, steeredQueueItems), [queueItems, steeredQueueItems]);
 
   function requestIdFor(identity: string): string {
     return requestIdentityRef.current!.forPayload(identity);
@@ -207,13 +227,20 @@ export function useSessionComposer({
     };
   }
 
+  // An attachment the draft carries is already committed under the peon's file
+  // transfer root, so it re-enters a message as the path it already has.
+  function carriedPayload(attachments: readonly MessageAttachment[]) {
+    return attachments.map((attachment) => ({ type: attachment.type === "image" ? "image" as const : "file" as const, path: attachment.path! }));
+  }
+
   async function send() {
     const text = input.trim();
-    if (!text && files.length === 0) return;
+    if (!text && files.length === 0 && carried.length === 0) return;
     const submission = submissionGateRef.current.begin(sessionKey);
     if (!submission) return;
     const prompt = text || "(see attachments)";
     const pending = files;
+    const pendingCarried = carried;
     const wasRunning = running;
     const prevModel = runningModel;
     const prevReasoningEffort = runningReasoningEffort;
@@ -230,13 +257,17 @@ export function useSessionComposer({
     const clientId = requestIdFor(JSON.stringify([
       sessionKey, prompt, overrideModel, overrideReasoningEffort,
       pending.map((f) => [f.name, f.size, f.lastModified]),
+      pendingCarried.map((attachment) => attachment.path),
     ]));
     // Let the transcript freeze its current viewport before the new row enters.
     // It will scroll only after Virtuoso has measured the committed ghost.
     onGhostCreated();
     setGhost({
       text: prompt,
-      attachments: pending.map((f) => ({ type: isImage(f) ? "image" : "file", name: f.name, size: f.size })),
+      attachments: [
+        ...pendingCarried,
+        ...pending.map((f) => ({ type: isImage(f) ? "image" as const : "file" as const, name: f.name, size: f.size })),
+      ],
       createdAt: Date.now(),
       baselineUserMessages: userMessageCountRef.current,
     });
@@ -248,11 +279,12 @@ export function useSessionComposer({
     setStopNote(null);
     setInput("");
     setFiles([]);
+    setCarried([]);
     let followupAttempted = false;
     try {
       // Upload each file to the sandbox, then send native attachments[] (peon
       // presents images as visual content to the agent via its Read tool).
-      const attachments: { type: "file" | "image"; path: string; transferId?: string; size?: number; sha256?: string }[] = [];
+      const attachments: { type: "file" | "image"; path: string; transferId?: string; size?: number; sha256?: string }[] = carriedPayload(pendingCarried);
       for (const f of pending) attachments.push({ type: isImage(f) ? "image" : "file", ...await uploadFile(f) });
       const body: { prompt: string; attachments?: typeof attachments; model?: string; reasoningEffort?: string } = { prompt };
       if (attachments.length) body.attachments = attachments;
@@ -277,7 +309,7 @@ export function useSessionComposer({
         // stated refusal means the draft belongs back under this session's key;
         // an unknown outcome might still have been delivered, so stay out of the
         // way rather than invite a resend.
-        if (restoreDraft) saveComposerDraft(draftKey, text, pending);
+        if (restoreDraft) saveComposerDraft(draftKey, text, pending, pendingCarried);
         return;
       }
       if (restoreDraft) {
@@ -286,6 +318,7 @@ export function useSessionComposer({
         setRunningSelection(wasRunning ? prevModel : null, wasRunning ? prevReasoningEffort : null);
         setInput(text);
         setFiles(pending);
+        setCarried(pendingCarried);
       }
       notifyError(err, {
         title: t("session.compose.sendFailed"),
@@ -299,16 +332,17 @@ export function useSessionComposer({
 
   async function enqueue() {
     const text = input.trim();
-    if (!text && files.length === 0) return;
+    if (!text && files.length === 0 && carried.length === 0) return;
     const submission = submissionGateRef.current.begin(sessionKey);
     if (!submission) return;
     const prompt = text || "(see attachments)";
     const pending = files;
+    const pendingCarried = carried;
     const queueReconciler = queueReconcilerRef.current;
     setSending(true);
     setSendError(null);
     try {
-      const attachments: { type: "file" | "image"; path: string; transferId?: string; size?: number; sha256?: string }[] = [];
+      const attachments: { type: "file" | "image"; path: string; transferId?: string; size?: number; sha256?: string }[] = carriedPayload(pendingCarried);
       for (const file of pending) attachments.push({ type: isImage(file) ? "image" : "file", ...await uploadFile(file) });
       const commandId = crypto.randomUUID();
       await enqueueSessionFollowup(base, sid, {
@@ -325,6 +359,7 @@ export function useSessionComposer({
       if (currentSessionKeyRef.current === sessionKey) {
         setInput("");
         setFiles([]);
+        setCarried([]);
         setStopNote(null);
       }
     } catch (err) {
@@ -358,6 +393,45 @@ export function useSessionComposer({
     }
   }
 
+  // Editing a queued message is a pull, not a patch: the row leaves the
+  // authoritative queue and lands in the composer — text and attachments
+  // together — where every ordinary composer action applies to it again. Peon's
+  // PATCH is deliberately not used: it carries a prompt and nothing else, so it
+  // cannot express an attachment change, and a row left queued while it is
+  // being rewritten can be popped mid-edit and delivered as it stood. The cost
+  // of pulling is that the message loses its place and is queued again at the
+  // back.
+  async function editQueuedItem(itemId: string) {
+    if (removingQueueItems.has(itemId) || sendingQueueItems.has(itemId)) return;
+    const queued = queueItems.find((item) => item.id === itemId);
+    if (!queued) return;
+    const draft = draftWithQueuedItem(queued, input, carried);
+    setRemovingQueueItems((current) => new Set(current).add(itemId));
+    let pulled = false;
+    try {
+      await removeSessionQueueItem(base, sid, itemId);
+      pulled = true;
+    } catch (err) {
+      const code = err && typeof err === "object" && "code" in err ? (err as { code?: unknown }).code : null;
+      // Peon started this message between the click and the request. Its text
+      // must not appear in the composer: the operator would send a second copy
+      // of a turn that is already running.
+      if (code === "UNKNOWN_QUEUE_ITEM") setSendError(t("session.queue.editUnavailable"));
+      else notifyError(err, { title: t("session.queue.editFailed"), fallback: t("error.generic") });
+    } finally {
+      setRemovingQueueItems((current) => {
+        const next = new Set(current);
+        next.delete(itemId);
+        return next;
+      });
+      await (queueReconcilerRef.current?.reconcile() ?? Promise.resolve());
+    }
+    if (!pulled || currentSessionKeyRef.current !== sessionKey) return;
+    setSendError(null);
+    setInput(draft.text);
+    setCarried(draft.carried);
+  }
+
   async function steerQueuedItem(itemId: string) {
     if (sendingQueueItems.has(itemId) || removingQueueItems.has(itemId)) return;
     const queued = queueItems.find((item) => item.id === itemId);
@@ -366,6 +440,23 @@ export function useSessionComposer({
     const previousReasoningEffort = runningReasoningEffort;
     setSendingQueueItems((current) => new Set(current).add(itemId));
     setSendError(null);
+    // Steering is the composer's Send with the text already written: the row
+    // leaves the queue and stands under the transcript as the same single
+    // ghost, which retires on Peon's authoritative row like any other. The
+    // authoritative list stays the truth — this only hides the row until that
+    // list agrees, which for an interrupt-and-resume provider is several
+    // seconds after the request is answered.
+    const steerGhost: ComposerGhost | null = queued ? {
+      text: queued.prompt,
+      attachments: queued.attachments ?? [],
+      createdAt: Date.now(),
+      baselineUserMessages: userMessageCountRef.current,
+    } : null;
+    if (steerGhost) {
+      onGhostCreated();
+      setGhost(steerGhost);
+      setSteeredQueueItems((current) => new Map(current).set(itemId, Date.now() + GHOST_MAX_MS));
+    }
     setRunning(true);
     setRunningSelection(
       queued?.model || runningModel || sessionModel || (!sessionAgent ? catalog?.defaultModel : null) || null,
@@ -381,6 +472,15 @@ export function useSessionComposer({
       );
       if (accepted) onWorkStarted();
       else {
+        // Nothing was started by this click, so neither the placeholder nor the
+        // hidden row has a turn to stand for. A ghost some later send owns is
+        // left alone.
+        setGhost((current) => (current === steerGhost ? null : current));
+        setSteeredQueueItems((current) => {
+          const next = new Map(current);
+          next.delete(itemId);
+          return next;
+        });
         setRunning(wasRunning);
         setRunningSelection(wasRunning ? previousModel : null, wasRunning ? previousReasoningEffort : null);
       }
@@ -401,11 +501,13 @@ export function useSessionComposer({
     queueActivity.replace(sessionKey, []);
     setRemovingQueueItems(new Set());
     setSendingQueueItems(new Set());
+    setSteeredQueueItems(new Map());
     const reconciler = createQueueReconciler(
       () => getSessionQueue(base, sid, api, controlReadScope),
       (items) => {
         queueActivity.replace(sessionKey, items);
         setQueueItems(items);
+        setSteeredQueueItems((current) => (current.size ? pruneSteeredQueueItems(current, items, Date.now()) : current));
       },
     );
     queueReconcilerRef.current = reconciler;
@@ -417,7 +519,7 @@ export function useSessionComposer({
   }, [base, controlReadScope, notifyError, queueActivity, queueReconcilerRef, sessionKey, sid, t]);
 
   return {
-    input, setInput, files, setFiles, sending, sendError, setSendError, ghost,
-    queueItems, removingQueueItems, steeringQueueItems: sendingQueueItems, filesEnabled, send, enqueue, removeQueuedItem, steerQueuedItem,
+    input, setInput, files, setFiles, carried, setCarried, sending, sendError, setSendError, ghost,
+    queueItems: visibleQueue, removingQueueItems, steeringQueueItems: sendingQueueItems, filesEnabled, send, enqueue, removeQueuedItem, editQueuedItem, steerQueuedItem,
   };
 }
