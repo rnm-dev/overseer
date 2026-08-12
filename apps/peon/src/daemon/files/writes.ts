@@ -132,7 +132,12 @@ function targetFromExistingParent(root: string, parts: string[]): FileWriteTarge
   };
 }
 
-export function projectFileWriteTarget(record: ProjectFileRecord, requested: string): FileWriteTarget {
+// `createParents` is opt-in because a plain project upload promises
+// PARENT_NOT_FOUND for a path whose folder does not exist. Only a caller that
+// says it is uploading a folder (the tree's directory drop) asks for the
+// missing segments to be created, and they are created by the same contained
+// walk the sandbox upload uses.
+export function projectFileWriteTarget(record: ProjectFileRecord, requested: string, createParents = false): FileWriteTarget {
   const parts = relativeSegments(requested);
   let root: string;
   try {
@@ -141,6 +146,7 @@ export function projectFileWriteTarget(record: ProjectFileRecord, requested: str
   } catch (error) {
     throw fileWriteFsError(error, "configured project root is unavailable");
   }
+  if (createParents) createContainedParent(root, parts.slice(0, -1));
   return targetFromExistingParent(root, parts);
 }
 
@@ -440,13 +446,13 @@ try:
         fail(21)
     if stat.S_ISLNK(source.st_mode):
         reject_symlink(f"{src_parent}/{src_name}" if src_parent else src_name)
-    if not stat.S_ISREG(source.st_mode):
+    if not stat.S_ISREG(source.st_mode) and not stat.S_ISDIR(source.st_mode):
         fail(22)
     try:
         destination = os.stat(dst_name, dir_fd=destination_parent_fd, follow_symlinks=False)
         if stat.S_ISLNK(destination.st_mode):
             reject_symlink(f"{dst_parent}/{dst_name}" if dst_parent else dst_name)
-        if not stat.S_ISREG(destination.st_mode):
+        if not stat.S_ISREG(destination.st_mode) and not stat.S_ISDIR(destination.st_mode):
             fail(22)
         fail(17)
     except FileNotFoundError:
@@ -460,7 +466,9 @@ try:
     if not root_is_current() or not beneath_root(source_parent_fd) or not beneath_root(destination_parent_fd):
         fail(20)
     current = os.stat(src_name, dir_fd=source_parent_fd, follow_symlinks=False)
-    if current.st_dev != expected_dev or current.st_ino != expected_ino or not stat.S_ISREG(current.st_mode):
+    if current.st_dev != expected_dev or current.st_ino != expected_ino:
+        fail(18)
+    if not stat.S_ISREG(current.st_mode) and not stat.S_ISDIR(current.st_mode):
         fail(18)
     libc = ctypes.CDLL(None, use_errno=True)
     if sys.platform.startswith("linux"):
@@ -481,7 +489,14 @@ try:
         fail(95)
     if result != 0:
         value_errno = ctypes.get_errno()
-        fail(17 if value_errno == errno.EEXIST else 74, value_errno)
+        if value_errno in (errno.EEXIST, errno.ENOTEMPTY):
+            fail(17)
+        # The kernel is the authority on "a folder cannot be moved inside
+        # itself"; it answers EINVAL, which would otherwise read as a generic
+        # write failure.
+        if value_errno == errno.EINVAL:
+            fail(24)
+        fail(74, value_errno)
 finally:
     os.close(source_parent_fd)
     os.close(destination_parent_fd)
@@ -625,8 +640,9 @@ async function runAnchoredProjectMove(
       if (code === 18) return reject(new FileWriteError(409, "SOURCE_CHANGED", "source changed during commit"));
       if (code === 20) return reject(new FileWriteError(400, "PATH_ESCAPE", "project move left its anchored project root"));
       if (code === 21) return reject(new FileWriteError(404, "NOT_FOUND", "source file does not exist"));
-      if (code === 22) return reject(new FileWriteError(400, "INVALID_PATH", "source must be a regular file"));
+      if (code === 22) return reject(new FileWriteError(400, "INVALID_PATH", "source must be a regular file or a directory"));
       if (code === 23) return reject(new FileWriteError(404, "PARENT_NOT_FOUND", "source or destination parent directory does not exist"));
+      if (code === 24) return reject(new FileWriteError(400, "INVALID_PATH", "a directory cannot be moved inside itself"));
       if (code === 95) return reject(new FileWriteError(501, "UNSUPPORTED_PLATFORM", "native contained no-replace rename is unavailable"));
       return reject(new FileWriteError(500, "WRITE_FAILED", `native contained project move failed${error.trim() ? ` (${error.trim()})` : ""}`));
     });

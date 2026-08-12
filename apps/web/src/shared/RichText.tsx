@@ -1,4 +1,5 @@
 import { isValidElement, useMemo, type ComponentPropsWithoutRef, type ReactNode } from "react";
+import { gutterWidthCh, lineNumberText } from "./lineNumbers";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { MermaidDiagram } from "./MermaidDiagram";
@@ -167,20 +168,28 @@ export function languageForPath(filePath: string): string | null {
   return LANGUAGE_BY_EXTENSION[extension] ?? null;
 }
 
-export function HighlightedCode({ source, language, className = "" }: {
+export function HighlightedCode({ source, language, className = "", lineNumbers = false }: {
   source: string;
   language?: string | null;
   className?: string;
+  // Off by default: a snippet inside a transcript is quoted prose, while a
+  // whole file shown as a pane's content is something people cite by line.
+  lineNumbers?: boolean;
 }) {
   const highlighted = useMemo(() => {
     return highlightedMarkup(source, language ?? null);
   }, [source, language]);
+  const code = highlighted === null
+    ? <code>{source}</code>
+    : <code className={`hljs language-${language}`} dangerouslySetInnerHTML={{ __html: highlighted }} />;
 
+  if (!lineNumbers) return <pre className={`code-view ${className}`}>{code}</pre>;
   return (
-    <pre className={`code-view ${className}`}>
-      {highlighted === null
-        ? <code>{source}</code>
-        : <code className={`hljs language-${language}`} dangerouslySetInnerHTML={{ __html: highlighted }} />}
+    <pre className={`code-view code-view--numbered ${className}`}>
+      {/* Inside the scrolling box, so vertical scroll carries it; stuck to the
+          left, so horizontal scroll does not take it away. */}
+      <span aria-hidden className="code-gutter" style={{ width: `${gutterWidthCh(source)}ch` }}>{lineNumberText(source)}</span>
+      {code}
     </pre>
   );
 }

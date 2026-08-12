@@ -1,11 +1,13 @@
-import { useCallback, useEffect, useRef, useState, type DragEvent } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { ChevronRight, Check, Copy, Download, ExternalLink, Folder, FolderOpen, LoaderCircle, RefreshCw, X } from "lucide-react";
-import { api, ApiError } from "../../shared/api";
+import { ChevronRight, Check, Copy, Download, ExternalLink, Folder, FolderOpen, FolderUp, LoaderCircle, RefreshCw, Trash2, Upload, X } from "lucide-react";
+import { ApiError } from "../../shared/api";
 import { useT } from "../../shared/i18n";
+import { ConfirmationDialog } from "../../shared/ui";
 import { FileTypeIcon } from "./FileTypeIcon";
 import { FileDownloadButton, FileView, useFileContent } from "./FileView";
-import { encodeFilePath, fileDownloadUrl, fileName, formatFileSize, type FileSource } from "./fileLinks";
+import { fileDownloadUrl, fileName, formatFileSize, type FileSource } from "./fileLinks";
+import { baseName, filesFromInput, parentPath, useFileTransfers, type DraggedEntry, type PendingUpload } from "./fileTransfers";
 import { requestProjectDirectory, type ProjectFileEntry } from "./projectDirectoryListing";
 
 export { formatFileSize } from "./fileLinks";
@@ -16,31 +18,12 @@ interface DirectoryState {
   error?: string;
 }
 
-interface UploadState {
-  done: number;
-  total: number;
-  target: string;
-  error?: string;
-}
-
-interface MoveState {
-  source: string;
-  destination: string;
-  running: boolean;
-  error?: string;
-}
-
 const isDirectory = (entry: ProjectFileEntry) => entry.type === "dir" || entry.type === "directory";
 const sortEntries = (entries: ProjectFileEntry[]) => [...entries].sort((a, b) => isDirectory(a) === isDirectory(b) ? a.name.localeCompare(b.name) : isDirectory(a) ? -1 : 1);
 const sameEntries = (left: ProjectFileEntry[], right: ProjectFileEntry[]) => left.length === right.length && left.every((entry, index) => {
   const other = right[index];
   return !!other && entry.name === other.name && entry.type === other.type && entry.size === other.size && entry.mtimeMs === other.mtimeMs;
 });
-const hasDraggedFiles = (event: DragEvent) => Array.from(event.dataTransfer.types).includes("Files");
-const PROJECT_FILE_DRAG_TYPE = "application/x-overseer-project-file";
-const hasDraggedProjectFile = (event: DragEvent) => Array.from(event.dataTransfer.types).includes(PROJECT_FILE_DRAG_TYPE);
-const parentPath = (path: string) => path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
-const baseName = (path: string) => path.slice(path.lastIndexOf("/") + 1);
 
 // Keep a right-click menu inside the viewport wherever the pointer was: an
 // entry near the bottom edge would otherwise open below the fold.
@@ -56,12 +39,23 @@ export function fileContextMenuPosition(clientX: number, clientY: number, viewpo
 
 interface FileMenuState {
   path: string;
+  // A folder and the empty space below the tree both offer uploads into a
+  // directory; only a file offers open/download.
+  kind: "file" | "dir";
   size?: number;
   x: number;
   y: number;
 }
 
-export function ProjectFileTree({ filesBase, sourceFor, activePath, onOpenFile, onFileMoved, allowUpload = false, className = "" }: {
+// The root has no path to copy, and a read-only tree offers no uploads — so a
+// folder menu is only ever refresh plus whatever else applies. Peon deletes
+// regular files only, so a folder is never offered Delete.
+export function fileMenuItemCount(kind: "file" | "dir", path: string, allowUpload: boolean) {
+  if (kind === "file") return 3 + (allowUpload ? 1 : 0);
+  return 1 + (allowUpload ? 2 : 0) + (path ? 1 : 0);
+}
+
+export function ProjectFileTree({ filesBase, sourceFor, activePath, onOpenFile, onFileMoved, onFileDeleted, allowUpload = false, className = "" }: {
   filesBase: string;
   // How a tree path is named for reading and saving. The tree never assembles
   // a file URL itself; fileLinks.ts owns that for every surface.
@@ -69,6 +63,7 @@ export function ProjectFileTree({ filesBase, sourceFor, activePath, onOpenFile, 
   activePath?: string | null;
   onOpenFile: (path: string, size?: number) => void;
   onFileMoved?: (source: string, destination: string) => void;
+  onFileDeleted?: (path: string) => void;
   allowUpload?: boolean;
   className?: string;
 }) {
@@ -78,13 +73,12 @@ export function ProjectFileTree({ filesBase, sourceFor, activePath, onOpenFile, 
   const [copied, setCopied] = useState(false);
   const [directories, setDirectories] = useState<Record<string, DirectoryState>>({});
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set([""]));
-  const [dropTarget, setDropTarget] = useState<string | null>(null);
-  const [dragSource, setDragSource] = useState<string | null>(null);
-  const [upload, setUpload] = useState<UploadState | null>(null);
-  const [move, setMove] = useState<MoveState | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
   const refreshingRef = useRef(false);
-  const uploadNoticeTimer = useRef<number | null>(null);
+  const filePicker = useRef<HTMLInputElement>(null);
+  const folderPicker = useRef<HTMLInputElement>(null);
+  const pickTarget = useRef("");
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const load = useCallback(async (path: string) => {
     setDirectories((current) => ({ ...current, [path]: { loading: true, entries: [] } }));
@@ -121,9 +115,38 @@ export function ProjectFileTree({ filesBase, sourceFor, activePath, onOpenFile, 
     }
   }, [filesBase]);
 
-  useEffect(() => () => {
-    if (uploadNoticeTimer.current !== null) window.clearTimeout(uploadNoticeTimer.current);
+  // A listing the operator has not opened yet is left alone: it will be read
+  // fresh when it is expanded, so patching it would only invent state.
+  const patchDirectory = useCallback((path: string, patch: (entries: ProjectFileEntry[]) => ProjectFileEntry[]) => {
+    setDirectories((current) => {
+      const directory = current[path];
+      if (!directory || directory.loading || directory.error) return current;
+      return { ...current, [path]: { ...directory, entries: sortEntries(patch(directory.entries)) } };
+    });
   }, []);
+
+  const transfers = useFileTransfers({
+    filesBase,
+    enabled: allowUpload,
+    onUploaded: (parent, name, size) => patchDirectory(parent, (entries) => [...entries.filter((entry) => entry.name !== name), { name, type: "file", size }]),
+    onDirectoryChanged: (path) => void refreshDirectory(path),
+    onMoved: (source, destination, entry) => {
+      const name = baseName(destination);
+      patchDirectory(parentPath(source), (entries) => entries.filter((item) => item.name !== baseName(source)));
+      patchDirectory(parentPath(destination), (entries) => [...entries.filter((item) => item.name !== name), { name, type: entry.type === "dir" ? "dir" : "file", size: entry.size }]);
+      // A moved folder keeps its expanded children under their old paths.
+      // Dropping its cached subtree makes the next expansion read the truth.
+      if (entry.type === "dir") {
+        setDirectories((current) => Object.fromEntries(Object.entries(current).filter(([path]) => path !== source && !path.startsWith(`${source}/`))));
+        setExpanded((current) => new Set([...current].filter((path) => path !== source && !path.startsWith(`${source}/`))));
+      }
+      onFileMoved?.(source, destination);
+    },
+    onDeleted: (path) => {
+      patchDirectory(parentPath(path), (entries) => entries.filter((item) => item.name !== baseName(path)));
+      onFileDeleted?.(path);
+    },
+  });
 
   useEffect(() => {
     if (!menu) return;
@@ -146,9 +169,21 @@ export function ProjectFileTree({ filesBase, sourceFor, activePath, onOpenFile, 
     };
   }, [menu]);
 
-  const openMenu = (path: string, size: number | undefined, x: number, y: number) => {
+  const openMenu = (kind: "file" | "dir", path: string, size: number | undefined, x: number, y: number) => {
+    const items = fileMenuItemCount(kind, path, allowUpload);
+    if (items === 0) return;
     setCopied(false);
-    setMenu({ path, size, ...fileContextMenuPosition(x, y, window.innerWidth, window.innerHeight, 3) });
+    setMenu({ path, kind, size, ...fileContextMenuPosition(x, y, window.innerWidth, window.innerHeight, items) });
+  };
+
+  const pick = (target: string, folder: boolean) => {
+    pickTarget.current = target;
+    setMenu(null);
+    const input = folder ? folderPicker.current : filePicker.current;
+    if (!input) return;
+    // Picking the same file twice in a row must still fire `change`.
+    input.value = "";
+    input.click();
   };
 
   const copyPath = async (path: string) => {
@@ -170,12 +205,10 @@ export function ProjectFileTree({ filesBase, sourceFor, activePath, onOpenFile, 
   const refreshExpanded = useCallback(async () => {
     if (refreshingRef.current) return;
     refreshingRef.current = true;
-    setRefreshing(true);
     try {
       await Promise.all([...expanded].map(refreshDirectory));
     } finally {
       refreshingRef.current = false;
-      setRefreshing(false);
     }
   }, [expanded, refreshDirectory]);
 
@@ -192,141 +225,39 @@ export function ProjectFileTree({ filesBase, sourceFor, activePath, onOpenFile, 
     setExpanded((current) => new Set(current).add(path));
   };
 
-  const uploadFiles = async (target: string, fileList: FileList) => {
-    const files = Array.from(fileList);
-    if (!allowUpload || files.length === 0 || (upload && upload.done < upload.total)) return;
-    if (uploadNoticeTimer.current !== null) window.clearTimeout(uploadNoticeTimer.current);
-    setDropTarget(null);
-    setUpload({ done: 0, total: files.length, target });
-    let error: string | undefined;
-    for (let index = 0; index < files.length; index++) {
-      const file = files[index]!;
-      const cleaned = file.name.replace(/[\\/\0]/g, "_");
-      const name = !cleaned || cleaned === "." || cleaned === ".." ? "file" : cleaned;
-      const destination = target ? `${target}/${name}` : name;
-      try {
-        await api(`${filesBase}/${encodeFilePath(destination)}`, {
-          method: "PUT",
-          body: file,
-          headers: { "content-type": "application/octet-stream" },
-        });
-        setDirectories((current) => {
-          const directory = current[target];
-          if (!directory || directory.loading || directory.error) return current;
-          const entries = sortEntries([...directory.entries.filter((entry) => entry.name !== name), { name, type: "file", size: file.size }]);
-          return { ...current, [target]: { ...directory, entries } };
-        });
-      } catch (uploadError) {
-        const message = uploadError instanceof ApiError && (uploadError.status === 404 || uploadError.status === 405)
-          ? t("proj.files.uploadUnsupported")
-          : uploadError instanceof Error ? uploadError.message : t("proj.files.uploadFailed");
-        error = `${file.name}: ${message}`;
-      } finally {
-        setUpload({ done: index + 1, total: files.length, target, error });
-      }
-    }
-    if (!error) uploadNoticeTimer.current = window.setTimeout(() => setUpload(null), 1600);
-  };
-
-  const moveFile = async (source: string, size: number | undefined, target: string) => {
-    if (!allowUpload || parentPath(source) === target || move?.running) {
-      setDropTarget(null);
-      setDragSource(null);
-      return;
-    }
-    if (uploadNoticeTimer.current !== null) window.clearTimeout(uploadNoticeTimer.current);
-    const name = baseName(source);
-    const destination = target ? `${target}/${name}` : name;
-    setDropTarget(null);
-    setMove({ source, destination, running: true });
-    try {
-      await api(`${filesBase}/${encodeFilePath(source)}`, {
-        method: "PATCH",
-        body: JSON.stringify({ destination }),
-      });
-      setDirectories((current) => {
-        const next = { ...current };
-        const sourceParent = parentPath(source);
-        const sourceDirectory = next[sourceParent];
-        if (sourceDirectory && !sourceDirectory.loading && !sourceDirectory.error) {
-          next[sourceParent] = { ...sourceDirectory, entries: sourceDirectory.entries.filter((entry) => entry.name !== name) };
-        }
-        const targetDirectory = next[target];
-        if (targetDirectory && !targetDirectory.loading && !targetDirectory.error) {
-          next[target] = { ...targetDirectory, entries: sortEntries([...targetDirectory.entries.filter((entry) => entry.name !== name), { name, type: "file", size }]) };
-        }
-        return next;
-      });
-      onFileMoved?.(source, destination);
-      setMove({ source, destination, running: false });
-      uploadNoticeTimer.current = window.setTimeout(() => setMove(null), 1600);
-    } catch (moveError) {
-      const message = moveError instanceof ApiError && (moveError.status === 404 || moveError.status === 405)
-        ? t("proj.files.moveUnsupported")
-        : moveError instanceof Error ? moveError.message : t("proj.files.moveFailed");
-      setMove({ source, destination, running: false, error: message });
-    } finally {
-      setDragSource(null);
-    }
-  };
-
-  const acceptDrag = (event: DragEvent, target: string) => {
-    if (!allowUpload || (!hasDraggedFiles(event) && !hasDraggedProjectFile(event))) return;
-    event.preventDefault();
-    event.stopPropagation();
-    event.dataTransfer.dropEffect = hasDraggedProjectFile(event) ? "move" : "copy";
-    setDropTarget(target);
-  };
-
-  const dropInto = (event: DragEvent, target: string) => {
-    acceptDrag(event, target);
-    const raw = event.dataTransfer.getData(PROJECT_FILE_DRAG_TYPE);
-    if (raw) {
-      try {
-        const item = JSON.parse(raw) as { path?: unknown; size?: unknown };
-        if (typeof item.path === "string") void moveFile(item.path, typeof item.size === "number" ? item.size : undefined, target);
-      } catch {
-        setDropTarget(null);
-      }
-      return;
-    }
-    void uploadFiles(target, event.dataTransfer.files);
-  };
-
   const renderDirectory = (path: string, depth: number) => {
     const state = directories[path];
     if (!state) return null;
     if (state.loading) return <FileTreeLoader depth={depth} label={t("app.loading")} />;
     if (state.error) return <div className="px-3 py-2 font-mono text-[0.68rem] text-danger" style={{ paddingLeft: 12 + depth * 16 }}>⚠ {state.error}</div>;
-    if (path === "" && state.entries.length === 0) return <p className="p-3 font-mono text-xs text-ink-faint">{t("proj.files.empty")}</p>;
-    return state.entries.map((entry) => {
+    // An arriving upload sorts in among the real entries, so it appears where
+    // it will finally live rather than at the end of the list.
+    const arriving = transfers.pending.filter((row) => row.parent === path);
+    const entries = sortEntries([...state.entries.filter((entry) => !arriving.some((row) => row.name === entry.name)), ...arriving.map((row) => ({ name: row.name, type: row.type, arriving: row }))] as ProjectFileEntry[]);
+    if (path === "" && entries.length === 0) return <p className="p-3 font-mono text-xs text-ink-faint">{t("proj.files.empty")}</p>;
+    return entries.map((entry) => {
+      const arrivingRow = (entry as ProjectFileEntry & { arriving?: PendingUpload }).arriving;
+      if (arrivingRow) return <ArrivingRow key={`arriving:${entry.name}`} row={arrivingRow} depth={depth} label={t("proj.files.uploadingOne", { name: entry.name })} />;
       const fullPath = path ? `${path}/${entry.name}` : entry.name;
       const directory = isDirectory(entry);
       const open = directory && expanded.has(fullPath);
       const loading = directory && directories[fullPath]?.loading;
+      const dragged: DraggedEntry = { path: fullPath, type: directory ? "dir" : "file", size: entry.size };
       return (
         <div key={fullPath}>
           <button
             type="button"
-            draggable={allowUpload && !directory}
             onClick={() => directory ? void toggle(fullPath) : onOpenFile(fullPath, entry.size)}
-            onContextMenu={directory ? undefined : (event) => {
+            onContextMenu={(event) => {
               event.preventDefault();
-              openMenu(fullPath, entry.size, event.clientX, event.clientY);
+              openMenu(directory ? "dir" : "file", fullPath, entry.size, event.clientX, event.clientY);
             }}
             disabled={loading}
-            onDragEnter={directory ? (event) => acceptDrag(event, fullPath) : undefined}
-            onDragOver={directory ? (event) => acceptDrag(event, fullPath) : undefined}
-            onDragLeave={directory ? (event) => { event.stopPropagation(); if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropTarget(null); } : undefined}
-            onDrop={directory ? (event) => dropInto(event, fullPath) : undefined}
-            onDragStart={!directory ? (event) => {
-              event.dataTransfer.effectAllowed = "move";
-              event.dataTransfer.setData(PROJECT_FILE_DRAG_TYPE, JSON.stringify({ path: fullPath, size: entry.size }));
-              event.dataTransfer.setData("text/plain", entry.name);
-              setDragSource(fullPath);
-            } : undefined}
-            onDragEnd={!directory ? () => { setDragSource(null); setDropTarget(null); } : undefined}
-            className={`group flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left font-mono text-xs transition-[background-color,color,box-shadow,opacity] duration-150 ${dragSource === fullPath ? "opacity-40" : "opacity-100"} ${dropTarget === fullPath ? "bg-accent/20 text-ink shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--color-accent-deep)_85%,transparent),0_2px_10px_rgba(0,0,0,0.18)]" : activePath === fullPath ? "bg-surface-hover text-accent-strong" : "text-ink-muted hover:bg-surface-hover/85 hover:text-ink"}`}
+            // A folder both carries (it can be dragged elsewhere) and receives
+            // (uploads and moves land in it); a file only carries.
+            {...transfers.dragHandleProps(dragged)}
+            {...(directory ? transfers.dropZoneProps(fullPath) : {})}
+            className={`group flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left font-mono text-xs transition-[background-color,color,box-shadow,opacity] duration-150 ${transfers.dragSource?.path === fullPath ? "opacity-40" : "opacity-100"} ${transfers.dropTarget === fullPath ? "bg-accent/20 text-ink shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--color-accent-deep)_85%,transparent),0_2px_10px_rgba(0,0,0,0.18)]" : activePath === fullPath ? "bg-surface-hover text-accent-strong" : "text-ink-muted hover:bg-surface-hover/85 hover:text-ink"}`}
             style={{ paddingLeft: 8 + depth * 16 }}
             title={fullPath}
           >
@@ -343,70 +274,157 @@ export function ProjectFileTree({ filesBase, sourceFor, activePath, onOpenFile, 
 
   return (
     <div
-      className={`group/file-tree relative flex min-h-0 flex-col rounded-xl transition-[background-color,box-shadow] duration-150 ${dropTarget === "" ? "bg-accent/[0.06] shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--color-accent-deep)_75%,transparent)]" : ""} ${className}`}
-      onDragEnter={(event) => acceptDrag(event, "")}
-      onDragOver={(event) => acceptDrag(event, "")}
-      onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropTarget(null); }}
-      onDrop={(event) => dropInto(event, "")}
+      className={`group/file-tree relative flex min-h-0 flex-col rounded-xl transition-[background-color,box-shadow] duration-150 ${transfers.dropTarget === "" ? "bg-accent/[0.06] shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--color-accent-deep)_75%,transparent)]" : ""} ${className}`}
+      {...transfers.dropZoneProps("")}
     >
-      <button
-        type="button"
-        onClick={() => void refreshExpanded()}
-        disabled={refreshing}
-        className="absolute right-2 top-2 z-10 grid size-7 place-items-center rounded-md bg-surface/85 text-ink-faint opacity-70 shadow-sm backdrop-blur transition-[opacity,color,background-color] hover:bg-surface-hover hover:text-accent-strong hover:opacity-100 focus-visible:opacity-100 disabled:cursor-wait"
-        title={t("proj.files.refresh")}
-        aria-label={t("proj.files.refresh")}
+      <div
+        className="min-h-0 flex-1 overflow-y-auto p-1.5"
+        // A row that opened its own menu has already claimed the event; the
+        // empty space around the rows stands for the project root.
+        onContextMenu={(event) => {
+          if (event.defaultPrevented) return;
+          event.preventDefault();
+          openMenu("dir", "", undefined, event.clientX, event.clientY);
+        }}
       >
-        <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} aria-hidden />
-      </button>
-      <div className="min-h-0 flex-1 overflow-y-auto p-1.5">{renderDirectory("", 0)}</div>
-      {dropTarget === "" && <div className="pointer-events-none absolute inset-x-3 bottom-3 rounded-lg bg-surface/95 px-3 py-2 text-center font-mono text-xs text-accent-strong shadow-lg">{dragSource ? t("proj.files.moveRoot") : t("proj.files.dropRoot")}</div>}
-      {upload && (
-        <div className={`flex flex-none items-center gap-2 bg-black/10 px-3 py-2 font-mono text-[0.68rem] ${upload.error ? "text-danger" : "text-ink-faint"}`} title={upload.error}>
-          {upload.done < upload.total && <LoaderCircle size={13} className="flex-none animate-spin text-accent-deep" aria-hidden />}
-          <span className="truncate">{upload.error || (upload.done < upload.total ? t("proj.files.uploading", { done: upload.done, total: upload.total }) : t("proj.files.uploaded", { n: upload.total }))}</span>
-        </div>
-      )}
-      {move && (
-        <div className={`flex flex-none items-center gap-2 bg-black/10 px-3 py-2 font-mono text-[0.68rem] ${move.error ? "text-danger" : "text-ink-faint"}`} title={move.error}>
-          {move.running && <LoaderCircle size={13} className="flex-none animate-spin text-accent-deep" aria-hidden />}
-          <span className="truncate">{move.error || (move.running ? t("proj.files.moving") : t("proj.files.moved"))}</span>
+        {renderDirectory("", 0)}
+      </div>
+      {allowUpload && <>
+        <input ref={filePicker} type="file" multiple className="hidden" onChange={(event) => void transfers.upload(pickTarget.current, filesFromInput(event.target.files))} />
+        {/* A directory pick is not in the React DOM typings, and every browser
+            that offers one reads the attribute rather than the property. */}
+        <input ref={folderPicker} type="file" multiple className="hidden" {...{ webkitdirectory: "" }} onChange={(event) => void transfers.upload(pickTarget.current, filesFromInput(event.target.files))} />
+      </>}
+      {transfers.dropTarget === "" && <div className="pointer-events-none absolute inset-x-3 bottom-3 rounded-lg bg-surface/95 px-3 py-2 text-center font-mono text-xs text-accent-strong shadow-lg">{transfers.dragSource ? t("proj.files.moveRoot") : t("proj.files.dropRoot")}</div>}
+      {transfers.status && (
+        <div className={`flex flex-none items-center gap-2 bg-black/10 px-3 py-2 font-mono text-[0.68rem] ${transfers.status.error ? "text-danger" : "text-ink-faint"}`} title={transfers.status.message}>
+          {transfers.status.busy && <LoaderCircle size={13} className="flex-none animate-spin text-accent-deep" aria-hidden />}
+          <span className="truncate">{transfers.status.message}</span>
         </div>
       )}
       {menu && createPortal(
         <div
           ref={menuRef}
           role="menu"
-          aria-label={`${t("file.actions")}: ${fileName(menu.path)}`}
+          aria-label={`${t("file.actions")}: ${menu.path ? fileName(menu.path) : t("proj.files.root")}`}
           className="fixed z-[110] w-52 overflow-hidden rounded-lg border border-edge bg-surface py-1 shadow-xl"
           style={{ left: menu.x, top: menu.y }}
         >
-          <button type="button" role="menuitem" className={FILE_MENU_ITEM_CLASS} onClick={() => { setMenu(null); onOpenFile(menu.path, menu.size); }}>
-            <span className="min-w-0 flex-1 truncate">{t("file.open")}</span>
-            <ExternalLink size={12} className="flex-none text-ink-faint" aria-hidden />
-          </button>
-          <a
-            role="menuitem"
-            href={fileDownloadUrl(sourceFor(menu.path))}
-            download={fileName(menu.path)}
-            className={FILE_MENU_ITEM_CLASS}
-            onClick={() => setMenu(null)}
-          >
-            <span className="min-w-0 flex-1 truncate">{t("file.download")}</span>
-            <Download size={12} className="flex-none text-ink-faint" aria-hidden />
-          </a>
-          <button type="button" role="menuitem" className={FILE_MENU_ITEM_CLASS} onClick={() => void copyPath(menu.path)}>
-            <span className="min-w-0 flex-1 truncate">{t(copied ? "file.pathCopied" : "file.copyPath")}</span>
-            {copied ? <Check size={12} className="flex-none text-accent-strong" aria-hidden /> : <Copy size={12} className="flex-none text-ink-faint" aria-hidden />}
-          </button>
+          {menu.kind === "file" && <>
+            <button type="button" role="menuitem" className={FILE_MENU_ITEM_CLASS} onClick={() => { setMenu(null); onOpenFile(menu.path, menu.size); }}>
+              <span className="min-w-0 flex-1 truncate">{t("file.open")}</span>
+              <ExternalLink size={12} className="flex-none text-ink-faint" aria-hidden />
+            </button>
+            <a
+              role="menuitem"
+              href={fileDownloadUrl(sourceFor(menu.path))}
+              download={fileName(menu.path)}
+              className={FILE_MENU_ITEM_CLASS}
+              onClick={() => setMenu(null)}
+            >
+              <span className="min-w-0 flex-1 truncate">{t("file.download")}</span>
+              <Download size={12} className="flex-none text-ink-faint" aria-hidden />
+            </a>
+          </>}
+          {menu.kind === "dir" && (
+            <button type="button" role="menuitem" className={FILE_MENU_ITEM_CLASS} onClick={() => { setMenu(null); void (menu.path ? refreshDirectory(menu.path) : refreshExpanded()); }}>
+              <span className="min-w-0 flex-1 truncate">{t("proj.files.refresh")}</span>
+              <RefreshCw size={12} className="flex-none text-ink-faint" aria-hidden />
+            </button>
+          )}
+          {menu.kind === "dir" && allowUpload && <>
+            <button type="button" role="menuitem" className={FILE_MENU_ITEM_CLASS} onClick={() => pick(menu.path, false)}>
+              <span className="min-w-0 flex-1 truncate">{t("file.uploadFiles")}</span>
+              <Upload size={12} className="flex-none text-ink-faint" aria-hidden />
+            </button>
+            <button type="button" role="menuitem" className={FILE_MENU_ITEM_CLASS} onClick={() => pick(menu.path, true)}>
+              <span className="min-w-0 flex-1 truncate">{t("file.uploadFolder")}</span>
+              <FolderUp size={12} className="flex-none text-ink-faint" aria-hidden />
+            </button>
+          </>}
+          {(menu.kind === "file" || menu.path) && (
+            <button type="button" role="menuitem" className={FILE_MENU_ITEM_CLASS} onClick={() => void copyPath(menu.path)}>
+              <span className="min-w-0 flex-1 truncate">{t(copied ? "file.pathCopied" : "file.copyPath")}</span>
+              {copied ? <Check size={12} className="flex-none text-accent-strong" aria-hidden /> : <Copy size={12} className="flex-none text-ink-faint" aria-hidden />}
+            </button>
+          )}
+          {menu.kind === "file" && allowUpload && (
+            <button type="button" role="menuitem" className={`${FILE_MENU_ITEM_CLASS} !text-danger hover:!bg-danger/10`} onClick={() => { setConfirmDelete(menu.path); setMenu(null); }}>
+              <span className="min-w-0 flex-1 truncate">{t("file.delete")}</span>
+              <Trash2 size={12} className="flex-none" aria-hidden />
+            </button>
+          )}
         </div>,
         document.body,
+      )}
+      {confirmDelete !== null && (
+        <ConfirmationDialog
+          title={t("file.deleteTitle")}
+          description={t("file.deleteBody", { name: confirmDelete })}
+          confirmLabel={t("file.deleteConfirm")}
+          pendingLabel={t("file.deleting")}
+          pending={deleting}
+          onClose={() => { if (!deleting) setConfirmDelete(null); }}
+          onConfirm={() => {
+            const path = confirmDelete;
+            setDeleting(true);
+            // The dialog closes either way: a refusal is reported by the same
+            // status strip an upload or a move uses.
+            void transfers.remove(path).finally(() => {
+              setDeleting(false);
+              setConfirmDelete(null);
+            });
+          }}
+        />
       )}
     </div>
   );
 }
 
 const FILE_MENU_ITEM_CLASS = "flex w-full items-center gap-2 px-2.5 py-1.5 text-left font-body text-[0.7rem] text-ink-muted transition-colors hover:bg-surface-hover hover:text-ink focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-accent/60";
+
+// The ring stands where the file's icon will be, so a row does not change
+// shape when the bytes land — it only swaps the ring for the icon.
+export function UploadRing({ value }: { value: number }) {
+  const radius = 5.5;
+  const circumference = 2 * Math.PI * radius;
+  return (
+    <svg width={15} height={15} viewBox="0 0 15 15" className="flex-none -rotate-90" aria-hidden>
+      <circle cx="7.5" cy="7.5" r={radius} fill="none" strokeWidth="2" className="stroke-surface-active" />
+      <circle
+        cx="7.5"
+        cy="7.5"
+        r={radius}
+        fill="none"
+        strokeWidth="2"
+        strokeLinecap="round"
+        className="stroke-accent-strong transition-[stroke-dashoffset] duration-150"
+        strokeDasharray={circumference}
+        strokeDashoffset={circumference * (1 - Math.min(1, Math.max(0, value)))}
+      />
+    </svg>
+  );
+}
+
+function ArrivingRow({ row, depth, label }: { row: PendingUpload; depth: number; label: string }) {
+  // A zero-byte file (or a browser that cannot measure the body) has no ratio
+  // to show; it spins instead of pretending to be at 100%.
+  const measurable = row.total > 0;
+  return (
+    <div
+      role="status"
+      aria-label={label}
+      className="flex w-full animate-pulse items-center gap-1.5 rounded-md px-2 py-1.5 text-left font-mono text-xs text-ink-faint"
+      style={{ paddingLeft: 8 + depth * 16 }}
+      title={label}
+    >
+      <span className="w-[13px] flex-none" />
+      {measurable ? <UploadRing value={row.sent / row.total} /> : <LoaderCircle size={15} className="flex-none animate-spin text-accent-strong" aria-hidden />}
+      <span className="min-w-0 flex-1 truncate">{row.name}</span>
+      {measurable && <span className="flex-none text-[0.62rem] text-ink-faint">{formatFileSize(row.total)}</span>}
+    </div>
+  );
+}
 
 function FileTreeLoader({ depth, label }: { depth: number; label: string }) {
   const rows = depth === 0 ? ["68%", "52%", "76%", "44%", "61%"] : ["58%", "72%", "46%"];

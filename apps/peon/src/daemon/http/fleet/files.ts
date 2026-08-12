@@ -263,7 +263,7 @@ export function attachFleetProjectFileRoutes(router: express.Router, options: Fl
 
     let target;
     try {
-      target = projectFileWriteTarget(record, segmentsPath(req));
+      target = projectFileWriteTarget(record, segmentsPath(req), req.query.parents !== undefined);
     } catch (err) {
       const failure = err instanceof FileWriteError ? err : uploadFsError(err);
       return fail(res, failure.status, failure.code as ErrorCode, failure.message);
