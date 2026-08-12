@@ -162,7 +162,7 @@ Each step leaves the tree working.
 
 0. **OVSR-237** — *done.* The instructions site has its own repository and left
    the tree for `/rnm/overseer-website`; compose builds it from there.
-1. **OVSR-238** — *done, merged to master, not yet deployed.* Flattened checkout root, npm
+1. **OVSR-238** — *released to production.* Flattened checkout root, npm
    workspaces, `apps/server` and `apps/web`, root `verify`, `infra/dev` image,
    rewritten compose mounts and Kamal build context.
 2. **OVSR-239** — `packages/protocol`; server and web move onto it, then publish
@@ -176,6 +176,17 @@ Each step leaves the tree working.
 4. **OVSR-241** — *done locally.* The Flutter client is in `apps/client`, its
    GitHub Actions workflow is gone, and its documentation lives under
    `docs/client/`.
+
+The npm organisation is `rnm-dev` (`@rnm` was unavailable), so every Node
+package is `@rnm-dev/*`. The updater derives and preserves the existing global
+npm prefix and packs rollback archives with lifecycle scripts disabled, which
+the compiled-only npm distribution requires.
+
+On 2026-07-30 nid-dev (`94.247.128.101`, user `peon`) was migrated in place from
+unscoped `peon@0.11.1` to `@rnm-dev/peon@0.11.3`: its Peon ID and all 556
+sessions were preserved, both reverse sockets reconnected with an empty outbox,
+and the old package remains for rollback. The verified pre-migration archive is
+on that host at `/root/peon-migration-backups/20260730T183400Z/`.
 
 Merging histories is cheap at this size — `.git` is 13 MB for overseer, 6.3 MB
 for peon, 8.4 MB for the client — so `git read-tree --prefix=` into subdirectories

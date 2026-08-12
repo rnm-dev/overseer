@@ -29,6 +29,50 @@ Host: **nid-dev** (`ssh NID-DEV`, root). Everything under `/rnm/overseer/`:
     └── data/            # bind-mounted Postgres 16 data dir (system-of-record)
 ```
 
+The checkout is the git repository `git@github.com:rnm-dev/overseer.git`, branch
+`master` — commit and **push before deploying**. `apps/server` and `apps/web`
+are npm workspaces sharing the one root lockfile; `docs/`, `infra/`, `scripts/`
+and `docker-compose.yml` are versioned with them, while `backups/`, `secrets/`,
+`postgres/` and the env files are gitignored. `npm run verify` at the root runs
+lint plus every workspace's own verify.
+
+The instructions site is a separate product in its own repository, checked out
+beside this tree at `/rnm/overseer-website`; the sibling Flutter client is
+`git@github.com:rnm-dev/overseer-app.git`, branch `main`.
+
+**GitHub access is plain git over SSH, and only that.** The `gh` CLI is not
+used — its stored credentials were removed on 2026-07-29 and could not see the
+`rnm-dev` organisation anyway (every `gh api repos/rnm-dev/*` answered 404). Do
+not reintroduce it or plan work around the GitHub API. The apt package is still
+installed and awaits removal by root.
+
+Compose services: `postgres` (compose-net only, 5432 unpublished),
+`app` on 127.0.0.1:4580, `web` on 127.0.0.1:4581, `site` on 127.0.0.1:4582.
+The database is `postgres:5432/overseer`, user `overseer`, and is not
+host-published — reach it with `docker compose exec postgres psql`.
+
+There is **no seed script**: the schema self-migrates on boot (`initDb`/
+`MIGRATIONS` in `apps/server/src/db.ts`) and there is no env-seeded admin.
+Sign-in is GitHub OAuth with open sign-up (`ensureUserFromGithub` in
+`apps/server/src/auth.ts`), plus email/password and OIDC where the instance
+enables them — see [sign-in methods](sign-in-methods.md). Access is gated by
+workspace membership.
+
+## Dev origin and data
+
+The public origin is https://overseer-dev.rnm.dev (proxied Cloudflare A record
+→ 94.247.128.101). `OVERSEER_PUBLIC_URL` and `OVERSEER_PEON_CALLBACK_URL` both
+name it. Native OAuth accepts both `overseer-dev://oauth/github` and
+`overseer://oauth/github` through `OVERSEER_GITHUB_NATIVE_CALLBACKS`, so dev and
+prod mobile builds can both be tested against this server.
+
+The dev database intentionally holds only Nova and its history; shared
+users/workspaces/devices remain available for login. The empty RNM workspace
+(`1313b906-590b-4b07-b7a3-c37b0e9f14d0`) was deleted from dev on 2026-07-20 —
+production RNM was untouched — and its pre-delete dump was the only copy, which
+went on 2026-07-29 with the rest of this box's `backups/`. The workspace was
+empty, so nothing recoverable was in it.
+
 ## Full-stack shape
 
 Overseer is a full-stack app: **one Express backend** (the capable core — JSON
@@ -52,7 +96,7 @@ One compose file, dev-oriented. `docker compose up -d`:
   the browser** (true HMR). HMR speaks `wss:443` through Cloudflare (configured
   in `web/vite.config.ts` `server.hmr`); `allowedHosts` includes
   `overseer-dev.rnm.dev`.
-- Verified end-to-end: login (magic-link + OTP) → dashboard renders live.
+- Verified end-to-end: sign-in → dashboard renders live.
 
 ## Serving
 
@@ -116,11 +160,12 @@ traffic. Keys:
   recruitment (operator pastes the minted token) works. There is **no shared fleet
   secret**: each peon gets a per-peon, workspace-scoped credential the overseer
   mints (`apps/server/src/modules/fleet/credentialsService.ts`). Operators authenticate only with device tokens.
-- Auth (magic-link + OTP → device tokens; see `apps/server/src/auth.ts`):
-  `OVERSEER_ADMIN_EMAIL` (seeds the first user on boot), `OVERSEER_PUBLIC_URL`
-  (magic-link base), `OVERSEER_AUTH_DEV_ECHO=1` (**dev only** — echoes the OTP +
-  link in `/auth/request`; currently ON here), `OVERSEER_RESEND_API_KEY` +
-  `OVERSEER_EMAIL_FROM` (real email; empty ⇒ console transport logs the code).
+- Auth → device tokens; see `apps/server/src/auth.ts` and
+  [sign-in methods](sign-in-methods.md). `OVERSEER_PUBLIC_URL` is the origin
+  every door is built against; `OVERSEER_PASSWORD_AUTH=1` opens email/password
+  (on here), and the `OVERSEER_OIDC_*` pair names an OIDC issuer and client.
+  There is no `OVERSEER_ADMIN_EMAIL` seeding and no magic-link flow any more —
+  both were removed.
 
 ## Common ops
 

@@ -448,3 +448,103 @@ kamal rollback <previous-version>
 For a cutover failure, point Cloudflare back to the source host, reload the old
 route, and leave the target volumes intact for diagnosis. Do not restore a newer
 target dump over the old source database without a separate reconciliation plan.
+
+## Current production deployment
+
+The facts an operator needs before touching production; the procedures above
+remain the authority for *how* to change them.
+
+- **Host** — `root@94.247.128.103` (nid-01 / `nid-prod-coloc.mesh.rnm` /
+  Tailscale `100.64.0.5`).
+- **Tailnet** — `hs.rnm.dev`, MagicDNS suffix `mesh.rnm`. The production app
+  container resolves and reaches Peons at `peon-*.mesh.rnm:4570`.
+- **Deploy** — Kamal 2, config `apps/server/config/deploy.yml`, service
+  `overseer`, registry image `vibze/overseer`. The Docker build context is the
+  repository root (`builder.context: ../..`) because the npm workspaces keep a
+  single lockfile there.
+- **App container** — pattern `overseer-web-<version>`, port 5000 on the kamal
+  network, health check `/healthz`.
+- **Public origin** — https://overseer.rnm.dev. `OVERSEER_PUBLIC_URL` and
+  `OVERSEER_PEON_CALLBACK_URL` both name it; production uses its own GitHub
+  OAuth app.
+- **Cloudflare** — proxied A `overseer.rnm.dev` → 94.247.128.103; proxied A
+  `overseer-dev.rnm.dev` → 94.247.128.101.
+- **Host nginx** — `/etc/nginx/sites-available/overseer.rnm.dev`, enabled in
+  `sites-enabled`.
+- **Proxy path** — Cloudflare → host nginx :80 → shared kamal-proxy
+  127.0.0.1:8080 → Overseer :5000. See the OVSR-248 note in [Safety
+  invariants](#safety-invariants): the checked-in Kamal 2.12+ run config targets
+  both listeners at 127.0.0.1, but that needs a separately approved shared-proxy
+  reboot and has **not** been applied.
+- **Database** — accessory container `overseer-postgres`, PostgreSQL 16,
+  internal DNS `overseer-postgres:5432/overseer`. Schema migrations self-apply
+  on app boot under an advisory lock.
+
+Deployed images:
+
+| Image | Deployed | What it carried |
+| --- | --- | --- |
+| `vibze/overseer:f9b82819c6a88ffec666e1659ab746aac4fd1962` | 2026-08-10 (current) | An upgrade to a path no handler claims is refused with 400 and the socket destroyed, stopping the file-descriptor leak an outdated Peon caused by dialling the retired `/api/v1/peons/transfer/ws`. Built from a detached worktree of the pushed commit because the shared checkout held unrelated work in progress. |
+| `vibze/overseer:cdfb5ccc00e19021773db8657a7cee2312adca63` | 2026-08-05 (previous) | Transcript file links reach the project viewer in both shapes an agent writes them; the mobile client's workspace themes; the Peon 0.12.5 release preparation. |
+
+### Everyday deploy
+
+Deploy from `/rnm/overseer/apps/server` after validation, using the gitignored
+`.kamal/secrets` file there:
+
+```sh
+kamal config
+kamal deploy
+```
+
+Then verify app health, proxy routes, the DB migration count and the persistent
+volume mounts. Never put secrets into metadata or commits, and keep
+`DATABASE_URL` pointed at `overseer-postgres`.
+
+Rollback has three independent levers: `kamal rollback <version>` for the
+application; the Cloudflare A record back to 94.247.128.101 for traffic; and a
+`pg_restore` of a verified custom-format dump for data — stop the target app
+first, never overwrite the source, and never delete either host's volumes. The
+shared-proxy loopback rollback is separate and is described in [its own
+section](#shared-proxy-rollback).
+
+## Cutover state (2026-07-20)
+
+Production holds Kanat, Marat, Neo, Thor and the historical Smoke record with
+their sessions, events and follow-up history. Nova and Nova's credential and
+history are deliberately excluded from production and live only on dev.
+
+The final pre-cutover database dump lives on nid-01 in the
+`overseer-postgres-backups` volume, twice — `/backups/overseer-final-20260720T1301Z.dump`
+and `/backups/overseer-final.dump`, both SHA-256
+`de40548406eb652706a36dad7e127f749a0f11d1204c4e74708ecdbdb9181231`. The earlier
+aborted attempt sits beside them as `/backups/overseer-final-20260720T1255Z.dump`.
+List them with:
+
+```sh
+docker run --rm -v overseer-postgres-backups:/b alpine:3 ls -la /b
+```
+
+The dev box's copies were deleted on 2026-07-29 after verifying the remote ones
+byte for byte, so that volume is the only place they exist — which is why the
+safety invariants above forbid removing it.
+
+Kanat is verified registered and heartbeating to production. During the first
+aborted split an active Peon received 401 from the Nova-only dev database and
+entered the daemon's durable-in-memory derecruited state; Kanat was re-pointed
+without a daemon restart and recovered. Marat may still need re-enrollment or a
+daemon restart if it observed that transient 401. Offline Neo and Thor will use
+the canonical production URL when they return. Nova, if started, must have its
+local `overseerUrl` pointed at https://overseer-dev.rnm.dev first, keeping its
+existing dev credential — otherwise it calls production, where its credential is
+intentionally absent, gets 401 and de-recruits.
+
+## Known limitation: preview hostnames
+
+`*.preview.overseer.rnm.dev` points at 94.247.128.103 and the nginx/app routing
+is prepared, but HTTPS fails during the Cloudflare TLS handshake because the
+nested wildcard hostname is not covered by the available edge certificate. Do
+not treat tokenized web previews as production-ready until Cloudflare issues a
+suitable nested-host certificate or the preview hostname design is flattened.
+Dev `preview.overseer-dev.rnm.dev` is configured in the app but has no working
+wildcard DNS/nginx/TLS routing yet.
