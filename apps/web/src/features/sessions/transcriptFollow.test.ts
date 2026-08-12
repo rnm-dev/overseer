@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   TRANSCRIPT_AT_BOTTOM_PX,
   transcriptDistanceFromBottom,
+  transcriptFollowOutput,
   transcriptFollowsOutput,
   transcriptShowsJumpToNewest,
 } from "./transcriptFollow";
@@ -30,6 +31,11 @@ test("following output is decided by where the operator stands, not by elapsed t
     false,
     "a long turn appending rows for minutes never drags the viewport back",
   );
+});
+
+test("detached transcripts disable append and resize following", () => {
+  assert.equal(transcriptFollowOutput(true), "auto");
+  assert.strictEqual(transcriptFollowOutput(false), false);
 });
 
 test("an over-scrolled or mid-bounce viewport is treated as the bottom rather than as history", () => {

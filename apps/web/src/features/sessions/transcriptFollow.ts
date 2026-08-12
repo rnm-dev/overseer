@@ -38,6 +38,15 @@ export function transcriptFollowsOutput(metrics: TranscriptScrollMetrics): boole
 }
 
 /**
+ * A literal false disables Virtuoso's append and resize following paths. A
+ * callback which returns false only decides the append path and can still move
+ * a detached viewport when a rendered row changes height.
+ */
+export function transcriptFollowOutput(following: boolean): "auto" | false {
+  return following ? "auto" : false;
+}
+
+/**
  * The jump-to-newest control is not the inverse of following: one screen of
  * distance is a deliberate departure, while a few rows is still the tail of the
  * conversation and does not need a button over it.

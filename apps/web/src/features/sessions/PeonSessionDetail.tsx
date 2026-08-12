@@ -22,7 +22,7 @@ import {
 import { ItemView, UserBubble, Working } from "./messageParts";
 import { createQueueActivityTracker, createQueueReconciler } from "./queue";
 import { combineVisibleTranscriptEvents } from "./transcriptMerge";
-import { transcriptFollowsOutput, transcriptShowsJumpToNewest } from "./transcriptFollow";
+import { transcriptFollowOutput, transcriptFollowsOutput, transcriptShowsJumpToNewest } from "./transcriptFollow";
 import type { PreviewTarget } from "./PreviewPanel";
 import { useSessionTranscript } from "./useSessionTranscript";
 import { useSessionComposer, type ComposerGhost } from "./useSessionComposer";
@@ -446,14 +446,14 @@ function PeonSessionDetailPage() {
   // bottom of it, and never otherwise. Every scroll — theirs or Virtuoso's own
   // — answers that outright, so there is nothing here to time out, suppress or
   // guess at while a slow turn appends rows. See transcriptFollow.ts.
-  const followOutputRef = useRef(true);
+  const [followOutput, setFollowOutput] = useState(true);
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const virtuosoScrollerRef = useRef<HTMLElement | null>(null);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const handleScroll = useCallback(() => {
     const scroller = virtuosoScrollerRef.current;
     if (!scroller) return;
-    followOutputRef.current = transcriptFollowsOutput(scroller);
+    setFollowOutput(transcriptFollowsOutput(scroller));
     setShowScrollToBottom(transcriptShowsJumpToNewest(scroller));
   }, []);
   const handleScrollerRef = useCallback((ref: HTMLElement | Window | null) => {
@@ -470,13 +470,10 @@ function PeonSessionDetailPage() {
     // duplicate request.
     if (hasOlder) void loadOlder();
   }, [hasOlder, loadOlder]);
-  const handleFollowOutput = useCallback((): "auto" | false => (
-    followOutputRef.current ? "auto" : false
-  ), []);
   const handleGhostCreated = useCallback(() => {
     // The operator sent this one, so the transcript goes back to following it
     // even if they were reading history when they pressed Send.
-    followOutputRef.current = true;
+    setFollowOutput(true);
     setShowScrollToBottom(false);
   }, []);
 
@@ -763,7 +760,7 @@ function PeonSessionDetailPage() {
     setVirtualWindow(displayedVirtualWindow);
   }
   const scrollToBottom = useCallback(() => {
-    followOutputRef.current = true;
+    setFollowOutput(true);
     setShowScrollToBottom(false);
     const lastIndex = displayedVirtualWindow.firstItemIndex + displayedVirtualWindow.rows.length - 1;
     virtuosoRef.current?.scrollToIndex({ index: lastIndex, align: "end", behavior: "auto" });
@@ -793,7 +790,7 @@ function PeonSessionDetailPage() {
   }, [displayedVirtualWindow.firstItemIndex, displayedVirtualWindow.rows.length, ghost]);
   useEffect(() => {
     // A freshly opened session starts at its newest row, which is the bottom.
-    followOutputRef.current = true;
+    setFollowOutput(true);
     setShowScrollToBottom(false);
   }, [sessionKey]);
   useEffect(() => () => {
@@ -884,7 +881,7 @@ function PeonSessionDetailPage() {
             components={{ Header: TranscriptListHeader }}
             computeItemKey={(_index, row) => row.key}
             startReached={handleStartReached}
-            followOutput={handleFollowOutput}
+            followOutput={transcriptFollowOutput(followOutput)}
             itemContent={(_index, row) => {
               if (row.kind === "footer") return <div style={{ height: row.height }} aria-hidden="true" />;
               if (row.kind === "lineage") return (

@@ -21,6 +21,11 @@ working for minutes.
 Position is not a guess, so nothing here needs a timer, a suppression window or
 a recovery path.
 
+When the viewport is detached, `PeonSessionDetail` passes literal `false` to
+Virtuoso's `followOutput` prop. This disables both append following and the
+row/viewport-resize paths; a callback returning `false` is not an equivalent
+detached state and can still pull the operator down when an existing row grows.
+
 ## Instant, not smooth
 
 Automatic scrolling is instant. A smooth animation is in flight while the list
