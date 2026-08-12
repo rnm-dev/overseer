@@ -135,8 +135,8 @@ test("duplicate native callbacks share one inquiry and lifecycle polling closes 
   const stoppedResponse = stoppedService.handleDynamicToolCall(request, 7);
   const stopped = await observedInquiry(stoppedService);
   sessions[0]!.status = "completed";
-  assert.equal((await stoppedResponse as { success: boolean }).success, false);
   assert.equal(stoppedService.get("session-1", stopped.inquiryId).terminalCode, "INQUIRY_TURN_ENDED");
+  assert.equal((await stoppedResponse as { success: boolean }).success, false);
 });
 
 test("only explicitly managed plugin ids reach native catalog metadata", async () => {
