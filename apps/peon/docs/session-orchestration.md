@@ -33,6 +33,13 @@ replaced by a structured outcome. The parent reads that text with `get_child_tra
 status. The parent's transcript is deliberately not copied; delegated prompts must be
 self-contained.
 
+The root session prompt and the `spawn_sessions` tool description make the delegation boundary
+explicit: a user request to create, start, or delegate work to another session must use this Peon
+surface, including when the user selects a model or reasoning effort. Provider-native sub-agents
+are not Peon sessions and must not be substituted for user-visible delegation. They remain suitable
+only for explicitly requested ephemeral internal parallelism. Peon children are durable catalog
+records, visible in Overseer, and carry the lineage fields below.
+
 When an automated child finishes its last queued turn, Peon appends a durable hidden system
 trigger to the parent. It never interrupts a running parent turn. All triggers accumulated
 during that turn are coalesced and injected as system instructions into the next queued user

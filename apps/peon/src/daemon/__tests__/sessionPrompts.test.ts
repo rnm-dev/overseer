@@ -138,6 +138,24 @@ test("omits current-user context for unattributed automation", () => {
   assert.doesNotMatch(prompt, /first-person language/);
 });
 
+test("routes user-visible root delegation through durable Peon child sessions", () => {
+  const prompt = buildSystemPrompt(false, [], "/tmp/previews", project, undefined, "alice", true);
+
+  assert.match(prompt, /use the Peon session tools/);
+  assert.match(prompt, /peon_sessions\.spawn_sessions/);
+  assert.match(prompt, /model or\s+reasoning effort/);
+  assert.match(prompt, /durable, visible in Overseer/);
+  assert.match(prompt, /Do not use provider-native sub-agents for user-visible delegation/);
+  assert.match(prompt, /explicitly asks for ephemeral internal\s+parallelism/);
+});
+
+test("does not advertise spawning to delegated child sessions", () => {
+  const prompt = buildSystemPrompt(false, [], "/tmp/previews", project, undefined, "alice", false);
+
+  assert.doesNotMatch(prompt, /peon_sessions\.spawn_sessions/);
+  assert.doesNotMatch(prompt, /provider-native sub-agents/);
+});
+
 test("does not instruct agents to create or hand off preview artifacts", () => {
   for (const expectsOutcome of [false, true]) {
     const prompt = buildSystemPrompt(expectsOutcome, [], "/tmp/previews");
