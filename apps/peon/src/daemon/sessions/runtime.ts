@@ -507,6 +507,7 @@ export function runProcess(
     project,
     currentSettings.ai.soul,
     author,
+    record.parentSessionId === null && record.spawnDepth === 0,
   );
   if (mcpConfig?.unavailableArmoryPackages?.length) {
     systemPromptAppend += `\n\nSome optional Armory tools are unavailable for this turn. Continue the task with the remaining

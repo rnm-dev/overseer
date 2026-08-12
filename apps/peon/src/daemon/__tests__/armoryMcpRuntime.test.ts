@@ -180,6 +180,14 @@ test("session MCP route requires a bound capability and exposes orchestration to
       /every later turn initiated with send_session_followup each enqueue one hidden completion trigger/,
     );
     assert.match(
+      sessionTools.find((tool) => tool.name === "spawn_sessions")?.description ?? "",
+      /whenever the user asks to create, start, or delegate work to another session/,
+    );
+    assert.match(
+      sessionTools.find((tool) => tool.name === "spawn_sessions")?.description ?? "",
+      /do not substitute provider-native sub-agents/,
+    );
+    assert.match(
       sessionTools.find((tool) => tool.name === "send_session_followup")?.description ?? "",
       /completion enqueues a new hidden trigger for the caller/,
     );

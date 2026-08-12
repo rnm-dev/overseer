@@ -39,6 +39,13 @@ report the failure with the exact error you saw. Do not keep probing, retrying, 
 workarounds; there is a fixed turn budget for this run, and a fast, clear failure is far more
 useful than one that arrives after exhausting it.`;
 
+const SESSION_DELEGATION_APPEND = `When the user asks you to create, start, delegate to, or run work in another session,
+use the Peon session tools, especially \`peon_sessions.spawn_sessions\`. This includes requests that name a model or
+reasoning effort for the new session. A Peon child session is durable, visible in Overseer, and linked to this session.
+Do not use provider-native sub-agents for user-visible delegation and do not present a provider-native sub-agent as a
+Peon session. Provider-native sub-agents are allowed only when the user explicitly asks for ephemeral internal
+parallelism rather than another Peon session.`;
+
 const OUTCOME_CONTRACT_APPEND = `Your final response must report an outcome:
 - result: "success" only if you fully completed the task as described.
 - result: "needs_human" if you're blocked on a decision, missing information, or ambiguity that
@@ -102,6 +109,7 @@ export function buildSystemPrompt(
   project?: ProjectRecord,
   soul?: string,
   currentUser?: string,
+  allowSessionSpawning = false,
 ): string {
   let prompt = expectsOutcome
     ? `${BASE_SYSTEM_PROMPT}\n\n${OUTCOME_CONTRACT_APPEND}`
@@ -111,6 +119,7 @@ export function buildSystemPrompt(
 first-person language in a request involving people or ownership, use ${currentUser} as their
 identity (for example, as the assignee when they ask you to assign a task to them).`;
   }
+  if (allowSessionSpawning) prompt += `\n\n${SESSION_DELEGATION_APPEND}`;
   const peonSoul = soul?.trim();
   if (peonSoul) {
     prompt += `\n\nPeon soul (Markdown):\n${peonSoul}`;

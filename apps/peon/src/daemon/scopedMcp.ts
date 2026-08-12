@@ -256,7 +256,7 @@ const SESSION_TOOLS: Tool[] = [
   },
   {
     name: "spawn_sessions",
-    description: "Start independent child sessions without a count cap. Each prompt must be self-contained. Children cannot spawn sessions. The initial child turn and every later turn initiated with send_session_followup each enqueue one hidden completion trigger into this parent's next turn.",
+    description: "Create durable, user-visible Peon child sessions without a count cap. Use this whenever the user asks to create, start, or delegate work to another session, including when they choose a model or reasoning effort; do not substitute provider-native sub-agents. Each prompt must be self-contained. Children cannot spawn sessions. The initial child turn and every later turn initiated with send_session_followup each enqueue one hidden completion trigger into this parent's next turn.",
     inputSchema: {
       type: "object",
       properties: {
