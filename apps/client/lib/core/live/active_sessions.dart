@@ -62,12 +62,15 @@ class ActiveWorkspaceSessions {
 class ActiveSessionsState {
   const ActiveSessionsState({
     this.authoritativeByWorkspace = const <String, ActiveWorkspaceSessions>{},
+    this.restByWorkspace = const <String, ActiveWorkspaceSessions>{},
   });
 
   final Map<String, ActiveWorkspaceSessions> authoritativeByWorkspace;
+  final Map<String, ActiveWorkspaceSessions> restByWorkspace;
 
   ActiveWorkspaceSessions? forWorkspace(String workspaceId) {
-    return authoritativeByWorkspace[workspaceId];
+    return authoritativeByWorkspace[workspaceId] ??
+        restByWorkspace[workspaceId];
   }
 }
 
@@ -80,7 +83,10 @@ class ActiveSessionsController extends Notifier<ActiveSessionsState> {
     final next = Map<String, ActiveWorkspaceSessions>.from(
       state.authoritativeByWorkspace,
     )..remove(workspaceId);
-    state = ActiveSessionsState(authoritativeByWorkspace: next);
+    state = ActiveSessionsState(
+      authoritativeByWorkspace: next,
+      restByWorkspace: state.restByWorkspace,
+    );
   }
 
   void replaceWorkspace(String workspaceId, Iterable<ActiveSession> sessions) {
@@ -88,6 +94,30 @@ class ActiveSessionsController extends Notifier<ActiveSessionsState> {
       authoritativeByWorkspace: {
         ...state.authoritativeByWorkspace,
         workspaceId: ActiveWorkspaceSessions(sessions),
+      },
+      restByWorkspace: state.restByWorkspace,
+    );
+  }
+
+  void reconcileRestPage({
+    required String workspaceId,
+    required String peonId,
+    required Iterable<String> returnedSessionIds,
+    required Iterable<ActiveSession> runningSessions,
+  }) {
+    final returned = returnedSessionIds.toSet();
+    final previous = state.restByWorkspace[workspaceId]?.sessions ?? const [];
+    final next = [
+      for (final session in previous)
+        if (session.peonId != peonId || !returned.contains(session.sessionId))
+          session,
+      ...runningSessions,
+    ];
+    state = ActiveSessionsState(
+      authoritativeByWorkspace: state.authoritativeByWorkspace,
+      restByWorkspace: {
+        ...state.restByWorkspace,
+        workspaceId: ActiveWorkspaceSessions(next),
       },
     );
   }

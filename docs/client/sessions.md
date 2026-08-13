@@ -46,16 +46,22 @@ the offline-first history, but cached `status == running` does not make a
 session row active. Until live sync has seeded the workspace's authoritative
 active-session set, session rows default to inactive so stale cache hydration
 and lazy row construction cannot flash a false running glow.
-After each workspace socket snapshot, the client fetches every indexed
+Every successful REST session page immediately contributes its current
+`status=running` rows to the in-memory active set and retires prior REST
+observations for rows that the page now reports terminal. Cached Drift status
+alone remains insufficient, but opening a list no longer waits for a WebSocket
+before showing activity that its authoritative REST response already proved.
+
+After each workspace socket snapshot, the client still fetches every indexed
 `status=running` page and publishes the resulting session IDs with their
-`peonId`, `projectId`, and `projectKey`. Project counts and running indicators
-use that set instead of historical Drift statuses. An empty successful seed
-clears stale indicators; a failed seed leaves the set unknown so cached state
-remains usable offline. During startup, the client buffers session projections
-until both the running-session seed and every initial cursor replay have
-finished, then publishes one reconciled active set. This prevents historical
-status transitions from appearing as transient active-count changes. Later
-session projections update both Drift and the active set.
+`peonId`, `projectId`, and `projectKey`. This complete socket-barrier seed takes
+precedence over partial REST-page observations. While it is rebuilding, the
+last fresh REST observation remains visible rather than flashing false idle.
+An empty successful seed clears stale indicators; a failed seed leaves REST
+evidence usable. During startup, the client buffers session projections until
+both the running-session seed and every initial cursor replay have finished,
+then publishes one reconciled active set. Later session projections update
+both Drift and the active set.
 
 Visible rows animate into activity order. Newly inserted rows appear in their
 authoritative slot, and reduced-motion preferences disable reordering effects.
