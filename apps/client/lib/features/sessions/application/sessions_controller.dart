@@ -89,6 +89,7 @@ class SessionsController extends AsyncNotifier<SessionsState> {
   ScheduledTask? _reconciliationTimer;
   int _nextOffset = 0;
   bool _serverHasMore = false;
+  final Set<String> _restObservedSessionIds = {};
 
   SessionRepository get _repository => ref.read(sessionRepositoryProvider);
 
@@ -218,6 +219,13 @@ class SessionsController extends AsyncNotifier<SessionsState> {
   void _applyCachedSessions(List<SessionSummary> sessions) {
     final current = state.value;
     if (current == null) return;
+    if (_restObservedSessionIds.isNotEmpty) {
+      _reconcileActiveSessionRows(
+        sessions.where(
+          (session) => _restObservedSessionIds.contains(session.sessionId),
+        ),
+      );
+    }
     state = AsyncData(
       current.copyWith(
         sessions: sessions,
@@ -227,13 +235,21 @@ class SessionsController extends AsyncNotifier<SessionsState> {
   }
 
   void _reconcileActiveSessions(SessionPage page) {
+    _restObservedSessionIds.addAll(
+      page.sessions.map((session) => session.sessionId),
+    );
+    _reconcileActiveSessionRows(page.sessions);
+  }
+
+  void _reconcileActiveSessionRows(Iterable<SessionSummary> sessions) {
+    final rows = sessions.toList(growable: false);
     ref
         .read(activeSessionsProvider.notifier)
         .reconcileRestPage(
           workspaceId: scope.workspaceId,
           peonId: scope.peonId,
-          returnedSessionIds: page.sessions.map((session) => session.sessionId),
-          runningSessions: page.sessions
+          returnedSessionIds: rows.map((session) => session.sessionId),
+          runningSessions: rows
               .where((session) => session.isRunning)
               .map(
                 (session) => ActiveSession(

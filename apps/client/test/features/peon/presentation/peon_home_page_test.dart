@@ -405,8 +405,8 @@ void main() {
     _expectStatusLight(
       tester,
       sessionId: 'lazy-0',
-      color: SidebarStatusEdgeStyle.idle.color,
-      glowing: false,
+      color: SidebarStatusEdgeStyle.running.color,
+      glowing: true,
     );
 
     await tester.scrollUntilVisible(
@@ -429,8 +429,8 @@ void main() {
     _expectStatusLight(
       tester,
       sessionId: 'lazy-19',
-      color: SidebarStatusEdgeStyle.idle.color,
-      glowing: false,
+      color: SidebarStatusEdgeStyle.running.color,
+      glowing: true,
     );
   });
 
@@ -547,8 +547,8 @@ void main() {
     _expectStatusLight(
       tester,
       sessionId: 'newer',
-      color: SidebarStatusEdgeStyle.idle.color,
-      glowing: false,
+      color: SidebarStatusEdgeStyle.running.color,
+      glowing: true,
     );
     _expectStatusLight(
       tester,
@@ -619,8 +619,8 @@ void main() {
     _expectStatusLight(
       tester,
       sessionId: 'older',
-      color: SidebarStatusEdgeStyle.idle.color,
-      glowing: false,
+      color: SidebarStatusEdgeStyle.running.color,
+      glowing: true,
     );
   });
 
@@ -784,7 +784,7 @@ void main() {
   });
 
   testWidgets(
-    'cached running session stays inactive without an authoritative snapshot',
+    'fresh REST running session stays active until the socket snapshot',
     (tester) async {
       final projectRepository = _FakeProjectRepository([
         const PeonProject(
@@ -819,8 +819,8 @@ void main() {
       var sessionDecoration =
           tester.widget<Container>(sessionStatusContainer).decoration!
               as BoxDecoration;
-      expect(sessionDecoration.color, SidebarStatusEdgeStyle.idle.color);
-      expect(sessionDecoration.boxShadow, isNull);
+      expect(sessionDecoration.color, SidebarStatusEdgeStyle.running.color);
+      expect(sessionDecoration.boxShadow, isNotNull);
 
       final container = ProviderScope.containerOf(
         tester.element(find.byType(PeonHomePage)),
@@ -927,7 +927,9 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    final repository = _FakeSessionRepository([_session('menu', activity: 20)]);
+    final repository = _FakeSessionRepository([
+      _session('menu', activity: 20, status: 'completed'),
+    ]);
     final projectRepository = _FakeProjectRepository([
       const PeonProject(
         workspaceId: 'rnm',
