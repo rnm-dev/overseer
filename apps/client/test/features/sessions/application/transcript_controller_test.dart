@@ -172,6 +172,11 @@ void main() {
         TranscriptPage(
           events: [
             TranscriptEvent(
+              eventId: 'cached-7',
+              orderKey: 7,
+              payload: {'type': 'assistant'},
+            ),
+            TranscriptEvent(
               eventId: 'latest-9',
               orderKey: 9,
               payload: {'type': 'assistant'},
@@ -186,6 +191,42 @@ void main() {
       await Future<void>.delayed(Duration.zero);
 
       expect(live.subscriptions, ['latest-9']);
+    },
+  );
+
+  test(
+    'fills a disjoint offline gap before subscribing to the live tail',
+    () async {
+      final repository = _GapSessionRepository();
+      final live = _FakeTranscriptLiveService();
+      final container = ProviderContainer(
+        overrides: [
+          sessionRepositoryProvider.overrideWithValue(repository),
+          transcriptLiveServiceProvider.overrideWithValue(live),
+        ],
+      );
+      addTearDown(container.dispose);
+      final subscription = container.listen(
+        transcriptControllerProvider(scope),
+        (_, _) {},
+        fireImmediately: true,
+      );
+      addTearDown(subscription.close);
+
+      await container.read(transcriptControllerProvider(scope).future);
+      while (live.subscriptions.isEmpty) {
+        await Future<void>.delayed(Duration.zero);
+      }
+
+      expect(repository.olderCursors, ['before-latest', 'before-gap']);
+      expect(live.subscriptions, ['latest-2']);
+      expect(
+        container
+            .read(transcriptControllerProvider(scope))
+            .requireValue
+            .hasOlder,
+        isFalse,
+      );
     },
   );
 
@@ -463,6 +504,9 @@ void main() {
       addTearDown(subscription.close);
 
       await container.read(transcriptControllerProvider(idleScope).future);
+      while (!repository.latestCompleted) {
+        await Future<void>.delayed(Duration.zero);
+      }
       await scheduler.advance(const Duration(seconds: 5));
 
       expect(repository.detailsRequests, 1);
@@ -778,5 +822,89 @@ class _SequencedTranscriptRepository extends _FakeSessionRepository {
   }) {
     latestRequests += 1;
     return pages[_nextPage++];
+  }
+}
+
+class _GapSessionRepository extends _FakeSessionRepository {
+  _GapSessionRepository()
+    : super(
+        cached: TranscriptCache(
+          events: [
+            TranscriptEvent(
+              eventId: 'cached-anchor',
+              orderKey: 0,
+              payload: const {'type': 'assistant'},
+            ),
+          ],
+          hasOlder: false,
+        ),
+      );
+
+  final List<String> olderCursors = [];
+
+  @override
+  Future<TranscriptPage> fetchLatestTranscript({
+    required String workspaceId,
+    required String peonId,
+    required String sessionId,
+    int limit = 50,
+  }) async => TranscriptPage(
+    events: [
+      TranscriptEvent(
+        eventId: 'latest-1',
+        orderKey: 3,
+        payload: const {'type': 'assistant'},
+      ),
+      TranscriptEvent(
+        eventId: 'latest-2',
+        orderKey: 4,
+        payload: const {'type': 'result'},
+      ),
+    ],
+    nextCursor: 'before-latest',
+    hasMore: true,
+    insertedCount: 2,
+  );
+
+  @override
+  Future<TranscriptPage> fetchOlderTranscript({
+    required String workspaceId,
+    required String peonId,
+    required String sessionId,
+    required String cursor,
+    int limit = 50,
+  }) async {
+    olderCursors.add(cursor);
+    if (cursor == 'before-latest') {
+      return TranscriptPage(
+        events: [
+          TranscriptEvent(
+            eventId: 'missed',
+            orderKey: 2,
+            payload: const {'type': 'assistant'},
+          ),
+        ],
+        nextCursor: 'before-gap',
+        hasMore: true,
+        insertedCount: 1,
+      );
+    }
+    return TranscriptPage(
+      events: [
+        TranscriptEvent(
+          eventId: 'cached-anchor',
+          orderKey: 0,
+          payload: const {'type': 'assistant'},
+        ),
+        TranscriptEvent(
+          eventId: 'bridge',
+          orderKey: 1,
+          payload: const {'type': 'assistant'},
+        ),
+      ],
+      nextCursor: null,
+      hasMore: false,
+      insertedCount: 1,
+    );
   }
 }

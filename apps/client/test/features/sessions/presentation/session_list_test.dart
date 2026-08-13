@@ -205,7 +205,7 @@ void main() {
     expect(find.text('Other project session'), findsNothing);
   });
 
-  testWidgets('defaults cached running sessions to an inactive edge', (
+  testWidgets('promotes a running row after the opening REST refresh', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -236,9 +236,54 @@ void main() {
     _expectEdge(
       tester,
       'cached-running',
-      SidebarStatusEdgeStyle.idle.color,
-      glowing: false,
+      SidebarStatusEdgeStyle.running.color,
+      glowing: true,
     );
+  });
+
+  testWidgets('flashes when realtime activity changes without a row update', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          sessionRepositoryProvider.overrideWithValue(
+            _SessionListRepository([
+              const SessionSummary(
+                workspaceId: 'workspace',
+                peonId: 'peon',
+                sessionId: 'realtime-running',
+                status: 'completed',
+                syncedAt: 1,
+              ),
+            ]),
+          ),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.dark,
+          home: const Scaffold(
+            body: SessionList(workspaceId: 'workspace', peonId: 'peon'),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(SessionList)),
+    );
+    container.read(activeSessionsProvider.notifier).replaceWorkspace(
+      'workspace',
+      const [ActiveSession(peonId: 'peon', sessionId: 'realtime-running')],
+    );
+    await tester.pump();
+
+    final edge = tester.widget<SidebarStatusEdge>(
+      find.byKey(const Key('session-status-realtime-running')),
+    );
+    expect(edge.style, SidebarStatusEdgeStyle.running);
+    expect(edge.flashRevision, 1);
+    expect(tester.hasRunningAnimations, isTrue);
   });
 
   testWidgets('matches every authoritative sidebar status edge and geometry', (

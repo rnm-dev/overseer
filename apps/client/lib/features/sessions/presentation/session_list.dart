@@ -407,14 +407,20 @@ class _LazySessionSliverState extends State<_LazySessionSliver> {
   void initState() {
     super.initState();
     _indices = _sessionIndices(widget.sessions);
-    _fingerprints = _sessionFingerprints(widget.sessions);
+    _fingerprints = _sessionFingerprints(
+      widget.sessions,
+      widget.activeSessions,
+    );
   }
 
   @override
   void didUpdateWidget(covariant _LazySessionSliver oldWidget) {
     super.didUpdateWidget(oldWidget);
     final nextIndices = _sessionIndices(widget.sessions);
-    final nextFingerprints = _sessionFingerprints(widget.sessions);
+    final nextFingerprints = _sessionFingerprints(
+      widget.sessions,
+      widget.activeSessions,
+    );
     final nextMoves = <String, int>{};
     final nextFlashes = Map<String, int>.from(_flashRevisions);
     for (final entry in nextIndices.entries) {
@@ -492,9 +498,19 @@ class _LazySessionSliverState extends State<_LazySessionSliver> {
     for (final (index, session) in sessions.indexed) session.sessionId: index,
   };
 
-  Map<String, String> _sessionFingerprints(List<SessionSummary> sessions) => {
+  Map<String, String> _sessionFingerprints(
+    List<SessionSummary> sessions,
+    ActiveWorkspaceSessions? activeSessions,
+  ) => {
     for (final session in sessions)
       session.sessionId: [
+        activeSessions?.contains(
+                  peonId: session.peonId,
+                  sessionId: session.sessionId,
+                ) ==
+                true
+            ? 'active'
+            : '',
         session.status ?? '',
         session.lastActivityAt ?? 0,
         session.preview ?? '',
@@ -659,13 +675,19 @@ class _AnimatedSessionListState extends State<_AnimatedSessionList> {
   @override
   void initState() {
     super.initState();
-    _fingerprints = _sessionFingerprints(widget.sessions);
+    _fingerprints = _sessionFingerprints(
+      widget.sessions,
+      widget.activeSessions,
+    );
   }
 
   @override
   void didUpdateWidget(covariant _AnimatedSessionList oldWidget) {
     super.didUpdateWidget(oldWidget);
-    final nextFingerprints = _sessionFingerprints(widget.sessions);
+    final nextFingerprints = _sessionFingerprints(
+      widget.sessions,
+      widget.activeSessions,
+    );
     final nextFlashes = Map<String, int>.from(_flashRevisions);
     for (final entry in nextFingerprints.entries) {
       if (_fingerprints[entry.key] == entry.value) continue;
@@ -726,9 +748,19 @@ class _AnimatedSessionListState extends State<_AnimatedSessionList> {
     );
   }
 
-  Map<String, String> _sessionFingerprints(List<SessionSummary> sessions) => {
+  Map<String, String> _sessionFingerprints(
+    List<SessionSummary> sessions,
+    ActiveWorkspaceSessions? activeSessions,
+  ) => {
     for (final session in sessions)
       session.sessionId: [
+        activeSessions?.contains(
+                  peonId: session.peonId,
+                  sessionId: session.sessionId,
+                ) ==
+                true
+            ? 'active'
+            : '',
         session.status ?? '',
         session.lastActivityAt ?? 0,
         session.preview ?? '',

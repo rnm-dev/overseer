@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/diagnostics/app_diagnostics.dart';
+import '../../../core/live/active_sessions.dart';
 import '../../../core/time/app_time.dart';
 import '../domain/session_models.dart';
 import '../domain/session_repository.dart';
@@ -135,6 +136,7 @@ class SessionsController extends AsyncNotifier<SessionsState> {
         offset: 0,
         limit: pageSize,
       );
+      _reconcileActiveSessions(page);
       _nextOffset = page.offset + page.sessions.length;
       _serverHasMore = page.hasMore;
       final latest = state.value ?? current;
@@ -191,6 +193,7 @@ class SessionsController extends AsyncNotifier<SessionsState> {
         offset: _nextOffset,
         limit: pageSize,
       );
+      _reconcileActiveSessions(page);
       _nextOffset = page.offset + page.sessions.length;
       _serverHasMore = page.hasMore;
       final latest = state.value ?? current;
@@ -221,5 +224,31 @@ class SessionsController extends AsyncNotifier<SessionsState> {
         hasMore: _serverHasMore || sessions.length > current.visibleCount,
       ),
     );
+  }
+
+  void _reconcileActiveSessions(SessionPage page) {
+    ref
+        .read(activeSessionsProvider.notifier)
+        .reconcileRestPage(
+          workspaceId: scope.workspaceId,
+          peonId: scope.peonId,
+          returnedSessionIds: page.sessions.map((session) => session.sessionId),
+          runningSessions: page.sessions
+              .where((session) => session.isRunning)
+              .map(
+                (session) => ActiveSession(
+                  peonId: session.peonId,
+                  sessionId: session.sessionId,
+                  projectId: session.projectId,
+                  projectKey: session.projectKey,
+                  title: session.title,
+                  promptPreview: session.promptPreview,
+                  preview: session.preview,
+                  author: session.author,
+                  startedAt: session.startedAt,
+                  lastActivityAt: session.lastActivityAt,
+                ),
+              ),
+        );
   }
 }
