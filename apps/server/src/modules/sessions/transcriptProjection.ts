@@ -235,6 +235,33 @@ function canonicalPayload(value: unknown): string {
     .join(",")}}`;
 }
 
+function canonicalPayloadAcrossSequenceDrift(value: Record<string, unknown>): string {
+  const reverse = value.reverseTranscript;
+  if (!reverse || typeof reverse !== "object" || Array.isArray(reverse)) {
+    return canonicalPayload(value);
+  }
+  const metadata = reverse as Record<string, unknown>;
+  return canonicalPayload({
+    ...value,
+    reverseTranscript: {
+      ...metadata,
+      // A fresh authoritative snapshot may move a stable event when an older
+      // projection used a different sequence. These are positional metadata,
+      // not part of the event's stable payload identity.
+      seq: 0,
+      revision: 0,
+    },
+  });
+}
+
+function samePayloadAcrossSequenceDrift(
+  existing: Record<string, unknown>,
+  incoming: Record<string, unknown>,
+): boolean {
+  return canonicalPayloadAcrossSequenceDrift(existing)
+    === canonicalPayloadAcrossSequenceDrift(incoming);
+}
+
 export async function commitTranscriptSnapshot(input: {
   workspaceId: string;
   peonId: string;
@@ -466,8 +493,17 @@ export async function commitTranscriptEvent(input: {
     );
     if (orphaned.rows[0]) {
       const existing = orphaned.rows[0];
+      const existingSeq = Number(existing.seq);
+      if (existing.transcript_epoch === input.transcriptEpoch
+        && existingSeq !== input.seq
+        && samePayloadAcrossSequenceDrift(existing.payload, event)) {
+        // Do not ACK against the stale projection. Rebuild from Peon's
+        // authoritative snapshot; the covered-event path will validate the
+        // stable identity and payload before advancing the durable cursor.
+        throw new TranscriptProjectionError("TRANSCRIPT_GAP", "stable transcript event sequence changed");
+      }
       if (existing.transcript_epoch !== input.transcriptEpoch
-        || Number(existing.seq) !== input.seq
+        || existingSeq !== input.seq
         || canonicalPayload(existing.payload) !== canonicalPayload(event)) {
         throw new TranscriptProjectionError("REPLAY_MISMATCH", "orphaned transcript event payload mismatch");
       }
@@ -599,14 +635,28 @@ export async function commitSnapshotCoveredTranscriptEvent(input: {
     if (row.transcript_epoch === input.transcriptEpoch && input.seq > Number(row.acknowledged_seq)) {
       throw new TranscriptProjectionError("TRANSCRIPT_GAP", "transcript event is not covered by the snapshot");
     }
-    const projected = await tx.query<{ event_id: string; payload: Record<string, unknown> }>(
-      `SELECT event_id,payload FROM transcript_events
+    const projected = await tx.query<{ seq: number | string; event_id: string; payload: Record<string, unknown> }>(
+      `SELECT seq,event_id,payload FROM transcript_events
        WHERE peon_id=$1 AND session_id=$2 AND transcript_epoch=$3 AND seq=$4`,
       [input.peonId, input.sessionId, input.transcriptEpoch, input.seq],
     );
-    if (!projected.rows[0]
-      || projected.rows[0].event_id !== input.eventId
-      || canonicalPayload(projected.rows[0].payload) !== canonicalPayload(event)) {
+    let matching = projected.rows[0];
+    if (!matching
+      || matching.event_id !== input.eventId
+      || canonicalPayload(matching.payload) !== canonicalPayload(event)) {
+      const moved = await tx.query<{ seq: number | string; event_id: string; payload: Record<string, unknown> }>(
+        `SELECT seq,event_id,payload FROM transcript_events
+         WHERE peon_id=$1 AND session_id=$2 AND transcript_epoch=$3 AND event_id=$4`,
+        [input.peonId, input.sessionId, input.transcriptEpoch, input.eventId],
+      );
+      const candidate = moved.rows[0];
+      matching = candidate
+        && Number(candidate.seq) !== input.seq
+        && samePayloadAcrossSequenceDrift(candidate.payload, event)
+        ? candidate
+        : undefined;
+    }
+    if (!matching) {
       observeTranscriptEvent("replay_mismatch");
       throw new TranscriptProjectionError(
         "REPLAY_MISMATCH",
