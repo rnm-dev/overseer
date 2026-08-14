@@ -249,6 +249,46 @@ test("a durable retry adopts an exact transcript row orphaned from its inbox che
   )).rows[0]?.count, 2);
 });
 
+test("a durable event whose stable identity moved sequence requests authoritative repair", async () => {
+  await database();
+  await claim("p1", "s1", "generation-1");
+  await commitTranscriptSnapshot({
+    workspaceId: "ws",
+    peonId: "p1",
+    sessionId: "s1",
+    generation: "generation-1",
+    epoch: "epoch-1",
+    revision: 1,
+    barrierSeq: 1,
+    events: [envelope(1, "stable-event")],
+  });
+  const moved = envelope(1, "stable-event").event;
+
+  await assert.rejects(
+    commitTranscriptEvent({
+      workspaceId: "ws",
+      peonId: "p1",
+      sessionId: "s1",
+      generation: "generation-1",
+      transcriptEpoch: "epoch-1",
+      seq: 2,
+      revision: 2,
+      eventId: "stable-event",
+      event: {
+        ...moved,
+        reverseTranscript: { ...moved.reverseTranscript, seq: 2, revision: 2 },
+      },
+      deliveryEpoch: "delivery",
+      deliveryCursor: "moved-cursor-2",
+      messageId: "00000000-0000-4000-8000-000000000103",
+    }),
+    (error) => error instanceof TranscriptProjectionError && error.code === "TRANSCRIPT_GAP",
+  );
+  assert.equal((await query<{ count: number }>(
+    `SELECT COUNT(*)::int AS count FROM peon_session_inbox WHERE cursor='moved-cursor-2'`,
+  )).rows[0]?.count, 0);
+});
+
 test("snapshot and live transcript events recursively replace NUL without changing literal escape text", async () => {
   await database();
   await claim("p1", "s1", "generation-1");
@@ -483,6 +523,43 @@ test("snapshot-covered durable events match projected identity and payload befor
     `SELECT COUNT(*)::int AS count FROM peon_session_inbox
      WHERE cursor IN ('covered-mismatch-payload','covered-mismatch-id')`,
   )).rows[0]?.count, 0);
+});
+
+test("snapshot-covered durable event self-heals when its stable identity moved sequence", async () => {
+  await database();
+  await claim("p1", "s1", "generation-1");
+  await commitTranscriptSnapshot({
+    workspaceId: "ws",
+    peonId: "p1",
+    sessionId: "s1",
+    generation: "generation-1",
+    epoch: "epoch-1",
+    revision: 2,
+    barrierSeq: 2,
+    events: [envelope(1, "stable-event"), envelope(2, "other-event")],
+  });
+  const moved = envelope(1, "stable-event").event;
+  const reverse = moved.reverseTranscript;
+  const committed = await commitSnapshotCoveredTranscriptEvent({
+    peonId: "p1",
+    sessionId: "s1",
+    generation: "generation-1",
+    transcriptEpoch: "epoch-1",
+    seq: 2,
+    eventId: "stable-event",
+    event: {
+      ...moved,
+      reverseTranscript: { ...reverse, seq: 2, revision: 2 },
+    },
+    deliveryEpoch: "delivery",
+    deliveryCursor: "moved-covered-2",
+    messageId: "00000000-0000-4000-8000-000000000025",
+  });
+
+  assert.equal(committed.delivery.acknowledgedCursor, "moved-covered-2");
+  assert.equal((await query<{ acknowledged_cursor: string }>(
+    `SELECT acknowledged_cursor FROM peon_session_sync WHERE peon_id='p1'`,
+  )).rows[0]?.acknowledged_cursor, "moved-covered-2");
 });
 
 test("pagination cursors are bound to their Peon and session even when epochs match", async () => {
