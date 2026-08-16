@@ -49,32 +49,6 @@ class FileLinkTransformer {
     );
   }
 
-  String? projectRelativePath(String href, ProjectFileLinkContext context) {
-    final pathOnly = _splitSuffix(href).path;
-    final prefix =
-        '/view/${Uri.encodeComponent(context.peonId)}/'
-        '${Uri.encodeComponent(context.projectId)}/';
-    if (!pathOnly.startsWith(prefix)) return null;
-    final encoded = pathOnly.substring(prefix.length);
-    if (encoded.isEmpty) return null;
-    try {
-      final segments = encoded.split('/').map(Uri.decodeComponent).toList();
-      if (segments.any(
-        (segment) =>
-            segment.isEmpty ||
-            segment == '.' ||
-            segment == '..' ||
-            segment.contains('/') ||
-            segment.contains('\\'),
-      )) {
-        return null;
-      }
-      return segments.join('/');
-    } on FormatException {
-      return null;
-    }
-  }
-
   String? localFilePath(String href) {
     if (href.isEmpty) return null;
     var path = href;

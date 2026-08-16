@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:overseer_mobile/shared/widgets/adaptive_dialog.dart';
 import 'package:overseer_mobile/shared/design/theme.dart';
 import 'package:overseer_mobile/features/themes/app_theme_package.dart';
 import 'package:overseer_mobile/shared/widgets/presence_stack.dart';
@@ -196,60 +195,5 @@ void main() {
       decoration.boxShadow!.first.color,
       theme.colorScheme.shadow.withValues(alpha: 0.28),
     );
-  });
-
-  Future<void> openDialog(
-    WidgetTester tester,
-    double width,
-    double height,
-  ) async {
-    tester.view.physicalSize = Size(width, height);
-    tester.view.devicePixelRatio = 1.0;
-
-    await tester.pumpWidget(
-      host(
-        Builder(
-          builder: (context) => ElevatedButton(
-            onPressed: () => showAdaptiveAppDialog<void>(
-              context: context,
-              title: 'Session',
-              content: const Text('Dialog content'),
-            ),
-            child: const Text('open'),
-          ),
-        ),
-      ),
-    );
-
-    await tester.tap(find.text('open'));
-    await tester.pumpAndSettle();
-  }
-
-  testWidgets('showAdaptiveAppDialog opens bottom sheet on narrow layout', (
-    WidgetTester tester,
-  ) async {
-    addTearDown(() {
-      tester.view.resetPhysicalSize();
-      tester.view.resetDevicePixelRatio();
-    });
-
-    await openDialog(tester, 360, 800);
-
-    expect(find.byType(BottomSheet), findsOneWidget);
-    expect(find.byType(Dialog), findsNothing);
-  });
-
-  testWidgets('showAdaptiveAppDialog opens centered Dialog on wide layout', (
-    WidgetTester tester,
-  ) async {
-    addTearDown(() {
-      tester.view.resetPhysicalSize();
-      tester.view.resetDevicePixelRatio();
-    });
-
-    await openDialog(tester, 1024, 1200);
-
-    expect(find.byType(Dialog), findsOneWidget);
-    expect(find.byType(BottomSheet), findsNothing);
   });
 }

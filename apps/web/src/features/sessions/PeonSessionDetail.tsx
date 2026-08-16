@@ -669,9 +669,8 @@ function PeonSessionDetailPage() {
   // renders as a single row (see flattenEvents).
   const items = useMemo(() => flattenEvents(visibleEvents, t), [t, visibleEvents]);
   const yesterdayLabelText = t("peon.stats.period.yesterday");
-  // Stable identity for the props below, so TranscriptItemList's memo can skip
-  // re-rendering the whole transcript on unrelated state changes (e.g. every
-  // composer keystroke, which lives in this same page component).
+  // Keep callbacks stable so virtual transcript rows do not receive needless
+  // prop changes on unrelated page state updates.
   const onOpenPreviewItem = useCallback(
     (p: { path: string; author?: string; createdAt?: number }) => setArtifactPreview({ path: p.path, author: p.author, createdAt: p.createdAt }),
     [],

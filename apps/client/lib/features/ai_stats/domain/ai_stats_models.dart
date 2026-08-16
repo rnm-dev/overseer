@@ -214,8 +214,6 @@ class AiQuotaCredits {
   final double? used;
   final double? limit;
   final String? currency;
-
-  bool get hasValues => balance != null || used != null || limit != null;
 }
 
 class AiProviderQuota {

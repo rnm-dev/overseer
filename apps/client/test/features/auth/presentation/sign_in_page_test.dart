@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:overseer_mobile/features/auth/presentation/sign_in_page.dart';
 import 'package:overseer_mobile/shared/design/theme.dart';
-import 'package:overseer_mobile/shared/widgets/overseer_logo.dart';
 
 void main() {
   Widget subject({
@@ -29,7 +28,6 @@ void main() {
 
     await tester.pumpWidget(subject(onSignIn: () => attempts++));
 
-    expect(find.byType(OverseerLogo), findsNothing);
     expect(find.byType(Image), findsNothing);
     expect(find.text('Sign in to Overseer'), findsOneWidget);
     expect(find.text('Sign In'), findsOneWidget);

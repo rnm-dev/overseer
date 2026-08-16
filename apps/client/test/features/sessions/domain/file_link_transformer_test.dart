@@ -67,30 +67,6 @@ void main() {
     );
   });
 
-  test('maps canonical viewer URLs back to project-relative paths', () {
-    expect(
-      transformer.projectRelativePath(
-        '/view/peon%2Fid/project%20id/docs/ivr%20sales.html#flow',
-        context,
-      ),
-      'docs/ivr sales.html',
-    );
-    expect(
-      transformer.projectRelativePath(
-        '/view/other/project%20id/docs/index.html',
-        context,
-      ),
-      isNull,
-    );
-    expect(
-      transformer.projectRelativePath(
-        '/view/peon%2Fid/project%20id/docs/%2E%2E/secret.html',
-        context,
-      ),
-      isNull,
-    );
-  });
-
   test('recognizes local files and strips Codex source positions', () {
     expect(
       transformer.localFilePath('/work/lib/main.dart:12:4'),

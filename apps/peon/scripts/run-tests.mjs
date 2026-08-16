@@ -11,7 +11,6 @@ const tests = readdirSync(testDir)
   .map((name) => path.join(testDir, name));
 const serialTests = [
   path.join(testDir, "previewRevisionPublisher.test.ts"),
-  path.join(testDir, "sessionLoad.test.ts"),
 ];
 const regularTests = tests.filter((test) => !serialTests.includes(test));
 
