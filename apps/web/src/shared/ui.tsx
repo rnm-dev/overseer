@@ -372,68 +372,6 @@ export function ContentHeader({
   );
 }
 
-// Slim page header shared by peon sub-pages: optional back link + h1 + inline
-// meta (key/scope/badges), and a kebab menu for actions — so a page never
-// grows a row of loose buttons. Sits flush under the peon nav tabs (the `-mt-4`
-// cancels PeonDetail's nav `mb-4`, so the nav's bottom border stays visible with
-// the header directly beneath it) and has symmetric top/bottom padding.
-export function PageHeader({
-  title,
-  backTo,
-  backLabel,
-  meta,
-  actions,
-  menu,
-  menuLabel,
-  className,
-}: {
-  title: ReactNode;
-  backTo?: string;
-  backLabel?: string;
-  meta?: ReactNode;
-  actions?: ReactNode;
-  menu?: (close: () => void) => ReactNode;
-  menuLabel?: string;
-  className?: string;
-}) {
-  return (
-    <ContentHeader
-      className={className}
-      identity={(
-        <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-3 gap-y-1">
-        {backTo && (
-          <Link to={backTo} relative="path" className="flex-none font-body text-xs text-ink-muted hover:text-accent-strong">
-            {backLabel}
-          </Link>
-        )}
-        <h1 className="truncate font-display text-sm font-semibold text-ink">{title}</h1>
-        {meta}
-        </div>
-      )}
-      actions={(actions || menu) ? (
-        <>
-          {actions}
-          {menu && (
-            <DropdownMenu
-              label={menuLabel}
-              buttonClassName="flex items-center rounded p-1 text-ink-muted transition-colors hover:bg-surface-hover hover:text-ink"
-              trigger={(
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-                  <circle cx="12" cy="5" r="1.75" />
-                  <circle cx="12" cy="12" r="1.75" />
-                  <circle cx="12" cy="19" r="1.75" />
-                </svg>
-              )}
-            >
-              {menu}
-            </DropdownMenu>
-          )}
-        </>
-      ) : undefined}
-    />
-  );
-}
-
 export function DropdownMenu({
   label,
   trigger,
@@ -490,24 +428,10 @@ export function DropdownMenu({
   );
 }
 
-// Shared look for a row inside a PageHeader kebab menu — exported as a class
-// string (not just a <MenuItem> button) so a navigation entry can use it on a
-// <Link> too.
+// Shared look for a row inside a dropdown menu. Navigation entries use the
+// class directly so links and buttons stay visually consistent.
 export function menuItemClass(tone: "default" | "danger" = "default"): string {
   return `block w-full px-3 py-1.5 text-left font-body text-xs transition-colors disabled:opacity-40 ${
     tone === "danger" ? "text-danger hover:bg-danger/10" : "text-ink-muted hover:bg-surface-raised hover:text-accent-strong"
   }`;
-}
-
-export function MenuItem({ tone = "default", className = "", ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { tone?: "default" | "danger" }) {
-  return <button type="button" className={`${menuItemClass(tone)} ${className}`} {...props} />;
-}
-
-export function SectionHead({ title, right }: { title: string; right?: ReactNode }) {
-  return (
-    <div className="mb-3 flex items-end justify-between gap-3">
-      <h2 className="rune text-sm text-ink">{title}</h2>
-      {right}
-    </div>
-  );
 }

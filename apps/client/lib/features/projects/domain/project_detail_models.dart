@@ -59,13 +59,6 @@ class ProjectFilePreview {
   final String path;
   final Uint8List bytes;
   final String? contentType;
-
-  bool get isImage =>
-      contentType?.startsWith('image/') == true ||
-      RegExp(
-        r'\.(png|jpe?g|gif|webp|svg|bmp|ico)$',
-        caseSensitive: false,
-      ).hasMatch(path);
 }
 
 class WorkspaceMember {

@@ -3,7 +3,6 @@ import test from "node:test";
 import {
   cachedTranscriptSnapshot,
   clearTranscriptSnapshotCache,
-  clearTranscriptSnapshotCacheForTests,
   prefetchTranscriptSnapshot,
   preparedTranscriptSnapshot,
   readAuthoritativeTranscriptSnapshot,
@@ -13,7 +12,7 @@ import {
 import type { TranscriptResponse } from "./transcriptPagination";
 
 test("prefetch deduplicates intent and leaves a snapshot for immediate opening", async () => {
-  clearTranscriptSnapshotCacheForTests();
+  clearTranscriptSnapshotCache();
   let requests = 0;
   let resolveRequest!: (value: TranscriptResponse) => void;
   const request = () => {
@@ -39,7 +38,7 @@ test("prefetch deduplicates intent and leaves a snapshot for immediate opening",
 });
 
 test("a completed prefetch remains paint-only so opening revalidates before tailing", async () => {
-  clearTranscriptSnapshotCacheForTests();
+  clearTranscriptSnapshotCache();
   let requests = 0;
   const request = async (): Promise<TranscriptResponse> => {
     requests += 1;
@@ -62,7 +61,7 @@ test("a completed prefetch remains paint-only so opening revalidates before tail
 });
 
 test("concurrent authoritative readers share one transcript request", async () => {
-  clearTranscriptSnapshotCacheForTests();
+  clearTranscriptSnapshotCache();
   let requests = 0;
   let resolveRequest!: (value: TranscriptResponse) => void;
   const request = () => {
@@ -80,7 +79,7 @@ test("concurrent authoritative readers share one transcript request", async () =
 });
 
 test("cache is bounded and keeps recently read transcripts", () => {
-  clearTranscriptSnapshotCacheForTests();
+  clearTranscriptSnapshotCache();
   for (let index = 0; index < 13; index += 1) {
     rememberTranscriptSnapshot("/peon", `session-${index}`, true, {
       events: [{ type: "assistant", eventId: `event-${index}` }],
@@ -94,7 +93,7 @@ test("cache is bounded and keeps recently read transcripts", () => {
 });
 
 test("sign-out clearing drops cached pages and pending resume candidates", async () => {
-  clearTranscriptSnapshotCacheForTests();
+  clearTranscriptSnapshotCache();
   let resolveRequest!: (value: TranscriptResponse) => void;
   const pending = prefetchTranscriptSnapshot("/peon", "session-pending", true, () =>
     new Promise<TranscriptResponse>((resolve) => {

@@ -24,11 +24,8 @@ dependencies:
   audio_session: ^0.2.4
   flutter_web_auth_2: ^5.0.3
   desktop_webview_window: ^0.3.0
-  connectivity_plus: ^7.3.1
   firebase_core: ^4.12.1
   firebase_messaging: ^16.4.3
-  json_annotation: ^4.12.0
-  freezed_annotation: ^3.1.0
   lucide_icons_flutter: ^3.1.15
   file_picker: ^11.0.2
   pasteboard: ^0.5.0
@@ -52,8 +49,6 @@ dev_dependencies:
     sdk: flutter
   flutter_lints: ^6.0.0
   build_runner: ^2.15.1
-  json_serializable: ^6.14.0
-  freezed: ^3.2.5
   drift_dev: ^2.34.0
   flutter_native_splash: ^2.4.8
   image: ^4.8.0
@@ -62,7 +57,7 @@ flutter:
   generate: true
   uses-material-design: true
   assets:
-    - assets/images/
+    - assets/images/overseer-splash.png
     - assets/sounds/peon/
     - assets/sounds/sc_scv/
     - assets/sounds/peasant/
@@ -78,7 +73,3 @@ flutter:
           weight: 600
         - asset: assets/fonts/golos_text/GolosText-Bold.ttf
           weight: 700
-        - asset: assets/fonts/golos_text/GolosText-ExtraBold.ttf
-          weight: 800
-        - asset: assets/fonts/golos_text/GolosText-Black.ttf
-          weight: 900

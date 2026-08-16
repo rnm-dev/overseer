@@ -10,7 +10,6 @@ import 'package:overseer_mobile/features/shell/presentation/shell_page.dart';
 import 'package:overseer_mobile/features/auth/domain/auth_models.dart';
 import 'package:overseer_mobile/shared/layout/responsive_breakpoints.dart';
 import 'package:overseer_mobile/shared/widgets/app_navigation_bar.dart';
-import 'package:overseer_mobile/shared/widgets/overseer_logo.dart';
 
 void main() {
   group('ResponsiveBreakpoints', () {
@@ -38,7 +37,6 @@ void main() {
       expect(find.byKey(const Key('overseer-index-navbar')), findsOneWidget);
       expect(find.byKey(const Key('fleet-loading')), findsOneWidget);
       expect(find.byType(CircularProgressIndicator), findsNothing);
-      expect(find.byType(OverseerLogo), findsNothing);
 
       result.complete(const []);
       await tester.pump();
@@ -61,7 +59,6 @@ void main() {
       expect(find.byType(AppNavigationBar), findsOneWidget);
       expect(find.text('overseer.rnm.dev'), findsOneWidget);
       expect(find.byTooltip('Back to Overseer list'), findsOneWidget);
-      expect(find.byType(OverseerLogo), findsNothing);
       await tester.pump();
       expect(find.byKey(const Key('fleet-overview')), findsOneWidget);
 

@@ -140,56 +140,9 @@ class TranscriptEvent {
       type == 'user_message' ||
       (type == 'user' && _messageRole(payload) == 'user');
 
-  String get displayText {
-    final direct = payload['text'];
-    if (direct is String && direct.trim().isNotEmpty) return direct.trim();
-
-    final message = payload['message'];
-    if (message is Map) {
-      final text = _textFromContent(message['content']);
-      if (text.isNotEmpty) return text;
-    }
-
-    final content = _textFromContent(payload['content']);
-    if (content.isNotEmpty) return content;
-
-    if (type == 'result') {
-      final result = payload['is_error'] == true
-          ? 'Run failed'
-          : 'Run finished';
-      final turns = (payload['num_turns'] as num?)?.toInt();
-      return turns == null ? result : '$result · $turns turns';
-    }
-    if (type == 'system') return 'System update';
-    return type?.replaceAll('_', ' ') ?? 'Transcript event';
-  }
-
   static String? _messageRole(Map<String, dynamic> payload) {
     final message = payload['message'];
     return message is Map ? message['role'] as String? : null;
-  }
-
-  static String _textFromContent(Object? content) {
-    if (content is String) return content.trim();
-    if (content is! List) return '';
-    final parts = <String>[];
-    for (final item in content) {
-      if (item is String && item.trim().isNotEmpty) {
-        parts.add(item.trim());
-        continue;
-      }
-      if (item is! Map) continue;
-      final text = item['text'] ?? item['thinking'];
-      if (text is String && text.trim().isNotEmpty) {
-        parts.add(text.trim());
-        continue;
-      }
-      final name = item['name'];
-      if (item['type'] == 'tool_use' && name is String && name.isNotEmpty) {
-        parts.add('Used $name');
-      }
-    }
-    return parts.join('\n');
   }
 }
 

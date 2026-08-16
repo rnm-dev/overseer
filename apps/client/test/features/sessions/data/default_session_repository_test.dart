@@ -676,8 +676,6 @@ void main() {
         'event-2',
         'event-3',
       ]);
-      expect(cached.events[1].displayText, 'older');
-      expect(cached.events.last.displayText, 'Run finished · 1 turns');
       expect(
         requests.first.path,
         'workspaces/workspace/peons/peon/sessions/session%2Fid/transcript',
@@ -715,7 +713,6 @@ void main() {
         'event-3',
         'event-4',
       ]);
-      expect(withTail.events.last.displayText, 'live enriched');
     },
   );
 

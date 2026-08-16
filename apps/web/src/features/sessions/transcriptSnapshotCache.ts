@@ -133,5 +133,3 @@ export function clearTranscriptSnapshotCache(): void {
   cache.clear();
   inFlight.clear();
 }
-
-export const clearTranscriptSnapshotCacheForTests = clearTranscriptSnapshotCache;

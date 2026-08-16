@@ -6,7 +6,6 @@ import 'package:overseer_mobile/features/auth/presentation/overseer_connections_
 import 'package:overseer_mobile/shared/design/theme.dart';
 import 'package:overseer_mobile/shared/widgets/app_button.dart';
 import 'package:overseer_mobile/shared/widgets/entity_list_tile.dart';
-import 'package:overseer_mobile/shared/widgets/overseer_logo.dart';
 
 void main() {
   Widget subject({
@@ -34,7 +33,6 @@ void main() {
       subject(onAdd: (serverUrl) async => added = serverUrl),
     );
 
-    expect(find.byType(OverseerLogo), findsNothing);
     expect(find.byType(Image), findsNothing);
     expect(find.text('No connections yet'), findsOneWidget);
     expect(find.byType(EntityListTile), findsNothing);

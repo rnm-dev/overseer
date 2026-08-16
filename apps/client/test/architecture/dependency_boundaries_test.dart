@@ -3,8 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('branding graphics stay in the reusable logo widget', () {
-    const allowedLogoFiles = <String>{'lib/shared/widgets/overseer_logo.dart'};
+  test('product UI does not restore decorative sign-in graphics', () {
     final violations = <String>[];
     final dartFiles = Directory('lib')
         .listSync(recursive: true)
@@ -14,9 +13,6 @@ void main() {
     for (final file in dartFiles) {
       final path = file.path.replaceAll(r'\', '/');
       final source = file.readAsStringSync();
-      if (source.contains('OverseerLogo') && !allowedLogoFiles.contains(path)) {
-        violations.add('$path renders OverseerLogo in product UI');
-      }
       if (source.contains('sign-in-hero.png')) {
         violations.add('$path uses decorative sign-in graphics');
       }
