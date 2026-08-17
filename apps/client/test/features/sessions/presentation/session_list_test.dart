@@ -148,6 +148,46 @@ void main() {
     );
   });
 
+  testWidgets('lets a scaled title grow instead of fading vertically', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          sessionRepositoryProvider.overrideWithValue(
+            _SessionListRepository([
+              const SessionSummary(
+                workspaceId: 'workspace',
+                peonId: 'peon',
+                sessionId: 'scaled-title',
+                title: 'A session title long enough to fade at the end',
+                syncedAt: 1,
+              ),
+            ]),
+          ),
+        ],
+        child: MediaQuery(
+          data: const MediaQueryData(textScaler: TextScaler.linear(2)),
+          child: MaterialApp(
+            theme: AppTheme.dark,
+            home: const Scaffold(
+              body: SizedBox(
+                width: 240,
+                child: SessionList(workspaceId: 'workspace', peonId: 'peon'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final title = find.byKey(const Key('session-title-scaled-title'));
+    expect(tester.widget<Text>(title).overflow, TextOverflow.fade);
+    expect(tester.getSize(title).height, greaterThan(20));
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('filters cached sessions by canonical project identity', (
     tester,
   ) async {
