@@ -18,7 +18,7 @@ export const VOICE_PRESETS: Record<string, VoicePreset> = {
   groq: {
     baseUrl: "https://api.groq.com/openai/v1",
     sttModel: "whisper-large-v3-turbo",
-    polishModel: "llama-3.3-70b-versatile",
+    polishModel: "openai/gpt-oss-120b",
   },
   openai: {
     baseUrl: "https://api.openai.com/v1",

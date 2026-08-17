@@ -99,7 +99,7 @@ The shipped table — `src/infrastructure/voice/voicePresets.ts`:
 
 | `OVERSEER_VOICE` | Base URL | STT model | Polish model |
 | --- | --- | --- | --- |
-| `groq` | `https://api.groq.com/openai/v1` | `whisper-large-v3-turbo` | `llama-3.3-70b-versatile` |
+| `groq` | `https://api.groq.com/openai/v1` | `whisper-large-v3-turbo` | `openai/gpt-oss-120b` |
 | `openai` | `https://api.openai.com/v1` | `whisper-1` | `gpt-4o-mini` |
 | `local` | `http://127.0.0.1:8000/v1` | `Systran/faster-whisper-large-v3` | — |
 
@@ -452,7 +452,7 @@ model announced itself with `"Here's the corrected text:"` on short utterances,
 which is short enough to slip under the growth ratio; and a swallowed polish
 failure left no diagnosable trace, only a counter.
 
-### Russian on real audio, and why the polish model is a 70B
+### Russian on real audio, and why the polish model is not an 8B
 
 Tested with synthesized Russian dictation of the kind actually spoken here —
 plain Russian, Russian thick with fillers and a stutter, and Russian carrying
@@ -479,13 +479,40 @@ against 149–523 ms), and additionally makes corrections the 8B missed — it
 repaired `на прот` → `на прод`. So the default polish model changed, and the
 whole fix was **one string in the preset table**, which is the configuration
 design paying for itself. `OVERSEER_VOICE_POLISH_MODEL=llama-3.1-8b-instant`
-restores the cheaper model for anyone who wants it.
+restored the cheaper model for anyone who wanted it.
 
 Two other models were rejected on the same evidence, and both were caught by
 existing guardrails rather than by inspection: `qwen/qwen3.6-27b` emits a
 `<think>` monologue (the growth ratio discards it and returns raw), and
 `openai/gpt-oss-20b` returned an empty completion for one case (the
 `polish-empty` guardrail returns raw).
+
+### 2026-08-16: Groq retired both Llama models, and the preset moved to GPT-OSS 120B
+
+Groq decommissioned `llama-3.3-70b-versatile` (and the `llama-3.1-8b-instant`
+fallback named above) on 2026-08-16; neither is in `GET /v1/models` any more.
+Production runs `OVERSEER_VOICE=groq` with no `OVERSEER_VOICE_POLISH_MODEL`
+override, so from that date until the preset changed every dictation took the
+`polish-error` path and returned the raw transcript. **Nothing broke visibly,
+which is the point of the swallow-and-degrade design and also the reason this
+went unnoticed for a day** — a decommissioned polish model looks exactly like a
+quality regression, not an outage.
+
+The preset now reads `openai/gpt-oss-120b`, chosen on the same evidence as
+before. Re-running the failure classes above through the real provider: the
+informal ты survives (`задеплой … проверь` comes back as `Задеплой … проверь`),
+`на прот` → `на прод` is still repaired, mixed RU/EN is left alone, a transcript
+that reads like a question (`what's the capital of France`) is punctuated rather
+than answered, and all seven probes cleared the ratio guardrail at 413–969 ms —
+slower than the 70B's 184–367 ms, still well inside the budget. The reasoning
+tokens stay in Groq's separate `reasoning` field, so nothing leaks into
+`content`. `qwen/qwen3.6-27b`, the other vendor-recommended replacement, was
+re-checked and still emits `<think>`, so it is still rejected.
+
+The whole fix was again one string in the preset table plus the tests pinning
+it. Worth keeping in mind: **a preset row is a dated fact about someone else's
+catalog.** The failure mode is silent, so the next vendor decommission notice is
+a reason to re-check this row rather than assume it still resolves.
 
 **What is still wrong, and it is not a polish problem:** project nouns are
 mangled at the STT stage. `Kanat` → `коннет`, `Overseer` → `Аверсир`, `healthz`

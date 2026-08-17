@@ -12,7 +12,7 @@ test("a preset name plus one key is the entire default configuration", () => {
   const voice = resolveVoiceConfig(CONFIGURED);
   assert.equal(voice.preset, "groq");
   assert.deepEqual(voice.stt, { baseUrl: "https://api.groq.com/openai/v1", model: "whisper-large-v3-turbo", apiKey: "gsk_test" });
-  assert.deepEqual(voice.polish, { baseUrl: "https://api.groq.com/openai/v1", model: "llama-3.3-70b-versatile", apiKey: "gsk_test" });
+  assert.deepEqual(voice.polish, { baseUrl: "https://api.groq.com/openai/v1", model: "openai/gpt-oss-120b", apiKey: "gsk_test" });
   assert.deepEqual(voice.warnings, []);
 });
 
@@ -26,7 +26,7 @@ test("each stage overrides the preset independently and falls back to the shared
   });
   assert.deepEqual(voice.stt, { baseUrl: "http://whisper.internal:8000/v1", model: "Systran/faster-whisper-large-v3", apiKey: "shared" });
   assert.equal(voice.polish?.baseUrl, "https://api.groq.com/openai/v1");
-  assert.equal(voice.polish?.model, "llama-3.3-70b-versatile");
+  assert.equal(voice.polish?.model, "openai/gpt-oss-120b");
   assert.equal(voice.polish?.apiKey, "polish-only");
 });
 
