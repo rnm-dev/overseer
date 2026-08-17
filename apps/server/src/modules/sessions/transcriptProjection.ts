@@ -640,7 +640,9 @@ export async function commitSnapshotCoveredTranscriptEvent(input: {
        WHERE peon_id=$1 AND session_id=$2 AND transcript_epoch=$3 AND seq=$4`,
       [input.peonId, input.sessionId, input.transcriptEpoch, input.seq],
     );
-    let matching = projected.rows[0];
+    // Explicitly optional: the self-heal below narrows a moved row back to
+    // `undefined` when it does not match, and the miss is handled two lines on.
+    let matching: { seq: number | string; event_id: string; payload: Record<string, unknown> } | undefined = projected.rows[0];
     if (!matching
       || matching.event_id !== input.eventId
       || canonicalPayload(matching.payload) !== canonicalPayload(event)) {
