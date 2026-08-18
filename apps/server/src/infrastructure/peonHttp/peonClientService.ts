@@ -126,13 +126,22 @@ function safeJson(text: string): unknown {
   }
 }
 
-export async function proxyStream(conn: PeonConn, pathname: string, res: ExpressResponse, actor: string | null = null): Promise<void> {
+export async function proxyStream(
+  conn: PeonConn,
+  pathname: string,
+  res: ExpressResponse,
+  actor: string | null = null,
+  lastEventId: string | null = null,
+): Promise<void> {
   const url = apiUrl(conn, pathname);
   const controller = new AbortController();
   res.on("close", () => controller.abort());
   let upstream: Awaited<ReturnType<typeof fetch>>;
   try {
-    upstream = await fetch(url, { headers: headers(conn.token, actor), signal: controller.signal });
+    upstream = await fetch(url, {
+      headers: headers(conn.token, actor, lastEventId ? { "Last-Event-ID": lastEventId } : {}),
+      signal: controller.signal,
+    });
   } catch (err) {
     if (!res.headersSent) res.status(502).json({ error: `peon unreachable: ${err instanceof Error ? err.message : String(err)}`, code: "PEON_UNREACHABLE" });
     return;

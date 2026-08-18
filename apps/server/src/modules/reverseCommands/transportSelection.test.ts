@@ -105,7 +105,7 @@ test("a capability-incomplete reverse Peon does not silently become reverse-auth
 test("capability rollout stages are independent and fail closed on minimum version", () => {
   const rollout = reverseRolloutPolicyFromEnv({
     OVERSEER_REVERSE_CAPABILITY_ROLLOUT:
-      "reverse-command-v1:allowlist:2.4.0,runtime-state-v1:default:1.2.0,transcript-sync-v1:cohort:3.0.0:100",
+      "reverse-command-v1:allowlist:2.4.0,runtime-state-v1:default:1.2.0,runtime-query-v1:cohort:3.0.0:100",
     OVERSEER_REVERSE_ALLOWLIST_REVERSE_COMMAND_V1: "peon-canary;peon-second",
   });
   assert.equal(capabilityRolloutAllows({
@@ -121,7 +121,7 @@ test("capability rollout stages are independent and fail closed on minimum versi
     capability: "runtime-state-v1", peonId: "any", peonVersion: "1.2.0-beta.1", rollout,
   }), false);
   assert.equal(capabilityRolloutAllows({
-    capability: "transcript-sync-v1", peonId: "any", peonVersion: "3.0.0", rollout,
+    capability: "runtime-query-v1", peonId: "any", peonVersion: "3.0.0", rollout,
   }), true);
 });
 

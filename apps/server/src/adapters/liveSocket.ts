@@ -5,7 +5,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import { consumeWebSocketTicket } from "../modules/auth/index.js";
 import { membership, type Role } from "../modules/workspaces/index.js";
 import { registry, toView } from "../modules/fleet/index.js";
-import { getIndexedSession } from "../modules/sessions/index.js";
+import { getIndexedSession, indexAcceptedSession } from "../modules/sessions/index.js";
 import { bus, latestCursor, oldestCursor, readEventsSince, type LiveEvent } from "../infrastructure/events/index.js";
 import { callPeon, connOfRecord, streamPeonTo } from "../infrastructure/peonHttp/index.js";
 import { eventVisible, peonVisible, projectVisible, refreshClientAccess, sessionVisible } from "../modules/access/index.js";
@@ -22,18 +22,8 @@ import {
   setAudioFocusActive,
   touchPresence,
 } from "../modules/presence/index.js";
-import {
-  getTranscriptState,
-  readTranscriptAfter,
-} from "../modules/sessions/index.js";
-import {
-  acquireTranscriptProjection,
-  hasReverseTranscriptConnection,
-  transcriptConnectionBus,
-} from "./peonTranscriptSync.js";
 import { canAccessIndexedSessionNow } from "../modules/access/index.js";
 import { enrichLiveTranscriptEvent } from "../modules/sessions/index.js";
-import { observeTranscriptEvent } from "../modules/sessions/index.js";
 import { observeSessionCatalogDuration } from "../modules/sessions/index.js";
 import { claimUpgrade } from "./upgradeGuard.js";
 
@@ -135,26 +125,12 @@ function rememberDeliveredResource(client: Client, event: LiveEvent, measureAppl
   }
 }
 
-interface ReverseTailState {
-  peonId: string;
-  sessionId: string;
-  ready: boolean;
-  pending: LiveEvent[];
-  pendingBytes: number;
-  seen: Set<string>;
-  release: (() => void) | null;
-  delivery: Promise<void>;
-}
-
-const reverseTails = new WeakMap<AbortController, ReverseTailState>();
-
 export const send = (ws: WebSocket, msg: unknown): boolean => {
   if (ws.readyState !== WebSocket.OPEN) return false;
   // A slow/backgrounded browser must not turn an unbounded tail into server-side
   // memory growth. Terminating is safe: durable state resumes by cursor and the
   // session tail reattaches on the fresh socket.
   if (ws.bufferedAmount > MAX_BUFFERED_BYTES) {
-    observeTranscriptEvent("slow_client_disconnect");
     ws.terminate();
     return false;
   }
@@ -287,36 +263,9 @@ export function attachLiveSocket(server: Server): WebSocketServer {
       // connect/disconnect in that window cannot be lost. Durable events remain
       // gated until snapshotAndReplay establishes its cursor barrier.
       const presenceDuringSnapshot = e.cursor === 0 && e.kind === "peon";
-      if (e.kind === "transcript") {
-        if (!c.live || c.workspaceId !== e.workspaceId || !e.sessionId) continue;
-        const controller = c.tails.get(e.sessionId);
-        const tail = controller ? reverseTails.get(controller) : null;
-        if (!tail || tail.peonId !== e.peonId) continue;
-        if (!tail.ready) {
-          const bytes = Buffer.byteLength(JSON.stringify(e.payload));
-          if (tail.pending.length >= MAX_PENDING_TRANSCRIPT_EVENTS
-            || tail.pendingBytes + bytes > MAX_PENDING_TRANSCRIPT_BYTES) {
-            controller!.abort();
-            c.tails.delete(e.sessionId);
-            send(c.ws, {
-              type: "tailError",
-              peonId: e.peonId,
-              sessionId: e.sessionId,
-              error: "transcript browser buffer exceeded",
-            });
-            continue;
-          }
-          tail.pending.push(e);
-          tail.pendingBytes += bytes;
-          continue;
-        }
-        tail.delivery = tail.delivery
-          .then(async () => {
-            await deliverProjectedTail(c, controller!, tail, e);
-          })
-          .catch(() => closeRevokedTail(c, controller!, tail));
-        continue;
-      }
+      // Transcript rows never enter the shared event log. Each subscribed tail
+      // is bridged directly from Peon's committed Fleet HTTP stream below.
+      if (e.kind === "transcript") continue;
       if ((c.live || presenceDuringSnapshot) && c.workspaceId === e.workspaceId && eventVisible(c, e)) {
         rememberDeliveredResource(c, e);
         send(c.ws, { type: e.kind, cursor: e.cursor, payload: e.payload });
@@ -328,25 +277,6 @@ export function attachLiveSocket(server: Server): WebSocketServer {
   presenceBus.on("changed", onPresenceChange);
   const onAudioFocusChange = (userId: string) => syncAudio(userId);
   audioFocusBus.on("changed", onAudioFocusChange);
-  const onTranscriptConnection = (peonId: string, connected: boolean) => {
-    if (connected) return;
-    for (const client of clients) {
-      for (const [sessionId, controller] of client.tails) {
-        const tail = reverseTails.get(controller);
-        if (!tail || tail.peonId !== peonId) continue;
-        controller.abort();
-        client.tails.delete(sessionId);
-        send(client.ws, {
-          type: "tailError",
-          peonId,
-          sessionId,
-          error: "reverse transcript connection closed",
-        });
-      }
-    }
-  };
-  transcriptConnectionBus.on("changed", onTranscriptConnection);
-
   // Cursor sync — refresh high-water marks from Postgres, not only the local bus.
   // That makes self-heal work across multiple overseer processes and after any
   // missed in-process fan-out. One slow DB round cannot stack another interval.
@@ -404,7 +334,6 @@ export function attachLiveSocket(server: Server): WebSocketServer {
     bus.off("event", onBusEvent);
     presenceBus.off("changed", onPresenceChange);
     audioFocusBus.off("changed", onAudioFocusChange);
-    transcriptConnectionBus.off("changed", onTranscriptConnection);
     server.off("upgrade", onUpgrade);
   });
   return wss;
@@ -677,15 +606,14 @@ async function subscribe(client: Client, peonId: string, sessionId: string, requ
     return;
   }
   const indexed = await getIndexedSession(peonId, sessionId);
-  const transcriptState = await getTranscriptState(peonId, sessionId);
-  const reverseAuthority = transcriptState?.epoch != null || hasReverseTranscriptConnection(peonId);
   if (client.role !== "owner") {
     let projectKey = indexed?.projectKey ?? null;
     let projectId = indexed?.projectId ?? null;
     let found = indexed !== null;
-    if (!found && !reverseAuthority) {
+    if (!found) {
       const detail = await callPeon(connOfRecord(record), "GET", `/sessions/${encodeURIComponent(sessionId)}`, { actor: client.actor });
       found = detail.ok;
+      if (detail.ok) await indexAcceptedSession(detail, record.workspaceId, peonId);
       projectKey = detail.ok && detail.json && typeof detail.json === "object" && typeof (detail.json as { projectKey?: unknown }).projectKey === "string"
         ? (detail.json as { projectKey: string }).projectKey
         : null;
@@ -700,88 +628,13 @@ async function subscribe(client: Client, peonId: string, sessionId: string, requ
     }
   }
 
-  if (reverseAuthority) {
-    if (!hasReverseTranscriptConnection(peonId)) {
-      if (client.tails.get(sessionId) === ctrl) client.tails.delete(sessionId);
-      send(client.ws, { type: "tailError", peonId, sessionId, error: "transcript stream is offline" });
-      return;
-    }
-    const tail: ReverseTailState = {
-      peonId,
-      sessionId,
-      ready: false,
-      pending: [],
-      pendingBytes: 0,
-      seen: new Set(),
-      release: null,
-      delivery: Promise.resolve(),
-    };
-    reverseTails.set(ctrl, tail);
-    ctrl.signal.addEventListener("abort", () => tail.release?.(), { once: true });
-    try {
-      // The cached socket ACL above is useful for rejecting obvious bad input,
-      // but it must never be the gate that creates Peon-side transcript demand.
-      // Re-read the current membership/session/project grants before acquire can
-      // emit transcript_subscribe or transcript_snapshot_request.
-      if (!(await currentTranscriptAccess(client, peonId, sessionId))) {
-        closeRevokedTail(client, ctrl, tail);
-        return;
-      }
-      if (client.closed || ctrl.signal.aborted || client.tails.get(sessionId) !== ctrl) return;
-      tail.release = await acquireTranscriptProjection(peonId, sessionId);
-      if (ctrl.signal.aborted || client.tails.get(sessionId) !== ctrl) {
-        tail.release();
-        tail.release = null;
-        return;
-      }
-      if (!(await currentTranscriptAccess(client, peonId, sessionId))) {
-        closeRevokedTail(client, ctrl, tail);
-        return;
-      }
-      const lastEventId = typeof requestedLastEventId === "string"
-        && requestedLastEventId.length > 0
-        && requestedLastEventId.length <= 512
-        && !/[\r\n]/.test(requestedLastEventId)
-        ? requestedLastEventId
-        : null;
-      const replay = await readTranscriptAfter({ peonId, sessionId, lastEventId });
-      for (const event of replay) {
-        if (!(await currentTranscriptAccess(client, peonId, sessionId))) {
-          closeRevokedTail(client, ctrl, tail);
-          return;
-        }
-        if (!(await sendProjectedEvent(client, tail, event))) {
-          closeRevokedTail(client, ctrl, tail);
-          return;
-        }
-      }
-      while (tail.pending.length > 0) {
-        const pending = tail.pending.splice(0).sort((left, right) => left.cursor - right.cursor);
-        tail.pendingBytes = 0;
-        for (const live of pending) {
-          if (!(await deliverProjectedTail(client, ctrl, tail, live))) return;
-        }
-      }
-      tail.ready = true;
-      send(client.ws, { type: "tailReady", peonId, sessionId });
-    } catch (error) {
-      if (client.tails.get(sessionId) === ctrl) client.tails.delete(sessionId);
-      ctrl.abort();
-      send(client.ws, {
-        type: "tailError",
-        peonId,
-        sessionId,
-        error: error instanceof Error ? error.message : "transcript stream unavailable",
-      });
-    }
-    return;
-  }
-
   let buf = "";
   let streamError: string | null = null;
-  // Durable transcript Peons use the standard SSE resume header to begin strictly
-  // after the bounded HTTP snapshot. Legacy Peons retain their historical stream
-  // behavior, and untrusted socket input cannot become a malformed HTTP header.
+  let pendingFrames = 0;
+  let pendingBytes = 0;
+  let delivery = Promise.resolve();
+  // The stable eventId from the newest HTTP page is the only resume boundary.
+  // Untrusted socket input cannot become a malformed HTTP header.
   const lastEventId = record.capabilities.includes("transcript-pagination-v1")
     && typeof requestedLastEventId === "string"
     && requestedLastEventId.length > 0
@@ -806,7 +659,25 @@ async function subscribe(client: Client, peonId: string, sessionId: string, requ
           break;
         }
         const frame = parseSse(rawFrame);
-        if (frame) send(client.ws, { type: "tail", peonId, sessionId, event: frame.event, id: frame.id, data: frame.data });
+        if (!frame) continue;
+        const bytes = Buffer.byteLength(rawFrame);
+        pendingFrames += 1;
+        pendingBytes += bytes;
+        if (pendingFrames > MAX_PENDING_TRANSCRIPT_EVENTS || pendingBytes > MAX_PENDING_TRANSCRIPT_BYTES) {
+          streamError = "transcript live-tail buffer exceeded";
+          ctrl.abort();
+          break;
+        }
+        delivery = delivery
+          .then(() => deliverDirectTailFrame(client, ctrl, peonId, sessionId, frame))
+          .catch(() => {
+            streamError ??= "transcript live-tail delivery failed";
+            ctrl.abort();
+          })
+          .finally(() => {
+            pendingFrames -= 1;
+            pendingBytes -= bytes;
+          });
       }
       if (Buffer.byteLength(buf) > MAX_SSE_FRAME_BYTES) {
         streamError = "peon sent an oversized SSE frame";
@@ -824,7 +695,8 @@ async function subscribe(client: Client, peonId: string, sessionId: string, requ
     .catch(() => {
       streamError ??= "peon unreachable";
     })
-    .finally(() => {
+    .finally(async () => {
+      await delivery;
       // A replaced/unsubscribed stream must never terminate its successor. Only
       // the controller that still owns this session is allowed to emit terminal
       // state and release the slot.
@@ -840,77 +712,67 @@ function unsubscribe(client: Client, sessionId: string): void {
   client.tails.delete(sessionId);
 }
 
-async function sendProjectedTail(client: Client, tail: ReverseTailState, live: LiveEvent): Promise<boolean> {
-  const payload = live.payload && typeof live.payload === "object"
-    ? live.payload as { event?: unknown }
-    : null;
-  if (!payload?.event || typeof payload.event !== "object" || Array.isArray(payload.event)) return true;
-  return sendProjectedEvent(client, tail, payload.event as Record<string, unknown>);
-}
-
 async function currentTranscriptAccess(client: Client, peonId: string, sessionId: string): Promise<boolean> {
   if (!client.workspaceId) return false;
+  const currentRole = await membership(client.workspaceId, client.userId);
+  if (currentRole === "owner") return true;
+  if (!currentRole) return false;
   return canAccessIndexedSessionNow(client.workspaceId, client.userId, peonId, sessionId);
 }
 
-function closeRevokedTail(client: Client, controller: AbortController, tail: ReverseTailState): void {
-  if (client.tails.get(tail.sessionId) !== controller) return;
+function closeRevokedTail(client: Client, controller: AbortController, peonId: string, sessionId: string): void {
+  if (client.tails.get(sessionId) !== controller) return;
   controller.abort();
-  client.tails.delete(tail.sessionId);
+  client.tails.delete(sessionId);
   send(client.ws, {
     type: "tailError",
-    peonId: tail.peonId,
-    sessionId: tail.sessionId,
+    peonId,
+    sessionId,
     error: "unknown session",
     retryable: false,
   });
 }
 
-async function deliverProjectedTail(
+async function deliverDirectTailFrame(
   client: Client,
   controller: AbortController,
-  tail: ReverseTailState,
-  live: LiveEvent,
-): Promise<boolean> {
-  if (client.tails.get(tail.sessionId) !== controller || controller.signal.aborted) return false;
-  if (!(await currentTranscriptAccess(client, tail.peonId, tail.sessionId))) {
-    closeRevokedTail(client, controller, tail);
-    return false;
+  peonId: string,
+  sessionId: string,
+  frame: { event: string | null; id: string | null; data: string },
+): Promise<void> {
+  if (client.tails.get(sessionId) !== controller || controller.signal.aborted) return;
+  if (!(await currentTranscriptAccess(client, peonId, sessionId))) {
+    closeRevokedTail(client, controller, peonId, sessionId);
+    return;
   }
-  if (client.tails.get(tail.sessionId) !== controller || controller.signal.aborted) return false;
-  if (live.payload && typeof live.payload === "object"
-    && (live.payload as { deleted?: unknown }).deleted === true) {
-    controller.abort();
-    client.tails.delete(tail.sessionId);
-    send(client.ws, { type: "tailEnd", peonId: tail.peonId, sessionId: tail.sessionId });
-    return false;
+  let data = frame.data;
+  if (frame.event === "event" && frame.id) {
+    try {
+      const decoded = JSON.parse(frame.data) as unknown;
+      if (decoded && typeof decoded === "object" && !Array.isArray(decoded)) {
+        data = JSON.stringify(await enrichLiveTranscriptEvent({
+          ...(decoded as Record<string, unknown>),
+          eventId: frame.id,
+        }));
+      }
+    } catch {
+      // The clients reconcile malformed frames through the HTTP transcript.
+    }
+    // Enrichment is asynchronous. Re-read ACL so a revocation during that
+    // lookup cannot leak one final transcript row.
+    if (!(await currentTranscriptAccess(client, peonId, sessionId))) {
+      closeRevokedTail(client, controller, peonId, sessionId);
+      return;
+    }
   }
-  if (!(await sendProjectedTail(client, tail, live))) {
-    closeRevokedTail(client, controller, tail);
-    return false;
-  }
-  return true;
-}
-
-async function sendProjectedEvent(client: Client, tail: ReverseTailState, event: Record<string, unknown>): Promise<boolean> {
-  const eventId = typeof event.eventId === "string" ? event.eventId : null;
-  if (!eventId || tail.seen.has(eventId)) return true;
-  // Authorship is resolved on the way out, exactly as the paginated transcript
-  // resolves it: the projection stores only the actor string the Peon sent.
-  const enriched = await enrichLiveTranscriptEvent(event);
-  // Enrichment is asynchronous. Re-read ACL after it so a revocation during
-  // that await cannot leak one final transcript row.
-  if (!(await currentTranscriptAccess(client, tail.peonId, tail.sessionId))) return false;
-  tail.seen.add(eventId);
   send(client.ws, {
     type: "tail",
-    peonId: tail.peonId,
-    sessionId: tail.sessionId,
-    event: "event",
-    id: eventId,
-    data: JSON.stringify(enriched),
+    peonId,
+    sessionId,
+    event: frame.event,
+    id: frame.id,
+    data,
   });
-  return true;
 }
 
 function broadcastPresence(clients: Set<Client>, workspaceId: string): void {
@@ -940,9 +802,8 @@ function collectPresence(recipient: Client): PresenceEntry[] {
   return [...entries.values()].sort((a, b) => (a.githubLogin || a.email).localeCompare(b.githubLogin || b.email));
 }
 
-// transcript row and its replayed live frame, so preserve it across the bridge.
 // Minimal SSE frame parse: `event:`/`id:` plus one or more `data:` lines.
-// Peon's monotonically increasing id is the stable identity across reconnects.
+// Peon's persisted event id is the stable identity across reconnects.
 export function parseSse(frame: string): { event: string | null; id: string | null; data: string } | null {
   let event: string | null = null;
   let id: string | null = null;

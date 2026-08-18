@@ -1,8 +1,8 @@
 # Protocol conformance and failure injection
 
 The private `@rnm-dev/protocol-conformance` workspace validates the shared
-control/realtime socket, durable delivery, catalogs, reverse commands,
-transcript synchronization and topology.
+control/realtime socket, durable delivery, catalogs, reverse commands and
+topology.
 
 For OVSR-292 the transfer handshake, file-read/write frames, lifecycle harness
 and fixtures were removed. The capability matrix now routes directory
@@ -18,26 +18,17 @@ absent.
 
 ## Transcript synchronization
 
-`packages/protocol-conformance/fixtures/transcript-sync-v1.json` is the golden
-wire set for bounded snapshot request/page, durable live event, durable
-deletion, cancel and unsubscribe frames. Invalid barrier and byte-bound cases
-are kept beside the valid frames so the shared validator must fail closed.
-
 The capability fixture executes every cell in the 3 × 3 legacy, stable and
-current Peon/Overseer matrix. Live transcript sync selects the reverse socket
-only when both peers negotiate `transcript-sync-v1` and its canonical catalog
-and durable-delivery dependencies; all eight mixed or older cells exclusively
-retain Fleet HTTP history.
+current Peon/Overseer matrix. Transcript history always selects authenticated
+Fleet HTTP. There is no reverse-socket transcript capability, snapshot protocol
+or durable transcript ACK.
 
-`TranscriptSyncHarness` models the production commit boundary and recovery
-rules deterministically. Its tests inject dropped, duplicated and reverse-order
-delivery, disconnects, Peon/Overseer restarts, stale generations, crashes before
-and after commit, snapshot/live overlap, gaps, epoch rollover, cursor loss,
-projection eviction, queue pressure, slow consumers, oversized/corrupt input,
-deletion and durable-identity payload reuse. Assertions require one projected
-and browser effect, no ACK before or across an uncommitted gap, and convergence
-after snapshot rebuild. Failure artifacts use `BoundedDiagnostics`; transcript
-payloads are never included, and entry/byte bounds remain enforced.
+Component tests cover the deliberately small contract: HTTP cursor pagination,
+post-append Fleet SSE publication, a bounded newest-50 replay when the live
+boundary is missing or unknown, stable-event-ID upsert, reconnect and browser
+delivery through the client's existing workspace WebSocket. The canonical Peon
+JSONL remains the only message authority; Postgres does not project transcript
+rows.
 
 The workspace `verify` script runs these Node tests. Because the package is a
 root npm workspace, `npm run verify` includes them through the root
@@ -72,47 +63,7 @@ same generic client acknowledgement. An acknowledgement is possible only after
 the durable client projection and cursor commit, is matched to the exact kind
 and cursor, and excludes replay delivery from the live latency clock.
 
-## Transcript convergence acceptance
-
-`fixtures/transcript-acceptance-v1.json` is the executable index for the
-invariants, SLO clocks, safe diagnostic dimensions and supported mixed-version
-cells defined in [transcript synchronization](transcript-sync.md#convergence-acceptance-model).
-Its test fails if a boundary disappears, a covered invariant has no executable
-mapping, an SLO lacks an objective start/stop/target, or a sensitive payload
-field is admitted as a diagnostic dimension.
-
-Coverage labels resolve as follows:
-
-| Label | Executable suite |
-| --- | --- |
-| `conformance:transcriptSync` | `packages/protocol-conformance/test/transcriptSync.test.js` |
-| `conformance:topology` | `packages/protocol-conformance/test/topology.test.js` |
-| `peon:transcriptChannel` | `apps/peon/src/daemon/__tests__/transcriptChannel.test.ts` |
-| `server:transcriptProjection` | `apps/server/src/modules/sessions/transcriptProjection.test.ts` |
-| `server:transcriptSocketIntegration` | `apps/server/src/adapters/transcriptSocketIntegration.test.ts` |
-| `server:transcriptPagination` | `apps/server/src/routes/peons/transcriptPagination.test.ts` |
-| `server:transcriptBrowserBounds` | `apps/server/src/routes/peons/transcriptBrowserBounds.test.ts` |
-| `web:transcriptReconciliation` | `apps/web/src/features/sessions/transcriptReconciliation.test.ts` and merge/pagination tests |
-| `flutter:transcriptController` | `apps/client/test/features/sessions/application/transcript_controller_test.dart` and transcript item tests |
-
-The deterministic transcript lifecycle suite currently covers canonical
-golden frames, shared demand, atomic snapshot barriers, drop, duplicate,
-reorder/gap, stale generation, both-side restart, crash-after-commit-before-ACK,
-ACK loss/replay, cancellation, epoch mismatch and resource rejection. Database,
-Peon, web and Flutter suites cover the component boundaries named above.
-
-Planned cells are deliberately visible rather than presented as passing:
-
-- `TCA-SESSION-ISOLATION` needs a multi-session backpressure scenario proving a
-  pathological session cannot starve a healthy one;
-- all `TCS-*` rows need payload-free correlated clocks and percentile/ceiling
-  assertions;
-- the four `MVC-*` rows need a 4-party released-version fixture matrix rather
-  than only the existing Peon/Overseer capability matrix;
-- long-offline client cases need process-death, evicted boundary and stale
-  resume scenarios on both web and Flutter.
-
-These are the objective gates for the later epic workstreams: a transport,
-observability or client recovery change is incomplete until it converts its
-applicable catalog rows from `planned` to executable coverage without weakening
-the authority split or payload-free diagnostic policy.
+The server route and live-socket suites cover the HTTP proxy and WebSocket
+bridge. Peon's session-stream suite covers the disk-commit boundary and bounded
+replay. Web and Flutter reconciliation suites cover stable-ID idempotency and
+HTTP recovery. See [transcript synchronization](transcript-sync.md).

@@ -40,8 +40,7 @@ export function routeForSurface(surface, negotiated) {
     case "peon-update":
       return "legacy-http";
     case "session-transcript":
-      return control.has("transcript-sync-v1") && CANONICAL_PAIR.every((capability) => control.has(capability))
-        ? "reverse-socket" : "legacy-http";
+      return "legacy-http";
     default:
       return "unimplemented";
   }

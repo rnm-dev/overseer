@@ -248,7 +248,7 @@ test("WebSocket handshake and session tails survive ordering and replacement rac
     const peonPresence = await collector.waitFor((message) => message.type === "peon" && (message.payload as { peonId?: string })?.peonId === "peon-1");
     assert.equal((peonPresence.payload as { online?: boolean }).online, true, "Peon connection presence must fan out immediately");
     const crlf = await collector.waitFor((message) => message.type === "tail" && message.sessionId === "crlf");
-    assert.equal(crlf.data, "{\"kind\":\"crlf\"}");
+    assert.equal(crlf.data, "{\"kind\":\"crlf\",\"eventId\":\"7\"}");
     assert.equal(crlf.id, "7");
     assert.ok(
       collector.messages.findIndex((message) => message.type === "tailReady" && message.sessionId === "crlf")

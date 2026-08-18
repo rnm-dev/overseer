@@ -6,7 +6,6 @@ import { stateDir } from "../../runtime/xdgPaths.js";
 export const DEFAULT_PEON_SOCKET_OUTBOX_MESSAGES = 5_000;
 export const DEFAULT_PEON_SOCKET_OUTBOX_BYTES = 32 * 1024 * 1024;
 export const PEON_SOCKET_DURABLE_DELIVERY_CAPABILITY = "durable-delivery-v1";
-export const PEON_SOCKET_SELECTIVE_ACK_CAPABILITY = "durable-delivery-selective-ack-v1";
 function encodeCursor(sequence) {
     const bytes = Buffer.alloc(8);
     bytes.writeBigUInt64BE(BigInt(sequence));

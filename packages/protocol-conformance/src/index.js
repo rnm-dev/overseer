@@ -31,10 +31,6 @@ export {
   ReverseCommandLifecycleHarness,
 } from "./reverseCommandLifecycle.js";
 export {
-  TranscriptHarnessError,
-  TranscriptSyncHarness,
-} from "./transcriptLifecycle.js";
-export {
   SessionCatalogHarness,
   SessionCatalogHarnessError,
 } from "./sessionCatalogLifecycle.js";

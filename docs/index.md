@@ -53,8 +53,9 @@ repository — that content lives here.
   usage attribution and the Codex app-server driver.
 - [session catalog synchronization](session-list-sync.md) — the durable
   `session-catalog-v1` projection, running-state reconciliation and freshness.
-- [transcript synchronization](transcript-sync.md) — history pages over Fleet
-  HTTP and the `transcript-sync-v1` live tail.
+- [transcript history and live tail](transcript-sync.md) — HTTP pagination plus
+  Peon's committed Fleet HTTP SSE relayed through the client's existing workspace
+  WebSocket; there is no transcript projection or ACK protocol.
 - [composer ghost convergence](composer-ghost-convergence.md) — a sent message
   is a ghost owned by the composer, never an optimistic transcript row.
 - [transcript scrolling](transcript-scrolling.md) — follow output only while the

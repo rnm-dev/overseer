@@ -4,7 +4,6 @@ const KNOWN_CAPABILITIES = new Set([
   "project-catalog-v1",
   "entry-metadata-v1",
   "reverse-command-v1",
-  "transcript-sync-v1",
   "runtime-state-v1",
 ]);
 

@@ -170,8 +170,8 @@ export function usePluginInquiries(base: string, sid: string, supported: boolean
     void refresh();
   }, [refresh, sid, supported]);
 
-  // transcript-sync-v1 carries transcript commits but has no inquiry-change
-  // frame yet. While a turn is actively capable of opening an inquiry, retain
+  // The transcript tail carries committed message rows but no inquiry-change
+  // frame. While a turn is actively capable of opening an inquiry, retain
   // one bounded legacy recovery read. Idle and background pages issue none;
   // direct response bodies and transport-gap recovery remain immediate.
   useEffect(() => {

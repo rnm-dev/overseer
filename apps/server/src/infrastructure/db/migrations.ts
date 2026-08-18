@@ -952,4 +952,15 @@ export const MIGRATIONS: { id: string; statements: string[] }[] = [
       `ALTER TABLE oauth_attempts ADD COLUMN IF NOT EXISTS code_verifier TEXT`,
     ],
   },
+  {
+    // Transcript history and recovery are served only by Peon's canonical
+    // Fleet HTTP API. Live rows are transient WebSocket frames, so Overseer no
+    // longer retains a second message-body projection or transcript event log.
+    id: "036_remove_transcript_projection",
+    statements: [
+      `DELETE FROM events WHERE kind = 'transcript'`,
+      `DROP TABLE IF EXISTS transcript_events`,
+      `DROP TABLE IF EXISTS peon_transcript_sync`,
+    ],
+  },
 ];

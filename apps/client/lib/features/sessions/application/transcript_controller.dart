@@ -244,10 +244,10 @@ class TranscriptController extends AsyncNotifier<TranscriptState> {
       );
     } on SessionsException catch (error) {
       if (!ref.mounted) return;
-      // The durable cache is paint data, not proof that Overseer's rebuildable
-      // tail projection still contains this boundary. With no authoritative
-      // newest page, subscribe without a boundary so the server supplies its
-      // bounded recovery window and eventId upserts reconcile the overlap.
+      // The durable cache is paint data, not an authoritative resume boundary.
+      // With no verified newest page, subscribe without a boundary so Peon
+      // supplies its bounded recovery window and eventId upserts reconcile the
+      // overlap.
       _ensureTailSubscribed(null);
       final latest = state.value ?? current;
       state = AsyncData(

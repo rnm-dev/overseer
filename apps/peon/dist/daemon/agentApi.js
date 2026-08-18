@@ -4,7 +4,7 @@ import { eventLoopDelayStats } from "./runtime/eventLoopMonitor.js";
 import path from "node:path";
 import express from "express";
 import { DaemonConfigurationState, settings } from "./settings/index.js";
-import { sessionArtifactInventory, sessions, toPublicSessionRecord, } from "./sessions/index.js";
+import { sessionArtifactInventory, flushTranscript, readCommittedTranscriptEntries, subscribeTranscriptCommits, sessions, toPublicSessionRecord, } from "./sessions/index.js";
 import { createProjectService, projectStore } from "./projects/index.js";
 import { pairing } from "./identity/pairing.js";
 import { ensurePeonId } from "./identity/peonIdentity.js";
@@ -593,20 +593,15 @@ export function createAgentRouter(options = {}) {
         res.status(result.status).json(result.body);
     });
     // --- live tail (SSE, no human-presence bookkeeping) ----------------------
-    // Every committed transcript event reaches every subscriber, in order,
-    // exactly once, with no gap at the replay/live boundary: listeners are
-    // registered *before* the transcript snapshot is read below, and both that
-    // registration and the snapshot read are synchronous (no `await` between
-    // them) — sessions service always appends-to-disk-then-emits within one
-    // synchronous call, so nothing can land in between and be missed by both,
-    // or delivered by both. Each transcript event's `id:` is its immutable,
-    // persisted event identity, so a client that reconnects with Last-Event-ID
-    // (which EventSource does automatically) gets exactly what it missed, once.
-    // The atomic subscribe-then-snapshot handoff above is what a first
-    // connection (no Last-Event-ID yet) relies on instead.
-    router.get("/sessions/:id/stream", (req, res) => {
+    // Live delivery begins at the same boundary as canonical history: a row is
+    // eligible only after its JSONL append succeeds. The client supplies the
+    // newest eventId from its HTTP page; replay/live overlap is harmless because
+    // eventId is stable and clients upsert it. Missing or stale boundaries replay
+    // only a bounded newest window; older recovery belongs to HTTP pagination.
+    router.get("/sessions/:id/stream", async (req, res) => {
         const id = req.params.id;
-        if (!sessions.get(id))
+        const record = sessions.get(id);
+        if (!record)
             return fail(res, 404, "UNKNOWN_SESSION", "unknown session");
         let resumeEventId;
         try {
@@ -618,9 +613,64 @@ export function createAgentRouter(options = {}) {
                 return fail(res, 400, error.code, error.message);
             throw error;
         }
-        // Headers (and the connection) go out immediately — the client shouldn't
-        // wait on the first event, or even on the replay snapshot below, to know
-        // the stream is live.
+        let closed = false;
+        let cleaned = false;
+        let ready = false;
+        let heartbeat;
+        let onChange;
+        let releaseCommits;
+        const pending = [];
+        const sent = new Set();
+        const cleanup = () => {
+            if (cleaned)
+                return;
+            cleaned = true;
+            closed = true;
+            if (heartbeat !== undefined)
+                clearInterval(heartbeat);
+            releaseCommits?.();
+            if (onChange)
+                sessions.off("change", onChange);
+        };
+        req.once("close", cleanup);
+        const send = (event, data, eventId) => {
+            if (closed)
+                return;
+            if (eventId !== undefined)
+                sent.add(eventId);
+            let frame = `event: ${event}\n`;
+            if (eventId !== undefined)
+                frame += `id: ${eventId}\n`;
+            for (const line of JSON.stringify(data).split("\n"))
+                frame += `data: ${line}\n`;
+            try {
+                res.write(`${frame}\n`);
+            }
+            catch {
+                cleanup();
+            }
+        };
+        releaseCommits = subscribeTranscriptCommits((payload) => {
+            if (payload.sessionId !== id || sent.has(payload.entry.id))
+                return;
+            if (!ready)
+                pending.push({ id: payload.entry.id, event: payload.entry.event });
+            else
+                send("event", payload.entry.event, payload.entry.id);
+        });
+        let transcript;
+        try {
+            // Capture everything accepted before this request, then read only disk
+            // rows. Commits racing the read are buffered by the listener above.
+            await flushTranscript(id);
+            transcript = readCommittedTranscriptEntries(id, record.agent);
+        }
+        catch (error) {
+            cleanup();
+            return fail(res, 503, "TRANSCRIPT_UNAVAILABLE", error instanceof Error ? error.message : "transcript unavailable");
+        }
+        if (closed)
+            return;
         res.writeHead(200, {
             "Content-Type": "text/event-stream",
             "Cache-Control": "no-cache",
@@ -631,66 +681,36 @@ export function createAgentRouter(options = {}) {
         // route's own "close" cleanup below (that gap is inherent — cleanup is
         // itself async); swallow the resulting stream error here rather than
         // letting an unhandled 'error' bring down the process.
-        res.on("error", () => { });
-        let closed = false;
-        const send = (event, data, eventId) => {
-            if (closed)
-                return;
-            let frame = `event: ${event}\n`;
-            if (eventId !== undefined)
-                frame += `id: ${eventId}\n`;
-            // A JSON.stringify result never contains a literal newline (string
-            // values are escaped), but split defensively anyway — a multiline
-            // payload must become multiple `data:` lines, never a broken frame.
-            for (const line of JSON.stringify(data).split("\n"))
-                frame += `data: ${line}\n`;
-            // A late write to an already-torn-down connection must never throw out
-            // of this callback — sessions service calls emitter.emit() synchronously
-            // from its own append path, so an uncaught throw here would stop every
-            // *other* subscriber of the same event from being delivered to, too.
-            try {
-                res.write(`${frame}\n`);
-            }
-            catch {
-                closed = true;
-            }
-        };
-        const onEvent = (payload) => {
-            if (payload.sessionId === id)
-                send("event", payload.event, payload.eventId);
-        };
-        const onChange = (record) => {
+        res.on("error", cleanup);
+        onChange = (record) => {
             if (record.id === id)
                 send("change", toPublicSessionRecord(record));
         };
-        sessions.on("event", onEvent);
         sessions.on("change", onChange);
-        // Snapshot after subscribing (see comment above). Last-Event-ID (sent
-        // automatically by EventSource on reconnect) resumes from the client's
-        // own cursor; absent, a fresh connection gets the full history.
-        const transcript = sessions.getTranscriptEntries(id);
+        // Replay after subscribing, then drain commits that raced the disk read.
         const startAt = transcriptResumeIndex(transcript, resumeEventId);
         for (let i = startAt; i < transcript.length; i++)
             send("event", transcript[i].event, transcript[i].id);
+        for (const entry of pending) {
+            if (!sent.has(entry.id))
+                send("event", entry.event, entry.id);
+        }
+        ready = true;
+        if (closed)
+            return;
         // Detects half-open connections through proxies/load balancers that
         // silently drop idle streams. Overridable so tests don't need to wait out
         // the real 15s+ interval to see one.
-        const heartbeat = setInterval(() => {
+        heartbeat = setInterval(() => {
             if (closed)
                 return;
             try {
                 res.write(": ping\n\n");
             }
             catch {
-                closed = true;
+                cleanup();
             }
         }, SSE_HEARTBEAT_MS);
-        req.on("close", () => {
-            closed = true;
-            clearInterval(heartbeat);
-            sessions.off("event", onEvent);
-            sessions.off("change", onChange);
-        });
     });
     // --- file transfer -------------------------------------------------------
     // Disabled unless fileTransferRoot is set; every path is sandboxed to it.
