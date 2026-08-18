@@ -199,7 +199,7 @@ available to Overseer.
 | `GET /stats`, `GET /analytics` | projection/query | `runtime-state-v1`, `runtime-query-v1` | yes | Bounded filters; explicit freshness |
 | `GET /sessions`, `GET /sessions/:id` | projection | `session-catalog-v1` | no | Reverse channel already authoritative after sync |
 | `PATCH /sessions/:id` | command | `session-command-v1` | yes | Revision/state fenced |
-| transcript read and session stream | projection/event | `session-transcript-v1` | subscription | Snapshot barrier plus durable live events |
+| transcript read and session stream | Fleet HTTP | JSONL transcript + SSE | request/subscription | HTTP pages plus a post-commit live tail |
 | session files/raw/stream/preview | query/transfer | `session-artifact-v1` | yes | Metadata on control, bytes on transfer |
 | `POST /sessions` | command | `session-command-v1` | yes | Existing request ID becomes command ID |
 | follow-up | command | `session-command-v1` | yes | Same-ID replay cannot duplicate user turn |

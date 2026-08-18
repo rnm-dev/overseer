@@ -179,14 +179,13 @@ are in [trusted client IPs](proxy-trust.md).
 
 The reusable [protocol conformance and failure-injection harness](protocol-conformance-harness.md) lives in the private `@rnm-dev/protocol-conformance` workspace. Its stable slice executes shared socket/catalog/file-read and transcript golden frames, a 3×3 Peon/Overseer capability and exclusive-downgrade matrix, deterministic drop/duplicate/reorder/reconnect/restart faults, bounded redacted diagnostics, and a topology assertion that permits only the two intentional Fleet HTTP directory-listing surfaces over mesh. Transcript synchronization covers snapshot/live races, gaps, epoch rollover, cursor loss, projection rebuild, pressure and commit-before-ACK crashes. Reverse commands, enrollment, writes and rollout remain explicit blocked extension cells until their contracts, adapters and acceptance coverage are complete.
 
-Transcript history pages and authoritative one-session detail use the direct
-authenticated Peon Fleet HTTP API through the mesh. Page reads preserve
-`transcript-pagination-v1` limit/cursor semantics and never create reverse
-snapshot demand. The [`transcript-sync-v1` snapshot/projection/relay](transcript-sync.md)
-remains for live tails: Peon publishes post-barrier commits through the shared
-durable outbox; Overseer commits projection + inbox cursor + ACL-scoped browser
-event before ACK, shares one realtime demand per Peon/session and fences socket
-generations.
+Transcript history pages use the direct authenticated Peon Fleet HTTP API
+through the mesh, and live rows use the client's one existing workspace
+WebSocket. Overseer authorizes and relays Peon's committed Fleet HTTP SSE tail
+without storing message bodies. Stable `eventId` upserts make delivery
+at-least-once and reconnectable; gaps reconcile through HTTP. The retired
+`transcript-sync-v1` snapshot/Postgres projection and transcript ACK protocol
+are gone. See [transcript history and live tail](transcript-sync.md).
 
 The web transcript has one [scroll-follow contract](transcript-scrolling.md):
 real scroller position is the only user-intent signal, following is instant,

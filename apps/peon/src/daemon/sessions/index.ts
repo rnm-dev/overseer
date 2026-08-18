@@ -152,6 +152,7 @@ export {
 } from "./tokenUsage.js";
 export {
   DEFAULT_TRANSCRIPT_PAGE_LIMIT,
+  DEFAULT_TRANSCRIPT_TAIL_REPLAY_LIMIT,
   MAX_TRANSCRIPT_CURSOR_LENGTH,
   MAX_TRANSCRIPT_EVENT_ID_LENGTH,
   MAX_TRANSCRIPT_PAGE_LIMIT,
@@ -164,23 +165,6 @@ export {
   transcriptResumeIndex,
   type TranscriptPage,
 } from "./transcriptPagination.js";
-export {
-  MAX_PUBLISHED_TRANSCRIPT_EVENT_BYTES,
-  MAX_TRANSCRIPT_CANONICAL_LINE_BYTES,
-  MAX_TRANSCRIPT_CANONICAL_SOURCE_BYTES,
-  MAX_TRANSCRIPT_SNAPSHOT_BYTES,
-  MAX_TRANSCRIPT_SNAPSHOT_EVENTS,
-  TRANSCRIPT_SYNC_CAPABILITY,
-  TranscriptPublicationError,
-  TranscriptPublicationRepository,
-  publishedTranscriptEvent,
-  transcriptDurableEnvelopeBytes,
-  transcriptLiveEventFrame,
-  transcriptPublication,
-  type PublishedTranscriptEvent,
-  type TranscriptPublicationState,
-  type TranscriptPublicationUpdate,
-} from "./transcriptPublication.js";
 export {
   sourceTimestampMetadata,
   storedTimestampMetadata,

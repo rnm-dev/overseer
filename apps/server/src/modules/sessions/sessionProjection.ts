@@ -11,7 +11,6 @@ import type {
   SessionIndexRow,
   SessionSyncCheckpoint,
 } from "./sessionTypes.js";
-import { markTranscriptDeleted } from "./transcriptProjection.js";
 import { assertProjectionGeneration, recordDurableInbox } from "../resourceSync/index.js";
 
 // The aggregated session index — a materialized view of every peon's sessions,
@@ -225,7 +224,6 @@ async function deleteSession(
     params,
   );
   if (!deleted.rows[0]) return { event: null };
-  await markTranscriptDeleted(tx, peonId, sessionId);
   const projectCounts = await projectSessionCounts(tx, peonId, [{
     projectId: deleted.rows[0].project_id,
     projectKey: deleted.rows[0].project_key,

@@ -941,7 +941,7 @@ remain inactive.
   "type": "hello",
   "protocol": 1,
   "peonId": "<stable Peon id>",
-  "capabilities": ["session-catalog-v1", "project-catalog-v1", "transcript-sync-v1", "session-warning-v1", "reverse-command-v1", "durable-delivery-v1", "durable-delivery-selective-ack-v1"],
+  "capabilities": ["session-catalog-v1", "project-catalog-v1", "session-warning-v1", "reverse-command-v1", "durable-delivery-v1"],
   "channels": {
     "session-catalog-v1": {
       "epoch": "<boot uuid>",
@@ -954,16 +954,6 @@ remain inactive.
       "revision": 12,
       "earliestSeq": 8,
       "latestSeq": 12
-    },
-    "transcript-sync-v1": {
-      "snapshotPageEvents": 100,
-      "snapshotPageBytes": 786432,
-      "snapshotEvents": 20000,
-      "snapshotBytes": 16777216,
-      "activeSnapshots": 4,
-      "subscriptions": 64,
-      "subscriptionTtlMs": 300000,
-      "eventBytes": 196608
     },
     "reverse-command-v1": {
       "protocol": 1,
@@ -985,7 +975,7 @@ remain inactive.
 {
   "type": "hello_ack",
   "protocol": 1,
-  "capabilities": ["session-catalog-v1", "project-catalog-v1", "transcript-sync-v1", "session-warning-v1", "reverse-command-v1", "durable-delivery-v1", "durable-delivery-selective-ack-v1"],
+  "capabilities": ["session-catalog-v1", "project-catalog-v1", "session-warning-v1", "reverse-command-v1", "durable-delivery-v1"],
   "channels": {
     "session-catalog-v1": {
       "epoch": "<last accepted boot uuid>",
@@ -1035,23 +1025,6 @@ cumulative acknowledgement atomically compacts every message through its cursor.
 Stale duplicate acknowledgements are harmless; wrong epochs, malformed cursors,
 and future cursors never delete data.
 
-When both sides also negotiate `durable-delivery-selective-ack-v1`, Overseer
-may acknowledge one committed message without acknowledging earlier cursors:
-
-```json
-{ "type": "durable_ack", "epoch": "<durable epoch>", "cursor": "<committed cursor>", "cumulative": false }
-```
-
-Peon fsyncs that retired cursor and removes only its message. Retired holes are
-bounded by the existing 5,000-message outbox limit and compact into the
-cumulative frontier as soon as their prefix is retired. A selective-ACK hello
-does not carry a cumulative delivery resume; remaining messages replay and are
-deduplicated by the durable Overseer inbox. This additive mode is accepted only
-with `transcript-sync-v1`. If an outbox epoch has ever used a selective ACK and
-then reconnects to an older peer, Peon ignores that peer's handshake resume:
-the stored cursor may be past a selective hole. Remaining messages replay in
-order, after which live ACKs use the older cumulative behavior safely.
-
 Feature-owned durable messages persist their required `capability`. Peon sends a
 pending cursor only when that capability was accepted on the current connection.
 An unsupported head cursor remains durable and explicitly blocks later cursors;
@@ -1093,101 +1066,23 @@ frames (acknowledgements, cancellation, heartbeat) can bypass bulk replay on the
 socket; durable messages themselves remain strictly ordered. If an acknowledgement
 does not arrive, Peon retries unacknowledged cursors after 10 seconds.
 
-### Transcript snapshots and live events (`transcript-sync-v1`)
+### Transcript history and live tail
 
-This control-socket capability requires `durable-delivery-v1`. It publishes only
-the canonical Peon JSONL transcript; provider state is never used to reconstruct
-history. A transcript event becomes eligible for publication only after its
-JSONL row has appended successfully.
+Transcripts do not use the reverse control socket. Peon's JSONL file is the
+only message authority. History is read through the authenticated Fleet HTTP
+transcript endpoint with ordinary bounded cursor pagination.
 
-Overseer starts a bounded, session-owned snapshot:
+The Fleet HTTP session stream is an SSE tail of rows that have already appended
+to that JSONL file. Each row carries its stable event ID. `Last-Event-ID` resumes
+after a known row; a missing or unknown boundary returns only the newest 50 rows
+before continuing live. Delivery is at least once, so clients upsert by event ID
+and use HTTP pagination for any older or disjoint history.
 
-```jsonc
-// subscribe:true atomically arms demand before the barrier is captured.
-{ "type": "transcript_snapshot_request", "requestId": "uuid", "sessionId": "session-id", "limit": 50, "cursor": "optional", "subscribe": true }
-{
-  "type": "transcript_snapshot_page",
-  "requestId": "uuid", "sessionId": "session-id",
-  "epoch": "stable transcript epoch", "revision": 42, "barrierSeq": 42,
-  "events": [{
-    "sessionId": "session-id", "epoch": "stable transcript epoch",
-    "revision": 42, "seq": 42, "eventId": "canonical event id",
-    "createdAt": 1785400000000, "eventType": "result", "author": null,
-    "usage": { "input_tokens": 10 }, "event": { "type": "result" },
-    "artifactRefs": []
-  }],
-  "nextCursor": "opaque-or-null", "hasMore": false
-}
-```
-
-Every page for one request freezes the same epoch, revision, barrier, event
-identities and order. Cursors are opaque, request- and session-bound, and expire
-with the snapshot after 30 seconds. In-flight requests reserve one of the four
-snapshot slots before canonical I/O begins; cancellation, lease expiry, and
-socket-generation replacement fence any late completion. Lease validity is
-checked synchronously before every continuation page and after repository load;
-the maintenance timer is cleanup, not the correctness boundary.
-`transcript_snapshot_cancel` releases it. A missing,
-cross-session, or expired cursor returns `CURSOR_UNAVAILABLE`/`BAD_CURSOR`; the
-caller starts a fresh snapshot rather than asking Peon to infer history.
-
-With `subscribe:true`, commits through `barrierSeq` are covered by the frozen
-snapshot and commits after it are buffered or published in exact sequence as
-durable payloads:
-
-```jsonc
-{
-  "type": "durable_message", "capability": "transcript-sync-v1",
-  "priority": "normal|control|critical",
-  "payload": {
-    "type": "transcript_live_event",
-    "sessionId": "session-id", "epoch": "stable transcript epoch",
-    "revision": 43, "seq": 43, "eventId": "canonical event id",
-    "createdAt": 1785400000123, "eventType": "assistant",
-    "author": null, "usage": null, "event": { "type": "assistant" },
-    "artifactRefs": []
-  }
-}
-```
-
-`result` events and `transcript_deleted` use critical priority; warnings use
-control priority. Priority never changes durable cursor order. Dedupe identity is
-the transcript epoch, session, sequence and canonical event ID. Cumulative
-`durable_ack` is the only live-event acknowledgement.
-
-A reconnect may renew demand without a full snapshot using
-`transcript_subscribe {requestId,sessionId,epoch,afterSeq}`. Peon replays at most
-64 events / 4 MiB from canonical history, then answers
-`transcript_subscribed`; a wrong epoch, future sequence or larger catch-up
-returns `CURSOR_UNAVAILABLE`. `transcript_unsubscribe` releases demand.
-Subscriptions expire after five minutes unless renewed, and a Peon process
-restart intentionally forgets them; Overseer resubscribes or snapshots after
-each new process or configuration authority.
-
-Limits are 100 events and 768 KiB per page, 20,000 events / 16 MiB per snapshot,
-four concurrent snapshots / 32 MiB aggregate staging, 64 subscriptions, and
-192 KiB for the complete durable event envelope, including delivery metadata,
-usage, author and artifact references. Canonical JSONL snapshot reads use fixed
-buffers and stop at 64 MiB of source, 16 MiB per physical row, or 20,000 valid
-events before a whole unbounded transcript can be materialized. Oversized
-canonical events remain intact locally; the wire copy carries complete-envelope
-original/retained byte counts plus the canonical session/event artifact
-identity. Snapshot and event bodies, prompts, credentials and sensitive paths
-are never written to routine logs or metrics.
-
-If `transcript_deleted` cannot enter the durable outbox because it is full or
-temporarily cannot persist, Peon retains the bounded subscription and snapshot
-state and retries on durable acknowledgement, reconnect, and its maintenance
-timer. State is released only after the deletion frame is durably admitted, so
-a transient outbox failure cannot silently lose deletion convergence.
-
-At most 64 unacknowledged transcript events are admitted per session and 1,024
-across the channel. A noisy session that crosses its bound loses only its own
-demand and receives `RESYNC_REQUIRED`; other sessions and critical control
-frames remain serviceable. Stable errors include `BAD_REQUEST`, `BAD_CURSOR`,
-`UNKNOWN_SESSION`, `TRANSCRIPT_UNAVAILABLE`, `CURSOR_UNAVAILABLE`,
-`SNAPSHOT_LIMIT`, `SUBSCRIPTION_LIMIT`, `SNAPSHOT_TOO_LARGE`,
-`RESYNC_REQUIRED`, and `INTERNAL`.
+Browser and mobile clients keep one workspace WebSocket. Overseer opens the
+Peon SSE stream on subscription and relays its events through that existing
+socket after checking access. There is no transcript snapshot capability,
+Postgres message projection, transcript epoch/sequence protocol or transcript
+ACK.
 
 ### Reverse commands (`reverse-command-v1`)
 

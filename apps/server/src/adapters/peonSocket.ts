@@ -15,14 +15,9 @@ import {
   PeonCatalogSync,
   PROJECT_CATALOG_CAPABILITY,
   SESSION_CATALOG_CAPABILITY,
-  SELECTIVE_ACK_CAPABILITY,
   SessionSyncProtocolError,
   parseSessionCatalogHello,
 } from "./peonSessionSync.js";
-import {
-  SESSION_TRANSCRIPT_CAPABILITY,
-  validTranscriptChannelHello,
-} from "./peonTranscriptSync.js";
 import { toView, type PeonRecord } from "../modules/fleet/index.js";
 import {
   parseReverseCommandHello,
@@ -63,26 +58,6 @@ interface PeonSocketOptions {
 
 function publishPresence(record: PeonRecord): void {
   broadcast({ workspaceId: record.workspaceId, peonId: record.peonId, kind: "peon", payload: toView(record) });
-}
-
-function transcriptFailureContext(
-  peonId: string,
-  frame: Record<string, unknown>,
-): { peonId: string; sessionId: string | null; eventId: string | null; cursor: string | null } | null {
-  if (frame.type !== "durable_message"
-    || frame.capability !== SESSION_TRANSCRIPT_CAPABILITY
-    || !frame.payload
-    || typeof frame.payload !== "object"
-    || Array.isArray(frame.payload)) {
-    return null;
-  }
-  const payload = frame.payload as Record<string, unknown>;
-  return {
-    peonId,
-    sessionId: typeof payload.sessionId === "string" ? payload.sessionId : null,
-    eventId: typeof payload.eventId === "string" ? payload.eventId : null,
-    cursor: typeof frame.cursor === "string" ? frame.cursor : null,
-  };
 }
 
 function safeControlFailure(error: unknown, fallback: string): string {
@@ -157,7 +132,6 @@ export function attachPeonSocket(server: Server, options: PeonSocketOptions = {}
       client.queuedMessages += 1;
       client.queuedBytes += frameBytes;
       globalQueuedBytes += frameBytes;
-      let projectionFailureContext: ReturnType<typeof transcriptFailureContext> = null;
       client.messages = client.messages.then(async () => {
         if (ws.readyState !== WebSocket.OPEN) return;
         let message: unknown;
@@ -172,7 +146,6 @@ export function attachPeonSocket(server: Server, options: PeonSocketOptions = {}
           return;
         }
         const frame = message as Record<string, unknown>;
-        projectionFailureContext = transcriptFailureContext(record.peonId, frame);
         if (!client.ready) {
           if (frame.type !== "hello" || frame.protocol !== PROTOCOL) {
             ws.close(1002, "expected hello protocol 1");
@@ -200,18 +173,8 @@ export function attachPeonSocket(server: Server, options: PeonSocketOptions = {}
           const advertisesDelivery = advertised.includes(DURABLE_DELIVERY_CAPABILITY);
           const advertisesProjects = advertised.includes(PROJECT_CATALOG_CAPABILITY);
           const advertisesReverseCommands = advertised.includes(REVERSE_COMMAND_CAPABILITY);
-          const advertisesTranscripts = advertised.includes(SESSION_TRANSCRIPT_CAPABILITY);
-          const advertisesSelectiveAcks = advertised.includes(SELECTIVE_ACK_CAPABILITY);
           const advertisesRuntime = advertised.includes(RUNTIME_STATE_CAPABILITY);
-          const advertisedChannels = frame.channels && typeof frame.channels === "object" && !Array.isArray(frame.channels)
-            ? frame.channels as Record<string, unknown>
-            : {};
           const supportsCanonical = advertisesCatalog && advertisesDelivery;
-          if (supportsCanonical
-            && advertisesTranscripts
-            && !validTranscriptChannelHello(advertisedChannels[SESSION_TRANSCRIPT_CAPABILITY])) {
-            throw new SessionSyncProtocolError("invalid transcript channel state");
-          }
           let commandOperations: ReverseCommandOperation[] = [];
           if (advertisesReverseCommands && advertisesDelivery) {
             try {
@@ -229,8 +192,6 @@ export function attachPeonSocket(server: Server, options: PeonSocketOptions = {}
             && advertisesReverseCommands
             && commandOperations.length > 0;
           const additionalCapabilities = [
-            ...(supportsCanonical && advertisesTranscripts ? [SESSION_TRANSCRIPT_CAPABILITY] : []),
-            ...(supportsCanonical && advertisesTranscripts && advertisesSelectiveAcks ? [SELECTIVE_ACK_CAPABILITY] : []),
             ...(supportsCanonical && advertisesRuntime ? [RUNTIME_STATE_CAPABILITY] : []),
             ...(acceptsReverseCommands ? [REVERSE_COMMAND_CAPABILITY] : []),
           ];
@@ -323,7 +284,6 @@ export function attachPeonSocket(server: Server, options: PeonSocketOptions = {}
         );
         console.warn(
           `overseer: Peon socket ${record.peonId} failed: ${reason}`,
-          ...(projectionFailureContext ? [JSON.stringify(projectionFailureContext)] : []),
         );
         ws.close(protocolError ? 1002 : 1011, reason);
       }).finally(() => {
