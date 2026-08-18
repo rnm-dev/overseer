@@ -423,6 +423,18 @@ export class PeonCatalogSync {
     if (event.channel !== "command" && !checkpoint) {
       throw new SessionSyncProtocolError(`${event.channel} catalog event arrived before snapshot`);
     }
+    // A catalog snapshot can commit beyond durable events that were already in
+    // Peon's shared outbox. This commonly surfaces after a reconnect where the
+    // snapshot acknowledgement was persisted by Overseer but one of the
+    // delivery acknowledgements was not persisted by Peon. Retire that stale
+    // delivery cursor without replaying its already-covered mutation.
+    if (event.channel !== "command"
+      && checkpoint
+      && checkpoint.epoch === event.catalogEpoch
+      && event.seq <= checkpoint.acknowledgedSeq) {
+      await this.commitSnapshotCoveredEvent(event);
+      return;
+    }
     // Peon may coalesce replaceable summaries before their durable cursor is
     // sent. That intentionally preserves the delivery frontier while skipping
     // one or more catalog sequence numbers. Fence the queued event behind a
