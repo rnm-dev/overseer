@@ -654,10 +654,24 @@ export class PeonTranscriptSync {
     const epoch = requiredString(message.epoch, "transcript epoch", 256);
     const afterSeq = requiredSequence(message.afterSeq, "afterSeq");
     const state = await getTranscriptState(this.record.peonId, sessionId);
-    if (epoch !== expected.epoch || afterSeq < expected.afterSeq
-      || state?.epoch !== epoch || state.acknowledgedSeq === null
-      || state.acknowledgedSeq < afterSeq) {
+    if (epoch !== expected.epoch || afterSeq < expected.afterSeq) {
       throw new Error("transcript subscription checkpoint mismatch");
+    }
+    if (state?.epoch !== epoch || state.acknowledgedSeq === null
+      || state.acknowledgedSeq < afterSeq) {
+      // The subscription confirmation is ephemeral and may overtake its
+      // durable catch-up events in Peon's shared outbox. Rebuild the projection
+      // at the confirmed frontier instead of closing the whole control socket;
+      // otherwise the same confirmation/backlog race can repeat forever.
+      observeTranscriptEvent("resync");
+      await markTranscriptSyncState({
+        peonId: this.record.peonId,
+        sessionId,
+        generation: this.generation,
+        status: "gap",
+      });
+      this.requestSnapshot(sessionId, false);
+      return;
     }
     const expiresAt = typeof message.expiresAt === "number" && Number.isFinite(message.expiresAt)
       ? message.expiresAt

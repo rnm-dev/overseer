@@ -316,6 +316,57 @@ test("subscription acknowledgement accepts the contiguous catch-up frontier", as
   sync.dispose();
 });
 
+test("subscription acknowledgement overtaking durable catch-up rebuilds without closing the socket", async () => {
+  const { socket, sync } = await setup();
+  const initial = sync.acquire("s1");
+  const firstSnapshot = await waitForFrame(socket, (frame) => frame.type === "transcript_snapshot_request");
+  await sync.handle({
+    type: "transcript_snapshot_page",
+    requestId: firstSnapshot.requestId,
+    sessionId: "s1",
+    epoch: "epoch-1",
+    revision: 1,
+    barrierSeq: 1,
+    events: [published(1)],
+    nextCursor: null,
+    hasMore: false,
+  }, 512);
+  (await initial)();
+
+  const resumed = sync.acquire("s1");
+  const subscribe = await waitForFrame(socket, (frame) =>
+    frame.type === "transcript_subscribe" && frame.sessionId === "s1");
+  await sync.handle({
+    type: "transcript_subscribed",
+    requestId: subscribe.requestId,
+    sessionId: "s1",
+    epoch: "epoch-1",
+    afterSeq: 2,
+    expiresAt: Date.now() + 60_000,
+  }, 128);
+  const recovery = await waitForFrame(socket, (frame) =>
+    frame.type === "transcript_snapshot_request" && frame.requestId !== firstSnapshot.requestId);
+  assert.equal((await getTranscriptState("p1", "s1"))?.status, "gap");
+  assert.equal(socket.closeCode, null);
+
+  await sync.handle({
+    type: "transcript_snapshot_page",
+    requestId: recovery.requestId,
+    sessionId: "s1",
+    epoch: "epoch-1",
+    revision: 2,
+    barrierSeq: 2,
+    events: [published(1), published(2)],
+    nextCursor: null,
+    hasMore: false,
+  }, 768);
+  const release = await resumed;
+  assert.equal((await getTranscriptState("p1", "s1"))?.acknowledgedSeq, 2);
+  assert.equal(socket.closeCode, null);
+  release();
+  sync.dispose();
+});
+
 test("unique active and pending transcript subscriptions obey the per-Peon cap", async () => {
   assert.equal(MAX_TRANSCRIPT_SUBSCRIPTIONS, 64);
   assert.equal(TRANSCRIPT_CHANNEL_HELLO.subscriptions, MAX_TRANSCRIPT_SUBSCRIPTIONS);
