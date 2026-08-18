@@ -644,33 +644,30 @@ export class PeonTranscriptSync {
     const requestId = requiredString(message.requestId, "requestId", 200);
     const sessionId = requiredString(message.sessionId, "sessionId", 512);
     const expected = this.subscriptionRequests.get(requestId);
-    if (!expected) {
-      if (!this.subscriptions.has(sessionId)) return;
-      throw new Error("transcript subscription request mismatch");
-    }
-    if (expected.sessionId !== sessionId) throw new Error("transcript subscription request mismatch");
+    // Subscription confirmations are ephemeral control hints. A delayed reply
+    // from a retired request must never tear down the durable Peon connection.
+    if (!expected) return;
     clearTimeout(expected.timer);
     this.subscriptionRequests.delete(requestId);
     const epoch = requiredString(message.epoch, "transcript epoch", 256);
     const afterSeq = requiredSequence(message.afterSeq, "afterSeq");
-    const state = await getTranscriptState(this.record.peonId, sessionId);
-    if (epoch !== expected.epoch || afterSeq < expected.afterSeq) {
-      throw new Error("transcript subscription checkpoint mismatch");
-    }
-    if (state?.epoch !== epoch || state.acknowledgedSeq === null
+    const state = await getTranscriptState(this.record.peonId, expected.sessionId);
+    if (expected.sessionId !== sessionId
+      || epoch !== expected.epoch
+      || afterSeq < expected.afterSeq
+      || state?.epoch !== epoch || state.acknowledgedSeq === null
       || state.acknowledgedSeq < afterSeq) {
-      // The subscription confirmation is ephemeral and may overtake its
-      // durable catch-up events in Peon's shared outbox. Rebuild the projection
-      // at the confirmed frontier instead of closing the whole control socket;
-      // otherwise the same confirmation/backlog race can repeat forever.
+      // The confirmation may overtake its durable catch-up events or belong to
+      // a superseded projection. Rebuild only the expected transcript; the
+      // durable connection and unrelated channels remain authoritative.
       observeTranscriptEvent("resync");
       await markTranscriptSyncState({
         peonId: this.record.peonId,
-        sessionId,
+        sessionId: expected.sessionId,
         generation: this.generation,
         status: "gap",
       });
-      this.requestSnapshot(sessionId, false);
+      this.requestSnapshot(expected.sessionId, false);
       return;
     }
     const expiresAt = typeof message.expiresAt === "number" && Number.isFinite(message.expiresAt)
@@ -719,7 +716,7 @@ export class PeonTranscriptSync {
           && this.subscriptions.has(sessionId)
           && !this.disposed
           && this.ws.readyState === WebSocket.OPEN) {
-          this.ws.close(1011, "transcript renewal failed");
+          this.requestSnapshot(sessionId, false);
         }
       });
     }, Math.max(1_000, expiresAt - Date.now() - 30_000));
@@ -799,9 +796,10 @@ export class PeonTranscriptSync {
       const current = this.subscriptionRequests.get(requestId);
       if (!current) return;
       this.subscriptionRequests.delete(requestId);
-      this.rejectReady(sessionId, new Error("transcript subscription timed out"));
-      if (this.ws.readyState === WebSocket.OPEN) this.ws.close(1011, "transcript subscription timed out");
-      this.dispose();
+      if ((this.demands.get(sessionId) ?? 0) > 0 && !this.disposed) {
+        observeTranscriptEvent("resync");
+        this.requestSnapshot(sessionId, false);
+      }
     }, this.options.subscriptionResponseMs ?? READY_WAIT_MS);
     timer.unref();
     this.subscriptionRequests.set(requestId, { sessionId, epoch, afterSeq, startedAt: Date.now(), timer });

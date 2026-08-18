@@ -363,6 +363,15 @@ test("subscription acknowledgement overtaking durable catch-up rebuilds without 
   const release = await resumed;
   assert.equal((await getTranscriptState("p1", "s1"))?.acknowledgedSeq, 2);
   assert.equal(socket.closeCode, null);
+  await sync.handle({
+    type: "transcript_subscribed",
+    requestId: subscribe.requestId,
+    sessionId: "s1",
+    epoch: "epoch-1",
+    afterSeq: 2,
+    expiresAt: Date.now() + 60_000,
+  }, 128);
+  assert.equal(socket.closeCode, null);
   release();
   sync.dispose();
 });
@@ -567,7 +576,42 @@ test("release during renewal state lookup cannot recreate Peon demand or pending
   sync.dispose();
 });
 
-test("a silent Peon cannot leak correlated pending subscription state", async () => {
+test("a failed transcript renewal rebuilds its projection without closing durable sync", async () => {
+  let runRenewal: (() => void) | undefined;
+  const { socket, sync } = await setup({
+    loadTranscriptState: async () => { throw new Error("temporary projection read failure"); },
+    scheduleRenewal: (callback) => {
+      runRenewal = callback;
+      const timer = setTimeout(() => undefined, 60_000);
+      timer.unref();
+      return timer;
+    },
+  });
+  const acquired = sync.acquire("s1");
+  const initial = await waitForFrame(socket, (frame) => frame.type === "transcript_snapshot_request");
+  await sync.handle({
+    type: "transcript_snapshot_page",
+    requestId: initial.requestId,
+    sessionId: "s1",
+    epoch: "epoch-1",
+    revision: 1,
+    barrierSeq: 1,
+    events: [published(1)],
+    nextCursor: null,
+    hasMore: false,
+  }, 512);
+  const release = await acquired;
+
+  runRenewal!();
+  const recovery = await waitForFrame(socket, (frame) =>
+    frame.type === "transcript_snapshot_request" && frame.requestId !== initial.requestId);
+  assert.equal(recovery.sessionId, "s1");
+  assert.equal(socket.closeCode, null);
+  release();
+  sync.dispose();
+});
+
+test("a silent subscription falls back to a snapshot without closing durable sync", async () => {
   let expireSubscription: (() => void) | undefined;
   const { socket, sync } = await setup({
     // Initial projection setup performs real pg-mem migration/commit work and
@@ -598,19 +642,34 @@ test("a silent Peon cannot leak correlated pending subscription state", async ()
   (await initial)();
 
   const unanswered = sync.acquire("s1");
-  const rejected = assert.rejects(unanswered, /reverse transcript connection closed|subscription timed out/);
   await waitForFrame(socket, (frame) => frame.type === "transcript_subscribe");
   assert.deepEqual(sync.subscriptionStats(), {
     activeOrPending: 1,
     pendingResponses: 1,
   });
   expireSubscription!();
-  await rejected;
-  assert.equal(socket.closeCode, 1011);
+  const recovery = await waitForFrame(socket, (frame) =>
+    frame.type === "transcript_snapshot_request" && frame.requestId !== snapshot.requestId);
+  assert.equal(socket.closeCode, null);
   assert.deepEqual(sync.subscriptionStats(), {
-    activeOrPending: 0,
+    activeOrPending: 1,
     pendingResponses: 0,
   });
+  await sync.handle({
+    type: "transcript_snapshot_page",
+    requestId: recovery.requestId,
+    sessionId: "s1",
+    epoch: "epoch-1",
+    revision: 1,
+    barrierSeq: 1,
+    events: [published(1)],
+    nextCursor: null,
+    hasMore: false,
+  }, 512);
+  const release = await unanswered;
+  assert.equal(socket.closeCode, null);
+  release();
+  sync.dispose();
 });
 
 test("CURSOR_UNAVAILABLE and RESYNC_REQUIRED rebuild the same bounded demand", async () => {
