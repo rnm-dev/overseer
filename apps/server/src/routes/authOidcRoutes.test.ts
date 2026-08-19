@@ -2,13 +2,14 @@ import assert from "node:assert/strict";
 import { createSign, generateKeyPairSync } from "node:crypto";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
-import { after, before, test } from "node:test";
+import { after, before, beforeEach, test } from "node:test";
 import type pg from "pg";
 import { newDb } from "pg-mem";
 import { config } from "../infrastructure/config/index.js";
 import { initDb, query } from "../infrastructure/db/index.js";
 import { resetOidcDiscoveryCache } from "../infrastructure/oidc/index.js";
 import { createServer } from "../app/server.js";
+import { forgetAttempts } from "./authMethodAccess.js";
 
 // The whole OIDC door, driven against a provider that exists only here: the
 // suite answers discovery, JWKS and the token endpoint, and signs id tokens with
@@ -85,6 +86,8 @@ before(async () => {
       redirectUri: "https://overseer.test/auth/oidc/callback",
       nativeCallbacks: ["overseer://oauth/oidc"],
       label: "id.rnm.test",
+      trustEmail: false,
+      emailClaim: "email",
     },
   };
 
@@ -168,6 +171,11 @@ async function startWeb(): Promise<string> {
   issuedNonce = authorize.searchParams.get("nonce");
   return started.body.state as string;
 }
+
+// Each test starts a flow or two, and the per-address limit is ten starts a
+// minute. The limit is real behaviour, but it is not what this suite is about, so
+// no test here inherits another's attempts.
+beforeEach(forgetAttempts);
 
 test("the sign-in page is told the method exists, and what to call it", async () => {
   const methods = await request("/api/auth/methods");
@@ -254,6 +262,69 @@ test("an unverified email is refused rather than linked", async () => {
     const stored = await query(`SELECT id FROM users WHERE email = $1`, ["unverified@rnm.test"]);
     assert.equal(stored.rows.length, 0);
   } finally {
+    claimOverrides = {};
+  }
+});
+
+// Entra ID never sends the claim, and its addresses are the directory's own, so
+// an instance pointed at one tenant can vouch for them. The door then signs the
+// person in on a token that says nothing about verification — which is why this
+// is a switch and not the default.
+test("an instance that trusts its issuer signs in an address the token never verified", async () => {
+  claimOverrides = { email_verified: undefined, sub: "entra-subject", email: "operator@tenant.test" };
+  config.auth.oidc!.trustEmail = true;
+  try {
+    const state = await startWeb();
+    const completed = await request("/api/auth/oidc", "POST", { state, code: "provider-code" });
+    assert.equal(completed.status, 200);
+    const stored = await query(`SELECT id FROM users WHERE email = $1`, ["operator@tenant.test"]);
+    assert.equal(stored.rows.length, 1);
+  } finally {
+    config.auth.oidc!.trustEmail = false;
+    claimOverrides = {};
+  }
+});
+
+// The mailbox-less tenant, end to end: no `email` anywhere in the token, the
+// address taken from the claim the directory does send.
+test("an instance can take the address from the claim its provider sends", async () => {
+  claimOverrides = {
+    email: undefined,
+    email_verified: undefined,
+    sub: "entra-upn-subject",
+    preferred_username: "Operator@tenant.onmicrosoft.test",
+  };
+  config.auth.oidc!.emailClaim = "preferred_username";
+  config.auth.oidc!.trustEmail = true;
+  try {
+    const state = await startWeb();
+    const completed = await request("/api/auth/oidc", "POST", { state, code: "provider-code" });
+    assert.equal(completed.status, 200);
+    // Stored lowercased, so the same person typing it at another door still meets
+    // this account.
+    const stored = await query(`SELECT id FROM users WHERE email = $1`, ["operator@tenant.onmicrosoft.test"]);
+    assert.equal(stored.rows.length, 1);
+  } finally {
+    config.auth.oidc!.emailClaim = "email";
+    config.auth.oidc!.trustEmail = false;
+    claimOverrides = {};
+  }
+});
+
+// Accounts are found and linked by this value. A claim holding an id rather than
+// an address would key them on something no operator could type anywhere else.
+test("a claim that does not hold an address is refused, not turned into one", async () => {
+  claimOverrides = { email: undefined, sub: "opaque-subject", preferred_username: "not-an-address" };
+  config.auth.oidc!.emailClaim = "preferred_username";
+  config.auth.oidc!.trustEmail = true;
+  try {
+    const state = await startWeb();
+    const refused = await request("/api/auth/oidc", "POST", { state, code: "provider-code" });
+    assert.equal(refused.status, 400);
+    assert.equal(refused.body.code, "NO_EMAIL");
+  } finally {
+    config.auth.oidc!.emailClaim = "email";
+    config.auth.oidc!.trustEmail = false;
     claimOverrides = {};
   }
 });

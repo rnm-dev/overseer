@@ -20,6 +20,19 @@ export function limited(req: express.Request, operation: string, maximum: number
   return recent.length > maximum;
 }
 
+/**
+ * Forget every recorded attempt.
+ *
+ * For suites that drive a whole door test by test: the bucket is per address and
+ * a test process is one address, so without this a suite grows until one more
+ * sign-in test turns an unrelated assertion into `429`. A test that means to
+ * exercise the limit still can — it just no longer inherits everyone else's
+ * attempts.
+ */
+export function forgetAttempts(): void {
+  attempts.clear();
+}
+
 export function tooManyAttempts(res: express.Response, what: string): express.Response {
   return res.status(429).json({ error: `too many ${what}`, code: "RATE_LIMITED" });
 }

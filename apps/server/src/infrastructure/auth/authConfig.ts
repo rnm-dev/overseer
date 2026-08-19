@@ -44,6 +44,21 @@ export interface OidcAuthSettings {
   // What the sign-in button says. Defaults to the issuer's host, which is a
   // better name for a private provider than the word "OIDC".
   label: string;
+  // This instance vouches for the issuer's addresses when the issuer will not.
+  // Some directories — Entra ID among them — never emit `email_verified` even
+  // though no person there can self-assert an address, so the default refusal
+  // would reject every one of their operators. Off by default: it is only safe
+  // when the issuer owns its addresses, which is a fact about a deployment and
+  // not about the protocol.
+  trustEmail: boolean;
+  // Which claim carries the operator's address. `email` by the specification,
+  // but a provider is free not to send it: Entra ID fills `email` from a mailbox
+  // an account may not have, while `preferred_username` holds the directory's
+  // own name for the person and is always there. Naming the claim is how an
+  // instance adapts to its provider instead of making every provider adapt to
+  // us — and it is only ever read as an address, so a claim holding something
+  // else is refused rather than turned into one.
+  emailClaim: string;
 }
 
 export interface AuthConfig {
@@ -166,6 +181,17 @@ function resolveOidc(
   if (!issuer) return null;
   const requested = (trimmed(env, "OVERSEER_OIDC_SCOPE") || "openid profile email").split(/\s+/).filter(Boolean);
   const scope = (requested.includes("openid") ? requested : ["openid", ...requested]).join(" ");
+  const trustEmail = trimmed(env, "OVERSEER_OIDC_TRUST_EMAIL") === "1";
+  const emailClaim = trimmed(env, "OVERSEER_OIDC_EMAIL_CLAIM") || "email";
+  // `email_verified` is the provider's word about `email` and about nothing else,
+  // so an instance reading the address from elsewhere has to say who vouches for
+  // it. Strict plus a custom claim refuses every sign-in, which is a
+  // configuration fault worth a name at boot rather than a mystery at the door.
+  if (emailClaim !== "email" && !trustEmail) {
+    warnings.push(
+      `OVERSEER_OIDC_EMAIL_CLAIM is ${emailClaim}, which no email_verified claim describes — set OVERSEER_OIDC_TRUST_EMAIL=1 to vouch for it, or every OIDC sign-in will be refused.`,
+    );
+  }
   return {
     issuer,
     clientId,
@@ -174,6 +200,8 @@ function resolveOidc(
     redirectUri: trimmed(env, "OVERSEER_OIDC_REDIRECT_URI") || `${publicUrl}/auth/oidc/callback`,
     nativeCallbacks: csv(env, "OVERSEER_OIDC_NATIVE_CALLBACKS", "overseer://oauth/oidc"),
     label: trimmed(env, "OVERSEER_OIDC_LABEL") || new URL(issuer).host,
+    trustEmail,
+    emailClaim,
   };
 }
 

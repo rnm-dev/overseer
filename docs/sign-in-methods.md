@@ -34,6 +34,8 @@ config.auth.password  boolean                     // OVERSEER_PASSWORD_AUTH=1
 | `OVERSEER_OIDC_REDIRECT_URI` | default `${OVERSEER_PUBLIC_URL}/auth/oidc/callback` |
 | `OVERSEER_OIDC_NATIVE_CALLBACKS` | allowlisted deep links, default `overseer://oauth/oidc` |
 | `OVERSEER_OIDC_LABEL` | what the button says, default the issuer's host |
+| `OVERSEER_OIDC_TRUST_EMAIL=1` | this instance vouches for the issuer's addresses when the issuer will not — see [Entra ID](#microsoft-entra-id) |
+| `OVERSEER_OIDC_EMAIL_CLAIM` | which claim carries the address, default `email`; needs the trust above, since `email_verified` describes no other claim |
 | `OVERSEER_PASSWORD_AUTH=1` | email + password is on, for registration and sign-in together |
 | `OVERSEER_DEVICE_TOKEN_TTL_MS` | lifetime of the token every door issues, default 90 days |
 
@@ -149,7 +151,10 @@ only, RS256 id tokens, PKCE `S256`, scopes `openid profile email workspace`.
 - **An unverified email is refused.** Identity is `(issuer, subject)`, but email
   is how an OIDC identity *meets* an account that already exists under another
   door. A provider that lets a person claim any address would otherwise let them
-  claim an operator's account with it. `email_verified` absent means false.
+  claim an operator's account with it. `email_verified` absent means false —
+  unless the instance has taken that judgement on itself with
+  `OVERSEER_OIDC_TRUST_EMAIL=1`, which is [Entra ID](#microsoft-entra-id)'s case
+  and nobody else's by default.
 - **One account holds one OIDC identity.** A second subject arriving on a linked
   address is `IDENTITY_CONFLICT`, not a silent re-point.
 - **A rotated signing key is refetched once**, then not again for a minute, so a
@@ -157,6 +162,55 @@ only, RS256 id tokens, PKCE `S256`, scopes `openid profile email workspace`.
 - **A provider that advertises its challenge methods without `S256`** is refused
   at the start, where it is a configuration fault with a name, rather than at the
   redirect. Advertising nothing is not a refusal: it still gets `S256`.
+
+### Microsoft Entra ID
+
+Entra ID is an OIDC provider, so the door above is the whole implementation —
+but it needs the one switch, because Entra ID's v2.0 id tokens do not carry
+`email_verified` at all. Left strict, `ensureUserFromOidc` refuses every Entra
+operator with `400 EMAIL_UNVERIFIED`. `OVERSEER_OIDC_TRUST_EMAIL=1` is the
+instance saying what the directory will not: no person in a tenant can assert an
+address of their own choosing, so the addresses it hands out are its own.
+
+The trust is applied in `completeOidcSignIn`, not in `verifyIdToken`. Token
+verification keeps reporting only what the token said, so this reads in the code
+as a deployment's decision rather than as a claim the provider never made.
+
+**Only a single-tenant issuer.** `https://login.microsoftonline.com/<tenant-id>/v2.0`,
+with the directory (tenant) id in the path. The multi-tenant `/common`,
+`/organizations` and `/consumers` endpoints stamp the *caller's* tenant into
+`iss`, which can never equal a byte-for-byte configured issuer, so they fail
+`ISSUER_MISMATCH` by construction. That is the right outcome and not a gap worth
+closing: trusting an unverified address from an arbitrary tenant is exactly the
+hole the refusal exists to close.
+
+What an app registration must provide, beyond the three OIDC variables:
+
+- a web redirect URI equal to `OVERSEER_OIDC_REDIRECT_URI` — the SPA callback
+  page, `${OVERSEER_PUBLIC_URL}/auth/oidc/callback` by default;
+- a client secret, since the token request uses `client_secret_basic`;
+- an address the door can read. Entra ID fills `email` from the account's
+  mailbox, so a directory whose accounts have none sends the claim empty or not
+  at all and the door answers `400 NO_EMAIL`. Rather than making every such
+  tenant grow an optional claim to suit us, name the claim it does send:
+  `OVERSEER_OIDC_EMAIL_CLAIM=preferred_username`, which for a work account is the
+  UPN and is always present under scope `profile`.
+
+Whatever claim it comes from, the value is only ever used as an address — it is
+what finds and links an account — so one that does not look like one is
+`400 NO_EMAIL` rather than a set of accounts keyed on a display name. And because
+`email_verified` is the provider's word about `email` and about no other claim,
+naming a different one without `OVERSEER_OIDC_TRUST_EMAIL=1` refuses every
+sign-in; the resolver says so at startup instead of leaving it to the door.
+
+`OVERSEER_OIDC_LABEL` is worth setting here: the issuer host is
+`login.microsoftonline.com` for every tenant on earth, which is not the name of
+anybody's company.
+
+The tenant id, client id and client secret are not in this repository. They
+belong in `.env` on the dev box and in `apps/server/config/deploy.yml` for
+production, next to the values [password sign-in](password-auth.md) states
+there.
 
 ### Failures
 

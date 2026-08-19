@@ -184,7 +184,15 @@ export async function completeOidcSignIn(
   if (identity.issuer !== settings.issuer) {
     throw new OidcError("BAD_ID_TOKEN", "the identity was issued by another provider");
   }
-  const user = await ensureUserFromOidc(identity);
+  // An instance may vouch for its issuer's addresses when the issuer itself says
+  // nothing — a directory whose addresses nobody can self-assert, but whose id
+  // tokens omit `email_verified`. It is applied here, at the door, rather than in
+  // `verifyIdToken`: token verification should keep reporting what the token
+  // actually said, so the trust is visible as a deployment decision and not as a
+  // claim the provider never made.
+  const user = await ensureUserFromOidc(
+    settings.trustEmail ? { ...identity, emailVerified: true } : identity,
+  );
   return finishSignIn(attempt, state, user, client, now);
 }
 

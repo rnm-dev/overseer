@@ -103,6 +103,8 @@ test("a configured OIDC provider is discovered from the issuer alone", () => {
     redirectUri: "https://overseer.example/auth/oidc/callback",
     nativeCallbacks: ["overseer://oauth/oidc"],
     label: "id.rnm.dev",
+    trustEmail: false,
+    emailClaim: "email",
   });
   assert.deepEqual(authMethodAvailability(auth), { github: false, password: false, oidc: true });
   assert.deepEqual(auth.warnings, []);
@@ -135,6 +137,40 @@ test("openid is always requested, whatever scope an operator sets", () => {
 test("the button label falls back to the issuer host and is otherwise the operator's", () => {
   assert.equal(resolveAuthConfig(env(OIDC), PUBLIC_URL).oidc?.label, "id.rnm.dev");
   assert.equal(resolveAuthConfig(env({ ...OIDC, OVERSEER_OIDC_LABEL: "RNM ID" }), PUBLIC_URL).oidc?.label, "RNM ID");
+});
+
+// A directory that never emits `email_verified` — Entra ID is the one this was
+// written for — would otherwise have every one of its operators refused. The
+// instance can vouch for it, and must say so explicitly to do it.
+test("trusting the issuer's addresses is off unless the instance asks for it", () => {
+  assert.equal(resolveAuthConfig(env(OIDC), PUBLIC_URL).oidc?.trustEmail, false);
+  assert.equal(resolveAuthConfig(env({ ...OIDC, OVERSEER_OIDC_TRUST_EMAIL: "1" }), PUBLIC_URL).oidc?.trustEmail, true);
+  for (const nearly of ["0", "true", "yes", ""]) {
+    assert.equal(
+      resolveAuthConfig(env({ ...OIDC, OVERSEER_OIDC_TRUST_EMAIL: nearly }), PUBLIC_URL).oidc?.trustEmail,
+      false,
+      nearly,
+    );
+  }
+});
+
+// A tenant whose accounts have no mailbox sends no `email` at all, but always a
+// `preferred_username`. Naming the claim is cheaper than making every such
+// directory grow optional claims to suit us.
+test("the address can be read from a claim this provider actually sends", () => {
+  const entra = { ...OIDC, OVERSEER_OIDC_EMAIL_CLAIM: "preferred_username", OVERSEER_OIDC_TRUST_EMAIL: "1" };
+  const auth = resolveAuthConfig(env(entra), PUBLIC_URL);
+  assert.equal(auth.oidc?.emailClaim, "preferred_username");
+  assert.deepEqual(auth.warnings, []);
+});
+
+// `email_verified` is the provider's word about `email` and nothing else, so the
+// two settings only make sense together. Left apart they refuse every sign-in,
+// which is worth saying at boot rather than at the door.
+test("a custom address claim without the trust to go with it is named at startup", () => {
+  const auth = resolveAuthConfig(env({ ...OIDC, OVERSEER_OIDC_EMAIL_CLAIM: "preferred_username" }), PUBLIC_URL);
+  assert.equal(auth.oidc?.emailClaim, "preferred_username");
+  assert.match(auth.warnings[0]!, /OVERSEER_OIDC_EMAIL_CLAIM is preferred_username/);
 });
 
 test("OIDC alone is a complete instance", () => {

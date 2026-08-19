@@ -105,6 +105,8 @@ export async function verifyIdToken(params: {
   metadata: OidcProviderMetadata;
   clientId: string;
   expectedNonceDigest: string;
+  // Where this provider puts the address. Defaults to the specification's claim.
+  emailClaim?: string;
   now?: number;
 }): Promise<OidcIdentity> {
   const now = params.now ?? Date.now();
@@ -143,8 +145,17 @@ export async function verifyIdToken(params: {
 
   const subject = typeof claims.sub === "string" ? claims.sub : "";
   if (!subject) throw new OidcError("BAD_ID_TOKEN", "the id token has no subject");
-  const email = typeof claims.email === "string" ? claims.email.trim().toLowerCase() : "";
-  if (!email) throw new OidcError("NO_EMAIL", "the provider returned no email address");
+  const emailClaim = params.emailClaim || "email";
+  const claimed = (claims as Record<string, unknown>)[emailClaim];
+  const email = typeof claimed === "string" ? claimed.trim().toLowerCase() : "";
+  if (!email) throw new OidcError("NO_EMAIL", `the provider returned no address in ${emailClaim}`);
+  // Whatever claim it came from, it is about to be an address: accounts are found
+  // and linked by it. A claim naming something else — an id, a display name — is a
+  // misconfiguration that would otherwise key accounts on a value no operator
+  // could ever type at another door.
+  if (!/^[^\s@]+@[^\s@]+$/.test(email)) {
+    throw new OidcError("NO_EMAIL", `the ${emailClaim} claim does not hold an email address`);
+  }
 
   return {
     issuer: params.metadata.issuer,
