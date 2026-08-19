@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import express from "express";
 import { config } from "../infrastructure/config/index.js";
+import { SERVER_VERSION } from "../shared/serverVersion.js";
 import { operatorAuth } from "../routes/requestContext.js";
 import { agentRouter } from "../routes/agent.js";
 import { accountRouter, publicAuthRouter } from "../routes/auth.js";
@@ -43,7 +44,7 @@ export function createServer({ production = process.env.NODE_ENV === "production
   // liveness route ahead of production host dispatch; every application route
   // remains protected by the canonical-host check below.
   app.get("/healthz", (_req, res) => {
-    res.json({ ok: true });
+    res.json({ ok: true, version: SERVER_VERSION });
   });
   // Production uses Overseer as the hostless fallback in the shared
   // kamal-proxy so dynamic preview subdomains can reach the same container.

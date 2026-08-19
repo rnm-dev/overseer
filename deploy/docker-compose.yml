@@ -1,0 +1,101 @@
+# Overseer — a complete self-hosted install.
+#
+# Copy this file, edit the marked values in place, and run it. Every setting
+# lives here: there is no .env to keep in sync, and nothing is interpolated from
+# the surrounding shell, so what this file says is what the containers get.
+#
+#   docker compose up -d
+#   docker compose logs -f app
+#
+# Your edited copy holds a database password and OAuth secrets. Keep it mode
+# 600 and out of version control.
+#
+# Overseer speaks plain HTTP on 5000 and is published on loopback only. Put a
+# reverse proxy with TLS in front of it — the origin below must be the address
+# that proxy serves, or sign-in callbacks and host validation will not match.
+#
+# The reference for every value, including the ones deliberately left out of
+# this file, is docs/configuration.md.
+
+# Pinned so the data volume reattaches no matter what the directory is called.
+name: overseer
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: overseer
+      # EDIT — and use the same password in DATABASE_URL below.
+      POSTGRES_PASSWORD: change-me
+      POSTGRES_DB: overseer
+    volumes:
+      # The database. Nothing else in this stack holds state, and losing this
+      # volume loses the installation.
+      - overseer-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U overseer"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    # Pin a version rather than tracking a moving tag: an upgrade should be a
+    # decision, and the schema migrations that run on boot are one-way. What a
+    # version number promises is in docs/releasing.md.
+    image: vibze/overseer:0.1.0
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      # Loopback only. Your reverse proxy connects here; the Internet must not.
+      - "127.0.0.1:5000:5000"
+    environment:
+      NODE_ENV: production
+
+      # ── Required ────────────────────────────────────────────────────────
+      # EDIT — the password must match POSTGRES_PASSWORD above.
+      DATABASE_URL: postgresql://overseer:change-me@postgres:5432/overseer
+      # EDIT — this instance's public origin, exactly as a browser reaches it.
+      # Sign-in callbacks, peon enrollment and host validation all derive from
+      # it, and the app refuses to start in production without it.
+      OVERSEER_PUBLIC_URL: https://overseer.example.com
+
+      # ── Sign in — at least one, or nobody can log in ─────────────────────
+      # Email + password. Opens registration as well as sign-in.
+      OVERSEER_PASSWORD_AUTH: "1"
+      # GitHub OAuth. Register <public-url>/auth/github/callback with the app.
+      #OVERSEER_GITHUB_CLIENT_ID: ""
+      #OVERSEER_GITHUB_CLIENT_SECRET: ""
+      # OpenID Connect. https issuer only; its endpoints are discovered.
+      #OVERSEER_OIDC_ISSUER: https://id.example.com
+      #OVERSEER_OIDC_CLIENT_ID: ""
+      #OVERSEER_OIDC_CLIENT_SECRET: ""
+      #OVERSEER_OIDC_LABEL: ""
+
+      # ── Network ─────────────────────────────────────────────────────────
+      # Which hops may supply X-Forwarded-For. This covers a reverse proxy on
+      # the same host or in a sibling container; widen it only for proxies you
+      # control, because an untrusted entry lets a client forge its own address.
+      OVERSEER_TRUSTED_PROXIES: loopback,linklocal,uniquelocal
+      # Peons are told to phone home at OVERSEER_PUBLIC_URL. Set this only if
+      # they reach the instance by a different name — a tailnet address, say.
+      #OVERSEER_PEON_CALLBACK_URL: ""
+
+      # ── Optional ────────────────────────────────────────────────────────
+      # Voice dictation. Without a provider, clients simply hide the
+      # microphone. Set the daily ceiling to your provider tier's limit —
+      # without it, one busy person can spend the whole quota.
+      #OVERSEER_VOICE: groq
+      #OVERSEER_VOICE_API_KEY: ""
+      #OVERSEER_VOICE_REQUESTS_PER_DAY: "1000"
+      # Push to mobile clients. Expo delivery needs no credential; this adds
+      # the direct FCM path, as base64 of a Firebase service account.
+      #OVERSEER_PUSH_FCM_CREDENTIALS: ""
+      # Isolated HTML artifact previews. Needs its own wildcard DNS record and
+      # a certificate covering the nested host.
+      #OVERSEER_PREVIEW_DOMAIN: preview.overseer.example.com
+
+volumes:
+  overseer-postgres-data:

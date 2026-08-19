@@ -213,7 +213,7 @@ export function attachFleetProjectFileRoutes(router, options) {
             return fail(res, 404, "UNKNOWN_PROJECT", "unknown project");
         let target;
         try {
-            target = projectFileWriteTarget(record, segmentsPath(req));
+            target = projectFileWriteTarget(record, segmentsPath(req), req.query.parents !== undefined);
         }
         catch (err) {
             const failure = err instanceof FileWriteError ? err : uploadFsError(err);

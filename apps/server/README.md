@@ -77,23 +77,17 @@ honours `Range`, streams uploads without buffering, and forwards the
 `fileTransferRoot` set (otherwise the peon's own `503 FILES_DISABLED` passes
 through).
 
-An offline peon (no heartbeat within `OVERSEER_OFFLINE_AFTER_MS`, default 45s)
-still appears in the registry; proxied calls to an unreachable peon return
-`502 PEON_UNREACHABLE`.
+A peon is online exactly while its control socket is connected — there is no
+heartbeat timeout to configure. An offline peon still appears in the registry;
+proxied calls to an unreachable one return `502 PEON_UNREACHABLE`.
 
 ## Config (env)
 
-| Var | Default | Meaning |
-|---|---|---|
-| `OVERSEER_PORT` | `5000` | listen port |
-| `OVERSEER_HOST` | `127.0.0.1` | bind interface (set `0.0.0.0` on the Tailscale-connected host when required) |
-| `OVERSEER_FLEET_TOKEN` | — | shared peon secret (empty ⇒ registration 503s) |
-| `OVERSEER_API_KEY` | — | operator secret (empty ⇒ `/fleet` 503s) |
-| `DATABASE_URL` | — | Postgres connection string (required) |
-| `OVERSEER_RECONCILE_INTERVAL_MS` | `30000` | how often the session index re-pulls each peon |
-| `OVERSEER_PREVIEW_DOMAIN` | `preview.overseer.rnm.dev` | wildcard domain used for isolated HTML preview tokens |
-| `OVERSEER_PREVIEW_TOKEN_TTL_MS` | `600000` | HTML preview token lifetime (clamped to 30s–1h) |
-| `OVERSEER_OFFLINE_AFTER_MS` | `45000` | offline threshold |
+Two variables are required — `DATABASE_URL` and `OVERSEER_PUBLIC_URL` — and
+everything else has a working default. The full list with defaults and the
+reasoning behind each is [docs/configuration.md](../../docs/configuration.md);
+the template to copy is `deploy/docker-compose.yml`, a complete install with
+every setting written inline.
 
 ## Not yet built
 

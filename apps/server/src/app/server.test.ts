@@ -3,6 +3,7 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { after, test } from "node:test";
 import { createServer, isAllowedProductionHost } from "./server.js";
+import { SERVER_VERSION } from "../shared/serverVersion.js";
 
 const servers: http.Server[] = [];
 after(async () => Promise.all(servers.map((server) => new Promise<void>((resolve) => server.close(() => resolve())))));
@@ -72,7 +73,9 @@ test("production liveness accepts an internal Host without exposing application 
 
   const health = await get(port, "/healthz", "127.0.0.1:5000");
   assert.equal(health.status, 200);
-  assert.deepEqual(JSON.parse(health.body), { ok: true });
+  // The version rides on the liveness route because it is the only thing a
+  // self-hosting operator can read without shell access to the host.
+  assert.deepEqual(JSON.parse(health.body), { ok: true, version: SERVER_VERSION });
 
   const application = await get(port, "/api/account", "127.0.0.1:5000");
   assert.equal(application.status, 421);

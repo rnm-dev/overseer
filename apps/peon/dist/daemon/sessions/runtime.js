@@ -396,7 +396,7 @@ export function runProcess(record, prompt, resume, attachments = [], permissionM
         .filter((project) => project !== undefined);
     const previewDir = sessionPreviewDir(record.id);
     const project = record.projectKey ? projectStore.get(record.projectKey) : undefined;
-    let systemPromptAppend = buildSystemPrompt(record.expectsOutcome, candidates, previewDir, project, currentSettings.ai.soul, author);
+    let systemPromptAppend = buildSystemPrompt(record.expectsOutcome, candidates, previewDir, project, currentSettings.ai.soul, author, record.parentSessionId === null && record.spawnDepth === 0);
     if (mcpConfig?.unavailableArmoryPackages?.length) {
         systemPromptAppend += `\n\nSome optional Armory tools are unavailable for this turn. Continue the task with the remaining
 tools; mention an unavailable package only if it is relevant to the request:\n${mcpConfig.unavailableArmoryPackages

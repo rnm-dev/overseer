@@ -26,6 +26,11 @@ repository — that content lives here.
   secrets, everyday commands, and how the dev origin is served.
 - [deploy runbook](deploy-runbook.md) — Kamal preparation, current production
   deployment, persistent-volume rules, cutover state and rollback.
+- [releasing the server image](releasing.md) — what a version number promises,
+  why the tags are immutable, and the steps from a bump to a published image.
+- [configuration](configuration.md) — every environment variable with its
+  default, what is deliberately not a variable, and the two values whose
+  absence stops the boot. The install template is `deploy/docker-compose.yml`.
 - [architecture](architecture.md) — how the code itself is organised.
 - [server design notes](server-design.md) — the locked decisions, the
   robustness model and why the projections exist.
@@ -57,6 +62,8 @@ repository — that content lives here.
   HTTP and the `transcript-sync-v1` live tail.
 - [composer ghost convergence](composer-ghost-convergence.md) — a sent message
   is a ghost owned by the composer, never an optimistic transcript row.
+- [huge pastes become attachments](composer-pasted-text.md) — a pasted wall of
+  text is captured as a `.txt` attachment instead of filling the composer.
 - [transcript scrolling](transcript-scrolling.md) — follow output only while the
   operator stands at the bottom.
 - [operator-scoped recent sessions](operator-recent-sessions.md) — the Fleet list

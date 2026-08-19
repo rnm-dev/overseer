@@ -55,8 +55,10 @@ env:
     NODE_ENV: production
     OVERSEER_HOST: 0.0.0.0
     OVERSEER_PORT: 5000
+    # Peons are told to phone home here too: OVERSEER_PEON_CALLBACK_URL
+    # defaults to this and is only set when peons arrive over a different name
+    # than the browser does.
     OVERSEER_PUBLIC_URL: https://overseer.rnm.dev
-    OVERSEER_PEON_CALLBACK_URL: https://overseer.rnm.dev
     # Only controlled nginx/Kamal/Docker peers may supply X-Forwarded-For.
     # Public client addresses remain untrusted and stop the right-to-left walk.
     OVERSEER_TRUSTED_PROXIES: loopback,linklocal,uniquelocal
@@ -66,7 +68,6 @@ env:
     OVERSEER_PASSWORD_AUTH: 1
     OVERSEER_PREVIEW_DOMAIN: preview.overseer.rnm.dev
     OVERSEER_PREVIEW_TOKEN_TTL_MS: 600000
-    OVERSEER_OFFLINE_AFTER_MS: 45000
     OVERSEER_RECONCILE_INTERVAL_MS: 30000
     # Voice dictation. The preset resolves to Groq's OpenAI-compatible endpoint
     # and its model pair; only the key is a secret. The daily ceiling matters
