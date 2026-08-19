@@ -133,6 +133,65 @@ export async function ensureDefaultWorkspace(userId: string, email: string): Pro
 }
 
 /**
+ * The workspace a directory owns, made by whoever arrives from it first.
+ *
+ * Keyed by the issuer rather than by a name or a claim, because the issuer is
+ * the one thing already proven: it is compared byte for byte against `iss`
+ * before any of this runs, so "came from that directory" is established rather
+ * than asserted. Nobody has to assign it, and no workspace has to exist first —
+ * which is the whole point, since on a fresh instance nothing does.
+ *
+ * The creator owns it. A workspace whose first member is a plain `member` has no
+ * owner, and because the last owner cannot be demoted it would never get one;
+ * the person who brought it into being by arriving first is the one honest
+ * candidate. Everyone after them joins as `member`.
+ */
+// Membership in a workspace that already exists, as `member` and only if this
+// person is not in it already — an owner arriving again is not demoted.
+async function joinExisting(workspaceId: string, userId: string): Promise<string> {
+  await query(
+    `INSERT INTO workspace_members (workspace_id, user_id, role, added_at, joined_via)
+       VALUES ($1, $2, 'member', $3, 'sso')
+       ON CONFLICT (workspace_id, user_id) DO NOTHING`,
+    [workspaceId, userId, Date.now()],
+  );
+  return workspaceId;
+}
+
+export async function ensureIssuerWorkspace(
+  issuer: string,
+  name: string,
+  userId: string,
+): Promise<{ id: string; created: boolean }> {
+  const existing = await query<{ id: string }>(`SELECT id FROM workspaces WHERE sso_issuer = $1`, [issuer]);
+  if (existing.rows[0]) return { id: await joinExisting(existing.rows[0].id, userId), created: false };
+
+  const id = randomUUID();
+  const slug = await uniqueSlug(name);
+  const now = Date.now();
+  // Two first sign-ins can reach here at once. The unique index on sso_issuer
+  // settles it, and the loser reads back what the winner made rather than
+  // failing a sign-in over a race nobody could have avoided.
+  const inserted = await query<{ id: string }>(
+    `INSERT INTO workspaces (id, name, slug, created_by, created_at, sso_issuer)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (sso_issuer) DO NOTHING
+       RETURNING id`,
+    [id, name, slug, userId, now, issuer],
+  );
+  if (!inserted.rows[0]) {
+    const winner = await query<{ id: string }>(`SELECT id FROM workspaces WHERE sso_issuer = $1`, [issuer]);
+    return { id: await joinExisting(winner.rows[0]!.id, userId), created: false };
+  }
+  await query(
+    `INSERT INTO workspace_members (workspace_id, user_id, role, added_at, joined_via)
+       VALUES ($1, $2, 'owner', $3, 'sso')`,
+    [id, userId, now],
+  );
+  return { id, created: true };
+}
+
+/**
  * Put an operator who signed in through a directory into the workspace that
  * directory stands for.
  *

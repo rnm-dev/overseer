@@ -70,6 +70,11 @@ export interface OidcAuthSettings {
   // the claim: a role an administrator assigns is authoritative, a profile field
   // its owner can edit would let anyone name any workspace.
   workspaceClaim: string | null;
+  // Whether this directory gets a workspace of its own, made by whoever arrives
+  // from it first. Keyed by the issuer, which is already proven by the time
+  // anyone arrives, so nothing has to exist or be named beforehand — which is
+  // what the other two settings cannot do on a fresh instance.
+  provisionWorkspace: boolean;
 }
 
 export interface AuthConfig {
@@ -215,6 +220,7 @@ function resolveOidc(
     emailClaim,
     joinWorkspace: trimmed(env, "OVERSEER_OIDC_JOIN_WORKSPACE") || null,
     workspaceClaim: trimmed(env, "OVERSEER_OIDC_WORKSPACE_CLAIM") || null,
+    provisionWorkspace: trimmed(env, "OVERSEER_OIDC_PROVISION_WORKSPACE") === "1",
   };
 }
 

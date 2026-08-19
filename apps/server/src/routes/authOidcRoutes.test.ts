@@ -91,6 +91,7 @@ before(async () => {
       emailClaim: "email",
       joinWorkspace: null,
       workspaceClaim: null,
+      provisionWorkspace: false,
     },
   };
 
@@ -446,6 +447,53 @@ test("a claimed workspace that does not exist is not created", async () => {
     assert.deepEqual(rows.rows, [{ joined_via: "creator" }]);
   } finally {
     config.auth.oidc!.workspaceClaim = null;
+    claimOverrides = {};
+  }
+});
+
+// A fresh instance has nothing to point a slug at. The directory is the one
+// thing already proven, so the first operator through makes its workspace.
+test("the first operator from a directory creates its workspace and owns it", async () => {
+  claimOverrides = { sub: "founder-subject", email: "founder@rnm.test" };
+  config.auth.oidc!.provisionWorkspace = true;
+  try {
+    const state = await startWeb();
+    assert.equal((await request("/api/auth/oidc", "POST", { state, code: "provider-code" })).status, 200);
+    const rows = await query<{ name: string; sso_issuer: string; role: string; joined_via: string }>(
+      `SELECT w.name, w.sso_issuer, m.role, m.joined_via FROM workspace_members m
+         JOIN workspaces w ON w.id = m.workspace_id
+         JOIN users u ON u.id = m.user_id
+        WHERE u.oidc_subject = $1`,
+      ["founder-subject"],
+    );
+    // Named after the directory, not after the person, and owned by the person.
+    assert.deepEqual(rows.rows, [{ name: "id.rnm.test", sso_issuer: ISSUER, role: "owner", joined_via: "sso" }]);
+  } finally {
+    config.auth.oidc!.provisionWorkspace = false;
+    claimOverrides = {};
+  }
+});
+
+// Everyone after the first joins what is already there — as a member, and
+// without a second workspace appearing beside it.
+test("the next operator joins the same workspace as a member", async () => {
+  config.auth.oidc!.provisionWorkspace = true;
+  try {
+    claimOverrides = { sub: "first-subject", email: "first@rnm.test" };
+    assert.equal((await request("/api/auth/oidc", "POST", { state: await startWeb(), code: "c1" })).status, 200);
+    claimOverrides = { sub: "second-subject", email: "second@rnm.test" };
+    assert.equal((await request("/api/auth/oidc", "POST", { state: await startWeb(), code: "c2" })).status, 200);
+
+    const workspaces = await query(`SELECT id FROM workspaces WHERE sso_issuer = $1`, [ISSUER]);
+    assert.equal(workspaces.rows.length, 1);
+    const roles = await query<{ role: string }>(
+      `SELECT m.role FROM workspace_members m JOIN users u ON u.id = m.user_id
+        WHERE u.oidc_subject = $1`,
+      ["second-subject"],
+    );
+    assert.deepEqual(roles.rows, [{ role: "member" }]);
+  } finally {
+    config.auth.oidc!.provisionWorkspace = false;
     claimOverrides = {};
   }
 });

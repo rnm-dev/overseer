@@ -972,4 +972,15 @@ export const MIGRATIONS: { id: string; statements: string[] }[] = [
     id: "037_workspace_member_provenance",
     statements: [`ALTER TABLE workspace_members ADD COLUMN IF NOT EXISTS joined_via TEXT`],
   },
+  {
+    // The directory a workspace belongs to, when one provisioned it. Unique, so
+    // a directory has exactly one and two simultaneous first sign-ins cannot
+    // produce two: the index decides the race and the loser joins what the
+    // winner made. NULL is every workspace a person made by hand.
+    id: "038_workspace_sso_issuer",
+    statements: [
+      `ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS sso_issuer TEXT`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS workspaces_sso_issuer_idx ON workspaces (sso_issuer)`,
+    ],
+  },
 ];

@@ -3,7 +3,7 @@ import { query } from "../../infrastructure/db/index.js";
 import type { GithubAuthSettings, OidcAuthSettings } from "../../infrastructure/auth/index.js";
 import { exchangeCodeForProfile } from "../../infrastructure/github/index.js";
 import { OidcError, buildAuthorizationUrl, exchangeCodeForIdentity } from "../../infrastructure/oidc/index.js";
-import { ensureDefaultWorkspace, joinWorkspaceBySlug } from "../workspaces/index.js";
+import { ensureDefaultWorkspace, ensureIssuerWorkspace, joinWorkspaceBySlug } from "../workspaces/index.js";
 import { ensureUserFromGithub, ensureUserFromOidc, getUserById } from "./authUsers.js";
 import { issueDevice } from "./authDevices.js";
 import type {
@@ -201,6 +201,13 @@ export async function completeOidcSignIn(
   // their address. The token decides when it can — a directory holding several
   // teams says which — and the configured slug is what a token silent on the
   // subject falls back to.
+  // The directory's own workspace comes first and needs nothing to exist: the
+  // issuer is proven, so the first operator through makes it and owns it, and
+  // everyone after joins. Claimed workspaces are a second layer on top, for a
+  // directory that holds more than one team.
+  if (settings.provisionWorkspace) {
+    await ensureIssuerWorkspace(settings.issuer, settings.label, user.id);
+  }
   const claimed = identity.workspaces;
   for (const slug of claimed.length > 0 ? claimed : toList(settings.joinWorkspace)) {
     const joined = await joinWorkspaceBySlug(slug, user.id);

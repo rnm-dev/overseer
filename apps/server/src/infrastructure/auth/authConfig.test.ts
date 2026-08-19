@@ -107,6 +107,7 @@ test("a configured OIDC provider is discovered from the issuer alone", () => {
     emailClaim: "email",
     joinWorkspace: null,
     workspaceClaim: null,
+    provisionWorkspace: false,
   });
   assert.deepEqual(authMethodAvailability(auth), { github: false, password: false, oidc: true });
   assert.deepEqual(auth.warnings, []);
@@ -188,6 +189,14 @@ test("the workspace claim is read only when an instance names one", () => {
   assert.equal(
     resolveAuthConfig(env({ ...OIDC, OVERSEER_OIDC_WORKSPACE_CLAIM: "roles" }), PUBLIC_URL).oidc?.workspaceClaim,
     "roles",
+  );
+});
+
+test("a directory gets its own workspace only when asked", () => {
+  assert.equal(resolveAuthConfig(env(OIDC), PUBLIC_URL).oidc?.provisionWorkspace, false);
+  assert.equal(
+    resolveAuthConfig(env({ ...OIDC, OVERSEER_OIDC_PROVISION_WORKSPACE: "1" }), PUBLIC_URL).oidc?.provisionWorkspace,
+    true,
   );
 });
 

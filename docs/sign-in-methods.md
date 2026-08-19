@@ -38,6 +38,7 @@ config.auth.password  boolean                     // OVERSEER_PASSWORD_AUTH=1
 | `OVERSEER_OIDC_EMAIL_CLAIM` | which claim carries the address, default `email`; needs the trust above, since `email_verified` describes no other claim |
 | `OVERSEER_OIDC_JOIN_WORKSPACE` | slug of the workspace everyone from this directory joins — see [joining a workspace](#joining-a-workspace) |
 | `OVERSEER_OIDC_WORKSPACE_CLAIM` | claim naming the workspaces an operator joins, when one directory holds several teams |
+| `OVERSEER_OIDC_PROVISION_WORKSPACE=1` | this directory gets a workspace of its own, made by whoever arrives from it first |
 | `OVERSEER_PASSWORD_AUTH=1` | email + password is on, for registration and sign-in together |
 | `OVERSEER_DEVICE_TOKEN_TTL_MS` | lifetime of the token every door issues, default 90 days |
 
@@ -192,6 +193,35 @@ What it deliberately does not do:
   through to the personal workspace: landing in the wrong place is recoverable
   with an invite, while a configuration typo that refuses every sign-in is an
   outage.
+
+#### The directory's own workspace
+
+Both settings above need a workspace that already exists and a person to name
+it, which is exactly what a fresh instance does not have. `OVERSEER_OIDC_PROVISION_WORKSPACE=1`
+removes that step: the first operator through the door creates the directory's
+workspace and owns it, and everyone after joins as `member`.
+
+The key is the issuer, held in `workspaces.sso_issuer` under a unique index. It
+is the one thing already proven by the time anybody arrives — compared byte for
+byte against `iss` before a session exists — so no claim has to be assigned,
+owned or typed. The uniqueness also settles the race between two first sign-ins:
+one insert wins, and the other reads back what the winner made rather than
+failing a sign-in over a collision nobody could have avoided.
+
+**The issuer is the key; the slug stays human.** The workspace is named from
+`OVERSEER_OIDC_LABEL` and gets an ordinary slug, because the slug is shown to
+people — the workspace UI prints `/{slug}`. Putting a tenant GUID there would
+show an operator a UUID where a company name belongs, and would tie a displayed
+string to an identifier that must never change.
+
+**The creator owns it.** A workspace whose first member is a plain `member` has
+no owner and, since the last owner cannot be demoted, would never get one. The
+person who brought it into being by arriving first is the one honest candidate;
+this is the single place where SSO hands out more than `member`.
+
+Slack works the same way at this layer: which organisation you enter is decided
+by the SSO connection you came through, not by anything in the token. Mapping
+groups to workspaces is its second, separate layer — as the claim below is here.
 
 #### When one directory holds several teams
 
