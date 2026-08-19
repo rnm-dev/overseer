@@ -458,6 +458,27 @@ test("catalog epoch rollover drains superseded durable events without reconnect 
   );
   assert.deepEqual(recovered.rows[0], { acknowledged_seq: 2, acknowledged_cursor: "cursor-2", status: "ready" });
 
+  // A reconnect can replay a same-epoch event whose mutation was already
+  // covered by the committed snapshot while its delivery ACK was lost. Retire
+  // that cursor as snapshot-covered instead of sending the socket into a
+  // permanent sequence-gap reconnect loop.
+  rollover.send(JSON.stringify({
+    type: "durable_message", epoch: "delivery-stable", cursor: "cursor-2-stale",
+    messageId: "00000000-0000-4000-8000-000000000023", priority: "normal",
+    payload: {
+      type: "session_catalog_event", epoch: "catalog-new", seq: 2, revision: 2,
+      session: { id: "must-not-overwrite", title: "Stale replay", status: "completed", lastActivityAt: 1 },
+    },
+  }));
+  await Promise.race([
+    rolloverMessages.waitFor((message) => message.type === "durable_ack" && message.cursor === "cursor-2-stale"),
+    unexpectedlyClosed,
+  ]);
+  assert.deepEqual(
+    (await listSessions({ peonId: "epoch-peon", limit: 10, offset: 0 })).sessions.map((session) => session.sessionId),
+    ["latest"],
+  );
+
   // The first recovery snapshot may itself have raced the already-buffered
   // replaceable event. If its barrier still precedes the event by more than
   // one sequence, request another snapshot without tearing down the socket.

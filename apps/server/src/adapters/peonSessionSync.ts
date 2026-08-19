@@ -92,6 +92,18 @@ type DurableDeliveryEvent = DurableCatalogEvent | DurableReverseCommandResult | 
 
 export class SessionSyncProtocolError extends Error {}
 
+export type CatalogEventDisposition = "apply" | "snapshot-covered" | "snapshot-required";
+
+export function catalogEventDisposition(
+  checkpoint: { epoch: string; acknowledgedSeq: number },
+  event: { catalogEpoch: string; seq: number },
+): CatalogEventDisposition {
+  if (checkpoint.epoch !== event.catalogEpoch || event.seq <= checkpoint.acknowledgedSeq) {
+    return "snapshot-covered";
+  }
+  return event.seq === checkpoint.acknowledgedSeq + 1 ? "apply" : "snapshot-required";
+}
+
 // Connection-wide coordinator despite the historical filename: it owns the one
 // durable delivery frontier and dispatches typed payloads to independent
 // session/project catalog projections.
@@ -189,14 +201,12 @@ export class PeonCatalogSync {
     // Both resume domains must match. A mismatch is fenced by a fresh catalog
     // snapshot; no stale acknowledgement is reused across either epoch.
     if (!catalogResume || !deliveryResume || !this.checkpoint?.previouslyReady) {
-      await markSessionSyncing(this.record.peonId, this.generation);
-      this.requestSnapshot();
+      await this.startCatalogSnapshot("session");
     } else {
       observeSessionCatalogDuration("reconnect", "success", Date.now() - this.recoveryStartedAt);
     }
     if (this.projectCatalog && (!projectResume || !deliveryResume || !this.projectCheckpoint?.previouslyReady)) {
-      await markProjectSyncing(this.record.peonId, this.generation);
-      this.requestProjectSnapshot();
+      await this.startCatalogSnapshot("project");
     }
   }
 
@@ -417,28 +427,8 @@ export class PeonCatalogSync {
       await this.applyEvent(event);
       return;
     }
-    const checkpoint = event.channel === "session"
-      ? this.checkpoint?.catalog
-      : event.channel === "project" ? this.projectCheckpoint?.catalog : null;
-    if (event.channel !== "command" && !checkpoint) {
-      throw new SessionSyncProtocolError(`${event.channel} catalog event arrived before snapshot`);
-    }
-    // Peon may coalesce replaceable summaries before their durable cursor is
-    // sent. That intentionally preserves the delivery frontier while skipping
-    // one or more catalog sequence numbers. Fence the queued event behind a
-    // fresh authoritative snapshot instead of poisoning every reconnect.
-    if (event.channel !== "command"
-      && checkpoint
-      && checkpoint.epoch === event.catalogEpoch
-      && event.seq > checkpoint.acknowledgedSeq + 1) {
-      this.bufferEvent(event, frameBytes);
-      if (event.channel === "session") {
-        await markSessionSyncing(this.record.peonId, this.generation);
-        this.requestSnapshot();
-      } else {
-        await markProjectSyncing(this.record.peonId, this.generation);
-        this.requestProjectSnapshot();
-      }
+    if (event.channel === "session" || event.channel === "project") {
+      await this.processCatalogEvent(event, frameBytes);
       return;
     }
     await this.applyEvent(event);
@@ -513,16 +503,6 @@ export class PeonCatalogSync {
       observeTranscriptDuration("delivery_commit_ack", "success", Date.now() - startedAt);
       return;
     }
-    const checkpoint = event.channel === "session" ? this.checkpoint?.catalog : this.projectCheckpoint?.catalog;
-    // A catalog can be rebuilt independently of the shared durable outbox. In
-    // that case the outbox may still contain events from the retired catalog
-    // epoch. The authoritative snapshot/checkpoint for the epoch advertised in
-    // hello supersedes those events, but their delivery cursors must still be
-    // committed in order or one stale message poisons every reconnect.
-    if (checkpoint && checkpoint.epoch !== event.catalogEpoch) {
-      await this.commitSnapshotCoveredEvent(event);
-      return;
-    }
     let committed;
     try {
       committed = event.channel === "session" ? await applySocketSessionEvent({
@@ -593,29 +573,26 @@ export class PeonCatalogSync {
         await this.applyEvent(event);
         continue;
       }
-      const checkpoint = event.channel === "session" ? this.checkpoint?.catalog : this.projectCheckpoint?.catalog;
-      if (!checkpoint) throw new SessionSyncProtocolError(`${event.channel} catalog event arrived before snapshot`);
-      if (checkpoint.epoch === event.catalogEpoch && event.seq > checkpoint.acknowledgedSeq) {
-        // A snapshot can race a replaceable event that was already queued in
-        // the shared durable outbox. If that event still starts beyond the
-        // freshly committed frontier, applying it would make the projection
-        // throw a sequence-gap error and poison every reconnect. Keep the
-        // delivery buffered and take another authoritative snapshot instead.
-        if (event.seq > checkpoint.acknowledgedSeq + 1) {
-          for (const pending of events.slice(index)) this.bufferEvent(pending, 0);
-          if (event.channel === "session") {
-            await markSessionSyncing(this.record.peonId, this.generation);
-            this.requestSnapshot();
-          } else {
-            await markProjectSyncing(this.record.peonId, this.generation);
-            this.requestProjectSnapshot();
-          }
-          return;
-        }
+      if (await this.processCatalogEvent(event, 0)) continue;
+      for (const pending of events.slice(index + 1)) this.bufferEvent(pending, 0);
+      return;
+    }
+  }
+
+  private async processCatalogEvent(event: DurableCatalogEvent, frameBytes: number): Promise<boolean> {
+    const checkpoint = event.channel === "session" ? this.checkpoint?.catalog : this.projectCheckpoint?.catalog;
+    if (!checkpoint) throw new SessionSyncProtocolError(`${event.channel} catalog event arrived before snapshot`);
+    switch (catalogEventDisposition(checkpoint, event)) {
+      case "apply":
         await this.applyEvent(event);
-        continue;
-      }
-      await this.commitSnapshotCoveredEvent(event);
+        return true;
+      case "snapshot-covered":
+        await this.commitSnapshotCoveredEvent(event);
+        return true;
+      case "snapshot-required":
+        this.bufferEvent(event, frameBytes);
+        await this.startCatalogSnapshot(event.channel);
+        return false;
     }
   }
 
@@ -640,6 +617,16 @@ export class PeonCatalogSync {
       if (this.checkpoint) this.checkpoint = { ...this.checkpoint, delivery: committed.delivery };
     }
     this.sendCommittedAcks(event, committed);
+  }
+
+  private async startCatalogSnapshot(channel: DurableCatalogEvent["channel"]): Promise<void> {
+    if (channel === "session") {
+      await markSessionSyncing(this.record.peonId, this.generation);
+      this.requestSnapshot();
+    } else {
+      await markProjectSyncing(this.record.peonId, this.generation);
+      this.requestProjectSnapshot();
+    }
   }
 
   private parseDurableEvent(message: Record<string, unknown>): DurableDeliveryEvent {

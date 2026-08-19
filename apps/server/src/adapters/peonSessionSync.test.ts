@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { TranscriptProjectionError } from "../modules/sessions/index.js";
-import { PeonCatalogSync, SessionSyncProtocolError } from "./peonSessionSync.js";
+import { catalogEventDisposition, PeonCatalogSync, SessionSyncProtocolError } from "./peonSessionSync.js";
 
 interface BufferHarness {
   bufferedEvents: Array<Record<string, unknown>>;
@@ -28,6 +28,15 @@ const durableEvent = {
   operation: "upsert",
   session: { id: "session-1", status: "running" },
 };
+
+test("catalog recovery has one authoritative snapshot/event decision table", () => {
+  const checkpoint = { epoch: "catalog-1", acknowledgedSeq: 4 };
+  assert.equal(catalogEventDisposition(checkpoint, { catalogEpoch: "catalog-1", seq: 3 }), "snapshot-covered");
+  assert.equal(catalogEventDisposition(checkpoint, { catalogEpoch: "catalog-1", seq: 4 }), "snapshot-covered");
+  assert.equal(catalogEventDisposition(checkpoint, { catalogEpoch: "catalog-1", seq: 5 }), "apply");
+  assert.equal(catalogEventDisposition(checkpoint, { catalogEpoch: "catalog-1", seq: 6 }), "snapshot-required");
+  assert.equal(catalogEventDisposition(checkpoint, { catalogEpoch: "catalog-retired", seq: 100 }), "snapshot-covered");
+});
 
 test("snapshot buffering counts a retransmitted durable cursor only once", () => {
   const harness = bufferHarness();
