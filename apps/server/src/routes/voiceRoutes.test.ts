@@ -20,7 +20,9 @@ const realFetch = globalThis.fetch;
 const originalVoice = config.voice;
 
 const DEVICE_TOKEN = "device-1.secret-1";
-const TEST_MAX_BYTES = 8_192;
+// The cap is a property of the feature now, not a setting, so the test asserts
+// against the real one instead of shrinking it through the environment.
+const MAX_BYTES = 4 * 1024 * 1024;
 
 let sttResponse = (): Response => Response.json({ text: "ну короче задеплой канат на прод", language: "ru" });
 let polishResponse = (): Response => Response.json({ choices: [{ message: { content: "Задеплой Kanat на прод." } }] });
@@ -43,7 +45,6 @@ before(async () => {
   config.voice = resolveVoiceConfig({
     OVERSEER_VOICE: "groq",
     OVERSEER_VOICE_API_KEY: "test-key",
-    OVERSEER_VOICE_MAX_BYTES: String(TEST_MAX_BYTES),
     OVERSEER_VOICE_MAX_DURATION_MS: "120000",
   });
 
@@ -99,7 +100,7 @@ test("capabilities describe the configured instance so a client can hide the mic
   assert.equal(response.status, 200);
   assert.equal(body.enabled, true);
   assert.equal(body.polish, true);
-  assert.equal(body.maxBytes, TEST_MAX_BYTES);
+  assert.equal(body.maxBytes, MAX_BYTES);
   assert.equal(body.maxDurationMs, 120_000);
   assert.ok(body.mediaTypes.includes("audio/webm"));
   assert.ok(body.mediaTypes.includes("audio/mp4"));
@@ -139,7 +140,7 @@ test("an audio container the providers do not accept is rejected too", async () 
 });
 
 test("a body over the byte cap is refused by the router's own parser", async () => {
-  const sent = await dictate({ bytes: TEST_MAX_BYTES + 1_024 });
+  const sent = await dictate({ bytes: MAX_BYTES + 1_024 });
   assert.equal(sent.status, 413);
   assert.equal(sent.body.code, "AUDIO_TOO_LARGE");
   assert.equal(sttCalls, 0);

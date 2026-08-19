@@ -88,19 +88,31 @@ test("an instance with no daily ceiling is warned about it, since one user can d
   assert.deepEqual(capped.warnings, []);
 });
 
-test("caps and quotas come from the environment with the documented defaults", () => {
+test("the quotas an operator owns come from the environment with the documented defaults", () => {
   const defaults = resolveVoiceConfig({});
   assert.equal(defaults.maxDurationMs, 120_000);
-  assert.equal(defaults.maxBytes, 4 * 1024 * 1024);
-  assert.equal(defaults.minDurationMs, 300);
-  assert.equal(defaults.polishTimeoutMs, 1_200);
   assert.equal(defaults.requestsPerMinute, 20);
   assert.equal(defaults.audioSecondsPerHour, 1_800);
   // Unset by default: only the operator knows their provider tier.
   assert.equal(defaults.requestsPerDay, 0);
-  assert.equal(defaults.logTranscripts, false);
 
-  const tuned = resolveVoiceConfig({ OVERSEER_VOICE_MAX_DURATION_MS: "60000", OVERSEER_VOICE_MAX_BYTES: "nonsense" });
+  const tuned = resolveVoiceConfig({ OVERSEER_VOICE_MAX_DURATION_MS: "60000", OVERSEER_VOICE_REQUESTS_PER_MINUTE: "nonsense" });
   assert.equal(tuned.maxDurationMs, 60_000);
-  assert.equal(tuned.maxBytes, 4 * 1024 * 1024);
+  assert.equal(tuned.requestsPerMinute, 20);
+});
+
+// The shape of an utterance is a property of the feature, so these hold whatever
+// the environment says. A deployment that could widen them would be deciding how
+// dictation behaves, not how this instance is deployed.
+test("the shape of a dictated utterance is fixed and ignores the environment", () => {
+  const fixed = resolveVoiceConfig({
+    OVERSEER_VOICE_MIN_DURATION_MS: "5000",
+    OVERSEER_VOICE_MAX_BYTES: "999999999",
+    OVERSEER_VOICE_STT_TIMEOUT_MS: "1",
+    OVERSEER_VOICE_POLISH_TIMEOUT_MS: "60000",
+  });
+  assert.equal(fixed.minDurationMs, 300);
+  assert.equal(fixed.maxBytes, 4 * 1024 * 1024);
+  assert.equal(fixed.sttTimeoutMs, 20_000);
+  assert.equal(fixed.polishTimeoutMs, 1_200);
 });

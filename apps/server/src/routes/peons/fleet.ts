@@ -56,7 +56,9 @@ export function registerFleetRoutes(router: express.Router): void {
       if (!address || !secret) return res.status(400).json({ error: "peon address and pairing secret are required", code: "BAD_REQUEST" });
       const baseUrl = normalizePeonUrl(address);
       if (!baseUrl) return res.status(400).json({ error: "that doesn't look like a peon address", code: "BAD_URL" });
-      if (!config.peonCallbackUrl) return res.status(400).json({ error: "OVERSEER_PEON_CALLBACK_URL is not set — the overseer doesn't know where peons should phone home", code: "NO_CALLBACK_URL" });
+      // No NO_CALLBACK_URL refusal any more: the callback follows the public
+      // origin, so an instance an operator reached can always tell a peon where
+      // to phone home.
 
       const { credential, token } = await mintCredential(ctx.workspaceId, label, ctx.userId);
       const r = await callPeon({ baseUrl, token: secret }, "POST", "/enroll", {

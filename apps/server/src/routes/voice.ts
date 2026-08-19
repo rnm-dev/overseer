@@ -76,7 +76,6 @@ function logDictation(context: { userId: string; workspaceId: string; peonId?: s
   // The pipeline swallows a polish failure by design; without this the cause is
   // invisible and only the guardrail counter moves.
   if (result.polishError) console.warn(`voice.polish_failed guardrail=${result.guardrail} reason=${result.polishError}`);
-  if (config.voice.logTranscripts) console.log(`voice.transcript raw=${JSON.stringify(result.raw)} text=${JSON.stringify(result.text)}`);
 }
 
 export function voiceRouter(): express.Router {

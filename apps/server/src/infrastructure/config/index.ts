@@ -1,7 +1,13 @@
 // All configuration comes from the environment. No shared peon secret and no
 // operator key: peons connect with per-peon credentials (credentials.ts),
-// operators with device tokens (auth.ts). peonCallbackUrl is the Tailscale URL the
-// overseer hands a peon at recruitment so it knows where to phone home.
+// operators with device tokens (auth.ts).
+//
+// Two variables are required — DATABASE_URL and OVERSEER_PUBLIC_URL — and
+// everything else has a default that produces a working instance. A knob exists
+// here only when a deployment genuinely decides it; values that are merely
+// tuned live as constants next to the code that uses them, so the surface an
+// operator has to read is the surface that matters. The full list, with
+// defaults, is docs/configuration.md.
 import { resolveAuthConfig, type AuthConfig } from "../auth/authConfig.js";
 import { resolvePushConfig, type PushConfig } from "../push/pushConfig.js";
 import { resolveVoiceConfig, type VoiceConfig } from "../voice/voiceConfig.js";
@@ -9,6 +15,11 @@ import { resolveVoiceConfig, type VoiceConfig } from "../voice/voiceConfig.js";
 export interface Config {
   port: number;
   host: string;
+  // Where a peon is told to phone home. Defaults to publicUrl: an instance that
+  // can be reached by an operator can be reached by a peon, and enrollment is
+  // not an opt-in half of the product. It is separate only for the deployment
+  // whose peons arrive over a different name than the browser does — a
+  // Tailscale address against a public domain.
   peonCallbackUrl: string;
   // Postgres connection string — the single system-of-record. Required to boot.
   databaseUrl: string;
@@ -59,16 +70,24 @@ function csv(name: string): string[] {
     .filter(Boolean);
 }
 
-const publicUrl = (process.env.OVERSEER_PUBLIC_URL ?? "https://overseer.rnm.dev").replace(/\/+$/, "");
+// Our own origin, kept as the development convenience it has always been. In
+// production it is not a default anyone should inherit: every URL an operator
+// or a peon is handed derives from this, so an instance that forgets it would
+// quietly send its own people to somebody else's host. configErrors() refuses
+// that boot rather than leaving it to be discovered from a callback.
+const DEV_PUBLIC_URL = "https://overseer.rnm.dev";
+const publicUrlFromEnv = (process.env.OVERSEER_PUBLIC_URL ?? "").trim();
+const publicUrl = (publicUrlFromEnv || DEV_PUBLIC_URL).replace(/\/+$/, "");
 
 export const config: Config = {
   port: num("OVERSEER_PORT", 5000),
-  // Bind 0.0.0.0 on the Tailscale-connected host so interface startup order
-  // cannot strand the listener;
-  // defaults to loopback so a misconfigured deploy doesn't expose the operator API.
-  host: process.env.OVERSEER_HOST ?? "127.0.0.1",
-  peonCallbackUrl: (process.env.OVERSEER_PEON_CALLBACK_URL ?? "").replace(/\/+$/, ""),
-  databaseUrl: process.env.DATABASE_URL ?? process.env.OVERSEER_DATABASE_URL ?? "",
+  // Every supported deployment runs the app in a container behind a reverse
+  // proxy, where a loopback default binds to nothing reachable and the listener
+  // simply looks dead. Publishing the port is the proxy's decision, not this
+  // one's.
+  host: process.env.OVERSEER_HOST ?? "0.0.0.0",
+  peonCallbackUrl: ((process.env.OVERSEER_PEON_CALLBACK_URL ?? "").trim() || publicUrl).replace(/\/+$/, ""),
+  databaseUrl: process.env.DATABASE_URL ?? "",
   reconcileIntervalMs: num("OVERSEER_RECONCILE_INTERVAL_MS", 30_000),
   publicUrl,
   auth: resolveAuthConfig(process.env, publicUrl),
@@ -79,12 +98,27 @@ export const config: Config = {
   push: resolvePushConfig(process.env),
 };
 
+/**
+ * Misconfiguration that must stop the boot, as opposed to the warnings below.
+ *
+ * The bar is narrow on purpose: a value is an error only when continuing would
+ * point this instance's own operators and peons at an origin that is not
+ * theirs. Everything else — a missing door, no voice provider, an unreadable
+ * push credential — is a valid if reduced deployment and only warns.
+ */
+export function configErrors(): string[] {
+  const e: string[] = [];
+  if (process.env.NODE_ENV === "production" && !publicUrlFromEnv)
+    e.push(`OVERSEER_PUBLIC_URL is not set — it would fall back to ${DEV_PUBLIC_URL}, and every operator callback and peon enrollment URL derives from it. Set it to this instance's own public origin.`);
+  if (!config.databaseUrl)
+    e.push("DATABASE_URL is not set — Overseer has no meaningful degraded mode without its system-of-record.");
+  return e;
+}
+
 // Surfaced at startup so a deploy with no secrets set fails loud rather than
 // silently accepting anyone.
 export function configWarnings(): string[] {
   const w: string[] = [];
-  if (!config.peonCallbackUrl)
-    w.push("OVERSEER_PEON_CALLBACK_URL is empty — Peon enrollment is disabled.");
   // Which doors exist, and any half-configured one, is decided by the auth
   // resolver; this only reports what it found.
   w.push(...config.auth.warnings);

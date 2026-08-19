@@ -11,6 +11,12 @@ import { VOICE_PRESETS, VOICE_PRESET_NAMES } from "./voicePresets.js";
 // A stage BASE_URL with no preset named means "an OpenAI-compatible endpoint
 // lives here" — the bare-endpoint configuration, available without being the
 // only option.
+//
+// What remains configurable is what a deployment actually decides: which
+// provider, with which key, and the ceilings that cost it money. The shape of a
+// dictated utterance — how short is silence, how many bytes of audio are
+// plausible, how long a stage may take — is a property of the feature and lives
+// in SHAPE below, not in the environment.
 
 export interface VoiceStageSettings {
   baseUrl: string;
@@ -31,11 +37,22 @@ export interface VoiceConfig {
   requestsPerMinute: number;
   audioSecondsPerHour: number;
   requestsPerDay: number;
-  logTranscripts: boolean;
   warnings: string[];
 }
 
 const OFF_VALUES = new Set(["off", "0", "false", "none", "no", "disabled"]);
+
+// Fixed properties of dictation rather than deployment settings. Sized for
+// chat-style utterances, not lectures: 120 s of Opus is ~400 KB, so the byte cap
+// is headroom for higher-bitrate or AAC recordings rather than a real
+// constraint. The polish budget is short because a slow correction is worse than
+// no correction — the pipeline returns the raw transcript when it lapses.
+const SHAPE = {
+  minDurationMs: 300,
+  maxBytes: 4 * 1024 * 1024,
+  sttTimeoutMs: 20_000,
+  polishTimeoutMs: 1_200,
+} as const;
 
 function trimmed(env: NodeJS.ProcessEnv, name: string): string {
   return (env[name] ?? "").trim();
@@ -139,23 +156,19 @@ export function resolveVoiceConfig(env: NodeJS.ProcessEnv): VoiceConfig {
     stt: stt.settings,
     polish: polish.settings,
     polishDisabled,
-    // Sized for chat-style utterances, not lectures. 120 s of Opus is ~400 KB,
-    // so the byte cap is headroom for higher-bitrate or AAC recordings rather
-    // than a real constraint.
+    // A ceiling an operator raises for longer dictation, unlike the fixed shape
+    // constants above.
     maxDurationMs: num(env, "OVERSEER_VOICE_MAX_DURATION_MS", 120_000),
-    minDurationMs: num(env, "OVERSEER_VOICE_MIN_DURATION_MS", 300),
-    maxBytes: num(env, "OVERSEER_VOICE_MAX_BYTES", 4 * 1024 * 1024),
-    sttTimeoutMs: num(env, "OVERSEER_VOICE_STT_TIMEOUT_MS", 20_000),
-    polishTimeoutMs: num(env, "OVERSEER_VOICE_POLISH_TIMEOUT_MS", 1_200),
+    minDurationMs: SHAPE.minDurationMs,
+    maxBytes: SHAPE.maxBytes,
+    sttTimeoutMs: SHAPE.sttTimeoutMs,
+    polishTimeoutMs: SHAPE.polishTimeoutMs,
     requestsPerMinute: num(env, "OVERSEER_VOICE_REQUESTS_PER_MINUTE", 20),
     audioSecondsPerHour: num(env, "OVERSEER_VOICE_AUDIO_SECONDS_PER_HOUR", 1_800),
     // Deliberately unset by default. Only the operator knows their provider
     // tier, and silently capping a paid account at some guessed number would be
     // worse than the warning below.
     requestsPerDay: countOrZero(env, "OVERSEER_VOICE_REQUESTS_PER_DAY"),
-    // Audio is never persisted and transcripts are never logged. This flag is
-    // for pointing a dev instance at your own dictation while tuning.
-    logTranscripts: trimmed(env, "OVERSEER_VOICE_DEBUG_TRANSCRIPTS") === "1",
     warnings,
   };
 }

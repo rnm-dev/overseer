@@ -53,19 +53,12 @@ services:
       # Docker NAT/host nginx is the only forwarding path into the app port.
       # nginx overwrites inbound XFF after validating CF-Connecting-IP.
       OVERSEER_TRUSTED_PROXIES: ${OVERSEER_TRUSTED_PROXIES:-loopback,linklocal,uniquelocal}
-      OVERSEER_FLEET_TOKEN: ${OVERSEER_FLEET_TOKEN}
-      OVERSEER_API_KEY: ${OVERSEER_API_KEY}
-      OVERSEER_OFFLINE_AFTER_MS: ${OVERSEER_OFFLINE_AFTER_MS:-45000}
-      OVERSEER_RECONCILE_INTERVAL_MS: ${OVERSEER_RECONCILE_INTERVAL_MS:-30000}
-      # Where recruited peons phone home. nginx routes /agent → this app, so the
-      # public origin works today; swap to the tailnet URL once Tailscale lands.
-      OVERSEER_PEON_CALLBACK_URL: ${OVERSEER_PEON_CALLBACK_URL:-https://overseer.rnm.dev}
-      # Operator/mobile auth (GitHub OAuth → device tokens)
       # Email + password sign-in beside GitHub. Off unless set to 1.
       OVERSEER_PASSWORD_AUTH: ${OVERSEER_PASSWORD_AUTH:-0}
-      # Wildcard DNS/TLS + nginx route for token.preview.overseer.rnm.dev.
-      OVERSEER_PREVIEW_DOMAIN: ${OVERSEER_PREVIEW_DOMAIN:-preview.overseer.rnm.dev}
-      OVERSEER_PREVIEW_TOKEN_TTL_MS: ${OVERSEER_PREVIEW_TOKEN_TTL_MS:-600000}
+      # The origin, the peon callback and the preview domain come from
+      # .env.overseer-dev above, so the dev values live in one file instead of
+      # being half-stated here and half-inherited. Peons are told to phone home
+      # at OVERSEER_PUBLIC_URL unless that file overrides it.
     volumes:
       # Workspace sources + the root manifests that define them: every source or
       # config file hot-reloads (tsx watch restarts). The anonymous volume keeps

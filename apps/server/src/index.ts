@@ -1,4 +1,4 @@
-import { config, configWarnings } from "./infrastructure/config/index.js";
+import { config, configErrors, configWarnings } from "./infrastructure/config/index.js";
 import { initDb } from "./infrastructure/db/index.js";
 import { createServer } from "./app/server.js";
 import { startReconciler } from "./modules/sessions/index.js";
@@ -15,6 +15,14 @@ import { configureEventDelivery } from "./app/eventDelivery.js";
 // mode without its system-of-record, so a bad DATABASE_URL should stop the boot
 // rather than serve half-broken.
 async function main(): Promise<void> {
+  // Before the database, so a misconfigured origin is named directly instead of
+  // arriving as a connection failure or, worse, as a working boot on somebody
+  // else's public URL.
+  const errors = configErrors();
+  if (errors.length > 0) {
+    for (const e of errors) console.error(`overseer: ${e}`);
+    process.exit(1);
+  }
   await initDb();
   configureEventDelivery();
   const app = createServer();
