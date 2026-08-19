@@ -9,6 +9,7 @@ import { config } from "../infrastructure/config/index.js";
 import { initDb, query } from "../infrastructure/db/index.js";
 import { resetOidcDiscoveryCache } from "../infrastructure/oidc/index.js";
 import { createServer } from "../app/server.js";
+import { createWorkspace } from "../modules/workspaces/index.js";
 import { forgetAttempts } from "./authMethodAccess.js";
 
 // The whole OIDC door, driven against a provider that exists only here: the
@@ -88,6 +89,7 @@ before(async () => {
       label: "id.rnm.test",
       trustEmail: false,
       emailClaim: "email",
+      joinWorkspace: null,
     },
   };
 
@@ -325,6 +327,49 @@ test("a claim that does not hold an address is refused, not turned into one", as
   } finally {
     config.auth.oidc!.emailClaim = "email";
     config.auth.oidc!.trustEmail = false;
+    claimOverrides = {};
+  }
+});
+
+// The point of the setting: a company's own directory puts people in the
+// company's workspace, instead of each new operator landing alone in one named
+// after their address.
+test("an operator from the directory joins the configured workspace, not a personal one", async () => {
+  const owner = await createWorkspace("Rainmaker", "existing-owner-id");
+  claimOverrides = { sub: "joiner-subject", email: "newcomer@rnm.test" };
+  config.auth.oidc!.joinWorkspace = owner.slug;
+  try {
+    const state = await startWeb();
+    assert.equal((await request("/api/auth/oidc", "POST", { state, code: "provider-code" })).status, 200);
+    const memberships = await query<{ slug: string; role: string; joined_via: string }>(
+      `SELECT w.slug, m.role, m.joined_via FROM workspace_members m
+         JOIN workspaces w ON w.id = m.workspace_id
+         JOIN users u ON u.id = m.user_id
+        WHERE u.oidc_subject = $1`,
+      ["joiner-subject"],
+    );
+    // One membership: the personal-workspace fallback saw one already there.
+    assert.deepEqual(memberships.rows, [{ slug: owner.slug, role: "member", joined_via: "sso" }]);
+  } finally {
+    config.auth.oidc!.joinWorkspace = null;
+    claimOverrides = {};
+  }
+});
+
+// A typo must not be able to lock a directory out of its own instance.
+test("a slug naming no workspace still signs the operator in", async () => {
+  claimOverrides = { sub: "orphan-subject", email: "orphan@rnm.test" };
+  config.auth.oidc!.joinWorkspace = "no-such-workspace-here";
+  try {
+    const state = await startWeb();
+    assert.equal((await request("/api/auth/oidc", "POST", { state, code: "provider-code" })).status, 200);
+    const fallback = await query<{ joined_via: string }>(
+      `SELECT m.joined_via FROM workspace_members m JOIN users u ON u.id = m.user_id WHERE u.oidc_subject = $1`,
+      ["orphan-subject"],
+    );
+    assert.deepEqual(fallback.rows, [{ joined_via: "creator" }]);
+  } finally {
+    config.auth.oidc!.joinWorkspace = null;
     claimOverrides = {};
   }
 });

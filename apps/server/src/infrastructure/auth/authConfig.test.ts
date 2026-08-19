@@ -105,6 +105,7 @@ test("a configured OIDC provider is discovered from the issuer alone", () => {
     label: "id.rnm.dev",
     trustEmail: false,
     emailClaim: "email",
+    joinWorkspace: null,
   });
   assert.deepEqual(authMethodAvailability(auth), { github: false, password: false, oidc: true });
   assert.deepEqual(auth.warnings, []);
@@ -171,6 +172,14 @@ test("a custom address claim without the trust to go with it is named at startup
   const auth = resolveAuthConfig(env({ ...OIDC, OVERSEER_OIDC_EMAIL_CLAIM: "preferred_username" }), PUBLIC_URL);
   assert.equal(auth.oidc?.emailClaim, "preferred_username");
   assert.match(auth.warnings[0]!, /OVERSEER_OIDC_EMAIL_CLAIM is preferred_username/);
+});
+
+test("the door can name the workspace its operators join", () => {
+  assert.equal(resolveAuthConfig(env(OIDC), PUBLIC_URL).oidc?.joinWorkspace, null);
+  assert.equal(
+    resolveAuthConfig(env({ ...OIDC, OVERSEER_OIDC_JOIN_WORKSPACE: "rainmaker" }), PUBLIC_URL).oidc?.joinWorkspace,
+    "rainmaker",
+  );
 });
 
 test("OIDC alone is a complete instance", () => {

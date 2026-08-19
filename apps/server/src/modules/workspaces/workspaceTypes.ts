@@ -1,5 +1,11 @@
 export type Role = "owner" | "member";
 
+// How a person came to be in a workspace. Recorded because a member list that
+// answers only "who" cannot answer "why are they here", which is the first
+// question of any access review — and more so once a directory can add members
+// without anyone clicking anything.
+export type JoinedVia = "creator" | "invitation" | "sso";
+
 export interface WorkspaceRecord {
   id: string;
   name: string;

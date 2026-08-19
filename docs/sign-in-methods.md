@@ -36,6 +36,7 @@ config.auth.password  boolean                     // OVERSEER_PASSWORD_AUTH=1
 | `OVERSEER_OIDC_LABEL` | what the button says, default the issuer's host |
 | `OVERSEER_OIDC_TRUST_EMAIL=1` | this instance vouches for the issuer's addresses when the issuer will not — see [Entra ID](#microsoft-entra-id) |
 | `OVERSEER_OIDC_EMAIL_CLAIM` | which claim carries the address, default `email`; needs the trust above, since `email_verified` describes no other claim |
+| `OVERSEER_OIDC_JOIN_WORKSPACE` | slug of the workspace everyone from this directory joins — see [joining a workspace](#joining-a-workspace) |
 | `OVERSEER_PASSWORD_AUTH=1` | email + password is on, for registration and sign-in together |
 | `OVERSEER_DEVICE_TOKEN_TTL_MS` | lifetime of the token every door issues, default 90 days |
 
@@ -162,6 +163,45 @@ only, RS256 id tokens, PKCE `S256`, scopes `openid profile email workspace`.
 - **A provider that advertises its challenge methods without `S256`** is refused
   at the start, where it is a configuration fault with a name, rather than at the
   redirect. Advertising nothing is not a refusal: it still gets `S256`.
+
+### Joining a workspace
+
+Every other door ends at `ensureDefaultWorkspace`, which gives an operator with
+no membership a personal workspace named after their address. For a company
+signing in through its own directory that is the wrong destination: the new hire
+lands alone, and someone has to notice and send an invite link.
+
+`OVERSEER_OIDC_JOIN_WORKSPACE=<slug>` makes everyone who comes through this door
+a member of that workspace instead, before the personal fallback runs. No claim
+decides it and none needs to: the issuer is single-tenant and compared byte for
+byte, so arriving at this door already means being in that directory. Mapping
+app roles or groups to several workspaces would be an addition on top of the
+same insert, if one instance ever needs more than one.
+
+What it deliberately does not do:
+
+- **It grants `member`, never `owner`.** A directory answers whether someone
+  works here. What they may do once inside is Overseer's question, and a door
+  that could mint owners would let anyone the directory admits remove the people
+  who built the place.
+- **It adds, and never removes.** A membership is not withdrawn when a claim
+  changes, because the claim can change for reasons that are not "this person
+  left" — a mistyped slug would otherwise evict a team from its own workspace.
+- **A slug naming no workspace does not fail the sign-in.** It warns and falls
+  through to the personal workspace: landing in the wrong place is recoverable
+  with an invite, while a configuration typo that refuses every sign-in is an
+  outage.
+
+`workspace_members.joined_via` records `creator`, `invitation` or `sso`, so the
+member list still answers why each person is in it — the first question of any
+access review, and a harder one to answer once a directory can add members with
+nobody clicking anything.
+
+**This does not solve offboarding, and should not be mistaken for it.** A
+disabled directory account cannot obtain a *new* token, but the one already on
+its owner's laptop keeps working until it expires — 90 days by default. Any
+instance using SSO for real should shorten `OVERSEER_DEVICE_TOKEN_TTL_MS` to
+days; that single value closes more of the gap than the joining mechanism does.
 
 ### Microsoft Entra ID
 

@@ -963,4 +963,13 @@ export const MIGRATIONS: { id: string; statements: string[] }[] = [
       `DROP TABLE IF EXISTS peon_transcript_sync`,
     ],
   },
+  {
+    // Why a person is in a workspace. With SSO able to add members on its own,
+    // a membership list that only says "who" stops answering the first question
+    // asked of it during any access review. NULL is every row that predates
+    // this and means nobody recorded it, which is not the same as unknown
+    // provenance going forward.
+    id: "037_workspace_member_provenance",
+    statements: [`ALTER TABLE workspace_members ADD COLUMN IF NOT EXISTS joined_via TEXT`],
+  },
 ];

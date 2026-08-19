@@ -50,7 +50,10 @@ export async function createWorkspace(name: string, ownerUserId: string): Promis
     await tx.query(`INSERT INTO workspaces (id, name, slug, created_by, created_at) VALUES ($1, $2, $3, $4, $5)`, [
       id, name, slug, ownerUserId, now,
     ]);
-    await tx.query(`INSERT INTO workspace_members (workspace_id, user_id, role, added_at) VALUES ($1, $2, 'owner', $3)`, [id, ownerUserId, now]);
+    await tx.query(
+      `INSERT INTO workspace_members (workspace_id, user_id, role, added_at, joined_via) VALUES ($1, $2, 'owner', $3, 'creator')`,
+      [id, ownerUserId, now],
+    );
   });
   return { id, name, slug, createdAt: now, role: "owner" };
 }
@@ -127,6 +130,40 @@ export async function ensureDefaultWorkspace(userId: string, email: string): Pro
   if (rows.length > 0) return;
   const name = `${email.split("@")[0]}'s workspace`;
   await createWorkspace(name, userId);
+}
+
+/**
+ * Put an operator who signed in through a directory into the workspace that
+ * directory stands for.
+ *
+ * Always `member`. The directory answers whether someone works here; what they
+ * may do once inside is Overseer's question, and a door that could mint owners
+ * would let anyone the directory admits remove the people who built the place.
+ *
+ * Adds only. A membership is never withdrawn here, because the claim that
+ * granted it can change for reasons that are not "this person left" — a
+ * mistyped slug or a reorganised directory would otherwise evict a team from
+ * its own workspace. Offboarding is the device token's lifetime.
+ *
+ * A slug naming no workspace is reported, not thrown: landing in the wrong
+ * workspace is recoverable by an invite, while a configuration typo that
+ * refuses every sign-in is an outage.
+ */
+export async function joinWorkspaceBySlug(
+  slug: string,
+  userId: string,
+): Promise<"joined" | "already-a-member" | "no-such-workspace"> {
+  const { rows } = await query<{ id: string }>(`SELECT id FROM workspaces WHERE slug = $1`, [slug]);
+  const workspaceId = rows[0]?.id;
+  if (!workspaceId) return "no-such-workspace";
+  const inserted = await query(
+    `INSERT INTO workspace_members (workspace_id, user_id, role, added_at, joined_via)
+       VALUES ($1, $2, 'member', $3, 'sso')
+       ON CONFLICT (workspace_id, user_id) DO NOTHING
+       RETURNING user_id`,
+    [workspaceId, userId, Date.now()],
+  );
+  return inserted.rows.length > 0 ? "joined" : "already-a-member";
 }
 
 // ---- invitations (shareable join links) ---------------------------------
@@ -219,7 +256,7 @@ export async function acceptInvite(token: string, userId: string): Promise<Accep
     const existing = member.rows[0]?.role ?? null;
     if (!existing) {
       await tx.query(
-        `INSERT INTO workspace_members (workspace_id, user_id, role, added_at) VALUES ($1, $2, $3, $4)
+        `INSERT INTO workspace_members (workspace_id, user_id, role, added_at, joined_via) VALUES ($1, $2, $3, $4, 'invitation')
            ON CONFLICT (workspace_id, user_id) DO NOTHING`,
         [invite.workspace_id, userId, invite.role, now],
       );

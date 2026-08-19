@@ -3,7 +3,7 @@ import { query } from "../../infrastructure/db/index.js";
 import type { GithubAuthSettings, OidcAuthSettings } from "../../infrastructure/auth/index.js";
 import { exchangeCodeForProfile } from "../../infrastructure/github/index.js";
 import { OidcError, buildAuthorizationUrl, exchangeCodeForIdentity } from "../../infrastructure/oidc/index.js";
-import { ensureDefaultWorkspace } from "../workspaces/index.js";
+import { ensureDefaultWorkspace, joinWorkspaceBySlug } from "../workspaces/index.js";
 import { ensureUserFromGithub, ensureUserFromOidc, getUserById } from "./authUsers.js";
 import { issueDevice } from "./authDevices.js";
 import type {
@@ -193,6 +193,18 @@ export async function completeOidcSignIn(
   const user = await ensureUserFromOidc(
     settings.trustEmail ? { ...identity, emailVerified: true } : identity,
   );
+  // Before `finishSignIn`, which falls back to a personal workspace for anyone
+  // with no membership at all: an operator arriving through a company's own
+  // directory belongs in that company's workspace, not alone in one named after
+  // their address.
+  if (settings.joinWorkspace) {
+    const joined = await joinWorkspaceBySlug(settings.joinWorkspace, user.id);
+    if (joined === "no-such-workspace") {
+      console.warn(
+        `OVERSEER_OIDC_JOIN_WORKSPACE names no workspace (${settings.joinWorkspace}) — signing in without it.`,
+      );
+    }
+  }
   return finishSignIn(attempt, state, user, client, now);
 }
 

@@ -59,6 +59,11 @@ export interface OidcAuthSettings {
   // us — and it is only ever read as an address, so a claim holding something
   // else is refused rather than turned into one.
   emailClaim: string;
+  // The workspace every operator who comes through this door joins, by slug, or
+  // null for the personal workspace every other door produces. No claim decides
+  // it: the issuer is single-tenant and compared byte for byte, so arriving here
+  // already means being in that directory.
+  joinWorkspace: string | null;
 }
 
 export interface AuthConfig {
@@ -202,6 +207,7 @@ function resolveOidc(
     label: trimmed(env, "OVERSEER_OIDC_LABEL") || new URL(issuer).host,
     trustEmail,
     emailClaim,
+    joinWorkspace: trimmed(env, "OVERSEER_OIDC_JOIN_WORKSPACE") || null,
   };
 }
 
