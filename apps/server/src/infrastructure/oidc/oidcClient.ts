@@ -112,6 +112,7 @@ export async function exchangeCodeForIdentity(params: {
     clientId: params.settings.clientId,
     expectedNonceDigest: params.expectedNonceDigest,
     emailClaim: params.settings.emailClaim,
+    workspaceClaim: params.settings.workspaceClaim,
     now: params.now,
   });
 }

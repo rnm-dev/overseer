@@ -37,6 +37,7 @@ config.auth.password  boolean                     // OVERSEER_PASSWORD_AUTH=1
 | `OVERSEER_OIDC_TRUST_EMAIL=1` | this instance vouches for the issuer's addresses when the issuer will not — see [Entra ID](#microsoft-entra-id) |
 | `OVERSEER_OIDC_EMAIL_CLAIM` | which claim carries the address, default `email`; needs the trust above, since `email_verified` describes no other claim |
 | `OVERSEER_OIDC_JOIN_WORKSPACE` | slug of the workspace everyone from this directory joins — see [joining a workspace](#joining-a-workspace) |
+| `OVERSEER_OIDC_WORKSPACE_CLAIM` | claim naming the workspaces an operator joins, when one directory holds several teams |
 | `OVERSEER_PASSWORD_AUTH=1` | email + password is on, for registration and sign-in together |
 | `OVERSEER_DEVICE_TOKEN_TTL_MS` | lifetime of the token every door issues, default 90 days |
 
@@ -191,6 +192,34 @@ What it deliberately does not do:
   through to the personal workspace: landing in the wrong place is recoverable
   with an invite, while a configuration typo that refuses every sign-in is an
   outage.
+
+#### When one directory holds several teams
+
+`OVERSEER_OIDC_WORKSPACE_CLAIM=<claim>` names the claim carrying the slugs — one
+string, or several in an array. For Entra ID that claim is `roles`: app-role
+values are ours to choose, an administrator assigns them, and unlike a groups
+claim they arrive as readable strings rather than GUIDs behind an overage
+indicator. The fixed slug above stays as the fallback for a token that names
+nothing.
+
+What makes this sound is who owns the claim. A role an administrator assigns is
+the directory speaking; a profile field its own subject can edit is not, and
+reading one would let anybody name any workspace and walk in. The setting is
+therefore the same kind of statement as `OVERSEER_OIDC_TRUST_EMAIL` — this
+instance trusts this claim from this issuer — and rests on the same single-tenant
+issuer.
+
+**A claim joins; it never creates.** A slug matching no workspace is logged and
+skipped, and the operator lands where they would have without it. Creating on
+demand would turn a mistyped role into a parallel empty workspace that looks
+right and holds nobody — a silent failure instead of a visible one — and would
+hand workspace creation to whoever sets claims in the directory.
+
+Slack draws the same line from the other side: it keeps the group-to-workspace
+binding in its own settings rather than in the values the directory sends, and
+provisions membership over SCIM instead of reading it from a login token. That
+difference is worth remembering — a login token can say who arrived, never who
+left, which is why none of this is offboarding.
 
 `workspace_members.joined_via` records `creator`, `invitation` or `sso`, so the
 member list still answers why each person is in it — the first question of any

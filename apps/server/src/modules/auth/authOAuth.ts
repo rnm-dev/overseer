@@ -161,6 +161,8 @@ export async function startOidcAuthFlow(params: {
   return { authorizationUrl: authorization.authorizationUrl, state };
 }
 
+const toList = (value: string | null): string[] => (value ? [value] : []);
+
 export async function completeOidcSignIn(
   attempt: OauthAttempt,
   state: string,
@@ -195,13 +197,20 @@ export async function completeOidcSignIn(
   );
   // Before `finishSignIn`, which falls back to a personal workspace for anyone
   // with no membership at all: an operator arriving through a company's own
-  // directory belongs in that company's workspace, not alone in one named after
-  // their address.
-  if (settings.joinWorkspace) {
-    const joined = await joinWorkspaceBySlug(settings.joinWorkspace, user.id);
+  // directory belongs in that company's workspaces, not alone in one named after
+  // their address. The token decides when it can — a directory holding several
+  // teams says which — and the configured slug is what a token silent on the
+  // subject falls back to.
+  const claimed = identity.workspaces;
+  for (const slug of claimed.length > 0 ? claimed : toList(settings.joinWorkspace)) {
+    const joined = await joinWorkspaceBySlug(slug, user.id);
     if (joined === "no-such-workspace") {
+      // Named but absent. Reported rather than created: a workspace conjured
+      // from a claim would turn a mistyped role into a parallel empty workspace
+      // beside the real one, and hand workspace creation to whoever sets the
+      // claim.
       console.warn(
-        `OVERSEER_OIDC_JOIN_WORKSPACE names no workspace (${settings.joinWorkspace}) — signing in without it.`,
+        `OIDC sign-in named a workspace that does not exist (${slug}) — signing in without it.`,
       );
     }
   }

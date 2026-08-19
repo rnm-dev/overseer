@@ -25,6 +25,10 @@ export interface OidcIdentity {
   emailVerified: boolean;
   name: string | null;
   avatarUrl: string | null;
+  // Workspace slugs the directory says this operator belongs to. Empty unless
+  // the instance named a claim to read them from; what they mean is decided
+  // where accounts are, not here.
+  workspaces: string[];
 }
 
 interface IdTokenClaims {
@@ -107,6 +111,8 @@ export async function verifyIdToken(params: {
   expectedNonceDigest: string;
   // Where this provider puts the address. Defaults to the specification's claim.
   emailClaim?: string;
+  // Where it puts the workspaces this operator belongs to, if anywhere.
+  workspaceClaim?: string | null;
   now?: number;
 }): Promise<OidcIdentity> {
   const now = params.now ?? Date.now();
@@ -166,5 +172,27 @@ export async function verifyIdToken(params: {
     emailVerified: claims.email_verified === true,
     name: typeof claims.name === "string" && claims.name.trim() ? claims.name.trim() : null,
     avatarUrl: typeof claims.picture === "string" && claims.picture.trim() ? claims.picture.trim() : null,
+    workspaces: workspaceSlugs(claims as Record<string, unknown>, params.workspaceClaim),
   };
+}
+
+/**
+ * The workspace slugs a token claims, if this instance reads any.
+ *
+ * One string or an array of them — the two shapes providers actually send, an
+ * app role and a list of them. Anything else in the array is dropped rather than
+ * coerced: a claim carrying numbers or objects is not a claim about workspaces,
+ * and quietly stringifying it would invent slugs nobody configured. A value that
+ * matches no workspace is somebody else's problem to report, because only the
+ * database knows which ones exist.
+ */
+function workspaceSlugs(claims: Record<string, unknown>, claimName?: string | null): string[] {
+  if (!claimName) return [];
+  const raw = claims[claimName];
+  const values = Array.isArray(raw) ? raw : [raw];
+  const slugs = values
+    .filter((value): value is string => typeof value === "string")
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+  return [...new Set(slugs)];
 }

@@ -103,6 +103,9 @@ test("a well-formed token yields the identity, with the address normalised", asy
     emailVerified: true,
     name: "Operator",
     avatarUrl: "https://id.example/avatar.png",
+    // No workspace claim was named, so the token asserts no workspaces —
+    // whatever else it happens to carry.
+    workspaces: [],
   });
 });
 

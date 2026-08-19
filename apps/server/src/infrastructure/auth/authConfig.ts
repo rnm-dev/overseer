@@ -64,6 +64,12 @@ export interface OidcAuthSettings {
   // it: the issuer is single-tenant and compared byte for byte, so arriving here
   // already means being in that directory.
   joinWorkspace: string | null;
+  // The claim naming the workspaces this operator belongs to, when the directory
+  // holds more than one team. Its values are slugs of workspaces that already
+  // exist — a claim joins, it never creates. Only sound when the directory owns
+  // the claim: a role an administrator assigns is authoritative, a profile field
+  // its owner can edit would let anyone name any workspace.
+  workspaceClaim: string | null;
 }
 
 export interface AuthConfig {
@@ -208,6 +214,7 @@ function resolveOidc(
     trustEmail,
     emailClaim,
     joinWorkspace: trimmed(env, "OVERSEER_OIDC_JOIN_WORKSPACE") || null,
+    workspaceClaim: trimmed(env, "OVERSEER_OIDC_WORKSPACE_CLAIM") || null,
   };
 }
 

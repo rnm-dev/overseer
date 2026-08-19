@@ -90,6 +90,7 @@ before(async () => {
       trustEmail: false,
       emailClaim: "email",
       joinWorkspace: null,
+      workspaceClaim: null,
     },
   };
 
@@ -370,6 +371,81 @@ test("a slug naming no workspace still signs the operator in", async () => {
     assert.deepEqual(fallback.rows, [{ joined_via: "creator" }]);
   } finally {
     config.auth.oidc!.joinWorkspace = null;
+    claimOverrides = {};
+  }
+});
+
+// A directory holding several teams says which one an operator belongs to. The
+// value is an app role an administrator assigns, not something its subject can
+// set — that is the whole basis on which it is believed.
+test("the directory can name the workspace, and several of them", async () => {
+  const alpha = await createWorkspace("Alpha", "owner-alpha");
+  const beta = await createWorkspace("Beta", "owner-beta");
+  claimOverrides = { sub: "multi-team-subject", email: "multi@rnm.test", roles: [alpha.slug, beta.slug] };
+  config.auth.oidc!.workspaceClaim = "roles";
+  try {
+    const state = await startWeb();
+    assert.equal((await request("/api/auth/oidc", "POST", { state, code: "provider-code" })).status, 200);
+    const rows = await query<{ slug: string; role: string; joined_via: string }>(
+      `SELECT w.slug, m.role, m.joined_via FROM workspace_members m
+         JOIN workspaces w ON w.id = m.workspace_id
+         JOIN users u ON u.id = m.user_id
+        WHERE u.oidc_subject = $1 ORDER BY w.slug`,
+      ["multi-team-subject"],
+    );
+    assert.deepEqual(rows.rows, [
+      { slug: alpha.slug, role: "member", joined_via: "sso" },
+      { slug: beta.slug, role: "member", joined_via: "sso" },
+    ]);
+  } finally {
+    config.auth.oidc!.workspaceClaim = null;
+    claimOverrides = {};
+  }
+});
+
+// The claim decides when it can; the configured slug is for tokens silent on
+// the subject, not a second workspace to add on top.
+test("the configured slug is a fallback, not an addition", async () => {
+  const fallback = await createWorkspace("Fallback", "owner-fallback");
+  const named = await createWorkspace("Named", "owner-named");
+  claimOverrides = { sub: "claim-wins-subject", email: "claimwins@rnm.test", roles: named.slug };
+  config.auth.oidc!.workspaceClaim = "roles";
+  config.auth.oidc!.joinWorkspace = fallback.slug;
+  try {
+    const state = await startWeb();
+    assert.equal((await request("/api/auth/oidc", "POST", { state, code: "provider-code" })).status, 200);
+    const rows = await query<{ slug: string }>(
+      `SELECT w.slug FROM workspace_members m
+         JOIN workspaces w ON w.id = m.workspace_id
+         JOIN users u ON u.id = m.user_id
+        WHERE u.oidc_subject = $1`,
+      ["claim-wins-subject"],
+    );
+    assert.deepEqual(rows.rows, [{ slug: named.slug }]);
+  } finally {
+    config.auth.oidc!.workspaceClaim = null;
+    config.auth.oidc!.joinWorkspace = null;
+    claimOverrides = {};
+  }
+});
+
+// A slug nobody created is a typo in a role, not an instruction to invent a
+// workspace beside the real one.
+test("a claimed workspace that does not exist is not created", async () => {
+  claimOverrides = { sub: "ghost-workspace-subject", email: "ghost@rnm.test", roles: ["nowhere-at-all"] };
+  config.auth.oidc!.workspaceClaim = "roles";
+  try {
+    const state = await startWeb();
+    assert.equal((await request("/api/auth/oidc", "POST", { state, code: "provider-code" })).status, 200);
+    assert.equal((await query(`SELECT 1 FROM workspaces WHERE slug = $1`, ["nowhere-at-all"])).rows.length, 0);
+    const rows = await query<{ joined_via: string }>(
+      `SELECT m.joined_via FROM workspace_members m JOIN users u ON u.id = m.user_id WHERE u.oidc_subject = $1`,
+      ["ghost-workspace-subject"],
+    );
+    // Nothing joined, so the personal workspace still happened.
+    assert.deepEqual(rows.rows, [{ joined_via: "creator" }]);
+  } finally {
+    config.auth.oidc!.workspaceClaim = null;
     claimOverrides = {};
   }
 });
