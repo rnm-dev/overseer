@@ -8,7 +8,6 @@ import { attachUpgradeFallback } from "./adapters/upgradeGuard.js";
 import { describePeonUpgrade } from "./adapters/peonSocketAuth.js";
 import { pruneEvents } from "./infrastructure/events/index.js";
 import { startPushWorker } from "./modules/notifications/index.js";
-import { pruneTranscriptProjection } from "./modules/sessions/index.js";
 import { configureEventDelivery } from "./app/eventDelivery.js";
 
 // Fail loud if Postgres is unreachable — the overseer has no meaningful degraded
@@ -36,7 +35,6 @@ async function main(): Promise<void> {
     startPushWorker();
     // Keep the resumable event log bounded.
     setInterval(() => void pruneEvents().catch(() => null), 5 * 60_000);
-    setInterval(() => void pruneTranscriptProjection().catch(() => null), 5 * 60_000);
   });
   // Resumable client transport shares the HTTP server (nginx upgrades /api/ws).
   attachLiveSocket(server);

@@ -535,9 +535,9 @@ export function readCommittedTranscriptEntriesBounded(id, agent, limits) {
     }
 }
 /**
- * Non-blocking counterpart used by the reverse transcript projection. The
- * sync reader remains available for offline tools and compatibility tests,
- * but daemon request paths must not scan a complete JSONL file synchronously.
+ * Non-blocking counterpart used by bounded daemon request paths. The sync
+ * reader remains available for offline tools and compatibility tests, but
+ * request handlers must not scan a complete JSONL file synchronously.
  */
 export async function readCommittedTranscriptEntriesBoundedAsync(id, agent, limits) {
     return withTranscriptReadPermit(async () => {

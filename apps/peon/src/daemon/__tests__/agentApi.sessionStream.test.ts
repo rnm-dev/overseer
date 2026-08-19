@@ -5,7 +5,7 @@
 // *before* any daemon module is imported (dynamic import, not static).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { mkdtempSync } from "node:fs";
@@ -202,7 +202,29 @@ test("a fresh connection replays existing history in order, then delivers new li
   appendLiveEvent("s-replay", "live-one");
   const f3 = await client.nextEvent();
   assert.match(f3.id ?? "", /^[0-9a-f-]{36}$/i);
+  assert.match(
+    readFileSync(transcriptPath("s-replay"), "utf8"),
+    new RegExp(`"_peonEventId":"${f3.id}"`),
+    "the SSE event is visible only after its canonical JSONL row exists",
+  );
 
+  client.close();
+});
+
+test("a missing live boundary replays only the newest 50 rows before continuing live", async () => {
+  const texts = Array.from({ length: 75 }, (_, index) => `row-${index}`);
+  makeSession("s-bounded-replay", texts);
+  const client = await SseClient.connect(streamUrl("s-bounded-replay"), {
+    Authorization: `Bearer ${TOKEN}`,
+    "Last-Event-ID": "unknown-event-id",
+  });
+
+  const replayed: string[] = [];
+  for (let i = 0; i < 50; i++) replayed.push(JSON.parse((await client.nextEvent()).data).text);
+  assert.deepEqual(replayed, texts.slice(25));
+
+  appendLiveEvent("s-bounded-replay", "after-bounded-replay");
+  assert.equal(JSON.parse((await client.nextEvent()).data).name, "after-bounded-replay.txt");
   client.close();
 });
 
@@ -414,11 +436,11 @@ test("closing the connection unsubscribes the session listeners (no leak)", asyn
 
   try {
     const client = await SseClient.connect(streamUrl("s-cleanup"), { Authorization: `Bearer ${TOKEN}` });
-    assert.equal(onCalls, 2, "subscribes to both `event` and `change`");
+    assert.equal(onCalls, 1, "subscribes to session metadata changes");
     client.close();
     // req "close" fires asynchronously once the socket tears down.
     await new Promise((resolve) => setTimeout(resolve, 200));
-    assert.equal(offCalls, 2, "unsubscribes from both `event` and `change` — same cleanup path clears the heartbeat timer");
+    assert.equal(offCalls, 1, "unsubscribes from session metadata changes — the same cleanup path clears the heartbeat timer");
   } finally {
     sessions.on = originalOn;
     sessions.off = originalOff;

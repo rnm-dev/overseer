@@ -18,8 +18,7 @@
           "session-catalog-v1",
           "durable-delivery-v1",
           "project-catalog-v1",
-          "reverse-command-v1",
-          "transcript-sync-v1"
+          "reverse-command-v1"
         ],
         "channelFeatures": {}
       }
@@ -41,8 +40,7 @@
           "session-catalog-v1",
           "durable-delivery-v1",
           "project-catalog-v1",
-          "reverse-command-v1",
-          "transcript-sync-v1"
+          "reverse-command-v1"
         ],
         "channelFeatures": {}
       }
@@ -221,7 +219,7 @@
         "project-file-read": "legacy-http",
         "sandbox-file-read": "legacy-http",
         "session-cancel": "legacy-http",
-        "session-transcript": "reverse-socket",
+        "session-transcript": "legacy-http",
         "project-file-upload": "legacy-http",
         "attachment-upload": "legacy-http",
         "project-file-move": "legacy-http",
@@ -239,9 +237,9 @@
     },
     {
       "id": "transcripts",
-      "capability": "transcript-sync-v1",
+      "capability": "fleet-http+client-websocket",
       "status": "covered",
-      "coverage": "canonical snapshot/page/live/deletion frames, strict bounds, all 3x3 capability and exclusive downgrade cells, durable atomic projection+inbox+browser event before ACK, drop/duplicate/reorder/disconnect/restart, snapshot races, gaps, epoch/generation/cursor fencing, eviction/rebuild, pressure, slow consumer, malformed/oversized input and replay-payload mismatch"
+      "coverage": "canonical paginated Fleet HTTP history, committed SSE replay by stable eventId, one multiplexed client WebSocket, bounded overlap, reconnect, duplicate delivery, malformed input, ACL revocation and slow consumers"
     },
     {
       "id": "updates",

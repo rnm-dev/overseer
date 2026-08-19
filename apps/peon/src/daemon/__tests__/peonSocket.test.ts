@@ -126,7 +126,7 @@ test("default control hello does not advertise the retired folder listing capabi
   }
 });
 
-test("durable control hello advertises bounded transcript synchronization", async () => {
+test("durable control hello leaves transcript delivery to Fleet HTTP", async () => {
   const directory = mkdtempSync(path.join(os.tmpdir(), "peon-transcript-hello-"));
   const target = acceptingServer();
   const base = await listen(target.server);
@@ -148,17 +148,9 @@ test("durable control hello advertises bounded transcript synchronization", asyn
     supervisor.start();
     await waitFor(() => supervisor.getState().connected, "durable control socket did not connect");
     const hello = target.hellos[0]!;
-    assert.ok((hello.capabilities as string[]).includes("transcript-sync-v1"));
-    assert.deepEqual((hello.channels as Record<string, PeonSocketFrame>)["transcript-sync-v1"], {
-      snapshotPageEvents: 100,
-      snapshotPageBytes: 768 * 1024,
-      snapshotEvents: 20_000,
-      snapshotBytes: 16 * 1024 * 1024,
-      activeSnapshots: 4,
-      subscriptions: 64,
-      subscriptionTtlMs: 5 * 60_000,
-      eventBytes: 192 * 1024,
-    });
+    assert.equal((hello.capabilities as string[]).includes("transcript-sync-v1"), false);
+    assert.equal((hello.capabilities as string[]).includes("durable-delivery-selective-ack-v1"), false);
+    assert.equal((hello.channels as Record<string, PeonSocketFrame>)["transcript-sync-v1"], undefined);
   } finally {
     supervisor.stop();
     await closeServer(target.server, target.sockets);

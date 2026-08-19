@@ -116,12 +116,13 @@ class SessionWorkItem extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                SizedBox(
-                  height: 20,
+                ConstrainedBox(
+                  constraints: const BoxConstraints(minHeight: 20),
                   child: Row(
                     children: [
                       Expanded(
                         child: Text(
+                          key: Key('session-title-${session.sessionId}'),
                           session.displayTitle,
                           maxLines: 1,
                           overflow: TextOverflow.fade,

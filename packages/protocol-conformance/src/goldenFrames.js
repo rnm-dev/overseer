@@ -91,46 +91,6 @@ function validateCatalogAck(frame, errors, prefix) {
   if (typeof frame.epoch !== "string" || !frame.epoch || !integer(frame.acknowledgedSeq)) errors.push("invalid catalog acknowledgement");
 }
 
-function transcriptEvent(value, errors, sessionId, epoch) {
-  if (!isObject(value) || value.sessionId !== sessionId || value.epoch !== epoch) errors.push("invalid transcript event scope");
-  if (value?.type === "transcript_deleted") {
-    if (!integer(value.revision, 0)) errors.push("invalid transcript deletion revision");
-    return;
-  }
-  if (!integer(value?.seq, 1) || value.revision !== value.seq) errors.push("transcript seq/revision mismatch");
-  if (typeof value?.eventId !== "string" || !isObject(value?.event)) errors.push("invalid transcript event");
-}
-
-function validateTranscriptRequest(frame, errors) {
-  if (frame.type !== "transcript_snapshot_request" || !uuid(frame.requestId)) errors.push("invalid transcript snapshot request");
-  if (typeof frame.sessionId !== "string" || !frame.sessionId) errors.push("sessionId is required");
-  if (!integer(frame.limit, 1) || frame.limit > 100 || frame.subscribe !== true) errors.push("invalid transcript snapshot bounds");
-  if (frame.cursor !== undefined && (typeof frame.cursor !== "string" || !frame.cursor)) errors.push("invalid transcript cursor");
-}
-
-function validateTranscriptPage(frame, errors) {
-  if (frame.type !== "transcript_snapshot_page" || !uuid(frame.requestId)) errors.push("invalid transcript snapshot page");
-  if (typeof frame.sessionId !== "string" || typeof frame.epoch !== "string" || !frame.epoch) errors.push("invalid transcript scope");
-  if (!integer(frame.barrierSeq) || frame.revision !== frame.barrierSeq) errors.push("invalid transcript barrier");
-  if (!Array.isArray(frame.events) || frame.events.length > 250) errors.push("transcript page events exceed bounds");
-  else for (const event of frame.events) transcriptEvent(event, errors, frame.sessionId, frame.epoch);
-  if (typeof frame.hasMore !== "boolean"
-    || (frame.hasMore ? typeof frame.nextCursor !== "string" || !frame.nextCursor : frame.nextCursor !== null)) {
-    errors.push("transcript cursor does not match hasMore");
-  }
-}
-
-function validateTranscriptDurable(frame, errors) {
-  validateDurableMessage(frame, errors);
-  if (frame.capability !== "transcript-sync-v1" || !isObject(frame.payload)) errors.push("invalid transcript durable capability");
-  else transcriptEvent(frame.payload, errors, frame.payload.sessionId, frame.payload.epoch);
-  if (!["transcript_live_event", "transcript_deleted"].includes(frame.payload?.type)) errors.push("invalid transcript durable payload");
-}
-
-function validateTranscriptControl(frame, errors, type) {
-  if (frame.type !== type || !uuid(frame.requestId) || typeof frame.sessionId !== "string") errors.push(`invalid ${type}`);
-}
-
 const validators = {
   "socket.control.hello": validateControlHello,
   "socket.control.hello_ack": validateControlHelloAck,
@@ -143,11 +103,6 @@ const validators = {
   "catalog.project.snapshot_page": (frame, errors) => validateSnapshotPage(frame, errors, "project", "projects"),
   "catalog.project.event": (frame, errors) => validateCatalogEvent(frame, errors, "project", "project", "deletedProjectId"),
   "catalog.project.ack": (frame, errors) => validateCatalogAck(frame, errors, "project"),
-  "transcript.snapshot_request": validateTranscriptRequest,
-  "transcript.snapshot_page": validateTranscriptPage,
-  "transcript.live": validateTranscriptDurable,
-  "transcript.cancel": (frame, errors) => validateTranscriptControl(frame, errors, "transcript_snapshot_cancel"),
-  "transcript.unsubscribe": (frame, errors) => validateTranscriptControl(frame, errors, "transcript_unsubscribe"),
 };
 
 export function loadFixture(name) {

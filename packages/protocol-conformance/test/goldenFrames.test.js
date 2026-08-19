@@ -39,11 +39,11 @@ test("unfinished families can register adapters without changing the stable runn
   const entry = {
     schema: "transcript.snapshot_request",
     limit: "control",
-    frame: { type: "transcript_snapshot_request", sessionId: "session-a" },
+    frame: { type: "example_request", sessionId: "session-a" },
   };
   const result = validateGoldenFrame(entry, { control: 1024 }, {
     "transcript.snapshot_request": (frame, errors) => {
-      if (frame.type !== "transcript_snapshot_request" || typeof frame.sessionId !== "string") {
+      if (frame.type !== "example_request" || typeof frame.sessionId !== "string") {
         errors.push("invalid transcript snapshot request");
       }
     },

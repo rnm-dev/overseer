@@ -21,6 +21,7 @@ test("the stable current slice keeps the complete file plane on Fleet HTTP over 
   assert.equal(current.routes["project-file-read"], "legacy-http");
   assert.equal(current.routes["project-file-upload"], "legacy-http");
   assert.equal(current.routes["session-cancel"], "legacy-http");
+  assert.equal(current.routes["session-transcript"], "legacy-http");
   assert.equal(current.routes["peon-update"], "legacy-http");
 });
 

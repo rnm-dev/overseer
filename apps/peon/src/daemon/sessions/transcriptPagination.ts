@@ -2,6 +2,7 @@ import type { AgentEvent } from "../agents/index.js";
 import type { TranscriptEntry } from "./index.js";
 
 export const DEFAULT_TRANSCRIPT_PAGE_LIMIT = 50;
+export const DEFAULT_TRANSCRIPT_TAIL_REPLAY_LIMIT = 50;
 export const MAX_TRANSCRIPT_PAGE_LIMIT = 500;
 export const MAX_TRANSCRIPT_CURSOR_LENGTH = 4_096;
 export const MAX_TRANSCRIPT_EVENT_ID_LENGTH = 256;
@@ -34,17 +35,18 @@ export interface TranscriptPage {
   hasMore: boolean;
 }
 
-/** Resolve an SSE replay boundary. An empty cursor means replay from the
- * beginning (useful when a bounded snapshot was empty); unknown durable ids
- * also fall back to a full replay so recovery prefers duplicates over gaps. */
+/** Resolve an SSE replay boundary. The stream is a live tail, not a second
+ * history endpoint: a missing or unknown boundary replays only one newest
+ * window. Clients recover older gaps through the paginated HTTP transcript. */
 export function transcriptResumeIndex(entries: TranscriptEntry[], cursor: string | undefined): number {
-  if (cursor === undefined || cursor === "") return 0;
+  const boundedFallback = () => Math.max(0, entries.length - DEFAULT_TRANSCRIPT_TAIL_REPLAY_LIMIT);
+  if (cursor === undefined || cursor === "") return boundedFallback();
   const durableIndex = entries.findIndex((entry) => entry.id === cursor);
   if (durableIndex >= 0) return durableIndex + 1;
   // One-release bridge for clients reconnecting with the former numeric
   // position id after upgrading the Peon beneath an open stream.
   if (/^\d+$/.test(cursor)) return Math.min(Number(cursor), entries.length);
-  return 0;
+  return boundedFallback();
 }
 
 export function parseTranscriptResumeEventId(raw: unknown): string | undefined {
