@@ -241,6 +241,33 @@ mixin _SessionDetailAttachmentMethods on _SessionDetailAttachmentHost {
     }
   }
 
+  /// A pasted wall of text is worth more as a file than as a message body.
+  /// Returns false when it cannot be taken — the composer then pastes it
+  /// inline rather than dropping it.
+  bool _attachPastedText(String text) {
+    const maxFiles = 10;
+    const maxBytes = 25 * 1024 * 1024;
+    if (_composerAttachments.length >= maxFiles) return false;
+    final bytes = Uint8List.fromList(utf8.encode(text));
+    if (bytes.length > maxBytes) return false;
+    _resetSubmissionIdentity();
+    setState(() {
+      _composerAttachments = [
+        ..._composerAttachments,
+        NewSessionAttachment(
+          name: pastedTextName(
+            DateTime.now().millisecondsSinceEpoch,
+            index: _composerAttachments.length,
+          ),
+          type: 'file',
+          bytes: bytes,
+        ),
+      ];
+      _attachmentError = null;
+    });
+    return true;
+  }
+
   void _insertKeyboardContent(KeyboardInsertedContent content) {
     const maxFiles = 10;
     const maxBytes = 25 * 1024 * 1024;

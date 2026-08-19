@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:ui';
 
@@ -47,6 +48,7 @@ import '../application/voice_dictation_controller.dart';
 import '../domain/followup_repository.dart';
 import '../domain/file_link_transformer.dart';
 import '../domain/new_session_repository.dart';
+import '../domain/pasted_text.dart';
 import '../domain/session_models.dart';
 import 'session_composer.dart';
 import 'session_file_viewer_page.dart';
@@ -541,6 +543,7 @@ class _SessionDetailPageState extends _SessionDetailAttachmentHost
                                 .selectReasoningEffort(effort),
                             onAttach: _showAttachmentOptions,
                             onContentInserted: _insertKeyboardContent,
+                            onLongTextPasted: _attachPastedText,
                             dictation: dictation,
                             onVoiceStart: () async {
                               final started = await ref

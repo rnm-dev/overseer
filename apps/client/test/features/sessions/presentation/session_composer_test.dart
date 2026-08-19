@@ -831,4 +831,98 @@ void main() {
     await tester.tap(find.byTooltip('Remove plan.md'));
     expect(removed, 0);
   });
+
+  testWidgets('a huge paste is offered as an attachment, not as body text', (
+    tester,
+  ) async {
+    final controller = TextEditingController();
+    addTearDown(controller.dispose);
+    final messenger = tester.binding.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+      if (call.method == 'Clipboard.getData') {
+        return <String, dynamic>{'text': 'x' * 5000};
+      }
+      return null;
+    });
+    addTearDown(
+      () => messenger.setMockMethodCallHandler(SystemChannels.platform, null),
+    );
+    String? pasted;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.dark,
+        home: Scaffold(
+          body: SessionComposer(
+            controller: controller,
+            onLongTextPasted: (text) {
+              pasted = text;
+              return true;
+            },
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const Key('session-composer-input')));
+    await tester.pump();
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyV);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pumpAndSettle();
+
+    expect(pasted?.length, 5000);
+    expect(controller.text, isEmpty);
+  });
+
+  testWidgets('a paste the host cannot take still lands in the field', (
+    tester,
+  ) async {
+    final controller = TextEditingController();
+    addTearDown(controller.dispose);
+    final messenger = tester.binding.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+      if (call.method == 'Clipboard.getData') {
+        return <String, dynamic>{'text': 'y' * 5000};
+      }
+      return null;
+    });
+    addTearDown(
+      () => messenger.setMockMethodCallHandler(SystemChannels.platform, null),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.dark,
+        home: Scaffold(
+          body: SessionComposer(
+            controller: controller,
+            onLongTextPasted: (text) => false,
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const Key('session-composer-input')));
+    await tester.pump();
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyV);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pumpAndSettle();
+
+    expect(controller.text.length, 5000);
+  });
+
+  test('a plain paste replaces the selection at the caret', () {
+    final result = insertPastedText(
+      const TextEditingValue(
+        text: 'hello world',
+        selection: TextSelection(baseOffset: 6, extentOffset: 11),
+      ),
+      'there',
+    );
+
+    expect(result.text, 'hello there');
+    expect(result.selection, const TextSelection.collapsed(offset: 11));
+  });
 }

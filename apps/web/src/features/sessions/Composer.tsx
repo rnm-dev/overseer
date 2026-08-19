@@ -3,6 +3,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Hourglass, Zap } from "lucide-react";
 import { useT } from "../../shared/i18n";
 import type { MessageAttachment } from "./parsing";
+import { isLongPastedText, isPastedTextName, pastedTextFile } from "./pastedText";
 
 // author: Viktor
 // The prompt box shared by PeonNewSession (starting a session) and
@@ -19,8 +20,8 @@ const MAX_FILES = 10;
 // caps the grown height and the class caps the painted one.
 export const MAX_TEXTAREA_HEIGHT = 160;
 const isImage = (f: File) => IMAGE_TYPES.has(f.type);
-// Friendly chip label — pasted screenshots have a machine name; show a short one.
-const chipName = (f: File) => (/^pasted-\d+/.test(f.name) ? "Pasted image" : f.name);
+// Friendly chip label — pasted screenshots and text have a machine name; show a short one.
+const chipName = (f: File) => (isPastedTextName(f.name) ? "Pasted text" : /^pasted-\d+/.test(f.name) ? "Pasted image" : f.name);
 // An attachment the draft carries by path was committed on the peon before this
 // composer ever saw it, so there are no bytes here to name it by.
 export const carriedName = (attachment: MessageAttachment): string =>
@@ -241,7 +242,17 @@ export function Composer({
           const pasted: File[] = [];
           if (dt.files.length) pasted.push(...Array.from(dt.files));
           else for (const it of Array.from(dt.items)) if (it.kind === "file") { const f = it.getAsFile(); if (f) pasted.push(f); }
-          if (!pasted.length) return; // plain text → paste normally
+          if (!pasted.length) {
+            // Plain text: a wall of it goes in as a file so the message stays
+            // readable. Short pastes — and any paste we could not attach — go
+            // into the textarea as usual.
+            const text = dt.getData("text/plain");
+            if (!text || !isLongPastedText(text)) return;
+            if (!filesEnabled || files.length >= MAX_FILES) return;
+            e.preventDefault();
+            addFiles([pastedTextFile(text, Date.now(), files.length)]);
+            return;
+          }
           e.preventDefault();
           // Screenshots arrive as generic "image.png" — give them unique names so multiple don't collide on upload.
           addFiles(pasted.map((f, i) => (f.name && f.name !== "image.png" ? f : new File([f], `pasted-${Date.now()}-${i}.${(f.type.split("/")[1] || "bin").replace("jpeg", "jpg")}`, { type: f.type }))));

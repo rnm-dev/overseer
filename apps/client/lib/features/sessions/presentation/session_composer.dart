@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -18,6 +19,7 @@ import '../../themes/app_theme_package.dart';
 import '../application/voice_dictation_controller.dart';
 import '../domain/followup_repository.dart';
 import '../domain/new_session_repository.dart';
+import '../domain/pasted_text.dart';
 import 'capability_choices.dart';
 part 'session_composer_queue.dart';
 
@@ -47,6 +49,22 @@ TextEditingValue insertVoiceTranscript(
     text: text,
     selection: TextSelection.collapsed(
       offset: selection.start + insertion.length,
+    ),
+    composing: TextRange.empty,
+  );
+}
+
+/// Plain insertion at the caret — what the platform paste would have done, done
+/// by hand because the composer intercepts paste to catch huge blocks.
+TextEditingValue insertPastedText(TextEditingValue value, String pasted) {
+  final selection = value.selection.isValid
+      ? value.selection
+      : TextSelection.collapsed(offset: value.text.length);
+  final text = value.text.replaceRange(selection.start, selection.end, pasted);
+  return value.copyWith(
+    text: text,
+    selection: TextSelection.collapsed(
+      offset: selection.start + pasted.length,
     ),
     composing: TextRange.empty,
   );
@@ -85,6 +103,7 @@ class SessionComposer extends StatefulWidget {
     this.onReasoningEffortChanged,
     this.onAttach,
     this.onContentInserted,
+    this.onLongTextPasted,
     this.attachments = const [],
     this.onRemoveAttachment,
     this.onSubmit,
@@ -124,6 +143,11 @@ class SessionComposer extends StatefulWidget {
   final ValueChanged<String?>? onReasoningEffortChanged;
   final VoidCallback? onAttach;
   final ValueChanged<KeyboardInsertedContent>? onContentInserted;
+
+  /// Offered a pasted block big enough to be a file. Returning true means the
+  /// host took it as an attachment; false leaves it to be pasted inline, so a
+  /// full attachment list or an unreadable block never swallows the paste.
+  final bool Function(String text)? onLongTextPasted;
   final List<NewSessionAttachment> attachments;
   final ValueChanged<int>? onRemoveAttachment;
   final VoidCallback? onSubmit;
@@ -189,6 +213,55 @@ class _SessionComposerState extends State<SessionComposer> {
       composing: TextRange.empty,
     );
     return KeyEventResult.handled;
+  }
+
+  /// Paste goes through here — the keyboard shortcut and the selection
+  /// toolbar alike — so a huge block can become an attachment before it ever
+  /// reaches the field.
+  Future<void> _handlePaste() async {
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    final pasted = data?.text;
+    if (pasted == null || pasted.isEmpty || !mounted) return;
+    final onLongTextPasted = widget.onLongTextPasted;
+    if (onLongTextPasted != null &&
+        isLongPastedText(pasted) &&
+        onLongTextPasted(pasted)) {
+      return;
+    }
+    widget.controller.value = insertPastedText(
+      widget.controller.value,
+      pasted,
+    );
+  }
+
+  /// The platform's own toolbar, with its Paste button routed through
+  /// [_handlePaste] so a long-press paste is caught like a keyboard one.
+  Widget _pasteToolbar(
+    BuildContext context,
+    EditableTextState editableTextState,
+  ) {
+    if (widget.onLongTextPasted == null) {
+      return AdaptiveTextSelectionToolbar.editableText(
+        editableTextState: editableTextState,
+      );
+    }
+    return AdaptiveTextSelectionToolbar.buttonItems(
+      anchors: editableTextState.contextMenuAnchors,
+      buttonItems: [
+        for (final item in editableTextState.contextMenuButtonItems)
+          if (item.type == ContextMenuButtonType.paste)
+            ContextMenuButtonItem(
+              type: ContextMenuButtonType.paste,
+              label: item.label,
+              onPressed: () {
+                editableTextState.hideToolbar();
+                unawaited(_handlePaste());
+              },
+            )
+          else
+            item,
+      ],
+    );
   }
 
   void _submit() {
@@ -363,58 +436,70 @@ class _SessionComposerState extends State<SessionComposer> {
                       minHeight: 32,
                       maxHeight: 160,
                     ),
-                    child: Focus(
-                      onKeyEvent: _handleComposerKeyEvent,
-                      child: Semantics(
-                        identifier: 'session-composer-message',
-                        label: l10n.message,
-                        value: widget.controller.text,
-                        textField: true,
-                        enabled: widget.enabled && !widget.pending,
-                        onTap: _focusNode.requestFocus,
-                        child: ExcludeSemantics(
-                          child: TextField(
-                            key: const Key('session-composer-input'),
-                            controller: widget.controller,
-                            focusNode: _focusNode,
-                            enabled: widget.enabled && !widget.pending,
-                            minLines: 1,
-                            maxLines: null,
-                            keyboardType: TextInputType.multiline,
-                            textInputAction: TextInputAction.newline,
-                            contentInsertionConfiguration:
-                                widget.onContentInserted == null
-                                ? null
-                                : ContentInsertionConfiguration(
-                                    allowedMimeTypes: const [
-                                      'image/png',
-                                      'image/jpeg',
-                                      'image/gif',
-                                      'image/webp',
-                                    ],
-                                    onContentInserted:
-                                        widget.onContentInserted!,
-                                  ),
-                            style: AppTypography.body(
-                              fontSize: AppTypography.composerInputFontSize,
-                              height: 1.35,
-                            ),
-                            decoration: InputDecoration(
-                              hintText: l10n.sendMessageHint,
-                              hintStyle: AppTypography.body(
+                    child: Actions(
+                      actions: <Type, Action<Intent>>{
+                        if (widget.onLongTextPasted != null)
+                          PasteTextIntent: CallbackAction<PasteTextIntent>(
+                            onInvoke: (intent) {
+                              unawaited(_handlePaste());
+                              return null;
+                            },
+                          ),
+                      },
+                      child: Focus(
+                        onKeyEvent: _handleComposerKeyEvent,
+                        child: Semantics(
+                          identifier: 'session-composer-message',
+                          label: l10n.message,
+                          value: widget.controller.text,
+                          textField: true,
+                          enabled: widget.enabled && !widget.pending,
+                          onTap: _focusNode.requestFocus,
+                          child: ExcludeSemantics(
+                            child: TextField(
+                              key: const Key('session-composer-input'),
+                              controller: widget.controller,
+                              focusNode: _focusNode,
+                              enabled: widget.enabled && !widget.pending,
+                              minLines: 1,
+                              maxLines: null,
+                              keyboardType: TextInputType.multiline,
+                              textInputAction: TextInputAction.newline,
+                              contentInsertionConfiguration:
+                                  widget.onContentInserted == null
+                                  ? null
+                                  : ContentInsertionConfiguration(
+                                      allowedMimeTypes: const [
+                                        'image/png',
+                                        'image/jpeg',
+                                        'image/gif',
+                                        'image/webp',
+                                      ],
+                                      onContentInserted:
+                                          widget.onContentInserted!,
+                                    ),
+                              contextMenuBuilder: _pasteToolbar,
+                              style: AppTypography.body(
                                 fontSize: AppTypography.composerInputFontSize,
-                                color: colors.onSurfaceVariant,
+                                height: 1.35,
                               ),
-                              filled: false,
-                              isDense: true,
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 4,
-                                vertical: 4,
+                              decoration: InputDecoration(
+                                hintText: l10n.sendMessageHint,
+                                hintStyle: AppTypography.body(
+                                  fontSize: AppTypography.composerInputFontSize,
+                                  color: colors.onSurfaceVariant,
+                                ),
+                                filled: false,
+                                isDense: true,
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 4,
+                                  vertical: 4,
+                                ),
+                                border: InputBorder.none,
+                                enabledBorder: InputBorder.none,
+                                focusedBorder: InputBorder.none,
+                                disabledBorder: InputBorder.none,
                               ),
-                              border: InputBorder.none,
-                              enabledBorder: InputBorder.none,
-                              focusedBorder: InputBorder.none,
-                              disabledBorder: InputBorder.none,
                             ),
                           ),
                         ),
