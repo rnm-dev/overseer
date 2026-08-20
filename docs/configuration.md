@@ -35,9 +35,15 @@ working instance.
 | `OVERSEER_PUBLIC_URL` | This instance's public origin, as a browser reaches it. |
 
 `OVERSEER_PUBLIC_URL` has a development fallback of `https://overseer.rnm.dev`
-— our own origin. Under `NODE_ENV=production` an unset value stops the boot
-instead: sign-in callbacks, peon enrollment and host validation all derive from
-it, so inheriting it would point another deployment's own people at our host.
+— our own origin — and leaving it unset stops the boot instead: sign-in
+callbacks, peon enrollment and host validation all derive from it, so inheriting
+it would point another deployment's own people at our host.
+
+The fallback is reachable only by saying so. An instance is production unless
+`NODE_ENV` names `development` or `test`, because a self-hosted instance is run
+in production nearly every time it is run at all, and forgetting the variable
+should not quietly relax a public origin's checks. Nothing needs to set it: the
+image already does, and the dev compose file names `development` itself.
 That refusal and the missing-`DATABASE_URL` refusal are the only two; see
 `configErrors()`.
 

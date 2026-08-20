@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 import express from "express";
-import { config } from "../infrastructure/config/index.js";
+import { config, isProduction } from "../infrastructure/config/index.js";
 import { SERVER_VERSION } from "../shared/serverVersion.js";
 import { operatorAuth } from "../routes/requestContext.js";
 import { agentRouter } from "../routes/agent.js";
@@ -30,7 +30,7 @@ export function isAllowedProductionHost(rawHost: string | undefined, publicUrl =
   return requestHost === publicHost;
 }
 
-export function createServer({ production = process.env.NODE_ENV === "production" }: { production?: boolean } = {}): express.Express {
+export function createServer({ production = isProduction }: { production?: boolean } = {}): express.Express {
   const app = express();
   // Express compiles and validates every named range/IP/CIDR here. The empty
   // array trusts nobody. Never use a hop count: a shorter direct-origin path

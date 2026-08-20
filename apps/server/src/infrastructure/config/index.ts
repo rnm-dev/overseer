@@ -106,9 +106,19 @@ export const config: Config = {
  * theirs. Everything else — a missing door, no voice provider, an unreadable
  * push credential — is a valid if reduced deployment and only warns.
  */
+/**
+ * Production unless something says otherwise.
+ *
+ * A self-hosted instance is run in production almost every time it is run at
+ * all, so that is the default: forgetting to set NODE_ENV should not quietly
+ * relax a public origin's checks, and the image sets it anyway. `development`
+ * and `test` are the two deliberate exceptions, both of which name themselves.
+ */
+export const isProduction = process.env.NODE_ENV !== "development" && process.env.NODE_ENV !== "test";
+
 export function configErrors(): string[] {
   const e: string[] = [];
-  if (process.env.NODE_ENV === "production" && !publicUrlFromEnv)
+  if (isProduction && !publicUrlFromEnv)
     e.push(`OVERSEER_PUBLIC_URL is not set — it would fall back to ${DEV_PUBLIC_URL}, and every operator callback and peon enrollment URL derives from it. Set it to this instance's own public origin.`);
   if (!config.databaseUrl)
     e.push("DATABASE_URL is not set — Overseer has no meaningful degraded mode without its system-of-record.");
@@ -122,7 +132,7 @@ export function configWarnings(): string[] {
   // Which doors exist, and any half-configured one, is decided by the auth
   // resolver; this only reports what it found.
   w.push(...config.auth.warnings);
-  if (process.env.NODE_ENV === "production" && config.trustedProxies.length === 0)
+  if (isProduction && config.trustedProxies.length === 0)
     w.push("OVERSEER_TRUSTED_PROXIES is empty — forwarded client addresses are ignored and public abuse limits use the socket peer.");
   // An unconfigured or half-configured voice stage is a boot-time warning, not
   // a request-time failure: clients read /api/v1/voice/capabilities and simply
