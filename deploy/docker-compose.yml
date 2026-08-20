@@ -43,7 +43,7 @@ services:
     # Pin a version rather than tracking a moving tag: an upgrade should be a
     # decision, and the schema migrations that run on boot are one-way. What a
     # version number promises is in docs/releasing.md.
-    image: vibze/overseer:0.1.0
+    image: rnmdev/overseer:0.1.0
     restart: unless-stopped
     depends_on:
       postgres:
@@ -63,7 +63,13 @@ services:
       OVERSEER_PUBLIC_URL: https://overseer.example.com
 
       # ── Sign in — at least one, or nobody can log in ─────────────────────
-      # Email + password. Opens registration as well as sign-in.
+      # Who may become an account: "open" (anyone who reaches this instance) or
+      # "invite". Under "invite", stand the instance up with no public door at
+      # all: `docker compose exec app overseer admin bootstrap "Acme"` prints a
+      # one-time owner link. OIDC is not governed by this — a configured
+      # single-tenant issuer is itself the invitation.
+      OVERSEER_SIGNUP: invite
+      # Email + password. Sign-in always; registration only as OVERSEER_SIGNUP allows.
       OVERSEER_PASSWORD_AUTH: "1"
       # GitHub OAuth. Register <public-url>/auth/github/callback with the app.
       #OVERSEER_GITHUB_CLIENT_ID: ""

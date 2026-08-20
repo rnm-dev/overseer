@@ -39,7 +39,16 @@ interface RedirectProvider<Settings extends RedirectSettings> {
   webCallback: () => string;
   /** The provider refused, or the person declined, before we saw a code. */
   denied: { code: string; error: string; nativeError: string };
-  start: (params: { flow: "web" | "native"; callback: string; settings: Settings }) => Promise<OauthStartResult>;
+  start: (params: {
+    flow: "web" | "native";
+    callback: string;
+    settings: Settings;
+    // An invitation presented at the start, kept with the attempt so an
+    // invite-only instance can still admit an invited person through a flow
+    // that creates their account only at the end. OIDC ignores it: its issuer
+    // is the invitation.
+    inviteToken?: string | null;
+  }) => Promise<OauthStartResult>;
   complete: (
     attempt: OauthAttempt,
     state: string,
@@ -133,7 +142,7 @@ function mountRedirectProvider<S extends RedirectSettings>(router: express.Route
     const settings = provider.settings(res);
     if (!settings) return;
     try {
-      res.json(await provider.start({ flow: "web", callback: provider.webCallback(), settings }));
+      res.json(await provider.start({ flow: "web", callback: provider.webCallback(), settings, inviteToken: text(req.body?.invite) || null }));
     } catch (err) {
       refuseSignIn(provider, res, err);
     }
@@ -146,7 +155,7 @@ function mountRedirectProvider<S extends RedirectSettings>(router: express.Route
     const callback = allowedNativeCallback(settings.nativeCallbacks, req.body?.callback);
     if (!callback) return res.status(400).json({ error: "callback is not allowed", code: "INVALID_CALLBACK" });
     try {
-      res.json(await provider.start({ flow: "native", callback, settings }));
+      res.json(await provider.start({ flow: "native", callback, settings, inviteToken: text(req.body?.invite) || null }));
     } catch (err) {
       refuseSignIn(provider, res, err);
     }

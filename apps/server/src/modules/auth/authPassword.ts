@@ -1,7 +1,8 @@
 import { randomBytes, randomUUID, scrypt as scryptCallback, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
 import { query } from "../../infrastructure/db/index.js";
-import { ensureDefaultWorkspace } from "../workspaces/index.js";
+import { acceptInvite, ensureDefaultWorkspace } from "../workspaces/index.js";
+import { SIGNUP_CLOSED, mayCreateAccount } from "./signupPolicy.js";
 import { issueDevice } from "./authDevices.js";
 import { getUserById } from "./authUsers.js";
 import type { ClientInfo, PasswordSignInResult, UserRecord } from "./authTypes.js";
@@ -108,9 +109,14 @@ async function signIn(user: UserRecord, client: ClientInfo): Promise<PasswordSig
   return { token, user, device };
 }
 
-export async function registerWithPassword(input: { email: unknown; password: unknown; client: ClientInfo }): Promise<PasswordSignInResult> {
+export async function registerWithPassword(input: { email: unknown; password: unknown; invite?: unknown; client: ClientInfo }): Promise<PasswordSignInResult> {
   const email = normalizeEmail(input.email);
   if (!email) throw new PasswordAuthError(400, "INVALID_EMAIL", "a valid email address is required");
+  // Before the password is even judged: on a closed instance an uninvited
+  // request should learn nothing about what this one would have accepted.
+  if (!(await mayCreateAccount(input.invite))) {
+    throw new PasswordAuthError(403, SIGNUP_CLOSED.code, SIGNUP_CLOSED.message);
+  }
   const complaint = passwordComplaint(input.password);
   if (complaint) throw new PasswordAuthError(400, "WEAK_PASSWORD", complaint);
   const password = input.password as string;
@@ -135,6 +141,10 @@ export async function registerWithPassword(input: { email: unknown; password: un
 
   const user = await getUserById(id);
   if (!user) throw new Error("registerWithPassword: row vanished after insert");
+  // The invitation that permitted this account is spent on it, so the person
+  // lands in the workspace they were invited to instead of a personal one.
+  const invite = typeof input.invite === "string" ? input.invite.trim() : "";
+  if (invite) await acceptInvite(invite, user.id);
   await ensureDefaultWorkspace(user.id, user.email);
   return signIn(user, input.client);
 }

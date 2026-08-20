@@ -3,7 +3,8 @@ import { query } from "../../infrastructure/db/index.js";
 import type { GithubAuthSettings, OidcAuthSettings } from "../../infrastructure/auth/index.js";
 import { exchangeCodeForProfile } from "../../infrastructure/github/index.js";
 import { OidcError, buildAuthorizationUrl, exchangeCodeForIdentity } from "../../infrastructure/oidc/index.js";
-import { ensureDefaultWorkspace, ensureIssuerWorkspace, joinWorkspaceBySlug } from "../workspaces/index.js";
+import { acceptInvite, ensureDefaultWorkspace, ensureIssuerWorkspace, joinWorkspaceBySlug } from "../workspaces/index.js";
+import { mayCreateAccount } from "./signupPolicy.js";
 import { ensureUserFromGithub, ensureUserFromOidc, getUserById } from "./authUsers.js";
 import { issueDevice } from "./authDevices.js";
 import type {
@@ -39,10 +40,11 @@ async function recordAttempt(params: {
   now: number;
   nonceDigest?: string;
   codeVerifier?: string;
+  inviteToken?: string | null;
 }): Promise<void> {
   await query(
-    `INSERT INTO oauth_attempts (state_hash, flow, provider, callback_url, created_at, expires_at, nonce_hash, code_verifier)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+    `INSERT INTO oauth_attempts (state_hash, flow, provider, callback_url, created_at, expires_at, nonce_hash, code_verifier, invite_token)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
     [
       digest(params.state),
       params.flow,
@@ -52,6 +54,7 @@ async function recordAttempt(params: {
       params.now + OAUTH_STATE_TTL_MS,
       params.nonceDigest ?? null,
       params.codeVerifier ?? null,
+      params.inviteToken ?? null,
     ],
   );
 }
@@ -60,11 +63,15 @@ export async function startGithubAuthFlow(params: {
   flow: OAuthFlow;
   callback: string;
   settings: GithubAuthSettings;
+  // Carried through the redirect because the account is created at the end of a
+  // flow that began before anybody could present anything: on an invite-only
+  // instance the permission has to travel with the attempt.
+  inviteToken?: string | null;
   now?: number;
 }): Promise<OauthStartResult> {
   const state = opaque();
   const now = params.now ?? Date.now();
-  await recordAttempt({ state, flow: params.flow, provider: "github", callback: params.callback, now });
+  await recordAttempt({ state, flow: params.flow, provider: "github", callback: params.callback, now, inviteToken: params.inviteToken });
   const authorize = new URL("https://github.com/login/oauth/authorize");
   authorize.searchParams.set("client_id", params.settings.clientId);
   authorize.searchParams.set("scope", params.settings.scope);
@@ -80,9 +87,10 @@ export async function consumeOauthAttempt(state: string, now: number = Date.now(
     callback_url: string;
     nonce_hash: string | null;
     code_verifier: string | null;
+    invite_token: string | null;
   }>(
     `UPDATE oauth_attempts SET completed_at=$2 WHERE state_hash=$1 AND completed_at IS NULL AND expires_at >= $2
-     RETURNING flow, provider, callback_url, nonce_hash, code_verifier`,
+     RETURNING flow, provider, callback_url, nonce_hash, code_verifier, invite_token`,
     [digest(state), now],
   );
   const row = claimed.rows[0];
@@ -93,6 +101,7 @@ export async function consumeOauthAttempt(state: string, now: number = Date.now(
     callbackUrl: row.callback_url,
     nonceDigest: row.nonce_hash,
     codeVerifier: row.code_verifier,
+    inviteToken: row.invite_token,
   };
 }
 
@@ -133,7 +142,10 @@ export async function completeGithubSignIn(
   now = Date.now(),
 ): Promise<OAuthSignInCompletion> {
   const profile = await exchangeCodeForProfile(settings, code);
-  const user = await ensureUserFromGithub(profile);
+  const user = await ensureUserFromGithub(profile, await mayCreateAccount(attempt.inviteToken));
+  // Spent on the account it admitted, so an invited person lands in the
+  // workspace they were invited to rather than a personal one.
+  if (attempt.inviteToken) await acceptInvite(attempt.inviteToken, user.id);
   return finishSignIn(attempt, state, user, client, now);
 }
 

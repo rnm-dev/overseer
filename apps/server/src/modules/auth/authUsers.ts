@@ -14,7 +14,7 @@ import type { UserRecord } from "./authTypes.js";
  */
 export class AccountLinkError extends Error {
   constructor(
-    public code: "EMAIL_UNVERIFIED" | "IDENTITY_CONFLICT",
+    public code: "EMAIL_UNVERIFIED" | "IDENTITY_CONFLICT" | "SIGNUP_CLOSED",
     message: string,
   ) {
     super(message);
@@ -62,7 +62,7 @@ export async function getUserByGithubId(githubId: string): Promise<UserRecord | 
   return rows[0] ? rowToUser(rows[0]) : null;
 }
 
-export async function ensureUserFromGithub(profile: GithubProfile): Promise<UserRecord> {
+export async function ensureUserFromGithub(profile: GithubProfile, mayCreate = true): Promise<UserRecord> {
   const byGithub = await getUserByGithubId(profile.githubId);
   if (byGithub) {
     await query(`UPDATE users SET github_login = $2, avatar_url = $3, email = $4 WHERE id = $1`, [
@@ -83,6 +83,13 @@ export async function ensureUserFromGithub(profile: GithubProfile): Promise<User
       profile.avatarUrl,
     ]);
     return { ...byEmail, githubId: profile.githubId, githubLogin: profile.login, avatarUrl: profile.avatarUrl };
+  }
+
+  // Neither this GitHub identity nor its address is known here, so completing
+  // the flow means creating an account. On an invite-only instance that needs
+  // permission, and the caller decides whether one was presented.
+  if (!mayCreate) {
+    throw new AccountLinkError("SIGNUP_CLOSED", "this instance only accepts invited accounts");
   }
 
   const id = randomUUID();

@@ -983,4 +983,12 @@ export const MIGRATIONS: { id: string; statements: string[] }[] = [
       `CREATE UNIQUE INDEX IF NOT EXISTS workspaces_sso_issuer_idx ON workspaces (sso_issuer)`,
     ],
   },
+  {
+    // The invitation a redirect sign-in was started with, so that an instance
+    // with sign-up closed can still admit an invited person through GitHub:
+    // the account is created at the end of a flow that began before anyone
+    // could present anything, so the permission has to travel with the attempt.
+    id: "039_oauth_attempt_invite",
+    statements: [`ALTER TABLE oauth_attempts ADD COLUMN IF NOT EXISTS invite_token TEXT`],
+  },
 ];

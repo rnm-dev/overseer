@@ -1,13 +1,15 @@
 import assert from "node:assert/strict";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
-import { after, before, test } from "node:test";
+import { after, before, beforeEach, test } from "node:test";
 import type pg from "pg";
 import { newDb } from "pg-mem";
 import { config } from "../infrastructure/config/index.js";
 import { initDb, query } from "../infrastructure/db/index.js";
 import { hashPassword, verifyPassword } from "../modules/auth/index.js";
 import { createServer } from "../app/server.js";
+import { createInvite, createWorkspace } from "../modules/workspaces/index.js";
+import { forgetAttempts } from "./authMethodAccess.js";
 
 // Email + password registration and sign-in. Its own file (and so its own
 // process) because the routes' rate limiter is per-process and keyed by IP —
@@ -68,6 +70,11 @@ function request(path: string, method = "GET", body?: unknown, headers: Record<s
     req.end(encoded);
   });
 }
+
+// Five registrations and ten sign-ins a minute is real behaviour, but it is not
+// what this suite is about: without this, adding a test turns an unrelated
+// assertion into 429.
+beforeEach(forgetAttempts);
 
 test("a scrypt hash verifies its own password and rejects every other", async () => {
   const stored = await hashPassword("correct horse battery");
@@ -170,6 +177,58 @@ test("the environment switch closes both routes and drops the method from discov
     }
   } finally {
     config.auth = { ...config.auth, password: true };
+  }
+});
+
+// An instance on a public origin should be able to decide that only invited
+// people get accounts, without giving up the password door entirely.
+test("invite-only registration refuses an uninvited address", async () => {
+  config.auth = { ...config.auth, signup: "invite" };
+  try {
+    const refused = await request("/api/auth/password/register", "POST", {
+      email: "uninvited@example.test",
+      password: "correct horse battery",
+    });
+    assert.equal(refused.status, 403);
+    assert.equal(refused.body.code, "SIGNUP_CLOSED");
+    const { rows } = await query(`SELECT 1 FROM users WHERE email = $1`, ["uninvited@example.test"]);
+    assert.equal(rows.length, 0);
+  } finally {
+    config.auth = { ...config.auth, signup: "open" };
+  }
+});
+
+// The invitation is the capability, and it is spent on the account it admitted:
+// the person lands in the workspace they were invited to, not a personal one.
+test("an invitation admits exactly one account and puts it in that workspace", async () => {
+  const workspace = await createWorkspace("Invited Team", "some-existing-owner");
+  const invite = await createInvite(workspace.id, "member", null, "test");
+  config.auth = { ...config.auth, signup: "invite" };
+  try {
+    const created = await request("/api/auth/password/register", "POST", {
+      email: "invited@example.test",
+      password: "correct horse battery",
+      invite: invite.token,
+    });
+    assert.equal(created.status, 201);
+    const rows = await query<{ slug: string; role: string }>(
+      `SELECT w.slug, m.role FROM workspace_members m
+         JOIN workspaces w ON w.id = m.workspace_id
+         JOIN users u ON u.id = m.user_id
+        WHERE u.email = $1`,
+      ["invited@example.test"],
+    );
+    assert.deepEqual(rows.rows, [{ slug: workspace.slug, role: "member" }]);
+
+    // Spent: the same link cannot admit a second account.
+    const replay = await request("/api/auth/password/register", "POST", {
+      email: "second@example.test",
+      password: "correct horse battery",
+      invite: invite.token,
+    });
+    assert.equal(replay.status, 403);
+  } finally {
+    config.auth = { ...config.auth, signup: "open" };
   }
 });
 

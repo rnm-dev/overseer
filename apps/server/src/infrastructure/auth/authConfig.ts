@@ -77,11 +77,26 @@ export interface OidcAuthSettings {
   provisionWorkspace: boolean;
 }
 
+/**
+ * Who may become an account here.
+ *
+ * `open` is the historical behaviour and the default: anyone who can reach the
+ * instance can register. `invite` means an identity with no account needs an
+ * invitation to become one — which is a decision a self-hosted instance on a
+ * public origin should be able to make.
+ */
+export type SignupMode = "open" | "invite";
+
 export interface AuthConfig {
   // null = this instance has no such door. Availability is this, and only this.
   github: GithubAuthSettings | null;
   oidc: OidcAuthSettings | null;
   password: boolean;
+  // Governs the doors with no directory behind them — password registration and
+  // GitHub. OIDC is exempt on purpose: a configured single-tenant issuer is
+  // itself the invitation, since the instance named that directory and an
+  // administrator there assigned the account.
+  signup: SignupMode;
   // How long an issued device token lives — the same token whichever door
   // issued it.
   deviceTokenTtlMs: number;
@@ -231,6 +246,7 @@ export function resolveAuthConfig(env: NodeJS.ProcessEnv, publicUrl: string): Au
   // Registration and sign-in share the switch: an instance that does not want
   // local accounts must not accept new ones either.
   const password = trimmed(env, "OVERSEER_PASSWORD_AUTH") === "1";
+  const signup: SignupMode = trimmed(env, "OVERSEER_SIGNUP") === "invite" ? "invite" : "open";
   if (!github && !password && !oidc) {
     warnings.push(
       "No sign-in method is configured (OVERSEER_GITHUB_CLIENT_ID / OVERSEER_GITHUB_CLIENT_SECRET, OVERSEER_PASSWORD_AUTH, OVERSEER_OIDC_ISSUER) — nobody can log in.",
@@ -240,6 +256,7 @@ export function resolveAuthConfig(env: NodeJS.ProcessEnv, publicUrl: string): Au
     github,
     oidc,
     password,
+    signup,
     deviceTokenTtlMs: positiveNumber(env, "OVERSEER_DEVICE_TOKEN_TTL_MS", 90 * 24 * 60 * 60_000),
     warnings,
   };

@@ -15,6 +15,9 @@ export interface OauthAttempt {
   /** OIDC only: what the returning id token must carry, and the PKCE secret. */
   nonceDigest: string | null;
   codeVerifier: string | null;
+  // The invitation this flow was started with, on an instance that only accepts
+  // invited accounts. Null everywhere else.
+  inviteToken: string | null;
 }
 
 export interface WebSignInResult {

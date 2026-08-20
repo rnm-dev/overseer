@@ -40,6 +40,7 @@ config.auth.password  boolean                     // OVERSEER_PASSWORD_AUTH=1
 | `OVERSEER_OIDC_WORKSPACE_CLAIM` | claim naming the workspaces an operator joins, when one directory holds several teams |
 | `OVERSEER_OIDC_PROVISION_WORKSPACE=1` | this directory gets a workspace of its own, made by whoever arrives from it first |
 | `OVERSEER_PASSWORD_AUTH=1` | email + password is on, for registration and sign-in together |
+| `OVERSEER_SIGNUP` | `open` (default) or `invite` — see [who may become an account](#who-may-become-an-account) |
 | `OVERSEER_DEVICE_TOKEN_TTL_MS` | lifetime of the token every door issues, default 90 days |
 
 The issuer must be `https` and is normalised once — trailing slash removed — so
@@ -106,6 +107,50 @@ There is no `GET /api/auth/github/config`. It existed so the SPA could check for
 a client id before starting, which is a second opinion on a question
 `POST /api/auth/github/start` already answers — one round trip and one published
 client id for nothing.
+
+## Who may become an account
+
+Sign-up used to be open on every instance: anyone who could reach the origin
+could register a password account, or arrive with any GitHub account and end up
+holding one. It saw nothing until it joined a workspace, which is why this was
+tolerable — but "anyone may create an account here" should be a decision, not a
+consequence of turning a door on.
+
+`OVERSEER_SIGNUP=invite` closes it. An identity with no account cannot become one
+unless it presents a valid invitation; possession of the token is the capability,
+exactly as it already is for joining a workspace. The invitation is then spent on
+the account it admitted, so an invited person lands in the workspace they were
+invited to rather than a personal one. Refusals are `403 SIGNUP_CLOSED` on the
+password route and the same code through the redirect flow.
+
+An invitation has to survive the redirect. A GitHub account is created at the end
+of a flow that began before anyone could present anything, so `POST /api/auth/github/start`
+accepts an `invite` and stores it on the attempt row (`oauth_attempts.invite_token`),
+where completing the flow reads it back. Without that, an invite-only instance
+could invite nobody who did not already have an account — a rule with no way in.
+
+**OIDC is exempt, deliberately.** A configured single-tenant issuer *is* the
+invitation: this instance named that directory, `iss` is compared byte for byte,
+and an administrator there decided this person has an account. Gating it would
+also make [the directory's own workspace](#the-directorys-own-workspace)
+impossible, where the first arrival is supposed to bring the workspace into
+being. So an instance running only OIDC needs no invitations and no public door.
+
+### Standing an instance up
+
+The first account is the awkward one: there is nobody to invite anybody. That is
+what `overseer admin` is for, run inside the container, where being able to run
+it at all is the authority:
+
+```
+docker compose exec app overseer admin bootstrap "Acme"
+```
+
+It creates a workspace with no members and prints a one-time owner link. The
+account that redeems it owns the workspace, and no public door was ever opened.
+`invite`, `users`, `promote` and `demote` are there too — the last two are also
+the only answer to a workspace whose last owner has left, which nothing inside
+the product can fix.
 
 ## OpenID Connect
 

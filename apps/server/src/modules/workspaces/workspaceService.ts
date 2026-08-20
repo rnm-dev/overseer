@@ -7,6 +7,7 @@ import type {
   RemoveMemberResult,
   Role,
   UpdateRoleResult,
+  WorkspaceRecord,
   WorkspaceWithRole,
 } from "./workspaceTypes.js";
 
@@ -133,6 +134,26 @@ export async function ensureDefaultWorkspace(userId: string, email: string): Pro
 }
 
 /**
+ * A workspace with no members yet, for the operator standing an instance up.
+ *
+ * `createWorkspace` needs an owner, and at first boot there is nobody to be one:
+ * that is the whole difficulty the admin CLI exists to resolve. The workspace is
+ * claimed by whoever redeems the owner invitation printed alongside it, so it is
+ * unreachable rather than ownerless — nothing can be done inside it until
+ * somebody holds that link.
+ */
+export async function createUnclaimedWorkspace(name: string): Promise<WorkspaceRecord> {
+  const id = randomUUID();
+  const slug = await uniqueSlug(name);
+  const now = Date.now();
+  await query(
+    `INSERT INTO workspaces (id, name, slug, created_by, created_at) VALUES ($1, $2, $3, NULL, $4)`,
+    [id, name, slug, now],
+  );
+  return { id, name, slug, createdAt: now };
+}
+
+/**
  * The workspace a directory owns, made by whoever arrives from it first.
  *
  * Keyed by the issuer rather than by a name or a claim, because the issuer is
@@ -252,7 +273,7 @@ function rowToInvite(r: InviteRow): InviteRecord {
 // One link per pending member; accepting it consumes it permanently. The label
 // is display-only and deliberately is not matched against the accepting user's
 // GitHub email: possession of the private token is the invitation capability.
-export async function createInvite(workspaceId: string, role: Role, createdBy: string, inviteeLabel: string): Promise<InviteRecord> {
+export async function createInvite(workspaceId: string, role: Role, createdBy: string | null, inviteeLabel: string): Promise<InviteRecord> {
   const id = randomUUID();
   const token = newInviteToken();
   const now = Date.now();

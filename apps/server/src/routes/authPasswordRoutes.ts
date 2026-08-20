@@ -31,7 +31,7 @@ export function mountPasswordSignIn(router: express.Router): void {
     if (!passwordAuthOpen(res)) return;
     if (limited(req, "password-register", 5)) return tooManyAttempts(res, "sign-up attempts");
     try {
-      const result = await registerWithPassword({ email: req.body?.email, password: req.body?.password, client: clientInfo(req) });
+      const result = await registerWithPassword({ email: req.body?.email, password: req.body?.password, invite: req.body?.invite, client: clientInfo(req) });
       return answer(req, res, result, 201);
     } catch (err) {
       return refuse(res, err, "password registration");
