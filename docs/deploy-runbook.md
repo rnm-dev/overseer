@@ -463,7 +463,7 @@ remain the authority for *how* to change them.
 - **Tailnet** — `hs.rnm.dev`, MagicDNS suffix `mesh.rnm`. The production app
   container resolves and reaches Peons at `peon-*.mesh.rnm:4570`.
 - **Deploy** — Kamal 2, config `apps/server/config/deploy.yml`, service
-  `overseer`, registry image `vibze/overseer`. The Docker build context is the
+  `overseer`, registry image `rnmdev/overseer`. The Docker build context is the
   repository root (`builder.context: ../..`) because the npm workspaces keep a
   single lockfile there.
 - **App container** — pattern `overseer-web-<version>`, port 5000 on the kamal
@@ -544,12 +544,17 @@ local `overseerUrl` pointed at https://overseer-dev.rnm.dev first, keeping its
 existing dev credential — otherwise it calls production, where its credential is
 intentionally absent, gets 401 and de-recruits.
 
-## Known limitation: preview hostnames
+## Turned off: preview hostnames
 
-`*.preview.overseer.rnm.dev` points at 94.247.128.103 and the nginx/app routing
-is prepared, but HTTPS fails during the Cloudflare TLS handshake because the
-nested wildcard hostname is not covered by the available edge certificate. Do
-not treat tokenized web previews as production-ready until Cloudflare issues a
-suitable nested-host certificate or the preview hostname design is flattened.
-Dev `preview.overseer-dev.rnm.dev` is configured in the app but has no working
-wildcard DNS/nginx/TLS routing yet.
+Tokenized web previews are **off**, on 2026-08-20, by removing
+`OVERSEER_PREVIEW_DOMAIN` from production and from the dev instance. They never
+worked: `*.preview.overseer.rnm.dev` points at 94.247.128.103 and the nginx and
+app routing are prepared, but HTTPS fails during the Cloudflare TLS handshake
+because the nested wildcard is not covered by the available edge certificate.
+Dev never had working wildcard DNS at all.
+
+Nothing was removed. Setting the variable again turns the feature back on, and
+it is worth doing only once the nested host has a certificate or the hostname
+design is flattened to a single label. Until then the route answers
+`503 PREVIEWS_DISABLED`, the middleware claims no hosts, and an HTML artifact
+opens as its own source instead of a rendered page.

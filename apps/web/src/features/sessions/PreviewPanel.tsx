@@ -120,10 +120,15 @@ export function PreviewPanel({ base, sessionId, target, pinned, onPinnedChange, 
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ path: target.path }),
           });
-          if (!webRes.ok) throw await errorFrom(webRes);
-          const preview = await webRes.json() as { url: string };
-          if (!/^https:\/\/[a-f0-9]{32}\./.test(preview.url)) throw new ApiError(502, "INVALID_PREVIEW_URL", "Overseer returned an invalid preview URL");
-          if (!ctrl.signal.aborted) setWebUrl(preview.url);
+          // An instance that serves no previews is not an error to show a
+          // person: the file is still readable, so fall through to the source
+          // rather than replacing it with a message about a feature.
+          if (webRes.status !== 503) {
+            if (!webRes.ok) throw await errorFrom(webRes);
+            const preview = await webRes.json() as { url: string };
+            if (!/^https:\/\/[a-f0-9]{32}\./.test(preview.url)) throw new ApiError(502, "INVALID_PREVIEW_URL", "Overseer returned an invalid preview URL");
+            if (!ctrl.signal.aborted) setWebUrl(preview.url);
+          }
         } else if (isImage || isPdf) {
           const rawRes = await authorizedFetch(rawPath, ctrl.signal);
           if (!rawRes.ok) throw await errorFrom(rawRes);

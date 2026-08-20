@@ -90,9 +90,6 @@ services:
       # Push to mobile clients. Expo delivery needs no credential; this adds
       # the direct FCM path, as base64 of a Firebase service account.
       #OVERSEER_PUSH_FCM_CREDENTIALS: ""
-      # Isolated HTML artifact previews. Needs its own wildcard DNS record and
-      # a certificate covering the nested host.
-      #OVERSEER_PREVIEW_DOMAIN: preview.overseer.example.com
 
 volumes:
   overseer-postgres-data:

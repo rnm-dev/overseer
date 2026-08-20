@@ -6,7 +6,7 @@
 # this run state; only 8080 was independently verified Internet-reachable. An
 # ordinary app deploy does not authorize that shared-host mutation.
 service: overseer
-image: vibze/overseer
+image: rnmdev/overseer
 minimum_version: 2.12.0
 
 servers:
@@ -66,7 +66,6 @@ env:
     # to the default: opening local accounts on the production origin is a
     # decision, not something a config file should do quietly.
     OVERSEER_PASSWORD_AUTH: 1
-    OVERSEER_PREVIEW_DOMAIN: preview.overseer.rnm.dev
     OVERSEER_PREVIEW_TOKEN_TTL_MS: 600000
     OVERSEER_RECONCILE_INTERVAL_MS: 30000
     # Voice dictation. The preset resolves to Groq's OpenAI-compatible endpoint
