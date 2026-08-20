@@ -132,6 +132,24 @@ test("fleet settings fence stale writes and preserve explicit reasoning-effort r
   assert.match(((await invalid.json()) as { error: string }).error, /not valid for model/);
 });
 
+test("fleet settings validate an effort against the provider default after an explicit model reset", async (t) => {
+  const original = settings.get();
+  t.after(() => settings.update({ defaultAgent: original.defaultAgent, ai: original.ai }));
+  settings.update({
+    defaultAgent: "codex-app-server",
+    ai: { ...settings.get().ai, defaultModel: "gpt-5.4", defaultReasoningEffort: "xhigh" },
+  });
+  const response = await fetch(`${base}/settings`, {
+    method: "PATCH",
+    headers: await fencedHeaders(),
+    body: JSON.stringify({ aiDefaultModel: null, aiDefaultReasoningEffort: "ultra" }),
+  });
+  assert.equal(response.status, 200);
+  const body = await response.json() as { aiDefaultModel: string | null; aiDefaultReasoningEffort: string | null };
+  assert.equal(body.aiDefaultModel, null);
+  assert.equal(body.aiDefaultReasoningEffort, "ultra");
+});
+
 test("fleet API reads and edits a project's key, name, and folder through project settings", async () => {
   const label = "Folder Settings Project";
   const createdResponse = await fetch(`${base}/projects`, {

@@ -214,7 +214,9 @@ export class SettingsService extends EventEmitter {
         else if (patch.defaultAgent && current.ai.defaultModel !== null && !isModelForAgent(candidateAgent, current.ai.defaultModel)) {
             patch.ai = { ...current.ai, ...patch.ai, defaultModel: null };
         }
-        const effectiveModel = patch.ai?.defaultModel ?? current.ai.defaultModel;
+        const effectiveModel = patch.ai && Object.hasOwn(patch.ai, "defaultModel")
+            ? patch.ai.defaultModel
+            : current.ai.defaultModel;
         if ("aiDefaultReasoningEffort" in body) {
             const effort = parseEffortValue(body.aiDefaultReasoningEffort);
             if (effort === undefined)

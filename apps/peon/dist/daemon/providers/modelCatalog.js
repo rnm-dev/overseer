@@ -56,7 +56,11 @@ export function modelCatalog(defaultAgent, defaultModel, defaultReasoningEffort 
                     : { ...item, ...(_effortDefault ? { default: true } : {}) });
             return model.id === selected
                 ? { ...model, ...(reasoningEfforts ? { reasoningEfforts } : {}), default: true }
-                : { ...model, ...(reasoningEfforts ? { reasoningEfforts } : {}) };
+                : {
+                    ...model,
+                    ...(reasoningEfforts ? { reasoningEfforts } : {}),
+                    ...(driver.id !== defaultAgent && _default ? { default: true } : {}),
+                };
         });
         if (selected && !known)
             models.push({ id: selected, label: selected, default: true });
@@ -85,6 +89,14 @@ export function resolveModel(agent, turnModel, sessionModel, savedAgent, savedMo
         throw new Error(`Agent driver "${agent}" is not registered`);
     return driver.canonicalModel(turnModel) ?? driver.canonicalModel(sessionModel)
         ?? (savedAgent === agent ? driver.canonicalModel(savedModel) : undefined) ?? providerDefaultModel(agent);
+}
+export function resolveReasoningEffort(agent, turnEffort, sessionEffort, savedAgent, savedEffort, model) {
+    const driver = getAgentDriver(agent);
+    if (!driver)
+        throw new Error(`Agent driver "${agent}" is not registered`);
+    return driver.reasoningEffort(turnEffort, model)
+        ?? driver.reasoningEffort(sessionEffort, model)
+        ?? (savedAgent === agent ? driver.reasoningEffort(savedEffort, model) : undefined);
 }
 export function reasoningEffortsForModel(agent, model) {
     const driver = getAgentDriver(agent);

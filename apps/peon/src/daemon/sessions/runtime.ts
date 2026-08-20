@@ -7,7 +7,7 @@ import { runAgent, type AgentEvent, type AgentExit, type AgentRun } from "../age
 import { getAgentDriver, requireAgentDriver } from "../agents/index.js";
 import { projectStore } from "../projects/index.js";
 import { resolveFromDir } from "../files/index.js";
-import { narrowReasoningEffort, resolveModel, type ReasoningEffort } from "../providers/modelCatalog.js";
+import { resolveModel, resolveReasoningEffort, type ReasoningEffort } from "../providers/modelCatalog.js";
 import type {
   AttachmentInfo,
   PendingSystemPrompt,
@@ -465,11 +465,14 @@ export function runProcess(
   // the session's own default, then the peon-wide default. An empty global
   // default collapses to undefined ⇒ no --model flag ⇒ the CLI's own default.
   const model = resolveModel(record.agent, perTurnModel, record.model, currentSettings.defaultAgent, currentSettings.ai.defaultModel);
-  const requestedReasoningEffort = perTurnReasoningEffort
-    ?? record.reasoningEffort
-    ?? currentSettings.ai.defaultReasoningEffort
-    ?? undefined;
-  const reasoningEffort = narrowReasoningEffort(requestedReasoningEffort, record.agent, model);
+  const reasoningEffort = resolveReasoningEffort(
+    record.agent,
+    perTurnReasoningEffort,
+    record.reasoningEffort,
+    currentSettings.defaultAgent,
+    currentSettings.ai.defaultReasoningEffort,
+    model,
+  );
 
   // An explicit selection is sticky. The operator picked it in the composer for
   // this conversation, not for one message, and every surface that reads the
