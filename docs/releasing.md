@@ -36,6 +36,20 @@ exact version for the same reason.
 Git tags follow the existing per-application convention — `peon-v0.12.8`,
 `app-v1.0.0+8` — so the server is `server-vX.Y.Z`.
 
+## Where the notes live
+
+The public changelog is a page on the instructions site, `changelog/index.html`
+in the `overseer-website` repository, served at https://ovrseer.org/changelog/.
+It is not in this repository: a self-hoster deciding whether to pull a tag reads
+it before they have a checkout, and the release notes belong beside the
+documentation that made them want the upgrade. There is no `CHANGELOG.md` here
+to keep in step with it.
+
+The page is written for the person taking the upgrade, not from the commit log:
+what changed for them, and whether they can go back. Anything that makes a
+downgrade need a database restore is stated above the feature list, because that
+is the one thing they must read before pulling.
+
 ## Cutting a release
 
 1. Decide the number against the table above. Look at what the diff does to
@@ -69,7 +83,7 @@ see the [deploy runbook](deploy-runbook.md).
 
 ## What an operator can see
 
-`GET /healthz` answers `{"ok":true,"version":"0.1.0"}` and needs no
+`GET /healthz` answers `{"ok":true,"version":"0.2.0"}` and needs no
 authentication — it is the one route ahead of host validation, because
 container health probes cannot present the public authority. It is also the
 only place a self-hosting operator can read what they are running, which is why

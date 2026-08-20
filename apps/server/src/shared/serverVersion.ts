@@ -6,4 +6,4 @@
 // read is correct in one of the two and silently wrong in the other. The test
 // beside this file keeps the literal in step with apps/server/package.json,
 // which is what the release process actually bumps.
-export const SERVER_VERSION = "0.1.0";
+export const SERVER_VERSION = "0.2.0";
