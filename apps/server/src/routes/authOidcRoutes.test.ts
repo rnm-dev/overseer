@@ -87,7 +87,6 @@ before(async () => {
       redirectUri: "https://overseer.test/auth/oidc/callback",
       nativeCallbacks: ["overseer://oauth/oidc"],
       label: "id.rnm.test",
-      emailClaim: "email",
       joinWorkspace: null,
       workspaceClaim: null,
       provisionWorkspace: false,
@@ -287,16 +286,15 @@ test("a token that never mentions verification still signs its owner in", async 
   }
 });
 
-// The mailbox-less tenant, end to end: no `email` anywhere in the token, the
-// address taken from the claim the directory does send.
-test("an instance can take the address from the claim its provider sends", async () => {
+// The mailbox-less tenant, end to end: no `email` anywhere in the token, so the
+// address comes from `preferred_username` without anybody configuring it.
+test("the address falls back to the claim a mailbox-less directory does send", async () => {
   claimOverrides = {
     email: undefined,
     email_verified: undefined,
     sub: "entra-upn-subject",
     preferred_username: "Operator@tenant.onmicrosoft.test",
   };
-  config.auth.oidc!.emailClaim = "preferred_username";
   try {
     const state = await startWeb();
     const completed = await request("/api/auth/oidc", "POST", { state, code: "provider-code" });
@@ -306,23 +304,20 @@ test("an instance can take the address from the claim its provider sends", async
     const stored = await query(`SELECT id FROM users WHERE email = $1`, ["operator@tenant.onmicrosoft.test"]);
     assert.equal(stored.rows.length, 1);
   } finally {
-    config.auth.oidc!.emailClaim = "email";
     claimOverrides = {};
   }
 });
 
 // Accounts are found and linked by this value. A claim holding an id rather than
 // an address would key them on something no operator could type anywhere else.
-test("a claim that does not hold an address is refused, not turned into one", async () => {
+test("a claim that does not hold an address is skipped, not turned into one", async () => {
   claimOverrides = { email: undefined, sub: "opaque-subject", preferred_username: "not-an-address" };
-  config.auth.oidc!.emailClaim = "preferred_username";
   try {
     const state = await startWeb();
     const refused = await request("/api/auth/oidc", "POST", { state, code: "provider-code" });
     assert.equal(refused.status, 400);
     assert.equal(refused.body.code, "NO_EMAIL");
   } finally {
-    config.auth.oidc!.emailClaim = "email";
     claimOverrides = {};
   }
 });

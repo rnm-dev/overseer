@@ -103,7 +103,6 @@ test("a configured OIDC provider is discovered from the issuer alone", () => {
     redirectUri: "https://overseer.example/auth/oidc/callback",
     nativeCallbacks: ["overseer://oauth/oidc"],
     label: "id.rnm.dev",
-    emailClaim: "email",
     joinWorkspace: null,
     workspaceClaim: null,
     provisionWorkspace: false,
@@ -139,16 +138,6 @@ test("openid is always requested, whatever scope an operator sets", () => {
 test("the button label falls back to the issuer host and is otherwise the operator's", () => {
   assert.equal(resolveAuthConfig(env(OIDC), PUBLIC_URL).oidc?.label, "id.rnm.dev");
   assert.equal(resolveAuthConfig(env({ ...OIDC, OVERSEER_OIDC_LABEL: "RNM ID" }), PUBLIC_URL).oidc?.label, "RNM ID");
-});
-
-// A tenant whose accounts have no mailbox sends no `email` at all, but always a
-// `preferred_username`. Naming the claim is cheaper than making every such
-// directory grow optional claims to suit us.
-test("the address can be read from a claim this provider actually sends", () => {
-  const entra = { ...OIDC, OVERSEER_OIDC_EMAIL_CLAIM: "preferred_username" };
-  const auth = resolveAuthConfig(env(entra), PUBLIC_URL);
-  assert.equal(auth.oidc?.emailClaim, "preferred_username");
-  assert.deepEqual(auth.warnings, []);
 });
 
 test("the door can name the workspace its operators join", () => {

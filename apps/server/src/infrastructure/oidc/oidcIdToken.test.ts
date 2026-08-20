@@ -71,13 +71,12 @@ function claims(overrides: Record<string, unknown> = {}): Record<string, unknown
   };
 }
 
-function verify(idToken: string, options: { now?: number; emailClaim?: string } = {}) {
+function verify(idToken: string, options: { now?: number } = {}) {
   return verifyIdToken({
     idToken,
     metadata: METADATA,
     clientId: CLIENT_ID,
     expectedNonceDigest: nonceDigest(NONCE),
-    emailClaim: options.emailClaim,
     now: options.now ?? NOW,
   });
 }
@@ -170,11 +169,25 @@ test("an absent verification claim is trusted, an explicit denial is not", async
 
 // `email_verified` describes `email`. Reading the address from somewhere else
 // makes it a statement about a value nobody looked at, so it is not consulted.
-test("a custom address claim ignores the verification claim entirely", async () => {
+// `email` first, then the claims a directory uses when an account has no
+// mailbox. Nobody configures this — the chain is what makes naming the issuer
+// the whole of the configuration.
+test("the address falls back through preferred_username and upn", async () => {
   serveKeys([jwk(publicKey, "key-1")]);
-  const token = sign(claims({ email_verified: false, preferred_username: "someone@example.test" }));
-  const identity = await verify(token, { emailClaim: "preferred_username" });
-  assert.equal(identity.email, "someone@example.test");
+  const viaUsername = await verify(sign(claims({ email: undefined, preferred_username: "Someone@Example.test" })));
+  assert.equal(viaUsername.email, "someone@example.test");
+  const viaUpn = await verify(sign(claims({ email: undefined, upn: "other@example.test" })));
+  assert.equal(viaUpn.email, "other@example.test");
+  // A display name in preferred_username is skipped rather than coerced.
+  const skipped = await verify(sign(claims({ email: undefined, preferred_username: "Some One", upn: "one@example.test" })));
+  assert.equal(skipped.email, "one@example.test");
+});
+
+// `email_verified` speaks about `email` and nothing else, so an address that
+// came from elsewhere is not refused over it.
+test("a fallback address ignores the verification claim entirely", async () => {
+  serveKeys([jwk(publicKey, "key-1")]);
+  const identity = await verify(sign(claims({ email: undefined, email_verified: false, preferred_username: "someone@example.test" })));
   assert.equal(identity.emailVerified, true);
 });
 

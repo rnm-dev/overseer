@@ -44,14 +44,6 @@ export interface OidcAuthSettings {
   // What the sign-in button says. Defaults to the issuer's host, which is a
   // better name for a private provider than the word "OIDC".
   label: string;
-  // Which claim carries the operator's address. `email` by the specification,
-  // but a provider is free not to send it: Entra ID fills `email` from a mailbox
-  // an account may not have, while `preferred_username` holds the directory's
-  // own name for the person and is always there. Naming the claim is how an
-  // instance adapts to its provider instead of making every provider adapt to
-  // us — and it is only ever read as an address, so a claim holding something
-  // else is refused rather than turned into one.
-  emailClaim: string;
   // The workspace every operator who comes through this door joins, by slug, or
   // null for the personal workspace every other door produces. No claim decides
   // it: the issuer is single-tenant and compared byte for byte, so arriving here
@@ -205,7 +197,6 @@ function resolveOidc(
   if (!issuer) return null;
   const requested = (trimmed(env, "OVERSEER_OIDC_SCOPE") || "openid profile email").split(/\s+/).filter(Boolean);
   const scope = (requested.includes("openid") ? requested : ["openid", ...requested]).join(" ");
-  const emailClaim = trimmed(env, "OVERSEER_OIDC_EMAIL_CLAIM") || "email";
   return {
     issuer,
     clientId,
@@ -214,7 +205,6 @@ function resolveOidc(
     redirectUri: trimmed(env, "OVERSEER_OIDC_REDIRECT_URI") || `${publicUrl}/auth/oidc/callback`,
     nativeCallbacks: csv(env, "OVERSEER_OIDC_NATIVE_CALLBACKS", "overseer://oauth/oidc"),
     label: trimmed(env, "OVERSEER_OIDC_LABEL") || new URL(issuer).host,
-    emailClaim,
     joinWorkspace: trimmed(env, "OVERSEER_OIDC_JOIN_WORKSPACE") || null,
     workspaceClaim: trimmed(env, "OVERSEER_OIDC_WORKSPACE_CLAIM") || null,
     provisionWorkspace: trimmed(env, "OVERSEER_OIDC_PROVISION_WORKSPACE") === "1",

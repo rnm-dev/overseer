@@ -34,7 +34,6 @@ config.auth.password  boolean                     // OVERSEER_PASSWORD_AUTH=1
 | `OVERSEER_OIDC_REDIRECT_URI` | default `${OVERSEER_PUBLIC_URL}/auth/oidc/callback` |
 | `OVERSEER_OIDC_NATIVE_CALLBACKS` | allowlisted deep links, default `overseer://oauth/oidc` |
 | `OVERSEER_OIDC_LABEL` | what the button says, default the issuer's host |
-| `OVERSEER_OIDC_EMAIL_CLAIM` | which claim carries the address, default `email` |
 | `OVERSEER_OIDC_JOIN_WORKSPACE` | slug of the workspace everyone from this directory joins — see [joining a workspace](#joining-a-workspace) |
 | `OVERSEER_OIDC_WORKSPACE_CLAIM` | claim naming the workspaces an operator joins, when one directory holds several teams |
 | `OVERSEER_OIDC_PROVISION_WORKSPACE=1` | this directory gets a workspace of its own, made by whoever arrives from it first |
@@ -207,10 +206,9 @@ only, RS256 id tokens, PKCE `S256`, scopes `openid profile email workspace`.
   claim an operator's account with it. But **absent and `false` are different
   statements**: a provider that omits the claim has not spoken to the question,
   and this instance named its issuer, so the address is taken at face value.
-  `email_verified: false` is the provider speaking, and is believed. A custom
-  `OVERSEER_OIDC_EMAIL_CLAIM` skips the question entirely — `email_verified`
-  describes `email` and refusing over it would be refusing on a statement about
-  a value nobody read.
+  `email_verified: false` is the provider speaking, and is believed. It speaks
+  about `email`, so an address that came from a fallback claim is not refused
+  over a statement about a value nobody read.
 - **One account holds one OIDC identity.** A second subject arriving on a linked
   address is `IDENTITY_CONFLICT`, not a silent re-point.
 - **A rotated signing key is refetched once**, then not again for a minute, so a
@@ -338,16 +336,17 @@ What an app registration must provide, beyond the three OIDC variables:
 - a web redirect URI equal to `OVERSEER_OIDC_REDIRECT_URI` — the SPA callback
   page, `${OVERSEER_PUBLIC_URL}/auth/oidc/callback` by default;
 - a client secret, since the token request uses `client_secret_basic`;
-- an address the door can read. Entra ID fills `email` from the account's
-  mailbox, so a directory whose accounts have none sends the claim empty or not
-  at all and the door answers `400 NO_EMAIL`. Rather than making every such
-  tenant grow an optional claim to suit us, name the claim it does send:
-  `OVERSEER_OIDC_EMAIL_CLAIM=preferred_username`, which for a work account is the
-  UPN and is always present under scope `profile`.
+- an address the door can read — though for Entra this needs nothing. `email` is
+  filled from the account's mailbox, so a directory whose accounts have none
+  sends it empty or not at all; the door then falls back to `preferred_username`
+  and `upn`, which for a work account hold the UPN and are always present under
+  scope `profile`.
 
-Whatever claim it comes from, the value is only ever used as an address — it is
-what finds and links an account — so one that does not look like one is
-`400 NO_EMAIL` rather than a set of accounts keyed on a display name.
+The address is read from `email`, then `preferred_username`, then `upn` — the
+first that holds something shaped like an address. The value is only ever used
+as one, since it is what finds and links an account, so a claim carrying a
+display name or an opaque id is skipped rather than coerced; a token with
+nothing usable anywhere is `400 NO_EMAIL`.
 
 `OVERSEER_OIDC_LABEL` is worth setting here: the issuer host is
 `login.microsoftonline.com` for every tenant on earth, which is not the name of

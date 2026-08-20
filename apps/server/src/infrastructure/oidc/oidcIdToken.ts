@@ -45,6 +45,31 @@ interface IdTokenClaims {
   picture?: unknown;
 }
 
+// Where an operator's address may live, in the order they are tried. `email` is
+// the specification's answer and the only one `email_verified` describes.
+// Entra ID fills it from a mailbox an account need not have, and puts the
+// directory's own name for the person — the UPN, always present — in the next
+// two. Trying them in turn is what lets a directory be configured by naming it
+// and nothing else.
+const ADDRESS_CLAIMS = ["email", "preferred_username", "upn"] as const;
+
+/**
+ * The first claim that holds something shaped like an address.
+ *
+ * The value is only ever used as one: it is what finds an account and links it
+ * to an identity from another door. A claim carrying a display name or an
+ * opaque id is skipped rather than coerced, because keying accounts on a value
+ * no operator could type anywhere else is worse than refusing the sign-in.
+ */
+function operatorAddress(claims: Record<string, unknown>): { claim: string; value: string } | null {
+  for (const claim of ADDRESS_CLAIMS) {
+    const raw = claims[claim];
+    const value = typeof raw === "string" ? raw.trim().toLowerCase() : "";
+    if (value && /^[^\s@]+@[^\s@]+$/.test(value)) return { claim, value };
+  }
+  return null;
+}
+
 function decodeSegment(segment: string, what: string): Record<string, unknown> {
   try {
     const json = Buffer.from(segment, "base64url").toString("utf8");
@@ -109,8 +134,6 @@ export async function verifyIdToken(params: {
   metadata: OidcProviderMetadata;
   clientId: string;
   expectedNonceDigest: string;
-  // Where this provider puts the address. Defaults to the specification's claim.
-  emailClaim?: string;
   // Where it puts the workspaces this operator belongs to, if anywhere.
   workspaceClaim?: string | null;
   now?: number;
@@ -151,30 +174,22 @@ export async function verifyIdToken(params: {
 
   const subject = typeof claims.sub === "string" ? claims.sub : "";
   if (!subject) throw new OidcError("BAD_ID_TOKEN", "the id token has no subject");
-  const emailClaim = params.emailClaim || "email";
-  const claimed = (claims as Record<string, unknown>)[emailClaim];
-  const email = typeof claimed === "string" ? claimed.trim().toLowerCase() : "";
-  if (!email) throw new OidcError("NO_EMAIL", `the provider returned no address in ${emailClaim}`);
-  // Whatever claim it came from, it is about to be an address: accounts are found
-  // and linked by it. A claim naming something else — an id, a display name — is a
-  // misconfiguration that would otherwise key accounts on a value no operator
-  // could ever type at another door.
-  if (!/^[^\s@]+@[^\s@]+$/.test(email)) {
-    throw new OidcError("NO_EMAIL", `the ${emailClaim} claim does not hold an email address`);
+  const address = operatorAddress(claims as Record<string, unknown>);
+  if (!address) {
+    throw new OidcError("NO_EMAIL", `the id token carries no address in ${ADDRESS_CLAIMS.join(", ")}`);
   }
 
   return {
     issuer: params.metadata.issuer,
     subject,
-    email,
+    email: address.value,
     // An absent claim and an explicit `false` are different statements. A
     // provider that omits it — Entra ID omits it always — has not spoken to the
     // question, and this instance named that issuer, so the address it hands out
     // is taken at face value. A provider that says `false` has spoken, and is
-    // believed. Reading the address from another claim makes the question moot:
-    // `email_verified` describes `email` and nothing else, so refusing over it
-    // would be refusing on a statement about a value we never looked at.
-    emailVerified: emailClaim !== "email" || claims.email_verified !== false,
+    // believed. It speaks only about `email`, so an address that came from
+    // somewhere else is not refused over a statement about a value nobody read.
+    emailVerified: address.claim !== "email" || claims.email_verified !== false,
     name: typeof claims.name === "string" && claims.name.trim() ? claims.name.trim() : null,
     avatarUrl: typeof claims.picture === "string" && claims.picture.trim() ? claims.picture.trim() : null,
     workspaces: workspaceSlugs(claims as Record<string, unknown>, params.workspaceClaim),

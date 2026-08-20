@@ -111,7 +111,6 @@ export async function exchangeCodeForIdentity(params: {
     metadata,
     clientId: params.settings.clientId,
     expectedNonceDigest: params.expectedNonceDigest,
-    emailClaim: params.settings.emailClaim,
     workspaceClaim: params.settings.workspaceClaim,
     now: params.now,
   });
