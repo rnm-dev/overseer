@@ -76,10 +76,6 @@ services:
       #OVERSEER_OIDC_LABEL: ""
 
       # ── Network ─────────────────────────────────────────────────────────
-      # Which hops may supply X-Forwarded-For. This covers a reverse proxy on
-      # the same host or in a sibling container; widen it only for proxies you
-      # control, because an untrusted entry lets a client forge its own address.
-      OVERSEER_TRUSTED_PROXIES: loopback,linklocal,uniquelocal
       # Peons are told to phone home at OVERSEER_PUBLIC_URL. Set this only if
       # they reach the instance by a different name — a tailnet address, say.
       #OVERSEER_PEON_CALLBACK_URL: ""

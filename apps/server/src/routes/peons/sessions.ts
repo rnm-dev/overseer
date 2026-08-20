@@ -7,7 +7,7 @@ import {
   canAccessProject,
 } from "../../modules/access/index.js";
 import { ownerOnly, relay, withWorkspacePeon } from "../requestContext.js";
-import { mintWebPreview } from "../webPreview.js";
+import { PreviewsDisabledError, mintWebPreview } from "../webPreview.js";
 import { runIdempotentFollowup, validCommandId } from "../../modules/sessions/index.js";
 import { enrichTranscriptMetadata } from "../../modules/sessions/index.js";
 import { deleteIndexedSession, getIndexedSession } from "../../modules/sessions/index.js";
@@ -453,6 +453,11 @@ export function registerSessionRoutes(router: express.Router): void {
         userId: c.userId,
       }));
     } catch (err) {
+      // A disabled feature is not a bad request: the path may be perfectly good.
+      if (err instanceof PreviewsDisabledError) {
+        res.status(503).json({ error: err.message, code: "PREVIEWS_DISABLED" });
+        return;
+      }
       res.status(400).json({ error: err instanceof Error ? err.message : "invalid HTML preview path", code: "BAD_PREVIEW_PATH" });
     }
   }));

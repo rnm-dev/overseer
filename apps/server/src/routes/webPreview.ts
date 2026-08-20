@@ -37,6 +37,13 @@ function pruneGrants(now = Date.now()): void {
   }
 }
 
+/** An instance with no wildcard host cannot serve previews at all. */
+export class PreviewsDisabledError extends Error {
+  constructor() {
+    super("this instance serves no artifact previews — set OVERSEER_PREVIEW_DOMAIN");
+  }
+}
+
 export function mintWebPreview(input: {
   peonId: string;
   workspaceId: string;
@@ -45,6 +52,8 @@ export function mintWebPreview(input: {
   actor?: string | null;
   userId?: string | null;
 }): { url: string; expiresAt: number } {
+  const domain = config.previewDomain;
+  if (!domain) throw new PreviewsDisabledError();
   if (!path.posix.isAbsolute(input.htmlPath) || path.posix.extname(input.htmlPath).toLowerCase() !== ".html") {
     throw new Error("an absolute .html preview path is required");
   }
@@ -57,19 +66,22 @@ export function mintWebPreview(input: {
   do token = randomBytes(16).toString("hex"); while (grants.has(token));
   grants.set(token, { ...input, root, expiresAt });
   pruneGrants();
-  return { url: `https://${token}.${config.previewDomain}/${encodeURIComponent(path.posix.basename(canonicalHtml))}`, expiresAt };
+  return { url: `https://${token}.${domain}/${encodeURIComponent(path.posix.basename(canonicalHtml))}`, expiresAt };
 }
 
 function requestHost(req: Request): string {
   return (req.headers.host ?? "").split(":", 1)[0].toLowerCase().replace(/\.$/, "");
 }
 
+// An instance with no preview domain claims no hosts, so nothing can fall into
+// this middleware by accident.
 function isPreviewHost(req: Request): boolean {
-  return requestHost(req).endsWith(`.${config.previewDomain}`);
+  return config.previewDomain !== null && requestHost(req).endsWith(`.${config.previewDomain}`);
 }
 
 function previewToken(req: Request): string | null {
   const host = requestHost(req);
+  if (!config.previewDomain) return null;
   const suffix = `.${config.previewDomain}`;
   if (!host.endsWith(suffix)) return null;
   const token = host.slice(0, -suffix.length);

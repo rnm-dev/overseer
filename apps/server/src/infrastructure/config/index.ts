@@ -42,7 +42,10 @@ export interface Config {
   // Isolated HTML artifact previews are served from a sibling wildcard domain.
   // Each iframe gets an opaque, short-lived subdomain token; no Peon connection
   // details or credentials are encoded in the public URL.
-  previewDomain: string;
+  // null = this instance serves no artifact previews. Never a default value:
+  // the wildcard host has to exist in DNS and in a certificate, so an instance
+  // that has not been given one cannot have one.
+  previewDomain: string | null;
   previewTokenTtlMs: number;
 
   // Voice dictation. The resolution rules (presets, per-stage overrides, which
@@ -63,8 +66,8 @@ function num(name: string, fallback: number): number {
   return Number.isFinite(n) ? n : fallback;
 }
 
-function csv(name: string): string[] {
-  return (process.env[name] ?? "")
+function csv(name: string, fallback = ""): string[] {
+  return (process.env[name] || fallback)
     .split(",")
     .map((value) => value.trim())
     .filter(Boolean);
@@ -91,8 +94,12 @@ export const config: Config = {
   reconcileIntervalMs: num("OVERSEER_RECONCILE_INTERVAL_MS", 30_000),
   publicUrl,
   auth: resolveAuthConfig(process.env, publicUrl),
-  trustedProxies: csv("OVERSEER_TRUSTED_PROXIES"),
-  previewDomain: (process.env.OVERSEER_PREVIEW_DOMAIN ?? "preview.overseer.rnm.dev").toLowerCase().replace(/^\.+|\.+$/g, ""),
+  // Every supported deployment puts a reverse proxy on the same host or in a
+  // sibling container, so the private ranges are the default rather than a line
+  // every install has to copy. Widen it only for proxies you control: an
+  // untrusted entry lets a client forge its own address.
+  trustedProxies: csv("OVERSEER_TRUSTED_PROXIES", "loopback,linklocal,uniquelocal"),
+  previewDomain: (process.env.OVERSEER_PREVIEW_DOMAIN ?? "").toLowerCase().replace(/^\.+|\.+$/g, "") || null,
   previewTokenTtlMs: num("OVERSEER_PREVIEW_TOKEN_TTL_MS", 10 * 60_000),
   voice: resolveVoiceConfig(process.env),
   push: resolvePushConfig(process.env),
@@ -132,6 +139,8 @@ export function configWarnings(): string[] {
   // Which doors exist, and any half-configured one, is decided by the auth
   // resolver; this only reports what it found.
   w.push(...config.auth.warnings);
+  // Only an instance that set it to nothing lands here; the default covers the
+  // proxy every supported deployment has.
   if (isProduction && config.trustedProxies.length === 0)
     w.push("OVERSEER_TRUSTED_PROXIES is empty — forwarded client addresses are ignored and public abuse limits use the socket peer.");
   // An unconfigured or half-configured voice stage is a boot-time warning, not

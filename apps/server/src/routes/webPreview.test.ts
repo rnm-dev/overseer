@@ -7,7 +7,12 @@ import { newDb } from "pg-mem";
 import { setPool } from "../infrastructure/db/index.js";
 import { registry } from "../modules/fleet/index.js";
 import { createServer } from "../app/server.js";
-import { mintWebPreview } from "./webPreview.js";
+import { config } from "../infrastructure/config/index.js";
+import { PreviewsDisabledError, mintWebPreview } from "./webPreview.js";
+
+// Previews are off until an instance names a wildcard host, so this suite names
+// one — the feature cannot be exercised without the DNS record it implies.
+config.previewDomain = "preview.overseer.test";
 
 const servers: http.Server[] = [];
 after(async () => Promise.all(servers.map((server) => new Promise<void>((resolve) => server.close(() => resolve())))));
@@ -129,5 +134,20 @@ test("HTML preview grants proxy a rooted asset tree without exposing Peon creden
     assert.match(expired.body, /EXPIRED_PREVIEW/);
   } finally {
     Date.now = originalNow;
+  }
+});
+
+// The default is off, not our own domain: an instance that never set the
+// variable must not hand out preview URLs pointing at somebody else's host.
+test("an instance with no preview domain mints nothing", () => {
+  const configured = config.previewDomain;
+  config.previewDomain = null;
+  try {
+    assert.throws(
+      () => mintWebPreview({ peonId: "peon-1", workspaceId: "ws-1", sessionId: "sess", htmlPath: "/tmp/a/index.html" }),
+      PreviewsDisabledError,
+    );
+  } finally {
+    config.previewDomain = configured;
   }
 });
