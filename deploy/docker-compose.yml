@@ -63,13 +63,10 @@ services:
       OVERSEER_PUBLIC_URL: https://overseer.example.com
 
       # ── Sign in — at least one, or nobody can log in ─────────────────────
-      # Who may become an account: "open" (anyone who reaches this instance) or
-      # "invite". Under "invite", stand the instance up with no public door at
-      # all: `docker compose exec app overseer admin bootstrap "Acme"` prints a
-      # one-time owner link. OIDC is not governed by this — a configured
-      # single-tenant issuer is itself the invitation.
-      OVERSEER_SIGNUP: invite
-      # Email + password. Sign-in always; registration only as OVERSEER_SIGNUP allows.
+      # Email + password. Registration always needs an invitation, so start the
+      # instance with `docker compose exec app overseer admin bootstrap "Acme"`,
+      # which prints a one-time owner link. OIDC needs no invitation at all — a
+      # configured single-tenant issuer is itself one.
       OVERSEER_PASSWORD_AUTH: "1"
       # GitHub OAuth. Register <public-url>/auth/github/callback with the app.
       #OVERSEER_GITHUB_CLIENT_ID: ""

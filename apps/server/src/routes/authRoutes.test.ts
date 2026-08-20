@@ -7,6 +7,7 @@ import { newDb } from "pg-mem";
 import { config } from "../infrastructure/config/index.js";
 import { initDb } from "../infrastructure/db/index.js";
 import { createServer } from "../app/server.js";
+import { createInvite, createWorkspace } from "../modules/workspaces/index.js";
 
 let server: http.Server;
 let port: number;
@@ -63,6 +64,16 @@ after(async () => {
   await new Promise<void>((resolve) => server.close(() => resolve()));
 });
 
+// An account is only created for someone invited, so a flow that ends in a new
+// account carries an invitation from its start — the redirect is why it has to
+// travel with the attempt rather than be presented at the end.
+let invitations = 0;
+async function invitation(): Promise<string> {
+  invitations += 1;
+  const workspace = await createWorkspace(`Invited ${invitations}`, "some-existing-owner");
+  return (await createInvite(workspace.id, "member", null, "test")).token;
+}
+
 interface TestResponse {
   status: number;
   location?: string;
@@ -113,7 +124,7 @@ function started(response: TestResponse): { state: string; authorizationUrl: URL
 }
 
 test("web OAuth uses the shared frontend callback and completes through the API", async () => {
-  const { state } = started(await request("/api/auth/github/start", "POST"));
+  const { state } = started(await request("/api/auth/github/start", "POST", { invite: await invitation() }));
   const exchanged = await request("/api/auth/github", "POST", { state, code: "web-github-code" });
   assert.equal(exchanged.status, 200);
   assert.equal(exchanged.body.flow, "web");
@@ -158,7 +169,7 @@ test("web OAuth uses the shared frontend callback and completes through the API"
 });
 
 test("native OAuth uses the same frontend callback before opening the app scheme", async () => {
-  const { state } = started(await request("/api/auth/github/native/start", "POST", { callback: "overseer-dev://oauth/github" }));
+  const { state } = started(await request("/api/auth/github/native/start", "POST", { callback: "overseer-dev://oauth/github", invite: await invitation() }));
   const completed = await request("/api/auth/github", "POST", { state, code: "native-github-code" });
   assert.equal(completed.status, 200);
   assert.equal(completed.body.flow, "native");

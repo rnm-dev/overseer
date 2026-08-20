@@ -38,7 +38,6 @@ config.auth.password  boolean                     // OVERSEER_PASSWORD_AUTH=1
 | `OVERSEER_OIDC_WORKSPACE_CLAIM` | claim naming the workspaces an operator joins, when one directory holds several teams |
 | `OVERSEER_OIDC_PROVISION_WORKSPACE=1` | this directory gets a workspace of its own, made by whoever arrives from it first |
 | `OVERSEER_PASSWORD_AUTH=1` | email + password is on, for registration and sign-in together |
-| `OVERSEER_SIGNUP` | `open` (default) or `invite` — see [who may become an account](#who-may-become-an-account) |
 | `OVERSEER_DEVICE_TOKEN_TTL_MS` | lifetime of the token every door issues, default 90 days |
 
 The issuer must be `https` and is normalised once — trailing slash removed — so
@@ -108,18 +107,16 @@ client id for nothing.
 
 ## Who may become an account
 
-Sign-up used to be open on every instance: anyone who could reach the origin
-could register a password account, or arrive with any GitHub account and end up
-holding one. It saw nothing until it joined a workspace, which is why this was
-tolerable — but "anyone may create an account here" should be a decision, not a
-consequence of turning a door on.
+**Only an invitation makes an account.** Possession of the token is the
+capability, exactly as it already is for joining a workspace, and the invitation
+is spent on the account it admitted so an invited person lands in the workspace
+they were invited to. Refusals are `403 SIGNUP_CLOSED` on the password route and
+the same code through the redirect flow.
 
-`OVERSEER_SIGNUP=invite` closes it. An identity with no account cannot become one
-unless it presents a valid invitation; possession of the token is the capability,
-exactly as it already is for joining a workspace. The invitation is then spent on
-the account it admitted, so an invited person lands in the workspace they were
-invited to rather than a personal one. Refusals are `403 SIGNUP_CLOSED` on the
-password route and the same code through the redirect flow.
+There is no switch for this, because open registration was never a feature. An
+account that arrived uninvited belongs to no workspace and can therefore do
+nothing; letting strangers create them only fills the users table with rows
+nobody can use. Requiring the invitation loses nothing and closes the door.
 
 An invitation has to survive the redirect. A GitHub account is created at the end
 of a flow that began before anyone could present anything, so `POST /api/auth/github/start`

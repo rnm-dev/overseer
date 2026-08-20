@@ -8,6 +8,7 @@ import { config } from "../infrastructure/config/index.js";
 import { initDb, query } from "../infrastructure/db/index.js";
 import { hashPassword, verifyPassword } from "../modules/auth/index.js";
 import { createServer } from "../app/server.js";
+import { randomUUID } from "node:crypto";
 import { createInvite, createWorkspace } from "../modules/workspaces/index.js";
 import { forgetAttempts } from "./authMethodAccess.js";
 
@@ -76,6 +77,14 @@ function request(path: string, method = "GET", body?: unknown, headers: Record<s
 // assertion into 429.
 beforeEach(forgetAttempts);
 
+// Every account here needs an invitation now, so each test that makes one mints
+// its own. The link is the capability; what it opens is not what these tests are
+// about.
+async function invitation(): Promise<string> {
+  const workspace = await createWorkspace(`Invited ${randomUUID().slice(0, 8)}`, "some-existing-owner");
+  return (await createInvite(workspace.id, "member", null, "test")).token;
+}
+
 test("a scrypt hash verifies its own password and rejects every other", async () => {
   const stored = await hashPassword("correct horse battery");
   assert.ok(stored.startsWith("scrypt$"));
@@ -87,7 +96,7 @@ test("a scrypt hash verifies its own password and rejects every other", async ()
 });
 
 test("registration creates a cookie web session and never returns the token", async () => {
-  const registered = await request("/api/auth/password/register", "POST", { email: "  Founder@Example.Test ", password: "sufficiently-long" });
+  const registered = await request("/api/auth/password/register", "POST", { email: "  Founder@Example.Test ", password: "sufficiently-long", invite: await invitation() });
   assert.equal(registered.status, 201);
   assert.equal((registered.body.user as { email: string }).email, "founder@example.test");
   assert.equal(registered.body.token, undefined);
@@ -108,17 +117,17 @@ test("registration creates a cookie web session and never returns the token", as
 });
 
 test("the same email cannot be registered twice", async () => {
-  const again = await request("/api/auth/password/register", "POST", { email: "FOUNDER@example.test", password: "another-long-one" });
+  const again = await request("/api/auth/password/register", "POST", { email: "FOUNDER@example.test", password: "another-long-one", invite: await invitation() });
   assert.equal(again.status, 409);
   assert.equal(again.body.code, "EMAIL_TAKEN");
 });
 
 test("registration refuses a malformed email or a short password", async () => {
-  const badEmail = await request("/api/auth/password/register", "POST", { email: "not-an-email", password: "sufficiently-long" });
+  const badEmail = await request("/api/auth/password/register", "POST", { email: "not-an-email", password: "sufficiently-long", invite: await invitation() });
   assert.equal(badEmail.status, 400);
   assert.equal(badEmail.body.code, "INVALID_EMAIL");
 
-  const shortPassword = await request("/api/auth/password/register", "POST", { email: "short@example.test", password: "abc" });
+  const shortPassword = await request("/api/auth/password/register", "POST", { email: "short@example.test", password: "abc", invite: await invitation() });
   assert.equal(shortPassword.status, 400);
   assert.equal(shortPassword.body.code, "WEAK_PASSWORD");
 
@@ -180,11 +189,11 @@ test("the environment switch closes both routes and drops the method from discov
   }
 });
 
-// An instance on a public origin should be able to decide that only invited
-// people get accounts, without giving up the password door entirely.
-test("invite-only registration refuses an uninvited address", async () => {
-  config.auth = { ...config.auth, signup: "invite" };
-  try {
+// An account that arrived uninvited would belong to no workspace and could do
+// nothing, so the invitation is not a policy switch — it is the whole of what
+// makes an account worth creating.
+test("registration refuses an address nobody invited", async () => {
+  {
     const refused = await request("/api/auth/password/register", "POST", {
       email: "uninvited@example.test",
       password: "correct horse battery",
@@ -193,8 +202,6 @@ test("invite-only registration refuses an uninvited address", async () => {
     assert.equal(refused.body.code, "SIGNUP_CLOSED");
     const { rows } = await query(`SELECT 1 FROM users WHERE email = $1`, ["uninvited@example.test"]);
     assert.equal(rows.length, 0);
-  } finally {
-    config.auth = { ...config.auth, signup: "open" };
   }
 });
 
@@ -203,7 +210,6 @@ test("invite-only registration refuses an uninvited address", async () => {
 test("an invitation admits exactly one account and puts it in that workspace", async () => {
   const workspace = await createWorkspace("Invited Team", "some-existing-owner");
   const invite = await createInvite(workspace.id, "member", null, "test");
-  config.auth = { ...config.auth, signup: "invite" };
   try {
     const created = await request("/api/auth/password/register", "POST", {
       email: "invited@example.test",
@@ -228,7 +234,6 @@ test("an invitation admits exactly one account and puts it in that workspace", a
     });
     assert.equal(replay.status, 403);
   } finally {
-    config.auth = { ...config.auth, signup: "open" };
   }
 });
 

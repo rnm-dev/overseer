@@ -164,16 +164,6 @@ test("a directory gets its own workspace only when asked", () => {
   );
 });
 
-// The doors with no directory behind them can be closed to strangers without
-// being switched off. OIDC is not governed by this at all.
-test("sign-up is open unless an instance says invite", () => {
-  assert.equal(resolveAuthConfig(env({}), PUBLIC_URL).signup, "open");
-  assert.equal(resolveAuthConfig(env({ OVERSEER_SIGNUP: "invite" }), PUBLIC_URL).signup, "invite");
-  for (const nearly of ["", "closed", "INVITE", "1"]) {
-    assert.equal(resolveAuthConfig(env({ OVERSEER_SIGNUP: nearly }), PUBLIC_URL).signup, "open", nearly);
-  }
-});
-
 test("OIDC alone is a complete instance", () => {
   assert.deepEqual(resolveAuthConfig(env(OIDC), PUBLIC_URL).warnings, []);
 });
