@@ -87,7 +87,6 @@ before(async () => {
       redirectUri: "https://overseer.test/auth/oidc/callback",
       nativeCallbacks: ["overseer://oauth/oidc"],
       label: "id.rnm.test",
-      trustEmail: false,
       emailClaim: "email",
       joinWorkspace: null,
       workspaceClaim: null,
@@ -256,7 +255,9 @@ test("an OIDC state cannot be redeemed at the GitHub door", async () => {
   assert.equal(crossed.body.code, "BAD_STATE");
 });
 
-test("an unverified email is refused rather than linked", async () => {
+// An explicit `false` is the provider speaking, and it is believed — unlike an
+// absent claim, which it is not asked to have an opinion about.
+test("an email the provider calls unverified is refused rather than linked", async () => {
   claimOverrides = { email_verified: false, sub: "unverified-subject", email: "unverified@rnm.test" };
   try {
     const state = await startWeb();
@@ -270,13 +271,11 @@ test("an unverified email is refused rather than linked", async () => {
   }
 });
 
-// Entra ID never sends the claim, and its addresses are the directory's own, so
-// an instance pointed at one tenant can vouch for them. The door then signs the
-// person in on a token that says nothing about verification — which is why this
-// is a switch and not the default.
-test("an instance that trusts its issuer signs in an address the token never verified", async () => {
+// Entra ID never sends the claim. An absent `email_verified` is not the provider
+// saying "unverified", it is the provider not speaking to the question — and
+// this instance named that issuer, so its addresses are taken at face value.
+test("a token that never mentions verification still signs its owner in", async () => {
   claimOverrides = { email_verified: undefined, sub: "entra-subject", email: "operator@tenant.test" };
-  config.auth.oidc!.trustEmail = true;
   try {
     const state = await startWeb();
     const completed = await request("/api/auth/oidc", "POST", { state, code: "provider-code" });
@@ -284,7 +283,6 @@ test("an instance that trusts its issuer signs in an address the token never ver
     const stored = await query(`SELECT id FROM users WHERE email = $1`, ["operator@tenant.test"]);
     assert.equal(stored.rows.length, 1);
   } finally {
-    config.auth.oidc!.trustEmail = false;
     claimOverrides = {};
   }
 });
@@ -299,7 +297,6 @@ test("an instance can take the address from the claim its provider sends", async
     preferred_username: "Operator@tenant.onmicrosoft.test",
   };
   config.auth.oidc!.emailClaim = "preferred_username";
-  config.auth.oidc!.trustEmail = true;
   try {
     const state = await startWeb();
     const completed = await request("/api/auth/oidc", "POST", { state, code: "provider-code" });
@@ -310,7 +307,6 @@ test("an instance can take the address from the claim its provider sends", async
     assert.equal(stored.rows.length, 1);
   } finally {
     config.auth.oidc!.emailClaim = "email";
-    config.auth.oidc!.trustEmail = false;
     claimOverrides = {};
   }
 });
@@ -320,7 +316,6 @@ test("an instance can take the address from the claim its provider sends", async
 test("a claim that does not hold an address is refused, not turned into one", async () => {
   claimOverrides = { email: undefined, sub: "opaque-subject", preferred_username: "not-an-address" };
   config.auth.oidc!.emailClaim = "preferred_username";
-  config.auth.oidc!.trustEmail = true;
   try {
     const state = await startWeb();
     const refused = await request("/api/auth/oidc", "POST", { state, code: "provider-code" });
@@ -328,7 +323,6 @@ test("a claim that does not hold an address is refused, not turned into one", as
     assert.equal(refused.body.code, "NO_EMAIL");
   } finally {
     config.auth.oidc!.emailClaim = "email";
-    config.auth.oidc!.trustEmail = false;
     claimOverrides = {};
   }
 });

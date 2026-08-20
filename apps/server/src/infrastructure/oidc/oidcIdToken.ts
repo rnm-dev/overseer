@@ -167,9 +167,14 @@ export async function verifyIdToken(params: {
     issuer: params.metadata.issuer,
     subject,
     email,
-    // A provider that omits the claim has not told us the address is verified,
-    // and this is the claim account linking depends on — absent means false.
-    emailVerified: claims.email_verified === true,
+    // An absent claim and an explicit `false` are different statements. A
+    // provider that omits it — Entra ID omits it always — has not spoken to the
+    // question, and this instance named that issuer, so the address it hands out
+    // is taken at face value. A provider that says `false` has spoken, and is
+    // believed. Reading the address from another claim makes the question moot:
+    // `email_verified` describes `email` and nothing else, so refusing over it
+    // would be refusing on a statement about a value we never looked at.
+    emailVerified: emailClaim !== "email" || claims.email_verified !== false,
     name: typeof claims.name === "string" && claims.name.trim() ? claims.name.trim() : null,
     avatarUrl: typeof claims.picture === "string" && claims.picture.trim() ? claims.picture.trim() : null,
     workspaces: workspaceSlugs(claims as Record<string, unknown>, params.workspaceClaim),

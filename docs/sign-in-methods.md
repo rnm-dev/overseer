@@ -34,8 +34,7 @@ config.auth.password  boolean                     // OVERSEER_PASSWORD_AUTH=1
 | `OVERSEER_OIDC_REDIRECT_URI` | default `${OVERSEER_PUBLIC_URL}/auth/oidc/callback` |
 | `OVERSEER_OIDC_NATIVE_CALLBACKS` | allowlisted deep links, default `overseer://oauth/oidc` |
 | `OVERSEER_OIDC_LABEL` | what the button says, default the issuer's host |
-| `OVERSEER_OIDC_TRUST_EMAIL=1` | this instance vouches for the issuer's addresses when the issuer will not — see [Entra ID](#microsoft-entra-id) |
-| `OVERSEER_OIDC_EMAIL_CLAIM` | which claim carries the address, default `email`; needs the trust above, since `email_verified` describes no other claim |
+| `OVERSEER_OIDC_EMAIL_CLAIM` | which claim carries the address, default `email` |
 | `OVERSEER_OIDC_JOIN_WORKSPACE` | slug of the workspace everyone from this directory joins — see [joining a workspace](#joining-a-workspace) |
 | `OVERSEER_OIDC_WORKSPACE_CLAIM` | claim naming the workspaces an operator joins, when one directory holds several teams |
 | `OVERSEER_OIDC_PROVISION_WORKSPACE=1` | this directory gets a workspace of its own, made by whoever arrives from it first |
@@ -138,9 +137,15 @@ being. So an instance running only OIDC needs no invitations and no public door.
 
 ### Standing an instance up
 
-The first account is the awkward one: there is nobody to invite anybody. That is
-what `overseer admin` is for, run inside the container, where being able to run
-it at all is the authority:
+An instance with OIDC needs none of this: the first person from the directory
+signs in like any other, and with `OVERSEER_OIDC_PROVISION_WORKSPACE=1` their
+arrival is what creates the workspace they own. The exemption above and the
+provisioning are the same idea — the directory admitted them, so nothing here
+has to.
+
+Everywhere else the first account is the awkward one: there is nobody to invite
+anybody. That is what `overseer admin` is for, run inside the container, where
+being able to run it at all is the authority:
 
 ```
 docker compose exec app overseer admin bootstrap "Acme"
@@ -199,10 +204,13 @@ only, RS256 id tokens, PKCE `S256`, scopes `openid profile email workspace`.
 - **An unverified email is refused.** Identity is `(issuer, subject)`, but email
   is how an OIDC identity *meets* an account that already exists under another
   door. A provider that lets a person claim any address would otherwise let them
-  claim an operator's account with it. `email_verified` absent means false —
-  unless the instance has taken that judgement on itself with
-  `OVERSEER_OIDC_TRUST_EMAIL=1`, which is [Entra ID](#microsoft-entra-id)'s case
-  and nobody else's by default.
+  claim an operator's account with it. But **absent and `false` are different
+  statements**: a provider that omits the claim has not spoken to the question,
+  and this instance named its issuer, so the address is taken at face value.
+  `email_verified: false` is the provider speaking, and is believed. A custom
+  `OVERSEER_OIDC_EMAIL_CLAIM` skips the question entirely — `email_verified`
+  describes `email` and refusing over it would be refusing on a statement about
+  a value nobody read.
 - **One account holds one OIDC identity.** A second subject arriving on a linked
   address is `IDENTITY_CONFLICT`, not a silent re-point.
 - **A rotated signing key is refetched once**, then not again for a minute, so a
@@ -280,9 +288,9 @@ nothing.
 What makes this sound is who owns the claim. A role an administrator assigns is
 the directory speaking; a profile field its own subject can edit is not, and
 reading one would let anybody name any workspace and walk in. The setting is
-therefore the same kind of statement as `OVERSEER_OIDC_TRUST_EMAIL` — this
-instance trusts this claim from this issuer — and rests on the same single-tenant
-issuer.
+therefore a statement about this issuer — this instance trusts this claim from
+that directory — and rests on the same single-tenant issuer everything else here
+does.
 
 **A claim joins; it never creates.** A slug matching no workspace is logged and
 skipped, and the operator lands where they would have without it. Creating on
@@ -309,16 +317,13 @@ days; that single value closes more of the gap than the joining mechanism does.
 
 ### Microsoft Entra ID
 
-Entra ID is an OIDC provider, so the door above is the whole implementation —
-but it needs the one switch, because Entra ID's v2.0 id tokens do not carry
-`email_verified` at all. Left strict, `ensureUserFromOidc` refuses every Entra
-operator with `400 EMAIL_UNVERIFIED`. `OVERSEER_OIDC_TRUST_EMAIL=1` is the
-instance saying what the directory will not: no person in a tenant can assert an
-address of their own choosing, so the addresses it hands out are its own.
-
-The trust is applied in `completeOidcSignIn`, not in `verifyIdToken`. Token
-verification keeps reporting only what the token said, so this reads in the code
-as a deployment's decision rather than as a claim the provider never made.
+Entra ID is an OIDC provider, so the door above is the whole implementation, and
+since 2026-08-20 it needs no switch either. Entra's v2.0 id tokens carry no
+`email_verified` at all, and an absent claim is trusted: the instance named this
+issuer, no person in a tenant can assert an address of their own choosing, and
+the addresses the directory hands out are its own. A provider that does send
+`email_verified: false` is still refused — that is the difference between not
+speaking and saying no.
 
 **Only a single-tenant issuer.** `https://login.microsoftonline.com/<tenant-id>/v2.0`,
 with the directory (tenant) id in the path. The multi-tenant `/common`,
@@ -342,10 +347,7 @@ What an app registration must provide, beyond the three OIDC variables:
 
 Whatever claim it comes from, the value is only ever used as an address — it is
 what finds and links an account — so one that does not look like one is
-`400 NO_EMAIL` rather than a set of accounts keyed on a display name. And because
-`email_verified` is the provider's word about `email` and about no other claim,
-naming a different one without `OVERSEER_OIDC_TRUST_EMAIL=1` refuses every
-sign-in; the resolver says so at startup instead of leaving it to the door.
+`400 NO_EMAIL` rather than a set of accounts keyed on a display name.
 
 `OVERSEER_OIDC_LABEL` is worth setting here: the issuer host is
 `login.microsoftonline.com` for every tenant on earth, which is not the name of

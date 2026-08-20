@@ -71,18 +71,19 @@ function claims(overrides: Record<string, unknown> = {}): Record<string, unknown
   };
 }
 
-function verify(idToken: string, now = NOW) {
+function verify(idToken: string, options: { now?: number; emailClaim?: string } = {}) {
   return verifyIdToken({
     idToken,
     metadata: METADATA,
     clientId: CLIENT_ID,
     expectedNonceDigest: nonceDigest(NONCE),
-    now,
+    emailClaim: options.emailClaim,
+    now: options.now ?? NOW,
   });
 }
 
 async function refused(idToken: string, expected: string, now = NOW): Promise<void> {
-  await assert.rejects(() => verify(idToken, now), (err: Error & { code?: string }) => {
+  await assert.rejects(() => verify(idToken, { now }), (err: Error & { code?: string }) => {
     assert.equal(err.code, expected, `${err.message} (expected ${expected})`);
     return true;
   });
@@ -157,12 +158,24 @@ test("clock skew of under a minute is tolerated at both ends", async () => {
   assert.equal((await verify(justIssued)).subject, "user-42");
 });
 
-test("an unverified or absent email is reported, not silently trusted", async () => {
+// Saying nothing and saying no are different statements, and only one of them is
+// a refusal. Entra ID never sends the claim at all, and an instance that named
+// its issuer has already decided whose directory this is.
+test("an absent verification claim is trusted, an explicit denial is not", async () => {
   serveKeys([jwk(publicKey, "key-1")]);
   assert.equal((await verify(sign(claims({ email_verified: false })))).emailVerified, false);
-  // Absent means unverified: a provider that says nothing has not vouched.
-  assert.equal((await verify(sign(claims({ email_verified: undefined })))).emailVerified, false);
+  assert.equal((await verify(sign(claims({ email_verified: undefined })))).emailVerified, true);
   await refused(sign(claims({ email: undefined })), "NO_EMAIL");
+});
+
+// `email_verified` describes `email`. Reading the address from somewhere else
+// makes it a statement about a value nobody looked at, so it is not consulted.
+test("a custom address claim ignores the verification claim entirely", async () => {
+  serveKeys([jwk(publicKey, "key-1")]);
+  const token = sign(claims({ email_verified: false, preferred_username: "someone@example.test" }));
+  const identity = await verify(token, { emailClaim: "preferred_username" });
+  assert.equal(identity.email, "someone@example.test");
+  assert.equal(identity.emailVerified, true);
 });
 
 test("a token whose key is unknown does not verify, however often it is offered", async () => {
@@ -180,7 +193,7 @@ test("a token whose key is unknown does not verify, however often it is offered"
 
 test("a rotated key is picked up on the next unknown kid", async () => {
   serveKeys([jwk(other.publicKey, "key-2")]);
-  const identity = await verify(sign(claims(), { key: other.privateKey, header: { kid: "key-2" } }), NOW);
+  const identity = await verify(sign(claims(), { key: other.privateKey, header: { kid: "key-2" } }));
   assert.equal(identity.subject, "user-42");
   assert.notEqual(
     createHash("sha256").update(String(jwk(publicKey, "key-1").n)).digest("hex"),
