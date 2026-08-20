@@ -28,10 +28,21 @@ Publish immutable `X.Y.Z` only, plus the commit SHA as a second tag on the same
 image for our own debugging. That SHA convention already exists — the
 [deploy runbook](deploy-runbook.md) records production deploys by it.
 
-No `latest`, and no moving `stable`. With migrations that apply themselves on
-boot, a floating tag turns an ordinary container restart into an unrequested
-schema change on somebody else's database. `deploy/docker-compose.yml` pins an
-exact version for the same reason.
+`latest` moves with each release and is what the install template names, so an
+installation that never thinks about versions still gets the current one. No
+moving `stable` beside it: one floating tag is enough, and a second only invites
+a guess about which of them is meant.
+
+Know what `latest` costs before recommending it to anyone. Migrations apply
+themselves on boot, so a `docker compose pull` — or a restart that happens to
+re-resolve the tag — takes an upgrade nobody separately decided to take, and
+the 0.2.0 notes are exactly the kind of thing that has to be read first. The
+template says so where it names the tag, and points at the exact version to use
+instead. An operator who wants upgrades to be deliberate pins `X.Y.Z`; that is
+the reason the immutable tags exist and are never rewritten.
+
+Publishing a release therefore moves `latest` as well as pushing `X.Y.Z`. Do
+not move it to a build that has not been verified through step 6.
 
 Git tags follow the existing per-application convention — `peon-v0.12.8`,
 `app-v1.0.0+8` — so the server is `server-vX.Y.Z`.
@@ -57,7 +68,8 @@ is the one thing they must read before pulling.
 2. Bump `version` in the root `package.json`, `apps/server/package.json` and
    `apps/web/package.json`, and the four matching entries in
    `package-lock.json`. Update `SERVER_VERSION` in `apps/server/src/shared/serverVersion.ts`
-   — its neighbouring test fails if it drifts from the server manifest.
+   — its neighbouring test fails if it drifts from the server manifest — and the
+   exact version the install template offers as the alternative to `latest`.
 3. `npm run verify`.
 4. Commit and tag `server-vX.Y.Z`. Never build a release from a dirty working
    tree; the deploy runbook's safety invariants apply here too.
@@ -71,12 +83,19 @@ is the one thing they must read before pulling.
      -t "rnmdev/overseer:$(git rev-parse HEAD)" .
    ```
 
+   `latest` is deliberately not tagged here. It is moved in step 7, after the
+   image has been verified, so a build that fails verification never becomes
+   what a `docker compose pull` fetches.
+
 6. Verify the built image before it is public: run it against a throwaway
    Postgres, confirm `/healthz` reports `{"ok":true,"version":"X.Y.Z"}`, and
    confirm a foreign `Host` gets `421`.
-7. `docker push` both tags. This is publication — it is not part of an ordinary
-   deploy and needs a deliberate decision.
-8. Update the pinned tag in `deploy/docker-compose.yml`.
+7. `docker push` both tags, then move `latest` onto the same image and push it.
+   This is publication — it is not part of an ordinary deploy and needs a
+   deliberate decision, and moving `latest` is the half of it that reaches every
+   installation that never pinned.
+8. Publish the release notes on the instructions site, and check that the
+   version the install template offers as the pinned alternative is this one.
 
 Deploying our own production is a different procedure with its own approvals;
 see the [deploy runbook](deploy-runbook.md).

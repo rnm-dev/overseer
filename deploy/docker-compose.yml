@@ -40,10 +40,13 @@ services:
       retries: 10
 
   app:
-    # Pin a version rather than tracking a moving tag: an upgrade should be a
-    # decision, and the schema migrations that run on boot are one-way. What a
-    # version number promises is in docs/releasing.md.
-    image: rnmdev/overseer:0.1.0
+    # `latest` is the current release, which is what most installations want.
+    # Know what it costs: schema migrations run on boot and are one-way, so a
+    # `docker compose pull` picks up an upgrade you did not separately decide
+    # to take. Replace it with an exact version — rnmdev/overseer:0.2.0 — to
+    # make upgrading deliberate. What a version number promises is in
+    # docs/releasing.md, and the releases are at ovrseer.org/changelog/.
+    image: rnmdev/overseer:latest
     restart: unless-stopped
     depends_on:
       postgres:
