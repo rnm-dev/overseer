@@ -210,7 +210,7 @@ test("registration refuses an address nobody invited", async () => {
 test("an invitation admits exactly one account and puts it in that workspace", async () => {
   const workspace = await createWorkspace("Invited Team", "some-existing-owner");
   const invite = await createInvite(workspace.id, "member", null, "test");
-  try {
+  {
     const created = await request("/api/auth/password/register", "POST", {
       email: "invited@example.test",
       password: "correct horse battery",
@@ -233,7 +233,6 @@ test("an invitation admits exactly one account and puts it in that workspace", a
       invite: invite.token,
     });
     assert.equal(replay.status, 403);
-  } finally {
   }
 });
 
