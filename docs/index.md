@@ -140,6 +140,8 @@ The instructions site is a separate product in its own repository,
 at `/rnm/overseer-website` with its own `README.md`, `DESIGN.md` and `PRD.md`.
 Only the `site` dev service in `docker-compose.yml` remains here, building that
 sibling checkout on 127.0.0.1:4582 behind https://dev.ovrseer.org. Production is
-the apex `ovrseer.org` on Cloudflare Pages (project `ovrseer-site`, direct
-upload); as of 2026-08-12 the artifact and the DNS decision are ready but the
-Pages project does not exist yet — see OVSR-454.
+the apex https://ovrseer.org, live since 2026-08-20: nginx on nid-01 serving
+`/var/www/ovrseer.org` behind Cloudflare, deployed by rsyncing a local
+`npm run build`. Cloudflare Pages was the earlier plan and was dropped — the
+deploy, the TLS decision and the headers that `public/_headers` no longer
+delivers are all in that repository's `README.md`.

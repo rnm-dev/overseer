@@ -1,6 +1,6 @@
 # Releasing the server image
 
-The server and web SPA ship together as one public image, `vibze/overseer`.
+The server and web SPA ship together as one public image, `rnmdev/overseer`.
 This page is what a version number promises and how a release is made. Peon
 releases are separate and go through
 [the Peon update channel](peon-update-channel.md); the Flutter client has its
@@ -53,8 +53,8 @@ Git tags follow the existing per-application convention — `peon-v0.12.8`,
    ```sh
    docker build --pull --platform linux/amd64 \
      -f apps/server/Dockerfile \
-     -t vibze/overseer:X.Y.Z \
-     -t "vibze/overseer:$(git rev-parse HEAD)" .
+     -t rnmdev/overseer:X.Y.Z \
+     -t "rnmdev/overseer:$(git rev-parse HEAD)" .
    ```
 
 6. Verify the built image before it is public: run it against a throwaway
