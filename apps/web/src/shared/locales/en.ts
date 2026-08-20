@@ -206,6 +206,7 @@ export const en: Record<string, string> = {
   "file.saveShortcut": "Save (Ctrl/⌘ + S)",
   "file.closeEditor": "Done",
   "file.saveFailed": "Could not save the file.",
+  "file.unsaved": "Unsaved",
   "file.discardTitle": "Discard unsaved changes?",
   "file.discardBody": "{name} has changes that were never saved.",
   "file.discardConfirm": "Discard",

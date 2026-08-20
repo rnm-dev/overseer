@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Pencil } from "lucide-react";
 import { useParams } from "react-router";
 import { useT } from "../../shared/i18n";
-import { Button, Card, Dialog } from "../../shared/ui";
+import { Card } from "../../shared/ui";
 import { useSplitPane } from "../../shared/splitPane";
 import { useViewportFill } from "../../shared/viewportFill";
 import { usePeon } from "../fleet/context";
@@ -12,6 +12,7 @@ import { FileDownloadButton, FileView, useFileContent } from "./FileView";
 import { ProjectFileTree } from "./ProjectFiles";
 import { ProjectTabs } from "./ProjectTabs";
 import { ProjectPageHeader } from "./ProjectPageHeader";
+import { UnsavedChangesDialog } from "./UnsavedChangesDialog";
 
 const SPLIT_BOUNDS = { min: 200, max: 560, minTrailing: 320 };
 
@@ -129,41 +130,24 @@ export function ProjectFileBrowser() {
         </Card>
       </div>
       {pendingOpen && (
-        // Three answers, not two: the operator who edited a file and clicked
-        // another one usually meant to keep the work, and being offered only
-        // "discard or stay" makes losing it the easy path.
-        <Dialog title={t("file.discardTitle")} onClose={() => setPendingOpen(null)} dismissible={!editor.saving}>
-          <div className="mb-5 text-sm leading-relaxed text-ink-muted">{t("file.discardBody", { name: selected?.path ?? "" })}</div>
-          {editor.error && <p className="mb-4 font-mono text-xs text-danger">{editor.error}</p>}
-          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-            <Button variant="secondary" onClick={() => setPendingOpen(null)} disabled={editor.saving}>{t("action.cancel")}</Button>
-            <Button
-              variant="secondary"
-              className="!border-danger/50 !text-danger hover:!bg-danger/10"
-              disabled={editor.saving}
-              onClick={() => {
-                editor.discard();
-                setSelected(pendingOpen);
-                setPendingOpen(null);
-              }}
-            >
-              {t("file.discardConfirm")}
-            </Button>
-            <Button
-              autoFocus
-              disabled={editor.saving}
-              onClick={() => void editor.save().then((saved) => {
-                // A refused save keeps the dialog open with its error, rather
-                // than moving on and leaving the operator to guess.
-                if (!saved) return;
-                setSelected(pendingOpen);
-                setPendingOpen(null);
-              })}
-            >
-              {editor.saving ? t("file.saving") : t("file.save")}
-            </Button>
-          </div>
-        </Dialog>
+        <UnsavedChangesDialog
+          name={selected?.path ?? ""}
+          error={editor.error}
+          saving={editor.saving}
+          onCancel={() => setPendingOpen(null)}
+          onDiscard={() => {
+            editor.discard();
+            setSelected(pendingOpen);
+            setPendingOpen(null);
+          }}
+          onSave={() => void editor.save().then((saved) => {
+            // A refused save keeps the dialog open with its error, rather than
+            // moving on and leaving the operator to guess.
+            if (!saved) return;
+            setSelected(pendingOpen);
+            setPendingOpen(null);
+          })}
+        />
       )}
     </div>
   );

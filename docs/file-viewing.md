@@ -120,6 +120,17 @@ in the same top-right corner. Saving is the ordinary project upload — `PUT` of
 the draft over the same path — so it inherits the atomic commit, the size cap
 and the refusals every other write has.
 
+The same editor is in the preview modal a chat opens
+(`ProjectFilePreviewModal`): *Edit* sits in the title bar beside download and
+close, and becomes *Save* with *Cancel*/*Done* beside it while editing. The
+modal is one file rather than a pane over a tree, so closing it — the X, the
+backdrop, a failed save — is the moment a draft has to be asked about, and it
+asks with the same three-answer `UnsavedChangesDialog` the Files page uses when
+another file is opened. Which files may be written is not the surface's
+opinion: `fileWriteBase` answers with the project route that takes the `PUT`,
+and with `null` for an attachment or a session artifact, neither of which has
+one — so those are shown, never offered an editor.
+
 `fileEditing.ts` owns the gate and the state. `canEditFile` allows anything the
 app reads as text — the kinds it refuses are the ones it cannot render either,
 an image, a PDF, an archive — and only where the tree may write.

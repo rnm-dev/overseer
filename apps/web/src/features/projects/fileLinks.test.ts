@@ -6,6 +6,7 @@ import {
   fileDownloadUrl,
   fileKind,
   fileUrl,
+  fileWriteBase,
   isUnviewableFile,
   projectDirectoryListingPath,
 } from "./fileLinks";
@@ -81,4 +82,14 @@ test("a download names the bytes, not a session file's metadata", () => {
     fileDownloadUrl({ kind: "project", base, projectKey: "OVSR", path: "src/a b.zip" }),
     `/api${base}/projects/OVSR/files/src/a%20b.zip`,
   );
+});
+
+test("only a project route can be written back, and the base is the one the editor uploads to", () => {
+  assert.equal(fileWriteBase({ kind: "project", base, projectKey: "OVSR 1", path: "docs/a.md" }), `${base}/projects/OVSR%201/files`);
+  assert.equal(fileWriteBase({ kind: "projectById", base, projectId: "p 1", path: "docs/a.md" }), `${base}/projects/by-id/p%201/files`);
+  // An attachment and a session artifact are read-only here: neither route
+  // takes a PUT of a path relative to a base, so a surface showing one is
+  // never offered an editor.
+  assert.equal(fileWriteBase({ kind: "attachment", base, path: "/tmp/peon-files/uploads/a.txt" }), null);
+  assert.equal(fileWriteBase({ kind: "sessionFile", base, sessionId: "s1", path: "/tmp/out.txt" }), null);
 });

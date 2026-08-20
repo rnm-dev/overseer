@@ -206,6 +206,7 @@ export const ru: Record<string, string> = {
   "file.saveShortcut": "Сохранить (Ctrl/⌘ + S)",
   "file.closeEditor": "Готово",
   "file.saveFailed": "Не удалось сохранить файл.",
+  "file.unsaved": "Не сохранено",
   "file.discardTitle": "Отменить несохранённые изменения?",
   "file.discardBody": "В {name} есть изменения, которые не были сохранены.",
   "file.discardConfirm": "Отменить изменения",

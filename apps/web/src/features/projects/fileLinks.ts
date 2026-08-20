@@ -39,6 +39,22 @@ export function fileApiPath(source: FileSource): string {
 
 export const fileUrl = (source: FileSource): string => `/api${fileApiPath(source)}`;
 
+// Where a surface may write the file back. Only the project routes take a PUT
+// of a path relative to a base, which is what the editor uploads to; an
+// attachment or a session artifact is read-only here, so a surface showing one
+// is never offered an editor rather than offering one that cannot save.
+export function fileWriteBase(source: FileSource): string | null {
+  switch (source.kind) {
+    case "project":
+      return `${source.base}/projects/${encodeURIComponent(source.projectKey)}/files`;
+    case "projectById":
+      return `${source.base}/projects/by-id/${encodeURIComponent(source.projectId)}/files`;
+    case "attachment":
+    case "sessionFile":
+      return null;
+  }
+}
+
 // Saving a file always wants its bytes; the session-file route answers with
 // metadata unless the raw body is asked for by name.
 export const fileDownloadUrl = (source: FileSource): string =>

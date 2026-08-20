@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { ChevronRight, Check, Copy, Download, ExternalLink, Folder, FolderOpen, FolderUp, LoaderCircle, RefreshCw, Trash2, Upload, X } from "lucide-react";
+import { ChevronRight, Check, Copy, Download, ExternalLink, Folder, FolderOpen, FolderUp, LoaderCircle, Pencil, RefreshCw, Save, Trash2, Upload, X } from "lucide-react";
 import { ApiError } from "../../shared/api";
 import { useT } from "../../shared/i18n";
 import { ConfirmationDialog } from "../../shared/ui";
+import { CodeEditor } from "./CodeEditor";
+import { canEditFile, useFileEditor } from "./fileEditing";
 import { FileTypeIcon } from "./FileTypeIcon";
 import { FileDownloadButton, FileView, useFileContent } from "./FileView";
-import { fileDownloadUrl, fileName, formatFileSize, type FileSource } from "./fileLinks";
+import { fileDownloadUrl, fileName, fileWriteBase, formatFileSize, type FileSource } from "./fileLinks";
+import { UnsavedChangesDialog } from "./UnsavedChangesDialog";
 import { baseName, filesFromInput, parentPath, useFileTransfers, type DraggedEntry, type PendingUpload } from "./fileTransfers";
 import { requestProjectDirectory, type ProjectFileEntry } from "./projectDirectoryListing";
 
@@ -445,29 +448,92 @@ function FileTreeLoader({ depth, label }: { depth: number; label: string }) {
   );
 }
 
-export function ProjectFilePreviewModal({ source, path, size, viewerUrl, onClose }: { source: FileSource; path: string; size?: number; viewerUrl?: string; onClose: () => void }) {
+// A title-bar action: the same height and corner as the download and close
+// buttons beside it, so the row reads as one set of controls rather than a
+// button dropped into a header.
+const MODAL_ACTION = "flex h-8 flex-none items-center gap-1.5 rounded-lg border border-transparent px-2.5 font-display text-[0.7rem] font-semibold text-ink-muted transition-colors hover:border-edge-strong hover:bg-surface-hover hover:text-ink disabled:cursor-default disabled:opacity-45 disabled:hover:border-transparent disabled:hover:bg-transparent disabled:hover:text-ink-muted";
+const MODAL_ACTION_PRIMARY = "flex h-8 flex-none items-center gap-1.5 rounded-lg border border-accent/45 bg-accent/15 px-3 font-display text-[0.7rem] font-semibold text-accent-strong transition-colors hover:border-accent/70 hover:bg-accent/25 disabled:cursor-default disabled:opacity-45 disabled:hover:border-accent/45 disabled:hover:bg-accent/15";
+
+export function ProjectFilePreviewModal({ source, path, size, viewerUrl, writable = true, onClose }: {
+  source: FileSource;
+  path: string;
+  size?: number;
+  viewerUrl?: string;
+  // Whether the surface that opened the modal may write this file back. The
+  // gate still refuses anything the editor cannot represent, and a source with
+  // no write route is never editable whatever this says.
+  writable?: boolean;
+  onClose: () => void;
+}) {
   const t = useT();
   // An HTML file is shown by the tokenized web preview instead of being read
   // back as source, so the shared reader stays idle for it.
   const browserHtml = !!viewerUrl && /\.html?$/i.test(path);
-  const content = useFileContent({ source, size, fallback: "text", enabled: !browserHtml });
+  const [revision, setRevision] = useState(0);
+  const content = useFileContent({ source, size, fallback: "text", enabled: !browserHtml, revision });
+  const writeBase = fileWriteBase(source);
+  const editable = !browserHtml && canEditFile(content.kind, writable && !!writeBase);
+  const editor = useFileEditor({
+    filesBase: writeBase ?? "",
+    path,
+    original: content.text,
+    originalPath: content.path,
+    editable,
+    // What is on disk is no longer what was read, so the viewer reads again
+    // rather than rendering the draft it happens to still hold.
+    onSaved: () => setRevision((current) => current + 1),
+  });
+  // Closing the window is the one way out of this editor, so a draft has to be
+  // asked about here the way the Files page asks when another file is opened.
+  const [confirmClose, setConfirmClose] = useState(false);
+  const requestClose = () => editor.dirty ? setConfirmClose(true) : onClose();
 
   return createPortal(
-    <div className="fixed inset-0 z-50 grid place-items-center bg-[radial-gradient(circle_at_50%_18%,rgba(149,201,103,0.08),transparent_38%),rgba(2,4,3,0.82)] p-4 backdrop-blur-md" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+    <div className="fixed inset-0 z-50 grid place-items-center bg-[radial-gradient(circle_at_50%_18%,rgba(149,201,103,0.08),transparent_38%),rgba(2,4,3,0.82)] p-4 backdrop-blur-md" onMouseDown={(event) => event.target === event.currentTarget && requestClose()}>
       <section role="dialog" aria-modal="true" aria-label={path} className="relative flex h-[min(88vh,56rem)] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-edge-strong/80 bg-surface/95 shadow-[0_28px_90px_rgba(0,0,0,0.65),0_0_0_1px_rgba(149,201,103,0.04)]">
         <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 z-10 h-px bg-gradient-to-r from-transparent via-accent/45 to-transparent" />
-        <header className="flex items-center gap-3 border-b border-edge bg-surface-raised/70 px-4 py-3.5">
+        <header className="flex items-center gap-2 border-b border-edge bg-surface-raised/70 px-4 py-3.5">
           <FileTypeIcon name={path} size={16} />
           <span className="min-w-0 flex-1 truncate font-mono text-xs text-ink-muted" title={path}>{path}</span>
+          {/* Unsaved work is said in the title bar, where the operator is
+              looking when they reach for the close button. */}
+          {editor.dirty && <span className="flex-none rounded-full bg-warning/15 px-2 py-0.5 font-display text-[0.6rem] font-semibold uppercase tracking-[0.12em] text-warning-strong">{t("file.unsaved")}</span>}
+          {editor.editing ? <>
+            <button type="button" className={MODAL_ACTION} onClick={editor.close} disabled={editor.saving}>{t(editor.dirty ? "action.cancel" : "file.closeEditor")}</button>
+            <button type="button" className={MODAL_ACTION_PRIMARY} title={t("file.saveShortcut")} onClick={() => void editor.save()} disabled={!editor.dirty || editor.saving}>
+              {editor.saving ? <LoaderCircle size={13} className="animate-spin" aria-hidden /> : <Save size={13} aria-hidden />}
+              {editor.saving ? t("file.saving") : t("file.save")}
+            </button>
+          </> : editable && (
+            <button type="button" className={MODAL_ACTION} onClick={editor.open}>
+              <Pencil size={13} aria-hidden />
+              {t("file.edit")}
+            </button>
+          )}
           <FileDownloadButton source={source} />
-          <button type="button" onClick={onClose} className="grid h-8 w-8 place-items-center rounded-lg border border-transparent text-ink-faint transition-colors hover:border-edge-strong hover:bg-surface-hover hover:text-ink" aria-label={t("session.preview.close")}><X size={18} /></button>
+          <button type="button" onClick={requestClose} className="grid h-8 w-8 place-items-center rounded-lg border border-transparent text-ink-faint transition-colors hover:border-edge-strong hover:bg-surface-hover hover:text-ink" aria-label={t("session.preview.close")}><X size={18} /></button>
         </header>
+        {editor.error && <p role="alert" className="flex-none border-b border-danger/35 bg-danger/10 px-4 py-2 font-mono text-[0.68rem] text-danger">{editor.error}</p>}
         <div className="min-h-0 flex-1 overflow-auto">
-          {browserHtml
-            ? <iframe sandbox="allow-scripts allow-forms allow-modals allow-downloads" src={viewerUrl} title={path} className="h-full min-h-[32rem] w-full border-0 bg-white" />
-            : <FileView content={content} />}
+          {editor.editing
+            ? <CodeEditor value={editor.draft ?? ""} onChange={editor.setDraft} label={path} />
+            : browserHtml
+              ? <iframe sandbox="allow-scripts allow-forms allow-modals allow-downloads" src={viewerUrl} title={path} className="h-full min-h-[32rem] w-full border-0 bg-white" />
+              : <FileView content={content} />}
         </div>
       </section>
+      {confirmClose && (
+        <UnsavedChangesDialog
+          name={path}
+          error={editor.error}
+          saving={editor.saving}
+          onCancel={() => setConfirmClose(false)}
+          onDiscard={() => { editor.discard(); onClose(); }}
+          // A refused save keeps the question open with its error rather than
+          // closing the window over the work it failed to write.
+          onSave={() => void editor.save().then((saved) => saved && onClose())}
+        />
+      )}
     </div>,
     document.body,
   );
