@@ -7,7 +7,7 @@ import { runAgent } from "../agents/index.js";
 import { getAgentDriver, requireAgentDriver } from "../agents/index.js";
 import { projectStore } from "../projects/index.js";
 import { resolveFromDir } from "../files/index.js";
-import { narrowReasoningEffort, resolveModel } from "../providers/modelCatalog.js";
+import { resolveModel, resolveReasoningEffort } from "../providers/modelCatalog.js";
 import { buildAugmentedPrompt, buildSystemPrompt } from "./sessionPrompts.js";
 import { buildReplyPrompt } from "./replyTo.js";
 import { sessionWarnings } from "./sessionWarnings.js";
@@ -363,11 +363,7 @@ export function runProcess(record, prompt, resume, attachments = [], permissionM
     // the session's own default, then the peon-wide default. An empty global
     // default collapses to undefined ⇒ no --model flag ⇒ the CLI's own default.
     const model = resolveModel(record.agent, perTurnModel, record.model, currentSettings.defaultAgent, currentSettings.ai.defaultModel);
-    const requestedReasoningEffort = perTurnReasoningEffort
-        ?? record.reasoningEffort
-        ?? currentSettings.ai.defaultReasoningEffort
-        ?? undefined;
-    const reasoningEffort = narrowReasoningEffort(requestedReasoningEffort, record.agent, model);
+    const reasoningEffort = resolveReasoningEffort(record.agent, perTurnReasoningEffort, record.reasoningEffort, currentSettings.defaultAgent, currentSettings.ai.defaultReasoningEffort, model);
     // An explicit selection is sticky. The operator picked it in the composer for
     // this conversation, not for one message, and every surface that reads the
     // record — the composer's own fallback, the run indicator, a reloaded page —
@@ -396,7 +392,7 @@ export function runProcess(record, prompt, resume, attachments = [], permissionM
         .filter((project) => project !== undefined);
     const previewDir = sessionPreviewDir(record.id);
     const project = record.projectKey ? projectStore.get(record.projectKey) : undefined;
-    let systemPromptAppend = buildSystemPrompt(record.expectsOutcome, candidates, previewDir, project, currentSettings.ai.soul, author);
+    let systemPromptAppend = buildSystemPrompt(record.expectsOutcome, candidates, previewDir, project, currentSettings.ai.soul, author, record.parentSessionId === null && record.spawnDepth === 0);
     if (mcpConfig?.unavailableArmoryPackages?.length) {
         systemPromptAppend += `\n\nSome optional Armory tools are unavailable for this turn. Continue the task with the remaining
 tools; mention an unavailable package only if it is relevant to the request:\n${mcpConfig.unavailableArmoryPackages

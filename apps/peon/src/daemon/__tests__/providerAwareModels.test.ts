@@ -8,6 +8,7 @@ import {
   providerDefaultModel,
   reasoningEffortsForModel,
   resolveModel,
+  resolveReasoningEffort,
 } from "../providers/modelCatalog.js";
 
 test("models and aliases are provider-aware and canonicalized", () => {
@@ -32,7 +33,7 @@ test("models and aliases are provider-aware and canonicalized", () => {
   assert.deepEqual(reasoningEffortsForModel("claude-code", "haiku"), []);
 });
 
-test("catalog marks only the saved provider's effective default", () => {
+test("catalog marks the saved provider selection and every other provider's native default", () => {
   const providers = modelCatalog("codex-app-server", "gpt-5.4", "xhigh");
   assert.equal(providers.find((provider) => provider.agent === "codex-app-server")?.models.find((model) => model.default)?.id, "gpt-5.4");
   assert.equal(
@@ -41,7 +42,10 @@ test("catalog marks only the saved provider's effective default", () => {
       ?.reasoningEfforts?.find((effort) => effort.default)?.id,
     "xhigh",
   );
-  assert.equal(providers.find((provider) => provider.agent === "claude-code")?.models.some((model) => model.default), false);
+  assert.equal(
+    providers.find((provider) => provider.agent === "claude-code")?.models.find((model) => model.default)?.id,
+    providerDefaultModel("claude-code"),
+  );
 
   const builtin = modelCatalog("codex-app-server", null);
   const appServer = builtin.find((provider) => provider.agent === "codex-app-server");
@@ -56,4 +60,11 @@ test("session model precedence never crosses providers", () => {
   assert.equal(resolveModel("claude-code", undefined, undefined, "codex-app-server", "gpt-5.4"), providerDefaultModel("claude-code"));
   assert.equal(resolveModel("codex-app-server", "gpt-5.5", "gpt-5.4", "codex-app-server", "gpt-5.6-sol"), "gpt-5.5");
   assert.equal(resolveModel("codex-app-server", undefined, "gpt-5.4", "claude-code", "sonnet"), "gpt-5.4");
+});
+
+test("session reasoning-effort precedence never crosses providers", () => {
+  assert.equal(resolveReasoningEffort("codex-app-server", undefined, undefined, "codex-app-server", "low", "gpt-5.6-sol"), "low");
+  assert.equal(resolveReasoningEffort("claude-code", undefined, undefined, "codex-app-server", "low", "claude-sonnet-5"), undefined);
+  assert.equal(resolveReasoningEffort("codex-app-server", "xhigh", "medium", "codex-app-server", "low", "gpt-5.6-sol"), "xhigh");
+  assert.equal(resolveReasoningEffort("codex-app-server", undefined, "medium", "claude-code", "high", "gpt-5.6-sol"), "medium");
 });
