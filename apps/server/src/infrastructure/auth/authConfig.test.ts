@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { authMethodAvailability, isAuthMethodEnabled, resolveAuthConfig } from "./authConfig.js";
+import { authMethodAvailability, describeAuthMethods, isAuthMethodEnabled, resolveAuthConfig } from "./authConfig.js";
 
 const PUBLIC_URL = "https://overseer.example";
 
@@ -162,6 +162,20 @@ test("a directory gets its own workspace only when asked", () => {
     resolveAuthConfig(env({ ...OIDC, OVERSEER_OIDC_PROVISION_WORKSPACE: "1" }), PUBLIC_URL).oidc?.provisionWorkspace,
     true,
   );
+});
+
+test("an instance takes uninvited accounts only when it says so", () => {
+  assert.equal(resolveAuthConfig(env({}), PUBLIC_URL).openSignup, false);
+  // Anything but "1" leaves it closed: a half-meant value must not be the one
+  // that opens registration to the internet.
+  assert.equal(resolveAuthConfig(env({ OVERSEER_OPEN_SIGNUP: "true" }), PUBLIC_URL).openSignup, false);
+  assert.equal(resolveAuthConfig(env({ OVERSEER_OPEN_SIGNUP: "1" }), PUBLIC_URL).openSignup, true);
+});
+
+test("the sign-in page is told whether it may offer registration", () => {
+  const open = resolveAuthConfig(env({ OVERSEER_PASSWORD_AUTH: "1", OVERSEER_OPEN_SIGNUP: "1" }), PUBLIC_URL);
+  assert.equal(describeAuthMethods(open).openSignup, true);
+  assert.equal(describeAuthMethods(resolveAuthConfig(env({ OVERSEER_PASSWORD_AUTH: "1" }), PUBLIC_URL)).openSignup, false);
 });
 
 test("OIDC alone is a complete instance", () => {

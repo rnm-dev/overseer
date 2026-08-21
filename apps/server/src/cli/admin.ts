@@ -29,8 +29,9 @@ const USAGE = `overseer admin <command>
   promote <email> [slug]      make an existing account an owner
   demote <email> [slug]       make an owner an ordinary member
 
-Run inside the container, where DATABASE_URL is already set:
-  docker compose exec app overseer admin bootstrap "Acme"`;
+Run inside the container, where DATABASE_URL is already set. The image ships the
+compiled entry point at /app/dist/index.js and puts nothing on PATH:
+  docker compose exec app node dist/index.js admin bootstrap "Acme"`;
 
 function joinUrl(token: string): string {
   return `${config.publicUrl.replace(/\/+$/, "")}/join/${token}`;
@@ -72,7 +73,7 @@ async function resolveWorkspace(slug: string | undefined): Promise<{ id: string;
 }
 
 async function bootstrap(name: string | undefined): Promise<void> {
-  if (!name) throw new Error('bootstrap needs a name: overseer admin bootstrap "Acme"');
+  if (!name) throw new Error('bootstrap needs a name: admin bootstrap "Acme"');
   const workspace = await createUnclaimedWorkspace(name);
   const invite = await createInvite(workspace.id, "owner", null, "bootstrap");
   console.log(`created workspace "${workspace.name}" (${workspace.slug})`);
@@ -103,7 +104,7 @@ async function users(): Promise<void> {
        FROM users u ORDER BY u.created_at ASC`,
   );
   if (rows.length === 0) {
-    console.log("no accounts yet — `overseer admin bootstrap <name>` prints a link to make the first one");
+    console.log("no accounts yet — `admin bootstrap <name>` prints a link to make the first one");
     return;
   }
   for (const r of rows) {

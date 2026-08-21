@@ -29,13 +29,17 @@ Production states its value rather than relying on the default. Opening local
 accounts on the public origin is a decision, and the file where production
 configuration lives should show that the decision was made. It was made on
 2026-08-05: production accepts local accounts, which — because the switch is
-one switch — means open registration there, as GitHub sign-up already was.
+one switch — means the registration route is live there too. Who it will accept
+is a separate decision, `OVERSEER_OPEN_SIGNUP`, and production has not made it:
+registering still needs an invitation. See
+[who may become an account](sign-in-methods.md#who-may-become-an-account).
 
 ## What a client sees
 
-`GET /api/auth/methods` answers `{ "password": boolean, "github": boolean }`
-without authentication. `github` is true when the OAuth app credentials are
-configured. The sign-in page renders from this rather than guessing: a method
+`GET /api/auth/methods` answers the doors this instance has — `password`,
+`github`, `oidc` with its label — plus `openSignup`, whether registration is
+open to anyone, without authentication. `github` is true when the OAuth app
+credentials are configured. The sign-in page renders from this rather than guessing: a method
 switched off in the environment loses its form as well as its route, and the
 page shows neither until the answer arrives, so a disabled method never flashes
 into view. An unreachable API is treated as "both available" — a transient

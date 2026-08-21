@@ -9,6 +9,10 @@
 //   OVERSEER_PASSWORD_AUTH=1                                     email + password
 //   OVERSEER_OIDC_ISSUER + OVERSEER_OIDC_CLIENT_ID/_SECRET       OpenID Connect
 //
+// One setting here is about who may walk through those doors rather than which
+// of them exist — OVERSEER_OPEN_SIGNUP=1 drops the invitation requirement — and
+// it lives beside them because the sign-in page renders both from one answer.
+//
 // A method is represented by its settings or by null — never by a set of flat
 // fields a caller has to re-add to decide availability. Half a GitHub app (an
 // id with no secret) is null with a warning, not a method that advertises a
@@ -67,6 +71,13 @@ export interface AuthConfig {
   github: GithubAuthSettings | null;
   oidc: OidcAuthSettings | null;
   password: boolean;
+  // Whether an identity with no account here may become one without presenting
+  // an invitation. Off by default, and deliberately not per-door: it is a
+  // statement about who this instance is for, and an instance that will take
+  // strangers takes them through whichever door they knock on. OIDC ignores it
+  // in both positions — a configured single-tenant issuer is already an
+  // invitation.
+  openSignup: boolean;
   // How long an issued device token lives — the same token whichever door
   // issued it.
   deviceTokenTtlMs: number;
@@ -92,10 +103,18 @@ export function isAuthMethodEnabled(auth: AuthConfig, method: AuthMethodId): boo
  */
 export interface AuthMethodsDescription extends AuthMethodAvailability {
   oidcLabel: string | null;
+  // So the page only offers to register an account this instance would accept.
+  // It is not the guard — the guard is `mayCreateAccount` on every registration
+  // — only what the page can honestly show before anyone types an address.
+  openSignup: boolean;
 }
 
 export function describeAuthMethods(auth: AuthConfig): AuthMethodsDescription {
-  return { ...authMethodAvailability(auth), oidcLabel: auth.oidc?.label ?? null };
+  return {
+    ...authMethodAvailability(auth),
+    oidcLabel: auth.oidc?.label ?? null,
+    openSignup: auth.openSignup,
+  };
 }
 
 function trimmed(env: NodeJS.ProcessEnv, name: string): string {
@@ -212,6 +231,7 @@ export function resolveAuthConfig(env: NodeJS.ProcessEnv, publicUrl: string): Au
     github,
     oidc,
     password,
+    openSignup: trimmed(env, "OVERSEER_OPEN_SIGNUP") === "1",
     deviceTokenTtlMs: positiveNumber(env, "OVERSEER_DEVICE_TOKEN_TTL_MS", 90 * 24 * 60 * 60_000),
     warnings,
   };

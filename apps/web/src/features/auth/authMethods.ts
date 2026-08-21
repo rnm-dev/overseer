@@ -13,13 +13,24 @@ export interface AuthMethods {
   oidc: boolean;
   /** What to call the OIDC provider — only this instance knows. */
   oidcLabel: string | null;
+  /** Whether this instance accepts accounts that arrive with no invitation. */
+  openSignup: boolean;
 }
 
 // An unreachable API is not "no sign-in methods": a transient failure should
 // leave the page usable rather than blank. An unconfigured OIDC provider has no
 // name to put on a button, so the fallback cannot invent one — it offers the two
-// doors that need no instance-specific detail to render.
-const WHEN_UNREACHABLE: AuthMethods = { password: true, github: true, oidc: false, oidcLabel: null };
+// doors that need no instance-specific detail to render. Registration is left
+// closed in the fallback: offering it on an instance that would refuse is worse
+// than hiding it on one that would not, since the second is recoverable by a
+// reload and the first ends in a 403 nobody can act on.
+const WHEN_UNREACHABLE: AuthMethods = {
+  password: true,
+  github: true,
+  oidc: false,
+  oidcLabel: null,
+  openSignup: false,
+};
 
 export function redirectProvidersOf(methods: AuthMethods): OauthProvider[] {
   const providers: OauthProvider[] = [];

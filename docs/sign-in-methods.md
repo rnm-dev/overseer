@@ -107,16 +107,37 @@ client id for nothing.
 
 ## Who may become an account
 
-**Only an invitation makes an account.** Possession of the token is the
-capability, exactly as it already is for joining a workspace, and the invitation
-is spent on the account it admitted so an invited person lands in the workspace
-they were invited to. Refusals are `403 SIGNUP_CLOSED` on the password route and
-the same code through the redirect flow.
+**By default, only an invitation makes an account.** Possession of the token is
+the capability, exactly as it already is for joining a workspace, and the
+invitation is spent on the account it admitted so an invited person lands in the
+workspace they were invited to. Refusals are `403 SIGNUP_CLOSED` on the password
+route and the same code through the redirect flow.
 
-There is no switch for this, because open registration was never a feature. An
-account that arrived uninvited belongs to no workspace and can therefore do
-nothing; letting strangers create them only fills the users table with rows
-nobody can use. Requiring the invitation loses nothing and closes the door.
+That default is the one this product is usually deployed under — one operator's
+instance, or one team's, reachable from the public internet — so it is what an
+instance does when nobody has said otherwise.
+
+**`OVERSEER_OPEN_SIGNUP=1` says otherwise.** Anyone who can reach the instance
+may then hold an account on it, through every door: `mayCreateAccount` answers
+yes before it looks for a token, so password registration and the GitHub
+redirect both open together. Splitting it per door was rejected — it is a
+statement about who the instance is for, and an instance that will take
+strangers takes them through whichever door they knock on.
+
+What an uninvited account gets is a personal workspace and nothing else.
+`ensureDefaultWorkspace` runs for every new account whichever door it came
+through, so the account is usable on its own, and no existing workspace becomes
+reachable without an invitation to *it*. The switch decides who may hold an
+account here; it never decides what an account reaches.
+
+OIDC ignores the switch in both positions, for the reason below: a configured
+single-tenant issuer is already the invitation.
+
+The sign-in page reads the answer from `GET /api/auth/methods`, which carries
+`openSignup` beside the doors, and offers to register only when the instance
+would accept it — or when the visitor arrived from an invite link, which the
+page passes to the registration it permits. The page is not the guard: every
+registration is checked again on the server.
 
 An invitation has to survive the redirect. A GitHub account is created at the end
 of a flow that began before anyone could present anything, so `POST /api/auth/github/start`
@@ -140,11 +161,13 @@ provisioning are the same idea — the directory admitted them, so nothing here
 has to.
 
 Everywhere else the first account is the awkward one: there is nobody to invite
-anybody. That is what `overseer admin` is for, run inside the container, where
-being able to run it at all is the authority:
+anybody. That is what the `admin` subcommand is for, run inside the container,
+where being able to run it at all is the authority. The image puts nothing on
+`PATH` — the compiled entry point is `/app/dist/index.js`, and `/app` is the
+working directory — so it is invoked through `node`:
 
 ```
-docker compose exec app overseer admin bootstrap "Acme"
+docker compose exec app node dist/index.js admin bootstrap "Acme"
 ```
 
 It creates a workspace with no members and prints a one-time owner link. The

@@ -42,8 +42,14 @@ export function Login() {
   const [error, setError] = useState<string | null>(null);
   const methods = useAuthMethods();
 
-  const registering = mode === "register";
   const redirectDoors = methods ? redirectProvidersOf(methods).length : 0;
+  // Two ways an account may be created here: the instance takes anyone
+  // (OVERSEER_OPEN_SIGNUP), or this visitor came from an invite link and stashed
+  // it on the way. Read once per render rather than held in state — the only
+  // writer is Join.tsx, on a different page.
+  const pendingInvite = sessionStorage.getItem(PENDING_INVITE_KEY);
+  const mayRegister = Boolean(methods?.openSignup) || pendingInvite !== null;
+  const registering = mode === "register" && mayRegister;
 
   async function attempt(what: "github" | "oidc" | "password", run: () => Promise<unknown>) {
     setBusy(what);
@@ -59,12 +65,15 @@ export function Login() {
   function submit(event: React.FormEvent) {
     event.preventDefault();
     void attempt("password", async () => {
-      await (registering ? registerWithPassword(email, password) : signInWithPassword(email, password));
+      await (registering
+        ? registerWithPassword(email, password, pendingInvite)
+        : signInWithPassword(email, password));
       const pending = sessionStorage.getItem(PENDING_INVITE_KEY);
-      if (pending) {
-        sessionStorage.removeItem(PENDING_INVITE_KEY);
-        navigate(`/join/${pending}`, { replace: true });
-      }
+      if (!pending) return;
+      sessionStorage.removeItem(PENDING_INVITE_KEY);
+      // Registration already spent the token on the new account, so sending it
+      // back to /join would only redeem it a second time and fail.
+      if (!registering) navigate(`/join/${pending}`, { replace: true });
     });
   }
 
@@ -123,7 +132,9 @@ export function Login() {
           </form>
         )}
 
-        {methods?.password && (
+        {/* Hidden on an invite-only instance: the form is there, but nothing
+            this visitor could type would be accepted. */}
+        {methods?.password && mayRegister && (
           <p className="auth-switch">
             {registering ? t("login.haveAccount") : t("login.noAccount")}{" "}
             <button

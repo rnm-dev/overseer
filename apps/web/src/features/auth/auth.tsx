@@ -41,7 +41,10 @@ interface AuthState {
   retry: () => Promise<void>;
   loginWithProvider: (provider: OauthProvider) => Promise<void>;
   signInWithPassword: (email: string, password: string) => Promise<void>;
-  registerWithPassword: (email: string, password: string) => Promise<void>;
+  // The invite, when the visitor arrived from one: it is what permits the
+  // account on an instance that is not open, and it is spent on the workspace
+  // that issued it, so the person lands there instead of alone in a personal one.
+  registerWithPassword: (email: string, password: string, invite?: string | null) => Promise<void>;
   completeOauthCallback: (
     provider: OauthProvider,
     code: string | null,
@@ -154,8 +157,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       clearTranscriptSnapshotCache();
       setUser(r.user);
     },
-    async registerWithPassword(email, password) {
-      const r = await api<{ user: User }>("/auth/password/register", json({ email, password }));
+    async registerWithPassword(email, password, invite) {
+      const r = await api<{ user: User }>(
+        "/auth/password/register",
+        json(invite ? { email, password, invite } : { email, password }),
+      );
       forgetNativeCallback(sessionStorage);
       clearTranscriptSnapshotCache();
       setUser(r.user);

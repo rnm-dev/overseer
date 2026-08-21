@@ -189,9 +189,8 @@ test("the environment switch closes both routes and drops the method from discov
   }
 });
 
-// An account that arrived uninvited would belong to no workspace and could do
-// nothing, so the invitation is not a policy switch — it is the whole of what
-// makes an account worth creating.
+// An instance is invite-only unless it says otherwise, so an address nobody
+// invited is refused before its password is even judged.
 test("registration refuses an address nobody invited", async () => {
   {
     const refused = await request("/api/auth/password/register", "POST", {
@@ -203,6 +202,40 @@ test("registration refuses an address nobody invited", async () => {
     const { rows } = await query(`SELECT 1 FROM users WHERE email = $1`, ["uninvited@example.test"]);
     assert.equal(rows.length, 0);
   }
+});
+
+// OVERSEER_OPEN_SIGNUP is the other position: anyone who can reach the instance
+// may hold an account on it. What they get is a personal workspace — the switch
+// decides who may have an account, never what an account reaches.
+test("an open instance admits an uninvited account into a workspace of its own", async () => {
+  config.auth = { ...config.auth, openSignup: true };
+  try {
+    const announced = await request("/api/auth/methods");
+    assert.equal(announced.body.openSignup, true);
+
+    const created = await request("/api/auth/password/register", "POST", {
+      email: "stranger@example.test",
+      password: "correct horse battery",
+    });
+    assert.equal(created.status, 201);
+    const rows = await query<{ slug: string; role: string }>(
+      `SELECT w.slug, m.role FROM workspace_members m
+         JOIN workspaces w ON w.id = m.workspace_id
+         JOIN users u ON u.id = m.user_id
+        WHERE u.email = $1`,
+      ["stranger@example.test"],
+    );
+    assert.deepEqual(rows.rows, [{ slug: "stranger-s-workspace", role: "owner" }]);
+  } finally {
+    config.auth = { ...config.auth, openSignup: false };
+  }
+
+  // Closed again on the next request, not on the next boot.
+  const refused = await request("/api/auth/password/register", "POST", {
+    email: "stranger2@example.test",
+    password: "correct horse battery",
+  });
+  assert.equal(refused.status, 403);
 });
 
 // The invitation is the capability, and it is spent on the account it admitted:
