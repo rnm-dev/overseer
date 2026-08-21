@@ -70,7 +70,7 @@ with no door at all boots and says nobody can log in.
 | `OVERSEER_OIDC_REDIRECT_URI` | `<public-url>/auth/oidc/callback` | |
 | `OVERSEER_OIDC_NATIVE_CALLBACKS` | `overseer://oauth/oidc` | |
 | `OVERSEER_OIDC_LABEL` | the issuer's host | What the sign-in button says. |
-| `OVERSEER_OPEN_SIGNUP` | off | `1` accepts accounts that arrive with no invitation, through every door except OIDC — which never asked for one. Each account gets a personal workspace and reaches nothing else; joining an existing workspace still needs an invitation. |
+| `OVERSEER_OPEN_SIGNUP` | off | `1` accepts accounts that arrive with no invitation, through every door except OIDC — which never asked for one. Each account gets a personal workspace and reaches nothing else; joining an existing workspace still needs an invitation. This is also how the **first** account is made: the install template ships it on, and [standing an instance up](sign-in-methods.md#standing-an-instance-up) is to register once and then turn it off. |
 | `OVERSEER_DEVICE_TOKEN_TTL_MS` | 90 days | Lifetime of an issued device token, whichever door issued it. |
 
 The full picture, including which door a returning operator lands on, is

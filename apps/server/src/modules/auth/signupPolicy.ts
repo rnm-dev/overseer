@@ -16,9 +16,12 @@ import { getInvitePreview } from "../workspaces/index.js";
  * reachable without an invitation to it. So the switch decides who may hold an
  * account here, never what an account already reaches.
  *
- * The first account is not a special case for either position to solve: the
- * `admin bootstrap` subcommand prints an invitation from a shell, where having
- * one is the authority.
+ * The first account is what makes the choice unavoidable, and this is where an
+ * instance answers it. There is no shell command that admits an operator behind
+ * the rule any more: an instance either opens registration long enough for its
+ * first account, or it names an OIDC directory that admits one. Either way the
+ * arrival gets a workspace of their own and the instance can be closed again on
+ * the next request.
  *
  * OIDC never asks. A configured single-tenant issuer is itself the invitation —
  * the instance named that directory, `iss` is compared byte for byte, and an

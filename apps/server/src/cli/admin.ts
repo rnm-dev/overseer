@@ -1,20 +1,23 @@
 import { config } from "../infrastructure/config/index.js";
 import { query } from "../infrastructure/db/index.js";
-import {
-  createInvite,
-  createUnclaimedWorkspace,
-  updateMemberRole,
-} from "../modules/workspaces/index.js";
+import { createInvite, updateMemberRole } from "../modules/workspaces/index.js";
 import type { Role } from "../modules/workspaces/index.js";
 
 /**
  * Instance administration from a shell on the host.
  *
  * The authority here is being able to run a command inside the container, which
- * is the right one for the things this does: standing an instance up before any
- * account exists, and repairing the one state the product cannot fix from
- * inside itself — a workspace whose last owner is gone. It adds no network
- * surface and nothing new to authenticate.
+ * is the right one for what is left: repairing the one state the product cannot
+ * fix from inside itself — a workspace whose last owner is gone — and reading
+ * who has an account. It adds no network surface and nothing new to
+ * authenticate.
+ *
+ * Standing an instance up is deliberately not here any more. It used to be a
+ * `bootstrap` subcommand that made an unclaimed workspace and printed an owner
+ * link, which asked the first operator to find a shell inside a container before
+ * they had seen the product at all. Registration does it instead:
+ * OVERSEER_OPEN_SIGNUP admits the first account, or an OIDC directory admits it,
+ * and either way the arrival gets a workspace of their own.
  *
  * Everything below is glue over the same functions the HTTP routes use. It
  * deliberately cannot do more than an owner could: no reading of sessions, no
@@ -23,7 +26,6 @@ import type { Role } from "../modules/workspaces/index.js";
 
 const USAGE = `overseer admin <command>
 
-  bootstrap <name>            create a workspace and print a one-time owner link
   invite <slug> [--member]    print a join link for an existing workspace (owner by default)
   users                       list accounts and the doors they came through
   promote <email> [slug]      make an existing account an owner
@@ -31,7 +33,7 @@ const USAGE = `overseer admin <command>
 
 Run inside the container, where DATABASE_URL is already set. The image ships the
 compiled entry point at /app/dist/index.js and puts nothing on PATH:
-  docker compose exec app node dist/index.js admin bootstrap "Acme"`;
+  docker compose exec app node dist/index.js admin users`;
 
 function joinUrl(token: string): string {
   return `${config.publicUrl.replace(/\/+$/, "")}/join/${token}`;
@@ -72,15 +74,6 @@ async function resolveWorkspace(slug: string | undefined): Promise<{ id: string;
   return only;
 }
 
-async function bootstrap(name: string | undefined): Promise<void> {
-  if (!name) throw new Error('bootstrap needs a name: admin bootstrap "Acme"');
-  const workspace = await createUnclaimedWorkspace(name);
-  const invite = await createInvite(workspace.id, "owner", null, "bootstrap");
-  console.log(`created workspace "${workspace.name}" (${workspace.slug})`);
-  console.log(`owner link, good for 7 days and one use:\n\n  ${joinUrl(invite.token)}\n`);
-  console.log("Open it in a browser and sign in — the account that redeems it owns the workspace.");
-}
-
 async function invite(slug: string | undefined, role: Role): Promise<void> {
   const workspace = await resolveWorkspace(slug);
   const created = await createInvite(workspace.id, role, null, "admin cli");
@@ -104,7 +97,7 @@ async function users(): Promise<void> {
        FROM users u ORDER BY u.created_at ASC`,
   );
   if (rows.length === 0) {
-    console.log("no accounts yet — `admin bootstrap <name>` prints a link to make the first one");
+    console.log("no accounts yet — the first one is made by registering, at this instance's public URL");
     return;
   }
   for (const r of rows) {
@@ -132,9 +125,6 @@ export async function runAdmin(argv: string[]): Promise<number> {
   const args = rest.filter((a) => !a.startsWith("--"));
   try {
     switch (command) {
-      case "bootstrap":
-        await bootstrap(args[0]);
-        return 0;
       case "invite":
         await invite(args[0], flags.has("--member") ? "member" : "owner");
         return 0;

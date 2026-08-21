@@ -43,7 +43,7 @@ services:
     # `latest` is the current release, which is what most installations want.
     # Know what it costs: schema migrations run on boot and are one-way, so a
     # `docker compose pull` picks up an upgrade you did not separately decide
-    # to take. Replace it with an exact version — rnmdev/overseer:0.3.0 — to
+    # to take. Replace it with an exact version — rnmdev/overseer:0.4.0 — to
     # make upgrading deliberate. What a version number promises is in
     # docs/releasing.md, and the releases are at ovrseer.org/changelog/.
     image: rnmdev/overseer:latest
@@ -64,17 +64,16 @@ services:
       OVERSEER_PUBLIC_URL: https://overseer.example.com
 
       # ── Sign in — at least one, or nobody can log in ─────────────────────
-      # Email + password. Registration needs an invitation, so start the
-      # instance with
-      #   docker compose exec app node dist/index.js admin bootstrap "Acme"
-      # which prints a one-time owner link. OIDC needs no invitation at all — a
-      # configured single-tenant issuer is itself one.
+      # Email + password.
       OVERSEER_PASSWORD_AUTH: "1"
-      # Uncomment to let anyone who can reach this instance register without an
-      # invitation. Each new account gets a personal workspace and nothing else;
-      # joining an existing one still needs an invite. Know what your instance is
-      # exposed to before turning this on.
-      #OVERSEER_OPEN_SIGNUP: "1"
+      # Registration without an invitation. This is how you make the FIRST
+      # account: bring the instance up with it set, register at your public URL —
+      # you get a workspace of your own — then comment it out and restart, and
+      # the instance is invite-only again. Leave it on only if you mean anyone
+      # who can reach this instance to be able to register. Either way, joining
+      # an existing workspace still needs an invite. OIDC ignores this: a
+      # configured single-tenant issuer is itself the invitation.
+      OVERSEER_OPEN_SIGNUP: "1"
       # GitHub OAuth. Register <public-url>/auth/github/callback with the app.
       #OVERSEER_GITHUB_CLIENT_ID: ""
       #OVERSEER_GITHUB_CLIENT_SECRET: ""
