@@ -1,7 +1,16 @@
 import { query } from "../../infrastructure/db/index.js";
 import { isPeonConnected, peonConnectionStartedAt } from "./peonConnections.js";
-import { baseUrl, legacyCallbackUrl } from "../../infrastructure/peonHttp/index.js";
-import type { AddressSource, PeonLoad, PeonRecord, PeonView, RegisterInput } from "./registryTypes.js";
+import {
+  baseUrl,
+  legacyCallbackUrl,
+} from "../../infrastructure/peonHttp/index.js";
+import type {
+  AddressSource,
+  PeonLoad,
+  PeonRecord,
+  PeonView,
+  RegisterInput,
+} from "./registryTypes.js";
 
 // Legacy root registry callers retain these exports while the transport owns
 // callback-address derivation.
@@ -38,7 +47,8 @@ function rowToRecord(r: PeonRow): PeonRecord {
     address: r.address,
     controlPort: r.control_port,
     publicUrl: r.public_url ?? null,
-    addressSource: r.address_source ?? (r.connection_pinned ? "manual" : "discovered"),
+    addressSource:
+      r.address_source ?? (r.connection_pinned ? "manual" : "discovered"),
     protocol: r.protocol,
     capabilities: r.capabilities ?? [],
     token: r.token,
@@ -56,8 +66,10 @@ export const registry = {
   async register(input: RegisterInput): Promise<PeonRecord> {
     const now = Date.now();
     const advertised = input.publicUrl ? urlParts(input.publicUrl) : null;
-    const incomingSource: AddressSource = advertised || input.hostname ? "advertised" : "discovered";
-    const incomingAddress = advertised?.hostname ?? input.hostname ?? input.address;
+    const incomingSource: AddressSource =
+      advertised || input.hostname ? "advertised" : "discovered";
+    const incomingAddress =
+      advertised?.hostname ?? input.hostname ?? input.address;
     const incomingPort = advertised?.port ?? input.controlPort;
     const { rows } = await query<PeonRow>(
       `INSERT INTO peons (peon_id, credential_id, workspace_id, name, hostname, address, control_port, public_url, address_source, protocol, capabilities, token, load, registered_at, last_seen)
@@ -85,7 +97,22 @@ export const registry = {
          capabilities = EXCLUDED.capabilities, token = EXCLUDED.token, load = EXCLUDED.load,
          last_seen = EXCLUDED.last_seen
        RETURNING *`,
-      [input.peonId, input.credentialId, input.workspaceId, input.name, input.hostname, incomingAddress, incomingPort, input.publicUrl, incomingSource, input.protocol, JSON.stringify(input.capabilities), input.token, input.load ? JSON.stringify(input.load) : null, now],
+      [
+        input.peonId,
+        input.credentialId,
+        input.workspaceId,
+        input.name,
+        input.hostname,
+        incomingAddress,
+        incomingPort,
+        input.publicUrl,
+        incomingSource,
+        input.protocol,
+        JSON.stringify(input.capabilities),
+        input.token,
+        input.load ? JSON.stringify(input.load) : null,
+        now,
+      ],
     );
     return rowToRecord(rows[0]);
   },
@@ -93,7 +120,14 @@ export const registry = {
   // Enrollment can race registration in either direction. This upsert creates an
   // offline pending row when registration is delayed, or atomically promotes the
   // already-registered row to the operator-entered paired URL.
-  async confirmPairing(input: { peonId: string; credentialId: string; workspaceId: string; token: string; publicUrl: string; name?: string | null }): Promise<PeonRecord> {
+  async confirmPairing(input: {
+    peonId: string;
+    credentialId: string;
+    workspaceId: string;
+    token: string;
+    publicUrl: string;
+    name?: string | null;
+  }): Promise<PeonRecord> {
     const now = Date.now();
     const parts = urlParts(input.publicUrl);
     if (!parts) throw new Error("invalid canonical Peon URL");
@@ -106,14 +140,28 @@ export const registry = {
          public_url = EXCLUDED.public_url, address_source = 'paired',
          connection_pinned = TRUE, token = EXCLUDED.token
        RETURNING *`,
-      [input.peonId, input.credentialId, input.workspaceId, input.name || input.peonId, parts.hostname, parts.port, input.publicUrl, input.token, now],
+      [
+        input.peonId,
+        input.credentialId,
+        input.workspaceId,
+        input.name || input.peonId,
+        parts.hostname,
+        parts.port,
+        input.publicUrl,
+        input.token,
+        now,
+      ],
     );
     return rowToRecord(rows[0]);
   },
 
   // Touch last_seen + load, scoped to the presenting credential. Null (⇒ 404,
   // peon re-registers) for an unknown peon or a credential/peon mismatch.
-  async heartbeat(peonId: string, credentialId: string, load: PeonLoad | null): Promise<PeonRecord | null> {
+  async heartbeat(
+    peonId: string,
+    credentialId: string,
+    load: PeonLoad | null,
+  ): Promise<PeonRecord | null> {
     const { rows } = await query<PeonRow>(
       `UPDATE peons SET last_seen = $2, load = COALESCE($3, load) WHERE peon_id = $1 AND credential_id = $4 RETURNING *`,
       [peonId, Date.now(), load ? JSON.stringify(load) : null, credentialId],
@@ -124,7 +172,10 @@ export const registry = {
   // Operator override of the call-back location (address / control port). Pins the
   // connection so a subsequent register() won't overwrite it (survives peon
   // restarts). Null ⇒ unknown peon.
-  async updateConnection(peonId: string, publicUrl: string): Promise<PeonRecord | null> {
+  async updateConnection(
+    peonId: string,
+    publicUrl: string,
+  ): Promise<PeonRecord | null> {
     const parts = urlParts(publicUrl);
     if (!parts) return null;
     const { rows } = await query<PeonRow>(
@@ -146,7 +197,10 @@ export const registry = {
   },
 
   async get(peonId: string): Promise<PeonRecord | undefined> {
-    const { rows } = await query<PeonRow>(`SELECT * FROM peons WHERE peon_id = $1`, [peonId]);
+    const { rows } = await query<PeonRow>(
+      `SELECT * FROM peons WHERE peon_id = $1`,
+      [peonId],
+    );
     return rows.length ? rowToRecord(rows[0]) : undefined;
   },
 
@@ -158,16 +212,25 @@ export const registry = {
   // No workspaceId ⇒ every peon (used by the reconcile loop).
   async list(workspaceId?: string): Promise<PeonRecord[]> {
     const { rows } = workspaceId
-      ? await query<PeonRow>(`SELECT * FROM peons WHERE workspace_id = $1 ORDER BY name`, [workspaceId])
+      ? await query<PeonRow>(
+          `SELECT * FROM peons WHERE workspace_id = $1 ORDER BY name`,
+          [workspaceId],
+        )
       : await query<PeonRow>(`SELECT * FROM peons ORDER BY name`);
     return rows.map(rowToRecord);
   },
 };
 
-function urlParts(publicUrl: string): { hostname: string; port: number } | null {
+function urlParts(
+  publicUrl: string,
+): { hostname: string; port: number } | null {
   try {
     const url = new URL(publicUrl);
-    const port = url.port ? Number(url.port) : url.protocol === "https:" ? 443 : 80;
+    const port = url.port
+      ? Number(url.port)
+      : url.protocol === "https:"
+        ? 443
+        : 80;
     return url.hostname ? { hostname: url.hostname, port } : null;
   } catch {
     return null;
@@ -176,12 +239,19 @@ function urlParts(publicUrl: string): { hostname: string; port: number } | null 
 
 export function toView(record: PeonRecord): PeonView {
   const { token: _token, ...rest } = record;
-  const controlConnected = isPeonConnected(record.peonId);
+  const screenshotDemo =
+    process.env.NODE_ENV === "development" &&
+    process.env.OVERSEER_PUBLIC_URL === "https://overseer-dev.rnm.dev" &&
+    record.workspaceId === "demo-screenshot-workspace" &&
+    record.peonId.startsWith("demo-peon-");
+  const controlConnected = screenshotDemo || isPeonConnected(record.peonId);
   return {
     ...rest,
     online: controlConnected,
     controlConnected,
-    controlConnectedAt: controlConnected ? peonConnectionStartedAt(record.peonId) : null,
+    controlConnectedAt: controlConnected
+      ? peonConnectionStartedAt(record.peonId)
+      : null,
     baseUrl: legacyCallbackUrl(record),
   };
 }

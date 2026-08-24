@@ -29,8 +29,11 @@ docker compose exec app npx tsx src/cli/runScreenshotDemoPeon.ts
 
 It serves fictional project detail, documentation, files, session detail and
 transcript responses on container port 5001. The seed points all three demo
-Peons at that endpoint. Mutations are refused, and this helper must never run
-outside the development container.
+Peons at that endpoint. The development server presents only these seeded
+Peons as connected so mobile enables the read surfaces; production and ordinary
+development Peons still derive presence exclusively from the reverse socket.
+Mutations are refused, and this helper must never run outside the development
+container.
 
 Never capture screenshots from a production connection. Before upload, inspect
 every source image at full resolution for names, emails, domains, addresses,
