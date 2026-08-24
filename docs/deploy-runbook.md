@@ -486,9 +486,14 @@ remain the authority for *how* to change them.
 
 Deployed images:
 
+The registry moved from `vibze/overseer` to `rnmdev/overseer`; rows below keep
+the repository each image was actually pushed to.
+
 | Image | Deployed | What it carried |
 | --- | --- | --- |
-| `vibze/overseer:027a13932e5133cc9a1c4a076105830291a3addb` | 2026-08-12 (current) | The project Files page as a working file surface: one reusable drag-and-drop layer behind both file trees, folder upload and folder move, upload placeholders with progress, context menus, deletion, a movable split, line numbers, image zoom and in-place text editing. Built from merged `master`; an earlier same-day build of the unmerged branch commit `3039245` carried the same application code. The Peon half of folder transfers ships separately through the npm update channel, so a Peon below 0.12.9 answers PARENT_NOT_FOUND for a nested upload and INVALID_PATH for a folder move — the client names both as "this Peon needs an update". |
+| `rnmdev/overseer:ed1430e0138f9a592cbad38b7b3dc3b8bfe95f91` | 2026-08-24 (current) | The isolated App Review demo, enabled in production by `OVERSEER_APP_REVIEW_DEMO=1` in `deploy.yml`. The server starts the read-only screenshot demo Peon in-process on container port 5001 and presents the seeded `demo-screenshot-workspace` Peons as connected; ordinary Peons still derive presence from the reverse socket, and demo mutations are always refused. The gate needs all three of `NODE_ENV=production`, `OVERSEER_PUBLIC_URL=https://overseer.rnm.dev` and the explicit flag. Built from a clean detached worktree of the pushed commit because the shared checkout held unrelated unpushed work. |
+| `rnmdev/overseer:5b81531409d5bd7e24641feab7438f53caabcbc5` | 2026-08-21 | Server 0.2.0. First row recorded on the `rnmdev` registry. |
+| `vibze/overseer:027a13932e5133cc9a1c4a076105830291a3addb` | 2026-08-12 | The project Files page as a working file surface: one reusable drag-and-drop layer behind both file trees, folder upload and folder move, upload placeholders with progress, context menus, deletion, a movable split, line numbers, image zoom and in-place text editing. Built from merged `master`; an earlier same-day build of the unmerged branch commit `3039245` carried the same application code. The Peon half of folder transfers ships separately through the npm update channel, so a Peon below 0.12.9 answers PARENT_NOT_FOUND for a nested upload and INVALID_PATH for a folder move — the client names both as "this Peon needs an update". |
 | `vibze/overseer:ef4e768620cdaf76ff58fda1cc433c610f7483e2` | 2026-08-12 | Public-release web/server batch: transcript scroll-follow fixes, managed-plugin inquiry convergence and Peon 0.12.8 release preparation. |
 | `vibze/overseer:f9b82819c6a88ffec666e1659ab746aac4fd1962` | 2026-08-10 | An upgrade to a path no handler claims is refused with 400 and the socket destroyed, stopping the file-descriptor leak an outdated Peon caused by dialling the retired `/api/v1/peons/transfer/ws`. Built from a detached worktree of the pushed commit because the shared checkout held unrelated work in progress. |
 
@@ -512,6 +517,50 @@ application; the Cloudflare A record back to 94.247.128.101 for traffic; and a
 first, never overwrite the source, and never delete either host's volumes. The
 shared-proxy loopback rollback is separate and is described in [its own
 section](#shared-proxy-rollback).
+
+## The App Review demo instance
+
+`https://demo.ovrseer.org` is a second, separate Overseer on the same host. It
+is **not** Kamal and **not** compose — a plain `docker run`, so `kamal deploy`
+does not touch it and it does not appear in the shared proxy's route table.
+
+| | |
+| --- | --- |
+| Container | `overseer-demo-app`, Docker network `overseer-demo` |
+| Port | `127.0.0.1:5010` → container `5000` |
+| Database | `overseer-demo-postgres`, its own cluster, separate from production |
+| Environment | `/root/overseer-demo.env` on nid-01, mode 0600 — it holds `DATABASE_URL`, so never print it into a task or a commit |
+
+The doors are `github:false, password:true, oidc:false`, and that is achieved by
+those variables simply being **absent**: only `OVERSEER_PUBLIC_URL`,
+`OVERSEER_PASSWORD_AUTH=1`, `OVERSEER_APP_REVIEW_DEMO=1`,
+`OVERSEER_TRUSTED_PROXIES`, `OVERSEER_HOST`, `OVERSEER_PORT`, `NODE_ENV` and
+`DATABASE_URL` are set. Adding a GitHub or OIDC credential here would open a door
+App Review is not expecting.
+
+To deploy a commit to it, build and push the image, then replace the container —
+renaming the old one rather than removing it, so rollback is one command:
+
+```sh
+docker pull rnmdev/overseer:<sha>
+docker stop overseer-demo-app
+docker rename overseer-demo-app overseer-demo-app-prev
+docker run -d --name overseer-demo-app \
+  --network overseer-demo --restart unless-stopped \
+  --env-file /root/overseer-demo.env \
+  -p 127.0.0.1:5010:5000 rnmdev/overseer:<sha>
+```
+
+Then confirm `/api/auth/methods` still answers `github:false, password:true,
+oidc:false`, and that a request carrying the deep link the shipped app opens —
+`overseer://oauth/github` — is refused with `401 INVALID_CREDENTIALS` rather than
+`400 INVALID_CALLBACK`. The second check is the one that proves the native
+password door is reachable by the production build; see
+[email and password sign-in](password-auth.md#inside-the-apps-webview).
+
+Roll back with `docker stop overseer-demo-app && docker rm overseer-demo-app &&
+docker rename overseer-demo-app-prev overseer-demo-app && docker start
+overseer-demo-app`.
 
 ## Cutover state (2026-07-20)
 
