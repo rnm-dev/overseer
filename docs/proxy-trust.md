@@ -184,7 +184,7 @@ The 8443 probe already timed out during review, but that alone does not prove
 the target: Docker must also show the exact loopback binding after reboot.
 Until both loopback bindings and both external negative probes are verified,
 OVSR-248 must not be treated as deployed. The current production image also
-predates the application fix, so reverse-only cutover remains blocked.
+predates the application fix, so the reverse-control cutover remains blocked.
 
 The regression test proves that rotating both `X-Forwarded-For` and
 `CF-Connecting-IP` on direct requests does not rotate authentication rate keys.

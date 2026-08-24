@@ -44,15 +44,13 @@ same ports and state directory.
 
 ## Fast diagnosis
 
-- A startup error about `reverse-only` and a non-loopback bind means the safety
-  check worked. Keep reverse-only on `127.0.0.1`/`::1`; do not widen the bind to
-  recover connectivity.
 - `spawn ... ENOENT` means the service environment cannot find the configured
   agent executable. Confirm it with `which`, then run `peon start` once to
   regenerate the native service with the current `PATH`.
 - `Failed to connect to bus` on Linux means the user's systemd manager is not
   available. Use a real login session; an administrator may need to enable
-  linger for that user.
+  linger for that user. [The account Peon runs as](peon-user-account.md) covers
+  linger, the switched-shell trap and the macOS equivalent.
 - A local API that is healthy while Overseer remains offline points to the
   outbound Overseer URL, credential, TLS, DNS, time, or network path—not to the
   local listener.
@@ -64,8 +62,8 @@ same ports and state directory.
 - Do not delete or edit the Peon config/state directories as a recovery step.
   They contain identity, credentials, session records, command deduplication,
   durable delivery state, and update recovery data.
-- Do not switch to `legacy-mesh`, expose port 4570, or re-enable VPN callbacks
-  merely to make the Peon appear online.
+- Do not expose port 4570 or re-enable VPN callbacks merely to make the Peon
+  appear online.
 - Do not re-enrol or rotate credentials until logs demonstrate an
   authentication or revocation problem.
 - Do not use repeated forced restarts while a session may be running. A forced

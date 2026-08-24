@@ -130,7 +130,7 @@ tests, fixtures, TypeScript sources and build configuration out of the tarball.
 Peon is MIT licensed. `prepack` always rebuilds `dist`; release verification
 installs and exercises that exact archive before publication. The daemon and
 dashboard bind to loopback by default. Wider binding remains an explicit
-operator action and is rejected in reverse-only fleet mode.
+operator action.
 
 **The client is Flutter, not React Native.** Flutter 3.44.8, Dart SDK `^3.12.2`,
 Riverpod 3, go_router, dio, drift, freezed, firebase_messaging, and desktop

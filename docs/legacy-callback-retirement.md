@@ -39,9 +39,8 @@ The final change must treat these as one coordinated compatibility boundary:
   created them. Historical migrations must not simply be edited; cleanup needs
   a new reversible migration and a verified retained backup.
 - Peon compatibility: inbound fleet bearer middleware/routes, legacy
-  `/api/v1/enroll`, `peonRegistrar` registration/heartbeat, `legacy-mesh`,
-  remote-listener settings, callback credential fields and obsolete dashboard
-  status/actions.
+  `/api/v1/enroll`, `peonRegistrar` registration/heartbeat, remote-listener
+  settings, callback credential fields and obsolete dashboard status/actions.
 - Configuration and documentation:
   `OVERSEER_PEON_CALLBACK_URL`, `OVERSEER_REVERSE_ROUTING`,
   `OVERSEER_LEGACY_CALLBACK_FALLBACK`, deployment secrets/config, protocol
@@ -76,6 +75,6 @@ public mixed-version window has a start and end; that end has passed; and
 post-window telemetry shows zero callback selection/attempts for every
 supported version and operation family. The current rollout evidence and
 explicitly unfinished cells are recorded in
-[reverse-only rollout](reverse-rollout.md),
+[reverse-control rollout](reverse-rollout.md),
 [reverse fleet security](reverse-fleet-security.md), and the
 [protocol conformance harness](protocol-conformance-harness.md).

@@ -22,7 +22,7 @@ node scripts/security/run-reverse-fleet-security.mjs
 This command is read-only apart from temporary test files and in-memory
 databases. It does not contact production, deploy, or restart a service.
 
-Reverse-only/public-boundary cutover is **not approved** by this document.
+The reverse-control/public-boundary cutover is **not approved** by this document.
 OVSR-129 and OVSR-130 remain In Progress. OVSR-248 and OVSR-249 are in Code
 Review; review state is not deployment or
 operational evidence. The exact executable and blocked cells are listed under

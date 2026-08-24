@@ -1,4 +1,4 @@
-# Reverse-only rollout controls and gates
+# Reverse-control rollout controls and gates
 
 OVSR-152 is a staged production cutover, not permission to remove compatibility
 routing. This document records the safe local controls and the evidence still

@@ -82,6 +82,9 @@ repository — that content lives here.
   revision-fenced patches over Fleet HTTP.
 - [Peon update channel](peon-update-channel.md) — owner-authorized check,
   apply and status over Fleet HTTP; package metadata and bytes come from npm.
+- [the account Peon runs as](peon-user-account.md) — why it is a regular login
+  user, systemd linger, the macOS login caveat, and the environment the
+  generated unit freezes at install time.
 - [Peon restart recovery](peon-restart-recovery.md) — the checklist when a Peon
   does not come back.
 - [reverse runtime capabilities](runtime-capabilities.md) — the `runtime-state-v1`
@@ -126,9 +129,8 @@ repository — that content lives here.
 - [protocol conformance and failure-injection harness](protocol-conformance-harness.md) —
   golden frames, the capability matrix and deterministic fault injection.
 
-The reverse-control cutover is governed by four pages that are gates rather than
+The reverse-control cutover is governed by three pages that are gates rather than
 contracts: [rollout controls](reverse-rollout.md),
-[reverse-only fleet mode](reverse-only-peon.md),
 [callback addressing](callback-addressing.md) and the
 [legacy callback retirement gate](legacy-callback-retirement.md). Nothing in
 them is a default yet; read the gate before changing one.

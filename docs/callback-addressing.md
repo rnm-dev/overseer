@@ -32,4 +32,4 @@ fleet ledger.
 
 The capability-specific stages, rollback procedure, evidence checklist and
 not-yet-started support window are documented in
-[reverse-only rollout controls and gates](reverse-rollout.md).
+[reverse-control rollout controls and gates](reverse-rollout.md).
