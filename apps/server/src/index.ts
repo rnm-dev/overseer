@@ -32,6 +32,9 @@ async function main(): Promise<void> {
     process.exit(1);
   }
   await initDb();
+  if (process.env.OVERSEER_APP_REVIEW_DEMO === "1") {
+    await import("./cli/runScreenshotDemoPeon.js");
+  }
   configureEventDelivery();
   const app = createServer();
   const server = app.listen(config.port, config.host, () => {

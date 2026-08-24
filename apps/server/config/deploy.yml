@@ -66,6 +66,9 @@ env:
     # to the default: opening local accounts on the production origin is a
     # decision, not something a config file should do quietly.
     OVERSEER_PASSWORD_AUTH: 1
+    # Explicitly enables the read-only fictional workspace used by App Review.
+    # The helper also requires production and the exact public origin.
+    OVERSEER_APP_REVIEW_DEMO: 1
     OVERSEER_PREVIEW_TOKEN_TTL_MS: 600000
     OVERSEER_RECONCILE_INTERVAL_MS: 30000
     # Voice dictation. The preset resolves to Groq's OpenAI-compatible endpoint

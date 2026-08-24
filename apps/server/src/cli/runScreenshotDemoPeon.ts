@@ -2,10 +2,15 @@ import http from "node:http";
 
 const PORT = 5001;
 if (
-  process.env.NODE_ENV !== "development" ||
-  process.env.OVERSEER_PUBLIC_URL !== "https://overseer-dev.rnm.dev"
+  !(
+    (process.env.NODE_ENV === "development" &&
+      process.env.OVERSEER_PUBLIC_URL === "https://overseer-dev.rnm.dev") ||
+    (process.env.NODE_ENV === "production" &&
+      process.env.OVERSEER_PUBLIC_URL === "https://overseer.rnm.dev" &&
+      process.env.OVERSEER_APP_REVIEW_DEMO === "1")
+  )
 ) {
-  throw new Error("refusing screenshot demo Peon outside overseer-dev");
+  throw new Error("refusing App Review demo Peon outside an approved origin");
 }
 
 const projects = {

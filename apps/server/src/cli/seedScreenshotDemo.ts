@@ -125,21 +125,23 @@ function argument(name: string): string {
   return value;
 }
 
-function developmentDatabaseUrl(): string {
-  if (process.env.NODE_ENV !== "development")
-    throw new Error("refusing demo seed: NODE_ENV must equal development");
-  if (process.env.OVERSEER_PUBLIC_URL !== "https://overseer-dev.rnm.dev") {
-    throw new Error(
-      "refusing demo seed: OVERSEER_PUBLIC_URL must be https://overseer-dev.rnm.dev",
-    );
-  }
+function demoDatabaseUrl(): string {
+  const development =
+    process.env.NODE_ENV === "development" &&
+    process.env.OVERSEER_PUBLIC_URL === "https://overseer-dev.rnm.dev";
+  const appReview =
+    process.env.NODE_ENV === "production" &&
+    process.env.OVERSEER_PUBLIC_URL === "https://overseer.rnm.dev" &&
+    process.env.OVERSEER_APP_REVIEW_DEMO === "1";
+  if (!development && !appReview)
+    throw new Error("refusing demo seed outside an approved App Review origin");
   if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is required");
   return process.env.DATABASE_URL;
 }
 
 async function main(): Promise<void> {
   const email = argument("--owner-email");
-  const pool = new pg.Pool({ connectionString: developmentDatabaseUrl() });
+  const pool = new pg.Pool({ connectionString: demoDatabaseUrl() });
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
