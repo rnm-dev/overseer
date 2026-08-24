@@ -1,5 +1,6 @@
 import http from "node:http";
 import { screenshotDemoEnabled } from "../appReviewDemo.js";
+import { demoFileResponse } from "./screenshotDemoFiles.js";
 
 const PORT = 5001;
 if (!screenshotDemoEnabled()) {
@@ -208,19 +209,11 @@ const server = http.createServer((req, res) => {
   const fileMatch = url.pathname.match(/^\/projects\/([^/]+)\/files\/(.*)$/);
   if (fileMatch) {
     const path = decodeURIComponent(fileMatch[2]!);
-    if (url.searchParams.get("directory") === "1")
-      return send(res, 200, {
-        path,
-        entries: [
-          { name: "docs", type: "directory" },
-          { name: "lib", type: "directory" },
-          { name: "README.md", type: "file", size: 1240 },
-          { name: "pubspec.yaml", type: "file", size: 860 },
-        ],
-      });
-    const markdown =
-      "# Mobile App\n\nA polished companion for coordinating AI-assisted work.\n\n## Current focus\n\n- Faster onboarding\n- Accessible navigation\n- Reliable offline workflows\n- App Store launch readiness\n";
-    return send(res, 200, markdown, "text/markdown; charset=utf-8");
+    // `stat` is the listing request, not `directory`: Overseer strips its own
+    // `directory` hint before the request ever reaches a Peon.
+    const answer = demoFileResponse(path, url.searchParams.get("stat"));
+    if (answer.kind === "stat") return send(res, 200, answer.body);
+    return send(res, 200, answer.body, answer.contentType);
   }
 
   const sessionMatch = url.pathname.match(/^\/sessions\/([^/]+)(?:\/(.*))?$/);
