@@ -20,10 +20,17 @@ The command is idempotent. Re-running it refreshes relative activity times and
 restores the curated catalog: three fictional Peons, six projects with safe
 documentation, and eight completed sessions with curated prompts and previews.
 
-The Peons are projection-only and intentionally offline. Project/session lists
-and cached documentation are suitable for public screenshots. Operations that
-require a live Peon, including file bytes, transcripts, new work, statistics
-and Armory mutations, are outside this seed.
+For the complete screenshot tour, start the read-only demo Peon inside the
+development app container:
+
+```sh
+docker compose exec app npx tsx src/cli/runScreenshotDemoPeon.ts
+```
+
+It serves fictional project detail, documentation, files, session detail and
+transcript responses on container port 5001. The seed points all three demo
+Peons at that endpoint. Mutations are refused, and this helper must never run
+outside the development container.
 
 Never capture screenshots from a production connection. Before upload, inspect
 every source image at full resolution for names, emails, domains, addresses,

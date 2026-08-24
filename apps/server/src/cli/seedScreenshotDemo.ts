@@ -169,7 +169,7 @@ async function main(): Promise<void> {
         [credentialId, WORKSPACE_ID, token, name, userId, now, peonId],
       );
       await client.query(
-        "INSERT INTO peons (peon_id,credential_id,workspace_id,name,hostname,address,control_port,protocol,capabilities,load,token,registered_at,last_seen) VALUES ($1,$2,$3,$4,$5,'127.0.0.1',9,1,'[]'::jsonb,$6::jsonb,$7,$8,$8) ON CONFLICT (peon_id) DO UPDATE SET workspace_id=EXCLUDED.workspace_id,name=EXCLUDED.name,hostname=EXCLUDED.hostname,load=EXCLUDED.load,last_seen=EXCLUDED.last_seen",
+        "INSERT INTO peons (peon_id,credential_id,workspace_id,name,hostname,address,control_port,protocol,capabilities,load,token,registered_at,last_seen) VALUES ($1,$2,$3,$4,$5,'127.0.0.1',5001,1,'[\"transcript-pagination-v1\"]'::jsonb,$6::jsonb,$7,$8,$8) ON CONFLICT (peon_id) DO UPDATE SET workspace_id=EXCLUDED.workspace_id,name=EXCLUDED.name,hostname=EXCLUDED.hostname,address='127.0.0.1',control_port=5001,protocol=1,capabilities='[\"transcript-pagination-v1\"]'::jsonb,load=EXCLUDED.load,last_seen=EXCLUDED.last_seen",
         [
           peonId,
           credentialId,
