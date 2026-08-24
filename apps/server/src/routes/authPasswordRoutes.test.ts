@@ -21,12 +21,18 @@ let port: number;
 const originalPublicUrl = config.publicUrl;
 const originalAuth = config.auth;
 
+// The door as an enabled instance holds it. `overseer://oauth/github` is in the
+// default allowlist deliberately: it is the deep link already-shipped apps open
+// their webview with, so this door works for them without an app release.
+const CALLBACK = "overseer://oauth/github";
+const PASSWORD_ON = { nativeCallbacks: [CALLBACK, "overseer://oauth/password"] };
+
 before(async () => {
   const mem = newDb();
   const adapter = mem.adapters.createPg();
   await initDb(new adapter.Pool() as unknown as pg.Pool);
   config.publicUrl = "https://overseer.example";
-  config.auth = { ...config.auth, password: true };
+  config.auth = { ...config.auth, password: PASSWORD_ON };
   server = http.createServer(createServer());
   port = await new Promise<number>((resolve) => server.listen(0, "127.0.0.1", () => resolve((server.address() as AddressInfo).port)));
 });
@@ -172,7 +178,7 @@ test("the environment switch closes both routes and drops the method from discov
   assert.equal(advertised.status, 200);
   assert.equal(advertised.body.password, true);
 
-  config.auth = { ...config.auth, password: false };
+  config.auth = { ...config.auth, password: null };
   try {
     const hidden = await request("/api/auth/methods");
     assert.equal(hidden.body.password, false);
@@ -185,7 +191,7 @@ test("the environment switch closes both routes and drops the method from discov
       assert.equal(refused.setCookie.length, 0);
     }
   } finally {
-    config.auth = { ...config.auth, password: true };
+    config.auth = { ...config.auth, password: PASSWORD_ON };
   }
 });
 
@@ -267,6 +273,166 @@ test("an invitation admits exactly one account and puts it in that workspace", a
     });
     assert.equal(replay.status, 403);
   }
+});
+
+// The webview ending. The app opened /login?callback=<deep link> because it
+// cannot use a cookie, so a correct password there has to end where GitHub and
+// OIDC end: a one-time app code on that deep link.
+
+/** The `state` and `code` a native sign-in put on its redirect. */
+function deepLinkParams(body: Record<string, unknown>): URLSearchParams {
+  return new URL(body.redirectUrl as string).searchParams;
+}
+
+async function nativeSignIn(): Promise<URLSearchParams> {
+  const signedIn = await request("/api/auth/password/login", "POST", {
+    email: "founder@example.test",
+    password: "sufficiently-long",
+    callback: CALLBACK,
+  });
+  assert.equal(signedIn.status, 200);
+  assert.equal(signedIn.body.flow, "native");
+  // Nothing is left in this browser: it is the app's sign-in sheet and is about
+  // to close.
+  assert.equal(signedIn.setCookie.length, 0);
+  assert.equal(signedIn.body.token, undefined);
+  return deepLinkParams(signedIn.body);
+}
+
+test("a correct password in the app's webview ends at the deep link, not a cookie", async () => {
+  const params = await nativeSignIn();
+  assert.ok((params.get("code") ?? "").length > 20);
+  assert.ok((params.get("state") ?? "").length > 20);
+});
+
+test("the app code is exchanged once, for a device token that works", async () => {
+  const params = await nativeSignIn();
+  const payload = { state: params.get("state"), code: params.get("code") };
+
+  const exchanged = await request("/api/auth/native/exchange", "POST", payload);
+  assert.equal(exchanged.status, 200);
+  assert.equal(typeof exchanged.body.token, "string");
+  assert.equal((exchanged.body.user as { email: string }).email, "founder@example.test");
+
+  const me = await request("/api/auth/me", "GET", undefined, { authorization: `Bearer ${exchanged.body.token as string}` });
+  assert.equal(me.status, 200);
+  assert.equal((me.body.user as { email: string }).email, "founder@example.test");
+
+  // Single-use: the second attempt is refused, and refused the same way a code
+  // that never existed is.
+  const replay = await request("/api/auth/native/exchange", "POST", payload);
+  assert.equal(replay.status, 400);
+  assert.equal(replay.body.code, "BAD_APP_CODE");
+  const invented = await request("/api/auth/native/exchange", "POST", { state: params.get("state"), code: "not-a-real-code" });
+  assert.equal(invented.status, 400);
+  assert.deepEqual(invented.body, replay.body);
+});
+
+test("an app code past its three minutes is refused", async () => {
+  const params = await nativeSignIn();
+  // Reach past the route and age the code, rather than sleeping for minutes.
+  await query(`UPDATE oauth_attempts SET code_expires_at = $1`, [Date.now() - 1]);
+  const expired = await request("/api/auth/native/exchange", "POST", {
+    state: params.get("state"),
+    code: params.get("code"),
+  });
+  assert.equal(expired.status, 400);
+  assert.equal(expired.body.code, "BAD_APP_CODE");
+});
+
+test("a callback outside the allowlist is refused before the password is judged", async () => {
+  // A correct credential, and still refused: the destination is a property of
+  // the build, not of who is signing in.
+  for (const callback of ["overseer://oauth/elsewhere", "https://attacker.example/steal", "overseer://oauth/github/"]) {
+    const refused = await request("/api/auth/password/login", "POST", {
+      email: "founder@example.test",
+      password: "sufficiently-long",
+      callback,
+    });
+    assert.equal(refused.status, 400);
+    assert.equal(refused.body.code, "INVALID_CALLBACK");
+    assert.equal(refused.setCookie.length, 0);
+  }
+
+  // And a wrong password with a bad callback answers the same, so the refusal
+  // says nothing about the address.
+  const wrong = await request("/api/auth/password/login", "POST", {
+    email: "nobody@example.test",
+    password: "sufficiently-wrong",
+    callback: "https://attacker.example/steal",
+  });
+  assert.equal(wrong.status, 400);
+  assert.equal(wrong.body.code, "INVALID_CALLBACK");
+});
+
+test("a wrong password in the webview is still one indistinguishable refusal", async () => {
+  const wrongPassword = await request("/api/auth/password/login", "POST", { email: "founder@example.test", password: "sufficiently-wrong", callback: CALLBACK });
+  const unknownUser = await request("/api/auth/password/login", "POST", { email: "nobody@example.test", password: "sufficiently-long", callback: CALLBACK });
+  for (const refused of [wrongPassword, unknownUser]) {
+    assert.equal(refused.status, 401);
+    assert.equal(refused.body.code, "INVALID_CREDENTIALS");
+    assert.equal(refused.body.redirectUrl, undefined);
+  }
+  assert.deepEqual(wrongPassword.body, unknownUser.body);
+});
+
+// The point of the shared exchange: an app built before it existed calls the
+// GitHub path, and a demo instance has GitHub switched off. The door is resolved
+// from the code, so that build still finishes.
+test("a password app code is redeemable at the legacy GitHub exchange path", async () => {
+  const params = await nativeSignIn();
+  const github = config.auth.github;
+  config.auth = { ...config.auth, github: null };
+  try {
+    const exchanged = await request("/api/auth/github/native/exchange", "POST", {
+      state: params.get("state"),
+      code: params.get("code"),
+    });
+    assert.equal(exchanged.status, 200);
+    assert.equal(typeof exchanged.body.token, "string");
+  } finally {
+    config.auth = { ...config.auth, github };
+  }
+});
+
+// Switching the method off closes flows already in the air, at every stage —
+// including the last one, where a code minted while it was on is presented after.
+test("switching the password door off stops an outstanding app code", async () => {
+  const params = await nativeSignIn();
+  config.auth = { ...config.auth, password: null };
+  try {
+    const refused = await request("/api/auth/native/exchange", "POST", {
+      state: params.get("state"),
+      code: params.get("code"),
+    });
+    assert.equal(refused.status, 503);
+    assert.equal(refused.body.code, "PASSWORD_AUTH_DISABLED");
+  } finally {
+    config.auth = { ...config.auth, password: PASSWORD_ON };
+  }
+});
+
+// The native ending issues no device of its own: the app gets one when it spends
+// the code. A second, undelivered 90-day credential per sign-in would otherwise
+// pile up in the operator's own device list.
+test("the webview sign-in leaves no device behind until the code is spent", async () => {
+  const { rows: before } = await query<{ n: string }>(
+    `SELECT COUNT(*) AS n FROM devices d JOIN users u ON u.id = d.user_id WHERE u.email = $1`,
+    ["founder@example.test"],
+  );
+  const params = await nativeSignIn();
+  const { rows: afterSignIn } = await query<{ n: string }>(
+    `SELECT COUNT(*) AS n FROM devices d JOIN users u ON u.id = d.user_id WHERE u.email = $1`,
+    ["founder@example.test"],
+  );
+  assert.equal(afterSignIn[0].n, before[0].n);
+
+  await request("/api/auth/native/exchange", "POST", { state: params.get("state"), code: params.get("code") });
+  const { rows: afterExchange } = await query<{ n: string }>(
+    `SELECT COUNT(*) AS n FROM devices d JOIN users u ON u.id = d.user_id WHERE u.email = $1`,
+    ["founder@example.test"],
+  );
+  assert.equal(Number(afterExchange[0].n), Number(before[0].n) + 1);
 });
 
 test("a native client asks for the bearer token instead of the cookie", async () => {

@@ -9,4 +9,5 @@ export {
   type AuthMethodsDescription,
   type GithubAuthSettings,
   type OidcAuthSettings,
+  type PasswordAuthSettings,
 } from "./authConfig.js";

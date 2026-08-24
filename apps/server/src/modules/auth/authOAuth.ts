@@ -229,11 +229,71 @@ export async function completeOidcSignIn(
 }
 
 /**
+ * End a correct password in the same place a redirect flow ends: a one-time app
+ * code on an allowlisted deep link.
+ *
+ * There is no state in the air to consume here — the credential was proved in
+ * the same request — so the row is written already completed. It exists only to
+ * carry the app code, under the same TTL and the same single-use delete every
+ * other door's code lives by.
+ *
+ * The caller has already matched `callback` against this door's allowlist.
+ */
+export async function issuePasswordAppCode(
+  userId: string,
+  callback: string,
+  now: number = Date.now(),
+): Promise<string> {
+  const state = opaque();
+  const appCode = opaque();
+  await query(
+    `INSERT INTO oauth_attempts
+       (state_hash, flow, provider, callback_url, created_at, expires_at, completed_at, app_code_hash, user_id, code_expires_at)
+     VALUES ($1,'native','password',$2,$3,$4,$3,$5,$6,$7)`,
+    [
+      digest(state),
+      callback,
+      now,
+      now + OAUTH_STATE_TTL_MS,
+      digest(appCode),
+      userId,
+      now + OAUTH_CODE_TTL_MS,
+    ],
+  );
+  const target = new URL(callback);
+  target.searchParams.set("state", state);
+  target.searchParams.set("code", appCode);
+  return target.toString();
+}
+
+/**
+ * Which door an outstanding app code came from, without spending it.
+ *
+ * The exchange needs this before it redeems anything: the door is recorded on
+ * the code rather than chosen by the caller, and it is that door's guard which
+ * decides whether the code is still redeemable. Looking without consuming is
+ * safe — the redemption below is a single atomic delete, so a code that passes
+ * this check twice is still only spent once.
+ */
+export async function nativeAppCodeProvider(
+  state: string,
+  code: string,
+  now: number = Date.now(),
+): Promise<OAuthProvider | null> {
+  const { rows } = await query<{ provider: OAuthProvider }>(
+    `SELECT provider FROM oauth_attempts
+     WHERE state_hash=$1 AND app_code_hash=$2 AND code_expires_at >= $3 AND flow='native'`,
+    [digest(state), digest(code), now],
+  );
+  return rows[0]?.provider ?? null;
+}
+
+/**
  * Redeem a native app code for a device token.
  *
  * Fenced by provider like the state it grew from: an app code minted at one door
- * is not redeemable at the other's exchange, so switching a method off closes
- * every stage of its flow rather than all but the last one.
+ * is not redeemable as another's, so switching a method off closes every stage
+ * of its flow rather than all but the last one.
  */
 export async function exchangeNativeAppCode(
   state: string,

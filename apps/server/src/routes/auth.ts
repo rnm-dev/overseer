@@ -11,6 +11,7 @@ import {
   verifyDeviceToken,
 } from "../modules/auth/index.js";
 import { getInvitePreview } from "../modules/workspaces/index.js";
+import { mountNativeExchange } from "./authNativeExchange.js";
 import { mountPasswordSignIn } from "./authPasswordRoutes.js";
 import { mountRedirectSignIn } from "./authRedirectSignIn.js";
 import { bearer } from "./requestContext.js";
@@ -31,6 +32,9 @@ export function publicAuthRouter(): express.Router {
 
   mountRedirectSignIn(router);
   mountPasswordSignIn(router);
+  // Shared by every door: the app code a native sign-in ends with, whichever
+  // one minted it.
+  mountNativeExchange(router);
 
   // One-release bridge for existing web sessions. The legacy dashboard proves
   // possession of its localStorage device token once, receives an HttpOnly

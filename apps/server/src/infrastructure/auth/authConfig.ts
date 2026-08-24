@@ -33,6 +33,18 @@ export interface GithubAuthSettings {
   nativeCallbacks: string[];
 }
 
+export interface PasswordAuthSettings {
+  // Deep links a native client may be handed after a correct password, on the
+  // same terms the redirect doors allowlist theirs. Email + password is not a
+  // redirect flow, but its native ending is the same one — a one-time app code
+  // on a deep link — so the callback needs the same server-owned allowlist.
+  //
+  // It is deliberately its own setting rather than a read of the GitHub door's:
+  // an instance with `github:false` has no GitHub settings to read, and that is
+  // exactly the instance that needs this most.
+  nativeCallbacks: string[];
+}
+
 export interface OidcAuthSettings {
   // Origin of the provider, without a trailing slash. Everything else about it
   // — endpoints, keys — is discovered from `${issuer}/.well-known/openid-configuration`
@@ -70,7 +82,7 @@ export interface AuthConfig {
   // null = this instance has no such door. Availability is this, and only this.
   github: GithubAuthSettings | null;
   oidc: OidcAuthSettings | null;
-  password: boolean;
+  password: PasswordAuthSettings | null;
   // Whether an identity with no account here may become one without presenting
   // an invitation. Off by default, and deliberately not per-door: it is a
   // statement about who this instance is for, and an instance that will take
@@ -87,7 +99,7 @@ export interface AuthConfig {
 export type AuthMethodAvailability = Record<AuthMethodId, boolean>;
 
 export function authMethodAvailability(auth: AuthConfig): AuthMethodAvailability {
-  return { github: auth.github !== null, password: auth.password, oidc: auth.oidc !== null };
+  return { github: auth.github !== null, password: auth.password !== null, oidc: auth.oidc !== null };
 }
 
 export function isAuthMethodEnabled(auth: AuthConfig, method: AuthMethodId): boolean {
@@ -221,7 +233,15 @@ export function resolveAuthConfig(env: NodeJS.ProcessEnv, publicUrl: string): Au
   const oidc = resolveOidc(env, publicUrl, warnings);
   // Registration and sign-in share the switch: an instance that does not want
   // local accounts must not accept new ones either.
-  const password = trimmed(env, "OVERSEER_PASSWORD_AUTH") === "1";
+  //
+  // The default allowlist names the deep link the shipped mobile client already
+  // opens its webview with (`overseer://oauth/github`) beside a password-specific
+  // one, so enabling this door needs no app release. A build using another scheme
+  // — the dev flavour's `overseer-dev://` — names it in the variable, exactly as
+  // the GitHub door does.
+  const password = trimmed(env, "OVERSEER_PASSWORD_AUTH") === "1"
+    ? { nativeCallbacks: csv(env, "OVERSEER_PASSWORD_NATIVE_CALLBACKS", "overseer://oauth/github,overseer://oauth/password") }
+    : null;
   if (!github && !password && !oidc) {
     warnings.push(
       "No sign-in method is configured (OVERSEER_GITHUB_CLIENT_ID / OVERSEER_GITHUB_CLIENT_SECRET, OVERSEER_PASSWORD_AUTH, OVERSEER_OIDC_ISSUER) — nobody can log in.",

@@ -40,11 +40,13 @@ interface AuthState {
   unavailable: boolean;
   retry: () => Promise<void>;
   loginWithProvider: (provider: OauthProvider) => Promise<void>;
-  signInWithPassword: (email: string, password: string) => Promise<void>;
+  // "native" means the browser has been sent to the app's deep link and this
+  // page is on its way out — there is no user to show and nothing to navigate to.
+  signInWithPassword: (email: string, password: string) => Promise<"web" | "native">;
   // The invite, when the visitor arrived from one: it is what permits the
   // account on an instance that is not open, and it is spent on the workspace
   // that issued it, so the person lands there instead of alone in a personal one.
-  registerWithPassword: (email: string, password: string, invite?: string | null) => Promise<void>;
+  registerWithPassword: (email: string, password: string, invite?: string | null) => Promise<"web" | "native">;
   completeOauthCallback: (
     provider: OauthProvider,
     code: string | null,
@@ -133,6 +135,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  // Both password routes answer the same two ways, so they ask the same way.
+  async function passwordDoor(path: string, credentials: Record<string, string>): Promise<"web" | "native"> {
+    const callback = nativeCallback(sessionStorage);
+    const r = await api<{ user: User } | { flow: "native"; redirectUrl: string }>(
+      path,
+      json(callback ? { ...credentials, callback } : credentials),
+    );
+    if ("flow" in r && r.flow === "native") {
+      // Deliberately no forgetNativeCallback: this browser is still the app's
+      // sign-in sheet, and a "back to login" retry has to stay in native mode.
+      window.location.assign(serverApprovedNativeRedirect(r.redirectUrl));
+      return "native";
+    }
+    forgetNativeCallback(sessionStorage); // a finished web sign-in ⇒ not a webview
+    clearTranscriptSnapshotCache();
+    setUser((r as { user: User }).user);
+    return "web";
+  }
+
   const value: AuthState = {
     user,
     ready,
@@ -149,22 +170,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       sessionStorage.setItem(STATE_KEY, started.state);
       window.location.assign(started.authorizationUrl);
     },
-    // Email + password. The session is the same HttpOnly cookie GitHub sign-in
-    // issues, so nothing below this line knows which door the user came through.
+    // Email + password. In a browser the session is the same HttpOnly cookie
+    // GitHub sign-in issues, so nothing below this line knows which door the
+    // user came through.
+    //
+    // In the app's webview there is no cookie to have: the callback is sent with
+    // the credentials, and the server answers with the deep link carrying a
+    // one-time app code — the same ending the redirect doors reach, so the app
+    // exchanges it the same way. Rendering the dashboard here instead is the bug
+    // this closes: it puts the whole product inside a sign-in sheet that has no
+    // way to hand the app a token.
     async signInWithPassword(email, password) {
-      const r = await api<{ user: User }>("/auth/password/login", json({ email, password }));
-      forgetNativeCallback(sessionStorage);
-      clearTranscriptSnapshotCache();
-      setUser(r.user);
+      return passwordDoor("/auth/password/login", { email, password });
     },
     async registerWithPassword(email, password, invite) {
-      const r = await api<{ user: User }>(
-        "/auth/password/register",
-        json(invite ? { email, password, invite } : { email, password }),
-      );
-      forgetNativeCallback(sessionStorage);
-      clearTranscriptSnapshotCache();
-      setUser(r.user);
+      return passwordDoor("/auth/password/register", invite ? { email, password, invite } : { email, password });
     },
     async completeOauthCallback(provider, code, state, error) {
       const saved = sessionStorage.getItem(STATE_KEY);

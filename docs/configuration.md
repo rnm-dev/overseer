@@ -60,6 +60,7 @@ with no door at all boots and says nobody can log in.
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `OVERSEER_PASSWORD_AUTH` | off | `1` opens email + password sign-in and registration. See [email and password sign-in](password-auth.md). |
+| `OVERSEER_PASSWORD_NATIVE_CALLBACKS` | `overseer://oauth/github,overseer://oauth/password` | Deep links a correct password may be handed an app code on, for a sign-in inside the mobile app's webview. The default names the link already-shipped apps open, so this door needs no app release. |
 | `OVERSEER_GITHUB_CLIENT_ID` / `_CLIENT_SECRET` | — | GitHub OAuth app. |
 | `OVERSEER_GITHUB_SCOPE` | `read:user user:email` | |
 | `OVERSEER_GITHUB_REDIRECT_URI` | `<public-url>/auth/github/callback` | Must match what the OAuth app has registered. |

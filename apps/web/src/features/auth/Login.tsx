@@ -65,9 +65,12 @@ export function Login() {
   function submit(event: React.FormEvent) {
     event.preventDefault();
     void attempt("password", async () => {
-      await (registering
+      const ended = await (registering
         ? registerWithPassword(email, password, pendingInvite)
         : signInWithPassword(email, password));
+      // The browser is on its way to the app's deep link; there is no page left
+      // to navigate and the invite is the app's to resume.
+      if (ended === "native") return;
       const pending = sessionStorage.getItem(PENDING_INVITE_KEY);
       if (!pending) return;
       sessionStorage.removeItem(PENDING_INVITE_KEY);

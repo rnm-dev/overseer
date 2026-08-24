@@ -60,6 +60,50 @@ body and no cookie, exactly as it does after the OAuth app-code exchange. Both
 are rate-limited per IP by the same bucket the OAuth starts use: five
 registrations and ten sign-ins a minute.
 
+## Inside the app's webview
+
+There is a third caller, and it can use neither answer. The mobile app opens
+`/login?callback=<deep link>` in a system auth session precisely *because* it
+cannot use a cookie — that session belongs to the browser, and the app needs a
+bearer of its own. A correct password that only set a cookie left the app with
+nothing and rendered the whole dashboard inside a sign-in sheet with no way out.
+
+So both routes accept an optional `callback`. When it is present, a correct
+credential ends where GitHub and OIDC end: a one-time app code on that deep
+link.
+
+```
+POST /api/auth/password/login
+{ "email": "…", "password": "…", "callback": "overseer://oauth/github" }
+
+200 → { "flow": "native",
+        "redirectUrl": "overseer://oauth/github?state=…&code=…" }
+```
+
+- The callback is matched **exactly** against `OVERSEER_PASSWORD_NATIVE_CALLBACKS`,
+  and anything else is `400 INVALID_CALLBACK`. That is its own setting, not a
+  read of the GitHub door's: an instance with `github:false` has no GitHub
+  settings to read, and is exactly the instance that needs this most. The
+  default names the deep link already-shipped apps open, so turning this door on
+  needs no app release.
+- **The callback is judged before the credential**, so a misconfigured build is
+  told so without a password being hashed, and gets the same answer whether or
+  not the address it sent exists.
+- **No web session cookie is set.** The browser holding it is the app's sign-in
+  sheet and is about to close; the only thing that should survive it is the app
+  code, and that lives on the deep link.
+- **No device is issued either.** The device is issued when the app spends the
+  code, to the client that will actually hold it — otherwise every native
+  sign-in would leave a live 90-day credential behind that nothing ever
+  receives.
+- The code is single-use with a 3-minute TTL, and is redeemed at the shared
+  [native exchange](sign-in-methods.md#every-native-sign-in-ends-at-one-exchange).
+- A wrong password is still one indistinguishable `401 INVALID_CREDENTIALS`,
+  with no redirect.
+
+Without `callback` these routes are byte-for-byte what they were: a browser gets
+its cookie and the web dashboard.
+
 Registration creates the default workspace, so the account is usable on its
 first request rather than after a second step.
 

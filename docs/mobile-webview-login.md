@@ -19,10 +19,11 @@ one source of truth, nothing to drift out of sync. Rules:
 
 - The value must be a non-`http(s)` deep link, or the SPA ignores it and stays
   in plain web mode (`apps/web/src/features/auth/nativeLoginMode.ts`).
-- The API matches it **exactly** against `OVERSEER_GITHUB_NATIVE_CALLBACKS`
-  (`overseer://oauth/github` and `overseer-dev://oauth/github` today). Anything
-  else gets `400 INVALID_CALLBACK` when sign-in starts, so the login page owns
-  no allowlist of its own.
+- The API matches it **exactly** against the allowlist of whichever door is
+  used — `OVERSEER_GITHUB_NATIVE_CALLBACKS` (`overseer://oauth/github` and
+  `overseer-dev://oauth/github` today), `OVERSEER_OIDC_NATIVE_CALLBACKS`, or
+  `OVERSEER_PASSWORD_NATIVE_CALLBACKS`. Anything else gets
+  `400 INVALID_CALLBACK`, so the login page owns no allowlist of its own.
 - The SPA keeps the callback in `sessionStorage` for the browsing session,
   because the GitHub round trip and a "back to login" retry both come back
   without a query string. A completed web sign-in clears it.
@@ -51,6 +52,31 @@ one source of truth, nothing to drift out of sync. Rules:
 
 Steps 3–5 are unchanged from the older flow where the app opened GitHub
 directly, so only the entry point moves.
+
+### Email and password takes the same exit
+
+There is no round trip to make — the credential is proved in one request — so the
+password form sends the stored callback with it and the server answers with the
+deep link directly:
+
+```
+POST /api/auth/password/login
+{ "email": "…", "password": "…", "callback": "overseer://oauth/github" }
+
+200 → { "flow": "native", "redirectUrl": "overseer://oauth/github?state=…&code=…" }
+```
+
+The page navigates there, and step 5 is identical: the app exchanges the code for
+a device token. No cookie is set and no device is issued until that exchange, so
+the webview closes having left nothing behind.
+
+Until this shipped, a correct password only set a web cookie and dropped the user
+on the dashboard *inside the sign-in sheet* — no deep link ever fired and the app
+never got a token. That was the whole bug.
+
+An instance running only this door (`github:false`, `password:true`) therefore
+completes a native sign-in with no OAuth app configured at all, which is what the
+App Review demo instance does.
 
 ## What the app has to do
 
@@ -100,13 +126,20 @@ and a cold start via `getIntent`, since the intent can launch the app fresh).
 ### 4. Exchange the app code for a device token
 
 ```
-POST <origin>/api/auth/github/native/exchange
+POST <origin>/api/auth/native/exchange
 { "state": "<from the deep link>", "code": "<from the deep link>" }
 
 200 → { "token": "<deviceId>.<secret>",
         "user":   { "email", "githubLogin", "avatarUrl" },
         "device": { "id", "label", "createdAt", "lastSeenAt", "expiresAt" } }
 ```
+
+One path redeems every door: which one minted the code is recorded on the code,
+not chosen by the caller, so the app never has to know how the user signed in.
+`/api/auth/github/native/exchange` and `/api/auth/oidc/native/exchange` are kept
+as aliases of it — older builds call the GitHub one, and it still works even for
+a password sign-in on an instance with GitHub switched off. See
+[every native sign-in ends at one exchange](sign-in-methods.md#every-native-sign-in-ends-at-one-exchange).
 
 If the deep link carries `error` instead of `code`, sign-in failed or was
 denied — show it and let the user retry.

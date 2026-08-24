@@ -20,7 +20,7 @@ disagree with them, and nothing outside the resolver re-derives availability:
 ```
 config.auth.github    GithubAuthSettings | null   // id, secret, scope, redirect, native callbacks
 config.auth.oidc      OidcAuthSettings | null     // issuer, id, secret, scope, redirect, callbacks, label
-config.auth.password  boolean                     // OVERSEER_PASSWORD_AUTH=1
+config.auth.password  PasswordAuthSettings | null // OVERSEER_PASSWORD_AUTH=1, native callbacks
 ```
 
 | Variable | Effect |
@@ -38,6 +38,7 @@ config.auth.password  boolean                     // OVERSEER_PASSWORD_AUTH=1
 | `OVERSEER_OIDC_WORKSPACE_CLAIM` | claim naming the workspaces an operator joins, when one directory holds several teams |
 | `OVERSEER_OIDC_PROVISION_WORKSPACE=1` | this directory gets a workspace of its own, made by whoever arrives from it first |
 | `OVERSEER_PASSWORD_AUTH=1` | email + password is on, for registration and sign-in together |
+| `OVERSEER_PASSWORD_NATIVE_CALLBACKS` | allowlisted deep links, default `overseer://oauth/github,overseer://oauth/password` |
 | `OVERSEER_DEVICE_TOKEN_TTL_MS` | lifetime of the token every door issues, default 90 days |
 
 The issuer must be `https` and is normalised once — trailing slash removed — so
@@ -76,6 +77,37 @@ flow drift, and the half that drifts is the error path — the one nobody
 exercises until it matters. Email + password, which is not a redirect flow, is
 `routes/authPasswordRoutes.ts`; `routes/auth.ts` composes the three and holds
 only what belongs to none of them.
+
+## Every native sign-in ends at one exchange
+
+Whichever door a native client came through, it ends holding a one-time app code
+on an allowlisted deep link, and redeems it at `POST /api/auth/native/exchange`
+for a device token. `routes/authNativeExchange.ts` is that route, and it is
+deliberately **not** written per provider.
+
+An app code stands for a sign-in that has already happened, and the door it came
+through is recorded on the code rather than chosen by the caller. So there is
+nothing for a second copy of the route to decide differently, and email +
+password — which is not a redirect flow at all — reaches the same exchange.
+
+`POST /api/auth/github/native/exchange` and `/api/auth/oidc/native/exchange`
+remain as aliases of the same handler. An installed app cannot be asked to
+update before its next sign-in works, and every shipped build calls the GitHub
+path. They are aliases, not variants: each resolves the door from the code
+exactly as the neutral path does. That is what lets a build which only knows the
+GitHub path finish a **password** sign-in on an instance where GitHub is switched
+off — the case the App Review demo instance is.
+
+The invariant that switching a method off closes flows already in the air still
+holds, and holds at the last stage too: the door is resolved from the code and
+*that* door's guard refuses. Naming another provider in the path cannot move a
+code out from under its own guard. What the path no longer does is fence a code
+by the URL it is presented at, which never carried weight of its own — the code
+and its state are both 256-bit secrets, so anyone able to present them received
+the deep link legitimately.
+
+A code that does not exist is `400 BAD_APP_CODE` rather than a method's `503`,
+so a fabricated code cannot be used to enumerate which doors an instance has.
 
 An identity can be proved and still not have an account: an unverified address,
 an address already linked to another subject. Those are `AccountLinkError` from

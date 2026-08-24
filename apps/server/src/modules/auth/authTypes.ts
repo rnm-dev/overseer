@@ -1,7 +1,15 @@
 export type OAuthFlow = "web" | "native";
 
-/** Which door an attempt belongs to. Stored, so a state cannot be redeemed at the other one. */
-export type OAuthProvider = "github" | "oidc";
+/**
+ * Which door an attempt belongs to. Stored, so a state cannot be redeemed at
+ * another one, and so an app code can name the door that has to still be open
+ * when it is spent.
+ *
+ * `password` is not a redirect flow and never has a state in the air — its row
+ * is written already completed, purely to carry the app code its native ending
+ * hands to the app.
+ */
+export type OAuthProvider = "github" | "oidc" | "password";
 
 export interface OauthStartResult {
   authorizationUrl: string;

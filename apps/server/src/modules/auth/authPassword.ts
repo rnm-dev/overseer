@@ -109,7 +109,14 @@ async function signIn(user: UserRecord, client: ClientInfo): Promise<PasswordSig
   return { token, user, device };
 }
 
-export async function registerWithPassword(input: { email: unknown; password: unknown; invite?: unknown; client: ClientInfo }): Promise<PasswordSignInResult> {
+// Proving the credential and issuing the session are separate steps, because
+// not every caller wants the second one. A webview sign-in ends at a one-time
+// app code, and the device is issued when that code is exchanged — by the app,
+// which is the thing that will actually hold it. Issuing one here as well would
+// leave a live 90-day credential behind on every native sign-in that nothing
+// ever receives.
+
+export async function createAccountWithPassword(input: { email: unknown; password: unknown; invite?: unknown }): Promise<UserRecord> {
   const email = normalizeEmail(input.email);
   if (!email) throw new PasswordAuthError(400, "INVALID_EMAIL", "a valid email address is required");
   // Before the password is even judged: on a closed instance an uninvited
@@ -146,10 +153,14 @@ export async function registerWithPassword(input: { email: unknown; password: un
   const invite = typeof input.invite === "string" ? input.invite.trim() : "";
   if (invite) await acceptInvite(invite, user.id);
   await ensureDefaultWorkspace(user.id, user.email);
-  return signIn(user, input.client);
+  return user;
 }
 
-export async function signInWithPassword(input: { email: unknown; password: unknown; client: ClientInfo }): Promise<PasswordSignInResult> {
+export async function registerWithPassword(input: { email: unknown; password: unknown; invite?: unknown; client: ClientInfo }): Promise<PasswordSignInResult> {
+  return signIn(await createAccountWithPassword(input), input.client);
+}
+
+export async function authenticateWithPassword(input: { email: unknown; password: unknown }): Promise<UserRecord> {
   const email = normalizeEmail(input.email);
   const password = typeof input.password === "string" ? input.password : "";
   const invalid = new PasswordAuthError(401, "INVALID_CREDENTIALS", "incorrect email or password");
@@ -169,5 +180,9 @@ export async function signInWithPassword(input: { email: unknown; password: unkn
   if (!(await verifyPassword(password, hash))) throw invalid;
 
   await ensureDefaultWorkspace(user.id, user.email);
-  return signIn(user, input.client);
+  return user;
+}
+
+export async function signInWithPassword(input: { email: unknown; password: unknown; client: ClientInfo }): Promise<PasswordSignInResult> {
+  return signIn(await authenticateWithPassword(input), input.client);
 }

@@ -34,7 +34,12 @@ class DioAuthRemoteDataSource implements AuthRemoteDataSource {
   }) async {
     final data = await _request(
       () => _dio.post<Map<String, dynamic>>(
-        'auth/github/native/exchange',
+        // Provider-neutral: the door is recorded on the app code itself, so one
+        // path redeems a GitHub, OIDC or email/password sign-in. The old
+        // 'auth/github/native/exchange' still works and is what older builds
+        // call, but naming a provider here was always a fiction — this client
+        // never knew which door the webview used.
+        'auth/native/exchange',
         data: {'code': code, 'state': state},
       ),
     );

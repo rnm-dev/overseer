@@ -46,12 +46,25 @@ test("an instance with no method configured warns that nobody can log in", () =>
 });
 
 test("password auth is on for exactly OVERSEER_PASSWORD_AUTH=1", () => {
-  for (const value of ["1"]) {
-    assert.equal(resolveAuthConfig(env({ OVERSEER_PASSWORD_AUTH: value }), PUBLIC_URL).password, true);
-  }
+  // Like every other door, it is its settings or null — never a flag beside them
+  // that could disagree.
+  assert.deepEqual(resolveAuthConfig(env({ OVERSEER_PASSWORD_AUTH: "1" }), PUBLIC_URL).password, {
+    nativeCallbacks: ["overseer://oauth/github", "overseer://oauth/password"],
+  });
   for (const value of ["", "0", "true", "yes", "on"]) {
-    assert.equal(resolveAuthConfig(env({ OVERSEER_PASSWORD_AUTH: value }), PUBLIC_URL).password, false, value);
+    assert.equal(resolveAuthConfig(env({ OVERSEER_PASSWORD_AUTH: value }), PUBLIC_URL).password, null, value);
   }
+});
+
+// The default allowlist names the deep link already-shipped apps open, so
+// turning this door on needs no app release. A build on another scheme — the dev
+// flavour — names it here, exactly as the GitHub door does.
+test("password native callbacks are the default list until an instance names its own", () => {
+  const named = resolveAuthConfig(
+    env({ OVERSEER_PASSWORD_AUTH: "1", OVERSEER_PASSWORD_NATIVE_CALLBACKS: "overseer-dev://oauth/github, overseer-dev://oauth/password" }),
+    PUBLIC_URL,
+  );
+  assert.deepEqual(named.password, { nativeCallbacks: ["overseer-dev://oauth/github", "overseer-dev://oauth/password"] });
 });
 
 test("password auth alone is a complete instance — no warning", () => {

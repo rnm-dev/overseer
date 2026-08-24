@@ -520,11 +520,18 @@ test("with the method switched off every OIDC route is closed", async () => {
   const configured = config.auth;
   config.auth = { ...configured, oidc: null };
   try {
-    for (const path of ["/api/auth/oidc/start", "/api/auth/oidc/native/start", "/api/auth/oidc", "/api/auth/oidc/native/exchange"]) {
+    for (const path of ["/api/auth/oidc/start", "/api/auth/oidc/native/start", "/api/auth/oidc"]) {
       const closed = await request(path, "POST", { code: "x", state: "y" });
       assert.equal(closed.status, 503, path);
       assert.equal(closed.body.code, "OIDC_DISABLED", path);
     }
+    // The exchange answers for the door the *code* came from, not the one named
+    // in the path, so a code that never existed is a bad code rather than a
+    // report on which methods this instance has. An outstanding OIDC code is
+    // still refused with OIDC_DISABLED — see the test below.
+    const nothing = await request("/api/auth/oidc/native/exchange", "POST", { code: "x", state: "y" });
+    assert.equal(nothing.status, 400);
+    assert.equal(nothing.body.code, "BAD_APP_CODE");
     const methods = await request("/api/auth/methods");
     assert.equal(methods.body.oidc, false);
     assert.equal(methods.body.oidcLabel, null);
@@ -533,7 +540,8 @@ test("with the method switched off every OIDC route is closed", async () => {
   }
 });
 
-test("a native flow's app code is redeemable only at its own door", async () => {
+/** Drive a native OIDC sign-in as far as the app code on its deep link. */
+async function nativeAppCode(): Promise<{ state: string; appCode: string }> {
   const started = await request("/api/auth/oidc/native/start", "POST", { callback: "overseer://oauth/oidc" });
   assert.equal(started.status, 200);
   issuedNonce = new URL(started.body.authorizationUrl as string).searchParams.get("nonce");
@@ -543,15 +551,43 @@ test("a native flow's app code is redeemable only at its own door", async () => 
   assert.equal(completed.status, 200, JSON.stringify(completed.body));
   const appCode = new URL(completed.body.redirectUrl as string).searchParams.get("code");
   assert.ok(appCode);
+  return { state, appCode };
+}
 
-  // The GitHub door is open on this instance, and still cannot spend it.
-  const crossed = await request("/api/auth/github/native/exchange", "POST", { state, code: appCode });
-  assert.equal(crossed.status, 400);
-  assert.equal(crossed.body.code, "BAD_APP_CODE");
+// The exchange is one operation, not one per provider: an app code stands for a
+// sign-in that already happened, and the door it came through is recorded on the
+// code. So the path a client posts to does not have to agree — which is what
+// lets an app shipped against only the GitHub path finish a sign-in through a
+// door that did not exist when it was built.
+test("an app code is redeemable at any exchange path, once", async () => {
+  const { state, appCode } = await nativeAppCode();
 
-  const redeemed = await request("/api/auth/oidc/native/exchange", "POST", { state, code: appCode });
+  const redeemed = await request("/api/auth/github/native/exchange", "POST", { state, code: appCode });
   assert.equal(redeemed.status, 200, JSON.stringify(redeemed.body));
   assert.equal(typeof redeemed.body.token, "string");
+
+  // Still single-use, whichever path spends it.
+  const replay = await request("/api/auth/native/exchange", "POST", { state, code: appCode });
+  assert.equal(replay.status, 400);
+  assert.equal(replay.body.code, "BAD_APP_CODE");
+});
+
+// What the path deliberately does NOT let a caller do: move a code out from
+// under its own door's guard. Switching OIDC off closes the last stage of an
+// OIDC flow even when the code is presented somewhere else.
+test("an outstanding app code is refused once its own door is switched off", async () => {
+  const { state, appCode } = await nativeAppCode();
+  const configured = config.auth;
+  config.auth = { ...configured, oidc: null };
+  try {
+    for (const path of ["/api/auth/native/exchange", "/api/auth/github/native/exchange"]) {
+      const refused = await request(path, "POST", { state, code: appCode });
+      assert.equal(refused.status, 503, path);
+      assert.equal(refused.body.code, "OIDC_DISABLED", path);
+    }
+  } finally {
+    config.auth = configured;
+  }
 });
 
 test("a provider that cannot do S256 is refused at the start, not at the redirect", async () => {

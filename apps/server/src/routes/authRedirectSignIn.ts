@@ -8,13 +8,12 @@ import {
   completeGithubSignIn,
   completeOidcSignIn,
   consumeOauthAttempt,
-  exchangeNativeAppCode,
   setWebSessionCookie,
   startGithubAuthFlow,
   startOidcAuthFlow,
 } from "../modules/auth/index.js";
 import type { ClientInfo, OAuthProvider, OauthAttempt, OauthStartResult, OAuthSignInCompletion } from "../modules/auth/index.js";
-import { githubApp, limited, oidcProvider, tooManyAttempts } from "./authMethodAccess.js";
+import { allowedNativeCallback, githubApp, invalidCallback, limited, oidcProvider, tooManyAttempts } from "./authMethodAccess.js";
 import { clientInfo } from "./requestContext.js";
 
 // The two redirect doors — GitHub and OIDC — are one shape: start a flow, send
@@ -100,15 +99,6 @@ const OIDC: RedirectProvider<OidcAuthSettings> = {
   failureCode: (err) => (err instanceof OidcError ? err.code : "OIDC_ERROR"),
 };
 
-function allowedNativeCallback(allowed: string[], value: unknown): string | null {
-  if (typeof value !== "string" || !allowed.includes(value)) return null;
-  try {
-    return new URL(value).toString();
-  } catch {
-    return null;
-  }
-}
-
 function text(value: unknown): string {
   return typeof value === "string" ? value : "";
 }
@@ -153,7 +143,7 @@ function mountRedirectProvider<S extends RedirectSettings>(router: express.Route
     const settings = provider.settings(res);
     if (!settings) return;
     const callback = allowedNativeCallback(settings.nativeCallbacks, req.body?.callback);
-    if (!callback) return res.status(400).json({ error: "callback is not allowed", code: "INVALID_CALLBACK" });
+    if (!callback) return invalidCallback(res);
     try {
       res.json(await provider.start({ flow: "native", callback, settings, inviteToken: text(req.body?.invite) || null }));
     } catch (err) {
@@ -202,22 +192,10 @@ function mountRedirectProvider<S extends RedirectSettings>(router: express.Route
     }
   });
 
-  // The app code a native flow ended with, redeemed for the device token it
-  // stands for. Fenced by provider in the same way its state was.
-  router.post(`/auth/${name}/native/exchange`, async (req, res) => {
-    if (!provider.settings(res)) return;
-    if (limited(req, "native-exchange", 20)) return tooManyAttempts(res, "exchange attempts");
-    const state = text(req.body?.state);
-    const code = text(req.body?.code);
-    if (!state || !code) return res.status(400).json({ error: "code and state are required", code: "BAD_REQUEST" });
-    const redeemed = await exchangeNativeAppCode(state, code, name, clientInfo(req));
-    if (!redeemed) return res.status(400).json({ error: "invalid, expired, or already used app code", code: "BAD_APP_CODE" });
-    return res.json({
-      token: redeemed.token,
-      user: { email: redeemed.user.email, githubLogin: redeemed.user.githubLogin, avatarUrl: redeemed.user.avatarUrl },
-      device: redeemed.device,
-    });
-  });
+  // The app code a native flow ends with is redeemed at the shared exchange —
+  // see authNativeExchange.ts. It is not mounted per provider, because which
+  // door a code came from is recorded on the code rather than chosen by the
+  // caller.
 }
 
 /** Mount every redirect sign-in door on the public auth router. */

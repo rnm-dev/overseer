@@ -1,5 +1,6 @@
 import type express from "express";
-import type { AuthMethodId, GithubAuthSettings, OidcAuthSettings } from "../infrastructure/auth/index.js";
+import type { AuthMethodId, GithubAuthSettings, OidcAuthSettings, PasswordAuthSettings } from "../infrastructure/auth/index.js";
+import { isAuthMethodEnabled } from "../infrastructure/auth/index.js";
 import { config } from "../infrastructure/config/index.js";
 import { clientInfo } from "./requestContext.js";
 
@@ -37,6 +38,24 @@ export function tooManyAttempts(res: express.Response, what: string): express.Re
   return res.status(429).json({ error: `too many ${what}`, code: "RATE_LIMITED" });
 }
 
+/**
+ * The deep link a native client asked to be sent back to, if this door allows
+ * it. Matched exactly against the method's own allowlist — never parsed for a
+ * scheme it might resemble — so a request cannot name its own destination.
+ */
+export function allowedNativeCallback(allowed: string[], value: unknown): string | null {
+  if (typeof value !== "string" || !allowed.includes(value)) return null;
+  try {
+    return new URL(value).toString();
+  } catch {
+    return null;
+  }
+}
+
+export function invalidCallback(res: express.Response): express.Response {
+  return res.status(400).json({ error: "callback is not allowed", code: "INVALID_CALLBACK" });
+}
+
 // A door this instance does not have answers the same way wherever it is
 // knocked on: 503 with that method's stable code, before the body is read, so a
 // correct password or a valid OAuth code on a disabled instance signs nobody in.
@@ -72,8 +91,26 @@ export function oidcProvider(res: express.Response): OidcAuthSettings | null {
   return oidc;
 }
 
-export function passwordAuthOpen(res: express.Response): boolean {
-  if (config.auth.password) return true;
-  methodOff(res, "password");
+export function passwordAuthOpen(res: express.Response): PasswordAuthSettings | null {
+  const password = config.auth.password;
+  if (!password) {
+    methodOff(res, "password");
+    return null;
+  }
+  return password;
+}
+
+/**
+ * Is the door an already-minted app code came from still open?
+ *
+ * The native exchange is not a per-provider operation: an app code stands for a
+ * sign-in that already happened, and which door produced it is recorded on the
+ * code rather than chosen by the caller. But the invariant that switching a
+ * method off closes flows already in the air still has to hold, so the door is
+ * resolved from the code and *its* guard is the one enforced.
+ */
+export function methodStillOpen(res: express.Response, method: AuthMethodId): boolean {
+  if (isAuthMethodEnabled(config.auth, method)) return true;
+  methodOff(res, method);
   return false;
 }
