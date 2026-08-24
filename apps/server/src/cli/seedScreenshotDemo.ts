@@ -193,9 +193,9 @@ async function main(): Promise<void> {
       );
     }
 
-    for (const [projectId, peonId, key, name, docs] of PROJECTS) {
+    for (const [projectId, peonId, key, name] of PROJECTS) {
       await client.query(
-        "INSERT INTO projects (peon_id,project_id,project_key,name,dir,metadata,docs_index,quick_links,synced_at) VALUES ($1,$2,$3,$4,$5,$6,$7,'[]'::jsonb,$8) ON CONFLICT (peon_id,project_id) DO UPDATE SET project_key=EXCLUDED.project_key,name=EXCLUDED.name,dir=EXCLUDED.dir,metadata=EXCLUDED.metadata,docs_index=EXCLUDED.docs_index,synced_at=EXCLUDED.synced_at",
+        "INSERT INTO projects (peon_id,project_id,project_key,name,dir,metadata,quick_links,synced_at) VALUES ($1,$2,$3,$4,$5,$6,'[]'::jsonb,$7) ON CONFLICT (peon_id,project_id) DO UPDATE SET project_key=EXCLUDED.project_key,name=EXCLUDED.name,dir=EXCLUDED.dir,metadata=EXCLUDED.metadata,synced_at=EXCLUDED.synced_at",
         [
           peonId,
           projectId,
@@ -203,7 +203,6 @@ async function main(): Promise<void> {
           name,
           "/demo/" + key,
           "Fictional App Store screenshot project",
-          docs,
           now,
         ],
       );
