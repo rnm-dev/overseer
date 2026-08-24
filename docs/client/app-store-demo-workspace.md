@@ -44,6 +44,47 @@ review details and must not be committed to this repository. When rotating it,
 replace the user's scrypt hash and update the App Store review credentials
 together, then verify a native password login before submission.
 
+## Isolated review deployment
+
+The public App Review environment is `https://demo.ovrseer.org` on nid-01. It
+does not share a database, Docker volume, network, container, or application
+port with `https://overseer.rnm.dev`:
+
+| Resource | Review deployment |
+| --- | --- |
+| App container | `overseer-demo-app` |
+| Database container | `overseer-demo-postgres` |
+| Docker network | `overseer-demo` |
+| Database volume | `overseer-demo-postgres-data` |
+| Host listener | `127.0.0.1:5010` |
+| nginx vhost | `/etc/nginx/sites-available/demo.ovrseer.org` |
+
+The review app runs the immutable image tagged with its source commit, uses
+`OVERSEER_PASSWORD_AUTH=1` and `OVERSEER_APP_REVIEW_DEMO=1`, and receives no
+GitHub, OIDC, voice, or push credentials. Cloudflare proxies
+`demo.ovrseer.org` to the host; nginx forwards only that host to port 5010.
+Both containers use `restart: unless-stopped`.
+
+After an image upgrade, rerun the idempotent seed inside the review app:
+
+```sh
+docker exec overseer-demo-app node dist/cli/seedScreenshotDemo.js \
+  --owner-email app-review@ovrseer.org
+```
+
+Verify the isolation and advertised login methods before every submission:
+
+```sh
+docker inspect overseer-demo-app --format '{{.Config.Image}}'
+docker inspect overseer-demo-postgres --format '{{range .Mounts}}{{.Name}}{{end}}'
+curl --fail https://demo.ovrseer.org/healthz
+curl --fail https://demo.ovrseer.org/api/auth/methods
+```
+
+The methods response must be exactly GitHub false, password true, OIDC false.
+The real production methods remain independent and must not be changed to
+prepare App Review.
+
 Never capture screenshots from a production connection. Before upload, inspect
 every source image at full resolution for names, emails, domains, addresses,
 session content, notifications and status-bar overlays.
