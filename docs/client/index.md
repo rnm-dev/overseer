@@ -65,6 +65,8 @@ interface and [platform-support.md](platform-support.md) for native
 prerequisites, flavors, OAuth callbacks, and release checks.
 Use [testflight.md](testflight.md) for production iOS signing, archive,
 App Store Connect metadata, upload, and smoke-test preparation.
+Use [app-store-demo-workspace.md](app-store-demo-workspace.md) for the isolated,
+fictional development dataset used in public App Store screenshots.
 
 Before committing:
 

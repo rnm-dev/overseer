@@ -9,6 +9,7 @@
   },
   "scripts": {
     "dev": "tsx watch src/index.ts",
+    "seed:screenshot-demo": "tsx src/cli/seedScreenshotDemo.ts",
     "start": "node dist/index.js",
     "compile": "tsc -p tsconfig.json",
     "typecheck": "tsc --noEmit",
