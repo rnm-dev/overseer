@@ -9,6 +9,7 @@ import { buildDaemonUnit } from "./systemdUnits.js";
 import { buildLaunchAgent } from "./launchdUnits.js";
 import { configDir } from "../daemon/runtime/xdgPaths.js";
 import { parseListenAddress } from "../shared/listenAddress.js";
+import { serviceEnvPath } from "./servicePath.js";
 import { SECURE_FILE_HELPER } from "../shared/runtimePrerequisites.js";
 
 function configuredControlPort(): number {
@@ -195,7 +196,7 @@ async function startCommand(): Promise<void> {
 
   if (IS_MACOS) {
     requireBinary("launchctl", "launchd is required for a persistent Peon service on macOS.");
-    const pathEnv = process.env.PATH ?? "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin";
+    const pathEnv = serviceEnvPath(process.env.PATH, "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin");
     const daemonPlist = path.join(LAUNCHD_USER_DIR, `${DAEMON_AGENT}.plist`);
     mkdirSync(LAUNCHD_USER_DIR, { recursive: true });
     mkdirSync(STATE_DIR, { recursive: true });
@@ -233,7 +234,7 @@ async function startCommand(): Promise<void> {
   const unitOptions = {
     peonHome: PACKAGE_ROOT,
     nodeBin: process.execPath,
-    pathEnv: process.env.PATH ?? "/usr/local/bin:/usr/bin:/bin",
+    pathEnv: serviceEnvPath(process.env.PATH, "/usr/local/bin:/usr/bin:/bin"),
   };
 
   console.log("Zug zug!");
