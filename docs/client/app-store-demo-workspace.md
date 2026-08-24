@@ -35,6 +35,13 @@ development Peons still derive presence exclusively from the reverse socket.
 Mutations are refused, and this helper must never run outside the development
 container.
 
+App Review uses the dedicated password-auth identity
+`app-review@ovrseer.org`, scoped as a member of only
+`demo-screenshot-workspace`. Its password is stored in App Store Connect's
+review details and must not be committed to this repository. When rotating it,
+replace the user's scrypt hash and update the App Store review credentials
+together, then verify a native password login before submission.
+
 Never capture screenshots from a production connection. Before upload, inspect
 every source image at full resolution for names, emails, domains, addresses,
 session content, notifications and status-bar overlays.
