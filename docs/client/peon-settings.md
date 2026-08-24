@@ -37,8 +37,11 @@ web client's provider-aware default selection:
 
 - the visible model always resolves to a concrete model supported by the
   selected provider;
-- `aiDefaultModel` is sent only for `claude-code`, matching the current Peon
-  compatibility contract;
+- `aiDefaultModel` is sent for every provider from the concrete model shown in
+  the form;
+- `aiDefaultReasoningEffort` is scoped to the effective model's own advertised
+  options, with an explicit `null` resetting it to the model default; models
+  advertising no efforts hide the selector;
 - Soul Markdown is read and saved through the `soul` property on
   `GET/PATCH .../settings`; an empty string clears it.
 

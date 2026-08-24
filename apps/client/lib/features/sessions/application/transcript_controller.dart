@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/diagnostics/app_diagnostics.dart';
+import '../../../core/live/active_sessions.dart';
 import '../../../core/live/transcript_live_service.dart';
 import '../../../core/time/app_time.dart';
 import '../../settings/application/sound_pack_controller.dart';
@@ -227,6 +228,7 @@ class TranscriptController extends AsyncNotifier<TranscriptState> {
       final runningSignal = _runningSignal(page.events);
       if (runningSignal != false || !_queueHasPending) {
         _running = runningSignal ?? _running;
+        if (runningSignal == false) _clearLocalRunning();
       }
       if (!_initialSoundSnapshotReceived) {
         _soundedEventIds.addAll(page.events.map((event) => event.eventId));
@@ -707,10 +709,23 @@ class TranscriptController extends AsyncNotifier<TranscriptState> {
 
   void _setRunning(bool value) {
     _running = value;
-    if (!value) unawaited(ref.read(workSoundPlayerProvider).stop());
+    if (!value) {
+      _clearLocalRunning();
+      unawaited(ref.read(workSoundPlayerProvider).stop());
+    }
     final current = state.value;
     if (current == null || current.isRunning == value) return;
     state = AsyncData(current.copyWith(isRunning: value));
+  }
+
+  void _clearLocalRunning() {
+    ref
+        .read(activeSessionsProvider.notifier)
+        .clearRunningLocally(
+          workspaceId: scope.workspaceId,
+          peonId: scope.peonId,
+          sessionId: scope.sessionId,
+        );
   }
 
   bool get _queueHasPending =>

@@ -385,6 +385,7 @@ class _AgentSettings extends ConsumerStatefulWidget {
 class _AgentSettingsState extends ConsumerState<_AgentSettings> {
   late String? _agent;
   late String? _model;
+  late String? _effort;
   late final TextEditingController _soul;
 
   @override
@@ -397,6 +398,11 @@ class _AgentSettingsState extends ConsumerState<_AgentSettings> {
         catalog?.providers.firstOrNull?.agent;
     final provider = _provider;
     _model = _resolveModel(provider, widget.settings.aiDefaultModel);
+    _effort = _resolveEffort(
+      provider,
+      _model,
+      widget.settings.aiDefaultReasoningEffort,
+    );
     _soul = TextEditingController(text: widget.settings.soul ?? '');
   }
 
@@ -415,6 +421,20 @@ class _AgentSettingsState extends ConsumerState<_AgentSettings> {
     }
     return provider.models.where((model) => model.isDefault).firstOrNull?.id ??
         provider.models.firstOrNull?.id;
+  }
+
+  String? _resolveEffort(
+    ModelProvider? provider,
+    String? model,
+    String? value,
+  ) {
+    if (value == null) return null;
+    return reasoningEffortsForModel(
+          provider,
+          model,
+        ).any((effort) => effort.id == value || effort.alias == value)
+        ? value
+        : null;
   }
 
   @override
@@ -460,6 +480,7 @@ class _AgentSettingsState extends ConsumerState<_AgentSettings> {
                       setState(() {
                         _agent = selected.agent;
                         _model = _resolveModel(selected, _model);
+                        _effort = _resolveEffort(selected, _model, _effort);
                       });
                     },
                   ),
@@ -495,18 +516,64 @@ class _AgentSettingsState extends ConsumerState<_AgentSettings> {
                             label: (value) => value.label,
                           );
                           if (selected != null) {
-                            setState(() => _model = selected.id);
+                            setState(() {
+                              _model = selected.id;
+                              _effort = _resolveEffort(
+                                _provider,
+                                _model,
+                                _effort,
+                              );
+                            });
                           }
                         },
                 ),
+                if (reasoningEffortsForModel(_provider, _model).isNotEmpty) ...[
+                  const SizedBox(height: 14),
+                  _Picker(
+                    key: const Key('peon-default-reasoning-effort'),
+                    label: 'REASONING EFFORT',
+                    value:
+                        reasoningEffortsForModel(_provider, _model)
+                            .where(
+                              (effort) =>
+                                  effort.id == _effort ||
+                                  effort.alias == _effort,
+                            )
+                            .firstOrNull
+                            ?.label ??
+                        'Model default',
+                    onTap: () async {
+                      final efforts = reasoningEffortsForModel(
+                        _provider,
+                        _model,
+                      );
+                      final selected = await _pick<String>(
+                        context,
+                        title: 'Default reasoning effort',
+                        values: ['', ...efforts.map((effort) => effort.id)],
+                        selected: _effort ?? '',
+                        label: (value) => value.isEmpty
+                            ? 'Model default'
+                            : efforts
+                                  .where((effort) => effort.id == value)
+                                  .first
+                                  .label,
+                      );
+                      if (selected == null) return;
+                      setState(
+                        () => _effort = selected.isEmpty ? null : selected,
+                      );
+                    },
+                  ),
+                ],
                 const SizedBox(height: 14),
                 _SaveRow(
                   loading: widget.state.saving,
                   saved: widget.state.saved,
                   onPressed: () => controller.saveSettings({
                     if (_agent != null) 'defaultAgent': _agent,
-                    if (_provider?.agent == 'claude-code' && _model != null)
-                      'aiDefaultModel': _model,
+                    if (_model != null) 'aiDefaultModel': _model,
+                    'aiDefaultReasoningEffort': _effort,
                   }),
                 ),
               ],

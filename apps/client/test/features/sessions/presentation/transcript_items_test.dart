@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:overseer_mobile/features/sessions/domain/session_models.dart';
 import 'package:overseer_mobile/features/sessions/presentation/transcript_item_view.dart';
 import 'package:overseer_mobile/features/sessions/presentation/transcript_items.dart';
+import 'package:overseer_mobile/features/settings/domain/tool_display_mode.dart';
 import 'package:overseer_mobile/shared/design/theme.dart';
 import 'package:overseer_mobile/shared/design/typography.dart';
 import 'package:overseer_mobile/shared/widgets/app_markdown.dart';
@@ -240,12 +241,16 @@ void main() {
       MaterialApp(
         theme: AppTheme.dark,
         home: const Scaffold(
-          body: SizedBox(width: 400, child: TranscriptItemView(item: item)),
+          body: SizedBox(
+            width: 400,
+            child: TranscriptItemView(item: item, thinkingLabel: 'Opus high'),
+          ),
         ),
       ),
     );
 
     final indicator = tester.widget<Text>(find.textContaining('✦'));
+    expect(indicator.data, '✦ Opus high ▸');
     expect(indicator.style?.fontSize, AppTypography.systemMessageFontSize);
     expect(indicator.style?.height, 1.35);
 
@@ -374,10 +379,22 @@ void main() {
       },
     });
 
-    expect(transcriptWorkingActivity(bash).label, 'Running a command…');
-    expect(transcriptWorkingActivity(bash).startedAt, 1700000000000);
-    expect(transcriptWorkingActivity(writing).label, 'Agent is writing…');
-    expect(transcriptWorkingActivity(null).label, isNotEmpty);
+    expect(
+      transcriptWorkingActivity(bash, fallbackLabel: 'Opus high').label,
+      'Running a command…',
+    );
+    expect(
+      transcriptWorkingActivity(bash, fallbackLabel: 'Opus high').startedAt,
+      1700000000000,
+    );
+    expect(
+      transcriptWorkingActivity(writing, fallbackLabel: 'Opus high').label,
+      'Agent is writing…',
+    );
+    expect(
+      transcriptWorkingActivity(null, fallbackLabel: 'Opus high').label,
+      'Opus high',
+    );
   });
 
   testWidgets('renders plain-language tool activity and opens details', (
@@ -396,7 +413,12 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         theme: AppTheme.dark,
-        home: const Scaffold(body: TranscriptItemView(item: item)),
+        home: const Scaffold(
+          body: TranscriptItemView(
+            item: item,
+            toolDisplayMode: ToolDisplayMode.simple,
+          ),
+        ),
       ),
     );
 
@@ -482,11 +504,28 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         theme: AppTheme.dark,
-        home: const Scaffold(body: TranscriptItemView(item: item)),
+        home: const Scaffold(
+          body: TranscriptItemView(
+            item: item,
+            toolDisplayMode: ToolDisplayMode.simple,
+          ),
+        ),
       ),
     );
 
     expect(find.text('Performed a technical operation'), findsOneWidget);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.dark,
+        home: const Scaffold(
+          body: TranscriptItemView(
+            item: item,
+            toolDisplayMode: ToolDisplayMode.technical,
+          ),
+        ),
+      ),
+    );
+    expect(find.text('Bash flutter test'), findsOneWidget);
     await tester.tap(find.byKey(const Key('transcript-tool-bash')));
     await tester.pumpAndSettle();
 

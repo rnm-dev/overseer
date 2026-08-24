@@ -911,8 +911,20 @@ class _ComposerCapabilityPickerState extends State<_ComposerCapabilityPicker> {
             model,
             inherited: switchedAgent ? null : widget.inheritedModel,
           );
+          final effectiveModel =
+              model ??
+              (switchedAgent ? null : widget.inheritedModel) ??
+              provider.models
+                  .where((option) => option.isDefault)
+                  .firstOrNull
+                  ?.id ??
+              provider.models.firstOrNull?.id;
+          final effortOptions = reasoningEffortsForModel(
+            provider,
+            effectiveModel,
+          );
           final effortChoices = capabilityChoices(
-            provider.reasoningEfforts,
+            effortOptions,
             effort,
             inherited: switchedAgent ? null : widget.inheritedReasoningEffort,
           );
@@ -956,15 +968,37 @@ class _ComposerCapabilityPickerState extends State<_ComposerCapabilityPicker> {
                         title: 'Model',
                         choices: modelChoices,
                         onChanged: (value) {
-                          setSheetState(
-                            () => model = value.isEmpty ? null : value,
+                          final nextModel = value.isEmpty ? null : value;
+                          final nextEffectiveModel =
+                              nextModel ??
+                              (switchedAgent ? null : widget.inheritedModel) ??
+                              provider.models
+                                  .where((option) => option.isDefault)
+                                  .firstOrNull
+                                  ?.id ??
+                              provider.models.firstOrNull?.id;
+                          final nextEfforts = reasoningEffortsForModel(
+                            provider,
+                            nextEffectiveModel,
                           );
-                          widget.onModelChanged?.call(
-                            value.isEmpty ? null : value,
-                          );
+                          final effortStillValid =
+                              effort == null ||
+                              nextEfforts.any(
+                                (option) =>
+                                    option.id == effort ||
+                                    option.alias == effort,
+                              );
+                          setSheetState(() {
+                            model = nextModel;
+                            if (!effortStillValid) effort = null;
+                          });
+                          widget.onModelChanged?.call(nextModel);
+                          if (!effortStillValid) {
+                            widget.onReasoningEffortChanged?.call(null);
+                          }
                         },
                       ),
-                      if (provider.reasoningEfforts.isNotEmpty)
+                      if (effortOptions.isNotEmpty)
                         _CapabilityRadioSection(
                           title: 'Effort',
                           choices: effortChoices,
@@ -1000,7 +1034,7 @@ class _ComposerCapabilityPickerState extends State<_ComposerCapabilityPicker> {
       inherited: widget.inheritedModel,
     );
     final effortLabel = capabilityLabel(
-      provider.reasoningEfforts,
+      reasoningEffortsForModel(provider, widget.model ?? widget.inheritedModel),
       widget.reasoningEffort,
       inherited: widget.inheritedReasoningEffort,
     );

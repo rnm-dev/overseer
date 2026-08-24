@@ -136,6 +136,10 @@ Feature documentation:
 - Follow-up commands retain stable identifiers and per-session ordering across
   retries.
 - Connectivity is a hint, not proof that the API is reachable.
+- Authentication is invalidated only by an explicit `401` from Overseer or by
+  an operator-requested sign-out. Transport failures, timeouts, and `5xx`
+  responses preserve credentials and private caches and render an unavailable
+  state with retry instead of a sign-in prompt.
 - Every feature provides useful loading, empty, offline, error, and retry
   states.
 - Routine builds and device tests use `dev`; use `prod` only when the task

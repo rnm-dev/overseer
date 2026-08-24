@@ -14,9 +14,11 @@ import '../../../shared/widgets/presence_stack.dart';
 import '../../auth/domain/auth_models.dart';
 import '../../sessions/sessions.dart';
 import '../../settings/application/sound_pack_controller.dart';
+import '../../settings/application/tool_display_controller.dart';
 import '../../themes/application/connection_theme_controller.dart';
 import '../../settings/application/notification_permission_controller.dart';
 import '../../settings/domain/sound_pack.dart';
+import '../../settings/domain/tool_display_mode.dart';
 import '../application/fleet_controller.dart';
 import '../domain/fleet_models.dart';
 import '../domain/fleet_repository.dart';
@@ -223,6 +225,8 @@ class _SettingsSection extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final soundPack = ref.watch(soundPackControllerProvider);
     final selectedPack = soundPack.value ?? SoundPack.peon;
+    final toolDisplay = ref.watch(toolDisplayControllerProvider);
+    final selectedToolDisplay = toolDisplay.value ?? ToolDisplayMode.technical;
     final themeController = ref.watch(connectionThemeControllerProvider);
 
     return ListenableBuilder(
@@ -272,6 +276,29 @@ class _SettingsSection extends ConsumerWidget {
                     ? LucideIcons.volumeX
                     : LucideIcons.volume2,
                 label: 'Sounds',
+                onTap: onTap,
+                trailing: _SettingValue(
+                  label: selectedLabel,
+                  expanded: expanded,
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: _FleetSectionMetrics.rowGap),
+          AdaptiveSelectionPicker<ToolDisplayMode>(
+            key: const Key('tool-display-menu'),
+            title: 'Tool display',
+            value: selectedToolDisplay,
+            options: [
+              for (final mode in ToolDisplayMode.values)
+                SelectionOption(value: mode, label: mode.label),
+            ],
+            onSelected: ref.read(toolDisplayControllerProvider.notifier).select,
+            triggerBuilder: (context, selectedLabel, expanded, onTap) {
+              return _SettingsRow(
+                key: const Key('tool-display-setting'),
+                leading: LucideIcons.eye,
+                label: 'Tool display',
                 onTap: onTap,
                 trailing: _SettingValue(
                   label: selectedLabel,

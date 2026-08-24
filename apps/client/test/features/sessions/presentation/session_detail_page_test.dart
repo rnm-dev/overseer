@@ -453,12 +453,74 @@ void main() {
     expect(find.text('pasted.png'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('session-composer-submit')));
-    await tester.pumpAndSettle();
+    for (
+      var frame = 0;
+      frame < 10 &&
+          find
+              .byKey(const Key('session-composer-attachments'))
+              .evaluate()
+              .isNotEmpty;
+      frame++
+    ) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
 
     expect(followups.attachments.single.name, 'pasted.png');
     expect(followups.prompt, isEmpty);
     expect(followups.commandId, isNotEmpty);
-    expect(find.text('pasted.png'), findsNothing);
+    expect(find.byKey(const Key('session-composer-attachments')), findsNothing);
+  });
+
+  testWidgets('shows working as soon as a follow-up starts', (tester) async {
+    final delivery = Completer<FollowupDelivery>();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          followupRepositoryProvider.overrideWithValue(
+            _PendingFollowupRepository(delivery.future),
+          ),
+          transcriptControllerProvider.overrideWith2(
+            (scope) => _TestTranscriptController(
+              scope,
+              const TranscriptState(events: []),
+            ),
+          ),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.dark,
+          home: const SessionDetailPage(
+            session: SessionSummary(
+              workspaceId: 'workspace',
+              peonId: 'peon',
+              sessionId: 'session',
+              title: 'Existing session',
+              syncedAt: 1,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(SessionDetailPage)),
+    );
+    container
+        .read(activeSessionsProvider.notifier)
+        .replaceWorkspace('workspace', const []);
+    await tester.pump();
+    await tester.enterText(
+      find.byKey(const Key('session-composer-input')),
+      'Start working',
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('session-composer-submit')));
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.byKey(const Key('transcript-working')), findsOneWidget);
+    delivery.complete(FollowupDelivery.delivered);
+    await tester.pump();
   });
 
   testWidgets('enforces follow-up clipboard count and size limits', (
@@ -1589,6 +1651,26 @@ class _TestFollowupRepository implements FollowupRepository {
 
   @override
   Future<bool> retryPending(FollowupScope scope) async => false;
+}
+
+class _PendingFollowupRepository extends _TestFollowupRepository {
+  const _PendingFollowupRepository(this.delivery);
+
+  final Future<FollowupDelivery> delivery;
+
+  @override
+  Future<FollowupDelivery> submit({
+    required FollowupScope scope,
+    required String prompt,
+    required bool serverQueue,
+    bool startNow = false,
+    String? agent,
+    String? model,
+    String? reasoningEffort,
+    String? commandId,
+    List<NewSessionAttachment> attachments = const [],
+    FollowupProgressCallback? onProgress,
+  }) => delivery;
 }
 
 class _TestAttachmentClipboard implements AttachmentClipboard {

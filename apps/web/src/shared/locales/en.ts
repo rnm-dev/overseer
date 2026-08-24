@@ -5,6 +5,9 @@ export const en: Record<string, string> = {
   "app.name": "Overseer",
   "app.tagline": "Peon control plane",
   "app.loading": "Loading…",
+  "backend.unavailable.title": "Overseer is unavailable",
+  "backend.unavailable.message": "The server could not be reached. You are still signed in; try again when the connection returns.",
+  "backend.unavailable.retry": "Try again",
   "ownerOnly": "Only workspace owners can access these settings.",
 
   "action.signOut": "Sign out",

@@ -5,6 +5,9 @@ export const ru: Record<string, string> = {
   "app.name": "Overseer",
   "app.tagline": "Панель управления Peon",
   "app.loading": "Загрузка…",
+  "backend.unavailable.title": "Overseer недоступен",
+  "backend.unavailable.message": "Не удалось связаться с сервером. Вы по-прежнему авторизованы — повторите попытку, когда соединение восстановится.",
+  "backend.unavailable.retry": "Повторить",
   "ownerOnly": "Эти настройки доступны только владельцам пространства.",
 
   "action.signOut": "Выйти",

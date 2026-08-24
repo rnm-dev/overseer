@@ -104,6 +104,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get signIn => 'Sign In';
 
   @override
+  String get backendUnavailableTitle => 'Overseer is unavailable';
+
+  @override
+  String get backendUnavailableMessage =>
+      'The server could not be reached. You are still signed in; try again when the connection returns.';
+
+  @override
+  String get tryAgain => 'Try again';
+
+  @override
   String get message => 'Message';
 
   @override

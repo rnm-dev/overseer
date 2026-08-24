@@ -167,7 +167,10 @@ class TranscriptWorkingActivity {
   final double? startedAt;
 }
 
-TranscriptWorkingActivity transcriptWorkingActivity(TranscriptEvent? event) {
+TranscriptWorkingActivity transcriptWorkingActivity(
+  TranscriptEvent? event, {
+  required String fallbackLabel,
+}) {
   final startedAt = event?.createdAt;
   if (event?.type == 'assistant') {
     final blocks = _messageBlocks(event!.payload);
@@ -196,10 +199,7 @@ TranscriptWorkingActivity transcriptWorkingActivity(TranscriptEvent? event) {
       }
     }
   }
-  return TranscriptWorkingActivity(
-    label: _workingThinkingLabel(event?.eventId ?? ''),
-    startedAt: startedAt,
-  );
+  return TranscriptWorkingActivity(label: fallbackLabel, startedAt: startedAt);
 }
 
 enum TranscriptEditOperation { create, edit, delete }
@@ -791,27 +791,6 @@ String compactTranscriptNumber(int value) {
 String _compactDecimal(double value) {
   final fixed = value.toStringAsFixed(1);
   return fixed.endsWith('.0') ? fixed.substring(0, fixed.length - 2) : fixed;
-}
-
-String _workingThinkingLabel(String seed) {
-  const labels = [
-    'Work work!',
-    'WAAAGH in progress!',
-    'Berserker focus mode!',
-    'Hacking the battle plans!',
-    'Stomping through logic!',
-    'Forging the next swing!',
-    'Teeth on the byte-grind!',
-    'Crushing bugs like chitin!',
-    'Axes sharpened, output incoming!',
-    'Grunts are thinking, quietly!',
-    'Orcish focus…',
-  ];
-  var hash = 0;
-  for (final code in seed.codeUnits) {
-    hash = (31 * hash + code) & 0x7fffffff;
-  }
-  return labels[hash % labels.length];
 }
 
 List<Map> _messageBlocks(Map<String, dynamic> payload) {

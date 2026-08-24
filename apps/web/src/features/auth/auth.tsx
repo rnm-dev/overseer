@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
-import { api, getToken, json, migrateLegacyWebSession, setToken } from "../../shared/api";
+import { api, ApiError, getToken, json, migrateLegacyWebSession, setToken } from "../../shared/api";
 import { clearTranscriptSnapshotCache } from "../sessions/transcriptSnapshotCache";
 import { getOrStartAuthBootstrap } from "./authBootstrap";
 import { forgetNativeCallback, nativeCallback } from "./nativeLoginMode";
@@ -37,6 +37,8 @@ const STATE_KEY = "overseer_oauth_state";
 interface AuthState {
   user: User | null;
   ready: boolean; // finished the initial "am I already logged in?" check
+  unavailable: boolean;
+  retry: () => Promise<void>;
   loginWithProvider: (provider: OauthProvider) => Promise<void>;
   signInWithPassword: (email: string, password: string) => Promise<void>;
   registerWithPassword: (email: string, password: string) => Promise<void>;
@@ -51,33 +53,76 @@ interface AuthState {
 
 const Ctx = createContext<AuthState | null>(null);
 
-async function loadInitialUser(): Promise<User | null> {
+export type InitialAuth =
+  | { kind: "authenticated"; user: User }
+  | { kind: "unauthenticated" }
+  | { kind: "unavailable" };
+
+interface AuthBootstrapDependencies {
+  legacyToken: () => string | null;
+  migrateLegacySession: (token: string) => Promise<void>;
+  clearLegacyToken: () => void;
+  loadUser: () => Promise<{ user?: User }>;
+}
+
+export async function loadInitialAuth(
+  dependencies: AuthBootstrapDependencies = {
+    legacyToken: getToken,
+    migrateLegacySession: migrateLegacyWebSession,
+    clearLegacyToken: () => setToken(null),
+    loadUser: () => api<{ user?: User }>("/auth/me"),
+  },
+): Promise<InitialAuth> {
   try {
-    const legacyToken = getToken();
+    const legacyToken = dependencies.legacyToken();
     if (legacyToken) {
-      await migrateLegacyWebSession(legacyToken);
-      setToken(null);
+      try {
+        await dependencies.migrateLegacySession(legacyToken);
+        dependencies.clearLegacyToken();
+      } catch (error) {
+        if (!(error instanceof ApiError) || error.status !== 401) {
+          return { kind: "unavailable" };
+        }
+        dependencies.clearLegacyToken();
+      }
     }
-    const me = await api<{ user?: User }>("/auth/me");
-    return me.user ?? null;
-  } catch {
-    setToken(null);
-    return null;
+    const me = await dependencies.loadUser();
+    return me.user
+      ? { kind: "authenticated", user: me.user }
+      : { kind: "unauthenticated" };
+  } catch (error) {
+    return error instanceof ApiError && error.status === 401
+      ? { kind: "unauthenticated" }
+      : { kind: "unavailable" };
   }
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [ready, setReady] = useState(false);
-  const bootstrapRef = useRef<Promise<User | null>>(null);
+  const [unavailable, setUnavailable] = useState(false);
+  const bootstrapRef = useRef<Promise<InitialAuth>>(null);
+
+  async function restore(): Promise<void> {
+    setReady(false);
+    setUnavailable(false);
+    bootstrapRef.current = null;
+    const initial = await getOrStartAuthBootstrap(bootstrapRef, loadInitialAuth);
+    if (initial.kind === "authenticated") setUser(initial.user);
+    else if (initial.kind === "unauthenticated") setUser(null);
+    setUnavailable(initial.kind === "unavailable");
+    setReady(true);
+  }
 
   // One-release migration: exchange a legacy localStorage bearer for an
   // HttpOnly cookie, then erase the JavaScript-readable credential.
   useEffect(() => {
     let active = true;
-    void getOrStartAuthBootstrap(bootstrapRef, loadInitialUser).then((initialUser) => {
+    void getOrStartAuthBootstrap(bootstrapRef, loadInitialAuth).then((initial) => {
       if (!active) return;
-      if (initialUser) setUser(initialUser);
+      if (initial.kind === "authenticated") setUser(initial.user);
+      else if (initial.kind === "unauthenticated") setUser(null);
+      setUnavailable(initial.kind === "unavailable");
       setReady(true);
     });
     return () => {
@@ -88,6 +133,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const value: AuthState = {
     user,
     ready,
+    unavailable,
+    retry: restore,
     async loginWithProvider(provider) {
       // No preflight for "is this method configured": the start route below is
       // the one authority on that and refuses with 503 itself, so asking first

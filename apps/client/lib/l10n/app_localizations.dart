@@ -272,6 +272,24 @@ abstract class AppLocalizations {
   /// **'Sign In'**
   String get signIn;
 
+  /// No description provided for @backendUnavailableTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Overseer is unavailable'**
+  String get backendUnavailableTitle;
+
+  /// No description provided for @backendUnavailableMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'The server could not be reached. You are still signed in; try again when the connection returns.'**
+  String get backendUnavailableMessage;
+
+  /// No description provided for @tryAgain.
+  ///
+  /// In en, this message translates to:
+  /// **'Try again'**
+  String get tryAgain;
+
   /// No description provided for @message.
   ///
   /// In en, this message translates to:

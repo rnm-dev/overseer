@@ -25,6 +25,7 @@ import '../../inquiries/inquiries.dart';
 import '../../../shared/design/colors.dart';
 import '../../../shared/design/motion.dart';
 import '../../../shared/design/typography.dart';
+import '../../../shared/models/ai_capabilities.dart';
 import '../../../shared/widgets/app_button.dart';
 import '../../../shared/widgets/app_bottom_sheet.dart';
 import '../../../shared/widgets/app_navigation_bar.dart';
@@ -35,7 +36,9 @@ import '../../projects/application/projects_controller.dart';
 import '../../projects/domain/project_models.dart';
 import '../../projects/projects.dart';
 import '../../settings/application/sound_pack_controller.dart';
+import '../../settings/application/tool_display_controller.dart';
 import '../../settings/domain/sound_pack.dart';
+import '../../settings/domain/tool_display_mode.dart';
 import '../../settings/domain/work_sound_player.dart';
 import '../../themes/app_theme_package.dart';
 import '../application/attachment_clipboard_provider.dart';
@@ -50,6 +53,7 @@ import '../domain/file_link_transformer.dart';
 import '../domain/new_session_repository.dart';
 import '../domain/pasted_text.dart';
 import '../domain/session_models.dart';
+import 'capability_choices.dart';
 import 'session_composer.dart';
 import 'session_file_viewer_page.dart';
 import 'transcript_item_view.dart';
@@ -422,6 +426,13 @@ class _SessionDetailPageState extends _SessionDetailAttachmentHost
                   else
                     _TranscriptBody(
                       transcript: transcript!,
+                      workingLabel: _workingSelectionLabel(
+                        composerState,
+                        details,
+                      ),
+                      toolDisplayMode:
+                          ref.watch(toolDisplayControllerProvider).value ??
+                          ToolDisplayMode.technical,
                       inquiries: inquiries!,
                       inquiryOnline: inquiryScope!.online,
                       onInquiryInstall: (inquiry) => ref
@@ -1010,6 +1021,39 @@ class _QueueActionSets {
   final Set<String> editing;
   final Set<String> removing;
   final Set<String> sending;
+}
+
+String _workingSelectionLabel(
+  SessionComposerState? composer,
+  SessionDetails? details,
+) {
+  final catalog = composer?.catalog;
+  final agent = composer?.agent ?? details?.agent ?? catalog?.defaultAgent;
+  final provider = catalog?.providers
+      .where((candidate) => candidate.agent == agent)
+      .firstOrNull;
+  final model = composer?.model ?? details?.model;
+  final effort = composer?.reasoningEffort ?? details?.reasoningEffort;
+  final effectiveModel =
+      model ??
+      provider?.models.where((option) => option.isDefault).firstOrNull?.id ??
+      provider?.models.firstOrNull?.id;
+  final modelLabel = capabilityLabel(
+    provider?.models ?? const [],
+    model,
+    fallbackLabel: model ?? '',
+  ).trim();
+  final effortOptions = reasoningEffortsForModel(provider, effectiveModel);
+  final effortLabel = capabilityLabel(
+    effortOptions,
+    effort,
+    fallbackLabel: effort ?? '',
+  ).trim().toLowerCase();
+  final label = [
+    modelLabel,
+    effortLabel,
+  ].where((part) => part.isNotEmpty).join(' ');
+  return label.isEmpty ? 'Working' : label;
 }
 
 class _NewSessionBody extends StatelessWidget {

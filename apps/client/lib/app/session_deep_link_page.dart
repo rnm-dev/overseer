@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/time/app_time.dart';
 import '../features/auth/application/auth_controller.dart';
 import '../features/auth/application/auth_state.dart';
+import '../features/auth/presentation/backend_unavailable_page.dart';
 import '../features/auth/presentation/sign_in_page.dart';
 import '../features/sessions/application/sessions_controller.dart';
 import '../features/sessions/sessions.dart';
@@ -26,6 +27,9 @@ class SessionDeepLinkPage extends ConsumerWidget {
     final auth = ref.watch(authControllerProvider);
     return switch (auth.phase) {
       AuthPhase.restoring => const ShellPage.loading(),
+      AuthPhase.unavailable => BackendUnavailablePage(
+        onRetry: ref.read(authControllerProvider.notifier).retryRestore,
+      ),
       AuthPhase.unauthenticated => SignInPage(
         onSignIn: ref.read(authControllerProvider.notifier).signIn,
         errorMessage: auth.errorMessage,

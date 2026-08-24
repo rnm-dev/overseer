@@ -462,6 +462,54 @@ void main() {
     expect(find.text('GPT-5'), findsOneWidget);
   });
 
+  testWidgets(
+    'hides provider-wide efforts for a model with an empty scoped list',
+    (tester) async {
+      final controller = TextEditingController();
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.dark,
+          home: Scaffold(
+            body: SessionComposer(
+              controller: controller,
+              providers: const [
+                ModelProvider(
+                  agent: 'claude',
+                  label: 'Claude',
+                  models: [
+                    ModelCatalogOption(
+                      id: 'haiku',
+                      label: 'Haiku',
+                      isDefault: true,
+                      reasoningEfforts: [],
+                    ),
+                    ModelCatalogOption(
+                      id: 'opus',
+                      label: 'Opus',
+                      reasoningEfforts: [
+                        ModelCatalogOption(id: 'high', label: 'High'),
+                      ],
+                    ),
+                  ],
+                  reasoningEfforts: [
+                    ModelCatalogOption(id: 'high', label: 'High'),
+                  ],
+                ),
+              ],
+              defaultAgent: 'claude',
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.byKey(const Key('session-composer-capabilities')));
+      await tester.pumpAndSettle();
+      expect(find.text('Effort'), findsNothing);
+      expect(find.text('High'), findsNothing);
+    },
+  );
+
   testWidgets('enables send for non-empty input and submits once', (
     tester,
   ) async {

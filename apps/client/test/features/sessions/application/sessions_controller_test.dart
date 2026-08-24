@@ -77,6 +77,51 @@ void main() {
       isTrue,
     );
   });
+
+  test('hands a local running marker off to authoritative snapshots', () {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final controller = container.read(activeSessionsProvider.notifier);
+
+    controller.replaceWorkspace('workspace', const []);
+    controller.markRunningLocally(
+      workspaceId: 'workspace',
+      session: const ActiveSession(peonId: 'peon', sessionId: 'session'),
+    );
+
+    expect(
+      container
+          .read(activeSessionsProvider)
+          .forWorkspace('workspace')
+          ?.contains(peonId: 'peon', sessionId: 'session'),
+      isTrue,
+    );
+
+    // An unrelated full snapshot must not erase a start that has not appeared
+    // in the authoritative stream yet.
+    controller.replaceWorkspace('workspace', const [
+      ActiveSession(peonId: 'other', sessionId: 'other-session'),
+    ]);
+    expect(
+      container
+          .read(activeSessionsProvider)
+          .forWorkspace('workspace')
+          ?.contains(peonId: 'peon', sessionId: 'session'),
+      isTrue,
+    );
+
+    controller.replaceWorkspace('workspace', const [
+      ActiveSession(peonId: 'peon', sessionId: 'session'),
+    ]);
+    controller.replaceWorkspace('workspace', const []);
+    expect(
+      container
+          .read(activeSessionsProvider)
+          .forWorkspace('workspace')
+          ?.contains(peonId: 'peon', sessionId: 'session'),
+      isFalse,
+    );
+  });
 }
 
 class _RestSessionRepository implements SessionRepository {

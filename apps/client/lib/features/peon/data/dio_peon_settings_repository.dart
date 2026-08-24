@@ -55,25 +55,8 @@ class DioPeonSettingsRepository implements PeonSettingsRepository {
         '${_root(scope)}/models',
       );
       final data = _payload(response);
-      final providers = data['providers'];
-      if (providers is! List) return null;
-      return ModelsCatalog(
-        providers: providers
-            .whereType<Map>()
-            .map((raw) => Map<String, dynamic>.from(raw))
-            .map(
-              (raw) => ModelProvider(
-                agent: raw['agent'] as String? ?? '',
-                label: raw['label'] as String? ?? raw['agent'] as String? ?? '',
-                models: _options(raw['models']),
-                reasoningEfforts: _options(raw['reasoningEfforts']),
-              ),
-            )
-            .where((provider) => provider.agent.isNotEmpty)
-            .toList(growable: false),
-        defaultModel: data['defaultModel'] as String?,
-        defaultAgent: data['defaultAgent'] as String?,
-      );
+      if (data['providers'] is! List) return null;
+      return ModelsCatalog.fromJson(data);
     } on Object {
       return null;
     }
@@ -155,22 +138,6 @@ class DioPeonSettingsRepository implements PeonSettingsRepository {
     if (data == null) throw const FormatException('Empty response');
     return data;
   }
-
-  List<ModelCatalogOption> _options(Object? value) => value is! List
-      ? const []
-      : value
-            .whereType<Map>()
-            .map((raw) => Map<String, dynamic>.from(raw))
-            .map(
-              (raw) => ModelCatalogOption(
-                id: raw['id'] as String? ?? '',
-                label: raw['label'] as String? ?? raw['id'] as String? ?? '',
-                alias: raw['alias'] as String?,
-                isDefault: raw['default'] as bool? ?? false,
-              ),
-            )
-            .where((option) => option.id.isNotEmpty)
-            .toList(growable: false);
 
   PeonSettingsException _exception(
     DioException error,

@@ -74,6 +74,10 @@ void main() {
 
     expect(find.byKey(const Key('peon-settings-agent-pane')), findsOneWidget);
     expect(find.text('Default agent'), findsOneWidget);
+    expect(
+      find.byKey(const Key('peon-default-reasoning-effort')),
+      findsOneWidget,
+    );
     await tester.scrollUntilVisible(
       find.text('Soul'),
       300,
@@ -84,6 +88,56 @@ void main() {
     );
     expect(find.text('Soul'), findsOneWidget);
     expect(find.byKey(const Key('peon-soul-field')), findsOneWidget);
+  });
+
+  testWidgets('saves provider-neutral model and explicit effort reset', (
+    tester,
+  ) async {
+    final repository = _FakePeonSettingsRepository();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          peonSettingsRepositoryProvider.overrideWithValue(repository),
+          peonManagementRepositoryProvider.overrideWithValue(
+            _FakePeonManagementRepository(),
+          ),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.dark,
+          home: const Scaffold(
+            body: PeonSettingsPage(
+              workspace: Workspace(id: 'workspace', name: 'Workspace'),
+              peon: Peon(
+                id: 'peon',
+                name: 'Kanat',
+                baseUrl: 'https://peon.example',
+                addressSource: 'paired',
+                online: true,
+                lastSeen: 1,
+                capabilities: [],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('peon-settings-agent')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('peon-default-reasoning-effort')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Model default').last);
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const Key('peon-settings-save')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('peon-settings-save')));
+    await tester.pumpAndSettle();
+
+    expect(repository.lastPatch, {
+      'defaultAgent': 'codex',
+      'aiDefaultModel': 'gpt-5.6',
+      'aiDefaultReasoningEffort': null,
+    });
   });
 
   testWidgets('keeps connection repair available while offline', (
@@ -283,6 +337,8 @@ class _FakePeonSettingsRepository implements PeonSettingsRepository {
       fileTransferRoot: '/tmp/peon',
       heartbeatIntervalMs: 5000,
       defaultAgent: 'codex',
+      aiDefaultModel: 'gpt-5.6',
+      aiDefaultReasoningEffort: 'high',
       soul: 'Careful and precise.',
     ),
     this.settingsError,
@@ -315,9 +371,12 @@ class _FakePeonSettingsRepository implements PeonSettingsRepository {
                 id: 'gpt-5.6',
                 label: 'GPT-5.6',
                 isDefault: true,
+                reasoningEfforts: [
+                  ModelCatalogOption(id: 'high', label: 'High'),
+                ],
               ),
             ],
-            reasoningEfforts: [],
+            reasoningEfforts: [ModelCatalogOption(id: 'high', label: 'High')],
           ),
         ],
       );

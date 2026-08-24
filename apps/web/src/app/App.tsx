@@ -49,6 +49,21 @@ function Loading() {
   );
 }
 
+function BackendUnavailable({ onRetry }: { onRetry: () => Promise<void> }) {
+  const t = useT();
+  return (
+    <main className="grid min-h-screen place-items-center px-6 text-center">
+      <div className="max-w-md">
+        <h1 className="font-display text-2xl font-bold text-ink">{t("backend.unavailable.title")}</h1>
+        <p className="mt-3 font-mono text-sm leading-6 text-ink-muted">{t("backend.unavailable.message")}</p>
+        <button className="btn btn-accent mt-6" type="button" onClick={() => void onRetry()}>
+          {t("backend.unavailable.retry")}
+        </button>
+      </div>
+    </main>
+  );
+}
+
 function PeonSessionsEmpty() {
   const t = useT();
   const navigate = useNavigate();
@@ -88,10 +103,14 @@ function PeonSessionsEmpty() {
 }
 
 export function App() {
-  const { user, ready } = useAuth();
+  const { user, ready, unavailable, retry } = useAuth();
 
   if (!ready) {
     return <Loading />;
+  }
+
+  if (unavailable) {
+    return <BackendUnavailable onRetry={retry} />;
   }
 
   return (

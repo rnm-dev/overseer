@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:overseer_mobile/features/auth/application/auth_controller.dart';
 import 'package:overseer_mobile/features/auth/application/auth_state.dart';
+import 'package:overseer_mobile/features/auth/presentation/backend_unavailable_page.dart';
 import 'package:overseer_mobile/features/auth/presentation/sign_in_page.dart';
 import 'package:overseer_mobile/features/projects/projects.dart';
 import 'package:overseer_mobile/features/shell/shell.dart';
@@ -25,6 +26,9 @@ class ProjectFilesRoutePage extends ConsumerWidget {
     final auth = ref.watch(authControllerProvider);
     return switch (auth.phase) {
       AuthPhase.restoring => const ShellPage.loading(),
+      AuthPhase.unavailable => BackendUnavailablePage(
+        onRetry: ref.read(authControllerProvider.notifier).retryRestore,
+      ),
       AuthPhase.unauthenticated => SignInPage(
         onSignIn: ref.read(authControllerProvider.notifier).signIn,
         errorMessage: auth.errorMessage,

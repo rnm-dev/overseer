@@ -63,6 +63,14 @@ both the running-session seed and every initial cursor replay have finished,
 then publishes one reconciled active set. Later session projections update
 both Drift and the active set.
 
+Submitting a follow-up adds a narrow in-memory running marker before the HTTP
+request starts, so the transcript and session row show activity immediately
+instead of waiting for the next socket projection. A refusal or locally queued
+retry removes it. An authoritative snapshot that first observes the session
+running takes ownership of the marker, and its later terminal snapshot removes
+the activity normally; unrelated workspace updates cannot erase a start that
+has not reached the projection yet.
+
 Visible rows animate into activity order. Newly inserted rows appear in their
 authoritative slot, and reduced-motion preferences disable reordering effects.
 

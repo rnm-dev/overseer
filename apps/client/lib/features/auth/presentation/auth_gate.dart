@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:overseer_mobile/features/auth/application/auth_controller.dart';
 import 'package:overseer_mobile/features/auth/application/auth_state.dart';
 import 'package:overseer_mobile/features/auth/domain/auth_models.dart';
+import 'package:overseer_mobile/features/auth/presentation/backend_unavailable_page.dart';
 
 typedef AuthGateLoadingBuilder =
     Widget Function({
@@ -75,6 +76,10 @@ class _AuthGateState extends ConsumerState<AuthGate> {
       AuthPhase.restoring => widget.buildLoading(
         overseerName: widget.overseerName,
         onBackToConnections: widget.onBack,
+      ),
+      AuthPhase.unavailable => BackendUnavailablePage(
+        onRetry: controller.retryRestore,
+        onBack: widget.onBack,
       ),
       AuthPhase.unauthenticated => widget.buildSignIn(
         onSignIn: controller.signIn,

@@ -243,25 +243,8 @@ class DefaultFollowupRepository implements FollowupRepository {
       );
       final data = response.data;
       if (data == null) return null;
-      final rawProviders = data['providers'];
-      if (rawProviders is! List) return null;
-      return ModelsCatalog(
-        providers: rawProviders
-            .whereType<Map>()
-            .map((raw) => Map<String, dynamic>.from(raw))
-            .map(
-              (raw) => ModelProvider(
-                agent: raw['agent'] as String? ?? '',
-                label: raw['label'] as String? ?? raw['agent'] as String? ?? '',
-                models: _catalogOptions(raw['models']),
-                reasoningEfforts: _catalogOptions(raw['reasoningEfforts']),
-              ),
-            )
-            .where((provider) => provider.agent.isNotEmpty)
-            .toList(growable: false),
-        defaultModel: data['defaultModel'] as String?,
-        defaultAgent: data['defaultAgent'] as String?,
-      );
+      if (data['providers'] is! List) return null;
+      return ModelsCatalog.fromJson(data);
     } on DioException {
       return null;
     } on TypeError {
@@ -624,23 +607,6 @@ class DefaultFollowupRepository implements FollowupRepository {
     } on TypeError {
       return const [];
     }
-  }
-
-  List<ModelCatalogOption> _catalogOptions(Object? rawOptions) {
-    if (rawOptions is! List) return const [];
-    return rawOptions
-        .whereType<Map>()
-        .map((raw) => Map<String, dynamic>.from(raw))
-        .map(
-          (raw) => ModelCatalogOption(
-            id: raw['id'] as String? ?? '',
-            label: raw['label'] as String? ?? raw['id'] as String? ?? '',
-            alias: raw['alias'] as String?,
-            isDefault: raw['default'] as bool? ?? false,
-          ),
-        )
-        .where((option) => option.id.isNotEmpty)
-        .toList(growable: false);
   }
 
   String _commandId() {

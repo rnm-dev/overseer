@@ -105,6 +105,16 @@ class AppLocalizationsRu extends AppLocalizations {
   String get signIn => 'Войти';
 
   @override
+  String get backendUnavailableTitle => 'Overseer недоступен';
+
+  @override
+  String get backendUnavailableMessage =>
+      'Не удалось связаться с сервером. Вы по-прежнему авторизованы — повторите попытку, когда соединение восстановится.';
+
+  @override
+  String get tryAgain => 'Повторить';
+
+  @override
   String get message => 'Сообщение';
 
   @override

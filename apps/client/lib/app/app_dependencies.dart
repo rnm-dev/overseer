@@ -41,9 +41,11 @@ import 'package:overseer_mobile/features/peon/application/peon_management_contro
 import 'package:overseer_mobile/features/peon/data/dio_peon_management_repository.dart';
 import 'package:overseer_mobile/features/peon/data/dio_peon_settings_repository.dart';
 import 'package:overseer_mobile/features/settings/application/sound_pack_controller.dart';
+import 'package:overseer_mobile/features/settings/application/tool_display_controller.dart';
 import 'package:overseer_mobile/features/settings/data/audioplayers_sound_preview_player.dart';
 import 'package:overseer_mobile/features/settings/data/audioplayers_work_sound_player.dart';
 import 'package:overseer_mobile/features/settings/data/shared_preferences_sound_preference_store.dart';
+import 'package:overseer_mobile/features/settings/data/shared_preferences_tool_display_preference_store.dart';
 import 'package:overseer_mobile/features/themes/application/connection_theme_controller.dart';
 import 'package:overseer_mobile/features/themes/data/shared_preferences_connection_theme_store.dart';
 import 'package:overseer_mobile/features/themes/data/dio_connection_theme_catalog_source.dart';
@@ -271,6 +273,9 @@ class AppDependencies extends StatelessWidget {
         ),
         soundPreferenceStoreProvider.overrideWithValue(
           SharedPreferencesSoundPreferenceStore(),
+        ),
+        toolDisplayPreferenceStoreProvider.overrideWithValue(
+          SharedPreferencesToolDisplayPreferenceStore(),
         ),
         soundPreviewPlayerProvider.overrideWith((ref) {
           final player = AudioplayersSoundPreviewPlayer();

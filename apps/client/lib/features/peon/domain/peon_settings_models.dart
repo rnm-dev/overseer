@@ -28,6 +28,7 @@ class PeonSettings {
     this.fileTransferRoot,
     this.heartbeatIntervalMs,
     this.aiDefaultModel,
+    this.aiDefaultReasoningEffort,
     this.defaultAgent,
     this.soul,
   });
@@ -36,6 +37,7 @@ class PeonSettings {
   final String? fileTransferRoot;
   final int? heartbeatIntervalMs;
   final String? aiDefaultModel;
+  final String? aiDefaultReasoningEffort;
   final String? defaultAgent;
   final String? soul;
 
@@ -44,6 +46,7 @@ class PeonSettings {
     fileTransferRoot: json['fileTransferRoot'] as String?,
     heartbeatIntervalMs: (json['heartbeatIntervalMs'] as num?)?.toInt(),
     aiDefaultModel: json['aiDefaultModel'] as String?,
+    aiDefaultReasoningEffort: json['aiDefaultReasoningEffort'] as String?,
     defaultAgent: json['defaultAgent'] as String?,
     soul: switch (json['soul']) {
       final String value when value.isNotEmpty => value,
@@ -64,6 +67,8 @@ class PeonSettings {
     if (includeAgent) ...{
       if (defaultAgent != null) 'defaultAgent': defaultAgent,
       if (aiDefaultModel != null) 'aiDefaultModel': aiDefaultModel,
+      if (aiDefaultReasoningEffort != null)
+        'aiDefaultReasoningEffort': aiDefaultReasoningEffort,
     },
   };
 }

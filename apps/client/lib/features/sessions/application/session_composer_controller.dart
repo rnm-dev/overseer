@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/diagnostics/app_diagnostics.dart';
+import '../../../core/live/active_sessions.dart';
 import '../../../core/time/app_time.dart';
 import '../../../shared/models/ai_capabilities.dart';
 import '../domain/followup_repository.dart';
@@ -362,6 +363,11 @@ class SessionComposerController extends AsyncNotifier<SessionComposerState> {
         clearFollowupProgress: true,
       ),
     );
+    final activeSessions = ref.read(activeSessionsProvider.notifier);
+    activeSessions.markRunningLocally(
+      workspaceId: scope.workspaceId,
+      session: ActiveSession(peonId: scope.peonId, sessionId: scope.sessionId),
+    );
     if (ghost != null) _scheduleGhostExpiry();
     try {
       final result = await ref
@@ -387,10 +393,22 @@ class SessionComposerController extends AsyncNotifier<SessionComposerState> {
         latest.copyWith(draft: '', sending: false, clearFollowupProgress: true),
       );
       _resetFollowupIdentity();
-      if (result == FollowupDelivery.queued) _scheduleRetry();
+      if (result == FollowupDelivery.queued) {
+        activeSessions.clearRunningLocally(
+          workspaceId: scope.workspaceId,
+          peonId: scope.peonId,
+          sessionId: scope.sessionId,
+        );
+        _scheduleRetry();
+      }
       if (running) unawaited(refreshQueue());
       return true;
     } on FollowupException catch (error) {
+      activeSessions.clearRunningLocally(
+        workspaceId: scope.workspaceId,
+        peonId: scope.peonId,
+        sessionId: scope.sessionId,
+      );
       // Only an explicit HTTP 4xx refusal proves that this command
       // identity cannot have been accepted. Upload/protocol failures without a
       // status retain it so retrying the unchanged payload remains idempotent.
@@ -407,6 +425,11 @@ class SessionComposerController extends AsyncNotifier<SessionComposerState> {
       );
       return false;
     } catch (error) {
+      activeSessions.clearRunningLocally(
+        workspaceId: scope.workspaceId,
+        peonId: scope.peonId,
+        sessionId: scope.sessionId,
+      );
       _diagnostics.record(
         AppDiagnosticEvent(
           name: 'followup.submit',

@@ -3,6 +3,8 @@ part of 'session_detail_page.dart';
 class _TranscriptBody extends StatefulWidget {
   const _TranscriptBody({
     required this.transcript,
+    required this.workingLabel,
+    required this.toolDisplayMode,
     required this.inquiries,
     required this.inquiryOnline,
     required this.onInquiryInstall,
@@ -23,6 +25,8 @@ class _TranscriptBody extends StatefulWidget {
   });
 
   final AsyncValue<TranscriptState> transcript;
+  final String workingLabel;
+  final ToolDisplayMode toolDisplayMode;
   final PluginInquiryState inquiries;
   final bool inquiryOnline;
   final ValueChanged<PluginInstallInquiry> onInquiryInstall;
@@ -125,7 +129,10 @@ class _TranscriptBodyState extends State<_TranscriptBody> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _TranscriptWorkingIndicator(
-          activity: transcriptWorkingActivity(latestEvent),
+          activity: transcriptWorkingActivity(
+            latestEvent,
+            fallbackLabel: widget.workingLabel,
+          ),
           stopping: widget.stopping,
           onStop: widget.onStop,
         ),
@@ -252,6 +259,8 @@ class _TranscriptBodyState extends State<_TranscriptBody> {
                     ),
                     child: TranscriptItemView(
                       item: item,
+                      thinkingLabel: widget.workingLabel,
+                      toolDisplayMode: widget.toolDisplayMode,
                       operator: widget.operator,
                       onOpenAttachment: widget.onOpenAttachment,
                       onOpenPreview: widget.onOpenPreview,

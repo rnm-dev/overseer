@@ -38,9 +38,14 @@ class AuthController extends Notifier<AuthState> {
           ? const AuthState.unauthenticated()
           : AuthState.authenticated(session);
     } catch (error) {
-      await ref.read(sessionPrivateDataClearerProvider)();
-      state = AuthState.unauthenticated(errorMessage: _message(error));
+      state = AuthState.unavailable(errorMessage: _message(error));
     }
+  }
+
+  Future<void> retryRestore() async {
+    if (state.phase == AuthPhase.restoring) return;
+    state = const AuthState.restoring();
+    await _restore();
   }
 
   Future<void> signIn() async {

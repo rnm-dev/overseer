@@ -87,7 +87,7 @@ void main() {
     );
     expect(
       find.descendant(of: settingsSection, matching: find.byType(AppListTile)),
-      findsNWidgets(4),
+      findsNWidgets(5),
     );
     expect(
       tester.getTopLeft(find.text('RNM')).dx,

@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:overseer_mobile/core/live/active_sessions.dart';
 import 'package:overseer_mobile/features/sessions/application/session_composer_controller.dart';
 import 'package:overseer_mobile/features/sessions/domain/followup_repository.dart';
 import 'package:overseer_mobile/features/sessions/domain/new_session_repository.dart';
@@ -466,6 +467,13 @@ void main() {
       expect(submitting.draft, isEmpty);
       expect(submitting.sending, isTrue);
       expect(repository.savedDraft, isNull);
+      expect(
+        container
+            .read(activeSessionsProvider)
+            .forWorkspace(scope.workspaceId)
+            ?.contains(peonId: scope.peonId, sessionId: scope.sessionId),
+        isTrue,
+      );
 
       submissionGate.complete();
       expect(await submission, isTrue);
@@ -498,6 +506,14 @@ void main() {
     expect(failed.draft, 'do not lose me');
     expect(failed.error, 'not sent');
     expect(repository.savedDraft, isNull);
+    expect(
+      container
+              .read(activeSessionsProvider)
+              .forWorkspace(scope.workspaceId)
+              ?.contains(peonId: scope.peonId, sessionId: scope.sessionId) ??
+          false,
+      isFalse,
+    );
   });
 
   test('bounds a delayed authoritative-row ghost to sixty seconds', () async {

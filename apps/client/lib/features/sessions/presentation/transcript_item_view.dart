@@ -6,6 +6,7 @@ import '../../../shared/formatters/activity_timestamp.dart';
 import '../../../shared/widgets/app_markdown.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../auth/domain/auth_models.dart';
+import '../../settings/domain/tool_display_mode.dart';
 import 'tool_details_bottom_sheet.dart';
 import 'transcript_items.dart';
 
@@ -13,6 +14,8 @@ class TranscriptItemView extends StatelessWidget {
   const TranscriptItemView({
     super.key,
     required this.item,
+    this.thinkingLabel = 'Thinking',
+    this.toolDisplayMode = ToolDisplayMode.technical,
     this.operator,
     this.onOpenAttachment,
     this.onOpenPreview,
@@ -20,6 +23,8 @@ class TranscriptItemView extends StatelessWidget {
   });
 
   final TranscriptItem item;
+  final String thinkingLabel;
+  final ToolDisplayMode toolDisplayMode;
   final OperatorIdentity? operator;
   final ValueChanged<TranscriptAttachment>? onOpenAttachment;
   final ValueChanged<TranscriptPreviewItem>? onOpenPreview;
@@ -38,8 +43,14 @@ class TranscriptItemView extends StatelessWidget {
         item: text,
         onOpenLink: onOpenLink,
       ),
-      TranscriptThinkingItem thinking => _ThinkingRow(item: thinking),
-      TranscriptToolItem tool => _ToolRow(item: tool),
+      TranscriptThinkingItem thinking => _ThinkingRow(
+        item: thinking,
+        label: thinkingLabel,
+      ),
+      TranscriptToolItem tool => _ToolRow(
+        item: tool,
+        displayMode: toolDisplayMode,
+      ),
       TranscriptLooseItem loose => _ActionResult(item: loose),
       TranscriptNoticeItem notice => _Notice(item: notice),
       TranscriptPreviewItem preview => _PreviewCard(
@@ -425,9 +436,10 @@ class _AssistantText extends StatelessWidget {
 }
 
 class _ThinkingRow extends StatefulWidget {
-  const _ThinkingRow({required this.item});
+  const _ThinkingRow({required this.item, required this.label});
 
   final TranscriptThinkingItem item;
+  final String label;
 
   @override
   State<_ThinkingRow> createState() => _ThinkingRowState();
@@ -454,7 +466,7 @@ class _ThinkingRowState extends State<_ThinkingRow> {
               onTap: () => setState(() => open = !open),
               borderRadius: BorderRadius.circular(4),
               child: Text(
-                '✦ ${_thinkingLabel(widget.item.text)} ${open ? '▾' : '▸'}',
+                '✦ ${widget.label} ${open ? '▾' : '▸'}',
                 style: AppTypography.mono(
                   fontSize: AppTypography.systemMessageFontSize,
                   color: colors.onSurfaceVariant,
@@ -488,9 +500,10 @@ class _ThinkingRowState extends State<_ThinkingRow> {
 }
 
 class _ToolRow extends StatelessWidget {
-  const _ToolRow({required this.item});
+  const _ToolRow({required this.item, required this.displayMode});
 
   final TranscriptToolItem item;
+  final ToolDisplayMode displayMode;
 
   @override
   Widget build(BuildContext context) {
@@ -504,7 +517,16 @@ class _ToolRow extends StatelessWidget {
       _ => null,
     };
     final label = _toolActivityLabel(context, kind);
-    final activity = filename == null ? label : '$label · $filename';
+    final simpleActivity = filename == null ? label : '$label · $filename';
+    final command = transcriptToolSummary(item.input, name: item.name);
+    final operation = item.name?.trim().isNotEmpty == true
+        ? item.name!
+        : 'Tool';
+    final activity = displayMode == ToolDisplayMode.simple
+        ? simpleActivity
+        : command.isEmpty
+        ? operation
+        : '$operation $command';
     return Align(
       alignment: Alignment.centerLeft,
       child: ConstrainedBox(
@@ -804,25 +826,4 @@ String _attachmentMeta(TranscriptAttachment attachment) {
       ? size.round().toString()
       : size.toStringAsFixed(1);
   return '$kind · $value ${units[unit]}';
-}
-
-String _thinkingLabel(String seed) {
-  const labels = [
-    'Work work!',
-    'WAAAGH in progress!',
-    'Berserker focus mode!',
-    'Hacking the battle plans!',
-    'Stomping through logic!',
-    'Forging the next swing!',
-    'Teeth on the byte-grind!',
-    'Crushing bugs like chitin!',
-    'Axes sharpened, output incoming!',
-    'Grunts are thinking, quietly!',
-    'Orcish focus…',
-  ];
-  var hash = 0;
-  for (final code in seed.codeUnits) {
-    hash = (31 * hash + code) & 0x7fffffff;
-  }
-  return labels[hash % labels.length];
 }

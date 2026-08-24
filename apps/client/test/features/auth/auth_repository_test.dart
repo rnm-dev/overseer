@@ -146,6 +146,21 @@ void main() {
       expect(await repository.restore(), isNull);
       expect(store.token, isNull);
     });
+
+    test('keeps a token when Overseer is unavailable', () async {
+      final store = _MemoryTokenStore('stored.token');
+      final repository = DefaultAuthRepository(
+        remote: _FakeRemote(meErrorStatus: 503),
+        tokenStore: store,
+        browser: _FakeBrowser(Uri()),
+      );
+
+      await expectLater(
+        repository.restore(),
+        throwsA(isA<RemoteAuthException>()),
+      );
+      expect(store.token, 'stored.token');
+    });
   });
 
   test('sign out revokes and clears the stored device token', () async {
@@ -165,9 +180,10 @@ void main() {
 }
 
 class _FakeRemote implements AuthRemoteDataSource {
-  _FakeRemote({this.meError = false});
+  _FakeRemote({this.meError = false, this.meErrorStatus});
 
   final bool meError;
+  final int? meErrorStatus;
   String? exchangedCode;
   String? exchangedState;
   String? loggedOutToken;
@@ -187,9 +203,9 @@ class _FakeRemote implements AuthRemoteDataSource {
 
   @override
   Future<OperatorIdentity> me(String token) async {
-    if (meError) {
-      throw const RemoteAuthException(
-        statusCode: 401,
+    if (meError || meErrorStatus != null) {
+      throw RemoteAuthException(
+        statusCode: meErrorStatus ?? 401,
         code: 'UNAUTHENTICATED',
         message: 'authentication required',
       );

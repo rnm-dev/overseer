@@ -39,7 +39,14 @@ void main() {
                     'agent': 'codex',
                     'label': 'Codex',
                     'models': [
-                      {'id': 'gpt-5.6', 'label': 'GPT-5.6', 'default': true},
+                      {
+                        'id': 'gpt-5.6',
+                        'label': 'GPT-5.6',
+                        'default': true,
+                        'reasoningEfforts': [
+                          {'id': 'high', 'label': 'High', 'default': true},
+                        ],
+                      },
                     ],
                     'reasoningEfforts': [],
                   },
@@ -70,6 +77,10 @@ void main() {
       expect(settings.soul, 'Careful and precise.');
       expect(status?.updateAvailable, isTrue);
       expect(catalog?.providers.single.models.single.id, 'gpt-5.6');
+      expect(
+        catalog?.providers.single.models.single.reasoningEfforts?.single.id,
+        'high',
+      );
     },
   );
 

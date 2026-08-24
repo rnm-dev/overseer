@@ -63,9 +63,7 @@ TextEditingValue insertPastedText(TextEditingValue value, String pasted) {
   final text = value.text.replaceRange(selection.start, selection.end, pasted);
   return value.copyWith(
     text: text,
-    selection: TextSelection.collapsed(
-      offset: selection.start + pasted.length,
-    ),
+    selection: TextSelection.collapsed(offset: selection.start + pasted.length),
     composing: TextRange.empty,
   );
 }
@@ -228,10 +226,7 @@ class _SessionComposerState extends State<SessionComposer> {
         onLongTextPasted(pasted)) {
       return;
     }
-    widget.controller.value = insertPastedText(
-      widget.controller.value,
-      pasted,
-    );
+    widget.controller.value = insertPastedText(widget.controller.value, pasted);
   }
 
   /// The platform's own toolbar, with its Paste button routed through

@@ -206,6 +206,40 @@ void main() {
     expect(find.text('Sign In'), findsOneWidget);
     expect(find.text('The login was cancelled.'), findsOneWidget);
   });
+
+  testWidgets('backend unavailability never shows a sign-in action', (
+    WidgetTester tester,
+  ) async {
+    final repository = _UnavailableRepository();
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          authRepositoryProvider.overrideWithValue(repository),
+          sessionPrivateDataClearerProvider.overrideWithValue(() async {}),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.dark,
+          home: const AuthGate(
+            buildLoading: _buildAuthGateLoading,
+            buildSignIn: _buildAuthGateSignIn,
+            buildShell: _buildAuthGateShell,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Overseer is unavailable'), findsOneWidget);
+    expect(find.text('Sign In'), findsNothing);
+    expect(find.byKey(const Key('backend-unavailable-retry')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('backend-unavailable-retry')));
+    await tester.pump();
+    await tester.pump();
+    expect(repository.restoreCalls, 2);
+  });
 }
 
 class _PendingAuthRepository implements AuthRepository {
@@ -255,4 +289,20 @@ class _FailingAutoSignInRepository implements AuthRepository {
 
   @override
   Future<void> signOut() async {}
+}
+
+class _UnavailableRepository implements AuthRepository {
+  int restoreCalls = 0;
+
+  @override
+  Future<AuthSession?> restore() async {
+    restoreCalls += 1;
+    throw const AuthException('Could not reach Overseer.');
+  }
+
+  @override
+  Future<AuthSession> signIn() => throw UnimplementedError();
+
+  @override
+  Future<void> signOut() => throw UnimplementedError();
 }
