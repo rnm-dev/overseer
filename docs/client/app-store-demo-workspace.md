@@ -6,8 +6,9 @@ are fictional and contain no customer, operator or infrastructure data.
 
 The seed accepts the development origin, or production only when
 `OVERSEER_APP_REVIEW_DEMO=1` is set alongside `NODE_ENV=production` and the
-exact public origin `https://overseer.rnm.dev`. Any other combination stops
-before a database transaction begins.
+exact public origin is either `https://overseer.rnm.dev` or the isolated
+password-only review instance at `https://demo.ovrseer.org`. Any other
+combination stops before a database transaction begins.
 
 Run it inside the development app container after the screenshot operator has
 signed in at least once:

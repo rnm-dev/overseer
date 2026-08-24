@@ -1,4 +1,5 @@
 import { query } from "../../infrastructure/db/index.js";
+import { screenshotDemoEnabled } from "../../appReviewDemo.js";
 import { isPeonConnected, peonConnectionStartedAt } from "./peonConnections.js";
 import {
   baseUrl,
@@ -240,11 +241,7 @@ function urlParts(
 export function toView(record: PeonRecord): PeonView {
   const { token: _token, ...rest } = record;
   const screenshotDemo =
-    ((process.env.NODE_ENV === "development" &&
-      process.env.OVERSEER_PUBLIC_URL === "https://overseer-dev.rnm.dev") ||
-      (process.env.NODE_ENV === "production" &&
-        process.env.OVERSEER_PUBLIC_URL === "https://overseer.rnm.dev" &&
-        process.env.OVERSEER_APP_REVIEW_DEMO === "1")) &&
+    screenshotDemoEnabled() &&
     record.workspaceId === "demo-screenshot-workspace" &&
     record.peonId.startsWith("demo-peon-");
   const controlConnected = screenshotDemo || isPeonConnected(record.peonId);

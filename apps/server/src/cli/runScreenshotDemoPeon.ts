@@ -1,15 +1,8 @@
 import http from "node:http";
+import { screenshotDemoEnabled } from "../appReviewDemo.js";
 
 const PORT = 5001;
-if (
-  !(
-    (process.env.NODE_ENV === "development" &&
-      process.env.OVERSEER_PUBLIC_URL === "https://overseer-dev.rnm.dev") ||
-    (process.env.NODE_ENV === "production" &&
-      process.env.OVERSEER_PUBLIC_URL === "https://overseer.rnm.dev" &&
-      process.env.OVERSEER_APP_REVIEW_DEMO === "1")
-  )
-) {
+if (!screenshotDemoEnabled()) {
   throw new Error("refusing App Review demo Peon outside an approved origin");
 }
 

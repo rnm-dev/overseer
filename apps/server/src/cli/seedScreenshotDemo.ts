@@ -1,4 +1,5 @@
 import pg from "pg";
+import { screenshotDemoEnabled } from "../appReviewDemo.js";
 
 const WORKSPACE_ID = "demo-screenshot-workspace";
 const PEONS = [
@@ -126,14 +127,7 @@ function argument(name: string): string {
 }
 
 function demoDatabaseUrl(): string {
-  const development =
-    process.env.NODE_ENV === "development" &&
-    process.env.OVERSEER_PUBLIC_URL === "https://overseer-dev.rnm.dev";
-  const appReview =
-    process.env.NODE_ENV === "production" &&
-    process.env.OVERSEER_PUBLIC_URL === "https://overseer.rnm.dev" &&
-    process.env.OVERSEER_APP_REVIEW_DEMO === "1";
-  if (!development && !appReview)
+  if (!screenshotDemoEnabled())
     throw new Error("refusing demo seed outside an approved App Review origin");
   if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is required");
   return process.env.DATABASE_URL;
