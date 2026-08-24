@@ -130,6 +130,9 @@ function peonId(req: http.IncomingMessage): keyof typeof projects {
 
 const server = http.createServer((req, res) => {
   const url = new URL(req.url ?? "/", "http://demo");
+  if (url.pathname.startsWith("/api/v1/")) {
+    url.pathname = url.pathname.slice("/api/v1".length);
+  }
   const id = peonId(req);
   const list = projects[id].map((project) => ({
     ...project,
