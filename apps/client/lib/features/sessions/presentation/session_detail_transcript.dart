@@ -22,6 +22,7 @@ class _TranscriptBody extends StatefulWidget {
     required this.onOpenAttachment,
     required this.onOpenPreview,
     required this.onOpenLink,
+    required this.onSelectedText,
   });
 
   final AsyncValue<TranscriptState> transcript;
@@ -47,6 +48,7 @@ class _TranscriptBody extends StatefulWidget {
   final ValueChanged<TranscriptAttachment> onOpenAttachment;
   final ValueChanged<TranscriptPreviewItem> onOpenPreview;
   final ValueChanged<String> onOpenLink;
+  final ValueChanged<SelectedTextReply> onSelectedText;
 
   @override
   State<_TranscriptBody> createState() => _TranscriptBodyState();
@@ -57,6 +59,7 @@ class _TranscriptBodyState extends State<_TranscriptBody> {
   static const _historyThreshold = 400.0;
 
   final ScrollController _scrollController = ScrollController();
+  final Map<String, GlobalKey> _replySourceKeys = {};
   var _requestingOlder = false;
   var _historyEdgeArmed = true;
 
@@ -94,6 +97,19 @@ class _TranscriptBodyState extends State<_TranscriptBody> {
     widget.onLoadOlder().whenComplete(() {
       if (mounted) _requestingOlder = false;
     });
+  }
+
+  void _openReplySource(SelectedTextReply reply) {
+    final context = _replySourceKeys[reply.eventId]?.currentContext;
+    if (context == null) return;
+    unawaited(
+      Scrollable.ensureVisible(
+        context,
+        duration: const Duration(milliseconds: 260),
+        curve: Curves.easeOut,
+        alignment: 0.35,
+      ),
+    );
   }
 
   @override
@@ -252,7 +268,12 @@ class _TranscriptBodyState extends State<_TranscriptBody> {
                   final previous = chronologicalIndex > 0
                       ? items[chronologicalIndex - 1]
                       : null;
-                  return Padding(
+                  final sourceEventId = switch (item) {
+                    TranscriptUserItem(:final sourceEventId) => sourceEventId,
+                    TranscriptTextItem(:final sourceEventId) => sourceEventId,
+                    _ => null,
+                  };
+                  final child = Padding(
                     key: ValueKey(item.key),
                     padding: EdgeInsets.only(
                       top: transcriptItemGap(previous, item),
@@ -265,8 +286,16 @@ class _TranscriptBodyState extends State<_TranscriptBody> {
                       onOpenAttachment: widget.onOpenAttachment,
                       onOpenPreview: widget.onOpenPreview,
                       onOpenLink: widget.onOpenLink,
+                      onSelectedText: widget.onSelectedText,
+                      onOpenReplySource: _openReplySource,
                     ),
                   );
+                  if (sourceEventId == null) return child;
+                  final key = _replySourceKeys.putIfAbsent(
+                    sourceEventId,
+                    GlobalKey.new,
+                  );
+                  return KeyedSubtree(key: key, child: child);
                 },
               ),
             );

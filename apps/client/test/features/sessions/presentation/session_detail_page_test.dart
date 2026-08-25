@@ -1626,8 +1626,9 @@ class _TestFollowupRepository implements FollowupRepository {
   Future<void> editQueued(
     FollowupScope scope,
     String itemId,
-    String prompt,
-  ) async {}
+    String prompt, {
+    SelectedTextReply? replyTo,
+  }) async {}
 
   @override
   Future<void> removeQueued(FollowupScope scope, String itemId) async {}
@@ -1646,6 +1647,7 @@ class _TestFollowupRepository implements FollowupRepository {
     String? reasoningEffort,
     String? commandId,
     List<NewSessionAttachment> attachments = const [],
+    SelectedTextReply? replyTo,
     FollowupProgressCallback? onProgress,
   }) async => FollowupDelivery.delivered;
 
@@ -1669,6 +1671,7 @@ class _PendingFollowupRepository extends _TestFollowupRepository {
     String? reasoningEffort,
     String? commandId,
     List<NewSessionAttachment> attachments = const [],
+    SelectedTextReply? replyTo,
     FollowupProgressCallback? onProgress,
   }) => delivery;
 }
@@ -1751,6 +1754,7 @@ class _RecordingFollowupRepository extends _TestFollowupRepository {
     String? reasoningEffort,
     String? commandId,
     List<NewSessionAttachment> attachments = const [],
+    SelectedTextReply? replyTo,
     FollowupProgressCallback? onProgress,
   }) async {
     this.prompt = prompt;

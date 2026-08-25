@@ -109,6 +109,11 @@ class _QueuedFollowupList extends StatelessWidget {
                                   overflow: TextOverflow.ellipsis,
                                   softWrap: true,
                                 ),
+                                if (item.replyTo case final reply?)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 6),
+                                    child: _ComposerReplyCard(replyTo: reply),
+                                  ),
                                 if (item.attachments.isNotEmpty) ...[
                                   const SizedBox(height: 4),
                                   Wrap(
@@ -318,6 +323,10 @@ class _QueuedFollowupDialogState extends State<_QueuedFollowupDialog> {
                           data: widget.item.prompt,
                           textStyle: AppTypography.chatMessage(height: 1.5),
                         ),
+                      if (widget.item.replyTo case final reply?) ...[
+                        const SizedBox(height: 12),
+                        _ComposerReplyCard(replyTo: reply),
+                      ],
                       if (widget.item.attachments.isNotEmpty) ...[
                         const SizedBox(height: 14),
                         Wrap(

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Hourglass, Pencil, Send, Trash2 } from "lucide-react";
 import { attachmentLabel, mergeQueueRows, type QueueItem, type QueueRow } from "./queue";
 import type { Translate } from "../../shared/i18n";
+import { SelectedTextReplyCard } from "./SelectedTextReplyCard";
 
 export const QUEUE_ACTION_CLASS = "flex h-7 min-w-7 items-center justify-center rounded-md bg-black/10 text-[11px] font-medium text-white transition-colors hover:bg-black/20 hover:text-white disabled:cursor-wait disabled:opacity-40";
 export const QUEUE_HOURGLASS_CLASS = "mt-1 shrink-0 theme-queued-message-icon";
@@ -53,6 +54,7 @@ export function QueueList({ items, removing, steering, onRemove, onEdit, onSteer
                 />
                 <div className="min-w-0 flex-1">
                   <div className="whitespace-pre-wrap break-words typo-chat-message text-ink">{item.prompt}</div>
+                  {item.replyTo && <div className="mt-1.5"><SelectedTextReplyCard replyTo={item.replyTo} compact /></div>}
                   <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 font-body text-[11px] text-ink/60">
                     {(item.attachments ?? []).map((attachment, attachmentIndex) => (
                       <span key={`${attachment.path ?? attachment.name ?? "attachment"}:${attachmentIndex}`}>📎 {attachmentLabel(attachment)}</span>

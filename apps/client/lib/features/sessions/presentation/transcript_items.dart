@@ -11,6 +11,8 @@ class TranscriptUserItem extends TranscriptItem {
   const TranscriptUserItem({
     required super.key,
     required this.text,
+    this.sourceEventId,
+    this.replyTo,
     this.author,
     this.authorEmail,
     this.authorGithubLogin,
@@ -20,6 +22,8 @@ class TranscriptUserItem extends TranscriptItem {
   });
 
   final String text;
+  final String? sourceEventId;
+  final SelectedTextReply? replyTo;
   final String? author;
   final String? authorEmail;
   final String? authorGithubLogin;
@@ -35,11 +39,13 @@ class TranscriptTextItem extends TranscriptItem {
   TranscriptTextItem({
     required super.key,
     required this.text,
+    this.sourceEventId,
     this.createdAt,
     this.resultMeta,
   });
 
   final String text;
+  final String? sourceEventId;
   final double? createdAt;
   TranscriptResultMeta? resultMeta;
 }
@@ -241,6 +247,8 @@ List<TranscriptItem> flattenTranscriptEvents(List<TranscriptEvent> events) {
         items.add(
           TranscriptUserItem(
             key: baseKey,
+            sourceEventId: event.eventId,
+            replyTo: event.replyTo,
             text: _string(payload['text']) ?? '',
             author: _string(payload['author']),
             authorEmail: _string(payload['authorEmail']),
@@ -263,6 +271,7 @@ List<TranscriptItem> flattenTranscriptEvents(List<TranscriptEvent> events) {
                 items.add(
                   TranscriptTextItem(
                     key: key,
+                    sourceEventId: event.eventId,
                     text: text!,
                     createdAt: event.createdAt,
                   ),

@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ovrseer:protocol:selected-text-replies-v1",
+  "title": "Selected-text replies v1",
+  "$defs": {
+    "eventId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,256}$"
+    },
+    "selectedText": {
+      "type": "string",
+      "pattern": "[\\s\\S]*\\S[\\s\\S]*",
+      "maxLength": 8192,
+      "description": "Exact selected text; preserve whitespace and Unicode. The UTF-8 representation is at most 16 KiB."
+    },
+    "replyTo": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["eventId", "selectedText"],
+      "properties": {
+        "eventId": { "$ref": "#/$defs/eventId" },
+        "selectedText": { "$ref": "#/$defs/selectedText" }
+      }
+    },
+    "followupRequest": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "replyTo": { "$ref": "#/$defs/replyTo" }
+      }
+    },
+    "queueRequest": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "replyTo": { "$ref": "#/$defs/replyTo" }
+      }
+    },
+    "queueEditRequest": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "replyTo": {
+          "oneOf": [
+            { "$ref": "#/$defs/replyTo" },
+            { "type": "null" }
+          ],
+          "description": "Omitted preserves the queued value; null clears it."
+        }
+      }
+    },
+    "userMessage": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "replyTo": {
+          "oneOf": [
+            { "$ref": "#/$defs/replyTo" },
+            { "type": "null" }
+          ]
+        }
+      }
+    }
+  }
+}

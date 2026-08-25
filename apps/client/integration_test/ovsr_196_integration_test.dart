@@ -432,8 +432,9 @@ class _HarnessFollowupRepository implements FollowupRepository {
   Future<void> editQueued(
     FollowupScope scope,
     String itemId,
-    String prompt,
-  ) async {}
+    String prompt, {
+    SelectedTextReply? replyTo,
+  }) async {}
 
   @override
   Future<void> removeQueued(FollowupScope scope, String itemId) async {}
@@ -455,6 +456,7 @@ class _HarnessFollowupRepository implements FollowupRepository {
     String? reasoningEffort,
     String? commandId,
     List<NewSessionAttachment> attachments = const [],
+    SelectedTextReply? replyTo,
     FollowupProgressCallback? onProgress,
   }) async {
     submissions.add(

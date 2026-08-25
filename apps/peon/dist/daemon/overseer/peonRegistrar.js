@@ -40,7 +40,7 @@ const defaultSubscribe = (listener) => {
     return () => settings.off("change", listener);
 };
 function capabilities(fileTransferRoot) {
-    const caps = ["sessions", "session-pagination-v1", "transcript-pagination-v1", "managed-plugin-inquiry-v1", ARMORY_PROJECT_PACKAGES_CAPABILITY, "control", "sse"];
+    const caps = ["sessions", "session-pagination-v1", "transcript-pagination-v1", "selected-text-replies-v1", "managed-plugin-inquiry-v1", ARMORY_PROJECT_PACKAGES_CAPABILITY, "control", "sse"];
     if (fileTransferRoot.trim())
         caps.push("files");
     return caps;

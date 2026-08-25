@@ -6,6 +6,7 @@ import { composerDraftKey, saveComposerDraft, useCarriedAttachments, useComposer
 import { attachmentUploadPath } from "../projects/fileLinks";
 import type { ModelsCatalog } from "../settings/models";
 import type { MessageAttachment } from "./parsing";
+import { replyIdentity, type SelectedTextReply } from "./selectedTextReply";
 import { createQueueReconciler, draftWithQueuedItem, enqueueSessionFollowup, getSessionQueue, removeSessionQueueItem, removeWaitingQueueItem, pruneSteeredQueueItems, steerSessionQueueItem, sendWaitingQueueItemNow, visibleQueueItems, type QueueActivityTracker, type QueueItem } from "./queue";
 import { createSubmissionGate } from "./submissionGate";
 
@@ -26,6 +27,7 @@ const GHOST_MAX_MS = 60_000;
 export interface ComposerGhost {
   text: string;
   attachments: MessageAttachment[];
+  replyTo?: SelectedTextReply | null;
   createdAt: number;
   /**
    * How many user messages the transcript showed when the send started. The
@@ -105,6 +107,8 @@ interface Args {
   queueActivity: QueueActivityTracker;
   controlReadScope: string;
   userMessageCount: number;
+  replyTo: SelectedTextReply | null;
+  setReplyTo: Dispatch<SetStateAction<SelectedTextReply | null>>;
   onGhostCreated: () => void;
   setRunning: (running: boolean) => void;
   setRunningSelection: (model: string | null, reasoningEffort: string | null) => void;
@@ -118,6 +122,7 @@ export function useSessionComposer({
   sessionPermissionMode, overrideModel,
   overrideReasoningEffort, catalog, currentSessionKeyRef, queueReconcilerRef,
   queueActivity, controlReadScope, userMessageCount,
+  replyTo, setReplyTo,
   onGhostCreated,
   setRunning, setRunningSelection, setStopNote, onWorkStarted,
 }: Args) {
@@ -153,7 +158,8 @@ export function useSessionComposer({
     setSending(false);
     setGhost(null);
     requestIdentityRef.current?.clear();
-  }, [sessionKey]);
+    setReplyTo(null);
+  }, [sessionKey, setReplyTo]);
 
   useEffect(() => {
     if (!ghost) return;
@@ -241,6 +247,7 @@ export function useSessionComposer({
     const prompt = text || "(see attachments)";
     const pending = files;
     const pendingCarried = carried;
+    const pendingReply = replyTo;
     const wasRunning = running;
     const prevModel = runningModel;
     const prevReasoningEffort = runningReasoningEffort;
@@ -256,6 +263,7 @@ export function useSessionComposer({
     // rather than a second message.
     const clientId = requestIdFor(JSON.stringify([
       sessionKey, prompt, overrideModel, overrideReasoningEffort,
+      replyIdentity(pendingReply),
       pending.map((f) => [f.name, f.size, f.lastModified]),
       pendingCarried.map((attachment) => attachment.path),
     ]));
@@ -268,6 +276,7 @@ export function useSessionComposer({
         ...pendingCarried,
         ...pending.map((f) => ({ type: isImage(f) ? "image" as const : "file" as const, name: f.name, size: f.size })),
       ],
+      replyTo: pendingReply,
       createdAt: Date.now(),
       baselineUserMessages: userMessageCountRef.current,
     });
@@ -280,14 +289,16 @@ export function useSessionComposer({
     setInput("");
     setFiles([]);
     setCarried([]);
+    setReplyTo(null);
     let followupAttempted = false;
     try {
       // Upload each file to the sandbox, then send native attachments[] (peon
       // presents images as visual content to the agent via its Read tool).
       const attachments: { type: "file" | "image"; path: string; transferId?: string; size?: number; sha256?: string }[] = carriedPayload(pendingCarried);
       for (const f of pending) attachments.push({ type: isImage(f) ? "image" : "file", ...await uploadFile(f) });
-      const body: { prompt: string; attachments?: typeof attachments; model?: string; reasoningEffort?: string } = { prompt };
+      const body: { prompt: string; attachments?: typeof attachments; model?: string; reasoningEffort?: string; replyTo?: SelectedTextReply } = { prompt };
       if (attachments.length) body.attachments = attachments;
+      if (pendingReply) body.replyTo = pendingReply;
       if (overrideModel) body.model = overrideModel; // becomes the session default after acceptance
       if (overrideReasoningEffort) body.reasoningEffort = overrideReasoningEffort;
       const request = json(body);
@@ -319,6 +330,7 @@ export function useSessionComposer({
         setInput(text);
         setFiles(pending);
         setCarried(pendingCarried);
+        setReplyTo(pendingReply);
       }
       notifyError(err, {
         title: t("session.compose.sendFailed"),
@@ -338,6 +350,7 @@ export function useSessionComposer({
     const prompt = text || "(see attachments)";
     const pending = files;
     const pendingCarried = carried;
+    const pendingReply = replyTo;
     const queueReconciler = queueReconcilerRef.current;
     setSending(true);
     setSendError(null);
@@ -351,6 +364,7 @@ export function useSessionComposer({
         ...(sessionPermissionMode ? { permissionMode: sessionPermissionMode } : {}),
         ...(overrideModel ? { model: overrideModel } : {}),
         ...(overrideReasoningEffort ? { reasoningEffort: overrideReasoningEffort } : {}),
+        ...(pendingReply ? { replyTo: pendingReply } : {}),
         commandId,
       });
       // Peon owns FIFO order. Never insert the response optimistically; fetch the
@@ -360,6 +374,7 @@ export function useSessionComposer({
         setInput("");
         setFiles([]);
         setCarried([]);
+        setReplyTo(null);
         setStopNote(null);
       }
     } catch (err) {
@@ -430,6 +445,7 @@ export function useSessionComposer({
     setSendError(null);
     setInput(draft.text);
     setCarried(draft.carried);
+    setReplyTo(draft.replyTo);
   }
 
   async function steerQueuedItem(itemId: string) {
@@ -449,6 +465,7 @@ export function useSessionComposer({
     const steerGhost: ComposerGhost | null = queued ? {
       text: queued.prompt,
       attachments: queued.attachments ?? [],
+      replyTo: queued.replyTo ?? null,
       createdAt: Date.now(),
       baselineUserMessages: userMessageCountRef.current,
     } : null;

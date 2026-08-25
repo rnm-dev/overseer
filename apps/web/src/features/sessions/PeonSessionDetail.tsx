@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate, useParams } from "react-router";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
@@ -26,6 +26,7 @@ import { transcriptFollowOutput, transcriptFollowsOutput, transcriptShowsJumpToN
 import type { PreviewTarget } from "./PreviewPanel";
 import { useSessionTranscript } from "./useSessionTranscript";
 import { useSessionComposer, type ComposerGhost } from "./useSessionComposer";
+import { parseSelectedTextReply, SELECTED_TEXT_REPLY_CAPABILITY, type SelectedTextReply } from "./selectedTextReply";
 import { SessionHeader, sessionHeaderIdentityData } from "./SessionHeader";
 import { COMPOSER_FOOTER_PADDING, SessionComposerDock, composerFooterHeight } from "./SessionComposerDock";
 import { SessionOverlays } from "./SessionOverlays";
@@ -124,6 +125,7 @@ function PeonSessionDetailPage() {
   const { catalog, supported: modelsSupported } = useModels(base);
   const sessionKey = `${peon.peonId}:${sid}`;
   const transcriptPaginationSupported = peon.capabilities.includes("transcript-pagination-v1");
+  const selectedTextRepliesSupported = peon.capabilities.includes(SELECTED_TEXT_REPLY_CAPABILITY);
   const pluginInquiriesSupported = peon.capabilities.includes(PLUGIN_INQUIRY_CAPABILITY);
   const filePanePageKey = `${wsId}:${sessionKey}`;
   const currentSessionKeyRef = useRef(sessionKey);
@@ -208,11 +210,13 @@ function PeonSessionDetailPage() {
   // selection as the session default, so later turns keep it until switched.
   const [overrideModel, setOverrideModel] = useState("");
   const [overrideReasoningEffort, setOverrideReasoningEffort] = useState("");
+  const [replyTo, setReplyTo] = useState<SelectedTextReply | null>(null);
   // React Router reuses this component when moving directly between sessions.
   // Overrides belong to one composer/session and must never leak into the next.
   useEffect(() => {
     setOverrideModel("");
     setOverrideReasoningEffort("");
+    setReplyTo(null);
   }, [sessionKey]);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -477,6 +481,28 @@ function PeonSessionDetailPage() {
     setShowScrollToBottom(false);
   }, []);
 
+  const handleReplySelection = useCallback((event: MouseEvent<HTMLDivElement>) => {
+    if (!selectedTextRepliesSupported) return;
+    const row = event.currentTarget;
+    const eventId = row.dataset.replyableEventId;
+    if (!eventId) return;
+    window.setTimeout(() => {
+      const selection = window.getSelection();
+      if (!selection || selection.isCollapsed || !selection.toString()) return;
+      if (!row.contains(selection.anchorNode) || !row.contains(selection.focusNode)) return;
+      const selected = parseSelectedTextReply({ eventId, selectedText: selection.toString() });
+      if (!selected) return;
+      setReplyTo(selected);
+      selection.removeAllRanges();
+    }, 0);
+  }, [selectedTextRepliesSupported]);
+
+  const openReplySource = useCallback((selected: SelectedTextReply) => {
+    const rows = document.querySelectorAll<HTMLElement>("[data-replyable-event-id]");
+    const source = [...rows].find((row) => row.dataset.replyableEventId === selected.eventId);
+    source?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, []);
+
   const visibleEvents = useMemo(
     () => combineVisibleTranscriptEvents(history ?? [], orderedLive),
     [history, orderedLive],
@@ -511,6 +537,8 @@ function PeonSessionDetailPage() {
     queueActivity: queueActivityRef.current,
     controlReadScope,
     userMessageCount,
+    replyTo,
+    setReplyTo,
     onGhostCreated: handleGhostCreated,
     setRunning,
     setRunningSelection,
@@ -895,8 +923,9 @@ function PeonSessionDetailPage() {
                 </div>
               );
               if (row.kind === "item") {
+                const replyableEventId = row.item.kind === "user" || row.item.kind === "text" ? row.item.sourceEventId : undefined;
                 return (
-                  <div data-transcript-row className={`mx-auto w-full max-w-6xl px-3 sm:px-6 ${row.paddingClass}`}>
+                  <div data-transcript-row data-replyable-event-id={replyableEventId} onMouseUp={replyableEventId ? handleReplySelection : undefined} className={`mx-auto w-full max-w-6xl px-3 sm:px-6 ${row.paddingClass}`}>
                     <ItemView
                       item={row.item}
                       t={t}
@@ -905,6 +934,7 @@ function PeonSessionDetailPage() {
                       simpleTools={simpleTools}
                       onOpenPreview={onOpenPreviewItem}
                       onOpenAttachment={setSentAttachmentPreview}
+                      onOpenReplySource={openReplySource}
                       onOpenProjectFile={onOpenProjectFileItem}
                       projectViewer={projectViewer}
                     />
@@ -922,6 +952,7 @@ function PeonSessionDetailPage() {
                     authorGithubLogin={user?.githubLogin ?? undefined}
                     authorAvatarUrl={user?.avatarUrl ?? undefined}
                     attachments={row.ghost.attachments}
+                    replyTo={row.ghost.replyTo ?? undefined}
                     createdAt={row.ghost.createdAt}
                   />
                 </div>
@@ -1003,6 +1034,9 @@ function PeonSessionDetailPage() {
         filesEnabled={filesEnabled}
         sendError={sendError}
         setSendError={setSendError}
+        replyTo={replyTo}
+        setReplyTo={setReplyTo}
+        onOpenReplySource={openReplySource}
         modelsSupported={modelsSupported}
         catalog={catalog}
         sessionKey={sessionKey}

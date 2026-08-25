@@ -7,6 +7,7 @@ import '../../../shared/widgets/app_markdown.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../auth/domain/auth_models.dart';
 import '../../settings/domain/tool_display_mode.dart';
+import '../domain/session_models.dart';
 import 'tool_details_bottom_sheet.dart';
 import 'transcript_items.dart';
 
@@ -20,6 +21,8 @@ class TranscriptItemView extends StatelessWidget {
     this.onOpenAttachment,
     this.onOpenPreview,
     this.onOpenLink,
+    this.onSelectedText,
+    this.onOpenReplySource,
   });
 
   final TranscriptItem item;
@@ -29,6 +32,8 @@ class TranscriptItemView extends StatelessWidget {
   final ValueChanged<TranscriptAttachment>? onOpenAttachment;
   final ValueChanged<TranscriptPreviewItem>? onOpenPreview;
   final ValueChanged<String>? onOpenLink;
+  final ValueChanged<SelectedTextReply>? onSelectedText;
+  final ValueChanged<SelectedTextReply>? onOpenReplySource;
 
   @override
   Widget build(BuildContext context) {
@@ -38,10 +43,13 @@ class TranscriptItemView extends StatelessWidget {
         operator: operator,
         onOpenAttachment: onOpenAttachment,
         onOpenLink: onOpenLink,
+        onSelectedText: onSelectedText,
+        onOpenReplySource: onOpenReplySource,
       ),
       TranscriptTextItem text => _AssistantText(
         item: text,
         onOpenLink: onOpenLink,
+        onSelectedText: onSelectedText,
       ),
       TranscriptThinkingItem thinking => _ThinkingRow(
         item: thinking,
@@ -68,12 +76,16 @@ class _UserBubble extends StatelessWidget {
     required this.operator,
     required this.onOpenAttachment,
     required this.onOpenLink,
+    this.onSelectedText,
+    this.onOpenReplySource,
   });
 
   final TranscriptUserItem item;
   final OperatorIdentity? operator;
   final ValueChanged<TranscriptAttachment>? onOpenAttachment;
   final ValueChanged<String>? onOpenLink;
+  final ValueChanged<SelectedTextReply>? onSelectedText;
+  final ValueChanged<SelectedTextReply>? onOpenReplySource;
 
   @override
   Widget build(BuildContext context) {
@@ -136,6 +148,16 @@ class _UserBubble extends StatelessWidget {
                           ),
                         ),
                       ),
+                    if (item.replyTo case final reply?)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: _SelectedTextReplyCard(
+                          replyTo: reply,
+                          onOpenSource: onOpenReplySource == null
+                              ? null
+                              : () => onOpenReplySource!(reply),
+                        ),
+                      ),
                     if (compact)
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.end,
@@ -145,6 +167,16 @@ class _UserBubble extends StatelessWidget {
                             child: _UserText(
                               text: item.text,
                               onOpenLink: onOpenLink,
+                              onSelectedText:
+                                  onSelectedText == null ||
+                                      item.sourceEventId == null
+                                  ? null
+                                  : (text) => onSelectedText!(
+                                      SelectedTextReply(
+                                        eventId: item.sourceEventId!,
+                                        selectedText: text,
+                                      ),
+                                    ),
                             ),
                           ),
                           if (timestamp != null) ...[
@@ -154,7 +186,19 @@ class _UserBubble extends StatelessWidget {
                         ],
                       )
                     else if (item.text.isNotEmpty)
-                      _UserText(text: item.text, onOpenLink: onOpenLink),
+                      _UserText(
+                        text: item.text,
+                        onOpenLink: onOpenLink,
+                        onSelectedText:
+                            onSelectedText == null || item.sourceEventId == null
+                            ? null
+                            : (text) => onSelectedText!(
+                                SelectedTextReply(
+                                  eventId: item.sourceEventId!,
+                                  selectedText: text,
+                                ),
+                              ),
+                      ),
                     if (item.attachments.isNotEmpty) ...[
                       if (item.text.isNotEmpty) const SizedBox(height: 8),
                       for (final attachment in item.attachments)
@@ -196,21 +240,97 @@ class _UserBubble extends StatelessWidget {
 }
 
 class _UserText extends StatelessWidget {
-  const _UserText({required this.text, required this.onOpenLink});
+  const _UserText({
+    required this.text,
+    required this.onOpenLink,
+    this.onSelectedText,
+  });
 
   final String text;
   final ValueChanged<String>? onOpenLink;
+  final ValueChanged<String>? onSelectedText;
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    return AppMarkdown(
-      data: text,
-      onTapLink: onOpenLink,
-      textStyle: AppTypography.chatMessage(
-        color: colors.onPrimaryContainer,
-        height: 1.35,
+    return SelectionArea(
+      onSelectionChanged: onSelectedText == null
+          ? null
+          : (content) {
+              final selected = content?.plainText;
+              if (selected?.trim().isNotEmpty == true) {
+                onSelectedText!(selected!);
+              }
+            },
+      child: AppMarkdown(
+        data: text,
+        onTapLink: onOpenLink,
+        textStyle: AppTypography.chatMessage(
+          color: colors.onPrimaryContainer,
+          height: 1.35,
+        ),
       ),
+    );
+  }
+}
+
+class _SelectedTextReplyCard extends StatelessWidget {
+  const _SelectedTextReplyCard({required this.replyTo, this.onOpenSource});
+
+  final SelectedTextReply replyTo;
+  final VoidCallback? onOpenSource;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final preview = replyTo.selectedText.length > 240
+        ? '${replyTo.selectedText.substring(0, 240)}…'
+        : replyTo.selectedText;
+    final card = Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(
+        color: colors.primary.withValues(alpha: 0.06),
+        border: Border.all(color: colors.primary.withValues(alpha: 0.25)),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.subdirectory_arrow_left, size: 14, color: colors.primary),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Selected text',
+                  style: AppTypography.mono(
+                    fontSize: 9,
+                    color: colors.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  preview,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTypography.body(
+                    fontSize: 11,
+                    color: colors.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+    if (onOpenSource == null) return card;
+    return InkWell(
+      onTap: onOpenSource,
+      borderRadius: BorderRadius.circular(8),
+      child: card,
     );
   }
 }
@@ -371,10 +491,15 @@ class _AttachmentPill extends StatelessWidget {
 }
 
 class _AssistantText extends StatelessWidget {
-  const _AssistantText({required this.item, required this.onOpenLink});
+  const _AssistantText({
+    required this.item,
+    required this.onOpenLink,
+    this.onSelectedText,
+  });
 
   final TranscriptTextItem item;
   final ValueChanged<String>? onOpenLink;
+  final ValueChanged<SelectedTextReply>? onSelectedText;
 
   @override
   Widget build(BuildContext context) {
@@ -384,13 +509,29 @@ class _AssistantText extends StatelessWidget {
       key: Key('transcript-text-${item.key}'),
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        AppMarkdown(
-          key: Key('transcript-markdown-${item.key}'),
-          data: item.text,
-          onTapLink: onOpenLink,
-          textStyle: AppTypography.chatMessage(
-            color: colors.onSurface,
-            height: 1.55,
+        SelectionArea(
+          onSelectionChanged: onSelectedText == null
+              ? null
+              : (content) {
+                  final selected = content?.plainText;
+                  if (selected?.trim().isNotEmpty == true &&
+                      item.sourceEventId != null) {
+                    onSelectedText!(
+                      SelectedTextReply(
+                        eventId: item.sourceEventId!,
+                        selectedText: selected!,
+                      ),
+                    );
+                  }
+                },
+          child: AppMarkdown(
+            key: Key('transcript-markdown-${item.key}'),
+            data: item.text,
+            onTapLink: onOpenLink,
+            textStyle: AppTypography.chatMessage(
+              color: colors.onSurface,
+              height: 1.55,
+            ),
           ),
         ),
         if (timestamp != null || item.resultMeta != null)

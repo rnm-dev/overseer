@@ -296,6 +296,8 @@ class _SessionDetailPageState extends _SessionDetailAttachmentHost
                 false,
             online: currentPeon?.online ?? false,
           );
+    final selectedTextRepliesSupported =
+        currentPeon?.capabilities.contains('selected-text-replies-v1') ?? false;
     final inquiries = inquiryScope == null
         ? null
         : ref.watch(pluginInquiryControllerProvider(inquiryScope));
@@ -475,6 +477,15 @@ class _SessionDetailPageState extends _SessionDetailAttachmentHost
                       onOpenPreview: _openTranscriptPreview,
                       onOpenLink: (href) =>
                           _openTranscriptLink(href, details: details),
+                      onSelectedText: selectedTextRepliesSupported
+                          ? (reply) => ref
+                                .read(
+                                  sessionComposerControllerProvider(
+                                    composerScope,
+                                  ).notifier,
+                                )
+                                .setReplyTo(reply)
+                          : (_) {},
                     ),
                   Align(
                     alignment: Alignment.bottomCenter,
@@ -511,6 +522,14 @@ class _SessionDetailPageState extends _SessionDetailAttachmentHost
                                 _attachmentError ??
                                 composerState?.error ??
                                 composerState?.queueError,
+                            replyTo: composerState?.replyTo,
+                            onClearReplyTo: () => ref
+                                .read(
+                                  sessionComposerControllerProvider(
+                                    composerScope,
+                                  ).notifier,
+                                )
+                                .setReplyTo(null),
                             attachments: _composerAttachments,
                             providers:
                                 composerState?.catalog?.providers ?? const [],

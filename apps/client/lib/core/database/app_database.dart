@@ -170,6 +170,7 @@ class PendingFollowupCommands extends Table {
   TextColumn get model => text().nullable()();
   TextColumn get reasoningEffort => text().nullable()();
   TextColumn get attachmentsJson => text().withDefault(const Constant('[]'))();
+  TextColumn get replyToJson => text().nullable()();
   RealColumn get createdAt => real()();
 
   @override
@@ -217,7 +218,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 12;
+  int get schemaVersion => 13;
 
   /// Removes operator-authored and transcript payload data at an authentication
   /// boundary. These tables are workspace-scoped rather than user-scoped, so
@@ -293,6 +294,15 @@ class AppDatabase extends _$AppDatabase {
         await migrator.addColumn(
           cachedSessions,
           cachedSessions.lastRequestedAt,
+        );
+      }
+      // Versions before v5 create the table from the current Drift schema,
+      // which already contains this nullable column. Only alter an existing
+      // pending-command table when it predates v13.
+      if (from >= 5 && from < 13) {
+        await migrator.addColumn(
+          pendingFollowupCommands,
+          pendingFollowupCommands.replyToJson,
         );
       }
     },

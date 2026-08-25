@@ -657,8 +657,9 @@ class _FakeFollowupRepository implements FollowupRepository {
   Future<void> editQueued(
     FollowupScope scope,
     String itemId,
-    String prompt,
-  ) async {
+    String prompt, {
+    SelectedTextReply? replyTo,
+  }) async {
     editedItemId = itemId;
     editedPrompt = prompt;
   }
@@ -683,6 +684,7 @@ class _FakeFollowupRepository implements FollowupRepository {
     String? reasoningEffort,
     String? commandId,
     List<NewSessionAttachment> attachments = const [],
+    SelectedTextReply? replyTo,
     FollowupProgressCallback? onProgress,
   }) async {
     submissions.add(

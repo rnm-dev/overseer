@@ -1,0 +1,102 @@
+{
+  "contractVersion": 1,
+  "capability": "selected-text-replies-v1",
+  "wireShape": {
+    "replyTo": {
+      "eventId": "transcript-event-id",
+      "selectedText": "exact selected text"
+    }
+  },
+  "safeExamples": [
+    {
+      "schema": "replyTo",
+      "value": {
+        "eventId": "assistant_123",
+        "selectedText": "  café\nselected line  "
+      }
+    },
+    {
+      "schema": "followupRequest",
+      "value": {
+        "prompt": "Explain this",
+        "replyTo": {
+          "eventId": "assistant_123",
+          "selectedText": "selected line"
+        }
+      }
+    },
+    {
+      "schema": "queueEditRequest",
+      "value": {
+        "prompt": "Use the other excerpt",
+        "replyTo": null
+      }
+    },
+    {
+      "schema": "userMessage",
+      "value": {
+        "type": "user_message",
+        "text": "Explain this",
+        "replyTo": {
+          "eventId": "assistant_123",
+          "selectedText": "selected line"
+        }
+      }
+    }
+  ],
+  "invalidExamples": [
+    {
+      "schema": "replyTo",
+      "value": { "eventId": "bad id", "selectedText": "text" },
+      "error": "BAD_REPLY_TO"
+    },
+    {
+      "schema": "replyTo",
+      "value": { "eventId": "assistant_123", "selectedText": "   \n" },
+      "error": "BAD_REPLY_TO"
+    },
+    {
+      "schema": "replyTo",
+      "value": { "eventId": "assistant_123" },
+      "error": "BAD_REPLY_TO"
+    }
+  ],
+  "sourceRules": {
+    "replyableTypes": ["assistant", "user_message"],
+    "assistantRequiresTextBlock": true,
+    "userMessageRequiresNonWhitespaceText": true,
+    "sameSession": true,
+    "renderOffsetsPersisted": false,
+    "selectedTextIsDisplayAuthority": true
+  },
+  "lifecycleRules": {
+    "followupReplyToAbsent": "legacy-compatible",
+    "queueReplyToAbsent": "no-reply-metadata",
+    "queueEditReplyToAbsent": "preserve-existing",
+    "queueEditReplyToNull": "clear-existing",
+    "legacyTranscriptWithoutReplyTo": "readable",
+    "providerSemantics": "provider-neutral-quoted-context",
+    "sourceEventUnavailable": "render-retained-quote-and-mark-source-unavailable"
+  },
+  "stableErrors": {
+    "BAD_REPLY_TO": 400,
+    "REPLY_SOURCE_NOT_FOUND": 404,
+    "REPLY_SOURCE_WRONG_SESSION": 400,
+    "REPLY_SOURCE_NOT_REPLYABLE": 400,
+    "UNSUPPORTED_CAPABILITY": 409
+  },
+  "routes": [
+    { "method": "POST", "path": "/sessions/:id/followup", "replyTo": "optional-object" },
+    { "method": "POST", "path": "/sessions/:id/queue", "replyTo": "optional-object" },
+    { "method": "PATCH", "path": "/sessions/:id/queue/:itemId", "replyTo": "optional-object-or-null" },
+    { "method": "GET", "path": "/sessions/:id/queue", "replyTo": "preserved-on-items" },
+    { "method": "GET", "path": "/sessions/:id/transcript", "replyTo": "preserved-on-authoritative-user-message" },
+    { "method": "GET", "path": "/sessions/:id/stream", "replyTo": "preserved-on-authoritative-user-message" }
+  ],
+  "mixedVersion": {
+    "capability": "selected-text-replies-v1",
+    "absentCapability": "do-not-offer-reply-action-and-keep-ordinary-followups-working",
+    "replyToAgainstLegacyPeon": "surface-UNSUPPORTED_CAPABILITY-before-send-or-relay-Peon-error",
+    "transcriptWithoutMetadata": "render-as-legacy-message"
+  }
+}

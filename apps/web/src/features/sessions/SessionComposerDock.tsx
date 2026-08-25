@@ -6,6 +6,7 @@ import { ModelSelect, ReasoningEffortSelect, defaultEffortIdFor, effortsForModel
 import { QueueList } from "./QueueList";
 import type { QueueItem } from "./queue";
 import type { MessageAttachment } from "./parsing";
+import type { SelectedTextReply } from "./selectedTextReply";
 
 interface Props {
   setComposerNode: Dispatch<SetStateAction<HTMLDivElement | null>>;
@@ -30,6 +31,9 @@ interface Props {
   filesEnabled: boolean | null;
   sendError: string | null;
   setSendError: Dispatch<SetStateAction<string | null>>;
+  replyTo: SelectedTextReply | null;
+  setReplyTo: Dispatch<SetStateAction<SelectedTextReply | null>>;
+  onOpenReplySource?: (replyTo: SelectedTextReply) => void;
   modelsSupported: boolean;
   catalog: ModelsCatalog | null;
   sessionKey: string;
@@ -61,6 +65,7 @@ export function SessionComposerDock(props: Props) {
     setComposerNode, queueItems, removingQueueItems, steeringQueueItems, removeQueuedItem, editQueuedItem, steerQueuedItem,
     input, setInput, running, enqueue, send, sending, controlConnected, files, setFiles,
     carried, setCarried, setAttachmentPreview, filesEnabled, sendError, setSendError,
+    replyTo, setReplyTo, onOpenReplySource,
     modelsSupported, catalog, sessionKey, sessionProvider, overrideModel,
     setOverrideModel, sessionModel, overrideReasoningEffort,
     setOverrideReasoningEffort, sessionReasoningEffort,
@@ -103,6 +108,9 @@ export function SessionComposerDock(props: Props) {
       filesEnabled={filesEnabled}
       error={sendError}
       onErrorChange={setSendError}
+      replyTo={replyTo}
+      onClearReplyTo={() => setReplyTo(null)}
+      onOpenReplySource={onOpenReplySource}
       rightExtra={
         modelsSupported && catalog && catalog.providers.length > 0 ? (
           <>

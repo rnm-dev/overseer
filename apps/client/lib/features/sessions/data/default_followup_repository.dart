@@ -10,6 +10,7 @@ import '../../../core/time/app_time.dart';
 import '../../../shared/models/ai_capabilities.dart';
 import '../domain/followup_repository.dart';
 import '../domain/new_session_repository.dart';
+import '../domain/session_models.dart';
 
 class DefaultFollowupRepository implements FollowupRepository {
   DefaultFollowupRepository({
@@ -174,12 +175,20 @@ class DefaultFollowupRepository implements FollowupRepository {
   }
 
   @override
-  Future<void> editQueued(FollowupScope scope, String itemId, String prompt) {
+  Future<void> editQueued(
+    FollowupScope scope,
+    String itemId,
+    String prompt, {
+    SelectedTextReply? replyTo,
+  }) {
     return _mutateQueue(
       scope,
       itemId,
       method: 'PATCH',
-      data: {'prompt': prompt},
+      data: {
+        'prompt': prompt,
+        if (replyTo != null) 'replyTo': replyTo.toJson(),
+      },
       fallback: 'Queued message could not be edited.',
     );
   }
@@ -263,6 +272,7 @@ class DefaultFollowupRepository implements FollowupRepository {
     String? reasoningEffort,
     String? commandId,
     List<NewSessionAttachment> attachments = const [],
+    SelectedTextReply? replyTo,
     FollowupProgressCallback? onProgress,
   }) async {
     final trimmed = prompt.trim();
@@ -288,6 +298,7 @@ class DefaultFollowupRepository implements FollowupRepository {
       model: model,
       reasoningEffort: reasoningEffort,
       attachments: uploaded,
+      replyTo: replyTo,
     );
     final earlier = await _pendingQuery(scope).get();
     await database
@@ -314,6 +325,9 @@ class DefaultFollowupRepository implements FollowupRepository {
                     if (attachment.size != null) 'size': attachment.size,
                   },
               ]),
+            ),
+            replyToJson: Value(
+              replyTo == null ? null : jsonEncode(replyTo.toJson()),
             ),
             createdAt: command.createdAt,
           ),
@@ -348,6 +362,7 @@ class DefaultFollowupRepository implements FollowupRepository {
               'reasoningEffort': command.reasoningEffort,
             if (command.attachments.isNotEmpty)
               'attachments': _attachmentPayload(command.attachments),
+            if (command.replyTo != null) 'replyTo': command.replyTo!.toJson(),
           },
         );
       } else {
@@ -360,6 +375,7 @@ class DefaultFollowupRepository implements FollowupRepository {
               'reasoningEffort': command.reasoningEffort,
             if (command.attachments.isNotEmpty)
               'attachments': _attachmentPayload(command.attachments),
+            if (command.replyTo != null) 'replyTo': command.replyTo!.toJson(),
           },
           options: Options(headers: {'Peon-Request-Id': command.commandId}),
         );
@@ -433,6 +449,14 @@ class DefaultFollowupRepository implements FollowupRepository {
       throw const FormatException('Missing queue item id');
     }
     final rawAttachments = json['attachments'];
+    SelectedTextReply? replyTo;
+    if (json['replyTo'] != null) {
+      try {
+        replyTo = SelectedTextReply.fromJson(json['replyTo']);
+      } on FormatException {
+        throw const FormatException('Invalid queued selected-text reply');
+      }
+    }
     return QueuedFollowup(
       id: id,
       sessionId: json['sessionId'] as String? ?? '',
@@ -457,6 +481,7 @@ class DefaultFollowupRepository implements FollowupRepository {
       reasoningEffort: json['reasoningEffort'] as String?,
       commandId: json['commandId'] as String?,
       queuedAt: (json['queuedAt'] as num?)?.toDouble() ?? 0,
+      replyTo: replyTo,
     );
   }
 
@@ -479,6 +504,7 @@ class DefaultFollowupRepository implements FollowupRepository {
     'reasoningEffort': item.reasoningEffort,
     'commandId': item.commandId,
     'queuedAt': item.queuedAt,
+    if (item.replyTo != null) 'replyTo': item.replyTo!.toJson(),
   };
 
   PendingFollowup _pendingFromRow(PendingFollowupCommand row) {
@@ -497,6 +523,9 @@ class DefaultFollowupRepository implements FollowupRepository {
       model: row.model,
       reasoningEffort: row.reasoningEffort,
       attachments: _pendingAttachments(row.attachmentsJson),
+      replyTo: row.replyToJson == null
+          ? null
+          : SelectedTextReply.fromJson(jsonDecode(row.replyToJson!)),
     );
   }
 

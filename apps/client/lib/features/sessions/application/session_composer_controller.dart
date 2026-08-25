@@ -68,6 +68,7 @@ class ComposerGhost {
     required this.attachments,
     required this.createdAt,
     required this.baselineUserMessages,
+    this.replyTo,
   });
 
   final String commandId;
@@ -75,6 +76,7 @@ class ComposerGhost {
   final List<ComposerGhostAttachment> attachments;
   final double createdAt;
   final int baselineUserMessages;
+  final SelectedTextReply? replyTo;
 
   bool visibleAgainst(
     int userMessages, {
@@ -100,6 +102,7 @@ class SessionComposerState {
     this.followupProgress,
     this.error,
     this.queueError,
+    this.replyTo,
   });
 
   final String draft;
@@ -116,6 +119,7 @@ class SessionComposerState {
   final FollowupSubmissionProgress? followupProgress;
   final String? error;
   final String? queueError;
+  final SelectedTextReply? replyTo;
 
   SessionComposerState copyWith({
     String? draft,
@@ -140,6 +144,8 @@ class SessionComposerState {
     bool clearError = false,
     String? queueError,
     bool clearQueueError = false,
+    SelectedTextReply? replyTo,
+    bool clearReplyTo = false,
   }) {
     return SessionComposerState(
       draft: draft ?? this.draft,
@@ -162,6 +168,7 @@ class SessionComposerState {
           : followupProgress ?? this.followupProgress,
       error: clearError ? null : error ?? this.error,
       queueError: clearQueueError ? null : queueError ?? this.queueError,
+      replyTo: clearReplyTo ? null : replyTo ?? this.replyTo,
     );
   }
 }
@@ -328,6 +335,7 @@ class SessionComposerController extends AsyncNotifier<SessionComposerState> {
       model: current.model,
       reasoningEffort: current.reasoningEffort,
       attachments: attachments,
+      replyTo: current.replyTo,
     );
     if (_followupPayloadIdentity != null &&
         _followupPayloadIdentity != payloadIdentity) {
@@ -350,6 +358,7 @@ class SessionComposerController extends AsyncNotifier<SessionComposerState> {
                   size: attachment.bytes.length,
                 ),
             ],
+            replyTo: current.replyTo,
             createdAt: _clock.now().millisecondsSinceEpoch.toDouble(),
             baselineUserMessages: transcriptUserMessages,
           );
@@ -359,6 +368,7 @@ class SessionComposerController extends AsyncNotifier<SessionComposerState> {
         sending: true,
         ghost: ghost,
         clearGhost: ghost == null,
+        clearReplyTo: true,
         clearError: true,
         clearFollowupProgress: true,
       ),
@@ -381,6 +391,7 @@ class SessionComposerController extends AsyncNotifier<SessionComposerState> {
             reasoningEffort: current.reasoningEffort,
             commandId: _followupRequestId,
             attachments: attachments,
+            replyTo: current.replyTo,
             onProgress: (progress) {
               final latest = state.value;
               if (latest == null) return;
@@ -420,6 +431,7 @@ class SessionComposerController extends AsyncNotifier<SessionComposerState> {
           sending: false,
           clearGhost: true,
           clearFollowupProgress: true,
+          replyTo: current.replyTo,
           error: error.message,
         ),
       );
@@ -447,6 +459,7 @@ class SessionComposerController extends AsyncNotifier<SessionComposerState> {
           sending: false,
           clearGhost: true,
           clearFollowupProgress: true,
+          replyTo: current.replyTo,
           error: 'Message could not be sent.',
         ),
       );
@@ -457,6 +470,14 @@ class SessionComposerController extends AsyncNotifier<SessionComposerState> {
   void _resetFollowupIdentity() {
     _followupRequestId = null;
     _followupPayloadIdentity = null;
+  }
+
+  void setReplyTo(SelectedTextReply? replyTo) {
+    final current = state.value;
+    if (current == null) return;
+    state = AsyncData(
+      current.copyWith(replyTo: replyTo, clearReplyTo: replyTo == null),
+    );
   }
 
   void _resetSubmissionIdentity() {
@@ -556,7 +577,15 @@ class SessionComposerController extends AsyncNotifier<SessionComposerState> {
     try {
       final repository = ref.read(followupRepositoryProvider);
       if (editPrompt != null) {
-        await repository.editQueued(scope, itemId, editPrompt);
+        final queued = current.queue
+            .where((item) => item.id == itemId)
+            .firstOrNull;
+        await repository.editQueued(
+          scope,
+          itemId,
+          editPrompt,
+          replyTo: queued?.replyTo,
+        );
       } else if (steer) {
         await repository.steerQueued(scope, itemId);
       } else {
@@ -829,6 +858,7 @@ class _FollowupPayloadIdentity {
     required this.model,
     required this.reasoningEffort,
     required List<NewSessionAttachment> attachments,
+    this.replyTo,
   }) : attachments = List.unmodifiable(
          attachments.map(_SubmissionAttachmentIdentity.new),
        );
@@ -839,6 +869,7 @@ class _FollowupPayloadIdentity {
   final String? model;
   final String? reasoningEffort;
   final List<_SubmissionAttachmentIdentity> attachments;
+  final SelectedTextReply? replyTo;
 
   @override
   bool operator ==(Object other) =>
@@ -848,6 +879,7 @@ class _FollowupPayloadIdentity {
       other.startNow == startNow &&
       other.model == model &&
       other.reasoningEffort == reasoningEffort &&
+      other.replyTo == replyTo &&
       _sameAttachments(other.attachments, attachments);
 
   @override
@@ -857,6 +889,7 @@ class _FollowupPayloadIdentity {
     startNow,
     model,
     reasoningEffort,
+    replyTo,
     Object.hashAll(attachments),
   );
 }
@@ -917,8 +950,9 @@ class _UnavailableFollowupRepository implements FollowupRepository {
   Future<void> editQueued(
     FollowupScope scope,
     String itemId,
-    String prompt,
-  ) async {}
+    String prompt, {
+    SelectedTextReply? replyTo,
+  }) async {}
 
   @override
   Future<void> removeQueued(FollowupScope scope, String itemId) async {}
@@ -940,6 +974,7 @@ class _UnavailableFollowupRepository implements FollowupRepository {
     String? reasoningEffort,
     String? commandId,
     List<NewSessionAttachment> attachments = const [],
+    SelectedTextReply? replyTo,
     FollowupProgressCallback? onProgress,
   }) {
     throw const FollowupException('Message sending is unavailable.');

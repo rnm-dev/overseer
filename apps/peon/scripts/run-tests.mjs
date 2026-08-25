@@ -13,6 +13,10 @@ const serialTests = [
   path.join(testDir, "previewRevisionPublisher.test.ts"),
 ];
 const regularTests = tests.filter((test) => !serialTests.includes(test));
+const requestedConcurrency = Number.parseInt(process.env.PEON_TEST_CONCURRENCY ?? "4", 10);
+const testConcurrency = Number.isInteger(requestedConcurrency) && requestedConcurrency > 0
+  ? requestedConcurrency
+  : 4;
 
 // npm appends `npm test -- <args>` after the script. Put those Node test-runner
 // flags before the positional files so filters such as --test-name-pattern
@@ -31,7 +35,7 @@ const run = (selectedTests, concurrency) => spawnSync(process.execPath, [
   stdio: "inherit",
 });
 
-const regularResult = run(regularTests, 4);
+const regularResult = run(regularTests, testConcurrency);
 if (regularResult.error) throw regularResult.error;
 if (regularResult.status !== 0) process.exit(regularResult.status ?? 1);
 

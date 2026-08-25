@@ -1,6 +1,12 @@
 # Selected-text replies
 
-OVSR-369 adds an optional durable reply relationship to Peon follow-ups and
+The canonical machine-readable contract is
+[`selected-text-replies-v1`](protocol/selected-text-replies-v1/schema.json),
+with executable examples in
+[`fixtures.json`](protocol/selected-text-replies-v1/fixtures.json). It is the
+one contract shared by Peon, Overseer, web and Flutter.
+
+The contract adds an optional durable reply relationship to Peon follow-ups and
 queued messages:
 
 ```json
@@ -23,5 +29,19 @@ Legacy records without `replyTo` remain readable. Queue persistence, restart
 recovery, pagination/live publication and branches retain ordinary transcript
 event fields, so this metadata follows the same authority and lifecycle.
 
-The Peon source-checkout protocol records the concrete route shapes, stable
-error codes and source eligibility.
+V1 source rules are deliberately narrow: the selection must be contained in one
+replyable event; `eventId` is provenance and `selectedText` is the durable
+display authority. Source event deletion or unavailable history never deletes
+the retained quote: clients render it with a source-unavailable state. System,
+tool, result, preview, stderr and warning events are not replyable.
+
+The route-level rules are also explicit. `replyTo` is optional on follow-up and
+queue creation; queue edit omission preserves the existing value and `null`
+clears it. A legacy Peon keeps ordinary follow-ups working, while a client must
+not offer the reply action unless `selected-text-replies-v1` is advertised.
+Changing the selected event or text changes the logical request identity for
+idempotency; the quote is never included in logs, analytics dimensions or
+diagnostic summaries.
+
+Both source-checkout protocol documents record the concrete route shapes and
+stable error codes; this page owns the cross-artifact behavior.

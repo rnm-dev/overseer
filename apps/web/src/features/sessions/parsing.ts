@@ -1,4 +1,5 @@
 import type { Translate } from "../../shared/i18n";
+import type { SelectedTextReply } from "./selectedTextReply";
 
 // Shared alias for the translate function threaded through the render atoms.
 export type T = Translate;
@@ -35,6 +36,7 @@ export interface Ev {
   path?: string;
   createdAt?: number;
   attachments?: MessageAttachment[];
+  replyTo?: SelectedTextReply;
   // Durable pagination identity on capable Peons. Legacy transcripts omit it.
   eventId?: string;
   // Client-only reconciliation metadata: where the live tail delivered this row.
@@ -198,8 +200,8 @@ export function latestRunSignal(events: Ev[]): RunSignal {
 // later "user" event) — flatten everything into a single ordered item list so a
 // tool call renders as one row once its result lands, matched by tool_use_id.
 export type Item =
-  | { kind: "user"; key: string; text: string; author?: string; authorEmail?: string; authorGithubLogin?: string; authorAvatarUrl?: string; attachments?: MessageAttachment[]; createdAt?: number }
-  | { kind: "text"; key: string; text: string; createdAt?: number; resultMeta?: { tone?: "neutral" | "error"; text: string } }
+  | { kind: "user"; key: string; text: string; sourceEventId?: string; replyTo?: SelectedTextReply; author?: string; authorEmail?: string; authorGithubLogin?: string; authorAvatarUrl?: string; attachments?: MessageAttachment[]; createdAt?: number }
+  | { kind: "text"; key: string; text: string; sourceEventId?: string; createdAt?: number; resultMeta?: { tone?: "neutral" | "error"; text: string } }
   | { kind: "thinking"; key: string; text: string }
   | { kind: "tool"; key: string; name?: string; input?: unknown; result?: { text: string; error?: boolean } }
   | { kind: "loose"; key: string; text: string }
@@ -220,13 +222,13 @@ export function flattenEvents(events: Ev[], t: T): Item[] {
     const eventKey = renderEventKey(ev, ei);
     switch (ev.type) {
       case "user_message":
-        items.push({ kind: "user", key: eventKey, text: ev.text || "", author: ev.author, authorEmail: ev.authorEmail, authorGithubLogin: ev.authorGithubLogin, authorAvatarUrl: ev.authorAvatarUrl, attachments: ev.attachments, createdAt: ev.createdAt });
+        items.push({ kind: "user", key: eventKey, sourceEventId: ev.eventId, replyTo: ev.replyTo, text: ev.text || "", author: ev.author, authorEmail: ev.authorEmail, authorGithubLogin: ev.authorGithubLogin, authorAvatarUrl: ev.authorAvatarUrl, attachments: ev.attachments, createdAt: ev.createdAt });
         return;
       case "assistant": {
         const blocks = Array.isArray(ev.message?.content) ? (ev.message!.content as Block[]) : [];
         blocks.forEach((b, bi) => {
           const key = `${eventKey}:${bi}`;
-          if (b.type === "text" && b.text?.trim()) items.push({ kind: "text", key, text: b.text, createdAt: ev.createdAt });
+          if (b.type === "text" && b.text?.trim()) items.push({ kind: "text", key, sourceEventId: ev.eventId, text: b.text, createdAt: ev.createdAt });
           else if (b.type === "thinking" && b.thinking?.trim()) items.push({ kind: "thinking", key, text: b.thinking });
           else if (b.type === "tool_use") {
             items.push({ kind: "tool", key, name: b.name, input: b.input });

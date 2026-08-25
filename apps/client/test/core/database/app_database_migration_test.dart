@@ -5,8 +5,8 @@ import 'package:overseer_mobile/core/database/app_database.dart';
 
 void main() {
   group('AppDatabase migrations', () {
-    for (var version = 1; version < 12; version++) {
-      test('migrates schema v$version to v12 without losing data', () async {
+    for (var version = 1; version < 13; version++) {
+      test('migrates schema v$version to v13 without losing data', () async {
         final database = AppDatabase.forTesting(
           NativeDatabase.memory(
             setup: (sqlite) {
@@ -22,10 +22,10 @@ void main() {
         // Opening the database runs the migration.
         expect(
           await database.customSelect('PRAGMA user_version').getSingle(),
-          predicate<QueryRow>((row) => row.read<int>('user_version') == 12),
+          predicate<QueryRow>((row) => row.read<int>('user_version') == 13),
         );
 
-        expect(await _tableNames(database), containsAll(_tablesAtVersion(12)));
+        expect(await _tableNames(database), containsAll(_tablesAtVersion(13)));
         expect(
           await _columnNames(database, 'cached_sessions'),
           containsAll(<String>{
@@ -41,6 +41,7 @@ void main() {
             'model',
             'reasoning_effort',
             'attachments_json',
+            'reply_to_json',
           }),
         );
 
@@ -59,7 +60,7 @@ void main() {
                 .getSingle()
                 .then((row) => row.read<int>('count')),
             1,
-            reason: 'The existing row in $table should survive v$version → v12',
+            reason: 'The existing row in $table should survive v$version → v13',
           );
         }
 
@@ -91,11 +92,11 @@ void main() {
       });
     }
 
-    test('creates the complete v12 schema from an empty database', () async {
+    test('creates the complete v13 schema from an empty database', () async {
       final database = AppDatabase.forTesting(NativeDatabase.memory());
       addTearDown(database.close);
 
-      expect(await _tableNames(database), containsAll(_tablesAtVersion(12)));
+      expect(await _tableNames(database), containsAll(_tablesAtVersion(13)));
       expect(
         await _columnNames(database, 'cached_sessions'),
         containsAll(<String>{
@@ -114,6 +115,7 @@ void main() {
           'model',
           'reasoning_effort',
           'attachments_json',
+          'reply_to_json',
         }),
       );
     });
@@ -218,6 +220,9 @@ void _createSchemaAtVersion(
       synced_at REAL NOT NULL,
       attention_unread INTEGER NOT NULL DEFAULT 0,
       attention_updated_at REAL NOT NULL DEFAULT 0,
+      ${version >= 12 ? 'operator_requested INTEGER NOT NULL DEFAULT 0,' : ''}
+      ${version >= 12 ? 'has_outstanding_request INTEGER NOT NULL DEFAULT 0,' : ''}
+      ${version >= 12 ? 'last_requested_at REAL,' : ''}
       PRIMARY KEY (workspace_id, peon_id, session_id)
     )
   ''');

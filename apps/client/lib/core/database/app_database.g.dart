@@ -5410,6 +5410,17 @@ class $PendingFollowupCommandsTable extends PendingFollowupCommands
     requiredDuringInsert: false,
     defaultValue: const Constant('[]'),
   );
+  static const VerificationMeta _replyToJsonMeta = const VerificationMeta(
+    'replyToJson',
+  );
+  @override
+  late final GeneratedColumn<String> replyToJson = GeneratedColumn<String>(
+    'reply_to_json',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -5434,6 +5445,7 @@ class $PendingFollowupCommandsTable extends PendingFollowupCommands
     model,
     reasoningEffort,
     attachmentsJson,
+    replyToJson,
     createdAt,
   ];
   @override
@@ -5538,6 +5550,15 @@ class $PendingFollowupCommandsTable extends PendingFollowupCommands
         ),
       );
     }
+    if (data.containsKey('reply_to_json')) {
+      context.handle(
+        _replyToJsonMeta,
+        replyToJson.isAcceptableOrUnknown(
+          data['reply_to_json']!,
+          _replyToJsonMeta,
+        ),
+      );
+    }
     if (data.containsKey('created_at')) {
       context.handle(
         _createdAtMeta,
@@ -5599,6 +5620,10 @@ class $PendingFollowupCommandsTable extends PendingFollowupCommands
         DriftSqlType.string,
         data['${effectivePrefix}attachments_json'],
       )!,
+      replyToJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}reply_to_json'],
+      ),
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.double,
         data['${effectivePrefix}created_at'],
@@ -5625,6 +5650,7 @@ class PendingFollowupCommand extends DataClass
   final String? model;
   final String? reasoningEffort;
   final String attachmentsJson;
+  final String? replyToJson;
   final double createdAt;
   const PendingFollowupCommand({
     required this.commandId,
@@ -5638,6 +5664,7 @@ class PendingFollowupCommand extends DataClass
     this.model,
     this.reasoningEffort,
     required this.attachmentsJson,
+    this.replyToJson,
     required this.createdAt,
   });
   @override
@@ -5660,6 +5687,9 @@ class PendingFollowupCommand extends DataClass
       map['reasoning_effort'] = Variable<String>(reasoningEffort);
     }
     map['attachments_json'] = Variable<String>(attachmentsJson);
+    if (!nullToAbsent || replyToJson != null) {
+      map['reply_to_json'] = Variable<String>(replyToJson);
+    }
     map['created_at'] = Variable<double>(createdAt);
     return map;
   }
@@ -5683,6 +5713,9 @@ class PendingFollowupCommand extends DataClass
           ? const Value.absent()
           : Value(reasoningEffort),
       attachmentsJson: Value(attachmentsJson),
+      replyToJson: replyToJson == null && nullToAbsent
+          ? const Value.absent()
+          : Value(replyToJson),
       createdAt: Value(createdAt),
     );
   }
@@ -5704,6 +5737,7 @@ class PendingFollowupCommand extends DataClass
       model: serializer.fromJson<String?>(json['model']),
       reasoningEffort: serializer.fromJson<String?>(json['reasoningEffort']),
       attachmentsJson: serializer.fromJson<String>(json['attachmentsJson']),
+      replyToJson: serializer.fromJson<String?>(json['replyToJson']),
       createdAt: serializer.fromJson<double>(json['createdAt']),
     );
   }
@@ -5722,6 +5756,7 @@ class PendingFollowupCommand extends DataClass
       'model': serializer.toJson<String?>(model),
       'reasoningEffort': serializer.toJson<String?>(reasoningEffort),
       'attachmentsJson': serializer.toJson<String>(attachmentsJson),
+      'replyToJson': serializer.toJson<String?>(replyToJson),
       'createdAt': serializer.toJson<double>(createdAt),
     };
   }
@@ -5738,6 +5773,7 @@ class PendingFollowupCommand extends DataClass
     Value<String?> model = const Value.absent(),
     Value<String?> reasoningEffort = const Value.absent(),
     String? attachmentsJson,
+    Value<String?> replyToJson = const Value.absent(),
     double? createdAt,
   }) => PendingFollowupCommand(
     commandId: commandId ?? this.commandId,
@@ -5753,6 +5789,7 @@ class PendingFollowupCommand extends DataClass
         ? reasoningEffort.value
         : this.reasoningEffort,
     attachmentsJson: attachmentsJson ?? this.attachmentsJson,
+    replyToJson: replyToJson.present ? replyToJson.value : this.replyToJson,
     createdAt: createdAt ?? this.createdAt,
   );
   PendingFollowupCommand copyWithCompanion(
@@ -5778,6 +5815,9 @@ class PendingFollowupCommand extends DataClass
       attachmentsJson: data.attachmentsJson.present
           ? data.attachmentsJson.value
           : this.attachmentsJson,
+      replyToJson: data.replyToJson.present
+          ? data.replyToJson.value
+          : this.replyToJson,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
     );
   }
@@ -5796,6 +5836,7 @@ class PendingFollowupCommand extends DataClass
           ..write('model: $model, ')
           ..write('reasoningEffort: $reasoningEffort, ')
           ..write('attachmentsJson: $attachmentsJson, ')
+          ..write('replyToJson: $replyToJson, ')
           ..write('createdAt: $createdAt')
           ..write(')'))
         .toString();
@@ -5814,6 +5855,7 @@ class PendingFollowupCommand extends DataClass
     model,
     reasoningEffort,
     attachmentsJson,
+    replyToJson,
     createdAt,
   );
   @override
@@ -5831,6 +5873,7 @@ class PendingFollowupCommand extends DataClass
           other.model == this.model &&
           other.reasoningEffort == this.reasoningEffort &&
           other.attachmentsJson == this.attachmentsJson &&
+          other.replyToJson == this.replyToJson &&
           other.createdAt == this.createdAt);
 }
 
@@ -5847,6 +5890,7 @@ class PendingFollowupCommandsCompanion
   final Value<String?> model;
   final Value<String?> reasoningEffort;
   final Value<String> attachmentsJson;
+  final Value<String?> replyToJson;
   final Value<double> createdAt;
   final Value<int> rowid;
   const PendingFollowupCommandsCompanion({
@@ -5861,6 +5905,7 @@ class PendingFollowupCommandsCompanion
     this.model = const Value.absent(),
     this.reasoningEffort = const Value.absent(),
     this.attachmentsJson = const Value.absent(),
+    this.replyToJson = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
@@ -5876,6 +5921,7 @@ class PendingFollowupCommandsCompanion
     this.model = const Value.absent(),
     this.reasoningEffort = const Value.absent(),
     this.attachmentsJson = const Value.absent(),
+    this.replyToJson = const Value.absent(),
     required double createdAt,
     this.rowid = const Value.absent(),
   }) : commandId = Value(commandId),
@@ -5897,6 +5943,7 @@ class PendingFollowupCommandsCompanion
     Expression<String>? model,
     Expression<String>? reasoningEffort,
     Expression<String>? attachmentsJson,
+    Expression<String>? replyToJson,
     Expression<double>? createdAt,
     Expression<int>? rowid,
   }) {
@@ -5912,6 +5959,7 @@ class PendingFollowupCommandsCompanion
       if (model != null) 'model': model,
       if (reasoningEffort != null) 'reasoning_effort': reasoningEffort,
       if (attachmentsJson != null) 'attachments_json': attachmentsJson,
+      if (replyToJson != null) 'reply_to_json': replyToJson,
       if (createdAt != null) 'created_at': createdAt,
       if (rowid != null) 'rowid': rowid,
     });
@@ -5929,6 +5977,7 @@ class PendingFollowupCommandsCompanion
     Value<String?>? model,
     Value<String?>? reasoningEffort,
     Value<String>? attachmentsJson,
+    Value<String?>? replyToJson,
     Value<double>? createdAt,
     Value<int>? rowid,
   }) {
@@ -5944,6 +5993,7 @@ class PendingFollowupCommandsCompanion
       model: model ?? this.model,
       reasoningEffort: reasoningEffort ?? this.reasoningEffort,
       attachmentsJson: attachmentsJson ?? this.attachmentsJson,
+      replyToJson: replyToJson ?? this.replyToJson,
       createdAt: createdAt ?? this.createdAt,
       rowid: rowid ?? this.rowid,
     );
@@ -5985,6 +6035,9 @@ class PendingFollowupCommandsCompanion
     if (attachmentsJson.present) {
       map['attachments_json'] = Variable<String>(attachmentsJson.value);
     }
+    if (replyToJson.present) {
+      map['reply_to_json'] = Variable<String>(replyToJson.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<double>(createdAt.value);
     }
@@ -6008,6 +6061,7 @@ class PendingFollowupCommandsCompanion
           ..write('model: $model, ')
           ..write('reasoningEffort: $reasoningEffort, ')
           ..write('attachmentsJson: $attachmentsJson, ')
+          ..write('replyToJson: $replyToJson, ')
           ..write('createdAt: $createdAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
@@ -9250,6 +9304,7 @@ typedef $$PendingFollowupCommandsTableCreateCompanionBuilder =
       Value<String?> model,
       Value<String?> reasoningEffort,
       Value<String> attachmentsJson,
+      Value<String?> replyToJson,
       required double createdAt,
       Value<int> rowid,
     });
@@ -9266,6 +9321,7 @@ typedef $$PendingFollowupCommandsTableUpdateCompanionBuilder =
       Value<String?> model,
       Value<String?> reasoningEffort,
       Value<String> attachmentsJson,
+      Value<String?> replyToJson,
       Value<double> createdAt,
       Value<int> rowid,
     });
@@ -9331,6 +9387,11 @@ class $$PendingFollowupCommandsTableFilterComposer
 
   ColumnFilters<String> get attachmentsJson => $composableBuilder(
     column: $table.attachmentsJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get replyToJson => $composableBuilder(
+    column: $table.replyToJson,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -9404,6 +9465,11 @@ class $$PendingFollowupCommandsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get replyToJson => $composableBuilder(
+    column: $table.replyToJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<double> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
@@ -9457,6 +9523,11 @@ class $$PendingFollowupCommandsTableAnnotationComposer
 
   GeneratedColumn<String> get attachmentsJson => $composableBuilder(
     column: $table.attachmentsJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get replyToJson => $composableBuilder(
+    column: $table.replyToJson,
     builder: (column) => column,
   );
 
@@ -9521,6 +9592,7 @@ class $$PendingFollowupCommandsTableTableManager
                 Value<String?> model = const Value.absent(),
                 Value<String?> reasoningEffort = const Value.absent(),
                 Value<String> attachmentsJson = const Value.absent(),
+                Value<String?> replyToJson = const Value.absent(),
                 Value<double> createdAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => PendingFollowupCommandsCompanion(
@@ -9535,6 +9607,7 @@ class $$PendingFollowupCommandsTableTableManager
                 model: model,
                 reasoningEffort: reasoningEffort,
                 attachmentsJson: attachmentsJson,
+                replyToJson: replyToJson,
                 createdAt: createdAt,
                 rowid: rowid,
               ),
@@ -9551,6 +9624,7 @@ class $$PendingFollowupCommandsTableTableManager
                 Value<String?> model = const Value.absent(),
                 Value<String?> reasoningEffort = const Value.absent(),
                 Value<String> attachmentsJson = const Value.absent(),
+                Value<String?> replyToJson = const Value.absent(),
                 required double createdAt,
                 Value<int> rowid = const Value.absent(),
               }) => PendingFollowupCommandsCompanion.insert(
@@ -9565,6 +9639,7 @@ class $$PendingFollowupCommandsTableTableManager
                 model: model,
                 reasoningEffort: reasoningEffort,
                 attachmentsJson: attachmentsJson,
+                replyToJson: replyToJson,
                 createdAt: createdAt,
                 rowid: rowid,
               ),

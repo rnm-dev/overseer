@@ -1,6 +1,7 @@
 import { api } from "../../shared/api";
 import type { ApiRequest } from "../fleet/peonApi";
 import type { MessageAttachment } from "./parsing";
+import type { SelectedTextReply } from "./selectedTextReply";
 
 export interface QueueItem {
   id: string;
@@ -14,6 +15,7 @@ export interface QueueItem {
   reasoningEffort: string | null;
   commandId: string | null;
   queuedAt: number;
+  replyTo?: SelectedTextReply;
 }
 
 export interface EnqueueInput {
@@ -24,6 +26,7 @@ export interface EnqueueInput {
   attachments?: Array<{ type: "file" | "image"; path: string }>;
   commandId?: string;
   startNow?: boolean;
+  replyTo?: SelectedTextReply;
 }
 
 export interface QueueActivityTracker {
@@ -183,6 +186,7 @@ export const CARRIED_ATTACHMENTS_MAX = 10;
 export interface ComposerDraftPatch {
   text: string;
   carried: MessageAttachment[];
+  replyTo: SelectedTextReply | null;
 }
 
 /**
@@ -213,6 +217,7 @@ export function draftWithQueuedItem(
   return {
     text: drafted ? `${item.prompt}\n\n${drafted}` : item.prompt,
     carried: merged.slice(0, CARRIED_ATTACHMENTS_MAX),
+    replyTo: item.replyTo ?? null,
   };
 }
 

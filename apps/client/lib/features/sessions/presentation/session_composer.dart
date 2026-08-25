@@ -20,6 +20,7 @@ import '../application/voice_dictation_controller.dart';
 import '../domain/followup_repository.dart';
 import '../domain/new_session_repository.dart';
 import '../domain/pasted_text.dart';
+import '../domain/session_models.dart';
 import 'capability_choices.dart';
 part 'session_composer_queue.dart';
 
@@ -112,6 +113,9 @@ class SessionComposer extends StatefulWidget {
     this.onVoiceStart,
     this.onVoiceStop,
     this.onVoiceCancel,
+    this.replyTo,
+    this.onClearReplyTo,
+    this.onOpenReplySource,
   });
 
   final TextEditingController controller;
@@ -156,9 +160,86 @@ class SessionComposer extends StatefulWidget {
   final VoidCallback? onVoiceStart;
   final VoidCallback? onVoiceStop;
   final VoidCallback? onVoiceCancel;
+  final SelectedTextReply? replyTo;
+  final VoidCallback? onClearReplyTo;
+  final ValueChanged<SelectedTextReply>? onOpenReplySource;
 
   @override
   State<SessionComposer> createState() => _SessionComposerState();
+}
+
+class _ComposerReplyCard extends StatelessWidget {
+  const _ComposerReplyCard({
+    required this.replyTo,
+    this.onClear,
+    this.onOpenSource,
+  });
+
+  final SelectedTextReply replyTo;
+  final VoidCallback? onClear;
+  final VoidCallback? onOpenSource;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final preview = replyTo.selectedText.length > 240
+        ? '${replyTo.selectedText.substring(0, 240)}…'
+        : replyTo.selectedText;
+    final content = Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(Icons.subdirectory_arrow_left, size: 14, color: colors.primary),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Selected text',
+                style: AppTypography.mono(
+                  fontSize: 9,
+                  color: colors.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                preview,
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+                style: AppTypography.body(
+                  fontSize: 11,
+                  color: colors.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (onClear != null)
+          IconButton(
+            key: const Key('session-composer-clear-reply-to'),
+            onPressed: onClear,
+            tooltip: 'Clear selected-text reply',
+            icon: const Icon(Icons.close, size: 15),
+            visualDensity: VisualDensity.compact,
+          ),
+      ],
+    );
+    final card = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(
+        color: colors.primary.withValues(alpha: 0.06),
+        border: Border.all(color: colors.primary.withValues(alpha: 0.25)),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: content,
+    );
+    if (onOpenSource == null) return card;
+    return InkWell(
+      onTap: onOpenSource,
+      borderRadius: BorderRadius.circular(8),
+      child: card,
+    );
+  }
 }
 
 class _SessionComposerState extends State<SessionComposer> {
@@ -396,6 +477,18 @@ class _SessionComposerState extends State<SessionComposer> {
                           fontSize: 11,
                           color: colors.onSurfaceVariant,
                         ),
+                      ),
+                    ),
+                  if (widget.replyTo case final reply?)
+                    Padding(
+                      key: const Key('session-composer-reply-to'),
+                      padding: const EdgeInsets.fromLTRB(2, 2, 2, 6),
+                      child: _ComposerReplyCard(
+                        replyTo: reply,
+                        onClear: widget.pending ? null : widget.onClearReplyTo,
+                        onOpenSource: widget.onOpenReplySource == null
+                            ? null
+                            : () => widget.onOpenReplySource!(reply),
                       ),
                     ),
                   if (widget.dictation?.phase ==

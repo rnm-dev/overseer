@@ -8,6 +8,8 @@ import { projectViewerHref, projectViewerRelativePath, type ProjectViewerContext
 import { useAuth, type User } from "../auth/auth";
 import { useI18n, type Locale } from "../../shared/i18n";
 import { formatLocalTimestamp, localeTag } from "../../shared/timeFormat";
+import type { SelectedTextReply } from "./selectedTextReply";
+import { SelectedTextReplyCard } from "./SelectedTextReplyCard";
 
 // The transcript render atoms: one component per Item kind, plus the Markdown
 // renderer and the "agent is working" indicator. Pure presentation — all parsing
@@ -94,7 +96,7 @@ export function userMessageAvatar(
   return user?.avatarUrl || undefined;
 }
 
-export function UserBubble({ text, author, authorEmail, authorGithubLogin, authorAvatarUrl, attachments, createdAt, onOpenAttachment }: { text: string; author?: string; authorEmail?: string; authorGithubLogin?: string; authorAvatarUrl?: string; attachments?: MessageAttachment[]; createdAt?: number; onOpenAttachment?: (attachment: MessageAttachment) => void }) {
+export function UserBubble({ text, replyTo, author, authorEmail, authorGithubLogin, authorAvatarUrl, attachments, createdAt, onOpenAttachment, onOpenReplySource }: { text: string; replyTo?: SelectedTextReply; author?: string; authorEmail?: string; authorGithubLogin?: string; authorAvatarUrl?: string; attachments?: MessageAttachment[]; createdAt?: number; onOpenAttachment?: (attachment: MessageAttachment) => void; onOpenReplySource?: (replyTo: SelectedTextReply) => void }) {
   const { user } = useAuth();
   const { locale, t } = useI18n();
   const mine = isOwnMessageAuthor(user, authorEmail, authorGithubLogin, author);
@@ -106,6 +108,7 @@ export function UserBubble({ text, author, authorEmail, authorGithubLogin, autho
     <div className="flex items-end justify-end gap-2">
       <div className={mine ? OWN_USER_BUBBLE_CLASS : OTHER_USER_BUBBLE_CLASS}>
         {!mine && displayAuthor && <div className={OTHER_USER_BUBBLE_AUTHOR_CLASS} title={displayAuthor}>{displayAuthor}</div>}
+        {replyTo && <div className="mb-2"><SelectedTextReplyCard replyTo={replyTo} compact onOpenSource={() => onOpenReplySource?.(replyTo)} /></div>}
         {compact ? (
           <div className="flex items-end gap-3">
             <div className="min-w-0 flex-1">{text}</div>
@@ -602,10 +605,10 @@ function SimpleToolIcon({ kind }: { kind: SimpleToolKind }) {
   }
 }
 
-export function ItemView({ item, t, locale = "en", yesterdayLabel = "Yesterday", simpleTools = false, onOpenPreview, onOpenAttachment, onOpenProjectFile, projectViewer }: { item: Item; t: T; locale?: Locale; yesterdayLabel?: string; simpleTools?: boolean; onOpenPreview?: (preview: PreviewRequest) => void; onOpenAttachment?: (attachment: MessageAttachment) => void; onOpenProjectFile?: (path: string, viewerUrl: string) => void; projectViewer?: ProjectViewerContext | null }) {
+export function ItemView({ item, t, locale = "en", yesterdayLabel = "Yesterday", simpleTools = false, onOpenPreview, onOpenAttachment, onOpenReplySource, onOpenProjectFile, projectViewer }: { item: Item; t: T; locale?: Locale; yesterdayLabel?: string; simpleTools?: boolean; onOpenPreview?: (preview: PreviewRequest) => void; onOpenAttachment?: (attachment: MessageAttachment) => void; onOpenReplySource?: (replyTo: SelectedTextReply) => void; onOpenProjectFile?: (path: string, viewerUrl: string) => void; projectViewer?: ProjectViewerContext | null }) {
   switch (item.kind) {
     case "user":
-      return <UserBubble text={item.text} author={item.author} authorEmail={item.authorEmail} authorGithubLogin={item.authorGithubLogin} authorAvatarUrl={item.authorAvatarUrl} attachments={item.attachments} createdAt={item.createdAt} onOpenAttachment={onOpenAttachment} />;
+      return <UserBubble text={item.text} replyTo={item.replyTo} author={item.author} authorEmail={item.authorEmail} authorGithubLogin={item.authorGithubLogin} authorAvatarUrl={item.authorAvatarUrl} attachments={item.attachments} createdAt={item.createdAt} onOpenAttachment={onOpenAttachment} onOpenReplySource={onOpenReplySource} />;
     case "text":
       return (
         <div className="typo-chat-message leading-relaxed text-ink">

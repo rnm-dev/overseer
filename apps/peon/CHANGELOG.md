@@ -3,6 +3,26 @@
 Notable changes to `@rnm-dev/peon` are recorded here. Versions follow Semantic
 Versioning, and release tags use the `peon-v<version>` form.
 
+## [0.12.10] - 2026-08-25
+
+### Added
+
+- Support structured selected-text replies with the optional `replyTo` object.
+  Peon validates the source event and selected text, persists the metadata on
+  the authoritative user message, and advertises the
+  `selected-text-replies-v1` capability.
+- Preserve selected-text reply metadata through follow-ups, queueing, queue
+  edits, steering, retries, restart recovery, branching, pagination and live
+  transcript publication.
+- Assemble provider-neutral quoted context for both Codex app-server and
+  Claude Code while keeping the operator's prompt separate in the transcript.
+
+### Compatibility
+
+- Requests without `replyTo` and transcripts created by older Peon versions
+  remain supported. Older clients hide the reply action until the capability
+  is advertised.
+
 ## [0.12.9] - 2026-08-20
 
 ### Fixed
@@ -22,4 +42,5 @@ Versioning, and release tags use the `peon-v<version>` form.
 - Remove the unused repository URL runtime helper and its obsolete test-suite
   entry.
 
+[0.12.10]: https://github.com/rnm-dev/overseer/compare/peon-v0.12.9...peon-v0.12.10
 [0.12.9]: https://github.com/rnm-dev/overseer/compare/peon-v0.12.8...peon-v0.12.9

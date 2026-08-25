@@ -1,5 +1,6 @@
 import '../../../shared/models/ai_capabilities.dart';
 import 'new_session_repository.dart';
+import 'session_models.dart';
 
 class FollowupScope {
   const FollowupScope({
@@ -35,6 +36,7 @@ class PendingFollowup {
     this.model,
     this.reasoningEffort,
     this.attachments = const [],
+    this.replyTo,
   });
 
   final String commandId;
@@ -47,6 +49,7 @@ class PendingFollowup {
   final String? model;
   final String? reasoningEffort;
   final List<FollowupAttachment> attachments;
+  final SelectedTextReply? replyTo;
 }
 
 class FollowupAttachment {
@@ -130,6 +133,7 @@ class QueuedFollowup {
     this.model,
     this.reasoningEffort,
     this.commandId,
+    this.replyTo,
   });
 
   final String id;
@@ -142,6 +146,7 @@ class QueuedFollowup {
   final String? reasoningEffort;
   final String? commandId;
   final double queuedAt;
+  final SelectedTextReply? replyTo;
 }
 
 enum FollowupDelivery { delivered, queued }
@@ -152,7 +157,12 @@ abstract interface class FollowupRepository {
   Stream<List<PendingFollowup>> watchPending(FollowupScope scope);
   Stream<List<QueuedFollowup>> watchQueue(FollowupScope scope);
   Future<void> refreshQueue(FollowupScope scope);
-  Future<void> editQueued(FollowupScope scope, String itemId, String prompt);
+  Future<void> editQueued(
+    FollowupScope scope,
+    String itemId,
+    String prompt, {
+    SelectedTextReply? replyTo,
+  });
   Future<void> removeQueued(FollowupScope scope, String itemId);
   Future<void> steerQueued(FollowupScope scope, String itemId);
   Future<ModelsCatalog?> fetchModelCatalog(FollowupScope scope);
@@ -167,6 +177,7 @@ abstract interface class FollowupRepository {
     String? reasoningEffort,
     String? commandId,
     List<NewSessionAttachment> attachments = const [],
+    SelectedTextReply? replyTo,
     FollowupProgressCallback? onProgress,
   });
 

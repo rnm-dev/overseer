@@ -4,6 +4,8 @@ import { Hourglass, Zap } from "lucide-react";
 import { useT } from "../../shared/i18n";
 import type { MessageAttachment } from "./parsing";
 import { isLongPastedText, isPastedTextName, pastedTextFile } from "./pastedText";
+import type { SelectedTextReply } from "./selectedTextReply";
+import { SelectedTextReplyCard } from "./SelectedTextReplyCard";
 
 // author: Viktor
 // The prompt box shared by PeonNewSession (starting a session) and
@@ -71,6 +73,9 @@ export interface ComposerProps {
   // actions are surfaced by the global notifications hook instead.
   error: string | null;
   onErrorChange: (msg: string | null) => void;
+  replyTo?: SelectedTextReply | null;
+  onClearReplyTo?: () => void;
+  onOpenReplySource?: (replyTo: SelectedTextReply) => void;
   leftExtra?: ReactNode;
   rightExtra?: ReactNode;
   secondaryAction?: { label: string; onClick: () => void; disabled?: boolean; pending?: boolean; mobileIcon?: "zap" };
@@ -94,6 +99,9 @@ export function Composer({
   filesEnabled,
   error,
   onErrorChange,
+  replyTo = null,
+  onClearReplyTo,
+  onOpenReplySource,
   leftExtra,
   rightExtra,
   secondaryAction,
@@ -173,6 +181,11 @@ export function Composer({
         </div>
       )}
       {error && <div className="px-2 pb-1 pt-0.5 font-mono text-xs text-danger">⚠ {error}</div>}
+      {replyTo && (
+        <div className="px-1 pb-1.5 pt-1">
+          <SelectedTextReplyCard replyTo={replyTo} onClear={onClearReplyTo} onOpenSource={onOpenReplySource ? () => onOpenReplySource(replyTo) : undefined} />
+        </div>
+      )}
       {(files.length > 0 || carried.length > 0) && (
         <div className="flex flex-wrap gap-1.5 px-1 pb-1.5 pt-1">
           {carried.map((attachment, i) => (
