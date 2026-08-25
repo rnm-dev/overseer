@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import { useAuth } from "./auth";
 import { noMethodsAvailable, redirectProvidersOf, useAuthMethods } from "./authMethods";
 import { ApiError } from "../../shared/api";
@@ -7,6 +7,7 @@ import { useT } from "../../shared/i18n";
 import { KeyRound, Palette, Skull } from "lucide-react";
 import { GithubMark, LocaleSwitcher } from "../../shared/ui";
 import { useTheme } from "../themes/ThemeProvider";
+import { inviteForLogin } from "./inviteFlow";
 
 // Up to three doors into the same session: an email + password form, GitHub, and
 // the instance's OIDC provider. All end in the server's HttpOnly cookie, and
@@ -35,6 +36,7 @@ export function Login() {
   const { theme, themes, selectTheme } = useTheme();
   const t = useT();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [mode, setMode] = useState<Mode>("signIn");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -47,7 +49,12 @@ export function Login() {
   // (OVERSEER_OPEN_SIGNUP), or this visitor came from an invite link and stashed
   // it on the way. Read once per render rather than held in state — the only
   // writer is Join.tsx, on a different page.
-  const pendingInvite = sessionStorage.getItem(PENDING_INVITE_KEY);
+  const inviteFromUrl = inviteForLogin(`?${searchParams.toString()}`, null);
+  const pendingInvite = inviteFromUrl ?? sessionStorage.getItem(PENDING_INVITE_KEY);
+  // OAuth callbacks still resume from storage after leaving this origin.
+  if (inviteFromUrl && sessionStorage.getItem(PENDING_INVITE_KEY) !== inviteFromUrl) {
+    sessionStorage.setItem(PENDING_INVITE_KEY, inviteFromUrl);
+  }
   const mayRegister = Boolean(methods?.openSignup) || pendingInvite !== null;
   const registering = mode === "register" && mayRegister;
 
@@ -167,7 +174,7 @@ export function Login() {
             type="button"
             className={methods.password || methods.oidc ? "auth-cta auth-cta--quiet" : "auth-cta"}
             disabled={busy !== null}
-            onClick={() => void attempt("github", () => loginWithProvider("github"))}
+            onClick={() => void attempt("github", () => loginWithProvider("github", pendingInvite))}
           >
             <GithubMark size={17} />
             {busy === "github" ? t("login.signingIn") : t("login.github")}
@@ -179,7 +186,7 @@ export function Login() {
             type="button"
             className={methods.password || methods.github ? "auth-cta auth-cta--quiet" : "auth-cta"}
             disabled={busy !== null}
-            onClick={() => void attempt("oidc", () => loginWithProvider("oidc"))}
+            onClick={() => void attempt("oidc", () => loginWithProvider("oidc", pendingInvite))}
           >
             <KeyRound size={17} />
             {t(busy === "oidc" ? "login.oidcSigningIn" : "login.oidc", {

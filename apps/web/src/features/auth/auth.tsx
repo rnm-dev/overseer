@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { api, ApiError, getToken, json, migrateLegacyWebSession, setToken } from "../../shared/api";
 import { clearTranscriptSnapshotCache } from "../sessions/transcriptSnapshotCache";
+import { providerStartBody } from "./inviteFlow";
 import { getOrStartAuthBootstrap } from "./authBootstrap";
 import { forgetNativeCallback, nativeCallback } from "./nativeLoginMode";
 import { serverApprovedNativeRedirect } from "./nativeOauthRedirect";
@@ -39,7 +40,7 @@ interface AuthState {
   ready: boolean; // finished the initial "am I already logged in?" check
   unavailable: boolean;
   retry: () => Promise<void>;
-  loginWithProvider: (provider: OauthProvider) => Promise<void>;
+  loginWithProvider: (provider: OauthProvider, invite?: string | null) => Promise<void>;
   // "native" means the browser has been sent to the app's deep link and this
   // page is on its way out — there is no user to show and nothing to navigate to.
   signInWithPassword: (email: string, password: string) => Promise<"web" | "native">;
@@ -159,14 +160,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     ready,
     unavailable,
     retry: restore,
-    async loginWithProvider(provider) {
+    async loginWithProvider(provider, invite) {
       // No preflight for "is this method configured": the start route below is
       // the one authority on that and refuses with 503 itself, so asking first
       // could only disagree with it.
       const callback = nativeCallback(sessionStorage);
+      const body = providerStartBody(callback, invite ?? null);
       const started = callback
-        ? await api<OauthStart>(`/auth/${provider}/native/start`, json({ callback }))
-        : await api<OauthStart>(`/auth/${provider}/start`, { method: "POST" });
+        ? await api<OauthStart>(`/auth/${provider}/native/start`, json(body))
+        : await api<OauthStart>(`/auth/${provider}/start`, json(body));
       sessionStorage.setItem(STATE_KEY, started.state);
       window.location.assign(started.authorizationUrl);
     },

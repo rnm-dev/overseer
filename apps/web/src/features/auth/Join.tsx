@@ -4,6 +4,7 @@ import { api } from "../../shared/api";
 import { useAuth } from "./auth";
 import { useT } from "../../shared/i18n";
 import { LocaleSwitcher } from "../../shared/ui";
+import { loginPathForInvite } from "./inviteFlow";
 
 // Opening an invite link lands here. Signed-out visitors get a "sign in to join"
 // button that stashes the token and sends them to the sign-in page, because that
@@ -46,7 +47,9 @@ export function Join() {
 
   function signInToJoin() {
     if (token) sessionStorage.setItem(PENDING_INVITE_KEY, token);
-    navigate("/login");
+    // Keep the capability in the URL too: embedded and privacy-focused
+    // browsers can replace sessionStorage while navigating to sign-in.
+    navigate(loginPathForInvite(token));
   }
 
   const workspaceName = preview && preview !== "invalid" ? preview.workspaceName : "";
