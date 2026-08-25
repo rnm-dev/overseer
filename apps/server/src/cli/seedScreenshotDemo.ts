@@ -1,5 +1,5 @@
 import pg from "pg";
-import { screenshotDemoEnabled } from "../appReviewDemo.js";
+import { screenshotDemoEnabled } from "../modules/fleet/index.js";
 
 const WORKSPACE_ID = "demo-screenshot-workspace";
 const PEONS = [

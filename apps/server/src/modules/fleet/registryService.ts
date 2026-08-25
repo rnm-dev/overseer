@@ -1,5 +1,5 @@
 import { query } from "../../infrastructure/db/index.js";
-import { screenshotDemoEnabled } from "../../appReviewDemo.js";
+import { screenshotDemoEnabled } from "./appReviewDemo.js";
 import { isPeonConnected, peonConnectionStartedAt } from "./peonConnections.js";
 import {
   baseUrl,

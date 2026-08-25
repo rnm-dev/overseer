@@ -1,5 +1,5 @@
 import http from "node:http";
-import { screenshotDemoEnabled } from "../appReviewDemo.js";
+import { screenshotDemoEnabled } from "../modules/fleet/index.js";
 import { demoFileResponse } from "./screenshotDemoFiles.js";
 
 const PORT = 5001;
