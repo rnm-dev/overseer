@@ -13,3 +13,6 @@ export * from "./sessionBranch.js";
 export * from "./sessionQueueDispatch.js";
 export * from "./transcriptTimestamps.js";
 export * from "./followupIdempotency.js";
+export * from "./sessionSharingTypes.js";
+export * from "./sessionSharingBus.js";
+export * from "./sessionSharing.js";

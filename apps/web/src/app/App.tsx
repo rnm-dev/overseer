@@ -15,6 +15,7 @@ const Login = lazy(() => import("../features/auth/Login").then((m) => ({ default
 const Dashboard = lazy(() => import("../features/workspaces/Dashboard").then((m) => ({ default: m.Dashboard })));
 const OauthCallback = lazy(() => import("../features/auth/OauthCallback").then((m) => ({ default: m.OauthCallback })));
 const Join = lazy(() => import("../features/auth/Join").then((m) => ({ default: m.Join })));
+const JoinSession = lazy(() => import("../features/auth/JoinSession").then((m) => ({ default: m.JoinSession })));
 const PeonDetail = lazy(() => import("../features/fleet/PeonDetail").then((m) => ({ default: m.PeonDetail })));
 const PeonNewSession = lazy(() => import("../features/sessions/PeonNewSession").then((m) => ({ default: m.PeonNewSession })));
 const PeonSessionDetail = lazy(() => import("../features/sessions/PeonSessionDetail").then((m) => ({ default: m.PeonSessionDetail })));
@@ -122,6 +123,7 @@ export function App() {
       {/* Public: GitHub returns web and native OAuth here; invite links also work signed-out. */}
       <Route path="/auth/github/callback" element={<OauthCallback provider="github" />} />
       <Route path="/auth/oidc/callback" element={<OauthCallback provider="oidc" />} />
+      <Route path="/join/session/:token" element={<JoinSession />} />
       <Route path="/join/:token" element={<Join />} />
 
       {/* Authed shell: workspace context + shared chrome, one <Outlet/> for every page. */}

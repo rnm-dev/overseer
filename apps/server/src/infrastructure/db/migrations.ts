@@ -991,4 +991,121 @@ export const MIGRATIONS: { id: string; statements: string[] }[] = [
     id: "039_oauth_attempt_invite",
     statements: [`ALTER TABLE oauth_attempts ADD COLUMN IF NOT EXISTS invite_token TEXT`],
   },
+  {
+    // Shared sessions are capability-scoped, not a second kind of session.
+    // Invitations, admitted principals and their browser credentials are
+    // separate rows so revocation and usage limits remain durable invariants
+    // instead of being hidden in an invitation JSON blob. The credential and
+    // invitation columns contain digests only; the corresponding bearer
+    // values are never recoverable from the database.
+    id: "040_session_sharing",
+    statements: [
+      `CREATE TABLE IF NOT EXISTS session_invitations (
+         id               TEXT PRIMARY KEY,
+         workspace_id     TEXT NOT NULL REFERENCES workspaces(id),
+         peon_id          TEXT NOT NULL,
+         session_id       TEXT NOT NULL,
+         token_hash       TEXT NOT NULL UNIQUE,
+         display_name     TEXT NOT NULL,
+         access_mode      TEXT NOT NULL CHECK (access_mode IN ('read', 'participate')),
+         max_turns        INTEGER NOT NULL CHECK (max_turns BETWEEN 1 AND 100),
+         max_duration_ms  BIGINT NOT NULL CHECK (max_duration_ms BETWEEN 300000 AND 2592000000),
+         max_tokens       BIGINT NOT NULL CHECK (max_tokens BETWEEN 0 AND 5000000),
+         max_cost_micros  BIGINT NOT NULL CHECK (max_cost_micros BETWEEN 0 AND 100000000),
+         created_by       TEXT NOT NULL REFERENCES users(id),
+         created_at       BIGINT NOT NULL,
+         expires_at       BIGINT NOT NULL,
+         revoked_at       BIGINT,
+         CHECK (expires_at > created_at),
+         UNIQUE (id, workspace_id, peon_id, session_id)
+       )`,
+      `CREATE INDEX IF NOT EXISTS session_invitations_session_idx
+         ON session_invitations (workspace_id, peon_id, session_id, created_at)`,
+      `CREATE INDEX IF NOT EXISTS session_invitations_token_state_idx
+         ON session_invitations (token_hash, expires_at, revoked_at)`,
+      `CREATE TABLE IF NOT EXISTS session_participants (
+         id               TEXT PRIMARY KEY,
+         workspace_id     TEXT NOT NULL REFERENCES workspaces(id),
+         peon_id          TEXT NOT NULL,
+         session_id       TEXT NOT NULL,
+         invitation_id    TEXT,
+         user_id          TEXT REFERENCES users(id),
+         guest_id         TEXT,
+         display_name     TEXT NOT NULL,
+         access_mode      TEXT NOT NULL CHECK (access_mode IN ('read', 'participate')),
+         provenance       TEXT NOT NULL CHECK (provenance IN ('direct', 'invitation')),
+         joined_at        BIGINT NOT NULL,
+         last_active_at   BIGINT NOT NULL,
+         expires_at       BIGINT,
+         revoked_at       BIGINT,
+         max_turns        INTEGER CHECK (max_turns IS NULL OR max_turns BETWEEN 1 AND 100),
+         max_duration_ms  BIGINT CHECK (max_duration_ms IS NULL OR max_duration_ms BETWEEN 300000 AND 2592000000),
+         max_tokens       BIGINT CHECK (max_tokens IS NULL OR max_tokens BETWEEN 0 AND 5000000),
+         max_cost_micros  BIGINT CHECK (max_cost_micros IS NULL OR max_cost_micros BETWEEN 0 AND 100000000),
+         turns_used       INTEGER NOT NULL DEFAULT 0 CHECK (turns_used >= 0),
+         tokens_used      BIGINT NOT NULL DEFAULT 0 CHECK (tokens_used >= 0),
+         cost_micros_used BIGINT NOT NULL DEFAULT 0 CHECK (cost_micros_used >= 0),
+         usage_updated_at BIGINT,
+         usage_quality    TEXT NOT NULL DEFAULT 'unknown'
+                           CHECK (usage_quality IN ('unknown', 'observed', 'estimated')),
+         CHECK ((user_id IS NOT NULL AND guest_id IS NULL) OR
+               (user_id IS NULL AND guest_id IS NOT NULL)),
+         CHECK ((provenance = 'direct' AND invitation_id IS NULL) OR
+               (provenance = 'invitation' AND invitation_id IS NOT NULL)),
+         CHECK (expires_at IS NULL OR expires_at > joined_at),
+         CHECK (max_turns IS NULL OR turns_used <= max_turns),
+         FOREIGN KEY (invitation_id, workspace_id, peon_id, session_id)
+           REFERENCES session_invitations(id, workspace_id, peon_id, session_id)
+       )`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS session_participants_user_idx
+         ON session_participants (workspace_id, peon_id, session_id, user_id)
+         WHERE user_id IS NOT NULL`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS session_participants_guest_idx
+         ON session_participants (workspace_id, peon_id, session_id, guest_id)
+         WHERE guest_id IS NOT NULL`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS session_participants_invitation_user_idx
+         ON session_participants (invitation_id, user_id)
+         WHERE user_id IS NOT NULL`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS session_participants_invitation_guest_idx
+         ON session_participants (invitation_id, guest_id)
+         WHERE guest_id IS NOT NULL`,
+      `CREATE INDEX IF NOT EXISTS session_participants_session_idx
+         ON session_participants (workspace_id, peon_id, session_id, joined_at)`,
+      `CREATE INDEX IF NOT EXISTS session_participants_invitation_idx
+         ON session_participants (invitation_id)`,
+      `CREATE TABLE IF NOT EXISTS session_participant_credentials (
+         id               TEXT PRIMARY KEY,
+         participant_id   TEXT NOT NULL UNIQUE REFERENCES session_participants(id),
+         token_hash       TEXT NOT NULL UNIQUE,
+         created_at       BIGINT NOT NULL,
+         last_used_at     BIGINT,
+         expires_at       BIGINT NOT NULL,
+         revoked_at       BIGINT,
+         CHECK (expires_at > created_at)
+       )`,
+      `CREATE INDEX IF NOT EXISTS session_participant_credentials_state_idx
+         ON session_participant_credentials (token_hash, expires_at, revoked_at)`,
+      `CREATE TABLE IF NOT EXISTS session_participant_ws_tickets (
+         ticket_hash      TEXT PRIMARY KEY,
+         participant_id   TEXT NOT NULL REFERENCES session_participants(id),
+         created_at       BIGINT NOT NULL,
+         expires_at       BIGINT NOT NULL,
+         CHECK (expires_at > created_at)
+       )`,
+      `CREATE INDEX IF NOT EXISTS session_participant_ws_tickets_state_idx
+         ON session_participant_ws_tickets (expires_at)`,
+      `CREATE TABLE IF NOT EXISTS session_participant_turn_reservations (
+         id               TEXT PRIMARY KEY,
+         participant_id   TEXT NOT NULL REFERENCES session_participants(id),
+         command_id       TEXT NOT NULL,
+         reserved_at      BIGINT NOT NULL,
+         status           TEXT NOT NULL DEFAULT 'admitted'
+                          CHECK (status IN ('admitted', 'settled')),
+         settled_at       BIGINT,
+         UNIQUE (participant_id, command_id)
+       )`,
+      `CREATE INDEX IF NOT EXISTS session_participant_turns_participant_idx
+         ON session_participant_turn_reservations (participant_id, reserved_at)`,
+    ],
+  },
 ];

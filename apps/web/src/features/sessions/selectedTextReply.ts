@@ -25,6 +25,22 @@ export function parseSelectedTextReply(value: unknown): SelectedTextReply | null
   return { eventId: candidate.eventId, selectedText: candidate.selectedText };
 }
 
+/**
+ * Resolve a browser selection only when both ends belong to the same
+ * replyable transcript row. The returned text is the browser's exact
+ * selection, including whitespace and Unicode; this helper never mutates the
+ * selection or composer state.
+ */
+export function selectedTextReplyForRow(
+  row: Pick<HTMLElement, "contains">,
+  eventId: string | null | undefined,
+  selection: Pick<Selection, "anchorNode" | "focusNode" | "isCollapsed" | "toString"> | null | undefined,
+): SelectedTextReply | null {
+  if (!eventId || !selection || selection.isCollapsed || !selection.anchorNode || !selection.focusNode) return null;
+  if (!row.contains(selection.anchorNode) || !row.contains(selection.focusNode)) return null;
+  return parseSelectedTextReply({ eventId, selectedText: selection.toString() });
+}
+
 export function replyIdentity(replyTo: SelectedTextReply | null | undefined): string {
   return replyTo ? `${replyTo.eventId}\u0000${replyTo.selectedText}` : "";
 }

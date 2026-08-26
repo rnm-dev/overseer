@@ -58,7 +58,7 @@ export function registerSessionRoutes(router: express.Router): void {
   const withWorkspaceSession = (
     handler: Parameters<typeof withWorkspacePeon>[0],
   ) => withWorkspacePeon(async (req, res, c) => {
-    if (c.role !== "owner") {
+    if (!c.participant && c.role !== "owner") {
       const sid = String(req.params.sid);
       const indexed = await getIndexedSession(c.record.peonId, sid);
       let projectKey = indexed?.projectKey ?? null;
@@ -156,7 +156,7 @@ export function registerSessionRoutes(router: express.Router): void {
   }));
   router.get(`${wp}/sessions/:sid/transcript`, withWorkspaceSession(async (req, res, c) => {
     const sid = String(req.params.sid);
-    if (!(await canAccessIndexedSessionNow(c.workspaceId, c.userId, c.record.peonId, sid))) {
+    if (!c.participant && !(await canAccessIndexedSessionNow(c.workspaceId, c.userId, c.record.peonId, sid))) {
       return res.status(404).json({ error: "unknown session", code: "UNKNOWN_SESSION" });
     }
     const query = transcriptQuery(req.query, c.record.capabilities.includes("transcript-pagination-v1"));

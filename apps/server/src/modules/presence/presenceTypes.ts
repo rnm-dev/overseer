@@ -3,6 +3,9 @@ export interface PresenceIdentity {
   email: string;
   githubLogin: string | null;
   avatarUrl: string | null;
+  displayName?: string | null;
+  participantId?: string | null;
+  isGuest?: boolean;
 }
 
 export interface StoredPresence extends PresenceIdentity {
@@ -16,8 +19,10 @@ export interface StoredPresence extends PresenceIdentity {
   // Route presence keeps a backgrounded tab in the viewer list, but "the operator
   // is actually looking at this" needs focus/visibility too. Absent ⇒ active.
   active?: boolean;
+  // Ephemeral heartbeat timestamp. It is intentionally not a durable access
+  // field; roster responses derive offline from the TTL when it disappears.
+  lastSeenAt?: number;
   expiresAt: number;
 }
 
 export type VisiblePresence = Omit<StoredPresence, "connectionId" | "workspaceId" | "projectKey" | "projectId" | "expiresAt" | "active">;
-

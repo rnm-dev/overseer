@@ -9,6 +9,7 @@ import '../../auth/domain/auth_models.dart';
 import '../../settings/domain/tool_display_mode.dart';
 import '../domain/session_models.dart';
 import 'tool_details_bottom_sheet.dart';
+import 'selected_text_reply_selection_area.dart';
 import 'transcript_items.dart';
 
 class TranscriptItemView extends StatelessWidget {
@@ -167,16 +168,8 @@ class _UserBubble extends StatelessWidget {
                             child: _UserText(
                               text: item.text,
                               onOpenLink: onOpenLink,
-                              onSelectedText:
-                                  onSelectedText == null ||
-                                      item.sourceEventId == null
-                                  ? null
-                                  : (text) => onSelectedText!(
-                                      SelectedTextReply(
-                                        eventId: item.sourceEventId!,
-                                        selectedText: text,
-                                      ),
-                                    ),
+                              replyEventId: item.sourceEventId,
+                              onReply: onSelectedText,
                             ),
                           ),
                           if (timestamp != null) ...[
@@ -189,15 +182,8 @@ class _UserBubble extends StatelessWidget {
                       _UserText(
                         text: item.text,
                         onOpenLink: onOpenLink,
-                        onSelectedText:
-                            onSelectedText == null || item.sourceEventId == null
-                            ? null
-                            : (text) => onSelectedText!(
-                                SelectedTextReply(
-                                  eventId: item.sourceEventId!,
-                                  selectedText: text,
-                                ),
-                              ),
+                        replyEventId: item.sourceEventId,
+                        onReply: onSelectedText,
                       ),
                     if (item.attachments.isNotEmpty) ...[
                       if (item.text.isNotEmpty) const SizedBox(height: 8),
@@ -243,25 +229,21 @@ class _UserText extends StatelessWidget {
   const _UserText({
     required this.text,
     required this.onOpenLink,
-    this.onSelectedText,
+    this.replyEventId,
+    this.onReply,
   });
 
   final String text;
   final ValueChanged<String>? onOpenLink;
-  final ValueChanged<String>? onSelectedText;
+  final String? replyEventId;
+  final ValueChanged<SelectedTextReply>? onReply;
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    return SelectionArea(
-      onSelectionChanged: onSelectedText == null
-          ? null
-          : (content) {
-              final selected = content?.plainText;
-              if (selected?.trim().isNotEmpty == true) {
-                onSelectedText!(selected!);
-              }
-            },
+    return SelectedTextReplySelectionArea(
+      eventId: replyEventId,
+      onReply: onReply,
       child: AppMarkdown(
         data: text,
         onTapLink: onOpenLink,
@@ -509,21 +491,9 @@ class _AssistantText extends StatelessWidget {
       key: Key('transcript-text-${item.key}'),
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SelectionArea(
-          onSelectionChanged: onSelectedText == null
-              ? null
-              : (content) {
-                  final selected = content?.plainText;
-                  if (selected?.trim().isNotEmpty == true &&
-                      item.sourceEventId != null) {
-                    onSelectedText!(
-                      SelectedTextReply(
-                        eventId: item.sourceEventId!,
-                        selectedText: selected!,
-                      ),
-                    );
-                  }
-                },
+        SelectedTextReplySelectionArea(
+          eventId: item.sourceEventId,
+          onReply: onSelectedText,
           child: AppMarkdown(
             key: Key('transcript-markdown-${item.key}'),
             data: item.text,

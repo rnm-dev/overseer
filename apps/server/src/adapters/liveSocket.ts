@@ -5,7 +5,14 @@ import { WebSocketServer, WebSocket } from "ws";
 import { consumeWebSocketTicket } from "../modules/auth/index.js";
 import { membership, type Role } from "../modules/workspaces/index.js";
 import { registry, toView } from "../modules/fleet/index.js";
-import { getIndexedSession, indexAcceptedSession } from "../modules/sessions/index.js";
+import {
+  consumeSessionParticipantWebSocketTicket,
+  getIndexedSession,
+  getSessionParticipantById,
+  indexAcceptedSession,
+  sessionSharingBus,
+  type SessionParticipantAuth,
+} from "../modules/sessions/index.js";
 import { bus, latestCursor, oldestCursor, readEventsSince, type LiveEvent } from "../infrastructure/events/index.js";
 import { callPeon, connOfRecord, streamPeonTo } from "../infrastructure/peonHttp/index.js";
 import { eventVisible, peonVisible, projectVisible, refreshClientAccess, sessionVisible } from "../modules/access/index.js";
@@ -78,6 +85,7 @@ interface Client {
   audioClientId: string | null;
   // Last `primary` value sent, so a recompute only speaks when it has news.
   audioPrimary: boolean | null;
+  participant: SessionParticipantAuth | null;
   // Publishes audio ownership to every socket of this client's operator.
   syncAudio: () => void;
 }
@@ -87,6 +95,9 @@ interface PresenceUser {
   email: string;
   githubLogin: string | null;
   avatarUrl: string | null;
+  displayName?: string | null;
+  participantId?: string | null;
+  isGuest?: boolean;
 }
 
 interface PresenceLocation {
@@ -101,6 +112,9 @@ interface PresenceEntry extends PresenceUser {
   scope: PresenceLocation["scope"];
   peonId: string | null;
   sessionId: string | null;
+  displayName?: string | null;
+  participantId?: string | null;
+  isGuest?: boolean;
 }
 
 const MAX_BUFFERED_BYTES = 8 * 1024 * 1024;
@@ -214,21 +228,36 @@ export function attachLiveSocket(server: Server): WebSocketServer {
 
     void (async () => {
       let auth: Awaited<ReturnType<typeof consumeWebSocketTicket>>;
+      let participantAuth: SessionParticipantAuth | null = null;
       try {
         auth = ticket ? await consumeWebSocketTicket(ticket) : null;
+        if (!auth && ticket) participantAuth = await consumeSessionParticipantWebSocketTicket(ticket);
       } catch {
         if (!disconnected) ws.close(1011, "authentication unavailable");
         return;
       }
       if (disconnected || ws.readyState !== WebSocket.OPEN) return;
-      if (!auth) return ws.close(4401, "unauthorized");
+      if (!auth && !participantAuth) return ws.close(4401, "unauthorized");
+      const userId = auth?.userId ?? participantAuth?.userId ?? participantAuth?.guestId ?? participantAuth!.participantId;
+      const actor = auth?.email ?? participantAuth!.actor;
+      const identity: PresenceUser = auth
+        ? { userId: auth.userId, email: auth.email, githubLogin: auth.githubLogin, avatarUrl: auth.avatarUrl }
+        : {
+          userId,
+          email: participantAuth!.email ?? participantAuth!.actor,
+          githubLogin: participantAuth!.githubLogin,
+          avatarUrl: participantAuth!.avatarUrl,
+          displayName: participantAuth!.displayName,
+          participantId: participantAuth!.participantId,
+          isGuest: participantAuth!.isGuest,
+        };
 
       client = {
         presenceConnectionId: `ws:${randomUUID()}`,
         ws,
-        userId: auth.userId,
-        actor: auth.email,
-        identity: { userId: auth.userId, email: auth.email, githubLogin: auth.githubLogin, avatarUrl: auth.avatarUrl },
+        userId,
+        actor,
+        identity,
         workspaceId: null,
         role: null,
         allowedPeons: null,
@@ -244,7 +273,8 @@ export function attachLiveSocket(server: Server): WebSocketServer {
         presenceActive: true,
         audioClientId: null,
         audioPrimary: null,
-        syncAudio: () => syncAudio(auth.userId),
+        participant: participantAuth,
+        syncAudio: () => syncAudio(userId),
       };
       clients.add(client);
       for (const raw of pending) enqueueMessage(client, raw, wsCursor);
@@ -275,6 +305,12 @@ export function attachLiveSocket(server: Server): WebSocketServer {
   bus.on("event", onBusEvent);
   const onPresenceChange = (workspaceId: string) => broadcastPresence(clients, workspaceId);
   presenceBus.on("changed", onPresenceChange);
+  const onParticipantRevoked = (event: { participantId: string }) => {
+    for (const client of clients) {
+      if (client.participant?.participantId === event.participantId) closeRevokedParticipant(client);
+    }
+  };
+  sessionSharingBus.onParticipantRevoked(onParticipantRevoked);
   const onAudioFocusChange = (userId: string) => syncAudio(userId);
   audioFocusBus.on("changed", onAudioFocusChange);
   // Cursor sync — refresh high-water marks from Postgres, not only the local bus.
@@ -295,6 +331,10 @@ export function attachLiveSocket(server: Server): WebSocketServer {
       }
     })).finally(() => {
       void Promise.all([...clients].map(async (client) => {
+        if (client.participant && !(await getSessionParticipantById(client.participant.participantId))) {
+          closeRevokedParticipant(client);
+          return;
+        }
         await refreshClientAccess(client);
         const location = client.location;
         if (!location?.peonId) return;
@@ -333,6 +373,7 @@ export function attachLiveSocket(server: Server): WebSocketServer {
     clearInterval(ping);
     bus.off("event", onBusEvent);
     presenceBus.off("changed", onPresenceChange);
+    sessionSharingBus.offParticipantRevoked(onParticipantRevoked);
     audioFocusBus.off("changed", onAudioFocusChange);
     server.off("upgrade", onUpgrade);
   });
@@ -420,7 +461,9 @@ function audioClientIdOf(value: unknown): string | null {
 
 async function hello(client: Client, msg: { workspaceId?: string; clientId?: string }, wsCursor: Map<string, number>): Promise<void> {
   const workspaceId = String(msg.workspaceId ?? "");
-  const role = workspaceId ? await membership(workspaceId, client.userId) : null;
+  const role = client.participant
+    ? workspaceId === client.participant.workspaceId ? "member" as const : null
+    : workspaceId ? await membership(workspaceId, client.userId) : null;
   if (!workspaceId || !role) {
     send(client.ws, { type: "error", error: "unknown workspace" });
     client.ws.close(4403, "unknown workspace");
@@ -533,6 +576,10 @@ async function setPresence(
   msg: { scope?: string; peonId?: string; sessionId?: string; active?: boolean },
 ): Promise<void> {
   if (!client.workspaceId) return;
+  if (client.participant && msg.scope !== "session") {
+    send(client.ws, { type: "presenceRetry", reason: "session presence required" });
+    return;
+  }
   client.presenceActive = msg.active !== false;
   // Returning to a machine is the strongest "play sound here" signal there is,
   // and a tab that went hidden should not keep the sound in a pocket.
@@ -553,14 +600,17 @@ async function setPresence(
     } else {
       const sessionId = String(msg.sessionId ?? "");
       const session = sessionId ? await getIndexedSession(peonId, sessionId) : null;
-      if (!session || !sessionVisible(client, peonId, session.projectKey, session.projectId)) {
+      const participantSession = client.participant
+        && client.participant.peonId === peonId
+        && client.participant.sessionId === sessionId;
+      if ((!session && !participantSession) || (!client.participant && !sessionVisible(client, peonId, session!.projectKey, session!.projectId))) {
         // A just-created session can reach the route before its pushed index row.
         // Ask the browser to retry; validation remains entirely local to Overseer.
         updateLocation(client, { scope: "peon", peonId, sessionId: null, projectKey: null, projectId: null });
         send(client.ws, { type: "presenceRetry", reason: "unknown session" });
         return;
       }
-      next = { scope: "session", peonId, sessionId, projectKey: session.projectKey, projectId: session.projectId };
+      next = { scope: "session", peonId, sessionId, projectKey: session?.projectKey ?? null, projectId: session?.projectId ?? null };
     }
   } else {
     return;
@@ -606,7 +656,14 @@ async function subscribe(client: Client, peonId: string, sessionId: string, requ
     return;
   }
   const indexed = await getIndexedSession(peonId, sessionId);
-  if (client.role !== "owner") {
+  if (client.participant) {
+    const current = await getSessionParticipantById(client.participant.participantId);
+    if (!current || current.peonId !== peonId || current.sessionId !== sessionId) {
+      if (client.tails.get(sessionId) === ctrl) client.tails.delete(sessionId);
+      send(client.ws, { type: "tailError", peonId, sessionId, error: "participant access was revoked", retryable: false });
+      return;
+    }
+  } else if (client.role !== "owner") {
     let projectKey = indexed?.projectKey ?? null;
     let projectId = indexed?.projectId ?? null;
     let found = indexed !== null;
@@ -714,6 +771,10 @@ function unsubscribe(client: Client, sessionId: string): void {
 
 async function currentTranscriptAccess(client: Client, peonId: string, sessionId: string): Promise<boolean> {
   if (!client.workspaceId) return false;
+  if (client.participant) {
+    const current = await getSessionParticipantById(client.participant.participantId);
+    return Boolean(current && current.peonId === peonId && current.sessionId === sessionId);
+  }
   const currentRole = await membership(client.workspaceId, client.userId);
   if (currentRole === "owner") return true;
   if (!currentRole) return false;
@@ -731,6 +792,13 @@ function closeRevokedTail(client: Client, controller: AbortController, peonId: s
     error: "unknown session",
     retryable: false,
   });
+}
+
+function closeRevokedParticipant(client: Client): void {
+  for (const controller of client.tails.values()) controller.abort();
+  client.tails.clear();
+  send(client.ws, { type: "participantRevoked", error: "participant access was revoked" });
+  client.ws.close(4403, "participant revoked");
 }
 
 async function deliverDirectTailFrame(
@@ -786,20 +854,26 @@ function collectPresence(recipient: Client): PresenceEntry[] {
   if (!recipient.workspaceId) return [];
   const entries = new Map<string, PresenceEntry>();
   for (const entry of listHeartbeatPresence(recipient.workspaceId)) {
+    if (recipient.participant) {
+      if (entry.scope !== "session" || entry.peonId !== recipient.participant.peonId || entry.sessionId !== recipient.participant.sessionId) continue;
+    }
     if (entry.peonId && !peonVisible(recipient, entry.peonId)) continue;
-    if (entry.scope === "session" && entry.peonId && !sessionVisible(recipient, entry.peonId, entry.projectKey, entry.projectId)) continue;
+    if (!recipient.participant && entry.scope === "session" && entry.peonId && !sessionVisible(recipient, entry.peonId, entry.projectKey, entry.projectId)) continue;
     const key = `${entry.userId}\0${entry.scope}\0${entry.peonId ?? ""}\0${entry.sessionId ?? ""}`;
     if (!entries.has(key)) entries.set(key, {
       userId: entry.userId,
       email: entry.email,
       githubLogin: entry.githubLogin,
       avatarUrl: entry.avatarUrl,
+      ...(entry.displayName !== undefined ? { displayName: entry.displayName } : {}),
+      ...(entry.participantId !== undefined ? { participantId: entry.participantId } : {}),
+      ...(entry.isGuest !== undefined ? { isGuest: entry.isGuest } : {}),
       scope: entry.scope,
       peonId: entry.peonId,
       sessionId: entry.sessionId,
     });
   }
-  return [...entries.values()].sort((a, b) => (a.githubLogin || a.email).localeCompare(b.githubLogin || b.email));
+  return [...entries.values()].sort((a, b) => (a.githubLogin || a.displayName || a.email).localeCompare(b.githubLogin || b.displayName || b.email));
 }
 
 // Minimal SSE frame parse: `event:`/`id:` plus one or more `data:` lines.

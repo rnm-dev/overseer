@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type Dispatch, type RefObject, type SetStateAction } from "react";
 import { createPortal } from "react-dom";
-import { FolderTree } from "lucide-react";
+import { FolderTree, Share2 } from "lucide-react";
 import { useT } from "../../shared/i18n";
 import { ConfirmationDialog, ContentHeader, ContentHeaderIdentitySkeleton, ContentHeaderLayout, ContentHeaderTitle, titleize } from "../../shared/ui";
 import { compactNum, type UsageBreakdown } from "./parsing";
@@ -35,6 +35,7 @@ interface Props {
   cancelRename: () => void;
   remove: () => Promise<void>;
   viewers: PresenceUser[];
+  onShare: () => void;
 }
 
 interface SessionHeaderIdentityProps {
@@ -197,7 +198,7 @@ export function SessionHeader(props: Props) {
     peonId, metadataLoading, projectKey, title, draft, setDraft, editing, setEditing,
     savingName, renameNote, setRenameNote, openingMessage, turnTotal,
     usageSummary, filesOpen, changeFilesOpen, confirmDelete, setConfirmDelete,
-    deleting, deleteNote, setDeleteNote, stopNote, saveName, cancelRename, remove, viewers,
+    deleting, deleteNote, setDeleteNote, stopNote, saveName, cancelRename, remove, viewers, onShare,
   } = props;
   const t = useT();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -285,9 +286,12 @@ export function SessionHeader(props: Props) {
       metadataPlacement="below"
       identity={identity}
       metadata={<SessionHeaderStats turnTotal={turnTotal} usageSummary={usageSummary} />}
-      actions={(
+        actions={(
         <>
           <SessionPresence viewers={viewers} />
+          <button type="button" title="Share session" aria-label="Share session" onClick={onShare} className="grid size-7 place-items-center rounded text-ink-muted transition-colors hover:bg-surface-hover hover:text-ink">
+            <Share2 size={15} aria-hidden />
+          </button>
           {renderMenu(mobileMenuRef)}
         </>
       )}
@@ -311,6 +315,15 @@ export function SessionHeader(props: Props) {
           className={`hidden size-7 flex-none place-items-center rounded transition-colors lg:grid ${filesOpen ? "bg-surface-hover text-accent-strong" : "text-ink-muted hover:bg-surface-hover hover:text-ink"}`}
         >
           <FolderTree size={16} aria-hidden />
+        </button>
+        <button
+          type="button"
+          title="Share session"
+          aria-label="Share session"
+          onClick={onShare}
+          className="hidden size-7 flex-none place-items-center rounded text-ink-muted transition-colors hover:bg-surface-hover hover:text-ink lg:grid"
+        >
+          <Share2 size={16} aria-hidden />
         </button>
         {renderMenu(desktopMenuRef)}
       </>

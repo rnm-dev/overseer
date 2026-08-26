@@ -48,7 +48,7 @@ class _TranscriptBody extends StatefulWidget {
   final ValueChanged<TranscriptAttachment> onOpenAttachment;
   final ValueChanged<TranscriptPreviewItem> onOpenPreview;
   final ValueChanged<String> onOpenLink;
-  final ValueChanged<SelectedTextReply> onSelectedText;
+  final ValueChanged<SelectedTextReply>? onSelectedText;
 
   @override
   State<_TranscriptBody> createState() => _TranscriptBodyState();

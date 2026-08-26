@@ -26,7 +26,8 @@ import { transcriptFollowOutput, transcriptFollowsOutput, transcriptShowsJumpToN
 import type { PreviewTarget } from "./PreviewPanel";
 import { useSessionTranscript } from "./useSessionTranscript";
 import { useSessionComposer, type ComposerGhost } from "./useSessionComposer";
-import { parseSelectedTextReply, SELECTED_TEXT_REPLY_CAPABILITY, type SelectedTextReply } from "./selectedTextReply";
+import { selectedTextReplyForRow, SELECTED_TEXT_REPLY_CAPABILITY, type SelectedTextReply } from "./selectedTextReply";
+import { captureSelectionSnapshot, SelectedTextReplyContextMenu, type SelectionSnapshot } from "./SelectedTextReplyContextMenu";
 import { SessionHeader, sessionHeaderIdentityData } from "./SessionHeader";
 import { COMPOSER_FOOTER_PADDING, SessionComposerDock, composerFooterHeight } from "./SessionComposerDock";
 import { SessionOverlays } from "./SessionOverlays";
@@ -45,6 +46,7 @@ import { sessionLineage } from "./sessionBranch";
 import { useSessionBranch } from "./useSessionBranch";
 import { inquiryInsertionIndex, PLUGIN_INQUIRY_CAPABILITY, usePluginInquiries, type PluginInstallInquiry } from "./pluginInquiries";
 import { indexedRunAssumptionDelay, shouldSeedIndexedRun } from "./runStatus";
+import { SessionSharingPanel } from "./SessionSharingPanel";
 
 // author: Viktor
 // The transcript parsing/render pieces live in ./session/*; this file owns the
@@ -130,6 +132,7 @@ function PeonSessionDetailPage() {
   const filePanePageKey = `${wsId}:${sessionKey}`;
   const currentSessionKeyRef = useRef(sessionKey);
   const [simpleTools] = useState(() => loadToolDisplayMode() === "simple");
+  const [sharingOpen, setSharingOpen] = useState(false);
   const attentionReadInFlightRef = useRef<string | null>(null);
   // Update during render, not in an effect: a request from the previous route can
   // settle in the small render→effect window and must not mutate the new session.
@@ -211,6 +214,14 @@ function PeonSessionDetailPage() {
   const [overrideModel, setOverrideModel] = useState("");
   const [overrideReasoningEffort, setOverrideReasoningEffort] = useState("");
   const [replyTo, setReplyTo] = useState<SelectedTextReply | null>(null);
+  const [replyContextMenu, setReplyContextMenu] = useState<{
+    replyTo: SelectedTextReply;
+    row: HTMLDivElement;
+    selection: SelectionSnapshot;
+    x: number;
+    y: number;
+    linkHref: string | null;
+  } | null>(null);
   // React Router reuses this component when moving directly between sessions.
   // Overrides belong to one composer/session and must never leak into the next.
   useEffect(() => {
@@ -481,21 +492,40 @@ function PeonSessionDetailPage() {
     setShowScrollToBottom(false);
   }, []);
 
-  const handleReplySelection = useCallback((event: MouseEvent<HTMLDivElement>) => {
-    if (!selectedTextRepliesSupported) return;
+  const closeReplyContextMenu = useCallback(() => setReplyContextMenu(null), []);
+  const handleReplyContextMenu = useCallback((event: MouseEvent<HTMLDivElement>) => {
+    if (!selectedTextRepliesSupported || window.matchMedia?.("(pointer: coarse)").matches) return;
     const row = event.currentTarget;
-    const eventId = row.dataset.replyableEventId;
-    if (!eventId) return;
-    window.setTimeout(() => {
-      const selection = window.getSelection();
-      if (!selection || selection.isCollapsed || !selection.toString()) return;
-      if (!row.contains(selection.anchorNode) || !row.contains(selection.focusNode)) return;
-      const selected = parseSelectedTextReply({ eventId, selectedText: selection.toString() });
-      if (!selected) return;
-      setReplyTo(selected);
-      selection.removeAllRanges();
-    }, 0);
+    const selection = window.getSelection();
+    const selected = selectedTextReplyForRow(row, row.dataset.replyableEventId, selection);
+    if (!selected || !selection) return;
+    event.preventDefault();
+    const range = selection.rangeCount > 0 ? selection.getRangeAt(0).getBoundingClientRect() : null;
+    const target = event.target instanceof Element
+      ? event.target
+      : event.target instanceof Node
+        ? event.target.parentElement
+        : null;
+    const linkHref = target?.closest<HTMLAnchorElement>("a")?.href ?? null;
+    setReplyContextMenu({
+      replyTo: selected,
+      row,
+      selection: captureSelectionSnapshot(selection),
+      x: event.clientX || range?.right || 8,
+      y: event.clientY || range?.bottom || 8,
+      linkHref,
+    });
   }, [selectedTextRepliesSupported]);
+
+  useEffect(() => {
+    setReplyContextMenu(null);
+  }, [selectedTextRepliesSupported, sessionKey]);
+
+  const activateReplyFromContextMenu = useCallback((selected: SelectedTextReply) => {
+    setReplyContextMenu(null);
+    setReplyTo(selected);
+    window.getSelection()?.removeAllRanges();
+  }, []);
 
   const openReplySource = useCallback((selected: SelectedTextReply) => {
     const rows = document.querySelectorAll<HTMLElement>("[data-replyable-event-id]");
@@ -871,6 +901,7 @@ function PeonSessionDetailPage() {
           cancelRename={cancelRename}
           remove={remove}
           viewers={viewersFor(peon.peonId, sid)}
+          onShare={() => setSharingOpen(true)}
         />
       </div>
       <div
@@ -925,7 +956,7 @@ function PeonSessionDetailPage() {
               if (row.kind === "item") {
                 const replyableEventId = row.item.kind === "user" || row.item.kind === "text" ? row.item.sourceEventId : undefined;
                 return (
-                  <div data-transcript-row data-replyable-event-id={replyableEventId} onMouseUp={replyableEventId ? handleReplySelection : undefined} className={`mx-auto w-full max-w-6xl px-3 sm:px-6 ${row.paddingClass}`}>
+                  <div data-transcript-row data-replyable-event-id={replyableEventId} onContextMenu={replyableEventId ? handleReplyContextMenu : undefined} className={`mx-auto w-full max-w-6xl px-3 sm:px-6 ${row.paddingClass}`}>
                     <ItemView
                       item={row.item}
                       t={t}
@@ -1048,6 +1079,18 @@ function PeonSessionDetailPage() {
         setOverrideReasoningEffort={setOverrideReasoningEffort}
         sessionReasoningEffort={sessionReasoningEffort}
       />
+      {replyContextMenu && (
+        <SelectedTextReplyContextMenu
+          replyTo={replyContextMenu.replyTo}
+          row={replyContextMenu.row}
+          selection={replyContextMenu.selection}
+          x={replyContextMenu.x}
+          y={replyContextMenu.y}
+          linkHref={replyContextMenu.linkHref}
+          onReply={activateReplyFromContextMenu}
+          onClose={closeReplyContextMenu}
+        />
+      )}
       <SessionOverlays
         base={base}
         sid={sid}
@@ -1067,6 +1110,12 @@ function PeonSessionDetailPage() {
         setArtifactPreview={setArtifactPreview}
         previewPinned={previewPinned}
         setPreviewPinned={setPreviewPinned}
+      />
+      <SessionSharingPanel
+        base={base}
+        sessionId={sid}
+        open={sharingOpen}
+        onClose={() => setSharingOpen(false)}
       />
     </div>
   );

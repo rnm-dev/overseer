@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 class SessionSummary {
   const SessionSummary({
     required this.workspaceId,
@@ -128,19 +130,41 @@ class SelectedTextReply {
   final String eventId;
   final String selectedText;
 
+  static const capability = 'selected-text-replies-v1';
+  static const maxSelectedTextCodePoints = 8192;
+  static const maxSelectedTextUtf8Bytes = 16 * 1024;
+
+  /// Builds reply metadata from a live selection without trimming or
+  /// otherwise changing the text that will be sent to Peon.
+  static SelectedTextReply? fromSelection({
+    required String? eventId,
+    required String? selectedText,
+  }) {
+    if (eventId == null ||
+        !_eventIdPattern.hasMatch(eventId) ||
+        selectedText == null ||
+        selectedText.trim().isEmpty ||
+        selectedText.runes.length > maxSelectedTextCodePoints ||
+        utf8.encode(selectedText).length > maxSelectedTextUtf8Bytes) {
+      return null;
+    }
+    return SelectedTextReply(eventId: eventId, selectedText: selectedText);
+  }
+
   factory SelectedTextReply.fromJson(Object? value) {
     if (value is! Map) {
       throw const FormatException('Invalid selected-text reply');
     }
     final eventId = value['eventId'];
     final selectedText = value['selectedText'];
-    if (eventId is! String ||
-        eventId.isEmpty ||
-        selectedText is! String ||
-        selectedText.trim().isEmpty) {
+    final reply = fromSelection(
+      eventId: eventId is String ? eventId : null,
+      selectedText: selectedText is String ? selectedText : null,
+    );
+    if (reply == null) {
       throw const FormatException('Invalid selected-text reply');
     }
-    return SelectedTextReply(eventId: eventId, selectedText: selectedText);
+    return reply;
   }
 
   Map<String, dynamic> toJson() => {
@@ -157,6 +181,8 @@ class SelectedTextReply {
   @override
   int get hashCode => Object.hash(eventId, selectedText);
 }
+
+final _eventIdPattern = RegExp(r'^[A-Za-z0-9_-]{1,256}$');
 
 class TranscriptEvent {
   TranscriptEvent({

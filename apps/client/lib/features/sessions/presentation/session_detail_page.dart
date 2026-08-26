@@ -297,7 +297,7 @@ class _SessionDetailPageState extends _SessionDetailAttachmentHost
             online: currentPeon?.online ?? false,
           );
     final selectedTextRepliesSupported =
-        currentPeon?.capabilities.contains('selected-text-replies-v1') ?? false;
+        currentPeon?.capabilities.contains(SelectedTextReply.capability) ?? false;
     final inquiries = inquiryScope == null
         ? null
         : ref.watch(pluginInquiryControllerProvider(inquiryScope));
@@ -485,7 +485,7 @@ class _SessionDetailPageState extends _SessionDetailAttachmentHost
                                   ).notifier,
                                 )
                                 .setReplyTo(reply)
-                          : (_) {},
+                          : null,
                     ),
                   Align(
                     alignment: Alignment.bottomCenter,

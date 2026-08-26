@@ -8,18 +8,22 @@ export const presenceBus = new EventEmitter();
 
 const keyOf = (workspaceId: string, connectionId: string) => `${workspaceId}\0${connectionId}`;
 
-export function heartbeatPresence(value: Omit<StoredPresence, "expiresAt">): void {
+export function heartbeatPresence(value: Omit<StoredPresence, "expiresAt" | "lastSeenAt"> & { lastSeenAt?: number }): void {
   const key = keyOf(value.workspaceId, value.connectionId);
   const previous = entries.get(key);
-  entries.set(key, { ...value, expiresAt: Date.now() + TTL_MS });
-  if (!previous || previous.scope !== value.scope || previous.peonId !== value.peonId || previous.sessionId !== value.sessionId) {
+  const now = Date.now();
+  entries.set(key, { ...value, lastSeenAt: value.lastSeenAt ?? now, expiresAt: now + TTL_MS });
+  if (!previous || previous.scope !== value.scope || previous.peonId !== value.peonId || previous.sessionId !== value.sessionId || previous.active !== value.active) {
     presenceBus.emit("changed", value.workspaceId);
   }
 }
 
 export function touchPresence(workspaceId: string, userId: string, connectionId: string): void {
   const entry = entries.get(keyOf(workspaceId, connectionId));
-  if (entry?.userId === userId) entry.expiresAt = Date.now() + TTL_MS;
+  if (entry?.userId === userId) {
+    entry.lastSeenAt = Date.now();
+    entry.expiresAt = Date.now() + TTL_MS;
+  }
 }
 
 export function removePresence(workspaceId: string, userId: string, connectionId: string): void {

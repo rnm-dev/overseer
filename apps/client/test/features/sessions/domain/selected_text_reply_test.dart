@@ -40,4 +40,44 @@ void main() {
 
     expect(event.replyTo, isNull);
   });
+
+  test('live selections preserve exact text and enforce contract bounds', () {
+    const selected = '  café\n🙂  ';
+    expect(
+      SelectedTextReply.fromSelection(
+        eventId: 'assistant_1',
+        selectedText: selected,
+      ),
+      const SelectedTextReply(eventId: 'assistant_1', selectedText: selected),
+    );
+    expect(
+      SelectedTextReply.fromSelection(
+        eventId: 'assistant_1',
+        selectedText: '   \n',
+      ),
+      isNull,
+    );
+    expect(
+      SelectedTextReply.fromSelection(
+        eventId: 'assistant.1',
+        selectedText: 'quoted',
+      ),
+      isNull,
+    );
+    expect(
+      SelectedTextReply.fromSelection(
+        eventId: 'assistant_1',
+        selectedText: '🙂' * (SelectedTextReply.maxSelectedTextCodePoints + 1),
+      ),
+      isNull,
+    );
+    expect(
+      SelectedTextReply.fromSelection(
+        eventId: 'assistant_1',
+        selectedText: 'я' * SelectedTextReply.maxSelectedTextCodePoints,
+      ),
+      isNull,
+      reason: 'UTF-8 byte bound is independent of the code-point bound',
+    );
+  });
 }

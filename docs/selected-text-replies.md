@@ -35,6 +35,14 @@ display authority. Source event deletion or unavailable history never deletes
 the retained quote: clients render it with a source-unavailable state. System,
 tool, result, preview, stderr and warning events are not replyable.
 
+## Interaction behavior
+
+Selecting transcript text is neutral on every client: selection changes and mouse-up do not set composer reply state or clear the selection. A desktop web or desktop Flutter operator explicitly chooses `Reply` from the platform-appropriate selection/context menu. The action is offered only for a valid, non-empty selection whose two ends are contained in one replyable transcript event and only when `selected-text-replies-v1` is advertised.
+
+On web desktop, the custom contextual affordance keeps `Copy`, and preserves link actions when the selection is over a link. It is keyboard and screen-reader accessible and closes on Escape, outside interaction, scrolling, selection changes, route/session changes, and after an action. Invalid or cross-event selections do not intercept the browser menu. Touch web keeps the browser's native selection interaction; there is no portable way to add a Reply item to that native menu, so selection never triggers a reply.
+
+Flutter uses the adaptive native selection toolbar and retains all standard platform actions, adding `Reply` only for a valid selection and non-null capability-gated callback. Invoking that item sets the existing composer `replyTo` state; the selection callback itself remains side-effect free. The existing send, queue, retry, clear, source-navigation and durable-rendering rules are unchanged.
+
 The route-level rules are also explicit. `replyTo` is optional on follow-up and
 queue creation; queue edit omission preserves the existing value and `null`
 clears it. A legacy Peon keeps ordinary follow-ups working, while a client must

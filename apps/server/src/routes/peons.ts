@@ -1,6 +1,7 @@
 import express from "express";
 import { registerFleetRoutes } from "./peons/fleet.js";
 import { registerSessionRoutes } from "./peons/sessions.js";
+import { registerSessionSharingRoutes } from "./peons/sessionSharing.js";
 import { registerProjectRoutes } from "./peons/projects.js";
 import { registerArmoryRoutes } from "./peons/armory.js";
 import { canAccessPeon } from "../modules/access/index.js";
@@ -36,6 +37,7 @@ export function peonsRouter(): express.Router {
   }));
   registerFleetRoutes(router);
   registerArmoryRoutes(router);
+  registerSessionSharingRoutes(router);
   registerSessionRoutes(router);
   registerProjectRoutes(router);
   return router;

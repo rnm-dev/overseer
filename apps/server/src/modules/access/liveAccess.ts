@@ -1,6 +1,7 @@
 import { listMemberAccess } from "./accessService.js";
 import type { LiveEvent } from "../../infrastructure/events/index.js";
 import { membership, type Role } from "../workspaces/index.js";
+import type { SessionParticipantAuth } from "../sessions/index.js";
 
 export interface AccessClient {
   userId: string;
@@ -9,10 +10,17 @@ export interface AccessClient {
   allowedPeons: Set<string> | null;
   allowedProjects: Map<string, Set<string>> | null;
   tails: Map<string, AbortController>;
+  participant?: SessionParticipantAuth | null;
 }
 
 export async function refreshClientAccess(client: AccessClient): Promise<void> {
   if (!client.workspaceId) return;
+  if (client.participant) {
+    client.role = "member";
+    client.allowedPeons = new Set([client.participant.peonId]);
+    client.allowedProjects = new Map();
+    return;
+  }
   const before = accessFingerprint(client);
   const role = await membership(client.workspaceId, client.userId);
   client.role = role;
@@ -59,20 +67,24 @@ export function abortTailsIfAccessChanged(client: AccessClient, before: string):
 }
 
 export function peonVisible(client: AccessClient, peonId: string): boolean {
+  if (client.participant) return client.participant.peonId === peonId;
   return client.role === "owner" || !!client.allowedPeons?.has(peonId);
 }
 
 export function projectVisible(client: AccessClient, peonId: string, projectKey: string, projectId?: string | null): boolean {
+  if (client.participant) return client.participant.peonId === peonId;
   if (client.role === "owner") return true;
   const allowed = client.allowedProjects?.get(peonId);
   return !!allowed && (projectId ? allowed.has(`id:${projectId}`) : allowed.has(`key:${projectKey}`));
 }
 
 export function sessionVisible(client: AccessClient, peonId: string, projectKey: string | null | undefined, projectId?: string | null): boolean {
+  if (client.participant) return client.participant.peonId === peonId;
   return peonVisible(client, peonId) && (!projectKey || projectVisible(client, peonId, projectKey, projectId));
 }
 
 export function eventVisible(client: AccessClient, event: LiveEvent): boolean {
+  if (client.participant) return false;
   if (!peonVisible(client, event.peonId)) return false;
   if (event.kind === "configuration") return client.role === "owner";
   if (event.kind === "attention" || event.kind === "command") {

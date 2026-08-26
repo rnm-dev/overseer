@@ -69,6 +69,8 @@ repository — that content lives here.
   operator stands at the bottom.
 - [operator-scoped recent sessions](operator-recent-sessions.md) — the Fleet list
   can attach the sessions the caller created or followed up on.
+- [session sharing](session-sharing.md) — capability invitations, scoped guest
+  participants, limits, revocation and presence on the canonical session.
 - [selected-text replies](selected-text-replies.md) — the durable `replyTo`
   object on Peon's authoritative user message.
 - [audio focus](audio-focus.md) — session sounds play on exactly one client, the
