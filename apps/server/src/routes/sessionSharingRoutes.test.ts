@@ -63,7 +63,6 @@ test("public session capability routes preserve scoped credentials and attributi
     maxTurns: 2,
     maxDurationMs: 60 * 60 * 1_000,
     maxTokens: 0,
-    maxCostMicros: 0,
     expiresInMs: 60 * 60 * 1_000,
   });
   const ownerDevice = await issueDevice("owner", "test", { ip: null, userAgent: null });

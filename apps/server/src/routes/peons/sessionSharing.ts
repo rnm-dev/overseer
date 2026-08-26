@@ -65,8 +65,6 @@ export function registerSessionSharingRoutes(router: express.Router): void {
   router.post(`${wp}/invitations`, withWorkspacePeon(async (req, res, c) => {
     if (!(await isSessionManager(c, String(req.params.sid), res))) return;
     const body = inputBody(req.body);
-    const maxCostUsd = body.maxCostUsd;
-    const maxCostMicros = body.maxCostMicros ?? (typeof maxCostUsd === "number" ? Math.round(maxCostUsd * 1_000_000) : undefined);
     try {
       const created = await createSessionInvitation(c.workspaceId, c.record.peonId, String(req.params.sid), c.userId, {
         displayName: body.displayName,
@@ -74,7 +72,6 @@ export function registerSessionSharingRoutes(router: express.Router): void {
         maxTurns: body.maxTurns as number | undefined,
         maxDurationMs: body.maxDurationMs as number | undefined,
         maxTokens: body.maxTokens as number | undefined,
-        maxCostMicros: maxCostMicros as number | undefined,
         expiresInMs: body.expiresInMs as number | undefined,
       });
       res.status(201).json({ invitation: created.invitation, token: created.token });
@@ -95,8 +92,6 @@ export function registerSessionSharingRoutes(router: express.Router): void {
   router.patch(`${wp}/invitations/:invitationId`, withWorkspacePeon(async (req, res, c) => {
     if (!(await isSessionManager(c, String(req.params.sid), res))) return;
     const body = inputBody(req.body);
-    const maxCostUsd = body.maxCostUsd;
-    const maxCostMicros = body.maxCostMicros ?? (typeof maxCostUsd === "number" ? Math.round(maxCostUsd * 1_000_000) : undefined);
     try {
       const invitation = await updateSessionInvitation(c.workspaceId, c.record.peonId, String(req.params.sid), String(req.params.invitationId), {
         displayName: body.displayName,
@@ -104,7 +99,6 @@ export function registerSessionSharingRoutes(router: express.Router): void {
         maxTurns: body.maxTurns as number | undefined,
         maxDurationMs: body.maxDurationMs as number | undefined,
         maxTokens: body.maxTokens as number | undefined,
-        maxCostMicros: maxCostMicros as number | undefined,
         expiresInMs: body.expiresInMs as number | undefined,
       });
       if (!invitation) return res.status(404).json({ error: "unknown invitation", code: "UNKNOWN_INVITATION" });

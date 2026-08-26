@@ -33,7 +33,6 @@ export const SESSION_INVITATION_DEFAULTS: SessionSharingLimits & { expiresInMs: 
   maxTurns: 10,
   maxDurationMs: 24 * 60 * 60 * 1_000,
   maxTokens: 100_000,
-  maxCostMicros: 5_000_000,
   expiresInMs: 7 * 24 * 60 * 60 * 1_000,
 };
 
@@ -41,7 +40,6 @@ export const SESSION_INVITATION_HARD_MAXIMA: SessionSharingLimits & { expiresInM
   maxTurns: 100,
   maxDurationMs: 30 * 24 * 60 * 60 * 1_000,
   maxTokens: 5_000_000,
-  maxCostMicros: 100_000_000,
   expiresInMs: 30 * 24 * 60 * 60 * 1_000,
 };
 
@@ -60,7 +58,6 @@ interface InvitationRow {
   max_turns: number;
   max_duration_ms: number;
   max_tokens: number;
-  max_cost_micros: number;
   created_by: string;
   created_at: number;
   expires_at: number;
@@ -85,7 +82,6 @@ interface ParticipantRow {
   max_turns: number | null;
   max_duration_ms: number | null;
   max_tokens: number | null;
-  max_cost_micros: number | null;
   turns_used: number;
   tokens_used: number;
   cost_micros_used: number;
@@ -175,7 +171,6 @@ function limitsFromInput(input: SessionInvitationInput): SessionSharingLimits & 
     SESSION_INVITATION_HARD_MAXIMA.maxDurationMs,
   );
   const maxTokens = numberValue(input.maxTokens, SESSION_INVITATION_DEFAULTS.maxTokens, "maxTokens", 0, SESSION_INVITATION_HARD_MAXIMA.maxTokens);
-  const maxCostMicros = numberValue(input.maxCostMicros, SESSION_INVITATION_DEFAULTS.maxCostMicros, "maxCostMicros", 0, SESSION_INVITATION_HARD_MAXIMA.maxCostMicros);
   const expiresInMs = numberValue(
     input.expiresInMs,
     SESSION_INVITATION_DEFAULTS.expiresInMs,
@@ -183,7 +178,7 @@ function limitsFromInput(input: SessionInvitationInput): SessionSharingLimits & 
     MIN_INVITATION_TTL_MS,
     SESSION_INVITATION_HARD_MAXIMA.expiresInMs,
   );
-  return { maxTurns, maxDurationMs, maxTokens, maxCostMicros, expiresInMs };
+  return { maxTurns, maxDurationMs, maxTokens, expiresInMs };
 }
 
 function invitationView(row: InvitationRow, participantCount = 0, activeParticipantCount = 0, now = Date.now()): SessionInvitationView {
@@ -199,7 +194,6 @@ function invitationView(row: InvitationRow, participantCount = 0, activeParticip
       maxTurns: row.max_turns,
       maxDurationMs: row.max_duration_ms,
       maxTokens: row.max_tokens,
-      maxCostMicros: row.max_cost_micros,
     },
     createdBy: row.created_by,
     createdAt: row.created_at,
@@ -278,7 +272,7 @@ export function participantView(
 function participantSelect(where: string): string {
   return `SELECT p.id,p.workspace_id,p.peon_id,p.session_id,p.invitation_id,p.user_id,p.guest_id,
                  p.display_name,p.access_mode,p.provenance,p.joined_at,p.last_active_at,p.expires_at,p.revoked_at,
-                 p.max_turns,p.max_duration_ms,p.max_tokens,p.max_cost_micros,p.turns_used,p.tokens_used,
+                 p.max_turns,p.max_duration_ms,p.max_tokens,p.turns_used,p.tokens_used,
                  p.cost_micros_used,p.usage_quality,
                  u.email,u.github_login,u.avatar_url
             FROM session_participants p
@@ -289,7 +283,7 @@ function participantSelect(where: string): string {
 async function invitationByHash(tokenHash: string, includeInactive: boolean): Promise<InvitationRow | null> {
   const { rows } = await query<InvitationRow>(
     `SELECT id,workspace_id,peon_id,session_id,display_name,access_mode,max_turns,max_duration_ms,
-            max_tokens,max_cost_micros,created_by,created_at,expires_at,revoked_at
+            max_tokens,created_by,created_at,expires_at,revoked_at
        FROM session_invitations WHERE token_hash=$1`,
     [tokenHash],
   );
@@ -302,7 +296,7 @@ async function invitationByHash(tokenHash: string, includeInactive: boolean): Pr
 async function invitationById(id: string): Promise<InvitationRow | null> {
   const { rows } = await query<InvitationRow>(
     `SELECT id,workspace_id,peon_id,session_id,display_name,access_mode,max_turns,max_duration_ms,
-            max_tokens,max_cost_micros,created_by,created_at,expires_at,revoked_at
+            max_tokens,created_by,created_at,expires_at,revoked_at
        FROM session_invitations WHERE id=$1`,
     [id],
   );
@@ -426,12 +420,12 @@ export async function createSessionInvitation(
   const row = await query<InvitationRow>(
     `INSERT INTO session_invitations
        (id,workspace_id,peon_id,session_id,token_hash,display_name,access_mode,max_turns,max_duration_ms,
-        max_tokens,max_cost_micros,created_by,created_at,expires_at,revoked_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,NULL)
+        max_tokens,created_by,created_at,expires_at,revoked_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NULL)
      RETURNING id,workspace_id,peon_id,session_id,display_name,access_mode,max_turns,max_duration_ms,
-               max_tokens,max_cost_micros,created_by,created_at,expires_at,revoked_at`,
+               max_tokens,created_by,created_at,expires_at,revoked_at`,
     [id, workspaceId, peonId, sessionId, sha256(token), displayName, accessMode, limits.maxTurns, limits.maxDurationMs,
-      limits.maxTokens, limits.maxCostMicros, createdBy, now, now + limits.expiresInMs],
+      limits.maxTokens, createdBy, now, now + limits.expiresInMs],
   );
   return { invitation: invitationView(row.rows[0]!), token };
 }
@@ -439,7 +433,7 @@ export async function createSessionInvitation(
 export async function listSessionInvitations(workspaceId: string, peonId: string, sessionId: string): Promise<SessionInvitationView[]> {
   const { rows } = await query<InvitationRow>(
     `SELECT id,workspace_id,peon_id,session_id,display_name,access_mode,max_turns,max_duration_ms,
-            max_tokens,max_cost_micros,created_by,created_at,expires_at,revoked_at
+            max_tokens,created_by,created_at,expires_at,revoked_at
        FROM session_invitations
       WHERE workspace_id=$1 AND peon_id=$2 AND session_id=$3
       ORDER BY created_at DESC`,
@@ -488,17 +482,16 @@ export async function updateSessionInvitation(
     maxTurns: input.maxTurns ?? current.max_turns,
     maxDurationMs: input.maxDurationMs ?? current.max_duration_ms,
     maxTokens: input.maxTokens ?? current.max_tokens,
-    maxCostMicros: input.maxCostMicros ?? current.max_cost_micros,
     expiresInMs: input.expiresInMs ?? Math.max(MIN_INVITATION_TTL_MS, current.expires_at - Date.now()),
   });
   if (current.expires_at <= Date.now() && input.expiresInMs === undefined) throw new SessionSharingError("expired invitations cannot be edited without a new expiry", "INVITATION_EXPIRED", 409);
   const expiresAt = input.expiresInMs === undefined ? current.expires_at : Date.now() + limits.expiresInMs;
   const { rows } = await query<InvitationRow>(
     `UPDATE session_invitations
-        SET display_name=$5,access_mode=$6,max_turns=$7,max_duration_ms=$8,max_tokens=$9,max_cost_micros=$10,expires_at=$11
+        SET display_name=$5,access_mode=$6,max_turns=$7,max_duration_ms=$8,max_tokens=$9,expires_at=$10
       WHERE id=$1 AND workspace_id=$2 AND peon_id=$3 AND session_id=$4 AND revoked_at IS NULL
-      RETURNING id,workspace_id,peon_id,session_id,display_name,access_mode,max_turns,max_duration_ms,max_tokens,max_cost_micros,created_by,created_at,expires_at,revoked_at`,
-    [invitationId, workspaceId, peonId, sessionId, displayName, accessMode, limits.maxTurns, limits.maxDurationMs, limits.maxTokens, limits.maxCostMicros, expiresAt],
+      RETURNING id,workspace_id,peon_id,session_id,display_name,access_mode,max_turns,max_duration_ms,max_tokens,created_by,created_at,expires_at,revoked_at`,
+    [invitationId, workspaceId, peonId, sessionId, displayName, accessMode, limits.maxTurns, limits.maxDurationMs, limits.maxTokens, expiresAt],
   );
   if (!rows[0]) return null;
   const counts = await invitationCounts(invitationId);
@@ -561,7 +554,7 @@ export async function getSessionParticipantByCredential(token: string): Promise<
   const { rows } = await query<CredentialParticipantRow>(
     `SELECT p.id,p.workspace_id,p.peon_id,p.session_id,p.invitation_id,p.user_id,p.guest_id,
             p.display_name,p.access_mode,p.provenance,p.joined_at,p.last_active_at,p.expires_at,p.revoked_at,
-            p.max_turns,p.max_duration_ms,p.max_tokens,p.max_cost_micros,p.turns_used,p.tokens_used,
+            p.max_turns,p.max_duration_ms,p.max_tokens,p.turns_used,p.tokens_used,
             p.cost_micros_used,p.usage_quality,
             u.email,u.github_login,u.avatar_url,
             c.expires_at AS credential_expires_at,c.revoked_at AS credential_revoked_at
@@ -592,12 +585,12 @@ async function createParticipant(
   await tx.query(
     `INSERT INTO session_participants
        (id,workspace_id,peon_id,session_id,invitation_id,user_id,guest_id,display_name,access_mode,provenance,
-        joined_at,last_active_at,expires_at,revoked_at,max_turns,max_duration_ms,max_tokens,max_cost_micros,
+        joined_at,last_active_at,expires_at,revoked_at,max_turns,max_duration_ms,max_tokens,
         turns_used,tokens_used,cost_micros_used,usage_updated_at,usage_quality)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'invitation',$10,$10,$11,NULL,$12,$13,$14,$15,0,0,0,NULL,'unknown')
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'invitation',$10,$10,$11,NULL,$12,$13,$14,0,0,0,NULL,'unknown')
      ON CONFLICT DO NOTHING`,
     [id, invitation.workspace_id, invitation.peon_id, invitation.session_id, invitation.id, userId, guestId, displayName,
-      invitation.access_mode, now, expiresAt, invitation.max_turns, invitation.max_duration_ms, invitation.max_tokens, invitation.max_cost_micros],
+      invitation.access_mode, now, expiresAt, invitation.max_turns, invitation.max_duration_ms, invitation.max_tokens],
   );
   const found = await tx.query<{ id: string }>(
     `SELECT id FROM session_participants WHERE invitation_id=$1 AND ${auth ? "user_id=$2" : "guest_id=$2"} ORDER BY joined_at DESC LIMIT 1`,
@@ -649,7 +642,7 @@ export async function acceptSessionInvitation(
   const invitation = await transaction(async (tx) => {
     const locked = await tx.query<InvitationRow>(
       `SELECT id,workspace_id,peon_id,session_id,display_name,access_mode,max_turns,max_duration_ms,
-              max_tokens,max_cost_micros,created_by,created_at,expires_at,revoked_at
+              max_tokens,created_by,created_at,expires_at,revoked_at
          FROM session_invitations WHERE token_hash=$1 FOR UPDATE`,
       [sha256(token)],
     );
@@ -714,9 +707,9 @@ export async function ensureDirectSessionParticipant(
   await query(
     `INSERT INTO session_participants
        (id,workspace_id,peon_id,session_id,invitation_id,user_id,guest_id,display_name,access_mode,provenance,
-        joined_at,last_active_at,expires_at,revoked_at,max_turns,max_duration_ms,max_tokens,max_cost_micros,
+        joined_at,last_active_at,expires_at,revoked_at,max_turns,max_duration_ms,max_tokens,
         turns_used,tokens_used,cost_micros_used,usage_updated_at,usage_quality)
-     VALUES ($1,$2,$3,$4,NULL,$5,NULL,$6,'participate','direct',$7,$7,NULL,NULL,NULL,NULL,NULL,NULL,0,0,0,NULL,'unknown')
+     VALUES ($1,$2,$3,$4,NULL,$5,NULL,$6,'participate','direct',$7,$7,NULL,NULL,NULL,NULL,NULL,0,0,0,NULL,'unknown')
      ON CONFLICT DO NOTHING`,
     [randomUUID(), workspaceId, peonId, sessionId, auth.userId, auth.githubLogin || auth.email, now],
   );

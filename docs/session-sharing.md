@@ -33,7 +33,7 @@ limits.
 
 The defaults are 10 turns, 24 hours of participant duration and a 7-day
 invitation lifetime. Hard maxima are 100 turns, 30 days of participant
-duration, 5,000,000 tokens and 100 USD (stored as integer micro-dollars).
+duration and 5,000,000 reported tokens.
 Managers may choose lower values. Limits are bounded and validated before
 storage.
 
@@ -44,11 +44,12 @@ does not spend another turn; a newly admitted turn is counted conservatively,
 even if the downstream Peon request later fails. Duration and turn checks are
 hard enforcement.
 
-Peon admission responses are not authoritative token or cost accounting. The
-current implementation does not infer usage from them: token and cost columns
-remain `unknown` until an authoritative transcript/result usage source can be
-reconciled, and they do not block a turn. The UI and roster describe these
-figures as reported/soft rather than promising hard token or cost enforcement.
+Peon admission responses are not authoritative token accounting. The current
+implementation does not infer usage from them: token usage remains `unknown`
+until an authoritative transcript/result source can be reconciled, and it does
+not block a turn. Cost is deliberately not an invitation budget: without an
+authoritative pre-turn estimate, such a field would promise enforcement the
+system cannot provide.
 
 ## Routes
 

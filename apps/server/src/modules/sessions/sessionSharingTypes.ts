@@ -9,7 +9,6 @@ export interface SessionSharingLimits {
   maxTurns: number;
   maxDurationMs: number;
   maxTokens: number;
-  maxCostMicros: number;
 }
 
 export interface SessionInvitationInput extends Partial<SessionSharingLimits> {

@@ -66,7 +66,6 @@ function invitationInput(overrides: Record<string, unknown> = {}) {
     maxTurns: 2,
     maxDurationMs: 60 * 60 * 1_000,
     maxTokens: 0,
-    maxCostMicros: 0,
     expiresInMs: 60 * 60 * 1_000,
     ...overrides,
   };
@@ -85,13 +84,13 @@ test("migration normalizes sharing rows, hashes capabilities, and enforces local
 
   await assert.rejects(
     query(`INSERT INTO session_invitations
-      (id,workspace_id,peon_id,session_id,token_hash,display_name,access_mode,max_turns,max_duration_ms,max_tokens,max_cost_micros,created_by,created_at,expires_at)
-      VALUES ('bad','ws','peon','session','bad-hash','Guest','admin',1,1,0,0,'owner',1,2)`),
+      (id,workspace_id,peon_id,session_id,token_hash,display_name,access_mode,max_turns,max_duration_ms,max_tokens,created_by,created_at,expires_at)
+      VALUES ('bad','ws','peon','session','bad-hash','Guest','admin',1,1,0,'owner',1,2)`),
   );
   await assert.rejects(
     query(`INSERT INTO session_invitations
-      (id,workspace_id,peon_id,session_id,token_hash,display_name,access_mode,max_turns,max_duration_ms,max_tokens,max_cost_micros,created_by,created_at,expires_at)
-      VALUES ('bad-fk','missing','peon','session','bad-hash-2','Guest','read',1,1,0,0,'owner',1,2)`),
+      (id,workspace_id,peon_id,session_id,token_hash,display_name,access_mode,max_turns,max_duration_ms,max_tokens,created_by,created_at,expires_at)
+      VALUES ('bad-fk','missing','peon','session','bad-hash-2','Guest','read',1,1,0,'owner',1,2)`),
   );
   await assert.rejects(
     query(`INSERT INTO session_participants

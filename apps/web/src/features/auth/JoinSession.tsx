@@ -13,7 +13,7 @@ export type Preview = {
   sessionStatus: string | null;
   suggestedDisplayName: string;
   accessMode: AccessMode;
-  limits: { maxTurns: number; maxDurationMs: number; maxTokens: number; maxCostMicros: number };
+  limits: { maxTurns: number; maxDurationMs: number; maxTokens: number };
   expiresAt: number;
   alreadyAuthorized: boolean;
   authenticated: boolean;
@@ -153,11 +153,10 @@ export function JoinSession() {
               <span id="join-name-help" className="block text-[0.68rem] text-ink-faint">This name is shown as Guest in the shared transcript.</span>
             </label>
           )}
-          <div className="grid grid-cols-2 gap-2 rounded-lg border border-edge-subtle p-3 font-mono text-xs text-ink-muted sm:grid-cols-4">
+          <div className="grid grid-cols-3 gap-2 rounded-lg border border-edge-subtle p-3 font-mono text-xs text-ink-muted">
             <span><strong className="block text-ink">{preview.limits.maxTurns}</strong> hard turns</span>
             <span><strong className="block text-ink">{Math.round(preview.limits.maxDurationMs / 3_600_000)}h</strong> duration</span>
             <span><strong className="block text-ink">{preview.limits.maxTokens.toLocaleString()}</strong> tokens reported</span>
-            <span><strong className="block text-ink">${(preview.limits.maxCostMicros / 1_000_000).toFixed(2)}</strong> cost reported</span>
           </div>
           {acceptError !== null && <p className="font-mono text-xs text-danger" role="alert">{acceptError instanceof Error ? acceptError.message : "Could not join this session."}</p>}
           <Button className="w-full" type="button" disabled={accepting || (!user && displayName.trim().length === 0)} onClick={() => void accept()}>
@@ -311,7 +310,7 @@ function SharedSessionPage({ preview, acceptance, onRefreshAcceptance }: { previ
 
   if (state) {
     const title = state === "revoked" ? "Access revoked" : state === "expired" ? "Access expired" : "Turn limit exhausted";
-    const message = state === "revoked" ? "The session manager revoked your participant access. Your earlier messages remain attributed in the conversation." : state === "expired" ? "Your participant access has expired. The shared conversation remains canonical." : "This invitation's hard turn limit has been reached. Token and cost figures remain reported until authoritative reconciliation is available.";
+    const message = state === "revoked" ? "The session manager revoked your participant access. Your earlier messages remain attributed in the conversation." : state === "expired" ? "Your participant access has expired. The shared conversation remains canonical." : "This invitation's hard turn limit has been reached. Token usage remains reported until authoritative reconciliation is available.";
     return <main className="grid min-h-screen place-items-center bg-canvas px-5 text-center"><section className="surface max-w-lg space-y-3 p-7"><p className="font-mono text-xs uppercase tracking-[0.25em] text-ink-faint">Shared session</p><h1 className="font-display text-2xl font-bold text-ink">{title}</h1><p className="font-mono text-sm leading-6 text-ink-muted">{message}</p></section></main>;
   }
 
@@ -329,7 +328,7 @@ function SharedSessionPage({ preview, acceptance, onRefreshAcceptance }: { previ
           <div className="border-t border-edge-subtle p-3 sm:p-4">
             {!canParticipate ? <p className="rounded-lg bg-surface-raised/60 px-3 py-3 font-mono text-xs text-ink-muted">This invitation is read-only. You can follow the transcript but cannot change the conversation.</p> : <form onSubmit={(event) => void submit(event)} className="space-y-2"><textarea className="field min-h-24 w-full resize-y" value={input} onChange={(event) => setInput(event.target.value)} placeholder="Write a message to the shared session…" aria-label="Message" /><div className="flex flex-wrap items-center justify-between gap-2"><label className="btn btn-secondary btn-sm cursor-pointer">Attach files<input className="sr-only" type="file" multiple onChange={(event: ChangeEvent<HTMLInputElement>) => setFiles(Array.from(event.target.files ?? []))} /></label><span className="font-mono text-[0.68rem] text-ink-faint">{files.length ? `${files.length} attachment(s) selected` : `${Math.max(0, preview.limits.maxTurns - turnsUsed)} hard turns remaining`}</span><Button type="submit" disabled={sending || exhausted || (!input.trim() && files.length === 0)}>{sending ? "Sending…" : "Send"}</Button></div></form>}
             {error !== null && <p className="mt-2 font-mono text-xs text-danger" role="alert">{error instanceof Error ? error.message : "The session could not be updated."}</p>}
-            <p className="mt-2 font-mono text-[0.65rem] leading-5 text-ink-faint">Token and cost budgets are reported after authoritative usage reconciliation; turn and duration limits are enforced before actions.</p>
+            <p className="mt-2 font-mono text-[0.65rem] leading-5 text-ink-faint">Token usage is reported after authoritative reconciliation; turn and duration limits are enforced before actions.</p>
             <button type="button" className="mt-2 font-mono text-[0.68rem] text-accent-strong underline" onClick={onRefreshAcceptance}>Refresh access</button>
           </div>
         </section>

@@ -9,7 +9,6 @@ interface Limits {
   maxTurns: number;
   maxDurationMs: number;
   maxTokens: number;
-  maxCostMicros: number;
 }
 
 interface Invitation {
@@ -77,7 +76,6 @@ export function SessionSharingPanel({ base, sessionId, open, onClose }: Props) {
   const [durationHours, setDurationHours] = useState("24");
   const [expiryDays, setExpiryDays] = useState("7");
   const [maxTokens, setMaxTokens] = useState("100000");
-  const [maxCostUsd, setMaxCostUsd] = useState("5");
   const [joinUrl, setJoinUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -122,7 +120,6 @@ export function SessionSharingPanel({ base, sessionId, open, onClose }: Props) {
           maxTurns: Number(maxTurns),
           maxDurationMs: Number(durationHours) * 60 * 60 * 1_000,
           maxTokens: Number(maxTokens),
-          maxCostUsd: Number(maxCostUsd),
           expiresInMs: Number(expiryDays) * DAY,
         }),
       });
@@ -185,19 +182,44 @@ export function SessionSharingPanel({ base, sessionId, open, onClose }: Props) {
         <p className="rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 font-mono text-xs leading-5 text-warning-strong">
           Participant messages permanently affect this shared conversation. Share only with people you trust.
         </p>
-        <form className="space-y-3" onSubmit={(event) => void createInvitation(event)}>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="space-y-1 font-mono text-xs text-ink-muted">Suggested guest name<Input value={name} maxLength={80} onChange={(event) => setName(event.target.value)} required /></label>
-            <label className="space-y-1 font-mono text-xs text-ink-muted">Access<select className="field w-full" value={accessMode} onChange={(event) => setAccessMode(event.target.value as AccessMode)}><option value="participate">Participate</option><option value="read">Read only</option></select></label>
-            <label className="space-y-1 font-mono text-xs text-ink-muted">Turns<Input inputMode="numeric" value={maxTurns} onChange={(event) => setMaxTurns(event.target.value)} /></label>
-            <label className="space-y-1 font-mono text-xs text-ink-muted">Participant duration (hours)<Input inputMode="numeric" value={durationHours} onChange={(event) => setDurationHours(event.target.value)} /></label>
-            <label className="space-y-1 font-mono text-xs text-ink-muted">Invitation expiry (days)<Input inputMode="numeric" value={expiryDays} onChange={(event) => setExpiryDays(event.target.value)} /></label>
-            <label className="space-y-1 font-mono text-xs text-ink-muted">Token budget (reported)<Input inputMode="numeric" value={maxTokens} onChange={(event) => setMaxTokens(event.target.value)} /></label>
-            <label className="space-y-1 font-mono text-xs text-ink-muted">Cost budget USD (reported)<Input inputMode="decimal" value={maxCostUsd} onChange={(event) => setMaxCostUsd(event.target.value)} /></label>
+        <form className="overflow-hidden rounded-xl border border-edge-subtle bg-surface-raised/40" onSubmit={(event) => void createInvitation(event)}>
+          <div className="grid gap-5 p-4 sm:grid-cols-[minmax(0,1.15fr)_minmax(15rem,.85fr)] sm:p-5">
+            <div className="space-y-4">
+              <div>
+                <p className="font-mono text-[0.65rem] uppercase tracking-[0.14em] text-accent-strong">Identity</p>
+                <label className="mt-2 block space-y-1.5 font-mono text-xs text-ink-muted">
+                  Suggested guest name
+                  <Input value={name} maxLength={80} onChange={(event) => setName(event.target.value)} placeholder="Alex" required />
+                </label>
+              </div>
+              <fieldset>
+                <legend className="font-mono text-[0.65rem] uppercase tracking-[0.14em] text-accent-strong">Permission</legend>
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  {(["participate", "read"] as const).map((mode) => {
+                    const selected = accessMode === mode;
+                    return (
+                      <button key={mode} type="button" aria-pressed={selected} onClick={() => setAccessMode(mode)} className={`rounded-lg border px-3 py-3 text-left transition ${selected ? "border-accent/60 bg-accent/10 shadow-[inset_0_0_0_1px_rgba(var(--accent-rgb),.12)]" : "border-edge-subtle bg-surface hover:border-edge-strong"}`}>
+                        <span className={`block font-body text-sm font-semibold ${selected ? "text-accent-strong" : "text-ink"}`}>{mode === "participate" ? "Participate" : "Read only"}</span>
+                        <span className="mt-1 block font-mono text-[0.64rem] leading-4 text-ink-faint">{mode === "participate" ? "Chat, files and tools" : "Transcript and live updates"}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </fieldset>
+            </div>
+            <div>
+              <p className="font-mono text-[0.65rem] uppercase tracking-[0.14em] text-accent-strong">Limits</p>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <label className="rounded-lg border border-edge-subtle bg-surface p-2.5 font-mono text-[0.66rem] text-ink-faint">Turns<Input className="mt-1" inputMode="numeric" value={maxTurns} onChange={(event) => setMaxTurns(event.target.value)} /></label>
+                <label className="rounded-lg border border-edge-subtle bg-surface p-2.5 font-mono text-[0.66rem] text-ink-faint">Duration · hours<Input className="mt-1" inputMode="numeric" value={durationHours} onChange={(event) => setDurationHours(event.target.value)} /></label>
+                <label className="rounded-lg border border-edge-subtle bg-surface p-2.5 font-mono text-[0.66rem] text-ink-faint">Link · days<Input className="mt-1" inputMode="numeric" value={expiryDays} onChange={(event) => setExpiryDays(event.target.value)} /></label>
+                <label className="rounded-lg border border-edge-subtle bg-surface p-2.5 font-mono text-[0.66rem] text-ink-faint">Tokens · reported<Input className="mt-1" inputMode="numeric" value={maxTokens} onChange={(event) => setMaxTokens(event.target.value)} /></label>
+              </div>
+            </div>
           </div>
-          <div className="flex items-center gap-3">
-            <Button type="submit" disabled={busy}>Create invitation</Button>
-            <span className="font-mono text-[0.68rem] text-ink-faint">Hard enforcement: participant duration and turns.</span>
+          <div className="flex flex-col gap-3 border-t border-edge-subtle bg-surface/70 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+            <span className="font-mono text-[0.68rem] text-ink-faint">Turns and duration are enforced before every action.</span>
+            <Button type="submit" disabled={busy}>{busy ? "Creating…" : "Create invitation"}</Button>
           </div>
         </form>
 

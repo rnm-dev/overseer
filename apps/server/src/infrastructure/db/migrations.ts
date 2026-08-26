@@ -1108,4 +1108,14 @@ export const MIGRATIONS: { id: string; statements: string[] }[] = [
          ON session_participant_turn_reservations (participant_id, reserved_at)`,
     ],
   },
+  {
+    // Cost is observable usage, not an invitation budget. Session sharing has
+    // no authoritative pre-turn cost estimate, so a configurable ceiling
+    // would promise enforcement the system cannot provide.
+    id: "041_remove_session_sharing_cost_budget",
+    statements: [
+      `ALTER TABLE session_invitations DROP COLUMN IF EXISTS max_cost_micros`,
+      `ALTER TABLE session_participants DROP COLUMN IF EXISTS max_cost_micros`,
+    ],
+  },
 ];
