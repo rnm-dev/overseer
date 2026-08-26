@@ -27,10 +27,10 @@ Where it is set:
 
 Production states its value rather than relying on the default. Opening local
 accounts on the public origin is a decision, and the file where production
-configuration lives should show that the decision was made. Production also has
-`OVERSEER_OPEN_SIGNUP=1`, so email/password registration is currently public.
-GitHub credentials are deliberately absent from that production target while
-the GitHub door is disabled. See
+configuration lives should show that the decision was made. Who it will accept
+is a separate decision, `OVERSEER_OPEN_SIGNUP`, and production has not made it:
+registering still needs an invitation. GitHub credentials are deliberately
+absent from that production target while the GitHub door is disabled. See
 [who may become an account](sign-in-methods.md#who-may-become-an-account).
 
 ## What a client sees

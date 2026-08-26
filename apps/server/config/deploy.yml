@@ -66,9 +66,6 @@ env:
     # to the default: opening local accounts on the production origin is a
     # decision, not something a config file should do quietly.
     OVERSEER_PASSWORD_AUTH: 1
-    # Temporarily accept public email/password registrations. GitHub is absent
-    # from the secret list below, so it is not offered as a sign-in method.
-    OVERSEER_OPEN_SIGNUP: 1
     # Explicitly enables the read-only fictional workspace used by App Review.
     # The helper also requires production and the exact public origin.
     OVERSEER_APP_REVIEW_DEMO: 1
