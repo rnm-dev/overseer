@@ -64,7 +64,7 @@ import type {
   SessionTranscriptEventContract,
 } from "./contracts.js";
 import { ReplyToError, buildReplyPrompt, isReplyableEvent } from "./replyTo.js";
-import { appendContextMessage as appendParticipantContext, initializeBranchedContext } from "./contextMessages.js";
+import { appendContextMessage as appendParticipantContext, initializeBranchedContext, replayContextMessage } from "./contextMessages.js";
 
 export { attachmentsDir } from "./sessionArtifacts.js";
 
@@ -330,10 +330,15 @@ export const sessions: SessionCatalogReader & SessionLifecycleContract & Session
     return sessionState.activeRuns.size() + sessionState.resumePending.size();
   },
 
-  async appendContextMessage(commandId, id, input) {
+  replayContextMessage(commandId, id, request) {
+    if (!sessionState.records.has(id)) throw new Error("unknown session");
+    return replayContextMessage(id, commandId, request);
+  },
+
+  async appendContextMessage(commandId, id, input, request) {
     const record = sessionState.records.get(id);
     if (!record) throw new Error("unknown session");
-    const { event, replayed } = await appendParticipantContext(id, commandId, input);
+    const { event, replayed } = await appendParticipantContext(id, commandId, input, request);
     if (replayed) return event;
     record.lastActivityAt = event.createdAt;
     record.lastMessagePreview = previewText(event.text);

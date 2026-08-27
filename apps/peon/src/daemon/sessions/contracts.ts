@@ -48,12 +48,13 @@ export interface SessionCatalogReader {
 export interface SessionLifecycleContract {
   isBusy(): boolean;
   activeCount(): number;
+  replayContextMessage(commandId: string, id: string, request: unknown): ParticipantMessageEvent | null;
   appendContextMessage(commandId: string, id: string, input: {
     text: string;
     author: PrincipalSnapshot;
     attachments: AttachmentInfo[];
     mentions: ContextMention[];
-  }): Promise<ParticipantMessageEvent>;
+  }, request?: unknown): Promise<ParticipantMessageEvent>;
   start(options: StartSessionOptions): SessionRecord;
   branch(id: string, options?: { id?: string; title?: string; lastTurnId?: string; author?: string }): Promise<SessionRecord>;
   resume(
@@ -105,7 +106,7 @@ export interface SessionQueueContract {
 
 export type SessionJsonService =
   & Pick<SessionCatalogReader, "get" | "list" | "page">
-  & Pick<SessionLifecycleContract, "start" | "branch" | "resume" | "rename" | "cancel" | "delete" | "appendContextMessage">
+  & Pick<SessionLifecycleContract, "start" | "branch" | "resume" | "rename" | "cancel" | "delete" | "replayContextMessage" | "appendContextMessage">
   & Pick<
     SessionQueueContract,
     "validateReplyTo" | "queued" | "enqueue" | "editQueued" | "steerQueued" | "sendQueuedNow" | "removeQueued"

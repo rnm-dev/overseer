@@ -344,9 +344,11 @@ export function attachSessionRoutes(router: express.Router, options: FleetSessio
     const requestId = typeof req.headers["peon-request-id"] === "string" ? req.headers["peon-request-id"] : "";
     if (!COMMAND_ID_RE.test(requestId)) return fail(res, 400, "BAD_CONTEXT_MESSAGE", "Peon-Request-Id is required");
     try {
+      const replay = sessions.replayContextMessage(requestId, req.params.id, req.body);
+      if (replay) return res.status(200).json(replay);
       const attachments = resolveAttachments(req.body?.attachments, getFileTransferRoot());
       const input = parseContextMessage(req.body, attachments);
-      const event = await sessions.appendContextMessage(requestId, req.params.id, input);
+      const event = await sessions.appendContextMessage(requestId, req.params.id, input, req.body);
       res.status(201).json(event);
     } catch (error) {
       if (error instanceof ContextMessageError) {

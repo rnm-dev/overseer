@@ -44,6 +44,25 @@ test("appends one immutable transcript row and replays an identical command", as
   );
 });
 
+test("checks durable idempotency before attachment materialization", async () => {
+  const sessionId = "attachment-replay";
+  const request = {
+    text: "see file",
+    author: alice,
+    attachments: [{ path: "uploads/once.txt", name: "once.txt" }],
+    mentions: [],
+  };
+  const first = await context.appendContextMessage(sessionId, command("19"), {
+    ...input("see file"),
+    attachments: [{ path: "/sessions/attachment-replay/attachments/once.txt", name: "once.txt" }],
+  }, request);
+  assert.deepEqual(context.replayContextMessage(sessionId, command("19"), request), first.event);
+  assert.throws(
+    () => context.replayContextMessage(sessionId, command("19"), { ...request, text: "changed" }),
+    (error: unknown) => (error as { code?: string }).code === "IDEMPOTENCY_CONFLICT",
+  );
+});
+
 test("claims a fixed high-water range and leaves messages posted during the turn for the next turn", async () => {
   const sessionId = "claim-boundary";
   await context.appendContextMessage(sessionId, command("12"), input("before"));

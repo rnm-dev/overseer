@@ -87,6 +87,18 @@ function requestHash(value: unknown): string {
   return createHash("sha256").update(canonical(value)).digest("hex");
 }
 
+export function replayContextMessage(sessionId: string, commandId: string, request: unknown): ParticipantMessageEvent | null {
+  const state = readState(sessionId);
+  const replay = state.commands[commandId];
+  if (!replay) return null;
+  if (replay.hash !== requestHash(request)) {
+    throw new ContextMessageError("IDEMPOTENCY_CONFLICT", "request id was reused with different context message content");
+  }
+  const event = state.messages.find((message) => message.eventId === replay.eventId);
+  if (!event) throw new Error("context message idempotency state is corrupt");
+  return event;
+}
+
 function validPrincipal(value: unknown): value is PrincipalSnapshot {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const item = value as Record<string, unknown>;
@@ -164,9 +176,9 @@ function pending(state: ContextState): StoredMessage[] {
 
 export async function appendContextMessage(sessionId: string, commandId: string, input: {
   text: string; author: PrincipalSnapshot; attachments: AttachmentInfo[]; mentions: ContextMention[];
-}): Promise<{ event: ParticipantMessageEvent; replayed: boolean }> {
+}, request: unknown = input): Promise<{ event: ParticipantMessageEvent; replayed: boolean }> {
   const state = readState(sessionId);
-  const hash = requestHash(input);
+  const hash = requestHash(request);
   const replay = state.commands[commandId];
   if (replay) {
     if (replay.hash !== hash) throw new ContextMessageError("IDEMPOTENCY_CONFLICT", "request id was reused with different context message content");
@@ -246,9 +258,7 @@ export function initializeBranchedContext(sessionId: string, inheritedEvents: Ar
     nextSeq: through + 1,
     deliveredThrough: through,
     messages: structuredClone(messages),
-    commands: Object.fromEntries(messages.map((event) => [event.commandId, { hash: requestHash({
-      text: event.text, author: event.author, attachments: event.attachments, mentions: event.mentions,
-    }), eventId: event.eventId }])),
+    commands: {},
     claim: null,
   };
   writeState(sessionId, state);

@@ -161,6 +161,7 @@ function createHarness() {
         ...input,
       };
     },
+    replayContextMessage: () => null,
     enqueue: (_id, _prompt, _attachments, permissionMode, author, _model, reasoningEffort, commandId, _startNow) => {
       calls.enqueue++;
       calls.queueArgs.push({ id: _id, author, commandId });
