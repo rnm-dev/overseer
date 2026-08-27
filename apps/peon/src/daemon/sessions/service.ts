@@ -28,6 +28,7 @@ import {
   discardTranscript,
   flushTranscript,
   persistSummary,
+  previewText,
   readTranscript,
   readTranscriptEntries,
   readTranscriptPage,
@@ -63,6 +64,7 @@ import type {
   SessionTranscriptEventContract,
 } from "./contracts.js";
 import { ReplyToError, buildReplyPrompt, isReplyableEvent } from "./replyTo.js";
+import { appendContextMessage as appendParticipantContext, initializeBranchedContext } from "./contextMessages.js";
 
 export { attachmentsDir } from "./sessionArtifacts.js";
 
@@ -296,6 +298,7 @@ export const sessions: SessionCatalogReader & SessionLifecycleContract & Session
           entry.id,
         );
       }
+      initializeBranchedContext(record.id, inheritedTranscript);
       await flushTranscript(record.id);
       persistSummary(record);
       sessionState.emitter.emit("change", record);
@@ -325,6 +328,20 @@ export const sessions: SessionCatalogReader & SessionLifecycleContract & Session
   activeCount(): number {
     for (const record of sessionState.records.values()) reconcileOrphanedRun(record);
     return sessionState.activeRuns.size() + sessionState.resumePending.size();
+  },
+
+  async appendContextMessage(commandId, id, input) {
+    const record = sessionState.records.get(id);
+    if (!record) throw new Error("unknown session");
+    const { event, replayed } = await appendParticipantContext(id, commandId, input);
+    if (replayed) return event;
+    record.lastActivityAt = event.createdAt;
+    record.lastMessagePreview = previewText(event.text);
+    record.eventCount += 1;
+    persistSummary(record);
+    sessionState.emitter.emit("event", { sessionId: id, event, eventId: event.eventId });
+    sessionState.emitter.emit("change", record);
+    return event;
   },
 
   // Continues a session's actual conversation via --resume — the agent keeps

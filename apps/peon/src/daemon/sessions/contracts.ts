@@ -2,6 +2,7 @@ import type { AgentEvent } from "../agents/index.js";
 import type { CodingAgent, ReasoningEffort } from "../providers/modelCatalog.js";
 import type { SessionPage } from "./sessionPagination.js";
 import type { AttachmentInfo, QueuedFollowUp, ReplyTo, SessionOutcome, SessionRecord, SessionStats, StatsPeriod } from "./sessionTypes.js";
+import type { ContextMention, ParticipantMessageEvent, PrincipalSnapshot } from "./contextMessages.js";
 
 export interface StartSessionOptions {
   prompt: string;
@@ -47,6 +48,12 @@ export interface SessionCatalogReader {
 export interface SessionLifecycleContract {
   isBusy(): boolean;
   activeCount(): number;
+  appendContextMessage(commandId: string, id: string, input: {
+    text: string;
+    author: PrincipalSnapshot;
+    attachments: AttachmentInfo[];
+    mentions: ContextMention[];
+  }): Promise<ParticipantMessageEvent>;
   start(options: StartSessionOptions): SessionRecord;
   branch(id: string, options?: { id?: string; title?: string; lastTurnId?: string; author?: string }): Promise<SessionRecord>;
   resume(
@@ -98,7 +105,7 @@ export interface SessionQueueContract {
 
 export type SessionJsonService =
   & Pick<SessionCatalogReader, "get" | "list" | "page">
-  & Pick<SessionLifecycleContract, "start" | "branch" | "resume" | "rename" | "cancel" | "delete">
+  & Pick<SessionLifecycleContract, "start" | "branch" | "resume" | "rename" | "cancel" | "delete" | "appendContextMessage">
   & Pick<
     SessionQueueContract,
     "validateReplyTo" | "queued" | "enqueue" | "editQueued" | "steerQueued" | "sendQueuedNow" | "removeQueued"

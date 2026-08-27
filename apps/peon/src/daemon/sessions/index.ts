@@ -108,6 +108,14 @@ export {
   sessionPresence,
 } from "./sessionPresence.js";
 export {
+  CONTEXT_ONLY_MESSAGES_CAPABILITY,
+  ContextMessageError,
+  parseContextMessage,
+  type ContextMention,
+  type ParticipantMessageEvent,
+  type PrincipalSnapshot,
+} from "./contextMessages.js";
+export {
   CODEX_OUTCOME_SCHEMA,
   OUTCOME_SCHEMA,
   buildAugmentedPrompt,

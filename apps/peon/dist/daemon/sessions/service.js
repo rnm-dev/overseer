@@ -8,13 +8,14 @@ import { settings } from "../settings/index.js";
 import { buildAugmentedPrompt } from "./sessionPrompts.js";
 import { paginateSessions } from "./sessionPagination.js";
 import { statsForPeriod as calculateStatsForPeriod } from "./sessionStats.js";
-import { appendTranscriptEvent, discardTranscript, flushTranscript, persistSummary, readTranscript, readTranscriptEntries, readTranscriptPage, sessionsDir, sessionsSizeBytes, summaryPath, } from "./sessionArtifacts.js";
+import { appendTranscriptEvent, discardTranscript, flushTranscript, persistSummary, previewText, readTranscript, readTranscriptEntries, readTranscriptPage, sessionsDir, sessionsSizeBytes, summaryPath, } from "./sessionArtifacts.js";
 import { AUTO_RESUME_PROMPT, MAX_AUTO_RESUME_ATTEMPTS, ORPHANED_RUN_MARKER, RESTART_INTERRUPTION_MARKER, SYSTEM_AUTHOR, } from "./constants.js";
 import { sessionPreviewDir } from "./preview.js";
 import { appendPreviewEvent, appendUserTurn, finalizeSession as finalize, runProcess, scheduleQueuedDispatch, } from "./runtime.js";
 import { inferProjectKey, isRestartInterrupted, restoreFromDisk, } from "./recovery.js";
 import { sessionState } from "./state.js";
 import { ReplyToError, buildReplyPrompt, isReplyableEvent } from "./replyTo.js";
+import { appendContextMessage as appendParticipantContext, initializeBranchedContext } from "./contextMessages.js";
 export { attachmentsDir } from "./sessionArtifacts.js";
 const pendingSessionBranches = new Map();
 export { AUTO_RESUME_PROMPT, MAX_AUTO_RESUME_ATTEMPTS, ORPHANED_RUN_MARKER, RESTART_INTERRUPTION_MARKER, SYSTEM_AUTHOR, };
@@ -194,6 +195,7 @@ export const sessions = {
             for (const entry of inheritedTranscript) {
                 appendTranscriptEvent(record.id, entry.event, () => typeof entry.event.createdAt === "number" ? entry.event.createdAt : now, entry.id);
             }
+            initializeBranchedContext(record.id, inheritedTranscript);
             await flushTranscript(record.id);
             persistSummary(record);
             sessionState.emitter.emit("change", record);
@@ -224,6 +226,21 @@ export const sessions = {
         for (const record of sessionState.records.values())
             reconcileOrphanedRun(record);
         return sessionState.activeRuns.size() + sessionState.resumePending.size();
+    },
+    async appendContextMessage(commandId, id, input) {
+        const record = sessionState.records.get(id);
+        if (!record)
+            throw new Error("unknown session");
+        const { event, replayed } = await appendParticipantContext(id, commandId, input);
+        if (replayed)
+            return event;
+        record.lastActivityAt = event.createdAt;
+        record.lastMessagePreview = previewText(event.text);
+        record.eventCount += 1;
+        persistSummary(record);
+        sessionState.emitter.emit("event", { sessionId: id, event, eventId: event.eventId });
+        sessionState.emitter.emit("change", record);
+        return event;
     },
     // Continues a session's actual conversation via --resume — the agent keeps
     // whatever context it had, and produces a fresh outcome that may differ from

@@ -13,6 +13,7 @@ import {
   sessionsDir,
 } from "./sessionArtifacts.js";
 import { sessionState } from "./state.js";
+import { recoverContextMessages } from "./contextMessages.js";
 
 export function inferProjectKey(dir: string): string | null {
   for (const project of projectStore.list()) {
@@ -133,6 +134,7 @@ export function restoreFromDisk(): void {
     }
 
     sessionState.records.set(record);
+    recoverContextMessages(record.id, record.agent);
 
     if (record.status === "running") {
       const lastUserIndex = transcript.findLastIndex((event) => event.type === "user_message");

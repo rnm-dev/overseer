@@ -204,8 +204,9 @@ describe("Codex app-server driver", () => {
   it("creates a native thread and normalizes messages, tools, edits, usage and terminal outcome", async () => {
     const instance = runtime();
     let backendState: unknown;
+    let accepted = 0;
     try {
-      const result = await collect(instance, options({ model: "gpt-5.4", onBackendState: (state) => { backendState = state; } }));
+      const result = await collect(instance, options({ model: "gpt-5.4", onBackendState: (state) => { backendState = state; }, onAccepted: () => { accepted += 1; } }));
       assert.equal(result.code, 0);
       const init = result.events.find((event) => event.type === "system");
       assert.equal(init?.session_id, "thread-1");
@@ -217,6 +218,7 @@ describe("Codex app-server driver", () => {
       assert.equal(terminal?.is_error, false);
       assert.deepEqual(terminal?.usage, { input_tokens: 11, output_tokens: 7, cache_read_input_tokens: 3 });
       assert.deepEqual(backendState, { turnId: "turn-1", status: "inProgress", runtimeGeneration: 1 });
+      assert.equal(accepted, 1);
     } finally {
       await instance.stop();
     }

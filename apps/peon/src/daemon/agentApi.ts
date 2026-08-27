@@ -12,6 +12,7 @@ import {
   type SessionCatalogReader,
   type SessionTranscriptEventContract,
   type ProjectSessionContract,
+  CONTEXT_ONLY_MESSAGES_CAPABILITY,
   sessions,
   toPublicSessionRecord,
   type StatsPeriod,
@@ -252,7 +253,7 @@ function agentStatusView() {
     activeSessionCount: sessions.activeCount(),
     sessionCount: sessions.list().length,
     filesEnabled: Boolean(settings.get().fileTransferRoot),
-    capabilities: [MANAGED_PLUGIN_INQUIRY_CAPABILITY, ARMORY_PROJECT_PACKAGES_CAPABILITY],
+    capabilities: [MANAGED_PLUGIN_INQUIRY_CAPABILITY, ARMORY_PROJECT_PACKAGES_CAPABILITY, CONTEXT_ONLY_MESSAGES_CAPABILITY],
     agentAuth: (() => {
       const s = getAgentDriver("claude-code")?.services.status?.() as { authState?: string; available?: boolean; checkedAt?: number } | undefined;
       return { authState: s?.authState, available: s?.available, checkedAt: s?.checkedAt };
@@ -311,6 +312,7 @@ export function createAgentRouter(options: AgentRouterOptions = {}): express.Rou
     list: () => sessions.list(),
     page: (options) => sessions.page(options),
     get: (id) => sessions.get(id),
+    appendContextMessage: (commandId, id, input) => sessions.appendContextMessage(commandId, id, input),
     rename: (id, title) => sessions.rename(id, title),
     start: (sessionOptions) => sessions.start(sessionOptions),
     branch: (id, branchOptions) => sessions.branch(id, branchOptions),

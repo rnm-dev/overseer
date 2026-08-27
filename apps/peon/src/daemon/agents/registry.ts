@@ -30,7 +30,7 @@ export interface ReasoningEffortInfo {
 }
 
 export interface AgentEvent extends Record<string, unknown> {
-  type: "system" | "assistant" | "user" | "user_message" | "result" | "stderr" | "preview" | "warning";
+  type: "system" | "assistant" | "user" | "user_message" | "participant_message" | "result" | "stderr" | "preview" | "warning";
   createdAt?: number;
   sourceTimestamp?: string;
 }
@@ -79,6 +79,7 @@ export interface AgentRunOptions {
   reasoningEffort?: ReasoningEffort;
   attachments?: unknown[];
   onBackendState?(state: AgentBackendState): void;
+  onAccepted?(): void;
 }
 
 export interface AgentSteerInput {
@@ -229,6 +230,7 @@ function previewEvent(raw: Record<string, unknown>): AgentEvent | null {
       ...(replyTo ? { replyTo } : {}), ...timestamps,
     };
   }
+  if (raw.type === "participant_message") return raw as AgentEvent;
   if (raw.type === "stderr") return { type: "stderr", text: typeof raw.text === "string" ? raw.text : String(raw.text ?? ""), ...timestamps };
   return null;
 }

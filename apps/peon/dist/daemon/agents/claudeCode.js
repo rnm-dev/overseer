@@ -85,10 +85,17 @@ export function normalizeClaudeCodeEvent(raw, cwd) {
     return null;
 }
 export function createClaudeCodeEventNormalizer(opts, guard = guardToolOutput) {
+    let accepted = false;
     return (raw, emit) => {
         const event = normalizeClaudeCodeEvent(raw, opts.cwd);
         if (!event)
             return;
+        const providerAccepted = raw.type === "assistant" || raw.type === "user"
+            || (raw.type === "system" && raw.subtype === "init");
+        if (!accepted && providerAccepted) {
+            accepted = true;
+            opts.onAccepted?.();
+        }
         if (event.type !== "user") {
             emit(event);
             return;

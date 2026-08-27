@@ -5,7 +5,7 @@ import express from "express";
 import { ATTACHMENTS_MAX_COUNT, ATTACHMENTS_MAX_FILE_BYTES } from "../../uploads.js";
 import { getAgentDriver, listAgentDrivers } from "../../agents/index.js";
 import { narrowNewSessionAgent, narrowModel, narrowReasoningEffort, type CodingAgent, type ReasoningEffort } from "../../providers/modelCatalog.js";
-import { parseReplyTo, ReplyToError, type AttachmentInfo, type ReplyTo, type SessionJsonService, type SessionRecord } from "../../sessions/index.js";
+import { ContextMessageError, parseContextMessage, parseReplyTo, ReplyToError, type AttachmentInfo, type ReplyTo, type SessionJsonService, type SessionRecord } from "../../sessions/index.js";
 import { toPublicSessionRecord } from "../../sessions/index.js";
 import { toSessionSummary } from "../../sessions/index.js";
 import { parseSessionPageRequest, SessionPaginationError } from "../../sessions/index.js";
@@ -38,6 +38,7 @@ export const INCLUDED_FLEET_SESSION_ROUTES = [
   "DELETE /sessions/:id",
   "POST /sessions",
   "POST /sessions/:id/followup",
+  "POST /sessions/:id/context-messages",
   "POST /sessions/:id/branch",
   "POST /sessions/:id/queue",
   "GET /sessions/:id/queue",
@@ -84,6 +85,7 @@ const IMAGE_EXT_BY_MIME: Record<string, string> = {
 };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const COMMAND_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function narrowPermissionMode(value: unknown): "plan" | undefined {
   return value === "plan" ? "plan" : undefined;
@@ -334,6 +336,25 @@ export function attachSessionRoutes(router: express.Router, options: FleetSessio
       if (message === "a resume is already in progress") return fail(res, 409, "RESUME_IN_PROGRESS", message);
       if (message === "unknown session") return fail(res, 404, "UNKNOWN_SESSION", message);
       fail(res, 500, "INTERNAL", message);
+    }
+  });
+
+  router.post("/sessions/:id/context-messages", async (req, res) => {
+    if (!sessions.get(req.params.id)) return fail(res, 404, "UNKNOWN_SESSION", "unknown session");
+    const requestId = typeof req.headers["peon-request-id"] === "string" ? req.headers["peon-request-id"] : "";
+    if (!COMMAND_ID_RE.test(requestId)) return fail(res, 400, "BAD_CONTEXT_MESSAGE", "Peon-Request-Id is required");
+    try {
+      const attachments = resolveAttachments(req.body?.attachments, getFileTransferRoot());
+      const input = parseContextMessage(req.body, attachments);
+      const event = await sessions.appendContextMessage(requestId, req.params.id, input);
+      res.status(201).json(event);
+    } catch (error) {
+      if (error instanceof ContextMessageError) {
+        const status = error.code === "BAD_CONTEXT_MESSAGE" || error.code === "BAD_MENTION" ? 400 : 409;
+        return fail(res, status, error.code, error.message);
+      }
+      if (error instanceof AttachmentError) return fail(res, 400, "BAD_CONTEXT_MESSAGE", "context message attachments are invalid");
+      throw error;
     }
   });
 

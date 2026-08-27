@@ -6,6 +6,7 @@ import { classifyFromResultEvent } from "./runtime.js";
 import { RESTART_INTERRUPTION_MARKER } from "./constants.js";
 import { eventCountFromTranscript, persistSummary, previewFromTranscript, readTranscript, sessionsDir, } from "./sessionArtifacts.js";
 import { sessionState } from "./state.js";
+import { recoverContextMessages } from "./contextMessages.js";
 export function inferProjectKey(dir) {
     for (const project of projectStore.list()) {
         if (dir === project.dir)
@@ -126,6 +127,7 @@ export function restoreFromDisk() {
             persistSummary(record);
         }
         sessionState.records.set(record);
+        recoverContextMessages(record.id, record.agent);
         if (record.status === "running") {
             const lastUserIndex = transcript.findLastIndex((event) => event.type === "user_message");
             const lastResultIndex = transcript.findLastIndex((event) => event.type === "result");

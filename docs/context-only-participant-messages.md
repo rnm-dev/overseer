@@ -272,6 +272,14 @@ Peon advertises `context-only-messages-v1` only after storage, the Fleet route,
 transcript publication, delivery claims, both provider adapters and recovery
 work together. The contract task alone does not advertise it.
 
+The Peon implementation stores its atomic sequence, idempotency, pending-range
+and delivered-through state in the mode-0600 per-session sidecar
+`context-messages-v1.json`. It commits that state before the immutable
+transcript append and repairs a missing append from the sidecar during daemon
+recovery. Codex advances a claim after app-server accepts `turn/start`; Claude
+does so after its initialization event. Setup refusal releases the claim, and a
+replacement logical turn reclaims an interrupted pre-acceptance range.
+
 Without the capability, clients hide people-only send and structured mention
 actions while ordinary agent follow-ups continue unchanged. A legacy client
 encountering `participant_message` must ignore it or render a bounded generic

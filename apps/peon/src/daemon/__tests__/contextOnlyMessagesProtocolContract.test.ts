@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import Ajv2020 from "ajv/dist/2020.js";
+import { registrationPayload } from "../overseer/peonRegistrar.js";
 
 const repositoryRoot = path.resolve(import.meta.dirname, "../../../../..");
 const contractRoot = path.join(repositoryRoot, "docs/protocol/context-only-messages-v1");
@@ -135,6 +136,7 @@ test("Fleet HTTP remains authoritative and capability rollout is fail-closed", (
   assert.equal(fixtures.stableErrors.UNSUPPORTED_CAPABILITY, 409);
   assert.equal(fixtures.mixedVersion.advertiseOnlyWhenComplete, true);
   assert.equal(fixtures.mixedVersion.ordinaryAgentRequestsWithoutMentions, "unchanged");
+  assert.ok(registrationPayload("00000000-0000-4000-8000-000000000001").capabilities.includes(fixtures.capability));
 });
 
 test("agent-invoking routes preserve normalized human mentions", () => {

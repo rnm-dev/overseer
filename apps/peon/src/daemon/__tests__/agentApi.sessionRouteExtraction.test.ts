@@ -76,6 +76,7 @@ function createHarness() {
     rename: 0,
     start: 0,
     resume: 0,
+    appendContextMessage: 0,
     enqueue: 0,
     queued: 0,
     editQueued: 0,
@@ -149,6 +150,17 @@ function createHarness() {
       calls.resume++;
       return records.get(_id) ?? makeRecord(_id);
     },
+    appendContextMessage: async (commandId, id, input) => {
+      calls.appendContextMessage++;
+      return {
+        type: "participant_message",
+        eventId: "participant_1",
+        commandId,
+        contextSeq: 1,
+        createdAt: 10,
+        ...input,
+      };
+    },
     enqueue: (_id, _prompt, _attachments, permissionMode, author, _model, reasoningEffort, commandId, _startNow) => {
       calls.enqueue++;
       calls.queueArgs.push({ id: _id, author, commandId });
@@ -215,7 +227,32 @@ function createHarness() {
 }
 
 test("route inventory includes expected session JSON families", () => {
-  assert.equal(INCLUDED_FLEET_SESSION_ROUTES.length, 14);
+  assert.equal(INCLUDED_FLEET_SESSION_ROUTES.length, 15);
+});
+
+test("context-only route requires idempotency and relays normalized principals without invoking an agent", async () => {
+  const harness = createHarness();
+  const base = await harness.base;
+  harness.records.set("shared", makeRecord("shared"));
+  const requestId = randomUUID();
+  const response = await fetch(`${base}/sessions/shared/context-messages`, {
+    method: "POST",
+    headers: { ...headers, "Content-Type": "application/json", "Peon-Request-Id": requestId },
+    body: JSON.stringify({ text: "hello Bob", author: { kind: "user", id: "alice", label: "Alice" }, mentions: [] }),
+  });
+  assert.equal(response.status, 201);
+  assert.equal((await response.json() as { commandId: string }).commandId, requestId);
+  assert.equal(harness.calls.appendContextMessage, 1);
+  assert.equal(harness.calls.resume, 0);
+  assert.equal(harness.calls.enqueue, 0);
+
+  const missingId = await fetch(`${base}/sessions/shared/context-messages`, {
+    method: "POST", headers: { ...headers, "Content-Type": "application/json" },
+    body: JSON.stringify({ text: "hello", author: { kind: "user", id: "alice", label: "Alice" } }),
+  });
+  assert.equal(missingId.status, 400);
+  assert.equal((await missingId.json() as { code: string }).code, "BAD_CONTEXT_MESSAGE");
+  await harness.close();
 });
 
 test("list sessions with pagination delegates to session service", async () => {

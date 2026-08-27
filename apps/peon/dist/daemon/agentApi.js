@@ -4,7 +4,7 @@ import { eventLoopDelayStats } from "./runtime/eventLoopMonitor.js";
 import path from "node:path";
 import express from "express";
 import { DaemonConfigurationState, settings } from "./settings/index.js";
-import { sessionArtifactInventory, flushTranscript, readCommittedTranscriptEntries, subscribeTranscriptCommits, sessions, toPublicSessionRecord, } from "./sessions/index.js";
+import { sessionArtifactInventory, flushTranscript, readCommittedTranscriptEntries, subscribeTranscriptCommits, CONTEXT_ONLY_MESSAGES_CAPABILITY, sessions, toPublicSessionRecord, } from "./sessions/index.js";
 import { createProjectService, projectStore } from "./projects/index.js";
 import { pairing } from "./identity/pairing.js";
 import { ensurePeonId } from "./identity/peonIdentity.js";
@@ -170,7 +170,7 @@ function agentStatusView() {
         activeSessionCount: sessions.activeCount(),
         sessionCount: sessions.list().length,
         filesEnabled: Boolean(settings.get().fileTransferRoot),
-        capabilities: [MANAGED_PLUGIN_INQUIRY_CAPABILITY, ARMORY_PROJECT_PACKAGES_CAPABILITY],
+        capabilities: [MANAGED_PLUGIN_INQUIRY_CAPABILITY, ARMORY_PROJECT_PACKAGES_CAPABILITY, CONTEXT_ONLY_MESSAGES_CAPABILITY],
         agentAuth: (() => {
             const s = getAgentDriver("claude-code")?.services.status?.();
             return { authState: s?.authState, available: s?.available, checkedAt: s?.checkedAt };
@@ -211,6 +211,7 @@ export function createAgentRouter(options = {}) {
         list: () => sessions.list(),
         page: (options) => sessions.page(options),
         get: (id) => sessions.get(id),
+        appendContextMessage: (commandId, id, input) => sessions.appendContextMessage(commandId, id, input),
         rename: (id, title) => sessions.rename(id, title),
         start: (sessionOptions) => sessions.start(sessionOptions),
         branch: (id, branchOptions) => sessions.branch(id, branchOptions),

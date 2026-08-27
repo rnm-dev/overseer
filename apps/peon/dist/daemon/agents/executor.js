@@ -12,7 +12,7 @@ export function normalizeStoredAgentEvent(agent, raw) {
         return driver.normalizeStoredEvent(raw);
     // Keep historical transcripts inspectable even when their runtime driver is
     // no longer installed. Only already-canonical envelopes cross this fallback.
-    if (typeof raw.type !== "string" || !["system", "assistant", "user", "user_message", "result", "stderr", "preview", "warning"].includes(raw.type))
+    if (typeof raw.type !== "string" || !["system", "assistant", "user", "user_message", "participant_message", "result", "stderr", "preview", "warning"].includes(raw.type))
         return null;
     return raw;
 }

@@ -8,6 +8,7 @@ export { DEFAULT_SESSION_CATALOG_PAGE_LIMIT, MAX_SESSION_CATALOG_EVENTS, MAX_SES
 export { DEFAULT_SESSION_PAGE_LIMIT, MAX_SESSION_PAGE_LIMIT, SessionPaginationError, paginateSessions, parseSessionPageRequest, } from "./sessionPagination.js";
 export { PAYLOAD_PROTECTION_RATIO, PAYLOAD_SAFE_TARGET_RATIO, PAYLOAD_WARNING_RATIO, SESSION_PAYLOAD_LIMIT_BYTES, guardToolOutput, utf8Prefix, utf8Suffix, } from "./sessionPayloadGuard.js";
 export { sessionPresence, } from "./sessionPresence.js";
+export { CONTEXT_ONLY_MESSAGES_CAPABILITY, ContextMessageError, parseContextMessage, } from "./contextMessages.js";
 export { CODEX_OUTCOME_SCHEMA, OUTCOME_SCHEMA, buildAugmentedPrompt, buildSystemPrompt, } from "./sessionPrompts.js";
 export { statsForPeriod, } from "./sessionStats.js";
 export { toSessionSummary, } from "./sessionSummary.js";

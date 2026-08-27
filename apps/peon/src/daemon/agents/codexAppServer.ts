@@ -488,6 +488,7 @@ export function createCodexAppServerRun(opts: AgentRunOptions, runtime: CodexApp
       if (typeof nativeTurnId !== "string" || !nativeTurnId) throw new Error("Codex app-server turn/start returned no turn id");
       turnId = nativeTurnId;
       opts.onBackendState?.({ turnId, status: "inProgress", runtimeGeneration: generation });
+      opts.onAccepted?.();
     } catch (error) {
       fail(error instanceof Error ? error.message : String(error));
     }

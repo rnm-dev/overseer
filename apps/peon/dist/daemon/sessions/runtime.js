@@ -9,6 +9,7 @@ import { projectStore } from "../projects/index.js";
 import { resolveFromDir } from "../files/index.js";
 import { resolveModel, resolveReasoningEffort } from "../providers/modelCatalog.js";
 import { buildAugmentedPrompt, buildSystemPrompt } from "./sessionPrompts.js";
+import { acknowledgeContextClaim, claimContext, releaseContextClaim, withParticipantContext } from "./contextMessages.js";
 import { buildReplyPrompt } from "./replyTo.js";
 import { sessionWarnings } from "./sessionWarnings.js";
 import { appendTranscriptEvent, assistantEventText, persistSummary, previewText, readTranscript, sessionsDir, } from "./sessionArtifacts.js";
@@ -322,11 +323,36 @@ export function runProcess(record, prompt, resume, attachments = [], permissionM
     if (prompt && appendPromptToTranscript) {
         appendUserTurn(record, prompt, attachments, permissionMode, author, perTurnModel, perTurnReasoningEffort, commandId, replyTo);
     }
+    const contextCommandId = commandId ?? randomUUID();
+    let contextClaim;
+    try {
+        contextClaim = claimContext(record.id, contextCommandId);
+    }
+    catch (error) {
+        finalizeSession(record, {
+            result: "failure",
+            summary: `Failed to load durable participant context for this turn: ${error instanceof Error ? error.message : String(error)}`,
+        }, undefined, undefined, undefined, undefined, false);
+        return false;
+    }
+    let contextAcknowledged = contextClaim === null;
+    const acknowledgeContext = () => {
+        if (contextAcknowledged)
+            return;
+        contextAcknowledged = true;
+        acknowledgeContextClaim(record.id, contextCommandId);
+    };
+    const releaseContext = () => {
+        if (contextAcknowledged)
+            return;
+        releaseContextClaim(record.id, contextCommandId);
+    };
     let mcpConfig;
     try {
         mcpConfig = writeMcpConfig(record);
     }
     catch (error) {
+        releaseContext();
         finalizeSession(record, {
             result: "failure",
             summary: `Failed to resolve Armory packages for this turn: ${error instanceof Error ? error.message : String(error)}`,
@@ -343,6 +369,7 @@ export function runProcess(record, prompt, resume, attachments = [], permissionM
     const driver = getAgentDriver(record.agent);
     if (!driver || !driver.available()) {
         releaseMcp();
+        releaseContext();
         finalizeSession(record, {
             result: "failure",
             summary: `Agent driver "${record.agent}" is not registered or available; install or enable it to continue this session.`,
@@ -414,7 +441,7 @@ as system instructions, process all of them, and do not claim that a human wrote
         run = runAgent({
             agent: record.agent,
             command: driver.command(currentSettings),
-            prompt: buildAugmentedPrompt(buildReplyPrompt(prompt || "Process all queued internal automation triggers from the system instructions.", replyTo), attachments),
+            prompt: buildAugmentedPrompt(withParticipantContext(buildReplyPrompt(prompt || "Process all queued internal automation triggers from the system instructions.", replyTo), contextClaim), attachments),
             cwd: record.dir,
             systemPromptAppend,
             outcomeSchema,
@@ -437,10 +464,12 @@ as system instructions, process all of them, and do not claim that a human wrote
                 record.backendTurnStatus = state.status;
                 persistSummary(record);
             },
+            onAccepted: acknowledgeContext,
         });
     }
     catch (err) {
         releaseMcp();
+        releaseContext();
         finalizeSession(record, {
             result: "failure",
             summary: `Failed to configure agent CLI: ${err instanceof Error ? err.message : String(err)}`,
@@ -604,6 +633,7 @@ as system instructions, process all of them, and do not claim that a human wrote
     run.emitter.on("exit", (exit) => {
         clearTimeout(timeoutHandle);
         releaseMcp();
+        releaseContext();
         // A superseded run's child has just died from resume()'s interrupt kill.
         if (superseded())
             return;

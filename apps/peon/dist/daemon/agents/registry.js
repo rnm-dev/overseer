@@ -78,6 +78,8 @@ function previewEvent(raw) {
             ...(replyTo ? { replyTo } : {}), ...timestamps,
         };
     }
+    if (raw.type === "participant_message")
+        return raw;
     if (raw.type === "stderr")
         return { type: "stderr", text: typeof raw.text === "string" ? raw.text : String(raw.text ?? ""), ...timestamps };
     return null;
