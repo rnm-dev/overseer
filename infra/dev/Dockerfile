@@ -15,6 +15,7 @@ WORKDIR /repo
 COPY package.json package-lock.json ./
 COPY apps/server/package.json ./apps/server/
 COPY apps/web/package.json ./apps/web/
+COPY packages/protocol/package.json ./packages/protocol/
 RUN npm ci
 
 CMD ["npm", "run", "dev", "-w", "@rnm-dev/overseer-server"]

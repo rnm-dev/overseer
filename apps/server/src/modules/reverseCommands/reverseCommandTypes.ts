@@ -1,13 +1,37 @@
 import { createHash } from "node:crypto";
+import {
+  REVERSE_COMMAND_CAPABILITY,
+  REVERSE_COMMAND_MAX_FRAME_BYTES,
+  REVERSE_COMMAND_OPERATIONS,
+  type JsonObject,
+  type JsonValue,
+  type ReverseCommandAcceptedFrame,
+  type ReverseCommandEnvelope,
+  type ReverseCommandOperation,
+  type ReverseCommandResultFrame,
+  type ReverseCommandResultStatus,
+  type ReverseCommandStatusFrame,
+  type ReverseCommandTarget,
+} from "@rnm-dev/protocol";
 import type { AuthenticatedActor } from "../auth/index.js";
 
-export const REVERSE_COMMAND_CAPABILITY = "reverse-command-v1";
-export const REVERSE_COMMAND_MAX_FRAME_BYTES = 60 * 1024;
+export {
+  REVERSE_COMMAND_CAPABILITY,
+  REVERSE_COMMAND_MAX_FRAME_BYTES,
+  REVERSE_COMMAND_OPERATIONS,
+};
+export type {
+  JsonObject,
+  JsonValue,
+  ReverseCommandAcceptedFrame,
+  ReverseCommandEnvelope,
+  ReverseCommandOperation,
+  ReverseCommandResultFrame,
+  ReverseCommandResultStatus,
+  ReverseCommandStatusFrame,
+  ReverseCommandTarget,
+};
 
-export const REVERSE_COMMAND_OPERATIONS = [
-] as const;
-
-export type ReverseCommandOperation = typeof REVERSE_COMMAND_OPERATIONS[number];
 export type ReverseCommandState =
   | "created"
   | "sent"
@@ -16,74 +40,8 @@ export type ReverseCommandState =
   | "terminal"
   | "unknown"
   | "send_failed";
-export type ReverseCommandResultStatus =
-  | "applied"
-  | "noop"
-  | "rejected"
-  | "conflict"
-  | "cancelled"
-  | "failed";
-
-export type JsonValue =
-  | null
-  | boolean
-  | number
-  | string
-  | JsonValue[]
-  | { [key: string]: JsonValue };
-export type JsonObject = { [key: string]: JsonValue };
-
 /** @deprecated Use AuthenticatedActor from the auth module for new server code. */
 export type ReverseCommandActor = AuthenticatedActor;
-
-export interface ReverseCommandTarget {
-  peonId: string;
-  sessionId?: string;
-  projectId?: string;
-}
-
-export interface ReverseCommandEnvelope {
-  type: "command";
-  protocol: 1;
-  capability: typeof REVERSE_COMMAND_CAPABILITY;
-  commandId: string;
-  operation: ReverseCommandOperation;
-  target: ReverseCommandTarget;
-  actor: AuthenticatedActor;
-  payload: JsonObject;
-  expected?: JsonObject | null;
-  requestedAt: number;
-}
-
-export interface ReverseCommandAcceptedFrame {
-  type: "command_accepted";
-  protocol: 1;
-  commandId: string;
-  operation: ReverseCommandOperation;
-  state: "accepted" | "running";
-  replayed: boolean;
-  acceptedAt: number;
-}
-
-export interface ReverseCommandResultFrame {
-  type: "command_result";
-  protocol: 1;
-  commandId: string;
-  operation: ReverseCommandOperation;
-  status: ReverseCommandResultStatus;
-  code: string;
-  message?: string;
-  completedAt: number;
-  result: JsonObject | null;
-}
-
-export interface ReverseCommandStatusFrame {
-  type: "command_status";
-  protocol: 1;
-  commandId: string;
-  state: "unknown" | "accepted" | "running" | "terminal";
-  result?: ReverseCommandResultFrame;
-}
 
 export interface DurableReverseCommandResult {
   channel: "command";

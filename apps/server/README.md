@@ -4,7 +4,7 @@ Fleet control plane for Peon. Holds a registry of Peons and fans out control
 over their authenticated Tailscale endpoints, so one operator API drives the
 fleet.
 
-See [`PROTOCOL.md`](./PROTOCOL.md) for the wire contract.
+See [`../../packages/protocol/PROTOCOL.md`](../../packages/protocol/PROTOCOL.md) for the wire contract.
 
 ## How it fits together
 
@@ -94,4 +94,4 @@ every setting written inline.
 - Operator dashboard UI (this is API-only so far).
 - Per-peon tokens (one shared fleet token today).
 - Concurrency/admission policy (per-peon ceilings, per-session soft-locks) — the
-  place to enforce what the peon deliberately doesn't (see PROTOCOL.md).
+  place to enforce what the peon deliberately doesn't (see the shared protocol reference).

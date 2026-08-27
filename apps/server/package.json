@@ -17,6 +17,7 @@
     "verify": "npm test && npm run typecheck"
   },
   "dependencies": {
+    "@rnm-dev/protocol": "^1.0.0",
     "express": "^5.1.0",
     "pg": "^8.13.0",
     "ws": "^8.18.0"

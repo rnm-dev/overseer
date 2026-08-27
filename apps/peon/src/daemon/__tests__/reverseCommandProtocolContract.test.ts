@@ -3,12 +3,12 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
 
-const root = path.resolve(import.meta.dirname, "../../..");
-const schema = JSON.parse(readFileSync(path.join(root, "protocol/reverse-command-v1/schema.json"), "utf8"));
-const fixtures = JSON.parse(readFileSync(path.join(root, "protocol/reverse-command-v1/fixtures.json"), "utf8"));
+const root = path.resolve(import.meta.dirname, "../../../../..");
+const schema = JSON.parse(readFileSync(path.join(root, "packages/protocol/reverse-command-v1/schema.json"), "utf8"));
+const fixtures = JSON.parse(readFileSync(path.join(root, "packages/protocol/reverse-command-v1/fixtures.json"), "utf8"));
 
 test("reverse command v1 fixtures stay aligned with the normative schema", () => {
-  assert.equal(schema.$id, "https://peon.local/protocol/reverse-command-v1/schema.json");
+  assert.equal(schema.$id, "urn:rnm-dev:protocol:reverse-command-v1");
   assert.equal(fixtures.contractVersion, 1);
   assert.equal(fixtures.capability, "reverse-command-v1");
   assert.ok(!fixtures.enabledOperations.some((operation: string) => operation.startsWith("session.")));
@@ -49,14 +49,7 @@ test("request/response reads owned by Fleet HTTP are not reverse command operati
   assert.equal(operations.some((operation) => operation.startsWith("armory.")), false);
 });
 
-test("Peon and Overseer reverse-command-v1 vendors are byte-identical", () => {
-  const overseerRoot = path.resolve(root, "..");
-  assert.equal(
-    readFileSync(path.join(root, "protocol/reverse-command-v1/schema.json"), "utf8"),
-    readFileSync(path.join(overseerRoot, "server/protocol/reverse-command-v1/schema.json"), "utf8"),
-  );
-  assert.equal(
-    readFileSync(path.join(root, "protocol/reverse-command-v1/fixtures.json"), "utf8"),
-    readFileSync(path.join(overseerRoot, "server/protocol/reverse-command-v1/fixtures.json"), "utf8"),
-  );
+test("Peon reads the repository's canonical reverse-command-v1 artifacts", () => {
+  assert.equal(fixtures.capability, "reverse-command-v1");
+  assert.equal(schema.$defs.command.properties.capability.const, fixtures.capability);
 });

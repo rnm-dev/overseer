@@ -88,5 +88,5 @@ npm run dev
 
 Run `npm run verify` before submitting a change.
 
-See the [protocol reference](https://github.com/rnm-dev/overseer/blob/master/apps/peon/PROTOCOL.md)
+See the [protocol reference](https://github.com/rnm-dev/overseer/blob/master/packages/protocol/PROTOCOL.md)
 for the full wire contract.

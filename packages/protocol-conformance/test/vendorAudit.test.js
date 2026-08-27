@@ -6,15 +6,15 @@ import { auditVendoredContracts } from "../src/index.js";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 
-test("shared schema and fixture vendors have an executable, content-free drift audit", () => {
+test("canonical protocol artifacts have an executable, content-free integrity audit", () => {
   const report = auditVendoredContracts(repositoryRoot, [
     {
       id: "reverse-command-v1-schema",
-      copies: ["apps/server/protocol/reverse-command-v1/schema.json", "apps/peon/protocol/reverse-command-v1/schema.json"],
+      copies: ["packages/protocol/reverse-command-v1/schema.json"],
     },
     {
       id: "reverse-command-v1-fixtures",
-      copies: ["apps/server/protocol/reverse-command-v1/fixtures.json", "apps/peon/protocol/reverse-command-v1/fixtures.json"],
+      copies: ["packages/protocol/reverse-command-v1/fixtures.json"],
     }
   ]);
 

@@ -2,18 +2,18 @@
 
 Peon, the Overseer server, the web dashboard and the Flutter client live in a
 single repository — the existing `rnm-dev/overseer`, so the remote, the Kamal
-config and the deployment paths survive the move. Planned as epic **Монорепо**
-(OVSR-237 … OVSR-241). The server, web dashboard, Peon and cross-platform
-Flutter client now live here; the shared protocol package remains to be moved.
+config and the deployment paths survive the move. Completed as epic **Монорепо**
+(OVSR-237 … OVSR-241). The server, web dashboard, Peon, cross-platform Flutter
+client and shared protocol package now live here.
 
 ## Why
 
-One wire contract currently lives in four places, kept in sync by hand:
+Before OVSR-239, one wire contract lived in four places, kept in sync by hand:
 
-- `peon/PROTOCOL.md` — the canonical copy;
-- `overseer/PROTOCOL.md` — a copy whose own header calls it a *vendored
+- `apps/peon/PROTOCOL.md` — the canonical copy;
+- `apps/server/PROTOCOL.md` — a copy whose own header called it a *vendored
   snapshot* and asks the reader to re-copy it when the contract changes;
-- `overseer/protocol/reverse-command-v1/{schema.json,fixtures.json}` — vendored
+- `apps/{server,peon}/protocol/reverse-command-v1/{schema.json,fixtures.json}` — vendored
   the same way;
 - `overseer-app/lib/features/*/domain/*_models.dart` — a third, hand-written
   implementation of the same messages (`fleet_models.dart`,
@@ -166,8 +166,10 @@ Each step leaves the tree working.
 1. **OVSR-238** — *released to production.* Flattened checkout root, npm
    workspaces, `apps/server` and `apps/web`, root `verify`, `infra/dev` image,
    rewritten compose mounts and Kamal build context.
-2. **OVSR-239** — `packages/protocol`; server and web move onto it, then publish
-   it as `@rnm-dev/protocol`.
+2. **OVSR-239** — *done.* `packages/protocol` owns the human-readable contract,
+   reverse-command schema and fixtures, and generated TypeScript types. Server,
+   web and Peon depend on it as `@rnm-dev/protocol`; conformance tests read the
+   canonical artifacts directly instead of comparing vendored copies.
 3. **OVSR-240** — *released.* Peon lives in `apps/peon` as the
    `@rnm-dev/peon` workspace. Public `0.11.3` was published to npm on
    2026-07-30; `0.12.8` was published and canary-updated on 2026-08-12. Both

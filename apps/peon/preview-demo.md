@@ -99,7 +99,7 @@ peon remote on 0.0.0.0:4570
 | [`src/daemon/`](src/daemon/) | Опрос, обработка задач, сессии, агенты, интеграции, хранение данных и API агента |
 | [`src/cli/`](src/cli/) | Команды жизненного цикла, конфигурации, интеграций и сессий |
 | [`src/shared/`](src/shared/) | Общие вспомогательные функции и логика репозитория |
-| [`PROTOCOL.md`](PROTOCOL.md) | Протокол Overseer ↔ peon и описание эндпоинтов `/agent/v1` |
+| [`../../packages/protocol/PROTOCOL.md`](../../packages/protocol/PROTOCOL.md) | Протокол Overseer ↔ peon и описание эндпоинтов `/agent/v1` |
 | [`CLAUDE.md`](CLAUDE.md) | Архитектурные решения, история отладки и рабочие заметки |
 
 ## Локальная разработка
@@ -131,7 +131,7 @@ peon settings set agentCommand claude
 peon settings set codexCommand codex
 ```
 
-Полный список настроек и детали развёртывания смотрите в [`README.md`](README.md). Описание API для взаимодействия между машинами — в [`PROTOCOL.md`](PROTOCOL.md).
+Полный список настроек и детали развёртывания смотрите в [`README.md`](README.md). Описание API для взаимодействия между машинами — в [`../../packages/protocol/PROTOCOL.md`](../../packages/protocol/PROTOCOL.md).
 
 ---
 

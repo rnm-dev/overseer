@@ -6,7 +6,7 @@ import {
   readDeclaredOperations,
 } from "../src/index.js";
 
-test("Overseer and Peon declare the same reverse-command operation set", () => {
+test("Overseer and Peon consume the canonical reverse-command operation set", () => {
   const { overseer, peon, missingFromPeon, missingFromOverseer } = compareOperationRegistries();
   assert.deepEqual(overseer, []);
   assert.deepEqual(missingFromPeon, [], "operations Overseer sends that Peon does not advertise");

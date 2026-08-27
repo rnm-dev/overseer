@@ -1,17 +1,13 @@
 # Overseer ↔ Peon protocol (`/api/v1`)
 
-> **Vendored snapshot.** The canonical copy is
-> [`../peon/PROTOCOL.md`](../peon/PROTOCOL.md). Keep the wire contract identical
-> apart from this note and the monorepo-relative links below.
-
-The machine-facing API a **overseer** (fleet control plane) uses to drive many
+The machine-facing API an **Overseer** (fleet control plane) uses to drive many
 Peons. It shares the `/api/v1` namespace with the loopback-only CLI surface but
-has its own bearer auth, representations, and no human presence bookkeeping. Implemented in
-`src/daemon/agentApi.ts`, mounted at `/api/v1` ahead of the local-only
-gate in `controlServer.ts`.
+has its own bearer auth, representations, and no human presence bookkeeping.
+It is implemented in `apps/peon/src/daemon/agentApi.ts` and mounted at
+`/api/v1` ahead of the local-only gate in `controlServer.ts`.
 
 The normative correlated command lifecycle and fleet-surface migration matrix are
-defined in [`../peon/docs/reverse-command-protocol-v1.md`](../peon/docs/reverse-command-protocol-v1.md).
+defined in [`../../apps/peon/docs/reverse-command-protocol-v1.md`](../../apps/peon/docs/reverse-command-protocol-v1.md).
 Remote daemon pause/resume is intentionally local-only and is not part of the
 reverse command surface.
 
@@ -47,6 +43,13 @@ Errors are always `{ "error": "<human message>", "code": "<STABLE_CODE>" }` —
 `ATTACHMENT_TOO_LARGE`, `UNSUPPORTED_MEDIA_TYPE`, `INTERNAL`. `FORBIDDEN`
 indicates that an authenticated caller selected a host path the Peon process
 cannot read, or a path a project-file policy intentionally excludes.
+
+Managed-plugin inquiry routes additionally use `UNKNOWN_INQUIRY` and
+`INQUIRY_ACTOR_MISMATCH` as request errors. Durable terminal records carry
+`INQUIRY_CANCELLED`, `INQUIRY_EXPIRED`, `INQUIRY_TURN_ENDED`,
+`INQUIRY_RUNTIME_LOST`, `INQUIRY_STALE_GENERATION`, or `INQUIRY_FAILED` in
+their `terminalCode`. `Peon-Actor` is required for the inquiry response
+mutation.
 
 ## Pairing and enrollment (`/enroll`)
 
@@ -148,6 +151,9 @@ PATCH /api/v1/projects/:key/quick-links/:id update title and/or URL
 DELETE /api/v1/projects/:key/quick-links/:id delete one link
 GET   /api/v1/sessions                   list all sessions; ?limit=&cursor= enables keyset pagination
 GET   /api/v1/sessions/:id               one session
+GET   /api/v1/sessions/:id/inquiries     managed-plugin inquiry-v1 records for recovery
+GET   /api/v1/sessions/:id/inquiries/:inquiryId one managed-plugin inquiry
+POST  /api/v1/sessions/:id/inquiries/:inquiryId/respond explicit { action: "install"|"cancel" }
 PATCH /api/v1/sessions/:id               rename; body { title: string|null } (empty/null clears)
 DELETE /api/v1/sessions/:id              delete a session (record + files); 409 if running
 GET   /api/v1/sessions/:id/transcript    full event transcript; `?limit=&cursor=` enables pagination
@@ -161,7 +167,7 @@ POST  /api/v1/sessions/:id/followup      continue; body { prompt, permissionMode
 POST  /api/v1/sessions/:id/branch        copy Codex context into a new durable session; body { title?, lastTurnId? }
 POST  /api/v1/sessions/:id/queue         enqueue; same fields plus startNow? (default false)
 GET   /api/v1/sessions/:id/queue         persisted FIFO queue; items carry type: "queue"|"steer"
-PATCH /api/v1/sessions/:id/queue/:itemId edit a waiting item's prompt; body { prompt, replyTo? } (`null` clears; omission preserves)
+PATCH /api/v1/sessions/:id/queue/:itemId edit a waiting item's prompt; body { prompt, replyTo? }
 POST  /api/v1/sessions/:id/queue/:itemId/steer mark one item as steer, move it to the head, and dispatch it now
 POST  /api/v1/sessions/:id/queue/:itemId/send deprecated compatibility alias for /steer
 DELETE /api/v1/sessions/:id/queue/:itemId remove a waiting item
@@ -179,10 +185,10 @@ Armory result projection or lifecycle event.
 `armory-project-packages-v1` is the exact capability for the profile and
 assignment resources. Its normative JSON Schema and fixtures are repository
 documentation in `docs/protocol/armory-project-packages-v1/`; the product,
-migration, turn-start and security rules are in
-`docs/armory-project-packages.md`. Installation is Peon-wide, but assignment
-presence is the only package-availability decision for a project. A
-credentialed package declares one profile type and an assignment names one
+migration, turn-start and security rules are in the
+repository's [`docs/armory-project-packages.md`](../../docs/armory-project-packages.md). Installation is Peon-wide, but
+assignment presence is the only package-availability decision for a project.
+A credentialed package declares one profile type and an assignment names one
 verified Peon-wide profile of that exact type. The same profile may serve
 multiple compatible packages and projects. A credential-free assignment
 carries `profileId: null`. No assignment means the package contributes no
@@ -369,8 +375,8 @@ carry an `id:`, since a client already has current state from `GET
 half-open connection through an idle-timing proxy gets noticed. All listeners
 and the heartbeat timer are torn down the moment the request closes.
 
-The local stream also accepts `afterEventId` as its initial snapshot boundary
-because browser `EventSource` cannot set a custom
+The legacy loopback session stream also accepts `afterEventId` as its
+initial snapshot boundary because browser `EventSource` cannot set a custom
 header on the first connection. Once connected, `Last-Event-ID` takes
 precedence on automatic reconnects. Resume ids are bounded and validated before
 SSE headers are sent.
@@ -399,22 +405,37 @@ unlink, so late I/O cannot resurrect its transcript.
 
 ### Selected-text replies (`replyTo`)
 
-The public API relays the canonical `selected-text-replies-v1` contract through
-the existing Fleet HTTP session routes. Follow-up and queue creation accept an
-optional `replyTo: { eventId, selectedText }`; queue edit accepts the same object,
-`null` to clear it, or omission to preserve the queued value. The queue,
-transcript history and live-tail responses preserve the metadata received from
-Peon. Overseer does not become a second transcript authority and never logs the
-selected body.
+`POST /sessions/:id/followup` and `POST /sessions/:id/queue` accept an optional
+`replyTo: { eventId, selectedText }`. A queue edit may replace it with the same
+object or clear it with `replyTo: null`; omitting it preserves the queued
+item's existing reply metadata. The queue response exposes the metadata, and a
+steered item carries it unchanged through native steering or the
+interrupt-and-resume fallback.
 
-`eventId` is a bounded Peon transcript identity and `selectedText` is the exact
-operator-visible selection: whitespace and Unicode are retained, rendered
-offsets are not persisted, and the limits are 8,192 Unicode code points and
-16 KiB UTF-8. Peon remains authoritative for same-session/source eligibility
-and returns `BAD_REPLY_TO`, `REPLY_SOURCE_NOT_FOUND`,
-`REPLY_SOURCE_WRONG_SESSION` or `REPLY_SOURCE_NOT_REPLYABLE` with their stable
-HTTP semantics. A legacy Peon keeps ordinary follow-ups working; clients only
-offer the selection action when `selected-text-replies-v1` is advertised.
+`eventId` identifies one event in the same Peon transcript. In V1 the source
+must be a text-bearing `assistant` or `user_message`; `system`, tool, result,
+preview, stderr and warning events are not replyable. `selectedText` is the
+exact operator-visible selection, preserved without trimming, whitespace
+normalization or Unicode normalization. It must contain non-whitespace text,
+at most 8,192 Unicode code points and 16 KiB UTF-8. Event IDs are bounded
+safe transcript IDs (at most 256 characters). Malformed values return `400
+BAD_REPLY_TO`; an unknown event returns `404 REPLY_SOURCE_NOT_FOUND`; a known
+event in another session returns `400 REPLY_SOURCE_WRONG_SESSION`; and an
+ineligible source returns `400 REPLY_SOURCE_NOT_REPLYABLE`.
+
+Peon persists `replyTo` only on the resulting authoritative `user_message`.
+It does not persist rendered offsets or use provider-native reply semantics.
+Before either provider starts or accepts a steer, Peon deterministically wraps
+the selection as quoted context and separately labels the operator's new
+message. Thus the transcript retains the original prompt while Codex and
+Claude receive unambiguous context. Legacy user messages and queue records
+without `replyTo` remain valid and behave exactly as before; branching copies
+the canonical transcript, including any stored metadata.
+
+Overseer relays this contract without becoming a transcript authority or
+logging the selected body. Clients expose the selection action only when Peon
+advertises `selected-text-replies-v1`; an older Peon keeps ordinary follow-ups
+working without reply metadata.
 
 A `preview` event is an explicit user-facing artifact handoff:
 
@@ -444,12 +465,12 @@ raster images and PDF use safe inline MIME types.
 overseer's per-peon model picker:
 
 ```jsonc
-{ "defaultAgent": "codex",
+{ "defaultAgent": "codex-app-server",
   "providers": [
     { "agent": "claude-code", "label": "Claude Code",
       "models": [ { "id": "claude-sonnet-5", "label": "Sonnet 5", "alias": "sonnet", "default": true }, … ],
       "reasoningEfforts": [ { "id": "high", "label": "High", "default": true }, … ] },
-    { "agent": "codex", "label": "Codex",
+    { "agent": "codex-app-server", "label": "Codex",
       "models": [ { "id": "gpt-5.6-sol", "label": "5.6 Sol", "default": true }, … ],
       "reasoningEfforts": [ { "id": "medium", "label": "Medium", "default": true }, … ] } ] }
 ```
@@ -1073,7 +1094,7 @@ ACK.
 Peon advertises this capability only on the control socket alongside
 `durable-delivery-v1`. Its complete envelope, hashing, lifecycle, status
 reconciliation, retention, are normative in
-[`../peon/docs/reverse-command-protocol-v1.md`](../peon/docs/reverse-command-protocol-v1.md).
+[`../../apps/peon/docs/reverse-command-protocol-v1.md`](../../apps/peon/docs/reverse-command-protocol-v1.md).
 
 The Peon dispatcher rejects command traffic before exact capability negotiation,
 strictly validates the 60 KiB command frame and authenticated Peon target, and
@@ -1092,20 +1113,10 @@ cumulative durable cursor and compacts them only after acknowledgement plus the
 minimum seven-day retention, retaining command-ID/hash tombstones for another
 seven days.
 
-Update control is outside this lifecycle. Check, apply and operation status use
-the authenticated Fleet HTTP `/api/v1/control/*` routes through Tailscale. Release
-metadata and package bytes come directly from the public npm registry.
-`reverse-command-v1` advertises no `update.*` operations. A mode-0600 update
-receipt supplies idempotency, one-operation admission, restart recovery and
-exact-version replacement-process attestation.
-
 ### Session catalog channel (`session-catalog-v1`)
 
-When negotiated, this channel keeps the rebuildable Overseer session projection
-fresh for realtime clients. Public catalog requests remain authoritative direct
-Fleet HTTP `GET /sessions` reads; rename and delete likewise use Fleet HTTP, so
-no request or mutation selects this socket channel. It requires
-`durable-delivery-v1`; accepting the catalog capability
+When negotiated, this channel is the sole authority for the Overseer session
+index. It requires `durable-delivery-v1`; accepting the catalog capability
 without durable delivery is a protocol error and Peon disconnects. If either
 capability is absent from `hello_ack`, remote session-index synchronization is
 inactive. Peon does not fall back to HTTP event pushes or run a second sync
@@ -1287,7 +1298,7 @@ PATCH /api/v1/settings {
   "listenAddress": "0.0.0.0:4570",             // local TCP listener; restart required
   "publicControlUrl": "https://peon.example",   // advertised URL; HTTP or HTTPS
   "fileTransferRoot": "/path/to/sandbox",         // empty => file transfer off
-  "overseerUrl": "http://overseer.ts.net:5000" // empty => this peon doesn't self-register
+  "overseerUrl": "https://overseer.example"   // outbound HTTPS/WSS origin
 }
 ```
 
@@ -1295,19 +1306,22 @@ Leave `overseerToken` empty on a standalone peon and bearer-authenticated fleet
 requests stay off; leave `overseerUrl` empty and it never phones home.
 
 `peon remote on 0.0.0.0:4570` changes `listenAddress` and restarts the daemon;
-`peon remote off` keeps the current port and switches to `127.0.0.1`. Wildcard
-bind includes loopback; a concrete non-loopback bind gets a second loopback
-listener on the same port.
+`peon remote off` keeps the current port and switches to `127.0.0.1`. The
+daemon listens on `0.0.0.0:4570` by default so it remains available when the
+Tailscale interface appears or changes after process startup. Overseer uses the
+configured MagicDNS URL, Fleet HTTP requires its bearer, and local CLI/MCP
+routes remain restricted to a genuine loopback peer.
 
 ## Reverse runtime state and queries (v1)
 
 `runtime-state-v1` requires `durable-delivery-v1`. Its durable payload is
 `{type:"runtime_state",protocol:1,epoch,revision,digest,generatedAt,state}`.
-It is committed with the shared inbox cursor before ACK and replaces the prior
-epoch/revision state. Projection consumers identify it as fresh, stale or
-offline.
+It is a complete authoritative replacement and may coalesce only before a
+durable cursor is assigned. Status/capacity/version/provider/model fields are
+allowlisted; secrets, paths, environment and raw provider authentication data
+are forbidden.
 
 Explicit status/models, quota, provider capabilities, stats and filtered
-analytics reads use authenticated Fleet HTTP over Tailscale. They are not
-`reverse-command-v1` operations and have no command-ledger fallback. The
-projection, heartbeat and invalidation/events remain on the control WebSocket.
+analytics reads use the authenticated Fleet HTTP routes documented above.
+They are not `reverse-command-v1` operations. The runtime projection,
+heartbeat and invalidation/events remain on the control WebSocket.

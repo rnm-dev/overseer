@@ -52,6 +52,7 @@
     "check:architecture-imports": "node scripts/check-architecture-imports.mjs"
   },
   "dependencies": {
+    "@rnm-dev/protocol": "^1.0.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "express": "^5.1.0",
     "multer": "^2.2.0",

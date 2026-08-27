@@ -1,9 +1,13 @@
 import { createHash } from "node:crypto";
+import {
+  REVERSE_COMMAND_CAPABILITY,
+  REVERSE_COMMAND_MAX_FRAME_BYTES,
+} from "@rnm-dev/protocol";
 import type { PeonSocketChannel, PeonSocketFrame, PeonSocketSender } from "../peonSocketProtocol.js";
 import { ReverseCommandLedger, type ReverseCommandRecord } from "../reverseCommandLedger.js";
 
-export const REVERSE_COMMAND_CAPABILITY = "reverse-command-v1";
-export const REVERSE_COMMAND_MAX_BYTES = 60 * 1024;
+export { REVERSE_COMMAND_CAPABILITY };
+export const REVERSE_COMMAND_MAX_BYTES = REVERSE_COMMAND_MAX_FRAME_BYTES;
 
 type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
 

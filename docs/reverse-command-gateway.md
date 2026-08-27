@@ -6,8 +6,8 @@ context, workspace, Peon, operation, target, and optional stable command ID.
 The gateway reloads the canonical user/email and rejects a caller-supplied
 `actor`; services do not read or write the Peon WebSocket directly.
 
-The wire lifecycle is the frozen `reverse-command-v1` contract vendored in
-`apps/server/protocol/reverse-command-v1/`:
+The wire lifecycle is the frozen canonical `reverse-command-v1` contract in
+`packages/protocol/reverse-command-v1/`:
 
 1. Overseer persists the canonical request hash and complete replayable command.
 2. It sends `command` only on the current authenticated socket generation after

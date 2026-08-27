@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
+import { REVERSE_COMMAND_CAPABILITY, REVERSE_COMMAND_MAX_FRAME_BYTES, } from "@rnm-dev/protocol";
 import { ReverseCommandLedger } from "../reverseCommandLedger.js";
-export const REVERSE_COMMAND_CAPABILITY = "reverse-command-v1";
-export const REVERSE_COMMAND_MAX_BYTES = 60 * 1024;
+export { REVERSE_COMMAND_CAPABILITY };
+export const REVERSE_COMMAND_MAX_BYTES = REVERSE_COMMAND_MAX_FRAME_BYTES;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 function canonical(value) {
     if (value === null || typeof value !== "object")

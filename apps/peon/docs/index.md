@@ -20,7 +20,7 @@ documentation. Failure to start this optional session must not roll back project
 ## Reference
 
 - [Architecture](architecture.md)
-- Overseer protocol: repository-root `PROTOCOL.md`
+- Overseer protocol: repository-root `packages/protocol/PROTOCOL.md`
 - [Armory v1 contracts](armory-v1-contracts.md)
 - [Codex app-server migration specification](codex-app-server-migration-spec.md)
 - [Transcript pagination](transcript-pagination.md)

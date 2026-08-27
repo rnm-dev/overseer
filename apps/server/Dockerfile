@@ -11,10 +11,13 @@ WORKDIR /repo
 COPY package.json package-lock.json ./
 COPY apps/server/package.json ./apps/server/
 COPY apps/web/package.json ./apps/web/
+COPY packages/protocol/package.json ./packages/protocol/
 RUN npm ci
 
 COPY apps/server ./apps/server
 COPY apps/web ./apps/web
+COPY packages/protocol ./packages/protocol
+RUN npm run compile -w @rnm-dev/protocol
 RUN npm run compile -w @rnm-dev/overseer-server
 RUN npm run build -w @rnm-dev/overseer-web
 
@@ -29,6 +32,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 COPY apps/server/package.json ./apps/server/
 COPY apps/web/package.json ./apps/web/
+COPY packages/protocol/package.json ./packages/protocol/
 RUN npm ci --omit=dev --workspace @rnm-dev/overseer-server --include-workspace-root \
     && npm cache clean --force
 
@@ -36,6 +40,7 @@ RUN npm ci --omit=dev --workspace @rnm-dev/overseer-server --include-workspace-r
 # working directory, so the runtime layout stays /app/dist + /app/web/dist.
 COPY --from=build /repo/apps/server/dist ./dist
 COPY --from=build /repo/apps/web/dist ./web/dist
+COPY --from=build /repo/packages/protocol/dist ./packages/protocol/dist
 
 RUN mkdir -p /data/releases \
     && chown -R node:node /app /data/releases

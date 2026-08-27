@@ -25,7 +25,10 @@ test("update controls are exposed and their status contract is documented", asyn
   assert.equal(cliUpdatesRoute?.route?.methods?.get, true);
   assert.equal(cliUpdateRoute?.route?.methods?.post, true);
 
-  const protocol = await readFile(new URL("../../../PROTOCOL.md", import.meta.url), "utf8");
+  const protocol = await readFile(
+    new URL("../../../../../packages/protocol/PROTOCOL.md", import.meta.url),
+    "utf8",
+  );
   for (const field of [
     "updateAvailable",
     "updateCurrentVersion",

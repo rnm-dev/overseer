@@ -8,10 +8,10 @@
 #   Logs:  docker compose logs -f app
 #   Down:  docker compose down            # keeps postgres/data (bind mount)
 #
-# Layout (this dir = /rnm/overseer = the repository root): apps/server + apps/web
-# are npm workspaces, infra/dev/Dockerfile is the shared dev image, postgres/data/
-# = PG data, .env = secrets. Operator API published on 127.0.0.1:4580; nginx
-# (overseer.rnm.dev) fronts it.
+# Layout (this dir = /rnm/overseer = the repository root): apps/server,
+# apps/web and packages/protocol are npm workspaces, infra/dev/Dockerfile is the
+# shared dev image, postgres/data/ = PG data, .env = secrets. Operator API is
+# published on 127.0.0.1:4580; nginx (overseer.rnm.dev) fronts it.
 
 services:
   postgres:
@@ -64,6 +64,7 @@ services:
       # config file hot-reloads (tsx watch restarts). The anonymous volume keeps
       # the image's hoisted node_modules from being shadowed.
       - ./apps:/repo/apps
+      - ./packages:/repo/packages
       - ./package.json:/repo/package.json
       - ./package-lock.json:/repo/package-lock.json
       - /repo/node_modules
@@ -95,6 +96,7 @@ services:
       # the ./apps bind mount would otherwise hide apps/web/node_modules from
       # the image and leave Vite resolving whatever stale hoisted copy survived.
       - ./apps:/repo/apps
+      - ./packages:/repo/packages
       - ./package.json:/repo/package.json
       - ./package-lock.json:/repo/package-lock.json
       - /repo/node_modules

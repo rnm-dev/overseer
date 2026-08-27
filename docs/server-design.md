@@ -2,7 +2,7 @@
 
 Why the API is built the way it is. The rules for organising the code are in
 [architecture](architecture.md); the box it runs on is in [the dev
-box](dev-box.md); the wire contract with Peon is `apps/server/PROTOCOL.md` —
+box](dev-box.md); the wire contract with Peon is `packages/protocol/PROTOCOL.md` —
 read it before touching anything protocol-shaped.
 
 Overseer is the **fleet control plane**: one always-on service holding a

@@ -8,7 +8,7 @@ capability.
 
 This document defines the common command lifecycle used when Overseer controls a Peon through
 Peon's outbound control WebSocket. It complements the channel-specific wire contract in
-repository-root `PROTOCOL.md`. Peon remains authoritative for command admission and effects;
+repository-root `packages/protocol/PROTOCOL.md`. Peon remains authoritative for command admission and effects;
 Overseer remains authoritative for operator authorization and its rebuildable projections.
 
 Remote daemon pause/resume is intentionally not part of this protocol. Overseer may display the
@@ -241,6 +241,6 @@ No feature may open a third connection or introduce an HTTPS spool without a new
 
 ## Machine-readable contract
 
-The canonical schema and golden examples live under `protocol/reverse-command-v1/`. Overseer
+The canonical schema and golden examples live under `packages/protocol/reverse-command-v1/`. Overseer
 vendors the exact files and both repositories run a contract test over them. Any breaking envelope
 change requires a new capability version.

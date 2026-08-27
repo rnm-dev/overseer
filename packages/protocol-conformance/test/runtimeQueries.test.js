@@ -3,13 +3,13 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 test("bounded runtime queries use Fleet HTTP and stay out of reverse-command-v1", async () => {
-  const [peonSchemaRaw, serverSchemaRaw, projectRoutes, sessionRoutes] = await Promise.all([
-    readFile(new URL("../../../apps/peon/protocol/reverse-command-v1/schema.json", import.meta.url), "utf8"),
-    readFile(new URL("../../../apps/server/protocol/reverse-command-v1/schema.json", import.meta.url), "utf8"),
+  const [schemaRaw, projectRoutes, sessionRoutes] = await Promise.all([
+    readFile(new URL("../../protocol/reverse-command-v1/schema.json", import.meta.url), "utf8"),
     readFile(new URL("../../../apps/server/src/routes/peons/projects.ts", import.meta.url), "utf8"),
     readFile(new URL("../../../apps/server/src/routes/peons/sessions.ts", import.meta.url), "utf8"),
   ]);
-  assert.equal(peonSchemaRaw, serverSchemaRaw);
+  const schema = JSON.parse(schemaRaw);
+  assert.equal(schema.$id, "urn:rnm-dev:protocol:reverse-command-v1");
   const operations = [];
   for (const operation of [
     "runtime.stats", "runtime.analytics", "runtime.quota", "runtime.capabilities",

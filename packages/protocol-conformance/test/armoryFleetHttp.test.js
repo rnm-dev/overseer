@@ -6,11 +6,10 @@ const root = new URL("../../../", import.meta.url);
 const source = async (path) => readFile(new URL(path, root), "utf8");
 const json = async (path) => JSON.parse(await source(path));
 
-test("Armory uses Fleet HTTP and is absent from reverse-command-v1 on both peers", async () => {
-  const [route, serverSchema, peonSchema, serverOperations, peonOperations] = await Promise.all([
+test("Armory uses Fleet HTTP and is absent from canonical reverse-command-v1", async () => {
+  const [route, schema, serverOperations, peonOperations] = await Promise.all([
     source("apps/server/src/routes/peons/armory.ts"),
-    json("apps/server/protocol/reverse-command-v1/schema.json"),
-    json("apps/peon/protocol/reverse-command-v1/schema.json"),
+    json("packages/protocol/reverse-command-v1/schema.json"),
     source("apps/server/src/modules/reverseCommands/reverseCommandTypes.ts"),
     source("apps/peon/src/daemon/overseer/socket/channels/reverseCommandOperations.ts"),
   ]);
@@ -29,12 +28,10 @@ test("Armory uses Fleet HTTP and is absent from reverse-command-v1 on both peers
   ]) assert.ok(route.includes(path), path);
   assert.match(route, /ARMORY_ACTIVATION_RETIRED/);
 
-  for (const schema of [serverSchema, peonSchema]) {
-    const operations = schema.$defs.command.properties.operation.enum ?? [];
-    assert.equal(operations.some((operation) => operation.startsWith("armory.")), false);
-    assert.equal(Object.hasOwn(schema.$defs.target.properties, "packageId"), false);
-    assert.equal(Object.hasOwn(schema.$defs.target.properties, "operationId"), false);
-  }
+  const operations = schema.$defs.command.properties.operation.enum ?? [];
+  assert.equal(operations.some((operation) => operation.startsWith("armory.")), false);
+  assert.equal(Object.hasOwn(schema.$defs.target.properties, "packageId"), false);
+  assert.equal(Object.hasOwn(schema.$defs.target.properties, "operationId"), false);
   assert.doesNotMatch(serverOperations, /"armory\./);
   assert.doesNotMatch(peonOperations, /"armory\./);
 });

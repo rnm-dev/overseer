@@ -3,14 +3,14 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
 
-const root = path.resolve(import.meta.dirname, "../..");
-const schemaRaw = readFileSync(path.join(root, "protocol/reverse-command-v1/schema.json"), "utf8");
-const fixturesRaw = readFileSync(path.join(root, "protocol/reverse-command-v1/fixtures.json"), "utf8");
+const root = path.resolve(import.meta.dirname, "../../../..");
+const schemaRaw = readFileSync(path.join(root, "packages/protocol/reverse-command-v1/schema.json"), "utf8");
+const fixturesRaw = readFileSync(path.join(root, "packages/protocol/reverse-command-v1/fixtures.json"), "utf8");
 const schema = JSON.parse(schemaRaw);
 const fixtures = JSON.parse(fixturesRaw);
 
-test("vendored reverse command v1 fixtures match the shared contract", () => {
-  assert.equal(schema.$id, "https://peon.local/protocol/reverse-command-v1/schema.json");
+test("canonical reverse command v1 fixtures match the shared contract", () => {
+  assert.equal(schema.$id, "urn:rnm-dev:protocol:reverse-command-v1");
   assert.equal(fixtures.contractVersion, 1);
   assert.equal(fixtures.capability, "reverse-command-v1");
   assert.ok(!fixtures.enabledOperations.some((operation: string) => operation.startsWith("session.")));

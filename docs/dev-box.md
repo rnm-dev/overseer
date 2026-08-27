@@ -198,8 +198,8 @@ curl -s http://127.0.0.1:4580/healthz
 
 ## Updating the code
 
-`apps/` holds the code (edit it in place; see the ownership note below). Both services mount
-`./apps` plus the root manifests, with an anonymous volume masking the hoisted
+`apps/` and `packages/` hold the code (edit them in place; see the ownership
+note below). Both services mount `./apps` and `./packages` plus the root manifests, with an anonymous volume masking the hoisted
 `/repo/node_modules`, so ANY changed file — src, index.html, vite.config,
 tsconfig — hot-reloads live (API tsx-watch restarts; Vite HMR, polling on via
 VITE_POLL). No recreate needed. The two services share one dev image

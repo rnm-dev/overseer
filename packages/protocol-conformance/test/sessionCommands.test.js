@@ -2,38 +2,33 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
+const canonicalSchema = async () => JSON.parse(await readFile(
+  new URL("../../protocol/reverse-command-v1/schema.json", import.meta.url),
+  "utf8",
+));
+
 test("session catalog reads and mutations are absent from reverse-command-v1", async () => {
-  const [peon, overseer] = await Promise.all([
-    readFile(new URL("../../../apps/peon/protocol/reverse-command-v1/schema.json", import.meta.url), "utf8"),
-    readFile(new URL("../../../apps/server/protocol/reverse-command-v1/schema.json", import.meta.url), "utf8"),
-  ]);
-  assert.equal(overseer, peon);
-  const schema = JSON.parse(overseer);
+  const schema = await canonicalSchema();
   const operations = schema.$defs.command.properties.operation.enum ?? [];
   for (const operation of ["session.list", "session.metadata.patch", "session.delete"]) {
     assert.equal(operations.includes(operation), false, operation);
   }
 });
 
-test("direct HTTP session operations are absent from the reverse contract on both peers", async () => {
-  const [peon, overseer] = await Promise.all([
-    readFile(new URL("../../../apps/peon/protocol/reverse-command-v1/schema.json", import.meta.url), "utf8"),
-    readFile(new URL("../../../apps/server/protocol/reverse-command-v1/schema.json", import.meta.url), "utf8"),
-  ]);
-  for (const schema of [JSON.parse(peon), JSON.parse(overseer)]) {
-    const advertised = schema.$defs.command.properties.operation.enum ?? [];
-    assert.equal(advertised.includes("session.start"), false);
-    assert.equal(advertised.includes("session.followup"), false);
-    assert.equal(advertised.includes("session.cancel"), false);
-    assert.equal(advertised.includes("session.detail"), false);
-    assert.equal(advertised.includes("session.list"), false);
-    assert.equal(advertised.includes("session.metadata.patch"), false);
-    assert.equal(advertised.includes("session.delete"), false);
-    for (const operation of [
-      "session.queue.add", "session.queue.list", "session.queue.edit",
-      "session.queue.remove", "session.queue.steer", "session.queue.send-now",
-    ]) assert.equal(advertised.includes(operation), false, operation);
-  }
+test("direct HTTP session operations are absent from the canonical reverse contract", async () => {
+  const schema = await canonicalSchema();
+  const advertised = schema.$defs.command.properties.operation.enum ?? [];
+  assert.equal(advertised.includes("session.start"), false);
+  assert.equal(advertised.includes("session.followup"), false);
+  assert.equal(advertised.includes("session.cancel"), false);
+  assert.equal(advertised.includes("session.detail"), false);
+  assert.equal(advertised.includes("session.list"), false);
+  assert.equal(advertised.includes("session.metadata.patch"), false);
+  assert.equal(advertised.includes("session.delete"), false);
+  for (const operation of [
+    "session.queue.add", "session.queue.list", "session.queue.edit",
+    "session.queue.remove", "session.queue.steer", "session.queue.send-now",
+  ]) assert.equal(advertised.includes(operation), false, operation);
 });
 
 test("session catalog, rename and delete use Fleet HTTP while realtime catalog stays on sockets", async () => {
