@@ -1,0 +1,323 @@
+{
+  "contractVersion": 1,
+  "capability": "context-only-messages-v1",
+  "safeExamples": [
+    {
+      "schema": "publicContextMessageRequest",
+      "value": {
+        "text": "@Viktor please check this",
+        "mentions": [
+          {
+            "startUtf16": 0,
+            "lengthUtf16": 7,
+            "principal": { "kind": "user", "id": "user-42" }
+          }
+        ]
+      }
+    },
+    {
+      "schema": "fleetContextMessageRequest",
+      "value": {
+        "text": "@Viktor please check this",
+        "author": { "kind": "guest", "id": "guest-7", "label": "Sam" },
+        "attachments": [
+          { "type": "file", "path": "uploads/plan.md", "name": "plan.md" }
+        ],
+        "mentions": [
+          {
+            "startUtf16": 0,
+            "lengthUtf16": 7,
+            "principal": { "kind": "user", "id": "user-42", "label": "Viktor" }
+          }
+        ]
+      }
+    },
+    {
+      "schema": "contextMessage",
+      "value": {
+        "type": "participant_message",
+        "eventId": "participant_12",
+        "commandId": "018f06c2-1c2a-7b35-8f2d-6f2f9024ac11",
+        "contextSeq": 12,
+        "createdAt": 1787846400000,
+        "author": { "kind": "guest", "id": "guest-7", "label": "Sam" },
+        "text": "@Viktor please check this",
+        "attachments": [
+          {
+            "path": "/var/lib/peon/uploads/plan.md",
+            "originalName": "plan.md",
+            "filename": "plan.md",
+            "size": 1024,
+            "mimetype": "text/markdown"
+          }
+        ],
+        "mentions": [
+          {
+            "startUtf16": 0,
+            "lengthUtf16": 7,
+            "principal": { "kind": "user", "id": "user-42", "label": "Viktor" }
+          }
+        ]
+      }
+    },
+    {
+      "schema": "agentMessageRequest",
+      "value": {
+        "prompt": "@Viktor I will ask the agent too",
+        "mentions": [
+          {
+            "startUtf16": 0,
+            "lengthUtf16": 7,
+            "principal": { "kind": "user", "id": "user-42" }
+          }
+        ]
+      }
+    },
+    {
+      "schema": "fleetAgentMessageRequest",
+      "value": {
+        "prompt": "@Viktor I will ask the agent too",
+        "authorPrincipal": { "kind": "user", "id": "user-9", "label": "Alice" },
+        "mentions": [
+          {
+            "startUtf16": 0,
+            "lengthUtf16": 7,
+            "principal": { "kind": "user", "id": "user-42", "label": "Viktor" }
+          }
+        ]
+      }
+    },
+    {
+      "schema": "queueEditRequest",
+      "value": { "prompt": "No human mention now", "mentions": null }
+    },
+    {
+      "schema": "userMessage",
+      "value": {
+        "type": "user_message",
+        "text": "@Viktor I will ask the agent too",
+        "commandId": "018f06c2-1c2a-7b35-8f2d-6f2f9024ac12",
+        "authorPrincipal": { "kind": "user", "id": "user-9", "label": "Alice" },
+        "mentions": [
+          {
+            "startUtf16": 0,
+            "lengthUtf16": 7,
+            "principal": { "kind": "user", "id": "user-42", "label": "Viktor" }
+          }
+        ]
+      }
+    },
+    {
+      "schema": "mentionAttention",
+      "value": {
+        "peonId": "peon-1",
+        "sessionId": "session-1",
+        "eventId": "participant_12",
+        "recipient": { "kind": "user", "id": "user-42" },
+        "unread": true,
+        "updatedAt": 1787846400000
+      }
+    },
+    {
+      "schema": "mentionReadRequest",
+      "value": { "eventIds": ["participant_12", "participant_13"] }
+    }
+  ],
+  "invalidExamples": [
+    {
+      "schema": "publicContextMessageRequest",
+      "value": { "text": "   \n", "mentions": [] },
+      "error": "BAD_CONTEXT_MESSAGE"
+    },
+    {
+      "schema": "publicContextMessageRequest",
+      "value": {
+        "text": "@Agent do this",
+        "mentions": [
+          {
+            "startUtf16": 0,
+            "lengthUtf16": 6,
+            "principal": { "kind": "agent", "id": "codex" }
+          }
+        ]
+      },
+      "error": "BAD_MENTION"
+    },
+    {
+      "schema": "publicContextMessageRequest",
+      "value": {
+        "text": "@Viktor check this",
+        "mentions": [
+          {
+            "startUtf16": 0,
+            "lengthUtf16": 0,
+            "principal": { "kind": "user", "id": "user-42" }
+          }
+        ]
+      },
+      "error": "BAD_MENTION"
+    },
+    {
+      "schema": "publicContextMessageRequest",
+      "value": {
+        "text": "@Viktor check this",
+        "mentions": [
+          {
+            "startUtf16": 0,
+            "lengthUtf16": 7,
+            "principal": { "kind": "user", "id": "user-42" },
+            "label": "client-controlled"
+          }
+        ]
+      },
+      "error": "BAD_MENTION"
+    },
+    {
+      "schema": "mentionReadRequest",
+      "value": { "eventIds": [] },
+      "error": "BAD_MENTION_ACK"
+    }
+  ],
+  "bounds": {
+    "messageCodePoints": 8192,
+    "messageUtf8Bytes": 16384,
+    "mentionsPerMessage": 32,
+    "attachmentsPerMessage": 10,
+    "pendingMessages": 64,
+    "providerEnvelopeUtf8Bytes": 65536,
+    "mentionReadBatch": 100
+  },
+  "routingRules": {
+    "contextEndpointCanInvokeAgent": false,
+    "rawAtTextRoutesOrNotifies": false,
+    "agentPickerUsesExistingAgentPath": true,
+    "agentRequestsMayCarryHumanMentions": true,
+    "zeroHumanMentionsAllowed": true,
+    "principalKinds": ["user", "guest"],
+    "clientSuppliedLabelsAccepted": false
+  },
+  "mentionRules": {
+    "offsetUnit": "utf16-code-unit",
+    "rangesOrdered": true,
+    "rangesNonOverlapping": true,
+    "rangesInsideText": true,
+    "surrogatePairsMayBeSplit": false,
+    "principalResolvedBy": "overseer-session-access",
+    "labelResolvedBy": "overseer-authoritative-display-snapshot"
+  },
+  "deliveryRules": {
+    "authority": "peon",
+    "transcriptEventType": "participant_message",
+    "eventMutable": false,
+    "watermarkStorage": "peon-sidecar",
+    "claimAt": "agent-turn-execution-start",
+    "claimUpperBound": "latest-context-sequence-visible-before-claim",
+    "postedDuringActiveTurn": "next-turn",
+    "queuedTurnClaimsAtAdmission": false,
+    "providerAcceptanceCommitsClaim": true,
+    "preAcceptancePermanentFailureReleasesClaim": true,
+    "logicalExactlyOnce": "one-accepted-peon-turn",
+    "externalProviderExactlyOncePromised": false,
+    "backlogOverflow": "reject-without-truncation"
+  },
+  "providerEnvelope": {
+    "encoding": "canonical-json-utf8",
+    "position": "immediately-before-invoking-operator-prompt",
+    "order": "contextSeq-ascending",
+    "topLevelFieldOrder": ["version", "kind", "messages"],
+    "messageFieldOrder": ["contextSeq", "createdAt", "author", "text", "attachments", "mentions"],
+    "authorFieldOrder": ["kind", "id", "label"],
+    "encodedExample": "{\"version\":1,\"kind\":\"participant_context\",\"messages\":[{\"contextSeq\":12,\"createdAt\":1787846400000,\"author\":{\"kind\":\"guest\",\"id\":\"guest-7\",\"label\":\"Sam\"},\"text\":\"@Viktor please check this\",\"attachments\":[],\"mentions\":[{\"startUtf16\":0,\"lengthUtf16\":7,\"principal\":{\"kind\":\"user\",\"id\":\"user-42\",\"label\":\"Viktor\"}}]}]}",
+    "contentClassification": "untrusted-participant-content",
+    "providerNativeThreading": false
+  },
+  "attentionRules": {
+    "authority": "overseer",
+    "separateFromSessionAttention": true,
+    "occurrenceIdentity": ["recipientPrincipal", "eventId"],
+    "authorMentionNotifiesSelf": false,
+    "duplicateRecipientOccurrences": "coalesced-per-event",
+    "acknowledgeExactEventIds": true,
+    "unknownOrAlreadyReadEventIds": "idempotent-no-op",
+    "messageTextInPush": false,
+    "guestPush": false,
+    "realtimeScopedToRecipient": true
+  },
+  "lifecycleRules": {
+    "editing": "unsupported-v1",
+    "deletion": "unsupported-v1",
+    "branchCopiedEvents": "visible-and-already-delivered-in-branch",
+    "originalBranchPendingState": "unchanged",
+    "sessionDeletion": "delete-delivery-sidecar",
+    "contextMessageCountsAsAgentTurn": false,
+    "contextMessageCreatesCompletionAttention": false,
+    "clientOptimisticTranscriptRows": false,
+    "clientGhostCorrelation": "commandId"
+  },
+  "routes": [
+    {
+      "authority": "peon-fleet-http",
+      "method": "POST",
+      "path": "/api/v1/sessions/:id/context-messages",
+      "request": "fleetContextMessageRequest",
+      "response": "contextMessage",
+      "idempotency": "Peon-Request-Id"
+    },
+    {
+      "authority": "overseer-public-api",
+      "method": "POST",
+      "path": "/api/workspaces/:wsId/peons/:peonId/sessions/:sid/context-messages",
+      "request": "publicContextMessageRequest",
+      "response": "contextMessage",
+      "idempotency": "Peon-Request-Id"
+    },
+    {
+      "authority": "overseer-public-api",
+      "method": "POST",
+      "path": "/api/workspaces/:wsId/peons/:peonId/sessions/:sid/mention-attention/read",
+      "request": "mentionReadRequest",
+      "response": "mentionAttentionList"
+    }
+  ],
+  "agentMentionRoutes": [
+    {
+      "method": "POST",
+      "path": "/sessions/:id/followup",
+      "publicRequestExtension": "agentMessageRequest",
+      "fleetRequestExtension": "fleetAgentMessageRequest",
+      "transcriptExtension": "userMessage"
+    },
+    {
+      "method": "POST",
+      "path": "/sessions/:id/queue",
+      "publicRequestExtension": "agentMessageRequest",
+      "fleetRequestExtension": "fleetAgentMessageRequest",
+      "transcriptExtension": "userMessage"
+    },
+    {
+      "method": "PATCH",
+      "path": "/sessions/:id/queue/:itemId",
+      "publicRequestExtension": "queueEditRequest",
+      "fleetRequestExtension": "fleetQueueEditRequest",
+      "transcriptExtension": "userMessage"
+    }
+  ],
+  "stableErrors": {
+    "BAD_CONTEXT_MESSAGE": 400,
+    "BAD_MENTION": 400,
+    "BAD_MENTION_ACK": 400,
+    "MENTION_PRINCIPAL_NOT_FOUND": 404,
+    "UNKNOWN_SESSION": 404,
+    "CONTEXT_BACKLOG_FULL": 409,
+    "IDEMPOTENCY_CONFLICT": 409,
+    "UNSUPPORTED_CAPABILITY": 409
+  },
+  "mixedVersion": {
+    "capability": "context-only-messages-v1",
+    "advertiseOnlyWhenComplete": true,
+    "absentCapability": "hide-people-only-send-and-keep-existing-agent-send-working",
+    "legacyClientEventBehavior": "ignore-or-render-bounded-generic-transcript-row-without-crashing",
+    "ordinaryAgentRequestsWithoutMentions": "unchanged",
+    "unknownMentionMetadata": "ignore-without-changing-agent-routing"
+  }
+}

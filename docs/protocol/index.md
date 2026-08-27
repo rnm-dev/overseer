@@ -19,3 +19,7 @@ separately published package.
   the durable `replyTo` shape, source-event rules, lifecycle behavior and
   mixed-version contract for selected transcript text; product details are in
   [Selected-text replies](../selected-text-replies.md).
+- [`context-only-messages-v1`](context-only-messages-v1/schema.json) — durable
+  participant messages, structured stable-identity mentions, next-turn
+  delivery and separate human attention; product details are in
+  [Context-only participant messages](../context-only-participant-messages.md).

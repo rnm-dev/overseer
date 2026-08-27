@@ -1,0 +1,240 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ovrseer:protocol:context-only-messages-v1",
+  "title": "Context-only participant messages v1",
+  "$defs": {
+    "opaqueId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+    },
+    "eventId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,256}$"
+    },
+    "commandId": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+    },
+    "messageText": {
+      "type": "string",
+      "pattern": "[\\s\\S]*\\S[\\s\\S]*",
+      "maxLength": 8192,
+      "description": "Operator text preserved exactly. Its UTF-8 representation is at most 16 KiB."
+    },
+    "principalKind": {
+      "enum": ["user", "guest"]
+    },
+    "principalRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "id"],
+      "properties": {
+        "kind": { "$ref": "#/$defs/principalKind" },
+        "id": { "$ref": "#/$defs/opaqueId" }
+      }
+    },
+    "principalSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "id", "label"],
+      "properties": {
+        "kind": { "$ref": "#/$defs/principalKind" },
+        "id": { "$ref": "#/$defs/opaqueId" },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80,
+          "description": "An Overseer-resolved display snapshot, never a routing authority."
+        }
+      }
+    },
+    "mentionInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["startUtf16", "lengthUtf16", "principal"],
+      "properties": {
+        "startUtf16": { "type": "integer", "minimum": 0, "maximum": 8191 },
+        "lengthUtf16": { "type": "integer", "minimum": 1, "maximum": 161 },
+        "principal": { "$ref": "#/$defs/principalRef" }
+      },
+      "description": "A non-overlapping range over the raw message text, measured in UTF-16 code units and never splitting a surrogate pair."
+    },
+    "mention": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["startUtf16", "lengthUtf16", "principal"],
+      "properties": {
+        "startUtf16": { "type": "integer", "minimum": 0, "maximum": 8191 },
+        "lengthUtf16": { "type": "integer", "minimum": 1, "maximum": 161 },
+        "principal": { "$ref": "#/$defs/principalSnapshot" }
+      }
+    },
+    "mentionInputs": {
+      "type": "array",
+      "maxItems": 32,
+      "items": { "$ref": "#/$defs/mentionInput" }
+    },
+    "mentions": {
+      "type": "array",
+      "maxItems": 32,
+      "items": { "$ref": "#/$defs/mention" }
+    },
+    "attachmentInput": {
+      "type": "object",
+      "required": ["type", "path"],
+      "properties": {
+        "type": { "enum": ["file", "image"] },
+        "path": { "type": "string", "minLength": 1, "maxLength": 4096 },
+        "name": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "transferId": { "$ref": "#/$defs/opaqueId" },
+        "size": { "type": "integer", "minimum": 0 },
+        "sha256": { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" }
+      },
+      "additionalProperties": true
+    },
+    "attachment": {
+      "type": "object",
+      "required": ["path"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1, "maxLength": 4096 },
+        "originalName": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "filename": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "size": { "type": "integer", "minimum": 0 },
+        "mimetype": { "type": "string", "minLength": 1, "maxLength": 256 }
+      },
+      "additionalProperties": true
+    },
+    "publicContextMessageRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text"],
+      "properties": {
+        "text": { "$ref": "#/$defs/messageText" },
+        "attachments": {
+          "type": "array",
+          "maxItems": 10,
+          "items": { "$ref": "#/$defs/attachmentInput" }
+        },
+        "mentions": { "$ref": "#/$defs/mentionInputs" }
+      }
+    },
+    "fleetContextMessageRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text", "author"],
+      "properties": {
+        "text": { "$ref": "#/$defs/messageText" },
+        "author": { "$ref": "#/$defs/principalSnapshot" },
+        "attachments": {
+          "type": "array",
+          "maxItems": 10,
+          "items": { "$ref": "#/$defs/attachmentInput" }
+        },
+        "mentions": { "$ref": "#/$defs/mentions" }
+      }
+    },
+    "contextMessage": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["type", "eventId", "commandId", "contextSeq", "createdAt", "author", "text", "attachments", "mentions"],
+      "properties": {
+        "type": { "const": "participant_message" },
+        "eventId": { "$ref": "#/$defs/eventId" },
+        "commandId": { "$ref": "#/$defs/commandId" },
+        "contextSeq": { "type": "integer", "minimum": 1 },
+        "createdAt": { "type": "integer", "minimum": 0 },
+        "author": { "$ref": "#/$defs/principalSnapshot" },
+        "text": { "$ref": "#/$defs/messageText" },
+        "attachments": {
+          "type": "array",
+          "maxItems": 10,
+          "items": { "$ref": "#/$defs/attachment" }
+        },
+        "mentions": { "$ref": "#/$defs/mentions" }
+      }
+    },
+    "agentMessageRequest": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "mentions": { "$ref": "#/$defs/mentionInputs" }
+      }
+    },
+    "fleetAgentMessageRequest": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "authorPrincipal": { "$ref": "#/$defs/principalSnapshot" },
+        "mentions": { "$ref": "#/$defs/mentions" }
+      },
+      "description": "Overseer adds authorPrincipal and normalized mention labels before Fleet relay."
+    },
+    "queueEditRequest": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "mentions": {
+          "oneOf": [
+            { "$ref": "#/$defs/mentionInputs" },
+            { "type": "null" }
+          ],
+          "description": "Omitted preserves the queued mentions; null clears them."
+        }
+      }
+    },
+    "fleetQueueEditRequest": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "authorPrincipal": { "$ref": "#/$defs/principalSnapshot" },
+        "mentions": {
+          "oneOf": [
+            { "$ref": "#/$defs/mentions" },
+            { "type": "null" }
+          ],
+          "description": "Omitted preserves the queued mentions; null clears them."
+        }
+      }
+    },
+    "userMessage": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "authorPrincipal": { "$ref": "#/$defs/principalSnapshot" },
+        "mentions": { "$ref": "#/$defs/mentions" }
+      }
+    },
+    "mentionAttention": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["peonId", "sessionId", "eventId", "recipient", "unread", "updatedAt"],
+      "properties": {
+        "peonId": { "$ref": "#/$defs/opaqueId" },
+        "sessionId": { "$ref": "#/$defs/opaqueId" },
+        "eventId": { "$ref": "#/$defs/eventId" },
+        "recipient": { "$ref": "#/$defs/principalRef" },
+        "unread": { "type": "boolean" },
+        "updatedAt": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "mentionReadRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["eventIds"],
+      "properties": {
+        "eventIds": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 100,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/eventId" }
+        }
+      }
+    },
+    "mentionAttentionList": {
+      "type": "array",
+      "maxItems": 100,
+      "items": { "$ref": "#/$defs/mentionAttention" }
+    }
+  }
+}

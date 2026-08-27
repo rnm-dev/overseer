@@ -73,6 +73,9 @@ repository — that content lives here.
   participants, limits, revocation and presence on the canonical session.
 - [selected-text replies](selected-text-replies.md) — the durable `replyTo`
   object on Peon's authoritative user message.
+- [context-only participant messages](context-only-participant-messages.md) —
+  durable human conversation and mentions that reach the next invoked turn
+  without waking the agent themselves.
 - [audio focus](audio-focus.md) — session sounds play on exactly one client, the
   one the operator last picked up.
 
