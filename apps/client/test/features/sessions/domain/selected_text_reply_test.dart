@@ -3,29 +3,32 @@ import 'package:overseer_mobile/features/sessions/domain/session_models.dart';
 import 'package:overseer_mobile/features/sessions/presentation/transcript_items.dart';
 
 void main() {
-  test('selected-text replies round-trip and survive transcript flattening', () {
-    const reply = SelectedTextReply(
-      eventId: 'event_1',
-      selectedText: 'quoted context',
-    );
-    expect(SelectedTextReply.fromJson(reply.toJson()), reply);
+  test(
+    'selected-text replies round-trip and survive transcript flattening',
+    () {
+      const reply = SelectedTextReply(
+        eventId: 'event_1',
+        selectedText: 'quoted context',
+      );
+      expect(SelectedTextReply.fromJson(reply.toJson()), reply);
 
-    final event = TranscriptEvent(
-      eventId: 'event_2',
-      orderKey: 2,
-      payload: {
-        'type': 'user_message',
-        'text': 'follow up',
-        'replyTo': reply.toJson(),
-      },
-    );
-    expect(event.replyTo, reply);
+      final event = TranscriptEvent(
+        eventId: 'event_2',
+        orderKey: 2,
+        payload: {
+          'type': 'user_message',
+          'text': 'follow up',
+          'replyTo': reply.toJson(),
+        },
+      );
+      expect(event.replyTo, reply);
 
-    final items = flattenTranscriptEvents([event]);
-    final user = items.single as TranscriptUserItem;
-    expect(user.sourceEventId, 'event_2');
-    expect(user.replyTo, reply);
-  });
+      final items = flattenTranscriptEvents([event]);
+      final user = items.single as TranscriptUserItem;
+      expect(user.sourceEventId, 'event_2');
+      expect(user.replyTo, reply);
+    },
+  );
 
   test('malformed selected-text reply is ignored in transcript payloads', () {
     final event = TranscriptEvent(
@@ -74,7 +77,8 @@ void main() {
     expect(
       SelectedTextReply.fromSelection(
         eventId: 'assistant_1',
-        selectedText: 'я' * SelectedTextReply.maxSelectedTextCodePoints,
+        selectedText:
+            '€' * (SelectedTextReply.maxSelectedTextUtf8Bytes ~/ 3 + 1),
       ),
       isNull,
       reason: 'UTF-8 byte bound is independent of the code-point bound',

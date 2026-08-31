@@ -55,7 +55,11 @@ buffered is terminated and recovers from HTTP plus `eventId`.
 The newest HTTP page is bounded (50 by default, 500 maximum), pagination
 cursors are session-bound, and Peon's transcript index makes page reads
 independent of total transcript size. Mobile may paint its local cache while
-offline, but a cached boundary does not become server authority.
+offline, but a cached boundary does not become server authority. When the
+authoritative newest page no longer overlaps the mobile cache, that page
+replaces the stale cached window; the client does not walk the entire missed
+history before subscribing to the live tail. Older rows remain available from
+the newest page's cursor when the operator scrolls upward.
 
 ## Session changes and deletion
 

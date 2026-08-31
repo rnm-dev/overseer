@@ -297,7 +297,8 @@ class _SessionDetailPageState extends _SessionDetailAttachmentHost
             online: currentPeon?.online ?? false,
           );
     final selectedTextRepliesSupported =
-        currentPeon?.capabilities.contains(SelectedTextReply.capability) ?? false;
+        currentPeon?.capabilities.contains(SelectedTextReply.capability) ??
+        false;
     final inquiries = inquiryScope == null
         ? null
         : ref.watch(pluginInquiryControllerProvider(inquiryScope));

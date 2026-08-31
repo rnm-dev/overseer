@@ -491,11 +491,26 @@ class DefaultSessionRepository
           peonId: peonId,
           sessionId: sessionId,
         ).get();
-        final existingIds = existingRows
+        var existingIds = existingRows
             .map((row) => row.eventId)
             .toList(growable: true);
         final existingSet = existingIds.toSet();
         insertedCount = incomingIds.difference(existingSet).length;
+        final replaceDisjointLatest =
+            !prepend &&
+            existingIds.isNotEmpty &&
+            incomingIds.isNotEmpty &&
+            incomingIds.every((eventId) => !existingSet.contains(eventId));
+        if (replaceDisjointLatest) {
+          await (database.delete(database.cachedTranscriptEvents)..where(
+                (row) =>
+                    row.workspaceId.equals(workspaceId) &
+                    row.peonId.equals(peonId) &
+                    row.sessionId.equals(sessionId),
+              ))
+              .go();
+          existingIds = [];
+        }
         orderedIds = _mergeTranscriptOrder(
           existingIds: existingIds,
           incomingIds: incoming

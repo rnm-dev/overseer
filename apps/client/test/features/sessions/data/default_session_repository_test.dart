@@ -773,4 +773,51 @@ void main() {
       'event-3',
     ]);
   });
+
+  test('a disjoint newest page replaces the stale cached window', () async {
+    await repository.cacheTailEvent(
+      workspaceId: 'workspace',
+      peonId: 'peon',
+      sessionId: 'session',
+      eventId: 'stale-1',
+      payload: {'type': 'assistant', 'text': 'stale'},
+    );
+    final dio = Dio();
+    dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) => handler.resolve(
+          Response<Map<String, dynamic>>(
+            requestOptions: options,
+            data: {
+              'events': [
+                {'eventId': 'latest-50', 'type': 'assistant', 'text': 'fresh'},
+                {'eventId': 'latest-51', 'type': 'result'},
+              ],
+              'nextCursor': 'before-latest',
+              'hasMore': true,
+            },
+          ),
+        ),
+      ),
+    );
+    repository = DefaultSessionRepository(database: database, dio: dio);
+
+    final page = await repository.fetchLatestTranscript(
+      workspaceId: 'workspace',
+      peonId: 'peon',
+      sessionId: 'session',
+    );
+    final cached = await repository.loadCachedTranscript(
+      workspaceId: 'workspace',
+      peonId: 'peon',
+      sessionId: 'session',
+    );
+
+    expect(page.nextCursor, 'before-latest');
+    expect(cached.hasOlder, isTrue);
+    expect(cached.events.map((event) => event.eventId), [
+      'latest-50',
+      'latest-51',
+    ]);
+  });
 }

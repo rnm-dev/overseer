@@ -195,7 +195,7 @@ void main() {
   );
 
   test(
-    'fills a disjoint offline gap before subscribing to the live tail',
+    'subscribes from a disjoint newest page without backfilling the gap',
     () async {
       final repository = _GapSessionRepository();
       final live = _FakeTranscriptLiveService();
@@ -218,14 +218,14 @@ void main() {
         await Future<void>.delayed(Duration.zero);
       }
 
-      expect(repository.olderCursors, ['before-latest', 'before-gap']);
+      expect(repository.olderCursors, isEmpty);
       expect(live.subscriptions, ['latest-2']);
       expect(
         container
             .read(transcriptControllerProvider(scope))
             .requireValue
             .hasOlder,
-        isFalse,
+        isTrue,
       );
     },
   );

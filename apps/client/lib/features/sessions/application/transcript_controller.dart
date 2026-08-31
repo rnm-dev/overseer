@@ -209,9 +209,6 @@ class TranscriptController extends AsyncNotifier<TranscriptState> {
       );
     }
     try {
-      final cachedIdsBeforeRefresh = _cachedEvents
-          .map((event) => event.eventId)
-          .toSet();
       final page = await ref
           .read(sessionRepositoryProvider)
           .fetchLatestTranscript(
@@ -223,8 +220,6 @@ class TranscriptController extends AsyncNotifier<TranscriptState> {
       if (!ref.mounted) return;
       _nextCursor = page.nextCursor;
       _serverHasOlder = page.hasMore;
-      await _bridgeDisjointHistory(page, cachedIdsBeforeRefresh);
-      if (!ref.mounted) return;
       final runningSignal = _runningSignal(page.events);
       if (runningSignal != false || !_queueHasPending) {
         _running = runningSignal ?? _running;
@@ -265,47 +260,6 @@ class TranscriptController extends AsyncNotifier<TranscriptState> {
         _refreshLatestAgain = false;
         unawaited(_refresh(reportFailure: false));
       }
-    }
-  }
-
-  Future<void> _bridgeDisjointHistory(
-    TranscriptPage latest,
-    Set<String> cachedIdsBeforeRefresh,
-  ) async {
-    if (cachedIdsBeforeRefresh.isEmpty ||
-        latest.events.any(
-          (event) => cachedIdsBeforeRefresh.contains(event.eventId),
-        )) {
-      return;
-    }
-
-    var cursor = latest.nextCursor;
-    var hasMore = latest.hasMore;
-    final usedCursors = <String>{};
-    while (hasMore && cursor != null) {
-      if (!usedCursors.add(cursor)) {
-        throw const SessionsException(
-          'The transcript returned a repeated history cursor.',
-        );
-      }
-      final older = await ref
-          .read(sessionRepositoryProvider)
-          .fetchOlderTranscript(
-            workspaceId: scope.workspaceId,
-            peonId: scope.peonId,
-            sessionId: scope.sessionId,
-            cursor: cursor,
-            limit: _pageSize,
-          );
-      _nextCursor = older.nextCursor;
-      _serverHasOlder = older.hasMore;
-      if (older.events.any(
-        (event) => cachedIdsBeforeRefresh.contains(event.eventId),
-      )) {
-        return;
-      }
-      cursor = older.nextCursor;
-      hasMore = older.hasMore;
     }
   }
 
