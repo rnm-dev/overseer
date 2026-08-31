@@ -21,6 +21,14 @@ Stop keeps the Peon's HTTP response semantics and heals the indexed session
 after `409 SESSION_NOT_RUNNING` — see [reverse command
 gateway](reverse-command-gateway.md) for what does still use the gateway.
 
+Stop is a desired-state command: once a known session is terminal, repeated
+Stop requests succeed, including a retry whose earlier `2xx` response was lost.
+Before answering, Peon reconciles both directions of run state. A durable
+`running` summary without a live registry is finalized as orphaned; a live or
+pending registry attached to a terminal/missing summary is fenced, interrupted
+and removed. Thus fleet `activeSessions`, session status and Stop converge
+without requiring a daemon restart.
+
 ## Branching
 
 Branching calls Codex app-server `thread/fork` or Claude Code
@@ -39,6 +47,12 @@ sub-sessions through `parentSessionId`.
 
 Queue items expose a stable `type: "queue" | "steer"`; steering preserves the
 item ID while changing its type and dispatch priority.
+
+The selected item remains durable until provider acceptance or replacement-run
+start. Peon then retains a bounded durable receipt for its item ID, so duplicate
+Steer delivery after a lost HTTP response returns success without sending the
+prompt twice. A refusal before either boundary leaves the item visible and
+retryable.
 
 - **Codex** — a queued Steer remains durable until native `turn/steer`
   acknowledges the exact active turn; rejection retains the item and falls back

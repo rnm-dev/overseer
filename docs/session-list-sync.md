@@ -32,7 +32,9 @@ The stable invariants are:
   cannot mutate or ACK.
 - **SCA-ORPHAN-LIVENESS** — Peon reconciles `status: running` against its live,
   resume-pending and steer-pending registries before list, page, detail or Stop
-  returns. Reconciliation persists and publishes one terminal summary.
+  returns. It also fences and interrupts registry entries whose durable summary
+  is terminal or missing. Reconciliation persists and publishes one terminal
+  summary, and fleet activity counts only the reconciled registry.
 - **SCA-TOMBSTONE-MONOTONICITY** and **SCA-CLIENT-MONOTONICITY** — `(peonId,
   sessionId)` is identity; `syncedAt` fences REST/socket/cache races and stale
   deletion tombstones.

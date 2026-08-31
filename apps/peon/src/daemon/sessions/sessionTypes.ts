@@ -72,6 +72,8 @@ export interface SessionRecord {
   title: string | null;
   followUpPrompts: string[];
   queuedFollowUps: QueuedFollowUp[];
+  /** Bounded durable receipts for queue items already accepted by steer. */
+  steeredQueueItemIds?: string[];
   /** Durable automation context coalesced into the next turn; never exposed in public session views. */
   pendingSystemPrompts: PendingSystemPrompt[];
   dir: string;

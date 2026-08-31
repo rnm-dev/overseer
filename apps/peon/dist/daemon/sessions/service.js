@@ -18,6 +18,7 @@ import { ReplyToError, buildReplyPrompt, isReplyableEvent } from "./replyTo.js";
 import { appendContextMessage as appendParticipantContext, initializeBranchedContext, replayContextMessage } from "./contextMessages.js";
 export { attachmentsDir } from "./sessionArtifacts.js";
 const pendingSessionBranches = new Map();
+const MAX_STEER_RECEIPTS = 128;
 export { AUTO_RESUME_PROMPT, MAX_AUTO_RESUME_ATTEMPTS, ORPHANED_RUN_MARKER, RESTART_INTERRUPTION_MARKER, SYSTEM_AUTHOR, };
 function reconcileOrphanedRun(record) {
     if (record.status !== "running"
@@ -31,6 +32,37 @@ function reconcileOrphanedRun(record) {
         summary: `Session ${ORPHANED_RUN_MARKER}; no live or pending run was found.`,
     }, undefined, undefined, undefined, undefined, false);
     return record;
+}
+function rememberSteeredItem(record, itemId) {
+    const receipts = record.steeredQueueItemIds ??= [];
+    if (receipts.includes(itemId))
+        return;
+    receipts.push(itemId);
+    if (receipts.length > MAX_STEER_RECEIPTS)
+        receipts.splice(0, receipts.length - MAX_STEER_RECEIPTS);
+}
+// Reconciliation is deliberately bidirectional. OVSR-213 healed a durable
+// `running` record with no registry entry; a terminal record can also retain a
+// stale live/pending entry after a late provider callback. Such ghosts inflate
+// activeSessions and make Stop/Steer address a turn that cannot accept either.
+function reconcileTerminalRegistries() {
+    for (const [id, run] of [...sessionState.activeRuns.entries()]) {
+        const record = sessionState.records.get(id);
+        if (record?.status === "running")
+            continue;
+        sessionState.activeRuns.delete(id);
+        sessionState.resumePending.delete(id);
+        sessionState.steerPending.delete(id);
+        getAgentDriver(record?.agent ?? "claude-code")?.interrupt(run, "cancel");
+    }
+    for (const id of [...sessionState.resumePending.values()]) {
+        if (sessionState.records.get(id)?.status !== "running")
+            sessionState.resumePending.delete(id);
+    }
+    for (const id of [...sessionState.steerPending.values()]) {
+        if (sessionState.records.get(id)?.status !== "running")
+            sessionState.steerPending.delete(id);
+    }
 }
 function startQueuedDispatchNow(record) {
     if (record.status === "completed") {
@@ -223,6 +255,7 @@ export const sessions = {
     // observable boundaries, so the sum keeps fleet activity truthful throughout
     // send-now handoffs instead of briefly reporting an idle Peon.
     activeCount() {
+        reconcileTerminalRegistries();
         for (const record of sessionState.records.values())
             reconcileOrphanedRun(record);
         return sessionState.activeRuns.size() + sessionState.resumePending.size();
@@ -469,7 +502,7 @@ export const sessions = {
             return "unknown_session";
         const index = record.queuedFollowUps.findIndex((item) => item.id === itemId);
         if (index < 0)
-            return "not_found";
+            return record.steeredQueueItemIds?.includes(itemId) ? "steered" : "not_found";
         record.queuedFollowUps[index].type = "steer";
         if (index > 0) {
             const [item] = record.queuedFollowUps.splice(index, 1);
@@ -494,6 +527,7 @@ export const sessions = {
                 if (acceptedIndex < 0)
                     return;
                 record.queuedFollowUps.splice(acceptedIndex, 1);
+                rememberSteeredItem(record, selected.id);
                 record.followUpPrompts.push(selected.prompt);
                 appendUserTurn(record, selected.prompt, selected.attachments, selected.permissionMode ?? undefined, selected.author ?? undefined, selected.model ?? undefined, selected.reasoningEffort ?? undefined, selected.commandId ?? undefined, selected.replyTo ?? undefined);
                 persistSummary(record);
@@ -602,7 +636,13 @@ export const sessions = {
         return readTranscriptPage(id, agent, options);
     },
     cancel(id) {
+        reconcileTerminalRegistries();
         const storedRecord = sessionState.records.get(id);
+        // Stop is an idempotent desired-state command. A retry after a lost 2xx,
+        // or a terminal record whose ghost registry was just healed, has already
+        // achieved the requested state and must succeed again.
+        if (storedRecord?.status === "completed")
+            return true;
         const wasOrphaned = storedRecord?.status === "running"
             && !sessionState.activeRuns.has(id)
             && !sessionState.resumePending.has(id)

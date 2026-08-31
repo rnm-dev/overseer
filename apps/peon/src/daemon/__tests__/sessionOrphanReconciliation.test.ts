@@ -117,3 +117,22 @@ test("read reconciliation leaves live and pending runs untouched", () => {
   cleanup(resumePending.id);
   cleanup(steerPending.id);
 });
+
+test("active count and Stop heal live registries retained by a terminal record", () => {
+  const record = makeRunningRecord("terminal-registry-ghost");
+  record.status = "completed";
+  record.endedAt = Date.now();
+  record.outcome = { result: "failure", summary: "already finished" };
+  let killed = false;
+  const run: AgentRun = { emitter: new EventEmitter(), kill() { killed = true; } };
+  sessionState.records.set(record);
+  sessionState.activeRuns.set(record.id, run);
+  sessionState.resumePending.add(record.id);
+  sessionState.steerPending.add(record.id);
+
+  assert.equal(sessions.activeCount(), 0);
+  assert.equal(killed, true);
+  assert.equal(sessions.cancel(record.id), true);
+  assert.equal(record.outcome.summary, "already finished");
+  cleanup(record.id);
+});

@@ -30,12 +30,22 @@ export async function dispatchQueuedSessionItem(
   deps: DispatchQueuedSessionItemDeps = defaultDeps,
 ): Promise<PeonCallResult> {
   const sessionPath = `/sessions/${encodeURIComponent(input.sessionId)}`;
-  const result = await deps.call(
+  let result = await deps.call(
     input.conn,
     "POST",
     `${sessionPath}/queue/${encodeURIComponent(input.itemId)}/${input.operation}`,
     { actor: input.actor },
   );
+  // Peon receipts bind duplicate delivery to the stable queue item id, making
+  // one retry after an ambiguous gateway failure safe and exactly-once.
+  if (result.status === 502) {
+    result = await deps.call(
+      input.conn,
+      "POST",
+      `${sessionPath}/queue/${encodeURIComponent(input.itemId)}/${input.operation}`,
+      { actor: input.actor },
+    );
+  }
   if (result.ok) {
     const indexed = await deps.index(result, input.workspaceId, input.peonId);
     if (!indexed) {

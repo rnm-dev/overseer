@@ -36,14 +36,29 @@ test("a cancel refused as not running republishes the peon's authoritative recor
 test("other cancel failures are relayed untouched", async () => {
   const unreachable = { status: 502, ok: false, json: { error: "peon unreachable", code: "PEON_UNREACHABLE" } };
   let snapshots = 0;
+  let attempts = 0;
   const result = await cancelSessionRun({
-    cancel: async () => unreachable,
+    cancel: async () => { attempts += 1; return unreachable; },
     snapshot: async () => { snapshots += 1; return ok; },
     publish: async () => true,
   });
 
   assert.deepEqual(result, unreachable);
+  assert.equal(attempts, 2);
   assert.equal(snapshots, 0);
+});
+
+test("an ambiguous cancel response is retried once", async () => {
+  let attempts = 0;
+  const result = await cancelSessionRun({
+    cancel: async () => ++attempts === 1
+      ? { status: 502, ok: false, json: { code: "PEON_UNREACHABLE" } }
+      : ok,
+    snapshot: async () => ok,
+    publish: async () => true,
+  });
+  assert.deepEqual(result, ok);
+  assert.equal(attempts, 2);
 });
 
 test("a failed heal never changes the answer the peon gave", async () => {
