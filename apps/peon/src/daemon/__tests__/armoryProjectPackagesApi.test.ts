@@ -11,6 +11,7 @@ process.env.XDG_STATE_HOME = path.join(root, "state");
 process.env.XDG_DATA_HOME = path.join(root, "data");
 
 const {
+  ArmoryProjectPackagesError,
   ArmoryProjectPackagesService,
   createArmoryStores,
   parseArmoryManifest,
@@ -55,14 +56,37 @@ const driveManifest = parseArmoryManifest({
 const projectPackages = new ArmoryProjectPackagesService({
   stores,
   projects: { list: () => [{ projectId }] },
-  manifestResolver: async () => ({ installed: (await stores.installed.get("drive"))!, manifest: driveManifest }),
+  manifestResolver: async (packageId) => {
+    if (packageId === "playwright") {
+      throw new ArmoryProjectPackagesError(404, "PACKAGE_NOT_INSTALLED", "Armory package is not installed: playwright");
+    }
+    return { installed: (await stores.installed.get("drive"))!, manifest: driveManifest };
+  },
 });
 
 const inventory: ArmoryInventoryReader = {
   async list() {
+    const drive = await stores.installed.get("drive");
+    const installed = {
+      drive,
+      playwright: drive ? { ...drive, id: "playwright", sourceDigest: "b".repeat(64) } : null,
+    };
     return {
       registry: { url: "https://example.test/armory.json", official: false, source: "cached", fetchedAt: 1, catalogUpdatedAt: null, error: null },
-      packages: [], total: 0, nextCursor: null,
+      packages: ["drive", "playwright"].map((id) => ({
+        id,
+        available: true,
+        displayName: id,
+        iconUrl: null,
+        summary: null,
+        publisher: null,
+        documentationUrl: null,
+        latestVersion: "1.0.0",
+        requirements: null,
+        capabilities: { mcp: true },
+        installed: installed[id as keyof typeof installed],
+        updateAvailable: false,
+      })), total: 2, nextCursor: null,
     };
   },
   async get(id) {
@@ -185,4 +209,13 @@ test("capable package reads expose the profile requirement and no activation or 
   });
   assert.equal("enabled" in body.package.installed, false);
   assert.equal("configurationStatus" in body.package.installed, false);
+});
+
+test("one stale installed projection cannot hard-fail the capable package catalog", async () => {
+  const response = await fetch(`${base}/packages`, { headers: fleetHeaders });
+  assert.equal(response.status, 200);
+  const body = await response.json() as { packages: Array<{ id: string; installed: unknown }> };
+  assert.deepEqual(body.packages.map((entry) => entry.id), ["drive", "playwright"]);
+  assert.equal(body.packages[0]?.installed !== null, true);
+  assert.equal(body.packages[1]?.installed, null);
 });

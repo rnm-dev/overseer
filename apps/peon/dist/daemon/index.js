@@ -7,7 +7,7 @@ import { updateChecker } from "./updates/updateChecker.js";
 import { claudeCodeAuth } from "./providers/claudeCodeAuth.js";
 import { configDir, stateDir } from "./runtime/xdgPaths.js";
 import { createDaemonCompositionRoot } from "./bootstrap/compositionRoot.js";
-import { recoverInterruptedArmoryOperations, recoverInterruptedArmoryUninstalls } from "./armory/index.js";
+import { reconcileArmoryInstalledState, recoverInterruptedArmoryOperations, recoverInterruptedArmoryUninstalls } from "./armory/index.js";
 import { shutdownAgentDriverRuntimes } from "./agents/index.js";
 import { controlListenerHosts, isLoopbackBindHost } from "./controlListeners.js";
 import { recoverUpdateOperation } from "./updates/updateOperations.js";
@@ -46,6 +46,13 @@ try {
     const recovered = await recoverInterruptedArmoryOperations(armoryStores);
     if (recovered)
         console.warn(`recovered ${recovered} interrupted Armory operation(s)`);
+    const reconciled = await reconcileArmoryInstalledState(armoryStores);
+    if (reconciled.restored.length)
+        console.warn(`restored Armory installed state for: ${reconciled.restored.join(", ")}`);
+    if (reconciled.pruned.length)
+        console.warn(`pruned stale Armory installed state for: ${reconciled.pruned.join(", ")}`);
+    for (const issue of reconciled.unresolved)
+        console.warn(`could not reconcile Armory package ${issue.packageId}:`, issue.error);
     await composition.armoryApi.projectPackages?.initializeMigration();
     await armoryRuntime.reconcile();
 }

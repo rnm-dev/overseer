@@ -6,6 +6,7 @@ export * from "./catalogClient.js";
 export * from "./contracts.js";
 export * from "./installer.js";
 export * from "./inventory.js";
+export * from "./reconciliation.js";
 export * from "./mcpRuntime.js";
 export * from "./api.js";
 export * from "./hookRunner.js";

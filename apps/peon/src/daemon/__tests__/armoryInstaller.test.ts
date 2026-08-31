@@ -16,6 +16,7 @@ import {
   inspectArchive,
   packageActivationPath,
   packageVersionPath,
+  reconcileArmoryInstalledState,
   recoverInterruptedArmoryOperations,
   resolveContainedPath,
   type ArchiveSelection,
@@ -101,6 +102,35 @@ test("installs verified versions side by side and atomically advances activation
   assert.equal((await stat(packageVersionPath(stores.paths, "demo", "1.0.0"))).isDirectory(), true);
   assert.equal((await stat(packageVersionPath(stores.paths, "demo", "2.0.0"))).isDirectory(), true);
   assert.equal((await stores.installed.get("demo"))?.activeOperationId, null);
+});
+
+test("startup reconciliation restores committed projections and prunes stale package state", async () => {
+  const { stores } = await fixture();
+  const archive = packageArchive("demo", "1.0.0");
+  const installer = new ArmoryInstaller({ stores, fetchImpl: responseFor(archive) });
+  const operation = await installer.install(selection("demo", "1.0.0", archive));
+  assert.equal((await installer.operations.wait(operation.id)).status, "success");
+
+  await stores.installed.remove("demo");
+  const restored = await reconcileArmoryInstalledState(stores);
+  assert.deepEqual(restored.restored, ["demo"]);
+  assert.equal((await stores.installed.get("demo"))?.version, "1.0.0");
+
+  await stores.projectPackages.write({
+    schemaVersion: 1,
+    migrationCompletedAt: 1,
+    profiles: {},
+    assignments: [{ projectId: randomUUID(), packageId: "playwright", profileId: null }],
+    legacyProfileByPackage: {},
+  });
+  await stores.installed.set({
+    ...(await stores.installed.get("demo"))!,
+    id: "playwright",
+  });
+  const pruned = await reconcileArmoryInstalledState(stores);
+  assert.deepEqual(pruned.pruned, ["playwright"]);
+  assert.equal(await stores.installed.get("playwright"), null);
+  assert.deepEqual((await stores.projectPackages.read()).assignments, []);
 });
 
 test("installs after profile migration create no activation state or implicit assignment", async () => {

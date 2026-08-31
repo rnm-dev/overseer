@@ -88,6 +88,14 @@ not move those authorities. Stable Peon HTTP status/code pairs pass through the
 existing relay. Configuration values flow only on writes and are never stored
 or logged by Overseer.
 
+The committed activation record is the authority for whether a package is
+installed; `installed.json` is a rebuildable query projection. After operation
+recovery and before migration/runtime startup, Peon restores missing projection
+rows from valid activations and removes projection-only rows plus their stale
+project assignments. Profiles and credentials are preserved. Inventory safe
+view resolution is isolated per package, so a missing or unreadable package can
+degrade its own card but cannot reject the rest of the catalog.
+
 Armory has no realtime WebSocket projection or event in the current UI. The UI
 refreshes authoritative HTTP reads and polls durable operations. If a future
 invalidation event is added, it may trigger an HTTP refetch but must not carry

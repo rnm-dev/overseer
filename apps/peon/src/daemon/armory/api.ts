@@ -366,20 +366,39 @@ async function safeCapableInventory<T extends { packages?: Array<{ id: string; i
   if (view.packages) {
     return {
       ...view,
-      packages: await Promise.all(view.packages.map(async (entry) => ({
-        ...entry,
-        installed: entry.installed ? await service.installedPackageView(entry.id) : null,
-      }))),
+      packages: await Promise.all(view.packages.map((entry) => safeCapablePackage(entry, service))),
     };
   }
   if (view.package) {
     return {
       ...view,
-      package: {
-        ...view.package,
-        installed: view.package.installed ? await service.installedPackageView(view.package.id) : null,
-      },
+      package: await safeCapablePackage(view.package, service),
     };
   }
   return view;
+}
+
+async function safeCapablePackage<T extends { id: string; installed: unknown }>(
+  entry: T,
+  service: ArmoryProjectPackagesService,
+): Promise<T> {
+  if (!entry.installed) return entry;
+  try {
+    return { ...entry, installed: await service.installedPackageView(entry.id) };
+  } catch (error) {
+    if (error instanceof ArmoryProjectPackagesError && error.code === "PACKAGE_NOT_INSTALLED") {
+      console.warn(`ignored stale Armory installed projection for ${entry.id}`);
+      return { ...entry, installed: null };
+    }
+    if (error instanceof ArmoryProjectPackagesError && error.code === "PACKAGE_NOT_READY") {
+      const installed = entry.installed as { version?: unknown };
+      if (typeof installed.version !== "string") throw error;
+      console.warn(`isolated unreadable Armory package ${entry.id}: ${error.message}`);
+      return {
+        ...entry,
+        installed: { packageId: entry.id, version: installed.version, state: "error", profileRequirement: null },
+      };
+    }
+    throw error;
+  }
 }
