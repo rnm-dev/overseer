@@ -101,11 +101,11 @@ Each of these was checked against the actual tooling, not assumed.
 
 **`workspace:` is not usable.** On npm 10.8.2 `npm install` fails with
 `EUNSUPPORTEDPROTOCOL: Unsupported URL Type "workspace:"`, and `npm pack` leaves
-the literal `"workspace:^"` in the published manifest. Declare workspace
-dependencies as ordinary semver ranges (`"@rnm-dev/protocol": "^1.0.0"`) — npm links
-the local package by symlink and publishes a valid range. This is why
-`@rnm-dev/protocol` must be published publicly before Peon starts depending on
-it rather than kept private.
+the literal `"workspace:^"` in the published manifest. Workspace consumers use
+the ordinary semver range `"@rnm-dev/protocol": "^1.0.0"`, which npm links to
+the local workspace. The protocol package remains private: Peon's public npm
+archive lists it in `bundledDependencies`, so npm embeds the exact workspace
+artifact and a clean Peon install never needs a separately published protocol.
 
 **The npm name `peon` is taken** (version 0.1.0, maintainer `tpisto`), and the
 `@rnm` npm scope was unavailable. The npm organisation is `rnm-dev`; the

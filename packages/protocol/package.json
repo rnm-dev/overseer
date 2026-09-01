@@ -1,6 +1,7 @@
 {
   "name": "@rnm-dev/protocol",
   "version": "1.0.0",
+  "private": true,
   "description": "Canonical Overseer ↔ Peon wire contract, schemas, fixtures, and generated TypeScript types",
   "license": "MIT",
   "author": "RNM Dev",
@@ -32,10 +33,6 @@
     "test": "node --test test/*.test.mjs",
     "verify": "npm run generate:check && npm run compile && npm test",
     "prepack": "npm run verify"
-  },
-  "publishConfig": {
-    "access": "public",
-    "registry": "https://registry.npmjs.org/"
   },
   "engines": {
     "node": ">=22.22.0"
