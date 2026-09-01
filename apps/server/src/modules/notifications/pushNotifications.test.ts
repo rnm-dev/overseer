@@ -83,6 +83,21 @@ test("only the requester is told, not everyone in the workspace", async () => {
   assert.notEqual(queued[0].subscriptionId, bystander.id);
 });
 
+test("an authenticated human mention sends only generic recipient-scoped push copy", async () => {
+  await setup();
+  const recipient = await subscribe("u1", "d1", "ExponentPushToken[mentioned]");
+  await subscribe("u2", "d2", "ExponentPushToken[bystander]");
+  await appendEvent({
+    workspaceId: "w1", peonId: "p1", sessionId: "s1", kind: "mention_attention",
+    payload: { peonId: "p1", sessionId: "s1", eventId: "participant_1", recipient: { kind: "user", id: "u1" }, unread: true, updatedAt: Date.now() },
+  });
+  const queued = await outbox();
+  assert.equal(queued.length, 1);
+  assert.equal(queued[0].subscriptionId, recipient.id);
+  assert.equal(queued[0].payload.body, "You were mentioned in a session");
+  assert.equal(JSON.stringify(queued[0].payload).includes("participant_1"), false);
+});
+
 test("session, peon and read-receipt events stay silent", async () => {
   await setup();
   await subscribe("u1", "d1", "ExponentPushToken[testing-token]");

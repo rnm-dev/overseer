@@ -10,6 +10,7 @@ import { useI18n, type Locale } from "../../shared/i18n";
 import { formatLocalTimestamp, localeTag } from "../../shared/timeFormat";
 import type { SelectedTextReply } from "./selectedTextReply";
 import { SelectedTextReplyCard } from "./SelectedTextReplyCard";
+import type { ComposerMention, MentionPrincipal } from "./contextMentions";
 
 // The transcript render atoms: one component per Item kind, plus the Markdown
 // renderer and the "agent is working" indicator. Pure presentation — all parsing
@@ -84,6 +85,40 @@ export function isOwnMessageAuthor(user: User | null, authorEmail?: string, auth
   return authorIdentities.some((identity) => currentIdentities.includes(identity));
 }
 
+// Overseer's snapshot label for an authenticated person is their GitHub login or
+// email, which is exactly what identifies the signed-in user here. The opaque
+// principal id is Overseer's own identity and is deliberately not compared.
+export function isOwnParticipantAuthor(user: User | null, author: MentionPrincipal): boolean {
+  return author.kind === "user" && isOwnMessageAuthor(user, undefined, undefined, author.label);
+}
+
+// The authoritative ranges make a person's name visible in the transcript, the
+// same tokens the composer colored. Text is never rewritten from the current
+// label: the range is what makes those exact characters a mention.
+export function MentionedText({ text, mentions, user }: { text: string; mentions?: ComposerMention[]; user: User | null }) {
+  if (!mentions?.length) return <>{text}</>;
+  const nodes: ReactNode[] = [];
+  let cursor = 0;
+  for (const [index, mention] of mentions.entries()) {
+    const start = mention.startUtf16;
+    const end = start + mention.lengthUtf16;
+    if (start < cursor || end > text.length) continue;
+    nodes.push(text.slice(cursor, start));
+    nodes.push(
+      <span
+        key={`${index}:${start}`}
+        title={mention.principal.label}
+        className={isOwnParticipantAuthor(user, mention.principal)
+          ? "rounded-sm bg-warning/20 font-semibold text-warning-strong"
+          : "rounded-sm bg-accent/15 text-accent-strong"}
+      >{text.slice(start, end)}</span>,
+    );
+    cursor = end;
+  }
+  nodes.push(text.slice(cursor));
+  return <>{nodes}</>;
+}
+
 export function userMessageAvatar(
   user: User | null,
   authorAvatarUrl?: string,
@@ -96,7 +131,7 @@ export function userMessageAvatar(
   return user?.avatarUrl || undefined;
 }
 
-export function UserBubble({ text, replyTo, author, authorEmail, authorGithubLogin, authorAvatarUrl, attachments, createdAt, onOpenAttachment, onOpenReplySource }: { text: string; replyTo?: SelectedTextReply; author?: string; authorEmail?: string; authorGithubLogin?: string; authorAvatarUrl?: string; attachments?: MessageAttachment[]; createdAt?: number; onOpenAttachment?: (attachment: MessageAttachment) => void; onOpenReplySource?: (replyTo: SelectedTextReply) => void }) {
+export function UserBubble({ text, mentions, replyTo, author, authorEmail, authorGithubLogin, authorAvatarUrl, attachments, createdAt, onOpenAttachment, onOpenReplySource }: { text: string; mentions?: ComposerMention[]; replyTo?: SelectedTextReply; author?: string; authorEmail?: string; authorGithubLogin?: string; authorAvatarUrl?: string; attachments?: MessageAttachment[]; createdAt?: number; onOpenAttachment?: (attachment: MessageAttachment) => void; onOpenReplySource?: (replyTo: SelectedTextReply) => void }) {
   const { user } = useAuth();
   const { locale, t } = useI18n();
   const mine = isOwnMessageAuthor(user, authorEmail, authorGithubLogin, author);
@@ -111,10 +146,10 @@ export function UserBubble({ text, replyTo, author, authorEmail, authorGithubLog
         {replyTo && <div className="mb-2"><SelectedTextReplyCard replyTo={replyTo} compact onOpenSource={() => onOpenReplySource?.(replyTo)} /></div>}
         {compact ? (
           <div className="flex items-end gap-3">
-            <div className="min-w-0 flex-1">{text}</div>
+            <div className="min-w-0 flex-1"><MentionedText text={text} mentions={mentions} user={user} /></div>
             {createdAt && <div className={`${mine ? OWN_USER_BUBBLE_TIME_CLASS : OTHER_USER_BUBBLE_TIME_CLASS} shrink-0 pb-px`}><LocalMessageTime createdAt={createdAt} locale={locale} yesterdayLabel={t("peon.stats.period.yesterday")} /></div>}
           </div>
-        ) : text ? <div>{text}</div> : null}
+        ) : text ? <div><MentionedText text={text} mentions={mentions} user={user} /></div> : null}
         {!!attachments?.length && (
           <div className={text ? "mt-2 grid gap-1" : "grid gap-1"}>
             {attachments.map((attachment, i) => <AttachmentPill key={`${attachment.path || attachment.name || "attachment"}-${i}`} attachment={attachment} mine={mine} onOpen={attachment.path ? () => onOpenAttachment?.(attachment) : undefined} />)}
@@ -123,6 +158,28 @@ export function UserBubble({ text, replyTo, author, authorEmail, authorGithubLog
         {createdAt && !compact && <div className={`${mine ? OWN_USER_BUBBLE_TIME_CLASS : OTHER_USER_BUBBLE_TIME_CLASS} mt-1 text-right`}><LocalMessageTime createdAt={createdAt} locale={locale} yesterdayLabel={t("peon.stats.period.yesterday")} /></div>}
       </div>
       <Avatar src={avatarUrl} label={avatarLabel} className="border-accent/35 bg-accent/15 text-accent-strong" />
+    </div>
+  );
+}
+
+export function ParticipantBubble({ item, onOpenAttachment }: { item: Extract<Item, { kind: "participant" }>; onOpenAttachment?: (attachment: MessageAttachment) => void }) {
+  const { user } = useAuth();
+  const { locale, t } = useI18n();
+  const mine = isOwnParticipantAuthor(user, item.author);
+  const avatar = <Avatar src={mine ? user?.avatarUrl || undefined : undefined} label={item.author.label} className="border-warning/35 bg-warning/10 text-warning-strong" />;
+  const bubble = (
+    <div className={mine ? OWN_USER_BUBBLE_CLASS : OTHER_USER_BUBBLE_CLASS}>
+      {!mine && <div className={OTHER_USER_BUBBLE_AUTHOR_CLASS}>{item.author.label}</div>}
+      {item.text && <div><MentionedText text={item.text} mentions={item.mentions} user={user} /></div>}
+      {!!item.attachments?.length && <div className={item.text ? "mt-2 grid gap-1" : "grid gap-1"}>{item.attachments.map((attachment, index) => <AttachmentPill key={`${attachment.path || index}`} attachment={attachment} mine={mine} onOpen={attachment.path ? () => onOpenAttachment?.(attachment) : undefined} />)}</div>}
+      {item.createdAt && <div className={`${mine ? OWN_USER_BUBBLE_TIME_CLASS : OTHER_USER_BUBBLE_TIME_CLASS} mt-1 text-right`}><LocalMessageTime createdAt={item.createdAt} locale={locale} yesterdayLabel={t("peon.stats.period.yesterday")} /></div>}
+    </div>
+  );
+  return (
+    <div className={`flex items-end gap-2 ${mine ? "justify-end" : "justify-start"}`}>
+      {!mine && avatar}
+      {bubble}
+      {mine && avatar}
     </div>
   );
 }
@@ -607,8 +664,10 @@ function SimpleToolIcon({ kind }: { kind: SimpleToolKind }) {
 
 export function ItemView({ item, t, locale = "en", yesterdayLabel = "Yesterday", simpleTools = false, onOpenPreview, onOpenAttachment, onOpenReplySource, onOpenProjectFile, projectViewer }: { item: Item; t: T; locale?: Locale; yesterdayLabel?: string; simpleTools?: boolean; onOpenPreview?: (preview: PreviewRequest) => void; onOpenAttachment?: (attachment: MessageAttachment) => void; onOpenReplySource?: (replyTo: SelectedTextReply) => void; onOpenProjectFile?: (path: string, viewerUrl: string) => void; projectViewer?: ProjectViewerContext | null }) {
   switch (item.kind) {
+    case "participant":
+      return <ParticipantBubble item={item} onOpenAttachment={onOpenAttachment} />;
     case "user":
-      return <UserBubble text={item.text} replyTo={item.replyTo} author={item.author} authorEmail={item.authorEmail} authorGithubLogin={item.authorGithubLogin} authorAvatarUrl={item.authorAvatarUrl} attachments={item.attachments} createdAt={item.createdAt} onOpenAttachment={onOpenAttachment} onOpenReplySource={onOpenReplySource} />;
+      return <UserBubble text={item.text} mentions={item.mentions} replyTo={item.replyTo} author={item.author} authorEmail={item.authorEmail} authorGithubLogin={item.authorGithubLogin} authorAvatarUrl={item.authorAvatarUrl} attachments={item.attachments} createdAt={item.createdAt} onOpenAttachment={onOpenAttachment} onOpenReplySource={onOpenReplySource} />;
     case "text":
       return (
         <div className="typo-chat-message leading-relaxed text-ink">

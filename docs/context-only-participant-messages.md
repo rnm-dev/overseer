@@ -6,17 +6,25 @@ normative machine-readable [schema](protocol/context-only-messages-v1/schema.jso
 and [fixtures](protocol/context-only-messages-v1/fixtures.json) define the wire
 shapes, bounds and lifecycle rules.
 
-The product has two delivery lanes and one transcript:
+The product has two delivery lanes and one transcript. Routing is visible in
+the send action and derived from the structured first token:
 
 - **Send to people** appends a `participant_message` through the dedicated
   context endpoint. It never invokes the agent.
 - **Send to agent** uses the existing follow-up or queue/steer endpoint.
-  Choosing the agent in the mention picker selects this lane. An agent request
-  may still carry structured human mentions.
+
+A structured person mention at UTF-16 offset zero selects **Send to people**.
+Without one, the message selects **Send to agent**. Mentions later in an agent
+request remain notification metadata and do not change its route.
 
 Neither Overseer nor Peon parses raw `@text` to choose a lane or recipient.
 Typing text that resembles a mention without selecting a participant is plain
 text and creates no notification.
+
+On web, typing `@` opens the participant picker above the composer. Arrow keys
+(or Home/End) move through it, Enter or Tab selects, and Escape closes it.
+Selected people are colored inline in the draft. Backspace or Delete at the
+tagged name removes the entire structured token, not one character at a time.
 
 ## Authority split
 
@@ -71,6 +79,12 @@ the person independently.
 
 The agent is not a principal kind. Selecting the agent changes the send lane;
 an `agent` mention submitted to the people-only route is `BAD_MENTION`.
+
+Capable clients obtain the session-scoped picker roster from
+`GET /api/workspaces/:wsId/peons/:peonId/sessions/:sid/mention-principals`.
+The response contains only active participants as canonical principal
+snapshots; the ordinary session ACL applies, and the management-only
+participant roster remains a separate endpoint.
 
 ## Context-message mutation
 
@@ -228,6 +242,9 @@ recipient in several ranges still creates one occurrence. Its identity is
 from `session_attention`, because no agent request or completion occurred.
 
 The authenticated recipient or scoped guest receives only their own occurrence.
+Initial unread state is read from
+`GET /api/workspaces/:wsId/peons/:peonId/sessions/:sid/mention-attention`;
+later changes use the recipient-scoped `mention_attention` workspace event.
 Opening/rendering occurrences acknowledges exact authoritative event IDs in
 batches of at most 100:
 

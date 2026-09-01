@@ -64,7 +64,7 @@ import type {
   SessionTranscriptEventContract,
 } from "./contracts.js";
 import { ReplyToError, buildReplyPrompt, isReplyableEvent } from "./replyTo.js";
-import { appendContextMessage as appendParticipantContext, initializeBranchedContext, replayContextMessage } from "./contextMessages.js";
+import { appendContextMessage as appendParticipantContext, initializeBranchedContext, replayContextMessage, type ContextMention, type MessageAttribution } from "./contextMessages.js";
 
 export { attachmentsDir } from "./sessionArtifacts.js";
 
@@ -370,6 +370,7 @@ export const sessions: SessionCatalogReader & SessionLifecycleContract & Session
     commandId?: string,
     notifyParentOnComplete = false,
     replyTo?: ReplyTo,
+    attribution?: MessageAttribution,
   ): SessionRecord {
     const record = sessionState.records.get(id);
     if (!record) {
@@ -387,7 +388,7 @@ export const sessions: SessionCatalogReader & SessionLifecycleContract & Session
       record.status = "running";
       record.outcome = null;
       record.endedAt = null;
-      runProcess(record, prompt, true, attachments, permissionMode, author, model, reasoningEffort, commandId, [], 0, true, replyTo);
+      runProcess(record, prompt, true, attachments, permissionMode, author, model, reasoningEffort, commandId, [], 0, true, replyTo, attribution);
     };
 
     if (record.status === "running") {
@@ -412,7 +413,7 @@ export const sessions: SessionCatalogReader & SessionLifecycleContract & Session
           // pending fence, so those late acknowledgements are ignored above.
           record.followUpPrompts.push(prompt);
           record.parentCompletionNotificationPending = notifyParentOnComplete;
-          appendUserTurn(record, prompt, attachments, permissionMode, author, model, reasoningEffort, commandId, replyTo);
+          appendUserTurn(record, prompt, attachments, permissionMode, author, model, reasoningEffort, commandId, replyTo, attribution);
           persistSummary(record);
           sessionState.emitter.emit("change", record);
         };
@@ -478,6 +479,7 @@ export const sessions: SessionCatalogReader & SessionLifecycleContract & Session
     commandId?: string,
     startNow = false,
     replyTo?: ReplyTo,
+    attribution?: MessageAttribution,
   ): SessionRecord {
     const record = sessionState.records.get(id);
     if (!record) throw new Error("unknown session");
@@ -490,6 +492,8 @@ export const sessions: SessionCatalogReader & SessionLifecycleContract & Session
       reasoningEffort: reasoningEffort ?? null,
       commandId: commandId ?? null,
       replyTo: replyTo ?? null,
+      authorPrincipal: attribution?.authorPrincipal ?? null,
+      mentions: attribution?.mentions ?? null,
       queuedAt: Date.now(),
     };
     record.queuedFollowUps.push(item);
@@ -573,6 +577,8 @@ export const sessions: SessionCatalogReader & SessionLifecycleContract & Session
     itemId: string,
     prompt: string,
     replyTo?: ReplyTo | null,
+    // Omitted preserves the item's mentions, an array replaces them, null clears.
+    mentions?: ContextMention[] | null,
   ): SessionRecord | "not_found" | "unknown_session" {
     const record = sessionState.records.get(id);
     if (!record) return "unknown_session";
@@ -581,6 +587,7 @@ export const sessions: SessionCatalogReader & SessionLifecycleContract & Session
     if (replyTo) replyTo = sessions.validateReplyTo(id, replyTo);
     item.prompt = prompt;
     if (replyTo !== undefined) item.replyTo = replyTo;
+    if (mentions !== undefined) item.mentions = mentions;
     persistSummary(record);
     sessionState.emitter.emit("change", record);
     return record;
@@ -625,6 +632,7 @@ export const sessions: SessionCatalogReader & SessionLifecycleContract & Session
           selected.reasoningEffort ?? undefined,
           selected.commandId ?? undefined,
           selected.replyTo ?? undefined,
+          { authorPrincipal: selected.authorPrincipal ?? undefined, mentions: selected.mentions ?? undefined },
         );
         persistSummary(record);
         sessionState.emitter.emit("change", record);

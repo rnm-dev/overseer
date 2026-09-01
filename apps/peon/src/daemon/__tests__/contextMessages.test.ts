@@ -158,3 +158,43 @@ test("rejects a sixty-fifth pending message without truncating the backlog", asy
   );
   assert.equal(JSON.parse(context.claimContext(sessionId, "bounded-turn")!.envelope).messages.length, 64);
 });
+
+test("a turn replacing an abandoned claim also carries what was posted since", async () => {
+  const sessionId = "claim-takeover";
+  await context.appendContextMessage(sessionId, command("40"), input("before the dead turn"));
+  const abandoned = context.claimContext(sessionId, "dead-turn")!;
+  assert.equal(abandoned.throughSeq, 1);
+  // The daemon died here: the claim was neither acknowledged nor released.
+  await context.appendContextMessage(sessionId, command("41"), input("while nothing ran"));
+  const replacement = context.claimContext(sessionId, "next-turn")!;
+  assert.equal(replacement.fromSeq, 1);
+  assert.equal(replacement.throughSeq, 2);
+  assert.deepEqual(
+    JSON.parse(replacement.envelope).messages.map((message: { text: string }) => message.text),
+    ["before the dead turn", "while nothing ran"],
+  );
+  context.acknowledgeContextClaim(sessionId, "next-turn");
+  assert.equal(context.claimContext(sessionId, "later-turn"), null);
+});
+
+test("agent-invoking messages keep resolved mentions and a structured author", () => {
+  const attribution = context.parseMessageAttribution("@Alice please look", {
+    prompt: "@Alice please look",
+    authorPrincipal: bob,
+    mentions: [{ startUtf16: 0, lengthUtf16: 6, principal: alice }],
+  });
+  assert.deepEqual(attribution.authorPrincipal, bob);
+  assert.deepEqual(attribution.mentions, [{ startUtf16: 0, lengthUtf16: 6, principal: alice }]);
+  // Ranges Overseer measured on the untrimmed prompt follow the trimmed text.
+  const shifted = context.parseMessageAttribution("@Alice look", {
+    mentions: [{ startUtf16: 2, lengthUtf16: 6, principal: alice }],
+  }, 2);
+  assert.equal(shifted.mentions?.[0]?.startUtf16, 0);
+  // Omitted preserves, null clears, and a range outside the text is refused.
+  assert.equal(context.parseMessageAttribution("look", { prompt: "look" }).mentions, undefined);
+  assert.deepEqual(context.parseMessageAttribution("look", { mentions: null }).mentions, []);
+  assert.throws(() => context.parseMessageAttribution("hi", {
+    mentions: [{ startUtf16: 0, lengthUtf16: 6, principal: alice }],
+  }), /mention/u);
+  assert.throws(() => context.parseMessageAttribution("hi", { authorPrincipal: { kind: "agent", id: "a", label: "A" } }), /author principal/u);
+});

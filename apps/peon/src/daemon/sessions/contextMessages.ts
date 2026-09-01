@@ -128,22 +128,41 @@ export function parseContextMessage(input: unknown, attachments: AttachmentInfo[
   }
   if (!validPrincipal(body.author)) throw new ContextMessageError("BAD_CONTEXT_MESSAGE", "context message author is invalid");
   if (attachments.length > MAX_CONTEXT_ATTACHMENTS) throw new ContextMessageError("BAD_CONTEXT_MESSAGE", "too many context message attachments");
-  const rawMentions = body.mentions ?? [];
-  if (!Array.isArray(rawMentions) || rawMentions.length > MAX_CONTEXT_MENTIONS) throw new ContextMessageError("BAD_MENTION", "context message mentions are invalid");
+  const mentions = parseMentionRanges(text, body.mentions ?? []);
+  return {
+    text,
+    author: { kind: body.author.kind, id: body.author.id, label: body.author.label },
+    attachments,
+    mentions,
+  };
+}
+
+/**
+ * What an agent-invoking message carries besides its prompt: who wrote it as a
+ * stable principal, and which people it mentions. Overseer resolves both before
+ * the relay; Peon only re-validates the shape and preserves it on the
+ * authoritative `user_message`. Mention metadata never routes anything.
+ */
+export type MessageAttribution = { authorPrincipal?: PrincipalSnapshot; mentions?: ContextMention[] };
+
+function parseMentionRanges(text: string, value: unknown): ContextMention[] {
+  if (!Array.isArray(value) || value.length > MAX_CONTEXT_MENTIONS) {
+    throw new ContextMessageError("BAD_MENTION", "mentions are invalid");
+  }
   let previousEnd = 0;
-  const mentions = rawMentions.map((raw) => {
-    if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new ContextMessageError("BAD_MENTION", "context message mention is invalid");
+  return value.map((raw) => {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new ContextMessageError("BAD_MENTION", "mention is invalid");
     const mention = raw as Record<string, unknown>;
     if (Object.keys(mention).some((key) => !["startUtf16", "lengthUtf16", "principal"].includes(key))
       || !Number.isInteger(mention.startUtf16) || !Number.isInteger(mention.lengthUtf16)
       || (mention.startUtf16 as number) < previousEnd || (mention.lengthUtf16 as number) < 1) {
-      throw new ContextMessageError("BAD_MENTION", "context message mention range is invalid");
+      throw new ContextMessageError("BAD_MENTION", "mention range is invalid");
     }
     const startUtf16 = mention.startUtf16 as number;
     const lengthUtf16 = mention.lengthUtf16 as number;
     const end = startUtf16 + lengthUtf16;
     if (end > text.length || splitsSurrogate(text, startUtf16) || splitsSurrogate(text, end) || !validPrincipal(mention.principal)) {
-      throw new ContextMessageError("BAD_MENTION", "context message mention is invalid");
+      throw new ContextMessageError("BAD_MENTION", "mention is invalid");
     }
     previousEnd = end;
     return {
@@ -152,12 +171,35 @@ export function parseContextMessage(input: unknown, attachments: AttachmentInfo[
       principal: { kind: mention.principal.kind, id: mention.principal.id, label: mention.principal.label },
     };
   });
-  return {
-    text,
-    author: { kind: body.author.kind, id: body.author.id, label: body.author.label },
-    attachments,
-    mentions,
-  };
+}
+
+/**
+ * `mentions` omitted leaves whatever the message already had; an array replaces
+ * it; `null` clears it — the contract the queue edit route needs. `shiftUtf16`
+ * re-anchors the ranges Overseer measured on the raw prompt onto the trimmed
+ * prompt this daemon actually stores.
+ */
+export function parseMessageAttribution(text: string, body: unknown, shiftUtf16 = 0): MessageAttribution {
+  if (!body || typeof body !== "object" || Array.isArray(body)) return {};
+  const source = body as Record<string, unknown>;
+  const attribution: MessageAttribution = {};
+  if (source.authorPrincipal !== undefined) {
+    if (!validPrincipal(source.authorPrincipal)) throw new ContextMessageError("BAD_MENTION", "author principal is invalid");
+    attribution.authorPrincipal = { ...source.authorPrincipal };
+  }
+  if (source.mentions === null) {
+    attribution.mentions = [];
+    return attribution;
+  }
+  if (source.mentions === undefined) return attribution;
+  const shifted = Array.isArray(source.mentions)
+    ? source.mentions.map((mention) => mention && typeof mention === "object" && !Array.isArray(mention)
+      && Number.isInteger((mention as Record<string, unknown>).startUtf16)
+      ? { ...mention, startUtf16: ((mention as Record<string, unknown>).startUtf16 as number) - shiftUtf16 }
+      : mention)
+    : source.mentions;
+  attribution.mentions = parseMentionRanges(text, shifted);
+  return attribution;
 }
 
 function envelope(messages: StoredMessage[]): string {
@@ -216,7 +258,16 @@ export type ContextClaim = { commandId: string; fromSeq: number; throughSeq: num
 export function claimContext(sessionId: string, commandId: string): ContextClaim | null {
   const state = readState(sessionId);
   if (state.claim && state.claim.commandId !== commandId) {
-    state.claim.commandId = commandId;
+    // The turn that held this range died without acknowledging or releasing it.
+    // The replacement turn inherits the range *extended through everything
+    // posted since*: a message written before this turn started must reach it,
+    // not wait out another one.
+    const latest = pending(state).at(-1)?.contextSeq ?? state.claim.throughSeq;
+    state.claim = {
+      commandId,
+      fromSeq: state.claim.fromSeq,
+      throughSeq: Math.max(state.claim.throughSeq, latest),
+    };
     writeState(sessionId, state);
   }
   if (!state.claim) {

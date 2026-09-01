@@ -111,7 +111,9 @@ export {
   CONTEXT_ONLY_MESSAGES_CAPABILITY,
   ContextMessageError,
   parseContextMessage,
+  parseMessageAttribution,
   type ContextMention,
+  type MessageAttribution,
   type ParticipantMessageEvent,
   type PrincipalSnapshot,
 } from "./contextMessages.js";

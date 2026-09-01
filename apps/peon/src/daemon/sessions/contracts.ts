@@ -2,7 +2,7 @@ import type { AgentEvent } from "../agents/index.js";
 import type { CodingAgent, ReasoningEffort } from "../providers/modelCatalog.js";
 import type { SessionPage } from "./sessionPagination.js";
 import type { AttachmentInfo, QueuedFollowUp, ReplyTo, SessionOutcome, SessionRecord, SessionStats, StatsPeriod } from "./sessionTypes.js";
-import type { ContextMention, ParticipantMessageEvent, PrincipalSnapshot } from "./contextMessages.js";
+import type { ContextMention, MessageAttribution, ParticipantMessageEvent, PrincipalSnapshot } from "./contextMessages.js";
 
 export interface StartSessionOptions {
   prompt: string;
@@ -68,6 +68,7 @@ export interface SessionLifecycleContract {
     commandId?: string,
     notifyParentOnComplete?: boolean,
     replyTo?: ReplyTo,
+    attribution?: MessageAttribution,
   ): SessionRecord;
   rename(id: string, title: string | null): SessionRecord | undefined;
   renameProjectKey(oldKey: string, newKey: string): number;
@@ -95,9 +96,10 @@ export interface SessionQueueContract {
     commandId?: string,
     startNow?: boolean,
     replyTo?: ReplyTo,
+    attribution?: MessageAttribution,
   ): SessionRecord;
   enqueueSystem(id: string, prompt: string, commandId?: string): SessionRecord;
-  editQueued(id: string, itemId: string, prompt: string, replyTo?: ReplyTo | null): SessionRecord | "not_found" | "unknown_session";
+  editQueued(id: string, itemId: string, prompt: string, replyTo?: ReplyTo | null, mentions?: ContextMention[] | null): SessionRecord | "not_found" | "unknown_session";
   steerQueued(id: string, itemId: string): "steered" | "not_found" | "unknown_session";
   /** @deprecated Use steerQueued. */
   sendQueuedNow(id: string, itemId: string): "sent" | "not_found" | "unknown_session";

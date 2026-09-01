@@ -258,7 +258,7 @@ export const sessions = {
     // Explicit model for this follow-up; omitted ⇒ session/global default. An
     // explicit one is pinned onto the record by runProcess, so the choice holds
     // for the rest of the conversation rather than for a single turn.
-    model, reasoningEffort, commandId, notifyParentOnComplete = false, replyTo) {
+    model, reasoningEffort, commandId, notifyParentOnComplete = false, replyTo, attribution) {
         const record = sessionState.records.get(id);
         if (!record) {
             throw new Error("unknown session");
@@ -274,7 +274,7 @@ export const sessions = {
             record.status = "running";
             record.outcome = null;
             record.endedAt = null;
-            runProcess(record, prompt, true, attachments, permissionMode, author, model, reasoningEffort, commandId, [], 0, true, replyTo);
+            runProcess(record, prompt, true, attachments, permissionMode, author, model, reasoningEffort, commandId, [], 0, true, replyTo, attribution);
         };
         if (record.status === "running") {
             // A previous interrupt is still tearing down its old process; spawning now
@@ -299,7 +299,7 @@ export const sessions = {
                     // pending fence, so those late acknowledgements are ignored above.
                     record.followUpPrompts.push(prompt);
                     record.parentCompletionNotificationPending = notifyParentOnComplete;
-                    appendUserTurn(record, prompt, attachments, permissionMode, author, model, reasoningEffort, commandId, replyTo);
+                    appendUserTurn(record, prompt, attachments, permissionMode, author, model, reasoningEffort, commandId, replyTo, attribution);
                     persistSummary(record);
                     sessionState.emitter.emit("change", record);
                 };
@@ -353,7 +353,7 @@ export const sessions = {
         spawnResume();
         return record;
     },
-    enqueue(id, prompt, attachments = [], permissionMode, author, model, reasoningEffort, commandId, startNow = false, replyTo) {
+    enqueue(id, prompt, attachments = [], permissionMode, author, model, reasoningEffort, commandId, startNow = false, replyTo, attribution) {
         const record = sessionState.records.get(id);
         if (!record)
             throw new Error("unknown session");
@@ -366,6 +366,8 @@ export const sessions = {
             reasoningEffort: reasoningEffort ?? null,
             commandId: commandId ?? null,
             replyTo: replyTo ?? null,
+            authorPrincipal: attribution?.authorPrincipal ?? null,
+            mentions: attribution?.mentions ?? null,
             queuedAt: Date.now(),
         };
         record.queuedFollowUps.push(item);
@@ -447,7 +449,9 @@ export const sessions = {
         sessionState.emitter.emit("change", record);
         return "removed";
     },
-    editQueued(id, itemId, prompt, replyTo) {
+    editQueued(id, itemId, prompt, replyTo, 
+    // Omitted preserves the item's mentions, an array replaces them, null clears.
+    mentions) {
         const record = sessionState.records.get(id);
         if (!record)
             return "unknown_session";
@@ -459,6 +463,8 @@ export const sessions = {
         item.prompt = prompt;
         if (replyTo !== undefined)
             item.replyTo = replyTo;
+        if (mentions !== undefined)
+            item.mentions = mentions;
         persistSummary(record);
         sessionState.emitter.emit("change", record);
         return record;
@@ -495,7 +501,7 @@ export const sessions = {
                     return;
                 record.queuedFollowUps.splice(acceptedIndex, 1);
                 record.followUpPrompts.push(selected.prompt);
-                appendUserTurn(record, selected.prompt, selected.attachments, selected.permissionMode ?? undefined, selected.author ?? undefined, selected.model ?? undefined, selected.reasoningEffort ?? undefined, selected.commandId ?? undefined, selected.replyTo ?? undefined);
+                appendUserTurn(record, selected.prompt, selected.attachments, selected.permissionMode ?? undefined, selected.author ?? undefined, selected.model ?? undefined, selected.reasoningEffort ?? undefined, selected.commandId ?? undefined, selected.replyTo ?? undefined, { authorPrincipal: selected.authorPrincipal ?? undefined, mentions: selected.mentions ?? undefined });
                 persistSummary(record);
                 sessionState.emitter.emit("change", record);
                 if (record.status === "completed")

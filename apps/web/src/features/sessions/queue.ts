@@ -2,6 +2,7 @@ import { api } from "../../shared/api";
 import type { ApiRequest } from "../fleet/peonApi";
 import type { MessageAttachment } from "./parsing";
 import type { SelectedTextReply } from "./selectedTextReply";
+import type { ComposerMention } from "./contextMentions";
 
 export interface QueueItem {
   id: string;
@@ -16,6 +17,7 @@ export interface QueueItem {
   commandId: string | null;
   queuedAt: number;
   replyTo?: SelectedTextReply;
+  mentions?: ComposerMention[];
 }
 
 export interface EnqueueInput {
@@ -27,6 +29,7 @@ export interface EnqueueInput {
   commandId?: string;
   startNow?: boolean;
   replyTo?: SelectedTextReply;
+  mentions?: Array<Omit<ComposerMention, "principal"> & { principal: { kind: "user" | "guest"; id: string } }>;
 }
 
 export interface QueueActivityTracker {

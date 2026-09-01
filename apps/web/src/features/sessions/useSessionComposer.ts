@@ -9,6 +9,7 @@ import type { MessageAttachment } from "./parsing";
 import { replyIdentity, type SelectedTextReply } from "./selectedTextReply";
 import { createQueueReconciler, draftWithQueuedItem, enqueueSessionFollowup, getSessionQueue, removeSessionQueueItem, removeWaitingQueueItem, pruneSteeredQueueItems, steerSessionQueueItem, sendWaitingQueueItemNow, visibleQueueItems, type QueueActivityTracker, type QueueItem } from "./queue";
 import { createSubmissionGate } from "./submissionGate";
+import { mentionWire, type ComposerMention } from "./contextMentions";
 
 const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
 const DEFAULT_FILE_ROOT = "/tmp/peon-files";
@@ -39,6 +40,7 @@ export interface ComposerGhost {
    * before its own arrives.
    */
   baselineUserMessages: number;
+  commandId?: string;
 }
 
 export function composerGhostVisible(ghost: ComposerGhost, userMessageCount: number): boolean {
@@ -114,6 +116,9 @@ interface Args {
   setRunningSelection: (model: string | null, reasoningEffort: string | null) => void;
   setStopNote: Dispatch<SetStateAction<string | null>>;
   onWorkStarted: () => void;
+  mentions: ComposerMention[];
+  setMentions: Dispatch<SetStateAction<ComposerMention[]>>;
+  committedCommandIds: ReadonlySet<string>;
 }
 
 export function useSessionComposer({
@@ -125,6 +130,7 @@ export function useSessionComposer({
   replyTo, setReplyTo,
   onGhostCreated,
   setRunning, setRunningSelection, setStopNote, onWorkStarted,
+  mentions, setMentions, committedCommandIds,
 }: Args) {
   const { notifyError } = useNotifications();
   const draftKey = composerDraftKey(wsId, peonId, sid);
@@ -163,10 +169,10 @@ export function useSessionComposer({
 
   useEffect(() => {
     if (!ghost) return;
-    if (!composerGhostVisible(ghost, userMessageCount)) return setGhost(null);
+    if ((ghost.commandId && committedCommandIds.has(ghost.commandId)) || !composerGhostVisible(ghost, userMessageCount)) return setGhost(null);
     const id = window.setTimeout(() => setGhost(null), Math.max(0, ghost.createdAt + GHOST_MAX_MS - Date.now()));
     return () => window.clearTimeout(id);
-  }, [ghost, userMessageCount]);
+  }, [committedCommandIds, ghost, userMessageCount]);
 
   // A steer that never reaches the transcript must not leave its row hidden any
   // longer than its ghost stands, so the queue goes back to showing the truth.
@@ -265,7 +271,7 @@ export function useSessionComposer({
       sessionKey, prompt, overrideModel, overrideReasoningEffort,
       replyIdentity(pendingReply),
       pending.map((f) => [f.name, f.size, f.lastModified]),
-      pendingCarried.map((attachment) => attachment.path),
+      pendingCarried.map((attachment) => attachment.path), mentionWire(mentions),
     ]));
     // Let the transcript freeze its current viewport before the new row enters.
     // It will scroll only after Virtuoso has measured the committed ghost.
@@ -279,6 +285,7 @@ export function useSessionComposer({
       replyTo: pendingReply,
       createdAt: Date.now(),
       baselineUserMessages: userMessageCountRef.current,
+      commandId: clientId,
     });
     setRunning(true);
     setRunningSelection(
@@ -296,9 +303,10 @@ export function useSessionComposer({
       // presents images as visual content to the agent via its Read tool).
       const attachments: { type: "file" | "image"; path: string; transferId?: string; size?: number; sha256?: string }[] = carriedPayload(pendingCarried);
       for (const f of pending) attachments.push({ type: isImage(f) ? "image" : "file", ...await uploadFile(f) });
-      const body: { prompt: string; attachments?: typeof attachments; model?: string; reasoningEffort?: string; replyTo?: SelectedTextReply } = { prompt };
+      const body: { prompt: string; attachments?: typeof attachments; model?: string; reasoningEffort?: string; replyTo?: SelectedTextReply; mentions?: ReturnType<typeof mentionWire> } = { prompt };
       if (attachments.length) body.attachments = attachments;
       if (pendingReply) body.replyTo = pendingReply;
+      if (mentions.length) body.mentions = mentionWire(mentions);
       if (overrideModel) body.model = overrideModel; // becomes the session default after acceptance
       if (overrideReasoningEffort) body.reasoningEffort = overrideReasoningEffort;
       const request = json(body);
@@ -306,6 +314,7 @@ export function useSessionComposer({
       followupAttempted = true;
       await api(`${base}/sessions/${encodeURIComponent(sid)}/followup`, request);
       clearRequestId();
+      setMentions([]);
       if (currentSessionKeyRef.current === sessionKey) onWorkStarted();
     } catch (err) {
       // A refusal Overseer stated outright is final: nothing was committed, so
@@ -342,6 +351,45 @@ export function useSessionComposer({
     }
   }
 
+  async function sendContext() {
+    const text = input;
+    if (!text.trim() && files.length === 0 && carried.length === 0) return;
+    const submission = submissionGateRef.current.begin(sessionKey);
+    if (!submission) return;
+    const pending = files;
+    const pendingCarried = carried;
+    const pendingMentions = mentions;
+    const commandId = requestIdFor(JSON.stringify([sessionKey, "people", text, mentionWire(pendingMentions), pending.map((file) => [file.name, file.size, file.lastModified]), pendingCarried.map((attachment) => attachment.path)]));
+    setSending(true);
+    setSendError(null);
+    onGhostCreated();
+    setGhost({ text, attachments: [...pendingCarried, ...pending.map((file) => ({ type: isImage(file) ? "image" as const : "file" as const, name: file.name, size: file.size }))], createdAt: Date.now(), baselineUserMessages: userMessageCountRef.current, commandId });
+    setInput("");
+    setFiles([]);
+    setCarried([]);
+    setMentions([]);
+    try {
+      const attachments: { type: "file" | "image"; path: string; transferId?: string; size?: number; sha256?: string }[] = carriedPayload(pendingCarried);
+      for (const file of pending) attachments.push({ type: isImage(file) ? "image" : "file", ...await uploadFile(file) });
+      const request = json({ text, ...(attachments.length ? { attachments } : {}), ...(pendingMentions.length ? { mentions: mentionWire(pendingMentions) } : {}) });
+      request.headers = { "Peon-Request-Id": commandId };
+      await api(`${base}/sessions/${encodeURIComponent(sid)}/context-messages`, request);
+      clearRequestId();
+    } catch (error) {
+      if (currentSessionKeyRef.current === sessionKey && followupWasRefused(error)) {
+        clearRequestId();
+        setGhost(null);
+        setInput(text);
+        setFiles(pending);
+        setCarried(pendingCarried);
+        setMentions(pendingMentions);
+      }
+      notifyError(error, { title: "Message could not be sent", fallback: t("error.generic"), message: composerActionErrorMessage(error, t) });
+    } finally {
+      if (submissionGateRef.current.finish(submission) && currentSessionKeyRef.current === sessionKey) setSending(false);
+    }
+  }
+
   async function enqueue() {
     const text = input.trim();
     if (!text && files.length === 0 && carried.length === 0) return;
@@ -365,6 +413,7 @@ export function useSessionComposer({
         ...(overrideModel ? { model: overrideModel } : {}),
         ...(overrideReasoningEffort ? { reasoningEffort: overrideReasoningEffort } : {}),
         ...(pendingReply ? { replyTo: pendingReply } : {}),
+        ...(mentions.length ? { mentions: mentionWire(mentions) } : {}),
         commandId,
       });
       // Peon owns FIFO order. Never insert the response optimistically; fetch the
@@ -375,6 +424,7 @@ export function useSessionComposer({
         setFiles([]);
         setCarried([]);
         setReplyTo(null);
+        setMentions([]);
         setStopNote(null);
       }
     } catch (err) {
@@ -446,6 +496,7 @@ export function useSessionComposer({
     setInput(draft.text);
     setCarried(draft.carried);
     setReplyTo(draft.replyTo);
+    setMentions(queued.mentions ?? []);
   }
 
   async function steerQueuedItem(itemId: string) {
@@ -537,6 +588,6 @@ export function useSessionComposer({
 
   return {
     input, setInput, files, setFiles, carried, setCarried, sending, sendError, setSendError, ghost,
-    queueItems: visibleQueue, removingQueueItems, steeringQueueItems: sendingQueueItems, filesEnabled, send, enqueue, removeQueuedItem, editQueuedItem, steerQueuedItem,
+    queueItems: visibleQueue, removingQueueItems, steeringQueueItems: sendingQueueItems, filesEnabled, send, sendContext, enqueue, removeQueuedItem, editQueuedItem, steerQueuedItem,
   };
 }

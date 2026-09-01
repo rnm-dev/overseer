@@ -47,6 +47,7 @@ import { useSessionBranch } from "./useSessionBranch";
 import { inquiryInsertionIndex, PLUGIN_INQUIRY_CAPABILITY, usePluginInquiries, type PluginInstallInquiry } from "./pluginInquiries";
 import { indexedRunAssumptionDelay, shouldSeedIndexedRun } from "./runStatus";
 import { SessionSharingPanel } from "./SessionSharingPanel";
+import { activeMentionQuery, insertMention, mentionsRouteToPeople, remapMentions, removeMention, CONTEXT_MESSAGES_CAPABILITY, type ComposerMention, type MentionPrincipal } from "./contextMentions";
 
 // author: Viktor
 // The transcript parsing/render pieces live in ./session/*; this file owns the
@@ -122,17 +123,26 @@ function PeonSessionDetailPage() {
   const { user } = useAuth();
   const { peon, base, wsId, orderedSessionIds, selectedSession, sessionHref, sessionsHomeHref, onSessionDeleted, onSessionRunningChange } = usePeon();
   const { sid = "" } = useParams();
-  const { subscribe, viewersFor } = useLiveSocket();
+  const { subscribe, subscribeMentionAttention, viewersFor } = useLiveSocket();
   const navigate = useNavigate();
   const { catalog, supported: modelsSupported } = useModels(base);
   const sessionKey = `${peon.peonId}:${sid}`;
   const transcriptPaginationSupported = peon.capabilities.includes("transcript-pagination-v1");
   const selectedTextRepliesSupported = peon.capabilities.includes(SELECTED_TEXT_REPLY_CAPABILITY);
   const pluginInquiriesSupported = peon.capabilities.includes(PLUGIN_INQUIRY_CAPABILITY);
+  const contextMessagesSupported = peon.capabilities.includes(CONTEXT_MESSAGES_CAPABILITY);
   const filePanePageKey = `${wsId}:${sessionKey}`;
   const currentSessionKeyRef = useRef(sessionKey);
   const [simpleTools] = useState(() => loadToolDisplayMode() === "simple");
   const [sharingOpen, setSharingOpen] = useState(false);
+  const [mentionPrincipals, setMentionPrincipals] = useState<MentionPrincipal[]>([]);
+  const [mentions, setMentions] = useState<ComposerMention[]>([]);
+  // Where the picker looks for its `@`, and where the caret is put back after a
+  // person is inserted into the middle of an already written sentence.
+  const [composerCaret, setComposerCaret] = useState<number | null>(null);
+  const [caretRequest, setCaretRequest] = useState<{ position: number; seq: number } | null>(null);
+  const caretSeqRef = useRef(0);
+  const [mentionAttentionIds, setMentionAttentionIds] = useState<Set<string>>(new Set());
   const attentionReadInFlightRef = useRef<string | null>(null);
   // Update during render, not in an effect: a request from the previous route can
   // settle in the small render→effect window and must not mutate the new session.
@@ -175,6 +185,33 @@ function PeonSessionDetailPage() {
       window.removeEventListener("focus", onPresence);
     };
   }, [markAttentionRead, selectedSession?.attentionUnread]);
+
+  useEffect(() => {
+    if (!contextMessagesSupported) {
+      setMentionPrincipals([]);
+      setMentions([]);
+      setMentionAttentionIds(new Set());
+      return;
+    }
+    let alive = true;
+    void Promise.all([
+      api<{ principals?: MentionPrincipal[] }>(`${base}/sessions/${encodeURIComponent(sid)}/mention-principals`),
+      api<{ attention?: Array<{ eventId: string; unread: boolean }> }>(`${base}/sessions/${encodeURIComponent(sid)}/mention-attention`),
+    ]).then(([roster, attention]) => {
+      if (!alive) return;
+      setMentionPrincipals(roster.principals ?? []);
+      setMentionAttentionIds(new Set((attention.attention ?? []).filter((item) => item.unread).map((item) => item.eventId)));
+    }).catch(() => undefined);
+    const unsubscribe = subscribeMentionAttention((attention) => {
+      if (attention.peonId !== peon.peonId || attention.sessionId !== sid) return;
+      setMentionAttentionIds((current) => {
+        const next = new Set(current);
+        if (attention.unread) next.add(attention.eventId); else next.delete(attention.eventId);
+        return next;
+      });
+    });
+    return () => { alive = false; unsubscribe(); };
+  }, [base, contextMessagesSupported, peon.peonId, sid, subscribeMentionAttention]);
 
   // Session title + inline rename.
   const [title, setTitle] = useState<string | null>(null);
@@ -537,6 +574,15 @@ function PeonSessionDetailPage() {
     () => combineVisibleTranscriptEvents(history ?? [], orderedLive),
     [history, orderedLive],
   );
+  const committedCommandIds = useMemo(() => new Set(visibleEvents.flatMap((event) => typeof event.commandId === "string" ? [event.commandId] : [])), [visibleEvents]);
+  useEffect(() => {
+    if (!contextMessagesSupported || mentionAttentionIds.size === 0 || document.visibilityState !== "visible") return;
+    const rendered = visibleEvents.flatMap((event) => typeof event.eventId === "string" && mentionAttentionIds.has(event.eventId) ? [event.eventId] : []);
+    if (rendered.length === 0) return;
+    void api(`${base}/sessions/${encodeURIComponent(sid)}/mention-attention/read`, { method: "POST", body: JSON.stringify({ eventIds: rendered.slice(0, 100) }) }).then(() => {
+      setMentionAttentionIds((current) => new Set([...current].filter((id) => !rendered.includes(id))));
+    }).catch(() => undefined);
+  }, [base, contextMessagesSupported, mentionAttentionIds, sid, visibleEvents]);
   // The composer's ghost retires as soon as this grows past what it captured.
   const userMessageCount = useMemo(
     () => visibleEvents.reduce((count, event) => count + (event.type === "user_message" ? 1 : 0), 0),
@@ -544,7 +590,7 @@ function PeonSessionDetailPage() {
   );
   const {
     input, setInput, files, setFiles, carried, setCarried, sending, sendError, setSendError, ghost,
-    queueItems, removingQueueItems, steeringQueueItems, filesEnabled, send, enqueue, removeQueuedItem, editQueuedItem, steerQueuedItem,
+    queueItems, removingQueueItems, steeringQueueItems, filesEnabled, send, sendContext, enqueue, removeQueuedItem, editQueuedItem, steerQueuedItem,
   } = useSessionComposer({
     base,
     sid,
@@ -574,7 +620,38 @@ function PeonSessionDetailPage() {
     setRunningSelection,
     setStopNote,
     onWorkStarted,
+    mentions,
+    setMentions,
+    committedCommandIds,
   });
+  const mentionQuery = contextMessagesSupported ? activeMentionQuery(input, composerCaret ?? input.length) : null;
+  const mentionSuggestions = useMemo(() => {
+    if (!mentionQuery) return [];
+    const query = mentionQuery.query.toLowerCase();
+    return mentionPrincipals.filter((principal) => principal.label.toLowerCase().includes(query)).slice(0, 8);
+  }, [mentionPrincipals, mentionQuery]);
+  const changeComposerInput = useCallback((value: string, caret?: number) => {
+    setComposerCaret(caret ?? null);
+    setInput(value);
+    setMentions((current) => remapMentions(input, value, current));
+  }, [input, setInput]);
+  const selectMention = useCallback((principal: MentionPrincipal) => {
+    const query = activeMentionQuery(input, composerCaret ?? input.length);
+    if (!query) return;
+    const selected = insertMention(input, query, principal, mentions);
+    const caret = query.startUtf16 + principal.label.length + 2;
+    setInput(selected.text);
+    setMentions(selected.mentions);
+    setComposerCaret(caret);
+    setCaretRequest({ position: caret, seq: caretSeqRef.current++ });
+  }, [composerCaret, input, mentions, setInput]);
+  const removeSelectedMention = useCallback((mention: ComposerMention) => {
+    const removed = removeMention(input, mentions, mention);
+    setInput(removed.text);
+    setMentions(removed.mentions);
+    setComposerCaret(mention.startUtf16);
+    setCaretRequest({ position: mention.startUtf16, seq: caretSeqRef.current++ });
+  }, [input, mentions, setInput]);
 
 
   useEffect(() => {
@@ -1051,10 +1128,11 @@ function PeonSessionDetailPage() {
         editQueuedItem={editQueuedItem}
         steerQueuedItem={steerQueuedItem}
         input={input}
-        setInput={setInput}
+        setInput={changeComposerInput}
         running={running}
         enqueue={enqueue}
         send={send}
+        sendContext={sendContext}
         sending={sending}
         controlConnected={peon.controlConnected ?? peon.online}
         files={files}
@@ -1078,6 +1156,13 @@ function PeonSessionDetailPage() {
         overrideReasoningEffort={overrideReasoningEffort}
         setOverrideReasoningEffort={setOverrideReasoningEffort}
         sessionReasoningEffort={sessionReasoningEffort}
+        sendToPeople={contextMessagesSupported && mentionsRouteToPeople(mentions)}
+        mentionSuggestions={mentionSuggestions}
+        onSelectMention={selectMention}
+        mentionMenuOpen={mentionQuery !== null}
+        selectedMentions={mentions}
+        onRemoveMention={removeSelectedMention}
+        caretRequest={caretRequest}
       />
       {replyContextMenu && (
         <SelectedTextReplyContextMenu

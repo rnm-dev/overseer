@@ -88,7 +88,7 @@ export function scheduleQueuedDispatch(record) {
         record.outcome = null;
         record.endedAt = null;
         try {
-            runProcess(record, item?.prompt ?? "", record.backendSessionId !== null, item?.attachments ?? [], item?.permissionMode ?? undefined, item?.author ?? undefined, item?.model ?? undefined, item?.reasoningEffort ?? undefined, item?.commandId ?? systemPrompts.map((prompt) => prompt.commandId).find(Boolean) ?? undefined, systemPrompts, 0, true, item?.replyTo ?? undefined);
+            runProcess(record, item?.prompt ?? "", record.backendSessionId !== null, item?.attachments ?? [], item?.permissionMode ?? undefined, item?.author ?? undefined, item?.model ?? undefined, item?.reasoningEffort ?? undefined, item?.commandId ?? systemPrompts.map((prompt) => prompt.commandId).find(Boolean) ?? undefined, systemPrompts, 0, true, item?.replyTo ?? undefined, { authorPrincipal: item?.authorPrincipal ?? undefined, mentions: item?.mentions ?? undefined });
         }
         catch (error) {
             // Put the item back if a synchronous spawn/setup error occurs. A queued
@@ -257,7 +257,7 @@ export function classifyFromResultEvent(record, resultEvent, runModel, turnCount
 // `perTurnModel` and `perTurnReasoningEffort` are explicit follow-up selections
 // and become the session's own defaults; when omitted, the spawn falls back to
 // the session/daemon or CLI defaults.
-export function appendUserTurn(record, prompt, attachments = [], permissionMode, author, model, reasoningEffort, commandId, replyTo) {
+export function appendUserTurn(record, prompt, attachments = [], permissionMode, author, model, reasoningEffort, commandId, replyTo, attribution) {
     const userEvent = {
         type: "user_message", text: prompt,
         ...(attachments.length > 0 ? { attachments } : {}),
@@ -267,6 +267,10 @@ export function appendUserTurn(record, prompt, attachments = [], permissionMode,
         ...(reasoningEffort ? { reasoningEffort } : {}),
         ...(commandId ? { commandId } : {}),
         ...(replyTo ? { replyTo } : {}),
+        // The string `author` stays as it was; the structured principal is what
+        // makes self-exclusion and guest attribution stable for mention attention.
+        ...(attribution?.authorPrincipal ? { authorPrincipal: attribution.authorPrincipal } : {}),
+        ...(attribution?.mentions?.length ? { mentions: attribution.mentions } : {}),
     };
     const userEntry = appendTranscriptEvent(record.id, userEvent);
     const now = userEntry.event.createdAt;
@@ -305,7 +309,7 @@ function writeMcpConfig(record) {
         throw error;
     }
 }
-export function runProcess(record, prompt, resume, attachments = [], permissionMode, author, perTurnModel, perTurnReasoningEffort, commandId, systemPrompts = [], zeroTurnRetryAttempt = 0, appendPromptToTranscript = true, replyTo) {
+export function runProcess(record, prompt, resume, attachments = [], permissionMode, author, perTurnModel, perTurnReasoningEffort, commandId, systemPrompts = [], zeroTurnRetryAttempt = 0, appendPromptToTranscript = true, replyTo, attribution) {
     // Seed the live transcript cache before accepting a resume event.
     readTranscript(record.id, record.agent);
     // The CLI's own stream-json output never echoes back what it was asked —
@@ -321,7 +325,7 @@ export function runProcess(record, prompt, resume, attachments = [], permissionM
     // turn: a shared session can carry follow-ups from different humans, so
     // attribution belongs on the message, not just once on the record's initiator.
     if (prompt && appendPromptToTranscript) {
-        appendUserTurn(record, prompt, attachments, permissionMode, author, perTurnModel, perTurnReasoningEffort, commandId, replyTo);
+        appendUserTurn(record, prompt, attachments, permissionMode, author, perTurnModel, perTurnReasoningEffort, commandId, replyTo, attribution);
     }
     const contextCommandId = commandId ?? randomUUID();
     let contextClaim;

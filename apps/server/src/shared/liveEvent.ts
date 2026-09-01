@@ -3,7 +3,7 @@
  * post-commit delivery infrastructure. This is intentionally domain-neutral:
  * it describes a committed record, not a session or a notification.
  */
-export type EventKind = "session" | "project" | "peon" | "attention" | "command" | "transcript" | "configuration";
+export type EventKind = "session" | "project" | "peon" | "attention" | "mention_attention" | "command" | "transcript" | "configuration";
 
 export interface LiveEvent {
   cursor: number;

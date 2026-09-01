@@ -9,6 +9,20 @@ import {
 import { ownerOnly, relay, withWorkspacePeon } from "../requestContext.js";
 import { PreviewsDisabledError, mintWebPreview } from "../webPreview.js";
 import { runIdempotentFollowup, validCommandId } from "../../modules/sessions/index.js";
+import {
+  CONTEXT_MESSAGES_CAPABILITY,
+  ContextMessageError,
+  authorPrincipal,
+  deleteMentionAttention,
+  listMentionAttention,
+  markMentionAttentionRead,
+  mentionPrincipals,
+  recordMentionAttention,
+  resolveMentions,
+  validateContextAttachments,
+  validateContextText,
+  validContextCommandId,
+} from "../../modules/sessions/index.js";
 import { enrichTranscriptMetadata } from "../../modules/sessions/index.js";
 import { deleteIndexedSession, getIndexedSession } from "../../modules/sessions/index.js";
 import { cancelSessionRequest, markSessionAttentionRead, recordSessionRequest } from "../../modules/sessions/index.js";
@@ -79,6 +93,34 @@ export function registerSessionRoutes(router: express.Router): void {
     }
     return handler(req, res, c);
   });
+  const contextFailure = (error: unknown, res: express.Response): boolean => {
+    if (!(error instanceof ContextMessageError)) return false;
+    res.status(error.status).json({ error: error.message, code: error.code });
+    return true;
+  };
+  const requireContextCapability = (record: PeonRecord, res: express.Response): boolean => {
+    if (record.capabilities.includes(CONTEXT_MESSAGES_CAPABILITY)) return true;
+    res.status(409).json({ error: "this Peon does not support context-only participant messages", code: "UNSUPPORTED_CAPABILITY" });
+    return false;
+  };
+  const normalizeAgentMessage = async (
+    body: unknown,
+    c: Parameters<Parameters<typeof withWorkspacePeon>[0]>[2],
+    sid: string,
+    nullable = false,
+  ): Promise<unknown> => {
+    if (!body || typeof body !== "object" || Array.isArray(body) || !("mentions" in body)) return body;
+    if (!c.record.capabilities.includes(CONTEXT_MESSAGES_CAPABILITY)) {
+      throw new ContextMessageError("this Peon does not support structured mentions", "UNSUPPORTED_CAPABILITY", 409);
+    }
+    const source = body as Record<string, unknown>;
+    const text = typeof source.prompt === "string" ? source.prompt : "";
+    return {
+      ...source,
+      authorPrincipal: authorPrincipal(c),
+      mentions: await resolveMentions(c.workspaceId, c.record.peonId, sid, text, source.mentions, nullable),
+    };
+  };
   router.get(`${wp}/status`, withWorkspacePeon(async (_req, res, c) => {
     relay(await callPeon(connOfRecord(c.record), "GET", "/status", { actor: c.operator.email }), res);
   }));
@@ -170,6 +212,9 @@ export function registerSessionRoutes(router: express.Router): void {
       if (Array.isArray(body.events)) {
         try {
           const events = await enrichTranscriptMetadata(c.record.peonId, sid, body.events);
+          if (c.record.capabilities.includes(CONTEXT_MESSAGES_CAPABILITY)) {
+            await Promise.all(events.map((event) => recordMentionAttention(c.workspaceId, c.record.peonId, sid, event)));
+          }
           return res.status(r.status).json({ ...body, events });
         } catch {
           // Local metadata enrichment is best-effort; never hide a valid transcript
@@ -178,6 +223,49 @@ export function registerSessionRoutes(router: express.Router): void {
       }
     }
     relay(r, res);
+  }));
+  router.get(`${wp}/sessions/:sid/mention-principals`, withWorkspaceSession(async (req, res, c) => {
+    if (!requireContextCapability(c.record, res)) return;
+    res.json({ principals: await mentionPrincipals(c.workspaceId, c.record.peonId, String(req.params.sid)) });
+  }));
+  router.get(`${wp}/sessions/:sid/mention-attention`, withWorkspaceSession(async (req, res, c) => {
+    if (!requireContextCapability(c.record, res)) return;
+    res.json({ attention: await listMentionAttention(
+      c.workspaceId, c.record.peonId, String(req.params.sid), authorPrincipal(c),
+    ) });
+  }));
+  router.post(`${wp}/sessions/:sid/mention-attention/read`, withWorkspaceSession(async (req, res, c) => {
+    if (!requireContextCapability(c.record, res)) return;
+    try {
+      await markMentionAttentionRead(
+        c.workspaceId, c.record.peonId, String(req.params.sid), authorPrincipal(c), req.body?.eventIds,
+      );
+      res.json({ ok: true });
+    } catch (error) {
+      if (!contextFailure(error, res)) throw error;
+    }
+  }));
+  router.post(`${wp}/sessions/:sid/context-messages`, withWorkspaceSession(async (req, res, c) => {
+    if (!requireContextCapability(c.record, res)) return;
+    const commandId = req.headers["peon-request-id"];
+    if (!validContextCommandId(commandId)) return res.status(400).json({ error: "Peon-Request-Id must be a valid command id", code: "BAD_CONTEXT_MESSAGE" });
+    try {
+      const sid = String(req.params.sid);
+      const text = validateContextText(req.body?.text);
+      const body = {
+        text,
+        author: authorPrincipal(c),
+        attachments: validateContextAttachments(req.body?.attachments),
+        mentions: await resolveMentions(c.workspaceId, c.record.peonId, sid, text, req.body?.mentions),
+      };
+      const result = await callPeon(connOfRecord(c.record), "POST", `/sessions/${encodeURIComponent(sid)}/context-messages`, {
+        actor: c.operator.email, body, requestId: commandId,
+      });
+      if (result.ok) await recordMentionAttention(c.workspaceId, c.record.peonId, sid, result.json);
+      relay(result, res);
+    } catch (error) {
+      if (!contextFailure(error, res)) throw error;
+    }
   }));
   router.post(
     `${wp}/sessions`,
@@ -253,8 +341,13 @@ export function registerSessionRoutes(router: express.Router): void {
     const commandId = req.headers["peon-request-id"];
     if (!validCommandId(commandId)) return res.status(400).json({ error: "Peon-Request-Id must be a non-empty idempotency key of at most 255 characters", code: "BAD_REQUEST" });
     const sid = String(req.params.sid);
-    const result = await runIdempotentFollowup(c.record.peonId, sid, commandId, req.body, () =>
-      callPeon(connOfRecord(c.record), "POST", `/sessions/${encodeURIComponent(sid)}/followup`, { actor: c.operator.email, body: req.body, requestId: commandId }),
+    let body: unknown;
+    try { body = await normalizeAgentMessage(req.body, c, sid); } catch (error) {
+      if (contextFailure(error, res)) return;
+      throw error;
+    }
+    const result = await runIdempotentFollowup(c.record.peonId, sid, commandId, body, () =>
+      callPeon(connOfRecord(c.record), "POST", `/sessions/${encodeURIComponent(sid)}/followup`, { actor: c.operator.email, body, requestId: commandId }),
     );
     if (result.ok) {
       await recordSessionRequest({
@@ -278,7 +371,12 @@ export function registerSessionRoutes(router: express.Router): void {
   router.post(`${wp}/sessions/:sid/queue`, withWorkspaceSession(async (req, res, c) => {
     const sid = String(req.params.sid);
     const commandId = typeof req.body?.commandId === "string" ? req.body.commandId : null;
-    const result = await callPeon(connOfRecord(c.record), "POST", `/sessions/${encodeURIComponent(sid)}/queue`, { actor: c.operator.email, body: req.body });
+    let body: unknown;
+    try { body = await normalizeAgentMessage(req.body, c, sid); } catch (error) {
+      if (contextFailure(error, res)) return;
+      throw error;
+    }
+    const result = await callPeon(connOfRecord(c.record), "POST", `/sessions/${encodeURIComponent(sid)}/queue`, { actor: c.operator.email, body });
     await indexAcceptedSession(result, c.workspaceId, c.record.peonId);
     if (result.ok && commandId) {
       await recordSessionRequest({ workspaceId: c.workspaceId, userId: c.userId, peonId: c.record.peonId, sessionId: sid, occurrenceKey: `queue:${commandId}` }).catch(() => undefined);
@@ -314,10 +412,15 @@ export function registerSessionRoutes(router: express.Router): void {
   router.patch(`${wp}/sessions/:sid/queue/:itemId`, withWorkspaceSession(async (req, res, c) => {
     const sid = String(req.params.sid);
     const itemId = String(req.params.itemId);
+    let body: unknown;
+    try { body = await normalizeAgentMessage(req.body, c, sid, true); } catch (error) {
+      if (contextFailure(error, res)) return;
+      throw error;
+    }
     const result = await callPeon(
       connOfRecord(c.record), "PATCH",
       `/sessions/${encodeURIComponent(sid)}/queue/${encodeURIComponent(itemId)}`,
-      { actor: c.operator.email, body: req.body },
+      { actor: c.operator.email, body },
     );
     await indexAcceptedSession(result, c.workspaceId, c.record.peonId);
     relay(result, res);
@@ -354,7 +457,10 @@ export function registerSessionRoutes(router: express.Router): void {
   router.delete(`${wp}/sessions/:sid`, withWorkspaceSession(async (req, res, c) => {
     const sid = String(req.params.sid);
     const result = await callPeon(connOfRecord(c.record), "DELETE", `/sessions/${encodeURIComponent(sid)}`, { actor: c.operator.email });
-    if (result.ok) await deleteIndexedSession(c.workspaceId, c.record.peonId, sid);
+    if (result.ok) {
+      await deleteMentionAttention(c.record.peonId, sid);
+      await deleteIndexedSession(c.workspaceId, c.record.peonId, sid);
+    }
     relay(result, res);
   }));
   router.post(`${wp}/control/check-update`, withWorkspacePeon(async (req, res, c) => {
@@ -418,6 +524,9 @@ export function registerSessionRoutes(router: express.Router): void {
       res,
       c.operator.email,
       lastEventId,
+      c.record.capabilities.includes(CONTEXT_MESSAGES_CAPABILITY)
+        ? (event) => recordMentionAttention(c.workspaceId, c.record.peonId, sid, event)
+        : null,
     );
   }));
 

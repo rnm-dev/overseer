@@ -5,7 +5,7 @@ import express from "express";
 import { ATTACHMENTS_MAX_COUNT, ATTACHMENTS_MAX_FILE_BYTES } from "../../uploads.js";
 import { getAgentDriver, listAgentDrivers } from "../../agents/index.js";
 import { narrowNewSessionAgent, narrowModel, narrowReasoningEffort, type CodingAgent, type ReasoningEffort } from "../../providers/modelCatalog.js";
-import { ContextMessageError, parseContextMessage, parseReplyTo, ReplyToError, type AttachmentInfo, type ReplyTo, type SessionJsonService, type SessionRecord } from "../../sessions/index.js";
+import { ContextMessageError, parseContextMessage, parseMessageAttribution, parseReplyTo, ReplyToError, type AttachmentInfo, type ContextMention, type MessageAttribution, type ReplyTo, type SessionJsonService, type SessionRecord } from "../../sessions/index.js";
 import { toPublicSessionRecord } from "../../sessions/index.js";
 import { toSessionSummary } from "../../sessions/index.js";
 import { parseSessionPageRequest, SessionPaginationError } from "../../sessions/index.js";
@@ -198,6 +198,20 @@ function resolveOneAttachment(a: unknown, root: string, i: number): AttachmentIn
   return { originalName: rel, filename: path.basename(abs), path: abs, size: stat.size, mimetype };
 }
 
+// Overseer measures mention ranges on the prompt it relayed; this daemon stores
+// the trimmed prompt, so the ranges are re-anchored by the leading whitespace it
+// removed. A mention that no longer fits the stored text is rejected outright.
+function leadingWhitespace(value: unknown): number {
+  return typeof value === "string" ? value.length - value.trimStart().length : 0;
+}
+
+function failContextMessage(res: express.Response, error: unknown): boolean {
+  if (!(error instanceof ContextMessageError)) return false;
+  const status = error.code === "BAD_CONTEXT_MESSAGE" || error.code === "BAD_MENTION" ? 400 : 409;
+  fail(res, status, error.code, error.message);
+  return true;
+}
+
 export function attachSessionRoutes(router: express.Router, options: FleetSessionRouterDeps): void {
   const { sessions, getFileTransferRoot, defaultAgent } = options;
 
@@ -317,6 +331,13 @@ export function attachSessionRoutes(router: express.Router, options: FleetSessio
       if (err instanceof AttachmentError) return fail(res, err.status, err.code, err.message);
       throw err;
     }
+    let attribution: MessageAttribution;
+    try {
+      attribution = parseMessageAttribution(prompt, req.body, leadingWhitespace(req.body?.prompt));
+    } catch (error) {
+      if (failContextMessage(res, error)) return;
+      throw error;
+    }
     try {
       const updated = sessions.resume(
         req.params.id,
@@ -329,6 +350,7 @@ export function attachSessionRoutes(router: express.Router, options: FleetSessio
         commandId,
         false,
         replyTo,
+        attribution,
       );
       res.status(201).json(toPublicSessionRecord(updated));
     } catch (error) {
@@ -417,10 +439,18 @@ export function attachSessionRoutes(router: express.Router, options: FleetSessio
       throw error;
     }
 
+    let attribution: MessageAttribution;
+    try {
+      attribution = parseMessageAttribution(prompt, req.body, leadingWhitespace(req.body?.prompt));
+    } catch (error) {
+      if (failContextMessage(res, error)) return;
+      throw error;
+    }
+
     try {
       const updated = sessions.enqueue(
         record.id, prompt, attachments, permissionMode, req.actor ?? undefined,
-        model, reasoningEffort, commandId, req.body?.startNow === true, replyTo,
+        model, reasoningEffort, commandId, req.body?.startNow === true, replyTo, attribution,
       );
       res.status(201).json(toPublicSessionRecord(updated));
     } catch (error) {
@@ -447,7 +477,18 @@ export function attachSessionRoutes(router: express.Router, options: FleetSessio
       if (failReplyTo(res, error)) return;
       throw error;
     }
-    const result = sessions.editQueued(req.params.id, req.params.itemId, prompt, replyTo);
+    // Omission preserves the item's mentions, an array replaces them, null
+    // clears them — the same three-state contract the reply carries.
+    let mentions: ContextMention[] | null | undefined;
+    try {
+      mentions = req.body && Object.prototype.hasOwnProperty.call(req.body, "mentions")
+        ? parseMessageAttribution(prompt, req.body, leadingWhitespace(req.body.prompt)).mentions ?? null
+        : undefined;
+    } catch (error) {
+      if (failContextMessage(res, error)) return;
+      throw error;
+    }
+    const result = sessions.editQueued(req.params.id, req.params.itemId, prompt, replyTo, mentions);
     if (result === "unknown_session") return fail(res, 404, "UNKNOWN_SESSION", "unknown session");
     if (result === "not_found") return fail(res, 404, "UNKNOWN_QUEUE_ITEM", "unknown queue item");
     res.json(result);

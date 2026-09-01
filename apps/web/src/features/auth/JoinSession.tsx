@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { useNavigate, useParams } from "react-router";
 import { api, ApiError } from "../../shared/api";
 import { Button, Input } from "../../shared/ui";
 import { useAuth } from "./auth";
+import { activeMentionQuery, insertMention, mentionWire, mentionsRouteToPeople, validComposerMentions, type ComposerMention, type MentionPrincipal } from "../sessions/contextMentions";
 
 type AccessMode = "read" | "participate";
 export type Preview = {
@@ -196,7 +197,10 @@ function eventLabel(event: unknown): { author: string; text: string } {
   const authorValue = value.author ?? value.actor ?? value.email ?? value.role;
   const textValue = value.text ?? value.message ?? value.content ?? value.prompt ?? value.summary;
   const text = typeof textValue === "string" ? textValue : typeof value.data === "string" ? value.data : JSON.stringify(event);
-  return { author: typeof authorValue === "string" ? authorValue : "Session", text };
+  const author = typeof authorValue === "string" ? authorValue
+    : authorValue && typeof authorValue === "object" && typeof (authorValue as { label?: unknown }).label === "string"
+      ? String((authorValue as { label: string }).label) : "Session";
+  return { author, text };
 }
 
 function SharedSessionPage({ preview, acceptance, onRefreshAcceptance }: { preview: Preview; acceptance: Acceptance; onRefreshAcceptance: () => void }) {
@@ -205,6 +209,9 @@ function SharedSessionPage({ preview, acceptance, onRefreshAcceptance }: { previ
   const [input, setInput] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [sending, setSending] = useState(false);
+  const [contextSupported, setContextSupported] = useState(false);
+  const [mentionPrincipals, setMentionPrincipals] = useState<MentionPrincipal[]>([]);
+  const [mentions, setMentions] = useState<ComposerMention[]>([]);
   const [error, setError] = useState<unknown>(null);
   const [state, setState] = useState<"revoked" | "expired" | "exhausted" | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -213,6 +220,26 @@ function SharedSessionPage({ preview, acceptance, onRefreshAcceptance }: { previ
   const canParticipate = acceptance.accessMode === "participate" && !state;
   const turnsUsed = acceptance.participant?.usage.turns ?? 0;
   const exhausted = turnsUsed >= preview.limits.maxTurns;
+  const mentionQuery = contextSupported ? activeMentionQuery(input) : null;
+  const mentionSuggestions = useMemo(() => {
+    if (!mentionQuery) return [];
+    const query = mentionQuery.query.toLowerCase();
+    return mentionPrincipals.filter((principal) => principal.label.toLowerCase().includes(query)).slice(0, 8);
+  }, [mentionPrincipals, mentionQuery]);
+  const sendToPeople = contextSupported && mentionsRouteToPeople(mentions);
+
+  function changeInput(value: string) {
+    setInput(value);
+    setMentions((current) => validComposerMentions(value, current));
+  }
+
+  function selectMention(principal: MentionPrincipal) {
+    const query = activeMentionQuery(input);
+    if (!query) return;
+    const selected = insertMention(input, query, principal);
+    setInput(selected.text);
+    setMentions((current) => validComposerMentions(selected.text, [...current, selected.mention]));
+  }
 
   const load = useCallback(async () => {
     try {
@@ -233,6 +260,26 @@ function SharedSessionPage({ preview, acceptance, onRefreshAcceptance }: { previ
   useEffect(() => { void load(); }, [load]);
 
   useEffect(() => {
+    if (!canParticipate) return;
+    let alive = true;
+    api<{ principals?: MentionPrincipal[] }>(`${sessionPath}/mention-principals`).then((response) => {
+      if (!alive) return;
+      setMentionPrincipals(response.principals ?? []);
+      setContextSupported(true);
+    }).catch(() => alive && setContextSupported(false));
+    return () => { alive = false; };
+  }, [canParticipate, sessionPath]);
+
+  useEffect(() => {
+    if (!contextSupported || events.length === 0 || document.visibilityState !== "visible") return;
+    const visibleIds = new Set(events.flatMap((event) => event && typeof event === "object" && typeof (event as { eventId?: unknown }).eventId === "string" ? [String((event as { eventId: string }).eventId)] : []));
+    void api<{ attention?: Array<{ eventId: string }> }>(`${sessionPath}/mention-attention`).then((response) => {
+      const eventIds = (response.attention ?? []).map((item) => item.eventId).filter((id) => visibleIds.has(id)).slice(0, 100);
+      if (eventIds.length) return api(`${sessionPath}/mention-attention/read`, { method: "POST", body: JSON.stringify({ eventIds }) });
+    }).catch(() => undefined);
+  }, [contextSupported, events, sessionPath]);
+
+  useEffect(() => {
     const ticket = acceptance.webSocketTicket?.ticket;
     if (!ticket) return undefined;
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -246,7 +293,7 @@ function SharedSessionPage({ preview, acceptance, onRefreshAcceptance }: { previ
     socket.addEventListener("message", (event) => {
       try {
         const message = JSON.parse(String(event.data)) as { type?: string; error?: string };
-        if (message.type === "tail") void load();
+        if (message.type === "tail" || message.type === "mention_attention") void load();
         if (message.type === "participantRevoked" || message.type === "tailError" && message.error?.includes("revok")) setState("revoked");
       } catch {
         /* The HTTP transcript remains the recovery path. */
@@ -285,19 +332,23 @@ function SharedSessionPage({ preview, acceptance, onRefreshAcceptance }: { previ
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (!canParticipate || exhausted || (!input.trim() && files.length === 0) || sending) return;
+    if (!canParticipate || (!sendToPeople && exhausted) || (!input.trim() && files.length === 0) || sending) return;
     setSending(true);
     setError(null);
     try {
       const attachments = [];
       for (const file of files) attachments.push(await upload(file));
-      await api(sessionPath + "/followup", {
+      const wireMentions = mentionWire(mentions);
+      await api(sessionPath + (sendToPeople ? "/context-messages" : "/followup"), {
         method: "POST",
         headers: { "Peon-Request-Id": crypto.randomUUID() },
-        body: JSON.stringify({ prompt: input.trim() || "(see attachments)", ...(attachments.length ? { attachments } : {}) }),
+        body: JSON.stringify(sendToPeople
+          ? { text: input, ...(attachments.length ? { attachments } : {}), ...(wireMentions.length ? { mentions: wireMentions } : {}) }
+          : { prompt: input.trim() || "(see attachments)", ...(attachments.length ? { attachments } : {}), ...(wireMentions.length ? { mentions: wireMentions } : {}) }),
       });
       setInput("");
       setFiles([]);
+      setMentions([]);
       await load();
     } catch (nextError) {
       setError(nextError);
@@ -326,7 +377,15 @@ function SharedSessionPage({ preview, acceptance, onRefreshAcceptance }: { previ
             {events.length === 0 ? <p className="py-12 text-center font-mono text-sm text-ink-faint">No transcript entries yet.</p> : events.map((event, index) => { const line = eventLabel(event); return <article key={`${index}-${line.text.slice(0, 20)}`} className="rounded-lg border border-edge-subtle bg-surface-raised/50 p-3"><p className="font-mono text-[0.68rem] font-semibold text-accent-strong">{line.author}</p><p className="mt-1 whitespace-pre-wrap font-body text-sm leading-6 text-ink">{line.text}</p></article>; })}
           </div>
           <div className="border-t border-edge-subtle p-3 sm:p-4">
-            {!canParticipate ? <p className="rounded-lg bg-surface-raised/60 px-3 py-3 font-mono text-xs text-ink-muted">This invitation is read-only. You can follow the transcript but cannot change the conversation.</p> : <form onSubmit={(event) => void submit(event)} className="space-y-2"><textarea className="field min-h-24 w-full resize-y" value={input} onChange={(event) => setInput(event.target.value)} placeholder="Write a message to the shared session…" aria-label="Message" /><div className="flex flex-wrap items-center justify-between gap-2"><label className="btn btn-secondary btn-sm cursor-pointer">Attach files<input className="sr-only" type="file" multiple onChange={(event: ChangeEvent<HTMLInputElement>) => setFiles(Array.from(event.target.files ?? []))} /></label><span className="font-mono text-[0.68rem] text-ink-faint">{files.length ? `${files.length} attachment(s) selected` : `${Math.max(0, preview.limits.maxTurns - turnsUsed)} hard turns remaining`}</span><Button type="submit" disabled={sending || exhausted || (!input.trim() && files.length === 0)}>{sending ? "Sending…" : "Send"}</Button></div></form>}
+            {!canParticipate ? <p className="rounded-lg bg-surface-raised/60 px-3 py-3 font-mono text-xs text-ink-muted">This invitation is read-only. You can follow the transcript but cannot change the conversation.</p> : (
+              <form onSubmit={(event) => void submit(event)} className="space-y-2">
+                <div className="relative">
+                  {mentionSuggestions.length > 0 && <div className="absolute bottom-[calc(100%+0.5rem)] left-0 z-20 w-72 max-w-full overflow-hidden rounded-xl border border-edge-strong bg-surface-raised py-1 shadow-xl">{mentionSuggestions.map((principal) => <button key={`${principal.kind}:${principal.id}`} type="button" className="block w-full truncate px-3 py-2 text-left text-sm text-ink hover:bg-surface-hover" onClick={() => selectMention(principal)}>@{principal.label}</button>)}</div>}
+                  <textarea className="field min-h-24 w-full resize-y" value={input} onChange={(event) => changeInput(event.target.value)} placeholder="Write a message to the shared session…" aria-label="Message" />
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-2"><label className="btn btn-secondary btn-sm cursor-pointer">Attach files<input className="sr-only" type="file" multiple onChange={(event: ChangeEvent<HTMLInputElement>) => setFiles(Array.from(event.target.files ?? []))} /></label><span className="font-mono text-[0.68rem] text-ink-faint">{files.length ? `${files.length} attachment(s) selected` : sendToPeople ? "Does not start the agent" : `${Math.max(0, preview.limits.maxTurns - turnsUsed)} hard turns remaining`}</span><Button type="submit" disabled={sending || (!sendToPeople && exhausted) || (!input.trim() && files.length === 0)}>{sending ? "Sending…" : sendToPeople ? "Send to people" : "Send to agent"}</Button></div>
+              </form>
+            )}
             {error !== null && <p className="mt-2 font-mono text-xs text-danger" role="alert">{error instanceof Error ? error.message : "The session could not be updated."}</p>}
             <p className="mt-2 font-mono text-[0.65rem] leading-5 text-ink-faint">Token usage is reported after authoritative reconciliation; turn and duration limits are enforced before actions.</p>
             <button type="button" className="mt-2 font-mono text-[0.68rem] text-accent-strong underline" onClick={onRefreshAcceptance}>Refresh access</button>

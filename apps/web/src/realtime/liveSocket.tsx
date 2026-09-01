@@ -63,6 +63,14 @@ export interface AttentionLiveEvent {
   completedAt?: number | null;
   updatedAt: number;
 }
+export interface MentionAttentionLiveEvent {
+  peonId: string;
+  sessionId: string;
+  eventId: string;
+  recipient: { kind: "user" | "guest"; id: string };
+  unread: boolean;
+  updatedAt: number;
+}
 type TailMsg = { event?: string | null; id?: string | null; data?: string };
 
 interface LiveSocketValue {
@@ -73,6 +81,7 @@ interface LiveSocketValue {
   subscribeSessions: (onSession: (session: SessionLiveEvent) => void) => () => void;
   subscribeProjects: (onProject: (project: ProjectLiveEvent) => void) => () => void;
   subscribeAttention: (onAttention: (attention: AttentionLiveEvent) => void) => () => void;
+  subscribeMentionAttention: (onAttention: (attention: MentionAttentionLiveEvent) => void) => () => void;
 }
 
 const Ctx = createContext<LiveSocketValue | null>(null);
@@ -100,6 +109,7 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
   const sessionHandlers = useRef<Set<(session: SessionLiveEvent) => void>>(new Set());
   const projectHandlers = useRef<Set<(project: ProjectLiveEvent) => void>>(new Set());
   const attentionHandlers = useRef<Set<(attention: AttentionLiveEvent) => void>>(new Set());
+  const mentionAttentionHandlers = useRef<Set<(attention: MentionAttentionLiveEvent) => void>>(new Set());
   // Per-session backoff for tail auto-resubscribe (tailEnd/tailError) — separate
   // from the socket-level backoff so one flaky session tail can't affect others.
   const tailBackoff = useRef<Map<string, number>>(new Map());
@@ -363,6 +373,13 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
           }
           break;
         }
+        case "mention_attention": {
+          bump(msg.cursor);
+          if (msg.payload && typeof msg.payload === "object") {
+            for (const onAttention of mentionAttentionHandlers.current) onAttention(msg.payload as MentionAttentionLiveEvent);
+          }
+          break;
+        }
         case "presence": {
           acceptPresence((msg.presence as PresenceEntry[]) ?? []);
           break;
@@ -579,6 +596,10 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
     attentionHandlers.current.add(onAttention);
     return () => attentionHandlers.current.delete(onAttention);
   }, []);
+  const subscribeMentionAttention = useMemo(() => (onAttention: (attention: MentionAttentionLiveEvent) => void) => {
+    mentionAttentionHandlers.current.add(onAttention);
+    return () => mentionAttentionHandlers.current.delete(onAttention);
+  }, []);
 
   const withLocalUser = useMemo(() => {
     const localUser: PresenceUser | null = user ? {
@@ -610,7 +631,7 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
 
   const viewersForWorkspace = useMemo(() => () => withLocalUser(presence, true), [presence, withLocalUser]);
 
-  return <Ctx.Provider value={{ viewersFor, viewersForPeon, viewersForWorkspace, subscribe, subscribeSessions, subscribeProjects, subscribeAttention }}>{children}</Ctx.Provider>;
+  return <Ctx.Provider value={{ viewersFor, viewersForPeon, viewersForWorkspace, subscribe, subscribeSessions, subscribeProjects, subscribeAttention, subscribeMentionAttention }}>{children}</Ctx.Provider>;
 }
 
 export function useLiveSocket(): LiveSocketValue {

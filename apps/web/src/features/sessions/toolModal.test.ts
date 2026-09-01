@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import { ItemView, OTHER_ATTACHMENT_CLASS, OTHER_USER_BUBBLE_AUTHOR_CLASS, OTHER_USER_BUBBLE_CLASS, OTHER_USER_BUBBLE_TIME_CLASS, OWN_ATTACHMENT_CLASS, OWN_USER_BUBBLE_CLASS, OWN_USER_BUBBLE_TIME_CLASS, TOOL_DETAIL_RULE_CLASS, TOOL_ROW_CLASS, TOOL_ROW_LAYOUT_CLASS, attachmentMeta, editDiff, editFileName, editOperation, editStats, editStatsFromInput, isCompactUserMessage, isOwnMessageAuthor, simpleToolFileName, simpleToolKind, userMessageAvatar } from "./messageParts";
+import { ItemView, OTHER_ATTACHMENT_CLASS, OTHER_USER_BUBBLE_AUTHOR_CLASS, OTHER_USER_BUBBLE_CLASS, OTHER_USER_BUBBLE_TIME_CLASS, OWN_ATTACHMENT_CLASS, OWN_USER_BUBBLE_CLASS, OWN_USER_BUBBLE_TIME_CLASS, TOOL_DETAIL_RULE_CLASS, TOOL_ROW_CLASS, TOOL_ROW_LAYOUT_CLASS, attachmentMeta, editDiff, editFileName, editOperation, editStats, editStatsFromInput, isCompactUserMessage, isOwnMessageAuthor, isOwnParticipantAuthor, simpleToolFileName, simpleToolKind, userMessageAvatar } from "./messageParts";
 import { flattenEvents, gapClass, gapPaddingClass, toolHasOutputSection } from "./parsing";
 
 const t = ((key: string) => key) as Parameters<typeof ItemView>[0]["t"];
@@ -30,6 +30,17 @@ test("message ownership matches current email or GitHub login without case sensi
   assert.equal(isOwnMessageAuthor(user, undefined, "VIBZE"), true);
   assert.equal(isOwnMessageAuthor(user, undefined, undefined, "other@example.com"), false);
   assert.equal(isOwnMessageAuthor(null, "viktor.ten@me.com"), false);
+});
+
+test("participant messages are owned by their author, not their mentioned recipient", () => {
+  const user = { email: "viktor.ten@me.com", githubLogin: "vibze" };
+  assert.equal(isOwnParticipantAuthor(user, { kind: "user", id: "user-42", label: "vibze" }), true);
+  assert.equal(isOwnParticipantAuthor(user, { kind: "user", id: "user-7", label: "someone-else" }), false);
+  // The principal id is Overseer's opaque identity, never an address: one that
+  // happens to read like this user's email still does not make the row theirs.
+  assert.equal(isOwnParticipantAuthor(user, { kind: "user", id: "viktor.ten@me.com", label: "Viktor" }), false);
+  // A guest is a separate principal even when a label collides with a member's.
+  assert.equal(isOwnParticipantAuthor(user, { kind: "guest", id: "guest-1", label: "vibze" }), false);
 });
 
 test("a newly tailed own message falls back to the signed-in user's avatar", () => {

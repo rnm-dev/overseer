@@ -1,4 +1,5 @@
 import type { CodingAgent, ReasoningEffort } from "../providers/modelCatalog.js";
+import type { ContextMention, PrincipalSnapshot } from "./contextMessages.js";
 
 export interface SessionOutcome {
   result: "success" | "failure" | "needs_human";
@@ -42,6 +43,9 @@ export interface QueuedFollowUp {
   reasoningEffort: ReasoningEffort | null;
   commandId: string | null;
   replyTo: ReplyTo | null;
+  /** Structured attribution resolved by Overseer; never used to route this item. */
+  authorPrincipal: PrincipalSnapshot | null;
+  mentions: ContextMention[] | null;
   queuedAt: number;
 }
 

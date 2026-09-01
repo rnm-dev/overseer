@@ -126,12 +126,16 @@ function safeJson(text: string): unknown {
   }
 }
 
+// Ceiling for the SSE frame buffer the optional observer accumulates.
+const MAX_OBSERVED_FRAME_CHARS = 1_000_000;
+
 export async function proxyStream(
   conn: PeonConn,
   pathname: string,
   res: ExpressResponse,
   actor: string | null = null,
   lastEventId: string | null = null,
+  onEvent: ((event: unknown) => void | Promise<void>) | null = null,
 ): Promise<void> {
   const url = apiUrl(conn, pathname);
   const controller = new AbortController();
@@ -157,15 +161,37 @@ export async function proxyStream(
     Connection: "keep-alive",
   });
   const reader = upstream.body.getReader();
+  const decoder = onEvent ? new TextDecoder() : null;
+  let pending = "";
+  const observeFrame = (frame: string) => {
+    if (!onEvent) return;
+    const data = frame.split(/\r?\n/u).filter((line) => line.startsWith("data:")).map((line) => line.slice(5).trimStart()).join("\n");
+    if (data) void Promise.resolve(onEvent(safeJson(data))).catch(() => undefined);
+  };
+  const observe = (text: string) => {
+    if (!onEvent) return;
+    // Observation is best-effort and must never become the relay's memory
+    // ceiling: a frame this large is not a transcript event worth inspecting.
+    if (pending.length + text.length > MAX_OBSERVED_FRAME_CHARS) pending = "";
+    pending += text;
+    const frames = pending.split(/\r?\n\r?\n/u);
+    pending = frames.pop() ?? "";
+    for (const frame of frames) observeFrame(frame);
+  };
   try {
     for (;;) {
       const { done, value } = await reader.read();
       if (done) break;
       res.write(value);
+      if (decoder) observe(decoder.decode(value, { stream: true }));
     }
   } catch {
     // aborted (operator disconnected) or upstream died — either way just end.
   } finally {
+    if (decoder) {
+      observe(decoder.decode());
+      if (pending) observeFrame(pending);
+    }
     res.end();
   }
 }

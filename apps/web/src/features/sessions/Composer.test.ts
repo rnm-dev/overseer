@@ -92,6 +92,31 @@ test("the auto-size cap matches the textarea's painted max height", () => {
   assert.equal(MAX_TEXTAREA_HEIGHT, 40 * 4); // Tailwind spacing unit = 4px
 });
 
+test("inline mention paint uses exactly the textarea typography and does not change glyph width", () => {
+  const markup = renderToStaticMarkup(React.createElement(
+    I18nProvider,
+    null,
+    React.createElement(Composer, {
+      value: "@vibze hello",
+      highlightedMentions: [{ startUtf16: 0, lengthUtf16: 6 }],
+      onChange: () => undefined,
+      onSubmit: () => undefined,
+      placeholder: "Message",
+      submitTitle: "Send",
+      disabled: false,
+      files: [],
+      onFilesChange: () => undefined,
+      onPreviewFile: () => undefined,
+      filesEnabled: true,
+      error: null,
+      onErrorChange: () => undefined,
+    }),
+  ));
+
+  assert.match(markup, /composer-input pointer-events-none/);
+  assert.doesNotMatch(markup, /font-semibold/);
+});
+
 test("file drag detection ignores ordinary text and link drags", () => {
   assert.equal(isFileDrag(["Files"]), true);
   assert.equal(isFileDrag(["text/plain", "text/uri-list"]), false);

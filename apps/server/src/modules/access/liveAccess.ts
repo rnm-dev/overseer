@@ -2,6 +2,7 @@ import { listMemberAccess } from "./accessService.js";
 import type { LiveEvent } from "../../infrastructure/events/index.js";
 import { membership, type Role } from "../workspaces/index.js";
 import type { SessionParticipantAuth } from "../sessions/index.js";
+import type { MentionPrincipalRef } from "../sessions/index.js";
 
 export interface AccessClient {
   userId: string;
@@ -84,9 +85,20 @@ export function sessionVisible(client: AccessClient, peonId: string, projectKey:
 }
 
 export function eventVisible(client: AccessClient, event: LiveEvent): boolean {
-  if (client.participant) return false;
+  if (client.participant) {
+    if (event.kind !== "mention_attention" || event.sessionId !== client.participant.sessionId) return false;
+    const recipient = event.payload && typeof event.payload === "object"
+      ? (event.payload as { recipient?: MentionPrincipalRef }).recipient : null;
+    return recipient?.kind === (client.participant.guestId ? "guest" : "user")
+      && recipient.id === (client.participant.guestId ?? client.participant.userId);
+  }
   if (!peonVisible(client, event.peonId)) return false;
   if (event.kind === "configuration") return client.role === "owner";
+  if (event.kind === "mention_attention") {
+    const recipient = event.payload && typeof event.payload === "object"
+      ? (event.payload as { recipient?: MentionPrincipalRef }).recipient : null;
+    return recipient?.kind === "user" && recipient.id === client.userId;
+  }
   if (event.kind === "attention" || event.kind === "command") {
     const userId = event.payload && typeof event.payload === "object"
       ? (event.payload as { userId?: unknown }).userId

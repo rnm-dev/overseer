@@ -1,5 +1,6 @@
 import type { Translate } from "../../shared/i18n";
 import type { SelectedTextReply } from "./selectedTextReply";
+import type { ComposerMention, MentionPrincipal } from "./contextMentions";
 
 // Shared alias for the translate function threaded through the render atoms.
 export type T = Translate;
@@ -19,7 +20,9 @@ export interface Block {
 export interface Ev {
   type?: string;
   text?: string;
-  author?: string;
+  author?: string | MentionPrincipal;
+  authorPrincipal?: MentionPrincipal;
+  mentions?: ComposerMention[];
   authorEmail?: string;
   authorGithubLogin?: string;
   authorAvatarUrl?: string;
@@ -200,7 +203,8 @@ export function latestRunSignal(events: Ev[]): RunSignal {
 // later "user" event) — flatten everything into a single ordered item list so a
 // tool call renders as one row once its result lands, matched by tool_use_id.
 export type Item =
-  | { kind: "user"; key: string; text: string; sourceEventId?: string; replyTo?: SelectedTextReply; author?: string; authorEmail?: string; authorGithubLogin?: string; authorAvatarUrl?: string; attachments?: MessageAttachment[]; createdAt?: number }
+  | { kind: "user"; key: string; text: string; mentions?: ComposerMention[]; sourceEventId?: string; replyTo?: SelectedTextReply; author?: string; authorEmail?: string; authorGithubLogin?: string; authorAvatarUrl?: string; attachments?: MessageAttachment[]; createdAt?: number }
+  | { kind: "participant"; key: string; text: string; sourceEventId?: string; author: MentionPrincipal; mentions?: ComposerMention[]; attachments?: MessageAttachment[]; createdAt?: number }
   | { kind: "text"; key: string; text: string; sourceEventId?: string; createdAt?: number; resultMeta?: { tone?: "neutral" | "error"; text: string } }
   | { kind: "thinking"; key: string; text: string }
   | { kind: "tool"; key: string; name?: string; input?: unknown; result?: { text: string; error?: boolean } }
@@ -222,7 +226,12 @@ export function flattenEvents(events: Ev[], t: T): Item[] {
     const eventKey = renderEventKey(ev, ei);
     switch (ev.type) {
       case "user_message":
-        items.push({ kind: "user", key: eventKey, sourceEventId: ev.eventId, replyTo: ev.replyTo, text: ev.text || "", author: ev.author, authorEmail: ev.authorEmail, authorGithubLogin: ev.authorGithubLogin, authorAvatarUrl: ev.authorAvatarUrl, attachments: ev.attachments, createdAt: ev.createdAt });
+        items.push({ kind: "user", key: eventKey, sourceEventId: ev.eventId, replyTo: ev.replyTo, text: ev.text || "", mentions: ev.mentions, author: typeof ev.author === "string" ? ev.author : ev.author?.label, authorEmail: ev.authorEmail, authorGithubLogin: ev.authorGithubLogin, authorAvatarUrl: ev.authorAvatarUrl, attachments: ev.attachments, createdAt: ev.createdAt });
+        return;
+      case "participant_message":
+        if (ev.author && typeof ev.author === "object") {
+          items.push({ kind: "participant", key: eventKey, sourceEventId: ev.eventId, text: ev.text || "", author: ev.author, mentions: ev.mentions, attachments: ev.attachments, createdAt: ev.createdAt });
+        }
         return;
       case "assistant": {
         const blocks = Array.isArray(ev.message?.content) ? (ev.message!.content as Block[]) : [];
@@ -280,7 +289,7 @@ export function flattenEvents(events: Ev[], t: T): Item[] {
       case "rate_limit_event":
         return;
       case "preview":
-        if (typeof ev.path === "string" && ev.path) items.push({ kind: "preview", key: eventKey, path: ev.path, author: ev.author, createdAt: ev.createdAt });
+        if (typeof ev.path === "string" && ev.path) items.push({ kind: "preview", key: eventKey, path: ev.path, author: typeof ev.author === "string" ? ev.author : undefined, createdAt: ev.createdAt });
         return;
       case "_raw":
         items.push({ kind: "raw", key: eventKey, text: ev.text || "" });

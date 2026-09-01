@@ -5,6 +5,7 @@ import { canAccessPeon, canAccessProject } from "../access/index.js";
 import { fcmEnabled, fcmSender, plainText, PushDeliveryError, type PushMessage } from "../../infrastructure/push/index.js";
 import type { LiveEvent } from "../../shared/liveEvent.js";
 import type { SessionAttentionPayload } from "../sessions/index.js";
+import { getSessionParticipantForUser, type MentionAttentionPayload } from "../sessions/index.js";
 
 export type PushProvider = "expo" | "fcm" | "apns";
 export type PushPlatform = "ios" | "android";
@@ -103,6 +104,16 @@ function notificationPayload(event: LiveEvent, session: SessionSummary | null) {
   };
 }
 
+function mentionNotificationPayload(event: LiveEvent, session: SessionSummary | null) {
+  const title = plainText(session?.title ?? "") || "New mention";
+  const project = plainText(session?.projectName ?? "");
+  return {
+    title: project ? `${project} — ${title}` : title,
+    body: "You were mentioned in a session",
+    data: { workspaceId: event.workspaceId, peonId: event.peonId, sessionId: event.sessionId, kind: event.kind, cursor: event.cursor },
+  };
+}
+
 interface SessionSummary { title: string | null; preview: string | null; projectKey: string | null; projectId: string | null; projectName: string | null }
 
 // Two queries rather than one join: the catalog row is keyed by project_id but
@@ -145,7 +156,34 @@ async function sessionSummary(peonId: string, sessionId: string): Promise<Sessio
 // requester is sitting in front of that very session on any connected device,
 // so no unread transition happens and nothing is enqueued.
 export async function enqueuePushForEvent(event: LiveEvent): Promise<void> {
-  if (event.cursor <= 0 || event.kind !== "attention" || !event.sessionId) return;
+  if (event.cursor <= 0 || !event.sessionId) return;
+  if (event.kind === "mention_attention") {
+    const mention = event.payload && typeof event.payload === "object" ? event.payload as Partial<MentionAttentionPayload> : null;
+    if (mention?.unread !== true || mention.recipient?.kind !== "user" || typeof mention.recipient.id !== "string") return;
+    const userId = mention.recipient.id;
+    const role = await membership(event.workspaceId, userId);
+    if (!role) return;
+    const sharedParticipant = await getSessionParticipantForUser(event.workspaceId, event.peonId, event.sessionId, userId);
+    if (!sharedParticipant && !(await canAccessPeon(event.workspaceId, userId, role, event.peonId))) return;
+    const session = await sessionSummary(event.peonId, event.sessionId);
+    if (!sharedParticipant && session?.projectKey && !(await canAccessProject(event.workspaceId, userId, role, event.peonId, session.projectKey, session.projectId))) return;
+    const payload = JSON.stringify(mentionNotificationPayload(event, session));
+    const { rows } = await query<{ id: string }>(
+      `SELECT s.id FROM push_subscriptions s
+         LEFT JOIN push_preferences p ON p.user_id=s.user_id AND p.workspace_id=$2
+        WHERE s.user_id=$1 AND s.disabled_at IS NULL AND s.provider IN (${providerList()})
+          AND COALESCE(p.enabled, TRUE)=TRUE AND COALESCE(p.session_events, TRUE)=TRUE`,
+      [userId, event.workspaceId],
+    );
+    const now = Date.now();
+    for (const row of rows) await query(
+      `INSERT INTO push_outbox (id,event_cursor,subscription_id,payload,available_at,created_at) VALUES ($1,$2,$3,$4,$5,$5)
+       ON CONFLICT (event_cursor,subscription_id) DO NOTHING`,
+      [randomUUID(), event.cursor, row.id, payload, now],
+    );
+    return;
+  }
+  if (event.kind !== "attention") return;
   const attention = event.payload && typeof event.payload === "object" ? event.payload as Partial<SessionAttentionPayload> : null;
   // unread=false is the read receipt — the same event kind, carrying the
   // opposite meaning. `completedAt` is what makes this a *completion*: attention

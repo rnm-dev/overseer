@@ -18,7 +18,7 @@ import type {
 } from "./sessionTypes.js";
 import type { AgentContextUsage, SessionWarning, SessionWarningCode } from "./sessionWarningTypes.js";
 import { buildAugmentedPrompt, buildSystemPrompt } from "./sessionPrompts.js";
-import { acknowledgeContextClaim, claimContext, releaseContextClaim, withParticipantContext } from "./contextMessages.js";
+import { acknowledgeContextClaim, claimContext, releaseContextClaim, withParticipantContext, type MessageAttribution } from "./contextMessages.js";
 import { buildReplyPrompt } from "./replyTo.js";
 import { sessionWarnings } from "./sessionWarnings.js";
 import {
@@ -117,6 +117,7 @@ export function scheduleQueuedDispatch(record: SessionRecord): void {
         0,
         true,
         item?.replyTo ?? undefined,
+        { authorPrincipal: item?.authorPrincipal ?? undefined, mentions: item?.mentions ?? undefined },
       );
     } catch (error) {
       // Put the item back if a synchronous spawn/setup error occurs. A queued
@@ -337,6 +338,7 @@ export function appendUserTurn(
   reasoningEffort?: ReasoningEffort,
   commandId?: string,
   replyTo?: ReplyTo,
+  attribution?: MessageAttribution,
 ): void {
   const userEvent: AgentEvent = {
     type: "user_message", text: prompt,
@@ -347,6 +349,10 @@ export function appendUserTurn(
     ...(reasoningEffort ? { reasoningEffort } : {}),
     ...(commandId ? { commandId } : {}),
     ...(replyTo ? { replyTo } : {}),
+    // The string `author` stays as it was; the structured principal is what
+    // makes self-exclusion and guest attribution stable for mention attention.
+    ...(attribution?.authorPrincipal ? { authorPrincipal: attribution.authorPrincipal } : {}),
+    ...(attribution?.mentions?.length ? { mentions: attribution.mentions } : {}),
   };
   const userEntry = appendTranscriptEvent(record.id, userEvent);
   const now = userEntry.event.createdAt!;
@@ -405,6 +411,7 @@ export function runProcess(
   zeroTurnRetryAttempt = 0,
   appendPromptToTranscript = true,
   replyTo?: ReplyTo,
+  attribution?: MessageAttribution,
 ): boolean {
   // Seed the live transcript cache before accepting a resume event.
   readTranscript(record.id, record.agent);
@@ -422,7 +429,7 @@ export function runProcess(
   // turn: a shared session can carry follow-ups from different humans, so
   // attribution belongs on the message, not just once on the record's initiator.
   if (prompt && appendPromptToTranscript) {
-    appendUserTurn(record, prompt, attachments, permissionMode, author, perTurnModel, perTurnReasoningEffort, commandId, replyTo);
+    appendUserTurn(record, prompt, attachments, permissionMode, author, perTurnModel, perTurnReasoningEffort, commandId, replyTo, attribution);
   }
 
   const contextCommandId = commandId ?? randomUUID();

@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { KeyboardEvent, ReactNode } from "react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Hourglass, Zap } from "lucide-react";
 import { useT } from "../../shared/i18n";
@@ -52,7 +52,8 @@ export const COMPOSER_TEXT_ACTION_CLASS = "on-surface on-surface--interactive h-
 
 export interface ComposerProps {
   value: string;
-  onChange: (v: string) => void;
+  /** `caret` is the selection offset right after the edit, for the mention picker. */
+  onChange: (v: string, caret?: number) => void;
   onSubmit: () => void;
   placeholder: string;
   submitTitle: string;
@@ -79,6 +80,13 @@ export interface ComposerProps {
   leftExtra?: ReactNode;
   rightExtra?: ReactNode;
   secondaryAction?: { label: string; onClick: () => void; disabled?: boolean; pending?: boolean; mobileIcon?: "zap" };
+  highlightedMentions?: Array<{ startUtf16: number; lengthUtf16: number }>;
+  onComposerKeyDown?: (event: KeyboardEvent<HTMLTextAreaElement>) => boolean;
+  mentionMenuOpen?: boolean;
+  mentionListboxId?: string;
+  activeMentionOptionId?: string;
+  /** Programmatic caret placement after a mention token is inserted or removed. */
+  caretRequest?: { position: number; seq: number } | null;
 }
 
 export function Composer({
@@ -105,13 +113,28 @@ export function Composer({
   leftExtra,
   rightExtra,
   secondaryAction,
+  highlightedMentions = [],
+  onComposerKeyDown,
+  mentionMenuOpen,
+  mentionListboxId,
+  activeMentionOptionId,
+  caretRequest,
 }: ComposerProps) {
   const t = useT();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const highlightRef = useRef<HTMLDivElement>(null);
   const dragDepthRef = useRef(0);
   const [dragActive, setDragActive] = useState(false);
   const canSubmit = !disabled && Boolean(value.trim() || files.length || carried.length);
+  // A mention inserted mid-sentence must leave the caret after its token, not
+  // at the end of the draft where React's value swap would otherwise put it.
+  useLayoutEffect(() => {
+    const el = textareaRef.current;
+    if (!caretRequest || !el) return;
+    el.focus();
+    el.setSelectionRange(caretRequest.position, caretRequest.position);
+  }, [caretRequest]);
   // Object URLs for image thumbnails; revoked when the file set changes/unmounts.
   const previews = useMemo(() => files.map((f) => (isImage(f) ? URL.createObjectURL(f) : null)), [files]);
   useEffect(() => () => previews.forEach((u) => u && URL.revokeObjectURL(u)), [previews]);
@@ -234,22 +257,45 @@ export function Composer({
           e.target.value = "";
         }}
       />
+      <div className="relative overflow-hidden">
+      {highlightedMentions.length > 0 && (
+        <div ref={highlightRef} className="composer-input pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words px-1 py-1 font-body leading-normal text-ink" aria-hidden>
+          {(() => {
+            const nodes: ReactNode[] = [];
+            let cursor = 0;
+            for (const mention of highlightedMentions) {
+              nodes.push(value.slice(cursor, mention.startUtf16));
+              nodes.push(<span key={`${mention.startUtf16}:${mention.lengthUtf16}`} className="rounded-sm bg-accent/15 text-accent-strong">{value.slice(mention.startUtf16, mention.startUtf16 + mention.lengthUtf16)}</span>);
+              cursor = mention.startUtf16 + mention.lengthUtf16;
+            }
+            nodes.push(value.slice(cursor), "\u200b");
+            return nodes;
+          })()}
+        </div>
+      )}
       <textarea
         ref={textareaRef}
-        className="composer-input max-h-40 min-h-8 w-full resize-none bg-transparent px-1 py-1 font-body leading-normal text-ink placeholder:text-ink-faint focus:outline-none"
+        className={`composer-input max-h-40 min-h-8 w-full resize-none bg-transparent px-1 py-1 font-body leading-normal placeholder:text-ink-faint focus:outline-none ${highlightedMentions.length ? "text-transparent caret-accent" : "text-ink"}`}
         rows={1}
         autoFocus={autoFocus}
         value={value}
         placeholder={placeholder}
         disabled={disabled && !autoFocus}
         readOnly={disabled && Boolean(autoFocus)}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => onChange(e.target.value, e.target.selectionStart)}
+        onScroll={(e) => {
+          if (highlightRef.current) highlightRef.current.style.transform = `translateY(-${e.currentTarget.scrollTop}px)`;
+        }}
         onKeyDown={(e) => {
+          if (onComposerKeyDown?.(e)) return;
           if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
             submit();
           }
         }}
+        aria-expanded={mentionMenuOpen || undefined}
+        aria-controls={mentionMenuOpen ? mentionListboxId : undefined}
+        aria-activedescendant={mentionMenuOpen ? activeMentionOptionId : undefined}
         onPaste={(e) => {
           const dt = e.clipboardData;
           const pasted: File[] = [];
@@ -271,6 +317,7 @@ export function Composer({
           addFiles(pasted.map((f, i) => (f.name && f.name !== "image.png" ? f : new File([f], `pasted-${Date.now()}-${i}.${(f.type.split("/")[1] || "bin").replace("jpeg", "jpg")}`, { type: f.type }))));
         }}
       />
+      </div>
       <div className="composer-toolbar flex flex-wrap items-center justify-between gap-1.5 pt-1">
         <div className="composer-toolbar-left flex min-w-0 flex-wrap items-center gap-1.5">
           <button

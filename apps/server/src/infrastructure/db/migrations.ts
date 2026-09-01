@@ -1137,4 +1137,31 @@ export const MIGRATIONS: { id: string; statements: string[] }[] = [
       `CREATE INDEX IF NOT EXISTS project_administrators_lookup_idx ON workspace_project_administrators (workspace_id, user_id, peon_id, project_id)`,
     ],
   },
+  {
+    // Human mentions are not agent-completion attention. They are keyed by the
+    // stable recipient principal and Peon's immutable transcript event id so a
+    // replayed mutation cannot create a second unread occurrence.
+    id: "043_session_mention_attention",
+    statements: [
+      `CREATE TABLE IF NOT EXISTS session_mention_attention (
+         occurrence_id TEXT NOT NULL UNIQUE,
+         workspace_id  TEXT NOT NULL,
+         recipient_kind TEXT NOT NULL CHECK (recipient_kind IN ('user', 'guest')),
+         recipient_id  TEXT NOT NULL,
+         peon_id       TEXT NOT NULL,
+         session_id    TEXT NOT NULL,
+         event_id      TEXT NOT NULL,
+         state         TEXT NOT NULL CHECK (state IN ('unread', 'read')),
+         created_at    BIGINT NOT NULL,
+         updated_at    BIGINT NOT NULL,
+         read_at       BIGINT,
+         event_cursor  BIGINT,
+         PRIMARY KEY (workspace_id, recipient_kind, recipient_id, peon_id, session_id, event_id)
+       )`,
+      `CREATE INDEX IF NOT EXISTS session_mention_attention_unread_idx
+         ON session_mention_attention (workspace_id, recipient_kind, recipient_id, state, created_at)`,
+      `CREATE INDEX IF NOT EXISTS session_mention_attention_session_idx
+         ON session_mention_attention (peon_id, session_id)`,
+    ],
+  },
 ];
