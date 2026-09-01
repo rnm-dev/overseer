@@ -119,6 +119,7 @@ export async function removeMember(workspaceId: string, userId: string): Promise
     if (role === "owner") return "owner";
     await tx.query(`DELETE FROM workspace_member_project_access WHERE workspace_id = $1 AND user_id = $2`, [workspaceId, userId]);
     await tx.query(`DELETE FROM workspace_member_peon_access WHERE workspace_id = $1 AND user_id = $2`, [workspaceId, userId]);
+    await tx.query(`DELETE FROM workspace_project_administrators WHERE workspace_id = $1 AND user_id = $2`, [workspaceId, userId]);
     const { rowCount } = await tx.query(`DELETE FROM workspace_members WHERE workspace_id = $1 AND user_id = $2 AND role = 'member'`, [workspaceId, userId]);
     return (rowCount ?? 0) > 0 ? "removed" : "not_found";
   });

@@ -141,6 +141,14 @@ async function deleteProject(
   peonId: string,
   projectId: string,
 ): Promise<ProjectMutation> {
+  await tx.query(
+    `DELETE FROM workspace_member_project_access WHERE workspace_id=$1 AND peon_id=$2 AND project_id=$3`,
+    [workspaceId, peonId, projectId],
+  );
+  await tx.query(
+    `DELETE FROM workspace_project_administrators WHERE workspace_id=$1 AND peon_id=$2 AND project_id=$3`,
+    [workspaceId, peonId, projectId],
+  );
   const deleted = await tx.query(`DELETE FROM projects WHERE peon_id=$1 AND project_id=$2 RETURNING project_id`, [peonId, projectId]);
   if (!deleted.rows[0]) return { event: null };
   const syncedAt = nextProjectSyncedAt();
@@ -479,6 +487,11 @@ export async function forgetIndexedProject(input: {
     }
     await tx.query(
       `DELETE FROM workspace_member_project_access
+       WHERE workspace_id=$1 AND peon_id=$2 AND (project_id=$3 OR (project_id IS NULL AND project_key=$4))`,
+      [input.workspaceId, input.peonId, projectId, input.key],
+    );
+    await tx.query(
+      `DELETE FROM workspace_project_administrators
        WHERE workspace_id=$1 AND peon_id=$2 AND (project_id=$3 OR (project_id IS NULL AND project_key=$4))`,
       [input.workspaceId, input.peonId, projectId, input.key],
     );

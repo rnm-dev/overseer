@@ -148,7 +148,10 @@ export interface WorkspacePeonContext {
 
 // Proxy to one peon in the workspace — membership + ownership enforced first.
 export const withWorkspacePeon =
-  (handler: (req: express.Request, res: express.Response, ctx: WorkspacePeonContext) => unknown): express.RequestHandler =>
+  (
+    handler: (req: express.Request, res: express.Response, ctx: WorkspacePeonContext) => unknown,
+    options: { allowWorkspaceMemberWithoutPeonAccess?: boolean } = {},
+  ): express.RequestHandler =>
   async (req, res) => {
     const workspaceId = String(req.params.wsId);
     const peonId = String(req.params.id ?? req.params.peonId);
@@ -201,7 +204,9 @@ export const withWorkspacePeon =
 
     if (!user) return res.status(401).json({ error: "authentication required", code: "UNAUTHENTICATED" });
     if (!role) return res.status(404).json({ error: "unknown workspace", code: "UNKNOWN_WORKSPACE" });
-    if (!normalPeonAccess) return res.status(404).json({ error: "unknown peon", code: "UNKNOWN_PEON" });
+    if (!normalPeonAccess && !options.allowWorkspaceMemberWithoutPeonAccess) {
+      return res.status(404).json({ error: "unknown peon", code: "UNKNOWN_PEON" });
+    }
     if (typeof req.params.sid === "string" && normalSessionAccess) {
       await ensureDirectSessionParticipant(workspaceId, record.peonId, String(req.params.sid), user);
     }

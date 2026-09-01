@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import type pg from "pg";
 import { newDb } from "pg-mem";
 import { initDb, query } from "../../infrastructure/db/index.js";
-import { allowedProjectKeys, canAccessPeon, canAccessProject, listMemberAccess, projectAccessQuery, projectMemberCounts, replaceMemberAccess } from "./index.js";
+import { allowedProjectKeys, canAccessPeon, canAccessProject, canManageProject, grantProjectAdministrator, listMemberAccess, listProjectMemberAccess, projectAccessQuery, projectMemberCounts, replaceMemberAccess, setProjectMemberAccess } from "./index.js";
 import { eventVisible, projectVisible, type AccessClient } from "./index.js";
 import { backfillStoredSessionProjectIds, listSessions, resolveSessionProjectIds } from "../sessions/index.js";
 
@@ -73,6 +73,32 @@ test("stable project IDs survive key changes and do not authorize key reuse", as
   }, "owner");
   assert.equal(await canAccessProject("ws", "legacy-member", "member", "p1", "EXPO"), true);
   assert.equal(await canAccessProject("ws", "legacy-member", "member", "p1", "EXPO", "reused-project"), false);
+});
+
+test("project administrators receive only their project's access and manage its participants", async () => {
+  const mem = newDb();
+  const adapter = mem.adapters.createPg();
+  await initDb(new adapter.Pool() as unknown as pg.Pool);
+  await query(`INSERT INTO users (id,email,created_at) VALUES ('admin','admin@test',1),('participant','participant@test',1),('owner','owner@test',1)`);
+  await query(`INSERT INTO workspaces (id,name,slug,created_at) VALUES ('ws','Workspace','workspace',1)`);
+  await query(`INSERT INTO workspace_members (workspace_id,user_id,role,added_at) VALUES ('ws','admin','member',1),('ws','participant','member',1),('ws','owner','owner',1)`);
+
+  await grantProjectAdministrator({ workspaceId: "ws", userId: "admin", peonId: "p1", projectKey: "mine", projectId: "project-mine", grantedBy: "admin" });
+  assert.equal(await canAccessPeon("ws", "admin", "member", "p1"), true);
+  assert.equal(await canAccessProject("ws", "admin", "member", "p1", "renamed", "project-mine"), true);
+  assert.equal(await canAccessProject("ws", "admin", "member", "p1", "other", "project-other"), false);
+  assert.equal(await canManageProject("ws", "admin", "member", "p1", "mine", "project-mine"), true);
+
+  await setProjectMemberAccess({ workspaceId: "ws", userId: "participant", peonId: "p1", projectKey: "mine", projectId: "project-mine", enabled: true, grantedBy: "admin" });
+  assert.equal(await canAccessProject("ws", "participant", "member", "p1", "mine", "project-mine"), true);
+  assert.equal(await canManageProject("ws", "participant", "member", "p1", "mine", "project-mine"), false);
+  const members = await listProjectMemberAccess("ws", "p1", "mine", "project-mine");
+  assert.deepEqual(members.find((member) => member.userId === "admin"), { userId: "admin", access: true, administrator: true });
+  assert.deepEqual(members.find((member) => member.userId === "participant"), { userId: "participant", access: true, administrator: false });
+  assert.deepEqual(await projectMemberCounts("ws", "p1", [{ key: "mine", projectId: "project-mine" }]), [3]);
+
+  await setProjectMemberAccess({ workspaceId: "ws", userId: "participant", peonId: "p1", projectKey: "mine", projectId: "project-mine", enabled: false, grantedBy: "admin" });
+  assert.equal(await canAccessProject("ws", "participant", "member", "p1", "mine", "project-mine"), false);
 });
 
 test("project access queries bind contiguous parameters for stable IDs and legacy keys", () => {

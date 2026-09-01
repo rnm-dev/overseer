@@ -2,7 +2,16 @@ import express from "express";
 import { registry, toView } from "../../modules/fleet/index.js";
 import { callPeon, connOfRecord, normalizePeonUrl, proxyFileDownload, proxyFileUpload, proxyGet, proxyUpload } from "../../infrastructure/peonHttp/index.js";
 import { reconcilePeon } from "../../modules/sessions/index.js";
-import { allowedProjects, canAccessProject, projectMemberCounts } from "../../modules/access/index.js";
+import {
+  allowedProjects,
+  canAccessProject,
+  canManageProject,
+  grantProjectAdministrator,
+  listProjectMemberAccess,
+  projectMemberCounts,
+  setProjectMemberAccess,
+} from "../../modules/access/index.js";
+import { listMembers, membership } from "../../modules/workspaces/index.js";
 import { ownerOnly, relay, restSegments, withWorkspacePeon } from "../requestContext.js";
 import {
   folderBrowseSelector,
@@ -124,14 +133,32 @@ export function registerProjectRoutes(router: express.Router): void {
         res.status(result.status).json({ ...body, projects, catalog: await getProjectCatalogState(c.record) });
   }));
   router.get(`${wp}/projects/suggest-dir`, withWorkspacePeon(async (req, res, c) => {
-    if (!ownerOnly(res, c.role)) return;
     const label = typeof req.query.label === "string" ? req.query.label : "";
     relay(await callPeon(connOfRecord(c.record), "GET", `/projects/suggest-dir${label ? `?label=${encodeURIComponent(label)}` : ""}`, { actor: c.operator.email }), res);
-  }));
+  }, { allowWorkspaceMemberWithoutPeonAccess: true }));
   router.post(`${wp}/projects`, withWorkspacePeon(async (req, res, c) => {
-    if (!ownerOnly(res, c.role)) return;
-    relay(await callPeon(connOfRecord(c.record), "POST", "/projects", { actor: c.operator.email, body: req.body, requestId: req.header("Peon-Request-Id") || undefined }), res);
-  }));
+    const result = await callPeon(connOfRecord(c.record), "POST", "/projects", { actor: c.operator.email, body: req.body, requestId: req.header("Peon-Request-Id") || undefined });
+    if (result.ok && c.role !== "owner" && result.json && typeof result.json === "object") {
+      const created = result.json as { key?: unknown; projectId?: unknown };
+      if (typeof created.key !== "string" || typeof created.projectId !== "string") {
+        return res.status(502).json({ error: "Peon returned an invalid project", code: "INVALID_PEON_RESPONSE" });
+      }
+      try {
+        await grantProjectAdministrator({
+          workspaceId: c.workspaceId,
+          userId: c.userId,
+          peonId: c.record.peonId,
+          projectKey: created.key,
+          projectId: created.projectId,
+          grantedBy: c.userId,
+        });
+      } catch (error) {
+        console.error("created project administrator grant failed:", error);
+        return res.status(500).json({ error: "project was created but its administrator access could not be saved", code: "PROJECT_ACCESS_FAILED" });
+      }
+    }
+    relay(result, res);
+  }, { allowWorkspaceMemberWithoutPeonAccess: true }));
   // Directory picker for new projects. Keep the public Overseer route stable,
   // but make the one authenticated Fleet HTTP request directly to the Peon's
   // host-filesystem listing endpoint over authenticated Fleet HTTP.
@@ -232,6 +259,48 @@ export function registerProjectRoutes(router: express.Router): void {
     const indexed = await getIndexedProject(c.record.peonId, String(req.params.key));
     const path = indexed ? `/projects/by-id/${encodeURIComponent(indexed.projectId)}/settings` : `${proj(String(req.params.key))}/settings`;
     relay(await callPeon(connOfRecord(c.record), "GET", path, { actor: c.operator.email }), res);
+  }));
+  router.get(`${wp}/projects/:key/members`, withWorkspaceProject(async (req, res, c) => {
+    const key = String(req.params.key);
+    const indexed = await getIndexedProject(c.record.peonId, key);
+    if (!(await canManageProject(c.workspaceId, c.userId, c.role, c.record.peonId, key, indexed?.projectId))) {
+      return res.status(403).json({ error: "project administrator access required", code: "FORBIDDEN" });
+    }
+    const [members, access] = await Promise.all([
+      listMembers(c.workspaceId),
+      listProjectMemberAccess(c.workspaceId, c.record.peonId, key, indexed?.projectId),
+    ]);
+    const byUser = new Map(access.map((item) => [item.userId, item]));
+    res.json({ members: members.map((member) => ({
+      ...member,
+      access: byUser.get(member.userId)?.access ?? member.role === "owner",
+      administrator: byUser.get(member.userId)?.administrator ?? false,
+    })) });
+  }));
+  router.put(`${wp}/projects/:key/members/:userId`, withWorkspaceProject(async (req, res, c) => {
+    const key = String(req.params.key);
+    const indexed = await getIndexedProject(c.record.peonId, key);
+    if (!(await canManageProject(c.workspaceId, c.userId, c.role, c.record.peonId, key, indexed?.projectId))) {
+      return res.status(403).json({ error: "project administrator access required", code: "FORBIDDEN" });
+    }
+    const userId = String(req.params.userId);
+    const memberRole = await membership(c.workspaceId, userId);
+    if (!memberRole) return res.status(404).json({ error: "not a member", code: "UNKNOWN_MEMBER" });
+    if (memberRole === "owner") return res.status(409).json({ error: "owners always have full access", code: "OWNER_UNRESTRICTED" });
+    if (typeof req.body?.access !== "boolean") return res.status(400).json({ error: "access must be boolean", code: "BAD_REQUEST" });
+    if (!req.body.access && await canManageProject(c.workspaceId, userId, memberRole, c.record.peonId, key, indexed?.projectId)) {
+      return res.status(409).json({ error: "project administrators always have project access", code: "PROJECT_ADMINISTRATOR" });
+    }
+    await setProjectMemberAccess({
+      workspaceId: c.workspaceId,
+      userId,
+      peonId: c.record.peonId,
+      projectKey: key,
+      projectId: indexed?.projectId,
+      enabled: req.body.access,
+      grantedBy: c.userId,
+    });
+    res.json({ ok: true, access: req.body.access });
   }));
   router.patch(`${wp}/projects/:key/settings`, withWorkspaceProject(async (req, res, c) => {
     if (!ownerOnly(res, c.role)) return;

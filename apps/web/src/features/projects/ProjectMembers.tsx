@@ -15,11 +15,8 @@ interface Member {
   githubLogin: string | null;
   avatarUrl: string | null;
   role: "owner" | "member";
-}
-
-interface Access {
-  peonIds: string[];
-  projects: { peonId: string; projectKey: string; projectId?: string | null }[];
+  access: boolean;
+  administrator: boolean;
 }
 
 export const PROJECT_MEMBER_LIST_CLASS = "divide-y divide-edge/60";
@@ -27,57 +24,37 @@ export const PROJECT_MEMBER_LIST_CLASS = "divide-y divide-edge/60";
 export function ProjectMembers() {
   const t = useT();
   const { key = "" } = useParams();
-  const { peon, wsId, isOwner } = usePeon();
+  const { peon, wsId } = usePeon();
   const [members, setMembers] = useState<Member[] | null>(null);
-  const [accessByMember, setAccessByMember] = useState<Record<string, Access>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [projectId, setProjectId] = useState<string | null>(null);
+  const [forbidden, setForbidden] = useState(false);
 
   useEffect(() => {
-    if (!isOwner) return;
     let alive = true;
-    Promise.all([
-      api<{ members: Member[] }>(`/workspaces/${wsId}/members`),
-      api<{ projectId?: string | null }>(`/workspaces/${wsId}/peons/${encodeURIComponent(peon.peonId)}/projects/${encodeURIComponent(key)}`),
-    ])
-      .then(async ([result, project]) => {
-        const regular = result.members.filter((member) => member.role === "member");
-        const entries = await Promise.all(regular.map(async (member) => {
-          const response = await api<{ access: Access }>(`/workspaces/${wsId}/members/${encodeURIComponent(member.userId)}/access`);
-          return [member.userId, response.access] as const;
-        }));
+    api<{ members: Member[] }>(`/workspaces/${wsId}/peons/${encodeURIComponent(peon.peonId)}/projects/${encodeURIComponent(key)}/members`)
+      .then((result) => alive && setMembers(result.members))
+      .catch((err) => {
         if (!alive) return;
-        setMembers(result.members);
-        setProjectId(project.projectId ?? null);
-        setAccessByMember(Object.fromEntries(entries));
-      })
-      .catch((err) => alive && setError(err instanceof Error ? err.message : t("members.accessLoadFailed")));
+        if (err && typeof err === "object" && "status" in err && err.status === 403) setForbidden(true);
+        else setError(err instanceof Error ? err.message : t("members.accessLoadFailed"));
+      });
     return () => { alive = false; };
-  }, [isOwner, key, peon.peonId, t, wsId]);
+  }, [key, peon.peonId, t, wsId]);
 
-  if (!isOwner) return <Navigate to={`/peons/${encodeURIComponent(peon.peonId)}/projects/${encodeURIComponent(key)}`} replace />;
+  if (forbidden) return <Navigate to={`/peons/${encodeURIComponent(peon.peonId)}/projects/${encodeURIComponent(key)}`} replace />;
 
   const regularMembers = members?.filter((member) => member.role === "member") ?? [];
   const owners = members?.filter((member) => member.role === "owner") ?? [];
 
   async function setProjectAccess(member: Member, enabled: boolean) {
-    const current = accessByMember[member.userId];
-    if (!current) return;
     setBusy(member.userId);
     setSaved(null);
     setError(null);
-    const projects = enabled
-      ? [...current.projects.filter((item) => item.peonId !== peon.peonId || (projectId ? item.projectId !== projectId : item.projectKey !== key)), { peonId: peon.peonId, projectKey: key, projectId }]
-      : current.projects.filter((item) => item.peonId !== peon.peonId || (projectId ? item.projectId !== projectId : item.projectKey !== key));
-    const next: Access = {
-      peonIds: enabled ? [...new Set([...current.peonIds, peon.peonId])] : current.peonIds,
-      projects,
-    };
     try {
-      await api(`/workspaces/${wsId}/members/${encodeURIComponent(member.userId)}/access`, { ...json(next), method: "PUT" });
-      setAccessByMember((value) => ({ ...value, [member.userId]: next }));
+      await api(`/workspaces/${wsId}/peons/${encodeURIComponent(peon.peonId)}/projects/${encodeURIComponent(key)}/members/${encodeURIComponent(member.userId)}`, { ...json({ access: enabled }), method: "PUT" });
+      setMembers((value) => value?.map((item) => item.userId === member.userId ? { ...item, access: enabled || item.administrator } : item) ?? value);
       setSaved(member.userId);
       window.setTimeout(() => setSaved((value) => value === member.userId ? null : value), 1400);
     } catch (err) {
@@ -101,17 +78,16 @@ export function ProjectMembers() {
           {owners.length > 0 && <div className="border-b border-edge bg-surface/25 px-5 py-3"><p className="font-mono text-[0.68rem] text-ink-faint">{t("proj.members.owners", { n: owners.length })}</p></div>}
           {regularMembers.length === 0 ? <p className="p-8 text-center font-mono text-sm text-ink-faint">{t("proj.members.empty")}</p> : <ul className={PROJECT_MEMBER_LIST_CLASS}>
             {regularMembers.map((member) => {
-              const access = accessByMember[member.userId];
-              const checked = access?.projects.some((item) => item.peonId === peon.peonId && (projectId ? item.projectId === projectId : item.projectKey === key)) ?? false;
+              const checked = member.access;
               return <li key={member.userId} className="flex items-center justify-between gap-4 px-5 py-4 transition-colors hover:bg-surface-hover/20">
                 <div className="flex min-w-0 items-center gap-3">
                   <Avatar src={member.avatarUrl} label={member.githubLogin || member.email} size="lg" className="border-edge-strong" />
-                  <div className="min-w-0"><p className="truncate font-display text-sm font-semibold text-ink">{member.githubLogin ? `@${member.githubLogin}` : member.email}</p>{member.githubLogin && <p className="truncate font-mono text-[0.68rem] text-ink-faint">{member.email}</p>}</div>
+                  <div className="min-w-0"><p className="truncate font-display text-sm font-semibold text-ink">{member.githubLogin ? `@${member.githubLogin}` : member.email}</p>{member.githubLogin && <p className="truncate font-mono text-[0.68rem] text-ink-faint">{member.email}</p>}{member.administrator && <p className="font-mono text-[0.68rem] text-accent">{t("proj.members.administrator")}</p>}</div>
                 </div>
                 <label className="flex cursor-pointer items-center gap-2.5">
                   {saved === member.userId && <Badge tone="green"><Check size={11} aria-hidden />{t("peon.settings.saved")}</Badge>}
                   <span className="font-display text-xs text-ink-muted">{checked ? t("proj.members.canAccess") : t("proj.members.noAccess")}</span>
-                  <input type="checkbox" className="h-4 w-4 accent-[var(--color-accent)]" disabled={!access || busy === member.userId} checked={checked} onChange={(event) => void setProjectAccess(member, event.target.checked)} />
+                  <input type="checkbox" className="h-4 w-4 accent-[var(--color-accent)]" disabled={member.administrator || busy === member.userId} checked={checked} onChange={(event) => void setProjectAccess(member, event.target.checked)} />
                 </label>
               </li>;
             })}

@@ -192,30 +192,9 @@ arrival is what creates the workspace they own. The exemption above and the
 provisioning are the same idea — the directory admitted them, so nothing here
 has to.
 
-Everywhere else the first account is the awkward one: there is nobody to invite
-anybody. Registration answers it. Bring the instance up with
-`OVERSEER_OPEN_SIGNUP=1`, register at its public URL like any other operator —
-the arrival gets a workspace of their own, exactly as every account does — then
-remove the variable and restart. The instance is invite-only again from the next
-request, and everyone after the first is invited from inside the product by
-somebody who can see what they are inviting them to.
-
-The window is the honest part of this, and it is as small as the operator makes
-it: an instance is open only between its first boot and its second, and only if
-nobody else reaches it in between. An instance that is not public yet — bound to
-loopback, or behind a proxy that is not serving it — has no window at all.
-
-There used to be an `admin bootstrap` subcommand here that made an unclaimed
-workspace and printed a one-time owner link. It was removed in 0.4.0: it asked
-the first operator to find a shell inside a container before they had seen the
-product, to solve a problem registration already solves. What remains of the CLI
-is `invite`, `users`, `promote` and `demote` — the last two are the only answer
-to a workspace whose last owner has left, which nothing inside the product can
-fix. It is run through `node`, since the image puts nothing on `PATH`:
-
-```
-docker compose exec app node dist/index.js admin users
-```
+Without OIDC, start with `OVERSEER_OPEN_SIGNUP=1` and register at the public
+URL. The first account receives its own workspace. Remove the variable and
+restart to make the instance invite-only; invite everyone else from the product.
 
 ## OpenID Connect
 

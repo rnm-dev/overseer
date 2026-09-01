@@ -1,6 +1,6 @@
 import { query, transaction } from "../../infrastructure/db/index.js";
 import type { Role } from "../workspaces/index.js";
-import type { AccessQuery, MemberAccess } from "./accessTypes.js";
+import type { AccessQuery, MemberAccess, ProjectMemberAccess } from "./accessTypes.js";
 
 export function projectAccessQuery(
   workspaceId: string,
@@ -65,7 +65,10 @@ export async function replaceMemberAccess(workspaceId: string, userId: string, v
 export async function canAccessPeon(workspaceId: string, userId: string, role: Role, peonId: string): Promise<boolean> {
   if (role === "owner") return true;
   const { rows } = await query(
-    `SELECT 1 FROM workspace_member_peon_access WHERE workspace_id = $1 AND user_id = $2 AND peon_id = $3`,
+    `SELECT 1 FROM workspace_member_peon_access WHERE workspace_id = $1 AND user_id = $2 AND peon_id = $3
+     UNION ALL
+     SELECT 1 FROM workspace_project_administrators WHERE workspace_id = $1 AND user_id = $2 AND peon_id = $3
+     LIMIT 1`,
     [workspaceId, userId, peonId],
   );
   return rows.length > 0;
@@ -81,8 +84,120 @@ export async function canAccessProject(
 ): Promise<boolean> {
   if (role === "owner") return true;
   const lookup = projectAccessQuery(workspaceId, userId, peonId, projectKey, projectId);
-  const { rows } = await query(lookup.text, lookup.values);
+  const adminLookup = projectId
+    ? {
+      text: `SELECT 1 FROM workspace_project_administrators
+             WHERE workspace_id=$1 AND user_id=$2 AND peon_id=$3 AND project_id=$4`,
+      values: [workspaceId, userId, peonId, projectId],
+    }
+    : {
+      text: `SELECT 1 FROM workspace_project_administrators
+             WHERE workspace_id=$1 AND user_id=$2 AND peon_id=$3 AND project_id IS NULL AND project_key=$4`,
+      values: [workspaceId, userId, peonId, projectKey],
+    };
+  const { rows } = await query(`${lookup.text} UNION ALL ${adminLookup.text} LIMIT 1`, lookup.values);
   return rows.length > 0;
+}
+
+export async function canManageProject(
+  workspaceId: string,
+  userId: string,
+  role: Role,
+  peonId: string,
+  projectKey: string,
+  projectId?: string | null,
+): Promise<boolean> {
+  if (role === "owner") return true;
+  const { rows } = await query(
+    projectId
+      ? `SELECT 1 FROM workspace_project_administrators WHERE workspace_id=$1 AND user_id=$2 AND peon_id=$3 AND project_id=$4`
+      : `SELECT 1 FROM workspace_project_administrators WHERE workspace_id=$1 AND user_id=$2 AND peon_id=$3 AND project_id IS NULL AND project_key=$4`,
+    projectId ? [workspaceId, userId, peonId, projectId] : [workspaceId, userId, peonId, projectKey],
+  );
+  return rows.length > 0;
+}
+
+export async function grantProjectAdministrator(input: {
+  workspaceId: string;
+  userId: string;
+  peonId: string;
+  projectKey: string;
+  projectId?: string | null;
+  grantedBy: string;
+}): Promise<void> {
+  const now = Date.now();
+  await transaction(async (tx) => {
+    await tx.query(
+      `INSERT INTO workspace_member_peon_access (workspace_id, user_id, peon_id, granted_at, granted_by)
+       VALUES ($1,$2,$3,$4,$5) ON CONFLICT (workspace_id,user_id,peon_id) DO NOTHING`,
+      [input.workspaceId, input.userId, input.peonId, now, input.grantedBy],
+    );
+    await tx.query(
+      `INSERT INTO workspace_project_administrators (workspace_id,user_id,peon_id,project_key,project_id,granted_at,granted_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)
+       ON CONFLICT (workspace_id,user_id,peon_id,project_id) DO UPDATE SET project_key=EXCLUDED.project_key`,
+      [input.workspaceId, input.userId, input.peonId, input.projectKey, input.projectId ?? null, now, input.grantedBy],
+    );
+  });
+}
+
+export async function listProjectMemberAccess(
+  workspaceId: string,
+  peonId: string,
+  projectKey: string,
+  projectId?: string | null,
+): Promise<ProjectMemberAccess[]> {
+  const projectPredicate = projectId
+    ? "project_id=$3"
+    : "project_id IS NULL AND project_key=$3";
+  const { rows } = await query<{ user_id: string; role: Role; access: boolean; administrator: boolean }>(
+    `SELECT member.user_id, member.role,
+            (access.user_id IS NOT NULL) AS access,
+            (admin.user_id IS NOT NULL) AS administrator
+       FROM workspace_members member
+       LEFT JOIN workspace_member_project_access access
+         ON access.workspace_id=member.workspace_id AND access.user_id=member.user_id AND access.peon_id=$2
+        AND access.${projectPredicate}
+       LEFT JOIN workspace_project_administrators admin
+         ON admin.workspace_id=member.workspace_id AND admin.user_id=member.user_id AND admin.peon_id=$2
+        AND admin.${projectPredicate}
+      WHERE member.workspace_id=$1`,
+    [workspaceId, peonId, projectId ?? projectKey],
+  );
+  return rows.map((row) => ({ userId: row.user_id, access: row.role === "owner" || row.access || row.administrator, administrator: row.administrator }));
+}
+
+export async function setProjectMemberAccess(input: {
+  workspaceId: string;
+  userId: string;
+  peonId: string;
+  projectKey: string;
+  projectId?: string | null;
+  enabled: boolean;
+  grantedBy: string;
+}): Promise<void> {
+  const now = Date.now();
+  await transaction(async (tx) => {
+    if (input.enabled) {
+      await tx.query(
+        `INSERT INTO workspace_member_peon_access (workspace_id,user_id,peon_id,granted_at,granted_by)
+         VALUES ($1,$2,$3,$4,$5) ON CONFLICT (workspace_id,user_id,peon_id) DO NOTHING`,
+        [input.workspaceId, input.userId, input.peonId, now, input.grantedBy],
+      );
+      await tx.query(
+        `INSERT INTO workspace_member_project_access (workspace_id,user_id,peon_id,project_key,project_id,granted_at,granted_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7)
+         ON CONFLICT (workspace_id,user_id,peon_id,project_key) DO UPDATE SET project_id=EXCLUDED.project_id, granted_at=EXCLUDED.granted_at, granted_by=EXCLUDED.granted_by`,
+        [input.workspaceId, input.userId, input.peonId, input.projectKey, input.projectId ?? null, now, input.grantedBy],
+      );
+      return;
+    }
+    await tx.query(
+      `DELETE FROM workspace_member_project_access
+       WHERE workspace_id=$1 AND user_id=$2 AND peon_id=$3 AND (project_id=$4 OR (project_id IS NULL AND project_key=$5))`,
+      [input.workspaceId, input.userId, input.peonId, input.projectId ?? null, input.projectKey],
+    );
+  });
 }
 
 // Authoritative projected-session gate for transcript replay/live delivery.
@@ -142,7 +257,9 @@ export async function allowedProjects(
 ): Promise<MemberAccess["projects"] | null> {
   if (role === "owner") return null;
   const { rows } = await query<{ project_key: string; project_id: string | null }>(
-    `SELECT project_key, project_id FROM workspace_member_project_access WHERE workspace_id = $1 AND user_id = $2 AND peon_id = $3`,
+    `SELECT project_key, project_id FROM workspace_member_project_access WHERE workspace_id = $1 AND user_id = $2 AND peon_id = $3
+     UNION
+     SELECT project_key, project_id FROM workspace_project_administrators WHERE workspace_id = $1 AND user_id = $2 AND peon_id = $3`,
     [workspaceId, userId, peonId],
   );
   return rows.map((row) => ({ peonId, projectKey: row.project_key, projectId: row.project_id }));
@@ -168,6 +285,12 @@ export async function projectMemberCounts(
     query<{ user_id: string; project_id: string | null; project_key: string }>(
       `SELECT DISTINCT a.user_id,a.project_id,a.project_key
        FROM workspace_member_project_access a
+       JOIN workspace_members m
+         ON m.workspace_id=a.workspace_id AND m.user_id=a.user_id AND m.role='member'
+       WHERE a.workspace_id=$1 AND a.peon_id=$2
+       UNION
+       SELECT DISTINCT a.user_id,a.project_id,a.project_key
+       FROM workspace_project_administrators a
        JOIN workspace_members m
          ON m.workspace_id=a.workspace_id AND m.user_id=a.user_id AND m.role='member'
        WHERE a.workspace_id=$1 AND a.peon_id=$2`,

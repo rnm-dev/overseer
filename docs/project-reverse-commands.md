@@ -4,6 +4,12 @@ Project requests and mutations have one authority: the authenticated Peon Fleet
 HTTP API reached by Overseer through mesh. The public browser/mobile routes,
 workspace and project ACL checks, and response shapes are unchanged.
 
+Workspace owners may create every project. A regular member may create a
+project on a workspace Peon; Overseer records that creator as the project's
+administrator after Peon confirms creation and grants their project-scoped Peon
+access. Administrators can manage only their project's regular-member grants;
+the workspace owner remains unrestricted.
+
 Overseer resolves a mutable public project key to the catalog's immutable
 `projectId`, then uses `/api/v1/projects/by-id/:projectId` for detail, settings,
 documentation, skills, quick links, update and delete. Creation and directory

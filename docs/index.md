@@ -105,6 +105,8 @@ repository — that content lives here.
 
 - [project Fleet HTTP control plane](project-reverse-commands.md) — catalog,
   create, settings, documentation, quick links, update and delete.
+- [project administration](project-administration.md) — creation by members,
+  project administrators and scoped member access.
 - [showing a file](file-viewing.md) — one `FileSource`, one renderer, and one
   authenticated byte plane over mesh.
 - [Armory over Fleet HTTP](armory-reverse.md) — inventory, settings and every

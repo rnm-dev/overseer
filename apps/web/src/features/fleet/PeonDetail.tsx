@@ -456,7 +456,7 @@ export function PeonDetail() {
                   projectTo={(project) => `projects/${encodeURIComponent(project.key)}`}
                   sessionTo={(session) => `sessions/${session.id}`}
                   newSessionTo={(project) => project ? `sessions/new?project=${encodeURIComponent(project.key)}` : "sessions/new"}
-                  onNewProject={isOwner ? () => setShowNewProject(true) : undefined}
+                  onNewProject={() => setShowNewProject(true)}
                   onNavigateIntent={prefetchSession}
                   onRename={renameSession}
                   onDelete={deleteSession}
@@ -476,7 +476,7 @@ export function PeonDetail() {
                 projects={sidebarProjects}
                 error={projectError}
                 to={(project) => `projects/${encodeURIComponent(project.key)}`}
-                onNew={isOwner ? () => setShowNewProject(true) : undefined}
+                onNew={() => setShowNewProject(true)}
               />
 
               {/* The original flat session list remains available as a display mode. */}

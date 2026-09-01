@@ -1118,4 +1118,23 @@ export const MIGRATIONS: { id: string; statements: string[] }[] = [
       `ALTER TABLE session_participants DROP COLUMN IF EXISTS max_cost_micros`,
     ],
   },
+  {
+    // A project administrator is a workspace member who can manage the
+    // membership of one project. This is intentionally separate from the
+    // workspace-wide owner role.
+    id: "042_project_administrators",
+    statements: [
+      `CREATE TABLE IF NOT EXISTS workspace_project_administrators (
+         workspace_id TEXT NOT NULL,
+         user_id      TEXT NOT NULL,
+         peon_id      TEXT NOT NULL,
+         project_key  TEXT NOT NULL,
+         project_id   TEXT,
+         granted_at   BIGINT NOT NULL,
+         granted_by   TEXT,
+         PRIMARY KEY (workspace_id, user_id, peon_id, project_id)
+       )`,
+      `CREATE INDEX IF NOT EXISTS project_administrators_lookup_idx ON workspace_project_administrators (workspace_id, user_id, peon_id, project_id)`,
+    ],
+  },
 ];

@@ -8,8 +8,8 @@ The mobile header shows the cached project name immediately and starts a new
 session with the current project key. The top-level tabs are Sessions,
 Documents, Files, and Settings, with Sessions selected by default. Settings
 contains a second-level navigation for General, Skills, and Members. Skills is
-available to every operator with project access; General and Members are
-owner-only and are omitted for members.
+available to every operator with project access; General is owner-only.
+Members is available to workspace owners and the project's administrators.
 
 The peon online flag controls remote actions. Offline project detail keeps the
 cached project identity visible, disables New session, and explains that live
@@ -85,10 +85,11 @@ returned by the Peon.
 
 #### Members
 
-Members loads workspace users and the access document for each regular member.
-Owners are summarized because they always have project access. A toggle writes
-the full access document back, preserving the member's other peon and project
-grants. Canonical project identity is preferred over the mutable key.
+Members loads workspace users and the access state for this project only.
+Owners are summarized because they always have project access. A project
+administrator can toggle regular participants without changing their grants to
+other Peons or projects. Canonical project identity is preferred over the
+mutable key.
 
 ## Verification
 

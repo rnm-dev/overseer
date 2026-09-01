@@ -16,13 +16,22 @@ traffic or migrating production data until those steps are explicitly approved.
   the app/container port is not public, the shared Kamal ports must reach the
   target loopback-only binding, nginx canonicalizes Cloudflare identity, and
   `OVERSEER_TRUSTED_PROXIES` names only controlled local proxy networks.
-- During OVSR-248 review, the production Kamal listeners were wildcard
-  host-bound on both 8080 and 8443 (`0.0.0.0/[::]`). An independent external
-  request to 8080 returned HTTP 200; the 8443 probe timed out with no HTTP
-  response (possibly filtered), so only 8080 was demonstrated
-  Internet-reachable. Do not describe the target invariant as deployed until
-  the approved proxy reboot, exact loopback binding checks, and both external
-  negative probes below succeed.
+- The OVSR-248 loopback cutover is **applied**, on 2026-08-25. Docker publishes
+  exactly `127.0.0.1:8080` and `127.0.0.1:8443`, and both external negative
+  probes now refuse the connection. Before that reboot, during OVSR-248 review,
+  the production Kamal listeners were wildcard host-bound on both 8080 and 8443
+  (`0.0.0.0/[::]`). An independent external request to 8080 returned HTTP 200;
+  the 8443 probe timed out with no HTTP response (possibly filtered), so only
+  8080 was demonstrated Internet-reachable. Any change that reopens a
+  non-loopback Kamal listener undoes this; the only sanctioned way is the
+  outage-recovery rollback below.
+- A host address that resolves to `::1` is **not** covered by the loopback
+  binding: Docker publishes on `127.0.0.1` only. Before that cutover two vhosts
+  reached Kamal through `proxy_pass http://localhost:8080`, and `getent hosts
+  localhost` on nid-01 answers `::1`, so the reboot would have taken
+  `fcmedai.kz` and `tanys.kz` down. Both were rewritten to the literal
+  `127.0.0.1` first. Never write `localhost` in an upstream that targets the
+  shared Kamal ports.
 
 ## Persistent state
 
@@ -476,10 +485,16 @@ remain the authority for *how* to change them.
 - **Host nginx** — `/etc/nginx/sites-available/overseer.rnm.dev`, enabled in
   `sites-enabled`.
 - **Proxy path** — Cloudflare → host nginx :80 → shared kamal-proxy
-  127.0.0.1:8080 → Overseer :5000. See the OVSR-248 note in [Safety
-  invariants](#safety-invariants): the checked-in Kamal 2.12+ run config targets
-  both listeners at 127.0.0.1, but that needs a separately approved shared-proxy
-  reboot and has **not** been applied.
+  127.0.0.1:8080 → Overseer :5000. The loopback binding is live since
+  2026-08-25; see the OVSR-248 note in [Safety
+  invariants](#safety-invariants). Every one of the ten services behind the
+  shared proxy reaches it through a literal `127.0.0.1` upstream. `tanys-web`
+  and `my-app-web` were the other two and were decommissioned the same day.
+- **Container logs** — `/etc/docker/daemon.json` sets a `json-file` default of
+  `max-size=10m, max-file=3`. The daemon reads it only at start, so it governs
+  containers created after the next `dockerd` restart, and anything started by
+  hand today still needs its own `--log-opt`. Kamal already passes
+  `--log-opt max-size=10m` itself.
 - **Database** — accessory container `overseer-postgres`, PostgreSQL 16,
   internal DNS `overseer-postgres:5432/overseer`. Schema migrations self-apply
   on app boot under an advisory lock.
@@ -531,6 +546,29 @@ does not touch it and it does not appear in the shared proxy's route table.
 | Database | `overseer-demo-postgres`, its own cluster, separate from production |
 | Environment | `/root/overseer-demo.env` on nid-01, mode 0600 — it holds `DATABASE_URL`, so never print it into a task or a commit |
 
+`DATABASE_URL` names the host **`postgres`**, not the container name, so the
+database container must carry `--network-alias postgres`. Recreating it without
+that alias leaves the app in a restart loop on `getaddrinfo EAI_AGAIN postgres`.
+Its own credentials live in `/root/overseer-demo-postgres.env`, mode 0600, and
+its healthcheck is passed on the command line because `postgres:16-alpine` has
+none of its own:
+
+```sh
+. /root/overseer-demo-postgres.env
+docker run -d --name overseer-demo-postgres \
+  --network overseer-demo --network-alias postgres --restart unless-stopped \
+  --env-file /root/overseer-demo-postgres.env \
+  --log-opt max-size=10m --log-opt max-file=3 \
+  --health-cmd "pg_isready -U $POSTGRES_USER -d $POSTGRES_DB" \
+  --health-interval 5s --health-timeout 5s --health-retries 12 \
+  -v overseer-demo-postgres-data:/var/lib/postgresql/data \
+  postgres:16-alpine
+```
+
+The cluster lives in the named volume `overseer-demo-postgres-data`; the
+container itself is disposable, the volume is not. This instance has no backup
+of any kind.
+
 The doors are `github:false, password:true, oidc:false`, and that is achieved by
 those variables simply being **absent**: only `OVERSEER_PUBLIC_URL`,
 `OVERSEER_PASSWORD_AUTH=1`, `OVERSEER_APP_REVIEW_DEMO=1`,
@@ -548,8 +586,14 @@ docker rename overseer-demo-app overseer-demo-app-prev
 docker run -d --name overseer-demo-app \
   --network overseer-demo --restart unless-stopped \
   --env-file /root/overseer-demo.env \
+  --log-opt max-size=10m --log-opt max-file=3 \
   -p 127.0.0.1:5010:5000 rnmdev/overseer:<sha>
 ```
+
+Keep the `--log-opt` pair. A hand-run container inherits no rotation until the
+daemon default in `/etc/docker/daemon.json` takes effect at the next `dockerd`
+restart, and an unrotated `json-file` on a long-lived instance grows until the
+disk does.
 
 Then confirm `/api/auth/methods` still answers `github:false, password:true,
 oidc:false`, and that a request carrying the deep link the shipped app opens —
