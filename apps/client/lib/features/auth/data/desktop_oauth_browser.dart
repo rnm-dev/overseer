@@ -134,7 +134,13 @@ class PluginDesktopOAuthWindow implements DesktopOAuthWindow {
   }
 
   @override
-  void launch(Uri url) => _webview.launch(url.toString());
+  void launch(Uri url) => _webview.launch(
+    url.toString(),
+    // The initial URL is app-owned and already trusted. Let WebView2 load it
+    // directly; the plugin re-enables request interception after this first
+    // navigation so the custom-scheme OAuth callback is still caught below.
+    triggerOnUrlRequestEvent: false,
+  );
 
   @override
   void close() => _webview.close();
