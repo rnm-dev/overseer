@@ -53,6 +53,10 @@ dev_dependencies:
   flutter_native_splash: ^2.4.8
   image: ^4.8.0
 
+dependency_overrides:
+  desktop_webview_window:
+    path: third_party/desktop_webview_window
+
 flutter:
   generate: true
   uses-material-design: true
