@@ -506,11 +506,29 @@ the repository each image was actually pushed to.
 
 | Image | Deployed | What it carried |
 | --- | --- | --- |
-| `rnmdev/overseer:ed1430e0138f9a592cbad38b7b3dc3b8bfe95f91` | 2026-08-24 (current) | The isolated App Review demo, enabled in production by `OVERSEER_APP_REVIEW_DEMO=1` in `deploy.yml`. The server starts the read-only screenshot demo Peon in-process on container port 5001 and presents the seeded `demo-screenshot-workspace` Peons as connected; ordinary Peons still derive presence from the reverse socket, and demo mutations are always refused. The gate needs all three of `NODE_ENV=production`, `OVERSEER_PUBLIC_URL=https://overseer.rnm.dev` and the explicit flag. Built from a clean detached worktree of the pushed commit because the shared checkout held unrelated unpushed work. |
+| `rnmdev/overseer:476a618d93d8dee5e3cc43ec7e3a9308be912d35` | 2026-09-05 (current) | OVSR-541: clean pushed worktree deployed with Kamal. Context-only participant messages, structured mentions and recipient attention in server/web; project administration retained. Migration count 42 → 43 (`043_session_mention_attention`). Manifest version remains 0.4.0; this is a production deployment, not publication of 0.5.0, and registry `latest` was not moved. Public health, auth methods, Chrome sign-in screen, built messaging assets and foreign-Host rejection verified; authenticated multi-person messaging was not exercised. Shared proxy identity, bindings and all other routes unchanged. |
+| `rnmdev/overseer:ed1430e0138f9a592cbad38b7b3dc3b8bfe95f91` | 2026-08-24 | The isolated App Review demo, enabled in production by `OVERSEER_APP_REVIEW_DEMO=1` in `deploy.yml`. The server starts the read-only screenshot demo Peon in-process on container port 5001 and presents the seeded `demo-screenshot-workspace` Peons as connected; ordinary Peons still derive presence from the reverse socket, and demo mutations are always refused. The gate needs all three of `NODE_ENV=production`, `OVERSEER_PUBLIC_URL=https://overseer.rnm.dev` and the explicit flag. Built from a clean detached worktree of the pushed commit because the shared checkout held unrelated unpushed work. |
 | `rnmdev/overseer:5b81531409d5bd7e24641feab7438f53caabcbc5` | 2026-08-21 | Server 0.2.0. First row recorded on the `rnmdev` registry. |
 | `vibze/overseer:027a13932e5133cc9a1c4a076105830291a3addb` | 2026-08-12 | The project Files page as a working file surface: one reusable drag-and-drop layer behind both file trees, folder upload and folder move, upload placeholders with progress, context menus, deletion, a movable split, line numbers, image zoom and in-place text editing. Built from merged `master`; an earlier same-day build of the unmerged branch commit `3039245` carried the same application code. The Peon half of folder transfers ships separately through the npm update channel, so a Peon below 0.12.9 answers PARENT_NOT_FOUND for a nested upload and INVALID_PATH for a folder move — the client names both as "this Peon needs an update". |
 | `vibze/overseer:ef4e768620cdaf76ff58fda1cc433c610f7483e2` | 2026-08-12 | Public-release web/server batch: transcript scroll-follow fixes, managed-plugin inquiry convergence and Peon 0.12.8 release preparation. |
 | `vibze/overseer:f9b82819c6a88ffec666e1659ab746aac4fd1962` | 2026-08-10 | An upgrade to a path no handler claims is refused with 400 and the socket destroyed, stopping the file-descriptor leak an outdated Peon caused by dialling the retired `/api/v1/peons/transfer/ws`. Built from a detached worktree of the pushed commit because the shared checkout held unrelated work in progress. |
+
+The immediate rollback image for the 2026-09-05 deployment is
+`rnmdev/overseer:f5576b2e74bbacc39aee43858b6428e70da33499_uncommitted_bcc064ca040bff09`,
+verified from the running container before deployment; the older table had
+not recorded it. Its stopped container is retained by Kamal. The pre-deploy
+custom-format dump is `/backups/overseer-pre-476a618-20260905.dump` in
+`overseer-postgres-backups`, with an off-host copy on nid-dev at
+`/home/peon/overseer-deploy-backups/overseer-pre-476a618-20260905.dump`.
+Both copies have SHA-256
+`07aba4f11bde6ce186ef25fb7254b55fe0733473b1071727a61f85b806ebb4c9`;
+`pg_restore --list` validated the dump.
+
+For a commit-only deployment, Kamal's default build also pushes `latest`.
+To preserve the public release channel, build and push only the commit tag
+with `--label service=overseer`, then use
+`kamal deploy --skip-push --version=<sha>`. Kamal refuses an image without
+that service label before switching traffic.
 
 ### Everyday deploy
 
