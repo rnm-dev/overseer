@@ -11,7 +11,8 @@ negotiation, compatibility selector, or fallback path.
 
 The remotely manageable daemon document contains exactly `name`,
 `defaultAgent`, `fileTransferRoot`, `heartbeatIntervalMs`, `aiDefaultModel`,
-`aiDefaultReasoningEffort`, and `soul`. Credentials, enrollment identity, URLs,
+`aiDefaultReasoningEffort`, `soul`, `maxTurns`, `taskTimeoutMs`, and
+`maxBudgetUsd`. Credentials, enrollment identity, URLs,
 bind addresses, executable paths and `paused` are rejected rather than ignored.
 The independent status route remains the authority for pausing the daemon.
 
@@ -28,6 +29,13 @@ Validation remains at Peon: provider/model changes are evaluated together,
 `aiDefaultReasoningEffort` is checked against the effective model, and an
 explicit JSON `null` resets the effort to the agent/model default. Responses
 contain only the safe view, revision metadata, and non-secret restart metadata.
+
+Execution safety values are bounded at the Peon boundary: `maxTurns` is an
+integer from 1 through 10,000, `taskTimeoutMs` is an integer from 60,000 through
+86,400,000, and `maxBudgetUsd` is a finite number from 0 through 10,000 (zero
+disables the monetary cap). A successful change needs no daemon restart. Each
+running provider process keeps the values snapshotted when its turn began;
+the next initial turn or follow-up reads the updated document.
 
 After a successful HTTP mutation, Overseer updates the indexed Peon name and
 appends an owner-only, value-free `configuration` event with operation

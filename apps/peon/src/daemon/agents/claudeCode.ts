@@ -3,6 +3,7 @@ import { sourceTimestampMetadata } from "../sessions/index.js";
 import { guardToolOutput, type GuardedToolOutput } from "../sessions/index.js";
 import { spawnJsonAgent } from "./spawnJsonAgent.js";
 import { normalizeFileToolInput } from "./toolPaths.js";
+import { claudeUsage, claudeResultUsage, ClaudeInputAccumulator } from "./claudeUsage.js";
 
 export function buildClaudeCodeArgs(opts: AgentRunOptions): string[] {
   const args = [
@@ -57,6 +58,8 @@ export function normalizeClaudeCodeEvent(raw: Record<string, unknown>, cwd?: str
     return {
       type,
       message: {
+        ...(typeof message.id === "string" ? { id: message.id } : {}),
+        ...(message.usage ? { usage: claudeUsage(message.usage) } : {}),
         ...(typeof message.model === "string" ? { model: message.model } : {}),
         content,
       },
@@ -72,7 +75,7 @@ export function normalizeClaudeCodeEvent(raw: Record<string, unknown>, cwd?: str
     for (const field of fields) {
       if (raw[field] !== undefined) event[field] = raw[field];
     }
-    return { ...event, ...sourceTimestamp };
+    return { ...event, ...claudeResultUsage(raw), ...sourceTimestamp };
   }
   // Rate-limit/progress/provider diagnostics are not conversation history.
   // Represent them as ignorable system metadata without retaining raw payloads.
@@ -90,6 +93,7 @@ export function createClaudeCodeEventNormalizer(
   ) => GuardedToolOutput = guardToolOutput,
 ): (raw: Record<string, unknown>, emit: (event: AgentEvent) => void) => void {
   let accepted = false;
+  const usage = new ClaudeInputAccumulator();
   return (raw, emit) => {
     const event = normalizeClaudeCodeEvent(raw, opts.cwd);
     if (!event) return;
@@ -100,6 +104,11 @@ export function createClaudeCodeEventNormalizer(
       opts.onAccepted?.();
     }
     if (event.type !== "user") {
+      if (usage.observe(raw)) emit({ type: "system", subtype: "usage", ...usage.report() });
+      if (event.type === "result" && event.subtype === "error_during_execution"
+        && Object.values(event.usage as Record<string, number>).every((value) => value === 0)) {
+        Object.assign(event, usage.report());
+      }
       emit(event);
       return;
     }

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { en } from "../../shared/locales/en";
 import { analyticsRows, fmtBytes } from "./statsModel";
 
 test("AI statistics render no outcomes or monetary values", () => {
@@ -14,10 +15,20 @@ test("AI statistics render no outcomes or monetary values", () => {
 test("AI statistics request and render user and project analytics", () => {
   const source = readFileSync(new URL("./PeonStats.tsx", import.meta.url), "utf8");
 
-  assert.match(source, /analytics\?period=\$\{period\}&groupBy=user/);
-  assert.match(source, /analytics\?period=\$\{period\}&groupBy=project/);
+  assert.match(source, /analytics\?\$\{windowQuery\}&groupBy=user/);
+  assert.match(source, /analytics\?\$\{windowQuery\}&groupBy=project/);
+  assert.match(source, /from=\$\{stats.rangeStart\}&to=\$\{stats.rangeEnd\}/);
   assert.match(source, /peon\.stats\.prompts/);
   assert.match(source, /peon\.stats\.attributionNote/);
+});
+
+test("provider cards expose quota diagnostics even when limits are unavailable", () => {
+  const source = readFileSync(new URL("./PeonStats.tsx", import.meta.url), "utf8");
+
+  assert.match(source, /quota\.error \?\? quota\.data\?\.error \?\? null/);
+  assert.doesNotMatch(source, /status === ["']error["'] \? quota\.data\.error/);
+  assert.equal(en["peon.quota.status.ok"], "Limits available");
+  assert.equal(en["peon.quota.status.unavailable"], "Limits unavailable");
 });
 
 test("analytics breakdown rows prioritize output token consumption", () => {

@@ -1,5 +1,6 @@
 import { mkdirSync, statSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
+import { accumulateUsage, usageFromEvent, usageModelsFromEvent } from "./usageAccounting.js";
 import path from "node:path";
 import { settings } from "../settings/index.js";
 import { McpConfigAssembler, mcpBindingRegistry } from "../mcpBindings.js";
@@ -14,6 +15,7 @@ import type {
   ReplyTo,
   SessionOutcome,
   SessionRecord,
+  SessionTerminalReason,
   SessionUsage,
 } from "./sessionTypes.js";
 import type { AgentContextUsage, SessionWarning, SessionWarningCode } from "./sessionWarningTypes.js";
@@ -53,7 +55,7 @@ export function appendPreviewEvent(record: SessionRecord, filePath: string, auth
 
 function warningFromEvent(event: AgentEvent): SessionWarning | null {
   if (event.type !== "warning" || typeof event.sessionId !== "string"
-    || !["context_near_limit", "payload_near_limit", "payload_truncated"].includes(String(event.code))
+    || !["context_near_limit", "payload_near_limit", "payload_truncated", "turn_limit_exceeded", "task_timeout"].includes(String(event.code))
     || typeof event.message !== "string") return null;
   const { type: _type, ...fields } = event;
   return { type: "session_warning", ...fields } as SessionWarning;
@@ -101,6 +103,7 @@ export function scheduleQueuedDispatch(record: SessionRecord): void {
     record.parentCompletionNotificationPending = false;
     record.status = "running";
     record.outcome = null;
+    record.terminalReason = null;
     record.endedAt = null;
     try {
       runProcess(
@@ -155,20 +158,6 @@ function isSyntheticAssistantEvent(event: AgentEvent): boolean {
   return message?.model === "<synthetic>";
 }
 
-// Folds one turn's usage into a per-model accumulator. Nullable source fields
-// count as 0 so the running total is always a concrete number.
-function addUsage(acc: SessionUsage | undefined, add: SessionUsage): SessionUsage {
-  const sum = (x: number | null | undefined, y: number | null | undefined): number => (x ?? 0) + (y ?? 0);
-  return {
-    totalCostUsd: sum(acc?.totalCostUsd, add.totalCostUsd),
-    durationMs: sum(acc?.durationMs, add.durationMs),
-    inputTokens: sum(acc?.inputTokens, add.inputTokens),
-    outputTokens: sum(acc?.outputTokens, add.outputTokens),
-    cacheCreationInputTokens: sum(acc?.cacheCreationInputTokens, add.cacheCreationInputTokens),
-    cacheReadInputTokens: sum(acc?.cacheReadInputTokens, add.cacheReadInputTokens),
-  };
-}
-
 export function finalizeSession(
   record: SessionRecord,
   outcome: SessionOutcome | null,
@@ -184,6 +173,7 @@ export function finalizeSession(
   // live-incremented count already stands.
   turnCountBase?: number,
   dispatchQueued = true,
+  terminalReason: SessionTerminalReason | null = null,
 ): void {
   // A clean finish (chat with nothing to grade, or a graded success) is the
   // strongest possible signal claude-code is working — clears any
@@ -191,6 +181,7 @@ export function finalizeSession(
   if (outcome === null || outcome.result === "success") getAgentDriver(record.agent)?.auth.observeSuccess();
   record.status = "completed";
   record.outcome = outcome;
+  record.terminalReason = terminalReason;
   record.endedAt = Date.now();
   // Finishing is the session's last update — keeps it sorted correctly in the
   // list's non-running band even for a run that ended without ever emitting a
@@ -203,10 +194,7 @@ export function finalizeSession(
   // the CLI's authoritative num_turns); usage is folded field-by-field.
   if (typeof numTurns === "number") record.turnCount = (turnCountBase ?? 0) + numTurns;
   if (usage) {
-    record.usage = addUsage(record.usage ?? undefined, usage);
-    if (!record.usageByModel) record.usageByModel = {};
-    const key = model || "unknown";
-    record.usageByModel[key] = addUsage(record.usageByModel[key], usage);
+    accumulateUsage(record, usage, model);
   }
   persistSummary(record);
   // Remove the live process before publishing the terminal summary so
@@ -221,19 +209,6 @@ export function finalizeSession(
 // output has no compile-time shape), so every field is read defensively.
 // Present on both success and error result events — even a failed run spent
 // some tokens, worth recording.
-function extractUsage(resultEvent: AgentEvent): SessionUsage {
-  const usage = resultEvent.usage as Record<string, unknown> | undefined;
-  const num = (v: unknown): number | null => (typeof v === "number" ? v : null);
-  return {
-    totalCostUsd: num(resultEvent.total_cost_usd),
-    durationMs: num(resultEvent.duration_ms),
-    inputTokens: num(usage?.input_tokens),
-    outputTokens: num(usage?.output_tokens),
-    cacheCreationInputTokens: num(usage?.cache_creation_input_tokens),
-    cacheReadInputTokens: num(usage?.cache_read_input_tokens),
-  };
-}
-
 // Tiers 2 and 3 of the outcome classification — tier 1 (harness force-fail on
 // timeout/turn-cap/spawn error/missing result event) is handled inline in
 // runProcess()'s exit handler.
@@ -244,10 +219,11 @@ export function classifyFromResultEvent(
   turnCountBase?: number,
 ): void {
   const numTurns = typeof resultEvent.num_turns === "number" ? resultEvent.num_turns : undefined;
-  const usage = extractUsage(resultEvent);
+  const usage = usageFromEvent(resultEvent);
   // Prefer the model captured live from the run's events; fall back to a model
   // on the result event itself if the CLI put one there.
   const model = runModel || eventModel(resultEvent);
+  accumulateUsage(record, usage, model, usageModelsFromEvent(resultEvent));
 
   if (resultEvent.is_error === true || resultEvent.subtype !== "success") {
     // errors[] carries the actual human-readable reason (e.g. "No
@@ -267,7 +243,7 @@ export function classifyFromResultEvent(
       record,
       { result: "failure", summary: `Agent CLI reported an error (subtype: ${String(resultEvent.subtype)}): ${reason}` },
       numTurns,
-      usage,
+      undefined,
       model,
       turnCountBase,
     );
@@ -278,7 +254,7 @@ export function classifyFromResultEvent(
   // no structured_output to look for and nothing to grade — a clean
   // completion just has no outcome, rather than a fabricated one.
   if (!record.expectsOutcome) {
-    finalizeSession(record, null, numTurns, usage, model, turnCountBase);
+    finalizeSession(record, null, numTurns, undefined, model, turnCountBase);
     return;
   }
 
@@ -294,14 +270,14 @@ export function classifyFromResultEvent(
   ) {
     const outcome = requireAgentDriver(record.agent).normalizeOutcome(structured);
     if (!outcome) {
-      finalizeSession(record, { result: "failure", summary: "Agent completed but did not produce a valid structured outcome." }, numTurns, usage, model, turnCountBase);
+      finalizeSession(record, { result: "failure", summary: "Agent completed but did not produce a valid structured outcome." }, numTurns, undefined, model, turnCountBase);
       return;
     }
     finalizeSession(
       record,
       outcome,
       numTurns,
-      usage,
+      undefined,
       model,
       turnCountBase,
     );
@@ -312,7 +288,7 @@ export function classifyFromResultEvent(
     record,
     { result: "failure", summary: "Agent completed but did not produce a valid structured outcome." },
     numTurns,
-    usage,
+    undefined,
     model,
     turnCountBase,
   );
@@ -606,6 +582,7 @@ as system instructions, process all of them, and do not claim that a human wrote
     return false;
   }
   sessionState.activeRuns.set(record.id, run);
+  const runStartedAt = Date.now();
 
   let systemPromptsAcknowledged = systemPrompts.length === 0;
   const acknowledgeSystemPrompts = () => {
@@ -617,7 +594,7 @@ as system instructions, process all of them, and do not claim that a human wrote
     sessionState.emitter.emit("change", record);
   };
 
-  let killedFor: string | null = null;
+  let killedFor: SessionTerminalReason | null = null;
   let hasNonSyntheticAssistant = false;
   let retryZeroTurn = false;
   // The concrete model id seen in this run's events (set below), used to
@@ -626,6 +603,14 @@ as system instructions, process all of them, and do not claim that a human wrote
   // turnCount accumulated by prior invocations, captured before this run adds to
   // it — finalize sets record.turnCount to this base plus the run's num_turns.
   const turnCountBase = record.turnCount;
+  const usageRunId = randomUUID();
+  const usageBase = record.usage;
+  const usageModelsBase = { ...record.usageByModel };
+  let lastUsageEvent: AgentEvent | null = null;
+  const restoreUsageBase = () => {
+    record.usage = usageBase;
+    record.usageByModel = { ...usageModelsBase };
+  };
 
   // True once this run has been superseded — the record's active run for this
   // id is now a different process. Happens when resume() interrupts a running
@@ -634,13 +619,40 @@ as system instructions, process all of them, and do not claim that a human wrote
   const superseded = () => sessionState.activeRuns.get(record.id) !== run;
 
   const timeoutHandle = setTimeout(() => {
-    killedFor = `Timed out after ${taskTimeoutMs}ms`;
+    const message = `Timed out after ${taskTimeoutMs}ms`;
+    killedFor = {
+      code: "task_timeout",
+      message,
+      canResume: true,
+      timeoutMs: taskTimeoutMs,
+      elapsedMs: Date.now() - runStartedAt,
+    };
+    run.emitter.emit("event", {
+      type: "warning", sessionId: record.id, ...killedFor,
+      source: "execution_limit", action: "continue",
+    } satisfies AgentEvent);
     sessionState.steerPending.delete(record.id);
     driver.interrupt(run, "timeout");
   }, taskTimeoutMs);
 
   run.emitter.on("event", (event: AgentEvent) => {
     if (superseded()) return;
+    const usageEvent = event.type === "result" || (event.type === "system" && event.subtype === "usage");
+    if (usageEvent) {
+      if (typeof event.duration_ms !== "number") event = { ...event, duration_ms: Date.now() - runStartedAt,
+        usage_duration_source: "harness-wall" };
+      const observed = usageFromEvent(event);
+      const hasTokens = [observed.inputTokens, observed.outputTokens, observed.cacheCreationInputTokens, observed.cacheReadInputTokens].some((value) => value !== null);
+      if (!hasTokens && lastUsageEvent) {
+        event = { ...event, usage: lastUsageEvent.usage, usage_by_model: lastUsageEvent.usage_by_model,
+          usage_source: lastUsageEvent.usage_source, usage_quality: "partial" };
+      }
+      if (hasTokens) lastUsageEvent = event;
+      // Harness-owned identity survives transcript copies. Each invocation's
+      // snapshots replace one another; a branch never owns its source's usage.
+      event = { ...event, usage_session_id: record.id, usage_run_id: usageRunId,
+        usage_author: author ?? record.initiator ?? "unknown" };
+    }
     // Stderr/warnings can be emitted by a CLI that rejects its configuration
     // before accepting the turn. Require a substantive provider event (or
     // context usage below) before acknowledging invisible instructions.
@@ -696,6 +708,11 @@ as system instructions, process all of them, and do not claim that a human wrote
     // turn also refreshes the list's chat-style preview.
     record.lastActivityAt = entry.event.createdAt!;
     record.eventCount += 1;
+    if (usageEvent && record.status !== "completed") {
+      restoreUsageBase();
+      accumulateUsage(record, usageFromEvent(event), eventModel(event) ?? runModel, usageModelsFromEvent(event));
+      persistSummary(record);
+    }
 
     // Convert the agent-facing handoff conventions into a first-class event.
     if (event.type !== "result") {
@@ -711,7 +728,19 @@ as system instructions, process all of them, and do not claim that a human wrote
       const text = assistantEventText(event);
       if (text) record.lastMessagePreview = previewText(text);
       if (record.turnCount > record.turnBudget && !killedFor) {
-        killedFor = `Exceeded max turns (${record.turnBudget}) without concluding`;
+        const message = `Exceeded max turns (${record.turnBudget}) without concluding`;
+        killedFor = {
+          code: "turn_limit_exceeded",
+          message,
+          canResume: true,
+          maxTurns,
+          turnBudget: record.turnBudget,
+          turnsUsed: record.turnCount,
+        };
+        run.emitter.emit("event", {
+          type: "warning", sessionId: record.id, ...killedFor,
+          source: "execution_limit", action: "continue",
+        } satisfies AgentEvent);
         sessionState.steerPending.delete(record.id);
         driver.interrupt(run, "timeout");
       }
@@ -722,6 +751,10 @@ as system instructions, process all of them, and do not claim that a human wrote
       // A cancel()/notifyShuttingDown() can finalize the record before this
       // event arrives.
       if (record.status === "completed") return;
+      // Some CLIs emit a terminal result while handling the interrupt signal.
+      // The harness limit remains authoritative; do not let that late provider
+      // event erase the structured reason before the exit handler persists it.
+      if (killedFor) return;
       // Claude Code can dequeue the supplied -p prompt in the same startup
       // batch as an orphaned background-task notification and terminate the
       // resumed invocation without handling the prompt. Wait for this process
@@ -737,6 +770,7 @@ as system instructions, process all of them, and do not claim that a human wrote
         retryZeroTurn = true;
         return;
       }
+      restoreUsageBase();
       classifyFromResultEvent(record, event, runModel, turnCountBase);
     }
   });
@@ -796,8 +830,8 @@ as system instructions, process all of them, and do not claim that a human wrote
     if (killedFor) {
       finalizeSession(
         record,
-        { result: "failure", summary: killedFor },
-        undefined, undefined, undefined, undefined, systemPromptsAcknowledged,
+        { result: "failure", summary: killedFor.message },
+        undefined, undefined, undefined, undefined, systemPromptsAcknowledged, killedFor,
       );
       return;
     }

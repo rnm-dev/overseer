@@ -31,6 +31,9 @@ class PeonSettings {
     this.aiDefaultReasoningEffort,
     this.defaultAgent,
     this.soul,
+    this.maxTurns,
+    this.taskTimeoutMs,
+    this.maxBudgetUsd,
   });
 
   final String? name;
@@ -40,6 +43,9 @@ class PeonSettings {
   final String? aiDefaultReasoningEffort;
   final String? defaultAgent;
   final String? soul;
+  final int? maxTurns;
+  final int? taskTimeoutMs;
+  final double? maxBudgetUsd;
 
   factory PeonSettings.fromJson(Map<String, dynamic> json) => PeonSettings(
     name: json['name'] as String?,
@@ -52,6 +58,9 @@ class PeonSettings {
       final String value when value.isNotEmpty => value,
       _ => null,
     },
+    maxTurns: (json['maxTurns'] as num?)?.toInt(),
+    taskTimeoutMs: (json['taskTimeoutMs'] as num?)?.toInt(),
+    maxBudgetUsd: (json['maxBudgetUsd'] as num?)?.toDouble(),
   );
 
   Map<String, dynamic> toPatch({
@@ -63,6 +72,9 @@ class PeonSettings {
       if (fileTransferRoot != null) 'fileTransferRoot': fileTransferRoot,
       if (heartbeatIntervalMs != null)
         'heartbeatIntervalMs': heartbeatIntervalMs,
+      if (maxTurns != null) 'maxTurns': maxTurns,
+      if (taskTimeoutMs != null) 'taskTimeoutMs': taskTimeoutMs,
+      if (maxBudgetUsd != null) 'maxBudgetUsd': maxBudgetUsd,
     },
     if (includeAgent) ...{
       if (defaultAgent != null) 'defaultAgent': defaultAgent,

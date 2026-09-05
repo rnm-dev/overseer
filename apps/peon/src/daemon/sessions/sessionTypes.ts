@@ -9,6 +9,23 @@ export interface SessionOutcome {
   previewPath?: string | null;
 }
 
+export type SessionTerminalReason =
+  | {
+      code: "turn_limit_exceeded";
+      message: string;
+      canResume: true;
+      maxTurns: number;
+      turnBudget: number;
+      turnsUsed: number;
+    }
+  | {
+      code: "task_timeout";
+      message: string;
+      canResume: true;
+      timeoutMs: number;
+      elapsedMs: number;
+    };
+
 export type SessionStatus = "running" | "completed";
 export type BackendTurnStatus = "inProgress" | "completed" | "interrupted" | "failed" | "unknown";
 
@@ -56,6 +73,10 @@ export interface PendingSystemPrompt {
 }
 
 export interface SessionUsage {
+  /** Reported is provider telemetry, not a claim of complete account billing. */
+  quality?: "reported" | "partial" | "legacy";
+  source?: string;
+  reasoningOutputTokens?: number | null;
   totalCostUsd: number | null;
   durationMs: number | null;
   inputTokens: number | null;
@@ -116,6 +137,8 @@ export interface SessionRecord {
   expectsOutcome: boolean;
   status: SessionStatus;
   outcome: SessionOutcome | null;
+  /** Provider-neutral stop reason for harness-enforced execution limits. */
+  terminalReason?: SessionTerminalReason | null;
   startedAt: number;
   endedAt: number | null;
   turnCount: number;
@@ -133,6 +156,10 @@ export interface SessionRecord {
 export type StatsPeriod = "day" | "yesterday" | "week" | "month";
 
 export interface SessionStats {
+  timeZone?: "UTC";
+  usagePartialTurns?: number;
+  usageLegacyTurns?: number;
+  attributionQuality?: "exact" | "estimated" | "mixed" | "missing";
   semanticsVersion: number;
   period: StatsPeriod;
   rangeStart: number;
@@ -155,6 +182,10 @@ export interface SessionStats {
   usageCoveragePercent: number;
   usageRejections: Partial<Record<import("./tokenUsage.js").TokenUsageRejectionReason, number>>;
   byModel: Array<{
+    cacheBreakdownComplete?: boolean;
+    reasoningOutputTokens?: number | null;
+    usagePartialTurns?: number;
+    usageLegacyTurns?: number;
     /** Canonical public provider id, which may differ from the session runtime id. */
     agent: CodingAgent;
     model: string;

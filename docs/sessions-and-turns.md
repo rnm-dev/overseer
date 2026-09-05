@@ -104,25 +104,58 @@ per-model `reasoningEfforts` list a current Peon publishes on `/api/v1/models`,
 falling back to the provider-wide list for older Peons; a model advertising no
 efforts hides the selector entirely.
 
+The lists themselves are no longer release-maintained constants. At daemon
+startup each driver discovers them from its installed CLI; the current cache,
+fallback and diagnostics contract is defined in [agent model catalog
+discovery](agent-model-catalog.md). A configured model/effort is validated
+against that same effective catalog, so UI discovery and turn admission cannot
+silently disagree.
+
+## Turn budget
+
+Peon grants each logical invocation a bounded turn budget in addition to its
+wall-clock and optional monetary limits. The 1.0.2 default is 1,000 turns,
+raised from 300 so tool-heavy runs do not hit an artificial cap before the
+30-minute task timeout. An upgrade migrates the exact old default once;
+operator values that differed from 300 remain unchanged, and choices written
+after the migration marker are always preserved.
+
+Each accepted follow-up grants a fresh portion rather than sharing the first
+invocation's remainder. A zero-turn provider retry does not grant another
+portion. An owner may change `maxTurns`, `taskTimeoutMs`, and `maxBudgetUsd`
+through the revision-fenced Peon settings control API; the new values apply to
+the next provider invocation.
+
+A harness-enforced stop is not inferred from free-form failure text. The
+durable session summary and detail carry `terminalReason` with a stable
+provider-neutral `code`, a bounded human `message`, `canResume`, and the exact
+limit/usage numbers. Turn exhaustion uses `turn_limit_exceeded`; wall-clock
+expiry uses `task_timeout`. Peon also appends a durable transcript warning with
+the same code and `action: "continue"` before interrupting the provider. A
+follow-up clears the old terminal reason as soon as the session starts running
+again.
+
 ## Usage is attributed to the turn that spent it
 
-Analytics usage is attributed to the turn that spent it, not to the session that
-started first. Peon replays a session's transcript, charges each `result`
-event's tokens, cost and provider duration to the author of the user message
-preceding it, and dates them by that event's stamped `createdAt`. The session
-record stays authoritative, so whatever its rollup holds beyond the transcript's
-result events is charged to the initiator at session start — which is where a
-session with a pruned or pre-dating transcript lands whole.
+Peon persists invocation-scoped numeric usage snapshots before completion.
+The latest snapshot/result replaces prior snapshots with the same harness-owned
+run identity. Session identity excludes copied branch history; identified
+ledger events are not capped by a stale summary. This retains observed partial
+usage on cancellation and restart. Historical unowned events retain the older
+summary-budget reconciliation and estimated session-start remainder.
 
-Session counts, wall duration, outcomes and storage still follow session start,
-and `/stats` remains a session-start summary that does not share the per-turn
-window.
+Both `/stats` and `/analytics` now use the same UTC invocation-usage window.
+Usage follows the latest snapshot/result timestamp and invoking author, while
+session counts, wall duration, outcomes and storage still follow session start.
+This is invocation-time accounting, not an exact per-request timeline for a
+single invocation crossing midnight. Native steering is not separately billed.
 
 Before this, a follow-up sent today into yesterday's session showed prompts with
 zero tokens, while a session started inside the period credited its whole rollup
 to every author who wrote in it. Peon's own
 `apps/peon/docs/token-usage-analytics.md` holds the canonical buckets and the
-`exact`/`estimated`/`mixed`/`missing` quality rule.
+`exact`/`estimated`/`mixed`/`missing` attribution rule, separate
+`reported`/`partial`/`legacy` capture provenance, and driver-specific limitations.
 
 ## Codex runs only on the app-server driver
 

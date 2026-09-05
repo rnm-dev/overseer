@@ -156,6 +156,7 @@ export interface ClaudeCodeAuthStateShape {
 }
 
 export const claudeCodeAuth = {
+  refresh,
   start(): void {
     void refresh();
   },

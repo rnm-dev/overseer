@@ -139,7 +139,7 @@ test("GET /stats emits and groups Codex usage under the canonical provider id", 
   };
 
   assert.equal(body.sessionCount, 3);
-  assert.equal(body.totalInputTokens, 140);
+  assert.equal(body.totalInputTokens, 75);
   assert.equal(body.totalOutputTokens, 30);
   assert.equal(body.totalCacheCreationTokens, 8);
   assert.equal(body.totalCacheReadTokens, 57);
@@ -156,13 +156,17 @@ test("GET /stats emits and groups Codex usage under the canonical provider id", 
     agent: "codex",
     model: "gpt-5.4",
     sessionCount: 2,
-    inputTokens: 140,
+    inputTokens: 75,
     outputTokens: 30,
     cacheCreationTokens: 8,
     cacheReadTokens: 57,
     totalTokens: 170,
     processedTokens: 170,
     totalDurationMs: 1_500,
+    usagePartialTurns: 0,
+    usageLegacyTurns: 2,
+    cacheBreakdownComplete: true,
+    reasoningOutputTokens: null,
   });
   assert.ok(Math.abs(totalCostUsd - 0.35) < Number.EPSILON);
   assert.equal(body.byModel.find((row) => row.model === "claude-sonnet-5")?.agent, "claude-code");

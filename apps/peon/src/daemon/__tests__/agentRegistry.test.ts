@@ -19,6 +19,9 @@ describe("agent driver registry", () => {
     const claude = requireAgentDriver("claude-code");
     const codex = requireAgentDriver("codex-app-server");
     assert.equal(claude.canonicalModel("sonnet"), "claude-sonnet-5");
+    assert.equal(claude.reasoningEffort("max", "claude-fable-5-1"), "max");
+    assert.equal(codex.reasoningEffort("max", "gpt-6-astra"), "max");
+    assert.equal(codex.reasoningEffort("ultra", "gpt-6-astra"), undefined);
     assert.equal(codex.reasoningEffort("ultra", "gpt-5.6-sol"), "ultra");
     assert.equal(codex.reasoningEffort("max", "gpt-5.5"), undefined);
     assert.equal(claude.reasoningEffort("high", "claude-haiku-4-5-20251001"), undefined);

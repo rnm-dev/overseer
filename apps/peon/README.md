@@ -86,7 +86,11 @@ npm install
 npm run dev
 ```
 
-Run `npm run verify` before submitting a change.
+Run `npm run verify` before submitting a change. The test runner chooses a
+bounded worker count from the available CPUs and keeps timing-sensitive files
+in a separate serial group. Set `PEON_TEST_CONCURRENCY` to a positive integer
+to reproduce a specific parallel schedule; `npm run test:release` uses the same
+isolated schedule as the ordinary suite.
 
 See the [protocol reference](https://github.com/rnm-dev/overseer/blob/master/packages/protocol/PROTOCOL.md)
 for the full wire contract.

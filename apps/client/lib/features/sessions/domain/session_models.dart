@@ -14,6 +14,7 @@ class SessionSummary {
     this.preview,
     this.author,
     this.outcomeJson,
+    this.terminalReasonJson,
     this.startedAt,
     this.endedAt,
     this.lastActivityAt,
@@ -35,6 +36,9 @@ class SessionSummary {
   final String? preview;
   final String? author;
   final String? outcomeJson;
+
+  /// Provider-neutral structured stop reason; decode by `code`, never message text.
+  final String? terminalReasonJson;
   final double? startedAt;
   final double? endedAt;
   final double? lastActivityAt;
@@ -66,6 +70,52 @@ class SessionSummary {
   }
 
   bool get isRunning => status == 'running';
+
+  SessionTerminalReason? get terminalReason {
+    if (terminalReasonJson == null) return null;
+    try {
+      final value = jsonDecode(terminalReasonJson!);
+      return value is Map<String, dynamic>
+          ? SessionTerminalReason.fromJson(value)
+          : null;
+    } on Object {
+      return null;
+    }
+  }
+}
+
+class SessionTerminalReason {
+  const SessionTerminalReason({
+    required this.code,
+    required this.message,
+    required this.canResume,
+    this.maxTurns,
+    this.turnBudget,
+    this.turnsUsed,
+    this.timeoutMs,
+    this.elapsedMs,
+  });
+
+  final String code;
+  final String message;
+  final bool canResume;
+  final int? maxTurns;
+  final int? turnBudget;
+  final int? turnsUsed;
+  final int? timeoutMs;
+  final int? elapsedMs;
+
+  factory SessionTerminalReason.fromJson(Map<String, dynamic> json) =>
+      SessionTerminalReason(
+        code: json['code'] as String? ?? 'unknown',
+        message: json['message'] as String? ?? '',
+        canResume: json['canResume'] as bool? ?? false,
+        maxTurns: (json['maxTurns'] as num?)?.toInt(),
+        turnBudget: (json['turnBudget'] as num?)?.toInt(),
+        turnsUsed: (json['turnsUsed'] as num?)?.toInt(),
+        timeoutMs: (json['timeoutMs'] as num?)?.toInt(),
+        elapsedMs: (json['elapsedMs'] as num?)?.toInt(),
+      );
 }
 
 class SessionPage {

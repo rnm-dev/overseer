@@ -50,7 +50,7 @@ test("stats expose canonical Codex providers and merge runtime aliases", () => {
     agent: "codex",
     model: "gpt-5.4",
     sessionCount: 2,
-    inputTokens: 140,
+    inputTokens: 119,
     outputTokens: 28,
     cacheCreationTokens: 7,
     cacheReadTokens: 14,
@@ -58,6 +58,10 @@ test("stats expose canonical Codex providers and merge runtime aliases", () => {
     processedTokens: 168,
     totalDurationMs: 2_000,
     totalCostUsd: 0.15,
+    usagePartialTurns: 0,
+    usageLegacyTurns: 2,
+    cacheBreakdownComplete: true,
+    reasoningOutputTokens: null,
   }]);
   assert.equal(stats.byModel.some((row) => row.agent === "codex-app-server"), false);
 });

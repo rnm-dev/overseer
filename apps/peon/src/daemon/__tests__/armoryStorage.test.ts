@@ -195,6 +195,13 @@ test("catalog, manifest, and hook validators reject unknown or malformed fields"
     mcp: { command: { executable: "node", args: ["dist/mcp.js"] }, toolPrefix: "fixture_echo" },
   };
   assert.equal(parseArmoryManifest(manifest).id, "fixture-echo");
+  assert.deepEqual(
+    parseArmoryManifest({ ...manifest, permissions: { networkHosts: ["*", "*.example.com", "api.example.com"], hostPaths: [] } }).permissions.networkHosts,
+    ["*", "*.example.com", "api.example.com"],
+  );
+  for (const networkHost of ["*example.com", "example.*", "https://example.com", "UPPER.example.com"]) {
+    assert.throws(() => parseArmoryManifest({ ...manifest, permissions: { networkHosts: [networkHost], hostPaths: [] } }));
+  }
   const { mcp: _mcp, ...withoutMcp } = manifest;
   assert.equal(parseArmoryManifest(withoutMcp).mcp, undefined);
   assert.throws(() => parseArmoryManifest({ ...manifest, typo: true }));

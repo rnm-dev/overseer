@@ -70,6 +70,25 @@ test("settings save never echoes projection or command metadata", () => {
   );
 });
 
+test("settings save preserves execution safety controls", () => {
+  assert.deepEqual(
+    buildSettingsPayload({
+      defaultAgent: "codex",
+      aiDefaultModel: "gpt-5.4",
+      maxTurns: 2_000,
+      taskTimeoutMs: 3_600_000,
+      maxBudgetUsd: 50,
+    }, codex, true),
+    {
+      defaultAgent: "codex",
+      aiDefaultModel: "gpt-5.4",
+      maxTurns: 2_000,
+      taskTimeoutMs: 3_600_000,
+      maxBudgetUsd: 50,
+    },
+  );
+});
+
 test("new peon settings omit unset null fields from the partial PATCH", () => {
   const claude: ModelProvider = {
     agent: "claude-code",

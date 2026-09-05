@@ -1,6 +1,25 @@
 export { runAgent, normalizeStoredAgentEvent } from "./executor.js";
+export { ClaudeLoginService, ClaudeLoginError } from "./claudeLogin.js";
+export { CodexLoginService, CodexLoginError } from "./codexLogin.js";
 export { configureManagedPluginToolHandler, getCodexAppServerRuntime } from "./codexAppServer.js";
 export type { CodexAppServerHealth, CodexAppServerRuntime } from "./runtimes/codexAppServerRuntime.js";
+export {
+  agentCliUpdateRuntime,
+  classifyAgentCliInstallation,
+  createSelfUpdatingCliUpdater,
+  type AgentCliInstallationKind,
+  type AgentCliUpdateInspection,
+  type AgentCliUpdateRuntime,
+  type AgentCliUpdater,
+  type ResolvedAgentCli,
+} from "./cliUpdater.js";
+export {
+  claudeModelCatalogService,
+  createCodexModelCatalogService,
+  normalizeClaudeModelResponse,
+  normalizeCodexModelResponse,
+  type AgentModelCatalogService,
+} from "./modelDiscovery.js";
 export {
   agentServices,
   registerAgentDriver,

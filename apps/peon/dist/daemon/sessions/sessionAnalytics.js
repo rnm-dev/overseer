@@ -1,7 +1,8 @@
 import { listAgentDrivers } from "../agents/index.js";
 import { ensurePeonId } from "../identity/peonIdentity.js";
-import { normalizeTokenUsage, TOKEN_USAGE_SEMANTICS_VERSION } from "./tokenUsage.js";
+import { canonicalUsageProvider, normalizeTokenUsage, TOKEN_USAGE_SEMANTICS_VERSION } from "./tokenUsage.js";
 import { readTranscript } from "./index.js";
+import { usageFromEvent, usageModelsFromEvent } from "./usageAccounting.js";
 export const ANALYTICS_DIMENSIONS = ["user", "project", "time", "agent", "model", "status", "outcome"];
 export const ANALYTICS_TIME_BUCKETS = ["hour", "day", "week", "month"];
 export const ANALYTICS_PERIODS = ["day", "yesterday", "week", "month", "all"];
@@ -111,6 +112,8 @@ function emptyMetrics() {
         providerDurationMs: 0, wallDurationMs: 0, totalCostUsd: 0, storageBytes: 0,
         sessionsWithUsage: 0, sessionsMissingUsage: 0,
         usageCoveragePercent: 0, usageTurnsAttributed: 0, usageSessionsEstimated: 0,
+        usagePartialTurns: 0, usageLegacyTurns: 0,
+        cacheBreakdownComplete: true, reasoningOutputTokens: null,
         attributionQuality: "missing",
         usageRejections: {},
         runningCount: 0, successCount: 0, failureCount: 0, needsHumanCount: 0, noOutcomeCount: 0,
@@ -171,6 +174,8 @@ function addSessionMetrics(metrics, record, storageBytes, now) {
 // remainder of a session whose transcript could not account for its record.
 function addUsageMetrics(metrics, agent, occurrence) {
     const usage = occurrence.usage;
+    metrics.providerDurationMs += usage.durationMs ?? 0;
+    metrics.totalCostUsd += usage.totalCostUsd ?? 0;
     const canonical = normalizeTokenUsage(agent, usage);
     // Raw provider fields are only trustworthy alongside a canonical reading;
     // a rejected usage payload was already counted by addSessionMetrics.
@@ -178,11 +183,21 @@ function addUsageMetrics(metrics, agent, occurrence) {
         return;
     // A remainder holding only leftover cost or duration is still worth adding,
     // but it is not a token attribution and must not degrade the quality reading.
-    if (occurrence.exact)
+    if (occurrence.exact && canonical.processedTokens > 0)
         metrics.usageTurnsAttributed += 1;
     else if (canonical.processedTokens > 0)
         metrics.usageSessionsEstimated += 1;
-    metrics.inputTokens += usage.inputTokens ?? 0;
+    if (canonical.processedTokens > 0) {
+        if (usage.quality === "partial")
+            metrics.usagePartialTurns += 1;
+        else if (usage.quality !== "reported")
+            metrics.usageLegacyTurns += 1;
+    }
+    metrics.inputTokens += canonical.uncachedInputTokens;
+    if (usage.cacheCreationInputTokens == null || usage.cacheReadInputTokens == null)
+        metrics.cacheBreakdownComplete = false;
+    if (usage.reasoningOutputTokens != null)
+        metrics.reasoningOutputTokens = (metrics.reasoningOutputTokens ?? 0) + usage.reasoningOutputTokens;
     metrics.outputTokens += usage.outputTokens ?? 0;
     metrics.cacheCreationTokens += usage.cacheCreationInputTokens ?? 0;
     metrics.cacheReadTokens += usage.cacheReadInputTokens ?? 0;
@@ -191,8 +206,6 @@ function addUsageMetrics(metrics, agent, occurrence) {
     metrics.cacheWriteInputTokens += canonical.cacheWriteInputTokens;
     metrics.processedTokens += canonical.processedTokens;
     metrics.totalTokens += canonical.processedTokens;
-    metrics.providerDurationMs += usage.durationMs ?? 0;
-    metrics.totalCostUsd += usage.totalCostUsd ?? 0;
 }
 function addPrompts(metrics, promptCount) {
     metrics.promptCount += promptCount;
@@ -204,7 +217,7 @@ function finishUsageQuality(metrics) {
     // "exact" means every counted token came from the turn that spent it; a
     // session that had to be attributed as one session-start lump, or one whose
     // usage could not be read at all, degrades the reading.
-    metrics.attributionQuality = metrics.sessionsWithUsage === 0
+    metrics.attributionQuality = metrics.sessionsWithUsage === 0 && metrics.usageTurnsAttributed === 0 && metrics.usageSessionsEstimated === 0
         ? "missing"
         : metrics.sessionsMissingUsage > 0
             ? "mixed"
@@ -218,8 +231,6 @@ function matches(record, filters) {
         return false;
     if (filters.agent && !filters.agent.includes(record.agent))
         return false;
-    if (filters.model && !filters.model.includes(record.model ?? "unknown"))
-        return false;
     if (filters.status && !filters.status.includes(record.status))
         return false;
     if (filters.outcome && !filters.outcome.includes(outcome))
@@ -230,7 +241,7 @@ function promptOccurrences(record, transcript) {
     const userTurns = transcript.filter((event) => event.type === "user_message");
     const fallbackAuthor = record.initiator ?? "unknown";
     if (userTurns.length === 0) {
-        return Array.from({ length: 1 + record.followUpPrompts.length + record.queuedFollowUps.length }, () => ({ author: fallbackAuthor, createdAt: record.startedAt }));
+        return Array.from({ length: 1 + (record.followUpPrompts?.length ?? 0) + (record.queuedFollowUps?.length ?? 0) }, () => ({ author: fallbackAuthor, createdAt: record.startedAt }));
     }
     return userTurns.map((turn) => {
         const author = typeof turn.author === "string" && turn.author.trim() ? turn.author.trim() : fallbackAuthor;
@@ -240,26 +251,15 @@ function promptOccurrences(record, transcript) {
         return { author, createdAt };
     });
 }
-function usageField(value) {
-    return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
 // Every invocation ends with one result event carrying that invocation's usage
 // — the same payload sessions/runtime.ts folds into record.usage. Reading it
 // back is what makes per-turn attribution possible; the field names are the
 // CLI's, not ours.
 function resultEventUsage(event) {
-    const raw = event.usage;
-    const usage = {
-        inputTokens: usageField(raw?.input_tokens),
-        outputTokens: usageField(raw?.output_tokens),
-        cacheCreationInputTokens: usageField(raw?.cache_creation_input_tokens),
-        cacheReadInputTokens: usageField(raw?.cache_read_input_tokens),
-        durationMs: usageField(event.duration_ms),
-        totalCostUsd: usageField(event.total_cost_usd),
-    };
+    const usage = usageFromEvent(event);
     const hasTokens = usage.inputTokens !== null || usage.outputTokens !== null
         || usage.cacheCreationInputTokens !== null || usage.cacheReadInputTokens !== null;
-    return hasTokens ? usage : null;
+    return hasTokens || usage.durationMs !== null || usage.totalCostUsd !== null ? usage : null;
 }
 // What record.usage still holds that the transcript did not account for.
 // Transcripts can be pruned, predate a field, or be missing entirely, and the
@@ -269,7 +269,7 @@ function resultEventUsage(event) {
 function residualUsage(total, counted) {
     if (!total)
         return null;
-    const remainder = (pick) => Math.max(0, (pick(total) ?? 0) - counted.reduce((sum, occurrence) => sum + (pick(occurrence.usage) ?? 0), 0));
+    const remainder = (pick) => pick(total) == null ? null : Math.max(0, (pick(total) ?? 0) - counted.reduce((sum, occurrence) => sum + (pick(occurrence.usage) ?? 0), 0));
     const usage = {
         inputTokens: remainder((value) => value.inputTokens),
         outputTokens: remainder((value) => value.outputTokens),
@@ -294,29 +294,51 @@ function usageOccurrences(record, transcript) {
     const fallbackAuthor = record.initiator ?? "unknown";
     let author = fallbackAuthor;
     const candidates = [];
+    const owned = new Map();
+    const seenLegacy = new Set();
+    let model = record.model ?? "unknown";
     for (const event of transcript) {
         if (event.type === "user_message") {
             author = typeof event.author === "string" && event.author.trim() ? event.author.trim() : fallbackAuthor;
             continue;
         }
-        if (event.type !== "result")
+        const message = event.message;
+        if (typeof event.model === "string")
+            model = event.model;
+        else if (typeof message?.model === "string")
+            model = message.model;
+        if (event.type !== "result" && !(event.type === "system" && event.subtype === "usage"))
             continue;
+        if (typeof event.usage_session_id === "string" && event.usage_session_id !== record.id)
+            continue;
+        if (typeof event.id === "string" && !event.usage_run_id) {
+            if (seenLegacy.has(event.id))
+                continue;
+            seenLegacy.add(event.id);
+        }
         const usage = resultEventUsage(event);
         if (!usage)
             continue;
         const canonical = normalizeTokenUsage(record.agent, usage);
-        if (!canonical)
+        if (!canonical && usage.durationMs === null && usage.totalCostUsd === null)
             continue;
         const createdAt = typeof event.createdAt === "number" && Number.isFinite(event.createdAt)
             ? event.createdAt
             : record.startedAt;
+        const occurrence = { author: typeof event.usage_author === "string" ? event.usage_author : author,
+            createdAt, usage, exact: typeof event.createdAt === "number", model, models: usageModelsFromEvent(event) };
+        if (typeof event.usage_run_id === "string" && event.usage_session_id === record.id) {
+            owned.set(event.usage_run_id, occurrence);
+            continue;
+        }
         candidates.push({
-            occurrence: { author, createdAt, usage, exact: true },
-            processedTokens: canonical.processedTokens,
+            occurrence,
+            processedTokens: canonical?.processedTokens ?? 0,
         });
     }
     let remaining = record.usage ? normalizeTokenUsage(record.agent, record.usage)?.processedTokens ?? 0 : 0;
-    const occurrences = [];
+    const occurrences = [...owned.values()];
+    remaining = Math.max(0, remaining - occurrences.reduce((sum, item) => sum + (normalizeTokenUsage(record.agent, item.usage)?.processedTokens ?? 0), 0));
     for (let index = candidates.length - 1; index >= 0; index -= 1) {
         const candidate = candidates[index];
         if (candidate.processedTokens > remaining)
@@ -326,15 +348,33 @@ function usageOccurrences(record, transcript) {
     }
     const residual = residualUsage(record.usage, occurrences);
     if (residual)
-        occurrences.push({ author: fallbackAuthor, createdAt: record.startedAt, usage: residual, exact: false });
+        occurrences.push({ author: fallbackAuthor, createdAt: record.startedAt,
+            usage: { ...residual, quality: record.usage?.quality, source: record.usage?.source }, exact: false,
+            model: record.model ?? "unknown", models: occurrences.length === 0 ? record.usageByModel : undefined });
     return occurrences;
+}
+function splitUsageModels(occurrence, agent) {
+    const models = Object.entries(occurrence.models ?? {});
+    const expected = normalizeTokenUsage(agent, occurrence.usage)?.processedTokens;
+    const actual = models.reduce((sum, [, value]) => sum + (normalizeTokenUsage(agent, value)?.processedTokens ?? 0), 0);
+    if (!models.length || actual !== expected)
+        return [occurrence];
+    const rows = models.map(([model, usage]) => ({ ...occurrence, model, models: undefined, usage: {
+            ...usage, quality: occurrence.usage.quality, durationMs: models.length === 1 ? occurrence.usage.durationMs : usage.durationMs,
+        } }));
+    // Provider wall duration has no truthful per-model split for concurrent
+    // work. Keep the unallocated amount visible, rather than multiply it.
+    const rest = residualUsage(occurrence.usage, rows);
+    if (rest)
+        rows.push({ ...occurrence, model: "unknown", models: undefined, usage: { ...rest, quality: occurrence.usage.quality } });
+    return rows;
 }
 export function analyticsForSessions(records, query, storage = { totalBytes: 0, bySessionId: new Map() }, now = Date.now(), transcriptReader = readTranscript) {
     const allRecords = [...records];
     const knownStorageBytes = allRecords.reduce((sum, record) => sum + (storage.bySessionId.get(record.id) ?? 0), 0);
     const totals = emptyMetrics();
     const grouped = new Map();
-    const groupedRow = (record, author, timestamp) => {
+    const groupedRow = (record, author, timestamp, model) => {
         const parts = [];
         const dimensions = {};
         for (const dimension of query.groupBy) {
@@ -354,11 +394,11 @@ export function analyticsForSessions(records, query, storage = { totalBytes: 0, 
                 parts.push(`time:${range.start}`);
             }
             else if (dimension === "agent") {
-                dimensions.agent = record.agent;
-                parts.push(`agent:${record.agent}`);
+                dimensions.agent = canonicalUsageProvider(record.agent);
+                parts.push(`agent:${dimensions.agent}`);
             }
             else if (dimension === "model") {
-                dimensions.model = record.model ?? "unknown";
+                dimensions.model = model ?? record.model ?? "unknown";
                 parts.push(`model:${dimensions.model}`);
             }
             else if (dimension === "status") {
@@ -388,7 +428,11 @@ export function analyticsForSessions(records, query, storage = { totalBytes: 0, 
             && occurrence.createdAt < query.to
             && (!query.filters.user || query.filters.user.includes(occurrence.author));
         const selectedPrompts = promptOccurrences(record, transcript).filter(inPeriod);
-        const selectedUsage = usageOccurrences(record, transcript).filter(inPeriod);
+        const periodUsage = usageOccurrences(record, transcript).filter(inPeriod);
+        const selectedUsage = query.filters.model
+            ? periodUsage.flatMap((item) => splitUsageModels(item, record.agent)).filter((item) => query.filters.model.includes(item.model ?? "unknown"))
+            : periodUsage;
+        const modelUsage = query.groupBy.includes("model") ? selectedUsage.flatMap((item) => splitUsageModels(item, record.agent)) : selectedUsage;
         if (selectedPrompts.length === 0 && selectedUsage.length === 0)
             continue;
         const sessionInRange = record.startedAt >= query.from;
@@ -401,14 +445,18 @@ export function analyticsForSessions(records, query, storage = { totalBytes: 0, 
         const periodAuthors = [...new Set([...selectedPrompts, ...selectedUsage].map((occurrence) => occurrence.author))];
         if (sessionInRange) {
             const sessionAuthors = query.groupBy.includes("user") ? periodAuthors : [""];
+            const models = query.groupBy.includes("model") && modelUsage.length
+                ? [...new Set(modelUsage.map((item) => item.model ?? "unknown"))] : [record.model ?? "unknown"];
             for (const author of sessionAuthors)
-                addSessionMetrics(groupedRow(record, author, record.startedAt), record, bytes, now);
+                for (const model of models) {
+                    addSessionMetrics(groupedRow(record, author, record.startedAt, model), record, bytes, now);
+                }
         }
         for (const prompt of selectedPrompts) {
             addPrompts(groupedRow(record, query.groupBy.includes("user") ? prompt.author : "", prompt.createdAt), 1);
         }
-        for (const usage of selectedUsage) {
-            addUsageMetrics(groupedRow(record, query.groupBy.includes("user") ? usage.author : "", usage.createdAt), record.agent, usage);
+        for (const usage of modelUsage) {
+            addUsageMetrics(groupedRow(record, query.groupBy.includes("user") ? usage.author : "", usage.createdAt, usage.model), record.agent, usage);
         }
     }
     const rows = [...grouped.values()].sort((a, b) => {

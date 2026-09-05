@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { createClaudeLoginRouter } from "./http/claudeLogin.js";
+import { createCodexLoginRouter } from "./http/codexLogin.js";
 import { readFileSync, statSync, watch } from "node:fs";
 import { eventLoopDelayStats } from "./runtime/eventLoopMonitor.js";
 import path from "node:path";
@@ -21,7 +23,7 @@ import { createAgentRouter, requestManagedPluginInstall } from "./agentApi.js";
 import { createHumanProjectsRouter } from "./http/human/projects.js";
 import { createHumanSessionsRouter, type HumanSessionResponseHelpers, type HumanSessionService } from "./http/human/sessions.js";
 import { createScopedMcpRouter } from "./scopedMcp.js";
-import { modelCatalog, narrowNewSessionAgent, narrowModel, narrowReasoningEffort } from "./providers/modelCatalog.js";
+import { modelCatalog, narrowNewSessionAgent, narrowModel, narrowReasoningEffort, refreshAgentModelCatalogs } from "./providers/modelCatalog.js";
 import { agentServices, getAgentDriver, getAgentServiceDriver, listAgentDrivers } from "./agents/index.js";
 import { startSelfUpdate } from "./updates/selfUpdate.js";
 import { attachHumanFilesystemRoutes } from "./http/human/files.js";
@@ -333,6 +335,12 @@ export function createControlServer(options: ControlServerOptions = {}) {
   app.get("/api/v1/ai/claude-code/status", (_req, res) => {
     res.json(getAgentDriver("claude-code")?.services.status?.() ?? null);
   });
+  app.use("/api/v1/driver", (req, res, next) => {
+    if (req.headers.origin !== undefined) return res.status(403).json({ code: "LOCAL_CLI_ONLY", error: "Use Overseer for browser login" });
+    next();
+  });
+  app.use("/api/v1/driver/claude-code", createClaudeLoginRouter(() => getAgentServiceDriver("claude-code")?.services.claudeLogin, () => CLI_ACTOR));
+  app.use("/api/v1/driver/codex", createCodexLoginRouter(() => getAgentServiceDriver("codex")?.services.codexLogin, () => CLI_ACTOR));
 
   app.get("/api/v1/ai/status/:provider", (req, res) => {
     const driver = getAgentDriver(req.params.provider);
@@ -341,20 +349,29 @@ export function createControlServer(options: ControlServerOptions = {}) {
   });
 
   app.get("/api/v1/ai/cli-updates", async (req, res) => {
-    res.json(await cliUpdateService.get(undefined, req.query.refresh === "1"));
+    const result = await cliUpdateService.get(undefined, req.query.refresh === "1");
+    res.json({
+      ...result,
+      providers: result.providers.map((item) => ({
+        ...item,
+        provider: getAgentDriver(item.provider)?.serviceProvider ?? item.provider,
+      })),
+    });
   });
 
   app.get("/api/v1/ai/cli-updates/:provider", async (req, res) => {
-    const provider = req.params.provider as CliUpdateProvider;
-    if (!getAgentDriver(provider)?.capabilities.cliUpdate) return res.status(404).json({ error: "unknown CLI provider", code: "UNKNOWN_PROVIDER" });
-    res.json((await cliUpdateService.get(provider, req.query.refresh === "1")).providers[0]);
+    const driver = getAgentServiceDriver(req.params.provider);
+    if (!driver?.capabilities.cliUpdate) return res.status(404).json({ error: "unknown CLI provider", code: "UNKNOWN_PROVIDER" });
+    const item = (await cliUpdateService.get(driver.id, req.query.refresh === "1")).providers[0];
+    res.json({ ...item, provider: driver.serviceProvider ?? driver.id });
   });
 
   app.post("/api/v1/ai/cli-updates/:provider", async (req, res) => {
-    const provider = req.params.provider as CliUpdateProvider;
-    if (!getAgentDriver(provider)?.capabilities.cliUpdate) return res.status(404).json({ error: "unknown CLI provider", code: "UNKNOWN_PROVIDER" });
+    const driver = getAgentServiceDriver(req.params.provider);
+    if (!driver?.capabilities.cliUpdate) return res.status(404).json({ error: "unknown CLI provider", code: "UNKNOWN_PROVIDER" });
+    const provider = driver.id as CliUpdateProvider;
     try {
-      res.status(202).json({ provider, operation: await cliUpdateService.start(provider) });
+      res.status(202).json({ provider: driver.serviceProvider ?? driver.id, operation: await cliUpdateService.start(provider) });
     } catch (error) {
       if (error instanceof CliUpdateError) {
         const status = error.code === "UPDATE_START_FAILED" ? 500 : 409;
@@ -388,8 +405,9 @@ export function createControlServer(options: ControlServerOptions = {}) {
   // The model catalog for local clients — same payload as the
   // fleet-facing GET /api/v1/models, so local CLI callers reuse the same catalog
   // surface. Defaults are marked directly on their list records.
-  app.get("/api/v1/models", (_req, res) => {
+  app.get("/api/v1/models", async (req, res) => {
     const s = settings.get();
+    if (req.query.refresh === "1") await refreshAgentModelCatalogs(s, true);
     res.json({
       defaultAgent: s.defaultAgent,
       providers: modelCatalog(s.defaultAgent, s.ai.defaultModel, s.ai.defaultReasoningEffort),

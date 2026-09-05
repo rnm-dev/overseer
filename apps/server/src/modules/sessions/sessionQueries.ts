@@ -60,6 +60,7 @@ interface SessionRow {
   preview: string | null;
   author: string | null;
   outcome: unknown;
+  terminal_reason: unknown;
   started_at: number | null;
   ended_at: number | null;
   last_activity_at: number | null;
@@ -81,6 +82,7 @@ const sessionProjection = `
   sessions.preview,
   sessions.author,
   sessions.outcome,
+  sessions.raw->'terminalReason' AS terminal_reason,
   sessions.started_at,
   sessions.ended_at,
   sessions.last_activity_at,
@@ -325,6 +327,7 @@ function rowToIndexRow(row: SessionRow): SessionIndexRow {
     preview: row.preview,
     author: row.author,
     outcome: row.outcome,
+    terminalReason: row.terminal_reason,
     startedAt: row.started_at,
     endedAt: row.ended_at,
     lastActivityAt: row.last_activity_at,

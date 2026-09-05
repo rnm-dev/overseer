@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:dio/dio.dart';
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
@@ -15,6 +17,41 @@ void main() {
   });
 
   tearDown(() => database.close());
+
+  test(
+    'persists structured session terminal reasons for UI recovery',
+    () async {
+      await repository.applyLiveProjection(
+        workspaceId: 'workspace',
+        cursor: 1,
+        projection: {
+          'peonId': 'peon',
+          'sessionId': 'limited',
+          'status': 'completed',
+          'terminalReason': {
+            'code': 'turn_limit_exceeded',
+            'message': 'Turn limit reached',
+            'canResume': true,
+            'maxTurns': 1000,
+            'turnBudget': 1000,
+            'turnsUsed': 1001,
+          },
+          'syncedAt': 10,
+        },
+      );
+
+      final cached = await repository.loadCachedSessions(
+        workspaceId: 'workspace',
+        peonId: 'peon',
+      );
+      expect(
+        jsonDecode(cached.single.terminalReasonJson!),
+        containsPair('code', 'turn_limit_exceeded'),
+      );
+      expect(cached.single.terminalReason?.canResume, isTrue);
+      expect(cached.single.terminalReason?.turnsUsed, 1001);
+    },
+  );
 
   test(
     'marks session attention read and clears the cached unread edge',

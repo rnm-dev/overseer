@@ -90,6 +90,7 @@ export function CliUpdatesPanel({ base, online }: Props) {
             const active = cliUpdateBusy(item.status) || starting === item.provider;
             const failed = ["failed", "failure"].includes(item.status.toLowerCase());
             const available = item.updateAvailable === true;
+            const unsupported = item.updateSupported === false;
             return (
               <div key={item.provider} className="surface surface--inset flex min-h-44 flex-col px-4 py-4">
                 <div className="flex items-start justify-between gap-3">
@@ -97,19 +98,20 @@ export function CliUpdatesPanel({ base, online }: Props) {
                     <p className="font-display text-sm font-bold text-ink">{labels[item.provider]}</p>
                     <p className="mt-1 font-mono text-[0.68rem] text-ink-faint">{t(`peon.cliUpdates.${item.provider === "codex" ? "codexPackage" : "claudePackage"}`)}</p>
                   </div>
-                  <Badge tone={failed ? "red" : available ? "amber" : active ? "neutral" : "green"}>
-                    {failed ? t("peon.cliUpdates.failed") : active ? t("peon.cliUpdates.updating") : available ? t("peon.cliUpdates.available") : t("peon.cliUpdates.current")}
+                  <Badge tone={failed || unsupported ? "red" : available ? "amber" : active ? "neutral" : "green"}>
+                    {failed ? t("peon.cliUpdates.failed") : unsupported ? t("peon.cliUpdates.unavailable") : active ? t("peon.cliUpdates.updating") : available ? t("peon.cliUpdates.available") : t("peon.cliUpdates.current")}
                   </Badge>
                 </div>
                 <dl className="mt-4 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 font-mono text-xs">
                   <dt className="text-ink-faint">{t("peon.cliUpdates.installed")}</dt><dd className="text-right text-ink">{item.currentVersion ?? "—"}</dd>
                   <dt className="text-ink-faint">{t("peon.cliUpdates.latest")}</dt><dd className="text-right text-ink">{item.latestVersion ?? "—"}</dd>
+                  {item.installationKind && <><dt className="text-ink-faint">{t("peon.cliUpdates.installation")}</dt><dd className="text-right text-ink">{item.installationKind}</dd></>}
                 </dl>
                 <div className="mt-auto pt-4">
                   {active ? (
                     <p role="status" aria-live="polite" className="flex items-center gap-2 font-mono text-xs text-accent-strong"><span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden />{t("peon.cliUpdates.updatingDetail")}</p>
                   ) : (
-                    <Button size="sm" onClick={() => void start(item.provider)} disabled={busy || starting !== null || !available}>{available ? t("peon.cliUpdates.install") : t("peon.cliUpdates.noUpdate")}</Button>
+                    <Button size="sm" onClick={() => void start(item.provider)} disabled={busy || starting !== null || !available}>{unsupported ? t("peon.cliUpdates.unavailable") : available ? t("peon.cliUpdates.install") : t("peon.cliUpdates.noUpdate")}</Button>
                   )}
                   {(item.error || failed) && <p className="mt-2 font-mono text-xs text-danger">⚠ {item.error ?? t("peon.cliUpdates.failed")}</p>}
                 </div>

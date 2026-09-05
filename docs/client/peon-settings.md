@@ -58,6 +58,11 @@ workspace, and Peon. Cached versions remain visible offline, while refresh and
 update actions are disabled. Active updates poll the list every two seconds.
 A final 404 is rendered as an unsupported-version state; other
 errors retain cached values and expose retry feedback.
+Each provider row also shows the detected installation kind. An identified
+external manager or unknown wrapper remains visible with its installed version,
+but is marked unavailable and exposes Peon's actionable refusal instead of an
+update button. The contract and support boundary live in
+[agent CLI updates](../agent-cli-updates.md).
 
 ## Armory
 

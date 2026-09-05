@@ -1,4 +1,5 @@
 import { EventEmitter } from "node:events";
+import { CodexUsageAccumulator } from "./codexUsage.js";
 import { readFileSync } from "node:fs";
 import type { AgentEvent, AgentExit, AgentReconcileInput, AgentReconcileResult, AgentRun, AgentRunOptions, AgentSteerInput } from "./registry.js";
 import {
@@ -131,7 +132,7 @@ function warnForOutboundPayload(
 }
 
 export function getCodexAppServerRuntime(command: string): CodexAppServerRuntime {
-  if (runtimeSlot?.command === command) return runtimeSlot.runtime;
+  if (runtimeSlot && runtimeSlot.command === command) return runtimeSlot.runtime;
   if (runtimeSlot) {
     const status = runtimeSlot.runtime.getHealth().status;
     if (!["stopped", "failed", "incompatible"].includes(status)) {
@@ -293,7 +294,7 @@ export function createCodexAppServerRun(opts: AgentRunOptions, runtime: CodexApp
   let turnId: string | null = null;
   let generation = 0;
   let lastMessage = "";
-  let usage: TokenUsage = {};
+  const usageAccumulator = new CodexUsageAccumulator();
   let actualModel: string | null = opts.model ?? null;
   let releaseThread: (() => void) | null = null;
   let finished = false;
@@ -320,6 +321,8 @@ export function createCodexAppServerRun(opts: AgentRunOptions, runtime: CodexApp
     if (finished) return;
     emit({
       type: "result", subtype: "error", is_error: true, errors: [message],
+      ...usageAccumulator.report(),
+      duration_ms: Date.now() - startedAt,
       ...(turnId ? { backend_turn_id: turnId, backend_turn_status: "failed" } : {}),
       ...(generation ? { runtime_generation: generation } : {}),
     });
@@ -348,13 +351,19 @@ export function createCodexAppServerRun(opts: AgentRunOptions, runtime: CodexApp
       const completedItem = item.type === "fileChange" && patchChanges
         ? { ...item, changes: patchChanges }
         : item;
+      // Child-thread accounting is not guaranteed to be included in this
+      // thread's counters. Never label a delegated tree fully captured.
+      if (completedItem.type === "collabToolCall") usageAccumulator.markPartial();
       if (completedItem.type === "agentMessage" && typeof completedItem.text === "string") lastMessage = completedItem.text;
       for (const event of itemEvents(completedItem, opts, params.completedAtMs)) emit(event);
       return;
     }
     if (notification.method === "thread/tokenUsage/updated") {
       const tokenUsage = params.tokenUsage && typeof params.tokenUsage === "object" ? params.tokenUsage as Record<string, unknown> : {};
-      usage = tokenUsage.last && typeof tokenUsage.last === "object" ? tokenUsage.last as TokenUsage : {};
+      const usage = tokenUsage.last && typeof tokenUsage.last === "object" ? tokenUsage.last as TokenUsage : {};
+      if (usageAccumulator.observe(tokenUsage, actualModel)) {
+        emit({ type: "system", subtype: "usage", ...usageAccumulator.report(), duration_ms: Date.now() - startedAt });
+      }
       const currentTokens = typeof usage.totalTokens === "number" ? usage.totalTokens : null;
       const limitTokens = typeof tokenUsage.modelContextWindow === "number" ? tokenUsage.modelContextWindow : null;
       if (currentTokens !== null && limitTokens !== null && currentTokens >= 0 && limitTokens > 0) {
@@ -375,6 +384,7 @@ export function createCodexAppServerRun(opts: AgentRunOptions, runtime: CodexApp
     const turn = params.turn && typeof params.turn === "object" ? params.turn as Record<string, unknown> : {};
     if (turnId && typeof turn.id === "string" && turn.id !== turnId) return;
     if (interrupted || turn.status === "interrupted") {
+      emit({ type: "system", subtype: "usage", ...usageAccumulator.report(), duration_ms: Date.now() - startedAt });
       exit({ code: null, signal: "SIGTERM", spawnError: null });
       return;
     }
@@ -390,11 +400,7 @@ export function createCodexAppServerRun(opts: AgentRunOptions, runtime: CodexApp
     emit({
       type: "result", subtype: "success", is_error: false, num_turns: 1,
       duration_ms: typeof turn.durationMs === "number" ? turn.durationMs : Date.now() - startedAt,
-      usage: {
-        input_tokens: usage.inputTokens,
-        output_tokens: usage.outputTokens,
-        cache_read_input_tokens: usage.cachedInputTokens,
-      },
+      ...usageAccumulator.report(true),
       result: lastMessage,
       ...(structuredOutput ? { structured_output: structuredOutput } : {}),
       ...(actualModel ? { model: actualModel } : {}),

@@ -7,6 +7,9 @@ const SETTINGS_PATCH_FIELDS = [
   "heartbeatIntervalMs",
   "aiDefaultModel",
   "aiDefaultReasoningEffort",
+  "maxTurns",
+  "taskTimeoutMs",
+  "maxBudgetUsd",
 ] as const;
 
 // Settings always show a concrete model. Keep the submitted value aligned with

@@ -1,5 +1,9 @@
 import { mergeResourceProjection } from "../../shared/resourceProjection.js";
 
+export type SessionTerminalReason =
+  | { code: "turn_limit_exceeded"; message: string; canResume: true; maxTurns: number; turnBudget: number; turnsUsed: number }
+  | { code: "task_timeout"; message: string; canResume: true; timeoutMs: number; elapsedMs: number };
+
 export interface SessionLite {
   peonId?: string;
   id: string;
@@ -21,6 +25,7 @@ export interface SessionLite {
   // Browser-local fence for a newly submitted turn. It prevents a delayed
   // terminal summary from the preceding turn from flashing this row idle.
   localRunningSince?: number;
+  terminalReason?: SessionTerminalReason | null;
 }
 
 export interface IndexedSessionLite {
@@ -41,6 +46,7 @@ export interface IndexedSessionLite {
   catalogUpdatedAt?: number | null;
   attentionUnread?: boolean;
   attentionUpdatedAt?: number;
+  terminalReason?: SessionTerminalReason | null;
 }
 
 export interface IndexedSessionEvent extends IndexedSessionLite {
@@ -72,6 +78,7 @@ export function sessionFromIndex(session: IndexedSessionLite): SessionLite {
     catalogUpdatedAt: session.catalogUpdatedAt,
     ...(typeof session.attentionUnread === "boolean" ? { attentionUnread: session.attentionUnread } : {}),
     ...(typeof session.attentionUpdatedAt === "number" ? { attentionUpdatedAt: session.attentionUpdatedAt } : {}),
+    ...(session.terminalReason !== undefined ? { terminalReason: session.terminalReason } : {}),
   };
 }
 
@@ -104,7 +111,14 @@ export function applyLocalSessionRunningChange(
     changed = true;
     const lastActivityAt = Math.max(session.lastActivityAt ?? 0, changedAt);
     return running
-      ? { ...session, status: "running", endedAt: null, lastActivityAt, localRunningSince: changedAt }
+      ? {
+          ...session,
+          status: "running",
+          endedAt: null,
+          ...(session.terminalReason !== undefined ? { terminalReason: null } : {}),
+          lastActivityAt,
+          localRunningSince: changedAt,
+        }
       : { ...session, status: "completed", endedAt: changedAt, lastActivityAt, localRunningSince: undefined };
   });
   return changed ? next : current;

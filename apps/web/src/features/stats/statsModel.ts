@@ -5,6 +5,10 @@ export const PERIODS: Period[] = ["day", "yesterday", "week", "month"];
 // top-level total* key; there is no `totals` wrapper. Rendered defensively so a
 // missing field degrades to "—" rather than crashing.
 export interface Stats {
+  processedTokens?: number;
+  usagePartialTurns?: number;
+  usageLegacyTurns?: number;
+  timeZone?: string;
   period?: string;
   rangeStart?: number;
   rangeEnd?: number;
@@ -61,14 +65,18 @@ export function analyticsRows(rows?: AnalyticsRow[]): AnalyticsRow[] {
 // Per-model usage rollup — attributed to the model actually used per turn, sorted
 // by cost server-side. Rendered defensively (any field may be absent).
 export interface ByModel {
+  cacheBreakdownComplete?: boolean;
+  reasoningOutputTokens?: number | null;
+  usagePartialTurns?: number;
+  usageLegacyTurns?: number;
   agent?: Provider;
   model?: string;
   sessionCount?: number;
   totalTokens?: number;
-  totalInputTokens?: number;
-  totalOutputTokens?: number;
-  totalCacheCreationTokens?: number;
-  totalCacheReadTokens?: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  cacheCreationTokens?: number;
+  cacheReadTokens?: number;
   totalDurationMs?: number;
   totalCostUsd?: number;
 }
@@ -182,5 +190,3 @@ export function fmtReset(resetsAt: number | null, now: number): string {
   if (hours) return `${hours}h ${mins}m`;
   return `${mins}m`;
 }
-
-

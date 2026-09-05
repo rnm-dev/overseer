@@ -25,6 +25,9 @@ void main() {
                 'name': 'Kanat',
                 'fileTransferRoot': '/tmp/peon',
                 'heartbeatIntervalMs': 5000,
+                'maxTurns': 2000,
+                'taskTimeoutMs': 3600000,
+                'maxBudgetUsd': 25.5,
                 'defaultAgent': 'codex',
                 'soul': 'Careful and precise.',
               },
@@ -74,6 +77,9 @@ void main() {
       );
       expect(settings.name, 'Kanat');
       expect(settings.heartbeatIntervalMs, 5000);
+      expect(settings.maxTurns, 2000);
+      expect(settings.taskTimeoutMs, 3600000);
+      expect(settings.maxBudgetUsd, 25.5);
       expect(settings.soul, 'Careful and precise.');
       expect(status?.updateAvailable, isTrue);
       expect(catalog?.providers.single.models.single.id, 'gpt-5.6');

@@ -12,6 +12,8 @@ import {
 } from "../providers/modelCatalog.js";
 
 test("models and aliases are provider-aware and canonicalized", () => {
+  assert.equal(canonicalModel("codex-app-server", "gpt-6-astra"), "gpt-6-astra");
+  assert.equal(canonicalModel("claude-code", "claude-fable-5-1"), "claude-fable-5-1");
   assert.equal(canonicalModel("codex-app-server", "gpt-5.4"), "gpt-5.4");
   assert.equal(canonicalModel("claude-code", "sonnet"), "claude-sonnet-5");
   assert.equal(canonicalModel("claude-code", "opus"), "claude-opus-5");
@@ -22,6 +24,14 @@ test("models and aliases are provider-aware and canonicalized", () => {
   const providers = aiProviders();
   const codexAlias = providers.find((provider) => provider.agent === "codex-app-server")?.models.find((model) => model.alias);
   if (codexAlias?.alias) assert.equal(canonicalModel("codex-app-server", codexAlias.alias), codexAlias.id);
+  assert.deepEqual(
+    reasoningEffortsForModel("codex-app-server", "gpt-6-astra").map((effort) => [effort.id, effort.default === true]),
+    [["low", false], ["medium", true], ["high", false], ["xhigh", false], ["max", false]],
+  );
+  assert.deepEqual(
+    reasoningEffortsForModel("claude-code", "claude-fable-5-1").map((effort) => [effort.id, effort.default === true]),
+    [["low", false], ["medium", false], ["high", true], ["xhigh", false], ["max", false]],
+  );
   assert.deepEqual(
     reasoningEffortsForModel("codex-app-server", "gpt-5.6-sol").filter((effort) => effort.default).map((effort) => effort.id),
     ["low"],

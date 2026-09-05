@@ -55,6 +55,7 @@ export function normalizeSessionSummary(session: PeonSession): SessionSummary {
     lastMessagePreview: sanitizeOptionalUnicode(session.lastMessagePreview),
     initiator: sanitizeOptionalUnicode(session.initiator),
     outcome: sanitizeJsonUnicode(session.outcome ?? null),
+    terminalReason: sanitizeJsonUnicode(session.terminalReason ?? null),
     startedAt: session.startedAt ?? null,
     endedAt: session.endedAt ?? null,
     lastActivityAt: session.lastActivityAt ?? null,

@@ -1,6 +1,9 @@
 import type { CodingAgent, ReasoningEffort } from "../providers/modelCatalog.js";
 
 export interface DaemonSettings {
+  // Internal migration marker for defaults that must move forward without
+  // repeatedly rewriting an operator's later explicit override.
+  settingsDefaultsVersion?: number;
   updateCheckIntervalMs: number;
   maxTurns: number;
   taskTimeoutMs: number;

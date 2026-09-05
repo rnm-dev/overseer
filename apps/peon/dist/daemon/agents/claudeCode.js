@@ -2,6 +2,7 @@ import { sourceTimestampMetadata } from "../sessions/index.js";
 import { guardToolOutput } from "../sessions/index.js";
 import { spawnJsonAgent } from "./spawnJsonAgent.js";
 import { normalizeFileToolInput } from "./toolPaths.js";
+import { claudeUsage, claudeResultUsage, ClaudeInputAccumulator } from "./claudeUsage.js";
 export function buildClaudeCodeArgs(opts) {
     const args = [
         "-p", opts.prompt,
@@ -60,6 +61,8 @@ export function normalizeClaudeCodeEvent(raw, cwd) {
         return {
             type,
             message: {
+                ...(typeof message.id === "string" ? { id: message.id } : {}),
+                ...(message.usage ? { usage: claudeUsage(message.usage) } : {}),
                 ...(typeof message.model === "string" ? { model: message.model } : {}),
                 content,
             },
@@ -76,7 +79,7 @@ export function normalizeClaudeCodeEvent(raw, cwd) {
             if (raw[field] !== undefined)
                 event[field] = raw[field];
         }
-        return { ...event, ...sourceTimestamp };
+        return { ...event, ...claudeResultUsage(raw), ...sourceTimestamp };
     }
     // Rate-limit/progress/provider diagnostics are not conversation history.
     // Represent them as ignorable system metadata without retaining raw payloads.
@@ -86,6 +89,7 @@ export function normalizeClaudeCodeEvent(raw, cwd) {
 }
 export function createClaudeCodeEventNormalizer(opts, guard = guardToolOutput) {
     let accepted = false;
+    const usage = new ClaudeInputAccumulator();
     return (raw, emit) => {
         const event = normalizeClaudeCodeEvent(raw, opts.cwd);
         if (!event)
@@ -97,6 +101,12 @@ export function createClaudeCodeEventNormalizer(opts, guard = guardToolOutput) {
             opts.onAccepted?.();
         }
         if (event.type !== "user") {
+            if (usage.observe(raw))
+                emit({ type: "system", subtype: "usage", ...usage.report() });
+            if (event.type === "result" && event.subtype === "error_during_execution"
+                && Object.values(event.usage).every((value) => value === 0)) {
+                Object.assign(event, usage.report());
+            }
             emit(event);
             return;
         }

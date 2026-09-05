@@ -216,7 +216,7 @@ describe("Codex app-server driver", () => {
       assert.ok(result.events.some((event) => JSON.stringify(event).includes("peon:status")));
       const terminal = result.events.find((event) => event.type === "result");
       assert.equal(terminal?.is_error, false);
-      assert.deepEqual(terminal?.usage, { input_tokens: 11, output_tokens: 7, cache_read_input_tokens: 3 });
+      assert.deepEqual(terminal?.usage, { input_tokens: 11, output_tokens: 7, cache_read_input_tokens: 3, reasoning_output_tokens: 0 });
       assert.deepEqual(backendState, { turnId: "turn-1", status: "inProgress", runtimeGeneration: 1 });
       assert.equal(accepted, 1);
     } finally {
@@ -271,7 +271,7 @@ describe("Codex app-server driver", () => {
         backendSessionId: "persisted-thread",
         outcomeSchema: { type: "object" },
       }));
-      assert.equal(result.events.some((event) => event.type === "system"), false);
+      assert.equal(result.events.some((event) => event.type === "system" && event.subtype === "init"), false);
       const terminal = result.events.find((event) => event.type === "result");
       assert.equal(terminal?.is_error, false);
       assert.deepEqual(terminal?.structured_output, { result: "success", summary: "reply:persisted-thread" });

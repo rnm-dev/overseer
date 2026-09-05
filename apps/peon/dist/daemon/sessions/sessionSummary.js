@@ -19,6 +19,7 @@ export function toSessionSummary(record) {
                 ? { previewPath: bounded(record.outcome.previewPath) }
                 : {}),
         } : null,
+        terminalReason: record.terminalReason ? { ...record.terminalReason, message: bounded(record.terminalReason.message) ?? "" } : null,
         startedAt: record.startedAt,
         endedAt: record.endedAt,
         lastActivityAt: record.lastActivityAt,

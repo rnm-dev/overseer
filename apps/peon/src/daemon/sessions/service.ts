@@ -210,6 +210,7 @@ export const sessions: SessionCatalogReader & SessionLifecycleContract & Session
       expectsOutcome: opts.expectsOutcome ?? false,
       status: "running",
       outcome: null,
+      terminalReason: null,
       startedAt: Date.now(),
       endedAt: null,
       turnCount: 0,
@@ -280,6 +281,7 @@ export const sessions: SessionCatalogReader & SessionLifecycleContract & Session
         pendingSystemPrompts: [],
         status: "completed",
         outcome: null,
+        terminalReason: null,
         startedAt: now,
         endedAt: now,
         usage: null,
@@ -387,6 +389,7 @@ export const sessions: SessionCatalogReader & SessionLifecycleContract & Session
       record.parentCompletionNotificationPending = notifyParentOnComplete;
       record.status = "running";
       record.outcome = null;
+      record.terminalReason = null;
       record.endedAt = null;
       runProcess(record, prompt, true, attachments, permissionMode, author, model, reasoningEffort, commandId, [], 0, true, replyTo, attribution);
     };

@@ -1,87 +1,122 @@
 # Canonical token-usage analytics
 
-Peon is the normalization authority for token usage. Overseer aggregates Peon's canonical
-values, and web/mobile clients display them without implementing provider-specific formulas.
+Peon owns provider-specific normalization. Overseer and clients consume canonical
+values; they must not repeat provider arithmetic.
 
-## Version 1 schema
+## Mutually exclusive buckets
 
-Every available canonical usage value has `semanticsVersion: 1` and mutually exclusive buckets:
+Semantics version 1 retains these buckets:
 
-- `uncachedInputTokens`
-- `cachedInputTokens`
-- `cacheWriteInputTokens`
-- `outputTokens`
-- `processedTokens`
+- `uncachedInputTokens`: ordinary input, excluding cache reads and writes.
+- `cachedInputTokens`: cache reads.
+- `cacheWriteInputTokens`: cache creation, when exposed.
+- `outputTokens`: all reported generated tokens, including reasoning.
+- `processedTokens`: the sum of the four buckets above.
 
-The invariant is:
+Claude reports input, cache reads and cache writes separately. Codex includes
+cache reads and any exposed writes inside input: ordinary input is input minus
+both cache categories, and processed usage is input plus output. Reasoning is
+an output subset, never added again. Missing cache fields are not proof of zero:
+`cacheBreakdownComplete` controls whether clients can show cache efficiency.
 
-```text
-processedTokens =
-  uncachedInputTokens +
-  cachedInputTokens +
-  cacheWriteInputTokens +
-  outputTokens
-```
+The legacy `totalTokens` alias equals processedTokens. Aggregate `inputTokens`
+and `totalInputTokens` now mean canonical ordinary input; persisted
+SessionUsage.inputTokens remains the provider's original convention.
+Cost is not a token-equivalence score or authoritative subscription billing.
 
-Provider formulas:
+## Driver collection
 
-- Claude Code reports uncached input, cache creation, and cache reads separately. Its processed
-  total is raw input + cache creation + cache read + output.
-- Codex and Codex app-server report cached input as a subset of raw input. Their processed total
-  is raw input + output. Canonically, uncached input is raw input minus cached input, cache-write
-  input is zero, and cached input remains visible as its own bucket.
+### Codex app-server
 
-Provider-reported raw usage and cost remain available for compatibility and diagnostics. Cost is
-not a token-equivalence score: provider tokenizers and pricing differ.
+Each active thread usage notification contains cumulative counters and a
+`last` request snapshot. The driver accumulates cumulative deltas, not the final
+request alone. The first active-turn notification contributes only `last`, so
+resumed/forked history is not charged again. Repeated cumulative snapshots are
+ignored. A reset or missing cumulative counter retains a conservative lower
+bound and marks capture partial. Cache writes and reasoning are retained when
+the installed transport exposes them.
 
-## Coverage and attribution
+Counters are scoped to the observed native thread. A collaboration tool call
+downgrades capture to partial: inclusion of native child-thread work is not
+guaranteed, and we do not guess by adding potentially overlapping counters.
+Independent Peon-managed child sessions retain their own usage.
 
-Missing or malformed provider usage is unavailable, not zero. Peon exposes session coverage as
-`sessionsWithUsage`, `sessionsMissingUsage`, and `usageCoveragePercent`, plus rejection counts
-such as `missing_token_usage`, `invalid_token_usage`, and `overlapping_codex_cache`.
+### Claude Code
 
-Historical session files are normalized when read and are never destructively rewritten.
+Peon invokes one single-shot CLI process per invocation, including resumes.
+The result's modelUsage is mapped into numeric per-model counters and summed
+instead of the main-loop-only usage. The two must never be added together.
+A result without modelUsage is labelled partial. Incomplete model maps are
+also partial. Cost remains the CLI's estimate.
 
-Usage is attributed per turn. Every invocation ends with one `result` event carrying that
-invocation's usage — the same payload the session record folds into its rollup — so analytics
-replays the transcript, attributes each result event to the author of the user message preceding
-it, and dates it by the event's Peon-stamped `createdAt`. The session record stays authoritative
-and its rollup is the budget: turns are counted newest-first and only while the record can still
-account for them, and whatever the rollup holds beyond the transcript's result events is
-attributed as one remainder to the session initiator at `startedAt` — which is where a session
-with a pruned, absent, or pre-dating transcript lands whole. The budget is what keeps a branch
-honest: it inherits a verbatim copy of its source's transcript, result events included, while
-starting with no usage of its own, so the inherited turns stay charged to the session that ran
-them. Rows therefore sum to the period's totals, and a
-follow-up sent today into a session started last week is charged to today and to its own author.
+During execution, assistant message IDs deduplicate input/cache observations.
+Placeholder assistant output counts and native subagent assistant messages are
+excluded from this recovery path. These snapshots preserve a main-loop input
+lower bound on cancellation/crash. Final modelUsage supersedes them. Zeroed
+crash results or terminal results without usage retain observed partial usage.
+This contract does not apply to Claude's streaming-input cumulative results;
+that mode is not used by this driver.
 
-Attribution quality reads that reconciliation: `exact` when every counted token came from the
-turn that spent it, `estimated` when a session-start remainder was involved, `mixed` when some
-session in the aggregate has no readable usage at all, and `missing` when none has. The counts
-behind it are `usageTurnsAttributed` and `usageSessionsEstimated`.
+## Durable invocation ledger and attribution
 
-Period analytics therefore use three explicit time authorities, named in the response's
-`attribution` block. `promptCount` follows the persisted `user_message.createdAt` (falling back
-to the session start only for undated historical turns); tokens, cost, and provider duration
-follow `transcript_result_created_at`; session count, turns, wall duration, outcomes, and storage
-follow the session's `startedAt` and are still repeated per participating author when grouped by
-user. `/stats` remains a session-start summary of the sessions started in its period and does not
-share the per-turn window.
+Numeric snapshots are canonical system/subtype=usage transcript events. Peon's
+harness stamps usage_session_id, usage_run_id and usage_author; provider data
+cannot choose these identities. Each snapshot is a replacement total for that
+invocation. The harness updates the persisted summary from the invocation's
+pre-run base, so neither repeated snapshots nor the final result double-count.
 
-The analytics response carries Peon's stable `peonId`, the semantics version, canonical buckets,
-processed tokens, coverage, and attribution quality. This lets Overseer ingest/replay records
-idempotently without reproducing Claude or Codex arithmetic. Unknown future semantics versions
-must be rejected or retained as unavailable by the consumer rather than guessed.
+Analytics selects the latest snapshot/result per invocation. A branch excludes
+events owned by its source session. Identified ledger events remain usable
+when a summary write is missing; their totals are not capped by a stale rollup.
+Legacy unowned results retain the historical summary-budget reconciliation.
+Unexplained rollup amounts are attributed to the initiator at session start,
+marked estimated. Historical files are never destructively rewritten.
 
-## Rollout and compatibility
+Usage is dated at the latest invocation snapshot/result, not at every underlying
+API request. This is an explicit limitation for a single long invocation that
+crosses midnight. Attribution identifies the invoking author; native steering
+within that invocation does not establish a separately billable user turn.
 
-Roll out in this order:
+Stats and analytics now share the same UTC period boundaries and aggregation.
+The web dashboard pins breakdown requests to the headline's exact from/to
+window. Session counts, outcomes and wall duration still describe sessions
+started in the window; token usage and invocation runtime follow the ledger.
+Prompt counts describe prompt timestamps. These are distinct metrics.
 
-1. Peon emits canonical version 1 values while retaining legacy `totalTokens` as an alias for
-   `processedTokens` and preserving all raw usage fields.
-2. Overseer ingests the versioned values and treats older Peons as estimated or missing.
-3. Web and mobile switch labels to “Processed tokens” and consume backend values only.
-4. Remove compatibility aliases only in a separately versioned API change.
+Model rows follow reported per-model usage. Concurrent runtime has no trustworthy
+per-model split: any unallocated duration/cost is retained in an unknown bucket,
+not multiplied across models.
 
-Golden tests cover cached and uncached Codex drivers, Claude cache reads/writes, missing and
-malformed usage, historical session rollups, and equality between Peon stats and analytics.
+## Quality and presentation
+
+- `reported`: the supported driver supplied its normal terminal counters;
+  this does not promise complete account-wide billing.
+- `partial`: recovery, missing counters, reset or unsupported tree scope.
+- `legacy`: historical data without the new collection provenance.
+
+`usagePartialTurns` and `usageLegacyTurns` expose capture limitations.
+Attribution quality (exact/estimated/mixed/missing) is separate from capture
+quality. Session coverage means sessions with any readable usage, not percentage
+of all tokens successfully captured. Null cost/output fields remain unknown in
+the persisted usage record.
+
+Show processed tokens, ordinary input, cache reads/writes and output with a
+scope explanation. Cache efficiency is cache reads divided by all input, only
+when the breakdown is known. Model cards show provider share, composition,
+reasoning subset where reported and capture quality. Account-limit probes are
+separate; their availability never determines whether recorded usage exists.
+
+## Verification and sources
+
+Regression tests cover multi-step totals, replay, resume history, counter resets,
+missing counters, Claude model maps, message-ID deduplication, cancellation,
+persisted identities, branches, stale rollups, actual models, UTC windows and
+headline/breakdown equality. No live paid model calls are required.
+
+Official references checked for the implementation:
+
+- [OpenAI app-server](https://learn.chatgpt.com/docs/app-server)
+- [OpenAI caching](https://developers.openai.com/api/docs/guides/prompt-caching)
+- [OpenAI reasoning](https://developers.openai.com/api/docs/guides/reasoning)
+- [Claude usage accounting](https://code.claude.com/docs/en/agent-sdk/cost-tracking)
+- [Claude caching](https://platform.claude.com/docs/en/build-with-claude/prompt-caching)

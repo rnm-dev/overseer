@@ -5,6 +5,9 @@ export interface CliUpdateItem {
   currentVersion: string | null;
   latestVersion: string | null;
   updateAvailable: boolean | null;
+  installationKind: string | null;
+  updateSupported: boolean | null;
+  updateReason: string | null;
   checkedAt: number | null;
   status: string;
   error: string | null;
@@ -76,10 +79,15 @@ export function normalizeCliUpdates(raw: unknown): CliUpdateItem[] {
       latestVersion,
       updateAvailable: typeof value.updateAvailable === "boolean"
         ? value.updateAvailable
+        : value.updateAvailable === null
+          ? null
         : currentVersion && latestVersion ? currentVersion !== latestVersion : null,
+      installationKind: text(value.installationKind),
+      updateSupported: typeof value.updateSupported === "boolean" ? value.updateSupported : null,
+      updateReason: text(value.updateReason),
       checkedAt: timestamp(value.checkedAt ?? value.lastCheckedAt ?? value.refreshedAt),
       status,
-      error: text(operation?.error, value.updateError, value.error, failed ? operation?.message : null),
+      error: text(operation?.error, value.updateReason, value.updateError, value.checkError, value.error, failed ? operation?.message : null),
     });
   }
   return providers.flatMap((provider) => result.has(provider) ? [result.get(provider)!] : []);

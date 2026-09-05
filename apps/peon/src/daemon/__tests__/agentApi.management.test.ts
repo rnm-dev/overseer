@@ -132,6 +132,27 @@ test("fleet settings fence stale writes and preserve explicit reasoning-effort r
   assert.match(((await invalid.json()) as { error: string }).error, /not valid for model/);
 });
 
+test("fleet settings expose and revision-fence execution safety controls", async () => {
+  const updated = await fetch(`${base}/settings`, {
+    method: "PATCH",
+    headers: await fencedHeaders(),
+    body: JSON.stringify({ maxTurns: 2_000, taskTimeoutMs: 3_600_000, maxBudgetUsd: 75 }),
+  });
+  assert.equal(updated.status, 200);
+  const body = await updated.json() as { maxTurns: number; taskTimeoutMs: number; maxBudgetUsd: number };
+  assert.equal(body.maxTurns, 2_000);
+  assert.equal(body.taskTimeoutMs, 3_600_000);
+  assert.equal(body.maxBudgetUsd, 75);
+
+  const invalid = await fetch(`${base}/settings`, {
+    method: "PATCH",
+    headers: await fencedHeaders(),
+    body: JSON.stringify({ maxTurns: 10_001 }),
+  });
+  assert.equal(invalid.status, 400);
+  assert.match(((await invalid.json()) as { error: string }).error, /maxTurns/);
+});
+
 test("fleet settings validate an effort against the provider default after an explicit model reset", async (t) => {
   const original = settings.get();
   t.after(() => settings.update({ defaultAgent: original.defaultAgent, ai: original.ai }));

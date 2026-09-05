@@ -5,15 +5,24 @@ import { claudeCodeAuth } from "../providers/claudeCodeAuth.js";
 import { CODEX_OUTCOME_SCHEMA, OUTCOME_SCHEMA } from "../sessions/index.js";
 import type { DaemonSettings } from "../settings/index.js";
 import { forkClaudeCodeSession, normalizeClaudeCodeEvent, runClaudeCode } from "./claudeCode.js";
-import { codexAppServerHealth, forkCodexAppServerThread, reconcileCodexAppServerTurn, runCodexAppServer, shutdownCodexAppServerRuntime } from "./codexAppServer.js";
+import { codexAppServerHealth, forkCodexAppServerThread, getCodexAppServerRuntime, reconcileCodexAppServerTurn, runCodexAppServer, shutdownCodexAppServerRuntime } from "./codexAppServer.js";
 import { getClaudeQuota, getCodexQuota, type ProviderQuotaSnapshot } from "../providers/providerQuota.js";
 import { getClaudeCapabilities, getCodexCapabilities, type ProviderCapabilitiesSnapshot } from "../providers/providerCapabilities.js";
 import type { AgentContextUsage } from "../sessions/index.js";
+import { createSelfUpdatingCliUpdater, type AgentCliUpdater } from "./cliUpdater.js";
+import { ClaudeLoginService } from "./claudeLogin.js";
+import { CodexLoginService } from "./codexLogin.js";
+import { settings as loginSettings } from "../settings/index.js";
+import {
+  claudeModelCatalogService,
+  createCodexModelCatalogService,
+  type AgentModelCatalogService,
+} from "./modelDiscovery.js";
 
 export type CodingAgent = string;
 
 export const REASONING_EFFORTS = ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"] as const;
-export type ReasoningEffort = (typeof REASONING_EFFORTS)[number];
+export type ReasoningEffort = string;
 
 export interface ModelInfo {
   id: string;
@@ -153,12 +162,16 @@ export interface AgentDriver {
     cliUpdate: boolean;
     branching?: boolean;
     branchAtTurn?: boolean;
+    login?: boolean;
   };
   services: {
     status?: () => unknown;
     quota?: (force: boolean) => Promise<ProviderQuotaSnapshot>;
     capabilities?: (force: boolean) => Promise<ProviderCapabilitiesSnapshot>;
-    cliUpdate?: { packageName: string };
+    cliUpdate?: AgentCliUpdater;
+    modelCatalog?: AgentModelCatalogService;
+    claudeLogin?: ClaudeLoginService;
+    codexLogin?: CodexLoginService;
   };
 }
 
@@ -198,10 +211,11 @@ function previewEvent(raw: Record<string, unknown>): AgentEvent | null {
   const timestamps = storedTimestampMetadata(raw);
   if (raw.type === "warning") {
     if (typeof raw.sessionId !== "string" || typeof raw.message !== "string"
-      || !["context_near_limit", "payload_near_limit", "payload_truncated"].includes(String(raw.code))) return null;
+      || !["context_near_limit", "payload_near_limit", "payload_truncated", "turn_limit_exceeded", "task_timeout"].includes(String(raw.code))) return null;
     const fields = [
       "sessionId", "code", "message", "source", "currentBytes", "limitBytes", "retainedBytes",
       "currentTokens", "limitTokens", "action", "logPath", "logError",
+      "canResume", "maxTurns", "turnBudget", "turnsUsed", "timeoutMs", "elapsedMs",
     ] as const;
     const event: AgentEvent = { type: "warning" };
     for (const field of fields) if (raw[field] !== undefined) event[field] = raw[field];
@@ -267,12 +281,14 @@ const claudeFrontierEfforts = () => effort(["low", "medium", "high", "xhigh", "m
 const codexEfforts = (ids: ReasoningEffort[], defaultId: ReasoningEffort) => effort(ids, defaultId);
 
 const claudeModels: ModelInfo[] = [
+  { id: "claude-fable-5-1", label: "Fable 5.1", reasoningEfforts: claudeFrontierEfforts() },
   { id: "claude-opus-5", label: "Opus 5", alias: "opus", reasoningEfforts: claudeFrontierEfforts() },
   { id: "claude-sonnet-5", label: "Sonnet 5", alias: "sonnet", default: true, reasoningEfforts: claudeFrontierEfforts() },
   { id: "claude-haiku-4-5-20251001", label: "Haiku 4.5", alias: "haiku" },
   { id: "claude-fable-5", label: "Fable 5", reasoningEfforts: claudeFrontierEfforts() },
 ];
 const codexModels: ModelInfo[] = [
+  { id: "gpt-6-astra", label: "6 Astra", reasoningEfforts: codexEfforts(["low", "medium", "high", "xhigh", "max"], "medium") },
   { id: "gpt-5.6-sol", label: "5.6 Sol", default: true, reasoningEfforts: codexEfforts(["low", "medium", "high", "xhigh", "max", "ultra"], "low") },
   { id: "gpt-5.6-terra", label: "5.6 Terra", reasoningEfforts: codexEfforts(["low", "medium", "high", "xhigh", "max", "ultra"], "medium") },
   { id: "gpt-5.6-luna", label: "5.6 Luna", reasoningEfforts: codexEfforts(["low", "medium", "high", "xhigh", "max"], "medium") },
@@ -281,6 +297,12 @@ const codexModels: ModelInfo[] = [
   { id: "gpt-5.4", label: "5.4", reasoningEfforts: codexEfforts(["low", "medium", "high", "xhigh"], "medium") },
   { id: "gpt-5.4-mini", label: "5.4 Mini", reasoningEfforts: codexEfforts(["low", "medium", "high", "xhigh"], "medium") },
 ];
+const codexModelCatalogService = createCodexModelCatalogService(getCodexAppServerRuntime);
+const claudeLogin = new ClaudeLoginService({
+  command: () => loginSettings.get().agentCommand || "claude",
+  onSuccess: () => { claudeCodeAuth.clearObservedFailure(); void claudeCodeAuth.refresh(); },
+});
+const codexLogin = new CodexLoginService({ command: () => loginSettings.get().codexCommand || "codex" });
 const fromCatalog = (models: ModelInfo[], value: unknown) => typeof value === "string" ? models.find((model) => model.id === value || model.alias === value)?.id : undefined;
 const modelEffort = (models: ModelInfo[], value: unknown, model: unknown): ReasoningEffort | undefined => {
   const selected = models.find((candidate) => candidate.id === fromCatalog(models, model))
@@ -297,18 +319,33 @@ registerAgentDriver({
   command: (current) => current.agentCommand,
   conversation: { initialBackendId: (id) => id, recoverBackendId: (id, persisted) => persisted ?? id },
   outcomeSchema: (expects) => expects ? OUTCOME_SCHEMA : undefined, normalizeOutcome: (value) => normalizeOutcome(value, false),
-  normalizeStoredEvent(raw) { const common = previewEvent(raw); const event = common ?? normalizeClaudeCodeEvent(raw); return event ? { ...event, ...storedTimestampMetadata(raw) } : null; },
+  normalizeStoredEvent(raw) {
+    // Provider normalization must not reinterpret persisted accounting or strip
+    // harness-owned invocation identity when replaying after restart/branch.
+    if (raw.type === "result" || (raw.type === "system" && raw.subtype === "usage")) return canonicalStored(raw);
+    const common = previewEvent(raw);
+    const event = common ?? normalizeClaudeCodeEvent(raw);
+    return event ? { ...event, ...storedTimestampMetadata(raw) } : null;
+  },
   run: runClaudeCode,
   forkConversation: forkClaudeCodeSession,
   interrupt: (run) => run.kill(), shutdown: (run) => run.kill(),
+  shutdownRuntime: () => claudeLogin.shutdown(),
   auth: {
     observeSuccess: () => claudeCodeAuth.clearObservedFailure(),
     observeFailure: (message) => { if (claudeCodeAuth.isLikelyAuthFailure(message)) claudeCodeAuth.recordPossibleAuthFailure(message, Date.now()); },
   },
-  capabilities: { steering: false, cancellation: true, recovery: true, quota: true, status: true, cliUpdate: true, branching: true, branchAtTurn: false },
+  capabilities: { steering: false, cancellation: true, recovery: true, quota: true, status: true, cliUpdate: true, branching: true, branchAtTurn: false, login: true },
   services: {
+    claudeLogin,
     status: () => claudeCodeAuth.getState(), quota: getClaudeQuota,
-    capabilities: getClaudeCapabilities, cliUpdate: { packageName: "@anthropic-ai/claude-code" },
+    capabilities: getClaudeCapabilities,
+    modelCatalog: claudeModelCatalogService,
+    cliUpdate: createSelfUpdatingCliUpdater({
+      packageName: "@anthropic-ai/claude-code",
+      versionPattern: /\bClaude Code\b/i,
+      nativePathFragments: ["/.local/share/claude/versions/"],
+    }),
   },
 });
 
@@ -332,12 +369,15 @@ registerAgentDriver({
   reconcile: reconcileCodexAppServerTurn,
   forkConversation: forkCodexAppServerThread,
   interrupt: (run) => run.kill(), shutdown: (run) => run.kill(),
-  shutdownRuntime: shutdownCodexAppServerRuntime,
+  shutdownRuntime: async () => { await Promise.all([shutdownCodexAppServerRuntime(), codexLogin.shutdown()]); },
   auth: { observeSuccess() {}, observeFailure() {} },
-  capabilities: { steering: true, cancellation: true, recovery: true, quota: true, status: true, cliUpdate: true, branching: true, branchAtTurn: true },
+  capabilities: { steering: true, cancellation: true, recovery: true, quota: true, status: true, cliUpdate: true, branching: true, branchAtTurn: true, login: true },
   services: {
+    codexLogin,
     status: () => codexAppServerHealth(), quota: getCodexQuota,
-    capabilities: getCodexCapabilities, cliUpdate: { packageName: "@openai/codex" },
+    capabilities: getCodexCapabilities,
+    modelCatalog: codexModelCatalogService,
+    cliUpdate: createSelfUpdatingCliUpdater({ packageName: "@openai/codex", versionPattern: /\bcodex(?:-cli)?\b/i }),
   },
 });
 

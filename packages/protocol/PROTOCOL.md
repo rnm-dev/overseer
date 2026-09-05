@@ -118,11 +118,23 @@ POST {peonBaseUrl}/api/v1/enroll
 GET   /api/v1/status                     identity + live load (activeSessionCount, paused, agentAuth, …)
 PATCH /api/v1/status                     change state; body { paused: boolean }
 POST  /api/v1/control/check-update       run update check now; returns fresh update fields
-GET   /api/v1/models                      AI providers/models/effort catalog with inline defaults
+GET   /api/v1/models                      CLI-discovered provider/model/effort catalog; ?refresh=1 forces discovery
 GET   /api/v1/quota                       live provider account quota; ?refresh=1 bypasses cache
 GET   /api/v1/quota/:provider             independently fetch claude-code or codex quota
 GET   /api/v1/capabilities                installed plugins, skills, and MCP metadata
 GET   /api/v1/capabilities/:provider      independently fetch one provider's capabilities
+GET   /api/v1/ai/cli-updates              durable Codex/Claude CLI version and installation status
+GET   /api/v1/ai/cli-updates/:provider    one provider; public ids are codex or claude-code
+POST  /api/v1/ai/cli-updates/:provider    start a supported, installation-aware CLI update
+GET   /api/v1/driver/claude-code/login  recover caller's Claude login attempt
+POST  /api/v1/driver/claude-code/login  start Claude subscription login (empty body)
+GET   /api/v1/driver/claude-code/login/:id  poll Claude login
+POST  /api/v1/driver/claude-code/login/:id/code  submit { code }
+DELETE /api/v1/driver/claude-code/login/:id  cancel Claude login
+GET   /api/v1/driver/codex/login    recover caller's Codex login attempt
+POST  /api/v1/driver/codex/login    start Codex device-code login (empty body)
+GET   /api/v1/driver/codex/login/:id  poll Codex login
+DELETE /api/v1/driver/codex/login/:id  cancel Codex login
 GET   /api/v1/filesystem/<path>?stat=1    read-only host directory browser (directories only)
 GET   /api/v1/armory/packages             available + installed Armory package inventory
 GET   /api/v1/armory/packages/:id         one Armory package's catalog and local state
@@ -176,6 +188,25 @@ POST  /api/v1/control/pause | /resume    toggle settings.paused
 POST  /api/v1/control/update             self-update (git pull / reinstall + restart); body { force? }
 GET   /api/v1/sessions/:id/stream        SSE tail (events: `event`, `change`) — see "Live tail" below
 ```
+
+Each CLI-update provider record includes `provider`, `currentVersion`,
+`latestVersion`, `updateAvailable`, `installationKind`, `updateSupported`,
+`updateReason`, `checkedAt`, `checkError`, and the current asynchronous
+`operation`. `installationKind` is one of `npm`, `homebrew`, `native`,
+`standalone`, `externally-managed`, or `unknown`. A provider with
+`updateSupported: false` is read-only: `updateAvailable` is `null`, and
+`updateReason` explains which installation or wrapper the operator must manage.
+The update route may return `UPDATE_IN_PROGRESS`, `UPDATE_BUSY`,
+`NO_UPDATE_AVAILABLE`, `UPDATE_UNSUPPORTED`, or `UPDATE_START_FAILED`. Clients
+must branch on these stable codes and must not attempt their own package-manager
+fallback.
+
+Each provider in the model catalog includes model-specific
+`reasoningEfforts`, its effective `defaultModel`, and discovery diagnostics:
+`catalogSource` (`cli`, `stale-cli`, or `fallback`), `catalogUpdatedAt`, and
+`catalogError`. Model and effort validation uses this same effective catalog.
+An absent effort default means the provider CLI chooses it; clients must not
+invent one.
 
 The authenticated Fleet HTTP routes above are the sole remote Armory
 authority. Armory reads and mutations are not `reverse-command-v1` operations;
@@ -468,10 +499,10 @@ overseer's per-peon model picker:
 { "defaultAgent": "codex-app-server",
   "providers": [
     { "agent": "claude-code", "label": "Claude Code",
-      "models": [ { "id": "claude-sonnet-5", "label": "Sonnet 5", "alias": "sonnet", "default": true }, … ],
+      "models": [ { "id": "claude-fable-5-1", "label": "Fable 5.1" }, { "id": "claude-sonnet-5", "label": "Sonnet 5", "alias": "sonnet", "default": true }, … ],
       "reasoningEfforts": [ { "id": "high", "label": "High", "default": true }, … ] },
     { "agent": "codex-app-server", "label": "Codex",
-      "models": [ { "id": "gpt-5.6-sol", "label": "5.6 Sol", "default": true }, … ],
+      "models": [ { "id": "gpt-6-astra", "label": "6 Astra" }, { "id": "gpt-5.6-sol", "label": "5.6 Sol", "default": true }, … ],
       "reasoningEfforts": [ { "id": "medium", "label": "Medium", "default": true }, … ] } ] }
 ```
 
@@ -819,18 +850,24 @@ object, never `overseerToken`/`pairingSecret`/listen address:
   "fileTransferRoot": "/srv/files",  // string|null (empty ⇒ null)
   "heartbeatIntervalMs": 5000,       // number
   "aiDefaultModel": "gpt-5.6-sol",  // string|null
-  "soul": "Be candid and practical." } // string|null, Markdown
+  "soul": "Be candid and practical.", // string|null, Markdown
+  "maxTurns": 1000,                  // integer, 1..10000
+  "taskTimeoutMs": 1800000,          // integer, 60000..86400000
+  "maxBudgetUsd": 0 }                // finite number, 0..10000; 0 disables
 ```
 
 `PATCH /settings` is a **partial, allowlisted** update — body may carry any
 subset of `name` / `defaultAgent` / `fileTransferRoot` / `heartbeatIntervalMs` /
-`aiDefaultModel` / `soul` / `paused`; absent keys are
-untouched and unknown keys ignored. It echoes the updated subset (the `GET`
+`aiDefaultModel` / `soul` / `paused` / `maxTurns` / `taskTimeoutMs` /
+`maxBudgetUsd`; absent keys are
+untouched and unknown keys rejected. It echoes the updated subset (the `GET`
 shape). Validation (`400 BAD_REQUEST` on failure): `name` a non-empty string,
 `defaultAgent` either `claude-code` or `codex`, `fileTransferRoot` a string
 (empty ⇒ disables file transfer), `heartbeatIntervalMs` a number in
 `1000`–`60000`, `aiDefaultModel` a valid model, `soul` a string (empty
-clears it), and `paused` a boolean. Peon state
+clears it), `paused` a boolean, `maxTurns` an integer in `1`–`10000`,
+`taskTimeoutMs` an integer in `60000`–`86400000`, and `maxBudgetUsd` a finite
+number in `0`–`10000`. Peon state
 can also be changed with `PATCH /api/v1/status { "paused": true|false }`; the older
 `POST /api/v1/control/pause | /resume` routes remain aliases. A `name` change shows up in the next
 `register`/`status`; `fileTransferRoot` re-points the file sandbox on the next
@@ -1290,6 +1327,30 @@ transcript bytes or lifetime token totals. Peon recommends compacting but never
 starts compaction while a task is active. Repeated near-limit warnings are
 throttled per session/code/source; truncation notices are retained individually
 because each can reference a different full-output artifact.
+
+Execution-limit stops use the same durable channel. Before interrupting the
+provider, Peon appends/publishes a warning whose code is
+`turn_limit_exceeded` or `task_timeout`, whose source is `execution_limit`, and
+whose action is `continue`. The canonical session summary/detail also contains
+the same provider-neutral terminal reason, so clients do not need to parse
+outcome text:
+
+```jsonc
+{
+  "terminalReason": {
+    "code": "turn_limit_exceeded",
+    "message": "Exceeded max turns (1000) without concluding",
+    "canResume": true,
+    "maxTurns": 1000,
+    "turnBudget": 1000,
+    "turnsUsed": 1001
+  }
+}
+```
+
+`task_timeout` replaces the three numeric turn fields with `timeoutMs` and
+`elapsedMs`. Starting a follow-up clears `terminalReason`; older records and
+non-limit completions expose it as `null`.
 
 ## Enabling it on a peon
 

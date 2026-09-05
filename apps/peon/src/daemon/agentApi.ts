@@ -1,4 +1,6 @@
 import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
+import { createClaudeLoginRouter } from "./http/claudeLogin.js";
+import { createCodexLoginRouter } from "./http/codexLogin.js";
 import { createReadStream, createWriteStream, existsSync, mkdirSync, promises as fsPromises, readdirSync, renameSync, statSync, unlinkSync } from "node:fs";
 import { eventLoopDelayStats } from "./runtime/eventLoopMonitor.js";
 import path from "node:path";
@@ -22,7 +24,7 @@ import { createProjectService, projectStore, type ProjectService } from "./proje
 import { pairing } from "./identity/pairing.js";
 import { ensurePeonId } from "./identity/peonIdentity.js";
 import { peonPublicUrl } from "./identity/peonAddress.js";
-import { modelCatalog } from "./providers/modelCatalog.js";
+import { modelCatalog, refreshAgentModelCatalogs } from "./providers/modelCatalog.js";
 import { agentServices, configureManagedPluginToolHandler, getAgentDriver, getAgentServiceDriver, getCodexAppServerRuntime } from "./agents/index.js";
 import {
   ManagedPluginInquiryError,
@@ -437,6 +439,8 @@ export function createAgentRouter(options: AgentRouterOptions = {}): express.Rou
   });
 
   // --- health / load -------------------------------------------------------
+  router.use("/driver/claude-code", createClaudeLoginRouter(() => getAgentServiceDriver("claude-code")?.services.claudeLogin, (req) => req.actor ?? null));
+  router.use("/driver/codex", createCodexLoginRouter(() => getAgentServiceDriver("codex")?.services.codexLogin, (req) => req.actor ?? null));
   router.get("/status", (_req, res) => {
     res.json(agentStatusView());
   });
@@ -453,11 +457,11 @@ export function createAgentRouter(options: AgentRouterOptions = {}): express.Rou
 
   // The AI providers/models this peon can run a session on. The overseer reads
   // this to populate its per-peon model picker. Each models/reasoningEfforts
-  // list identifies its default on the corresponding record. Model
-  // validation is intentionally softer than this list (any well-formed claude-*
-  // id is accepted) — see modelCatalog.isValidModel.
-  router.get("/models", (_req, res) => {
+  // list identifies its default on the corresponding record. The same
+  // effective CLI-discovered catalog drives model and effort validation.
+  router.get("/models", async (req, res) => {
     const s = settings.get();
+    if (req.query.refresh === "1") await refreshAgentModelCatalogs(s, true);
     res.json({
       defaultAgent: s.defaultAgent,
       providers: modelCatalog(s.defaultAgent, s.ai.defaultModel, s.ai.defaultReasoningEffort),
@@ -593,10 +597,11 @@ export function createAgentRouter(options: AgentRouterOptions = {}): express.Rou
   });
 
   // Partial, allowlisted, validated update. Only name/defaultAgent/
-  // fileTransferRoot/heartbeatIntervalMs/aiDefaultModel/soul/paused are editable here;
+  // fileTransferRoot/heartbeatIntervalMs/aiDefaultModel/soul and the bounded
+  // maxTurns/taskTimeoutMs/maxBudgetUsd execution controls are editable here;
   // secrets and listen address are never accepted (the human PATCH /api/v1/settings is
   // unguarded; this fleet-facing one must not be). Absent keys are untouched;
-  // unknown keys ignored. Reuses the same atomic write path (settings.update),
+  // unknown keys are rejected. Reuses the same atomic write path (settings.update),
   // whose `change` event propagates the edit with no restart.
   router.patch("/settings", (req, res) => {
     try {

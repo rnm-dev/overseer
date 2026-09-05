@@ -13,6 +13,7 @@ if (!getAgentDriver(provider)?.services.cliUpdate) throw new Error("unknown prov
 await runCliUpdateWorker({
   provider,
   command: value("--command"),
+  expectedRealExecutable: value("--real-command"),
   statePath: value("--state"),
   operationId: value("--operation"),
 });

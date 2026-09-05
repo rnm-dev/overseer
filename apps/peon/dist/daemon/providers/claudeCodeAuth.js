@@ -112,6 +112,7 @@ async function refresh() {
     scheduleCheck();
 }
 export const claudeCodeAuth = {
+    refresh,
     start() {
         void refresh();
     },

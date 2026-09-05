@@ -47,11 +47,19 @@ test("session index keeps the opening preview separate from latest activity", as
     promptPreview: "opening request",
     lastMessagePreview: "latest response",
     lastActivityAt: 10,
+    terminalReason: {
+      code: "turn_limit_exceeded", message: "Turn limit reached", canResume: true,
+      maxTurns: 1_000, turnBudget: 1_000, turnsUsed: 1_001,
+    },
   });
 
   const { sessions } = await listSessions({ peonId: "peon", limit: 10, offset: 0 });
   assert.equal(sessions[0]?.promptPreview, "opening request");
   assert.equal(sessions[0]?.preview, "latest response");
+  assert.deepEqual(sessions[0]?.terminalReason, {
+    code: "turn_limit_exceeded", message: "Turn limit reached", canResume: true,
+    maxTurns: 1_000, turnBudget: 1_000, turnsUsed: 1_001,
+  });
   assert.equal("raw" in sessions[0]!, false);
 });
 

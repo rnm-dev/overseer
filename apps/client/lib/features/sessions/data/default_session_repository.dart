@@ -808,6 +808,9 @@ class DefaultSessionRepository
       preview: json['preview'] as String?,
       author: json['author'] as String?,
       outcomeJson: json['outcome'] == null ? null : jsonEncode(json['outcome']),
+      terminalReasonJson: json['terminalReason'] == null
+          ? null
+          : jsonEncode(json['terminalReason']),
       startedAt: (json['startedAt'] as num?)?.toDouble(),
       endedAt: (json['endedAt'] as num?)?.toDouble(),
       lastActivityAt: (json['lastActivityAt'] as num?)?.toDouble(),
@@ -855,6 +858,7 @@ class DefaultSessionRepository
       preview: row.preview,
       author: row.author,
       outcomeJson: row.outcomeJson,
+      terminalReasonJson: row.terminalReasonJson,
       startedAt: row.startedAt,
       endedAt: row.endedAt,
       lastActivityAt: row.lastActivityAt,
@@ -896,6 +900,7 @@ class DefaultSessionRepository
       preview: Value(session.preview),
       author: Value(session.author),
       outcomeJson: Value(session.outcomeJson),
+      terminalReasonJson: Value(session.terminalReasonJson),
       startedAt: Value(session.startedAt),
       endedAt: Value(session.endedAt),
       lastActivityAt: Value(session.lastActivityAt),

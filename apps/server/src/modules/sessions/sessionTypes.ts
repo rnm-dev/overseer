@@ -13,6 +13,7 @@ export interface PeonSession {
   prompt?: string | null;
   initiator?: string | null;
   outcome?: unknown;
+  terminalReason?: unknown;
   startedAt?: number | null;
   endedAt?: number | null;
   lastActivityAt?: number | null;
@@ -28,6 +29,7 @@ export interface SessionSummary {
   lastMessagePreview: string | null;
   initiator: string | null;
   outcome: unknown;
+  terminalReason: unknown;
   startedAt: number | null;
   endedAt: number | null;
   lastActivityAt: number | null;
@@ -44,6 +46,7 @@ export interface SessionIndexRow {
   preview: string | null;
   author: string | null;
   outcome: unknown;
+  terminalReason: unknown;
   startedAt: number | null;
   endedAt: number | null;
   lastActivityAt: number | null;

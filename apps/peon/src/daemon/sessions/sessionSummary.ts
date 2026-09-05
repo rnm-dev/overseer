@@ -1,5 +1,5 @@
 import { previewText } from "./index.js";
-import type { SessionOutcome, SessionRecord, SessionStatus } from "./sessionTypes.js";
+import type { SessionOutcome, SessionRecord, SessionStatus, SessionTerminalReason } from "./sessionTypes.js";
 
 // Canonical representation for session collections and north-bound session
 // change events. Detail-only state stays on GET /sessions/:id.
@@ -13,6 +13,7 @@ export interface SessionSummary {
   lastMessagePreview: string | null;
   initiator: string | null;
   outcome: SessionOutcome | null;
+  terminalReason: SessionTerminalReason | null;
   startedAt: number | null;
   endedAt: number | null;
   lastActivityAt: number | null;
@@ -38,6 +39,7 @@ export function toSessionSummary(record: SessionRecord): SessionSummary {
         ? { previewPath: bounded(record.outcome.previewPath) }
         : {}),
     } : null,
+    terminalReason: record.terminalReason ? { ...record.terminalReason, message: bounded(record.terminalReason.message) ?? "" } : null,
     startedAt: record.startedAt,
     endedAt: record.endedAt,
     lastActivityAt: record.lastActivityAt,

@@ -30,7 +30,7 @@ export function canonicalUsageProvider(agent: CodingAgent): CodingAgent {
 }
 
 function token(value: number | null | undefined): number | null {
-  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : null;
 }
 
 /**
@@ -72,16 +72,17 @@ export function normalizeTokenUsage(
 
   if (provider === "codex") {
     const codexCachedInput = cacheRead ?? 0;
-    if (input === null || codexCachedInput > input) {
+    const codexCacheWrite = cacheWrite ?? 0;
+    if (input === null || codexCachedInput + codexCacheWrite > input) {
       onDiagnostic?.({
         provider,
-        reason: input !== null && codexCachedInput > input
+        reason: input !== null && codexCachedInput + codexCacheWrite > input
           ? "overlapping_codex_cache"
           : "missing_token_usage",
       });
       return null;
     }
-    const uncachedInputTokens = input - codexCachedInput;
+    const uncachedInputTokens = input - codexCachedInput - codexCacheWrite;
     const cachedInputTokens = codexCachedInput;
     const outputTokens = output ?? 0;
     return {
@@ -89,9 +90,9 @@ export function normalizeTokenUsage(
       provider,
       uncachedInputTokens,
       cachedInputTokens,
-      cacheWriteInputTokens: 0,
+      cacheWriteInputTokens: codexCacheWrite,
       outputTokens,
-      processedTokens: uncachedInputTokens + cachedInputTokens + outputTokens,
+      processedTokens: input + outputTokens,
     };
   }
 

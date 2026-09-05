@@ -321,6 +321,7 @@ void main() {
     await tester.tap(find.byKey(const Key('peon-settings-agent')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('peon-cli-codex')), findsOneWidget);
+    expect(find.textContaining('INSTALL    npm'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('peon-settings-armory')));
     await tester.pumpAndSettle();
@@ -442,6 +443,8 @@ class _FakePeonManagementRepository implements PeonManagementRepository {
       currentVersion: '1.0.0',
       latestVersion: '1.1.0',
       updateAvailable: true,
+      installationKind: 'npm',
+      updateSupported: true,
     ),
   ];
 

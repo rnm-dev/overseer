@@ -122,6 +122,17 @@ class $CachedSessionsTable extends CachedSessions
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _terminalReasonJsonMeta =
+      const VerificationMeta('terminalReasonJson');
+  @override
+  late final GeneratedColumn<String> terminalReasonJson =
+      GeneratedColumn<String>(
+        'terminal_reason_json',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
   static const VerificationMeta _startedAtMeta = const VerificationMeta(
     'startedAt',
   );
@@ -247,6 +258,7 @@ class $CachedSessionsTable extends CachedSessions
     preview,
     author,
     outcomeJson,
+    terminalReasonJson,
     startedAt,
     endedAt,
     lastActivityAt,
@@ -347,6 +359,15 @@ class $CachedSessionsTable extends CachedSessions
         outcomeJson.isAcceptableOrUnknown(
           data['outcome_json']!,
           _outcomeJsonMeta,
+        ),
+      );
+    }
+    if (data.containsKey('terminal_reason_json')) {
+      context.handle(
+        _terminalReasonJsonMeta,
+        terminalReasonJson.isAcceptableOrUnknown(
+          data['terminal_reason_json']!,
+          _terminalReasonJsonMeta,
         ),
       );
     }
@@ -477,6 +498,10 @@ class $CachedSessionsTable extends CachedSessions
         DriftSqlType.string,
         data['${effectivePrefix}outcome_json'],
       ),
+      terminalReasonJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}terminal_reason_json'],
+      ),
       startedAt: attachedDatabase.typeMapping.read(
         DriftSqlType.double,
         data['${effectivePrefix}started_at'],
@@ -534,6 +559,7 @@ class CachedSession extends DataClass implements Insertable<CachedSession> {
   final String? preview;
   final String? author;
   final String? outcomeJson;
+  final String? terminalReasonJson;
   final double? startedAt;
   final double? endedAt;
   final double? lastActivityAt;
@@ -555,6 +581,7 @@ class CachedSession extends DataClass implements Insertable<CachedSession> {
     this.preview,
     this.author,
     this.outcomeJson,
+    this.terminalReasonJson,
     this.startedAt,
     this.endedAt,
     this.lastActivityAt,
@@ -594,6 +621,9 @@ class CachedSession extends DataClass implements Insertable<CachedSession> {
     }
     if (!nullToAbsent || outcomeJson != null) {
       map['outcome_json'] = Variable<String>(outcomeJson);
+    }
+    if (!nullToAbsent || terminalReasonJson != null) {
+      map['terminal_reason_json'] = Variable<String>(terminalReasonJson);
     }
     if (!nullToAbsent || startedAt != null) {
       map['started_at'] = Variable<double>(startedAt);
@@ -644,6 +674,9 @@ class CachedSession extends DataClass implements Insertable<CachedSession> {
       outcomeJson: outcomeJson == null && nullToAbsent
           ? const Value.absent()
           : Value(outcomeJson),
+      terminalReasonJson: terminalReasonJson == null && nullToAbsent
+          ? const Value.absent()
+          : Value(terminalReasonJson),
       startedAt: startedAt == null && nullToAbsent
           ? const Value.absent()
           : Value(startedAt),
@@ -681,6 +714,9 @@ class CachedSession extends DataClass implements Insertable<CachedSession> {
       preview: serializer.fromJson<String?>(json['preview']),
       author: serializer.fromJson<String?>(json['author']),
       outcomeJson: serializer.fromJson<String?>(json['outcomeJson']),
+      terminalReasonJson: serializer.fromJson<String?>(
+        json['terminalReasonJson'],
+      ),
       startedAt: serializer.fromJson<double?>(json['startedAt']),
       endedAt: serializer.fromJson<double?>(json['endedAt']),
       lastActivityAt: serializer.fromJson<double?>(json['lastActivityAt']),
@@ -711,6 +747,7 @@ class CachedSession extends DataClass implements Insertable<CachedSession> {
       'preview': serializer.toJson<String?>(preview),
       'author': serializer.toJson<String?>(author),
       'outcomeJson': serializer.toJson<String?>(outcomeJson),
+      'terminalReasonJson': serializer.toJson<String?>(terminalReasonJson),
       'startedAt': serializer.toJson<double?>(startedAt),
       'endedAt': serializer.toJson<double?>(endedAt),
       'lastActivityAt': serializer.toJson<double?>(lastActivityAt),
@@ -735,6 +772,7 @@ class CachedSession extends DataClass implements Insertable<CachedSession> {
     Value<String?> preview = const Value.absent(),
     Value<String?> author = const Value.absent(),
     Value<String?> outcomeJson = const Value.absent(),
+    Value<String?> terminalReasonJson = const Value.absent(),
     Value<double?> startedAt = const Value.absent(),
     Value<double?> endedAt = const Value.absent(),
     Value<double?> lastActivityAt = const Value.absent(),
@@ -758,6 +796,9 @@ class CachedSession extends DataClass implements Insertable<CachedSession> {
     preview: preview.present ? preview.value : this.preview,
     author: author.present ? author.value : this.author,
     outcomeJson: outcomeJson.present ? outcomeJson.value : this.outcomeJson,
+    terminalReasonJson: terminalReasonJson.present
+        ? terminalReasonJson.value
+        : this.terminalReasonJson,
     startedAt: startedAt.present ? startedAt.value : this.startedAt,
     endedAt: endedAt.present ? endedAt.value : this.endedAt,
     lastActivityAt: lastActivityAt.present
@@ -793,6 +834,9 @@ class CachedSession extends DataClass implements Insertable<CachedSession> {
       outcomeJson: data.outcomeJson.present
           ? data.outcomeJson.value
           : this.outcomeJson,
+      terminalReasonJson: data.terminalReasonJson.present
+          ? data.terminalReasonJson.value
+          : this.terminalReasonJson,
       startedAt: data.startedAt.present ? data.startedAt.value : this.startedAt,
       endedAt: data.endedAt.present ? data.endedAt.value : this.endedAt,
       lastActivityAt: data.lastActivityAt.present
@@ -831,6 +875,7 @@ class CachedSession extends DataClass implements Insertable<CachedSession> {
           ..write('preview: $preview, ')
           ..write('author: $author, ')
           ..write('outcomeJson: $outcomeJson, ')
+          ..write('terminalReasonJson: $terminalReasonJson, ')
           ..write('startedAt: $startedAt, ')
           ..write('endedAt: $endedAt, ')
           ..write('lastActivityAt: $lastActivityAt, ')
@@ -845,7 +890,7 @@ class CachedSession extends DataClass implements Insertable<CachedSession> {
   }
 
   @override
-  int get hashCode => Object.hash(
+  int get hashCode => Object.hashAll([
     workspaceId,
     peonId,
     sessionId,
@@ -857,6 +902,7 @@ class CachedSession extends DataClass implements Insertable<CachedSession> {
     preview,
     author,
     outcomeJson,
+    terminalReasonJson,
     startedAt,
     endedAt,
     lastActivityAt,
@@ -866,7 +912,7 @@ class CachedSession extends DataClass implements Insertable<CachedSession> {
     operatorRequested,
     hasOutstandingRequest,
     lastRequestedAt,
-  );
+  ]);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -882,6 +928,7 @@ class CachedSession extends DataClass implements Insertable<CachedSession> {
           other.preview == this.preview &&
           other.author == this.author &&
           other.outcomeJson == this.outcomeJson &&
+          other.terminalReasonJson == this.terminalReasonJson &&
           other.startedAt == this.startedAt &&
           other.endedAt == this.endedAt &&
           other.lastActivityAt == this.lastActivityAt &&
@@ -905,6 +952,7 @@ class CachedSessionsCompanion extends UpdateCompanion<CachedSession> {
   final Value<String?> preview;
   final Value<String?> author;
   final Value<String?> outcomeJson;
+  final Value<String?> terminalReasonJson;
   final Value<double?> startedAt;
   final Value<double?> endedAt;
   final Value<double?> lastActivityAt;
@@ -927,6 +975,7 @@ class CachedSessionsCompanion extends UpdateCompanion<CachedSession> {
     this.preview = const Value.absent(),
     this.author = const Value.absent(),
     this.outcomeJson = const Value.absent(),
+    this.terminalReasonJson = const Value.absent(),
     this.startedAt = const Value.absent(),
     this.endedAt = const Value.absent(),
     this.lastActivityAt = const Value.absent(),
@@ -950,6 +999,7 @@ class CachedSessionsCompanion extends UpdateCompanion<CachedSession> {
     this.preview = const Value.absent(),
     this.author = const Value.absent(),
     this.outcomeJson = const Value.absent(),
+    this.terminalReasonJson = const Value.absent(),
     this.startedAt = const Value.absent(),
     this.endedAt = const Value.absent(),
     this.lastActivityAt = const Value.absent(),
@@ -976,6 +1026,7 @@ class CachedSessionsCompanion extends UpdateCompanion<CachedSession> {
     Expression<String>? preview,
     Expression<String>? author,
     Expression<String>? outcomeJson,
+    Expression<String>? terminalReasonJson,
     Expression<double>? startedAt,
     Expression<double>? endedAt,
     Expression<double>? lastActivityAt,
@@ -999,6 +1050,8 @@ class CachedSessionsCompanion extends UpdateCompanion<CachedSession> {
       if (preview != null) 'preview': preview,
       if (author != null) 'author': author,
       if (outcomeJson != null) 'outcome_json': outcomeJson,
+      if (terminalReasonJson != null)
+        'terminal_reason_json': terminalReasonJson,
       if (startedAt != null) 'started_at': startedAt,
       if (endedAt != null) 'ended_at': endedAt,
       if (lastActivityAt != null) 'last_activity_at': lastActivityAt,
@@ -1026,6 +1079,7 @@ class CachedSessionsCompanion extends UpdateCompanion<CachedSession> {
     Value<String?>? preview,
     Value<String?>? author,
     Value<String?>? outcomeJson,
+    Value<String?>? terminalReasonJson,
     Value<double?>? startedAt,
     Value<double?>? endedAt,
     Value<double?>? lastActivityAt,
@@ -1049,6 +1103,7 @@ class CachedSessionsCompanion extends UpdateCompanion<CachedSession> {
       preview: preview ?? this.preview,
       author: author ?? this.author,
       outcomeJson: outcomeJson ?? this.outcomeJson,
+      terminalReasonJson: terminalReasonJson ?? this.terminalReasonJson,
       startedAt: startedAt ?? this.startedAt,
       endedAt: endedAt ?? this.endedAt,
       lastActivityAt: lastActivityAt ?? this.lastActivityAt,
@@ -1099,6 +1154,9 @@ class CachedSessionsCompanion extends UpdateCompanion<CachedSession> {
     if (outcomeJson.present) {
       map['outcome_json'] = Variable<String>(outcomeJson.value);
     }
+    if (terminalReasonJson.present) {
+      map['terminal_reason_json'] = Variable<String>(terminalReasonJson.value);
+    }
     if (startedAt.present) {
       map['started_at'] = Variable<double>(startedAt.value);
     }
@@ -1148,6 +1206,7 @@ class CachedSessionsCompanion extends UpdateCompanion<CachedSession> {
           ..write('preview: $preview, ')
           ..write('author: $author, ')
           ..write('outcomeJson: $outcomeJson, ')
+          ..write('terminalReasonJson: $terminalReasonJson, ')
           ..write('startedAt: $startedAt, ')
           ..write('endedAt: $endedAt, ')
           ..write('lastActivityAt: $lastActivityAt, ')
@@ -6608,6 +6667,7 @@ typedef $$CachedSessionsTableCreateCompanionBuilder =
       Value<String?> preview,
       Value<String?> author,
       Value<String?> outcomeJson,
+      Value<String?> terminalReasonJson,
       Value<double?> startedAt,
       Value<double?> endedAt,
       Value<double?> lastActivityAt,
@@ -6632,6 +6692,7 @@ typedef $$CachedSessionsTableUpdateCompanionBuilder =
       Value<String?> preview,
       Value<String?> author,
       Value<String?> outcomeJson,
+      Value<String?> terminalReasonJson,
       Value<double?> startedAt,
       Value<double?> endedAt,
       Value<double?> lastActivityAt,
@@ -6705,6 +6766,11 @@ class $$CachedSessionsTableFilterComposer
 
   ColumnFilters<String> get outcomeJson => $composableBuilder(
     column: $table.outcomeJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get terminalReasonJson => $composableBuilder(
+    column: $table.terminalReasonJson,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -6818,6 +6884,11 @@ class $$CachedSessionsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get terminalReasonJson => $composableBuilder(
+    column: $table.terminalReasonJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<double> get startedAt => $composableBuilder(
     column: $table.startedAt,
     builder: (column) => ColumnOrderings(column),
@@ -6914,6 +6985,11 @@ class $$CachedSessionsTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<String> get terminalReasonJson => $composableBuilder(
+    column: $table.terminalReasonJson,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<double> get startedAt =>
       $composableBuilder(column: $table.startedAt, builder: (column) => column);
 
@@ -6998,6 +7074,7 @@ class $$CachedSessionsTableTableManager
                 Value<String?> preview = const Value.absent(),
                 Value<String?> author = const Value.absent(),
                 Value<String?> outcomeJson = const Value.absent(),
+                Value<String?> terminalReasonJson = const Value.absent(),
                 Value<double?> startedAt = const Value.absent(),
                 Value<double?> endedAt = const Value.absent(),
                 Value<double?> lastActivityAt = const Value.absent(),
@@ -7020,6 +7097,7 @@ class $$CachedSessionsTableTableManager
                 preview: preview,
                 author: author,
                 outcomeJson: outcomeJson,
+                terminalReasonJson: terminalReasonJson,
                 startedAt: startedAt,
                 endedAt: endedAt,
                 lastActivityAt: lastActivityAt,
@@ -7044,6 +7122,7 @@ class $$CachedSessionsTableTableManager
                 Value<String?> preview = const Value.absent(),
                 Value<String?> author = const Value.absent(),
                 Value<String?> outcomeJson = const Value.absent(),
+                Value<String?> terminalReasonJson = const Value.absent(),
                 Value<double?> startedAt = const Value.absent(),
                 Value<double?> endedAt = const Value.absent(),
                 Value<double?> lastActivityAt = const Value.absent(),
@@ -7066,6 +7145,7 @@ class $$CachedSessionsTableTableManager
                 preview: preview,
                 author: author,
                 outcomeJson: outcomeJson,
+                terminalReasonJson: terminalReasonJson,
                 startedAt: startedAt,
                 endedAt: endedAt,
                 lastActivityAt: lastActivityAt,

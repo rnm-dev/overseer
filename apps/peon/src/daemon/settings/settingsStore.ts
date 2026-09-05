@@ -18,6 +18,16 @@ import {
 } from "../runtime/durablePrivateFile.js";
 
 const SETTINGS_PATH = path.join(configDir(), "settings.json");
+const SETTINGS_DEFAULTS_VERSION = 2;
+const LEGACY_DEFAULT_MAX_TURNS = 300;
+export const DEFAULT_MAX_TURNS = 1_000;
+export const MIN_MAX_TURNS = 1;
+export const MAX_MAX_TURNS = 10_000;
+export const DEFAULT_TASK_TIMEOUT_MS = 30 * 60_000;
+export const MIN_TASK_TIMEOUT_MS = 60_000;
+export const MAX_TASK_TIMEOUT_MS = 24 * 60 * 60_000;
+export const DEFAULT_MAX_BUDGET_USD = 0;
+export const MAX_MAX_BUDGET_USD = 10_000;
 
 type CommandAvailable = (command: string) => boolean;
 
@@ -56,14 +66,15 @@ function assertTestWriteIsIsolated(settingsPath: string): void {
 }
 
 const DEFAULT_SETTINGS: DaemonSettings = {
+  settingsDefaultsVersion: SETTINGS_DEFAULTS_VERSION,
   updateCheckIntervalMs: 15 * 60_000,
-  maxTurns: 300,
-  taskTimeoutMs: 30 * 60_000,
+  maxTurns: DEFAULT_MAX_TURNS,
+  taskTimeoutMs: DEFAULT_TASK_TIMEOUT_MS,
   paused: false,
   defaultAgent: "claude-code",
   agentCommand: "claude",
   codexCommand: "codex",
-  maxBudgetUsd: 0,
+  maxBudgetUsd: DEFAULT_MAX_BUDGET_USD,
   publicControlUrl: `http://127.0.0.1:${process.env.ACA_CONTROL_PORT ?? 4570}`,
   listenAddress: `0.0.0.0:${process.env.ACA_CONTROL_PORT ?? 4570}`,
   name: "",
@@ -120,6 +131,16 @@ export class SettingsStore {
     const fromFile = hasSettingsFile
       ? JSON.parse(readFileSync(this.settingsPath, "utf8")) as Partial<DaemonSettings>
       : {};
+    const defaultsVersion = Number.isInteger(fromFile.settingsDefaultsVersion)
+      ? fromFile.settingsDefaultsVersion as number
+      : 1;
+    // 1.0.1 and older persisted the then-default value, so merely changing
+    // DEFAULT_SETTINGS would leave upgraded Peons at 300 forever. Migrate that
+    // exact legacy default once; any non-default operator value is preserved.
+    if (hasSettingsFile && defaultsVersion < 2 && fromFile.maxTurns === LEGACY_DEFAULT_MAX_TURNS) {
+      fromFile.maxTurns = DEFAULT_MAX_TURNS;
+    }
+    fromFile.settingsDefaultsVersion = SETTINGS_DEFAULTS_VERSION;
     // `codex` was the retired `codex exec --json` driver. Its model catalog is
     // shared with app-server, so the configured model/effort remain valid.
     if (fromFile.defaultAgent === "codex") fromFile.defaultAgent = "codex-app-server";

@@ -96,7 +96,7 @@ export const armoryCommandSchema = z.object({
     args: z.array(z.string().max(4096)).max(128),
 }).strict();
 const permissionSchema = z.object({
-    networkHosts: z.array(z.string().regex(/^(?:\*\.)?[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/)),
+    networkHosts: z.array(z.string().regex(/^(?:\*|(?:\*\.)?[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?)$/)),
     hostPaths: z.array(z.object({
         path: z.string().regex(/^(?:\/|~\/).+/),
         mode: z.enum(["read", "write"]),

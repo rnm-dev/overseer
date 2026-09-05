@@ -8,6 +8,7 @@ import { claudeCodeAuth } from "./claudeCodeAuth.js";
 const execFileAsync = promisify(execFile);
 const CACHE_MS = 60_000;
 const PROBE_TIMEOUT_MS = 12_000;
+const CODEX_QUOTA_ARGS = ["-s", "read-only", "-a", "never", "app-server"];
 function object(value) {
     return value !== null && typeof value === "object" && !Array.isArray(value) ? value : null;
 }
@@ -74,7 +75,7 @@ function codexModelIds(limitId, limitName) {
 export async function fetchCodexQuota() {
     const command = settings.get().codexCommand || "codex";
     return await new Promise((resolve) => {
-        const child = spawn(command, ["-s", "read-only", "-a", "untrusted", "app-server"], {
+        const child = spawn(command, CODEX_QUOTA_ARGS, {
             stdio: ["pipe", "pipe", "pipe"],
             env: process.env,
         });
@@ -275,9 +276,9 @@ function claudeWindow(id, label, value, modelIds) {
 export async function fetchClaudeQuota() {
     const credential = await loadClaudeCredential();
     if (!credential)
-        return unavailable("claude-code", "Claude OAuth credentials unavailable; run `claude login`");
+        return unavailable("claude-code", "Claude OAuth credentials unavailable; run `claude auth login`");
     if (credential.scopes.length > 0 && !credential.scopes.includes("user:profile")) {
-        return unavailable("claude-code", "Claude OAuth token lacks the user:profile scope; run `claude login`");
+        return unavailable("claude-code", "Claude OAuth token lacks the user:profile scope; run `claude auth login`");
     }
     try {
         const response = await fetch("https://api.anthropic.com/api/oauth/usage", {
@@ -291,7 +292,7 @@ export async function fetchClaudeQuota() {
             signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
         });
         if (response.status === 401 || response.status === 403)
-            return unavailable("claude-code", "Claude OAuth session expired; run `claude login`");
+            return unavailable("claude-code", "Claude OAuth session expired; run `claude auth login`");
         if (!response.ok)
             throw new Error(`Claude usage API returned HTTP ${response.status}`);
         const body = await response.json();

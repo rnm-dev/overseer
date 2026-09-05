@@ -55,6 +55,7 @@ test("canonical session summary includes only bounded collection fields", () => 
     "lastMessagePreview",
     "initiator",
     "outcome",
+    "terminalReason",
     "startedAt",
     "endedAt",
     "lastActivityAt",
@@ -64,6 +65,27 @@ test("canonical session summary includes only bounded collection fields", () => 
   assert.equal("dir" in summary, false);
   assert.equal("usage" in summary, false);
   assert.ok(JSON.stringify(summary).length < JSON.stringify(full).length / 10);
+});
+
+test("terminal execution limits are machine-readable and bounded in collections", () => {
+  const summary = toSessionSummary(record({
+    terminalReason: {
+      code: "turn_limit_exceeded",
+      message: "x".repeat(10_000),
+      canResume: true,
+      maxTurns: 1_000,
+      turnBudget: 2_000,
+      turnsUsed: 2_001,
+    },
+  }));
+  assert.deepEqual(summary.terminalReason, {
+    code: "turn_limit_exceeded",
+    message: "x".repeat(280),
+    canResume: true,
+    maxTurns: 1_000,
+    turnBudget: 2_000,
+    turnsUsed: 2_001,
+  });
 });
 
 test("titled summaries do not duplicate prompt content", () => {

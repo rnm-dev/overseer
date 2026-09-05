@@ -22,6 +22,7 @@ class CachedSessions extends Table {
   TextColumn get preview => text().nullable()();
   TextColumn get author => text().nullable()();
   TextColumn get outcomeJson => text().nullable()();
+  TextColumn get terminalReasonJson => text().nullable()();
   RealColumn get startedAt => real().nullable()();
   RealColumn get endedAt => real().nullable()();
   RealColumn get lastActivityAt => real().nullable()();
@@ -218,7 +219,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 13;
+  int get schemaVersion => 14;
 
   /// Removes operator-authored and transcript payload data at an authentication
   /// boundary. These tables are workspace-scoped rather than user-scoped, so
@@ -303,6 +304,12 @@ class AppDatabase extends _$AppDatabase {
         await migrator.addColumn(
           pendingFollowupCommands,
           pendingFollowupCommands.replyToJson,
+        );
+      }
+      if (from < 14) {
+        await migrator.addColumn(
+          cachedSessions,
+          cachedSessions.terminalReasonJson,
         );
       }
     },

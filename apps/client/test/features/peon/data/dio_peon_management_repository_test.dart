@@ -106,6 +106,8 @@ void main() {
                         'currentVersion': '1.0.0',
                         'latestVersion': '1.1.0',
                         'updateAvailable': true,
+                        'installationKind': 'npm',
+                        'updateSupported': true,
                         'operation': null,
                       },
                       {
@@ -158,6 +160,8 @@ void main() {
         CliProvider.codex,
         CliProvider.claudeCode,
       ]);
+      expect(updates.first.installationKind, 'npm');
+      expect(updates.first.updateSupported, isTrue);
       expect(requests[0].queryParameters, {'refresh': 'true'});
       expect(requests[1].path, endsWith('/ai/cli-updates/codex'));
       expect(

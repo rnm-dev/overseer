@@ -197,6 +197,9 @@ class CliUpdateItem {
     this.currentVersion,
     this.latestVersion,
     this.updateAvailable,
+    this.installationKind,
+    this.updateSupported,
+    this.updateReason,
     this.checkedAt,
     this.status = 'idle',
     this.error,
@@ -206,6 +209,9 @@ class CliUpdateItem {
   final String? currentVersion;
   final String? latestVersion;
   final bool? updateAvailable;
+  final String? installationKind;
+  final bool? updateSupported;
+  final String? updateReason;
   final double? checkedAt;
   final String status;
   final String? error;
@@ -265,16 +271,22 @@ class CliUpdateItem {
       updateAvailable:
           json['updateAvailable'] as bool? ??
           (current != null && latest != null ? current != latest : null),
+      installationKind: _text(json['installationKind']),
+      updateSupported: json['updateSupported'] as bool?,
+      updateReason: _text(json['updateReason']),
       checkedAt: _timestamp(
         json['checkedAt'] ?? json['lastCheckedAt'] ?? json['refreshedAt'],
       ),
       status: status,
       error: _text(
         operation?['error'],
+        json['updateReason'],
         json['updateError'],
         json['checkError'],
-        json['error'],
-        failed && operation != null ? operation['message'] : null,
+        _text(
+          json['error'],
+          failed && operation != null ? operation['message'] : null,
+        ),
       ),
     );
   }
@@ -284,6 +296,9 @@ class CliUpdateItem {
     'currentVersion': currentVersion,
     'latestVersion': latestVersion,
     'updateAvailable': updateAvailable,
+    'installationKind': installationKind,
+    'updateSupported': updateSupported,
+    'updateReason': updateReason,
     'checkedAt': checkedAt,
     'status': status,
     'error': error,

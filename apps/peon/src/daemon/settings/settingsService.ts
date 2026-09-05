@@ -10,7 +10,14 @@ import {
   reasoningEffortsForModel,
 } from "../providers/modelCatalog.js";
 import type { DaemonSettings } from "./settingsTypes.js";
-import { SettingsStore } from "./settingsStore.js";
+import {
+  MAX_MAX_BUDGET_USD,
+  MAX_MAX_TURNS,
+  MAX_TASK_TIMEOUT_MS,
+  MIN_MAX_TURNS,
+  MIN_TASK_TIMEOUT_MS,
+  SettingsStore,
+} from "./settingsStore.js";
 import { parseListenAddress } from "../../shared/listenAddress.js";
 
 type SettingsBody = Record<string, unknown>;
@@ -73,6 +80,9 @@ export interface FleetSettingsView {
   aiDefaultModel: string | null;
   aiDefaultReasoningEffort: ReasoningEffort | null;
   soul: string | null;
+  maxTurns: number;
+  taskTimeoutMs: number;
+  maxBudgetUsd: number;
 }
 
 export interface DaemonConfigurationView {
@@ -83,9 +93,12 @@ export interface DaemonConfigurationView {
   aiDefaultModel: string | null;
   aiDefaultReasoningEffort: ReasoningEffort | null;
   soul: string | null;
+  maxTurns: number;
+  taskTimeoutMs: number;
+  maxBudgetUsd: number;
 }
 
-export interface ControlSettingsView extends Omit<DaemonSettings, "overseerToken" | "pairingSecret"> {
+export interface ControlSettingsView extends Omit<DaemonSettings, "overseerToken" | "pairingSecret" | "settingsDefaultsVersion"> {
   overseerTokenSet: boolean;
   pairingArmed: boolean;
   aiDefaultModel: string | null;
@@ -150,6 +163,9 @@ export class SettingsService extends EventEmitter implements SettingsServiceCont
       aiDefaultModel: s.ai.defaultModel ?? null,
       aiDefaultReasoningEffort: s.ai.defaultReasoningEffort ?? null,
       soul: s.ai.soul || null,
+      maxTurns: s.maxTurns,
+      taskTimeoutMs: s.taskTimeoutMs,
+      maxBudgetUsd: s.maxBudgetUsd,
     };
   }
 
@@ -162,6 +178,9 @@ export class SettingsService extends EventEmitter implements SettingsServiceCont
       aiDefaultModel: settings.ai.defaultModel ?? null,
       aiDefaultReasoningEffort: settings.ai.defaultReasoningEffort ?? null,
       soul: settings.ai.soul || null,
+      maxTurns: settings.maxTurns,
+      taskTimeoutMs: settings.taskTimeoutMs,
+      maxBudgetUsd: settings.maxBudgetUsd,
     };
   }
 
@@ -188,6 +207,7 @@ export class SettingsService extends EventEmitter implements SettingsServiceCont
     const allowed = new Set([
       "name", "defaultAgent", "fileTransferRoot", "heartbeatIntervalMs",
       "aiDefaultModel", "aiDefaultReasoningEffort", "soul",
+      "maxTurns", "taskTimeoutMs", "maxBudgetUsd",
     ]);
     const unknown = Object.keys(value).find((key) => !allowed.has(key));
     if (unknown) this.throwBadRequest(`${unknown} is not remotely manageable`);
@@ -220,7 +240,7 @@ export class SettingsService extends EventEmitter implements SettingsServiceCont
     // secret, the old response let a stale Settings tab send an obsolete token
     // back with an unrelated edit and silently break enrollment.
     const safe = { ...s } as Record<string, unknown>;
-    for (const key of ["overseerToken", "pairingSecret", "strongholdToken"]) delete safe[key];
+    for (const key of ["overseerToken", "pairingSecret", "strongholdToken", "settingsDefaultsVersion"]) delete safe[key];
     return {
       ...safe,
       overseerTokenSet: Boolean(s.overseerToken),
@@ -288,6 +308,8 @@ export class SettingsService extends EventEmitter implements SettingsServiceCont
       patch.heartbeatIntervalMs = heartbeatIntervalMs;
     }
 
+    this.validateExecutionSafety(body, patch);
+
     if ("soul" in body) {
       const soul = body.soul;
       if (typeof soul !== "string") this.throwBadRequest("soul must be a string (empty string disables it)");
@@ -345,11 +367,15 @@ export class SettingsService extends EventEmitter implements SettingsServiceCont
     if (managedCredential) {
       this.throwBadRequest(`${managedCredential} is managed by enrollment and cannot be changed through general settings`);
     }
+    if ("settingsDefaultsVersion" in body) {
+      this.throwBadRequest("settingsDefaultsVersion is managed internally and cannot be changed through general settings");
+    }
     const patch = { ...body } as Partial<DaemonSettings>;
     // Rolling upgrades may still submit fields removed from the daemon.
     delete (patch as unknown as Record<string, unknown>).fleetMode;
     delete (patch as unknown as Record<string, unknown>).publicDashboardUrl;
     delete (patch as unknown as Record<string, unknown>).bindHost;
+    this.validateExecutionSafety(body, patch);
     if ("listenAddress" in body) {
       if (typeof body.listenAddress !== "string") {
         this.throwBadRequest("listenAddress must be a string");
@@ -443,6 +469,27 @@ export class SettingsService extends EventEmitter implements SettingsServiceCont
     return patch;
   }
 
+  private validateExecutionSafety(body: SettingsBody, patch: Partial<DaemonSettings>): void {
+    if ("maxTurns" in body) {
+      if (!Number.isSafeInteger(body.maxTurns) || (body.maxTurns as number) < MIN_MAX_TURNS || (body.maxTurns as number) > MAX_MAX_TURNS) {
+        this.throwBadRequest(`maxTurns must be an integer between ${MIN_MAX_TURNS} and ${MAX_MAX_TURNS}`);
+      }
+      patch.maxTurns = body.maxTurns as number;
+    }
+    if ("taskTimeoutMs" in body) {
+      if (!Number.isSafeInteger(body.taskTimeoutMs) || (body.taskTimeoutMs as number) < MIN_TASK_TIMEOUT_MS || (body.taskTimeoutMs as number) > MAX_TASK_TIMEOUT_MS) {
+        this.throwBadRequest(`taskTimeoutMs must be an integer between ${MIN_TASK_TIMEOUT_MS} and ${MAX_TASK_TIMEOUT_MS}`);
+      }
+      patch.taskTimeoutMs = body.taskTimeoutMs as number;
+    }
+    if ("maxBudgetUsd" in body) {
+      if (typeof body.maxBudgetUsd !== "number" || !Number.isFinite(body.maxBudgetUsd) || body.maxBudgetUsd < 0 || body.maxBudgetUsd > MAX_MAX_BUDGET_USD) {
+        this.throwBadRequest(`maxBudgetUsd must be a number between 0 and ${MAX_MAX_BUDGET_USD}`);
+      }
+      patch.maxBudgetUsd = body.maxBudgetUsd;
+    }
+  }
+
   private getFleetSettingsViewFrom(settings: DaemonSettings): FleetSettingsView {
     return {
       name: settings.name || null,
@@ -453,6 +500,9 @@ export class SettingsService extends EventEmitter implements SettingsServiceCont
       aiDefaultModel: settings.ai.defaultModel ?? null,
       aiDefaultReasoningEffort: settings.ai.defaultReasoningEffort ?? null,
       soul: settings.ai.soul || null,
+      maxTurns: settings.maxTurns,
+      taskTimeoutMs: settings.taskTimeoutMs,
+      maxBudgetUsd: settings.maxBudgetUsd,
     };
   }
 

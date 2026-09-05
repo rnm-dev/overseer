@@ -148,8 +148,9 @@ configuration or lifecycle behavior, but Peon never mounts them into agent MCP
 configuration. Catalog summaries expose `capabilities: { mcp: boolean }`, and
 installation rejects a manifest whose MCP presence disagrees with that catalog bit.
 
-`networkHosts` contains lowercase ASCII DNS names or a single-label wildcard such
-as `*.example.com`, without schemes, ports, paths, IP literals, or a bare `*`.
+`networkHosts` contains lowercase ASCII DNS names, a single-label wildcard such
+as `*.example.com`, or a bare `*` for access to any network host. Entries never
+contain schemes, ports, paths, or IP literals.
 `hostPaths` are absolute paths or `~/` paths resolved against the daemon user's real
 home. They must be declared before use, displayed exactly after resolution, and are
 never implicit permission to write. Duplicate permission entries are rejected.

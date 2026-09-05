@@ -1,4 +1,5 @@
 import express from "express";
+import { registerProviderLoginRoutes } from "./providerLogin.js";
 import { registry, toView } from "../../modules/fleet/index.js";
 import { callPeon, connOfRecord, normalizePeonUrl, proxyFileDownload, proxyFileUpload, proxyGet, proxyUpload } from "../../infrastructure/peonHttp/index.js";
 import { reconcilePeon } from "../../modules/sessions/index.js";
@@ -29,6 +30,7 @@ import { auditSafeFileErrorBody } from "../../shared/fileErrorSafety.js";
 import { FileSandboxError, resolveAttachmentPath, resolveSandboxSegments } from "../../infrastructure/peonHttp/peonFileSandbox.js";
 
 export function registerProjectRoutes(router: express.Router): void {
+  registerProviderLoginRoutes(router);
   const wp = "/workspaces/:wsId/peons/:id";
   const forgetDeletedProject = async (
     c: Parameters<Parameters<typeof withWorkspacePeon>[0]>[2],

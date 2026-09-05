@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { SettingsStore } from "../settings/settingsStore.js";
+import { DEFAULT_MAX_TURNS, SettingsStore } from "../settings/settingsStore.js";
 
 function freshStore(installed: string[]): SettingsStore {
   const root = mkdtempSync(path.join(os.tmpdir(), "peon-agent-default-"));
@@ -25,6 +25,35 @@ test("new Peon keeps Claude preference unless Codex is the only installed agent"
     assert.equal(settings.ai.defaultModel, "claude-sonnet-5");
     assert.equal(settings.ai.defaultReasoningEffort, "high");
   }
+});
+
+test("new and upgraded Peons receive the larger logical turn budget once", () => {
+  assert.equal(freshStore([]).get().maxTurns, DEFAULT_MAX_TURNS);
+
+  const root = mkdtempSync(path.join(os.tmpdir(), "peon-turn-default-"));
+  const settingsPath = path.join(root, "settings.json");
+  writeFileSync(settingsPath, JSON.stringify({ maxTurns: 300 }));
+  const store = new SettingsStore(settingsPath);
+  assert.equal(store.get().maxTurns, 1_000);
+
+  store.update({ name: "Migrated Peon" });
+  const persisted = JSON.parse(readFileSync(settingsPath, "utf8")) as Record<string, unknown>;
+  assert.equal(persisted.maxTurns, 1_000);
+  assert.equal(persisted.settingsDefaultsVersion, 2);
+});
+
+test("turn budget migration preserves non-default and versioned operator choices", () => {
+  for (const value of [75, 800]) {
+    const root = mkdtempSync(path.join(os.tmpdir(), "peon-turn-custom-"));
+    const settingsPath = path.join(root, "settings.json");
+    writeFileSync(settingsPath, JSON.stringify({ maxTurns: value }));
+    assert.equal(new SettingsStore(settingsPath).get().maxTurns, value);
+  }
+
+  const root = mkdtempSync(path.join(os.tmpdir(), "peon-turn-versioned-"));
+  const settingsPath = path.join(root, "settings.json");
+  writeFileSync(settingsPath, JSON.stringify({ maxTurns: 300, settingsDefaultsVersion: 2 }));
+  assert.equal(new SettingsStore(settingsPath).get().maxTurns, 300);
 });
 
 test("an existing settings file is never reselected from installed commands", () => {

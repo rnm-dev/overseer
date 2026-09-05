@@ -795,6 +795,8 @@ class _CliUpdateCard extends StatelessWidget {
               _StatusPill(
                 text: loading
                     ? 'UPDATING'
+                    : item.updateSupported == false
+                    ? 'UNAVAILABLE'
                     : item.updateAvailable == true
                     ? 'AVAILABLE'
                     : 'CURRENT',
@@ -805,7 +807,8 @@ class _CliUpdateCard extends StatelessWidget {
           const SizedBox(height: 9),
           Text(
             'INSTALLED  ${item.currentVersion ?? '—'}\n'
-            'LATEST     ${item.latestVersion ?? '—'}',
+            'LATEST     ${item.latestVersion ?? '—'}'
+            '${item.installationKind == null ? '' : '\nINSTALL    ${item.installationKind}'}',
             style: AppTypography.mono(
               fontSize: 10.5,
               color: colors.onSurfaceVariant,
@@ -827,7 +830,11 @@ class _CliUpdateCard extends StatelessWidget {
               disabled: disabled || item.updateAvailable != true,
               onPressed: onInstall,
               child: Text(
-                item.updateAvailable == true ? 'Install update' : 'Up to date',
+                item.updateSupported == false
+                    ? 'Unavailable'
+                    : item.updateAvailable == true
+                    ? 'Install update'
+                    : 'Up to date',
               ),
             ),
           ),

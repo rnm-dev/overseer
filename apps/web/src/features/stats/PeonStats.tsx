@@ -117,13 +117,15 @@ export function PeonStats() {
   }, [base, peon.online, period, t]);
 
   useEffect(() => {
-    if (!peon.online) return;
+    if (!peon.online || !stats || (stats.period && stats.period !== period)) return;
     let alive = true;
     setAnalytics({ users: null, projects: null });
     setAnalyticsError(null);
+    const windowQuery = stats.rangeStart !== undefined && stats.rangeEnd !== undefined
+      ? `from=${stats.rangeStart}&to=${stats.rangeEnd}` : `period=${period}`;
     Promise.allSettled([
-      api<Analytics>(`${base}/analytics?period=${period}&groupBy=user`),
-      api<Analytics>(`${base}/analytics?period=${period}&groupBy=project`),
+      api<Analytics>(`${base}/analytics?${windowQuery}&groupBy=user`),
+      api<Analytics>(`${base}/analytics?${windowQuery}&groupBy=project`),
     ]).then(([users, projects]) => {
       if (!alive) return;
       setAnalytics({
@@ -137,31 +139,32 @@ export function PeonStats() {
     return () => {
       alive = false;
     };
-  }, [base, peon.online, period, t]);
+  }, [base, peon.online, period, stats, t]);
 
   if (!peon.online) return <p className="font-mono text-sm text-ink-faint">{t("peon.offlineNote")}</p>;
   if (unsupported) return <p className="font-mono text-sm text-ink-faint">{t("peon.unsupported")}</p>;
 
   const missingUsage = stats?.sessionsMissingUsage ?? 0;
-  // Output tokens are the headline (below); input/cache are cheap and cache_read
-  // dominates any raw total (it's context reread every turn, not new work) —
-  // never headline a summed total, it reads as wildly inflated.
+  // Canonical input/cache buckets are exclusive. Output includes reasoning;
+  // processed usage includes repeated context, not just visible answer text.
   const breakdown: [string, number | undefined][] = [
-    ["peon.stats.inputTokens", stats?.totalInputTokens],
+    ["peon.stats.ordinaryInput", stats?.totalInputTokens],
     ["peon.stats.cacheWrite", stats?.totalCacheCreationTokens],
     ["peon.stats.cacheRead", stats?.totalCacheReadTokens],
+    ["peon.stats.outputTokens", stats?.totalOutputTokens],
   ];
   const hasBreakdown = breakdown.some(([, n]) => typeof n === "number");
   const byModel = stats?.byModel ?? [];
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap gap-1.5">
+      <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap" role="group">
         {PERIODS.map((p) => (
           <button
             key={p}
             onClick={() => setPeriod(p)}
-            className={`rounded-sm border px-3 py-1.5 font-display text-[0.68rem] font-bold uppercase tracking-[0.12em] transition-colors ${
+            aria-pressed={period === p}
+            className={`min-h-10 whitespace-nowrap rounded-sm border px-4 py-2 font-display text-[0.68rem] font-bold uppercase tracking-[0.12em] transition-colors ${
               period === p ? "border-accent text-accent-strong" : "border-edge text-ink-muted hover:text-ink"
             }`}
           >
@@ -174,13 +177,17 @@ export function PeonStats() {
       {!stats && !error && <div className="loading-spinner" />}
       {stats && (
         <>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <StatPlate value={fmtCount(stats.sessionCount)} label={t("peon.stats.sessions")} />
-            <StatPlate value={fmtCount(stats.totalOutputTokens)} label={t("peon.stats.outputTokens")} tone="warning" />
-            <StatPlate value={fmtDuration(stats.totalDurationMs)} label={t("peon.stats.duration")} tone="ink" />
+            <StatPlate value={fmtCount(stats.processedTokens ?? stats.totalTokens)} label={t("peon.stats.processedTokens")} tone="warning" />
+            <StatPlate value={fmtDuration(stats.totalDurationMs)} label={t("peon.stats.agentRuntime")} tone="ink" />
           </div>
 
           {missingUsage > 0 && <p className="font-mono text-xs text-ink-faint">{t("peon.stats.missingUsage", { n: missingUsage })}</p>}
+          <p className="font-mono text-xs text-ink-faint">{t("peon.stats.usageExplanation")}</p>
+          {((stats.usagePartialTurns ?? 0) > 0 || (stats.usageLegacyTurns ?? 0) > 0) &&
+            <p className="font-mono text-xs text-ink-faint">{t("peon.stats.partialUsage")}</p>}
+          {stats.timeZone && <p className="font-mono text-xs text-ink-faint">{t("peon.stats.timeZone", { zone: stats.timeZone })}</p>}
 
           {hasBreakdown && (
             <div className="flex flex-wrap gap-x-4 gap-y-1 font-mono text-xs text-ink-muted">
@@ -290,6 +297,54 @@ function UsageBreakdown({
   );
 }
 
+export function ModelUsageDetails({ model, providerTokens }: { model: ByModel; providerTokens?: number }) {
+  const t = useT();
+  const buckets = [
+    { key: "ordinaryInput", value: model.inputTokens, color: "bg-sky-400" },
+    { key: "cacheRead", value: model.cacheReadTokens, color: "bg-emerald-400" },
+    { key: "cacheWrite", value: model.cacheCreationTokens, color: "bg-violet-400" },
+    { key: "outputTokens", value: model.outputTokens, color: "bg-accent" },
+  ];
+  const completeBreakdown = model.cacheBreakdownComplete !== false && buckets.every((bucket) => typeof bucket.value === "number" && Number.isFinite(bucket.value));
+  const input = (model.inputTokens ?? 0) + (model.cacheReadTokens ?? 0) + (model.cacheCreationTokens ?? 0);
+  const cacheRate = completeBreakdown && input > 0 ? (model.cacheReadTokens ?? 0) / input * 100 : null;
+  const share = providerTokens && typeof model.totalTokens === "number" ? model.totalTokens / providerTokens * 100 : null;
+  const quality = (model.usagePartialTurns ?? 0) > 0 ? "partial"
+    : model.usageLegacyTurns === undefined || model.usageLegacyTurns > 0 ? "legacy" : "reported";
+  return (
+    <div className="min-w-0 rounded-md border border-edge bg-surface-raised/40 p-3 sm:p-4">
+      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+        <div className="min-w-0 flex-1 basis-36">
+          <div className="break-all font-mono text-xs font-semibold text-ink">{model.model ?? "—"}</div>
+          <div className="mt-1 font-mono text-[0.65rem] text-ink-faint">{t(`peon.stats.quality.${quality}`)}</div>
+        </div>
+        <div className="shrink-0 text-right">
+          <div className="font-display text-lg font-semibold tabular-nums text-accent-strong">{fmtCount(model.totalTokens)}</div>
+          {share !== null && <div className="font-mono text-[0.6rem] text-ink-faint">{share.toFixed(1)}% {t("peon.stats.providerShare")}</div>}
+        </div>
+      </div>
+      {completeBreakdown && (model.totalTokens ?? 0) > 0 && (
+        <div className="mt-3 flex h-1.5 overflow-hidden rounded-full bg-surface-raised" aria-hidden="true">
+          {buckets.map((bucket) => <span key={bucket.key} className={bucket.color}
+            style={{ width: `${Math.max(0, Math.min(100, (bucket.value ?? 0) / model.totalTokens! * 100))}%` }} />)}
+        </div>
+      )}
+      <dl className="mt-3 grid grid-cols-1 gap-x-4 gap-y-2 min-[400px]:grid-cols-2">
+        {buckets.map((bucket) => <div key={bucket.key} className="flex min-w-0 items-center justify-between gap-2 font-mono text-[0.65rem]">
+          <dt className="flex min-w-0 items-center gap-1.5 text-ink-faint"><span className={`h-1.5 w-1.5 shrink-0 rounded-full ${bucket.color}`} />{t(`peon.stats.${bucket.key}`)}</dt>
+          <dd className="shrink-0 tabular-nums text-ink-muted">{fmtCount(bucket.value)}</dd>
+        </div>)}
+      </dl>
+      {cacheRate !== null && <div className="mt-3 flex flex-wrap justify-between gap-2 border-t border-edge pt-2 font-mono text-[0.65rem]">
+        <span className="text-ink-faint">{t("peon.stats.cacheEfficiency")}</span>
+        <span className="text-emerald-400">{cacheRate.toFixed(1)}%</span>
+      </div>}
+      {model.cacheBreakdownComplete === false && <p className="mt-2 font-mono text-[0.65rem] text-ink-faint">{t("peon.stats.cacheIncomplete")}</p>}
+      {typeof model.reasoningOutputTokens === "number" && <p className="mt-2 font-mono text-[0.65rem] text-ink-faint">{t("peon.stats.reasoningSubset", { n: fmtCount(model.reasoningOutputTokens) })}</p>}
+    </div>
+  );
+}
+
 function ProviderUsage({
   provider,
   quota,
@@ -312,7 +367,7 @@ function ProviderUsage({
   const providerName = t(`peon.quota.provider.${provider}`);
   const recordedTokens = sum(models, "totalTokens");
   const recordedDuration = sum(models, "totalDurationMs");
-  const quotaError = quota.error ?? (quota.data?.status === "error" ? quota.data.error : null);
+  const quotaError = quota.error ?? quota.data?.error ?? null;
   const refreshing = quota.loading || capabilities.loading;
 
   // Peon has no authoritative "this CLI is installed" signal — both drivers report
@@ -372,18 +427,15 @@ function ProviderUsage({
         <div className="mb-2 font-display text-[0.6rem] uppercase tracking-[0.16em] text-ink-muted">{t("peon.quota.recorded")}</div>
         <div className="grid grid-cols-2 gap-2">
           <StatPlate value={fmtCount(recordedTokens)} label={t("peon.quota.tokens")} tone="warning" />
-          <StatPlate value={fmtDuration(recordedDuration)} label={t("peon.stats.duration")} tone="ink" />
+          <StatPlate value={fmtDuration(recordedDuration)} label={t("peon.stats.agentRuntime")} tone="ink" />
         </div>
         {models.length === 0 ? (
           <p className="mt-3 font-mono text-xs text-ink-faint">{t("peon.quota.noRecorded")}</p>
         ) : (
-          <ul className="mt-3 space-y-2">
+          <ul className="mt-4 space-y-3">
             {models.map((model, index) => (
-              <li key={`${model.model ?? "unknown"}-${index}`} className="flex items-center justify-between gap-3 font-mono text-xs">
-                <span className="min-w-0 truncate text-ink">{model.model ?? "—"}</span>
-                <span className="shrink-0 text-ink-faint">
-                  {fmtCount(model.totalTokens)} · {fmtDuration(model.totalDurationMs)}
-                </span>
+              <li key={`${model.model ?? "unknown"}-${index}`}>
+                <ModelUsageDetails model={model} providerTokens={recordedTokens} />
               </li>
             ))}
           </ul>

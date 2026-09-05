@@ -1,6 +1,6 @@
 {
   "name": "@rnm-dev/peon",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "peon — autonomous coding agent daemon and CLI, managed through Overseer",
   "license": "MIT",
   "author": "RNM Dev",
@@ -39,7 +39,7 @@
     "pretest": "npm run check:architecture-imports",
     "typecheck": "tsc --noEmit",
     "test": "node scripts/run-tests.mjs",
-    "test:release": "PEON_TEST_CONCURRENCY=1 npm test",
+    "test:release": "npm test",
     "test:architecture-imports": "node --test scripts/check-architecture-imports.test.mjs",
     "benchmark:transcript-pagination": "node --expose-gc --import tsx scripts/benchmark-transcript-pagination.ts",
     "compile": "tsc -p tsconfig.json && node scripts/clean-obsolete-dist.mjs && node scripts/fixCliShebang.mjs",

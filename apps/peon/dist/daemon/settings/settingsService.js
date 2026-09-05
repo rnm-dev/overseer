@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
 import { canonicalModel, isModelForAgent, listConfiguredAgents, narrowNewSessionAgent, narrowReasoningEffort, providerDefaultModel, reasoningEffortsForModel, } from "../providers/modelCatalog.js";
-import { SettingsStore } from "./settingsStore.js";
+import { MAX_MAX_BUDGET_USD, MAX_MAX_TURNS, MAX_TASK_TIMEOUT_MS, MIN_MAX_TURNS, MIN_TASK_TIMEOUT_MS, SettingsStore, } from "./settingsStore.js";
 import { parseListenAddress } from "../../shared/listenAddress.js";
 function parseModelValue(value) {
     return typeof value === "string" || value === null || value === undefined ? value : undefined;
@@ -59,6 +59,9 @@ export class SettingsService extends EventEmitter {
             aiDefaultModel: s.ai.defaultModel ?? null,
             aiDefaultReasoningEffort: s.ai.defaultReasoningEffort ?? null,
             soul: s.ai.soul || null,
+            maxTurns: s.maxTurns,
+            taskTimeoutMs: s.taskTimeoutMs,
+            maxBudgetUsd: s.maxBudgetUsd,
         };
     }
     getDaemonConfigurationView(settings = this.get()) {
@@ -70,6 +73,9 @@ export class SettingsService extends EventEmitter {
             aiDefaultModel: settings.ai.defaultModel ?? null,
             aiDefaultReasoningEffort: settings.ai.defaultReasoningEffort ?? null,
             soul: settings.ai.soul || null,
+            maxTurns: settings.maxTurns,
+            taskTimeoutMs: settings.taskTimeoutMs,
+            maxBudgetUsd: settings.maxBudgetUsd,
         };
     }
     patchDaemonConfiguration(body) {
@@ -94,6 +100,7 @@ export class SettingsService extends EventEmitter {
         const allowed = new Set([
             "name", "defaultAgent", "fileTransferRoot", "heartbeatIntervalMs",
             "aiDefaultModel", "aiDefaultReasoningEffort", "soul",
+            "maxTurns", "taskTimeoutMs", "maxBudgetUsd",
         ]);
         const unknown = Object.keys(value).find((key) => !allowed.has(key));
         if (unknown)
@@ -128,7 +135,7 @@ export class SettingsService extends EventEmitter {
         // secret, the old response let a stale Settings tab send an obsolete token
         // back with an unrelated edit and silently break enrollment.
         const safe = { ...s };
-        for (const key of ["overseerToken", "pairingSecret", "strongholdToken"])
+        for (const key of ["overseerToken", "pairingSecret", "strongholdToken", "settingsDefaultsVersion"])
             delete safe[key];
         return {
             ...safe,
@@ -189,6 +196,7 @@ export class SettingsService extends EventEmitter {
             }
             patch.heartbeatIntervalMs = heartbeatIntervalMs;
         }
+        this.validateExecutionSafety(body, patch);
         if ("soul" in body) {
             const soul = body.soul;
             if (typeof soul !== "string")
@@ -246,11 +254,15 @@ export class SettingsService extends EventEmitter {
         if (managedCredential) {
             this.throwBadRequest(`${managedCredential} is managed by enrollment and cannot be changed through general settings`);
         }
+        if ("settingsDefaultsVersion" in body) {
+            this.throwBadRequest("settingsDefaultsVersion is managed internally and cannot be changed through general settings");
+        }
         const patch = { ...body };
         // Rolling upgrades may still submit fields removed from the daemon.
         delete patch.fleetMode;
         delete patch.publicDashboardUrl;
         delete patch.bindHost;
+        this.validateExecutionSafety(body, patch);
         if ("listenAddress" in body) {
             if (typeof body.listenAddress !== "string") {
                 this.throwBadRequest("listenAddress must be a string");
@@ -342,6 +354,26 @@ export class SettingsService extends EventEmitter {
         };
         return patch;
     }
+    validateExecutionSafety(body, patch) {
+        if ("maxTurns" in body) {
+            if (!Number.isSafeInteger(body.maxTurns) || body.maxTurns < MIN_MAX_TURNS || body.maxTurns > MAX_MAX_TURNS) {
+                this.throwBadRequest(`maxTurns must be an integer between ${MIN_MAX_TURNS} and ${MAX_MAX_TURNS}`);
+            }
+            patch.maxTurns = body.maxTurns;
+        }
+        if ("taskTimeoutMs" in body) {
+            if (!Number.isSafeInteger(body.taskTimeoutMs) || body.taskTimeoutMs < MIN_TASK_TIMEOUT_MS || body.taskTimeoutMs > MAX_TASK_TIMEOUT_MS) {
+                this.throwBadRequest(`taskTimeoutMs must be an integer between ${MIN_TASK_TIMEOUT_MS} and ${MAX_TASK_TIMEOUT_MS}`);
+            }
+            patch.taskTimeoutMs = body.taskTimeoutMs;
+        }
+        if ("maxBudgetUsd" in body) {
+            if (typeof body.maxBudgetUsd !== "number" || !Number.isFinite(body.maxBudgetUsd) || body.maxBudgetUsd < 0 || body.maxBudgetUsd > MAX_MAX_BUDGET_USD) {
+                this.throwBadRequest(`maxBudgetUsd must be a number between 0 and ${MAX_MAX_BUDGET_USD}`);
+            }
+            patch.maxBudgetUsd = body.maxBudgetUsd;
+        }
+    }
     getFleetSettingsViewFrom(settings) {
         return {
             name: settings.name || null,
@@ -352,6 +384,9 @@ export class SettingsService extends EventEmitter {
             aiDefaultModel: settings.ai.defaultModel ?? null,
             aiDefaultReasoningEffort: settings.ai.defaultReasoningEffort ?? null,
             soul: settings.ai.soul || null,
+            maxTurns: settings.maxTurns,
+            taskTimeoutMs: settings.taskTimeoutMs,
+            maxBudgetUsd: settings.maxBudgetUsd,
         };
     }
     throwBadRequest(error) {

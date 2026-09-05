@@ -107,6 +107,7 @@ async function storeSession(tx: Transaction, workspaceId: string, peonId: string
     preview: summary.lastMessagePreview ?? summary.promptPreview,
     author: summary.initiator,
     outcome: summary.outcome,
+    terminalReason: summary.terminalReason,
     startedAt: summary.startedAt,
     endedAt: summary.endedAt,
     lastActivityAt: summary.lastActivityAt,

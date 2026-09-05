@@ -4,6 +4,103 @@ export const DEFAULT_MODEL = "claude-sonnet-5";
 function allDrivers() {
     return listAgentDrivers();
 }
+const MODEL_CATALOG_TTL_MS = 5 * 60_000;
+const MODEL_CATALOG_FAILURE_TTL_MS = 30_000;
+const cachedCatalogs = new Map();
+const catalogRefreshes = new Map();
+function safeError(error) {
+    return error instanceof Error ? error.message : String(error);
+}
+function runtimeModels(agent) {
+    return cachedCatalogs.get(agent)?.models ?? null;
+}
+function modelsFor(agent) {
+    const driver = getAgentDriver(agent);
+    return runtimeModels(agent) ?? driver?.models ?? [];
+}
+function fromModels(models, value) {
+    return typeof value === "string"
+        ? models.find((model) => model.id === value || model.alias === value)?.id
+        : undefined;
+}
+function effortForModels(models, value, model) {
+    const selected = models.find((candidate) => candidate.id === fromModels(models, model))
+        ?? models.find((candidate) => candidate.default)
+        ?? models[0];
+    return selected?.reasoningEfforts?.some((item) => item.id === value) ? value : undefined;
+}
+function providerEfforts(agent) {
+    const live = runtimeModels(agent);
+    const driver = getAgentDriver(agent);
+    if (!live)
+        return driver?.reasoningEfforts;
+    const defaultEffort = (live.find((model) => model.default) ?? live[0])
+        ?.reasoningEfforts?.find((item) => item.default)?.id;
+    const seen = new Set();
+    const efforts = live.flatMap((model) => model.reasoningEfforts ?? []).flatMap((item) => {
+        if (seen.has(item.id))
+            return [];
+        seen.add(item.id);
+        return [{ id: item.id, label: item.label, ...(item.id === defaultEffort ? { default: true } : {}) }];
+    });
+    return efforts.length ? efforts : undefined;
+}
+function catalogMetadata(agent) {
+    const cached = cachedCatalogs.get(agent);
+    return {
+        catalogSource: cached?.models ? (cached.error ? "stale-cli" : "cli") : "fallback",
+        catalogUpdatedAt: cached?.updatedAt ?? null,
+        catalogError: cached?.error ?? null,
+    };
+}
+export function invalidateAgentModelCatalog(agent) {
+    if (agent)
+        cachedCatalogs.delete(agent);
+    else
+        cachedCatalogs.clear();
+}
+export async function refreshAgentModelCatalog(agent, command, force = false) {
+    const driver = getAgentDriver(agent);
+    const service = driver?.services.modelCatalog;
+    if (!driver || !service)
+        return;
+    const current = cachedCatalogs.get(agent);
+    const ttl = current?.error ? MODEL_CATALOG_FAILURE_TTL_MS : MODEL_CATALOG_TTL_MS;
+    if (!force && current && Date.now() - current.checkedAt < ttl)
+        return;
+    const active = catalogRefreshes.get(agent);
+    if (active)
+        return active;
+    const refresh = (async () => {
+        try {
+            const models = await service.discover(command);
+            if (!models.length)
+                throw new Error(`${driver.label} CLI returned an empty model catalog`);
+            const now = Date.now();
+            cachedCatalogs.set(agent, { models: models.map((model) => ({ ...model })), checkedAt: now, updatedAt: now, error: null });
+        }
+        catch (error) {
+            const previous = cachedCatalogs.get(agent);
+            cachedCatalogs.set(agent, {
+                models: previous?.models ?? null,
+                checkedAt: Date.now(),
+                updatedAt: previous?.updatedAt ?? null,
+                error: safeError(error),
+            });
+        }
+    })();
+    catalogRefreshes.set(agent, refresh);
+    try {
+        await refresh;
+    }
+    finally {
+        if (catalogRefreshes.get(agent) === refresh)
+            catalogRefreshes.delete(agent);
+    }
+}
+export async function refreshAgentModelCatalogs(current, force = false) {
+    await Promise.all(listAgentDrivers({ visible: true, available: true }).map((driver) => refreshAgentModelCatalog(driver.id, driver.command(current), force)));
+}
 function publicCapabilities(driver) {
     return { ...driver.capabilities };
 }
@@ -12,11 +109,12 @@ export function codingAgents() {
 }
 export function aiProviders() {
     return allDrivers().map((driver) => ({
-        agent: driver.id, label: driver.label, models: driver.models,
-        reasoningEfforts: driver.reasoningEfforts, available: driver.available(),
+        agent: driver.id, label: driver.label, models: modelsFor(driver.id),
+        reasoningEfforts: providerEfforts(driver.id), available: driver.available(),
         visible: driver.visible, legacy: driver.legacy, capabilities: publicCapabilities(driver),
         status: driver.services.status?.() ?? null,
         defaultModel: providerDefaultModel(driver.id),
+        ...catalogMetadata(driver.id),
     }));
 }
 export function narrowAgent(value) {
@@ -28,27 +126,30 @@ export function narrowNewSessionAgent(value) {
 }
 export function providerDefaultModel(agent) {
     const driver = getAgentDriver(agent);
-    const model = driver?.models.find((candidate) => candidate.default) ?? driver?.models[0];
+    const models = modelsFor(agent);
+    const model = models.find((candidate) => candidate.default) ?? models[0];
     if (!model)
         throw new Error(`no model catalog for agent ${agent}`);
     return model.id;
 }
 export function canonicalModel(agent, value) {
-    return getAgentDriver(agent)?.canonicalModel(value);
+    const live = runtimeModels(agent);
+    return live ? fromModels(live, value) : getAgentDriver(agent)?.canonicalModel(value);
 }
 export function isModelForAgent(agent, value) {
     return canonicalModel(agent, value) !== undefined;
 }
 export function modelCatalog(defaultAgent, defaultModel, defaultReasoningEffort = null) {
     return listAgentDrivers({ visible: true, available: true }).map((driver) => {
+        const driverModels = modelsFor(driver.id);
         const selected = driver.id === defaultAgent
-            ? (defaultModel && driver.canonicalModel(defaultModel)) || providerDefaultModel(defaultAgent)
+            ? (defaultModel && canonicalModel(driver.id, defaultModel)) || providerDefaultModel(defaultAgent)
             : null;
-        const known = selected ? driver.models.some((model) => model.id === selected) : true;
+        const known = selected ? driverModels.some((model) => model.id === selected) : true;
         const configuredEffort = driver.id === defaultAgent
-            ? driver.reasoningEffort(defaultReasoningEffort, selected)
+            ? narrowReasoningEffort(defaultReasoningEffort, driver.id, selected)
             : undefined;
-        const models = driver.models.map(({ default: _default, ...model }) => {
+        const models = driverModels.map(({ default: _default, ...model }) => {
             const reasoningEfforts = model.reasoningEfforts?.map(({ default: _effortDefault, ...item }) => configuredEffort && model.id === selected && item.id === configuredEffort
                 ? { ...item, default: true }
                 : configuredEffort && model.id === selected
@@ -66,11 +167,12 @@ export function modelCatalog(defaultAgent, defaultModel, defaultReasoningEffort 
             models.push({ id: selected, label: selected, default: true });
         return {
             agent: driver.id, label: driver.label, models,
-            reasoningEfforts: driver.reasoningEfforts?.map((item) => ({ ...item })),
+            reasoningEfforts: providerEfforts(driver.id)?.map((item) => ({ ...item })),
             available: driver.available(), visible: driver.visible, legacy: driver.legacy,
             capabilities: publicCapabilities(driver),
             status: driver.services.status?.() ?? null,
             defaultModel: providerDefaultModel(driver.id),
+            ...catalogMetadata(driver.id),
         };
     });
 }
@@ -78,7 +180,7 @@ export function listConfiguredAgents(options = {}) {
     return listAgentDrivers(options).map((driver) => driver.id);
 }
 export function isValidModel(value) {
-    return getAgentDriver("claude-code")?.canonicalModel(value) !== undefined;
+    return canonicalModel("claude-code", value) !== undefined;
 }
 export function narrowModel(value, agent = "claude-code") {
     return canonicalModel(agent, value);
@@ -87,22 +189,24 @@ export function resolveModel(agent, turnModel, sessionModel, savedAgent, savedMo
     const driver = getAgentDriver(agent);
     if (!driver)
         throw new Error(`Agent driver "${agent}" is not registered`);
-    return driver.canonicalModel(turnModel) ?? driver.canonicalModel(sessionModel)
-        ?? (savedAgent === agent ? driver.canonicalModel(savedModel) : undefined) ?? providerDefaultModel(agent);
+    return canonicalModel(agent, turnModel) ?? canonicalModel(agent, sessionModel)
+        ?? (savedAgent === agent ? canonicalModel(agent, savedModel) : undefined) ?? providerDefaultModel(agent);
 }
 export function resolveReasoningEffort(agent, turnEffort, sessionEffort, savedAgent, savedEffort, model) {
     const driver = getAgentDriver(agent);
     if (!driver)
         throw new Error(`Agent driver "${agent}" is not registered`);
-    return driver.reasoningEffort(turnEffort, model)
-        ?? driver.reasoningEffort(sessionEffort, model)
-        ?? (savedAgent === agent ? driver.reasoningEffort(savedEffort, model) : undefined);
+    return narrowReasoningEffort(turnEffort, agent, model)
+        ?? narrowReasoningEffort(sessionEffort, agent, model)
+        ?? (savedAgent === agent ? narrowReasoningEffort(savedEffort, agent, model) : undefined);
 }
 export function reasoningEffortsForModel(agent, model) {
     const driver = getAgentDriver(agent);
-    const canonical = driver?.canonicalModel(model) ?? driver?.models.find((candidate) => candidate.default)?.id;
-    return driver?.models.find((candidate) => candidate.id === canonical)?.reasoningEfforts?.map((item) => ({ ...item })) ?? [];
+    const models = modelsFor(agent);
+    const canonical = canonicalModel(agent, model) ?? models.find((candidate) => candidate.default)?.id;
+    return driver ? models.find((candidate) => candidate.id === canonical)?.reasoningEfforts?.map((item) => ({ ...item })) ?? [] : [];
 }
 export function narrowReasoningEffort(value, agent = "claude-code", model) {
-    return getAgentDriver(agent)?.reasoningEffort(value, model);
+    const live = runtimeModels(agent);
+    return live ? effortForModels(live, value, model) : getAgentDriver(agent)?.reasoningEffort(value, model);
 }

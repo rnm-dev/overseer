@@ -1,118 +1,34 @@
-import { canonicalUsageProvider, normalizeTokenUsage, TOKEN_USAGE_SEMANTICS_VERSION, } from "./tokenUsage.js";
-// Calendar windows in local server time: day/yesterday are midnight-bounded,
-// week starts Monday, and month starts on the first.
-function periodRange(period) {
-    const now = new Date();
-    const midnight = new Date(now);
-    midnight.setHours(0, 0, 0, 0);
-    const todayStart = midnight.getTime();
-    switch (period) {
-        case "day": return { start: todayStart, end: now.getTime() };
-        case "yesterday": return { start: todayStart - 86_400_000, end: todayStart };
-        case "week": {
-            const mondayOffset = (midnight.getDay() + 6) % 7;
-            return { start: todayStart - mondayOffset * 86_400_000, end: now.getTime() };
-        }
-        case "month":
-            return { start: new Date(midnight.getFullYear(), midnight.getMonth(), 1).getTime(), end: now.getTime() };
-    }
-}
-export function statsForPeriod(records, period, sessionsSizeBytes = 0) {
-    const { start, end } = periodRange(period);
-    const stats = {
-        semanticsVersion: TOKEN_USAGE_SEMANTICS_VERSION,
-        period,
-        rangeStart: start,
-        rangeEnd: end,
-        sessionsSizeBytes,
-        sessionCount: 0,
-        outcomeCounts: { success: 0, failure: 0, needs_human: 0, none: 0, running: 0 },
-        totalInputTokens: 0,
-        totalOutputTokens: 0,
-        totalCacheCreationTokens: 0,
-        totalCacheReadTokens: 0,
-        totalTokens: 0,
-        processedTokens: 0,
-        totalDurationMs: 0,
-        totalCostUsd: 0,
-        sessionsWithUsage: 0,
-        sessionsMissingUsage: 0,
-        usageCoveragePercent: 0,
-        usageRejections: {},
-        byModel: [],
+import { canonicalUsageProvider } from "./tokenUsage.js";
+import { analyticsForSessions, parseSessionAnalyticsQuery } from "./sessionAnalytics.js";
+// One time authority and accounting path for headline, provider and user/project
+// panels. Session-shaped metrics still describe sessions started in this window.
+export function statsForPeriod(records, period, sessionsSizeBytes = 0, now = Date.now(), transcriptReader) {
+    const query = parseSessionAnalyticsQuery({ period, groupBy: "agent,model" }, now);
+    const analytics = analyticsForSessions(records, query, { totalBytes: sessionsSizeBytes, bySessionId: new Map() }, now, transcriptReader);
+    const totals = analytics.totals;
+    return {
+        semanticsVersion: analytics.semanticsVersion, period,
+        rangeStart: query.from, rangeEnd: query.to, timeZone: "UTC",
+        sessionsSizeBytes, sessionCount: totals.sessionCount,
+        outcomeCounts: { success: totals.successCount, failure: totals.failureCount,
+            needs_human: totals.needsHumanCount, none: Math.max(0, totals.noOutcomeCount - totals.runningCount), running: totals.runningCount },
+        totalInputTokens: totals.uncachedInputTokens,
+        totalOutputTokens: totals.outputTokens, totalCacheCreationTokens: totals.cacheWriteInputTokens,
+        totalCacheReadTokens: totals.cachedInputTokens,
+        processedTokens: totals.processedTokens, totalTokens: totals.processedTokens,
+        totalDurationMs: totals.providerDurationMs, totalCostUsd: totals.totalCostUsd,
+        sessionsWithUsage: totals.sessionsWithUsage, sessionsMissingUsage: totals.sessionsMissingUsage,
+        usageCoveragePercent: totals.usageCoveragePercent, usageRejections: totals.usageRejections,
+        usagePartialTurns: totals.usagePartialTurns, usageLegacyTurns: totals.usageLegacyTurns,
+        attributionQuality: totals.attributionQuality,
+        byModel: analytics.rows.filter((row) => row.sessionCount > 0 || row.processedTokens > 0 || row.providerDurationMs > 0 || row.totalCostUsd > 0).map((row) => ({
+            agent: canonicalUsageProvider(row.agent), model: row.model ?? "unknown", sessionCount: row.sessionCount,
+            inputTokens: row.uncachedInputTokens, outputTokens: row.outputTokens,
+            cacheCreationTokens: row.cacheWriteInputTokens, cacheReadTokens: row.cachedInputTokens,
+            totalTokens: row.processedTokens, processedTokens: row.processedTokens,
+            totalDurationMs: row.providerDurationMs, totalCostUsd: row.totalCostUsd,
+            usagePartialTurns: row.usagePartialTurns, usageLegacyTurns: row.usageLegacyTurns,
+            cacheBreakdownComplete: row.cacheBreakdownComplete, reasoningOutputTokens: row.reasoningOutputTokens,
+        })).sort((a, b) => b.totalTokens - a.totalTokens),
     };
-    const byModel = new Map();
-    for (const record of records) {
-        if (record.startedAt < start || record.startedAt >= end)
-            continue;
-        stats.sessionCount += 1;
-        for (const [model, usage] of Object.entries(record.usageByModel ?? {})) {
-            const agent = canonicalUsageProvider(record.agent);
-            const key = `${agent}\0${model}`;
-            const row = byModel.get(key) ?? {
-                agent,
-                model,
-                sessionCount: 0,
-                inputTokens: 0,
-                outputTokens: 0,
-                cacheCreationTokens: 0,
-                cacheReadTokens: 0,
-                totalTokens: 0,
-                processedTokens: 0,
-                totalDurationMs: 0,
-                totalCostUsd: 0,
-            };
-            row.sessionCount += 1;
-            row.inputTokens += usage.inputTokens ?? 0;
-            row.outputTokens += usage.outputTokens ?? 0;
-            row.cacheCreationTokens += usage.cacheCreationInputTokens ?? 0;
-            row.cacheReadTokens += usage.cacheReadInputTokens ?? 0;
-            const canonical = normalizeTokenUsage(record.agent, usage);
-            if (canonical) {
-                row.totalTokens += canonical.processedTokens;
-                row.processedTokens += canonical.processedTokens;
-            }
-            row.totalDurationMs += usage.durationMs ?? 0;
-            row.totalCostUsd += usage.totalCostUsd ?? 0;
-            byModel.set(key, row);
-        }
-        if (record.status === "running")
-            stats.outcomeCounts.running += 1;
-        else if (record.outcome === null)
-            stats.outcomeCounts.none += 1;
-        else
-            stats.outcomeCounts[record.outcome.result] += 1;
-        const canonical = normalizeTokenUsage(record.agent, record.usage, ({ reason }) => {
-            stats.usageRejections[reason] = (stats.usageRejections[reason] ?? 0) + 1;
-        });
-        if (!canonical) {
-            stats.sessionsMissingUsage += 1;
-            continue;
-        }
-        stats.sessionsWithUsage += 1;
-        const usage = record.usage;
-        if (usage.inputTokens !== null) {
-            stats.totalInputTokens += usage.inputTokens;
-        }
-        if (usage.outputTokens !== null) {
-            stats.totalOutputTokens += usage.outputTokens;
-        }
-        if (usage.cacheCreationInputTokens !== null) {
-            stats.totalCacheCreationTokens += usage.cacheCreationInputTokens;
-        }
-        if (usage.cacheReadInputTokens !== null) {
-            stats.totalCacheReadTokens += usage.cacheReadInputTokens;
-        }
-        if (usage.durationMs !== null)
-            stats.totalDurationMs += usage.durationMs;
-        if (usage.totalCostUsd !== null)
-            stats.totalCostUsd += usage.totalCostUsd;
-        stats.processedTokens += canonical.processedTokens;
-        stats.totalTokens += canonical.processedTokens;
-    }
-    stats.usageCoveragePercent = stats.sessionCount === 0
-        ? 0
-        : (stats.sessionsWithUsage / stats.sessionCount) * 100;
-    stats.byModel = [...byModel.values()].sort((a, b) => b.totalCostUsd - a.totalCostUsd || b.totalTokens - a.totalTokens);
-    return stats;
 }

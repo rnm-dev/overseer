@@ -56,6 +56,8 @@ repository — that content lives here.
 - [sessions, turns and their control plane](sessions-and-turns.md) — session
   control over Fleet HTTP, branching, queue and steering, model/effort pinning,
   usage attribution and the Codex app-server driver.
+- [agent model catalog discovery](agent-model-catalog.md) — Codex app-server and
+  Claude SDK model/effort discovery, caching, validation and fallback.
 - [session catalog synchronization](session-list-sync.md) — the durable
   `session-catalog-v1` projection, running-state reconciliation and freshness.
 - [transcript history and live tail](transcript-sync.md) — HTTP pagination plus
@@ -87,6 +89,12 @@ repository — that content lives here.
   revision-fenced patches over Fleet HTTP.
 - [Peon update channel](peon-update-channel.md) — owner-authorized check,
   apply and status over Fleet HTTP; package metadata and bytes come from npm.
+- [Peon 1.0.2 preparation](peon-1.0.2-release.md) — accounting changes,
+  compatibility notes, verification and remaining publication gates.
+- [agent CLI updates](agent-cli-updates.md) — the driver-owned updater contract,
+  supported installation ownership and safe refusal rules for Codex and Claude.
+- [agent provider login](agent-provider-login.md) — separate Claude and Codex
+  login APIs, polling, ownership, expiration, and process cleanup.
 - [the account Peon runs as](peon-user-account.md) — why it is a regular login
   user, systemd linger, the macOS login caveat, and the environment the
   generated unit freezes at install time.

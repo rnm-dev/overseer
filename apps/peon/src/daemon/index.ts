@@ -12,6 +12,7 @@ import { shutdownAgentDriverRuntimes } from "./agents/index.js";
 import { controlListenerHosts, isLoopbackBindHost } from "./controlListeners.js";
 import { recoverUpdateOperation } from "./updates/updateOperations.js";
 import { parseListenAddress } from "../shared/listenAddress.js";
+import { refreshAgentModelCatalogs } from "./providers/modelCatalog.js";
 
 // Interface to bind. Defaults to all interfaces so enrolled Overseers can use
 // authenticated Fleet HTTP. `peon remote off` opts into loopback-only access.
@@ -37,6 +38,14 @@ const composition = createDaemonCompositionRoot();
 const app = createControlServer(composition.controlServerOptions);
 const { armoryRuntime, armoryStores } = composition;
 recoverUpdateOperation();
+// Discover provider-owned models and effort capabilities before accepting a
+// session. Each driver is isolated and falls back to its bundled catalog when
+// its installed CLI does not expose a compatible discovery surface.
+await refreshAgentModelCatalogs(configured);
+const modelCatalogRefreshTimer = setInterval(() => {
+  void refreshAgentModelCatalogs(settings.get());
+}, 60_000);
+modelCatalogRefreshTimer.unref();
 // Armory bindings are snapshotted when each agent turn starts. Finish the
 // initial reconciliation before accepting session requests so a session
 // created during daemon startup cannot permanently miss healthy package tools
@@ -130,6 +139,7 @@ if (watchdogIntervalMs) {
 }
 
 process.on("SIGTERM", () => {
+  clearInterval(modelCatalogRefreshTimer);
   sdNotify.stopping();
   peonRegistrar.stop();
   sessions.notifyShuttingDown();

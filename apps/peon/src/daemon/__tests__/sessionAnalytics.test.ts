@@ -12,6 +12,48 @@ import type { SessionRecord } from "../sessions/sessionTypes.js";
 const HOUR = 3_600_000;
 const NOW = Date.parse("2026-07-17T12:00:00.000Z");
 
+test("owned snapshots survive missing rollups, replace repeats and never recharge a branch", () => {
+  const session = record({ lastActivityAt: NOW - 100, usage: null });
+  const snapshot = { type: "system" as const, subtype: "usage", usage_run_id: "run-1", usage_session_id: session.id,
+    usage_author: "bob", usage_quality: "partial", usage: { input_tokens: 100, output_tokens: 10, cache_read_input_tokens: 50 }, createdAt: NOW - 1000 };
+  const final = { ...snapshot, type: "result" as const, usage_quality: "reported", usage: { input_tokens: 200, output_tokens: 20, cache_read_input_tokens: 100 }, createdAt: NOW - 100 };
+  const reader = () => [snapshot, snapshot, final, final];
+  const query = parseSessionAnalyticsQuery({ period: "day", groupBy: "user" }, NOW);
+  const result = analyticsForSessions([session], query, undefined, NOW, reader);
+  assert.equal(result.totals.processedTokens, 220);
+  assert.equal(result.rows.find((row) => row.user === "bob")?.processedTokens, 220);
+  assert.equal(result.totals.usagePartialTurns, 0);
+  const stats = statsForPeriod([session], "day", 0, NOW, reader);
+  assert.equal(stats.processedTokens, result.totals.processedTokens);
+  assert.equal(stats.rangeStart, result.range.from);
+  assert.equal(stats.timeZone, "UTC");
+  const branch = record({ id: "branch", usage: null, usageByModel: {}, lastActivityAt: NOW - 100 });
+  assert.equal(analyticsForSessions([branch], query, undefined, NOW, reader).totals.processedTokens, 0);
+});
+
+test("a cancelled invocation retains its last partial snapshot", () => {
+  const session = record({ lastActivityAt: NOW - 100, usage: null });
+  const reader = () => [{ type: "system" as const, subtype: "usage", usage_run_id: "cancelled", usage_session_id: session.id,
+    usage_quality: "partial", usage: { input_tokens: 100, output_tokens: 10 }, createdAt: NOW - 100 }];
+  const result = analyticsForSessions([session], parseSessionAnalyticsQuery({ period: "day" }, NOW), undefined, NOW, reader);
+  assert.equal(result.totals.processedTokens, 110);
+  assert.equal(result.totals.usagePartialTurns, 1);
+});
+
+test("actual model rows reconcile with headline usage including unallocated runtime", () => {
+  const session = record({ agent: "claude-code", lastActivityAt: NOW - 100, usage: null });
+  const reader = () => [{ type: "result" as const, usage_session_id: session.id, usage_run_id: "models", usage_quality: "reported",
+    usage: { input_tokens: 30, output_tokens: 10 }, duration_ms: 200,
+    usage_by_model: { opus: { input_tokens: 20, output_tokens: 5 }, haiku: { input_tokens: 10, output_tokens: 5 } }, createdAt: NOW - 100 }];
+  const result = analyticsForSessions([session], parseSessionAnalyticsQuery({ period: "day", groupBy: "model" }, NOW), undefined, NOW, reader);
+  assert.equal(result.totals.processedTokens, 40);
+  assert.equal(result.rows.reduce((sum, row) => sum + row.processedTokens, 0), 40);
+  assert.equal(result.rows.reduce((sum, row) => sum + row.providerDurationMs, 0), 200);
+  assert.equal(result.rows.find((row) => row.model === "haiku")?.processedTokens, 15);
+  const filtered = analyticsForSessions([session], parseSessionAnalyticsQuery({ period: "day", model: "haiku" }, NOW), undefined, NOW, reader);
+  assert.equal(filtered.totals.processedTokens, 15);
+});
+
 function record(overrides: Partial<SessionRecord> = {}): SessionRecord {
   return {
     id: "session-1",
@@ -142,7 +184,8 @@ test("analytics combines user, stable project identity, and time while preservin
   assert.equal(result.totals.totalTokens, 120);
   assert.equal(result.totals.processedTokens, 120);
   assert.equal(result.totals.cachedInputTokens, 50);
-  assert.equal(result.totals.uncachedInputTokens, 50);
+  assert.equal(result.totals.uncachedInputTokens, 45);
+  assert.equal(result.totals.cacheWriteInputTokens, 5);
   assert.equal(result.totals.providerDurationMs, 1_000);
   assert.equal(result.totals.wallDurationMs, HOUR + (NOW - Date.parse("2026-07-16T10:45:00.000Z")));
   assert.equal(result.totals.sessionsWithUsage, 1);

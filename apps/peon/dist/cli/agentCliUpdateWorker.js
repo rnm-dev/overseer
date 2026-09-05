@@ -13,6 +13,7 @@ if (!getAgentDriver(provider)?.services.cliUpdate)
 await runCliUpdateWorker({
     provider,
     command: value("--command"),
+    expectedRealExecutable: value("--real-command"),
     statePath: value("--state"),
     operationId: value("--operation"),
 });
