@@ -89,6 +89,68 @@ Widget _buildPeonSessionList(
 }
 
 void main() {
+  testWidgets('workspace members can create projects without owner access', (
+    tester,
+  ) async {
+    var createRequested = false;
+    bool? openedAsOwner;
+    final project = PeonProject(
+      workspaceId: 'rnm',
+      peonId: 'marat',
+      projectId: 'project-1',
+      key: 'member-project',
+      name: 'Member project',
+      activeCount: 0,
+      sessionCount: 0,
+      syncedAt: 1,
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          sessionRepositoryProvider.overrideWithValue(_FakeSessionRepository()),
+          projectRepositoryProvider.overrideWithValue(
+            _FakeProjectRepository([project]),
+          ),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.dark,
+          home: PeonHomePage(
+            workspace: const Workspace(id: 'rnm', name: 'RNM', role: 'member'),
+            peon: const Peon(
+              id: 'marat',
+              name: 'Marat',
+              online: true,
+              lastSeen: 100,
+              capabilities: <String>[],
+            ),
+            onNewProject: (_, {required workspaceId, required peonId}) {
+              createRequested = true;
+            },
+            onOpenProject:
+                (
+                  _, {
+                  required workspaceId,
+                  required peonId,
+                  required project,
+                  required online,
+                  required isOwner,
+                }) {
+                  openedAsOwner = isOwner;
+                },
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('new-project-action')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('new-project-action')));
+    expect(createRequested, isTrue);
+
+    await tester.tap(find.byKey(const Key('project-project-1')));
+    expect(openedAsOwner, isFalse);
+  });
+
   testWidgets('selected Peon tab follows a light theme', (tester) async {
     final theme = AppTheme.fromPackage(AppThemePackages.bundled[1]);
     await tester.pumpWidget(

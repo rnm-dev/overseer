@@ -145,7 +145,8 @@ class _PeonHomePageState extends ConsumerState<PeonHomePage> {
                           workspaceId: widget.workspace.id,
                           peonId: widget.peon.id,
                           online: widget.peon.online,
-                          canCreate:
+                          canCreate: true,
+                          isOwner:
                               widget.workspace.role == null ||
                               widget.workspace.role == 'owner',
                           onOpenProject: widget.onOpenProject,
@@ -215,6 +216,7 @@ class _ProjectsSection extends ConsumerStatefulWidget {
     required this.peonId,
     required this.online,
     required this.canCreate,
+    required this.isOwner,
     this.onOpenProject,
     this.onNewProject,
   });
@@ -223,6 +225,7 @@ class _ProjectsSection extends ConsumerStatefulWidget {
   final String peonId;
   final bool online;
   final bool canCreate;
+  final bool isOwner;
   final PeonOpenProject? onOpenProject;
   final PeonOpenNewProject? onNewProject;
 
@@ -329,7 +332,7 @@ class _ProjectsSectionState extends ConsumerState<_ProjectsSection> {
                   sessions: sessions.value?.sessions ?? const [],
                   activeSessions: activeSessions,
                   online: widget.online,
-                  isOwner: widget.canCreate,
+                  isOwner: widget.isOwner,
                   onOpenProject: widget.onOpenProject,
                   onRetry: ref
                       .read(projectsControllerProvider(scope).notifier)
