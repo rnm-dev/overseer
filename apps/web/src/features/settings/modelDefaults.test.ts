@@ -1,6 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { inheritedModelId, pickerEntries, type CatalogOption, type ModelsCatalog } from "./models";
+import {
+  defaultProviderForCatalog,
+  effectiveModelId,
+  inheritedModelId,
+  isReasoningEffortValid,
+  pickerDisplayName,
+  pickerEntries,
+  reasoningEffortsForEffectiveModel,
+  type CatalogOption,
+  type ModelsCatalog,
+} from "./models";
 
 const catalog = (defaultModel: string | null): ModelsCatalog => ({
   defaultAgent: "claude-code",
@@ -66,16 +76,22 @@ const entries = (value: string, opts: { defaultId?: string; allowClear?: boolean
     markDefault: (name) => `${name} (Default)`,
   });
 
-test("the inherited option is listed once rather than as a reset entry beside itself", () => {
-  assert.deepEqual(entries("", { defaultId: "gpt-5.6-sol" }).map((e) => e.label), ["5.6 Sol (Default)", "5.6 Terra"]);
+test("reset/inherit is separate from a named default choice", () => {
+  assert.deepEqual(entries("", { defaultId: "gpt-5.6-sol" }).map((e) => e.label), ["Default", "5.6 Sol (Default)", "5.6 Terra"]);
 });
 
-test("an empty value selects the inherited option, and picking it stays uncommitted", () => {
-  const [inherited, other] = entries("", { defaultId: "gpt-5.6-sol" });
-  assert.deepEqual([inherited.active, other.active], [true, false]);
-  assert.equal(inherited.name, "5.6 Sol");
-  assert.equal(inherited.value, "");
+test("an untouched picker displays its effective default while named rows remain explicit", () => {
+  const [reset, inherited, other] = entries("", { defaultId: "gpt-5.6-sol" });
+  assert.deepEqual([reset.active, inherited.active, other.active], [true, false, false]);
+  assert.equal(inherited.value, "gpt-5.6-sol");
   assert.equal(other.value, "gpt-5.6-terra");
+  assert.equal(pickerDisplayName(models, "", { defaultId: "gpt-5.6-sol", defaultLabel: "Default" }), "5.6 Sol");
+});
+
+test("the default named row remains explicit through A-B-A", () => {
+  assert.equal(entries("gpt-5.6-sol", { defaultId: "gpt-5.6-sol" })[1]?.value, "gpt-5.6-sol");
+  assert.deepEqual(entries("gpt-5.6-terra", { defaultId: "gpt-5.6-sol" }).map((entry) => entry.active), [false, false, true]);
+  assert.deepEqual(entries("gpt-5.6-sol", { defaultId: "gpt-5.6-sol" }).map((entry) => entry.active), [false, true, false]);
 });
 
 test("a picker with nothing to reset to pins the default it marks", () => {
@@ -84,7 +100,7 @@ test("a picker with nothing to reset to pins the default it marks", () => {
 });
 
 test("an explicit value wins over the inherited option", () => {
-  assert.deepEqual(entries("gpt-5.6-terra", { defaultId: "gpt-5.6-sol" }).map((e) => e.active), [false, true]);
+  assert.deepEqual(entries("gpt-5.6-terra", { defaultId: "gpt-5.6-sol" }).map((e) => e.active), [false, false, true]);
 });
 
 test("a picker with no known default keeps its plain reset entry", () => {
@@ -97,5 +113,29 @@ test("a picker with no known default keeps its plain reset entry", () => {
 test("an alias names the same default as the id", () => {
   const aliased: CatalogOption[] = [{ id: "claude-opus-5", label: "Opus 5", alias: "opus" }];
   const rows = pickerEntries(aliased, "", { defaultId: "opus", defaultLabel: "Default", allowClear: true, markDefault: (n) => `${n} (Default)` });
-  assert.deepEqual(rows.map((e) => e.label), ["Opus 5 (Default)"]);
+  assert.deepEqual(rows.map((e) => e.label), ["Default", "Opus 5 (Default)"]);
+  assert.equal(rows[1].value, "claude-opus-5");
+});
+
+test("a known but unavailable default agent does not silently become the first provider", () => {
+  const c = catalog(null);
+  c.defaultAgent = "removed-provider";
+  assert.equal(defaultProviderForCatalog(c), null);
+});
+
+test("unknown identities remain visible, and cannot borrow provider-wide effort choices", () => {
+  const codex = providerOf(catalog(null), "codex");
+  assert.equal(pickerDisplayName(models, "missing-model", { defaultLabel: "Default" }), "missing-model");
+  assert.equal(effectiveModelId(catalog(null), codex, "missing-model", null), "missing-model");
+  assert.deepEqual(reasoningEffortsForEffectiveModel(codex, "missing-model"), []);
+});
+
+test("a known model with an authoritative empty effort list rejects a restored effort", () => {
+  const provider = {
+    agent: "codex",
+    label: "Codex",
+    models: [{ id: "model-a", label: "Model A", reasoningEfforts: [] }],
+    reasoningEfforts: [{ id: "high", label: "High" }],
+  };
+  assert.equal(isReasoningEffortValid(provider, "model-a", "high"), false);
 });

@@ -84,6 +84,11 @@ The record also keeps `createdModel`/`createdReasoningEffort`, the immutable
 selection it was created with, so replaying an MCP spawn request still compares
 like with like.
 
+The clients keep unfinished choices in their drafts and inherit accepted
+values from Peon. Selecting a named option is explicit; resetting a draft
+override means inherit, not unpin the session. See the shared web and Flutter
+[model selection contract](client/model-selection.md).
+
 On the Codex app-server path a resumed thread answers with the model it was
 created with, and that answer **must never rename a turn whose `turn/start`
 carried an override** — otherwise the turn is reported, and billed in

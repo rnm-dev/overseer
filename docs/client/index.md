@@ -114,6 +114,8 @@ Feature documentation:
   runtime lifecycle;
 - [sessions.md](sessions.md): session cache, pagination, and live state;
 - [transcripts.md](transcripts.md): transcript cache, composer, queue, and tail;
+- [model-selection.md](model-selection.md): draft choices, inherited defaults,
+  accepted session selection, and model-specific reasoning effort;
 - [plugin-inquiries.md](plugin-inquiries.md): managed-plugin confirmation,
   recovery, terminal states, and security boundaries;
 - [voice-input.md](voice-input.md): native dictation capture, upload, composer

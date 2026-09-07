@@ -70,6 +70,33 @@ class ModelsCatalog {
   );
 }
 
+ModelProvider? providerForAgent(List<ModelProvider> providers, String? agent) =>
+    providers.where((provider) => provider.agent == agent).firstOrNull;
+
+String? effectiveCapability(
+  List<ModelCatalogOption> options, {
+  String? explicit,
+  String? inherited,
+}) =>
+    explicit ??
+    inherited ??
+    options.where((option) => option.isDefault).firstOrNull?.id;
+
+String? effectiveReasoningEffort(
+  List<ModelCatalogOption> options, {
+  String? explicit,
+  String? inherited,
+}) {
+  if (explicit != null) return explicit;
+  if (inherited != null &&
+      options.any(
+        (option) => option.id == inherited || option.alias == inherited,
+      )) {
+    return inherited;
+  }
+  return options.where((option) => option.isDefault).firstOrNull?.id;
+}
+
 List<ModelCatalogOption> catalogOptions(Object? value) => value is! List
     ? const []
     : value

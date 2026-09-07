@@ -143,8 +143,9 @@ tail receives bottom padding measured from the composer's current rendered
 height. The final message therefore remains fully visible at rest even when
 the composer grows to multiple lines.
 
-Text drafts are stored in `composer_drafts`, scoped by workspace, Peon, and
-session. Drafts render cache-first. On submit, the visible field clears
+Text and unfinished agent/model/effort choices are stored in `composer_drafts`,
+scoped by workspace, Peon, and session within the connection's database.
+Drafts render cache-first. On submit, the visible field clears
 immediately while the durable draft remains until the message has been
 accepted for delivery or durable retry; a rejected submission restores the
 visible text.
@@ -228,16 +229,12 @@ bottom sheet. It loads the Peon's provider capability catalog from `/models`,
 silently hides the control for Peons without the catalog, and retains overrides
 with a pending command across retries.
 
-That sheet lists one row per actual choice. Whatever an unset override falls
-back to — the model or effort the session itself pinned, or failing that the
-one the provider marks as its default — is listed once and marked
-`… · Default`, and picking it clears the override rather than pinning today's
-default. Only a provider that marks no default at all gets a separate plain
-`Default` row, because then there is nothing else to name. The rule lives in
-`capabilityChoices` (`lib/features/sessions/presentation/capability_choices.dart`)
-and mirrors the web dashboard's `pickerEntries`; both replaced surfaces that
-built the reset row and the option list independently and so offered the same
-model twice under two names.
+Named model and effort rows always make explicit choices. A separate reset
+entry clears the draft override and inherits the session or Peon selection;
+it does not clear the remote session's pin. Unfinished selections persist with
+the draft, while accepted commands keep their own immutable retry payload.
+The complete selection and freshness contract lives in
+[model selection](model-selection.md).
 
 ## Authoritative queue
 

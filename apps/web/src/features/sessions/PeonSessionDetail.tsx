@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type Dispatch, type MouseEvent, type SetStateAction } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate, useParams } from "react-router";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
@@ -9,7 +9,7 @@ import { useI18n } from "../../shared/i18n";
 import { useLiveSocket } from "../../realtime/liveSocket";
 import { useAuth } from "../auth/auth";
 import { usePeon } from "../fleet/context";
-import { defaultModelId, modelLabel, optionMatches, providerForAgent, providerForModel, reasoningEffortLabel, useModels } from "../settings/models";
+import { defaultModelId, modelLabel, providerForSession, reasoningEffortLabel, useModels } from "../settings/models";
 import {
   flattenEvents,
   gapPaddingClass,
@@ -48,6 +48,7 @@ import { inquiryInsertionIndex, PLUGIN_INQUIRY_CAPABILITY, usePluginInquiries, t
 import { indexedRunAssumptionDelay, shouldSeedIndexedRun } from "./runStatus";
 import { SessionSharingPanel } from "./SessionSharingPanel";
 import { activeMentionQuery, insertMention, mentionsRouteToPeople, remapMentions, removeMention, CONTEXT_MESSAGES_CAPABILITY, type ComposerMention, type MentionPrincipal } from "./contextMentions";
+import { clearComposerSelectionIfUnchanged, composerDraftKey, selectionAfterAcceptance, type ComposerSelectionDraft, useComposerSelectionDraft } from "./drafts";
 
 // author: Viktor
 // The transcript parsing/render pieces live in ./session/*; this file owns the
@@ -246,10 +247,27 @@ function PeonSessionDetailPage() {
   const [sessionReasoningEffort, setSessionReasoningEffort] = useState<string | null>(null);
   const [sessionPermissionMode, setSessionPermissionMode] = useState<string | null>(null);
   const [metaTick, setMetaTick] = useState(0);
-  // Pending explicit selections for the next follow-up. Peon persists a sent
-  // selection as the session default, so later turns keep it until switched.
-  const [overrideModel, setOverrideModel] = useState("");
-  const [overrideReasoningEffort, setOverrideReasoningEffort] = useState("");
+  // Pending selections live beside the composer text rather than becoming a
+  // browser-wide preference. Empty means inherit; it never asks Peon to unpin.
+  const selectionDraftKey = composerDraftKey(wsId, peon.peonId, sid);
+  const [selectionDraft, setSelectionDraft] = useComposerSelectionDraft(selectionDraftKey);
+  const overrideModel = selectionDraft.model;
+  const overrideReasoningEffort = selectionDraft.reasoningEffort;
+  const setOverrideModel = useCallback<Dispatch<SetStateAction<string>>>((action) => {
+    setSelectionDraft((current) => ({
+      ...current,
+      model: typeof action === "function" ? action(current.model) : action,
+    }));
+  }, [setSelectionDraft]);
+  const setOverrideReasoningEffort = useCallback<Dispatch<SetStateAction<string>>>((action) => {
+    setSelectionDraft((current) => ({
+      ...current,
+      reasoningEffort: typeof action === "function" ? action(current.reasoningEffort) : action,
+    }));
+  }, [setSelectionDraft]);
+  const onQueuedSelectionRestored = useCallback((queued: Pick<ComposerSelectionDraft, "model" | "reasoningEffort">) => {
+    setSelectionDraft((current) => ({ ...current, ...queued }));
+  }, [setSelectionDraft]);
   const [replyTo, setReplyTo] = useState<SelectedTextReply | null>(null);
   const [replyContextMenu, setReplyContextMenu] = useState<{
     replyTo: SelectedTextReply;
@@ -260,10 +278,9 @@ function PeonSessionDetailPage() {
     linkHref: string | null;
   } | null>(null);
   // React Router reuses this component when moving directly between sessions.
-  // Overrides belong to one composer/session and must never leak into the next.
+  // Reply metadata is route-local; model choices hydrate under their own draft
+  // key above and therefore cannot leak into the next session.
   useEffect(() => {
-    setOverrideModel("");
-    setOverrideReasoningEffort("");
     setReplyTo(null);
   }, [sessionKey]);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -307,6 +324,7 @@ function PeonSessionDetailPage() {
   const runningModel = activeRun.sessionKey === sessionKey ? activeRun.model : null;
   const runningReasoningEffort = activeRun.sessionKey === sessionKey ? activeRun.reasoningEffort : null;
   const runRevisionRef = useRef<Map<string, number>>(new Map());
+  const observedRunMetadataRefreshRef = useRef<Set<string>>(new Set());
   const metadataStatusRef = useRef<Map<string, string | null>>(new Map());
   // A Peon that refuses a cancel with SESSION_NOT_RUNNING has told us something
   // stronger than its own session record does: that record can be left at
@@ -348,6 +366,16 @@ function PeonSessionDetailPage() {
     }));
     onSessionRunningChange?.(peon.peonId, sid, next, Date.now());
   }, [onSessionRunningChange, peon.peonId, sessionKey, sid]);
+  const refreshMetadataForObservedRun = useCallback(() => {
+    if (observedRunMetadataRefreshRef.current.has(sessionKey)) return;
+    observedRunMetadataRefreshRef.current.add(sessionKey);
+    setMetaTick((value) => value + 1);
+  }, [sessionKey]);
+  const onLiveRunningChange = useCallback((next: boolean) => {
+    if (next) refreshMetadataForObservedRun();
+    else observedRunMetadataRefreshRef.current.delete(sessionKey);
+    setRunning(next);
+  }, [refreshMetadataForObservedRun, sessionKey, setRunning]);
   // Model and effort always travel together: they describe the same turn, and
   // the activity indicator reports both.
   const setRunningSelection = useCallback((model: string | null, reasoningEffort: string | null) => {
@@ -404,15 +432,15 @@ function PeonSessionDetailPage() {
   useEffect(() => { previewPinnedRef.current = previewPinned; }, [previewPinned]);
   const [composerNode, setComposerNode] = useState<HTMLDivElement | null>(null);
   const [composerHeight, setComposerHeight] = useState(COMPOSER_FOOTER_PADDING);
-  const sessionProvider = providerForAgent(catalog, sessionAgent) ?? (!sessionAgent ? (providerForAgent(catalog, catalog?.defaultAgent) ?? providerForModel(catalog, sessionModel ?? catalog?.defaultModel)) : null);
-  // Capabilities can change after a peon update or provider settings change.
-  // Never keep displaying (and later submit) a stale value that is no longer in
-  // the active provider's menu.
-  useEffect(() => {
-    if (!sessionProvider) return;
-    setOverrideModel((value) => value && !sessionProvider.models.some((option) => optionMatches(option, value)) ? "" : value);
-    setOverrideReasoningEffort((value) => value && !sessionProvider.reasoningEfforts.some((option) => optionMatches(option, value)) ? "" : value);
-  }, [sessionProvider]);
+  const sessionProvider = providerForSession(catalog, sessionAgent, sessionModel);
+  const onSelectionAccepted = useCallback((submitted: Pick<ComposerSelectionDraft, "model" | "reasoningEffort">) => {
+    const submittedSelection: ComposerSelectionDraft = { agent: "", ...submitted };
+    clearComposerSelectionIfUnchanged(selectionDraftKey, submittedSelection);
+    setSelectionDraft((current) => selectionAfterAcceptance(current, submittedSelection));
+    // Peon owns the accepted pin. Re-read it after either immediate delivery or
+    // durable queue acceptance so the next draft starts from server truth.
+    if (currentSessionKeyRef.current === sessionKey) setMetaTick((value) => value + 1);
+  }, [selectionDraftKey, sessionKey, setSelectionDraft]);
   useEffect(() => {
     if (!composerNode) return;
     const measure = () => setComposerHeight(composerFooterHeight(composerNode.getBoundingClientRect().height, window.innerHeight));
@@ -429,6 +457,7 @@ function PeonSessionDetailPage() {
     // A transcript whose last event is a run signal describes the same stuck
     // record the Peon already refuted; it is not evidence of live work.
     if (refutedRunRef.current.has(sessionKey)) return;
+    refreshMetadataForObservedRun();
     unconfirmedRunRef.current.add(sessionKey);
     setActiveRun((previous) => ({
       sessionKey,
@@ -437,8 +466,9 @@ function PeonSessionDetailPage() {
       reasoningEffort: previous.sessionKey === sessionKey ? previous.reasoningEffort : null,
       assumedAt: previous.sessionKey === sessionKey ? previous.assumedAt : null,
     }));
-  }, [sessionKey]);
+  }, [refreshMetadataForObservedRun, sessionKey]);
   const onRunFinished = useCallback((event?: { type?: string; is_error?: boolean }) => {
+    observedRunMetadataRefreshRef.current.delete(sessionKey);
     if (queueActivityRef.current.hasPending(sessionKey)) return;
     setRunning(false);
     setMetaTick((value) => value + 1);
@@ -485,7 +515,7 @@ function PeonSessionDetailPage() {
     subscribe,
     metadataStatusRef,
     previewPinnedRef,
-    onRunningChange: setRunning,
+    onRunningChange: onLiveRunningChange,
     onSnapshotRunning,
     onRunFinished,
     onAgentUpdate,
@@ -602,9 +632,9 @@ function PeonSessionDetailPage() {
     runningModel,
     runningReasoningEffort,
     sessionModel,
-    sessionAgent,
     sessionReasoningEffort,
     sessionPermissionMode,
+    sessionProvider,
     overrideModel,
     overrideReasoningEffort,
     catalog,
@@ -620,6 +650,8 @@ function PeonSessionDetailPage() {
     setRunningSelection,
     setStopNote,
     onWorkStarted,
+    onSelectionAccepted,
+    onQueuedSelectionRestored,
     mentions,
     setMentions,
     committedCommandIds,
@@ -1085,7 +1117,7 @@ function PeonSessionDetailPage() {
                     }
                     startedAt={typeof lastEvent?.createdAt === "number" ? lastEvent.createdAt : undefined}
                     model={modelLabel(catalog, runningModel ?? sessionModel ?? defaultModelId(sessionProvider))}
-                    effort={reasoningEffortLabel(sessionProvider, runningReasoningEffort ?? sessionReasoningEffort)}
+                    effort={reasoningEffortLabel(sessionProvider, runningReasoningEffort ?? sessionReasoningEffort, runningModel ?? sessionModel ?? defaultModelId(sessionProvider))}
                     onStop={stop}
                     stopping={stopping}
                     stopLabel={t("session.stop")}

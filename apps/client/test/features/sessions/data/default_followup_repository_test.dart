@@ -7,6 +7,7 @@ import 'package:overseer_mobile/core/database/app_database.dart';
 import 'package:overseer_mobile/features/sessions/data/default_followup_repository.dart';
 import 'package:overseer_mobile/features/sessions/domain/followup_repository.dart';
 import 'package:overseer_mobile/features/sessions/domain/new_session_repository.dart';
+import 'package:overseer_mobile/shared/models/ai_capabilities.dart';
 
 void main() {
   const scope = FollowupScope(
@@ -29,11 +30,23 @@ void main() {
       dio: Dio(),
     );
 
-    await repository.saveDraft(scope, 'durable draft');
-    expect(await repository.loadDraft(scope), 'durable draft');
+    await repository.saveDraft(
+      scope,
+      const ComposerDraftState(
+        text: 'durable draft',
+        agent: 'codex',
+        model: 'gpt-5.6-sol',
+        reasoningEffort: 'high',
+      ),
+    );
+    final restored = await repository.loadDraft(scope);
+    expect(restored.text, 'durable draft');
+    expect(restored.agent, 'codex');
+    expect(restored.model, 'gpt-5.6-sol');
+    expect(restored.reasoningEffort, 'high');
 
-    await repository.saveDraft(scope, '');
-    expect(await repository.loadDraft(scope), isEmpty);
+    await repository.saveDraft(scope, const ComposerDraftState());
+    expect((await repository.loadDraft(scope)).text, isEmpty);
   });
 
   test(
@@ -243,6 +256,36 @@ void main() {
     expect(catalog?.providers.single.models.single.label, 'GPT-5');
     expect(catalog?.providers.single.reasoningEfforts.single.id, 'high');
   });
+
+  test(
+    'distinguishes unsupported model catalogs from transient failures',
+    () async {
+      Future<ModelsCatalog?> fetchFor(int status) async {
+        final dio = Dio(BaseOptions(baseUrl: 'https://overseer.example/api/'));
+        dio.interceptors.add(
+          InterceptorsWrapper(
+            onRequest: (options, handler) => handler.reject(
+              DioException(
+                requestOptions: options,
+                response: Response<void>(
+                  requestOptions: options,
+                  statusCode: status,
+                ),
+                type: DioExceptionType.badResponse,
+              ),
+            ),
+          ),
+        );
+        return DefaultFollowupRepository(
+          database: database,
+          dio: dio,
+        ).fetchModelCatalog(scope);
+      }
+
+      expect(await fetchFor(404), isNull);
+      await expectLater(fetchFor(503), throwsA(isA<FollowupException>()));
+    },
+  );
 
   test('uses the Peon server queue while a session is running', () async {
     RequestOptions? request;

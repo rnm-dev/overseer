@@ -5019,6 +5019,35 @@ class $ComposerDraftsTable extends ComposerDrafts
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _agentMeta = const VerificationMeta('agent');
+  @override
+  late final GeneratedColumn<String> agent = GeneratedColumn<String>(
+    'agent',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _modelMeta = const VerificationMeta('model');
+  @override
+  late final GeneratedColumn<String> model = GeneratedColumn<String>(
+    'model',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _reasoningEffortMeta = const VerificationMeta(
+    'reasoningEffort',
+  );
+  @override
+  late final GeneratedColumn<String> reasoningEffort = GeneratedColumn<String>(
+    'reasoning_effort',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _updatedAtMeta = const VerificationMeta(
     'updatedAt',
   );
@@ -5036,6 +5065,9 @@ class $ComposerDraftsTable extends ComposerDrafts
     peonId,
     sessionId,
     draftText,
+    agent,
+    model,
+    reasoningEffort,
     updatedAt,
   ];
   @override
@@ -5085,6 +5117,27 @@ class $ComposerDraftsTable extends ComposerDrafts
     } else if (isInserting) {
       context.missing(_draftTextMeta);
     }
+    if (data.containsKey('agent')) {
+      context.handle(
+        _agentMeta,
+        agent.isAcceptableOrUnknown(data['agent']!, _agentMeta),
+      );
+    }
+    if (data.containsKey('model')) {
+      context.handle(
+        _modelMeta,
+        model.isAcceptableOrUnknown(data['model']!, _modelMeta),
+      );
+    }
+    if (data.containsKey('reasoning_effort')) {
+      context.handle(
+        _reasoningEffortMeta,
+        reasoningEffort.isAcceptableOrUnknown(
+          data['reasoning_effort']!,
+          _reasoningEffortMeta,
+        ),
+      );
+    }
     if (data.containsKey('updated_at')) {
       context.handle(
         _updatedAtMeta,
@@ -5118,6 +5171,18 @@ class $ComposerDraftsTable extends ComposerDrafts
         DriftSqlType.string,
         data['${effectivePrefix}draft_text'],
       )!,
+      agent: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}agent'],
+      ),
+      model: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}model'],
+      ),
+      reasoningEffort: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}reasoning_effort'],
+      ),
       updatedAt: attachedDatabase.typeMapping.read(
         DriftSqlType.double,
         data['${effectivePrefix}updated_at'],
@@ -5136,12 +5201,18 @@ class ComposerDraft extends DataClass implements Insertable<ComposerDraft> {
   final String peonId;
   final String sessionId;
   final String draftText;
+  final String? agent;
+  final String? model;
+  final String? reasoningEffort;
   final double updatedAt;
   const ComposerDraft({
     required this.workspaceId,
     required this.peonId,
     required this.sessionId,
     required this.draftText,
+    this.agent,
+    this.model,
+    this.reasoningEffort,
     required this.updatedAt,
   });
   @override
@@ -5151,6 +5222,15 @@ class ComposerDraft extends DataClass implements Insertable<ComposerDraft> {
     map['peon_id'] = Variable<String>(peonId);
     map['session_id'] = Variable<String>(sessionId);
     map['draft_text'] = Variable<String>(draftText);
+    if (!nullToAbsent || agent != null) {
+      map['agent'] = Variable<String>(agent);
+    }
+    if (!nullToAbsent || model != null) {
+      map['model'] = Variable<String>(model);
+    }
+    if (!nullToAbsent || reasoningEffort != null) {
+      map['reasoning_effort'] = Variable<String>(reasoningEffort);
+    }
     map['updated_at'] = Variable<double>(updatedAt);
     return map;
   }
@@ -5161,6 +5241,15 @@ class ComposerDraft extends DataClass implements Insertable<ComposerDraft> {
       peonId: Value(peonId),
       sessionId: Value(sessionId),
       draftText: Value(draftText),
+      agent: agent == null && nullToAbsent
+          ? const Value.absent()
+          : Value(agent),
+      model: model == null && nullToAbsent
+          ? const Value.absent()
+          : Value(model),
+      reasoningEffort: reasoningEffort == null && nullToAbsent
+          ? const Value.absent()
+          : Value(reasoningEffort),
       updatedAt: Value(updatedAt),
     );
   }
@@ -5175,6 +5264,9 @@ class ComposerDraft extends DataClass implements Insertable<ComposerDraft> {
       peonId: serializer.fromJson<String>(json['peonId']),
       sessionId: serializer.fromJson<String>(json['sessionId']),
       draftText: serializer.fromJson<String>(json['draftText']),
+      agent: serializer.fromJson<String?>(json['agent']),
+      model: serializer.fromJson<String?>(json['model']),
+      reasoningEffort: serializer.fromJson<String?>(json['reasoningEffort']),
       updatedAt: serializer.fromJson<double>(json['updatedAt']),
     );
   }
@@ -5186,6 +5278,9 @@ class ComposerDraft extends DataClass implements Insertable<ComposerDraft> {
       'peonId': serializer.toJson<String>(peonId),
       'sessionId': serializer.toJson<String>(sessionId),
       'draftText': serializer.toJson<String>(draftText),
+      'agent': serializer.toJson<String?>(agent),
+      'model': serializer.toJson<String?>(model),
+      'reasoningEffort': serializer.toJson<String?>(reasoningEffort),
       'updatedAt': serializer.toJson<double>(updatedAt),
     };
   }
@@ -5195,12 +5290,20 @@ class ComposerDraft extends DataClass implements Insertable<ComposerDraft> {
     String? peonId,
     String? sessionId,
     String? draftText,
+    Value<String?> agent = const Value.absent(),
+    Value<String?> model = const Value.absent(),
+    Value<String?> reasoningEffort = const Value.absent(),
     double? updatedAt,
   }) => ComposerDraft(
     workspaceId: workspaceId ?? this.workspaceId,
     peonId: peonId ?? this.peonId,
     sessionId: sessionId ?? this.sessionId,
     draftText: draftText ?? this.draftText,
+    agent: agent.present ? agent.value : this.agent,
+    model: model.present ? model.value : this.model,
+    reasoningEffort: reasoningEffort.present
+        ? reasoningEffort.value
+        : this.reasoningEffort,
     updatedAt: updatedAt ?? this.updatedAt,
   );
   ComposerDraft copyWithCompanion(ComposerDraftsCompanion data) {
@@ -5211,6 +5314,11 @@ class ComposerDraft extends DataClass implements Insertable<ComposerDraft> {
       peonId: data.peonId.present ? data.peonId.value : this.peonId,
       sessionId: data.sessionId.present ? data.sessionId.value : this.sessionId,
       draftText: data.draftText.present ? data.draftText.value : this.draftText,
+      agent: data.agent.present ? data.agent.value : this.agent,
+      model: data.model.present ? data.model.value : this.model,
+      reasoningEffort: data.reasoningEffort.present
+          ? data.reasoningEffort.value
+          : this.reasoningEffort,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
   }
@@ -5222,14 +5330,25 @@ class ComposerDraft extends DataClass implements Insertable<ComposerDraft> {
           ..write('peonId: $peonId, ')
           ..write('sessionId: $sessionId, ')
           ..write('draftText: $draftText, ')
+          ..write('agent: $agent, ')
+          ..write('model: $model, ')
+          ..write('reasoningEffort: $reasoningEffort, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode =>
-      Object.hash(workspaceId, peonId, sessionId, draftText, updatedAt);
+  int get hashCode => Object.hash(
+    workspaceId,
+    peonId,
+    sessionId,
+    draftText,
+    agent,
+    model,
+    reasoningEffort,
+    updatedAt,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -5238,6 +5357,9 @@ class ComposerDraft extends DataClass implements Insertable<ComposerDraft> {
           other.peonId == this.peonId &&
           other.sessionId == this.sessionId &&
           other.draftText == this.draftText &&
+          other.agent == this.agent &&
+          other.model == this.model &&
+          other.reasoningEffort == this.reasoningEffort &&
           other.updatedAt == this.updatedAt);
 }
 
@@ -5246,6 +5368,9 @@ class ComposerDraftsCompanion extends UpdateCompanion<ComposerDraft> {
   final Value<String> peonId;
   final Value<String> sessionId;
   final Value<String> draftText;
+  final Value<String?> agent;
+  final Value<String?> model;
+  final Value<String?> reasoningEffort;
   final Value<double> updatedAt;
   final Value<int> rowid;
   const ComposerDraftsCompanion({
@@ -5253,6 +5378,9 @@ class ComposerDraftsCompanion extends UpdateCompanion<ComposerDraft> {
     this.peonId = const Value.absent(),
     this.sessionId = const Value.absent(),
     this.draftText = const Value.absent(),
+    this.agent = const Value.absent(),
+    this.model = const Value.absent(),
+    this.reasoningEffort = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
@@ -5261,6 +5389,9 @@ class ComposerDraftsCompanion extends UpdateCompanion<ComposerDraft> {
     required String peonId,
     required String sessionId,
     required String draftText,
+    this.agent = const Value.absent(),
+    this.model = const Value.absent(),
+    this.reasoningEffort = const Value.absent(),
     required double updatedAt,
     this.rowid = const Value.absent(),
   }) : workspaceId = Value(workspaceId),
@@ -5273,6 +5404,9 @@ class ComposerDraftsCompanion extends UpdateCompanion<ComposerDraft> {
     Expression<String>? peonId,
     Expression<String>? sessionId,
     Expression<String>? draftText,
+    Expression<String>? agent,
+    Expression<String>? model,
+    Expression<String>? reasoningEffort,
     Expression<double>? updatedAt,
     Expression<int>? rowid,
   }) {
@@ -5281,6 +5415,9 @@ class ComposerDraftsCompanion extends UpdateCompanion<ComposerDraft> {
       if (peonId != null) 'peon_id': peonId,
       if (sessionId != null) 'session_id': sessionId,
       if (draftText != null) 'draft_text': draftText,
+      if (agent != null) 'agent': agent,
+      if (model != null) 'model': model,
+      if (reasoningEffort != null) 'reasoning_effort': reasoningEffort,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (rowid != null) 'rowid': rowid,
     });
@@ -5291,6 +5428,9 @@ class ComposerDraftsCompanion extends UpdateCompanion<ComposerDraft> {
     Value<String>? peonId,
     Value<String>? sessionId,
     Value<String>? draftText,
+    Value<String?>? agent,
+    Value<String?>? model,
+    Value<String?>? reasoningEffort,
     Value<double>? updatedAt,
     Value<int>? rowid,
   }) {
@@ -5299,6 +5439,9 @@ class ComposerDraftsCompanion extends UpdateCompanion<ComposerDraft> {
       peonId: peonId ?? this.peonId,
       sessionId: sessionId ?? this.sessionId,
       draftText: draftText ?? this.draftText,
+      agent: agent ?? this.agent,
+      model: model ?? this.model,
+      reasoningEffort: reasoningEffort ?? this.reasoningEffort,
       updatedAt: updatedAt ?? this.updatedAt,
       rowid: rowid ?? this.rowid,
     );
@@ -5319,6 +5462,15 @@ class ComposerDraftsCompanion extends UpdateCompanion<ComposerDraft> {
     if (draftText.present) {
       map['draft_text'] = Variable<String>(draftText.value);
     }
+    if (agent.present) {
+      map['agent'] = Variable<String>(agent.value);
+    }
+    if (model.present) {
+      map['model'] = Variable<String>(model.value);
+    }
+    if (reasoningEffort.present) {
+      map['reasoning_effort'] = Variable<String>(reasoningEffort.value);
+    }
     if (updatedAt.present) {
       map['updated_at'] = Variable<double>(updatedAt.value);
     }
@@ -5335,6 +5487,9 @@ class ComposerDraftsCompanion extends UpdateCompanion<ComposerDraft> {
           ..write('peonId: $peonId, ')
           ..write('sessionId: $sessionId, ')
           ..write('draftText: $draftText, ')
+          ..write('agent: $agent, ')
+          ..write('model: $model, ')
+          ..write('reasoningEffort: $reasoningEffort, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
@@ -9173,6 +9328,9 @@ typedef $$ComposerDraftsTableCreateCompanionBuilder =
       required String peonId,
       required String sessionId,
       required String draftText,
+      Value<String?> agent,
+      Value<String?> model,
+      Value<String?> reasoningEffort,
       required double updatedAt,
       Value<int> rowid,
     });
@@ -9182,6 +9340,9 @@ typedef $$ComposerDraftsTableUpdateCompanionBuilder =
       Value<String> peonId,
       Value<String> sessionId,
       Value<String> draftText,
+      Value<String?> agent,
+      Value<String?> model,
+      Value<String?> reasoningEffort,
       Value<double> updatedAt,
       Value<int> rowid,
     });
@@ -9212,6 +9373,21 @@ class $$ComposerDraftsTableFilterComposer
 
   ColumnFilters<String> get draftText => $composableBuilder(
     column: $table.draftText,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get agent => $composableBuilder(
+    column: $table.agent,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get model => $composableBuilder(
+    column: $table.model,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get reasoningEffort => $composableBuilder(
+    column: $table.reasoningEffort,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -9250,6 +9426,21 @@ class $$ComposerDraftsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get agent => $composableBuilder(
+    column: $table.agent,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get model => $composableBuilder(
+    column: $table.model,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get reasoningEffort => $composableBuilder(
+    column: $table.reasoningEffort,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<double> get updatedAt => $composableBuilder(
     column: $table.updatedAt,
     builder: (column) => ColumnOrderings(column),
@@ -9278,6 +9469,17 @@ class $$ComposerDraftsTableAnnotationComposer
 
   GeneratedColumn<String> get draftText =>
       $composableBuilder(column: $table.draftText, builder: (column) => column);
+
+  GeneratedColumn<String> get agent =>
+      $composableBuilder(column: $table.agent, builder: (column) => column);
+
+  GeneratedColumn<String> get model =>
+      $composableBuilder(column: $table.model, builder: (column) => column);
+
+  GeneratedColumn<String> get reasoningEffort => $composableBuilder(
+    column: $table.reasoningEffort,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<double> get updatedAt =>
       $composableBuilder(column: $table.updatedAt, builder: (column) => column);
@@ -9320,6 +9522,9 @@ class $$ComposerDraftsTableTableManager
                 Value<String> peonId = const Value.absent(),
                 Value<String> sessionId = const Value.absent(),
                 Value<String> draftText = const Value.absent(),
+                Value<String?> agent = const Value.absent(),
+                Value<String?> model = const Value.absent(),
+                Value<String?> reasoningEffort = const Value.absent(),
                 Value<double> updatedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ComposerDraftsCompanion(
@@ -9327,6 +9532,9 @@ class $$ComposerDraftsTableTableManager
                 peonId: peonId,
                 sessionId: sessionId,
                 draftText: draftText,
+                agent: agent,
+                model: model,
+                reasoningEffort: reasoningEffort,
                 updatedAt: updatedAt,
                 rowid: rowid,
               ),
@@ -9336,6 +9544,9 @@ class $$ComposerDraftsTableTableManager
                 required String peonId,
                 required String sessionId,
                 required String draftText,
+                Value<String?> agent = const Value.absent(),
+                Value<String?> model = const Value.absent(),
+                Value<String?> reasoningEffort = const Value.absent(),
                 required double updatedAt,
                 Value<int> rowid = const Value.absent(),
               }) => ComposerDraftsCompanion.insert(
@@ -9343,6 +9554,9 @@ class $$ComposerDraftsTableTableManager
                 peonId: peonId,
                 sessionId: sessionId,
                 draftText: draftText,
+                agent: agent,
+                model: model,
+                reasoningEffort: reasoningEffort,
                 updatedAt: updatedAt,
                 rowid: rowid,
               ),

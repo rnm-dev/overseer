@@ -412,10 +412,11 @@ class _HarnessFollowupRepository implements FollowupRepository {
   final List<_SubmissionRecord> submissions = [];
 
   @override
-  Future<String> loadDraft(FollowupScope scope) async => '';
+  Future<ComposerDraftState> loadDraft(FollowupScope scope) async =>
+      const ComposerDraftState();
 
   @override
-  Future<void> saveDraft(FollowupScope scope, String text) async {}
+  Future<void> saveDraft(FollowupScope scope, ComposerDraftState draft) async {}
 
   @override
   Stream<List<PendingFollowup>> watchPending(FollowupScope scope) =>

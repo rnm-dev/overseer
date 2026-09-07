@@ -103,3 +103,29 @@ test("clearComposerDraft removes the text and the attachments", async () => {
   assert.equal(localStorage.getItem(key), null);
   assert.equal(records.has(key), false);
 });
+
+test("selection-only drafts persist beside their session composer", async () => {
+  const { composerDraftKey, readComposerSelectionDraft, writeComposerSelectionDraft } = await import("./drafts");
+  const key = composerDraftKey("ws", "peon", "selection-only");
+  const otherKey = composerDraftKey("ws", "peon", "selection-other");
+
+  writeComposerSelectionDraft(key, { agent: "codex", model: "gpt-5.6", reasoningEffort: "high" });
+
+  assert.deepEqual(readComposerSelectionDraft(key), { agent: "codex", model: "gpt-5.6", reasoningEffort: "high" });
+  assert.deepEqual(readComposerSelectionDraft(otherKey), { agent: "", model: "", reasoningEffort: "" });
+  assert.equal(localStorage.getItem(key), null);
+});
+
+test("accepted selection consumes the complete submitted tuple only", async () => {
+  const { clearComposerSelectionIfUnchanged, composerDraftKey, readComposerSelectionDraft, writeComposerSelectionDraft } = await import("./drafts");
+  const key = composerDraftKey("ws", "peon", "selection-race");
+  const submitted = { agent: "", model: "gpt-5.6", reasoningEffort: "medium" };
+
+  writeComposerSelectionDraft(key, submitted);
+  clearComposerSelectionIfUnchanged(key, submitted);
+  assert.deepEqual(readComposerSelectionDraft(key), { agent: "", model: "", reasoningEffort: "" });
+
+  writeComposerSelectionDraft(key, { ...submitted, reasoningEffort: "high" });
+  clearComposerSelectionIfUnchanged(key, submitted);
+  assert.deepEqual(readComposerSelectionDraft(key), { agent: "", model: "gpt-5.6", reasoningEffort: "high" });
+});

@@ -153,6 +153,9 @@ class ComposerDrafts extends Table {
   TextColumn get peonId => text()();
   TextColumn get sessionId => text()();
   TextColumn get draftText => text()();
+  TextColumn get agent => text().nullable()();
+  TextColumn get model => text().nullable()();
+  TextColumn get reasoningEffort => text().nullable()();
   RealColumn get updatedAt => real()();
 
   @override
@@ -219,7 +222,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 14;
+  int get schemaVersion => 15;
 
   /// Removes operator-authored and transcript payload data at an authentication
   /// boundary. These tables are workspace-scoped rather than user-scoped, so
@@ -310,6 +313,16 @@ class AppDatabase extends _$AppDatabase {
         await migrator.addColumn(
           cachedSessions,
           cachedSessions.terminalReasonJson,
+        );
+      }
+      // Pre-v5 databases create composer_drafts from the current schema above.
+      // Alter only an already-existing legacy table.
+      if (from >= 5 && from < 15) {
+        await migrator.addColumn(composerDrafts, composerDrafts.agent);
+        await migrator.addColumn(composerDrafts, composerDrafts.model);
+        await migrator.addColumn(
+          composerDrafts,
+          composerDrafts.reasoningEffort,
         );
       }
     },

@@ -26,7 +26,7 @@ class DefaultFollowupRepository implements FollowupRepository {
   final AppClock _clock;
 
   @override
-  Future<String> loadDraft(FollowupScope scope) async {
+  Future<ComposerDraftState> loadDraft(FollowupScope scope) async {
     final row =
         await (database.select(database.composerDrafts)..where(
               (row) =>
@@ -35,12 +35,18 @@ class DefaultFollowupRepository implements FollowupRepository {
                   row.sessionId.equals(scope.sessionId),
             ))
             .getSingleOrNull();
-    return row?.draftText ?? '';
+    if (row == null) return const ComposerDraftState();
+    return ComposerDraftState(
+      text: row.draftText,
+      agent: row.agent,
+      model: row.model,
+      reasoningEffort: row.reasoningEffort,
+    );
   }
 
   @override
-  Future<void> saveDraft(FollowupScope scope, String text) async {
-    if (text.isEmpty) {
+  Future<void> saveDraft(FollowupScope scope, ComposerDraftState draft) async {
+    if (draft.isEmpty) {
       await (database.delete(database.composerDrafts)..where(
             (row) =>
                 row.workspaceId.equals(scope.workspaceId) &
@@ -57,7 +63,10 @@ class DefaultFollowupRepository implements FollowupRepository {
             workspaceId: scope.workspaceId,
             peonId: scope.peonId,
             sessionId: scope.sessionId,
-            draftText: text,
+            draftText: draft.text,
+            agent: Value(draft.agent),
+            model: Value(draft.model),
+            reasoningEffort: Value(draft.reasoningEffort),
             updatedAt: _clock.now().millisecondsSinceEpoch.toDouble(),
           ),
         );
@@ -254,8 +263,17 @@ class DefaultFollowupRepository implements FollowupRepository {
       if (data == null) return null;
       if (data['providers'] is! List) return null;
       return ModelsCatalog.fromJson(data);
-    } on DioException {
-      return null;
+    } on DioException catch (error) {
+      // A missing endpoint is a stable capability absence. Transport and
+      // server failures are recoverable and must reach the composer's retry.
+      if (error.response?.statusCode == 404) return null;
+      final data = error.response?.data;
+      throw FollowupException(
+        data is Map && data['error'] is String
+            ? data['error'] as String
+            : 'Model choices could not be loaded.',
+        statusCode: error.response?.statusCode,
+      );
     } on TypeError {
       return null;
     }

@@ -3,11 +3,13 @@ import test from "node:test";
 import { ApiError } from "../../shared/api";
 import {
   composerGhostVisible,
+  freshSubmittedSelection,
   FollowupRequestIdentity,
   followupWasRefused,
   shouldRestoreFollowupDraft,
   type ComposerGhost,
 } from "./useSessionComposer";
+import { selectionAfterAcceptance } from "./drafts";
 
 test("only an explicit non-5xx follow-up refusal may restore the visible draft", () => {
   assert.equal(followupWasRefused(new ApiError(400, "BAD_REQUEST", "bad request")), true);
@@ -73,4 +75,81 @@ test("retry identity survives ambiguous outcomes and changes after refusal or pa
   const refused = ids.forPayload("refused-payload");
   ids.clear();
   assert.notEqual(ids.forPayload("refused-payload"), refused, "a stated 4xx gets a fresh identity");
+});
+
+test("an accepted earlier request cannot clear another session's retry identity", () => {
+  let sequence = 0;
+  const ids = new FollowupRequestIdentity(() => `request-${++sequence}`);
+  const firstSession = ids.forPayload("queue:A/model-a/high");
+  const secondSession = ids.forPayload("queue:B/model-b/low");
+
+  ids.clear(firstSession);
+  assert.equal(ids.forPayload("queue:B/model-b/low"), secondSession);
+  assert.notEqual(ids.forPayload("queue:A/model-a/high"), firstSession);
+});
+
+test("a retry retains its first body selection when the catalog later rejects it", () => {
+  let sequence = 0;
+  const ids = new FollowupRequestIdentity(() => `request-${++sequence}`);
+  const identity = "queue:A/same-message/model-a/high";
+  const withHigh = {
+    agent: "codex",
+    label: "Codex",
+    models: [{ id: "model-a", label: "Model A", reasoningEfforts: [{ id: "high", label: "High" }] }],
+    reasoningEfforts: [],
+  };
+  const withoutHigh = { ...withHigh, models: [{ id: "model-a", label: "Model A", reasoningEfforts: [] }] };
+  const chosen = { model: "model-a", reasoningEffort: "high" };
+
+  const first = ids.selectionFor(identity, freshSubmittedSelection(withHigh, "model-a", chosen));
+  const retry = ids.selectionFor(identity, freshSubmittedSelection(withoutHigh, "model-a", chosen));
+  assert.deepEqual(first, { id: "request-1", selection: chosen });
+  assert.deepEqual(retry, first, "the retry repeats the accepted-or-ambiguous wire body exactly");
+});
+
+test("a fresh known-invalid effort is omitted, while a missing catalog preserves it", () => {
+  const provider = {
+    agent: "codex",
+    label: "Codex",
+    models: [{ id: "model-a", label: "Model A", reasoningEfforts: [] }],
+    reasoningEfforts: [{ id: "high", label: "High" }],
+  };
+  const chosen = { model: "model-a", reasoningEffort: "high" };
+  assert.deepEqual(freshSubmittedSelection(provider, "model-a", chosen), { model: "model-a", reasoningEffort: "" });
+  assert.deepEqual(freshSubmittedSelection(null, "model-a", chosen), chosen);
+});
+
+test("acceptance consumes the original draft selection, not its normalized wire effort", () => {
+  const draft = { model: "model-a", reasoningEffort: "high" };
+  const provider = {
+    agent: "codex",
+    label: "Codex",
+    models: [{ id: "model-a", label: "Model A", reasoningEfforts: [] }],
+    reasoningEfforts: [],
+  };
+  const wire = freshSubmittedSelection(provider, "model-a", draft);
+  assert.deepEqual(wire, { model: "model-a", reasoningEffort: "" });
+  const composerDraft = { agent: "", ...draft };
+  assert.deepEqual(selectionAfterAcceptance(composerDraft, composerDraft), { agent: "", model: "", reasoningEffort: "" });
+});
+
+test("route switches leave unresolved retry snapshots addressable by their scoped identity", () => {
+  let sequence = 0;
+  const ids = new FollowupRequestIdentity(() => `request-${++sequence}`);
+  const a = ids.selectionFor("queue:session-a", { model: "model-a", reasoningEffort: "high" });
+  ids.selectionFor("queue:session-b", { model: "model-b", reasoningEffort: "low" });
+
+  assert.deepEqual(ids.selectionFor("queue:session-a", { model: "model-a", reasoningEffort: "" }), a);
+});
+
+test("accepted selection snapshots leave an in-flight newer picker edit alone", () => {
+  const accepted = { agent: "", model: "model-a", reasoningEffort: "high" };
+  assert.deepEqual(
+    selectionAfterAcceptance({ agent: "", model: "model-b", reasoningEffort: "high" }, accepted),
+    { agent: "", model: "model-b", reasoningEffort: "high" },
+  );
+  assert.deepEqual(
+    selectionAfterAcceptance(accepted, accepted),
+    { agent: "", model: "", reasoningEffort: "" },
+  );
 });

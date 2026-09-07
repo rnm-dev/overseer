@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:overseer_mobile/core/live/active_sessions.dart';
 import 'package:overseer_mobile/features/sessions/application/session_composer_controller.dart';
+import 'package:overseer_mobile/features/sessions/application/session_details_controller.dart';
 import 'package:overseer_mobile/features/sessions/domain/followup_repository.dart';
 import 'package:overseer_mobile/features/sessions/domain/new_session_repository.dart';
 import 'package:overseer_mobile/features/sessions/domain/session_models.dart';
@@ -94,6 +95,267 @@ void main() {
     expect(state.draft, 'restore me');
     expect(state.pending.map((item) => item.commandId), ['command']);
     expect(state.queue.map((item) => item.id), ['queued']);
+  });
+
+  test(
+    'persists selection-only drafts and restores them on recreation',
+    () async {
+      final repository = _FakeFollowupRepository(draft: '', pending: const []);
+      final first = ProviderContainer(
+        overrides: [followupRepositoryProvider.overrideWithValue(repository)],
+      );
+      await first.read(sessionComposerControllerProvider(scope).future);
+      first.read(sessionComposerControllerProvider(scope).notifier)
+        ..selectModel('model-a')
+        ..selectReasoningEffort('high');
+      await Future<void>.delayed(Duration.zero);
+      final saved = repository.savedDraftState!;
+      first.dispose();
+
+      final restored = _FakeFollowupRepository(
+        draft: '',
+        draftState: saved,
+        pending: const [],
+      );
+      final second = ProviderContainer(
+        overrides: [followupRepositoryProvider.overrideWithValue(restored)],
+      );
+      addTearDown(second.dispose);
+      final state = await second.read(
+        sessionComposerControllerProvider(scope).future,
+      );
+      expect(state.draft, isEmpty);
+      expect(state.model, 'model-a');
+      expect(state.reasoningEffort, 'high');
+    },
+  );
+
+  test('A B A sends A as the explicit model ID', () async {
+    final repository = _FakeFollowupRepository(
+      draft: 'send',
+      pending: const [],
+    );
+    final container = ProviderContainer(
+      overrides: [followupRepositoryProvider.overrideWithValue(repository)],
+    );
+    addTearDown(container.dispose);
+    await container.read(sessionComposerControllerProvider(scope).future);
+    final controller = container.read(
+      sessionComposerControllerProvider(scope).notifier,
+    );
+    controller
+      ..selectModel('model-a')
+      ..selectModel('model-b')
+      ..selectModel('model-a');
+    await controller.submit(running: false, transcriptUserMessages: 0);
+    expect(repository.submissions.single.model, 'model-a');
+  });
+
+  test('a refused submission retains the selected model and effort', () async {
+    final repository = _FakeFollowupRepository(
+      draft: 'send',
+      pending: const [],
+      submitErrors: const [FollowupException('refused', statusCode: 400)],
+    );
+    final container = ProviderContainer(
+      overrides: [followupRepositoryProvider.overrideWithValue(repository)],
+    );
+    addTearDown(container.dispose);
+    await container.read(sessionComposerControllerProvider(scope).future);
+    final controller =
+        container.read(sessionComposerControllerProvider(scope).notifier)
+          ..selectModel('model-a')
+          ..selectReasoningEffort('high');
+    expect(
+      await controller.submit(running: false, transcriptUserMessages: 0),
+      isFalse,
+    );
+    final state = container
+        .read(sessionComposerControllerProvider(scope))
+        .requireValue;
+    expect(state.model, 'model-a');
+    expect(state.reasoningEffort, 'high');
+  });
+
+  test(
+    'selection edits during a gated send do not retain submitted text',
+    () async {
+      final gate = Completer<void>();
+      final repository = _FakeFollowupRepository(
+        draft: 'first',
+        pending: const [],
+        submissionGate: gate,
+      );
+      final container = ProviderContainer(
+        overrides: [followupRepositoryProvider.overrideWithValue(repository)],
+      );
+      addTearDown(container.dispose);
+      await container.read(sessionComposerControllerProvider(scope).future);
+      final controller = container.read(
+        sessionComposerControllerProvider(scope).notifier,
+      );
+      final first = controller.submit(
+        running: false,
+        transcriptUserMessages: 0,
+      );
+      controller.selectModel('model-b');
+      gate.complete();
+      expect(await first, isTrue);
+      var state = container
+          .read(sessionComposerControllerProvider(scope))
+          .requireValue;
+      expect(state.draft, isEmpty);
+      expect(state.model, 'model-b');
+      controller.updateDraft('second');
+      expect(
+        await controller.submit(running: false, transcriptUserMessages: 0),
+        isTrue,
+      );
+      expect(repository.submissions.map((item) => item.prompt), [
+        'first',
+        'second',
+      ]);
+      expect(repository.submissions.last.model, 'model-b');
+    },
+  );
+
+  test(
+    'known catalogs drop a restored invalid effort before follow-up',
+    () async {
+      final repository = _FakeFollowupRepository(
+        draft: 'send',
+        pending: const [],
+        draftState: const ComposerDraftState(
+          text: 'send',
+          model: 'model-a',
+          reasoningEffort: 'high',
+        ),
+        catalog: const ModelsCatalog(
+          defaultAgent: 'codex',
+          providers: [
+            ModelProvider(
+              agent: 'codex',
+              label: 'Codex',
+              models: [
+                ModelCatalogOption(
+                  id: 'model-a',
+                  label: 'A',
+                  reasoningEfforts: [],
+                ),
+              ],
+              reasoningEfforts: [],
+            ),
+          ],
+        ),
+      );
+      final container = ProviderContainer(
+        overrides: [followupRepositoryProvider.overrideWithValue(repository)],
+      );
+      addTearDown(container.dispose);
+      final subscription = container.listen(
+        sessionComposerControllerProvider(scope),
+        (_, _) {},
+        fireImmediately: true,
+      );
+      addTearDown(subscription.close);
+      await container.read(sessionComposerControllerProvider(scope).future);
+      await Future<void>.delayed(Duration.zero);
+      container
+          .read(
+            sessionDetailsSnapshotProvider(
+              const SessionDetailsScope(
+                workspaceId: 'workspace',
+                peonId: 'peon',
+                sessionId: 'session',
+              ),
+            ).notifier,
+          )
+          .publish(
+            const SessionDetails(
+              turnCount: 0,
+              agent: 'codex',
+              model: 'model-a',
+            ),
+          );
+      await container
+          .read(sessionComposerControllerProvider(scope).notifier)
+          .submit(running: false, transcriptUserMessages: 0);
+      expect(repository.submissions.single.reasoningEffort, isNull);
+    },
+  );
+
+  test('catalog failure keeps the draft visible and retries once', () async {
+    final scheduler = ManualAppScheduler();
+    final repository = _FakeFollowupRepository(
+      draft: 'cached first',
+      pending: const [],
+      catalogErrors: [StateError('offline')],
+      catalog: const ModelsCatalog(providers: []),
+    );
+    final container = ProviderContainer(
+      overrides: [
+        followupRepositoryProvider.overrideWithValue(repository),
+        appSchedulerProvider.overrideWithValue(scheduler),
+      ],
+    );
+    addTearDown(container.dispose);
+    final subscription = container.listen(
+      sessionComposerControllerProvider(scope),
+      (_, _) {},
+      fireImmediately: true,
+    );
+    addTearDown(subscription.close);
+    final state = await container.read(
+      sessionComposerControllerProvider(scope).future,
+    );
+    expect(state.draft, 'cached first');
+    await Future<void>.delayed(Duration.zero);
+    expect(scheduler.pendingDelays, contains(const Duration(seconds: 5)));
+    await scheduler.advance(const Duration(seconds: 5));
+    expect(repository.catalogCalls, 2);
+  });
+
+  test(
+    'queued draft saves finish after disposal without reading ref',
+    () async {
+      final gate = Completer<void>();
+      final repository = _FakeFollowupRepository(
+        draft: '',
+        pending: const [],
+        saveGate: gate,
+      );
+      final container = ProviderContainer(
+        overrides: [followupRepositoryProvider.overrideWithValue(repository)],
+      );
+      await container.read(sessionComposerControllerProvider(scope).future);
+      container.read(sessionComposerControllerProvider(scope).notifier)
+        ..selectModel('model-a')
+        ..selectReasoningEffort('high');
+      container.dispose();
+      gate.complete();
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+      expect(repository.savedDraftState?.reasoningEffort, 'high');
+    },
+  );
+
+  test('a failed draft save does not block the next edit', () async {
+    final repository = _FakeFollowupRepository(
+      draft: '',
+      pending: const [],
+      saveFailures: 1,
+    );
+    final container = ProviderContainer(
+      overrides: [followupRepositoryProvider.overrideWithValue(repository)],
+    );
+    addTearDown(container.dispose);
+    await container.read(sessionComposerControllerProvider(scope).future);
+    container.read(sessionComposerControllerProvider(scope).notifier)
+      ..selectModel('model-a')
+      ..selectReasoningEffort('high');
+    await Future<void>.delayed(Duration.zero);
+    await Future<void>.delayed(Duration.zero);
+    expect(repository.savedDraftState?.reasoningEffort, 'high');
   });
 
   test('retries pending follow-ups with deterministic backoff', () async {
@@ -505,7 +767,7 @@ void main() {
         .requireValue;
     expect(failed.draft, 'do not lose me');
     expect(failed.error, 'not sent');
-    expect(repository.savedDraft, isNull);
+    expect(repository.savedDraft, 'do not lose me');
     expect(
       container
               .read(activeSessionsProvider)
@@ -575,6 +837,96 @@ void main() {
     expect(await submission, isTrue);
   });
 
+  for (final creating in [false, true]) {
+    test(
+      'acceptance persists after leaving the ${creating ? 'new' : 'existing'} session',
+      () async {
+        final target = FollowupScope(
+          workspaceId: 'workspace',
+          peonId: 'peon',
+          sessionId: creating ? 'new-session' : 'session',
+        );
+        final gate = Completer<void>();
+        final followups = _FakeFollowupRepository(
+          draft: 'send',
+          pending: const [],
+          submissionGate: gate,
+        );
+        final sessions = _FakeNewSessionRepository(submissionGate: gate);
+        final container = ProviderContainer(
+          overrides: [
+            followupRepositoryProvider.overrideWithValue(followups),
+            newSessionRepositoryProvider.overrideWithValue(sessions),
+          ],
+        );
+        addTearDown(container.dispose);
+        final subscription = container.listen(
+          sessionComposerControllerProvider(target),
+          (_, _) {},
+        );
+        await container.read(sessionComposerControllerProvider(target).future);
+        final controller =
+            container.read(sessionComposerControllerProvider(target).notifier)
+              ..selectModel('model-a')
+              ..selectReasoningEffort('high');
+        final Future<Object?> submission = creating
+            ? controller.startSession()
+            : controller.submit(running: false, transcriptUserMessages: 0);
+        subscription.close();
+        await container.pump();
+        gate.complete();
+        expect(await submission, isNotNull);
+        expect(followups.savedDraftState?.isEmpty, isTrue);
+      },
+    );
+  }
+
+  test('creation retry keeps selection and ID after catalog arrival', () async {
+    const target = FollowupScope(
+      workspaceId: 'workspace',
+      peonId: 'peon',
+      sessionId: 'new-session',
+    );
+    final followups = _FakeFollowupRepository(draft: 'send', pending: const []);
+    final sessions = _FakeNewSessionRepository(failures: 1);
+    final container = ProviderContainer(
+      overrides: [
+        followupRepositoryProvider.overrideWithValue(followups),
+        newSessionRepositoryProvider.overrideWithValue(sessions),
+      ],
+    );
+    addTearDown(container.dispose);
+    final subscription = container.listen(
+      sessionComposerControllerProvider(target),
+      (_, _) {},
+    );
+    addTearDown(subscription.close);
+    await container.read(sessionComposerControllerProvider(target).future);
+    final controller =
+        container.read(sessionComposerControllerProvider(target).notifier)
+          ..selectAgent('codex')
+          ..selectModel('model-a')
+          ..selectReasoningEffort('high');
+    expect(await controller.startSession(), isNull);
+    followups.catalog = const ModelsCatalog(
+      defaultAgent: 'codex',
+      providers: [
+        ModelProvider(
+          agent: 'codex',
+          label: 'Codex',
+          models: [
+            ModelCatalogOption(id: 'model-a', label: 'A', reasoningEfforts: []),
+          ],
+          reasoningEfforts: [],
+        ),
+      ],
+    );
+    await controller.refreshCatalog();
+    expect(await controller.startSession(), isNotNull);
+    expect(sessions.requests.last.requestId, sessions.requests.first.requestId);
+    expect(sessions.requests.last.reasoningEffort, 'high');
+  });
+
   test('edits an authoritative queued prompt in place', () async {
     final repository = _FakeFollowupRepository(
       draft: '',
@@ -612,6 +964,11 @@ class _FakeFollowupRepository implements FollowupRepository {
     this.submitErrors = const [],
     this.retryResults = const [],
     this.submissionGate,
+    this.draftState,
+    this.catalogErrors = const [],
+    this.catalog,
+    this.saveGate,
+    this.saveFailures = 0,
   });
 
   final String draft;
@@ -621,19 +978,31 @@ class _FakeFollowupRepository implements FollowupRepository {
   final List<FollowupException> submitErrors;
   final List<bool> retryResults;
   final Completer<void>? submissionGate;
+  final ComposerDraftState? draftState;
+  final List<Object> catalogErrors;
+  ModelsCatalog? catalog;
+  final Completer<void>? saveGate;
+  final int saveFailures;
   final List<_SubmissionRecord> submissions = [];
   String? savedDraft;
+  ComposerDraftState? savedDraftState;
   String? editedItemId;
   String? editedPrompt;
   int refreshCalls = 0;
   int retryCalls = 0;
+  int catalogCalls = 0;
+  int saveCalls = 0;
 
   @override
-  Future<String> loadDraft(FollowupScope scope) async => draft;
+  Future<ComposerDraftState> loadDraft(FollowupScope scope) async =>
+      draftState ?? ComposerDraftState(text: draft);
 
   @override
-  Future<void> saveDraft(FollowupScope scope, String text) async {
-    savedDraft = text;
+  Future<void> saveDraft(FollowupScope scope, ComposerDraftState draft) async {
+    await saveGate?.future;
+    if (saveCalls++ < saveFailures) throw StateError('disk unavailable');
+    savedDraft = draft.text;
+    savedDraftState = draft;
   }
 
   @override
@@ -671,7 +1040,14 @@ class _FakeFollowupRepository implements FollowupRepository {
   Future<void> steerQueued(FollowupScope scope, String itemId) async {}
 
   @override
-  Future<ModelsCatalog?> fetchModelCatalog(FollowupScope scope) async => null;
+  Future<ModelsCatalog?> fetchModelCatalog(FollowupScope scope) async {
+    final error = catalogCalls < catalogErrors.length
+        ? catalogErrors[catalogCalls]
+        : null;
+    catalogCalls++;
+    if (error != null) throw error;
+    return catalog;
+  }
 
   @override
   Future<FollowupDelivery> submit({
@@ -689,10 +1065,12 @@ class _FakeFollowupRepository implements FollowupRepository {
   }) async {
     submissions.add(
       _SubmissionRecord(
+        prompt: prompt,
         commandId: commandId,
         serverQueue: serverQueue,
         startNow: startNow,
         model: model,
+        reasoningEffort: reasoningEffort,
       ),
     );
     if (submissions.length <= submitErrors.length) {
@@ -714,22 +1092,27 @@ class _FakeFollowupRepository implements FollowupRepository {
 
 class _SubmissionRecord {
   const _SubmissionRecord({
+    required this.prompt,
     required this.commandId,
     required this.serverQueue,
     required this.startNow,
     required this.model,
+    required this.reasoningEffort,
   });
 
+  final String prompt;
   final String? commandId;
   final bool serverQueue;
   final bool startNow;
   final String? model;
+  final String? reasoningEffort;
 }
 
 class _FakeNewSessionRepository implements NewSessionRepository {
-  _FakeNewSessionRepository({this.failures = 0});
+  _FakeNewSessionRepository({this.failures = 0, this.submissionGate});
 
   final int failures;
+  final Completer<void>? submissionGate;
   NewSessionRequest? request;
   final List<NewSessionRequest> requests = [];
 
@@ -737,6 +1120,7 @@ class _FakeNewSessionRepository implements NewSessionRepository {
   Future<SessionSummary> createSession(NewSessionRequest request) async {
     this.request = request;
     requests.add(request);
+    await submissionGate?.future;
     if (requests.length <= failures) {
       throw const NewSessionException('not started');
     }

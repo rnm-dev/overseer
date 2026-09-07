@@ -1,12 +1,12 @@
-import 'package:drift/drift.dart';
+import 'package:drift/drift.dart' hide isNull;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:overseer_mobile/core/database/app_database.dart';
 
 void main() {
   group('AppDatabase migrations', () {
-    for (var version = 1; version < 14; version++) {
-      test('migrates schema v$version to v14 without losing data', () async {
+    for (var version = 1; version < 15; version++) {
+      test('migrates schema v$version to v15 without losing data', () async {
         final database = AppDatabase.forTesting(
           NativeDatabase.memory(
             setup: (sqlite) {
@@ -22,10 +22,10 @@ void main() {
         // Opening the database runs the migration.
         expect(
           await database.customSelect('PRAGMA user_version').getSingle(),
-          predicate<QueryRow>((row) => row.read<int>('user_version') == 14),
+          predicate<QueryRow>((row) => row.read<int>('user_version') == 15),
         );
 
-        expect(await _tableNames(database), containsAll(_tablesAtVersion(14)));
+        expect(await _tableNames(database), containsAll(_tablesAtVersion(15)));
         expect(
           await _columnNames(database, 'cached_sessions'),
           containsAll(<String>{
@@ -45,6 +45,22 @@ void main() {
             'reply_to_json',
           }),
         );
+        expect(
+          await _columnNames(database, 'composer_drafts'),
+          containsAll(<String>{'agent', 'model', 'reasoning_effort'}),
+        );
+        if (version >= 5) {
+          final draft = await database
+              .customSelect(
+                'SELECT draft_text, agent, model, reasoning_effort '
+                'FROM composer_drafts',
+              )
+              .getSingle();
+          expect(draft.read<String>('draft_text'), 'preserve me');
+          expect(draft.readNullable<String>('agent'), isA<Null>());
+          expect(draft.readNullable<String>('model'), isA<Null>());
+          expect(draft.readNullable<String>('reasoning_effort'), isA<Null>());
+        }
 
         for (final table in _tablesAtVersion(version)) {
           final marker = await database
@@ -61,7 +77,7 @@ void main() {
                 .getSingle()
                 .then((row) => row.read<int>('count')),
             1,
-            reason: 'The existing row in $table should survive v$version → v14',
+            reason: 'The existing row in $table should survive v$version → v15',
           );
         }
 
@@ -93,11 +109,11 @@ void main() {
       });
     }
 
-    test('creates the complete v14 schema from an empty database', () async {
+    test('creates the complete v15 schema from an empty database', () async {
       final database = AppDatabase.forTesting(NativeDatabase.memory());
       addTearDown(database.close);
 
-      expect(await _tableNames(database), containsAll(_tablesAtVersion(14)));
+      expect(await _tableNames(database), containsAll(_tablesAtVersion(15)));
       expect(
         await _columnNames(database, 'cached_sessions'),
         containsAll(<String>{
@@ -143,7 +159,9 @@ void main() {
         "('c','w','p','s','private',0,0,'[]',1)",
       );
       await database.customStatement(
-        "INSERT INTO composer_drafts VALUES ('w','p','s','private',1)",
+        "INSERT INTO composer_drafts "
+        "(workspace_id,peon_id,session_id,draft_text,updated_at) "
+        "VALUES ('w','p','s','private',1)",
       );
       await database.customStatement(
         "INSERT INTO cached_sessions "
@@ -225,6 +243,7 @@ void _createSchemaAtVersion(
       ${version >= 12 ? 'operator_requested INTEGER NOT NULL DEFAULT 0,' : ''}
       ${version >= 12 ? 'has_outstanding_request INTEGER NOT NULL DEFAULT 0,' : ''}
       ${version >= 12 ? 'last_requested_at REAL,' : ''}
+      ${version >= 14 ? 'terminal_reason_json TEXT,' : ''}
       PRIMARY KEY (workspace_id, peon_id, session_id)
     )
   ''');

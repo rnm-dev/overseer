@@ -24,6 +24,26 @@ class FollowupScope {
   int get hashCode => Object.hash(workspaceId, peonId, sessionId);
 }
 
+/// The local, unsent composer state. It intentionally remains separate from a
+/// pending command: an accepted command is immutable while the operator can
+/// immediately prepare the next turn.
+class ComposerDraftState {
+  const ComposerDraftState({
+    this.text = '',
+    this.agent,
+    this.model,
+    this.reasoningEffort,
+  });
+
+  final String text;
+  final String? agent;
+  final String? model;
+  final String? reasoningEffort;
+
+  bool get isEmpty =>
+      text.isEmpty && agent == null && model == null && reasoningEffort == null;
+}
+
 class PendingFollowup {
   const PendingFollowup({
     required this.commandId,
@@ -152,8 +172,8 @@ class QueuedFollowup {
 enum FollowupDelivery { delivered, queued }
 
 abstract interface class FollowupRepository {
-  Future<String> loadDraft(FollowupScope scope);
-  Future<void> saveDraft(FollowupScope scope, String text);
+  Future<ComposerDraftState> loadDraft(FollowupScope scope);
+  Future<void> saveDraft(FollowupScope scope, ComposerDraftState draft);
   Stream<List<PendingFollowup>> watchPending(FollowupScope scope);
   Stream<List<QueuedFollowup>> watchQueue(FollowupScope scope);
   Future<void> refreshQueue(FollowupScope scope);

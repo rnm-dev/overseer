@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type SetStateAction } from "react";
+import { useCallback, useEffect, useRef, useState, type SetStateAction } from "react";
 import type { MessageAttachment } from "./parsing";
 
 const DRAFT_PREFIX = "overseer:composer-draft";
@@ -6,6 +6,7 @@ const DRAFT_PREFIX = "overseer:composer-draft";
 // unlike a picked File they are a few bytes of JSON and belong next to the text
 // half rather than in IndexedDB.
 const CARRIED_SUFFIX = ":carried";
+const SELECTION_SUFFIX = ":selection";
 
 // Attachments cannot ride in localStorage next to the text — a File is not
 // serialisable and a single one may be 25 MB. IndexedDB stores File objects
@@ -17,6 +18,13 @@ const FILE_STORE = "attachments";
 const FILE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 const NO_FILES: File[] = [];
+export interface ComposerSelectionDraft {
+  agent: string;
+  model: string;
+  reasoningEffort: string;
+}
+
+const EMPTY_SELECTION: ComposerSelectionDraft = { agent: "", model: "", reasoningEffort: "" };
 
 interface StoredDraftFiles {
   files: File[];
@@ -133,6 +141,14 @@ export function saveComposerDraft(key: string, value: string, files: File[], car
 
 export function clearComposerDraft(key: string): void {
   saveComposerDraft(key, "", NO_FILES);
+  writeComposerSelectionDraft(key, EMPTY_SELECTION);
+}
+
+// Content is cleared immediately after an accepted send. Selection has its own
+// conditional clear so an operator changing model/effort while the request is
+// in flight does not lose the next message they were preparing.
+export function clearComposerDraftContent(key: string): void {
+  saveComposerDraft(key, "", NO_FILES);
 }
 
 // A new-session form deliberately does not revive file attachments. Unlike
@@ -170,6 +186,51 @@ export function writeCarriedAttachments(key: string, carried: readonly MessageAt
   }
 }
 
+function selectionFrom(value: unknown): ComposerSelectionDraft {
+  if (!value || typeof value !== "object") return EMPTY_SELECTION;
+  const selection = value as Partial<ComposerSelectionDraft>;
+  return {
+    agent: typeof selection.agent === "string" ? selection.agent : "",
+    model: typeof selection.model === "string" ? selection.model : "",
+    reasoningEffort: typeof selection.reasoningEffort === "string" ? selection.reasoningEffort : "",
+  };
+}
+
+export function readComposerSelectionDraft(key: string): ComposerSelectionDraft {
+  try {
+    return selectionFrom(JSON.parse(window.localStorage.getItem(key + SELECTION_SUFFIX) ?? "null"));
+  } catch {
+    return EMPTY_SELECTION;
+  }
+}
+
+export function writeComposerSelectionDraft(key: string, selection: ComposerSelectionDraft): void {
+  try {
+    if (selection.agent || selection.model || selection.reasoningEffort) {
+      window.localStorage.setItem(key + SELECTION_SUFFIX, JSON.stringify(selection));
+    } else {
+      window.localStorage.removeItem(key + SELECTION_SUFFIX);
+    }
+  } catch {
+    // Draft persistence is best-effort when storage is disabled or full.
+  }
+}
+
+export function clearComposerSelectionIfUnchanged(key: string, submitted: ComposerSelectionDraft): void {
+  writeComposerSelectionDraft(key, selectionAfterAcceptance(readComposerSelectionDraft(key), submitted));
+}
+
+// A model and effort are one choice. If an operator changes either one while a
+// request is in flight, retain the whole newer tuple rather than manufacturing
+// a model/effort pairing they never selected.
+export function selectionAfterAcceptance(current: ComposerSelectionDraft, submitted: ComposerSelectionDraft): ComposerSelectionDraft {
+  return current.agent === submitted.agent
+    && current.model === submitted.model
+    && current.reasoningEffort === submitted.reasoningEffort
+    ? EMPTY_SELECTION
+    : current;
+}
+
 // The text half and the carried half are one draft: a session switch or a
 // reload must show both or neither.
 export function useCarriedAttachments(key: string): [MessageAttachment[], (carried: MessageAttachment[]) => void] {
@@ -203,6 +264,43 @@ export function useComposerDraft(key: string, initialValue?: string, persist = t
 
   // Avoid rendering the previous session's text during the route-change render.
   return [draft.key === key ? draft.value : readDraft(key), setValue];
+}
+
+// Model selection is part of the same per-session/new-session draft as text,
+// but intentionally has no global "last used" fallback. Storage is synchronous
+// so a route change can never briefly overwrite the next session with values
+// hydrated for the previous one.
+export function useComposerSelectionDraft(
+  key: string,
+): [ComposerSelectionDraft, (action: SetStateAction<ComposerSelectionDraft>) => void] {
+  const [draft, setDraft] = useState(() => ({ key, value: readComposerSelectionDraft(key) }));
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
+
+  useEffect(() => {
+    if (draft.key !== key) setDraft({ key, value: readComposerSelectionDraft(key) });
+  }, [draft.key, key]);
+
+  useEffect(() => {
+    if (draft.key === key) writeComposerSelectionDraft(key, draft.value);
+  }, [draft, key]);
+
+  const setSelection = useCallback((action: SetStateAction<ComposerSelectionDraft>) => {
+    const current = draftRef.current;
+    const base = current.key === key ? current.value : readComposerSelectionDraft(key);
+    const value = typeof action === "function"
+      ? (action as (current: ComposerSelectionDraft) => ComposerSelectionDraft)(base)
+      : action;
+    const next = { key, value };
+    // Selection can change while a successful new-session request is awaiting
+    // navigation. Persist it now; an unmount must not discard the next turn's
+    // choice before the normal effect gets a chance to run.
+    draftRef.current = next;
+    writeComposerSelectionDraft(key, value);
+    setDraft(next);
+  }, [key]);
+
+  return [draft.key === key ? draft.value : readComposerSelectionDraft(key), setSelection];
 }
 
 // The attachment half of a draft, keyed exactly like the text half. Reads are

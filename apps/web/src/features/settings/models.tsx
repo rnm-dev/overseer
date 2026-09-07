@@ -36,30 +36,78 @@ export interface ModelsCatalog {
   defaultAgent: string | null;
 }
 
+function normalizeCatalog(catalog: ModelsCatalog): ModelsCatalog {
+  return {
+    providers: (catalog.providers ?? []).map((provider) => ({
+      ...provider,
+      models: provider.models ?? [],
+      reasoningEfforts: provider.reasoningEfforts ?? [],
+    })),
+    defaultModel: catalog.defaultModel ?? null,
+    defaultAgent: catalog.defaultAgent ?? null,
+  };
+}
+
 // Loads provider capabilities from Peon's /api/v1/models endpoint. A null
 // catalog means "still loading"; unsupported older peons hide the controls.
 export function useModels(base: string): { catalog: ModelsCatalog | null; supported: boolean } {
   const [catalog, setCatalog] = useState<ModelsCatalog | null>(null);
   const [supported, setSupported] = useState(true);
+  const latestCatalogRef = useRef<ModelsCatalog | null>(null);
   useEffect(() => {
     let alive = true;
+    let inFlight = false;
+    let retry: number | null = null;
+    let retryCount = 0;
+    const maxRetries = 3;
+    latestCatalogRef.current = null;
     setCatalog(null);
     setSupported(true);
-    api<ModelsCatalog>(`${base}/models`)
-      .then((c) => alive && setCatalog({
-        providers: (c.providers ?? []).map((p) => ({
-          ...p,
-          models: p.models ?? [],
-          reasoningEfforts: p.reasoningEfforts ?? [],
-        })),
-        defaultModel: c.defaultModel ?? null,
-        defaultAgent: c.defaultAgent ?? null,
-      }))
-      .catch((err) => {
-        if (alive && isPeonNeedsUpdate(err)) setSupported(false);
-      });
+
+    const load = (refresh: boolean) => {
+      if (inFlight) return;
+      inFlight = true;
+      api<ModelsCatalog>(`${base}/models${refresh ? "?refresh=1" : ""}`)
+        .then((next) => {
+          if (!alive) return;
+          const normalized = normalizeCatalog(next);
+          latestCatalogRef.current = normalized;
+          setCatalog(normalized);
+          setSupported(true);
+          retryCount = 0;
+        })
+        .catch((error) => {
+          if (!alive) return;
+          // A refresh failure must not erase a catalog that was good a moment
+          // ago. A fresh 404 still identifies an older Peon so its controls
+          // stay hidden until the foreground/retry read succeeds after update.
+          if (isPeonNeedsUpdate(error) && !latestCatalogRef.current) setSupported(false);
+          if (retryCount < maxRetries && retry === null) {
+            retryCount += 1;
+            retry = window.setTimeout(() => {
+              retry = null;
+              load(true);
+            }, 30_000);
+          }
+        })
+        .finally(() => {
+          inFlight = false;
+        });
+    };
+
+    const recover = () => {
+      if (document.visibilityState === "visible") load(true);
+    };
+    load(false);
+    document.addEventListener("visibilitychange", recover);
+    window.addEventListener("focus", recover);
+    window.addEventListener("online", recover);
     return () => {
       alive = false;
+      if (retry !== null) window.clearTimeout(retry);
+      document.removeEventListener("visibilitychange", recover);
+      window.removeEventListener("focus", recover);
+      window.removeEventListener("online", recover);
     };
   }, [base]);
   return { catalog, supported };
@@ -74,6 +122,25 @@ export function providerForModel(catalog: ModelsCatalog | null, model: string | 
   return catalog?.providers.find((p) => p.models.some((m) => m.id === model || m.alias === model)) ?? null;
 }
 
+// A reported default agent is authoritative even when the newly refreshed
+// catalog no longer contains it. Falling through to providers[0] in that case
+// would silently put an existing session on another provider.
+export function defaultProviderForCatalog(catalog: ModelsCatalog | null): ModelProvider | null {
+  if (!catalog) return null;
+  if (catalog.defaultAgent) return providerForAgent(catalog, catalog.defaultAgent);
+  return providerForModel(catalog, catalog.defaultModel) ?? catalog.providers[0] ?? null;
+}
+
+export function providerForSession(
+  catalog: ModelsCatalog | null,
+  agent: string | null | undefined,
+  model: string | null | undefined,
+): ModelProvider | null {
+  if (agent) return providerForAgent(catalog, agent);
+  if (model) return providerForModel(catalog, model);
+  return defaultProviderForCatalog(catalog);
+}
+
 export function modelLabel(catalog: ModelsCatalog | null, id: string | null | undefined): string | null {
   if (!id) return null;
   for (const p of catalog?.providers ?? []) for (const m of p.models) if (m.id === id || m.alias === id) return m.label;
@@ -83,10 +150,10 @@ export function modelLabel(catalog: ModelsCatalog | null, id: string | null | un
 // Effort ids are provider-scoped (unlike model ids), so resolving a label needs
 // the provider the session runs on. An absent id means "the provider's own
 // default", which is still a concrete effort worth naming in the UI.
-export function reasoningEffortLabel(provider: ModelProvider | null, id: string | null | undefined): string | null {
+export function reasoningEffortLabel(provider: ModelProvider | null, id: string | null | undefined, model?: string | null): string | null {
   const effort = id
-    ? provider?.reasoningEfforts.find((option) => optionMatches(option, id))
-    : provider?.reasoningEfforts.find((option) => option.default);
+    ? reasoningEffortsForEffectiveModel(provider, model ?? null).find((option) => optionMatches(option, id))
+    : reasoningEffortsForEffectiveModel(provider, model ?? null).find((option) => option.default);
   return effort?.label ?? id ?? null;
 }
 
@@ -98,8 +165,8 @@ export function defaultModelId(provider: ModelProvider | null): string | undefin
   return provider?.models.find((m) => m.default)?.id;
 }
 
-export function defaultReasoningEffortId(provider: ModelProvider | null): string | undefined {
-  return provider?.reasoningEfforts.find((o) => o.default)?.id;
+export function defaultReasoningEffortId(provider: ModelProvider | null, model?: string | null): string | undefined {
+  return reasoningEffortsForEffectiveModel(provider, model ?? null).find((o) => o.default)?.id;
 }
 
 // Which efforts the given model actually accepts. A peon that advertises them
@@ -142,6 +209,37 @@ export function inheritedModelId(
   return global && provider?.models.some((model) => optionMatches(model, global)) ? global : null;
 }
 
+// The effective model is the only authority for effort choices. Keep it in one
+// place so a model switch cannot leave an effort picker offering (or a request
+// sending) a value that belongs to a different model.
+export function effectiveModelId(
+  catalog: ModelsCatalog | null,
+  provider: ModelProvider | null,
+  overrideModel: string | null | undefined,
+  sessionModel: string | null | undefined,
+): string | null {
+  return overrideModel || inheritedModelId(catalog, provider, sessionModel);
+}
+
+export function reasoningEffortsForEffectiveModel(
+  provider: ModelProvider | null,
+  model: string | null | undefined,
+): CatalogOption[] {
+  // A known but no-longer-advertised model must not inherit a provider-wide
+  // effort union. The caller can still name the raw model identity, but cannot
+  // accidentally submit an effort Peon will reject for it.
+  if (model && !provider?.models.some((option) => optionMatches(option, model))) return [];
+  return effortsForModel(provider, model);
+}
+
+export function isReasoningEffortValid(
+  provider: ModelProvider | null,
+  model: string | null | undefined,
+  effort: string | null | undefined,
+): boolean {
+  return Boolean(effort) && reasoningEffortsForEffectiveModel(provider, model).some((option) => optionMatches(option, effort!));
+}
+
 export interface PickerEntry {
   // The plain option name, which is what the closed trigger shows.
   name: string;
@@ -152,9 +250,9 @@ export interface PickerEntry {
   active: boolean;
 }
 
-// One entry per actual choice. The option an empty value falls back to is
-// listed once and marked, rather than appearing both as a reset entry and again
-// in the list — those were the same choice under two names.
+// Named rows always produce their concrete id. Reset/inherit is deliberately a
+// separate row: it clears only the local draft and never pretends to unpin a
+// session already accepted by Peon.
 export function pickerEntries(
   options: CatalogOption[],
   value: string,
@@ -166,19 +264,26 @@ export function pickerEntries(
   },
 ): PickerEntry[] {
   const fallback = defaultId ? options.find((option) => optionMatches(option, defaultId)) : undefined;
-  const selected = value ? options.find((option) => optionMatches(option, value)) : fallback;
+  const selected = value ? options.find((option) => optionMatches(option, value)) : allowClear ? undefined : fallback;
   const entries = options.map((option) => ({
     name: option.label,
     label: option === fallback ? markDefault(option.label) : option.label,
-    // Picking the inherited option means "nothing of my own" wherever that is
-    // expressible, so the caller keeps following the peon instead of pinning
-    // whatever the default happens to be today.
-    value: option === fallback && allowClear ? "" : option.id,
+    value: option.id,
     active: option === selected,
   }));
-  // Only a picker whose fallback isn't among the options needs a reset row.
-  if (allowClear && !fallback) entries.unshift({ name: defaultLabel, label: defaultLabel, value: "", active: !value });
+  if (allowClear) entries.unshift({ name: defaultLabel, label: defaultLabel, value: "", active: !value });
   return entries;
+}
+
+export function pickerDisplayName(
+  options: CatalogOption[],
+  value: string,
+  { defaultId, defaultLabel = "" }: { defaultId?: string; defaultLabel?: string },
+): string {
+  if (value) return options.find((option) => optionMatches(option, value))?.label ?? value;
+  return defaultId
+    ? options.find((option) => optionMatches(option, defaultId))?.label ?? defaultId
+    : defaultLabel;
 }
 
 interface PickerProps {
@@ -188,9 +293,8 @@ interface PickerProps {
   // The text shown while nothing is selected and nothing is known to be
   // inherited — also the label of the reset entry in that case.
   defaultLabel?: string;
-  // The option an empty value actually resolves to. It is listed once, marked
-  // "(Default)" and shown as selected while the value is empty, instead of a
-  // separate reset entry repeating it.
+  // The option an empty value resolves to. It is marked "(Default)" in the
+  // named list while reset/inherit remains a separate local action.
   defaultId?: string;
   label?: string;
   // Keep the accessible name while allowing forms to render a conventional
@@ -214,7 +318,7 @@ export function Picker({ options, value, onChange, defaultLabel, defaultId, labe
     allowClear,
     markDefault: (name) => t("model.optionDefault", { name }),
   });
-  const current = entries.find((entry) => entry.active)?.name ?? (value || defaultLabel);
+  const current = pickerDisplayName(options, value, { defaultId, defaultLabel });
 
   // The picker is used in a wrapping toolbar near the viewport edges. Portal
   // its menu and clamp it to the viewport instead of positioning it against a
@@ -284,7 +388,7 @@ export function Picker({ options, value, onChange, defaultLabel, defaultId, labe
         <div ref={menuRef} className="model-picker-menu model-picker-menu--floating" style={menuStyle} role="listbox">
           {entries.map((entry) => (
             <button
-              key={entry.label}
+              key={entry.value}
               type="button"
               className={`model-picker-option ${entry.active ? "is-active" : ""}`}
               onClick={() => choose(entry.value)}
@@ -303,17 +407,17 @@ export function Picker({ options, value, onChange, defaultLabel, defaultId, labe
 
 type CapabilityPickerProps = Omit<PickerProps, "options">;
 
-export function AgentSelect({ catalog, allowClear: _allowClear, defaultId: _defaultId, ...props }: CapabilityPickerProps & { catalog: ModelsCatalog }) {
+export function AgentSelect({ catalog, allowClear = false, defaultId, ...props }: CapabilityPickerProps & { catalog: ModelsCatalog }) {
   // A session always lands on some agent, so the peon's own pick is the
   // default. Prefer the reported defaultAgent (settings.defaultAgent); older
   // peons that omit it fall back to the defaultModel/providers[0] heuristic.
-  const defaultAgent = catalog.defaultAgent ?? (providerForModel(catalog, catalog.defaultModel) ?? catalog.providers[0])?.agent;
+  const defaultAgent = defaultId ?? catalog.defaultAgent ?? (providerForModel(catalog, catalog.defaultModel) ?? catalog.providers[0])?.agent;
   const options = catalog.providers.map((p) => ({ id: p.agent, label: p.label }));
-  return <Picker {...props} options={options} defaultId={defaultAgent} allowClear={false} />;
+  return <Picker {...props} options={options} defaultId={defaultAgent} allowClear={allowClear} />;
 }
 
-export function ModelSelect({ provider, ...props }: CapabilityPickerProps & { provider: ModelProvider | null }) {
-  return <Picker {...props} options={provider?.models ?? []} />;
+export function ModelSelect({ provider, allowClear = true, ...props }: CapabilityPickerProps & { provider: ModelProvider | null }) {
+  return <Picker {...props} options={provider?.models ?? []} allowClear={allowClear} />;
 }
 
 // `model` scopes the options to what that model accepts on peons that advertise

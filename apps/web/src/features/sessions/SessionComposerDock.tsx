@@ -2,7 +2,7 @@ import { useEffect, useState, type Dispatch, type KeyboardEvent, type SetStateAc
 import { createPortal } from "react-dom";
 import { useT } from "../../shared/i18n";
 import { Composer, supportsDesktopComposerFocus } from "./Composer";
-import { ModelSelect, ReasoningEffortSelect, defaultEffortIdFor, effortsForModel, inheritedModelId, type ModelProvider, type ModelsCatalog } from "../settings/models";
+import { ModelSelect, ReasoningEffortSelect, defaultEffortIdFor, effectiveModelId, inheritedModelId, isReasoningEffortValid, reasoningEffortsForEffectiveModel, type ModelProvider, type ModelsCatalog } from "../settings/models";
 import { QueueList } from "./QueueList";
 import type { QueueItem } from "./queue";
 import type { MessageAttachment } from "./parsing";
@@ -128,8 +128,16 @@ export function SessionComposerDock(props: Props) {
   };
   // What the composer inherits when the session pinned nothing of its own.
   const inheritedModel = inheritedModelId(catalog, sessionProvider, sessionModel);
-  const composerEfforts = effortsForModel(sessionProvider, overrideModel || sessionModel || null);
-  const inheritedEffortId = defaultEffortIdFor(composerEfforts);
+  const effectiveModel = effectiveModelId(catalog, sessionProvider, overrideModel, sessionModel);
+  const composerEfforts = reasoningEffortsForEffectiveModel(sessionProvider, effectiveModel);
+  const inheritedEffortId = sessionReasoningEffort && isReasoningEffortValid(sessionProvider, effectiveModel, sessionReasoningEffort)
+    ? sessionReasoningEffort
+    : defaultEffortIdFor(composerEfforts);
+  const selectModel = (next: string) => {
+    const nextEffectiveModel = effectiveModelId(catalog, sessionProvider, next, sessionModel);
+    setOverrideModel(next);
+    setOverrideReasoningEffort((current) => isReasoningEffortValid(sessionProvider, nextEffectiveModel, current) ? current : "");
+  };
   return createPortal(
     <div ref={setComposerNode} className={SESSION_COMPOSER_DOCK_CLASS}>
       <div className={SESSION_COMPOSER_WIDTH_CLASS}>
@@ -185,7 +193,7 @@ export function SessionComposerDock(props: Props) {
               key={`model:${sessionKey}`}
               provider={sessionProvider}
               value={overrideModel}
-              onChange={setOverrideModel}
+              onChange={selectModel}
               label={t("session.compose.model")}
               className="model-select-compact"
               defaultLabel={t("model.default")}
@@ -197,13 +205,13 @@ export function SessionComposerDock(props: Props) {
             <ReasoningEffortSelect
               key={`effort:${sessionKey}`}
               provider={sessionProvider}
-              model={overrideModel || sessionModel || null}
+              model={effectiveModel}
               value={overrideReasoningEffort}
               onChange={setOverrideReasoningEffort}
               label={t("session.compose.reasoningEffort")}
               className="model-select-compact"
               defaultLabel={t("model.default")}
-              defaultId={sessionReasoningEffort ?? inheritedEffortId}
+              defaultId={inheritedEffortId}
             />
             )}
           </>

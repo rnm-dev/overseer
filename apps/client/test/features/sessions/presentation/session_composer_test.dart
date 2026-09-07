@@ -396,7 +396,7 @@ void main() {
       find.byKey(const Key('session-composer-capabilities')),
       findsOneWidget,
     );
-    expect(find.text('Codex · Default · Default'), findsOneWidget);
+    expect(find.text('Codex'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('session-composer-capabilities')));
     await tester.pumpAndSettle();

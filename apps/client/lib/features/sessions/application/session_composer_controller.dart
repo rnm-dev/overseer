@@ -11,6 +11,7 @@ import '../domain/followup_repository.dart';
 import '../domain/new_session_repository.dart';
 import '../domain/session_models.dart';
 import 'session_queue_change.dart';
+import 'session_details_controller.dart';
 
 final followupRepositoryProvider = Provider<FollowupRepository>(
   (ref) => const _UnavailableFollowupRepository(),
@@ -193,6 +194,12 @@ class SessionComposerController extends AsyncNotifier<SessionComposerState> {
   late AppClock _clock;
   late AppDiagnostics _diagnostics;
   ScheduledTask? _ghostTimer;
+  ScheduledTask? _catalogRetryTimer;
+  Future<void> _draftWrite = Future<void>.value();
+  int _contentRevision = 0;
+  int _selectionRevision = 0;
+  int _catalogAttempts = 0;
+  late FollowupRepository _repository;
 
   bool get _supportsQueue =>
       scope.sessionId != 'new-session' && _queueAvailable;
@@ -202,19 +209,17 @@ class SessionComposerController extends AsyncNotifier<SessionComposerState> {
     _scheduler = ref.read(appSchedulerProvider);
     _clock = ref.read(appClockProvider);
     _diagnostics = ref.read(appDiagnosticsProvider);
-    final repository = ref.read(followupRepositoryProvider);
+    final repository = _repository = ref.read(followupRepositoryProvider);
     final results = await Future.wait<Object?>([
       repository.loadDraft(scope),
       repository.watchPending(scope).first,
       if (_supportsQueue) repository.watchQueue(scope).first,
-      repository.fetchModelCatalog(scope),
     ]);
-    final draft = results[0]! as String;
+    final draft = results[0]! as ComposerDraftState;
     final pending = results[1]! as List<PendingFollowup>;
     final queue = _supportsQueue
         ? results[2]! as List<QueuedFollowup>
         : const <QueuedFollowup>[];
-    final catalog = results[_supportsQueue ? 3 : 2] as ModelsCatalog?;
     _pendingSubscription = repository.watchPending(scope).listen((pending) {
       final current = state.value;
       if (current == null) return;
@@ -246,21 +251,27 @@ class SessionComposerController extends AsyncNotifier<SessionComposerState> {
       _retryTimer?.cancel();
       _queuePollTimer?.cancel();
       _ghostTimer?.cancel();
+      _catalogRetryTimer?.cancel();
     });
-    return SessionComposerState(
-      draft: draft,
+    final initial = SessionComposerState(
+      draft: draft.text,
       pending: pending,
       queue: queue,
-      catalog: catalog,
+      agent: draft.agent,
+      model: draft.model,
+      reasoningEffort: draft.reasoningEffort,
     );
+    Future<void>.microtask(refreshCatalog);
+    return initial;
   }
 
   void updateDraft(String draft) {
     final current = state.value;
     if (current == null || current.draft == draft) return;
     state = AsyncData(current.copyWith(draft: draft, clearError: true));
+    _contentRevision++;
     _resetSubmissionIdentity();
-    unawaited(ref.read(followupRepositoryProvider).saveDraft(scope, draft));
+    _persistDraft(state.value!);
   }
 
   void resetSubmissionIdentity() {
@@ -271,10 +282,14 @@ class SessionComposerController extends AsyncNotifier<SessionComposerState> {
   void selectModel(String? model) {
     final current = state.value;
     if (current == null) return;
-    if (current.model != model) _resetSubmissionIdentity();
+    if (current.model != model) {
+      _selectionRevision++;
+      _resetSubmissionIdentity();
+    }
     state = AsyncData(
       current.copyWith(model: model, clearModel: model == null),
     );
+    _persistDraft(state.value!);
   }
 
   void selectAgent(String? agent) {
@@ -283,6 +298,7 @@ class SessionComposerController extends AsyncNotifier<SessionComposerState> {
     if (current.agent != agent ||
         current.model != null ||
         current.reasoningEffort != null) {
+      _selectionRevision++;
       _resetSubmissionIdentity();
     }
     state = AsyncData(
@@ -293,12 +309,14 @@ class SessionComposerController extends AsyncNotifier<SessionComposerState> {
         clearReasoningEffort: true,
       ),
     );
+    _persistDraft(state.value!);
   }
 
   void selectReasoningEffort(String? reasoningEffort) {
     final current = state.value;
     if (current == null) return;
     if (current.reasoningEffort != reasoningEffort) {
+      _selectionRevision++;
       _resetSubmissionIdentity();
     }
     state = AsyncData(
@@ -307,6 +325,89 @@ class SessionComposerController extends AsyncNotifier<SessionComposerState> {
         clearReasoningEffort: reasoningEffort == null,
       ),
     );
+    _persistDraft(state.value!);
+  }
+
+  Future<void> _persistDraft(SessionComposerState current) {
+    final draft = ComposerDraftState(
+      text: current.draft,
+      agent: current.agent,
+      model: current.model,
+      reasoningEffort: current.reasoningEffort,
+    );
+    _draftWrite = _draftWrite
+        .catchError((_) {})
+        .then((_) => _repository.saveDraft(scope, draft))
+        .catchError((_) {});
+    return _draftWrite;
+  }
+
+  SessionComposerState _normalizedSelection(SessionComposerState current) {
+    final catalog = current.catalog;
+    final details = scope.sessionId == 'new-session'
+        ? null
+        : ref.read(
+            sessionDetailsSnapshotProvider(
+              SessionDetailsScope(
+                workspaceId: scope.workspaceId,
+                peonId: scope.peonId,
+                sessionId: scope.sessionId,
+              ),
+            ),
+          );
+    final provider = providerForAgent(
+      catalog?.providers ?? const [],
+      current.agent ??
+          details?.agent ??
+          (scope.sessionId == 'new-session' ? catalog?.defaultAgent : null),
+    );
+    if (provider == null) return current;
+    final effectiveModel = effectiveCapability(
+      provider.models,
+      explicit: current.model,
+      inherited: details?.model,
+    );
+    // An unknown/stale model remains an intentional explicit value. Normalize
+    // only when this successful catalog knows the effective model.
+    if (modelOptionFor(provider, effectiveModel) == null) return current;
+    final efforts = reasoningEffortsForModel(provider, effectiveModel);
+    final effort = current.reasoningEffort;
+    if (effort == null ||
+        efforts.any(
+          (option) => option.id == effort || option.alias == effort,
+        )) {
+      return current;
+    }
+    return current.copyWith(clearReasoningEffort: true);
+  }
+
+  /// Catalog discovery is auxiliary paint data: never hold a cached draft
+  /// hostage to a slow or temporarily unavailable Peon.
+  Future<void> refreshCatalog() async {
+    try {
+      final catalog = await ref
+          .read(followupRepositoryProvider)
+          .fetchModelCatalog(scope);
+      if (!ref.mounted || catalog == null) return;
+      final current = state.value;
+      if (current == null) return;
+      _catalogAttempts = 0;
+      state = AsyncData(current.copyWith(catalog: catalog));
+    } catch (_) {
+      _scheduleCatalogRetry();
+    }
+  }
+
+  void _scheduleCatalogRetry() {
+    if (!ref.mounted || _catalogRetryTimer != null) return;
+    _catalogAttempts++;
+    final delay = _catalogAttempts <= 3
+        ? const Duration(seconds: 5)
+        : const Duration(seconds: 30);
+    _catalogRetryTimer = _scheduler.schedule(delay, () {
+      _catalogRetryTimer = null;
+      unawaited(refreshCatalog());
+    });
   }
 
   void _scheduleGhostExpiry() {
@@ -328,12 +429,20 @@ class SessionComposerController extends AsyncNotifier<SessionComposerState> {
     if (current == null || current.sending) return false;
     final prompt = current.draft.trim();
     if (prompt.isEmpty && attachments.isEmpty) return false;
+    final submitted = _followupPayloadIdentity == null
+        ? _normalizedSelection(current)
+        : current;
+    if (submitted != current) {
+      _selectionRevision++;
+      state = AsyncData(submitted);
+      _persistDraft(submitted);
+    }
     final payloadIdentity = _FollowupPayloadIdentity(
       prompt: prompt,
       serverQueue: running,
       startNow: startNow,
-      model: current.model,
-      reasoningEffort: current.reasoningEffort,
+      model: submitted.model,
+      reasoningEffort: submitted.reasoningEffort,
       attachments: attachments,
       replyTo: current.replyTo,
     );
@@ -362,8 +471,10 @@ class SessionComposerController extends AsyncNotifier<SessionComposerState> {
             createdAt: _clock.now().millisecondsSinceEpoch.toDouble(),
             baselineUserMessages: transcriptUserMessages,
           );
+    final contentRevision = _contentRevision;
+    final selectionRevision = _selectionRevision;
     state = AsyncData(
-      current.copyWith(
+      submitted.copyWith(
         draft: '',
         sending: true,
         ghost: ghost,
@@ -373,12 +484,14 @@ class SessionComposerController extends AsyncNotifier<SessionComposerState> {
         clearFollowupProgress: true,
       ),
     );
+    _persistDraft(submitted);
     final activeSessions = ref.read(activeSessionsProvider.notifier);
     activeSessions.markRunningLocally(
       workspaceId: scope.workspaceId,
       session: ActiveSession(peonId: scope.peonId, sessionId: scope.sessionId),
     );
     if (ghost != null) _scheduleGhostExpiry();
+    final submissionLifetime = ref.keepAlive();
     try {
       final result = await ref
           .read(followupRepositoryProvider)
@@ -387,8 +500,8 @@ class SessionComposerController extends AsyncNotifier<SessionComposerState> {
             prompt: prompt,
             serverQueue: running,
             startNow: startNow,
-            model: current.model,
-            reasoningEffort: current.reasoningEffort,
+            model: submitted.model,
+            reasoningEffort: submitted.reasoningEffort,
             commandId: _followupRequestId,
             attachments: attachments,
             replyTo: current.replyTo,
@@ -398,11 +511,17 @@ class SessionComposerController extends AsyncNotifier<SessionComposerState> {
               state = AsyncData(latest.copyWith(followupProgress: progress));
             },
           );
-      await ref.read(followupRepositoryProvider).saveDraft(scope, '');
       final latest = state.value ?? current;
-      state = AsyncData(
-        latest.copyWith(draft: '', sending: false, clearFollowupProgress: true),
+      final completed = latest.copyWith(
+        draft: _contentRevision == contentRevision ? '' : latest.draft,
+        clearAgent: _selectionRevision == selectionRevision,
+        clearModel: _selectionRevision == selectionRevision,
+        clearReasoningEffort: _selectionRevision == selectionRevision,
       );
+      state = AsyncData(
+        completed.copyWith(sending: false, clearFollowupProgress: true),
+      );
+      _persistDraft(state.value!);
       _resetFollowupIdentity();
       if (result == FollowupDelivery.queued) {
         activeSessions.clearRunningLocally(
@@ -427,7 +546,7 @@ class SessionComposerController extends AsyncNotifier<SessionComposerState> {
       final latest = state.value ?? current;
       state = AsyncData(
         latest.copyWith(
-          draft: current.draft,
+          draft: _contentRevision == contentRevision ? prompt : latest.draft,
           sending: false,
           clearGhost: true,
           clearFollowupProgress: true,
@@ -435,6 +554,7 @@ class SessionComposerController extends AsyncNotifier<SessionComposerState> {
           error: error.message,
         ),
       );
+      _persistDraft(state.value!);
       return false;
     } catch (error) {
       activeSessions.clearRunningLocally(
@@ -455,7 +575,7 @@ class SessionComposerController extends AsyncNotifier<SessionComposerState> {
       final latest = state.value ?? current;
       state = AsyncData(
         latest.copyWith(
-          draft: current.draft,
+          draft: _contentRevision == contentRevision ? prompt : latest.draft,
           sending: false,
           clearGhost: true,
           clearFollowupProgress: true,
@@ -463,7 +583,11 @@ class SessionComposerController extends AsyncNotifier<SessionComposerState> {
           error: 'Message could not be sent.',
         ),
       );
+      _persistDraft(state.value!);
       return false;
+    } finally {
+      await _draftWrite;
+      submissionLifetime.close();
     }
   }
 
@@ -623,13 +747,21 @@ class SessionComposerController extends AsyncNotifier<SessionComposerState> {
     if (current == null || current.sending) return null;
     final prompt = current.draft.trim();
     if (prompt.isEmpty && attachments.isEmpty) return null;
+    final submitted = _newSessionPayloadIdentity == null
+        ? _normalizedSelection(current)
+        : current;
+    if (submitted != current) {
+      _selectionRevision++;
+      state = AsyncData(submitted);
+      _persistDraft(submitted);
+    }
     final payloadIdentity = _NewSessionPayloadIdentity(
       prompt: prompt,
       projectKey: projectKey,
       dir: dir?.trim(),
-      agent: current.agent,
-      model: current.model,
-      reasoningEffort: current.reasoningEffort,
+      agent: submitted.agent,
+      model: submitted.model,
+      reasoningEffort: submitted.reasoningEffort,
       attachments: attachments,
     );
     if (_newSessionPayloadIdentity != null &&
@@ -638,7 +770,13 @@ class SessionComposerController extends AsyncNotifier<SessionComposerState> {
     }
     _newSessionRequestId ??= _commandId();
     _newSessionPayloadIdentity = payloadIdentity;
-    state = AsyncData(current.copyWith(sending: true, clearError: true));
+    final contentRevision = _contentRevision;
+    final selectionRevision = _selectionRevision;
+    state = AsyncData(
+      submitted.copyWith(draft: '', sending: true, clearError: true),
+    );
+    _persistDraft(submitted);
+    final submissionLifetime = ref.keepAlive();
     try {
       final session = await ref
           .read(newSessionRepositoryProvider)
@@ -650,9 +788,9 @@ class SessionComposerController extends AsyncNotifier<SessionComposerState> {
               prompt: prompt,
               projectKey: projectKey,
               dir: dir,
-              agent: current.agent,
-              model: current.model,
-              reasoningEffort: current.reasoningEffort,
+              agent: submitted.agent,
+              model: submitted.model,
+              reasoningEffort: submitted.reasoningEffort,
               attachments: attachments,
               onProgress: (progress) {
                 final latest = state.value;
@@ -663,15 +801,17 @@ class SessionComposerController extends AsyncNotifier<SessionComposerState> {
               },
             ),
           );
-      await ref.read(followupRepositoryProvider).saveDraft(scope, '');
       final latest = state.value ?? current;
-      state = AsyncData(
-        latest.copyWith(
-          draft: '',
-          sending: false,
-          clearSubmissionProgress: true,
-        ),
+      final completed = latest.copyWith(
+        draft: _contentRevision == contentRevision ? '' : latest.draft,
+        clearAgent: _selectionRevision == selectionRevision,
+        clearModel: _selectionRevision == selectionRevision,
+        clearReasoningEffort: _selectionRevision == selectionRevision,
       );
+      state = AsyncData(
+        completed.copyWith(sending: false, clearSubmissionProgress: true),
+      );
+      _persistDraft(state.value!);
       _newSessionRequestId = null;
       _newSessionPayloadIdentity = null;
       return session;
@@ -679,11 +819,13 @@ class SessionComposerController extends AsyncNotifier<SessionComposerState> {
       final latest = state.value ?? current;
       state = AsyncData(
         latest.copyWith(
+          draft: _contentRevision == contentRevision ? prompt : latest.draft,
           sending: false,
           clearSubmissionProgress: true,
           error: error.message,
         ),
       );
+      _persistDraft(state.value!);
       return null;
     } catch (error) {
       _diagnostics.record(
@@ -698,12 +840,17 @@ class SessionComposerController extends AsyncNotifier<SessionComposerState> {
       final latest = state.value ?? current;
       state = AsyncData(
         latest.copyWith(
+          draft: _contentRevision == contentRevision ? prompt : latest.draft,
           sending: false,
           clearSubmissionProgress: true,
           error: 'Session could not be started. Press Send to retry.',
         ),
       );
+      _persistDraft(state.value!);
       return null;
+    } finally {
+      await _draftWrite;
+      submissionLifetime.close();
     }
   }
 
@@ -930,10 +1077,11 @@ class _UnavailableFollowupRepository implements FollowupRepository {
   const _UnavailableFollowupRepository();
 
   @override
-  Future<String> loadDraft(FollowupScope scope) async => '';
+  Future<ComposerDraftState> loadDraft(FollowupScope scope) async =>
+      const ComposerDraftState();
 
   @override
-  Future<void> saveDraft(FollowupScope scope, String text) async {}
+  Future<void> saveDraft(FollowupScope scope, ComposerDraftState draft) async {}
 
   @override
   Stream<List<PendingFollowup>> watchPending(FollowupScope scope) =>

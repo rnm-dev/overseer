@@ -887,30 +887,29 @@ class _ComposerCapabilityPicker extends StatefulWidget {
 class _ComposerCapabilityPickerState extends State<_ComposerCapabilityPicker> {
   bool _open = false;
 
-  ModelProvider get _provider {
+  ModelProvider? get _provider {
     final agent = widget.agent ?? widget.defaultAgent;
-    return widget.providers.firstWhere(
-      (provider) => provider.agent == agent,
-      orElse: () => widget.providers.first,
-    );
+    return providerForAgent(widget.providers, agent);
   }
 
   Future<void> _showPicker() async {
     if (_open) return;
+    final initialProvider = _provider;
+    if (initialProvider == null && !widget.allowAgentSelection) return;
     setState(() => _open = true);
-    var agent = widget.agent ?? widget.defaultAgent ?? _provider.agent;
+    var agent = widget.agent ?? widget.defaultAgent ?? initialProvider?.agent;
     var model = widget.model;
     var effort = widget.reasoningEffort;
     await showAppBottomSheet<void>(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setSheetState) {
-          final provider = widget.providers.firstWhere(
-            (item) => item.agent == agent,
-            orElse: () => widget.providers.first,
-          );
+          final provider =
+              providerForAgent(widget.providers, agent) ??
+              widget.providers.firstOrNull;
+          if (provider == null) return const SizedBox.shrink();
           final initialAgent =
-              widget.agent ?? widget.defaultAgent ?? _provider.agent;
+              widget.agent ?? widget.defaultAgent ?? initialProvider?.agent;
           // A session's own model and effort belong to the agent it runs on, so
           // switching agent here leaves only the new provider's marked default.
           final switchedAgent =
@@ -919,23 +918,30 @@ class _ComposerCapabilityPickerState extends State<_ComposerCapabilityPicker> {
             provider.models,
             model,
             inherited: switchedAgent ? null : widget.inheritedModel,
+            resetLabel: switchedAgent || widget.inheritedModel == null
+                ? 'Use Peon default'
+                : 'Use session default',
           );
-          final effectiveModel =
-              model ??
-              (switchedAgent ? null : widget.inheritedModel) ??
-              provider.models
-                  .where((option) => option.isDefault)
-                  .firstOrNull
-                  ?.id ??
-              provider.models.firstOrNull?.id;
+          final effectiveModel = effectiveCapability(
+            provider.models,
+            explicit: model,
+            inherited: switchedAgent ? null : widget.inheritedModel,
+          );
           final effortOptions = reasoningEffortsForModel(
             provider,
             effectiveModel,
           );
+          final inheritedEffort = effectiveReasoningEffort(
+            effortOptions,
+            inherited: switchedAgent ? null : widget.inheritedReasoningEffort,
+          );
           final effortChoices = capabilityChoices(
             effortOptions,
             effort,
-            inherited: switchedAgent ? null : widget.inheritedReasoningEffort,
+            inherited: inheritedEffort,
+            resetLabel: switchedAgent || widget.inheritedReasoningEffort == null
+                ? 'Use Peon default'
+                : 'Use session default',
           );
 
           return AppBottomSheet(
@@ -978,14 +984,13 @@ class _ComposerCapabilityPickerState extends State<_ComposerCapabilityPicker> {
                         choices: modelChoices,
                         onChanged: (value) {
                           final nextModel = value.isEmpty ? null : value;
-                          final nextEffectiveModel =
-                              nextModel ??
-                              (switchedAgent ? null : widget.inheritedModel) ??
-                              provider.models
-                                  .where((option) => option.isDefault)
-                                  .firstOrNull
-                                  ?.id ??
-                              provider.models.firstOrNull?.id;
+                          final nextEffectiveModel = effectiveCapability(
+                            provider.models,
+                            explicit: nextModel,
+                            inherited: switchedAgent
+                                ? null
+                                : widget.inheritedModel,
+                          );
                           final nextEfforts = reasoningEffortsForModel(
                             provider,
                             nextEffectiveModel,
@@ -1036,18 +1041,36 @@ class _ComposerCapabilityPickerState extends State<_ComposerCapabilityPicker> {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final provider = _provider;
-    final agentLabel = provider.label;
+    final agentLabel =
+        provider?.label ?? widget.agent ?? widget.defaultAgent ?? '';
     final modelLabel = capabilityLabel(
-      provider.models,
+      provider?.models ?? const [],
       widget.model,
       inherited: widget.inheritedModel,
     );
-    final effortLabel = capabilityLabel(
-      reasoningEffortsForModel(provider, widget.model ?? widget.inheritedModel),
-      widget.reasoningEffort,
-      inherited: widget.inheritedReasoningEffort,
+    final effortOptions = reasoningEffortsForModel(
+      provider,
+      effectiveCapability(
+        provider?.models ?? const [],
+        explicit: widget.model,
+        inherited: widget.inheritedModel,
+      ),
     );
-    final label = '$agentLabel · $modelLabel · $effortLabel';
+    final effortLabel = effortOptions.isEmpty
+        ? ''
+        : capabilityLabel(
+            effortOptions,
+            widget.reasoningEffort,
+            inherited: effectiveReasoningEffort(
+              effortOptions,
+              inherited: widget.inheritedReasoningEffort,
+            ),
+          );
+    final label = [
+      agentLabel,
+      modelLabel,
+      effortLabel,
+    ].where((part) => part.isNotEmpty).join(' · ');
     return Semantics(
       button: true,
       label: widget.allowAgentSelection

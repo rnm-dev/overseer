@@ -13,6 +13,7 @@ import '../../settings/domain/work_sound_player.dart';
 import '../domain/session_models.dart';
 import '../domain/followup_repository.dart';
 import 'session_queue_change.dart';
+import 'session_details_controller.dart';
 import 'sessions_controller.dart';
 
 final transcriptLiveServiceProvider = Provider<TranscriptLiveService?>(
@@ -188,14 +189,14 @@ class TranscriptController extends AsyncNotifier<TranscriptState> {
 
   Future<void> refresh() => _refresh(reportFailure: true);
 
-  Future<void> resumeFromBackground() => _refresh(reportFailure: false);
+  Future<void> resumeFromBackground() => _reconcile(forceTranscript: true);
 
   Future<void> refreshAfterSubmission() async {
     if (_refreshingLatest) {
       _refreshLatestAgain = true;
       return;
     }
-    await _refresh(reportFailure: false);
+    await _reconcile(forceTranscript: true);
   }
 
   Future<void> _refresh({required bool reportFailure}) async {
@@ -519,6 +520,15 @@ class TranscriptController extends AsyncNotifier<TranscriptState> {
             );
         if (!ref.mounted) return;
         final detailsRunning = details.status == 'running';
+        publishSessionDetails(
+          ref,
+          SessionDetailsScope(
+            workspaceId: scope.workspaceId,
+            peonId: scope.peonId,
+            sessionId: scope.sessionId,
+          ),
+          details,
+        );
         if (detailsRunning || !_queueHasPending) {
           _setRunning(detailsRunning);
         }

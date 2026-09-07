@@ -2,9 +2,9 @@ import { useEffect, useMemo, useRef, useState, type Dispatch, type MutableRefObj
 import { api, ApiError, isPeonNeedsUpdate, json } from "../../shared/api";
 import type { Translate } from "../../shared/i18n";
 import { useNotifications } from "../../shared/notifications";
-import { composerDraftKey, saveComposerDraft, useCarriedAttachments, useComposerDraft, useComposerDraftFiles } from "./drafts";
+import { composerDraftKey, saveComposerDraft, useCarriedAttachments, useComposerDraft, useComposerDraftFiles, type ComposerSelectionDraft } from "./drafts";
 import { attachmentUploadPath } from "../projects/fileLinks";
-import type { ModelsCatalog } from "../settings/models";
+import { effectiveModelId, isReasoningEffortValid, optionMatches, type ModelProvider, type ModelsCatalog } from "../settings/models";
 import type { MessageAttachment } from "./parsing";
 import { replyIdentity, type SelectedTextReply } from "./selectedTextReply";
 import { createQueueReconciler, draftWithQueuedItem, enqueueSessionFollowup, getSessionQueue, removeSessionQueueItem, removeWaitingQueueItem, pruneSteeredQueueItems, steerSessionQueueItem, sendWaitingQueueItemNow, visibleQueueItems, type QueueActivityTracker, type QueueItem } from "./queue";
@@ -49,20 +49,56 @@ export function composerGhostVisible(ghost: ComposerGhost, userMessageCount: num
 }
 
 export class FollowupRequestIdentity {
-  private current: { identity: string; id: string } | null = null;
+  private readonly ids = new Map<string, string>();
+  private readonly selections = new Map<string, SubmittedSelection>();
 
   constructor(private readonly createId: () => string = () => crypto.randomUUID()) {}
 
   forPayload(identity: string): string {
-    if (this.current?.identity === identity) return this.current.id;
+    const existing = this.ids.get(identity);
+    if (existing) return existing;
     const id = this.createId();
-    this.current = { identity, id };
+    this.ids.set(identity, id);
     return id;
   }
 
-  clear(): void {
-    this.current = null;
+  selectionFor(identity: string, fresh: SubmittedSelection): { id: string; selection: SubmittedSelection } {
+    const id = this.forPayload(identity);
+    const selection = this.selections.get(identity);
+    if (selection) return { id, selection };
+    this.selections.set(identity, fresh);
+    return { id, selection: fresh };
   }
+
+  clear(expectedId?: string): void {
+    if (!expectedId) {
+      this.ids.clear();
+      this.selections.clear();
+      return;
+    }
+    for (const [identity, id] of this.ids) if (id === expectedId) {
+      this.ids.delete(identity);
+      this.selections.delete(identity);
+    }
+  }
+}
+
+export interface SubmittedSelection {
+  model: string;
+  reasoningEffort: string;
+}
+
+// Capability knowledge only changes a fresh request. An unresolved request
+// keeps the exact selection/body that produced its id, even if the catalog
+// refreshes before its retry.
+export function freshSubmittedSelection(
+  provider: ModelProvider | null,
+  effectiveModel: string | null,
+  selection: SubmittedSelection,
+): SubmittedSelection {
+  const modelKnown = Boolean(effectiveModel && provider?.models.some((option) => optionMatches(option, effectiveModel)));
+  if (!modelKnown || !selection.reasoningEffort || isReasoningEffortValid(provider, effectiveModel, selection.reasoningEffort)) return selection;
+  return { ...selection, reasoningEffort: "" };
 }
 
 export function composerActionErrorMessage(error: unknown, t: Translate): string | undefined {
@@ -98,7 +134,7 @@ interface Args {
   runningModel: string | null;
   runningReasoningEffort: string | null;
   sessionModel: string | null;
-  sessionAgent: string | null;
+  sessionProvider: ModelProvider | null;
   sessionReasoningEffort: string | null;
   sessionPermissionMode: string | null;
   overrideModel: string;
@@ -116,6 +152,8 @@ interface Args {
   setRunningSelection: (model: string | null, reasoningEffort: string | null) => void;
   setStopNote: Dispatch<SetStateAction<string | null>>;
   onWorkStarted: () => void;
+  onSelectionAccepted: (selection: { model: string; reasoningEffort: string }) => void;
+  onQueuedSelectionRestored: (selection: Pick<ComposerSelectionDraft, "model" | "reasoningEffort">) => void;
   mentions: ComposerMention[];
   setMentions: Dispatch<SetStateAction<ComposerMention[]>>;
   committedCommandIds: ReadonlySet<string>;
@@ -123,13 +161,13 @@ interface Args {
 
 export function useSessionComposer({
   base, sid, sessionKey, wsId, peonId, t, running, runningModel,
-  runningReasoningEffort, sessionModel, sessionAgent, sessionReasoningEffort,
+  runningReasoningEffort, sessionModel, sessionProvider, sessionReasoningEffort,
   sessionPermissionMode, overrideModel,
   overrideReasoningEffort, catalog, currentSessionKeyRef, queueReconcilerRef,
   queueActivity, controlReadScope, userMessageCount,
   replyTo, setReplyTo,
   onGhostCreated,
-  setRunning, setRunningSelection, setStopNote, onWorkStarted,
+  setRunning, setRunningSelection, setStopNote, onWorkStarted, onSelectionAccepted, onQueuedSelectionRestored,
   mentions, setMentions, committedCommandIds,
 }: Args) {
   const { notifyError } = useNotifications();
@@ -163,7 +201,6 @@ export function useSessionComposer({
   useEffect(() => {
     setSending(false);
     setGhost(null);
-    requestIdentityRef.current?.clear();
     setReplyTo(null);
   }, [sessionKey, setReplyTo]);
 
@@ -192,8 +229,8 @@ export function useSessionComposer({
     return requestIdentityRef.current!.forPayload(identity);
   }
 
-  function clearRequestId(): void {
-    requestIdentityRef.current?.clear();
+  function clearRequestId(expectedId?: string): void {
+    requestIdentityRef.current?.clear(expectedId);
   }
 
   // Whether file transfer is enabled on the peon. If it's off, auto-enable a
@@ -254,6 +291,21 @@ export function useSessionComposer({
     const pending = files;
     const pendingCarried = carried;
     const pendingReply = replyTo;
+    const pendingMentions = mentions;
+    const draftSelection = { model: overrideModel, reasoningEffort: overrideReasoningEffort };
+    const draftModel = effectiveModelId(catalog, sessionProvider, draftSelection.model, sessionModel);
+    const selectionIdentity = JSON.stringify([
+      sessionKey, prompt, draftSelection.model, draftSelection.reasoningEffort,
+      replyIdentity(pendingReply),
+      pending.map((f) => [f.name, f.size, f.lastModified]),
+      pendingCarried.map((attachment) => attachment.path), mentionWire(pendingMentions),
+    ]);
+    const submissionSnapshot = requestIdentityRef.current!.selectionFor(
+      selectionIdentity,
+      freshSubmittedSelection(sessionProvider, draftModel, draftSelection),
+    );
+    const { id: clientId, selection: submittedSelection } = submissionSnapshot;
+    const submittedModel = effectiveModelId(catalog, sessionProvider, submittedSelection.model, sessionModel);
     const wasRunning = running;
     const prevModel = runningModel;
     const prevReasoningEffort = runningReasoningEffort;
@@ -267,12 +319,6 @@ export function useSessionComposer({
     // response leaves the browser unable to tell a refused send from a committed
     // one, and reusing the key makes pressing Send again idempotent at Overseer
     // rather than a second message.
-    const clientId = requestIdFor(JSON.stringify([
-      sessionKey, prompt, overrideModel, overrideReasoningEffort,
-      replyIdentity(pendingReply),
-      pending.map((f) => [f.name, f.size, f.lastModified]),
-      pendingCarried.map((attachment) => attachment.path), mentionWire(mentions),
-    ]));
     // Let the transcript freeze its current viewport before the new row enters.
     // It will scroll only after Virtuoso has measured the committed ghost.
     onGhostCreated();
@@ -289,8 +335,8 @@ export function useSessionComposer({
     });
     setRunning(true);
     setRunningSelection(
-      overrideModel || sessionModel || (!sessionAgent ? catalog?.defaultModel : null) || null,
-      overrideReasoningEffort || sessionReasoningEffort || null,
+      submittedModel,
+      submittedSelection.reasoningEffort || sessionReasoningEffort || null,
     );
     setStopNote(null);
     setInput("");
@@ -306,14 +352,15 @@ export function useSessionComposer({
       const body: { prompt: string; attachments?: typeof attachments; model?: string; reasoningEffort?: string; replyTo?: SelectedTextReply; mentions?: ReturnType<typeof mentionWire> } = { prompt };
       if (attachments.length) body.attachments = attachments;
       if (pendingReply) body.replyTo = pendingReply;
-      if (mentions.length) body.mentions = mentionWire(mentions);
-      if (overrideModel) body.model = overrideModel; // becomes the session default after acceptance
-      if (overrideReasoningEffort) body.reasoningEffort = overrideReasoningEffort;
+      if (pendingMentions.length) body.mentions = mentionWire(pendingMentions);
+      if (submittedSelection.model) body.model = submittedSelection.model; // becomes the session default after acceptance
+      if (submittedSelection.reasoningEffort) body.reasoningEffort = submittedSelection.reasoningEffort;
       const request = json(body);
       request.headers = { "Peon-Request-Id": clientId };
       followupAttempted = true;
       await api(`${base}/sessions/${encodeURIComponent(sid)}/followup`, request);
-      clearRequestId();
+      clearRequestId(clientId);
+      onSelectionAccepted(draftSelection);
       setMentions([]);
       if (currentSessionKeyRef.current === sessionKey) onWorkStarted();
     } catch (err) {
@@ -323,7 +370,7 @@ export function useSessionComposer({
       // and keeps the request id for an idempotent retry.
       const statedRefusal = followupAttempted && followupWasRefused(err);
       const restoreDraft = shouldRestoreFollowupDraft(followupAttempted, err);
-      if (statedRefusal) clearRequestId();
+      if (statedRefusal) clearRequestId(clientId);
       if (currentSessionKeyRef.current !== sessionKey) {
         // The operator moved on, so there is no composer to roll back into. A
         // stated refusal means the draft belongs back under this session's key;
@@ -374,10 +421,10 @@ export function useSessionComposer({
       const request = json({ text, ...(attachments.length ? { attachments } : {}), ...(pendingMentions.length ? { mentions: mentionWire(pendingMentions) } : {}) });
       request.headers = { "Peon-Request-Id": commandId };
       await api(`${base}/sessions/${encodeURIComponent(sid)}/context-messages`, request);
-      clearRequestId();
+      clearRequestId(commandId);
     } catch (error) {
       if (currentSessionKeyRef.current === sessionKey && followupWasRefused(error)) {
-        clearRequestId();
+        clearRequestId(commandId);
         setGhost(null);
         setInput(text);
         setFiles(pending);
@@ -399,23 +446,39 @@ export function useSessionComposer({
     const pending = files;
     const pendingCarried = carried;
     const pendingReply = replyTo;
+    const pendingMentions = mentions;
+    const pendingPermissionMode = sessionPermissionMode;
+    const draftSelection = { model: overrideModel, reasoningEffort: overrideReasoningEffort };
+    const draftModel = effectiveModelId(catalog, sessionProvider, draftSelection.model, sessionModel);
+    const selectionIdentity = JSON.stringify([
+      "queue", sessionKey, prompt, pendingPermissionMode, draftSelection.model, draftSelection.reasoningEffort,
+      replyIdentity(pendingReply),
+      pending.map((file) => [file.name, file.size, file.lastModified]),
+      pendingCarried.map((attachment) => attachment.path), mentionWire(pendingMentions),
+    ]);
+    const submissionSnapshot = requestIdentityRef.current!.selectionFor(
+      selectionIdentity,
+      freshSubmittedSelection(sessionProvider, draftModel, draftSelection),
+    );
+    const { id: commandId, selection: submittedSelection } = submissionSnapshot;
     const queueReconciler = queueReconcilerRef.current;
     setSending(true);
     setSendError(null);
     try {
       const attachments: { type: "file" | "image"; path: string; transferId?: string; size?: number; sha256?: string }[] = carriedPayload(pendingCarried);
       for (const file of pending) attachments.push({ type: isImage(file) ? "image" : "file", ...await uploadFile(file) });
-      const commandId = crypto.randomUUID();
       await enqueueSessionFollowup(base, sid, {
         prompt,
         ...(attachments.length ? { attachments } : {}),
-        ...(sessionPermissionMode ? { permissionMode: sessionPermissionMode } : {}),
-        ...(overrideModel ? { model: overrideModel } : {}),
-        ...(overrideReasoningEffort ? { reasoningEffort: overrideReasoningEffort } : {}),
+        ...(pendingPermissionMode ? { permissionMode: pendingPermissionMode } : {}),
+        ...(submittedSelection.model ? { model: submittedSelection.model } : {}),
+        ...(submittedSelection.reasoningEffort ? { reasoningEffort: submittedSelection.reasoningEffort } : {}),
         ...(pendingReply ? { replyTo: pendingReply } : {}),
-        ...(mentions.length ? { mentions: mentionWire(mentions) } : {}),
+        ...(pendingMentions.length ? { mentions: mentionWire(pendingMentions) } : {}),
         commandId,
       });
+      clearRequestId(commandId);
+      onSelectionAccepted(draftSelection);
       // Peon owns FIFO order. Never insert the response optimistically; fetch the
       // authoritative list after acceptance (the stream change is a second guard).
       await queueReconciler?.reconcile();
@@ -497,6 +560,10 @@ export function useSessionComposer({
     setCarried(draft.carried);
     setReplyTo(draft.replyTo);
     setMentions(queued.mentions ?? []);
+    onQueuedSelectionRestored({
+      model: queued.model ?? "",
+      reasoningEffort: queued.reasoningEffort ?? "",
+    });
   }
 
   async function steerQueuedItem(itemId: string) {
@@ -527,7 +594,7 @@ export function useSessionComposer({
     }
     setRunning(true);
     setRunningSelection(
-      queued?.model || runningModel || sessionModel || (!sessionAgent ? catalog?.defaultModel : null) || null,
+      queued?.model || runningModel || effectiveModelId(catalog, sessionProvider, null, sessionModel),
       queued?.reasoningEffort || runningReasoningEffort || sessionReasoningEffort || null,
     );
     setStopNote(null);

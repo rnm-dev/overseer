@@ -10,8 +10,8 @@ import { useNotifications } from "../../shared/notifications";
 import { Label } from "../../shared/ui";
 import { usePeon } from "../fleet/context";
 import { Composer, supportsDesktopComposerFocus } from "./Composer";
-import { clearComposerDraft, composerDraftKey, useComposerDraft, useComposerDraftFiles } from "./drafts";
-import { AgentSelect, defaultEffortIdFor, defaultModelId, effortsForModel, ModelSelect, optionMatches, Picker, ReasoningEffortSelect, providerForAgent, providerForModel, useModels } from "../settings/models";
+import { clearComposerDraftContent, clearComposerSelectionIfUnchanged, composerDraftKey, selectionAfterAcceptance, useComposerDraft, useComposerDraftFiles, useComposerSelectionDraft } from "./drafts";
+import { AgentSelect, defaultEffortIdFor, defaultModelId, defaultProviderForCatalog, effectiveModelId, isReasoningEffortValid, ModelSelect, optionMatches, Picker, ReasoningEffortSelect, reasoningEffortsForEffectiveModel, providerForAgent, useModels } from "../settings/models";
 import { buildNewSessionRequest } from "./newSessionRequest";
 import { PathInput } from "../projects/PathInput";
 import { dedupeProjectsByKey } from "../projects/projectList";
@@ -43,11 +43,10 @@ export function PeonNewSession() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectKey, setProjectKey] = useState("");
   const [dir, setDir] = useState("");
-  const [agent, setAgent] = useState("");
-  const [model, setModel] = useState("");
-  const [reasoningEffort, setReasoningEffort] = useState("");
   const draftKey = composerDraftKey(wsId, peon.peonId, null);
   const [input, setInput] = useComposerDraft(draftKey);
+  const [selection, setSelection] = useComposerSelectionDraft(draftKey);
+  const { agent, model, reasoningEffort } = selection;
   // A new session may retain its text draft, but attachments must originate
   // from an explicit paste, picker, or drop in this instance of the composer.
   const [files, setFiles] = useComposerDraftFiles(draftKey, false);
@@ -55,7 +54,9 @@ export function PeonNewSession() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
-  const selectedProvider = providerForAgent(catalog, agent) ?? (!agent ? (providerForAgent(catalog, catalog?.defaultAgent) ?? providerForModel(catalog, catalog?.defaultModel)) : null);
+  const selectedProvider = agent ? providerForAgent(catalog, agent) : defaultProviderForCatalog(catalog);
+  const effectiveModel = effectiveModelId(catalog, selectedProvider, model, null);
+  const effortOptions = reasoningEffortsForEffectiveModel(selectedProvider, effectiveModel);
   const selectedProject = projects.find((project) => project.key === projectKey);
   const selectedProjectRoot = selectedProject?.path ?? selectedProject?.dir;
   const projectBrowseLocations = useMemo(
@@ -66,22 +67,16 @@ export function PeonNewSession() {
     [base, projects],
   );
 
-  // Preselect the peon's own default agent/model/effort (each provider marks
-  // its pick with `default: true` — the top-level defaultModel is often absent)
-  // instead of leaving the pickers blank until the operator touches them.
-  // defaultAgent (settings.defaultAgent) is the authoritative pick; older
-  // peons that omit it fall back to guessing from defaultModel/providers[0].
+  // A persisted choice can predate the latest catalog. Once a successful
+  // catalog read proves that this known model has no such effort, do not hide
+  // the invalid value while still submitting it. Unknown models stay intact.
   useEffect(() => {
-    if (!catalog || catalog.providers.length === 0) return;
-    const provider =
-      providerForAgent(catalog, catalog.defaultAgent) ??
-      providerForModel(catalog, catalog.defaultModel) ??
-      catalog.providers[0];
-    const initialModel = defaultModelId(provider) || "";
-    setAgent(provider.agent);
-    setModel(initialModel);
-    setReasoningEffort(defaultEffortIdFor(effortsForModel(provider, initialModel)) || "");
-  }, [catalog]);
+    if (!catalog || !reasoningEffort || !effectiveModel || !selectedProvider?.models.some((option) => optionMatches(option, effectiveModel))) return;
+    if (isReasoningEffortValid(selectedProvider, effectiveModel, reasoningEffort)) return;
+    setSelection((current) => current.model === model && current.reasoningEffort === reasoningEffort
+      ? { ...current, reasoningEffort: "" }
+      : current);
+  }, [catalog, effectiveModel, model, reasoningEffort, selectedProvider, setSelection]);
 
   useEffect(() => {
     let alive = true;
@@ -155,10 +150,11 @@ export function PeonNewSession() {
     setSubmitting(true);
     setError(null);
     try {
+      const submittedSelection = { ...selection };
       const draftId = crypto.randomUUID();
       const attachments: { type: "file" | "image"; path: string; transferId?: string; size?: number; sha256?: string }[] = [];
       for (const f of files) attachments.push({ type: isImage(f) ? "image" : "file", ...await uploadFile(draftId, f) });
-      const body = buildNewSessionRequest({ prompt: input, projectKey, dir, agent, model, reasoningEffort, attachments });
+      const body = buildNewSessionRequest({ prompt: input, projectKey, dir, agent: submittedSelection.agent, model: submittedSelection.model, reasoningEffort: submittedSelection.reasoningEffort, attachments });
       const res = await api<{ id?: string; session?: { id?: string } }>(`${base}/sessions`, {
         ...json(body),
         headers: { "Peon-Request-Id": draftId },
@@ -173,7 +169,9 @@ export function PeonNewSession() {
         setFiles([]); // the attachments went with the session — don't leave them drafted here
         // navigate() unmounts this page in the same commit, so the attachment
         // half of the draft cannot rely on its persistence effect running.
-        clearComposerDraft(draftKey);
+        clearComposerDraftContent(draftKey);
+        clearComposerSelectionIfUnchanged(draftKey, submittedSelection);
+        setSelection((current) => selectionAfterAcceptance(current, submittedSelection));
         navigate(`/peons/${peon.peonId}/sessions/${id}`);
       }
       else setSubmitting(false);
@@ -215,43 +213,41 @@ export function PeonNewSession() {
                     catalog={catalog}
                     value={agent}
                     onChange={(next) => {
-                      if (next === agent) return;
-                      setAgent(next);
-                      const provider = providerForAgent(catalog, next);
-                      const nextModel = defaultModelId(provider) ?? "";
-                      setModel(nextModel);
-                      setReasoningEffort(defaultEffortIdFor(effortsForModel(provider, nextModel)) ?? "");
+                      setSelection((current) => current.agent === next
+                        ? current
+                        : { agent: next, model: "", reasoningEffort: "" });
                     }}
                     label={t("newSession.agent")}
                     className="model-select-compact"
+                    allowClear
                   />
                   <ModelSelect
                     provider={selectedProvider}
                     value={model}
                     onChange={(next) => {
-                      setModel(next);
-                      // Efforts can be per model; land on the new model's own
-                      // default rather than carrying one it may not accept.
-                      const efforts = effortsForModel(selectedProvider, next);
-                      if (!efforts.some((effort) => optionMatches(effort, reasoningEffort))) {
-                        setReasoningEffort(defaultEffortIdFor(efforts) ?? "");
-                      }
+                      const nextEffectiveModel = effectiveModelId(catalog, selectedProvider, next, null);
+                      setSelection((current) => ({
+                        ...current,
+                        model: next,
+                        reasoningEffort: isReasoningEffortValid(selectedProvider, nextEffectiveModel, current.reasoningEffort)
+                          ? current.reasoningEffort
+                          : "",
+                      }));
                     }}
                     label={t("newSession.model")}
                     className="model-select-compact"
+                    defaultLabel={t("model.default")}
                     defaultId={defaultModelId(selectedProvider)}
-                    allowClear={false}
                   />
-                  {effortsForModel(selectedProvider, model).length > 0 && (
+                  {effortOptions.length > 0 && (
                   <ReasoningEffortSelect
                     provider={selectedProvider}
-                    model={model}
+                    model={effectiveModel}
                     value={reasoningEffort}
-                    onChange={setReasoningEffort}
+                    onChange={(next) => setSelection((current) => ({ ...current, reasoningEffort: next }))}
                     label={t("newSession.reasoningEffort")}
                     className="model-select-compact"
-                    defaultId={defaultEffortIdFor(effortsForModel(selectedProvider, model))}
-                    allowClear={false}
+                    defaultId={defaultEffortIdFor(effortOptions)}
                   />
                   )}
                 </>

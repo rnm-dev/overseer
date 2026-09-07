@@ -323,19 +323,17 @@ class _SessionDetailPageState extends _SessionDetailAttachmentHost
         _syncingComposer = false;
       });
     }
-    final details = currentSession == null
+    final detailsScope = currentSession == null
         ? null
-        : ref
-                  .watch(
-                    sessionDetailsProvider(
-                      SessionDetailsScope(
-                        workspaceId: workspaceId,
-                        peonId: peonId,
-                        sessionId: currentSession.sessionId,
-                      ),
-                    ),
-                  )
-                  .value ??
+        : SessionDetailsScope(
+            workspaceId: workspaceId,
+            peonId: peonId,
+            sessionId: currentSession.sessionId,
+          );
+    final details = detailsScope == null
+        ? null
+        : ref.watch(sessionDetailsSnapshotProvider(detailsScope)) ??
+              ref.watch(sessionDetailsProvider(detailsScope)).value ??
               _detailsFromTranscript(transcript?.value?.events);
     final agentOverridden = composerState?.agent != null;
     final viewers = currentSession == null
@@ -1048,32 +1046,33 @@ String _workingSelectionLabel(
   SessionDetails? details,
 ) {
   final catalog = composer?.catalog;
-  final agent = composer?.agent ?? details?.agent ?? catalog?.defaultAgent;
-  final provider = catalog?.providers
-      .where((candidate) => candidate.agent == agent)
-      .firstOrNull;
-  final model = composer?.model ?? details?.model;
-  final effort = composer?.reasoningEffort ?? details?.reasoningEffort;
-  final effectiveModel =
-      model ??
-      provider?.models.where((option) => option.isDefault).firstOrNull?.id ??
-      provider?.models.firstOrNull?.id;
+  // A running label reports Peon's accepted session state, never the next
+  // draft's tentative override.
+  final agent = details?.agent ?? catalog?.defaultAgent;
+  final provider = providerForAgent(catalog?.providers ?? const [], agent);
+  final model = details?.model;
+  final effort = details?.reasoningEffort;
+  final effectiveModel = effectiveCapability(
+    provider?.models ?? const [],
+    explicit: model,
+  );
   final modelLabel = capabilityLabel(
     provider?.models ?? const [],
     model,
-    fallbackLabel: model ?? '',
+    fallbackLabel: '',
   ).trim();
   final effortOptions = reasoningEffortsForModel(provider, effectiveModel);
   final effortLabel = capabilityLabel(
     effortOptions,
-    effort,
-    fallbackLabel: effort ?? '',
+    null,
+    inherited: effectiveReasoningEffort(effortOptions, inherited: effort),
+    fallbackLabel: '',
   ).trim().toLowerCase();
   final label = [
     modelLabel,
     effortLabel,
   ].where((part) => part.isNotEmpty).join(' ');
-  return label.isEmpty ? 'Working' : label;
+  return label;
 }
 
 class _NewSessionBody extends StatelessWidget {
