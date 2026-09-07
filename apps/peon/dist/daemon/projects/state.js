@@ -211,12 +211,17 @@ export class ProjectStore extends EventEmitter {
     }
     // Throws on a key collision rather than upserting — re-creating isn't a supported
     // way to refresh a record; use update() for that.
-    insert(record) {
+    insert(record, initialMetadata) {
         if (this.state.projects[record.key]) {
             throw new Error(`project already exists: ${record.key}`);
         }
         mkdirSync(record.dir, { recursive: true });
-        ensureProjectDocs(record.dir, record.label);
+        if (initialMetadata?.trim()) {
+            migrateProjectMetadata(record.dir, record.label, initialMetadata);
+        }
+        else {
+            ensureProjectDocs(record.dir, record.label);
+        }
         if (this.state.projectCatalog.events.length >= MAX_PROJECT_CATALOG_EVENTS) {
             throw new Error("project catalog journal is full; waiting for Overseer acknowledgement");
         }
@@ -231,7 +236,8 @@ export class ProjectStore extends EventEmitter {
         return stored;
     }
     createProject(fields) {
-        return this.insert({ ...fields, projectId: randomUUID(), quickLinks: [], archivedAt: null, lastSyncedAt: Date.now() });
+        const { metadata, ...recordFields } = fields;
+        return this.insert({ ...recordFields, projectId: randomUUID(), quickLinks: [], archivedAt: null, lastSyncedAt: Date.now() }, metadata);
     }
     // No cascade: sessions keep whatever projectKey they already recorded —
     // this is bookkeeping cleanup, not a data-integrity concern for
