@@ -77,7 +77,8 @@ class FirebaseNotificationPermissionGateway
       AuthorizationStatus.provisional => NotificationPermissionStatus.enabled,
       AuthorizationStatus.notDetermined =>
         NotificationPermissionStatus.notDetermined,
-      AuthorizationStatus.denied => NotificationPermissionStatus.denied,
+      AuthorizationStatus.denied || AuthorizationStatus.deniedPermanently =>
+        NotificationPermissionStatus.denied,
     };
   }
 }

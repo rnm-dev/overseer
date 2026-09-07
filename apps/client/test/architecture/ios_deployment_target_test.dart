@@ -6,7 +6,7 @@ void main() {
   test('iOS deployment targets stay at 15.0 or later', () {
     final frameworkInfo = File(
       'ios/Flutter/AppFrameworkInfo.plist',
-    ).readAsStringSync();
+    ).readAsStringSync().replaceAll('\r\n', '\n');
     expect(
       frameworkInfo,
       contains(

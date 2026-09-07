@@ -8,7 +8,7 @@ import Foundation
 import audio_session
 import audioplayers_darwin
 import desktop_webview_window
-import file_picker
+import file_picker_darwin
 import file_selector_macos
 import firebase_core
 import firebase_messaging

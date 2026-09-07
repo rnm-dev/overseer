@@ -289,6 +289,7 @@ void main() {
       final attentionEvents =
           <({String workspaceId, int cursor, Map<String, dynamic> payload})>[];
       final firstCount = Completer<void>();
+      final currentCompletionReceived = Completer<void>();
       service.setAttentionHandler((workspaceId, cursor, payload) async {
         attentionEvents.add((
           workspaceId: workspaceId,
@@ -300,7 +301,12 @@ void main() {
         workspaceIds: const ['workspace-1'],
         initialCursors: const {'workspace-1': 0},
         onPeon: (_, _, _) async => true,
-        onSession: (_, _, _) async => true,
+        onSession: (_, cursor, _) async {
+          if (cursor == 11 && !currentCompletionReceived.isCompleted) {
+            currentCompletionReceived.complete();
+          }
+          return true;
+        },
         onProject: (_, _, _) async => true,
         onCursor: (_, _) async {},
         onActiveSessions: (_, peonId, count) {
@@ -352,6 +358,7 @@ void main() {
           },
         }),
       );
+      await currentCompletionReceived.future;
       adapter.completeSessions([
         _runningSession('current-1', syncedAt: 30),
         _runningSession('current-2', syncedAt: 31),
