@@ -25,7 +25,7 @@ class OAuthCallbackActivity : Activity() {
     private fun returnToOverseer() {
         val activityManager = getSystemService(ACTIVITY_SERVICE) as ActivityManager
         val overseerTask = activityManager.appTasks.firstOrNull { task ->
-            task.taskInfo.baseIntent.component?.className == MainActivity::class.java.name
+            task.taskInfo?.baseIntent?.component?.className == MainActivity::class.java.name
         }
 
         if (overseerTask != null) {

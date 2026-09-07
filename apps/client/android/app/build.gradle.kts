@@ -1,3 +1,5 @@
+@file:Suppress("DEPRECATION")
+
 plugins {
     id("com.android.application")
     // START: FlutterFire Configuration
@@ -10,17 +12,13 @@ plugins {
 
 android {
     namespace = "org.ovrseer.app"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 37
     ndkVersion = flutter.ndkVersion
     flavorDimensions += "environment"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
-    }
-
-    kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_17.toString()
     }
 
     defaultConfig {
@@ -54,6 +52,12 @@ android {
             manifestPlaceholders["appName"] = "Overseer"
             manifestPlaceholders["oauthCallbackScheme"] = "overseer"
         }
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
     }
 }
 

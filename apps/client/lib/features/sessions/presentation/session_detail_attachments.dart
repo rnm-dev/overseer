@@ -82,17 +82,15 @@ mixin _SessionDetailAttachmentMethods on _SessionDetailAttachmentHost {
       _attachmentError = null;
     });
     try {
-      final result = await FilePicker.pickFiles(
-        allowMultiple: true,
-        withData: false,
-      );
-      if (!mounted || result == null) return;
+      final result = await FilePicker.pickFiles();
+      if (!mounted || result.isEmpty) return;
       final selected = <NewSessionAttachment>[];
       var rejectedLargeFiles = 0;
       var rejectedExtraFiles = 0;
       final available = maxFiles - _composerAttachments.length;
-      for (final file in result.files) {
-        if (file.size > maxBytes) {
+      for (final file in result) {
+        final size = file.lengthSync() ?? await file.length();
+        if (size > maxBytes) {
           rejectedLargeFiles++;
           continue;
         }
@@ -100,7 +98,7 @@ mixin _SessionDetailAttachmentMethods on _SessionDetailAttachmentHost {
           rejectedExtraFiles++;
           continue;
         }
-        final bytes = file.bytes ?? await file.xFile.readAsBytes();
+        final bytes = await file.readAsBytes();
         selected.add(
           NewSessionAttachment(
             name: file.name,

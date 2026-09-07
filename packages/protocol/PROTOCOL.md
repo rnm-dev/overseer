@@ -784,8 +784,9 @@ removes the old keys. Empty/default publication state is omitted.
 - `POST /projects` — a manual project. `key` is the slugified `label` (server-side);
   `409 PROJECT_EXISTS` on a collision. `dir` is optional — omit it and the peon
   assigns `~/Projects/<slug>` and `mkdir`s it; `GET /projects/suggest-dir?label=`
-  previews that path for an operator who can't see the peon's filesystem. Returns
-  the created project record (`201`).
+  previews that path for an operator who can't see the peon's filesystem. Optional
+  Markdown `metadata` seeds `docs/index.md`; it is not retained as parallel project
+  state. Returns the created project record (`201`).
 The `dir` override accepts any absolute path — the overseer token is a full-admin
 credential (see Envelope), so a caller can point a project anywhere on the box, same
 as the human API. That credential may also connect, edit, re-authenticate, or remove

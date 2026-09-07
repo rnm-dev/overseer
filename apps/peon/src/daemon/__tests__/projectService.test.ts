@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chmodSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -33,7 +33,11 @@ test("one project service owns views, validation, mutations, and session key pro
   });
 
   const projectDir = path.join(root, "project");
-  const created = service.create({ label: "Shared Project", dir: projectDir }, "alice@example.com");
+  const created = service.create({
+    label: "Shared Project",
+    dir: projectDir,
+    metadata: "# Shared project\n\nKeep this context.",
+  }, "alice@example.com");
   assert.equal(created.key, "shared-project");
   assert.equal(created.onboardingSessionId, "onboarding-session");
   assert.deepEqual(started, [{
@@ -50,6 +54,10 @@ test("one project service owns views, validation, mutations, and session key pro
     dir: projectDir,
   });
   assert.equal(service.detail(created.key).documentation.exists, true);
+  assert.equal(
+    readFileSync(path.join(projectDir, "docs", "index.md"), "utf8"),
+    "# Shared project\n\nKeep this context.\n",
+  );
   assert.deepEqual(service.list(), [{
     projectId: created.projectId,
     key: created.key,
@@ -97,6 +105,18 @@ test("project service rejects invalid create and settings input before changing 
   assert.throws(
     () => service.create({ label: "---" }),
     (error: unknown) => error instanceof ProjectServiceError && error.kind === "BAD_REQUEST",
+  );
+  assert.throws(
+    () => service.create({ label: "Relative Project", dir: "relative/path" }),
+    (error: unknown) => error instanceof ProjectServiceError
+      && error.kind === "BAD_REQUEST"
+      && error.message === "dir must be an absolute path",
+  );
+  assert.throws(
+    () => service.create({ label: "Invalid Metadata", metadata: { unsafe: true } }),
+    (error: unknown) => error instanceof ProjectServiceError
+      && error.kind === "BAD_REQUEST"
+      && error.message === "metadata must be a string or null",
   );
   const created = service.create({ label: "Validation Project", dir: path.join(root, "project") });
   assert.throws(

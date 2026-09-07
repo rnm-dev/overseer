@@ -162,7 +162,14 @@ export class ProjectService {
             throw new ProjectServiceError(409, "PROJECT_EXISTS", `a project named "${label}" already exists`);
         }
         const dir = typeof body.dir === "string" && body.dir.trim() ? body.dir.trim() : suggestDir(label);
-        const project = this.projects.createProject({ key, label, dir });
+        if (!path.isAbsolute(dir)) {
+            throw new ProjectServiceError(400, "BAD_REQUEST", "dir must be an absolute path");
+        }
+        if (body.metadata !== undefined && body.metadata !== null && typeof body.metadata !== "string") {
+            throw new ProjectServiceError(400, "BAD_REQUEST", "metadata must be a string or null");
+        }
+        const metadata = typeof body.metadata === "string" ? body.metadata : null;
+        const project = this.projects.createProject({ key, label, dir, metadata });
         let onboardingSessionId = null;
         try {
             const onboarding = this.sessionIndex.start({
