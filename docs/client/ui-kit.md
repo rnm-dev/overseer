@@ -74,6 +74,25 @@ All modal sheets enter through `showAppBottomSheet` and compose
 `AppBottomSheet` (or the option/confirmation wrappers). Sheet titles, fields,
 actions, and option rows share the same 16-pixel content grid.
 
+## Desktop composition
+
+At medium and wide widths, the shell presents the selected Overseer and real
+Fleet content with connection navigation. Do not add inactive navigation items,
+placeholder detail panes, or live-status indicators without authoritative state.
+Session transcripts and their composer share a centered 960-pixel maximum
+reading column; the page header remains full width. Compact windows retain the
+same full-width transcript and composer geometry.
+
+At 600 pixels and above, `showAppBottomSheet` presents a centered dialog with a
+560-pixel maximum width, rounded corners and no drag handle. Long content scrolls
+within the available height; callers with their own flexible scrolling retain
+ownership of that layout. Compact layouts keep the bottom-sheet presentation.
+The helper preserves dismissal, root-navigator and reduced-motion settings.
+
+The connection picker keeps its Add Overseer action beneath the list in the
+same 520-pixel column on medium and wide windows. Compact layouts retain the
+bottom action.
+
 ## Branding graphics
 
 Keep product logos and decorative hero artwork on the native splash only.

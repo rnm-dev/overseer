@@ -41,3 +41,21 @@ OAuth, secure storage, resize behavior, offline recovery, reconnects,
 notifications, and production signing still require release smoke tests on the
 corresponding real platform. Never put signing credentials or secure device
 tokens in logs, fixtures, or commits.
+
+## Desktop visual fixtures
+
+The shell and transcript tests can render populated desktop fixtures without
+server access or credentials. From `apps/client`:
+
+```sh
+CAPTURE_SHELL_SCREENSHOT=1 flutter test test/features/shell/presentation/desktop_shell_visual_test.dart
+flutter test --update-goldens --dart-define=OVSR_SESSION_GOLDEN=true test/features/sessions/presentation/session_detail_page_test.dart --plain-name "centers the transcript and composer on desktop while retaining compact width"
+```
+
+The shell capture is written under `test/features/shell/artifacts/`; the session
+capture lives under `test/features/sessions/presentation/goldens/`. Font loading
+for the session capture is opt-in so it does not alter other widget tests.
+These fixtures supplement native resize and interaction checks.
+
+Run Flutter builds and tests sequentially in a shared checkout: simultaneous
+commands can race when preparing `build/native_assets/macos/libsqlite3.dylib`.

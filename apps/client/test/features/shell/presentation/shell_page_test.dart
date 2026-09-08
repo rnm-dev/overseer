@@ -57,7 +57,7 @@ void main() {
       expect(find.byType(AppBar), findsNothing);
       expect(find.byKey(const Key('overseer-index-navbar')), findsOneWidget);
       expect(find.byType(AppNavigationBar), findsOneWidget);
-      expect(find.text('overseer.rnm.dev'), findsOneWidget);
+      expect(find.byKey(const Key('current-overseer-name')), findsOneWidget);
       expect(find.byTooltip('Back to Overseer list'), findsOneWidget);
       await tester.pump();
       expect(find.byKey(const Key('fleet-overview')), findsOneWidget);
@@ -71,6 +71,7 @@ void main() {
 
       expect(find.byKey(const Key('medium-shell')), findsOneWidget);
       expect(find.byKey(const Key('medium-navigation-rail')), findsOneWidget);
+      expect(find.byKey(const Key('shell-overseer-name')), findsOneWidget);
       await tester.pump();
       expect(find.byKey(const Key('fleet-overview')), findsOneWidget);
     });
@@ -81,7 +82,33 @@ void main() {
       expect(find.byKey(const Key('wide-shell')), findsOneWidget);
       expect(find.byKey(const Key('wide-sidebar')), findsOneWidget);
       expect(find.byKey(const Key('wide-master-pane')), findsOneWidget);
-      expect(find.byKey(const Key('wide-detail-pane')), findsOneWidget);
+      expect(find.byKey(const Key('wide-detail-pane')), findsNothing);
+      expect(find.text('Fleet overview'), findsWidgets);
+    });
+
+    testWidgets('keeps the connection escape action on tablet and desktop', (
+      tester,
+    ) async {
+      var returnedToConnections = false;
+      await _pumpShell(
+        tester,
+        width: 600,
+        onBackToConnections: () => returnedToConnections = true,
+      );
+
+      expect(
+        find.byKey(const Key('shell-back-to-connections')),
+        findsOneWidget,
+      );
+      await tester.tap(find.byKey(const Key('shell-back-to-connections')));
+      expect(returnedToConnections, isTrue);
+
+      await tester.binding.setSurfaceSize(const Size(1024, 800));
+      await tester.pump();
+      expect(
+        find.byKey(const Key('shell-back-to-connections')),
+        findsOneWidget,
+      );
     });
 
     testWidgets('switches shell when the viewport is resized', (tester) async {

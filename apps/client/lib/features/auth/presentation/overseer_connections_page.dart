@@ -76,6 +76,8 @@ class OverseerConnectionsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
+    final desktop =
+        MediaQuery.sizeOf(context).width >= ResponsiveBreakpoints.medium;
     return Scaffold(
       body: SafeArea(
         bottom: false,
@@ -137,6 +139,10 @@ class OverseerConnectionsPage extends StatelessWidget {
                                     ],
                                   ],
                                 ),
+                              if (!_isEmpty && desktop) ...[
+                                const SizedBox(height: 16),
+                                _addButton(context),
+                              ],
                             ],
                           ),
                         ),
@@ -146,24 +152,26 @@ class OverseerConnectionsPage extends StatelessWidget {
                 },
               ),
             ),
-            if (!_isEmpty)
+            if (!_isEmpty && !desktop)
               Padding(
                 padding: context.appSpacing.screenInsets(bottom: 20),
-                child: AppButton(
-                  key: const Key('add-overseer-button'),
-                  onPressed: () => _showAddOverseer(context),
-                  fullWidth: true,
-                  size: AppButtonSize.lg,
-                  variant: AppButtonVariant.secondary,
-                  leading: Icon(LucideIcons.plus, size: 18),
-                  child: Text(l10n.addOverseer),
-                ),
+                child: _addButton(context),
               ),
           ],
         ),
       ),
     );
   }
+
+  Widget _addButton(BuildContext context) => AppButton(
+    key: const Key('add-overseer-button'),
+    onPressed: () => _showAddOverseer(context),
+    fullWidth: true,
+    size: AppButtonSize.lg,
+    variant: AppButtonVariant.secondary,
+    leading: const Icon(LucideIcons.plus, size: 18),
+    child: Text(context.l10n.addOverseer),
+  );
 
   Future<void> _showAddOverseer(BuildContext context) {
     return showAppBottomSheet<void>(
@@ -286,18 +294,21 @@ class _ConnectionTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
-    return EntityListTile(
-      key: ValueKey('overseer-connection-${connection.id}'),
-      title: connection.title,
-      subtitle: connection.serverUrl.toString(),
-      semanticsHint: l10n.openOverseerHint,
-      leading: Icon(
-        LucideIcons.server,
-        size: 20,
-        color: AppThemePalette.of(context).accent,
+    return GestureDetector(
+      onSecondaryTap: () => onLongPress(context),
+      child: EntityListTile(
+        key: ValueKey('overseer-connection-${connection.id}'),
+        title: connection.title,
+        subtitle: connection.serverUrl.toString(),
+        semanticsHint: l10n.openOverseerHint,
+        leading: Icon(
+          LucideIcons.server,
+          size: 20,
+          color: AppThemePalette.of(context).accent,
+        ),
+        onTap: () => onSelect(connection),
+        onLongPress: () => onLongPress(context),
       ),
-      onTap: () => onSelect(connection),
-      onLongPress: () => onLongPress(context),
     );
   }
 }

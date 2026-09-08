@@ -21,9 +21,9 @@ cards begin below the bar with a top gap equal to their horizontal screen
 inset. All shared page navigation bars have a non-overridable 56 logical-pixel
 content height; the platform top safe-area inset is added outside that height.
 
-Saved connections expose deletion through a long-press action menu: a bottom
-sheet on compact and medium layouts, or an anchored context menu on wide
-layouts. The destructive action requires explicit confirmation. Deletion
+Saved connections expose deletion through a long-press or right-click action
+menu: a bottom sheet on compact layouts, a centered dialog on medium layouts,
+or an anchored context menu on wide layouts. The destructive action requires explicit confirmation. Deletion
 removes the connection from ordinary preferences and deletes its namespaced
 device token from secure platform storage. Other connections and their
 credentials are not affected.
@@ -142,6 +142,13 @@ Developer account; simulator builds do not require that registration.
 
 Flutter 3.44 does not expose `--flavor` for Windows or Linux builds. Those
 targets continue to produce the single production-identity desktop runner.
+
+### macOS window
+
+The native window starts with an 1180 × 780 content area, centered on screen,
+and restores its saved frame on subsequent launches. Its minimum outer size is
+480 × 480, so narrow windows still exercise the compact layout without becoming
+unusable. Window placement is stored by AppKit separately for each app flavor.
 
 ### Apple
 

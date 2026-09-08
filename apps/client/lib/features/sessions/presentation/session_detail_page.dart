@@ -102,6 +102,8 @@ abstract class _SessionDetailAttachmentHost
 
 class _SessionDetailPageState extends _SessionDetailAttachmentHost
     with WidgetsBindingObserver, _SessionDetailAttachmentMethods {
+  static const _readingColumnMaxWidth = 960.0;
+
   late final FleetLiveService? _live;
   late final TextEditingController _composerController;
   late SessionSummary? _session;
@@ -405,232 +407,266 @@ class _SessionDetailPageState extends _SessionDetailAttachmentHost
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  if (isNewSession)
-                    _NewSessionBody(
-                      projects: projects!,
-                      selectedProjectKey: _selectedProjectKey,
-                      composerHeight: _composerHeight,
-                      onProjectSelected: (projectKey) {
-                        if (_startingSession ||
-                            _selectedProjectKey == projectKey) {
-                          return;
-                        }
-                        _resetSubmissionIdentity();
-                        setState(() => _selectedProjectKey = projectKey);
-                      },
-                      onRetry: () => ref
-                          .read(
-                            projectsControllerProvider(projectsScope!).notifier,
-                          )
-                          .refresh(),
-                    )
-                  else
-                    _TranscriptBody(
-                      transcript: transcript!,
-                      workingLabel: _workingSelectionLabel(
-                        composerState,
-                        details,
+                  Align(
+                    alignment: Alignment.topCenter,
+                    child: ConstrainedBox(
+                      key: const Key('session-reading-column'),
+                      constraints: const BoxConstraints(
+                        maxWidth: _readingColumnMaxWidth,
                       ),
-                      toolDisplayMode:
-                          ref.watch(toolDisplayControllerProvider).value ??
-                          ToolDisplayMode.technical,
-                      inquiries: inquiries!,
-                      inquiryOnline: inquiryScope!.online,
-                      onInquiryInstall: (inquiry) => ref
-                          .read(
-                            pluginInquiryControllerProvider(
-                              inquiryScope,
-                            ).notifier,
-                          )
-                          .respond(inquiry, PluginInquiryDecision.install),
-                      onInquiryCancel: (inquiry) => ref
-                          .read(
-                            pluginInquiryControllerProvider(
-                              inquiryScope,
-                            ).notifier,
-                          )
-                          .respond(inquiry, PluginInquiryDecision.cancel),
-                      ghost: _visibleGhost(composerState, transcript.value),
-                      operator: ref.watch(authControllerProvider).session?.user,
-                      viewers: viewers,
-                      composerHeight: _composerHeight,
-                      showWorking: isRunning,
-                      stopping: _stopping,
-                      stopError: _stopError,
-                      onStop: () => _stopSession(transcriptScope!),
-                      onRefresh: () => ref
-                          .read(
-                            transcriptControllerProvider(
-                              transcriptScope!,
-                            ).notifier,
-                          )
-                          .refresh(),
-                      onLoadOlder: () => ref
-                          .read(
-                            transcriptControllerProvider(
-                              transcriptScope!,
-                            ).notifier,
-                          )
-                          .loadOlder(),
-                      onOpenAttachment: _openTranscriptAttachment,
-                      onOpenPreview: _openTranscriptPreview,
-                      onOpenLink: (href) =>
-                          _openTranscriptLink(href, details: details),
-                      onSelectedText: selectedTextRepliesSupported
-                          ? (reply) => ref
-                                .read(
-                                  sessionComposerControllerProvider(
-                                    composerScope,
-                                  ).notifier,
-                                )
-                                .setReplyTo(reply)
-                          : null,
+                      child: SizedBox.expand(
+                        child: isNewSession
+                            ? _NewSessionBody(
+                                projects: projects!,
+                                selectedProjectKey: _selectedProjectKey,
+                                composerHeight: _composerHeight,
+                                onProjectSelected: (projectKey) {
+                                  if (_startingSession ||
+                                      _selectedProjectKey == projectKey) {
+                                    return;
+                                  }
+                                  _resetSubmissionIdentity();
+                                  setState(
+                                    () => _selectedProjectKey = projectKey,
+                                  );
+                                },
+                                onRetry: () => ref
+                                    .read(
+                                      projectsControllerProvider(
+                                        projectsScope!,
+                                      ).notifier,
+                                    )
+                                    .refresh(),
+                              )
+                            : _TranscriptBody(
+                                transcript: transcript!,
+                                workingLabel: _workingSelectionLabel(
+                                  composerState,
+                                  details,
+                                ),
+                                toolDisplayMode:
+                                    ref
+                                        .watch(toolDisplayControllerProvider)
+                                        .value ??
+                                    ToolDisplayMode.technical,
+                                inquiries: inquiries!,
+                                inquiryOnline: inquiryScope!.online,
+                                onInquiryInstall: (inquiry) => ref
+                                    .read(
+                                      pluginInquiryControllerProvider(
+                                        inquiryScope,
+                                      ).notifier,
+                                    )
+                                    .respond(
+                                      inquiry,
+                                      PluginInquiryDecision.install,
+                                    ),
+                                onInquiryCancel: (inquiry) => ref
+                                    .read(
+                                      pluginInquiryControllerProvider(
+                                        inquiryScope,
+                                      ).notifier,
+                                    )
+                                    .respond(
+                                      inquiry,
+                                      PluginInquiryDecision.cancel,
+                                    ),
+                                ghost: _visibleGhost(
+                                  composerState,
+                                  transcript.value,
+                                ),
+                                operator: ref
+                                    .watch(authControllerProvider)
+                                    .session
+                                    ?.user,
+                                viewers: viewers,
+                                composerHeight: _composerHeight,
+                                showWorking: isRunning,
+                                stopping: _stopping,
+                                stopError: _stopError,
+                                onStop: () => _stopSession(transcriptScope!),
+                                onRefresh: () => ref
+                                    .read(
+                                      transcriptControllerProvider(
+                                        transcriptScope!,
+                                      ).notifier,
+                                    )
+                                    .refresh(),
+                                onLoadOlder: () => ref
+                                    .read(
+                                      transcriptControllerProvider(
+                                        transcriptScope!,
+                                      ).notifier,
+                                    )
+                                    .loadOlder(),
+                                onOpenAttachment: _openTranscriptAttachment,
+                                onOpenPreview: _openTranscriptPreview,
+                                onOpenLink: (href) =>
+                                    _openTranscriptLink(href, details: details),
+                                onSelectedText: selectedTextRepliesSupported
+                                    ? (reply) => ref
+                                          .read(
+                                            sessionComposerControllerProvider(
+                                              composerScope,
+                                            ).notifier,
+                                          )
+                                          .setReplyTo(reply)
+                                    : null,
+                              ),
+                      ),
                     ),
+                  ),
                   Align(
                     alignment: Alignment.bottomCenter,
-                    child: NotificationListener<SizeChangedLayoutNotification>(
-                      onNotification: (_) {
-                        _scheduleComposerMeasurement();
-                        return false;
-                      },
-                      child: SizeChangedLayoutNotifier(
-                        child: SizedBox(
-                          key: _composerMeasureKey,
-                          child: SessionComposer(
-                            controller: _composerController,
-                            enabled: composerState != null,
-                            pending:
-                                _readingAttachments ||
-                                _startingSession ||
-                                (composerState?.sending ?? false),
-                            pendingLabel: _readingAttachments
-                                ? 'Reading files…'
-                                : _startingSession
-                                ? 'Starting session…'
-                                : submissionLabel(
-                                    composerState,
-                                    running: isRunning,
-                                  ),
-                            running: isRunning,
-                            queuedCount: composerState?.pending.length ?? 0,
-                            queuedItems: composerState?.queue ?? const [],
-                            editingQueuedItems: queueActions.editing,
-                            removingQueuedItems: queueActions.removing,
-                            sendingQueuedItems: queueActions.sending,
-                            error:
-                                _attachmentError ??
-                                composerState?.error ??
-                                composerState?.queueError,
-                            replyTo: composerState?.replyTo,
-                            onClearReplyTo: () => ref
-                                .read(
-                                  sessionComposerControllerProvider(
-                                    composerScope,
-                                  ).notifier,
-                                )
-                                .setReplyTo(null),
-                            attachments: _composerAttachments,
-                            providers:
-                                composerState?.catalog?.providers ?? const [],
-                            agent: composerState?.agent,
-                            defaultAgent:
-                                details?.agent ??
-                                composerState?.catalog?.defaultAgent,
-                            model: composerState?.model,
-                            reasoningEffort: composerState?.reasoningEffort,
-                            // What the composer falls back to with no override:
-                            // the session's own pick, unless the operator has
-                            // moved it to another agent, whose own default the
-                            // sheet resolves for itself.
-                            inheritedModel: agentOverridden
-                                ? null
-                                : details?.model,
-                            inheritedReasoningEffort: agentOverridden
-                                ? null
-                                : details?.reasoningEffort,
-                            allowAgentSelection: isNewSession,
-                            onAgentChanged: (agent) => ref
-                                .read(
-                                  sessionComposerControllerProvider(
-                                    composerScope,
-                                  ).notifier,
-                                )
-                                .selectAgent(agent),
-                            onModelChanged: (model) => ref
-                                .read(
-                                  sessionComposerControllerProvider(
-                                    composerScope,
-                                  ).notifier,
-                                )
-                                .selectModel(model),
-                            onReasoningEffortChanged: (effort) => ref
-                                .read(
-                                  sessionComposerControllerProvider(
-                                    composerScope,
-                                  ).notifier,
-                                )
-                                .selectReasoningEffort(effort),
-                            onAttach: _showAttachmentOptions,
-                            onContentInserted: _insertKeyboardContent,
-                            onLongTextPasted: _attachPastedText,
-                            dictation: dictation,
-                            onVoiceStart: () async {
-                              final started = await ref
-                                  .read(dictationProvider.notifier)
-                                  .start();
-                              if (started) {
-                                await HapticFeedback.mediumImpact();
-                              }
-                            },
-                            onVoiceStop: () {
-                              unawaited(HapticFeedback.selectionClick());
-                              unawaited(
-                                ref.read(dictationProvider.notifier).stop(),
-                              );
-                            },
-                            onVoiceCancel: () => unawaited(
-                              ref.read(dictationProvider.notifier).cancel(),
-                            ),
-                            onRemoveAttachment: (index) {
-                              ref
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(
+                        maxWidth: _readingColumnMaxWidth,
+                      ),
+                      child: NotificationListener<SizeChangedLayoutNotification>(
+                        onNotification: (_) {
+                          _scheduleComposerMeasurement();
+                          return false;
+                        },
+                        child: SizeChangedLayoutNotifier(
+                          child: SizedBox(
+                            width: double.infinity,
+                            key: _composerMeasureKey,
+                            child: SessionComposer(
+                              controller: _composerController,
+                              enabled: composerState != null,
+                              pending:
+                                  _readingAttachments ||
+                                  _startingSession ||
+                                  (composerState?.sending ?? false),
+                              pendingLabel: _readingAttachments
+                                  ? 'Reading files…'
+                                  : _startingSession
+                                  ? 'Starting session…'
+                                  : submissionLabel(
+                                      composerState,
+                                      running: isRunning,
+                                    ),
+                              running: isRunning,
+                              queuedCount: composerState?.pending.length ?? 0,
+                              queuedItems: composerState?.queue ?? const [],
+                              editingQueuedItems: queueActions.editing,
+                              removingQueuedItems: queueActions.removing,
+                              sendingQueuedItems: queueActions.sending,
+                              error:
+                                  _attachmentError ??
+                                  composerState?.error ??
+                                  composerState?.queueError,
+                              replyTo: composerState?.replyTo,
+                              onClearReplyTo: () => ref
                                   .read(
                                     sessionComposerControllerProvider(
                                       composerScope,
                                     ).notifier,
                                   )
-                                  .resetSubmissionIdentity();
-                              setState(() {
-                                _composerAttachments = [
-                                  ..._composerAttachments.take(index),
-                                  ..._composerAttachments.skip(index + 1),
-                                ];
-                                _attachmentError = null;
-                              });
-                            },
-                            onSubmit: () => isNewSession
-                                ? _startSession(composerScope)
-                                : _submitComposer(composerScope),
-                            onRemoveQueued: (itemId) => ref
-                                .read(
-                                  sessionComposerControllerProvider(
-                                    composerScope,
-                                  ).notifier,
-                                )
-                                .removeQueued(itemId),
-                            onEditQueued: (itemId, prompt) => ref
-                                .read(
-                                  sessionComposerControllerProvider(
-                                    composerScope,
-                                  ).notifier,
-                                )
-                                .editQueued(itemId, prompt),
-                            onSteerQueued: (itemId) => ref
-                                .read(
-                                  sessionComposerControllerProvider(
-                                    composerScope,
-                                  ).notifier,
-                                )
-                                .steerQueued(itemId),
+                                  .setReplyTo(null),
+                              attachments: _composerAttachments,
+                              providers:
+                                  composerState?.catalog?.providers ?? const [],
+                              agent: composerState?.agent,
+                              defaultAgent:
+                                  details?.agent ??
+                                  composerState?.catalog?.defaultAgent,
+                              model: composerState?.model,
+                              reasoningEffort: composerState?.reasoningEffort,
+                              // What the composer falls back to with no override:
+                              // the session's own pick, unless the operator has
+                              // moved it to another agent, whose own default the
+                              // sheet resolves for itself.
+                              inheritedModel: agentOverridden
+                                  ? null
+                                  : details?.model,
+                              inheritedReasoningEffort: agentOverridden
+                                  ? null
+                                  : details?.reasoningEffort,
+                              allowAgentSelection: isNewSession,
+                              onAgentChanged: (agent) => ref
+                                  .read(
+                                    sessionComposerControllerProvider(
+                                      composerScope,
+                                    ).notifier,
+                                  )
+                                  .selectAgent(agent),
+                              onModelChanged: (model) => ref
+                                  .read(
+                                    sessionComposerControllerProvider(
+                                      composerScope,
+                                    ).notifier,
+                                  )
+                                  .selectModel(model),
+                              onReasoningEffortChanged: (effort) => ref
+                                  .read(
+                                    sessionComposerControllerProvider(
+                                      composerScope,
+                                    ).notifier,
+                                  )
+                                  .selectReasoningEffort(effort),
+                              onAttach: _showAttachmentOptions,
+                              onContentInserted: _insertKeyboardContent,
+                              onLongTextPasted: _attachPastedText,
+                              dictation: dictation,
+                              onVoiceStart: () async {
+                                final started = await ref
+                                    .read(dictationProvider.notifier)
+                                    .start();
+                                if (started) {
+                                  await HapticFeedback.mediumImpact();
+                                }
+                              },
+                              onVoiceStop: () {
+                                unawaited(HapticFeedback.selectionClick());
+                                unawaited(
+                                  ref.read(dictationProvider.notifier).stop(),
+                                );
+                              },
+                              onVoiceCancel: () => unawaited(
+                                ref.read(dictationProvider.notifier).cancel(),
+                              ),
+                              onRemoveAttachment: (index) {
+                                ref
+                                    .read(
+                                      sessionComposerControllerProvider(
+                                        composerScope,
+                                      ).notifier,
+                                    )
+                                    .resetSubmissionIdentity();
+                                setState(() {
+                                  _composerAttachments = [
+                                    ..._composerAttachments.take(index),
+                                    ..._composerAttachments.skip(index + 1),
+                                  ];
+                                  _attachmentError = null;
+                                });
+                              },
+                              onSubmit: () => isNewSession
+                                  ? _startSession(composerScope)
+                                  : _submitComposer(composerScope),
+                              onRemoveQueued: (itemId) => ref
+                                  .read(
+                                    sessionComposerControllerProvider(
+                                      composerScope,
+                                    ).notifier,
+                                  )
+                                  .removeQueued(itemId),
+                              onEditQueued: (itemId, prompt) => ref
+                                  .read(
+                                    sessionComposerControllerProvider(
+                                      composerScope,
+                                    ).notifier,
+                                  )
+                                  .editQueued(itemId, prompt),
+                              onSteerQueued: (itemId) => ref
+                                  .read(
+                                    sessionComposerControllerProvider(
+                                      composerScope,
+                                    ).notifier,
+                                  )
+                                  .steerQueued(itemId),
+                            ),
                           ),
                         ),
                       ),

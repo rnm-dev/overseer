@@ -69,6 +69,8 @@ class ShellPage extends StatelessWidget {
             onOpenPeon: onOpenPeon,
             onOpenSession: onOpenSession,
             onNewSession: onNewSession,
+            overseerName: overseerName,
+            onBackToConnections: onBackToConnections,
           ),
           ResponsiveLayoutSize.wide => WideShell(
             user: user,
@@ -76,6 +78,8 @@ class ShellPage extends StatelessWidget {
             onOpenPeon: onOpenPeon,
             onOpenSession: onOpenSession,
             onNewSession: onNewSession,
+            overseerName: overseerName,
+            onBackToConnections: onBackToConnections,
           ),
         };
       },

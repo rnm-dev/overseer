@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
 
-import '../../../shared/design/spacing.dart';
 import '../../auth/domain/auth_models.dart';
 import '../../fleet/fleet.dart';
+import 'shell_chrome.dart';
 
 class MediumShell extends StatelessWidget {
   const MediumShell({
@@ -13,6 +12,8 @@ class MediumShell extends StatelessWidget {
     this.onOpenPeon,
     this.onOpenSession,
     this.onNewSession,
+    this.overseerName,
+    this.onBackToConnections,
   });
 
   final OperatorIdentity? user;
@@ -25,6 +26,8 @@ class MediumShell extends StatelessWidget {
   onOpenPeon;
   final FleetOpenSession? onOpenSession;
   final FleetNewSession? onNewSession;
+  final String? overseerName;
+  final VoidCallback? onBackToConnections;
 
   @override
   Widget build(BuildContext context) {
@@ -33,67 +36,44 @@ class MediumShell extends StatelessWidget {
       body: SafeArea(
         child: Row(
           children: [
-            NavigationRail(
+            ShellConnectionRail(
               key: const Key('medium-navigation-rail'),
-              selectedIndex: 0,
-              labelType: NavigationRailLabelType.all,
-              destinations: const [
-                NavigationRailDestination(
-                  icon: Icon(LucideIcons.layoutDashboard),
-                  selectedIcon: Icon(LucideIcons.layoutDashboard),
-                  label: Text('Overview'),
-                ),
-                NavigationRailDestination(
-                  icon: Icon(LucideIcons.settings),
-                  selectedIcon: Icon(LucideIcons.settings),
-                  label: Text('Settings'),
-                ),
-              ],
+              overseerName: overseerName,
+              user: user,
+              onBackToConnections: onBackToConnections,
+              width: 208,
             ),
             const VerticalDivider(width: 1),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const _MediumHeader(),
+                  ShellDesktopHeader(overseerName: overseerName),
                   Expanded(
-                    child: user == null
-                        ? const FleetOverviewLoading()
-                        : FleetOverview(
-                            user: user!,
-                            onSignOut: onSignOut!,
-                            onOpenPeon: onOpenPeon,
-                            onOpenSession: onOpenSession,
-                            onNewSession: onNewSession,
-                          ),
+                    child: ColoredBox(
+                      color: Theme.of(context).colorScheme.surface,
+                      child: user == null
+                          ? const FleetOverviewLoading()
+                          : Center(
+                              child: ConstrainedBox(
+                                constraints: const BoxConstraints(
+                                  maxWidth: 760,
+                                ),
+                                child: FleetOverview(
+                                  user: user!,
+                                  onSignOut: onSignOut!,
+                                  onOpenPeon: onOpenPeon,
+                                  onOpenSession: onOpenSession,
+                                  onNewSession: onNewSession,
+                                ),
+                              ),
+                            ),
+                    ),
                   ),
                 ],
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _MediumHeader extends StatelessWidget {
-  const _MediumHeader();
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: kToolbarHeight,
-      child: Padding(
-        padding: EdgeInsets.symmetric(
-          horizontal: context.appSpacing.screenHorizontal,
-        ),
-        child: Align(
-          alignment: Alignment.centerLeft,
-          child: Text(
-            'Overseer Mobile',
-            style: Theme.of(context).textTheme.titleLarge,
-          ),
         ),
       ),
     );

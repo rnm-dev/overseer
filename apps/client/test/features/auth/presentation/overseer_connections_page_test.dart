@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:overseer_mobile/core/config/overseer_connection_store.dart';
@@ -28,6 +29,10 @@ void main() {
   testWidgets('opens the add form as a modal sheet from the empty state', (
     WidgetTester tester,
   ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     Uri? added;
     await tester.pumpWidget(
       subject(onAdd: (serverUrl) async => added = serverUrl),
@@ -52,9 +57,40 @@ void main() {
     expect(added, Uri.parse('https://overseer.example'));
   });
 
+  testWidgets('desktop keeps add action beside the bounded connection list', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    tester.view.physicalSize = const Size(1440, 900);
+    final connection = OverseerConnection(
+      serverUrl: Uri.parse('https://one.example'),
+    );
+    await tester.pumpWidget(subject(connections: [connection]));
+    final row = tester.getRect(find.byType(EntityListTile));
+    final button = tester.getRect(find.byKey(const Key('add-overseer-button')));
+    expect(button.width, lessThanOrEqualTo(520));
+    expect(button.left, row.left);
+    expect(button.top - row.bottom, 16);
+    expect(tester.takeException(), isNull);
+    await tester.tap(
+      find.byType(EntityListTile),
+      buttons: kSecondaryMouseButton,
+      kind: PointerDeviceKind.mouse,
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Delete'), findsOneWidget);
+  });
+
   testWidgets('renders and selects saved connections', (
     WidgetTester tester,
   ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     final first = OverseerConnection(
       serverUrl: Uri.parse('https://one.example'),
     );
@@ -85,6 +121,10 @@ void main() {
   testWidgets('long press confirms and deletes a saved connection', (
     WidgetTester tester,
   ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     final connection = OverseerConnection(
       serverUrl: Uri.parse('https://one.example'),
     );
@@ -118,6 +158,10 @@ void main() {
   testWidgets('long press uses a contextual menu on wide layouts', (
     WidgetTester tester,
   ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     tester.view.physicalSize = const Size(1200, 900);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);

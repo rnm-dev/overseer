@@ -1,8 +1,8 @@
 import 'dart:async';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:overseer_mobile/core/live/active_sessions.dart';
 import 'package:overseer_mobile/core/live/presence.dart';
@@ -1081,6 +1081,121 @@ void main() {
     );
   });
 
+  testWidgets(
+    'centers the transcript and composer on desktop while retaining compact width',
+    (tester) async {
+      const captureGolden = bool.fromEnvironment('OVSR_SESSION_GOLDEN');
+      await tester.binding.setSurfaceSize(const Size(1440, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      if (captureGolden) await _loadGoldenFonts();
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            sessionDetailsProvider.overrideWith(
+              (ref, scope) async => const SessionDetails(turnCount: 1),
+            ),
+            transcriptControllerProvider.overrideWith2(
+              (scope) => _TestTranscriptController(
+                scope,
+                TranscriptState(
+                  hasOlder: true,
+                  events: [
+                    TranscriptEvent(
+                      eventId: 'event-1',
+                      orderKey: 0,
+                      payload: const {
+                        'eventId': 'event-1',
+                        'type': 'user_message',
+                        'text': 'Please inspect the cache',
+                      },
+                    ),
+                    TranscriptEvent(
+                      eventId: 'event-2',
+                      orderKey: 1,
+                      payload: const {
+                        'eventId': 'event-2',
+                        'type': 'assistant',
+                        'message': {
+                          'content': [
+                            {
+                              'type': 'text',
+                              'text': '''The cache is ready.
+
+I found the newest session events and kept the transcript anchored to the
+latest response. The centered reading column leaves the surrounding desktop
+surface quiet while preserving the composer at the tail.
+
+Next steps:
+
+- keep reading here while the agent continues;
+- scroll upward to inspect older events; and
+- send a follow-up when the review is complete.''',
+                            },
+                          ],
+                        },
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+          child: MaterialApp(
+            theme: AppTheme.dark,
+            home: RepaintBoundary(
+              key: const Key('session-desktop-capture'),
+              child: const SessionDetailPage(
+                session: SessionSummary(
+                  workspaceId: 'workspace',
+                  peonId: 'peon',
+                  sessionId: 'session',
+                  title: 'Cached transcript',
+                  syncedAt: 1,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Please inspect the cache'), findsOneWidget);
+      expect(
+        find.textContaining('The cache is ready.', findRichText: true),
+        findsWidgets,
+      );
+      expect(find.text('Load older events'), findsOneWidget);
+      if (captureGolden) {
+        await expectLater(
+          find.byKey(const Key('session-desktop-capture')),
+          matchesGoldenFile('goldens/session_detail_desktop.png'),
+        );
+      }
+
+      final readingColumn = find.byKey(const Key('session-reading-column'));
+      final transcript = find.byKey(const Key('transcript-list'));
+      final composer = find.byKey(const Key('session-composer-gradient'));
+      expect(tester.getSize(readingColumn).width, 960);
+      expect(tester.getSize(transcript).width, 960);
+      expect(tester.getSize(composer).width, 960);
+      expect(tester.getTopLeft(readingColumn).dx, 240);
+      expect(tester.getTopLeft(transcript).dx, tester.getTopLeft(composer).dx);
+      expect(
+        tester.getSize(find.byKey(const Key('session-navbar'))).width,
+        1440,
+      );
+
+      await tester.binding.setSurfaceSize(const Size(400, 600));
+      await tester.pumpAndSettle();
+
+      expect(tester.getSize(readingColumn).width, 400);
+      expect(tester.getSize(transcript).width, 400);
+      expect(tester.getSize(composer).width, 400);
+      expect(tester.getTopLeft(readingColumn).dx, 0);
+    },
+  );
+
   testWidgets('renders cached transcript newest-first from the bottom', (
     tester,
   ) async {
@@ -1913,4 +2028,22 @@ class _RecordingPresenceLiveService implements FleetLiveService {
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+Future<void> _loadGoldenFonts() async {
+  final golos = FontLoader('Golos Text')
+    ..addFont(rootBundle.load('assets/fonts/golos_text/GolosText-Regular.ttf'))
+    ..addFont(rootBundle.load('assets/fonts/golos_text/GolosText-Medium.ttf'))
+    ..addFont(rootBundle.load('assets/fonts/golos_text/GolosText-SemiBold.ttf'))
+    ..addFont(rootBundle.load('assets/fonts/golos_text/GolosText-Bold.ttf'));
+  final lucide = FontLoader('packages/lucide_icons_flutter/Lucide')
+    ..addFont(
+      rootBundle.load('packages/lucide_icons_flutter/assets/lucide.ttf'),
+    );
+  final mono = FontLoader('monospace')
+    // The client uses the platform monospace family for metadata, but no
+    // monospace asset is bundled. Use the real product font instead of Ahem
+    // boxes in the opt-in screenshot artifact.
+    ..addFont(rootBundle.load('assets/fonts/golos_text/GolosText-Regular.ttf'));
+  await Future.wait([golos.load(), lucide.load(), mono.load()]);
 }
