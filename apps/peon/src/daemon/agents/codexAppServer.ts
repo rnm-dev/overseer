@@ -131,6 +131,12 @@ function warnForOutboundPayload(
   });
 }
 
+function unsupportedThreadFork(error: unknown): boolean {
+  return error instanceof CodexAppServerError
+    && error.code === "server_error"
+    && /(?:paginated_threads.*not supported|thread\/fork.*not supported|unknown method thread\/fork)/i.test(error.message);
+}
+
 export function getCodexAppServerRuntime(command: string): CodexAppServerRuntime {
   if (runtimeSlot && runtimeSlot.command === command) return runtimeSlot.runtime;
   if (runtimeSlot) {
@@ -443,11 +449,18 @@ export function createCodexAppServerRun(opts: AgentRunOptions, runtime: CodexApp
         if (config) {
           const params = { threadId, ...threadOverrides, threadSource: "peon" };
           warnForOutboundPayload(opts.sessionId, "thread/fork", params, emit);
-          thread = await runtime.request<ThreadResponse>("thread/fork", params);
-          const reboundThreadId = thread.thread?.id;
-          if (typeof reboundThreadId !== "string" || !reboundThreadId) throw new Error("Codex app-server thread/fork returned no thread id");
-          threadId = reboundThreadId;
-          emit({ type: "system", subtype: "init", session_id: threadId, model: typeof thread.model === "string" ? thread.model : opts.model });
+          try {
+            thread = await runtime.request<ThreadResponse>("thread/fork", params);
+            const reboundThreadId = thread.thread?.id;
+            if (typeof reboundThreadId !== "string" || !reboundThreadId) throw new Error("Codex app-server thread/fork returned no thread id");
+            threadId = reboundThreadId;
+            emit({ type: "system", subtype: "init", session_id: threadId, model: typeof thread.model === "string" ? thread.model : opts.model });
+          } catch (error) {
+            if (!unsupportedThreadFork(error)) throw error;
+            const resumeParams = { threadId, ...threadOverrides };
+            warnForOutboundPayload(opts.sessionId, "thread/resume", resumeParams, emit);
+            thread = await runtime.request<ThreadResponse>("thread/resume", resumeParams);
+          }
         } else {
           const params = { threadId, ...threadOverrides };
           warnForOutboundPayload(opts.sessionId, "thread/resume", params, emit);

@@ -1,8 +1,9 @@
-import { execFile, spawn } from "node:child_process";
+import { execFile } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
+import crossSpawn from "cross-spawn";
 import { settings } from "../settings/index.js";
 import { claudeCodeAuth } from "./claudeCodeAuth.js";
 const execFileAsync = promisify(execFile);
@@ -75,7 +76,7 @@ function codexModelIds(limitId, limitName) {
 export async function fetchCodexQuota() {
     const command = settings.get().codexCommand || "codex";
     return await new Promise((resolve) => {
-        const child = spawn(command, CODEX_QUOTA_ARGS, {
+        const child = crossSpawn(command, CODEX_QUOTA_ARGS, {
             stdio: ["pipe", "pipe", "pipe"],
             env: process.env,
         });

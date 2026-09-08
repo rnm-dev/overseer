@@ -29,7 +29,6 @@ export class ArmoryUninstallService implements ArmoryPackageUninstallApi {
   readonly operations: ArmoryOperationCoordinator;
   private readonly hookRunner: ArmoryHookRunner;
   private readonly now: () => number;
-  private readonly platform: { os: "darwin" | "linux"; arch: "x64" | "arm64" };
 
   constructor(private readonly options: {
     stores: ArmoryStores;
@@ -40,7 +39,6 @@ export class ArmoryUninstallService implements ArmoryPackageUninstallApi {
   }) {
     this.hookRunner = options.hookRunner ?? new ArmoryHookRunner();
     this.now = options.now ?? Date.now;
-    this.platform = options.platform ?? currentPlatform();
     this.operations = new ArmoryOperationCoordinator(options.stores.operations, this.now);
   }
 
@@ -75,7 +73,7 @@ export class ArmoryUninstallService implements ArmoryPackageUninstallApi {
           await operation.update("pre_uninstall", 40, "Running package pre-uninstall hook");
           await this.hookRunner.run({
             command: active.manifest.lifecycle.preUninstall,
-            input: hookInput(active, home, this.platform),
+            input: hookInput(active, home, this.options.platform ?? currentPlatform()),
             packageDir: active.packageDir,
             managedHome: home,
             environment: providerEnvironment(active.manifest, home),

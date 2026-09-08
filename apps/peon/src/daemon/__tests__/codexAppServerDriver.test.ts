@@ -23,6 +23,18 @@ function runtime() {
   });
 }
 
+function runtimeWithEnv(env: NodeJS.ProcessEnv) {
+  return new CodexAppServerRuntime({
+    command: process.execPath,
+    args: [fixture],
+    versionArgs: [fixture, "--version"],
+    experimentalApi: true,
+    requestTimeoutMs: 3_000,
+    restartInitialDelayMs: 10,
+    env,
+  });
+}
+
 function options(overrides: Partial<AgentRunOptions> = {}): AgentRunOptions {
   return {
     agent: "codex-app-server",
@@ -127,6 +139,28 @@ describe("Codex app-server driver", () => {
       assert.equal(turn?.model, "gpt-5.6-sol");
     } finally {
       await instance.stop();
+    }
+  });
+
+  it("resumes a persisted thread when paginated Codex threads cannot be forked", async () => {
+    const instance = runtimeWithEnv({ FAKE_FORK_UNSUPPORTED: "1" });
+    const temp = mkdtempSync(path.join(os.tmpdir(), "peon-app-server-fork-fallback-"));
+    const mcpConfigPath = path.join(temp, "mcp.json");
+    writeFileSync(mcpConfigPath, JSON.stringify({
+      mcpServers: { peon: { url: "http://127.0.0.1:4570/mcp/core", headers: {} } },
+    }));
+    try {
+      const first = await collect(instance, options({ mcpConfigPath }));
+      const backendSessionId = String(first.events.find((event) => event.type === "system" && event.subtype === "init")?.session_id);
+      const resumed = await collect(instance, options({ resume: true, backendSessionId, mcpConfigPath }));
+      assert.equal(resumed.code, 0);
+      assert.ok(resumed.events.some((event) => event.type === "assistant"));
+      const requests = await instance.request<Array<{ method: string }>>("test/requests");
+      assert.ok(requests.some((request) => request.method === "thread/fork"));
+      assert.ok(requests.some((request) => request.method === "thread/resume"));
+    } finally {
+      await instance.stop();
+      rmSync(temp, { recursive: true, force: true });
     }
   });
 

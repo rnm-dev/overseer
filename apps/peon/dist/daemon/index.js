@@ -129,6 +129,26 @@ const servers = listenerHosts.map((host, index) => app.listen(PORT, host, index 
 } : () => {
     console.log(`peon daemon: local CLI/MCP listening on http://${host}:${PORT}`);
 }));
+// app.listen() returns before the socket is bound. Desktop initialization must
+// not report success until every requested listener is live; in particular, a
+// Windows port-proxy conflict otherwise makes the tray briefly show a running
+// Peon whose process immediately exits from an unhandled EADDRINUSE event.
+await Promise.all(servers.map((server) => new Promise((resolve, reject) => {
+    if (server.listening) {
+        resolve();
+        return;
+    }
+    const listening = () => {
+        server.off("error", failed);
+        resolve();
+    };
+    const failed = (error) => {
+        server.off("listening", listening);
+        reject(error);
+    };
+    server.once("listening", listening);
+    server.once("error", failed);
+})));
 const watchdogIntervalMs = sdNotify.watchdogIntervalMs();
 if (watchdogIntervalMs) {
     setInterval(() => sdNotify.watchdog(), watchdogIntervalMs);

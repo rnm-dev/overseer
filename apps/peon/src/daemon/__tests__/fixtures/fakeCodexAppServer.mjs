@@ -57,6 +57,10 @@ input.on("line", (line) => {
     return;
   }
   if (message.method === "thread/fork") {
+    if (process.env.FAKE_FORK_UNSUPPORTED === "1") {
+      send({ id: message.id, error: { code: -32000, message: "paginated_threads is not supported yet" } });
+      return;
+    }
     const sourceTurns = threadTurns.get(message.params.threadId);
     if (!sourceTurns) {
       send({ id: message.id, error: { code: -32000, message: "thread not found" } });

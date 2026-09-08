@@ -1,7 +1,7 @@
 import { EventEmitter } from "node:events";
 import { CodexUsageAccumulator } from "./codexUsage.js";
 import { readFileSync } from "node:fs";
-import { CodexAppServerRuntime, CODEX_APP_SERVER_LIMITS, } from "./runtimes/codexAppServerRuntime.js";
+import { CodexAppServerError, CodexAppServerRuntime, CODEX_APP_SERVER_LIMITS, } from "./runtimes/codexAppServerRuntime.js";
 import { codexCommandToolName, normalizeCodexFileChanges } from "./codex.js";
 import { guardToolOutput } from "../sessions/index.js";
 import { MANAGED_PLUGIN_INQUIRY_TTL_MS } from "../plugins/managedPluginInquiries.js";
@@ -91,6 +91,11 @@ function warnForOutboundPayload(sessionId, method, params, emit) {
         limitBytes,
         message: `The ${method} request is approaching the ${Math.round(limitBytes / 1024 / 1024)} MiB app-server transport limit.`,
     });
+}
+function unsupportedThreadFork(error) {
+    return error instanceof CodexAppServerError
+        && error.code === "server_error"
+        && /(?:paginated_threads.*not supported|thread\/fork.*not supported|unknown method thread\/fork)/i.test(error.message);
 }
 export function getCodexAppServerRuntime(command) {
     if (runtimeSlot && runtimeSlot.command === command)
@@ -412,12 +417,21 @@ export function createCodexAppServerRun(opts, runtime) {
                 if (config) {
                     const params = { threadId, ...threadOverrides, threadSource: "peon" };
                     warnForOutboundPayload(opts.sessionId, "thread/fork", params, emit);
-                    thread = await runtime.request("thread/fork", params);
-                    const reboundThreadId = thread.thread?.id;
-                    if (typeof reboundThreadId !== "string" || !reboundThreadId)
-                        throw new Error("Codex app-server thread/fork returned no thread id");
-                    threadId = reboundThreadId;
-                    emit({ type: "system", subtype: "init", session_id: threadId, model: typeof thread.model === "string" ? thread.model : opts.model });
+                    try {
+                        thread = await runtime.request("thread/fork", params);
+                        const reboundThreadId = thread.thread?.id;
+                        if (typeof reboundThreadId !== "string" || !reboundThreadId)
+                            throw new Error("Codex app-server thread/fork returned no thread id");
+                        threadId = reboundThreadId;
+                        emit({ type: "system", subtype: "init", session_id: threadId, model: typeof thread.model === "string" ? thread.model : opts.model });
+                    }
+                    catch (error) {
+                        if (!unsupportedThreadFork(error))
+                            throw error;
+                        const resumeParams = { threadId, ...threadOverrides };
+                        warnForOutboundPayload(opts.sessionId, "thread/resume", resumeParams, emit);
+                        thread = await runtime.request("thread/resume", resumeParams);
+                    }
                 }
                 else {
                     const params = { threadId, ...threadOverrides };

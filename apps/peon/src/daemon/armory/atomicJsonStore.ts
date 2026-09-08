@@ -105,6 +105,9 @@ export class AtomicJsonStore<T> {
 
 /** Flushes directory-entry changes such as rename and unlink to durable storage. */
 export async function syncDirectory(directory: string): Promise<void> {
+  // Node does not expose a flushable directory handle on Windows. File data is
+  // synced before the atomic rename; skip only the unsupported directory flush.
+  if (process.platform === "win32") return;
   const handle = await open(directory, constants.O_RDONLY);
   try { await handle.sync(); }
   finally { await handle.close(); }

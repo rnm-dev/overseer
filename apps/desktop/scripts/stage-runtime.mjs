@@ -27,7 +27,10 @@ try {
   await rm(runtime, { recursive: true, force: true });
   await mkdir(runtime, { recursive: true });
   await writeFile(path.join(runtime, 'package.json'), JSON.stringify({ name: 'peon-desktop-runtime', private: true, version: '0.1.0' }));
-  run(['install', '--ignore-scripts', '--omit=dev', '--no-audit', '--no-fund', '--package-lock=false', archive], runtime);
+  // The CLI/service package intentionally does not advertise Windows support,
+  // while this desktop bundle uses its dedicated Windows entry point. Allow
+  // that private staging install without weakening the published OS metadata.
+  run(['install', ...(process.platform === 'win32' ? ['--force'] : []), '--ignore-scripts', '--omit=dev', '--no-audit', '--no-fund', '--package-lock=false', archive], runtime);
   // Dependency metadata must not contain the temporary build-machine path.
   await writeFile(path.join(runtime, 'package.json'), JSON.stringify({ name: 'peon-desktop-runtime', private: true, version: '0.1.0' }));
   const base = `https://nodejs.org/dist/v${nodeVersion}`;

@@ -1,14 +1,13 @@
-import { execFile } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { promisify } from "node:util";
+import crossSpawn from "cross-spawn";
 import { settings } from "../settings/index.js";
 import { QUOTA_PROVIDERS, type QuotaProvider } from "./providerQuota.js";
 
-const execFileAsync = promisify(execFile);
 const CACHE_MS = 60_000;
 const COMMAND_TIMEOUT_MS = 8_000;
+const COMMAND_MAX_BUFFER = 4 * 1024 * 1024;
 
 export interface CapabilityItem {
   id: string;
@@ -40,12 +39,48 @@ function safeError(err: unknown): string {
 }
 
 async function commandJson(command: string, args: string[]): Promise<unknown> {
-  const { stdout } = await execFileAsync(command, args, {
-    timeout: COMMAND_TIMEOUT_MS,
-    maxBuffer: 4 * 1024 * 1024,
-    env: process.env,
+  return new Promise((resolve, reject) => {
+    const child = crossSpawn(command, args, {
+      stdio: ["ignore", "pipe", "pipe"],
+      env: process.env,
+    });
+    let stdout = "";
+    let stderr = "";
+    let outputBytes = 0;
+    let settled = false;
+    const finish = (error?: Error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (error) {
+        if (child.exitCode === null && child.signalCode === null) child.kill();
+        reject(error);
+        return;
+      }
+      try { resolve(JSON.parse(stdout)); }
+      catch { reject(new Error(`${command} returned invalid JSON`)); }
+    };
+    const append = (target: "stdout" | "stderr", chunk: Buffer) => {
+      outputBytes += chunk.length;
+      if (outputBytes > COMMAND_MAX_BUFFER) {
+        finish(new Error(`${command} output exceeded ${COMMAND_MAX_BUFFER} bytes`));
+        return;
+      }
+      if (target === "stdout") stdout += chunk.toString("utf8");
+      else stderr = `${stderr}${chunk.toString("utf8")}`.slice(-4_096);
+    };
+    const timer = setTimeout(
+      () => finish(new Error(`${command} timed out after ${COMMAND_TIMEOUT_MS}ms`)),
+      COMMAND_TIMEOUT_MS,
+    );
+    timer.unref?.();
+    child.stdout?.on("data", (chunk: Buffer) => append("stdout", chunk));
+    child.stderr?.on("data", (chunk: Buffer) => append("stderr", chunk));
+    child.once("error", (error) => finish(error));
+    child.once("close", (code) => code === 0
+      ? finish()
+      : finish(new Error(`${command} exited with code ${code ?? "unknown"}${stderr.trim() ? `: ${stderr.trim()}` : ""}`)));
   });
-  return JSON.parse(stdout);
 }
 
 function skillName(file: string): string {

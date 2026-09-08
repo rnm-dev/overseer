@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { settings } from "../../../settings/index.js";
 import { sessions } from "../../../sessions/index.js";
 import { listAgentDrivers } from "../../../agents/index.js";
-import { modelCatalog } from "../../../providers/modelCatalog.js";
+import { modelCatalog, onAgentModelCatalogChange } from "../../../providers/modelCatalog.js";
 export const RUNTIME_STATE_CAPABILITY = "runtime-state-v1";
 const MAX_RUNTIME_STATE_BYTES = 56 * 1024;
 const FORBIDDEN_RUNTIME_KEY = /(?:credential|secret|token|password|authorization|authresponse|environment|executablepath|filetransferroot)/i;
@@ -48,9 +48,11 @@ export class RuntimeStateChannel {
     constructor(readState = () => RuntimeStateChannel.defaultState(), subscribe = (listener) => {
         settings.on("change", listener);
         sessions.on("change", listener);
+        const unsubscribeCatalog = onAgentModelCatalogChange(listener);
         return () => {
             settings.off("change", listener);
             sessions.off("change", listener);
+            unsubscribeCatalog();
         };
     }) {
         this.readState = readState;

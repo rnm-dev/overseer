@@ -40,7 +40,7 @@ export function writeUpdateCommandReceipt(receipt) {
     mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
     const temporary = `${file}.${process.pid}.tmp`;
     writeFileSync(temporary, JSON.stringify(receipt), { mode: 0o600 });
-    const descriptor = openSync(temporary, constants.O_RDONLY);
+    const descriptor = openSync(temporary, constants.O_RDWR);
     try {
         fsyncSync(descriptor);
     }
@@ -48,11 +48,13 @@ export function writeUpdateCommandReceipt(receipt) {
         closeSync(descriptor);
     }
     renameSync(temporary, file);
-    const directory = openSync(path.dirname(file), constants.O_RDONLY);
-    try {
-        fsyncSync(directory);
-    }
-    finally {
-        closeSync(directory);
+    if (process.platform !== "win32") {
+        const directory = openSync(path.dirname(file), constants.O_RDONLY);
+        try {
+            fsyncSync(directory);
+        }
+        finally {
+            closeSync(directory);
+        }
     }
 }

@@ -23,12 +23,10 @@ export class ArmoryUninstallService {
     operations;
     hookRunner;
     now;
-    platform;
     constructor(options) {
         this.options = options;
         this.hookRunner = options.hookRunner ?? new ArmoryHookRunner();
         this.now = options.now ?? Date.now;
-        this.platform = options.platform ?? currentPlatform();
         this.operations = new ArmoryOperationCoordinator(options.stores.operations, this.now);
     }
     async uninstall(packageIdValue) {
@@ -62,7 +60,7 @@ export class ArmoryUninstallService {
                     await operation.update("pre_uninstall", 40, "Running package pre-uninstall hook");
                     await this.hookRunner.run({
                         command: active.manifest.lifecycle.preUninstall,
-                        input: hookInput(active, home, this.platform),
+                        input: hookInput(active, home, this.options.platform ?? currentPlatform()),
                         packageDir: active.packageDir,
                         managedHome: home,
                         environment: providerEnvironment(active.manifest, home),

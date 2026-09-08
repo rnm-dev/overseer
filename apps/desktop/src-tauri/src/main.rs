@@ -68,12 +68,13 @@ fn show(app: &tauri::AppHandle) {
 }
 
 fn main() {
+    let background = std::env::args().any(|arg| arg == "--background");
     tauri::Builder::default()
         .manage(Arc::new(Mutex::new(runtime::Controller::default())))
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![desktop, startup, open_overseer])
         .plugin(tauri_plugin_single_instance::init(|app, _, _| show(app)))
-        .setup(|app| {
+        .setup(move |app| {
             let open = MenuItem::with_id(app, "open", "Open Peon", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Quit Peon", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&open, &quit])?;
@@ -91,10 +92,8 @@ fn main() {
                     _ => {}
                 })
                 .build(app)?;
-            if std::env::args().any(|arg| arg == "--background") {
-                if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.hide();
-                }
+            if !background {
+                show(app.handle());
             }
             Ok(())
         })

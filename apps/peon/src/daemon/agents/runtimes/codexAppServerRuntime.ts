@@ -1,5 +1,6 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import { EventEmitter } from "node:events";
+import crossSpawn from "cross-spawn";
 import semver from "semver";
 
 export const MIN_CODEX_APP_SERVER_VERSION = "0.144.0";
@@ -318,11 +319,11 @@ export class CodexAppServerRuntime extends EventEmitter {
     this.lastError = null;
     this.emitHealth();
     const generation = ++this.generation;
-    const child = spawn(this.options.command, this.options.args ?? ["app-server", "--listen", "stdio://"], {
+    const child = crossSpawn(this.options.command, this.options.args ?? ["app-server", "--listen", "stdio://"], {
       cwd: this.options.cwd,
       env: this.options.env ? { ...process.env, ...this.options.env } : process.env,
       stdio: ["pipe", "pipe", "pipe"],
-    });
+    }) as ChildProcessWithoutNullStreams;
     this.child = child;
     await new Promise<void>((resolve, reject) => {
       const onSpawn = () => { cleanup(); resolve(); };
@@ -387,11 +388,11 @@ export class CodexAppServerRuntime extends EventEmitter {
 
   private runVersionProbe(): Promise<string> {
     return new Promise((resolve, reject) => {
-      const child = spawn(this.options.command, this.options.versionArgs ?? ["--version"], {
+      const child = crossSpawn(this.options.command, this.options.versionArgs ?? ["--version"], {
         cwd: this.options.cwd,
         env: this.options.env ? { ...process.env, ...this.options.env } : process.env,
         stdio: ["ignore", "pipe", "pipe"],
-      });
+      }) as ChildProcessWithoutNullStreams;
       let output = "";
       let settled = false;
       const finish = (error?: Error) => {

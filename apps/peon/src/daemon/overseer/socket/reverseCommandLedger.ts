@@ -137,6 +137,10 @@ function copyState(state: LedgerState): LedgerState {
 }
 
 function syncDirectory(directory: string): void {
+  // Node cannot open/flush directory handles through fsync on Windows. The
+  // rename remains atomic there, but there is no equivalent directory flush
+  // exposed by node:fs.
+  if (process.platform === "win32") return;
   const descriptor = openSync(directory, constants.O_RDONLY);
   try { fsyncSync(descriptor); }
   finally { closeSync(descriptor); }
@@ -407,7 +411,9 @@ export class ReverseCommandLedger {
     const temporary = `${this.journalPath}.${process.pid}.${randomUUID()}.tmp`;
     try {
       writeFileSync(temporary, "", { mode: 0o600, flag: "wx" });
-      const descriptor = openSync(temporary, constants.O_RDONLY);
+      // FlushFileBuffers (which backs fsyncSync on Windows) requires a handle
+      // opened for writing even though the file contents are already complete.
+      const descriptor = openSync(temporary, constants.O_RDWR);
       try { fsyncSync(descriptor); }
       finally { closeSync(descriptor); }
       renameSync(temporary, this.journalPath);
@@ -539,7 +545,7 @@ export class ReverseCommandLedger {
         mode: 0o600,
         flag: "wx",
       });
-      const descriptor = openSync(temporary, constants.O_RDONLY);
+      const descriptor = openSync(temporary, constants.O_RDWR);
       try { fsyncSync(descriptor); }
       finally { closeSync(descriptor); }
       renameSync(temporary, target);

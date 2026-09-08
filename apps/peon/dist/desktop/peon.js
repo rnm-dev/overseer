@@ -12,13 +12,14 @@ deadline.unref();
 async function initialize() {
     // No daemon/provider work happens until the parent has installed its Job Object.
     await import("../daemon/index.js");
-    const [{ settings }, { sessions }, { pairing }, { peonRegistrar, peonSocket }] = await Promise.all([
+    const [{ settings }, { sessions }, { pairing }, { peonRegistrar, peonSocket }, { peonPublicUrl }] = await Promise.all([
         import("../daemon/settings/index.js"), import("../daemon/sessions/index.js"),
         import("../daemon/identity/pairing.js"), import("../daemon/overseer/index.js"),
+        import("../daemon/identity/peonAddress.js"),
     ]);
     shutdown = () => { process.emit("SIGTERM"); };
     clearTimeout(deadline);
-    return { settings, sessions, pairing, peonRegistrar, peonSocket };
+    return { settings, sessions, pairing, peonRegistrar, peonSocket, peonPublicUrl };
 }
 function snapshot() {
     if (!api)
@@ -28,7 +29,7 @@ function snapshot() {
     const socket = api.peonSocket.getState();
     return {
         protocol: 1, pid: process.pid, timestamp: Date.now(), nodeVersion: process.version,
-        name: s.name, overseerUrl: s.overseerUrl, publicControlUrl: s.publicControlUrl,
+        name: s.name, overseerUrl: s.overseerUrl, pairingUrl: api.peonPublicUrl(),
         listenAddress: s.listenAddress, defaultAgent: s.defaultAgent,
         agentCommand: s.agentCommand, codexCommand: s.codexCommand,
         enrolled: Boolean(s.overseerToken), paused: s.paused,
@@ -50,7 +51,7 @@ servePipe(process.stdin, process.stdout, async (method, params) => {
     if (method === "status")
         return snapshot();
     if (method === "enroll")
-        return api.pairing.arm();
+        return { ...api.pairing.arm(), url: api.peonPublicUrl() };
     if (method === "configure") {
         if (!params || typeof params !== "object" || Array.isArray(params))
             return error("BAD_REQUEST");

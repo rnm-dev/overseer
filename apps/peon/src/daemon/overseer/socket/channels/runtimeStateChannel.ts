@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { settings } from "../../../settings/index.js";
 import { sessions } from "../../../sessions/index.js";
 import { listAgentDrivers } from "../../../agents/index.js";
-import { modelCatalog } from "../../../providers/modelCatalog.js";
+import { modelCatalog, onAgentModelCatalogChange } from "../../../providers/modelCatalog.js";
 import type { PeonSocketChannel, PeonSocketFrame, PeonSocketSender } from "../peonSocketProtocol.js";
 
 export const RUNTIME_STATE_CAPABILITY = "runtime-state-v1";
@@ -51,9 +51,11 @@ export class RuntimeStateChannel implements PeonSocketChannel {
     private readonly subscribe: (listener: () => void) => () => void = (listener) => {
       settings.on("change", listener);
       sessions.on("change", listener);
+      const unsubscribeCatalog = onAgentModelCatalogChange(listener);
       return () => {
         settings.off("change", listener);
         sessions.off("change", listener);
+        unsubscribeCatalog();
       };
     },
   ) {}

@@ -22,7 +22,10 @@ test("persists before accepting and replays the same identity after restart", ()
     );
     assert.equal(accepted.accepted, true);
     assert.ok(readFileSync(`${fileBase}.journal`, "utf8").includes("sessionId"));
-    assert.equal(statSync(`${fileBase}.journal`).mode & 0o777, 0o600);
+    // Windows ACLs do not map to POSIX mode bits reported by stat().
+    if (process.platform !== "win32") {
+      assert.equal(statSync(`${fileBase}.journal`).mode & 0o777, 0o600);
+    }
 
     const restarted = new PeonSocketOutbox({ fileBase });
     assert.deepEqual(restarted.pending(), outbox.pending());

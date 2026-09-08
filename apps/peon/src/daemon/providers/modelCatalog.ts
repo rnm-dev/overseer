@@ -1,3 +1,4 @@
+import { EventEmitter } from "node:events";
 import {
   getAgentDriver,
   listAgentDrivers,
@@ -44,6 +45,12 @@ const MODEL_CATALOG_TTL_MS = 5 * 60_000;
 const MODEL_CATALOG_FAILURE_TTL_MS = 30_000;
 const cachedCatalogs = new Map<CodingAgent, CachedModelCatalog>();
 const catalogRefreshes = new Map<CodingAgent, Promise<void>>();
+const catalogEvents = new EventEmitter();
+
+export function onAgentModelCatalogChange(listener: () => void): () => void {
+  catalogEvents.on("change", listener);
+  return () => catalogEvents.off("change", listener);
+}
 
 function safeError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -97,6 +104,7 @@ function catalogMetadata(agent: CodingAgent): Pick<AiProvider, "catalogSource" |
 
 export function invalidateAgentModelCatalog(agent?: CodingAgent): void {
   if (agent) cachedCatalogs.delete(agent); else cachedCatalogs.clear();
+  catalogEvents.emit("change");
 }
 
 export async function refreshAgentModelCatalog(agent: CodingAgent, command: string, force = false): Promise<void> {
@@ -123,6 +131,7 @@ export async function refreshAgentModelCatalog(agent: CodingAgent, command: stri
         error: safeError(error),
       });
     }
+    catalogEvents.emit("change");
   })();
   catalogRefreshes.set(agent, refresh);
   try { await refresh; } finally {

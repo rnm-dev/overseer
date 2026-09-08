@@ -1,13 +1,28 @@
 use serde_json::{json, Value};
 use std::{
     io::{BufRead, BufReader, Read, Write},
-    path::Path,
+    path::{Path, PathBuf},
     process::{Child, ChildStdin, Command, Stdio},
     sync::mpsc::{self, Receiver},
     time::{Duration, Instant},
 };
 
 const MAX_FRAME: usize = 64 * 1024;
+
+fn runtime_path(resources: &Path) -> PathBuf {
+    let path = resources.join("runtime");
+    #[cfg(windows)]
+    {
+        // Tauri returns a verbatim `\\?\` resource path on Windows. Node 22's
+        // entry-point resolver misparses that form and exits before loading the
+        // script, so pass its equivalent conventional path instead.
+        dunce::simplified(&path).to_path_buf()
+    }
+    #[cfg(not(windows))]
+    {
+        path
+    }
+}
 
 #[cfg(windows)]
 struct Job(isize);
@@ -58,7 +73,7 @@ pub struct Runtime {
 
 impl Runtime {
     pub fn start(resources: &Path) -> Result<Self, String> {
-        let runtime = resources.join("runtime");
+        let runtime = runtime_path(resources);
         let node = runtime.join(if cfg!(windows) { "node.exe" } else { "node" });
         let script = runtime.join("node_modules/@rnm-dev/peon/dist/desktop/peon.js");
         if !node.is_file() || !script.is_file() {

@@ -144,13 +144,15 @@ function writeState(statePath: string, state: StoredState): void {
   const temporary = `${statePath}.${process.pid}.${randomUUID()}.tmp`;
   try {
     writeFileSync(temporary, `${JSON.stringify(state, null, 2)}\n`, { mode: 0o600, flag: "wx" });
-    const descriptor = openSync(temporary, constants.O_RDONLY);
+    const descriptor = openSync(temporary, constants.O_RDWR);
     try { fsyncSync(descriptor); }
     finally { closeSync(descriptor); }
     renameSync(temporary, statePath);
-    const directoryDescriptor = openSync(directory, constants.O_RDONLY);
-    try { fsyncSync(directoryDescriptor); }
-    finally { closeSync(directoryDescriptor); }
+    if (process.platform !== "win32") {
+      const directoryDescriptor = openSync(directory, constants.O_RDONLY);
+      try { fsyncSync(directoryDescriptor); }
+      finally { closeSync(directoryDescriptor); }
+    }
   } finally {
     rmSync(temporary, { force: true });
   }

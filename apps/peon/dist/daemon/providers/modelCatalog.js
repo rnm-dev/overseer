@@ -1,3 +1,4 @@
+import { EventEmitter } from "node:events";
 import { getAgentDriver, listAgentDrivers, REASONING_EFFORTS, } from "../agents/index.js";
 export { REASONING_EFFORTS };
 export const DEFAULT_MODEL = "claude-sonnet-5";
@@ -8,6 +9,11 @@ const MODEL_CATALOG_TTL_MS = 5 * 60_000;
 const MODEL_CATALOG_FAILURE_TTL_MS = 30_000;
 const cachedCatalogs = new Map();
 const catalogRefreshes = new Map();
+const catalogEvents = new EventEmitter();
+export function onAgentModelCatalogChange(listener) {
+    catalogEvents.on("change", listener);
+    return () => catalogEvents.off("change", listener);
+}
 function safeError(error) {
     return error instanceof Error ? error.message : String(error);
 }
@@ -58,6 +64,7 @@ export function invalidateAgentModelCatalog(agent) {
         cachedCatalogs.delete(agent);
     else
         cachedCatalogs.clear();
+    catalogEvents.emit("change");
 }
 export async function refreshAgentModelCatalog(agent, command, force = false) {
     const driver = getAgentDriver(agent);
@@ -88,6 +95,7 @@ export async function refreshAgentModelCatalog(agent, command, force = false) {
                 error: safeError(error),
             });
         }
+        catalogEvents.emit("change");
     })();
     catalogRefreshes.set(agent, refresh);
     try {

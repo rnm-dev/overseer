@@ -10,23 +10,26 @@
 <body>
   <main>
     <header><span class="mark" aria-hidden="true">P</span><div><h1>Peon</h1><p>Your coding companion</p></div></header>
-    <section aria-labelledby="status-title">
+    <section class="status-block" aria-labelledby="status-title">
       <h2 id="status-title">Starting Peon…</h2>
       <p id="status-detail" role="status">Your sessions run in the background.</p>
       <p id="error" role="alert" hidden></p>
-      <div class="actions"><button id="start" hidden>Start Peon</button><button id="open">Open Overseer</button><button id="restart">Restart</button></div>
+      <div class="actions"><button id="start" hidden>Start Peon</button><button id="open" hidden>Open Overseer</button><button id="restart" class="secondary">Restart</button></div>
     </section>
-    <details id="setup"><summary>Connect to Overseer</summary>
-      <form id="settings">
-        <label>Peon name<input id="name" maxlength="120" autocomplete="off"></label>
-        <label>Overseer URL<input id="overseerUrl" type="url" placeholder="https://your-overseer.example" required></label>
-        <label>This computer’s mesh address<input id="publicControlUrl" type="url" placeholder="http://100.x.x.x:4570" required></label>
-        <p class="hint">Overseer must be able to reach this address over your mesh network. Allow Peon’s TCP port 4570 on that network in Windows Firewall.</p>
-        <button type="submit">Save connection</button>
-      </form>
-      <button id="enroll">Generate pairing phrase</button>
-      <div id="pairing" hidden><p>In Overseer, choose Add Peon and enter this computer’s address and phrase:</p><input id="phrase" readonly aria-label="Pairing phrase"><p id="expiry" class="hint"></p></div>
-    </details>
+    <section id="connect" class="connect-card" aria-labelledby="connect-title">
+      <h2 id="connect-title">Connect this computer</h2>
+      <p>In Overseer, choose <strong>Add peon</strong> and enter these two values.</p>
+      <div class="pairing-value">
+        <label for="pairingUrl">Peon URL</label>
+        <div class="copy-row"><input id="pairingUrl" readonly spellcheck="false"><button type="button" class="secondary copy" data-copy="pairingUrl">Copy</button></div>
+      </div>
+      <div class="pairing-value">
+        <label for="phrase">Pairing phrase</label>
+        <div class="copy-row"><input id="phrase" readonly spellcheck="false"><button type="button" class="secondary copy" data-copy="phrase">Copy</button></div>
+      </div>
+      <p id="expiry" class="hint" role="status">Generating a secure one-time phrase…</p>
+      <button id="enroll" type="button" class="secondary">Generate a new phrase</button>
+    </section>
     <details><summary>Coding agents</summary>
       <p class="hint">Install and sign in to Claude Code or Codex under your Windows account. Peon uses their existing credentials.</p>
       <form id="agents"><label>Default agent<select id="defaultAgent"><option value="claude-code">Claude Code</option><option value="codex">Codex</option></select></label><label>Claude executable<input id="agentCommand" autocomplete="off" placeholder="claude"></label><label>Codex executable<input id="codexCommand" autocomplete="off" placeholder="codex"></label><button type="submit">Save agents</button></form>

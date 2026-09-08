@@ -170,6 +170,8 @@ function validState(value: unknown): value is OutboxState {
 }
 
 function syncDirectory(directory: string): void {
+  // Directory fsync is not available through node:fs on Windows.
+  if (process.platform === "win32") return;
   const descriptor = openSync(directory, constants.O_RDONLY);
   try { fsyncSync(descriptor); }
   finally { closeSync(descriptor); }
@@ -511,7 +513,7 @@ export class PeonSocketOutbox {
     const temporary = `${this.journalPath}.${process.pid}.${randomUUID()}.tmp`;
     try {
       writeFileSync(temporary, "", { mode: 0o600, flag: "wx" });
-      const descriptor = openSync(temporary, constants.O_RDONLY);
+      const descriptor = openSync(temporary, constants.O_RDWR);
       try { fsyncSync(descriptor); }
       finally { closeSync(descriptor); }
       renameSync(temporary, this.journalPath);
@@ -659,7 +661,7 @@ export class PeonSocketOutbox {
     const envelope: StoredEnvelope = { checksum: checksum(state), state };
     try {
       writeFileSync(temporary, `${JSON.stringify(envelope)}\n`, { mode: 0o600, flag: "wx" });
-      const descriptor = openSync(temporary, constants.O_RDONLY);
+      const descriptor = openSync(temporary, constants.O_RDWR);
       try { fsyncSync(descriptor); }
       finally { closeSync(descriptor); }
       renameSync(temporary, target);

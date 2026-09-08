@@ -28,7 +28,6 @@ export class ArmoryConfigurationService {
   readonly operations: ArmoryOperationCoordinator;
   private readonly hookRunner: ArmoryHookRunner;
   private readonly now: () => number;
-  private readonly platform: { os: "darwin" | "linux"; arch: "x64" | "arm64" };
 
   constructor(private readonly options: {
     stores: ArmoryStores;
@@ -40,7 +39,6 @@ export class ArmoryConfigurationService {
   }) {
     this.hookRunner = options.hookRunner ?? new ArmoryHookRunner();
     this.now = options.now ?? Date.now;
-    this.platform = options.platform ?? currentPlatform();
     this.operations = new ArmoryOperationCoordinator(options.stores.operations, this.now);
   }
 
@@ -74,7 +72,7 @@ export class ArmoryConfigurationService {
         await operation.update("configuring", 25, "Running package configuration");
         const handler = await this.hookRunner.run({
           command: configuration.handler,
-          input: hookInput("configure", active, home, this.platform, values),
+          input: hookInput("configure", active, home, this.options.platform ?? currentPlatform(), values),
           packageDir: active.packageDir,
           managedHome: home,
           environment: providerEnvironment(configuration.environment ?? {}, home),
@@ -87,7 +85,7 @@ export class ArmoryConfigurationService {
           await operation.update("verifying", 70, "Verifying package configuration");
           await this.hookRunner.run({
             command: configuration.verifyHandler,
-            input: hookInput("verify", active, home, this.platform),
+            input: hookInput("verify", active, home, this.options.platform ?? currentPlatform()),
             packageDir: active.packageDir,
             managedHome: home,
             environment: providerEnvironment(configuration.environment ?? {}, home),
@@ -115,7 +113,7 @@ export class ArmoryConfigurationService {
       const redactedValues = configuration.fields.filter((field) => field.type === "secret" || field.type === "file").map((field) => values[field.id]).filter((value): value is string => value !== undefined);
       await this.options.stores.installed.set({ ...active.installed, state: "verifying", activeOperationId: operation.operationId, updatedAt: this.now() });
       try {
-        await this.hookRunner.run({ command: configuration.verifyHandler, input: hookInput("verify", active, home, this.platform), packageDir: active.packageDir, managedHome: home, environment: providerEnvironment(configuration.environment ?? {}, home), sensitiveValues: redactedValues, onProgress: (event) => operation.update(event.phase, event.percent, event.message) });
+        await this.hookRunner.run({ command: configuration.verifyHandler, input: hookInput("verify", active, home, this.options.platform ?? currentPlatform()), packageDir: active.packageDir, managedHome: home, environment: providerEnvironment(configuration.environment ?? {}, home), sensitiveValues: redactedValues, onProgress: (event) => operation.update(event.phase, event.percent, event.message) });
         await this.options.runtime?.healthCheck(packageId);
         await this.options.stores.installed.set({ ...active.installed, state: "ready", configurationStatus: "verified", activeOperationId: null, lastError: null, updatedAt: this.now() });
       } catch (error) {
