@@ -83,6 +83,8 @@ repository — that content lives here.
 
 ## Peons and the fleet
 
+- [Peon Desktop for Windows](peon-desktop.md) — the lean tray/controller,
+  current implementation status, native runtime gates and installer build.
 - [Peon is CLI-only](peon-cli-only.md) — no local dashboard or users; enrollment
   is `peon enroll` plus an operator-entered address and phrase.
 - [daemon configuration](daemon-configuration.md) — owner-only reads and

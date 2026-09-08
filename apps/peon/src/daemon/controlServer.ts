@@ -295,6 +295,9 @@ export function createControlServer(options: ControlServerOptions = {}) {
   });
 
   app.post("/api/v1/control/update", (req, res) => {
+    if (process.env.PEON_DESKTOP === "1") {
+      return res.status(409).json({ code: "DESKTOP_MANAGED", error: "Update Peon Desktop using its Windows installer." });
+    }
     const result = startSelfUpdate({ force: req.body?.force === true });
     if (result.busy) {
       return res.status(409).json({

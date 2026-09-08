@@ -4,6 +4,10 @@ Peon has no operator dashboard and no user authentication of its own. All
 human interaction, authentication, authorization and fleet management belong
 to Overseer (web or native client).
 
+The in-development [Windows desktop controller](peon-desktop.md) is a local
+tray wrapper for process lifecycle, setup and status. It adds no Peon user
+model or operator dashboard; it calls the same authoritative Peon services.
+
 The Peon package contains:
 
 - the `peon` CLI;

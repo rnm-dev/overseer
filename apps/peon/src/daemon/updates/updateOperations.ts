@@ -96,6 +96,9 @@ export function recoverUpdateOperation(
 }
 
 export async function checkUpdate(): Promise<UpdateHttpResult> {
+  if (process.env.PEON_DESKTOP === "1") {
+    return { status: 409, body: { code: "DESKTOP_MANAGED", error: "Update Peon Desktop using its Windows installer." } };
+  }
   if (preflightActive) {
     return { status: 409, body: { error: "another update operation is in progress", code: "UPDATE_IN_PROGRESS" } };
   }
@@ -125,6 +128,9 @@ export async function applyUpdate(
   requestId: string,
   body: unknown,
 ): Promise<UpdateHttpResult> {
+  if (process.env.PEON_DESKTOP === "1") {
+    return { status: 409, body: { code: "DESKTOP_MANAGED", error: "Update Peon Desktop using its Windows installer." } };
+  }
   if (!REQUEST_ID.test(requestId)) {
     return { status: 400, body: { error: "Peon-Request-Id is required", code: "BAD_REQUEST" } };
   }

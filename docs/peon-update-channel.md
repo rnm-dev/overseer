@@ -5,6 +5,12 @@ Fleet HTTP API over mesh. `update.check` and `update.apply` are not
 `reverse-command-v1` operations; there is no selector, fallback or second
 request authority.
 
+The in-development [Windows desktop bundle](peon-desktop.md) sets
+`PEON_DESKTOP=1` and refuses Fleet check/apply and local apply with
+`409 DESKTOP_MANAGED`. Its initial preview is upgraded using the desktop
+installer, so an npm update cannot mutate the bundled runtime independently.
+Ordinary npm-managed Peons retain the behavior documented below.
+
 The machine routes are:
 
 - `POST /api/v1/control/check-update`;
