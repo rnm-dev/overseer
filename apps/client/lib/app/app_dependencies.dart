@@ -1,5 +1,8 @@
 import 'dart:async';
 
+import 'desktop_fleet_navigation.dart';
+import '../features/shell/shell.dart';
+
 import 'package:dio/dio.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
@@ -97,6 +100,10 @@ class AppDependencies extends StatelessWidget {
             defaultTargetPlatform == TargetPlatform.iOS);
     return ProviderScope(
       overrides: [
+        if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows)
+          fleetSidebarBuilderProvider.overrideWithValue(
+            buildDesktopFleetSidebar,
+          ),
         if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows)
           fleetOverviewMaxWidthProvider.overrideWithValue(double.infinity),
         if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows)

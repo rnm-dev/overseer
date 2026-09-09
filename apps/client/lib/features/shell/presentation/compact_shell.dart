@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
+
+import 'shell_chrome.dart';
 
 import '../../../shared/design/typography.dart';
 import '../../../shared/widgets/app_navigation_bar.dart';
 import '../../auth/domain/auth_models.dart';
 import '../../fleet/fleet.dart';
 
-class CompactShell extends StatelessWidget {
+class CompactShell extends ConsumerWidget {
   const CompactShell({
     super.key,
     required this.user,
@@ -31,9 +35,21 @@ class CompactShell extends StatelessWidget {
   final VoidCallback? onBackToConnections;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final hasSidebar =
+        user != null && ref.watch(fleetSidebarBuilderProvider) != null;
     return Scaffold(
       key: const Key('compact-shell'),
+      drawer: hasSidebar
+          ? Drawer(
+              child: ShellConnectionRail(
+                overseerName: overseerName,
+                user: user,
+                onBackToConnections: onBackToConnections,
+                width: double.infinity,
+              ),
+            )
+          : null,
       body: SafeArea(
         top: false,
         child: Column(
@@ -44,6 +60,15 @@ class CompactShell extends StatelessWidget {
               onBack: onBackToConnections,
               backButtonKey: const Key('back-to-overseer-list'),
               backTooltip: 'Back to Overseer list',
+              right: hasSidebar
+                  ? Builder(
+                      builder: (context) => IconButton(
+                        tooltip: 'Projects and chats',
+                        icon: const Icon(LucideIcons.panelLeft, size: 20),
+                        onPressed: () => Scaffold.of(context).openDrawer(),
+                      ),
+                    )
+                  : null,
               left: Text(
                 overseerName ?? 'Overseer',
                 key: const Key('current-overseer-name'),

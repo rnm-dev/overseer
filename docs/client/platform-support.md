@@ -169,6 +169,13 @@ Apple SDK tooling. Follow the full [TestFlight release process](testflight.md).
 
 ### Windows
 
+Fleet Overview adds a Peon selector and project/chat navigation to its sidebar.
+Chats can be grouped beneath collapsible project headings or shown as a flat
+list. Project and chat links use the existing detail routes and creation flows.
+The sidebar becomes a drawer below 600 logical pixels; its selected Peon and
+display mode survive resizing. This navigation is enabled only in the Windows
+composition root, and the main overview content remains available.
+
 Fleet Overview and the Peon page's project and session lists fill the available
 content pane and resize with the window. The Windows composition root overrides
 their 760-unit width limits;
