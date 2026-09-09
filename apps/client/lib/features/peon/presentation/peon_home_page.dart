@@ -27,6 +27,9 @@ import '../../../shared/widgets/status_dot.dart';
 
 enum _PeonTab { work, stats, settings }
 
+/// Windows opts into fluid rows at the composition root.
+final peonHomeMaxWidthProvider = Provider<double>((ref) => 760);
+
 typedef PeonOpenProject =
     void Function(
       BuildContext context, {
@@ -109,6 +112,7 @@ class _PeonHomePageState extends ConsumerState<PeonHomePage> {
 
   @override
   Widget build(BuildContext context) {
+    final maxContentWidth = ref.watch(peonHomeMaxWidthProvider);
     return Scaffold(
       key: const Key('peon-home-page'),
       body: SafeArea(
@@ -171,7 +175,9 @@ class _PeonHomePageState extends ConsumerState<PeonHomePage> {
                               builder: (context, constraints) {
                                 final horizontalInset = math.max(
                                   0.0,
-                                  (constraints.crossAxisExtent - 760) / 2,
+                                  (constraints.crossAxisExtent -
+                                          maxContentWidth) /
+                                      2,
                                 );
                                 return SliverPadding(
                                   padding: EdgeInsets.symmetric(
@@ -1028,7 +1034,7 @@ class _PinnedSectionHeaderDelegate extends SliverPersistentHeaderDelegate {
   }
 }
 
-class _SectionFrame extends StatelessWidget {
+class _SectionFrame extends ConsumerWidget {
   const _SectionFrame({
     required this.child,
     this.padding = const EdgeInsets.symmetric(horizontal: 8),
@@ -1038,11 +1044,13 @@ class _SectionFrame extends StatelessWidget {
   final EdgeInsetsGeometry padding;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Align(
       alignment: Alignment.topCenter,
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 760),
+        constraints: BoxConstraints(
+          maxWidth: ref.watch(peonHomeMaxWidthProvider),
+        ),
         child: Padding(
           padding: padding,
           child: SizedBox(width: double.infinity, child: child),

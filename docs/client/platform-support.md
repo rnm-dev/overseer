@@ -169,8 +169,9 @@ Apple SDK tooling. Follow the full [TestFlight release process](testflight.md).
 
 ### Windows
 
-Fleet Overview fills the available content pane and resizes with the window.
-The Windows composition root overrides the overview's 760-unit width limit;
+Fleet Overview and the Peon page's project and session lists fill the available
+content pane and resize with the window. The Windows composition root overrides
+their 760-unit width limits;
 other targets retain the existing centered layout. Row heights, typography,
 spacing, and the sidebar are unchanged.
 

@@ -89,6 +89,75 @@ Widget _buildPeonSessionList(
 }
 
 void main() {
+  for (final fluid in [false, true]) {
+    testWidgets('Peon rows resize with fluid width $fluid', (tester) async {
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+      tester.view.physicalSize = const Size(1440, 900);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            if (fluid)
+              peonHomeMaxWidthProvider.overrideWithValue(double.infinity),
+            projectRepositoryProvider.overrideWithValue(
+              _FakeProjectRepository([
+                const PeonProject(
+                  workspaceId: 'rnm',
+                  peonId: 'marat',
+                  projectId: 'width-project',
+                  key: 'width-project',
+                  name: 'Width project',
+                  sessionCount: 1,
+                  activeCount: 0,
+                  syncedAt: 100,
+                ),
+              ]),
+            ),
+            sessionRepositoryProvider.overrideWithValue(
+              _FakeSessionRepository(),
+            ),
+          ],
+          child: MaterialApp(
+            theme: AppTheme.dark,
+            home: PeonHomePage(
+              workspace: const Workspace(id: 'rnm', name: 'RNM'),
+              peon: const Peon(
+                id: 'marat',
+                name: 'Marat',
+                online: true,
+                lastSeen: 100,
+                capabilities: <String>[],
+              ),
+              sessionListBuilder:
+                  (_, {required workspaceId, required peonId}) =>
+                      const SliverToBoxAdapter(
+                        child: SizedBox(
+                          key: Key('session-width-probe'),
+                          height: 48,
+                        ),
+                      ),
+            ),
+          ),
+        ),
+      );
+      for (final width in [1440.0, 1000.0, 500.0]) {
+        tester.view.physicalSize = Size(width, 900);
+        await tester.pumpAndSettle();
+        final contentWidth = fluid || width < 760 ? width : 760.0;
+        expect(
+          tester.getSize(find.byKey(const Key('project-width-project'))).width,
+          contentWidth,
+        );
+        expect(
+          tester.getSize(find.byKey(const Key('session-width-probe'))).width,
+          contentWidth,
+        );
+        expect(tester.takeException(), isNull);
+      }
+    });
+  }
+
   testWidgets('workspace members can create projects without owner access', (
     tester,
   ) async {

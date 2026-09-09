@@ -54,6 +54,8 @@ void main() {
         overrides: [
           if (windowsLayout)
             fleetOverviewMaxWidthProvider.overrideWithValue(double.infinity),
+          if (windowsLayout)
+            fleetWorkspaceOutlinesProvider.overrideWithValue(true),
           fleetRepositoryProvider.overrideWithValue(
             const _DesktopVisualFleetRepository(),
           ),

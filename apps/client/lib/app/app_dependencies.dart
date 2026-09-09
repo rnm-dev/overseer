@@ -39,6 +39,7 @@ import 'package:overseer_mobile/features/projects/application/project_detail_con
 import 'package:overseer_mobile/features/projects/data/default_project_repository.dart';
 import 'package:overseer_mobile/features/projects/data/dio_project_detail_repository.dart';
 import 'package:overseer_mobile/features/peon/application/peon_settings_controller.dart';
+import 'package:overseer_mobile/features/peon/peon.dart';
 import 'package:overseer_mobile/features/peon/application/peon_management_controller.dart';
 import 'package:overseer_mobile/features/peon/data/dio_peon_management_repository.dart';
 import 'package:overseer_mobile/features/peon/data/dio_peon_settings_repository.dart';
@@ -98,6 +99,10 @@ class AppDependencies extends StatelessWidget {
       overrides: [
         if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows)
           fleetOverviewMaxWidthProvider.overrideWithValue(double.infinity),
+        if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows)
+          fleetWorkspaceOutlinesProvider.overrideWithValue(true),
+        if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows)
+          peonHomeMaxWidthProvider.overrideWithValue(double.infinity),
         themeConnectionIdProvider.overrideWithValue(
           overseerConnectionStorageId(connection.serverUrl),
         ),

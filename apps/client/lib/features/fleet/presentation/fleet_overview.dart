@@ -27,6 +27,9 @@ import '../domain/fleet_repository.dart';
 /// the existing centered content limit.
 final fleetOverviewMaxWidthProvider = Provider<double>((ref) => 760);
 
+/// Enables workspace outlines for the Windows desktop layout.
+final fleetWorkspaceOutlinesProvider = Provider<bool>((ref) => false);
+
 abstract final class _FleetSectionMetrics {
   static const headerGap = 10.0;
   static const rowGap = 8.0;
@@ -552,7 +555,7 @@ class _SettingValue extends StatelessWidget {
   }
 }
 
-class _WorkspaceSection extends StatelessWidget {
+class _WorkspaceSection extends ConsumerWidget {
   const _WorkspaceSection({
     required this.fleet,
     required this.presence,
@@ -570,9 +573,9 @@ class _WorkspaceSection extends StatelessWidget {
   final ActiveWorkspaceSessions? activeSessions;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final colors = Theme.of(context).colorScheme;
-    return Column(
+    final content = Column(
       key: Key('workspace-${fleet.workspace.id}'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -608,6 +611,16 @@ class _WorkspaceSection extends StatelessWidget {
               const SizedBox(height: _FleetSectionMetrics.rowGap),
           ],
       ],
+    );
+    if (!ref.watch(fleetWorkspaceOutlinesProvider)) return content;
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 12),
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      foregroundDecoration: BoxDecoration(
+        border: Border.all(color: colors.outlineVariant),
+        borderRadius: AppMotion.optionShape,
+      ),
+      child: content,
     );
   }
 }
