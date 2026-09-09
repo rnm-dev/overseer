@@ -29,6 +29,9 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            sessionRepositoryProvider.overrideWithValue(
+              _RecordingSessionRepository(),
+            ),
             authRepositoryProvider.overrideWithValue(auth),
             fleetRepositoryProvider.overrideWithValue(_EmptyFleetRepository()),
             fleetSidebarBuilderProvider.overrideWithValue(
@@ -48,10 +51,36 @@ void main() {
       );
       final router = GoRouter.of(overviewContext);
       router.pushNamed(
+        'session',
+        queryParameters: {
+          'workspaceId': 'workspace',
+          'peonId': 'peon',
+          'sessionId': 'session',
+        },
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(
+        ProviderScope.containerOf(
+          tester.element(sidebar),
+        ).read(selectedSidebarChatProvider),
+        (workspaceId: 'workspace', peonId: 'peon', sessionId: 'session'),
+      );
+      await tester.tap(find.byKey(const Key('shell-overview-navigation')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(
+        ProviderScope.containerOf(
+          tester.element(sidebar),
+        ).read(selectedSidebarChatProvider),
+        isNull,
+      );
+      router.pushNamed(
         'peon',
         queryParameters: {'workspaceId': 'workspace', 'peonId': 'peon'},
       );
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
       expect(tester.element(sidebar), same(sidebarElement));
       expect(find.byKey(const ValueKey('workspace\u0000peon')), findsOneWidget);
       await tester.tap(find.byKey(const Key('shell-overview-navigation')));

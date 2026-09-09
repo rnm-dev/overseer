@@ -14,6 +14,7 @@ class DesktopNavigationFrame extends ConsumerWidget {
     required this.navigatorKey,
     required this.onOverview,
     required this.overviewSelected,
+    this.selectedChat,
     this.overseerName,
     this.onBackToConnections,
   });
@@ -22,6 +23,7 @@ class DesktopNavigationFrame extends ConsumerWidget {
   final GlobalKey<NavigatorState> navigatorKey;
   final VoidCallback onOverview;
   final bool overviewSelected;
+  final SidebarChatIdentity? selectedChat;
   final String? overseerName;
   final VoidCallback? onBackToConnections;
 
@@ -31,6 +33,7 @@ class DesktopNavigationFrame extends ConsumerWidget {
     if (user == null) return child;
     return ProviderScope(
       overrides: [
+        selectedSidebarChatProvider.overrideWithValue(selectedChat),
         externalShellRailProvider.overrideWithValue(true),
         fleetSidebarBuilderProvider.overrideWithValue(
           (context) =>

@@ -56,6 +56,17 @@ class _OverseerMobileAppState extends ConsumerState<OverseerMobileApp> {
               builder: (context, state, child) => DesktopNavigationFrame(
                 navigatorKey: _contentNavigatorKey,
                 overviewSelected: state.uri.path == '/',
+                selectedChat:
+                    state.uri.path == '/session' &&
+                        state.uri.queryParameters['workspaceId'] != null &&
+                        state.uri.queryParameters['peonId'] != null &&
+                        state.uri.queryParameters['sessionId'] != null
+                    ? (
+                        workspaceId: state.uri.queryParameters['workspaceId']!,
+                        peonId: state.uri.queryParameters['peonId']!,
+                        sessionId: state.uri.queryParameters['sessionId']!,
+                      )
+                    : null,
                 onOverview: () {
                   _contentNavigatorKey.currentState?.popUntil(
                     (route) => route.isFirst,

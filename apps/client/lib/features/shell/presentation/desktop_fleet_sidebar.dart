@@ -13,6 +13,17 @@ import '../../projects/domain/project_models.dart';
 import '../../sessions/application/sessions_controller.dart';
 import '../../sessions/domain/session_models.dart';
 
+typedef SidebarChatIdentity = ({
+  String workspaceId,
+  String peonId,
+  String sessionId,
+});
+
+/// Supplied by the Windows navigation frame from the displayed route.
+final selectedSidebarChatProvider = Provider<SidebarChatIdentity?>(
+  (ref) => null,
+);
+
 // Retain navigation choices when resizing replaces the wide/medium shell.
 final _preferencesProvider = Provider((ref) => _SidebarPreferences());
 
@@ -370,6 +381,13 @@ class _DesktopFleetSidebarState extends ConsumerState<DesktopFleetSidebar> {
       _SidebarRow(
         key: ValueKey('sidebar-chat-${session.sessionId}'),
         title: session.displayTitle,
+        selected:
+            ref.watch(selectedSidebarChatProvider) ==
+            (
+              workspaceId: session.workspaceId,
+              peonId: session.peonId,
+              sessionId: session.sessionId,
+            ),
         detail:
             session.displayPreview ??
             formatActivityTimestamp(session.sortActivity) ??
@@ -396,51 +414,80 @@ class _SidebarRow extends StatelessWidget {
     required this.detail,
     required this.onTap,
     this.color,
+    this.selected = false,
   });
   final String title;
   final String detail;
   final VoidCallback onTap;
   final Color? color;
+  final bool selected;
 
   @override
   Widget build(BuildContext context) => Tooltip(
     message: title,
-    child: InkWell(
-      onTap: onTap,
-      child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 3),
-        padding: const EdgeInsets.fromLTRB(8, 4, 4, 4),
-        decoration: BoxDecoration(
-          border: Border(
-            left: BorderSide(
-              width: 2,
-              color: color ?? Theme.of(context).colorScheme.outlineVariant,
-            ),
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: AppTypography.body(
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
+    child: Semantics(
+      selected: selected,
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          margin: const EdgeInsets.symmetric(vertical: 3),
+          padding: const EdgeInsets.fromLTRB(8, 4, 4, 4),
+          decoration: BoxDecoration(
+            color: selected
+                ? Color.alphaBlend(
+                    Theme.of(
+                      context,
+                    ).colorScheme.primaryContainer.withAlpha(78),
+                    Theme.of(context).colorScheme.surfaceContainerHighest,
+                  )
+                : null,
+            border: Border(
+              top: selected
+                  ? BorderSide(color: Theme.of(context).colorScheme.primary)
+                  : BorderSide.none,
+              right: selected
+                  ? BorderSide(color: Theme.of(context).colorScheme.primary)
+                  : BorderSide.none,
+              bottom: selected
+                  ? BorderSide(color: Theme.of(context).colorScheme.primary)
+                  : BorderSide.none,
+              left: BorderSide(
+                width: 2,
+                color:
+                    color ??
+                    (selected
+                        ? Theme.of(context).colorScheme.primary
+                        : Theme.of(context).colorScheme.outlineVariant),
               ),
             ),
-            if (detail.isNotEmpty)
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
               Text(
-                detail,
+                title,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: AppTypography.body(
-                  fontSize: 10,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: selected
+                      ? Theme.of(context).colorScheme.primary
+                      : Theme.of(context).colorScheme.onSurface,
                 ),
               ),
-          ],
+              if (detail.isNotEmpty)
+                Text(
+                  detail,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTypography.body(
+                    fontSize: 10,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     ),

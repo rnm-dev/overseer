@@ -57,6 +57,11 @@ void main() {
         ProviderScope(
           overrides: [
             fleetControllerProvider.overrideWith(_Fleet.new),
+            selectedSidebarChatProvider.overrideWithValue((
+              workspaceId: 'rnm',
+              peonId: 'one',
+              sessionId: 'chat',
+            )),
             for (final peonId in ['one', 'two'])
               projectsControllerProvider(
                 ProjectsScope(workspaceId: 'rnm', peonId: peonId),
@@ -108,6 +113,23 @@ void main() {
         986,
       );
       expect(find.text('Alpha'), findsOneWidget);
+      BoxDecoration chatDecoration() =>
+          tester
+                  .widget<Container>(
+                    find.descendant(
+                      of: find.byKey(const ValueKey('sidebar-chat-chat')),
+                      matching: find.byType(Container),
+                    ),
+                  )
+                  .decoration!
+              as BoxDecoration;
+      expect(
+        chatDecoration().color,
+        Color.alphaBlend(
+          AppTheme.dark.colorScheme.primaryContainer.withAlpha(78),
+          AppTheme.dark.colorScheme.surfaceContainerHighest,
+        ),
+      );
       expect(
         tester
             .getBottomLeft(find.byKey(const ValueKey('sidebar-list-rnm-one')))
@@ -155,6 +177,7 @@ void main() {
       await tester.tap(find.text('RNM / Second').last);
       await tester.pumpAndSettle();
       expect(find.text('Beta'), findsOneWidget);
+      expect(chatDecoration().color, isNull);
       expect(find.text('Alpha'), findsNothing);
       for (final width in [1000.0, 600.0]) {
         tester.view.physicalSize = Size(width, 1000);
