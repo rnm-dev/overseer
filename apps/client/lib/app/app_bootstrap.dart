@@ -9,6 +9,7 @@ import 'package:overseer_mobile/app/overseer_connection_authenticator.dart';
 import 'package:overseer_mobile/core/config/app_config.dart';
 import 'package:overseer_mobile/core/config/overseer_connection_store.dart';
 import 'package:overseer_mobile/core/notifications/notification_routing.dart';
+import 'package:overseer_mobile/core/notifications/desktop_notifications.dart';
 import 'package:overseer_mobile/core/security/connection_credential_cleaner.dart';
 import 'package:overseer_mobile/features/auth/presentation/overseer_connections_page.dart';
 import 'package:overseer_mobile/shared/design/theme.dart';
@@ -28,6 +29,7 @@ class AppBootstrap extends StatefulWidget {
     this.environmentConfig,
     this.notificationGateway = const NoopNotificationMessageGateway(),
     this.notificationRouteStore,
+    this.desktopNotifications,
     this.credentialCleaner,
     this.connectionAuthenticator = authenticateOverseerConnection,
     this.connectionAppBuilder,
@@ -37,6 +39,7 @@ class AppBootstrap extends StatefulWidget {
   final AppConfig? environmentConfig;
   final NotificationMessageGateway notificationGateway;
   final NotificationRouteStore? notificationRouteStore;
+  final DesktopNotifications? desktopNotifications;
   final ConnectionCredentialCleaner? credentialCleaner;
   final OverseerConnectionAuthenticator connectionAuthenticator;
   final OverseerConnectionAppBuilder? connectionAppBuilder;
@@ -299,6 +302,7 @@ class _AppBootstrapState extends State<AppBootstrap>
             config: config,
             connection: connection,
             notificationRouteStore: _notificationRouteStore,
+            desktopNotifications: widget.desktopNotifications,
             child: OverseerMobileApp(
               onBackToConnections: _returnToConnections,
               overseerName: connection.title,

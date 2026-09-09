@@ -414,6 +414,10 @@ class _NotificationSettingsRowState
       return;
     }
     if (!desired && status == NotificationPermissionStatus.enabled) {
+      final disabled = await ref
+          .read(notificationPermissionControllerProvider.notifier)
+          .disable();
+      if (!mounted || disabled) return;
       await _showSettingsHelp(enabling: false);
     }
   }

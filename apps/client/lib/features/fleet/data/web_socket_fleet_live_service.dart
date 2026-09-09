@@ -23,6 +23,7 @@ class WebSocketFleetLiveService
         FleetLiveService,
         FleetWorkspaceReconciler,
         FleetLiveLifecycle,
+        FleetLiveForeground,
         AttentionFleetLiveService,
         TranscriptLiveService {
   WebSocketFleetLiveService({
@@ -31,6 +32,7 @@ class WebSocketFleetLiveService
     this._clock = const SystemAppClock(),
     this._scheduler = const SystemAppScheduler(),
     this._diagnostics = const NoopAppDiagnostics(),
+    this.onAttentionNotification,
   });
 
   static const _heartbeatInterval = Duration(seconds: 10);
@@ -41,10 +43,13 @@ class WebSocketFleetLiveService
   final AppClock _clock;
   final AppScheduler _scheduler;
   final AppDiagnostics _diagnostics;
+  final Future<void> Function(String workspaceId, Map<String, dynamic> event)?
+  onAttentionNotification;
   final Map<String, _WorkspaceSocket> _sockets = {};
   final Random _random = Random();
 
   bool _stopped = true;
+  bool _foreground = true;
   Future<bool> Function(
     String workspaceId,
     int cursor,
@@ -285,7 +290,19 @@ class WebSocketFleetLiveService
   }
 
   void _sendPresence(_WorkspaceSocket state) {
-    state.channel?.sink.add(jsonEncode(state.location.toJson()));
+    final location = _foreground
+        ? state.location
+        : const PresenceLocation.workspace();
+    state.channel?.sink.add(jsonEncode(location.toJson()));
+  }
+
+  @override
+  void setForeground(bool foreground) {
+    if (_foreground == foreground) return;
+    _foreground = foreground;
+    for (final state in _sockets.values) {
+      if (state.ready) _sendPresence(state);
+    }
   }
 
   @override

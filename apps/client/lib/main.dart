@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart'
 import 'package:flutter/material.dart';
 import 'package:overseer_mobile/app/app_bootstrap.dart';
 import 'package:overseer_mobile/core/notifications/notification_routing.dart';
+import 'package:overseer_mobile/core/notifications/windows_notifications.dart';
 import 'package:overseer_mobile/core/platform/desktop_webview_bootstrap.dart';
 import 'package:overseer_mobile/firebase_options.dart';
 
@@ -26,11 +27,16 @@ Future<void> main(List<String> args) async {
       !kIsWeb &&
       (defaultTargetPlatform == TargetPlatform.android ||
           defaultTargetPlatform == TargetPlatform.iOS);
+  final desktopNotifications =
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.windows
+      ? WindowsNotifications()
+      : null;
   runApp(
     AppBootstrap(
+      desktopNotifications: desktopNotifications,
       notificationGateway: supportsNativePush
           ? FirebaseNotificationMessageGateway()
-          : const NoopNotificationMessageGateway(),
+          : desktopNotifications ?? const NoopNotificationMessageGateway(),
     ),
   );
 }

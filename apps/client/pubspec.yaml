@@ -41,6 +41,7 @@ dependencies:
   permission_handler: ^13.0.2
   record: ^7.1.1
   image_picker: ^1.2.3
+  flutter_local_notifications_windows: ^3.1.1
 
 dev_dependencies:
   flutter_test:
@@ -52,6 +53,7 @@ dev_dependencies:
   drift_dev: ^2.34.0
   flutter_native_splash: ^2.4.8
   image: ^4.8.0
+  flutter_local_notifications_platform_interface: ^12.2.0
 
 dependency_overrides:
   desktop_webview_window:

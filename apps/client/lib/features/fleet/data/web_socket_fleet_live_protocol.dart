@@ -132,8 +132,27 @@ extension _WebSocketFleetLiveProtocol on WebSocketFleetLiveService {
       final cursor = (decoded['cursor'] as num?)?.toInt() ?? 0;
       final payload = decoded['payload'];
       if (payload is Map<String, dynamic>) {
+        final notify =
+            cursor > state.activeBarrierCursor && cursor > state.cursor;
         await _onAttention?.call(workspaceId, cursor, payload);
         _bumpCursor(workspaceId, state, cursor);
+        if (notify && !_stopped && _sockets[workspaceId] == state) {
+          try {
+            await onAttentionNotification?.call(workspaceId, payload);
+          } catch (error) {
+            // OS delivery cannot prevent the durable projection/cursor commit.
+            _diagnostics.record(
+              AppDiagnosticEvent(
+                name: 'notification.delivery',
+                level: AppDiagnosticLevel.warning,
+                workspaceId: workspaceId,
+                cursor: cursor,
+                outcome: 'failed',
+                errorType: error.runtimeType.toString(),
+              ),
+            );
+          }
+        }
       }
       return;
     }

@@ -24,6 +24,14 @@ class _LiveSyncLifecycleState extends ConsumerState<LiveSyncLifecycle>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    ref.listenManual(fleetLiveServiceProvider, (_, live) {
+      if (live case final FleetLiveForeground visibility) {
+        final state = WidgetsBinding.instance.lifecycleState;
+        visibility.setForeground(
+          state == null || state == AppLifecycleState.resumed,
+        );
+      }
+    }, fireImmediately: true);
   }
 
   @override
@@ -34,6 +42,12 @@ class _LiveSyncLifecycleState extends ConsumerState<LiveSyncLifecycle>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    final live = ref.read(fleetLiveServiceProvider);
+    if (live case final FleetLiveForeground visibility) {
+      visibility.setForeground(
+        state == AppLifecycleState.resumed,
+      );
+    }
     ref
         .read(appDiagnosticsProvider)
         .record(

@@ -68,3 +68,7 @@ abstract interface class FleetWorkspaceReconciler {
 abstract interface class FleetLiveLifecycle {
   Future<void> resumeFromBackground();
 }
+
+abstract interface class FleetLiveForeground {
+  void setForeground(bool foreground);
+}

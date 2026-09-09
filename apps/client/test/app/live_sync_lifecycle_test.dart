@@ -22,11 +22,17 @@ void main() {
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
       await tester.pump();
       expect(live.resumeCount, 0);
+      expect(live.foreground, isTrue);
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      await tester.pump();
+      expect(live.foreground, isFalse);
 
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
       await tester.pump();
       expect(live.resumeCount, 1);
+      expect(live.foreground, isTrue);
 
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
       await tester.pump();
@@ -35,8 +41,13 @@ void main() {
   );
 }
 
-class _RecordingLiveService implements FleetLiveService, FleetLiveLifecycle {
+class _RecordingLiveService
+    implements FleetLiveService, FleetLiveLifecycle, FleetLiveForeground {
   int resumeCount = 0;
+  bool foreground = true;
+
+  @override
+  void setForeground(bool value) => foreground = value;
 
   @override
   Future<void> connect({

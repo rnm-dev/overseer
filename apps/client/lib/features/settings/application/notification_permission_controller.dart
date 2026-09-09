@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/diagnostics/app_diagnostics.dart';
 import '../../../core/notifications/notification_permission.dart';
+import '../../../core/notifications/desktop_notifications.dart';
 import '../../../core/notifications/push_notification_service.dart';
 import '../../auth/application/auth_controller.dart';
 
@@ -56,6 +57,18 @@ class NotificationPermissionController
 
   Future<bool> openSettings() {
     return ref.read(notificationPermissionGatewayProvider).openSettings();
+  }
+
+  Future<bool> disable() async {
+    final gateway = ref.read(notificationPermissionGatewayProvider);
+    if (gateway is! DesktopNotifications) return false;
+    try {
+      state = await gateway.disable();
+      return true;
+    } catch (error) {
+      _recordFailure('disable', error);
+      return false;
+    }
   }
 
   Future<void> _registerIfAuthenticated() async {

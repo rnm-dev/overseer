@@ -7,11 +7,97 @@ import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:overseer_mobile/core/diagnostics/app_diagnostics.dart';
 import 'package:overseer_mobile/core/live/active_sessions.dart';
+import 'package:overseer_mobile/core/live/presence.dart';
 import 'package:overseer_mobile/features/fleet/data/web_socket_fleet_live_service.dart';
 
 import '../../../support/manual_app_time.dart';
 
 void main() {
+  test(
+    'desktop alerts exclude replay and duplicates; delivery failure preserves sync',
+    () async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      final probes = StreamController<_SocketProbe>.broadcast();
+      final serverSubscription = server.listen((request) async {
+        probes.add(_SocketProbe(await WebSocketTransformer.upgrade(request)));
+      });
+      final dio = Dio(
+        BaseOptions(baseUrl: 'http://127.0.0.1:${server.port}/api/v1/'),
+      )..httpClientAdapter = _ImmediateFleetAdapter();
+      final notified = <String>[];
+      final applied = <int>[];
+      final diagnostics = _RecordingDiagnostics();
+      final finished = Completer<void>();
+      final service = WebSocketFleetLiveService(
+        serverUrl: Uri.parse('http://127.0.0.1:${server.port}'),
+        dio: dio,
+        diagnostics: diagnostics,
+        onAttentionNotification: (workspaceId, event) async {
+          expect(workspaceId, 'workspace-1');
+          notified.add(event['sessionId'] as String);
+          if (event['sessionId'] == 'fails') throw StateError('OS unavailable');
+        },
+      );
+      addTearDown(() async {
+        await service.stop();
+        dio.close(force: true);
+        await probes.close();
+        await serverSubscription.cancel();
+        await server.close(force: true);
+      });
+      service.setAttentionHandler((_, cursor, _) async => applied.add(cursor));
+      await service.connect(
+        workspaceIds: const ['workspace-1'],
+        initialCursors: const {'workspace-1': 0},
+        onPeon: (_, _, _) async => true,
+        onSession: (_, _, _) async => true,
+        onProject: (_, _, _) async => true,
+        onCursor: (_, cursor) async {
+          if (cursor == 14) finished.complete();
+        },
+        onActiveSessions: (_, _, _) {},
+        onActiveSessionSnapshot: (_, _) {},
+        onPresence: (_, _) {},
+      );
+      final probe = await probes.stream.first;
+      await probe.next('hello');
+      probe.socket.add(
+        jsonEncode({'type': 'snapshot', 'cursor': 10, 'presence': []}),
+      );
+      for (final (cursor, id) in [
+        (9, 'replay'),
+        (11, 'new'),
+        (11, 'duplicate'),
+        (12, 'fails'),
+        (13, 'next'),
+      ]) {
+        probe.socket.add(
+          jsonEncode({
+            'type': 'attention',
+            'cursor': cursor,
+            'payload': {
+              'peonId': 'p1',
+              'sessionId': id,
+              'unread': true,
+              'completedAt': 123,
+            },
+          }),
+        );
+      }
+      probe.socket.add(jsonEncode({'type': 'resumeEnd', 'cursor': 14}));
+      await finished.future.timeout(const Duration(seconds: 5));
+      expect(notified, ['new', 'fails', 'next']);
+      expect(applied, [9, 11, 11, 12, 13]);
+      expect(
+        diagnostics.events
+            .where((e) => e.name == 'notification.delivery')
+            .single
+            .outcome,
+        'failed',
+      );
+    },
+  );
+
   test(
     'acknowledges a session only after its durable projection applies',
     () async {
@@ -56,6 +142,19 @@ void main() {
       probe.socket.add(
         jsonEncode({'type': 'snapshot', 'cursor': 0, 'presence': const []}),
       );
+      await probe.next('presence:set');
+      service.setPresence(
+        workspaceId: 'workspace-1',
+        location: const PresenceLocation.session(
+          peonId: 'peon-1',
+          sessionId: 'session-1',
+        ),
+      );
+      expect((await probe.next('presence:set'))['scope'], 'session');
+      service.setForeground(false);
+      expect((await probe.next('presence:set'))['scope'], 'workspace');
+      service.setForeground(true);
+      expect((await probe.next('presence:set'))['sessionId'], 'session-1');
       probe.socket.add(
         jsonEncode({
           'type': 'session',

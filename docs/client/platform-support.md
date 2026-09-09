@@ -39,7 +39,7 @@ credentials are not affected.
 | HTML file preview | Embedded WebView | Embedded WebView | Embedded WebView | Separate WebView2 window | Separate WebKitGTK window |
 | Firebase push | FCM registration implemented; APNs key required | FCM registration implemented | Not selected | Not selected | Not selected |
 | Foreground notification UI | In-app card | In-app card | Unsupported | Unsupported | Unsupported |
-| Notification/deep-link routing | Peon/session, auth-restored | Peon/session, auth-restored | Push unsupported | Push unsupported | Push unsupported |
+| Notification/deep-link routing | Peon/session, auth-restored | Peon/session, auth-restored | Push unsupported | Native completion toast, running app | Push unsupported |
 
 Mobile sign-in begins at the web login page, not directly at GitHub. Each
 flavor keeps one paired origin and callback: dev uses

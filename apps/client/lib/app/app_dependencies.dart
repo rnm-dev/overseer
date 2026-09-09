@@ -23,6 +23,7 @@ import 'package:overseer_mobile/core/notifications/notification_routing.dart';
 import 'package:overseer_mobile/core/notifications/push_notification_service.dart';
 import 'package:overseer_mobile/core/platform/html_preview_launcher.dart';
 import 'package:overseer_mobile/core/time/app_time.dart';
+import 'package:overseer_mobile/core/notifications/desktop_notifications.dart';
 import 'package:overseer_mobile/features/auth/application/auth_controller.dart';
 import 'package:overseer_mobile/features/auth/application/auth_state.dart';
 import 'package:overseer_mobile/features/ai_stats/application/ai_stats_controller.dart';
@@ -74,6 +75,7 @@ class AppDependencies extends StatelessWidget {
     required this.connection,
     required this.notificationRouteStore,
     required this.child,
+    this.desktopNotifications,
     this.onAuthenticated,
   });
 
@@ -81,6 +83,7 @@ class AppDependencies extends StatelessWidget {
   final OverseerConnection connection;
   final NotificationRouteStore notificationRouteStore;
   final Widget child;
+  final DesktopNotifications? desktopNotifications;
   final VoidCallback? onAuthenticated;
 
   @override
@@ -151,7 +154,8 @@ class AppDependencies extends StatelessWidget {
         notificationPermissionGatewayProvider.overrideWithValue(
           nativeFirebaseAvailable
               ? FirebaseNotificationPermissionGateway()
-              : const NoopNotificationPermissionGateway(),
+              : desktopNotifications ??
+                    const NoopNotificationPermissionGateway(),
         ),
         pushNotificationServiceProvider.overrideWith((ref) {
           final platform = switch (defaultTargetPlatform) {
@@ -298,6 +302,16 @@ class AppDependencies extends StatelessWidget {
           final session = ref.watch(authControllerProvider).session;
           if (session == null) return null;
           return WebSocketFleetLiveService(
+            onAttentionNotification: desktopNotifications == null
+                ? null
+                : (workspaceId, event) => desktopNotifications!.showAttention(
+                    workspaceId,
+                    event,
+                    isCurrent: () =>
+                        ref.mounted &&
+                        ref.read(authControllerProvider).session?.token ==
+                            session.token,
+                  ),
             serverUrl: config.serverUrl,
             dio: ref.watch(overseerHttpClientProvider),
             clock: ref.watch(appClockProvider),

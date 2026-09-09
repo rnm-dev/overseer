@@ -65,9 +65,45 @@ If permission becomes enabled while the system settings screen is open, the
 resume refresh also retries authenticated FCM subscription registration
 immediately; the user does not need to relaunch the app.
 
-Desktop and web targets do not register push subscriptions or present a
-pretend notification provider. macOS, Windows, Linux, and web therefore expose
-no push or notification-tap capability.
+### Windows
+
+Windows uses native toast notifications delivered from the authenticated live
+workspace connection. On startup the unpackaged runner registers its Windows
+app identity and an `Overseer Desktop` Start menu shortcut pointing to the current
+executable. Enable Notifications in Settings to save the local opt-in
+and show a confirmation banner. Turning the switch off stops future alerts;
+Windows notification settings and Do Not Disturb still control OS presentation.
+The switch refreshes OS permission on resume and links to Windows notification
+settings when delivery is disabled there.
+
+Only new unread completion attention events produce alerts, matching the server's
+mobile push rule. Request acknowledgements, read receipts, duplicate cursors and
+events replayed up to the socket snapshot barrier do not. Notification failures
+are isolated from durable cache/cursor updates. Toasts contain generic completion
+text and bounded routing identifiers, without credentials or transcript content.
+Clicking a toast while the app is running restores its window and uses the shared
+authenticated session navigation and workspace-to-connection hints.
+
+Keep the app running (minimized is fine) and connected to the desired Overseer.
+When the window loses focus, live presence falls back to the workspace so an
+open but unwatched session does not suppress its completion alert; returning to
+the app restores the current route's presence.
+This is live desktop delivery: no new alerts are received after exiting the app,
+and reconnect does not generate a backlog of old notifications. Windows does not
+register an FCM subscription. The unpackaged runner does not support launching
+from an old toast after exit or removing delivered toasts from notification history.
+macOS, Linux, and web still expose no notification delivery capability.
+
+Native Windows verification (shows a real confirmation banner and restores the
+previous app preference; no server or account is used):
+
+```sh
+flutter test -d windows integration_test/windows_notifications_test.dart
+```
+
+Then enable Notifications in the normal app, minimize it, finish a requested run
+from another device, and click the resulting alert. Verify the right session
+opens, disabling the toggle stops alerts, and reconnect does not replay old ones.
 
 ## Server delivery
 
