@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:overseer_mobile/features/auth/domain/auth_models.dart';
 import 'package:overseer_mobile/features/fleet/application/fleet_controller.dart';
+import 'package:overseer_mobile/features/fleet/fleet.dart';
 import 'package:overseer_mobile/features/fleet/domain/fleet_models.dart';
 import 'package:overseer_mobile/features/fleet/domain/fleet_repository.dart';
 import 'package:overseer_mobile/features/shell/presentation/shell_page.dart';
@@ -15,6 +16,7 @@ import 'package:overseer_mobile/shared/design/theme.dart';
 
 void main() {
   testWidgets('captures the populated desktop fleet shell', (tester) async {
+    final windowsLayout = Platform.environment['WINDOWS_FLEET_LAYOUT'] == '1';
     addTearDown(() => tester.binding.setSurfaceSize(null));
     final fontLoader = FontLoader('Golos Text')
       ..addFont(
@@ -33,7 +35,11 @@ void main() {
     await icons.load();
     // Native macOS uses this system fallback; load it for optional captures too.
     if (Platform.environment['CAPTURE_SHELL_SCREENSHOT'] == '1') {
-      final monoFile = File('/System/Library/Fonts/Menlo.ttc');
+      final monoFile = File(
+        Platform.isWindows
+            ? '${Platform.environment['WINDIR'] ?? 'C:/Windows'}/Fonts/consola.ttf'
+            : '/System/Library/Fonts/Menlo.ttc',
+      );
       if (monoFile.existsSync()) {
         final mono = FontLoader('monospace')
           ..addFont(
@@ -46,6 +52,8 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          if (windowsLayout)
+            fleetOverviewMaxWidthProvider.overrideWithValue(double.infinity),
           fleetRepositoryProvider.overrideWithValue(
             const _DesktopVisualFleetRepository(),
           ),
@@ -71,6 +79,14 @@ void main() {
     expect(find.text('Atlas'), findsOneWidget);
     expect(find.text('Kanat'), findsOneWidget);
     expect(find.text('Ready response'), findsOneWidget);
+    expect(
+      tester.getSize(find.byKey(const Key('fleet-overview'))).width,
+      windowsLayout ? 1440 - 233 : 760,
+    );
+    expect(
+      tester.getSize(find.byKey(const Key('notification-setting'))).width,
+      windowsLayout ? 1440 - 233 - 24 : 736,
+    );
     if (Platform.environment['CAPTURE_SHELL_SCREENSHOT'] == '1') {
       await tester.runAsync(() async {
         final boundary = tester.renderObject<RenderRepaintBoundary>(
@@ -83,11 +99,27 @@ void main() {
           throw StateError('Could not encode shell screenshot');
         }
         final output = File(
-          'test/features/shell/artifacts/desktop_shell_fleet.png',
+          Platform.environment['SHELL_SCREENSHOT_PATH'] ??
+              'test/features/shell/artifacts/desktop_shell_fleet.png',
         );
         await output.parent.create(recursive: true);
         await output.writeAsBytes(bytes.buffer.asUint8List());
       });
+    }
+    if (windowsLayout) {
+      await tester.binding.setSurfaceSize(const Size(1000, 900));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 700));
+      expect(find.byKey(const Key('medium-shell')), findsOneWidget);
+      expect(
+        tester.getSize(find.byKey(const Key('fleet-overview'))).width,
+        1000 - 209,
+      );
+      expect(
+        tester.getSize(find.byKey(const Key('notification-setting'))).width,
+        1000 - 209 - 24,
+      );
+      expect(tester.takeException(), isNull);
     }
   });
 }

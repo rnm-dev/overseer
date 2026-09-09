@@ -29,6 +29,7 @@ import 'package:overseer_mobile/features/auth/application/auth_state.dart';
 import 'package:overseer_mobile/features/ai_stats/application/ai_stats_controller.dart';
 import 'package:overseer_mobile/features/ai_stats/data/dio_ai_stats_repository.dart';
 import 'package:overseer_mobile/features/fleet/application/fleet_controller.dart';
+import 'package:overseer_mobile/features/fleet/fleet.dart';
 import 'package:overseer_mobile/features/fleet/data/dio_fleet_repository.dart';
 import 'package:overseer_mobile/features/fleet/data/web_socket_fleet_live_service.dart';
 import 'package:overseer_mobile/features/inquiries/application/plugin_inquiry_controller.dart';
@@ -95,6 +96,8 @@ class AppDependencies extends StatelessWidget {
             defaultTargetPlatform == TargetPlatform.iOS);
     return ProviderScope(
       overrides: [
+        if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows)
+          fleetOverviewMaxWidthProvider.overrideWithValue(double.infinity),
         themeConnectionIdProvider.overrideWithValue(
           overseerConnectionStorageId(connection.serverUrl),
         ),

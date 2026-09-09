@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../auth/domain/auth_models.dart';
 import '../../fleet/fleet.dart';
 import 'shell_chrome.dart';
 
-class MediumShell extends StatelessWidget {
+class MediumShell extends ConsumerWidget {
   const MediumShell({
     super.key,
     required this.user,
@@ -30,7 +31,7 @@ class MediumShell extends StatelessWidget {
   final VoidCallback? onBackToConnections;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
       key: const Key('medium-shell'),
       body: SafeArea(
@@ -56,8 +57,10 @@ class MediumShell extends StatelessWidget {
                           ? const FleetOverviewLoading()
                           : Center(
                               child: ConstrainedBox(
-                                constraints: const BoxConstraints(
-                                  maxWidth: 760,
+                                constraints: BoxConstraints(
+                                  maxWidth: ref.watch(
+                                    fleetOverviewMaxWidthProvider,
+                                  ),
                                 ),
                                 child: FleetOverview(
                                   user: user!,

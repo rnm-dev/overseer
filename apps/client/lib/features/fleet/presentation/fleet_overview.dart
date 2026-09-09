@@ -23,6 +23,10 @@ import '../application/fleet_controller.dart';
 import '../domain/fleet_models.dart';
 import '../domain/fleet_repository.dart';
 
+/// The composition root opts Windows into fluid width; other targets retain
+/// the existing centered content limit.
+final fleetOverviewMaxWidthProvider = Provider<double>((ref) => 760);
+
 abstract final class _FleetSectionMetrics {
   static const headerGap = 10.0;
   static const rowGap = 8.0;
@@ -191,7 +195,7 @@ class _FleetList extends StatelessWidget {
   }
 }
 
-class _FleetConstrainedContent extends StatelessWidget {
+class _FleetConstrainedContent extends ConsumerWidget {
   const _FleetConstrainedContent({
     super.key,
     required this.child,
@@ -202,10 +206,12 @@ class _FleetConstrainedContent extends StatelessWidget {
   final double bottomPadding;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Center(
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 760),
+        constraints: BoxConstraints(
+          maxWidth: ref.watch(fleetOverviewMaxWidthProvider),
+        ),
         child: Padding(
           padding: EdgeInsets.fromLTRB(12, 0, 12, bottomPadding),
           child: child,

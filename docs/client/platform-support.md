@@ -169,6 +169,11 @@ Apple SDK tooling. Follow the full [TestFlight release process](testflight.md).
 
 ### Windows
 
+Fleet Overview fills the available content pane and resizes with the window.
+The Windows composition root overrides the overview's 760-unit width limit;
+other targets retain the existing centered layout. Row heights, typography,
+spacing, and the sidebar are unchanged.
+
 Build on Windows. Microsoft Edge WebView2 Runtime must be installed; it ships
 with Windows 11 but may need deployment on Windows 10.
 
