@@ -182,12 +182,28 @@ void main() {
       final footer = find.byKey(const Key('shell-account-footer'));
       final footerBefore = tester.getRect(footer);
       expect(footerBefore.bottom, 486);
-      await tester.drag(
-        find.byKey(const Key('shell-navigation-scroll')),
-        const Offset(0, -350),
+      final header = find.byKey(const Key('shell-overview-navigation'));
+      final headerBefore = tester.getRect(header);
+      final selector = find.byKey(const Key('sidebar-peon-selector'));
+      final selectorBefore = tester.getRect(selector);
+      final list = find.byKey(const ValueKey('sidebar-list-rnm-two'));
+      final scrollable = tester.state<ScrollableState>(
+        find.descendant(of: list, matching: find.byType(Scrollable)),
       );
+      final offsetBefore = scrollable.position.pixels;
+      await tester.drag(list, const Offset(0, -80));
       await tester.pumpAndSettle();
+      expect(scrollable.position.pixels, greaterThan(offsetBefore));
+      expect(tester.getRect(header), headerBefore);
+      expect(tester.getRect(selector), selectorBefore);
       expect(tester.getRect(footer), footerBefore);
+      expect(
+        find.descendant(
+          of: find.byType(Drawer),
+          matching: find.byType(Scrollable),
+        ),
+        findsOneWidget,
+      );
       await tester.tap(find.byKey(const Key('shell-back-to-connections')));
       expect(returnedToConnections, isTrue);
       expect(tester.takeException(), isNull);

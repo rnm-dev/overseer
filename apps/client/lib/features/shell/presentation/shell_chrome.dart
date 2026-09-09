@@ -140,24 +140,16 @@ class ShellConnectionRail extends ConsumerWidget {
           ? Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 18, 14, 0),
+                  child: navigation,
+                ),
                 Expanded(
-                  child: CustomScrollView(
-                    key: const Key('shell-navigation-scroll'),
-                    slivers: [
-                      SliverToBoxAdapter(
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(14, 18, 14, 0),
-                          child: navigation,
-                        ),
-                      ),
-                      if (user != null)
-                        SliverFillRemaining(
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 14),
-                            child: sidebarBuilder(context),
-                          ),
-                        ),
-                    ],
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    child: user != null
+                        ? sidebarBuilder(context)
+                        : const SizedBox.shrink(),
                   ),
                 ),
                 Padding(

@@ -273,6 +273,7 @@ class _DesktopFleetSidebarState extends ConsumerState<DesktopFleetSidebar> {
     }
     return ListView(
       key: ValueKey('sidebar-list-${workspace.id}-${peon.id}'),
+      primary: false,
       padding: EdgeInsets.zero,
       children: children,
     );
