@@ -5,7 +5,10 @@ import '../features/projects/projects.dart';
 import '../features/sessions/sessions.dart';
 import '../features/shell/shell.dart';
 
-Widget buildDesktopFleetSidebar(BuildContext context) => DesktopFleetSidebar(
+Widget buildDesktopFleetSidebar(
+  BuildContext context, {
+  GlobalKey<NavigatorState>? navigatorKey,
+}) => DesktopFleetSidebar(
   onProject: (context, workspace, peon, project) => context.pushNamed(
     'project',
     queryParameters: {
@@ -28,16 +31,18 @@ Widget buildDesktopFleetSidebar(BuildContext context) => DesktopFleetSidebar(
       'sessionId': session.sessionId,
     },
   ),
-  onNewProject: (context, scope) => Navigator.of(
-    context,
-  ).push(MaterialPageRoute<void>(builder: (_) => NewProjectPage(scope: scope))),
-  onNewSession: (context, scope, projectKey) => Navigator.of(context).push(
-    MaterialPageRoute<void>(
-      builder: (_) => SessionDetailPage.newSession(
-        workspaceId: scope.workspaceId,
-        peonId: scope.peonId,
-        projectKey: projectKey,
+  onNewProject: (context, scope) =>
+      (navigatorKey?.currentState ?? Navigator.of(context)).push(
+        MaterialPageRoute<void>(builder: (_) => NewProjectPage(scope: scope)),
       ),
-    ),
-  ),
+  onNewSession: (context, scope, projectKey) =>
+      (navigatorKey?.currentState ?? Navigator.of(context)).push(
+        MaterialPageRoute<void>(
+          builder: (_) => SessionDetailPage.newSession(
+            workspaceId: scope.workspaceId,
+            peonId: scope.peonId,
+            projectKey: projectKey,
+          ),
+        ),
+      ),
 );

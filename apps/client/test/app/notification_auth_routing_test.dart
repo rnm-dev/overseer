@@ -1,6 +1,11 @@
 import 'dart:async';
 
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+import 'package:overseer_mobile/features/fleet/application/fleet_controller.dart';
+import 'package:overseer_mobile/features/fleet/domain/fleet_models.dart';
+import 'package:overseer_mobile/features/fleet/domain/fleet_repository.dart';
+import 'package:overseer_mobile/features/shell/shell.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:overseer_mobile/app/app.dart';
@@ -13,6 +18,65 @@ import 'package:overseer_mobile/features/sessions/domain/session_models.dart';
 import 'package:overseer_mobile/features/sessions/domain/session_repository.dart';
 
 void main() {
+  testWidgets(
+    'Windows sidebar persists across routes and pushed pages and opens overview',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(1440, 900);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+      final auth = _RestoringAuthRepository()..complete();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            authRepositoryProvider.overrideWithValue(auth),
+            fleetRepositoryProvider.overrideWithValue(_EmptyFleetRepository()),
+            fleetSidebarBuilderProvider.overrideWithValue(
+              (_) => const SizedBox.shrink(),
+            ),
+          ],
+          child: const OverseerMobileApp(),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final sidebar = find.byKey(const Key('persistent-desktop-sidebar'));
+      expect(sidebar, findsOneWidget);
+      expect(find.byType(ShellConnectionRail), findsOneWidget);
+      final sidebarElement = tester.element(sidebar);
+      final overviewContext = tester.element(
+        find.byKey(const Key('fleet-overview')),
+      );
+      final router = GoRouter.of(overviewContext);
+      router.pushNamed(
+        'peon',
+        queryParameters: {'workspaceId': 'workspace', 'peonId': 'peon'},
+      );
+      await tester.pumpAndSettle();
+      expect(tester.element(sidebar), same(sidebarElement));
+      expect(find.byKey(const ValueKey('workspace\u0000peon')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('shell-overview-navigation')));
+      await tester.pumpAndSettle();
+      expect(router.routeInformationProvider.value.uri.path, '/');
+      expect(find.byKey(const Key('fleet-overview')), findsOneWidget);
+      final contentContext = tester.element(
+        find.byKey(const Key('fleet-overview')),
+      );
+      Navigator.of(contentContext).push(
+        MaterialPageRoute<void>(
+          builder: (_) => const Scaffold(body: Text('Creation page')),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Creation page'), findsOneWidget);
+      expect(tester.element(sidebar), same(sidebarElement));
+      await tester.tap(find.byKey(const Key('shell-overview-navigation')));
+      await tester.pumpAndSettle();
+      expect(find.text('Creation page'), findsNothing);
+      expect(find.byKey(const Key('fleet-overview')), findsOneWidget);
+      expect(find.byType(ShellConnectionRail), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
   testWidgets('session deep link keeps home beneath it for system back', (
     tester,
   ) async {
@@ -74,6 +138,11 @@ void main() {
     expect(sessions.requestedWorkspaceId, 'workspace');
     expect(sessions.requestedPeonId, 'peon');
   });
+}
+
+class _EmptyFleetRepository implements FleetRepository {
+  @override
+  Future<List<WorkspaceFleet>> loadFleet() async => const [];
 }
 
 class _RestoringAuthRepository implements AuthRepository {

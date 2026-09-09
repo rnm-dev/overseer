@@ -16,8 +16,9 @@ import 'peon_deep_link_page.dart';
 import 'project_files_route_page.dart';
 import 'project_detail_route_page.dart';
 import 'session_deep_link_page.dart';
+import 'desktop_navigation_frame.dart';
 
-class OverseerMobileApp extends StatefulWidget {
+class OverseerMobileApp extends ConsumerStatefulWidget {
   const OverseerMobileApp({
     super.key,
     this.navigationDestination,
@@ -40,137 +41,160 @@ class OverseerMobileApp extends StatefulWidget {
   final String? overseerName;
 
   @override
-  State<OverseerMobileApp> createState() => _OverseerMobileAppState();
+  ConsumerState<OverseerMobileApp> createState() => _OverseerMobileAppState();
 }
 
-class _OverseerMobileAppState extends State<OverseerMobileApp> {
+class _OverseerMobileAppState extends ConsumerState<OverseerMobileApp> {
+  final _contentNavigatorKey = GlobalKey<NavigatorState>();
   late final GoRouter _router = GoRouter(
     initialLocation: widget.navigationDestination?.location ?? '/',
-    routes: [
-      GoRoute(
-        path: '/',
-        name: 'home',
-        builder: (context, state) => AuthGate(
-          autoSignIn: widget.autoSignIn,
-          onBack: widget.onBackToConnections,
-          overseerName: widget.overseerName,
-          buildLoading: _buildAuthLoading,
-          buildSignIn: _buildAuthSignIn,
-          buildShell: _buildAuthShell,
-        ),
-        routes: [
-          GoRoute(
-            path: 'session',
-            name: 'session',
-            builder: (context, state) {
-              final workspaceId = state.uri.queryParameters['workspaceId'];
-              final peonId = state.uri.queryParameters['peonId'];
-              final sessionId = state.uri.queryParameters['sessionId'];
-              if (workspaceId == null || peonId == null || sessionId == null) {
-                return AuthGate(
-                  autoSignIn: widget.autoSignIn,
-                  onBack: widget.onBackToConnections,
-                  overseerName: widget.overseerName,
-                  buildLoading: _buildAuthLoading,
-                  buildSignIn: _buildAuthSignIn,
-                  buildShell: _buildAuthShell,
-                );
-              }
-              return SessionDeepLinkPage(
-                key: ValueKey('$workspaceId\u0000$peonId\u0000$sessionId'),
-                workspaceId: workspaceId,
-                peonId: peonId,
-                sessionId: sessionId,
-              );
-            },
-          ),
-        ],
-      ),
-      GoRoute(
-        path: '/peon',
-        name: 'peon',
-        builder: (context, state) {
-          final workspaceId = state.uri.queryParameters['workspaceId'];
-          final peonId = state.uri.queryParameters['peonId'];
-          if (workspaceId == null || peonId == null) {
-            return AuthGate(
-              autoSignIn: widget.autoSignIn,
-              onBack: widget.onBackToConnections,
-              overseerName: widget.overseerName,
-              buildLoading: _buildAuthLoading,
-              buildSignIn: _buildAuthSignIn,
-              buildShell: _buildAuthShell,
-            );
-          }
-          return PeonDeepLinkPage(
-            key: ValueKey('$workspaceId\u0000$peonId'),
-            workspaceId: workspaceId,
-            peonId: peonId,
-          );
-        },
-      ),
-      GoRoute(
-        path: '/project-files',
-        name: 'project-files',
-        builder: (context, state) {
-          final workspaceId = state.uri.queryParameters['workspaceId'];
-          final peonId = state.uri.queryParameters['peonId'];
-          if (workspaceId == null || peonId == null) {
-            return AuthGate(
-              autoSignIn: widget.autoSignIn,
-              onBack: widget.onBackToConnections,
-              overseerName: widget.overseerName,
-              buildLoading: _buildAuthLoading,
-              buildSignIn: _buildAuthSignIn,
-              buildShell: _buildAuthShell,
-            );
-          }
-          return ProjectFilesRoutePage(
-            key: ValueKey('$workspaceId\u0000$peonId'),
-            workspaceId: workspaceId,
-            peonId: peonId,
-            projectKey: state.uri.queryParameters['projectKey'],
-            projectId: state.uri.queryParameters['projectId'],
-          );
-        },
-      ),
-      GoRoute(
-        path: '/project',
-        name: 'project',
-        builder: (context, state) {
-          final workspaceId = state.uri.queryParameters['workspaceId'];
-          final peonId = state.uri.queryParameters['peonId'];
-          final projectId = state.uri.queryParameters['projectId'];
-          final projectKey = state.uri.queryParameters['projectKey'];
-          if (workspaceId == null ||
-              peonId == null ||
-              projectId == null ||
-              projectKey == null) {
-            return AuthGate(
-              autoSignIn: widget.autoSignIn,
-              onBack: widget.onBackToConnections,
-              overseerName: widget.overseerName,
-              buildLoading: _buildAuthLoading,
-              buildSignIn: _buildAuthSignIn,
-              buildShell: _buildAuthShell,
-            );
-          }
-          return ProjectDetailRoutePage(
-            key: ValueKey(
-              '$workspaceId\u0000$peonId\u0000$projectId\u0000$projectKey',
+    routes: ref.read(fleetSidebarBuilderProvider) == null
+        ? _routes
+        : [
+            ShellRoute(
+              navigatorKey: _contentNavigatorKey,
+              builder: (context, state, child) => DesktopNavigationFrame(
+                navigatorKey: _contentNavigatorKey,
+                overviewSelected: state.uri.path == '/',
+                onOverview: () {
+                  _contentNavigatorKey.currentState?.popUntil(
+                    (route) => route.isFirst,
+                  );
+                  _router.goNamed('home');
+                },
+                overseerName: widget.overseerName,
+                onBackToConnections: widget.onBackToConnections,
+                child: child,
+              ),
+              routes: _routes,
             ),
-            workspaceId: workspaceId,
-            peonId: peonId,
-            projectId: projectId,
-            projectKey: projectKey,
-            projectName: state.uri.queryParameters['projectName'],
-            projectSyncedAt: state.uri.queryParameters['syncedAt'],
-            isOwner: state.uri.queryParameters['isOwner'] == 'true',
-          );
-        },
-      ),
-    ],
+          ],
   );
+
+  List<RouteBase> get _routes => [
+    GoRoute(
+      path: '/',
+      name: 'home',
+      builder: (context, state) => AuthGate(
+        autoSignIn: widget.autoSignIn,
+        onBack: widget.onBackToConnections,
+        overseerName: widget.overseerName,
+        buildLoading: _buildAuthLoading,
+        buildSignIn: _buildAuthSignIn,
+        buildShell: _buildAuthShell,
+      ),
+      routes: [
+        GoRoute(
+          path: 'session',
+          name: 'session',
+          builder: (context, state) {
+            final workspaceId = state.uri.queryParameters['workspaceId'];
+            final peonId = state.uri.queryParameters['peonId'];
+            final sessionId = state.uri.queryParameters['sessionId'];
+            if (workspaceId == null || peonId == null || sessionId == null) {
+              return AuthGate(
+                autoSignIn: widget.autoSignIn,
+                onBack: widget.onBackToConnections,
+                overseerName: widget.overseerName,
+                buildLoading: _buildAuthLoading,
+                buildSignIn: _buildAuthSignIn,
+                buildShell: _buildAuthShell,
+              );
+            }
+            return SessionDeepLinkPage(
+              key: ValueKey('$workspaceId\u0000$peonId\u0000$sessionId'),
+              workspaceId: workspaceId,
+              peonId: peonId,
+              sessionId: sessionId,
+            );
+          },
+        ),
+      ],
+    ),
+    GoRoute(
+      path: '/peon',
+      name: 'peon',
+      builder: (context, state) {
+        final workspaceId = state.uri.queryParameters['workspaceId'];
+        final peonId = state.uri.queryParameters['peonId'];
+        if (workspaceId == null || peonId == null) {
+          return AuthGate(
+            autoSignIn: widget.autoSignIn,
+            onBack: widget.onBackToConnections,
+            overseerName: widget.overseerName,
+            buildLoading: _buildAuthLoading,
+            buildSignIn: _buildAuthSignIn,
+            buildShell: _buildAuthShell,
+          );
+        }
+        return PeonDeepLinkPage(
+          key: ValueKey('$workspaceId\u0000$peonId'),
+          workspaceId: workspaceId,
+          peonId: peonId,
+        );
+      },
+    ),
+    GoRoute(
+      path: '/project-files',
+      name: 'project-files',
+      builder: (context, state) {
+        final workspaceId = state.uri.queryParameters['workspaceId'];
+        final peonId = state.uri.queryParameters['peonId'];
+        if (workspaceId == null || peonId == null) {
+          return AuthGate(
+            autoSignIn: widget.autoSignIn,
+            onBack: widget.onBackToConnections,
+            overseerName: widget.overseerName,
+            buildLoading: _buildAuthLoading,
+            buildSignIn: _buildAuthSignIn,
+            buildShell: _buildAuthShell,
+          );
+        }
+        return ProjectFilesRoutePage(
+          key: ValueKey('$workspaceId\u0000$peonId'),
+          workspaceId: workspaceId,
+          peonId: peonId,
+          projectKey: state.uri.queryParameters['projectKey'],
+          projectId: state.uri.queryParameters['projectId'],
+        );
+      },
+    ),
+    GoRoute(
+      path: '/project',
+      name: 'project',
+      builder: (context, state) {
+        final workspaceId = state.uri.queryParameters['workspaceId'];
+        final peonId = state.uri.queryParameters['peonId'];
+        final projectId = state.uri.queryParameters['projectId'];
+        final projectKey = state.uri.queryParameters['projectKey'];
+        if (workspaceId == null ||
+            peonId == null ||
+            projectId == null ||
+            projectKey == null) {
+          return AuthGate(
+            autoSignIn: widget.autoSignIn,
+            onBack: widget.onBackToConnections,
+            overseerName: widget.overseerName,
+            buildLoading: _buildAuthLoading,
+            buildSignIn: _buildAuthSignIn,
+            buildShell: _buildAuthShell,
+          );
+        }
+        return ProjectDetailRoutePage(
+          key: ValueKey(
+            '$workspaceId\u0000$peonId\u0000$projectId\u0000$projectKey',
+          ),
+          workspaceId: workspaceId,
+          peonId: peonId,
+          projectId: projectId,
+          projectKey: projectKey,
+          projectName: state.uri.queryParameters['projectName'],
+          projectSyncedAt: state.uri.queryParameters['syncedAt'],
+          isOwner: state.uri.queryParameters['isOwner'] == 'true',
+        );
+      },
+    ),
+  ];
 
   Widget _buildAuthLoading({
     required String? overseerName,

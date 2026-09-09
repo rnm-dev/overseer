@@ -17,12 +17,16 @@ class ShellConnectionRail extends ConsumerWidget {
     required this.user,
     this.onBackToConnections,
     this.width = 224,
+    this.onOverview,
+    this.overviewSelected = true,
   });
 
   final String? overseerName;
   final OperatorIdentity? user;
   final VoidCallback? onBackToConnections;
   final double width;
+  final VoidCallback? onOverview;
+  final bool overviewSelected;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -80,7 +84,8 @@ class ShellConnectionRail extends ConsumerWidget {
           key: const Key('shell-overview-navigation'),
           title: 'Fleet overview',
           leading: Icon(LucideIcons.layoutDashboard, color: colors.primary),
-          selected: true,
+          selected: overviewSelected,
+          onTap: onOverview,
           density: AppListTileDensity.compact,
           semanticsHint: 'Shows your workspaces and Peons',
         ),

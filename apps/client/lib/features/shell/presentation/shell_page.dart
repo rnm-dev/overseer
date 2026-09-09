@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'shell_chrome.dart';
 
 import '../../auth/domain/auth_models.dart';
 import '../../fleet/fleet.dart';
@@ -7,7 +9,10 @@ import 'compact_shell.dart';
 import 'medium_shell.dart';
 import 'wide_shell.dart';
 
-class ShellPage extends StatelessWidget {
+/// Set by the persistent desktop frame to avoid nesting a second sidebar.
+final externalShellRailProvider = Provider<bool>((ref) => false);
+
+class ShellPage extends ConsumerWidget {
   const ShellPage({
     super.key,
     required this.user,
@@ -50,7 +55,29 @@ class ShellPage extends StatelessWidget {
   final VoidCallback? onBackToConnections;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    if (ref.watch(externalShellRailProvider)) {
+      return Scaffold(
+        body: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ShellDesktopHeader(overseerName: overseerName),
+            const Divider(height: 1),
+            Expanded(
+              child: user == null
+                  ? const FleetOverviewLoading()
+                  : FleetOverview(
+                      user: user!,
+                      onSignOut: onSignOut!,
+                      onOpenPeon: onOpenPeon,
+                      onOpenSession: onOpenSession,
+                      onNewSession: onNewSession,
+                    ),
+            ),
+          ],
+        ),
+      );
+    }
     return LayoutBuilder(
       builder: (context, constraints) {
         return switch (ResponsiveBreakpoints.sizeFor(constraints.maxWidth)) {

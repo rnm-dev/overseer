@@ -169,7 +169,10 @@ Apple SDK tooling. Follow the full [TestFlight release process](testflight.md).
 
 ### Windows
 
-Fleet Overview adds a Peon selector and project/chat navigation to its sidebar.
+The signed-in Windows app keeps a shared sidebar around its content navigator,
+including project, chat, Peon, file, and creation pages. Fleet Overview in the
+sidebar returns to the overview and dismisses pushed content pages.
+The sidebar includes a Peon selector and project/chat navigation.
 Chats can be grouped beneath collapsible project headings or shown as a flat
 list. Project and chat links use the existing detail routes and creation flows.
 The sidebar becomes a drawer below 600 logical pixels; its selected Peon and
