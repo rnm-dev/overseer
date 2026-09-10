@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import { Download, Maximize2, ZoomIn, ZoomOut } from "lucide-react";
+import { Code2, Download, Eye, Maximize2, ZoomIn, ZoomOut } from "lucide-react";
 import { HighlightedCode, Markdown, languageForPath } from "../../shared/RichText";
 import { useT, type Translate } from "../../shared/i18n";
-import { fileDownloadUrl, fileKind, fileName, fileUrl, formatFileSize, isUnviewableFile, type FileKind, type FileSource } from "./fileLinks";
+import { fileDownloadUrl, fileKind, fileName, fileUrl, formatFileSize, isUnviewableFile, rendersHtmlInline, type FileKind, type FileSource } from "./fileLinks";
 import { canZoom, fitScale, nextZoom, zoomLabel, type Size } from "./imageZoom";
 
 // One reader and one renderer for every file the app displays. The surfaces
@@ -19,6 +19,9 @@ export interface FileContent {
   kind?: FileKind;
   text?: string;
   objectUrl?: string;
+  // Where a page renders itself from: its own bytes, fetched by the frame
+  // rather than by us, so a document larger than the text cap is still shown.
+  previewUrl?: string;
   note?: string;
 }
 
@@ -38,18 +41,24 @@ export function keepsShownContent(current: FileContent, path: string): boolean {
   return current.path === path && shows;
 }
 
-export function useFileContent({ source, size, hint, fallback = "unsupported", enabled = true, revision = 0 }: {
+export function useFileContent({ source, size, hint, fallback = "unsupported", enabled = true, revision = 0, previewUrl }: {
   source: FileSource;
   size?: number;
   hint?: "image" | "file";
   fallback?: "text" | "unsupported";
   enabled?: boolean;
+  // A surface that already holds an address for the rendered page — a link
+  // clicked in a transcript keeps its anchor and query — hands it over instead
+  // of letting the reader derive the plain one.
+  previewUrl?: string;
   // Bumped by a surface that has just written the file, so the reader goes
   // back for the bytes it now knows are stale.
   revision?: number;
 }): FileContent {
   const t = useT();
   const url = fileUrl(source);
+  const frameUrl = previewUrl ?? fileDownloadUrl(source);
+  const framesHtml = rendersHtmlInline(source);
   const path = source.path;
   const [content, setContent] = useState<FileContent>({ path, loading: enabled });
 
@@ -66,6 +75,12 @@ export function useFileContent({ source, size, hint, fallback = "unsupported", e
     // Classify by name first: media streams to an object URL regardless of
     // size, everything else is capped before a megabyte of text is pulled.
     const byName = fileKind({ name, hint, fallback });
+    // A page over the cap is still a page: the frame fetches those bytes
+    // itself, so only the source view goes without.
+    if (byName === "html" && framesHtml && typeof size === "number" && size > MAX_VIEW_BYTES) {
+      setContent({ path, loading: false, kind: "html", previewUrl: frameUrl });
+      return;
+    }
     if (byName !== "image" && byName !== "pdf" && typeof size === "number" && size > MAX_VIEW_BYTES) {
       setContent({ path, loading: false, note: t("proj.files.tooLarge", { size: formatFileSize(size) }) });
       return;
@@ -76,7 +91,10 @@ export function useFileContent({ source, size, hint, fallback = "unsupported", e
     fetch(url, { signal: ctrl.signal, credentials: "same-origin" })
       .then(async (response) => {
         if (!response.ok) return setContent({ path, loading: false, note: await readError(response, t) });
-        const kind = fileKind({ name, contentType: response.headers.get("content-type") || "", hint, fallback });
+        const named = fileKind({ name, contentType: response.headers.get("content-type") || "", hint, fallback });
+        // A page this route will not serve as a page is shown the way it was
+        // before there was a frame at all: as its own markup.
+        const kind = named === "html" && !framesHtml ? "text" : named;
         if (kind === "image" || kind === "pdf") {
           objectUrl = URL.createObjectURL(await response.blob());
           setContent({ path, loading: false, kind, objectUrl });
@@ -84,7 +102,8 @@ export function useFileContent({ source, size, hint, fallback = "unsupported", e
           setContent({ path, loading: false, kind, note: t("session.preview.unsupported") });
         } else {
           const raw = await response.text();
-          setContent({ path, loading: false, kind, text: raw.length > TEXT_CAP ? `${raw.slice(0, TEXT_CAP)}\n\n…truncated…` : raw });
+          const text = raw.length > TEXT_CAP ? `${raw.slice(0, TEXT_CAP)}\n\n…truncated…` : raw;
+          setContent({ path, loading: false, kind, text, previewUrl: kind === "html" ? frameUrl : undefined });
         }
       })
       .catch((error) => {
@@ -94,7 +113,7 @@ export function useFileContent({ source, size, hint, fallback = "unsupported", e
       ctrl.abort();
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [enabled, fallback, hint, path, revision, size, t, url]);
+  }, [enabled, fallback, framesHtml, frameUrl, hint, path, revision, size, t, url]);
 
   return content;
 }
@@ -207,13 +226,61 @@ export function ImageView({ src, name, className = "" }: { src?: string; name: s
 const IMAGE_PADDING = 40;
 const ZOOM_BUTTON_CLASS = "grid size-7 place-items-center rounded-md text-ink-faint transition-colors hover:bg-surface-hover hover:text-ink disabled:cursor-default disabled:opacity-35 disabled:hover:bg-transparent disabled:hover:text-ink-faint";
 
+// A page is shown as a page. The frame fetches the file itself over the same
+// authenticated origin, so relative assets beside it resolve through the same
+// route, and it is sandboxed into an opaque origin — scripts may run, but not
+// against Overseer's cookie. The source stays one click away, because reading
+// the markup is not the same act as editing it, and a read-only surface has no
+// editor to fall back to.
+const HTML_FRAME_SANDBOX = "allow-scripts allow-forms allow-modals allow-downloads";
+
+export function HtmlView({ src, path, source, className = "" }: {
+  src?: string;
+  path: string;
+  // The markup, when the file was small enough to read back. Without it the
+  // toggle is not offered at all rather than offered and empty.
+  source?: string;
+  className?: string;
+}) {
+  const t = useT();
+  const [showSource, setShowSource] = useState(false);
+
+  useEffect(() => setShowSource(false), [path]);
+
+  return (
+    <div className={`relative flex h-full min-h-full min-w-0 flex-col ${className}`}>
+      {showSource
+        ? <HighlightedCode source={source ?? ""} language="html" lineNumbers className="code-view--flush min-h-full" />
+        : <iframe src={src} title={path} sandbox={HTML_FRAME_SANDBOX} className="h-full min-h-[32rem] w-full flex-1 border-0 bg-white" />}
+      {source !== undefined && (
+        <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center">
+          <div className="pointer-events-auto flex items-center gap-0.5 rounded-lg border border-edge bg-surface/95 p-1 shadow-lg backdrop-blur">
+            <button type="button" className={FRAME_TOGGLE_CLASS(!showSource)} onClick={() => setShowSource(false)} aria-pressed={!showSource}>
+              <Eye size={13} aria-hidden />
+              {t("file.preview")}
+            </button>
+            <button type="button" className={FRAME_TOGGLE_CLASS(showSource)} onClick={() => setShowSource(true)} aria-pressed={showSource}>
+              <Code2 size={13} aria-hidden />
+              {t("file.source")}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const FRAME_TOGGLE_CLASS = (active: boolean) =>
+  `flex items-center gap-1.5 rounded-md px-2 py-1 font-display text-[0.68rem] font-semibold transition-colors ${active ? "bg-surface-active text-ink" : "text-ink-faint hover:bg-surface-hover hover:text-ink"}`;
+
 export function FileView({ content, className = "" }: { content: FileContent; className?: string }) {
   const t = useT();
-  const { path, kind, objectUrl, text, note, loading } = content;
+  const { path, kind, objectUrl, previewUrl, text, note, loading } = content;
   if (loading) return <div className={`grid min-h-40 place-items-center ${className}`}><div className="loading-spinner" /></div>;
   if (note) return <p className={`grid min-h-full place-items-center p-6 text-center font-mono text-xs text-ink-faint ${className}`}>{note}</p>;
   if (kind === "pdf") return <iframe src={objectUrl} title={path} className={`h-full min-h-[32rem] w-full border-0 bg-white ${className}`} />;
   if (kind === "image") return <ImageView src={objectUrl} name={fileName(path)} className={className} />;
+  if (kind === "html") return <HtmlView src={previewUrl} path={path} source={text} className={className} />;
   if (kind === "markdown") return <article className={`mx-auto max-w-4xl p-6 text-sm leading-relaxed text-ink ${className}`}><Markdown source={text ?? ""} /></article>;
   if (kind === "text") return <HighlightedCode source={text ?? ""} language={languageForPath(path)} lineNumbers className={`code-view--flush min-h-full ${className}`} />;
   return <p className={`grid min-h-full place-items-center p-6 text-center font-mono text-xs text-ink-faint ${className}`}>{t("session.preview.unsupported")}</p>;

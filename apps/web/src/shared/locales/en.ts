@@ -199,6 +199,8 @@ export const en: Record<string, string> = {
 
   "file.actions": "File actions",
   "file.open": "Open",
+  "file.preview": "Preview",
+  "file.source": "Source",
   "file.download": "Download",
   "file.zoomIn": "Zoom in",
   "file.zoomOut": "Zoom out",

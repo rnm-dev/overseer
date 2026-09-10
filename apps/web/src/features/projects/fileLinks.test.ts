@@ -5,6 +5,7 @@ import {
   fileApiPath,
   fileDownloadUrl,
   fileKind,
+  rendersHtmlInline,
   fileUrl,
   fileWriteBase,
   isUnviewableFile,
@@ -46,6 +47,11 @@ test("the sandbox serves uploads as octet-stream, so name and sender hint decide
   assert.equal(fileKind({ name: "upload", contentType: "application/pdf; charset=binary" }), "pdf");
   assert.equal(fileKind({ name: "notes.md", contentType: "application/octet-stream" }), "markdown");
   assert.equal(fileKind({ name: "server.ts", contentType: "application/octet-stream" }), "text");
+  // A page is its own kind: the renderer frames it rather than painting the
+  // markup, whatever the sandbox claims the type is.
+  assert.equal(fileKind({ name: "report.html", contentType: "application/octet-stream" }), "html");
+  assert.equal(fileKind({ name: "index.htm", contentType: "application/octet-stream", fallback: "text" }), "html");
+  assert.equal(fileKind({ name: "page", contentType: "text/html; charset=utf-8" }), "html");
 });
 
 test("an unknown type reads as text in a project tree and as unsupported as an attachment", () => {
@@ -92,4 +98,15 @@ test("only a project route can be written back, and the base is the one the edit
   // never offered an editor.
   assert.equal(fileWriteBase({ kind: "attachment", base, path: "/tmp/peon-files/uploads/a.txt" }), null);
   assert.equal(fileWriteBase({ kind: "sessionFile", base, sessionId: "s1", path: "/tmp/out.txt" }), null);
+});
+
+test("only a project route serves a page as a page", () => {
+  const base = "/peons/nova";
+  assert.equal(rendersHtmlInline({ kind: "project", base, projectKey: "OVSR", path: "docs/a.html" }), true);
+  assert.equal(rendersHtmlInline({ kind: "projectById", base, projectId: "p1", path: "docs/a.html" }), true);
+  // The transfer sandbox answers application/octet-stream and a session
+  // artifact allows inline images and PDFs only: a frame over either
+  // downloads the file rather than rendering it.
+  assert.equal(rendersHtmlInline({ kind: "attachment", base, path: "/tmp/peon-files/uploads/a.html" }), false);
+  assert.equal(rendersHtmlInline({ kind: "sessionFile", base, sessionId: "s1", path: "out/report.html" }), false);
 });

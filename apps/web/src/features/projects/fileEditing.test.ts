@@ -5,12 +5,21 @@ import { canEditFile, editBaseline, hasUnsavedChanges, isSaveShortcut } from "./
 test("text is editable, binary is not, and only where the tree may write", () => {
   assert.equal(canEditFile("markdown", true), true);
   assert.equal(canEditFile("text", true), true);
+  assert.equal(canEditFile("html", true), true);
   assert.equal(canEditFile("markdown", false), false);
   assert.equal(canEditFile("text", false), false);
   assert.equal(canEditFile("image", true), false);
   assert.equal(canEditFile("pdf", true), false);
   assert.equal(canEditFile("unsupported", true), false);
   assert.equal(canEditFile(undefined, true), false);
+});
+
+test("a page shown without its source is not offered an editor", () => {
+  // An HTML file over the text cap is framed and rendered, but never read
+  // back, so opening an editor there would save an empty file over it.
+  assert.equal(canEditFile("html", true, false), false);
+  assert.equal(canEditFile("text", true, false), false);
+  assert.equal(canEditFile("html", true, true), true);
 });
 
 test("a draft equal to the file on disk is not a change", () => {

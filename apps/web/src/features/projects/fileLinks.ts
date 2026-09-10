@@ -60,10 +60,20 @@ export function fileWriteBase(source: FileSource): string | null {
 export const fileDownloadUrl = (source: FileSource): string =>
   fileUrl(source.kind === "sessionFile" ? { ...source, raw: true } : source);
 
-export type FileKind = "image" | "pdf" | "markdown" | "text" | "unsupported";
+export type FileKind = "image" | "pdf" | "markdown" | "html" | "text" | "unsupported";
+
+// Whether a page fetched from this route arrives as a page. Only the project
+// routes type their bytes from the name (Peon answers them with `sendFile`):
+// the file transfer sandbox serves every attachment as
+// application/octet-stream, and a session artifact allows inline images and
+// PDFs and nothing else, both deliberately. A frame pointed at those downloads
+// the file instead of rendering it, so they keep showing their markup.
+export const rendersHtmlInline = (source: FileSource): boolean =>
+  source.kind === "project" || source.kind === "projectById";
 
 const IMAGE_EXTENSION = /\.(?:png|jpe?g|gif|webp|avif|bmp|svg|ico)$/i;
 const MARKDOWN_EXTENSION = /\.(?:md|markdown|mdown|mkd|mdx)$/i;
+const HTML_EXTENSION = /\.(?:html?|xhtml)$/i;
 const TEXT_EXTENSION = /\.(?:txt|json|ya?ml|csv|log|tsx?|jsx?|css|html?|py|go|rs|java|sh)$/i;
 
 // Formats this app has no rendering for and never will: archives, installers,
@@ -99,6 +109,10 @@ export function fileKind({ name, contentType = "", hint, fallback = "unsupported
   if (hint === "image" || mime.startsWith("image/") || IMAGE_EXTENSION.test(name)) return "image";
   if (mime === "application/pdf" || /\.pdf$/i.test(name)) return "pdf";
   if (MARKDOWN_EXTENSION.test(name)) return "markdown";
+  // A page is shown as the page, not as its markup: the renderer frames it and
+  // keeps the source one click away. The name decides, because the Peon's
+  // transfer sandbox serves an upload as application/octet-stream.
+  if (HTML_EXTENSION.test(name) || mime === "text/html" || mime === "application/xhtml+xml") return "html";
   if (isUnviewableFile(name, contentType)) return "unsupported";
   if (mime.startsWith("text/") || TEXT_EXTENSION.test(name)) return "text";
   return fallback;

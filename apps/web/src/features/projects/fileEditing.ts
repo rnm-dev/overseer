@@ -9,10 +9,13 @@ import type { FileKind } from "./fileLinks";
 // archive. The gate is here rather than in the view so a surface cannot forget
 // that a read-only tree may not save.
 
-const EDITABLE_KINDS: ReadonlySet<FileKind> = new Set<FileKind>(["markdown", "text"]);
+const EDITABLE_KINDS: ReadonlySet<FileKind> = new Set<FileKind>(["markdown", "html", "text"]);
 
-export const canEditFile = (kind: FileKind | undefined, writable: boolean): boolean =>
-  writable && !!kind && EDITABLE_KINDS.has(kind);
+// `hasText` is what a rendered file without its source cannot claim: an HTML
+// page too large to read back is still framed and shown, and offering Edit
+// there would open an empty editor over a file that is anything but.
+export const canEditFile = (kind: FileKind | undefined, writable: boolean, hasText = true): boolean =>
+  writable && hasText && !!kind && EDITABLE_KINDS.has(kind);
 
 // The one shortcut every editor has. `event.key` rather than a code, so a
 // non-Latin layout still saves; Alt is excluded because Alt+Cmd+S belongs to

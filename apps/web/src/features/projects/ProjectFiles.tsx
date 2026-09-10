@@ -458,6 +458,8 @@ export function ProjectFilePreviewModal({ source, path, size, viewerUrl, writabl
   source: FileSource;
   path: string;
   size?: number;
+  // The address a transcript link was written with, kept because it carries
+  // the anchor or query the plain bytes URL would drop.
   viewerUrl?: string;
   // Whether the surface that opened the modal may write this file back. The
   // gate still refuses anything the editor cannot represent, and a source with
@@ -466,13 +468,13 @@ export function ProjectFilePreviewModal({ source, path, size, viewerUrl, writabl
   onClose: () => void;
 }) {
   const t = useT();
-  // An HTML file is shown by the tokenized web preview instead of being read
-  // back as source, so the shared reader stays idle for it.
-  const browserHtml = !!viewerUrl && /\.html?$/i.test(path);
   const [revision, setRevision] = useState(0);
-  const content = useFileContent({ source, size, fallback: "text", enabled: !browserHtml, revision });
+  // An HTML file renders as a page here the way it does in every other pane —
+  // the shared renderer owns that now. A link clicked in a transcript still
+  // hands over the address it was written with, so an anchor survives.
+  const content = useFileContent({ source, size, fallback: "text", revision, previewUrl: viewerUrl });
   const writeBase = fileWriteBase(source);
-  const editable = !browserHtml && canEditFile(content.kind, writable && !!writeBase);
+  const editable = canEditFile(content.kind, writable && !!writeBase, content.text !== undefined);
   const editor = useFileEditor({
     filesBase: writeBase ?? "",
     path,
@@ -517,9 +519,7 @@ export function ProjectFilePreviewModal({ source, path, size, viewerUrl, writabl
         <div className="min-h-0 flex-1 overflow-auto">
           {editor.editing
             ? <CodeEditor value={editor.draft ?? ""} onChange={editor.setDraft} label={path} />
-            : browserHtml
-              ? <iframe sandbox="allow-scripts allow-forms allow-modals allow-downloads" src={viewerUrl} title={path} className="h-full min-h-[32rem] w-full border-0 bg-white" />
-              : <FileView content={content} />}
+            : <FileView content={content} />}
         </div>
       </section>
       {confirmClose && (

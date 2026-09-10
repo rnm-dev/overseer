@@ -41,7 +41,7 @@ export function ProjectFileBrowser() {
     enabled: !!selected,
     revision,
   });
-  const editable = canEditFile(content.kind, true);
+  const editable = canEditFile(content.kind, true, content.text !== undefined);
   const editor = useFileEditor({
     filesBase,
     path: selected?.path ?? "",

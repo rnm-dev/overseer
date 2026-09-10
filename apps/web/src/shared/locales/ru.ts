@@ -199,6 +199,8 @@ export const ru: Record<string, string> = {
 
   "file.actions": "Действия с файлом",
   "file.open": "Открыть",
+  "file.preview": "Просмотр",
+  "file.source": "Исходник",
   "file.download": "Скачать",
   "file.zoomIn": "Увеличить",
   "file.zoomOut": "Уменьшить",

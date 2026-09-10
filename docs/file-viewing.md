@@ -132,8 +132,10 @@ and with `null` for an attachment or a session artifact, neither of which has
 one — so those are shown, never offered an editor.
 
 `fileEditing.ts` owns the gate and the state. `canEditFile` allows anything the
-app reads as text — the kinds it refuses are the ones it cannot render either,
-an image, a PDF, an archive — and only where the tree may write.
+app reads as text — an HTML page included, so *Edit* opens its markup — and the
+kinds it refuses are the ones it cannot render either, an image, a PDF, an
+archive. It allows them only where the tree may write, and only when the source
+was read back at all.
 `hasUnsavedChanges` treats a draft equal to the file on disk as no change, so
 opening the editor and typing nothing neither arms *Save* nor warns on the way
 out. Ctrl/⌘+S saves from anywhere while an editor is open; the shortcut lives
@@ -178,6 +180,47 @@ keeps the gutter in step without a scroll listener. `shared/lineNumbers.ts`
 holds the counting: a file ending in a newline has no empty last line to
 number, and an empty file is still line one, because that is where the cursor
 sits.
+
+## HTML pages
+
+A project page is shown as a page, on every surface that renders one: the
+session Files sidebar, the project Files pane, the preview modal a chat opens.
+`fileKind` answers `html` for `.html`, `.htm`, `.xhtml` or a `text/html`
+response, and `FileView` frames it rather than painting its markup. Before this
+the browser preview existed only on the path a transcript link took, which is
+why the same file opened from a tree read as source.
+
+Which routes may be framed is not the surface's opinion either.
+`rendersHtmlInline` answers for the project routes alone, because Peon types
+those bytes from the name (`res.sendFile`) — while the file transfer sandbox
+answers every attachment as `application/octet-stream` and a session artifact
+allows inline images and PDFs and nothing else, both deliberately. A frame
+pointed at either downloads the file instead of rendering it, so an HTML
+attachment or artifact keeps showing its markup as source.
+
+The frame loads the file's own authenticated bytes URL — the project files
+route, the one the reader would have fetched — so relative assets beside the
+page resolve through that same route without a second addressing scheme. A
+surface that already holds an address for the rendered page passes it as
+`previewUrl`: a transcript link keeps the `/view/...` URL it was written with,
+and with it the anchor or query a bare bytes URL would drop.
+
+The frame is sandboxed without `allow-same-origin`, so the page runs in an
+opaque origin and can neither read Overseer's cookie nor read back a response
+from `/api`. It is still a page on Overseer's own origin, and the session
+cookie is `SameSite=lax`, so a hostile file can still issue a blind
+state-changing request the way it already could through `/view`. The
+cookie-free `<token>.preview.<domain>` origin in `webPreview.ts` is the
+stronger plane, and it is session-scoped: extending it to project files is the
+open follow-up, not something this surface does today.
+
+Source is one click away rather than a mode the operator has to leave: the
+frame carries a Preview/Source toggle in the same place the image controls
+sit, and the toggle appears only when the markup was actually read back. A
+page over `MAX_VIEW_BYTES` is still framed and rendered — the frame fetches
+those bytes itself, so capping the preview would buy nothing — but its source
+is not read, and `canEditFile` refuses an editor without it rather than
+opening an empty one over a file that is anything but.
 
 ## Images
 
