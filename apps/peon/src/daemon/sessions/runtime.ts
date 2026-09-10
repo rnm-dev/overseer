@@ -75,6 +75,12 @@ function shouldEmitWarning(warning: SessionWarning, now = Date.now()): boolean {
   return true;
 }
 
+// Native steering acknowledgements can race a terminal provider event. Give a
+// late acknowledgement a short window to settle, then repair any stale
+// in-memory barriers so a durable queued message cannot remain stranded until
+// the daemon restarts.
+const QUEUED_DISPATCH_BARRIER_GRACE_MS = 2_000;
+
 export function scheduleQueuedDispatch(record: SessionRecord): void {
   if (
     (record.queuedFollowUps.length === 0 && record.pendingSystemPrompts.length === 0)
@@ -82,14 +88,39 @@ export function scheduleQueuedDispatch(record: SessionRecord): void {
   ) return;
   sessionState.queueDispatchPending.add(record.id);
   queueMicrotask(() => {
-    sessionState.queueDispatchPending.delete(record.id);
-    if (sessionState.records.get(record.id) !== record) return;
-    if (
-      record.status !== "completed"
-      || sessionState.activeRuns.has(record.id)
+    if (sessionState.records.get(record.id) !== record) {
+      sessionState.queueDispatchPending.delete(record.id);
+      return;
+    }
+    if (record.status !== "completed") {
+      sessionState.queueDispatchPending.delete(record.id);
+      return;
+    }
+    const hasDispatchBarrier = sessionState.activeRuns.has(record.id)
       || sessionState.resumePending.has(record.id)
-      || sessionState.steerPending.has(record.id)
-    ) return;
+      || sessionState.steerPending.has(record.id);
+    if (hasDispatchBarrier) {
+      const terminalAt = record.endedAt ?? record.lastActivityAt ?? Date.now();
+      const graceRemaining = QUEUED_DISPATCH_BARRIER_GRACE_MS - Math.max(0, Date.now() - terminalAt);
+      if (graceRemaining > 0) {
+        const retry = setTimeout(() => {
+          sessionState.queueDispatchPending.delete(record.id);
+          scheduleQueuedDispatch(record);
+        }, graceRemaining);
+        retry.unref();
+        return;
+      }
+      const barriers = [
+        sessionState.activeRuns.has(record.id) ? "active-run" : null,
+        sessionState.resumePending.has(record.id) ? "resume" : null,
+        sessionState.steerPending.has(record.id) ? "steer" : null,
+      ].filter(Boolean).join(",");
+      console.warn(`sessions: clearing stale queued-dispatch barriers for completed session ${record.id}: ${barriers}`);
+      sessionState.activeRuns.delete(record.id);
+      sessionState.resumePending.delete(record.id);
+      sessionState.steerPending.delete(record.id);
+    }
+    sessionState.queueDispatchPending.delete(record.id);
     const item = record.queuedFollowUps.shift();
     // Keep triggers durable until the provider process has actually started.
     // A setup/configuration failure must not acknowledge invisible work that

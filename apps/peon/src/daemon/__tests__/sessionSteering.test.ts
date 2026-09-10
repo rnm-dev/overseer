@@ -14,6 +14,7 @@ const {
 } = await import("../agents/index.js");
 const { readTranscript } = await import("../sessions/sessionArtifacts.js");
 const { sessions } = await import("../sessions/index.js");
+const { sessionState } = await import("../sessions/state.js");
 const { settings } = await import("../settings/index.js");
 
 settings.update({ taskTimeoutMs: 5_000 });
@@ -201,6 +202,29 @@ test("a rejected queued native steer keeps the item and falls back to interrupt-
   assert.deepEqual(userMessages(record.id).map((event) => [event.text, event.author]), [
     ["first", undefined],
     ["fallback redirect", "bob@example.com"],
+  ]);
+  assert.equal(sessions.cancel(record.id), true);
+});
+
+test("a completed session clears stale dispatch barriers instead of stranding queued work", async () => {
+  const initialRuns = runCount;
+  const record = sessions.start({ id: "stale-queued-dispatch-barriers", prompt: "first", dir: os.tmpdir(), agent: driverId });
+  latestRun?.emitter.emit("exit", { code: 0, signal: null, spawnError: null });
+  assert.equal(sessions.get(record.id)?.status, "completed");
+
+  record.endedAt = Date.now() - 10_000;
+  sessionState.activeRuns.set(record.id, { emitter: new EventEmitter(), kill() {} });
+  sessionState.resumePending.add(record.id);
+  sessionState.steerPending.add(record.id);
+  sessions.enqueue(record.id, "must be dispatched", [], undefined, "alice@example.com");
+
+  await waitForRunCount(initialRuns + 2);
+  assert.equal(sessionState.resumePending.has(record.id), false);
+  assert.equal(sessionState.steerPending.has(record.id), false);
+  assert.deepEqual(sessions.queued(record.id), []);
+  assert.deepEqual(userMessages(record.id).map((event) => [event.text, event.author]), [
+    ["first", undefined],
+    ["must be dispatched", "alice@example.com"],
   ]);
   assert.equal(sessions.cancel(record.id), true);
 });
