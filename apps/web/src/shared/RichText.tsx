@@ -75,7 +75,7 @@ const baseMarkdownComponents: Components = {
   pre: MarkdownPre,
 };
 
-function localFilePath(href: string | undefined): string | null {
+export function localFilePath(href: string | undefined): string | null {
   if (!href) return null;
   let path = href;
   try {
@@ -85,7 +85,13 @@ function localFilePath(href: string | undefined): string | null {
   }
   if (path.startsWith("file://")) {
     try {
-      path = new URL(path).pathname;
+      // A URL pathname always opens with a slash, which is part of a POSIX
+      // path and never part of a Windows one: file:///C:/work/a.html reads
+      // back as /C:/work/a.html, and a Peon asked for that answers NOT_FOUND.
+      // Decoded after parsing, not before: `new URL` re-encodes the space in
+      // a name the first decode had already opened up, and the Peon is then
+      // asked for a file called `a%20file.html`.
+      path = decodeURIComponent(new URL(path).pathname).replace(/^\/(?=[a-zA-Z]:[\\/])/, "");
     } catch {
       return null;
     }

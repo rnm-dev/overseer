@@ -29,6 +29,13 @@ test("project files map from absolute host paths to stable browser viewer URLs",
     projectViewerHref("C:\\work\\site\\docs\\index.html", { ...context, projectRoot: "C:\\work\\site" }),
     "/view/peon%2Fid/project%20id/docs/index.html",
   );
+  // A Windows Peon writes the link as a URL, whose pathname always opens with
+  // a slash the drive letter must not keep — with it, the path matches no
+  // project root and the link is silently not offered.
+  assert.equal(
+    projectViewerHref("file:///C:/work/site/docs/index.html", { ...context, projectRoot: "C:\\work\\site" }),
+    "/view/peon%2Fid/project%20id/docs/index.html",
+  );
 });
 
 test("cited source positions never become part of the file name", () => {

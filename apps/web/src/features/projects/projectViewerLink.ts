@@ -35,7 +35,10 @@ function decodedPath(href: string, currentOrigin?: string): { path: string; suff
   if (href.startsWith("file://")) {
     try {
       const url = new URL(href);
-      return { path: decodeURIComponent(url.pathname), suffix: `${url.search}${url.hash}`, relative: false };
+      // The slash a URL pathname always carries belongs to a POSIX path and
+      // never to a Windows one; left in place it makes the drive letter fail
+      // every comparison against the project root.
+      return { path: decodeURIComponent(url.pathname).replace(/^\/(?=[a-zA-Z]:[\\/])/, ""), suffix: `${url.search}${url.hash}`, relative: false };
     } catch {
       return null;
     }
