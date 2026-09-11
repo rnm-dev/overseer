@@ -5,7 +5,7 @@ import 'package:overseer_mobile/shared/design/typography.dart';
 
 enum AppListTileDensity { compact, standard }
 
-enum AppListTileVariant { standalone, sectionSurface }
+enum AppListTileVariant { standalone, sectionSurface, flatSurface }
 
 /// The shared interactive row for navigation, settings, and entity lists.
 ///
@@ -81,7 +81,10 @@ class AppListTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final sectionSurface = variant == AppListTileVariant.sectionSurface;
-    final shape = sectionSurface ? BorderRadius.zero : AppMotion.listTileShape;
+    final flatSurface = variant == AppListTileVariant.flatSurface;
+    final shape = sectionSurface || flatSurface
+        ? BorderRadius.zero
+        : AppMotion.listTileShape;
     final backgroundColor = selected
         ? colors.primaryContainer.withAlpha(78)
         : Colors.transparent;
@@ -122,10 +125,12 @@ class AppListTile extends StatelessWidget {
             padding: _padding,
             decoration: BoxDecoration(
               color: enabled ? backgroundColor : colors.surface,
-              border: Border.all(
-                color: enabled ? borderColor : colors.outlineVariant,
-                width: sectionSurface ? 0 : 0.75,
-              ),
+              border: flatSurface
+                  ? null
+                  : Border.all(
+                      color: enabled ? borderColor : colors.outlineVariant,
+                      width: sectionSurface ? 0 : 0.75,
+                    ),
               borderRadius: shape,
             ),
             child: Row(

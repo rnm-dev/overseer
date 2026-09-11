@@ -504,7 +504,7 @@ class _NotificationSettingsRowState
   }
 }
 
-class _SettingsRow extends StatelessWidget {
+class _SettingsRow extends ConsumerWidget {
   const _SettingsRow({
     super.key,
     required this.leading,
@@ -519,10 +519,13 @@ class _SettingsRow extends StatelessWidget {
   final Widget trailing;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final colors = Theme.of(context).colorScheme;
     return AppListTile(
       title: label,
+      variant: ref.watch(fleetWorkspaceSpacingProvider)
+          ? AppListTileVariant.flatSurface
+          : AppListTileVariant.standalone,
       leading: Icon(leading, size: 20, color: colors.onSurfaceVariant),
       trailing: trailing,
       onTap: onTap,

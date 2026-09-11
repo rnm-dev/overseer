@@ -95,7 +95,7 @@ class _DesktopFleetSidebarState extends ConsumerState<DesktopFleetSidebar> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Padding(
-              padding: const EdgeInsets.only(right: 6),
+              padding: const EdgeInsets.only(right: 14),
               child: DropdownButton<ProjectsScope>(
                 key: const Key('sidebar-peon-selector'),
                 value: scope,
@@ -126,7 +126,7 @@ class _DesktopFleetSidebarState extends ConsumerState<DesktopFleetSidebar> {
               ),
             ),
             Padding(
-              padding: const EdgeInsets.only(right: 6),
+              padding: const EdgeInsets.only(right: 14),
               child: Row(
                 children: [
                   const Expanded(
@@ -140,7 +140,15 @@ class _DesktopFleetSidebarState extends ConsumerState<DesktopFleetSidebar> {
                   ),
                   PopupMenuButton<bool>(
                     tooltip: 'Chat list display',
-                    icon: const Icon(LucideIcons.list, size: 16),
+                    padding: EdgeInsets.zero,
+                    child: const SizedBox(
+                      width: 48,
+                      height: 48,
+                      child: Align(
+                        alignment: Alignment.centerRight,
+                        child: Icon(LucideIcons.list, size: 16),
+                      ),
+                    ),
                     initialValue: _grouped,
                     itemBuilder: (_) => const [
                       PopupMenuItem(
@@ -336,7 +344,7 @@ class _DesktopFleetSidebarState extends ConsumerState<DesktopFleetSidebar> {
     return ListView(
       key: ValueKey('sidebar-list-${workspace.id}-${peon.id}'),
       primary: false,
-      padding: const EdgeInsets.only(right: 6),
+      padding: const EdgeInsets.only(right: 14),
       children: children,
     );
   }

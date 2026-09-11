@@ -7,7 +7,7 @@ import '../features/shell/shell.dart';
 import 'desktop_fleet_navigation.dart';
 
 /// Surrounds the Windows content navigator, including imperatively pushed pages.
-class DesktopNavigationFrame extends ConsumerWidget {
+class DesktopNavigationFrame extends ConsumerStatefulWidget {
   const DesktopNavigationFrame({
     super.key,
     required this.child,
@@ -28,35 +28,50 @@ class DesktopNavigationFrame extends ConsumerWidget {
   final VoidCallback? onBackToConnections;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<DesktopNavigationFrame> createState() =>
+      _DesktopNavigationFrameState();
+}
+
+class _DesktopNavigationFrameState
+    extends ConsumerState<DesktopNavigationFrame> {
+  double? _sidebarWidth;
+
+  @override
+  Widget build(BuildContext context) {
     final user = ref.watch(authControllerProvider).session?.user;
-    if (user == null) return child;
+    if (user == null) return widget.child;
     return ProviderScope(
       overrides: [
-        selectedSidebarChatProvider.overrideWithValue(selectedChat),
+        selectedSidebarChatProvider.overrideWithValue(widget.selectedChat),
         externalShellRailProvider.overrideWithValue(true),
         fleetSidebarBuilderProvider.overrideWithValue(
-          (context) =>
-              buildDesktopFleetSidebar(context, navigatorKey: navigatorKey),
+          (context) => buildDesktopFleetSidebar(
+            context,
+            navigatorKey: widget.navigatorKey,
+          ),
         ),
       ],
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final compact = constraints.maxWidth < 600;
+          // Use the drawer when a usable 208px rail would exceed the 25% cap.
+          final compact = constraints.maxWidth < 832;
+          final maxSidebarWidth = constraints.maxWidth * .25;
+          final sidebarWidth =
+              (_sidebarWidth ?? (constraints.maxWidth < 1024 ? 208.0 : 232.0))
+                  .clamp(
+                    208.0,
+                    maxSidebarWidth < 208 ? 208.0 : maxSidebarWidth,
+                  );
           Widget rail({VoidCallback? closeDrawer}) => ShellConnectionRail(
             key: const Key('persistent-desktop-sidebar'),
-            width: compact
-                ? double.infinity
-                : constraints.maxWidth < 1024
-                ? 208
-                : 232,
+            width: compact ? double.infinity : sidebarWidth,
             user: user,
-            overseerName: overseerName,
-            onBackToConnections: onBackToConnections,
-            overviewSelected: overviewSelected,
+            overseerName: widget.overseerName,
+            onBackToConnections: widget.onBackToConnections,
+            overviewSelected: widget.overviewSelected,
             onOverview: () {
               closeDrawer?.call();
-              onOverview();
+              widget.onOverview();
             },
           );
           return Scaffold(
@@ -84,14 +99,41 @@ class DesktopNavigationFrame extends ConsumerWidget {
                             ),
                           ),
                         ),
-                        Expanded(child: child),
+                        Expanded(child: widget.child),
                       ],
                     )
-                  : Row(
+                  : Stack(
                       children: [
-                        rail(),
-                        const VerticalDivider(width: 1),
-                        Expanded(child: child),
+                        Row(
+                          children: [
+                            rail(),
+                            const VerticalDivider(width: 1),
+                            Expanded(child: widget.child),
+                          ],
+                        ),
+                        Positioned(
+                          left: sidebarWidth - 4,
+                          top: 0,
+                          bottom: 0,
+                          width: 9,
+                          child: MouseRegion(
+                            cursor: SystemMouseCursors.resizeColumn,
+                            child: GestureDetector(
+                              key: const Key('desktop-sidebar-resizer'),
+                              behavior: HitTestBehavior.opaque,
+                              onHorizontalDragUpdate: (details) => setState(() {
+                                _sidebarWidth =
+                                    (sidebarWidth + details.delta.dx).clamp(
+                                      208.0,
+                                      maxSidebarWidth,
+                                    );
+                              }),
+                              onDoubleTap: () =>
+                                  setState(() => _sidebarWidth = null),
+                              child: const SizedBox.expand(),
+                            ),
+                          ),
+                        ),
                       ],
                     ),
             ),

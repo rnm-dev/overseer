@@ -45,6 +45,27 @@ void main() {
       final sidebar = find.byKey(const Key('persistent-desktop-sidebar'));
       expect(sidebar, findsOneWidget);
       expect(find.byType(ShellConnectionRail), findsOneWidget);
+      final resizer = find.byKey(const Key('desktop-sidebar-resizer'));
+      expect(tester.getSize(sidebar).width, 232);
+      await tester.drag(resizer, const Offset(800, 0));
+      await tester.pumpAndSettle();
+      expect(tester.getSize(sidebar).width, closeTo(1440 * .25, .01));
+      tester.view.physicalSize = const Size(1000, 900);
+      await tester.pumpAndSettle();
+      expect(tester.getSize(sidebar).width, closeTo(1000 * .25, .01));
+      tester.view.physicalSize = const Size(800, 900);
+      await tester.pumpAndSettle();
+      expect(resizer, findsNothing);
+      expect(find.byTooltip('Projects and chats'), findsOneWidget);
+      tester.view.physicalSize = const Size(1440, 900);
+      await tester.pumpAndSettle();
+      await tester.drag(resizer, const Offset(-800, 0));
+      await tester.pumpAndSettle();
+      expect(tester.getSize(sidebar).width, 208);
+      await tester.drag(resizer, const Offset(100, 0));
+      await tester.pumpAndSettle();
+      final resizedWidth = tester.getSize(sidebar).width;
+      expect(resizedWidth, greaterThan(208));
       final sidebarElement = tester.element(sidebar);
       final overviewContext = tester.element(
         find.byKey(const Key('fleet-overview')),
@@ -82,6 +103,7 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 500));
       expect(tester.element(sidebar), same(sidebarElement));
+      expect(tester.getSize(sidebar).width, resizedWidth);
       expect(find.byKey(const ValueKey('workspace\u0000peon')), findsOneWidget);
       await tester.tap(find.byKey(const Key('shell-overview-navigation')));
       await tester.pumpAndSettle();
