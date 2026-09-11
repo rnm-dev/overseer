@@ -210,13 +210,21 @@ class _FleetConstrainedContent extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final horizontalPadding = ref.watch(fleetWorkspaceSpacingProvider)
+        ? 24.0
+        : 12.0;
     return Center(
       child: ConstrainedBox(
         constraints: BoxConstraints(
           maxWidth: ref.watch(fleetOverviewMaxWidthProvider),
         ),
         child: Padding(
-          padding: EdgeInsets.fromLTRB(12, 0, 12, bottomPadding),
+          padding: EdgeInsets.fromLTRB(
+            horizontalPadding,
+            0,
+            horizontalPadding,
+            bottomPadding,
+          ),
           child: child,
         ),
       ),
@@ -244,7 +252,12 @@ class _SettingsSection extends ConsumerWidget {
         key: const Key('settings-section'),
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const AppSectionHeader(title: 'Settings'),
+          AppSectionHeader(
+            title: 'Settings',
+            padding: ref.watch(fleetWorkspaceSpacingProvider)
+                ? EdgeInsets.zero
+                : const EdgeInsets.symmetric(horizontal: 4),
+          ),
           const SizedBox(height: _FleetSectionMetrics.headerGap),
           AdaptiveSelectionPicker<AppThemePackage>(
             key: const Key('theme-menu'),
@@ -579,9 +592,15 @@ class _WorkspaceSection extends ConsumerWidget {
       key: Key('workspace-${fleet.workspace.id}'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _FleetConstrainedContent(
-          child: AppSectionHeader(title: fleet.workspace.name),
-        ),
+        if (ref.watch(fleetWorkspaceSpacingProvider))
+          AppSectionHeader(
+            title: fleet.workspace.name,
+            padding: EdgeInsets.zero,
+          )
+        else
+          _FleetConstrainedContent(
+            child: AppSectionHeader(title: fleet.workspace.name),
+          ),
         const SizedBox(height: _FleetSectionMetrics.headerGap),
         if (fleet.peons.isEmpty)
           if (ref.watch(fleetWorkspaceSpacingProvider))
@@ -629,7 +648,7 @@ class _WorkspaceSection extends ConsumerWidget {
     );
     if (!ref.watch(fleetWorkspaceSpacingProvider)) return content;
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 12),
+      margin: const EdgeInsets.symmetric(horizontal: 24),
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: content,
     );
