@@ -4,6 +4,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../shared/ui_kit.dart';
 import '../../auth/domain/auth_models.dart';
+import 'overseer_switcher.dart';
 
 /// The composition root supplies the additional Windows navigation.
 final fleetSidebarBuilderProvider = Provider<WidgetBuilder?>((ref) => null);
@@ -53,27 +54,30 @@ class ShellConnectionRail extends ConsumerWidget {
           ),
         ),
         const SizedBox(height: 26),
-        AppCard(
-          variant: SurfaceVariant.inset,
-          padding: const EdgeInsets.all(12),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  name,
-                  key: const Key('shell-overseer-name'),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTypography.body(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: colors.onSurface,
+        if (ref.watch(overseerSwitcherProvider) case final switcher?)
+          OverseerSwitcher(data: switcher)
+        else
+          AppCard(
+            variant: SurfaceVariant.inset,
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    name,
+                    key: const Key('shell-overseer-name'),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTypography.body(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: colors.onSurface,
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
         const SizedBox(height: 22),
         AppSectionHeader(
           title: 'Workspace',

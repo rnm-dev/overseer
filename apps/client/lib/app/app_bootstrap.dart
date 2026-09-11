@@ -6,6 +6,7 @@ import 'package:overseer_mobile/l10n/l10n.dart';
 import 'package:overseer_mobile/app/app.dart';
 import 'package:overseer_mobile/app/app_dependencies.dart';
 import 'package:overseer_mobile/app/overseer_connection_authenticator.dart';
+import 'package:overseer_mobile/features/shell/shell.dart';
 import 'package:overseer_mobile/core/config/app_config.dart';
 import 'package:overseer_mobile/core/config/overseer_connection_store.dart';
 import 'package:overseer_mobile/core/notifications/notification_routing.dart';
@@ -301,6 +302,12 @@ class _AppBootstrapState extends State<AppBootstrap>
             key: ValueKey(connection.id),
             config: config,
             connection: connection,
+            overseerSwitcher: OverseerSwitcherData(
+              connections: _connections,
+              current: connection,
+              onSelect: _select,
+              onManage: _returnToConnections,
+            ),
             notificationRouteStore: _notificationRouteStore,
             desktopNotifications: widget.desktopNotifications,
             child: OverseerMobileApp(

@@ -82,6 +82,7 @@ class AppDependencies extends StatelessWidget {
     required this.child,
     this.desktopNotifications,
     this.onAuthenticated,
+    this.overseerSwitcher,
   });
 
   final AppConfig config;
@@ -90,6 +91,7 @@ class AppDependencies extends StatelessWidget {
   final Widget child;
   final DesktopNotifications? desktopNotifications;
   final VoidCallback? onAuthenticated;
+  final OverseerSwitcherData? overseerSwitcher;
 
   @override
   Widget build(BuildContext context) {
@@ -100,6 +102,8 @@ class AppDependencies extends StatelessWidget {
             defaultTargetPlatform == TargetPlatform.iOS);
     return ProviderScope(
       overrides: [
+        if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows)
+          overseerSwitcherProvider.overrideWithValue(overseerSwitcher),
         if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows)
           fleetSidebarBuilderProvider.overrideWithValue(
             buildDesktopFleetSidebar,
