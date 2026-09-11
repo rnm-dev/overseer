@@ -151,7 +151,7 @@ class ShellConnectionRail extends ConsumerWidget {
                 ),
                 Expanded(
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    padding: const EdgeInsets.only(left: 6),
                     child: user != null
                         ? sidebarBuilder(context)
                         : const SizedBox.shrink(),

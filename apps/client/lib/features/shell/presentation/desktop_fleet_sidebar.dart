@@ -94,55 +94,67 @@ class _DesktopFleetSidebarState extends ConsumerState<DesktopFleetSidebar> {
           key: const Key('desktop-fleet-sidebar'),
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            DropdownButton<ProjectsScope>(
-              key: const Key('sidebar-peon-selector'),
-              value: scope,
-              isExpanded: true,
-              icon: const Icon(LucideIcons.chevronDown, size: 16),
-              items: [
-                for (final choice in choices)
-                  DropdownMenuItem(
-                    value: ProjectsScope(
-                      workspaceId: choice.workspace.id,
-                      peonId: choice.peon.id,
+            Padding(
+              padding: const EdgeInsets.only(right: 6),
+              child: DropdownButton<ProjectsScope>(
+                key: const Key('sidebar-peon-selector'),
+                value: scope,
+                isExpanded: true,
+                icon: const Icon(LucideIcons.chevronDown, size: 16),
+                items: [
+                  for (final choice in choices)
+                    DropdownMenuItem(
+                      value: ProjectsScope(
+                        workspaceId: choice.workspace.id,
+                        peonId: choice.peon.id,
+                      ),
+                      child: Text(
+                        '${choice.workspace.name} / ${choice.peon.displayName}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTypography.body(fontSize: 12),
+                      ),
                     ),
-                    child: Text(
-                      '${choice.workspace.name} / ${choice.peon.displayName}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppTypography.body(fontSize: 12),
-                    ),
-                  ),
-              ],
-              onChanged: (value) => setState(() {
-                _selected = value;
-                _collapsed.clear();
-              }),
+                ],
+                onChanged: (value) => setState(() {
+                  _selected = value;
+                  _collapsed.clear();
+                }),
+              ),
             ),
-            Row(
-              children: [
-                const Expanded(
-                  child: Text(
-                    'Projects & chats',
-                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
+            Padding(
+              padding: const EdgeInsets.only(right: 6),
+              child: Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'Projects & chats',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 12,
+                      ),
+                    ),
                   ),
-                ),
-                PopupMenuButton<bool>(
-                  tooltip: 'Chat list display',
-                  icon: const Icon(LucideIcons.list, size: 16),
-                  initialValue: _grouped,
-                  itemBuilder: (_) => const [
-                    PopupMenuItem(value: true, child: Text('Group by project')),
-                    PopupMenuItem(value: false, child: Text('Flat list')),
-                  ],
-                  onSelected: (value) => setState(() => _grouped = value),
-                ),
-                IconButton(
-                  tooltip: 'New project',
-                  icon: const Icon(LucideIcons.folderPlus, size: 16),
-                  onPressed: () => widget.onNewProject(context, scope),
-                ),
-              ],
+                  PopupMenuButton<bool>(
+                    tooltip: 'Chat list display',
+                    icon: const Icon(LucideIcons.list, size: 16),
+                    initialValue: _grouped,
+                    itemBuilder: (_) => const [
+                      PopupMenuItem(
+                        value: true,
+                        child: Text('Group by project'),
+                      ),
+                      PopupMenuItem(value: false, child: Text('Flat list')),
+                    ],
+                    onSelected: (value) => setState(() => _grouped = value),
+                  ),
+                  IconButton(
+                    tooltip: 'New project',
+                    icon: const Icon(LucideIcons.folderPlus, size: 16),
+                    onPressed: () => widget.onNewProject(context, scope),
+                  ),
+                ],
+              ),
             ),
             Expanded(
               child: _lists(context, current.workspace, current.peon, scope),
@@ -285,7 +297,7 @@ class _DesktopFleetSidebarState extends ConsumerState<DesktopFleetSidebar> {
     return ListView(
       key: ValueKey('sidebar-list-${workspace.id}-${peon.id}'),
       primary: false,
-      padding: EdgeInsets.zero,
+      padding: const EdgeInsets.only(right: 6),
       children: children,
     );
   }
