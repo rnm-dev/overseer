@@ -321,7 +321,7 @@ class _DesktopFleetSidebarState extends ConsumerState<DesktopFleetSidebar> {
         children.addAll(_sessionRows(context, sessions, active));
       }
     }
-    if (state?.hasMore == true) {
+    if (!_grouped && state?.hasMore == true) {
       children.add(
         TextButton(
           onPressed: state!.isLoadingMore
@@ -494,36 +494,9 @@ class _SidebarRow extends StatelessWidget {
                   ).withValues(alpha: .5)
                 : null,
             border: Border(
-              top: selected
-                  ? BorderSide(
-                      color: Theme.of(
-                        context,
-                      ).colorScheme.primary.withValues(alpha: .5),
-                    )
-                  : BorderSide.none,
-              right: selected
-                  ? BorderSide(
-                      color: Theme.of(
-                        context,
-                      ).colorScheme.primary.withValues(alpha: .5),
-                    )
-                  : BorderSide.none,
-              bottom: selected
-                  ? BorderSide(
-                      color: Theme.of(
-                        context,
-                      ).colorScheme.primary.withValues(alpha: .5),
-                    )
-                  : BorderSide.none,
               left: BorderSide(
                 width: 2,
-                color:
-                    color ??
-                    (selected
-                        ? Theme.of(
-                            context,
-                          ).colorScheme.primary.withValues(alpha: .5)
-                        : Theme.of(context).colorScheme.outlineVariant),
+                color: color ?? Theme.of(context).colorScheme.outlineVariant,
               ),
             ),
           ),
