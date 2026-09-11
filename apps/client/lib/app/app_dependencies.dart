@@ -111,7 +111,7 @@ class AppDependencies extends StatelessWidget {
         if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows)
           fleetOverviewMaxWidthProvider.overrideWithValue(double.infinity),
         if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows)
-          fleetWorkspaceOutlinesProvider.overrideWithValue(true),
+          fleetWorkspaceSpacingProvider.overrideWithValue(true),
         if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows)
           peonHomeMaxWidthProvider.overrideWithValue(double.infinity),
         themeConnectionIdProvider.overrideWithValue(

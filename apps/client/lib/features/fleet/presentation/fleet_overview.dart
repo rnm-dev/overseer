@@ -27,8 +27,8 @@ import '../domain/fleet_repository.dart';
 /// the existing centered content limit.
 final fleetOverviewMaxWidthProvider = Provider<double>((ref) => 760);
 
-/// Enables workspace outlines for the Windows desktop layout.
-final fleetWorkspaceOutlinesProvider = Provider<bool>((ref) => false);
+/// Enables workspace spacing for the Windows desktop layout.
+final fleetWorkspaceSpacingProvider = Provider<bool>((ref) => false);
 
 abstract final class _FleetSectionMetrics {
   static const headerGap = 10.0;
@@ -584,15 +584,30 @@ class _WorkspaceSection extends ConsumerWidget {
         ),
         const SizedBox(height: _FleetSectionMetrics.headerGap),
         if (fleet.peons.isEmpty)
-          _FleetConstrainedContent(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4),
+          if (ref.watch(fleetWorkspaceSpacingProvider))
+            Container(
+              constraints: const BoxConstraints(minHeight: 44),
+              alignment: Alignment.center,
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: colors.onSurface.withValues(alpha: 0.05),
+              ),
               child: Text(
                 'No peons available',
+                textAlign: TextAlign.center,
                 style: AppTypography.body(color: colors.onSurfaceVariant),
               ),
-            ),
-          )
+            )
+          else
+            _FleetConstrainedContent(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: Text(
+                  'No peons available',
+                  style: AppTypography.body(color: colors.onSurfaceVariant),
+                ),
+              ),
+            )
         else
           for (final (index, peon) in fleet.peons.indexed) ...[
             _PeonGroup(
@@ -612,14 +627,10 @@ class _WorkspaceSection extends ConsumerWidget {
           ],
       ],
     );
-    if (!ref.watch(fleetWorkspaceOutlinesProvider)) return content;
+    if (!ref.watch(fleetWorkspaceSpacingProvider)) return content;
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 12),
       padding: const EdgeInsets.symmetric(vertical: 8),
-      foregroundDecoration: BoxDecoration(
-        border: Border.all(color: colors.outlineVariant),
-        borderRadius: AppMotion.optionShape,
-      ),
       child: content,
     );
   }

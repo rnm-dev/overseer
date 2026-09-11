@@ -79,7 +79,7 @@ void main() {
                 ),
               ),
             fleetOverviewMaxWidthProvider.overrideWithValue(double.infinity),
-            fleetWorkspaceOutlinesProvider.overrideWithValue(true),
+            fleetWorkspaceSpacingProvider.overrideWithValue(true),
             fleetSidebarBuilderProvider.overrideWithValue(
               (context) => DesktopFleetSidebar(
                 onProject: (_, workspace, peon, project) =>
@@ -128,7 +128,7 @@ void main() {
         Color.alphaBlend(
           AppTheme.dark.colorScheme.primaryContainer.withAlpha(78),
           AppTheme.dark.colorScheme.surfaceContainerHighest,
-        ),
+        ).withValues(alpha: .5),
       );
       expect(
         tester
@@ -147,6 +147,10 @@ void main() {
       expect(newChatProject, 'alpha');
       await tester.tap(find.byTooltip('New project'));
       expect(newProject, isTrue);
+      expect(
+        find.byKey(const Key('sidebar-new-project-group')),
+        findsOneWidget,
+      );
       await tester.tap(find.byTooltip('Collapse Alpha'));
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('sidebar-chat-chat')), findsNothing);
@@ -171,6 +175,10 @@ void main() {
       await tester.tap(find.text('Flat list'));
       await tester.pumpAndSettle();
       expect(find.text('Projects'), findsOneWidget);
+      expect(find.byKey(const Key('sidebar-new-project-group')), findsNothing);
+      newProject = false;
+      await tester.tap(find.byTooltip('New project'));
+      expect(newProject, isTrue);
       expect(find.text('Sessions'), findsOneWidget);
       await tester.tap(find.byKey(const Key('sidebar-peon-selector')));
       await tester.pumpAndSettle();

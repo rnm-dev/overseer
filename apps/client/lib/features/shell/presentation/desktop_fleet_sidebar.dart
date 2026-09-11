@@ -100,10 +100,12 @@ class _DesktopFleetSidebarState extends ConsumerState<DesktopFleetSidebar> {
                 key: const Key('sidebar-peon-selector'),
                 value: scope,
                 isExpanded: true,
+                underline: const SizedBox.shrink(),
                 icon: const Icon(LucideIcons.chevronDown, size: 16),
                 items: [
                   for (final choice in choices)
                     DropdownMenuItem(
+                      alignment: Alignment.centerLeft,
                       value: ProjectsScope(
                         workspaceId: choice.workspace.id,
                         peonId: choice.peon.id,
@@ -111,6 +113,7 @@ class _DesktopFleetSidebarState extends ConsumerState<DesktopFleetSidebar> {
                       child: Text(
                         '${choice.workspace.name} / ${choice.peon.displayName}',
                         maxLines: 1,
+                        textAlign: TextAlign.left,
                         overflow: TextOverflow.ellipsis,
                         style: AppTypography.body(fontSize: 12),
                       ),
@@ -147,11 +150,6 @@ class _DesktopFleetSidebarState extends ConsumerState<DesktopFleetSidebar> {
                       PopupMenuItem(value: false, child: Text('Flat list')),
                     ],
                     onSelected: (value) => setState(() => _grouped = value),
-                  ),
-                  IconButton(
-                    tooltip: 'New project',
-                    icon: const Icon(LucideIcons.folderPlus, size: 16),
-                    onPressed: () => widget.onNewProject(context, scope),
                   ),
                 ],
               ),
@@ -243,8 +241,49 @@ class _DesktopFleetSidebarState extends ConsumerState<DesktopFleetSidebar> {
       children.addAll(
         _group(context, scope, '__other__', 'Other chats', other, active),
       );
+      children.add(
+        Padding(
+          padding: const EdgeInsets.only(bottom: 6),
+          child: Tooltip(
+            message: 'New project',
+            child: InkWell(
+              key: const Key('sidebar-new-project-group'),
+              onTap: () => widget.onNewProject(context, scope),
+              child: Container(
+                constraints: const BoxConstraints(minHeight: 32),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                child: Row(
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        'New project',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    Icon(
+                      LucideIcons.plus,
+                      size: 15,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
     } else {
-      children.add(_heading('Projects', '_projects'));
+      children.add(
+        _heading(
+          'Projects',
+          '_projects',
+          onNew: () => widget.onNewProject(context, scope),
+          newTooltip: 'New project',
+        ),
+      );
       if (!_collapsed.contains('_projects')) {
         for (final project in projects) {
           children.add(
@@ -326,6 +365,7 @@ class _DesktopFleetSidebarState extends ConsumerState<DesktopFleetSidebar> {
     String id, {
     VoidCallback? onOpen,
     VoidCallback? onNew,
+    String? newTooltip,
   }) {
     final collapsed = _collapsed.contains(id);
     void toggle() => setState(() {
@@ -368,7 +408,7 @@ class _DesktopFleetSidebarState extends ConsumerState<DesktopFleetSidebar> {
           ),
           if (onNew != null)
             IconButton(
-              tooltip: 'New chat in $title',
+              tooltip: newTooltip ?? 'New chat in $title',
               constraints: const BoxConstraints.tightFor(width: 28, height: 32),
               padding: EdgeInsets.zero,
               icon: const Icon(LucideIcons.plus, size: 15),
@@ -451,24 +491,38 @@ class _SidebarRow extends StatelessWidget {
                       context,
                     ).colorScheme.primaryContainer.withAlpha(78),
                     Theme.of(context).colorScheme.surfaceContainerHighest,
-                  )
+                  ).withValues(alpha: .5)
                 : null,
             border: Border(
               top: selected
-                  ? BorderSide(color: Theme.of(context).colorScheme.primary)
+                  ? BorderSide(
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.primary.withValues(alpha: .5),
+                    )
                   : BorderSide.none,
               right: selected
-                  ? BorderSide(color: Theme.of(context).colorScheme.primary)
+                  ? BorderSide(
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.primary.withValues(alpha: .5),
+                    )
                   : BorderSide.none,
               bottom: selected
-                  ? BorderSide(color: Theme.of(context).colorScheme.primary)
+                  ? BorderSide(
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.primary.withValues(alpha: .5),
+                    )
                   : BorderSide.none,
               left: BorderSide(
                 width: 2,
                 color:
                     color ??
                     (selected
-                        ? Theme.of(context).colorScheme.primary
+                        ? Theme.of(
+                            context,
+                          ).colorScheme.primary.withValues(alpha: .5)
                         : Theme.of(context).colorScheme.outlineVariant),
               ),
             ),
@@ -484,7 +538,9 @@ class _SidebarRow extends StatelessWidget {
                   fontSize: 12,
                   fontWeight: FontWeight.w500,
                   color: selected
-                      ? Theme.of(context).colorScheme.primary
+                      ? Theme.of(
+                          context,
+                        ).colorScheme.primary.withValues(alpha: .75)
                       : Theme.of(context).colorScheme.onSurface,
                 ),
               ),
