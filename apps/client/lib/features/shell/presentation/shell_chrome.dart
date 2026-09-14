@@ -160,9 +160,12 @@ class ShellConnectionRail extends ConsumerWidget {
                 AppNavigationBar(
                   contentPadding: EdgeInsets.zero,
                   left: ref.watch(overseerSwitcherProvider) != null
-                      ? OverseerSwitcher(
-                          data: ref.watch(overseerSwitcherProvider)!,
-                          plain: true,
+                      ? SizedBox(
+                          height: AppNavigationBar.fixedContentHeight,
+                          child: OverseerSwitcher(
+                            data: ref.watch(overseerSwitcherProvider)!,
+                            plain: true,
+                          ),
                         )
                       : Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 14),
