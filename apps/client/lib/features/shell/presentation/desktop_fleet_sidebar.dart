@@ -19,6 +19,17 @@ typedef SidebarChatIdentity = ({
   String sessionId,
 });
 
+ButtonStyle _iconHighlightStyle(BuildContext context) => ButtonStyle(
+  overlayColor: const WidgetStatePropertyAll(Colors.transparent),
+  foregroundColor: WidgetStateProperty.resolveWith((states) {
+    if (states.contains(WidgetState.hovered) ||
+        states.contains(WidgetState.pressed)) {
+      return Theme.of(context).colorScheme.primary;
+    }
+    return null;
+  }),
+);
+
 /// Supplied by the Windows navigation frame from the displayed route.
 final selectedSidebarChatProvider = Provider<SidebarChatIdentity?>(
   (ref) => null,
@@ -94,36 +105,35 @@ class _DesktopFleetSidebarState extends ConsumerState<DesktopFleetSidebar> {
           key: const Key('desktop-fleet-sidebar'),
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Padding(
+            DropdownButton<ProjectsScope>(
+              focusColor: Colors.transparent,
               padding: const EdgeInsets.symmetric(horizontal: 14),
-              child: DropdownButton<ProjectsScope>(
-                key: const Key('sidebar-peon-selector'),
-                value: scope,
-                isExpanded: true,
-                underline: const SizedBox.shrink(),
-                icon: const Icon(LucideIcons.chevronDown, size: 16),
-                items: [
-                  for (final choice in choices)
-                    DropdownMenuItem(
-                      alignment: Alignment.centerLeft,
-                      value: ProjectsScope(
-                        workspaceId: choice.workspace.id,
-                        peonId: choice.peon.id,
-                      ),
-                      child: Text(
-                        '${choice.workspace.name} / ${choice.peon.displayName}',
-                        maxLines: 1,
-                        textAlign: TextAlign.left,
-                        overflow: TextOverflow.ellipsis,
-                        style: AppTypography.body(fontSize: 12),
-                      ),
+              key: const Key('sidebar-peon-selector'),
+              value: scope,
+              isExpanded: true,
+              underline: const SizedBox.shrink(),
+              icon: const Icon(LucideIcons.chevronDown, size: 16),
+              items: [
+                for (final choice in choices)
+                  DropdownMenuItem(
+                    alignment: Alignment.centerLeft,
+                    value: ProjectsScope(
+                      workspaceId: choice.workspace.id,
+                      peonId: choice.peon.id,
                     ),
-                ],
-                onChanged: (value) => setState(() {
-                  _selected = value;
-                  _collapsed.clear();
-                }),
-              ),
+                    child: Text(
+                      '${choice.workspace.name} / ${choice.peon.displayName}',
+                      maxLines: 1,
+                      textAlign: TextAlign.left,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTypography.body(fontSize: 12),
+                    ),
+                  ),
+              ],
+              onChanged: (value) => setState(() {
+                _selected = value;
+                _collapsed.clear();
+              }),
             ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 14),
@@ -138,33 +148,27 @@ class _DesktopFleetSidebarState extends ConsumerState<DesktopFleetSidebar> {
                       ),
                     ),
                   ),
-                  Theme(
-                    data: Theme.of(context).copyWith(
-                      hoverColor: Colors.transparent,
-                      splashColor: Colors.transparent,
-                      highlightColor: Colors.transparent,
-                    ),
-                    child: PopupMenuButton<bool>(
-                      tooltip: 'Chat list display',
-                      padding: EdgeInsets.zero,
-                      child: const SizedBox(
-                        width: 48,
-                        height: 48,
-                        child: Align(
-                          alignment: Alignment.centerRight,
-                          child: Icon(LucideIcons.list, size: 16),
-                        ),
+                  PopupMenuButton<bool>(
+                    tooltip: 'Chat list display',
+                    style: _iconHighlightStyle(context),
+                    padding: EdgeInsets.zero,
+                    icon: const SizedBox(
+                      width: 48,
+                      height: 48,
+                      child: Align(
+                        alignment: Alignment.centerRight,
+                        child: Icon(LucideIcons.list, size: 16),
                       ),
-                      initialValue: _grouped,
-                      itemBuilder: (_) => const [
-                        PopupMenuItem(
-                          value: true,
-                          child: Text('Group by project'),
-                        ),
-                        PopupMenuItem(value: false, child: Text('Flat list')),
-                      ],
-                      onSelected: (value) => setState(() => _grouped = value),
                     ),
+                    initialValue: _grouped,
+                    itemBuilder: (_) => const [
+                      PopupMenuItem(
+                        value: true,
+                        child: Text('Group by project'),
+                      ),
+                      PopupMenuItem(value: false, child: Text('Flat list')),
+                    ],
+                    onSelected: (value) => setState(() => _grouped = value),
                   ),
                 ],
               ),
@@ -332,12 +336,11 @@ class _DesktopFleetSidebarState extends ConsumerState<DesktopFleetSidebar> {
         _heading(
           'Sessions',
           '_sessions',
+          collapsible: false,
           onNew: () => widget.onNewSession(context, scope, null),
         ),
       );
-      if (!_collapsed.contains('_sessions')) {
-        children.addAll(_sessionRows(context, sessions, active));
-      }
+      children.addAll(_sessionRows(context, sessions, active));
     }
     if (!_grouped && state?.hasMore == true) {
       children.add(
@@ -384,6 +387,7 @@ class _DesktopFleetSidebarState extends ConsumerState<DesktopFleetSidebar> {
     VoidCallback? onOpen,
     VoidCallback? onNew,
     String? newTooltip,
+    bool collapsible = true,
   }) {
     final collapsed = _collapsed.contains(id);
     void toggle() => setState(() {
@@ -398,23 +402,24 @@ class _DesktopFleetSidebarState extends ConsumerState<DesktopFleetSidebar> {
       child: Row(
         children: [
           const SizedBox(width: 14),
-          IconButton(
-            tooltip: '${collapsed ? 'Expand' : 'Collapse'} $title',
-            hoverColor: Colors.transparent,
-            splashColor: Colors.transparent,
-            highlightColor: Colors.transparent,
-            constraints: const BoxConstraints.tightFor(width: 28, height: 32),
-            alignment: Alignment.centerLeft,
-            padding: EdgeInsets.zero,
-            icon: Icon(
-              collapsed ? LucideIcons.chevronRight : LucideIcons.chevronDown,
-              size: 14,
+          if (collapsible)
+            IconButton(
+              tooltip: '${collapsed ? 'Expand' : 'Collapse'} $title',
+              hoverColor: Colors.transparent,
+              splashColor: Colors.transparent,
+              highlightColor: Colors.transparent,
+              constraints: const BoxConstraints.tightFor(width: 28, height: 32),
+              alignment: Alignment.centerLeft,
+              padding: EdgeInsets.zero,
+              icon: Icon(
+                collapsed ? LucideIcons.chevronRight : LucideIcons.chevronDown,
+                size: 14,
+              ),
+              onPressed: toggle,
             ),
-            onPressed: toggle,
-          ),
           Expanded(
             child: InkWell(
-              onTap: onOpen ?? toggle,
+              onTap: onOpen ?? (collapsible ? toggle : null),
               hoverColor: Colors.transparent,
               splashColor: Colors.transparent,
               highlightColor: Colors.transparent,
@@ -435,6 +440,7 @@ class _DesktopFleetSidebarState extends ConsumerState<DesktopFleetSidebar> {
           if (onNew != null)
             IconButton(
               tooltip: newTooltip ?? 'New chat in $title',
+              style: _iconHighlightStyle(context),
               hoverColor: Colors.transparent,
               splashColor: Colors.transparent,
               highlightColor: Colors.transparent,
