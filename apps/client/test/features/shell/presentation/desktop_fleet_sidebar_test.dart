@@ -106,7 +106,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('fleet-overview')), findsOneWidget);
-      expect(find.byKey(const Key('notification-setting')), findsOneWidget);
+      expect(find.byKey(const Key('notification-setting')), findsNothing);
       expect(find.byKey(const Key('desktop-fleet-sidebar')), findsOneWidget);
       expect(
         tester.getBottomLeft(find.byKey(const Key('shell-account-footer'))).dy,

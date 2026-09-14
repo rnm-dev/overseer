@@ -17,6 +17,7 @@ import 'project_files_route_page.dart';
 import 'project_detail_route_page.dart';
 import 'session_deep_link_page.dart';
 import 'desktop_navigation_frame.dart';
+import '../features/fleet/presentation/fleet_overview.dart';
 
 class OverseerMobileApp extends ConsumerStatefulWidget {
   const OverseerMobileApp({
@@ -73,11 +74,40 @@ class _OverseerMobileAppState extends ConsumerState<OverseerMobileApp> {
                   );
                   _router.goNamed('home');
                 },
+                onSettings: () {
+                  _contentNavigatorKey.currentState?.popUntil(
+                    (route) => route.isFirst,
+                  );
+                  _router.goNamed('desktop-settings');
+                },
                 overseerName: widget.overseerName,
                 onBackToConnections: widget.onBackToConnections,
                 child: child,
               ),
-              routes: _routes,
+              routes: [
+                ..._routes,
+                GoRoute(
+                  path: '/settings',
+                  name: 'desktop-settings',
+                  builder: (context, state) => AuthGate(
+                    autoSignIn: widget.autoSignIn,
+                    onBack: widget.onBackToConnections,
+                    overseerName: widget.overseerName,
+                    buildLoading: _buildAuthLoading,
+                    buildSignIn: _buildAuthSignIn,
+                    buildShell:
+                        ({
+                          required user,
+                          required onSignOut,
+                          overseerName,
+                          onBackToConnections,
+                        }) => DesktopSettingsPage(
+                          user: user,
+                          onSignOut: onSignOut,
+                        ),
+                  ),
+                ),
+              ],
             ),
           ],
   );

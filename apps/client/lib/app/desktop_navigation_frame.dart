@@ -13,6 +13,7 @@ class DesktopNavigationFrame extends ConsumerStatefulWidget {
     required this.child,
     required this.navigatorKey,
     required this.onOverview,
+    required this.onSettings,
     required this.overviewSelected,
     this.selectedChat,
     this.overseerName,
@@ -22,6 +23,7 @@ class DesktopNavigationFrame extends ConsumerStatefulWidget {
   final Widget child;
   final GlobalKey<NavigatorState> navigatorKey;
   final VoidCallback onOverview;
+  final VoidCallback onSettings;
   final bool overviewSelected;
   final SidebarChatIdentity? selectedChat;
   final String? overseerName;
@@ -72,6 +74,10 @@ class _DesktopNavigationFrameState
             onOverview: () {
               closeDrawer?.call();
               widget.onOverview();
+            },
+            onSettings: () {
+              closeDrawer?.call();
+              widget.onSettings();
             },
           );
           return Scaffold(

@@ -20,6 +20,7 @@ class ShellConnectionRail extends ConsumerWidget {
     this.onBackToConnections,
     this.width = 224,
     this.onOverview,
+    this.onSettings,
     this.overviewSelected = true,
   });
 
@@ -28,6 +29,7 @@ class ShellConnectionRail extends ConsumerWidget {
   final VoidCallback? onBackToConnections;
   final double width;
   final VoidCallback? onOverview;
+  final VoidCallback? onSettings;
   final bool overviewSelected;
 
   @override
@@ -189,13 +191,21 @@ class ShellConnectionRail extends ConsumerWidget {
                 Container(
                   key: const Key('shell-account-footer'),
                   height: AppNavigationBar.fixedContentHeight,
-                  padding: const EdgeInsets.symmetric(horizontal: 14),
                   decoration: BoxDecoration(
                     border: Border(
                       top: BorderSide(color: colors.outlineVariant, width: 0.5),
                     ),
                   ),
-                  child: accountContents,
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: onSettings,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 14),
+                        child: accountContents,
+                      ),
+                    ),
+                  ),
                 ),
               ],
             )

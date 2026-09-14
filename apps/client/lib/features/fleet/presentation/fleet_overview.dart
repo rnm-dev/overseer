@@ -121,7 +121,7 @@ class FleetOverviewLoading extends StatelessWidget {
   }
 }
 
-class _FleetList extends StatelessWidget {
+class _FleetList extends ConsumerWidget {
   const _FleetList({
     required this.workspaces,
     required this.compact,
@@ -147,7 +147,7 @@ class _FleetList extends StatelessWidget {
   final ActiveSessionsState activeSessions;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return RefreshIndicator(
       onRefresh: onRefresh,
       child: CustomScrollView(
@@ -182,13 +182,14 @@ class _FleetList extends StatelessWidget {
                       child: SizedBox(height: _FleetSectionMetrics.sectionGap),
                     ),
                   ],
-                SliverToBoxAdapter(
-                  child: _FleetConstrainedContent(
-                    key: const Key('fleet-screen-padding'),
-                    bottomPadding: 48,
-                    child: _SettingsSection(user: user, onSignOut: onSignOut),
+                if (!ref.watch(fleetWorkspaceSpacingProvider))
+                  SliverToBoxAdapter(
+                    child: _FleetConstrainedContent(
+                      key: const Key('fleet-screen-padding'),
+                      bottomPadding: 48,
+                      child: _SettingsSection(user: user, onSignOut: onSignOut),
+                    ),
                   ),
-                ),
               ],
             ),
           ),
@@ -230,6 +231,29 @@ class _FleetConstrainedContent extends ConsumerWidget {
       ),
     );
   }
+}
+
+class DesktopSettingsPage extends StatelessWidget {
+  const DesktopSettingsPage({
+    super.key,
+    required this.user,
+    required this.onSignOut,
+  });
+
+  final OperatorIdentity user;
+  final Future<void> Function() onSignOut;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    key: const Key('desktop-settings-page'),
+    body: SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(vertical: 28),
+      child: _FleetConstrainedContent(
+        bottomPadding: 48,
+        child: _SettingsSection(user: user, onSignOut: onSignOut),
+      ),
+    ),
+  );
 }
 
 class _SettingsSection extends ConsumerWidget {
@@ -1093,14 +1117,14 @@ class _FleetLoading extends StatelessWidget {
   }
 }
 
-class _FleetLoadingLayout extends StatelessWidget {
+class _FleetLoadingLayout extends ConsumerWidget {
   const _FleetLoadingLayout({required this.compact, required this.settings});
 
   final bool compact;
   final Widget settings;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return CustomScrollView(
       physics: const AlwaysScrollableScrollPhysics(),
       slivers: [
@@ -1122,7 +1146,7 @@ class _FleetLoadingLayout extends StatelessWidget {
                       child: _FleetSkeleton(),
                     ),
                     const SizedBox(height: _FleetSectionMetrics.sectionGap),
-                    settings,
+                    if (!ref.watch(fleetWorkspaceSpacingProvider)) settings,
                   ],
                 ),
               ),

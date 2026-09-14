@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:overseer_mobile/features/fleet/application/fleet_controller.dart';
 import 'package:overseer_mobile/features/fleet/domain/fleet_models.dart';
 import 'package:overseer_mobile/features/fleet/domain/fleet_repository.dart';
+import 'package:overseer_mobile/features/fleet/presentation/fleet_overview.dart';
 import 'package:overseer_mobile/features/shell/shell.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -34,6 +35,7 @@ void main() {
             ),
             authRepositoryProvider.overrideWithValue(auth),
             fleetRepositoryProvider.overrideWithValue(_EmptyFleetRepository()),
+            fleetWorkspaceSpacingProvider.overrideWithValue(true),
             fleetSidebarBuilderProvider.overrideWithValue(
               (_) => const SizedBox.shrink(),
             ),
@@ -45,6 +47,14 @@ void main() {
       final sidebar = find.byKey(const Key('persistent-desktop-sidebar'));
       expect(sidebar, findsOneWidget);
       expect(find.byType(ShellConnectionRail), findsOneWidget);
+      expect(find.byKey(const Key('settings-section')), findsNothing);
+      await tester.tap(find.byKey(const Key('shell-account-footer')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('desktop-settings-page')), findsOneWidget);
+      expect(find.byKey(const Key('notification-setting')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('shell-overview-navigation')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('desktop-settings-page')), findsNothing);
       final resizer = find.byKey(const Key('desktop-sidebar-resizer'));
       expect(tester.getSize(sidebar).width, 232);
       await tester.drag(resizer, const Offset(800, 0));
