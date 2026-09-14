@@ -95,7 +95,7 @@ class _DesktopFleetSidebarState extends ConsumerState<DesktopFleetSidebar> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Padding(
-              padding: const EdgeInsets.only(right: 14),
+              padding: const EdgeInsets.symmetric(horizontal: 14),
               child: DropdownButton<ProjectsScope>(
                 key: const Key('sidebar-peon-selector'),
                 value: scope,
@@ -126,7 +126,7 @@ class _DesktopFleetSidebarState extends ConsumerState<DesktopFleetSidebar> {
               ),
             ),
             Padding(
-              padding: const EdgeInsets.only(right: 14),
+              padding: const EdgeInsets.symmetric(horizontal: 14),
               child: Row(
                 children: [
                   const Expanded(
@@ -138,26 +138,33 @@ class _DesktopFleetSidebarState extends ConsumerState<DesktopFleetSidebar> {
                       ),
                     ),
                   ),
-                  PopupMenuButton<bool>(
-                    tooltip: 'Chat list display',
-                    padding: EdgeInsets.zero,
-                    child: const SizedBox(
-                      width: 48,
-                      height: 48,
-                      child: Align(
-                        alignment: Alignment.centerRight,
-                        child: Icon(LucideIcons.list, size: 16),
-                      ),
+                  Theme(
+                    data: Theme.of(context).copyWith(
+                      hoverColor: Colors.transparent,
+                      splashColor: Colors.transparent,
+                      highlightColor: Colors.transparent,
                     ),
-                    initialValue: _grouped,
-                    itemBuilder: (_) => const [
-                      PopupMenuItem(
-                        value: true,
-                        child: Text('Group by project'),
+                    child: PopupMenuButton<bool>(
+                      tooltip: 'Chat list display',
+                      padding: EdgeInsets.zero,
+                      child: const SizedBox(
+                        width: 48,
+                        height: 48,
+                        child: Align(
+                          alignment: Alignment.centerRight,
+                          child: Icon(LucideIcons.list, size: 16),
+                        ),
                       ),
-                      PopupMenuItem(value: false, child: Text('Flat list')),
-                    ],
-                    onSelected: (value) => setState(() => _grouped = value),
+                      initialValue: _grouped,
+                      itemBuilder: (_) => const [
+                        PopupMenuItem(
+                          value: true,
+                          child: Text('Group by project'),
+                        ),
+                        PopupMenuItem(value: false, child: Text('Flat list')),
+                      ],
+                      onSelected: (value) => setState(() => _grouped = value),
+                    ),
                   ),
                 ],
               ),
@@ -251,15 +258,18 @@ class _DesktopFleetSidebarState extends ConsumerState<DesktopFleetSidebar> {
       );
       children.add(
         Padding(
-          padding: const EdgeInsets.only(bottom: 6),
+          padding: const EdgeInsets.fromLTRB(14, 0, 14, 6),
           child: Tooltip(
             message: 'New project',
             child: InkWell(
               key: const Key('sidebar-new-project-group'),
+              hoverColor: Colors.transparent,
+              splashColor: Colors.transparent,
+              highlightColor: Colors.transparent,
               onTap: () => widget.onNewProject(context, scope),
               child: Container(
                 constraints: const BoxConstraints(minHeight: 32),
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                padding: const EdgeInsets.symmetric(vertical: 6),
                 child: Row(
                   children: [
                     const Expanded(
@@ -344,7 +354,7 @@ class _DesktopFleetSidebarState extends ConsumerState<DesktopFleetSidebar> {
     return ListView(
       key: ValueKey('sidebar-list-${workspace.id}-${peon.id}'),
       primary: false,
-      padding: const EdgeInsets.only(right: 14),
+      padding: EdgeInsets.zero,
       children: children,
     );
   }
@@ -387,9 +397,14 @@ class _DesktopFleetSidebarState extends ConsumerState<DesktopFleetSidebar> {
       color: Theme.of(context).colorScheme.onSurface.withValues(alpha: .05),
       child: Row(
         children: [
+          const SizedBox(width: 14),
           IconButton(
             tooltip: '${collapsed ? 'Expand' : 'Collapse'} $title',
+            hoverColor: Colors.transparent,
+            splashColor: Colors.transparent,
+            highlightColor: Colors.transparent,
             constraints: const BoxConstraints.tightFor(width: 28, height: 32),
+            alignment: Alignment.centerLeft,
             padding: EdgeInsets.zero,
             icon: Icon(
               collapsed ? LucideIcons.chevronRight : LucideIcons.chevronDown,
@@ -400,6 +415,9 @@ class _DesktopFleetSidebarState extends ConsumerState<DesktopFleetSidebar> {
           Expanded(
             child: InkWell(
               onTap: onOpen ?? toggle,
+              hoverColor: Colors.transparent,
+              splashColor: Colors.transparent,
+              highlightColor: Colors.transparent,
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 8),
                 child: Text(
@@ -417,11 +435,16 @@ class _DesktopFleetSidebarState extends ConsumerState<DesktopFleetSidebar> {
           if (onNew != null)
             IconButton(
               tooltip: newTooltip ?? 'New chat in $title',
+              hoverColor: Colors.transparent,
+              splashColor: Colors.transparent,
+              highlightColor: Colors.transparent,
+              alignment: Alignment.centerRight,
               constraints: const BoxConstraints.tightFor(width: 28, height: 32),
               padding: EdgeInsets.zero,
               icon: const Icon(LucideIcons.plus, size: 15),
               onPressed: onNew,
             ),
+          const SizedBox(width: 14),
         ],
       ),
     );
@@ -491,7 +514,7 @@ class _SidebarRow extends StatelessWidget {
         onTap: onTap,
         child: Container(
           margin: const EdgeInsets.symmetric(vertical: 3),
-          padding: const EdgeInsets.fromLTRB(8, 4, 4, 4),
+          padding: const EdgeInsets.fromLTRB(12, 4, 14, 4),
           decoration: BoxDecoration(
             color: selected
                 ? Color.alphaBlend(

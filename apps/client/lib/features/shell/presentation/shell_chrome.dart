@@ -154,12 +154,9 @@ class ShellConnectionRail extends ConsumerWidget {
                   child: navigation,
                 ),
                 Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.only(left: 14),
-                    child: user != null
-                        ? sidebarBuilder(context)
-                        : const SizedBox.shrink(),
-                  ),
+                  child: user != null
+                      ? sidebarBuilder(context)
+                      : const SizedBox.shrink(),
                 ),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
