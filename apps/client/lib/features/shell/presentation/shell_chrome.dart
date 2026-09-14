@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../shared/ui_kit.dart';
+import '../../../shared/widgets/app_navigation_bar.dart';
 import '../../auth/domain/auth_models.dart';
 import 'overseer_switcher.dart';
 
@@ -40,45 +41,47 @@ class ShellConnectionRail extends ConsumerWidget {
     final navigation = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4),
-          child: Row(
-            children: [
-              Icon(LucideIcons.radioTower, size: 18, color: colors.primary),
-              const SizedBox(width: 9),
-              Text(
-                'OVERSEER',
-                style: AppTypography.sectionLabel(color: colors.onSurface),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 26),
-        if (ref.watch(overseerSwitcherProvider) case final switcher?)
-          OverseerSwitcher(data: switcher)
-        else
-          AppCard(
-            variant: SurfaceVariant.inset,
-            padding: const EdgeInsets.all(12),
+        if (sidebarBuilder == null) ...[
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
             child: Row(
               children: [
-                Expanded(
-                  child: Text(
-                    name,
-                    key: const Key('shell-overseer-name'),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppTypography.body(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: colors.onSurface,
-                    ),
-                  ),
+                Icon(LucideIcons.radioTower, size: 18, color: colors.primary),
+                const SizedBox(width: 9),
+                Text(
+                  'OVERSEER',
+                  style: AppTypography.sectionLabel(color: colors.onSurface),
                 ),
               ],
             ),
           ),
-        const SizedBox(height: 22),
+          const SizedBox(height: 26),
+          if (ref.watch(overseerSwitcherProvider) case final switcher?)
+            OverseerSwitcher(data: switcher)
+          else
+            AppCard(
+              variant: SurfaceVariant.inset,
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      name,
+                      key: const Key('shell-overseer-name'),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTypography.body(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: colors.onSurface,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          const SizedBox(height: 22),
+        ],
         AppSectionHeader(
           title: 'Workspace',
           padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -96,6 +99,29 @@ class ShellConnectionRail extends ConsumerWidget {
         const SizedBox(height: 24),
       ],
     );
+    final accountContents = user == null
+        ? const SizedBox.shrink()
+        : Row(
+            children: [
+              UserAvatar(
+                label: user!.email,
+                src: user!.avatarUrl,
+                size: UserAvatarSize.sm,
+              ),
+              const SizedBox(width: 9),
+              Expanded(
+                child: Text(
+                  user!.email,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTypography.body(
+                    fontSize: 11.5,
+                    color: colors.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            ],
+          );
     final footer = Column(
       key: const Key('shell-account-footer'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -105,27 +131,7 @@ class ShellConnectionRail extends ConsumerWidget {
           AppCard(
             variant: SurfaceVariant.subtle,
             padding: const EdgeInsets.all(10),
-            child: Row(
-              children: [
-                UserAvatar(
-                  label: user!.email,
-                  src: user!.avatarUrl,
-                  size: UserAvatarSize.sm,
-                ),
-                const SizedBox(width: 9),
-                Expanded(
-                  child: Text(
-                    user!.email,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppTypography.body(
-                      fontSize: 11.5,
-                      color: colors.onSurfaceVariant,
-                    ),
-                  ),
-                ),
-              ],
-            ),
+            child: accountContents,
           ),
           const SizedBox(height: 10),
         ],
@@ -149,6 +155,28 @@ class ShellConnectionRail extends ConsumerWidget {
           ? Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                AppNavigationBar(
+                  contentPadding: EdgeInsets.zero,
+                  left: ref.watch(overseerSwitcherProvider) != null
+                      ? OverseerSwitcher(
+                          data: ref.watch(overseerSwitcherProvider)!,
+                          plain: true,
+                        )
+                      : Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 14),
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              name,
+                              key: const Key('shell-overseer-name'),
+                              style: AppTypography.body(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ),
+                ),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(14, 18, 14, 0),
                   child: navigation,
@@ -158,9 +186,16 @@ class ShellConnectionRail extends ConsumerWidget {
                       ? sidebarBuilder(context)
                       : const SizedBox.shrink(),
                 ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
-                  child: footer,
+                Container(
+                  key: const Key('shell-account-footer'),
+                  height: AppNavigationBar.fixedContentHeight,
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  decoration: BoxDecoration(
+                    border: Border(
+                      top: BorderSide(color: colors.outlineVariant, width: 0.5),
+                    ),
+                  ),
+                  child: accountContents,
                 ),
               ],
             )

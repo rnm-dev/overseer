@@ -110,7 +110,7 @@ void main() {
       expect(find.byKey(const Key('desktop-fleet-sidebar')), findsOneWidget);
       expect(
         tester.getBottomLeft(find.byKey(const Key('shell-account-footer'))).dy,
-        986,
+        1000,
       );
       expect(find.text('Alpha'), findsOneWidget);
       BoxDecoration chatDecoration() =>
@@ -134,8 +134,7 @@ void main() {
         tester
             .getBottomLeft(find.byKey(const ValueKey('sidebar-list-rnm-one')))
             .dy,
-        tester.getTopLeft(find.byKey(const Key('shell-account-footer'))).dy -
-            12,
+        tester.getTopLeft(find.byKey(const Key('shell-account-footer'))).dy,
       );
       expect(find.text('Deleted'), findsNothing);
       expect(find.byKey(const ValueKey('sidebar-chat-orphan')), findsOneWidget);
@@ -196,8 +195,7 @@ void main() {
           tester
               .getBottomLeft(find.byKey(const ValueKey('sidebar-list-rnm-two')))
               .dy,
-          tester.getTopLeft(find.byKey(const Key('shell-account-footer'))).dy -
-              12,
+          tester.getTopLeft(find.byKey(const Key('shell-account-footer'))).dy,
         );
         expect(tester.takeException(), isNull);
       }
@@ -212,7 +210,7 @@ void main() {
       await tester.pumpAndSettle();
       final footer = find.byKey(const Key('shell-account-footer'));
       final footerBefore = tester.getRect(footer);
-      expect(footerBefore.bottom, 486);
+      expect(footerBefore.bottom, 500);
       final header = find.byKey(const Key('shell-overview-navigation'));
       final headerBefore = tester.getRect(header);
       final selector = find.byKey(const Key('sidebar-peon-selector'));
@@ -235,8 +233,8 @@ void main() {
         ),
         findsOneWidget,
       );
-      await tester.tap(find.byKey(const Key('shell-back-to-connections')));
-      expect(returnedToConnections, isTrue);
+      expect(find.byKey(const Key('shell-back-to-connections')), findsNothing);
+      expect(returnedToConnections, isFalse);
       expect(tester.takeException(), isNull);
     },
   );

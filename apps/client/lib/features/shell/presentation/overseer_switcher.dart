@@ -22,8 +22,20 @@ class OverseerSwitcherData {
 }
 
 class OverseerSwitcher extends StatelessWidget {
-  const OverseerSwitcher({super.key, required this.data});
+  const OverseerSwitcher({super.key, required this.data, this.plain = false});
   final OverseerSwitcherData data;
+  final bool plain;
+
+  Widget _surface({required Widget child}) => plain
+      ? Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          child: child,
+        )
+      : AppCard(
+          variant: SurfaceVariant.inset,
+          padding: const EdgeInsets.all(12),
+          child: child,
+        );
 
   @override
   Widget build(BuildContext context) {
@@ -108,9 +120,7 @@ class OverseerSwitcher extends StatelessWidget {
           ),
         ),
       ],
-      child: AppCard(
-        variant: SurfaceVariant.inset,
-        padding: const EdgeInsets.all(12),
+      child: _surface(
         child: Row(
           children: [
             Expanded(
