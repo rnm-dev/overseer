@@ -21,7 +21,19 @@
         "type": "google-service-account",
         "name": "Production Google",
         "status": "verified",
-        "configuredFields": { "serviceAccountJson": true }
+        "configuredFields": { "serviceAccountJson": true },
+        "identity": { "label": "Service account email", "value": "drive-sync@example-project.iam.gserviceaccount.com" }
+      }
+    },
+    {
+      "schema": "profile",
+      "value": {
+        "profileId": "57ba5e9e-3ed2-4a92-919f-9f60ee69a451",
+        "type": "filesystem",
+        "name": "Local workspace",
+        "status": "verified",
+        "configuredFields": { "rootPath": true },
+        "identity": null
       }
     },
     {

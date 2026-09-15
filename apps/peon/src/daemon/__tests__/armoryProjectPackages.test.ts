@@ -262,3 +262,56 @@ test("restart recovery terminates interrupted durable profile operations safely"
   assert.equal(recovered?.errorCode, "INTERRUPTED_OPERATION");
   assert.match(recovered?.message ?? "", /profile/i);
 });
+
+test("a Google profile exposes only the service account address it acts as", async () => {
+  const { stores, manifests, service } = fixture();
+  await stores.installed.set(installed("drive"));
+  manifests.set("drive", manifest("drive", { type: "google-service-account", requiredFields: ["serviceAccountJson"] }));
+  await service.initializeMigration();
+
+  const keyFile = JSON.stringify({
+    type: "service_account",
+    project_id: "example-project",
+    private_key_id: "write-only-sentinel",
+    private_key: "-----BEGIN PRIVATE KEY-----write-only-sentinel-----END PRIVATE KEY-----",
+    client_email: "drive-sync@example-project.iam.gserviceaccount.com",
+  });
+  const profile = await service.createProfile("google-service-account", "Production Google");
+  assert.equal(profile.identity, null);
+  const configured = await service.configureProfile(profile.profileId, { serviceAccountJson: keyFile });
+  assert.equal((await service.operations.wait(configured.id)).status, "success");
+
+  const safe = await service.getProfile(profile.profileId);
+  assert.deepEqual(safe.identity, { label: "Service account email", value: "drive-sync@example-project.iam.gserviceaccount.com" });
+  const serialized = JSON.stringify(safe);
+  assert.equal(serialized.includes("write-only-sentinel"), false);
+  assert.equal(serialized.includes("BEGIN PRIVATE KEY"), false);
+  assert.equal(serialized.includes("example-project\""), false);
+  assert.deepEqual((await service.listProfiles()).profiles.map((entry) => entry.identity?.value), ["drive-sync@example-project.iam.gserviceaccount.com"]);
+  assert.equal((await service.legacyConfigurationSchema("drive")).identity, null);
+});
+
+test("no identity is derived from another profile type or from an unusable key file", async () => {
+  const { stores, manifests, service } = fixture();
+  await stores.installed.set(installed("drive"));
+  manifests.set("drive", manifest("drive", { type: "google-service-account", requiredFields: ["serviceAccountJson"] }));
+  await service.initializeMigration();
+
+  const cases: Array<[string, string]> = [
+    ["not JSON at all", "ya29.write-only-sentinel"],
+    ["JSON without a client_email", JSON.stringify({ type: "service_account", private_key: "write-only-sentinel" })],
+    ["a client_email that is not an address", JSON.stringify({ client_email: "write-only-sentinel" })],
+    ["a non-string client_email", JSON.stringify({ client_email: { value: "a@b.co" } })],
+  ];
+  const profile = await service.createProfile("google-service-account", "Broken Google");
+  for (const [reason, value] of cases) {
+    const operation = await service.configureProfile(profile.profileId, { serviceAccountJson: value });
+    assert.equal((await service.operations.wait(operation.id)).status, "success");
+    assert.equal((await service.getProfile(profile.profileId)).identity, null, reason);
+  }
+
+  const other = await service.createProfile("aws-credentials", "Not Google");
+  const configured = await service.configureProfile(other.profileId, { serviceAccountJson: JSON.stringify({ client_email: "a@b.co" }) });
+  assert.equal((await service.operations.wait(configured.id)).status, "success");
+  assert.equal((await service.getProfile(other.profileId)).identity, null);
+});

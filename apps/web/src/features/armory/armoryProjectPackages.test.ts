@@ -37,10 +37,12 @@ const profileId = "57ba5e9e-3ed2-4a92-919f-9f60ee69a450";
 const projectId = "87b68e30-a923-48b4-9a58-f561a2390083";
 const operationId = "f09663fc-fc80-4314-a7e6-70b14dd29473";
 const requirement: ArmoryProfileRequirement = { type: "google-service-account", requiredFields: ["serviceAccountJson"] };
-const verified: ArmoryProfile = { profileId, type: requirement.type, name: "Shared Google", status: "verified", configuredFields: { serviceAccountJson: true } };
+const serviceAccountEmail = "drive-sync@example-project.iam.gserviceaccount.com";
+const identity = { label: "Service account email", value: serviceAccountEmail };
+const verified: ArmoryProfile = { profileId, type: requirement.type, name: "Shared Google", status: "verified", configuredFields: { serviceAccountJson: true }, identity };
 const unverified: ArmoryProfile = { ...verified, profileId: "57ba5e9e-3ed2-4a92-919f-9f60ee69a451", name: "Staging Google", status: "unverified" };
-const missing: ArmoryProfile = { ...verified, profileId: "57ba5e9e-3ed2-4a92-919f-9f60ee69a452", name: "Empty Google", status: "missing", configuredFields: {} };
-const mismatch: ArmoryProfile = { ...verified, profileId: "57ba5e9e-3ed2-4a92-919f-9f60ee69a453", name: "GitHub", type: "github-token" };
+const missing: ArmoryProfile = { ...verified, profileId: "57ba5e9e-3ed2-4a92-919f-9f60ee69a452", name: "Empty Google", status: "missing", configuredFields: {}, identity: null };
+const mismatch: ArmoryProfile = { ...verified, profileId: "57ba5e9e-3ed2-4a92-919f-9f60ee69a453", name: "GitHub", type: "github-token", identity: null };
 const schema: ArmoryConfiguration = {
   packageId: "google-drive",
   fields: [{ id: "serviceAccountJson", label: "Service account JSON", help: "Write-only JSON credential.", type: "secret", required: true }],
@@ -210,4 +212,36 @@ test("profile operation states distinguish active, success, and stable terminal 
   assert.equal(profileOperationActive({ operationId, kind: "profile_verify", status: "running", code: null }), true);
   assert.equal(profileOperationActive({ operationId, kind: "profile_verify", status: "succeeded", code: null }), false);
   assert.equal(profileOperationActive({ operationId, kind: "profile_verify", status: "failed", code: "PROFILE_NOT_VERIFIED" }), false);
+});
+
+test("the service account address is shown and copyable wherever package configuration is", () => {
+  const profiles = renderToStaticMarkup(createElement(MemoryRouter, null, createElement(ArmoryProfilesPanel, {
+    base: "/p", requirement, schema, profiles: [verified, missing], loading: false, error: null, onRefresh: async () => {},
+  })));
+  assert.match(profiles, new RegExp(serviceAccountEmail));
+  assert.match(profiles, /Service account email/);
+  assert.match(profiles, /Grant this address access/);
+  // One identity: the profile without a derived address shows nothing.
+  assert.equal(profiles.match(new RegExp(serviceAccountEmail, "g"))?.length, 1);
+
+  const assigned = renderToStaticMarkup(createElement(MemoryRouter, null, createElement(ProjectPackageAssignmentCard, {
+    item: packageItem, assignment: { projectId, packageId: packageItem.id, profileId }, profiles: [verified], busy: false,
+    settingsLink: "/peons/p/settings/armory/google-drive", newProfileLink: "/peons/p/projects/site/tools/new-profile?package=google-drive",
+    onAssign: async () => {}, onRemove: async () => {},
+  })));
+  assert.match(assigned, new RegExp(serviceAccountEmail));
+  assert.match(assigned, />Copy</);
+
+  const unassigned = renderToStaticMarkup(createElement(MemoryRouter, null, createElement(ProjectPackageAssignmentCard, {
+    item: packageItem, assignment: null, profiles: [verified], busy: false,
+    settingsLink: "/peons/p/settings/armory/google-drive", newProfileLink: "/peons/p/projects/site/tools/new-profile?package=google-drive",
+    onAssign: async () => {}, onRemove: async () => {},
+  })));
+  assert.doesNotMatch(unassigned, new RegExp(serviceAccountEmail));
+
+  // A Peon that sends no identity renders no identity row at all.
+  const withoutIdentity = renderToStaticMarkup(createElement(MemoryRouter, null, createElement(ArmoryProfilesPanel, {
+    base: "/p", requirement, schema, profiles: [{ ...verified, identity: undefined }], loading: false, error: null, onRefresh: async () => {},
+  })));
+  assert.doesNotMatch(withoutIdentity, /Service account email|Grant this address access/);
 });

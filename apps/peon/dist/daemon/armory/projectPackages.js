@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { armoryProjectPackagesStateSchema, MAX_ARMORY_ASSIGNMENTS_PER_PROJECT, MAX_ARMORY_PROFILES, parseArmoryManifest, } from "./contracts.js";
 import { getArmoryActivation, retireLegacyArmoryActivationState } from "./installer.js";
+import { armoryProfileIdentity } from "./profileIdentity.js";
 import { ArmoryOperationCoordinator, ArmoryOperationError, withArmoryPackageLock } from "./operationCoordinator.js";
 import { assertPackageId, packageVersionPath, resolveContainedPath } from "./paths.js";
 export const ARMORY_PROJECT_PACKAGES_CAPABILITY = "armory-project-packages-v1";
@@ -20,6 +21,7 @@ function safeProfile(profile) {
         name: profile.name,
         status: profile.status,
         configuredFields: Object.fromEntries(Object.keys(profile.values).sort().map((field) => [field, true])),
+        identity: armoryProfileIdentity(profile.type, profile.values),
     };
 }
 function profileLockId(profileId) {
@@ -279,6 +281,7 @@ export class ArmoryProjectPackagesService {
             fields: manifest.configuration?.fields ?? [],
             configured: profile ? safeProfile(profile).configuredFields : {},
             hostWrites: manifest.permissions.hostPaths.filter((entry) => entry.mode === "write").map((entry) => entry.path),
+            identity: profile ? safeProfile(profile).identity : null,
         };
     }
     async configureLegacyPackageProfile(packageId, values) {

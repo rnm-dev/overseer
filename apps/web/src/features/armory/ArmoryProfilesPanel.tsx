@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState, type ChangeEvent } from "react";
 import { ApiError } from "../../shared/api";
+import { ArmoryIdentityRow } from "./ArmoryProfileIdentity";
 import { Badge, Button, Card, Dialog } from "../../shared/ui";
 import {
   ArmoryActionGate,
@@ -179,6 +180,7 @@ function ProfileCard({ base, profile, requirement, schema, onRefresh }: {
       {readiness === "missing_fields" ? `Missing required fields: ${missingFields.join(", ") || "configuration"}.` : readiness === "invalid" ? "The latest profile configuration or verification failed." : readiness === "unverified" ? "Configured profile has not been verified." : "Profile type does not match this package."}
     </div>}
     <dl className="mt-4 grid gap-3 sm:grid-cols-2"><div><dt className="font-mono text-xs text-ink-faint">Configured fields</dt><dd className="mt-1 text-sm text-ink">{Object.keys(profile.configuredFields).length ? Object.keys(profile.configuredFields).join(", ") : "None"}</dd></div><div><dt className="font-mono text-xs text-ink-faint">Verification</dt><dd className="mt-1 text-sm capitalize text-ink">{profile.status}</dd></div></dl>
+    <ArmoryIdentityRow identity={profile.identity} className="mt-4 border-t border-edge pt-4" />
     <div className="mt-4 flex flex-wrap gap-2"><Button type="button" size="sm" variant="secondary" disabled={busy} onClick={() => setEditingConfiguration((value) => !value)}>{editingConfiguration ? "Hide configuration" : "Configure"}</Button><Button type="button" size="sm" disabled={busy || missingFields.length > 0 || profile.status === "missing"} title={missingFields.length ? "Configure every required field before verifying." : undefined} onClick={() => void run("verify")}>Verify</Button></div>
     {editingConfiguration && <form className="mt-4 space-y-4 border-t border-edge pt-4" autoComplete="off" onSubmit={(event) => { event.preventDefault(); void run("configure"); }}>
       {schema.fields.map((field) => <ProfileField key={field.id} field={field} value={values[field.id] ?? ""} configured={profile.configuredFields[field.id] === true} error={errors[field.id]} disabled={busy} onValue={(value) => { setValues((current) => ({ ...current, [field.id]: value })); setErrors((current) => { const next = { ...current }; delete next[field.id]; return next; }); }} />)}

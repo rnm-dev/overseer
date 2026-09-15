@@ -45,13 +45,39 @@ A safe profile contains only:
   "type": "google-service-account",
   "name": "Production Google",
   "status": "verified",
-  "configuredFields": { "serviceAccountJson": true }
+  "configuredFields": { "serviceAccountJson": true },
+  "identity": {
+    "label": "Service account email",
+    "value": "drive-sync@example-project.iam.gserviceaccount.com"
+  }
 }
 ```
 
 `configuredFields` contains booleans only. Reads, logs, errors, projections and
 transcripts never contain submitted values, hashes, lengths, prefixes or other
 credential oracles.
+
+`identity` is the single deliberate exception, and it is not an oracle: it is
+the public address the credential acts as, which the operator has to grant
+access to elsewhere before the package can do anything. A Google service
+account is unusable until its address is added to the Drive folder, the Sheet
+or the IAM binding it should reach, and a write-only key file otherwise hides
+that address from the person who must paste it.
+
+Only a declared profile type has an identity, and only one field of a
+well-formed credential may produce it: for `google-service-account` that is
+`client_email` in the key file, validated as an address and bounded at 320
+characters. Nothing else in the file is read, a type with no declaration has
+`identity: null`, and an unparseable or unexpected value yields `null` rather
+than a fragment of the stored value. Peon derives it on read — it is not stored
+— and Overseer relays it only in that exact shape, refusing a response whose
+`identity` is malformed. A Peon older than this contract omits the field, which
+reads as no identity.
+
+Every operator surface that shows a package's configuration shows the identity
+with a copy button: the Peon's Armory profile cards, the per-package
+configuration panel and the project Tools assignment card of an assigned
+profile.
 
 An assignment is deliberately small:
 

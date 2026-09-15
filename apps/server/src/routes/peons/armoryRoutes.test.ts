@@ -85,7 +85,7 @@ test("typed Armory relays reconstruct bounded safe resources and operations", ()
     status: 200,
     json: { profileId, type: "google-service-account", name: "Shared", status: "verified", configuredFields: { serviceAccountJson: true }, values: { serviceAccountJson: secret } },
   }).json, {
-    profileId, type: "google-service-account", name: "Shared", status: "verified", configuredFields: { serviceAccountJson: true },
+    profileId, type: "google-service-account", name: "Shared", status: "verified", configuredFields: { serviceAccountJson: true }, identity: null,
   });
   assert.deepEqual(safeAssignmentResult({
     status: 200,
@@ -111,6 +111,27 @@ test("typed Armory relays reconstruct bounded safe resources and operations", ()
     status: 502,
     json: { error: secret, code: "PEON_UNREACHABLE" },
   })), new RegExp(secret));
+});
+
+test("a profile identity is relayed whole, bounded, and refused when malformed", () => {
+  const profileId = "57ba5e9e-3ed2-4a92-919f-9f60ee69a450";
+  const profile = (identity: unknown) => ({
+    status: 200,
+    json: { profileId, type: "google-service-account", name: "Shared", status: "verified", configuredFields: { serviceAccountJson: true }, identity },
+  });
+  const email = "drive-sync@example-project.iam.gserviceaccount.com";
+  assert.deepEqual((safeProfileResult(profile({ label: "Service account email", value: email })).json as { identity: unknown }).identity,
+    { label: "Service account email", value: email });
+  // A Peon that predates the identity contract simply has none.
+  assert.equal((safeProfileResult(profile(undefined)).json as { identity: unknown }).identity, null);
+  assert.equal((safeProfileResult(profile(null)).json as { identity: unknown }).identity, null);
+  const unsafe = { status: 502, json: { error: "Peon returned an unsafe Armory response.", code: "UNSAFE_ARMORY_RESULT" } };
+  assert.deepEqual(safeProfileResult(profile({ label: "Service account email" })), unsafe);
+  assert.deepEqual(safeProfileResult(profile({ label: "", value: email })), unsafe);
+  assert.deepEqual(safeProfileResult(profile({ label: "Service account email", value: "x".repeat(321) })), unsafe);
+  assert.deepEqual(safeProfileResult(profile("drive-sync@example-project.iam.gserviceaccount.com")), unsafe);
+  assert.deepEqual((safeProfileResult(profile({ label: "Service account email", value: email, extra: "leak" })).json as { identity: unknown }).identity,
+    { label: "Service account email", value: email });
 });
 
 test("profile operation polling strips diagnostics and rejects unsafe custom codes", () => {

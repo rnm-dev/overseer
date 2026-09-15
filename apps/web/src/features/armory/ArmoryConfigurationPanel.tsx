@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState, type ChangeEvent } from "react";
 import { CheckCircle2, Pencil } from "lucide-react";
 import { ApiError, api } from "../../shared/api";
+import { ArmoryIdentityRow } from "./ArmoryProfileIdentity";
 import { Badge, Button, Card, Dialog } from "../../shared/ui";
 import {
   armoryOperationProgress,
@@ -263,8 +264,9 @@ export function ArmoryConfigurationPanel({ base, packageId, installed, schema, s
             <Button type="button" variant="ghost" aria-haspopup="dialog" onClick={() => setDeleteOpen(true)}>Delete</Button>
           </div>
         </div>
+        <ArmoryIdentityRow identity={schema.identity} className="mt-5 border-t border-edge pt-5" />
       </Card>}
-      {schema && schema.fields.length > 0 && (!configured || editing || operationActive(operation)) && <Card className="p-5"><form className="space-y-5" onSubmit={(event) => { event.preventDefault(); void submit(); }} autoComplete="off">
+      {schema && schema.fields.length > 0 && (!configured || editing || operationActive(operation)) && <Card className="p-5"><ArmoryIdentityRow identity={schema.identity} className="mb-5 border-b border-edge pb-5" /><form className="space-y-5" onSubmit={(event) => { event.preventDefault(); void submit(); }} autoComplete="off">
         {schema.fields.map((field) => <FieldControl key={field.id} packageId={packageId} field={field} value={values[field.id] ?? ""} error={errors[field.id]} configured={schema.configured[field.id] === true} disabled={busy} onValue={(value) => { setValues((current) => ({ ...current, [field.id]: value })); setErrors((current) => { const next = { ...current }; delete next[field.id]; return next; }); }} />)}
         {schema.hostWrites.length > 0 && <Card className="border-warning/50 bg-warning/[0.03] p-4"><h3 className="font-display text-sm font-bold text-warning-strong">Host writes</h3><p className="mt-2 text-sm text-ink-muted">This package may write outside its managed Armory home at these exact paths:</p><ul className="mt-2 space-y-1 font-mono text-xs text-ink">{schema.hostWrites.map((path) => <li key={path} className="break-all">{path}</li>)}</ul><label className="mt-3 flex items-start gap-2 text-sm text-ink"><input type="checkbox" className="mt-0.5 accent-accent" checked={hostConfirmed} disabled={busy} onChange={(event) => { setHostConfirmed(event.target.checked); setErrors((current) => { const next = { ...current }; delete next.$hostWrites; return next; }); }} />I confirm these host-write paths.</label>{errors.$hostWrites && <p role="alert" className="mt-2 text-xs text-danger">{errors.$hostWrites}</p>}</Card>}
         {Boolean(requestError) && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 border-l-2 border-danger bg-danger/5 p-3 text-sm text-danger"><span>Peon rejected the configuration.</span>{operationConflict && <Button type="button" size="sm" variant="secondary" onClick={() => { setRequestError(null); void onRefresh(); }}>Refresh operation status</Button>}</div>}

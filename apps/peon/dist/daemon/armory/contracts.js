@@ -283,12 +283,19 @@ export const armoryProfileRequirementSchema = z.object({
     type: profileType,
     requiredFields: z.array(fieldId).max(64).refine((fields) => new Set(fields).size === fields.length, "duplicate required field id"),
 }).strict();
+export const armoryProfileIdentitySchema = z.object({
+    label: z.string().min(1).max(120),
+    value: z.string().min(1).max(320),
+}).strict();
 export const armoryProfileSchema = z.object({
     profileId: z.string().uuid(),
     type: profileType,
     name: z.string().trim().min(1).max(80),
     status: armoryProfileStatusSchema,
     configuredFields: z.record(fieldId, z.literal(true)).refine((fields) => Object.keys(fields).length <= 64, "too many configured fields"),
+    // The public identity the credential acts as, never secret material. See
+    // profileIdentity.ts for what may be derived and why.
+    identity: armoryProfileIdentitySchema.nullable(),
 }).strict();
 export const armoryAssignmentSchema = z.object({
     projectId: z.string().uuid(),

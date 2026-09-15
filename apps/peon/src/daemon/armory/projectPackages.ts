@@ -10,12 +10,14 @@ import {
   type ArmoryManifest,
   type ArmoryOperation,
   type ArmoryProfile,
+  type ArmoryProfileIdentity,
   type ArmoryProfileStatus,
   type ArmoryProjectPackagesState,
   type InstalledArmoryPackage,
   type StoredArmoryProfile,
 } from "./contracts.js";
 import { getArmoryActivation, retireLegacyArmoryActivationState } from "./installer.js";
+import { armoryProfileIdentity } from "./profileIdentity.js";
 import { ArmoryOperationCoordinator, ArmoryOperationError, withArmoryPackageLock } from "./operationCoordinator.js";
 import { assertPackageId, packageVersionPath, resolveContainedPath } from "./paths.js";
 import type { ArmoryStores } from "./stores.js";
@@ -47,6 +49,7 @@ function safeProfile(profile: StoredArmoryProfile): ArmoryProfile {
     name: profile.name,
     status: profile.status,
     configuredFields: Object.fromEntries(Object.keys(profile.values).sort().map((field) => [field, true])),
+    identity: armoryProfileIdentity(profile.type, profile.values),
   };
 }
 
@@ -312,7 +315,7 @@ export class ArmoryProjectPackagesService {
     });
   }
 
-  async legacyConfigurationSchema(packageId: string): Promise<{ fields: ArmoryConfigurationField[]; configured: Record<string, boolean>; hostWrites: string[] }> {
+  async legacyConfigurationSchema(packageId: string): Promise<{ fields: ArmoryConfigurationField[]; configured: Record<string, boolean>; hostWrites: string[]; identity: ArmoryProfileIdentity | null }> {
     const { manifest } = await this.resolveManifest(packageId);
     // The field contract belongs to the installed manifest, not to a profile.
     // A package installed after the migration, or one that was never
@@ -323,6 +326,7 @@ export class ArmoryProjectPackagesService {
       fields: manifest.configuration?.fields ?? [],
       configured: profile ? safeProfile(profile).configuredFields : {},
       hostWrites: manifest.permissions.hostPaths.filter((entry) => entry.mode === "write").map((entry) => entry.path),
+      identity: profile ? safeProfile(profile).identity : null,
     };
   }
 

@@ -56,16 +56,33 @@
         "profileRequirement": { "$ref": "#/$defs/profileRequirement" }
       }
     },
+    "profileIdentity": {
+      "description": "The public address the credential acts as, derived from stored values and safe to show and copy. Never secret material, a hash, a length or a prefix.",
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["label", "value"],
+          "properties": {
+            "label": { "type": "string", "minLength": 1, "maxLength": 120 },
+            "value": { "type": "string", "minLength": 1, "maxLength": 320 }
+          },
+          "examples": [{ "label": "Service account email", "value": "drive-sync@example-project.iam.gserviceaccount.com" }]
+        }
+      ]
+    },
     "profile": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["profileId", "type", "name", "status", "configuredFields"],
+      "required": ["profileId", "type", "name", "status", "configuredFields", "identity"],
       "properties": {
         "profileId": { "$ref": "#/$defs/uuid" },
         "type": { "$ref": "#/$defs/profileType" },
         "name": { "type": "string", "minLength": 1, "maxLength": 80 },
         "status": { "enum": ["missing", "unverified", "verified", "invalid"] },
-        "configuredFields": { "$ref": "#/$defs/configuredFields" }
+        "configuredFields": { "$ref": "#/$defs/configuredFields" },
+        "identity": { "$ref": "#/$defs/profileIdentity" }
       }
     },
     "assignment": {
