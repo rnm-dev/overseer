@@ -49,5 +49,12 @@
   "toolActivityCommand": "Performed a technical operation",
   "toolActivityGeneric": "Performed an action",
   "toolActivityFailedShort": "failed",
-  "showTechnicalDetails": "Show technical details"
+  "showTechnicalDetails": "Show technical details",
+  "sessionRecoveryTitle": "This session could not be continued",
+  "sessionRecoveryTimeout": "Its long Codex history timed out while being prepared. You can continue in a clean session with the same project, folder, model, and effort.",
+  "sessionRecoveryMissingHistory": "Part of the Codex thread history is missing, so this session cannot be resumed.",
+  "sessionRecoveryNotExecuted": "Your last request was not executed and will be carried into the new session.",
+  "sessionRecoveryAction": "Continue in a new session",
+  "sessionRecoveryCreating": "Creating session…",
+  "sessionRecoveryFailed": "Could not create a continuation session."
 }

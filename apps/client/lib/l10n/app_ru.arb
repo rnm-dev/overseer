@@ -47,5 +47,12 @@
   "toolActivityCommand": "Выполнена техническая операция",
   "toolActivityGeneric": "Выполнено действие",
   "toolActivityFailedShort": "ошибка",
-  "showTechnicalDetails": "Показать технические детали"
+  "showTechnicalDetails": "Показать технические детали",
+  "sessionRecoveryTitle": "Эту сессию не удалось продолжить",
+  "sessionRecoveryTimeout": "Подготовка длинной истории Codex не уложилась в отведённое время. Можно продолжить в чистой сессии с тем же проектом, каталогом, моделью и эффортом.",
+  "sessionRecoveryMissingHistory": "Часть истории треда Codex потеряна, поэтому эту сессию больше нельзя возобновить.",
+  "sessionRecoveryNotExecuted": "Последний запрос не выполнялся и будет перенесён в новую сессию.",
+  "sessionRecoveryAction": "Продолжить в новой сессии",
+  "sessionRecoveryCreating": "Создаём сессию…",
+  "sessionRecoveryFailed": "Не удалось создать сессию для продолжения."
 }

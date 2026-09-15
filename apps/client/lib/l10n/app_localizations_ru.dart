@@ -171,4 +171,29 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get showTechnicalDetails => 'Показать технические детали';
+
+  @override
+  String get sessionRecoveryTitle => 'Эту сессию не удалось продолжить';
+
+  @override
+  String get sessionRecoveryTimeout =>
+      'Подготовка длинной истории Codex не уложилась в отведённое время. Можно продолжить в чистой сессии с тем же проектом, каталогом, моделью и эффортом.';
+
+  @override
+  String get sessionRecoveryMissingHistory =>
+      'Часть истории треда Codex потеряна, поэтому эту сессию больше нельзя возобновить.';
+
+  @override
+  String get sessionRecoveryNotExecuted =>
+      'Последний запрос не выполнялся и будет перенесён в новую сессию.';
+
+  @override
+  String get sessionRecoveryAction => 'Продолжить в новой сессии';
+
+  @override
+  String get sessionRecoveryCreating => 'Создаём сессию…';
+
+  @override
+  String get sessionRecoveryFailed =>
+      'Не удалось создать сессию для продолжения.';
 }

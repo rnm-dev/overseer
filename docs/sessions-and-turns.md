@@ -35,6 +35,22 @@ navigates to the accepted session. A transcript-leading, non-transcript lineage
 notice links branches through `branchedFromSessionId` and delegated
 sub-sessions through `parentSessionId`.
 
+### Recovering when Codex cannot prepare a continuation
+
+An error result containing either `thread/fork timed out after <n>ms` or
+`invalid paginated history lineage ... missing source rollout` is not presented
+as an ordinary failed agent turn. The web transcript explains that the request
+never ran and offers **Continue in a new session**. That action starts an
+independent session through the ordinary new-session endpoint, preserving the
+project, working directory, agent, model and reasoning effort. Its opening
+prompt names and links the source Peon session and includes the last unexecuted
+user request; it explicitly tells the new agent not to fork or resume the old
+provider thread.
+
+This recovery is always an operator choice. A fork timeout may be transient,
+while a missing rollout is terminal, but neither case may silently discard
+provider-native history.
+
 ## Queue and steering
 
 Queue items expose a stable `type: "queue" | "steer"`; steering preserves the

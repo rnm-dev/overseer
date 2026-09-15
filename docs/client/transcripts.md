@@ -114,6 +114,13 @@ flattens them into the same semantic rows as the web client:
 - Completion cues play only for successful results received after the mounted
   transcript has caught up to its opening snapshot. Tail events replayed while
   opening a session, including unread results, remain silent.
+- A terminal result whose structured errors report a Codex `thread/fork`
+  timeout or missing paginated source rollout renders a recovery card instead
+  of leaving the transport detail unexplained. The operator can explicitly
+  start an independent session with the same project, directory, agent, model
+  and reasoning effort. Its opening prompt references the source Peon session
+  and carries the last request that never ran; recovery never retries the
+  provider-native fork.
 - Work clips, completion cues, and sound-pack previews mix with audio from
   other apps. They do not claim Android audio focus or interrupt an active iOS
   music session.

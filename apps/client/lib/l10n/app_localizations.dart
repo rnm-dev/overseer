@@ -385,6 +385,48 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Show technical details'**
   String get showTechnicalDetails;
+
+  /// No description provided for @sessionRecoveryTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'This session could not be continued'**
+  String get sessionRecoveryTitle;
+
+  /// No description provided for @sessionRecoveryTimeout.
+  ///
+  /// In en, this message translates to:
+  /// **'Its long Codex history timed out while being prepared. You can continue in a clean session with the same project, folder, model, and effort.'**
+  String get sessionRecoveryTimeout;
+
+  /// No description provided for @sessionRecoveryMissingHistory.
+  ///
+  /// In en, this message translates to:
+  /// **'Part of the Codex thread history is missing, so this session cannot be resumed.'**
+  String get sessionRecoveryMissingHistory;
+
+  /// No description provided for @sessionRecoveryNotExecuted.
+  ///
+  /// In en, this message translates to:
+  /// **'Your last request was not executed and will be carried into the new session.'**
+  String get sessionRecoveryNotExecuted;
+
+  /// No description provided for @sessionRecoveryAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Continue in a new session'**
+  String get sessionRecoveryAction;
+
+  /// No description provided for @sessionRecoveryCreating.
+  ///
+  /// In en, this message translates to:
+  /// **'Creating session…'**
+  String get sessionRecoveryCreating;
+
+  /// No description provided for @sessionRecoveryFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not create a continuation session.'**
+  String get sessionRecoveryFailed;
 }
 
 class _AppLocalizationsDelegate

@@ -11,6 +11,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:overseer_mobile/l10n/l10n.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/live/active_sessions.dart';
@@ -53,6 +54,7 @@ import '../domain/file_link_transformer.dart';
 import '../domain/new_session_repository.dart';
 import '../domain/pasted_text.dart';
 import '../domain/session_models.dart';
+import '../domain/session_continuation_recovery.dart';
 import 'capability_choices.dart';
 import 'session_composer.dart';
 import 'session_file_viewer_page.dart';
@@ -125,6 +127,8 @@ class _SessionDetailPageState extends _SessionDetailAttachmentHost
   @override
   bool _readingAttachments = false;
   bool _startingSession = false;
+  bool _recoveringSession = false;
+  String? _recoveryError;
   bool _backgrounded = false;
   bool _presenceRestored = false;
   String? _selectedProjectKey;
@@ -512,6 +516,12 @@ class _SessionDetailPageState extends _SessionDetailAttachmentHost
                                           )
                                           .setReplyTo(reply)
                                     : null,
+                                recovering: _recoveringSession,
+                                recoveryError: _recoveryError,
+                                onRecover: (failure, prompt) => _recoverSession(
+                                  details: details,
+                                  prompt: prompt,
+                                ),
                               ),
                       ),
                     ),
@@ -989,6 +999,86 @@ class _SessionDetailPageState extends _SessionDetailAttachmentHost
         sessionId: created.sessionId,
       ),
     );
+  }
+
+  Future<void> _recoverSession({
+    required SessionDetails? details,
+    required String? prompt,
+  }) async {
+    final source = session;
+    if (source == null || _recoveringSession) return;
+    setState(() {
+      _recoveringSession = true;
+      _recoveryError = null;
+    });
+    final origin = ref.read(overseerServerUrlProvider)?.origin ?? '';
+    final sourceUrl =
+        '$origin/workspaces/${Uri.encodeComponent(workspaceId)}'
+        '/sessions/${Uri.encodeComponent(peonId)}/${Uri.encodeComponent(source.sessionId)}';
+    try {
+      final created = await ref
+          .read(newSessionRepositoryProvider)
+          .createSession(
+            NewSessionRequest(
+              workspaceId: workspaceId,
+              peonId: peonId,
+              requestId: _recoveryRequestId(),
+              prompt: continuationRecoveryPrompt(
+                sourceSessionId: source.sessionId,
+                sourceUrl: sourceUrl,
+                prompt: prompt,
+              ),
+              projectKey: details?.projectKey ?? source.projectKey,
+              dir: details?.projectRoot,
+              agent: details?.agent,
+              model: details?.model,
+              reasoningEffort: details?.reasoningEffort,
+            ),
+          );
+      _playWorkCue(WorkSoundCue.start);
+      await _warmCreatedSession(created);
+      if (!mounted) return;
+      setState(() {
+        _session = created;
+        _recoveringSession = false;
+        _recoveryError = null;
+      });
+      _live?.setPresence(
+        workspaceId: created.workspaceId,
+        location: PresenceLocation.session(
+          peonId: created.peonId,
+          sessionId: created.sessionId,
+        ),
+      );
+    } on NewSessionException catch (error) {
+      if (mounted) {
+        setState(() {
+          _recoveringSession = false;
+          _recoveryError = error.message;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _recoveringSession = false;
+          _recoveryError = context.l10n.sessionRecoveryFailed;
+        });
+      }
+    }
+  }
+
+  String _recoveryRequestId() {
+    final bytes = List<int>.generate(
+      16,
+      (_) => math.Random.secure().nextInt(256),
+    );
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    String hex(int start, int end) => bytes
+        .sublist(start, end)
+        .map((value) => value.toRadixString(16).padLeft(2, '0'))
+        .join();
+    return '${hex(0, 4)}-${hex(4, 6)}-${hex(6, 8)}-${hex(8, 10)}-${hex(10, 16)}';
   }
 
   void _playWorkCue(WorkSoundCue cue) {
