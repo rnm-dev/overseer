@@ -76,3 +76,18 @@ test("dispatchQueuedSessionItem does not repair a refused mutation", async () =>
   assert.equal(result, refused);
   assert.equal(indexCalls, 0);
 });
+
+test("dispatchQueuedSessionItem retries one ambiguous gateway failure", async () => {
+  const unavailable: PeonCallResult = { status: 502, ok: false, json: { code: "PEON_UNREACHABLE" } };
+  const accepted: PeonCallResult = { status: 200, ok: true, json: { id: "session" } };
+  let calls = 0;
+  const result = await dispatchQueuedSessionItem({
+    conn: { baseUrl: "http://peon", token: "secret" }, workspaceId: "ws", peonId: "peon",
+    sessionId: "session", itemId: "item", actor: "actor", operation: "steer",
+  }, {
+    call: async () => ++calls === 1 ? unavailable : accepted,
+    index: async () => true,
+  });
+  assert.equal(result, accepted);
+  assert.equal(calls, 2);
+});

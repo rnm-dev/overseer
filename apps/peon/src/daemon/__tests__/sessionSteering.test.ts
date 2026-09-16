@@ -177,6 +177,10 @@ test("a queued Codex-style steer stays durable until native acknowledgement", ()
     ["first", undefined, undefined],
     ["redirect natively", "alice@example.com", "command-native"],
   ]);
+  // A retry after Overseer lost the first 2xx is the same successful command,
+  // not an UNKNOWN_QUEUE_ITEM refusal and not a second provider delivery.
+  assert.equal(sessions.steerQueued(record.id, selected.id), "steered");
+  assert.equal(userMessages(record.id).length, 2);
 
   const remaining = sessions.queued(record.id)?.[0];
   assert.ok(remaining);
@@ -250,6 +254,8 @@ test("a queued steer redirects a Claude-style backend by interrupting and resumi
   assert.equal(claudeStyleRuns.at(-1)?.backendSessionId, record.id);
   assert.equal(claudeStyleRuns.at(-1)?.prompt, "redirect now");
   assert.equal(sessions.get(record.id)?.queuedFollowUps[0]?.prompt, "wait normally");
+  assert.equal(sessions.steerQueued(record.id, selected.id), "steered");
+  assert.equal(claudeStyleRuns.length, initialRuns + 2);
   assert.equal(sessions.cancel(record.id), true);
 });
 

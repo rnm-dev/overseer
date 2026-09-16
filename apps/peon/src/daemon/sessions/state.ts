@@ -28,6 +28,7 @@ interface PendingRunBucket {
   add(id: string): void;
   delete(id: string): void;
   size(): number;
+  values(): IterableIterator<string>;
 }
 
 interface WarningBucket {
@@ -74,6 +75,7 @@ export const sessionState = {
       resumePending.delete(id);
     },
     size: (): number => resumePending.size,
+    values: (): IterableIterator<string> => resumePending.values(),
   } as const satisfies PendingRunBucket,
   steerPending: {
     has: (id: string): boolean => steerPending.has(id),
@@ -84,6 +86,7 @@ export const sessionState = {
       steerPending.delete(id);
     },
     size: (): number => steerPending.size,
+    values: (): IterableIterator<string> => steerPending.values(),
   } as const satisfies PendingRunBucket,
   queueDispatchPending: {
     has: (id: string): boolean => queueDispatchPending.has(id),
@@ -94,6 +97,7 @@ export const sessionState = {
       queueDispatchPending.delete(id);
     },
     size: (): number => queueDispatchPending.size,
+    values: (): IterableIterator<string> => queueDispatchPending.values(),
   } as const satisfies PendingRunBucket,
   warningThrottle: {
     get: (key: string): { at: number; ratio: number } | undefined => warningThrottleStore.get(key),

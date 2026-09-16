@@ -35,6 +35,7 @@ export function restoreFromDisk() {
         }
         record.followUpPrompts ??= [];
         record.queuedFollowUps ??= [];
+        record.steeredQueueItemIds ??= [];
         const hadQueueTypes = record.queuedFollowUps.every((item) => item.type === "queue" || item.type === "steer");
         const hadQueueReplyTo = record.queuedFollowUps.every((item) => Object.prototype.hasOwnProperty.call(item, "replyTo"));
         for (const item of record.queuedFollowUps) {
