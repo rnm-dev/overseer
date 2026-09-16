@@ -14,6 +14,7 @@ export interface Block {
   input?: unknown;
   content?: unknown;
   is_error?: boolean;
+  errors?: unknown[];
   id?: string;
   tool_use_id?: string;
 }

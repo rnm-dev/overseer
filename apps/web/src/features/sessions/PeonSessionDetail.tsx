@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { createPortal } from "react-dom";
 import { useNavigate, useParams } from "react-router";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
-import { GitFork, LoaderCircle, MoreHorizontal } from "lucide-react";
+import { ArrowRight, GitFork, LoaderCircle, MoreHorizontal } from "lucide-react";
 import { api, ApiError, isPeonNeedsUpdate } from "../../shared/api";
 import { shouldAcknowledgeAttention } from "./sessionAttentionRead";
 import { useI18n } from "../../shared/i18n";
@@ -49,6 +49,7 @@ import { indexedRunAssumptionDelay, shouldSeedIndexedRun } from "./runStatus";
 import { SessionSharingPanel } from "./SessionSharingPanel";
 import { activeMentionQuery, insertMention, mentionsRouteToPeople, remapMentions, removeMention, CONTEXT_MESSAGES_CAPABILITY, type ComposerMention, type MentionPrincipal } from "./contextMentions";
 import { clearComposerSelectionIfUnchanged, composerDraftKey, selectionAfterAcceptance, type ComposerSelectionDraft, useComposerSelectionDraft } from "./drafts";
+import { createContinuationSession, lastUnexecutedUserPrompt, sessionContinuationFailure, type SessionContinuationFailure } from "./sessionContinuationRecovery";
 
 // author: Viktor
 // The transcript parsing/render pieces live in ./session/*; this file owns the
@@ -61,6 +62,7 @@ type VirtualTranscriptRow =
   | { key: string; kind: "item"; item: Item; paddingClass: string }
   | { key: string; kind: "ghost"; ghost: ComposerGhost; paddingClass: string }
   | { key: string; kind: "inquiry"; inquiry: PluginInstallInquiry; paddingClass: string }
+  | { key: string; kind: "recovery"; failure: SessionContinuationFailure; paddingClass: string }
   | { key: string; kind: "working"; paddingClass: string }
   | { key: string; kind: "footer"; height: number };
 
@@ -228,6 +230,8 @@ function PeonSessionDetailPage() {
   const [draft, setDraft] = useState("");
   const [savingName, setSavingName] = useState(false);
   const [renameNote, setRenameNote] = useState<string | null>(null);
+  const [recovering, setRecovering] = useState(false);
+  const [recoveryError, setRecoveryError] = useState<string | null>(null);
 
   // Sidebar mutations update the shared indexed summary immediately. Mirror a
   // renamed selected session into the header without waiting for the next
@@ -828,6 +832,8 @@ function PeonSessionDetailPage() {
 
   // What the agent is doing right now, from the freshest event (live wins over history).
   const lastEvent = visibleEvents.length ? visibleEvents[visibleEvents.length - 1] : undefined;
+  const continuationFailure = sessionContinuationFailure(lastEvent);
+  const unexecutedPrompt = useMemo(() => continuationFailure ? lastUnexecutedUserPrompt(visibleEvents) : null, [continuationFailure, visibleEvents]);
   const working = workingActivity(lastEvent);
   const workingStepKey = lastEvent
     ? String(lastEvent.eventId ?? lastEvent._tailEventId ?? lastEvent._tailId ?? `${lastEvent.type ?? "event"}:${lastEvent.createdAt ?? "unstamped"}:${history?.length ?? 0}:${orderedLive.length}`)
@@ -891,6 +897,7 @@ function PeonSessionDetailPage() {
         items[index - 1]!.kind === "text" || item.kind === "text",
       ),
     }));
+    if (continuationFailure) rows.push({ key: "session-continuation-recovery", kind: "recovery", failure: continuationFailure, paddingClass: "pt-6" });
     if (ghost) {
       rows.push({
         key: "session-ghost",
@@ -918,7 +925,22 @@ function PeonSessionDetailPage() {
     }
     rows.push({ key: "session-footer", kind: "footer", height: composerHeight + 40 });
     return rows;
-  }, [composerHeight, ghost, items, lineage, liveWork, pluginInquiries.inquiries]);
+  }, [composerHeight, continuationFailure, ghost, items, lineage, liveWork, pluginInquiries.inquiries]);
+  const recoverInNewSession = useCallback(async () => {
+    if (recovering) return;
+    setRecovering(true);
+    setRecoveryError(null);
+    try {
+      const created = await createContinuationSession(base, {
+        sourceSessionId: sid, sourceUrl: window.location.href, prompt: unexecutedPrompt,
+        projectKey, dir: projectRoot, agent: sessionAgent, model: sessionModel, reasoningEffort: sessionReasoningEffort,
+      });
+      navigate(sessionHref?.(peon.peonId, created.id) ?? `/peons/${encodeURIComponent(peon.peonId)}/sessions/${encodeURIComponent(created.id)}`);
+    } catch (error) {
+      setRecoveryError(error instanceof ApiError ? error.message : t("session.recovery.failed"));
+      setRecovering(false);
+    }
+  }, [base, navigate, peon.peonId, projectKey, projectRoot, recovering, sessionAgent, sessionHref, sessionModel, sessionReasoningEffort, sid, t, unexecutedPrompt]);
   const [virtualWindow, setVirtualWindow] = useState(() => createTranscriptVirtualWindow(sessionKey, virtualRows));
   let displayedVirtualWindow = virtualWindow;
   if (virtualWindow.sessionKey !== sessionKey || virtualWindow.rows !== virtualRows) {
@@ -1104,6 +1126,20 @@ function PeonSessionDetailPage() {
                     onInstall={() => void pluginInquiries.respond(row.inquiry, "install")}
                     onCancel={() => void pluginInquiries.respond(row.inquiry, "cancel")}
                   />
+                </div>
+              );
+              if (row.kind === "recovery") return (
+                <div data-session-recovery className={`mx-auto w-full max-w-6xl px-3 sm:px-6 ${row.paddingClass}`}>
+                  <div role="alert" className="rounded-xl border border-danger/35 bg-danger/5 px-4 py-3 font-body text-sm text-ink">
+                    <p className="font-medium">{t("session.recovery.title")}</p>
+                    <p className="mt-1 text-ink-muted">{t(row.failure === "missing_history" ? "session.recovery.missingHistory" : "session.recovery.timeout")}</p>
+                    <p className="mt-1 text-xs text-ink-faint">{t("session.recovery.notExecuted")}</p>
+                    <button type="button" disabled={recovering} className="mt-3 inline-flex items-center gap-2 rounded-lg bg-accent-strong px-3 py-2 text-xs font-medium text-white disabled:opacity-50" onClick={() => void recoverInNewSession()}>
+                      {recovering ? <LoaderCircle size={14} className="animate-spin" aria-hidden /> : <ArrowRight size={14} aria-hidden />}
+                      {recovering ? t("session.recovery.creating") : t("session.recovery.action")}
+                    </button>
+                    {recoveryError && <p className="mt-2 text-xs text-danger">{recoveryError}</p>}
+                  </div>
                 </div>
               );
               return (

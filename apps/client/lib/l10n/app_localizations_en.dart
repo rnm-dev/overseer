@@ -168,4 +168,29 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get showTechnicalDetails => 'Show technical details';
+
+  @override
+  String get sessionRecoveryTitle => 'This session could not be continued';
+
+  @override
+  String get sessionRecoveryTimeout =>
+      'Its long Codex history timed out while being prepared. You can continue in a clean session with the same project, folder, model, and effort.';
+
+  @override
+  String get sessionRecoveryMissingHistory =>
+      'Part of the Codex thread history is missing, so this session cannot be resumed.';
+
+  @override
+  String get sessionRecoveryNotExecuted =>
+      'Your last request was not executed and will be carried into the new session.';
+
+  @override
+  String get sessionRecoveryAction => 'Continue in a new session';
+
+  @override
+  String get sessionRecoveryCreating => 'Creating session…';
+
+  @override
+  String get sessionRecoveryFailed =>
+      'Could not create a continuation session.';
 }

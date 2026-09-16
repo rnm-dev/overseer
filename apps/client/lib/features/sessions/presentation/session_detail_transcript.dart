@@ -23,6 +23,9 @@ class _TranscriptBody extends StatefulWidget {
     required this.onOpenPreview,
     required this.onOpenLink,
     required this.onSelectedText,
+    required this.recovering,
+    required this.recoveryError,
+    required this.onRecover,
   });
 
   final AsyncValue<TranscriptState> transcript;
@@ -49,6 +52,10 @@ class _TranscriptBody extends StatefulWidget {
   final ValueChanged<TranscriptPreviewItem> onOpenPreview;
   final ValueChanged<String> onOpenLink;
   final ValueChanged<SelectedTextReply>? onSelectedText;
+  final bool recovering;
+  final String? recoveryError;
+  final void Function(SessionContinuationFailure failure, String? prompt)
+  onRecover;
 
   @override
   State<_TranscriptBody> createState() => _TranscriptBodyState();
@@ -192,6 +199,12 @@ class _TranscriptBodyState extends State<_TranscriptBody> {
               );
             }
             final items = _items(state.events);
+            final recoveryFailure = sessionContinuationFailure(
+              state.events.lastOrNull,
+            );
+            final recoveryPrompt = recoveryFailure == null
+                ? null
+                : lastUnexecutedUserPrompt(state.events);
             final hasTopControl = state.hasOlder || state.message != null;
             final hasWorking = widget.showWorking;
             final ghost = widget.ghost;
@@ -204,7 +217,10 @@ class _TranscriptBodyState extends State<_TranscriptBody> {
             // working indicator sits below the ghost, which sits below the last
             // committed message.
             final leading =
-                (hasWorking ? 1 : 0) + inquiryRows + (ghost != null ? 1 : 0);
+                (recoveryFailure != null ? 1 : 0) +
+                (hasWorking ? 1 : 0) +
+                inquiryRows +
+                (ghost != null ? 1 : 0);
             return ValueListenableBuilder<double>(
               valueListenable: widget.composerHeight,
               builder: (context, composerHeight, child) => ListView.builder(
@@ -219,7 +235,20 @@ class _TranscriptBodyState extends State<_TranscriptBody> {
                 ),
                 itemCount: items.length + (hasTopControl ? 1 : 0) + leading,
                 itemBuilder: (context, index) {
-                  if (hasWorking && index == 0) {
+                  if (recoveryFailure != null && index == 0) {
+                    return Padding(
+                      padding: const EdgeInsets.only(top: 16),
+                      child: _SessionRecoveryCard(
+                        failure: recoveryFailure,
+                        recovering: widget.recovering,
+                        error: widget.recoveryError,
+                        onPressed: () =>
+                            widget.onRecover(recoveryFailure, recoveryPrompt),
+                      ),
+                    );
+                  }
+                  final recoveryOffset = recoveryFailure != null ? 1 : 0;
+                  if (hasWorking && index == recoveryOffset) {
                     return Padding(
                       key: ValueKey(
                         'transcript-working-flow-${state.events.lastOrNull?.eventId ?? 'empty'}',
@@ -228,7 +257,8 @@ class _TranscriptBodyState extends State<_TranscriptBody> {
                       child: _workingContent(state.events.lastOrNull),
                     );
                   }
-                  final inquiryIndex = index - (hasWorking ? 1 : 0);
+                  final inquiryIndex =
+                      index - recoveryOffset - (hasWorking ? 1 : 0);
                   if (inquiryIndex >= 0 && inquiryIndex < inquiryRows) {
                     final inquiry = widget.inquiries.inquiries[inquiryIndex];
                     return Padding(
@@ -248,7 +278,8 @@ class _TranscriptBodyState extends State<_TranscriptBody> {
                     );
                   }
                   if (ghost != null &&
-                      index == (hasWorking ? 1 : 0) + inquiryRows) {
+                      index ==
+                          recoveryOffset + (hasWorking ? 1 : 0) + inquiryRows) {
                     return _TranscriptGhost(
                       ghost: ghost,
                       operator: widget.operator,
@@ -325,6 +356,88 @@ class _TranscriptBodyState extends State<_TranscriptBody> {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _SessionRecoveryCard extends StatelessWidget {
+  const _SessionRecoveryCard({
+    required this.failure,
+    required this.recovering,
+    required this.error,
+    required this.onPressed,
+  });
+
+  final SessionContinuationFailure failure;
+  final bool recovering;
+  final String? error;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final l10n = context.l10n;
+    return Semantics(
+      liveRegion: true,
+      child: DecoratedBox(
+        key: const Key('session-continuation-recovery'),
+        decoration: BoxDecoration(
+          color: colors.errorContainer.withValues(alpha: 0.2),
+          border: Border.all(color: colors.error.withValues(alpha: 0.35)),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                l10n.sessionRecoveryTitle,
+                style: AppTypography.body(fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                failure == SessionContinuationFailure.missingHistory
+                    ? l10n.sessionRecoveryMissingHistory
+                    : l10n.sessionRecoveryTimeout,
+                style: AppTypography.body(
+                  fontSize: 13,
+                  color: colors.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                l10n.sessionRecoveryNotExecuted,
+                style: AppTypography.body(
+                  fontSize: 12,
+                  color: colors.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 12),
+              AppButton(
+                key: const Key('session-continuation-recovery-action'),
+                onPressed: onPressed,
+                loading: recovering,
+                size: AppButtonSize.sm,
+                leading: const Icon(LucideIcons.arrowRight, size: 16),
+                child: Text(
+                  recovering
+                      ? l10n.sessionRecoveryCreating
+                      : l10n.sessionRecoveryAction,
+                ),
+              ),
+              if (error != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  error!,
+                  key: const Key('session-continuation-recovery-error'),
+                  style: AppTypography.body(fontSize: 12, color: colors.error),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
