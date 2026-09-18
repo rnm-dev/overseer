@@ -21,6 +21,7 @@ export interface ArmoryTurnContext {
   sessionId: string;
   turnId: string;
   projectId: string;
+  workflowExecution?: { packageId: string; executionId: string; leaseToken: string } | null;
 }
 
 export interface ArmoryTurnBinding {
@@ -68,7 +69,7 @@ export class McpConfigAssembler {
     private readonly controlBaseUrl: string,
   ) {}
 
-  assemble(context?: { sessionId: string; turnId?: string; projectId?: string | null; allowSessionSpawning: boolean }): AssembledMcpConfig | undefined {
+  assemble(context?: { sessionId: string; turnId?: string; projectId?: string | null; allowSessionSpawning: boolean; workflowExecution?: ArmoryTurnContext["workflowExecution"] }): AssembledMcpConfig | undefined {
     const bindings: McpHttpBinding[] = [
       this.localBinding("peon_projects", "/mcp/projects"),
     ];
@@ -84,7 +85,7 @@ export class McpConfigAssembler {
     }
 
     const armoryLease = context?.projectId && context.turnId
-      ? this.registry.snapshotArmoryTurn({ sessionId: context.sessionId, turnId: context.turnId, projectId: context.projectId })
+      ? this.registry.snapshotArmoryTurn({ sessionId: context.sessionId, turnId: context.turnId, projectId: context.projectId, workflowExecution: context.workflowExecution })
       : undefined;
     for (const binding of armoryLease?.bindings ?? []) {
       const name = `armory_${serverName(binding.packageId)}`;

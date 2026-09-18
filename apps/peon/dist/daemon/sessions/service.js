@@ -138,6 +138,7 @@ export const sessions = {
             parentCompletionNotifiedAt: null,
             parentCompletionNotificationPending: Boolean(opts.parentSessionId),
             expectsOutcome: opts.expectsOutcome ?? false,
+            workflowExecution: opts.workflowExecution ?? null,
             status: "running",
             outcome: null,
             terminalReason: null,

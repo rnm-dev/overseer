@@ -302,6 +302,7 @@ function writeMcpConfig(record) {
         // Children never receive the spawning tool. The orchestration service also
         // rejects them server-side if a credential is copied from another config.
         allowSessionSpawning: record.parentSessionId === null && record.spawnDepth === 0,
+        workflowExecution: record.workflowExecution,
     });
     if (!assembled)
         return undefined;

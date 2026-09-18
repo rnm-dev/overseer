@@ -187,6 +187,7 @@ export const sessions: SessionCatalogReader & SessionLifecycleContract & Session
     parentSessionId?: string;
     spawnDepth?: number;
     spawnRequestId?: string;
+    workflowExecution?: SessionRecord["workflowExecution"];
   }): SessionRecord {
     // No implicit worktree-off-the-ACA-repo fallback — that's this daemon's
     // own source, not a target for arbitrary sessions to run in (and it has
@@ -237,6 +238,7 @@ export const sessions: SessionCatalogReader & SessionLifecycleContract & Session
       parentCompletionNotifiedAt: null,
       parentCompletionNotificationPending: Boolean(opts.parentSessionId),
       expectsOutcome: opts.expectsOutcome ?? false,
+      workflowExecution: opts.workflowExecution ?? null,
       status: "running",
       outcome: null,
       terminalReason: null,

@@ -123,6 +123,7 @@ repository — that content lives here.
   lifecycle mutation, with Peon's locks and installer still authoritative.
 - [Armory profiles and project packages](armory-project-packages.md) — the next
   contract: typed profiles and immutable-project assignments.
+- [Armory workflow protocol](armory-workflows.md) — CRM polling, execution leases, retry context and package integration.
 - [managed plugin inquiries](managed-plugin-inquiries.md) — the
   `managed-plugin-inquiry-v1` operator confirmation flow.
 
