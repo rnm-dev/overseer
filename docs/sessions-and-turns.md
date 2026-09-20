@@ -124,6 +124,10 @@ created with, and that answer **must never rename a turn whose `turn/start`
 carried an override** — otherwise the turn is reported, and billed in
 `usageByModel`, against the old model.
 
+Thread preparation grows with stored history. `thread/resume`, `thread/fork`,
+and history-bearing `thread/read` calls therefore have a five-minute RPC
+timeout; ordinary app-server control calls retain the 30-second default.
+
 A Peon also carries a default reasoning effort next to its default model,
 settable from Peon Settings → Agent. The Peon owns it (`ai.defaultReasoningEffort`,
 flat on the wire as `aiDefaultReasoningEffort` on `GET`/`PATCH /settings` in

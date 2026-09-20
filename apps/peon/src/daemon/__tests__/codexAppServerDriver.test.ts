@@ -7,7 +7,7 @@ import { describe, it } from "node:test";
 import type { AgentEvent, AgentRun, AgentRunOptions, AgentSteerInput } from "../agents/index.js";
 import { getAgentDriver, listAgentDrivers } from "../agents/index.js";
 import { CodexAppServerRuntime } from "../agents/runtimes/codexAppServerRuntime.js";
-import { createCodexAppServerRun, forkCodexAppServerThread, reconcileCodexAppServerTurn } from "../agents/codexAppServer.js";
+import { CODEX_LONG_THREAD_REQUEST_TIMEOUT_MS, createCodexAppServerRun, forkCodexAppServerThread, reconcileCodexAppServerTurn } from "../agents/codexAppServer.js";
 import { modelCatalog, narrowNewSessionAgent } from "../providers/modelCatalog.js";
 
 const fixture = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures", "fakeCodexAppServer.mjs");
@@ -98,6 +98,27 @@ async function steer(run: AgentRun, input: AgentSteerInput): Promise<void> {
 }
 
 describe("Codex app-server driver", () => {
+  it("allows history-dependent thread RPCs five minutes", () => {
+    assert.equal(CODEX_LONG_THREAD_REQUEST_TIMEOUT_MS, 5 * 60_000);
+  });
+  it("does not apply the short runtime default to a slow thread fork", async () => {
+    const instance = new CodexAppServerRuntime({
+      command: process.execPath,
+      args: [fixture],
+      versionArgs: [fixture, "--version"],
+      experimentalApi: true,
+      requestTimeoutMs: 500,
+      env: { ...process.env, FAKE_THREAD_RPC_DELAY_MS: "750" },
+    });
+    try {
+      const first = await collect(instance, options());
+      const backendSessionId = String(first.events.find((event) => event.type === "system" && event.subtype === "init")?.session_id);
+      const fork = await forkCodexAppServerThread({ command: process.execPath, backendSessionId, targetSessionId: "fork", cwd: process.cwd() }, instance);
+      assert.match(fork.backendSessionId, /^thread-/);
+    } finally {
+      await instance.stop();
+    }
+  });
   it("forks a persisted thread through the native app-server method", async () => {
     const instance = runtime();
     try {

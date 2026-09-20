@@ -31,6 +31,7 @@ interface TokenUsage {
 }
 
 let runtimeSlot: { command: string; runtime: CodexAppServerRuntime } | null = null;
+export const CODEX_LONG_THREAD_REQUEST_TIMEOUT_MS = 5 * 60_000;
 const activeThreadTurns = new Map<string, Promise<void>>();
 const configuredRequestPolicies = new WeakSet<CodexAppServerRuntime>();
 let managedPluginToolHandler: ((params: unknown, generation: number) => Promise<unknown>) | null = null;
@@ -178,7 +179,7 @@ export async function forkCodexAppServerThread(input: {
   const response = await runtime.request<ThreadResponse>("thread/fork", {
     threadId: input.backendSessionId,
     ...(input.lastTurnId ? { lastTurnId: input.lastTurnId } : {}),
-  });
+  }, CODEX_LONG_THREAD_REQUEST_TIMEOUT_MS);
   const backendSessionId = response.thread?.id;
   if (typeof backendSessionId !== "string" || !backendSessionId) {
     throw new Error("Codex app-server returned no thread id for fork");
@@ -199,7 +200,7 @@ export async function reconcileCodexAppServerTurn(
   const response = await runtime.request<{ thread?: { turns?: unknown } }>("thread/read", {
     threadId: input.backendSessionId,
     includeTurns: true,
-  });
+  }, CODEX_LONG_THREAD_REQUEST_TIMEOUT_MS);
   const turns = Array.isArray(response.thread?.turns)
     ? response.thread.turns.filter((turn): turn is Record<string, unknown> => !!turn && typeof turn === "object")
     : [];
@@ -450,7 +451,7 @@ export function createCodexAppServerRun(opts: AgentRunOptions, runtime: CodexApp
           const params = { threadId, ...threadOverrides, threadSource: "peon" };
           warnForOutboundPayload(opts.sessionId, "thread/fork", params, emit);
           try {
-            thread = await runtime.request<ThreadResponse>("thread/fork", params);
+            thread = await runtime.request<ThreadResponse>("thread/fork", params, CODEX_LONG_THREAD_REQUEST_TIMEOUT_MS);
             const reboundThreadId = thread.thread?.id;
             if (typeof reboundThreadId !== "string" || !reboundThreadId) throw new Error("Codex app-server thread/fork returned no thread id");
             threadId = reboundThreadId;
@@ -459,12 +460,12 @@ export function createCodexAppServerRun(opts: AgentRunOptions, runtime: CodexApp
             if (!unsupportedThreadFork(error)) throw error;
             const resumeParams = { threadId, ...threadOverrides };
             warnForOutboundPayload(opts.sessionId, "thread/resume", resumeParams, emit);
-            thread = await runtime.request<ThreadResponse>("thread/resume", resumeParams);
+            thread = await runtime.request<ThreadResponse>("thread/resume", resumeParams, CODEX_LONG_THREAD_REQUEST_TIMEOUT_MS);
           }
         } else {
           const params = { threadId, ...threadOverrides };
           warnForOutboundPayload(opts.sessionId, "thread/resume", params, emit);
-          thread = await runtime.request<ThreadResponse>("thread/resume", params);
+          thread = await runtime.request<ThreadResponse>("thread/resume", params, CODEX_LONG_THREAD_REQUEST_TIMEOUT_MS);
         }
       } else {
         const params = {

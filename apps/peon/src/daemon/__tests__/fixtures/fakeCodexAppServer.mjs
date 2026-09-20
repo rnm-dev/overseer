@@ -8,6 +8,7 @@ if (process.argv.includes("--version")) {
 
 const input = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
 const send = (message) => process.stdout.write(`${JSON.stringify(message)}\n`);
+const sendThreadReply = (message) => setTimeout(() => send(message), Number(process.env.FAKE_THREAD_RPC_DELAY_MS ?? 0));
 let initialized = false;
 let experimentalApi = false;
 let threadCounter = 0;
@@ -53,7 +54,7 @@ input.on("line", (line) => {
   }
   if (message.method === "thread/resume") {
     if (!threadTurns.has(message.params.threadId)) threadTurns.set(message.params.threadId, []);
-    send({ id: message.id, result: { thread: { id: message.params.threadId }, model: "fake-model", reasoningEffort: null } });
+    sendThreadReply({ id: message.id, result: { thread: { id: message.params.threadId }, model: "fake-model", reasoningEffort: null } });
     return;
   }
   if (message.method === "thread/fork") {
@@ -71,7 +72,7 @@ input.on("line", (line) => {
       ? sourceTurns.findIndex((turn) => turn.id === message.params.lastTurnId)
       : sourceTurns.length - 1;
     threadTurns.set(threadId, structuredClone(sourceTurns.slice(0, lastTurnIndex + 1)));
-    send({ id: message.id, result: { thread: { id: threadId, forkedFromId: message.params.threadId } } });
+    sendThreadReply({ id: message.id, result: { thread: { id: threadId, forkedFromId: message.params.threadId } } });
     send({ method: "thread/started", params: { thread: { id: threadId, forkedFromId: message.params.threadId } } });
     return;
   }
@@ -137,7 +138,7 @@ input.on("line", (line) => {
       send({ id: message.id, error: { code: -32000, message: "thread not found" } });
       return;
     }
-    send({ id: message.id, result: { thread: { id: message.params.threadId, turns: message.params.includeTurns ? turns : [] } } });
+    sendThreadReply({ id: message.id, result: { thread: { id: message.params.threadId, turns: message.params.includeTurns ? turns : [] } } });
     return;
   }
   if (message.method === "test/echo") {
