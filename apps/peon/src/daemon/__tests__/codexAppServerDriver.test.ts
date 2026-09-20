@@ -23,6 +23,14 @@ function runtime() {
   });
 }
 
+class RecordingRuntime extends CodexAppServerRuntime {
+  readonly timeouts = new Map<string, number | undefined>();
+  override request<T = unknown>(method: string, params?: unknown, timeoutMs?: number): Promise<T> {
+    this.timeouts.set(method, timeoutMs);
+    return super.request<T>(method, params, timeoutMs);
+  }
+}
+
 function runtimeWithEnv(env: NodeJS.ProcessEnv) {
   return new CodexAppServerRuntime({
     command: process.execPath,
@@ -101,20 +109,20 @@ describe("Codex app-server driver", () => {
   it("allows history-dependent thread RPCs five minutes", () => {
     assert.equal(CODEX_LONG_THREAD_REQUEST_TIMEOUT_MS, 5 * 60_000);
   });
-  it("does not apply the short runtime default to a slow thread fork", async () => {
-    const instance = new CodexAppServerRuntime({
+  it("passes the long timeout to thread fork", async () => {
+    const instance = new RecordingRuntime({
       command: process.execPath,
       args: [fixture],
       versionArgs: [fixture, "--version"],
       experimentalApi: true,
-      requestTimeoutMs: 500,
-      env: { ...process.env, FAKE_THREAD_RPC_DELAY_MS: "750" },
+      requestTimeoutMs: 3_000,
     });
     try {
       const first = await collect(instance, options());
       const backendSessionId = String(first.events.find((event) => event.type === "system" && event.subtype === "init")?.session_id);
       const fork = await forkCodexAppServerThread({ command: process.execPath, backendSessionId, targetSessionId: "fork", cwd: process.cwd() }, instance);
       assert.match(fork.backendSessionId, /^thread-/);
+      assert.equal(instance.timeouts.get("thread/fork"), CODEX_LONG_THREAD_REQUEST_TIMEOUT_MS);
     } finally {
       await instance.stop();
     }
