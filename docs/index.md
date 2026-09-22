@@ -91,8 +91,8 @@ repository — that content lives here.
   revision-fenced patches over Fleet HTTP.
 - [Peon update channel](peon-update-channel.md) — owner-authorized check,
   apply and status over Fleet HTTP; package metadata and bytes come from npm.
-- [Peon 1.1.0 preparation](peon-1.1.0-release.md) — Armory workflows,
-  long-session timeout fix, verification and remaining publication gates.
+- [Peon 1.0.3 preparation](peon-1.0.3-release.md) — long-session Codex timeout
+  fix and remaining publication gates.
 - [agent CLI updates](agent-cli-updates.md) — the driver-owned updater contract,
   supported installation ownership and safe refusal rules for Codex and Claude.
 - [agent provider login](agent-provider-login.md) — separate Claude and Codex
@@ -123,7 +123,7 @@ repository — that content lives here.
   lifecycle mutation, with Peon's locks and installer still authoritative.
 - [Armory profiles and project packages](armory-project-packages.md) — the next
   contract: typed profiles and immutable-project assignments.
-- [Armory workflow protocol](armory-workflows.md) — CRM polling, execution leases, retry context and package integration.
+- [source-triggered workflows](armory-workflows.md) — source systems create and monitor Peon sessions through Overseer; no package polling.
 - [managed plugin inquiries](managed-plugin-inquiries.md) — the
   `managed-plugin-inquiry-v1` operator confirmation flow.
 

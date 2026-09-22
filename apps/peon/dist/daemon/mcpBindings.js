@@ -35,7 +35,7 @@ export class McpConfigAssembler {
             }));
         }
         const armoryLease = context?.projectId && context.turnId
-            ? this.registry.snapshotArmoryTurn({ sessionId: context.sessionId, turnId: context.turnId, projectId: context.projectId, workflowExecution: context.workflowExecution })
+            ? this.registry.snapshotArmoryTurn({ sessionId: context.sessionId, turnId: context.turnId, projectId: context.projectId })
             : undefined;
         for (const binding of armoryLease?.bindings ?? []) {
             const name = `armory_${serverName(binding.packageId)}`;

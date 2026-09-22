@@ -151,11 +151,6 @@ export const armoryManifestSchema = z.object({
         startupTimeoutMs: z.number().int().positive().max(MAX_MCP_STARTUP_MS).optional(),
         callTimeoutMs: z.number().int().positive().max(MAX_TOOL_CALL_MS).optional(),
     }).strict().optional(),
-    background: z.object({
-        protocol: z.literal("armory-workflows-v1"),
-        command: armoryCommandSchema,
-        pollIntervalSeconds: z.literal(30),
-    }).strict().optional(),
 }).strict().superRefine((manifest, ctx) => {
     const platforms = new Set();
     for (const [index, platform] of manifest.platforms.entries()) {

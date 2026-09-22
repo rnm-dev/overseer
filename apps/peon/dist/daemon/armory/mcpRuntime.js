@@ -38,7 +38,7 @@ export class ArmoryMcpRuntime {
     snapshotTurn(context) {
         if (this.closed)
             throw new ArmoryOperationError("MCP_DRAINING", "Armory MCP runtime is closed");
-        const { selections, unavailable } = this.resolveTurnSelections(context.projectId, context.workflowExecution);
+        const { selections, unavailable } = this.resolveTurnSelections(context.projectId);
         for (const issue of unavailable) {
             console.warn(`Armory package unavailable for session ${context.sessionId}: ${issue.packageId ?? "assignment store"} (${issue.code})`);
         }
@@ -258,7 +258,7 @@ export class ArmoryMcpRuntime {
         if ((this.leaseCounts.get(runtimeKey) ?? 0) === 0)
             this.selectionsByKey.delete(runtimeKey);
     }
-    resolveTurnSelections(projectId, workflow) {
+    resolveTurnSelections(projectId) {
         try {
             const projectPackages = armoryProjectPackagesStateSchema.parse(JSON.parse(readFileSync(this.stores.paths.projectPackagesFile, "utf8")));
             if (projectPackages.migrationCompletedAt === null)
@@ -289,7 +289,7 @@ export class ArmoryMcpRuntime {
                     const profile = assignment.profileId === null ? null : projectPackages.profiles[assignment.profileId];
                     this.validateAssignment(manifest, assignment.profileId, profile);
                     if (manifest.mcp)
-                        selections.push(this.selection(manifest, packageDir, activation.sourceDigest, profile, workflow?.packageId === manifest.id ? { executionId: workflow.executionId, leaseToken: workflow.leaseToken } : null));
+                        selections.push(this.selection(manifest, packageDir, activation.sourceDigest, profile));
                 }
                 catch (error) {
                     unavailable.push({
@@ -330,11 +330,11 @@ export class ArmoryMcpRuntime {
         if (profile.status !== "verified")
             throw new ArmoryOperationError("PROFILE_NOT_VERIFIED", `Assigned Armory profile is not verified for package ${manifest.id}`);
     }
-    selection(manifest, packageDir, artifactDigest, profile, workflowExecution = null) {
+    selection(manifest, packageDir, artifactDigest, profile) {
         const consumedFields = new Set(manifest.configuration?.fields.map((field) => field.id) ?? []);
         const profileValues = Object.fromEntries(Object.entries(profile?.values ?? {}).filter(([fieldId]) => consumedFields.has(fieldId)));
         const stateDigest = createHash("sha256").update(JSON.stringify(Object.entries(profileValues).sort(([a], [b]) => a.localeCompare(b)))).digest("hex");
-        const runtimeKey = [manifest.id, artifactDigest, profile?.profileId ?? "credential-free", profile?.updatedAt ?? 0, stateDigest, workflowExecution?.executionId ?? "interactive"].join(":");
+        const runtimeKey = [manifest.id, artifactDigest, profile?.profileId ?? "credential-free", profile?.updatedAt ?? 0, stateDigest].join(":");
         return {
             runtimeKey,
             packageId: manifest.id,
@@ -344,7 +344,6 @@ export class ArmoryMcpRuntime {
             profileId: profile?.profileId ?? null,
             profileUpdatedAt: profile?.updatedAt ?? null,
             profileValues,
-            workflowExecution,
         };
     }
     async loadInstalledPackage(packageId) {
@@ -413,10 +412,6 @@ export class ArmoryMcpRuntime {
                 PEON_ARMORY_HOST_HOME: os.homedir(),
                 PEON_ARMORY_PACKAGE_DIR: packageDir,
                 PEON_ARMORY_HOME: home,
-                ...(selection.workflowExecution ? {
-                    PEON_WORKFLOW_EXECUTION: selection.workflowExecution.executionId,
-                    PEON_WORKFLOW_LEASE: selection.workflowExecution.leaseToken,
-                } : {}),
                 ...providerEnvironment,
             },
         });

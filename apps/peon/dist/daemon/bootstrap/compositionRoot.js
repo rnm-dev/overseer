@@ -1,6 +1,6 @@
 import { modelCatalog } from "../providers/modelCatalog.js";
 import { cliUpdates } from "../updates/cliUpdates.js";
-import { createArmoryStores, ArmoryConfigurationService, ArmoryMcpLifecycleService, ArmoryMcpRuntime, ArmoryPackageInstallService, ArmoryProjectPackagesService, ArmoryUninstallService, ArmoryWorkflowRuntime, armoryInventory } from "../armory/index.js";
+import { createArmoryStores, ArmoryConfigurationService, ArmoryMcpLifecycleService, ArmoryMcpRuntime, ArmoryPackageInstallService, ArmoryProjectPackagesService, ArmoryUninstallService, armoryInventory } from "../armory/index.js";
 import { createProjectService, projectStore } from "../projects/index.js";
 import { settings } from "../settings/index.js";
 import { SessionOrchestrationService, sessions } from "../sessions/index.js";
@@ -43,13 +43,11 @@ export function createDaemonCompositionRoot(options = {}) {
     };
     const cliUpdateService = options.cliUpdates ?? cliUpdates;
     const fileAccessService = new FileAccessService();
-    const armoryWorkflows = new ArmoryWorkflowRuntime({ stores: armoryStores, projects: projectService, sessions });
     return {
         projectService,
         sessionOrchestration,
         armoryStores,
         armoryRuntime,
-        armoryWorkflows,
         armoryApi,
         fileAccessService,
         controlServerOptions: {

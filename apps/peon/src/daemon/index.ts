@@ -36,7 +36,7 @@ function isLoopbackHost(url: string): boolean {
 
 const composition = createDaemonCompositionRoot();
 const app = createControlServer(composition.controlServerOptions);
-const { armoryRuntime, armoryStores, armoryWorkflows } = composition;
+const { armoryRuntime, armoryStores } = composition;
 recoverUpdateOperation();
 // Discover provider-owned models and effort capabilities before accepting a
 // session. Each driver is isolated and falls back to its bundled catalog when
@@ -118,7 +118,6 @@ const servers = listenerHosts.map((host, index) => app.listen(PORT, host, index 
   updateChecker.start();
   claudeCodeAuth.start();
   sessions.restoreFromDisk();
-  armoryWorkflows.start();
   // After reconciliation, auto-resume any eligible ad-hoc session this restart
   // (or a prior crash) killed mid-run.
   void sessions.resumeInterrupted().catch((error) => {
@@ -164,7 +163,6 @@ process.on("SIGTERM", () => {
   clearInterval(modelCatalogRefreshTimer);
   sdNotify.stopping();
   peonRegistrar.stop();
-  armoryWorkflows.stop();
   sessions.notifyShuttingDown();
   // server.close() waits for every open connection to end — but SSE clients
   // hold live session streams open indefinitely,

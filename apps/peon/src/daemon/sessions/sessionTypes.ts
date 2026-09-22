@@ -137,12 +137,6 @@ export interface SessionRecord {
   /** True only while an orchestration-initiated child turn still owes its parent a completion handoff. */
   parentCompletionNotificationPending?: boolean;
   expectsOutcome: boolean;
-  /** Private Armory automation binding. Public views and transcripts omit the lease. */
-  workflowExecution?: {
-    packageId: string;
-    executionId: string;
-    leaseToken: string;
-  } | null;
   status: SessionStatus;
   outcome: SessionOutcome | null;
   /** Provider-neutral stop reason for harness-enforced execution limits. */
