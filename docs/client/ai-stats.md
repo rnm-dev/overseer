@@ -19,6 +19,11 @@ Stats load before recorded model usage is assigned to provider cards. Quota and
 capability requests then succeed or fail independently. Refreshing a provider
 adds `refresh=1` to both probes.
 
+While the web Stats page remains open and visible, aggregate stats and their
+user/project breakdowns revalidate every 15 seconds. Returning to a backgrounded
+tab revalidates immediately. Provider quota and capability probes remain on
+their separate load/manual-refresh lifecycle.
+
 ## Presentation rules
 
 - Headline session count, output tokens, and duration.

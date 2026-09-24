@@ -64,6 +64,7 @@ class _AppBootstrapState extends State<AppBootstrap>
   StreamSubscription<NotificationDestination>? _openedSubscription;
   Timer? _foregroundTimer;
   bool _loading = true;
+  bool _restoreFailed = false;
 
   @override
   void initState() {
@@ -124,16 +125,28 @@ class _AppBootstrapState extends State<AppBootstrap>
   }
 
   Future<void> _restore() async {
+    if (mounted) {
+      setState(() {
+        _loading = true;
+        _restoreFailed = false;
+      });
+    }
     List<OverseerConnection> connections;
     try {
       connections = await _store.readAll();
     } catch (_) {
-      connections = const <OverseerConnection>[];
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _restoreFailed = true;
+      });
+      return;
     }
     if (!mounted) return;
     setState(() {
       _connections = connections;
       _loading = false;
+      _restoreFailed = false;
     });
     final destination = _navigationDestination;
     if (destination != null && _selectedConnection == null) {
@@ -244,6 +257,23 @@ class _AppBootstrapState extends State<AppBootstrap>
         supportedLocales: AppLocalizations.supportedLocales,
         theme: AppTheme.dark,
         home: const OverseerConnectionsLoadingPage(),
+        builder: (context, child) =>
+            _withForegroundSurface(child ?? const SizedBox.shrink()),
+      );
+    }
+
+    if (_restoreFailed) {
+      return MaterialApp(
+        onGenerateTitle: (context) => context.l10n.appTitle,
+        localizationsDelegates: const [
+          AppLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        supportedLocales: AppLocalizations.supportedLocales,
+        theme: AppTheme.dark,
+        home: OverseerConnectionsRestoreErrorPage(onRetry: _restore),
         builder: (context, child) =>
             _withForegroundSurface(child ?? const SizedBox.shrink()),
       );

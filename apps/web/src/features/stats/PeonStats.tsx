@@ -31,6 +31,7 @@ import {
 } from "./statsModel";
 
 // author: Viktor
+export const STATS_REFRESH_INTERVAL_MS = 15_000;
 
 export function PeonStats() {
   const t = useT();
@@ -44,6 +45,7 @@ export function PeonStats() {
   const [quotas, setQuotas] = useState<Record<Provider, QuotaState>>(EMPTY_QUOTA);
   const [capabilities, setCapabilities] = useState<Record<Provider, CapabilitiesState>>(EMPTY_CAPABILITIES);
   const [now, setNow] = useState(Date.now());
+  const [statsRevision, setStatsRevision] = useState(0);
 
   const loadQuota = useCallback(
     (provider: Provider, refresh = false) => {
@@ -100,10 +102,30 @@ export function PeonStats() {
 
   useEffect(() => {
     if (!peon.online) return;
-    let alive = true;
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") {
+        setStatsRevision((value) => value + 1);
+      }
+    };
+    const timer = window.setInterval(refreshWhenVisible, STATS_REFRESH_INTERVAL_MS);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+  }, [base, peon.online]);
+
+  useEffect(() => {
     setStats(null);
+    setAnalytics({ users: null, projects: null });
+    setUnsupported(false);
+  }, [base, period]);
+
+  useEffect(() => {
+    if (!peon.online) return;
+    let alive = true;
     setError(null);
-    api<Stats>(`${base}/stats?period=${period}`)
+    api<Stats>(`${base}/stats?period=${period}`, { cache: "no-store" })
       .then((s) => alive && setStats(s ?? {}))
       .catch((err) => {
         if (!alive) return;
@@ -114,7 +136,7 @@ export function PeonStats() {
     return () => {
       alive = false;
     };
-  }, [base, peon.online, period, t]);
+  }, [base, peon.online, period, statsRevision, t]);
 
   useEffect(() => {
     if (!peon.online || !stats || (stats.period && stats.period !== period)) return;
@@ -124,8 +146,8 @@ export function PeonStats() {
     const windowQuery = stats.rangeStart !== undefined && stats.rangeEnd !== undefined
       ? `from=${stats.rangeStart}&to=${stats.rangeEnd}` : `period=${period}`;
     Promise.allSettled([
-      api<Analytics>(`${base}/analytics?${windowQuery}&groupBy=user`),
-      api<Analytics>(`${base}/analytics?${windowQuery}&groupBy=project`),
+      api<Analytics>(`${base}/analytics?${windowQuery}&groupBy=user`, { cache: "no-store" }),
+      api<Analytics>(`${base}/analytics?${windowQuery}&groupBy=project`, { cache: "no-store" }),
     ]).then(([users, projects]) => {
       if (!alive) return;
       setAnalytics({

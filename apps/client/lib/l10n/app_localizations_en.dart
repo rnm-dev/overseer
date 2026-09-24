@@ -15,6 +15,17 @@ class AppLocalizationsEn extends AppLocalizations {
   String get loadingOverseerConnections => 'Loading Overseer connections';
 
   @override
+  String get overseerConnectionsLoadFailed =>
+      'Could not load Overseer connections';
+
+  @override
+  String get overseerConnectionsLoadFailedMessage =>
+      'Your saved connections were not deleted. Try loading them again.';
+
+  @override
+  String get retry => 'Retry';
+
+  @override
   String get overseerConnections => 'Overseer connections';
 
   @override

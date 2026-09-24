@@ -422,6 +422,7 @@ function PeonSessionDetailPage() {
   const [previewPinned, setPreviewPinned] = useState(false);
   const [projectFilePreview, setProjectFilePreview] = useState<{ path: string; size?: number; viewerUrl?: string } | null>(null);
   const [filesOpen, setFilesOpen] = useState(() => storedOpenFilePanes().has(filePanePageKey));
+  const [fileRefreshRevision, setFileRefreshRevision] = useState(0);
   useEffect(() => setProjectFilePreview(null), [sessionKey, projectKey]);
   useEffect(() => setFilesOpen(storedOpenFilePanes().has(filePanePageKey)), [filePanePageKey]);
   useEffect(() => {
@@ -473,6 +474,10 @@ function PeonSessionDetailPage() {
   }, [refreshMetadataForObservedRun, sessionKey]);
   const onRunFinished = useCallback((event?: { type?: string; is_error?: boolean }) => {
     observedRunMetadataRefreshRef.current.delete(sessionKey);
+    // Each completed turn may have changed project files, including a turn
+    // followed immediately by queued work. Revalidate the open tree at this
+    // boundary even when the overall session remains active.
+    setFileRefreshRevision((value) => value + 1);
     if (queueActivityRef.current.hasPending(sessionKey)) return;
     setRunning(false);
     setMetaTick((value) => value + 1);
@@ -1253,6 +1258,7 @@ function PeonSessionDetailPage() {
         projectKey={headerIdentity.projectKey}
         projectKeyKnown={loadedMetadataKey === sessionKey || Boolean(selectedSession)}
         filesOpen={filesOpen}
+        fileRefreshRevision={fileRefreshRevision}
         projectFilePreview={projectFilePreview}
         setProjectFilePreview={setProjectFilePreview}
         attachmentPreview={attachmentPreview}

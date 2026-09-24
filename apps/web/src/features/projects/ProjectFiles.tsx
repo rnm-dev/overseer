@@ -58,7 +58,7 @@ export function fileMenuItemCount(kind: "file" | "dir", path: string, allowUploa
   return 1 + (allowUpload ? 2 : 0) + (path ? 1 : 0);
 }
 
-export function ProjectFileTree({ filesBase, sourceFor, activePath, onOpenFile, onFileMoved, onFileDeleted, allowUpload = false, className = "" }: {
+export function ProjectFileTree({ filesBase, sourceFor, activePath, onOpenFile, onFileMoved, onFileDeleted, refreshRevision = 0, allowUpload = false, className = "" }: {
   filesBase: string;
   // How a tree path is named for reading and saving. The tree never assembles
   // a file URL itself; fileLinks.ts owns that for every surface.
@@ -67,6 +67,9 @@ export function ProjectFileTree({ filesBase, sourceFor, activePath, onOpenFile, 
   onOpenFile: (path: string, size?: number) => void;
   onFileMoved?: (source: string, destination: string) => void;
   onFileDeleted?: (path: string) => void;
+  // Increment when files may have changed outside this tree (for example when
+  // an agent turn finishes). Expanded folders are revalidated in place.
+  refreshRevision?: number;
   allowUpload?: boolean;
   className?: string;
 }) {
@@ -77,6 +80,7 @@ export function ProjectFileTree({ filesBase, sourceFor, activePath, onOpenFile, 
   const [directories, setDirectories] = useState<Record<string, DirectoryState>>({});
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set([""]));
   const refreshingRef = useRef(false);
+  const previousRefreshRevisionRef = useRef(refreshRevision);
   const filePicker = useRef<HTMLInputElement>(null);
   const folderPicker = useRef<HTMLInputElement>(null);
   const pickTarget = useRef("");
@@ -214,6 +218,12 @@ export function ProjectFileTree({ filesBase, sourceFor, activePath, onOpenFile, 
       refreshingRef.current = false;
     }
   }, [expanded, refreshDirectory]);
+
+  useEffect(() => {
+    if (previousRefreshRevisionRef.current === refreshRevision) return;
+    previousRefreshRevisionRef.current = refreshRevision;
+    void refreshExpanded();
+  }, [refreshExpanded, refreshRevision]);
 
   const toggle = async (path: string) => {
     if (expanded.has(path)) {
@@ -454,7 +464,7 @@ function FileTreeLoader({ depth, label }: { depth: number; label: string }) {
 const MODAL_ACTION = "flex h-8 flex-none items-center gap-1.5 rounded-lg border border-transparent px-2.5 font-display text-[0.7rem] font-semibold text-ink-muted transition-colors hover:border-edge-strong hover:bg-surface-hover hover:text-ink disabled:cursor-default disabled:opacity-45 disabled:hover:border-transparent disabled:hover:bg-transparent disabled:hover:text-ink-muted";
 const MODAL_ACTION_PRIMARY = "flex h-8 flex-none items-center gap-1.5 rounded-lg border border-accent/45 bg-accent/15 px-3 font-display text-[0.7rem] font-semibold text-accent-strong transition-colors hover:border-accent/70 hover:bg-accent/25 disabled:cursor-default disabled:opacity-45 disabled:hover:border-accent/45 disabled:hover:bg-accent/15";
 
-export function ProjectFilePreviewModal({ source, path, size, viewerUrl, writable = true, onClose }: {
+export function ProjectFilePreviewModal({ source, path, size, viewerUrl, writable = true, onSaved, onClose }: {
   source: FileSource;
   path: string;
   size?: number;
@@ -465,6 +475,7 @@ export function ProjectFilePreviewModal({ source, path, size, viewerUrl, writabl
   // gate still refuses anything the editor cannot represent, and a source with
   // no write route is never editable whatever this says.
   writable?: boolean;
+  onSaved?: () => void;
   onClose: () => void;
 }) {
   const t = useT();
@@ -483,7 +494,10 @@ export function ProjectFilePreviewModal({ source, path, size, viewerUrl, writabl
     editable,
     // What is on disk is no longer what was read, so the viewer reads again
     // rather than rendering the draft it happens to still hold.
-    onSaved: () => setRevision((current) => current + 1),
+    onSaved: () => {
+      setRevision((current) => current + 1);
+      onSaved?.();
+    },
   });
   // Closing the window is the one way out of this editor, so a draft has to be
   // asked about here the way the Files page asks when another file is opened.
