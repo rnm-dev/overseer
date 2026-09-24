@@ -119,6 +119,28 @@ it is an error at hash time, not a silent weakening.
 A password must be 10–200 characters and not only whitespace. It is normalised
 NFKC before hashing, so a password typed on a different keyboard still matches.
 
+## A forgotten password
+
+There is no self-service reset yet — that needs a mail transport and is tracked
+as OVSR-177. Until then an operator with a shell on the server replaces the
+password from inside the running container:
+
+```bash
+docker compose exec app node dist/cli/setPassword.js user@example.com
+```
+
+It asks for the new password twice without echoing it; piped input is taken as
+the password instead, for scripts (`printf '%s' "$PW" | docker compose exec -T
+app node dist/cli/setPassword.js user@example.com`). The password never goes
+on the command line, where `ps` and shell history would keep it. On the dev box,
+which runs from source, the command is `npx tsx apps/server/src/cli/setPassword.ts`.
+
+The same length rules apply. An unknown address is refused rather than created —
+this is recovery, not a way around the sign-up policy — but an account that only
+ever used GitHub or OIDC can be given a password this way. Every live device of
+the account is revoked in the same transaction, so whoever held the old password
+loses the sessions they signed in with.
+
 ## What the refusals do not say
 
 `401 INVALID_CREDENTIALS` is the answer to a wrong password, to an unknown

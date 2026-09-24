@@ -1,6 +1,6 @@
 import { randomBytes, randomUUID, scrypt as scryptCallback, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
-import { query } from "../../infrastructure/db/index.js";
+import { query, transaction } from "../../infrastructure/db/index.js";
 import { acceptInvite, ensureDefaultWorkspace } from "../workspaces/index.js";
 import { SIGNUP_CLOSED, mayCreateAccount } from "./signupPolicy.js";
 import { issueDevice } from "./authDevices.js";
@@ -185,4 +185,27 @@ export async function authenticateWithPassword(input: { email: unknown; password
 
 export async function signInWithPassword(input: { email: unknown; password: unknown; client: ClientInfo }): Promise<PasswordSignInResult> {
   return signIn(await authenticateWithPassword(input), input.client);
+}
+
+// Break-glass recovery for an operator with shell access to the server, used by
+// the set-password CLI. There is no self-service reset yet, so this is how a
+// forgotten password on a self-hosted instance gets replaced. It also serves a
+// GitHub-only account that never had a password. Every live device of the user
+// is revoked in the same transaction: whoever may have held the old password
+// should not keep a session minted with it.
+export async function resetPasswordByEmail(input: { email: unknown; password: unknown }): Promise<{ user: UserRecord; revokedDevices: number }> {
+  const email = normalizeEmail(input.email);
+  if (!email) throw new PasswordAuthError(400, "INVALID_EMAIL", "a valid email address is required");
+  const complaint = passwordComplaint(input.password);
+  if (complaint) throw new PasswordAuthError(400, "WEAK_PASSWORD", complaint);
+  const user = await findUserByAddress(email);
+  if (!user) throw new PasswordAuthError(404, "UNKNOWN_ACCOUNT", `no account uses ${email}`);
+
+  const hash = await hashPassword(input.password as string);
+  const revokedDevices = await transaction(async (tx) => {
+    await tx.query(`UPDATE users SET password_hash = $2 WHERE id = $1`, [user.id, hash]);
+    const { rowCount } = await tx.query(`UPDATE devices SET revoked_at = $2 WHERE user_id = $1 AND revoked_at IS NULL`, [user.id, Date.now()]);
+    return rowCount ?? 0;
+  });
+  return { user, revokedDevices };
 }

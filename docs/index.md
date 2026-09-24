@@ -47,7 +47,8 @@ repository — that content lives here.
   generic OIDC; every door is resolved once from the environment into
   `config.auth`, where a method is its settings or `null`.
 - [email and password sign-in](password-auth.md) — the `OVERSEER_PASSWORD_AUTH`
-  switch, scrypt hashing, and why every refusal is byte-identical.
+  switch, scrypt hashing, why every refusal is byte-identical, and the
+  `setPassword` CLI that recovers a forgotten password.
 - [mobile webview login](mobile-webview-login.md) — the mobile app signs in
   through a webview on the web login screen.
 
