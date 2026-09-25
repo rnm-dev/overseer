@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -202,4 +202,36 @@ test("repeated bounded cursors visit every valid event exactly once across index
   assert.ok(pages > 20);
   assert.deepEqual(visited, expected);
   assert.equal(new Set(visited).size, visited.length);
+});
+
+test("Claude thinking_tokens heartbeats never fill a page, even behind an older index", async () => {
+  const id = "claude-thinking-heartbeats";
+  const lines: string[] = [];
+  for (let index = 0; index < 5; index += 1) {
+    lines.push(row(index));
+    for (let beat = 0; beat < 20; beat += 1) {
+      lines.push(JSON.stringify({ type: "system", subtype: "thinking_tokens", session_id: id, _peonEventId: `beat-${index}-${beat}` }));
+    }
+  }
+  const transcript = `${lines.join("\n")}\n`;
+  writeFileSync(transcriptPath(id), transcript);
+
+  // An index written before thinking_tokens were hidden gave every heartbeat an id.
+  let offset = 0;
+  const records = lines.map((line, lineNumber) => {
+    const record = { version: 1, transcriptOffset: offset, transcriptLength: Buffer.byteLength(line), lineNumber,
+      eventId: JSON.parse(line)._peonEventId as string };
+    offset += Buffer.byteLength(line) + 1;
+    return `${JSON.stringify(record)}\n`;
+  }).join("");
+  writeFileSync(transcriptIndexPath(id), records);
+  const { mtimeMs } = statSync(transcriptPath(id));
+  writeFileSync(transcriptIndexMetaPath(id), JSON.stringify({ version: 1, transcriptBytes: Buffer.byteLength(transcript),
+    transcriptMtimeMs: mtimeMs, indexBytes: Buffer.byteLength(records), rows: lines.length, completeFinalLine: true }));
+
+  const page = await readTranscriptPage(id, "claude-code", { limit: 3 });
+  assert.deepEqual(page.events.map((event) => event.eventId), ["event-2", "event-3", "event-4"]);
+  const older = await readTranscriptPage(id, "claude-code", { limit: 3, cursor: page.nextCursor! });
+  assert.deepEqual(older.events.map((event) => event.eventId), ["event-0", "event-1"]);
+  assert.equal(older.hasMore, false);
 });

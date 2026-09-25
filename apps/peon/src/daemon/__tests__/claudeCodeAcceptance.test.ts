@@ -31,3 +31,14 @@ test("Claude does not acknowledge a setup refusal that has no init event", () =>
   normalize({ type: "result", is_error: true, result: "authentication required" }, () => {});
   assert.equal(accepted, 0);
 });
+
+test("Claude thinking_tokens heartbeats are not transcript events", () => {
+  const events: AgentEvent[] = [];
+  const normalize = createClaudeCodeEventNormalizer({
+    agent: "claude-code", command: "claude", prompt: "hello", cwd: "/tmp",
+    systemPromptAppend: "system", sessionId: "session",
+  });
+  normalize({ type: "system", subtype: "thinking_tokens", session_id: "session" }, (event) => events.push(event));
+  normalize({ type: "system", subtype: "init", session_id: "session" }, (event) => events.push(event));
+  assert.deepEqual(events.map((event) => event.subtype), ["init"]);
+});
