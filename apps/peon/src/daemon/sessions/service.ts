@@ -415,13 +415,26 @@ export const sessions: SessionCatalogReader & SessionLifecycleContract & Session
     // CLI's own session file must be released before a fresh `--resume`
     // reopens it, and the record must not flip through a spurious "completed".
     const spawnResume = () => {
-      record.followUpPrompts.push(prompt);
-      record.parentCompletionNotificationPending = notifyParentOnComplete;
-      record.status = "running";
-      record.outcome = null;
-      record.terminalReason = null;
-      record.endedAt = null;
-      runProcess(record, prompt, true, attachments, permissionMode, author, model, reasoningEffort, commandId, [], 0, true, replyTo, attribution);
+      // Keep a dispatch barrier across the whole synchronous setup. runProcess
+      // publishes the durable user message before it installs the new entry in
+      // activeRuns; an event listener can read the session in that interval.
+      // Without this barrier, read-time orphan reconciliation observes
+      // `running` with neither an active run nor a pending resume and
+      // incorrectly finalizes the session while its replacement is starting.
+      sessionState.resumePending.add(id);
+      try {
+        record.followUpPrompts.push(prompt);
+        record.parentCompletionNotificationPending = notifyParentOnComplete;
+        record.status = "running";
+        record.outcome = null;
+        record.terminalReason = null;
+        record.endedAt = null;
+        runProcess(record, prompt, true, attachments, permissionMode, author, model, reasoningEffort, commandId, [], 0, true, replyTo, attribution);
+      } finally {
+        // runProcess returns only after the replacement is registered, or
+        // after it has finalized the record with a bounded setup failure.
+        sessionState.resumePending.delete(id);
+      }
     };
 
     if (record.status === "running") {
@@ -461,7 +474,6 @@ export const sessions: SessionCatalogReader & SessionLifecycleContract & Session
           sessionState.resumePending.add(id);
           sessionState.activeRuns.delete(id);
           run.emitter.once("exit", () => {
-            sessionState.resumePending.delete(id);
             spawnResume();
           });
           driver.interrupt(run, "superseded");
@@ -487,7 +499,6 @@ export const sessions: SessionCatalogReader & SessionLifecycleContract & Session
         sessionState.resumePending.add(id);
         sessionState.activeRuns.delete(id);
         run.emitter.once("exit", () => {
-          sessionState.resumePending.delete(id);
           spawnResume();
         });
         driver.interrupt(run, "superseded");

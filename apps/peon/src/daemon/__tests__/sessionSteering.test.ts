@@ -126,6 +126,34 @@ test("a rejected native steer falls back to one interrupt-and-resume turn", asyn
   assert.equal(sessions.cancel(record.id), true);
 });
 
+test("interrupt-and-resume remains live while the replacement user event is published", async () => {
+  pendingSteer = null;
+  const initialRuns = runCount;
+  const record = sessions.start({ id: "resume-publish-race", prompt: "first", dir: os.tmpdir(), agent: driverId });
+  let observedStatus: string | undefined;
+  const onEvent = (published: { sessionId?: string; event?: { type?: string; text?: string } }) => {
+    if (published.sessionId !== record.id || published.event?.type !== "user_message" || published.event.text !== "replacement") return;
+    // Production catalog listeners can synchronously read the session while
+    // appendUserTurn is publishing. That read must not reconcile the record as
+    // orphaned before runProcess registers the replacement AgentRun.
+    observedStatus = sessions.get(record.id)?.status;
+  };
+  sessionState.emitter.on("event", onEvent);
+  try {
+    sessions.resume(record.id, "replacement", [], undefined, "alice@example.com");
+    pendingSteer?.callbacks.rejected(new Error("native steer rejected"));
+    await waitForRunCount(initialRuns + 2);
+
+    assert.equal(observedStatus, "running");
+    assert.equal(sessions.get(record.id)?.status, "running");
+    assert.equal(sessionState.activeRuns.has(record.id), true);
+    assert.equal(sessionState.resumePending.has(record.id), false);
+  } finally {
+    sessionState.emitter.off("event", onEvent);
+    sessions.cancel(record.id);
+  }
+});
+
 test("cancellation fences a late native steer acknowledgement", () => {
   pendingSteer = null;
   const record = sessions.start({ id: "native-steer-cancelled", prompt: "first", dir: os.tmpdir(), agent: driverId });
