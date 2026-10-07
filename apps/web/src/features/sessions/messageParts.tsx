@@ -686,7 +686,7 @@ export function ItemView({ item, t, locale = "en", yesterdayLabel = "Yesterday",
             <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 font-body text-[0.625rem] leading-tight text-ink-faint">
               {item.createdAt && <LocalMessageTime createdAt={item.createdAt} locale={locale} yesterdayLabel={yesterdayLabel} />}
               {item.createdAt && item.resultMeta && <span aria-hidden>·</span>}
-              {item.resultMeta && <span className={item.resultMeta.tone === "error" ? "text-danger" : undefined}>{item.resultMeta.text}</span>}
+              {item.resultMeta && <span>{item.resultMeta.text}</span>}
             </div>
           )}
         </div>

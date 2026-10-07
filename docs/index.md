@@ -81,6 +81,9 @@ repository — that content lives here.
   without waking the agent themselves.
 - [audio focus](audio-focus.md) — session sounds play on exactly one client, the
   one the operator last picked up.
+- [automation API](automation-api.md) — bearer tokens scoped to a Peon and
+  optionally a project, for machine callers that start sessions, follow up,
+  attach files and poll status without a browser session.
 
 ## Peons and the fleet
 
@@ -101,6 +104,9 @@ repository — that content lives here.
 - [the account Peon runs as](peon-user-account.md) — why it is a regular login
   user, systemd linger, the macOS login caveat, and the environment the
   generated unit freezes at install time.
+- [Codex rollout files are load-bearing](codex-rollout-retention.md) — a fork
+  holds only what came after it, so pruning a parent kills the chain; the safe
+  cleanup and the two incidents that prove it.
 - [Peon restart recovery](peon-restart-recovery.md) — the checklist when a Peon
   does not come back.
 - [reverse runtime capabilities](runtime-capabilities.md) — the `runtime-state-v1`

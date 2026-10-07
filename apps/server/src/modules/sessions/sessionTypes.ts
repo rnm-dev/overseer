@@ -73,7 +73,11 @@ export interface ListOptions {
   workspaceId?: string;
   peonId?: string;
   projectKey?: string;
+  projectId?: string;
   status?: string;
+  // Case-insensitive substring match over the session title and its prompt
+  // preview. Search is a filter on this one projection, not a second query path.
+  q?: string;
   authors?: string[];
   access?: { userId: string };
   perPeonLimit?: number;

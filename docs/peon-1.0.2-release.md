@@ -26,8 +26,8 @@ the working tree, as requested. Installing only Peon does not deploy those UIs.
 
 ## Accuracy and compatibility
 
-See [token accounting](../apps/peon/docs/token-usage-analytics.md) for the full
-contract. Historical totals are not reconstructed or silently rewritten. They
+See the token accounting contract in `apps/peon/docs/token-usage-analytics.md`
+for the full rules. Historical totals are not reconstructed or silently rewritten. They
 may remain understated and are labelled legacy/partial. Native Codex child
 thread inclusion is not guaranteed; collaboration downgrades capture to partial.
 An invocation crossing midnight is dated at its latest snapshot/result, not

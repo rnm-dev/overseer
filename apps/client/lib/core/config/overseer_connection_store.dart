@@ -20,6 +20,8 @@ class OverseerConnection {
 
 abstract interface class OverseerConnectionStore {
   Future<List<OverseerConnection>> readAll();
+  Future<Uri?> readSelected();
+  Future<void> writeSelected(Uri? serverUrl);
 
   Future<List<OverseerConnection>> add(Uri serverUrl);
 
@@ -29,7 +31,24 @@ abstract interface class OverseerConnectionStore {
 class SharedPreferencesOverseerConnectionStore
     implements OverseerConnectionStore {
   static const String preferenceKey = 'overseer.connections';
+  static const String selectedPreferenceKey = 'overseer.selected_connection';
   static const String legacyPreferenceKey = 'overseer.server_url';
+
+  @override
+  Future<Uri?> readSelected() async {
+    final preferences = await SharedPreferences.getInstance();
+    return parseOverseerServerUrl(preferences.getString(selectedPreferenceKey) ?? '');
+  }
+
+  @override
+  Future<void> writeSelected(Uri? serverUrl) async {
+    final preferences = await SharedPreferences.getInstance();
+    if (serverUrl == null) {
+      await preferences.remove(selectedPreferenceKey);
+    } else if (!await preferences.setString(selectedPreferenceKey, normalizeOverseerServerUrl(serverUrl).toString())) {
+      throw StateError('The selected Overseer could not be saved.');
+    }
+  }
 
   @override
   Future<List<OverseerConnection>> readAll() async {
@@ -82,6 +101,7 @@ class SharedPreferencesOverseerConnectionStore
         .where((item) => item.serverUrl != connection.serverUrl)
         .toList(growable: false);
     await _write(preferences, connections);
+    if (await readSelected() == connection.serverUrl) await writeSelected(null);
     if (connection.usesLegacyStorage) {
       await preferences.remove(legacyPreferenceKey);
     }

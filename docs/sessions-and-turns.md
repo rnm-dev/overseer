@@ -174,6 +174,36 @@ the same code and `action: "continue"` before interrupting the provider. A
 follow-up clears the old terminal reason as soon as the session starts running
 again.
 
+## A failed turn explains itself, and a transient one is replayed
+
+The provider's terminal `result` event carries the human-readable reason in
+`errors[]`, then `result`, then its `subtype`. Both transcripts render that
+reason as its own error notice rather than folding a red duration onto the
+previous assistant bubble — a bare red `10s` is indistinguishable from a turn
+that simply took ten seconds.
+
+Peon replays a failed logical turn at most twice (after 1.5s, then 5s) and only
+when all of these hold:
+
+- the provider gave an explicit reason and it names a provider 5xx/overload or a
+  transport fault. Auth, billing, rate limits, invalid requests, context overflow
+  and an unresumable conversation are reported, never retried — they fail
+  identically on a replay, and a silent retry only delays telling the operator;
+- the turn produced no non-synthetic assistant output. A turn that already spoke
+  or called a tool has side effects in the world, and replaying its prompt would
+  repeat them;
+- the harness itself did not stop the run. `turn_limit_exceeded` and
+  `task_timeout` stay authoritative (see [Turn budget](#turn-budget)).
+
+The replay is announced on the failure that caused it: Peon stamps
+`retry_scheduled`/`retry_max` on the result event before persisting it, so the
+transcript reads as one prompt, one explained failure, and the answer the replay
+produced. Claude Code's zero-turn synthetic result shares this path but is
+replayed immediately and without an announcement, because nothing was attempted.
+A replay shares the turn's budget portion rather than granting another, and holds
+the same dispatch barrier a queued respawn uses, so orphan reconciliation and the
+queue both leave the gap between the two processes alone.
+
 ## Usage is attributed to the turn that spent it
 
 Peon persists invocation-scoped numeric usage snapshots before completion.

@@ -165,6 +165,13 @@ regression by pinning DERP with host firewall rules; first check
 endpoints, and `headscale policy check -f /etc/headscale/policy.hujson` on
 nid-01.
 
+Nova's canonical callback in the dev registry is pinned to
+`http://100.64.0.3:4570`. Keep the numeric tailnet address here: the app
+container can route to the tailnet through the host, but does not use the
+host's Tailscale DNS resolver and therefore cannot resolve
+`peon-serik.mesh.rnm`. A manual registry endpoint is preserved across Nova's
+subsequent registrations and heartbeats.
+
 The pre-change Headscale config and final applied policy are backed up on
 nid-01 under `/root/headscale-backups/20260810-dev-randomize-client-port/`.
 Rollback is to restore `config.yaml.before` to `/etc/headscale/config.yaml`,

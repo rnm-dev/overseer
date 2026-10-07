@@ -109,21 +109,25 @@ opens, disabling the toggle stops alerts, and reconnect does not replay old ones
 
 The Overseer server stores subscriptions independently from login devices and
 queues accessible session and Peon events in its durable push outbox. The worker
-sends FCM notification and data payloads through Firebase Admin, retries
-transient failures with exponential backoff, and disables registration tokens
-that Firebase reports as permanently invalid.
+retries transient failures with exponential backoff and disables registration
+tokens the provider reports as permanently invalid.
 
-Configure the complete service-account JSON as a deployment secret:
+There are two delivery paths. **Expo needs no credential** — `exp.host`
+authenticates the token itself — so an instance with nothing configured still
+delivers to Expo subscriptions. **FCM HTTP v1** is the addition, the direct path
+to tokens minted by the Firebase SDK, and it exists only when a service account
+is configured:
 
 ```sh
-OVERSEER_FIREBASE_SERVICE_ACCOUNT_JSON='{"type":"service_account",...}'
+OVERSEER_PUSH_FCM_CREDENTIALS=…   # raw JSON, base64 of that JSON, or a path to it
 ```
 
-Never commit the JSON or print it in deployment logs. Use a service account
-scoped to the Overseer Firebase project. For iOS delivery, upload an APNs
+There is no Firebase Admin SDK here; the server signs its own token and calls
+the HTTP v1 endpoint. Deploys usually carry the credential as base64, because a
+Docker env file is line-oriented and a service account key is not. Never commit
+the JSON or print it in deployment logs. For iOS delivery, upload an APNs
 authentication key for both Apple bundle IDs in Firebase Console. Android needs
-no additional provider credential after the Firebase Admin service account is
-configured.
+no additional provider credential.
 
 Until the server secret is installed, FCM outbox items remain undelivered and
 retry with backoff. This is intentional: missing deployment credentials must

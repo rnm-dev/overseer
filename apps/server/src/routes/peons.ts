@@ -4,6 +4,7 @@ import { registerSessionRoutes } from "./peons/sessions.js";
 import { registerSessionSharingRoutes } from "./peons/sessionSharing.js";
 import { registerProjectRoutes } from "./peons/projects.js";
 import { registerArmoryRoutes } from "./peons/armory.js";
+import { registerAutomationTokenRoutes } from "./peons/automationTokens.js";
 import { canAccessPeon } from "../modules/access/index.js";
 import { reverseCommandGateway } from "../modules/reverseCommands/index.js";
 import { runAcceptedReverseReconciliation } from "../modules/reverseCommands/index.js";
@@ -37,6 +38,7 @@ export function peonsRouter(): express.Router {
   }));
   registerFleetRoutes(router);
   registerArmoryRoutes(router);
+  registerAutomationTokenRoutes(router);
   registerSessionSharingRoutes(router);
   registerSessionRoutes(router);
   registerProjectRoutes(router);

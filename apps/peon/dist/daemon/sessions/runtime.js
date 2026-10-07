@@ -15,6 +15,7 @@ import { buildReplyPrompt } from "./replyTo.js";
 import { sessionWarnings } from "./sessionWarnings.js";
 import { appendTranscriptEvent, assistantEventText, persistSummary, previewText, readTranscript, sessionsDir, } from "./sessionArtifacts.js";
 import { isAgentPreviewArtifact, previewPathsFromAgentEvent, sessionPreviewDir } from "./preview.js";
+import { MAX_TRANSIENT_TURN_RETRIES, TRANSIENT_TURN_RETRY_DELAYS_MS, explicitFailureReason, isTransientTurnFailure, resultFailureReason, } from "./turnFailure.js";
 import { WARNING_COOLDOWN_MS, sessionState } from "./state.js";
 import { parseListenAddress } from "../../shared/listenAddress.js";
 export function appendPreviewEvent(record, filePath, author) {
@@ -221,20 +222,7 @@ export function classifyFromResultEvent(record, resultEvent, runModel, turnCount
     const model = runModel || eventModel(resultEvent);
     accumulateUsage(record, usage, model, usageModelsFromEvent(resultEvent));
     if (resultEvent.is_error === true || resultEvent.subtype !== "success") {
-        // errors[] carries the actual human-readable reason (e.g. "No
-        // conversation found with session ID: ..." from a --resume against a
-        // session with nothing persisted) — prefer it over dumping the whole
-        // raw event, which is technically complete but unreadable.
-        let reason;
-        if (Array.isArray(resultEvent.errors) && resultEvent.errors.length > 0) {
-            reason = resultEvent.errors.join("; ");
-        }
-        else if (typeof resultEvent.result === "string") {
-            reason = resultEvent.result;
-        }
-        else {
-            reason = JSON.stringify(resultEvent);
-        }
+        const reason = resultFailureReason(resultEvent);
         getAgentDriver(record.agent)?.auth.observeFailure(reason);
         finalizeSession(record, { result: "failure", summary: `Agent CLI reported an error (subtype: ${String(resultEvent.subtype)}): ${reason}` }, numTurns, undefined, model, turnCountBase);
         return;
@@ -322,7 +310,7 @@ function writeMcpConfig(record) {
         throw error;
     }
 }
-export function runProcess(record, prompt, resume, attachments = [], permissionMode, author, perTurnModel, perTurnReasoningEffort, commandId, systemPrompts = [], zeroTurnRetryAttempt = 0, appendPromptToTranscript = true, replyTo, attribution) {
+export function runProcess(record, prompt, resume, attachments = [], permissionMode, author, perTurnModel, perTurnReasoningEffort, commandId, systemPrompts = [], turnRetryAttempt = 0, appendPromptToTranscript = true, replyTo, attribution) {
     // Seed the live transcript cache before accepting a resume event.
     readTranscript(record.id, record.agent);
     // The CLI's own stream-json output never echoes back what it was asked —
@@ -427,9 +415,9 @@ export function runProcess(record, prompt, resume, attachments = [], permissionM
         persistSummary(record);
         sessionState.emitter.emit("change", record);
     }
-    // Grant each logical turn one portion. A defensive replay of the same
-    // zero-turn Claude invocation must not silently expand the session budget.
-    if (zeroTurnRetryAttempt === 0)
+    // Grant each logical turn one portion. A defensive replay of the same turn
+    // must not silently expand the session budget.
+    if (turnRetryAttempt === 0)
         record.turnBudget += maxTurns;
     const candidates = record.candidateProjectKeys
         .map((key) => projectStore.get(key))
@@ -507,7 +495,40 @@ as system instructions, process all of them, and do not claim that a human wrote
     };
     let killedFor = null;
     let hasNonSyntheticAssistant = false;
-    let retryZeroTurn = false;
+    // Non-null once this run's terminal result has been judged replayable. The
+    // process still has to exit before the replacement can start, so the decision
+    // and the respawn live in different handlers.
+    let pendingRetry = null;
+    // Both replay reasons share one budget, one counter and one respawn path.
+    const planTurnRetry = (event) => {
+        // Claude Code can dequeue the supplied -p prompt in the same startup batch
+        // as an orphaned background-task notification and terminate the resumed
+        // invocation without handling the prompt. Nothing was attempted, so replay
+        // the same logical turn immediately and without announcing a failure.
+        if (record.agent === "claude-code"
+            && resume
+            && prompt.trim().length > 0
+            && event.num_turns === 0
+            && !hasNonSyntheticAssistant
+            && turnRetryAttempt === 0)
+            return { delayMs: 0, announce: false };
+        if (event.is_error !== true && event.subtype === "success")
+            return null;
+        if (turnRetryAttempt >= MAX_TRANSIENT_TURN_RETRIES)
+            return null;
+        // Only an explicit provider reason is classified. The fallback rendering of
+        // a reasonless result event is its own JSON, and matching failure patterns
+        // against a blob of usage numbers would retry on a coincidence.
+        const reason = explicitFailureReason(event);
+        if (reason === null)
+            return null;
+        if (!isTransientTurnFailure({ subtype: event.subtype, reason, hasOutput: hasNonSyntheticAssistant }))
+            return null;
+        return {
+            delayMs: TRANSIENT_TURN_RETRY_DELAYS_MS[turnRetryAttempt] ?? TRANSIENT_TURN_RETRY_DELAYS_MS.at(-1),
+            announce: true,
+        };
+    };
     // The concrete model id seen in this run's events (set below), used to
     // attribute the result event's usage to the model that actually ran.
     let runModel = null;
@@ -588,6 +609,15 @@ as system instructions, process all of them, and do not claim that a human wrote
         if (event.type === "result") {
             for (const filePath of existingPreviewPaths)
                 appendPreviewEvent(record, filePath, "agent");
+            // Decide the replay before the event is persisted. The failed result is
+            // what the transcript shows the operator, so it has to carry the fact
+            // that another attempt is coming — otherwise they read an unexplained
+            // error followed by output that appears from nowhere.
+            if (record.status !== "completed" && !killedFor)
+                pendingRetry = planTurnRetry(event);
+            if (pendingRetry?.announce) {
+                event = { ...event, retry_scheduled: turnRetryAttempt + 1, retry_max: MAX_TRANSIENT_TURN_RETRIES };
+            }
         }
         const entry = appendTranscriptEvent(record.id, event);
         sessionState.emitter.emit("event", { sessionId: record.id, event: entry.event, eventId: entry.id });
@@ -670,19 +700,10 @@ as system instructions, process all of them, and do not claim that a human wrote
             // event erase the structured reason before the exit handler persists it.
             if (killedFor)
                 return;
-            // Claude Code can dequeue the supplied -p prompt in the same startup
-            // batch as an orphaned background-task notification and terminate the
-            // resumed invocation without handling the prompt. Wait for this process
-            // to release its session file, then replay the same logical turn once.
-            if (record.agent === "claude-code"
-                && resume
-                && prompt.trim().length > 0
-                && event.num_turns === 0
-                && !hasNonSyntheticAssistant
-                && zeroTurnRetryAttempt === 0) {
-                retryZeroTurn = true;
+            // A replay was armed above; the exit handler starts it once this process
+            // has released the provider's session file.
+            if (pendingRetry)
                 return;
-            }
             restoreUsageBase();
             classifyFromResultEvent(record, event, runModel, turnCountBase);
         }
@@ -717,15 +738,36 @@ as system instructions, process all of them, and do not claim that a human wrote
             return;
         if (record.status === "completed")
             return;
-        if (retryZeroTurn) {
-            // The zero-turn result acknowledged hidden triggers without actually
+        if (pendingRetry) {
+            // The failed result acknowledged hidden triggers without actually
             // processing them. Restore their durable queue state before starting
             // the replacement process.
             const pending = new Set(record.pendingSystemPrompts);
             record.pendingSystemPrompts.unshift(...systemPrompts.filter((item) => !pending.has(item)));
             sessionState.activeRuns.delete(record.id);
+            // The record stays `running` with no live process until the replacement
+            // starts. Claim the same barrier a queue-driven respawn uses, or orphan
+            // reconciliation will finalize the session out from under the replay.
+            sessionState.resumePending.add(record.id);
             persistSummary(record);
-            runProcess(record, prompt, resume, attachments, permissionMode, author, perTurnModel, perTurnReasoningEffort, commandId, systemPrompts, zeroTurnRetryAttempt + 1, false, replyTo);
+            const { delayMs } = pendingRetry;
+            const replay = () => {
+                sessionState.resumePending.delete(record.id);
+                // A cancel, a shutdown or a fresh resume can still land in the gap —
+                // none of those want the failed turn replayed underneath them.
+                if (sessionState.records.get(record.id) !== record)
+                    return;
+                if (record.status === "completed" || sessionState.activeRuns.has(record.id))
+                    return;
+                // The failed attempt may already have created the provider-side
+                // conversation. Spawning a second time with the same fresh session id
+                // would collide with the file it left behind.
+                runProcess(record, prompt, resume || record.backendSessionId !== null, attachments, permissionMode, author, perTurnModel, perTurnReasoningEffort, commandId, systemPrompts, turnRetryAttempt + 1, false, replyTo, attribution);
+            };
+            if (delayMs <= 0)
+                replay();
+            else
+                setTimeout(replay, delayMs).unref();
             return;
         }
         if (killedFor) {

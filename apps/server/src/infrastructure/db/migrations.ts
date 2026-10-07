@@ -1164,4 +1164,32 @@ export const MIGRATIONS: { id: string; statements: string[] }[] = [
          ON session_mention_attention (peon_id, session_id)`,
     ],
   },
+  {
+    // An automation token is a machine front door onto one Peon, optionally
+    // narrowed to one project. It never carries authority of its own: every
+    // request re-intersects this scope with the owner's live ACL, so revoking
+    // a grant narrows every token that person minted without anyone having to
+    // enumerate them.
+    id: "044_automation_tokens",
+    statements: [
+      `CREATE TABLE IF NOT EXISTS automation_tokens (
+         id            TEXT PRIMARY KEY,
+         workspace_id  TEXT NOT NULL,
+         peon_id       TEXT NOT NULL,
+         project_id    TEXT,
+         project_key   TEXT,
+         user_id       TEXT NOT NULL,
+         label         TEXT,
+         token_hash    TEXT NOT NULL,
+         created_at    BIGINT NOT NULL,
+         last_used_at  BIGINT,
+         expires_at    BIGINT,
+         revoked_at    BIGINT
+       )`,
+      `CREATE INDEX IF NOT EXISTS automation_tokens_scope_idx
+         ON automation_tokens (workspace_id, peon_id, project_id, revoked_at)`,
+      `CREATE INDEX IF NOT EXISTS automation_tokens_owner_idx
+         ON automation_tokens (user_id, revoked_at)`,
+    ],
+  },
 ];

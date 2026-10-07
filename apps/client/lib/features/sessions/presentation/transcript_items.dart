@@ -142,11 +142,12 @@ class TranscriptToolResult {
   final bool isError;
 }
 
+// Only a successful result annotates the message it belongs to; a failure is
+// its own notice row, so this never needs an error tone.
 class TranscriptResultMeta {
-  const TranscriptResultMeta({required this.text, required this.isError});
+  const TranscriptResultMeta({required this.text});
 
   final String text;
-  final bool isError;
 }
 
 double transcriptItemGap(TranscriptItem? previous, TranscriptItem item) {
@@ -338,11 +339,28 @@ List<TranscriptItem> flattenTranscriptEvents(List<TranscriptEvent> events) {
         if (duration != null) parts.add('${(duration / 1000).round()}s');
         if (turns != null) parts.add('$turns ${turns == 1 ? 'turn' : 'turns'}');
         if (output > 0) parts.add('${compactTranscriptNumber(output)} output');
-        if (parts.isNotEmpty) {
-          final meta = TranscriptResultMeta(
-            text: parts.join(' · '),
-            isError: payload['is_error'] == true,
+        // A failed turn says why it failed and stands on its own line. Folded
+        // into the previous bubble's metadata it read as a bare red duration,
+        // indistinguishable from a turn that simply took ten seconds.
+        if (payload['is_error'] == true) {
+          final reason = transcriptResultFailureReason(payload);
+          final retry = _number(payload['retry_scheduled'])?.round();
+          items.add(
+            TranscriptNoticeItem(
+              key: baseKey,
+              text: [
+                if (reason.isNotEmpty) reason,
+                ...parts,
+                if (retry != null)
+                  'retrying $retry/${_number(payload['retry_max'])?.round() ?? retry}',
+              ].join(' · '),
+              isError: true,
+            ),
           );
+          continue;
+        }
+        if (parts.isNotEmpty) {
+          final meta = TranscriptResultMeta(text: parts.join(' · '));
           TranscriptTextItem? lastText;
           for (var index = items.length - 1; index >= 0; index--) {
             final item = items[index];
@@ -356,11 +374,7 @@ List<TranscriptItem> flattenTranscriptEvents(List<TranscriptEvent> events) {
             lastText.resultMeta = meta;
           } else {
             items.add(
-              TranscriptNoticeItem(
-                key: baseKey,
-                text: meta.text,
-                isError: meta.isError,
-              ),
+              TranscriptNoticeItem(key: baseKey, text: meta.text),
             );
           }
         }
@@ -396,6 +410,28 @@ List<TranscriptItem> flattenTranscriptEvents(List<TranscriptEvent> events) {
   }
 
   return items;
+}
+
+// The human-readable half of a failed result event. Peon's own classification
+// reads the same fields (`errors[]`, then `result`); a failure that carries
+// neither is described by its subtype rather than by dumping the raw event,
+// which is complete but unreadable in a chat bubble.
+const _failureReasonMax = 300;
+
+String transcriptResultFailureReason(Map<String, dynamic> payload) {
+  final errors = payload['errors'];
+  var raw = '';
+  if (errors is List && errors.isNotEmpty) {
+    raw = errors.map((error) => error.toString()).join('; ');
+  } else if (_string(payload['result'])?.trim().isNotEmpty == true) {
+    raw = _string(payload['result'])!;
+  } else {
+    final subtype = _string(payload['subtype']);
+    if (subtype != null && subtype != 'success') raw = subtype;
+  }
+  final text = raw.replaceAll(RegExp(r'\s+'), ' ').trim();
+  if (text.length <= _failureReasonMax) return text;
+  return '${text.substring(0, _failureReasonMax - 1)}…';
 }
 
 String textFromTranscriptContent(Object? content) {

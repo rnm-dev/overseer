@@ -595,7 +595,7 @@ export function effectiveAgentForAdmission(catalog: unknown, agent: unknown, mod
   return typeof body.defaultAgent === "string" ? body.defaultAgent : null;
 }
 
-async function agentAuthBlocked(record: PeonRecord, agent: unknown, model: unknown): Promise<"broken" | "unauthenticated" | null> {
+export async function agentAuthBlocked(record: PeonRecord, agent: unknown, model: unknown): Promise<"broken" | "unauthenticated" | null> {
   let effectiveAgent = typeof agent === "string" && agent ? agent : null;
   if (!effectiveAgent) {
     const catalog = await callPeon(connOfRecord(record), "GET", "/models");

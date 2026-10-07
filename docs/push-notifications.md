@@ -98,7 +98,7 @@ simply do not exist in production and vice versa.
 | | Firebase project | Credential file (nid-dev, mode 600) | Wired through |
 | --- | --- | --- | --- |
 | dev | `overseer-dev-f24fe` | `/rnm/overseer/secrets/fcm-dev.json` | `/rnm/overseer/.env.overseer-dev`, base64 |
-| production | `overseer-9fe46` | `/rnm/overseer/secrets/fcm-prod.json` | `.kamal/secrets` → `config/deploy.yml` secret list, base64 |
+| production | `overseer-9fe46` | `/rnm/overseer/secrets/fcm-prod.json` | `.kamal/secrets` → `apps/server/config/deploy.yml` secret list, base64 |
 
 `/rnm/overseer/secrets/` sits outside the app git repository. The service
 account JSON is never committed; `.kamal/secrets` reads it at deploy time with

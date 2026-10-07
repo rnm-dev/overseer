@@ -566,6 +566,84 @@ void main() {
       'new',
     );
   });
+
+  test('a failed result explains itself instead of showing a bare duration', () {
+    final items = flattenTranscriptEvents([
+      _event('assistant', 0, {
+        'type': 'assistant',
+        'message': {
+          'content': [
+            {'type': 'text', 'text': 'Working on it.'},
+          ],
+        },
+      }),
+      _event('result', 1, {
+        'type': 'result',
+        'subtype': 'error_during_execution',
+        'is_error': true,
+        'errors': ['API Error: 500 Internal Server Error'],
+        'duration_ms': 10000,
+        'retry_scheduled': 1,
+        'retry_max': 2,
+      }),
+    ]);
+
+    final notice = items.whereType<TranscriptNoticeItem>().single;
+    expect(notice.isError, isTrue);
+    expect(notice.text, 'API Error: 500 Internal Server Error · 10s · retrying 1/2');
+    // The failure is its own row; the assistant bubble above keeps no red suffix.
+    expect(items.whereType<TranscriptTextItem>().single.resultMeta, isNull);
+  });
+
+  test('a successful result still annotates the message it belongs to', () {
+    final items = flattenTranscriptEvents([
+      _event('assistant', 0, {
+        'type': 'assistant',
+        'message': {
+          'content': [
+            {'type': 'text', 'text': 'Done.'},
+          ],
+        },
+      }),
+      _event('result', 1, {
+        'type': 'result',
+        'subtype': 'success',
+        'is_error': false,
+        'duration_ms': 2000,
+        'num_turns': 1,
+      }),
+    ]);
+
+    expect(items.whereType<TranscriptNoticeItem>(), isEmpty);
+    expect(
+      items.whereType<TranscriptTextItem>().single.resultMeta!.text,
+      '2s · 1 turn',
+    );
+  });
+
+  test('a failure reason collapses whitespace and is bounded', () {
+    expect(
+      transcriptResultFailureReason({
+        'errors': ['line one\n  line two'],
+      }),
+      'line one line two',
+    );
+    expect(
+      transcriptResultFailureReason({'result': 'boom'}),
+      'boom',
+    );
+    expect(
+      transcriptResultFailureReason({'subtype': 'error_during_execution'}),
+      'error_during_execution',
+    );
+    expect(transcriptResultFailureReason({'subtype': 'success'}), '');
+    expect(
+      transcriptResultFailureReason({
+        'errors': [List.filled(400, 'x').join()],
+      }).length,
+      300,
+    );
+  });
 }
 
 TranscriptEvent _event(

@@ -436,7 +436,7 @@ This section is intentionally not executed during preparation.
    `https://www.cloudflare.com/ips-v4/` and `/ips-v6/` lists. A missing range
    collapses those visitors to a Cloudflare address; an obsolete over-broad
    range can make a spoofed `CF-Connecting-IP` trusted.
-3. Copy `config/nginx/overseer.rnm.dev.conf` to
+3. Copy `apps/server/config/nginx/overseer.rnm.dev.conf` to
    `/etc/nginx/sites-available/overseer.rnm.dev` and enable it.
 4. Run `nginx -t` before `systemctl reload nginx`. Confirm the vhost uses
    `real_ip_header CF-Connecting-IP`, explicit Cloudflare `set_real_ip_from`

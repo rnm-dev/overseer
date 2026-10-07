@@ -20,9 +20,6 @@ export interface Block {
 }
 export interface Ev {
   error?: string;
-  errors?: unknown[];
-  result?: unknown;
-  subtype?: string;
   type?: string;
   text?: string;
   author?: string | MentionPrincipal;
@@ -36,6 +33,12 @@ export interface Ev {
   model?: string;
   cwd?: string;
   is_error?: boolean;
+  subtype?: string;
+  errors?: unknown[];
+  result?: unknown;
+  // Stamped by Peon on a failed result it is about to replay.
+  retry_scheduled?: number;
+  retry_max?: number;
   num_turns?: number;
   duration_ms?: number;
   total_cost_usd?: number;
@@ -218,6 +221,10 @@ export type Item =
   | { kind: "preview"; key: string; path: string; author?: string; createdAt?: number }
   | { kind: "raw"; key: string; text: string };
 
+// The human-readable half of a failed result event. Peon's own classification
+// reads the same fields (`errors[]`, then `result`); a failure that carries
+// neither is described by its subtype rather than by dumping the raw event,
+// which is complete but unreadable in a chat bubble.
 const FAILURE_REASON_MAX = 300;
 export function resultFailureReason(ev: Ev): string {
   const raw = Array.isArray(ev.errors) && ev.errors.length > 0
@@ -289,12 +296,19 @@ export function flattenEvents(events: Ev[], t: T): Item[] {
         if (typeof ev.num_turns === "number") parts.push(t("session.chat.turns", { n: ev.num_turns }));
         const out = ev.usage?.output_tokens ?? 0;
         if (out > 0) parts.push(`${compactNum.format(out)} ${t("peon.stats.outputTokens").toLowerCase()}`);
+        // A failed turn says why it failed and stands on its own line. Folded
+        // into the previous bubble's metadata it read as a bare red duration,
+        // which is indistinguishable from a turn that simply took ten seconds.
         if (ev.is_error) {
-          items.push({ kind: "notice", key: eventKey, tone: "error", text: [resultFailureReason(ev), ...parts].filter(Boolean).join(" · ") || t("session.chat.failed") });
+          const detail = [resultFailureReason(ev), ...parts];
+          if (typeof ev.retry_scheduled === "number") {
+            detail.push(t("session.chat.turnRetrying", { n: ev.retry_scheduled, max: ev.retry_max ?? ev.retry_scheduled }));
+          }
+          items.push({ kind: "notice", key: eventKey, tone: "error", text: detail.filter(Boolean).join(" · ") || t("session.chat.failed") });
           return;
         }
         if (parts.length) {
-          const resultMeta = { tone: ev.is_error ? "error" as const : "neutral" as const, text: parts.join(" · ") };
+          const resultMeta = { text: parts.join(" · ") };
           let lastText: Extract<Item, { kind: "text" }> | undefined;
           for (let i = items.length - 1; i >= 0; i--) {
             if (items[i].kind === "user") break;
@@ -304,7 +318,7 @@ export function flattenEvents(events: Ev[], t: T): Item[] {
             }
           }
           if (lastText) lastText.resultMeta = resultMeta;
-          else items.push({ kind: "notice", key: eventKey, ...resultMeta });
+          else items.push({ kind: "notice", key: eventKey, tone: "neutral", ...resultMeta });
         }
         return;
       }

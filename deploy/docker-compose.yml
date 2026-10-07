@@ -82,6 +82,13 @@ services:
       #OVERSEER_OIDC_CLIENT_ID: ""
       #OVERSEER_OIDC_CLIENT_SECRET: ""
       #OVERSEER_OIDC_LABEL: ""
+      # Turn this on with the four above. Without it single sign-on gives each
+      # arrival a personal workspace and nothing shared; with it the first
+      # person from the directory creates the directory's workspace and owns
+      # it, and everyone after joins as a member. It is off by default only so
+      # that upgrading an instance that already places people by invitation
+      # does not suddenly grow a second workspace.
+      #OVERSEER_OIDC_PROVISION_WORKSPACE: "1"
 
       # ── Network ─────────────────────────────────────────────────────────
       # Peons are told to phone home at OVERSEER_PUBLIC_URL. Set this only if

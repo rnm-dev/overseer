@@ -134,7 +134,8 @@ export async function fetchCodexCapabilities() {
     const command = settings.get().codexCommand || "codex";
     const errors = [];
     let plugins = [];
-    let skills = scanSkills(path.join(os.homedir(), ".codex", "skills"), "user");
+    const codexHome = process.env.CODEX_HOME || path.join(os.homedir(), ".codex");
+    let skills = scanSkills(path.join(codexHome, "skills"), "user");
     let mcps = [];
     try {
         const installed = await codexInstalledPlugins(command);
@@ -148,6 +149,14 @@ export async function fetchCodexCapabilities() {
             const sourcePath = typeof source?.path === "string" && path.isAbsolute(source.path) ? source.path : null;
             if (sourcePath)
                 skills.push(...scanSkills(path.join(sourcePath, "skills"), `plugin:${name}`));
+            // Installed remote plugins are executed from the versioned cache. The
+            // marketplace source path may point elsewhere or no longer exist.
+            if (typeof plugin.marketplaceName === "string" && typeof plugin.name === "string" && typeof plugin.version === "string") {
+                const segments = [plugin.marketplaceName, plugin.name, plugin.version];
+                if (segments.every((segment) => segment !== "." && segment !== ".." && !/[\\/]/.test(segment))) {
+                    skills.push(...scanSkills(path.join(codexHome, "plugins", "cache", ...segments, "skills"), `plugin:${name}`));
+                }
+            }
             return [{
                     id,
                     name,

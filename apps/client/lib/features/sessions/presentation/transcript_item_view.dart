@@ -533,9 +533,7 @@ class _AssistantText extends StatelessWidget {
                     key: Key('transcript-result-${item.key}'),
                     style: AppTypography.body(
                       fontSize: 10,
-                      color: meta.isError
-                          ? colors.error
-                          : colors.onSurfaceVariant,
+                      color: colors.onSurfaceVariant,
                     ),
                   ),
               ],

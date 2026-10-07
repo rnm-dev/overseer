@@ -13,6 +13,7 @@ import { webPreviewHandler } from "../routes/webPreview.js";
 import { projectViewerRouter } from "../routes/projectViewer.js";
 import { voiceRouter } from "../routes/voice.js";
 import { themesRouter } from "../routes/themes.js";
+import { automationRouter } from "../routes/automation.js";
 
 // The overseer's two-sided HTTP surface:
 //
@@ -85,7 +86,7 @@ export function createServer({ production = isProduction }: { production?: boole
   api.use((req, res, next) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Authorization,Content-Type,X-Actor,X-Api-Key,Peon-Content-Sha256,Peon-Request-Id,Range");
+    res.setHeader("Access-Control-Allow-Headers", "Authorization,Content-Type,X-Actor,X-Api-Key,Idempotency-Key,Peon-Content-Sha256,Peon-Request-Id,Range");
     res.setHeader("Access-Control-Expose-Headers", "Peon-Content-Sha256,Content-Range,Accept-Ranges");
     if (req.method === "OPTIONS") return res.sendStatus(204);
     next();
@@ -97,6 +98,11 @@ export function createServer({ production = isProduction }: { production?: boole
   // Theme manifests contain only bounded presentation tokens and are needed
   // before sign-in so login and connection restoration use the same theme.
   api.use(themesRouter());
+
+  // Machine callers. Mounted before the operator guard because it carries its
+  // own credential: an automation token is accepted only here, and a device
+  // token or session cookie is never accepted here.
+  api.use("/automation/v1", automationRouter());
 
   // The operator auth guard — everything below requires a device token.
   api.use(operatorAuth);

@@ -28,6 +28,12 @@ removes the connection from ordinary preferences and deletes its namespaced
 device token from secure platform storage. Other connections and their
 credentials are not affected.
 
+The app remembers the last selected connection in ordinary preferences and
+reopens that connection after a process restart. Its device token remains in
+secure storage and is validated during authentication restoration; returning
+to the connection picker does not sign out or delete that token. Removing the
+selected connection clears the saved selection.
+
 ## Capability matrix
 
 | Capability | iOS | Android | macOS | Windows | Linux |

@@ -132,6 +132,7 @@ class _AppBootstrapState extends State<AppBootstrap>
       });
     }
     List<OverseerConnection> connections;
+    Uri? selectedUrl;
     try {
       connections = await _store.readAll();
     } catch (_) {
@@ -142,9 +143,17 @@ class _AppBootstrapState extends State<AppBootstrap>
       });
       return;
     }
+    try {
+      selectedUrl = await _store.readSelected();
+    } catch (_) {
+      selectedUrl = null;
+    }
     if (!mounted) return;
     setState(() {
       _connections = connections;
+      _selectedConnection = connections
+          .where((item) => item.serverUrl == selectedUrl)
+          .firstOrNull;
       _loading = false;
       _restoreFailed = false;
     });
@@ -163,6 +172,7 @@ class _AppBootstrapState extends State<AppBootstrap>
     final config = _environmentConfig.withServerUrl(normalized);
     await widget.connectionAuthenticator(config, connection);
     final connections = await _store.add(normalized);
+    await _rememberSelection(normalized);
     if (!mounted) return;
     setState(() {
       _connections = connections;
@@ -186,9 +196,18 @@ class _AppBootstrapState extends State<AppBootstrap>
   }
 
   void _select(OverseerConnection connection) {
+    unawaited(_rememberSelection(connection.serverUrl));
     setState(() {
       _selectedConnection = connection;
     });
+  }
+
+  Future<void> _rememberSelection(Uri serverUrl) async {
+    try {
+      await _store.writeSelected(serverUrl);
+    } catch (_) {
+      // The current runtime stays available even if preferences cannot save.
+    }
   }
 
   Future<void> _openDestination(NotificationDestination destination) async {

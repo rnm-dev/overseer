@@ -128,6 +128,21 @@ void main() {
     expect(find.text('Add Overseer'), findsOneWidget);
   });
 
+  testWidgets('restores the last selected connection after restart', (tester) async {
+    final connection = OverseerConnection(serverUrl: Uri.parse('https://one.example'));
+    final store = _FakeConnectionStore([connection]);
+    store.selected = connection.serverUrl;
+    await tester.pumpWidget(AppBootstrap(
+      store: store,
+      environmentConfig: AppConfig.forFlavor(flavor: 'dev'),
+      connectionAppBuilder: (_, _, _, _) => const MaterialApp(
+        home: Scaffold(body: Text('Restored connection')),
+      ),
+    ));
+    await tester.pump();
+    expect(find.text('Restored connection'), findsOneWidget);
+  });
+
   testWidgets('keeps every saved Overseer runtime mounted while switching', (
     WidgetTester tester,
   ) async {
@@ -310,6 +325,13 @@ class _FakeConnectionStore implements OverseerConnectionStore {
   ]) : _connections = [...connections];
 
   final List<OverseerConnection> _connections;
+  Uri? selected;
+
+  @override
+  Future<Uri?> readSelected() async => selected;
+
+  @override
+  Future<void> writeSelected(Uri? serverUrl) async => selected = serverUrl;
 
   @override
   Future<List<OverseerConnection>> add(Uri serverUrl) async {
@@ -333,6 +355,11 @@ class _FakeConnectionStore implements OverseerConnectionStore {
 class _FailingConnectionStore implements OverseerConnectionStore {
   bool fail = true;
 
+  @override
+  Future<Uri?> readSelected() async => null;
+
+  @override
+  Future<void> writeSelected(Uri? serverUrl) async {}
   @override
   Future<List<OverseerConnection>> add(Uri serverUrl) async =>
       <OverseerConnection>[];

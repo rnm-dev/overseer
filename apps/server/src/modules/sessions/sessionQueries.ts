@@ -106,9 +106,22 @@ export async function listSessions(opts: ListOptions): Promise<{ sessions: Sessi
     params.push(opts.projectKey);
     where.push(`sessions.project_key = $${params.length}`);
   }
+  if (opts.projectId) {
+    params.push(opts.projectId);
+    where.push(`sessions.project_id = $${params.length}`);
+  }
   if (opts.status) {
     params.push(opts.status);
     where.push(`sessions.status = $${params.length}`);
+  }
+  // The preview columns are COALESCEd in the projection, so the filter repeats
+  // the same fallback chain rather than matching only the stored column.
+  const search = opts.q?.trim();
+  if (search) {
+    params.push(`%${search.replace(/[\\%_]/g, (char) => `\\${char}`)}%`);
+    const pattern = `$${params.length}`;
+    where.push(`(sessions.title ILIKE ${pattern} ESCAPE '\\'
+      OR COALESCE(sessions.prompt_preview, sessions.raw->>'promptPreview', sessions.raw->>'prompt') ILIKE ${pattern} ESCAPE '\\')`);
   }
   const authors = [...new Set((opts.authors ?? []).map((author) => author.trim().toLocaleLowerCase("en-US")).filter(Boolean))];
   if (authors.length) {

@@ -6,6 +6,7 @@ import { useT } from "../../shared/i18n";
 import { usePeon } from "../fleet/context";
 import { PathInput } from "./PathInput";
 import { ProjectPageHeader } from "./ProjectPageHeader";
+import { ProjectAutomationTokens } from "./ProjectAutomationTokens";
 import { ProjectQuickLinksEditor } from "./ProjectQuickLinks";
 import { ProjectTabs } from "./ProjectTabs";
 import { deleteProject, getProjectSettings, projectMetadataValue, projectRoute, updateProjectSettings, type ProjectSettings as Settings } from "../fleet/peonApi";
@@ -112,6 +113,7 @@ export function ProjectSettings() {
         links={settings.quickLinks ?? []}
       />
     )}
+    {settings && <ProjectAutomationTokens base={base} projectKey={key} />}
     <div className="pt-3">
       <h3 className="mb-3 rune text-sm text-danger">{t("proj.danger")}</h3>
       <Card className="flex flex-wrap items-center justify-between gap-4 border-danger/30 px-5 py-4">

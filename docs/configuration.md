@@ -71,6 +71,7 @@ with no door at all boots and says nobody can log in.
 | `OVERSEER_OIDC_REDIRECT_URI` | `<public-url>/auth/oidc/callback` | |
 | `OVERSEER_OIDC_NATIVE_CALLBACKS` | `overseer://oauth/oidc` | |
 | `OVERSEER_OIDC_LABEL` | the issuer's host | What the sign-in button says. |
+| `OVERSEER_OIDC_PROVISION_WORKSPACE` | off | `1` gives the directory a workspace of its own: the first operator through creates it and owns it, everyone after joins as `member`. **Turn it on with any new single sign-on instance** — without it each arrival gets a personal workspace and nothing is shared. The default stays off because it is read on every sign-in, so flipping it would make an existing instance that places people by invitation or claim grow a second workspace on the next login. See [the directory's own workspace](sign-in-methods.md#the-directorys-own-workspace). |
 | `OVERSEER_OPEN_SIGNUP` | off | `1` accepts accounts that arrive with no invitation, through every door except OIDC — which never asked for one. Each account gets a personal workspace and reaches nothing else; joining an existing workspace still needs an invitation. This is also how the **first** account is made: the install template ships it on, and [standing an instance up](sign-in-methods.md#standing-an-instance-up) is to register once and then turn it off. |
 | `OVERSEER_DEVICE_TOKEN_TTL_MS` | 90 days | Lifetime of an issued device token, whichever door issued it. |
 
