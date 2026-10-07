@@ -12,7 +12,6 @@ import type { DaemonSettings } from "../settings/index.js";
 
 export { REASONING_EFFORTS };
 export type { CodingAgent, ModelInfo, ReasoningEffort, ReasoningEffortInfo };
-export const DEFAULT_MODEL = "claude-sonnet-5";
 
 function allDrivers(): ReturnType<typeof listAgentDrivers> {
   return listAgentDrivers();
@@ -29,7 +28,7 @@ export interface AiProvider {
   capabilities?: ReturnType<typeof publicCapabilities>;
   status?: unknown;
   defaultModel?: string;
-  catalogSource?: "cli" | "stale-cli" | "fallback";
+  catalogSource?: "cli" | "stale-cli" | "unavailable";
   catalogUpdatedAt?: number | null;
   catalogError?: string | null;
 }
@@ -61,8 +60,7 @@ function runtimeModels(agent: CodingAgent): ModelInfo[] | null {
 }
 
 function modelsFor(agent: CodingAgent): ModelInfo[] {
-  const driver = getAgentDriver(agent);
-  return runtimeModels(agent) ?? driver?.models ?? [];
+  return runtimeModels(agent) ?? [];
 }
 
 function fromModels(models: ModelInfo[], value: unknown): string | undefined {
@@ -80,8 +78,7 @@ function effortForModels(models: ModelInfo[], value: unknown, model: unknown): R
 
 function providerEfforts(agent: CodingAgent): ReasoningEffortInfo[] | undefined {
   const live = runtimeModels(agent);
-  const driver = getAgentDriver(agent);
-  if (!live) return driver?.reasoningEfforts;
+  if (!live) return undefined;
   const defaultEffort = (live.find((model) => model.default) ?? live[0])
     ?.reasoningEfforts?.find((item) => item.default)?.id;
   const seen = new Set<string>();
@@ -96,9 +93,9 @@ function providerEfforts(agent: CodingAgent): ReasoningEffortInfo[] | undefined 
 function catalogMetadata(agent: CodingAgent): Pick<AiProvider, "catalogSource" | "catalogUpdatedAt" | "catalogError"> {
   const cached = cachedCatalogs.get(agent);
   return {
-    catalogSource: cached?.models ? (cached.error ? "stale-cli" : "cli") : "fallback",
+    catalogSource: cached?.models ? (cached.error ? "stale-cli" : "cli") : "unavailable",
     catalogUpdatedAt: cached?.updatedAt ?? null,
-    catalogError: cached?.error ?? null,
+    catalogError: cached?.error ?? (cached?.models ? null : "CLI model catalog has not been discovered"),
   };
 }
 
@@ -158,7 +155,7 @@ export function aiProviders(): AiProvider[] {
     reasoningEfforts: providerEfforts(driver.id), available: driver.available(),
     visible: driver.visible, legacy: driver.legacy, capabilities: publicCapabilities(driver),
     status: driver.services.status?.() ?? null,
-    defaultModel: providerDefaultModel(driver.id),
+    defaultModel: modelsFor(driver.id).find((model) => model.default)?.id ?? modelsFor(driver.id)[0]?.id,
     ...catalogMetadata(driver.id),
   }));
 }
@@ -176,13 +173,12 @@ export function providerDefaultModel(agent: CodingAgent): string {
   const driver = getAgentDriver(agent);
   const models = modelsFor(agent);
   const model = models.find((candidate) => candidate.default) ?? models[0];
-  if (!model) throw new Error(`no model catalog for agent ${agent}`);
+  if (!model) throw new Error(`Model catalog for ${agent} is unavailable: CLI discovery has not succeeded`);
   return model.id;
 }
 
 export function canonicalModel(agent: CodingAgent, value: unknown): string | undefined {
-  const live = runtimeModels(agent);
-  return live ? fromModels(live, value) : getAgentDriver(agent)?.canonicalModel(value);
+  return fromModels(modelsFor(agent), value);
 }
 
 export function isModelForAgent(agent: CodingAgent, value: unknown): value is string {
@@ -197,7 +193,7 @@ export function modelCatalog(
   return listAgentDrivers({ visible: true, available: true }).map((driver) => {
     const driverModels = modelsFor(driver.id);
     const selected = driver.id === defaultAgent
-      ? (defaultModel && canonicalModel(driver.id, defaultModel)) || providerDefaultModel(defaultAgent)
+      ? (defaultModel && canonicalModel(driver.id, defaultModel)) || driverModels.find((model) => model.default)?.id || driverModels[0]?.id
       : null;
     const known = selected ? driverModels.some((model) => model.id === selected) : true;
     const configuredEffort = driver.id === defaultAgent
@@ -225,7 +221,7 @@ export function modelCatalog(
       available: driver.available(), visible: driver.visible, legacy: driver.legacy,
       capabilities: publicCapabilities(driver),
       status: driver.services.status?.() ?? null,
-      defaultModel: providerDefaultModel(driver.id),
+      defaultModel: driverModels.find((model) => model.default)?.id ?? driverModels[0]?.id,
       ...catalogMetadata(driver.id),
     };
   });
@@ -243,11 +239,12 @@ export function narrowModel(value: unknown, agent: CodingAgent = "claude-code"):
   return canonicalModel(agent, value);
 }
 
-export function resolveModel(agent: CodingAgent, turnModel: unknown, sessionModel: unknown, savedAgent: CodingAgent, savedModel: unknown): string {
+export function resolveModel(agent: CodingAgent, turnModel: unknown, sessionModel: unknown, savedAgent: CodingAgent, savedModel: unknown): string | undefined {
   const driver = getAgentDriver(agent);
   if (!driver) throw new Error(`Agent driver "${agent}" is not registered`);
   return canonicalModel(agent, turnModel) ?? canonicalModel(agent, sessionModel)
-    ?? (savedAgent === agent ? canonicalModel(agent, savedModel) : undefined) ?? providerDefaultModel(agent);
+    ?? (savedAgent === agent ? canonicalModel(agent, savedModel) : undefined)
+    ?? modelsFor(agent).find((model) => model.default)?.id ?? modelsFor(agent)[0]?.id;
 }
 
 export function resolveReasoningEffort(
@@ -277,6 +274,5 @@ export function narrowReasoningEffort(
   agent: CodingAgent = "claude-code",
   model?: unknown,
 ): ReasoningEffort | undefined {
-  const live = runtimeModels(agent);
-  return live ? effortForModels(live, value, model) : getAgentDriver(agent)?.reasoningEffort(value, model);
+  return effortForModels(modelsFor(agent), value, model);
 }

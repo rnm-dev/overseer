@@ -66,7 +66,7 @@ const DEFAULT_SETTINGS = {
     pairingSecret: "",
     pairingSecretExpiresAt: 0,
     pairingTtlMs: 15 * 60_000,
-    ai: { defaultModel: "claude-sonnet-5", defaultReasoningEffort: "high", soul: "" },
+    ai: { defaultModel: null, defaultReasoningEffort: null, soul: "" },
 };
 export class SettingsStore {
     settingsPath;
@@ -142,7 +142,7 @@ export class SettingsStore {
             ? {
                 ...DEFAULT_SETTINGS,
                 defaultAgent: "codex-app-server",
-                ai: { ...DEFAULT_SETTINGS.ai, defaultModel: "gpt-5.6-sol", defaultReasoningEffort: "low" },
+                ai: { ...DEFAULT_SETTINGS.ai },
             }
             : DEFAULT_SETTINGS;
         return {

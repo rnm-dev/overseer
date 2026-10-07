@@ -12,6 +12,7 @@ import {
   modelCatalog,
   narrowReasoningEffort,
   refreshAgentModelCatalog,
+  resolveModel,
 } from "../providers/modelCatalog.js";
 
 test("normalizes Codex app-server model/list with model-specific efforts", () => {
@@ -102,13 +103,31 @@ test("live driver catalog becomes authoritative for model and effort validation"
   assert.equal(provider?.reasoningEfforts?.[0]?.default, true);
 });
 
-test("failed discovery exposes diagnostics and retains the bundled fallback", async () => {
+test("failed discovery exposes diagnostics without advertising guessed models", async () => {
   const id = `fallback-models-${Date.now()}`;
   registerAgentDriver(testDriver(id, { discover: async () => { throw new Error("unsupported discovery"); } }));
   await refreshAgentModelCatalog(id, "dynamic-test", true);
-  assert.equal(canonicalModel(id, "fallback"), "fallback");
+  assert.equal(canonicalModel(id, "fallback"), undefined);
   const provider = modelCatalog(id, null).find((item) => item.agent === id);
-  assert.equal(provider?.catalogSource, "fallback");
+  assert.equal(provider?.catalogSource, "unavailable");
   assert.equal(provider?.catalogError, "unsupported discovery");
-  assert.equal(provider?.models[0]?.id, "fallback");
+  assert.deepEqual(provider?.models, []);
+  assert.equal(provider?.defaultModel, undefined);
+  assert.equal(resolveModel(id, undefined, undefined, id, null), undefined);
+});
+
+test("refresh failure retains the last successfully discovered CLI catalog", async () => {
+  const id = `stale-models-${Date.now()}`;
+  let fail = false;
+  registerAgentDriver(testDriver(id, { discover: async () => {
+    if (fail) throw new Error("CLI temporarily unavailable");
+    return [{ id: "real-model", label: "Real", default: true }];
+  } }));
+  await refreshAgentModelCatalog(id, "dynamic-test", true);
+  fail = true;
+  await refreshAgentModelCatalog(id, "dynamic-test", true);
+  const provider = modelCatalog(id, null).find((item) => item.agent === id);
+  assert.equal(provider?.catalogSource, "stale-cli");
+  assert.equal(provider?.catalogError, "CLI temporarily unavailable");
+  assert.deepEqual(provider?.models.map((model) => model.id), ["real-model"]);
 });

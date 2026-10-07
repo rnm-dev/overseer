@@ -9,6 +9,9 @@ import { getAgentDriver, listAgentDrivers } from "../agents/index.js";
 import { CodexAppServerRuntime } from "../agents/runtimes/codexAppServerRuntime.js";
 import { CODEX_LONG_THREAD_REQUEST_TIMEOUT_MS, createCodexAppServerRun, forkCodexAppServerThread, reconcileCodexAppServerTurn } from "../agents/codexAppServer.js";
 import { modelCatalog, narrowNewSessionAgent } from "../providers/modelCatalog.js";
+import { discoverBuiltinFixtureModels } from "./helpers/cliModelCatalog.js";
+
+await discoverBuiltinFixtureModels();
 
 const fixture = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures", "fakeCodexAppServer.mjs");
 

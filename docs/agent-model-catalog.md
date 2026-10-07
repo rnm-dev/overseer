@@ -23,24 +23,26 @@ CLI-facing `value` is retained as that model's alias, while the resolved ID is
 the canonical session value. An effort list may have no marked default when the
 CLI does not publish one; `null` then deliberately lets the provider choose.
 
-## Cache and fallback
+## Cache and discovery failure
 
 Discovery runs before the daemon accepts sessions. Successful catalogs are
 cached in memory for five minutes; a lightweight background poll checks once a
 minute and refreshes only when that TTL expires. Failures retry after thirty
 seconds and do not stop Peon startup:
 
-- before any successful discovery, the driver-bundled catalog is the fallback;
+- before any successful discovery, the provider advertises no selectable models
+  and reports the CLI error. A session without an explicit model can still run
+  with the CLI's own default;
 - after a successful discovery, a transient refresh failure retains the last
-  known CLI catalog instead of replacing it with guessed data.
+  known CLI catalog in memory.
 
 Each provider returned by `GET /api/v1/models` carries `catalogSource`
-(`cli`, `stale-cli`, or `fallback`), `catalogUpdatedAt`, and `catalogError`.
+(`cli`, `stale-cli`, or `unavailable`), `catalogUpdatedAt`, and `catalogError`.
 `?refresh=1` forces both drivers to refresh before the response. Ordinary
 session and settings validation is synchronous and uses the latest successful
 catalog, so an advertised model/effort pair is also the pair Peon accepts.
 
-Static models are intentionally a compatibility floor, not a release feed.
-Adding a provider requires a driver-owned discovery service or an explicit
-decision to remain on fallback; provider-specific parsing does not belong in
-the HTTP routes or clients.
+Peon carries no static selectable model list. Adding a provider requires a
+driver-owned discovery service; provider-specific parsing does not belong in
+the HTTP routes or clients. A missing model in the live picker calls for
+checking the installed CLI catalog.

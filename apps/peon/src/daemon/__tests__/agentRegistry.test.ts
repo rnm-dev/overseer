@@ -11,20 +11,23 @@ import {
   shutdownAgentDriverRuntimes,
   type AgentDriver,
 } from "../agents/index.js";
-import { modelCatalog, narrowNewSessionAgent } from "../providers/modelCatalog.js";
+import { canonicalModel, modelCatalog, narrowNewSessionAgent, narrowReasoningEffort } from "../providers/modelCatalog.js";
+import { discoverBuiltinFixtureModels } from "./helpers/cliModelCatalog.js";
 import { parseSessionAnalyticsQuery } from "../sessions/sessionAnalytics.js";
+
+await discoverBuiltinFixtureModels();
 
 describe("agent driver registry", () => {
   it("owns built-in discovery, model validation and canonical lifecycle behavior", () => {
     const claude = requireAgentDriver("claude-code");
     const codex = requireAgentDriver("codex-app-server");
-    assert.equal(claude.canonicalModel("sonnet"), "claude-sonnet-5");
-    assert.equal(claude.reasoningEffort("max", "claude-fable-5-1"), "max");
-    assert.equal(codex.reasoningEffort("max", "gpt-6-astra"), "max");
-    assert.equal(codex.reasoningEffort("ultra", "gpt-6-astra"), undefined);
-    assert.equal(codex.reasoningEffort("ultra", "gpt-5.6-sol"), "ultra");
-    assert.equal(codex.reasoningEffort("max", "gpt-5.5"), undefined);
-    assert.equal(claude.reasoningEffort("high", "claude-haiku-4-5-20251001"), undefined);
+    assert.equal(canonicalModel("claude-code", "sonnet"), "claude-sonnet-5");
+    assert.equal(narrowReasoningEffort("max", "claude-code", "claude-fable-5-1"), "max");
+    assert.equal(narrowReasoningEffort("max", "codex-app-server", "gpt-6-astra"), "max");
+    assert.equal(narrowReasoningEffort("ultra", "codex-app-server", "gpt-6-astra"), undefined);
+    assert.equal(narrowReasoningEffort("ultra", "codex-app-server", "gpt-5.6-sol"), "ultra");
+    assert.equal(narrowReasoningEffort("max", "codex-app-server", "gpt-5.5"), undefined);
+    assert.equal(narrowReasoningEffort("high", "claude-code", "claude-haiku-4-5-20251001"), undefined);
     assert.equal(claude.conversation.initialBackendId("session-1"), "session-1");
     assert.equal(codex.conversation.initialBackendId("session-1"), null);
     assert.deepEqual(codex.normalizeOutcome({ result: "success", summary: "done" }), { result: "success", summary: "done", previewPath: null });

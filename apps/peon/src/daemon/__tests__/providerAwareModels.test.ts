@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { discoverBuiltinFixtureModels } from "./helpers/cliModelCatalog.js";
 import {
   aiProviders,
   canonicalModel,
@@ -10,6 +11,8 @@ import {
   resolveModel,
   resolveReasoningEffort,
 } from "../providers/modelCatalog.js";
+
+await discoverBuiltinFixtureModels();
 
 test("models and aliases are provider-aware and canonicalized", () => {
   assert.equal(canonicalModel("codex-app-server", "gpt-6-astra"), "gpt-6-astra");

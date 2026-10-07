@@ -87,7 +87,7 @@ const DEFAULT_SETTINGS: DaemonSettings = {
   pairingSecret: "",
   pairingSecretExpiresAt: 0,
   pairingTtlMs: 15 * 60_000,
-  ai: { defaultModel: "claude-sonnet-5", defaultReasoningEffort: "high", soul: "" },
+  ai: { defaultModel: null, defaultReasoningEffort: null, soul: "" },
 };
 
 export class SettingsStore {
@@ -165,7 +165,7 @@ export class SettingsStore {
       ? {
           ...DEFAULT_SETTINGS,
           defaultAgent: "codex-app-server" as const,
-          ai: { ...DEFAULT_SETTINGS.ai, defaultModel: "gpt-5.6-sol", defaultReasoningEffort: "low" as const },
+          ai: { ...DEFAULT_SETTINGS.ai },
         }
       : DEFAULT_SETTINGS;
     return {

@@ -26,6 +26,8 @@ export interface ModelProvider {
   label: string;
   models: CatalogOption[];
   reasoningEfforts: CatalogOption[];
+  catalogSource?: "cli" | "stale-cli" | "unavailable";
+  catalogError?: string | null;
 }
 
 export interface ModelsCatalog {
@@ -418,6 +420,10 @@ export function AgentSelect({ catalog, allowClear = false, defaultId, ...props }
 }
 
 export function ModelSelect({ provider, allowClear = true, ...props }: CapabilityPickerProps & { provider: ModelProvider | null }) {
+  const t = useT();
+  if (provider?.catalogSource === "unavailable" && provider.models.length === 0) {
+    return <span role="alert" className="font-mono text-xs text-danger">{t("model.catalogUnavailable")}: {provider.catalogError ?? t("error.loadFailed")}</span>;
+  }
   return <Picker {...props} options={provider?.models ?? []} allowClear={allowClear} />;
 }
 

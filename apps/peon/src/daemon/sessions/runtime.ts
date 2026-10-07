@@ -527,7 +527,7 @@ export function runProcess(
   // override is pinned: the resolution above also falls back to the daemon-wide
   // default, and pinning that would freeze a session against later changes.
   let selectionChanged = false;
-  if (perTurnModel && record.model !== model) {
+  if (perTurnModel && model && record.model !== model) {
     record.model = model;
     selectionChanged = true;
   }
