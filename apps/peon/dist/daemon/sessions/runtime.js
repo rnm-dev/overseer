@@ -103,6 +103,14 @@ export function scheduleQueuedDispatch(record) {
         }
         sessionState.queueDispatchPending.delete(record.id);
         const item = record.queuedFollowUps.shift();
+        if (item?.type === "steer") {
+            const receipts = record.steeredQueueItemIds ??= [];
+            if (!receipts.includes(item.id)) {
+                receipts.push(item.id);
+                if (receipts.length > 128)
+                    receipts.splice(0, receipts.length - 128);
+            }
+        }
         // Keep triggers durable until the provider process has actually started.
         // A setup/configuration failure must not acknowledge invisible work that
         // no agent ever received.

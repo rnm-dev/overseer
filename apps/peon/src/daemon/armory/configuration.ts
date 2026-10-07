@@ -42,13 +42,16 @@ export class ArmoryConfigurationService {
     this.operations = new ArmoryOperationCoordinator(options.stores.operations, this.now);
   }
 
-  async schema(packageId: string): Promise<{ fields: ArmoryConfigurationField[]; configured: Record<string, boolean>; hostWrites: string[] }> {
+  async schema(packageId: string): Promise<{ fields: ArmoryConfigurationField[]; configured: Record<string, boolean>; hostWrites: string[]; identity: null }> {
     const { manifest } = await loadActivePackage(this.options.stores, packageId);
     const metadata = await this.options.stores.credentials.metadata(packageId);
     return {
       fields: manifest.configuration?.fields ?? [],
       configured: metadata.configuredFields,
       hostWrites: manifest.permissions.hostPaths.filter((entry) => entry.mode === "write").map((entry) => entry.path),
+      // Pre-profile storage keeps only booleans, so no identity can be derived
+      // from it. The shape stays the same so callers need no special case.
+      identity: null,
     };
   }
 

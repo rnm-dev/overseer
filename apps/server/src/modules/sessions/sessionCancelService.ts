@@ -18,7 +18,10 @@ export interface CancelSessionRunDeps {
 // reporting the mismatch. Healing is best-effort: the Peon's answer is relayed
 // unchanged either way, and the periodic reconcile remains the backstop.
 export async function cancelSessionRun(deps: CancelSessionRunDeps): Promise<PeonCallResult> {
-  const result = await deps.cancel();
+  let result = await deps.cancel();
+  // Stop is idempotent at Peon. Retry one ambiguous gateway failure so a
+  // dropped response or short mesh hiccup does not leave the operator stuck.
+  if (result.status === 502) result = await deps.cancel();
   if (result.ok || result.status !== SESSION_NOT_RUNNING) return result;
   try {
     await deps.publish(await deps.snapshot());

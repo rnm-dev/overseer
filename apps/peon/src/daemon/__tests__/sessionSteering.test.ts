@@ -126,6 +126,34 @@ test("a rejected native steer falls back to one interrupt-and-resume turn", asyn
   assert.equal(sessions.cancel(record.id), true);
 });
 
+test("interrupt-and-resume remains live while the replacement user event is published", async () => {
+  pendingSteer = null;
+  const initialRuns = runCount;
+  const record = sessions.start({ id: "resume-publish-race", prompt: "first", dir: os.tmpdir(), agent: driverId });
+  let observedStatus: string | undefined;
+  const onEvent = (published: { sessionId?: string; event?: { type?: string; text?: string } }) => {
+    if (published.sessionId !== record.id || published.event?.type !== "user_message" || published.event.text !== "replacement") return;
+    // Production catalog listeners can synchronously read the session while
+    // appendUserTurn is publishing. That read must not reconcile the record as
+    // orphaned before runProcess registers the replacement AgentRun.
+    observedStatus = sessions.get(record.id)?.status;
+  };
+  sessionState.emitter.on("event", onEvent);
+  try {
+    sessions.resume(record.id, "replacement", [], undefined, "alice@example.com");
+    pendingSteer?.callbacks.rejected(new Error("native steer rejected"));
+    await waitForRunCount(initialRuns + 2);
+
+    assert.equal(observedStatus, "running");
+    assert.equal(sessions.get(record.id)?.status, "running");
+    assert.equal(sessionState.activeRuns.has(record.id), true);
+    assert.equal(sessionState.resumePending.has(record.id), false);
+  } finally {
+    sessionState.emitter.off("event", onEvent);
+    sessions.cancel(record.id);
+  }
+});
+
 test("cancellation fences a late native steer acknowledgement", () => {
   pendingSteer = null;
   const record = sessions.start({ id: "native-steer-cancelled", prompt: "first", dir: os.tmpdir(), agent: driverId });
@@ -177,6 +205,10 @@ test("a queued Codex-style steer stays durable until native acknowledgement", ()
     ["first", undefined, undefined],
     ["redirect natively", "alice@example.com", "command-native"],
   ]);
+  // A retry after Overseer lost the first 2xx is the same successful command,
+  // not an UNKNOWN_QUEUE_ITEM refusal and not a second provider delivery.
+  assert.equal(sessions.steerQueued(record.id, selected.id), "steered");
+  assert.equal(userMessages(record.id).length, 2);
 
   const remaining = sessions.queued(record.id)?.[0];
   assert.ok(remaining);
@@ -250,6 +282,8 @@ test("a queued steer redirects a Claude-style backend by interrupting and resumi
   assert.equal(claudeStyleRuns.at(-1)?.backendSessionId, record.id);
   assert.equal(claudeStyleRuns.at(-1)?.prompt, "redirect now");
   assert.equal(sessions.get(record.id)?.queuedFollowUps[0]?.prompt, "wait normally");
+  assert.equal(sessions.steerQueued(record.id, selected.id), "steered");
+  assert.equal(claudeStyleRuns.length, initialRuns + 2);
   assert.equal(sessions.cancel(record.id), true);
 });
 

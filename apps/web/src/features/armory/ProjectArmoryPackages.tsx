@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from "react-router";
 import { ApiError, api } from "../../shared/api";
 import { Badge, Button, Card } from "../../shared/ui";
 import { usePeon } from "../fleet/context";
+import { ArmoryIdentityRow } from "./ArmoryProfileIdentity";
 import { ProjectPageHeader } from "../projects/ProjectPageHeader";
 import { ProjectTabs } from "../projects/ProjectTabs";
 import type { ProjectDetail } from "../fleet/peonApi";
@@ -96,6 +97,7 @@ export function ProjectPackageAssignmentCard({ item, assignment, profiles, busy,
       <p className="mt-1 text-xs text-ink-faint">{busy ? "Saving…" : requirement ? "Selecting a profile enables this package for the project’s next turns. Disabled removes it." : "Credential-free package: it deliberately uses no profile. Changes apply to the project’s next turns."}</p>
       {requirement && (compatible.length === 0 ? <p role="status" className="mt-2 text-sm text-warning-strong">No profile has the exact required type. <Link className="text-accent-strong hover:underline" to={newProfileLink}>Add one now</Link> or <Link className="text-accent-strong hover:underline" to={settingsLink}>manage profiles in Armory.</Link></p>
         : readyProfiles.length === 0 ? <p role="status" className="mt-2 text-sm text-warning-strong">Compatible profiles are missing fields, unverified, or invalid. <Link className="text-accent-strong hover:underline" to={settingsLink}>Open Armory to make one ready.</Link></p> : null)}
+      {assignedProfile && <ArmoryIdentityRow identity={assignedProfile.identity} className="mt-3" />}
       {problem && <p role="alert" className="mt-3 border-l-2 border-danger bg-danger/5 px-3 py-2 text-sm text-danger">{problem}</p>}
     </div>
   </Card>;

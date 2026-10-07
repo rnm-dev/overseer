@@ -18,6 +18,7 @@ const HIDDEN_PROJECT_ID = "87b68e30-a923-48b4-9a58-f561a2390084";
 const STALE_PROJECT_ID = "87b68e30-a923-48b4-9a58-f561a2390085";
 const OPERATION_ID = "f09663fc-fc80-4314-a7e6-70b14dd29473";
 const SECRET = "profile_value_that_must_never_escape";
+const SERVICE_ACCOUNT_EMAIL = "drive-sync@example-project.iam.gserviceaccount.com";
 
 interface SeenRequest {
   method: string;
@@ -75,6 +76,7 @@ function peonServer(seen: SeenRequest[]): http.Server {
           name: "Shared Google",
           status: "verified",
           configuredFields: { serviceAccountJson: true },
+          identity: { label: "Service account email", value: SERVICE_ACCOUNT_EMAIL },
           values: { serviceAccountJson: SECRET },
         }] });
       }
@@ -241,6 +243,7 @@ test("typed Armory resources require authentication, workspace membership, and P
     name: "Shared Google",
     status: "verified",
     configuredFields: { serviceAccountJson: true },
+    identity: { label: "Service account email", value: SERVICE_ACCOUNT_EMAIL },
   }] });
 });
 

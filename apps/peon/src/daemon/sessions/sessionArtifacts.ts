@@ -77,12 +77,14 @@ async function withTranscriptReadPermit<T>(operation: () => Promise<T>): Promise
   }
 }
 
-const TRANSCRIPT_INDEX_VERSION = 1;
+// Bump whenever normalization starts hiding rows that older indexes gave an
+// event id (v2: Claude thinking_tokens), so every index rebuilds once.
+const TRANSCRIPT_INDEX_VERSION = 2;
 const TRANSCRIPT_INDEX_READ_CHUNK = 64 * 1024;
 const TRANSCRIPT_INDEX_CACHE_LIMIT = 256;
 
 interface TranscriptIndexRecord {
-  version: 1;
+  version: typeof TRANSCRIPT_INDEX_VERSION;
   transcriptOffset: number;
   transcriptLength: number;
   lineNumber: number;
@@ -90,7 +92,7 @@ interface TranscriptIndexRecord {
 }
 
 interface TranscriptIndexMeta {
-  version: 1;
+  version: typeof TRANSCRIPT_INDEX_VERSION;
   transcriptBytes: number;
   transcriptMtimeMs: number;
   indexBytes: number;

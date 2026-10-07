@@ -110,6 +110,24 @@ abstract class AppLocalizations {
   /// **'Loading Overseer connections'**
   String get loadingOverseerConnections;
 
+  /// No description provided for @overseerConnectionsLoadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not load Overseer connections'**
+  String get overseerConnectionsLoadFailed;
+
+  /// No description provided for @overseerConnectionsLoadFailedMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Your saved connections were not deleted. Try loading them again.'**
+  String get overseerConnectionsLoadFailedMessage;
+
+  /// No description provided for @retry.
+  ///
+  /// In en, this message translates to:
+  /// **'Retry'**
+  String get retry;
+
   /// No description provided for @overseerConnections.
   ///
   /// In en, this message translates to:

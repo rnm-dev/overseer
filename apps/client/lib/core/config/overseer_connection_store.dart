@@ -34,6 +34,11 @@ class SharedPreferencesOverseerConnectionStore
   @override
   Future<List<OverseerConnection>> readAll() async {
     final preferences = await SharedPreferences.getInstance();
+    // A cold launch may create a new Flutter engine while another engine
+    // (for example the push-notification background isolate) has already
+    // populated SharedPreferences' process cache. Always refresh from the
+    // platform before deciding that no connections are saved.
+    await preferences.reload();
     final legacyUrl = parseOverseerServerUrl(
       preferences.getString(legacyPreferenceKey) ?? '',
     );

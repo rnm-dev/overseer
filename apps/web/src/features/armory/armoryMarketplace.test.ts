@@ -476,3 +476,29 @@ test("configuration API errors cannot echo submitted values", async () => {
       && !JSON.stringify(error).includes(secret),
   );
 });
+
+test("a package's configuration surface shows the address its credential acts as", () => {
+  const email = "drive-sync@example-project.iam.gserviceaccount.com";
+  const withIdentity = { ...schema, identity: { label: "Service account email", value: email } };
+  const editing = renderToStaticMarkup(createElement(ArmoryConfigurationPanel, {
+    base: "/selected-peon", packageId: "heroboard", installed, schema: withIdentity, schemaError: null,
+    onRetrySchema: () => {}, onRefresh: async () => {},
+  }));
+  assert.match(editing, new RegExp(email));
+  assert.match(editing, /Service account email/);
+  assert.match(editing, />Copy</);
+
+  const verified = renderToStaticMarkup(createElement(ArmoryConfigurationPanel, {
+    base: "/selected-peon", packageId: "heroboard",
+    installed: { ...installed, state: "ready", configurationStatus: "verified" },
+    schema: withIdentity, schemaError: null, onRetrySchema: () => {}, onRefresh: async () => {},
+  }));
+  assert.match(verified, /Configuration verified/);
+  assert.match(verified, new RegExp(email));
+
+  const withoutIdentity = renderToStaticMarkup(createElement(ArmoryConfigurationPanel, {
+    base: "/selected-peon", packageId: "heroboard", installed, schema, schemaError: null,
+    onRetrySchema: () => {}, onRefresh: async () => {},
+  }));
+  assert.doesNotMatch(withoutIdentity, /Service account email|Grant this address access/);
+});

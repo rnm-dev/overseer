@@ -38,6 +38,7 @@ export const sessionState = {
             resumePending.delete(id);
         },
         size: () => resumePending.size,
+        values: () => resumePending.values(),
     },
     steerPending: {
         has: (id) => steerPending.has(id),
@@ -48,6 +49,7 @@ export const sessionState = {
             steerPending.delete(id);
         },
         size: () => steerPending.size,
+        values: () => steerPending.values(),
     },
     queueDispatchPending: {
         has: (id) => queueDispatchPending.has(id),
@@ -58,6 +60,7 @@ export const sessionState = {
             queueDispatchPending.delete(id);
         },
         size: () => queueDispatchPending.size,
+        values: () => queueDispatchPending.values(),
     },
     warningThrottle: {
         get: (key) => warningThrottleStore.get(key),

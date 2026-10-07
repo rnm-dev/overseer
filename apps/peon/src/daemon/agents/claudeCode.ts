@@ -35,6 +35,10 @@ export function normalizeClaudeCodeEvent(raw: Record<string, unknown>, cwd?: str
   const type = raw.type;
   const sourceTimestamp = sourceTimestampMetadata(raw);
   if (type === "system") {
+    // A content-free heartbeat every second or two while the model thinks.
+    // Persisted, it filled the newest transcript page and crowded out the
+    // conversation, so it never becomes a transcript event.
+    if (raw.subtype === "thinking_tokens") return null;
     return {
       type: "system",
       ...(typeof raw.subtype === "string" ? { subtype: raw.subtype } : {}),

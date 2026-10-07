@@ -3,6 +3,17 @@
 Notable changes to `@rnm-dev/peon` are recorded here. Versions follow Semantic
 Versioning, and release tags use the `peon-v<version>` form.
 
+## [0.12.11] - 2026-09-01
+
+### Fixed
+
+- Make Stop idempotent and reconcile stale live-run registries attached to
+  terminal sessions, so activity counts and cancellation converge without a
+  daemon restart.
+- Preserve bounded durable Steer receipts, allowing a request whose response
+  was lost to be retried without delivering the queued prompt twice.
+- Retry one ambiguous Overseer-to-Peon gateway failure for Stop and Steer.
+
 ## [0.12.10] - 2026-08-25
 
 ### Added
@@ -42,5 +53,6 @@ Versioning, and release tags use the `peon-v<version>` form.
 - Remove the unused repository URL runtime helper and its obsolete test-suite
   entry.
 
+[0.12.11]: https://github.com/rnm-dev/overseer/compare/peon-v0.12.10...peon-v0.12.11
 [0.12.10]: https://github.com/rnm-dev/overseer/compare/peon-v0.12.9...peon-v0.12.10
 [0.12.9]: https://github.com/rnm-dev/overseer/compare/peon-v0.12.8...peon-v0.12.9

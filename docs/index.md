@@ -47,7 +47,8 @@ repository — that content lives here.
   generic OIDC; every door is resolved once from the environment into
   `config.auth`, where a method is its settings or `null`.
 - [email and password sign-in](password-auth.md) — the `OVERSEER_PASSWORD_AUTH`
-  switch, scrypt hashing, and why every refusal is byte-identical.
+  switch, scrypt hashing, why every refusal is byte-identical, and the
+  `setPassword` CLI that recovers a forgotten password.
 - [mobile webview login](mobile-webview-login.md) — the mobile app signs in
   through a webview on the web login screen.
 
@@ -91,8 +92,8 @@ repository — that content lives here.
   revision-fenced patches over Fleet HTTP.
 - [Peon update channel](peon-update-channel.md) — owner-authorized check,
   apply and status over Fleet HTTP; package metadata and bytes come from npm.
-- [Peon 1.0.2 preparation](peon-1.0.2-release.md) — accounting changes,
-  compatibility notes, verification and remaining publication gates.
+- [Peon 1.1.1 preparation](peon-1.1.1-release.md) — Claude transcript cleanup,
+  transcript-index rebuild and remaining publication gates.
 - [agent CLI updates](agent-cli-updates.md) — the driver-owned updater contract,
   supported installation ownership and safe refusal rules for Codex and Claude.
 - [agent provider login](agent-provider-login.md) — separate Claude and Codex
@@ -123,6 +124,7 @@ repository — that content lives here.
   lifecycle mutation, with Peon's locks and installer still authoritative.
 - [Armory profiles and project packages](armory-project-packages.md) — the next
   contract: typed profiles and immutable-project assignments.
+- [source-triggered workflows](armory-workflows.md) — source systems create and monitor Peon sessions through Overseer; no package polling.
 - [managed plugin inquiries](managed-plugin-inquiries.md) — the
   `managed-plugin-inquiry-v1` operator confirmation flow.
 

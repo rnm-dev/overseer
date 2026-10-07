@@ -30,6 +30,9 @@ export class ArmoryConfigurationService {
             fields: manifest.configuration?.fields ?? [],
             configured: metadata.configuredFields,
             hostWrites: manifest.permissions.hostPaths.filter((entry) => entry.mode === "write").map((entry) => entry.path),
+            // Pre-profile storage keeps only booleans, so no identity can be derived
+            // from it. The shape stays the same so callers need no special case.
+            identity: null,
         };
     }
     async configure(packageId, submitted, options = {}) {

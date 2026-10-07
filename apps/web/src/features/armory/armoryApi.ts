@@ -32,12 +32,21 @@ export interface ArmoryProfileRequirement {
   requiredFields: string[];
 }
 
+export interface ArmoryProfileIdentity {
+  label: string;
+  value: string;
+}
+
 export interface ArmoryProfile {
   profileId: string;
   type: string;
   name: string;
   status: "missing" | "unverified" | "verified" | "invalid";
   configuredFields: Record<string, true>;
+  // The public address the credential acts as — a Google service account
+  // email, for example — which an operator has to grant access to elsewhere.
+  // Older Peons omit it, so treat a missing value as "none".
+  identity?: ArmoryProfileIdentity | null;
 }
 
 export interface ArmoryProfileListResponse { profiles: ArmoryProfile[] }
@@ -152,6 +161,7 @@ export interface ArmoryConfiguration {
   fields: ArmoryConfigurationField[];
   configured: Record<string, boolean>;
   hostWrites: string[];
+  identity?: ArmoryProfileIdentity | null;
 }
 
 export interface ArmoryOperation {

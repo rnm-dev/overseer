@@ -209,17 +209,27 @@ void main() {
     expect(find.text('No connections yet'), findsOneWidget);
   });
 
-  testWidgets('falls back to the empty state when preferences cannot be read', (
+  testWidgets('keeps restore failures distinct from an empty saved list', (
     WidgetTester tester,
   ) async {
+    final store = _FailingConnectionStore();
     await tester.pumpWidget(
       AppBootstrap(
-        store: _FailingConnectionStore(),
+        store: store,
         environmentConfig: AppConfig.forFlavor(flavor: 'prod'),
       ),
     );
     await tester.pump();
 
+    expect(find.text('Could not load Overseer connections'), findsOneWidget);
+    expect(find.text('No connections yet'), findsNothing);
+
+    store.fail = false;
+    await tester.tap(find.byKey(const Key('retry-overseer-connections')));
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Could not load Overseer connections'), findsNothing);
     expect(find.text('No connections yet'), findsOneWidget);
   });
 
@@ -321,13 +331,17 @@ class _FakeConnectionStore implements OverseerConnectionStore {
 }
 
 class _FailingConnectionStore implements OverseerConnectionStore {
+  bool fail = true;
+
   @override
   Future<List<OverseerConnection>> add(Uri serverUrl) async =>
       <OverseerConnection>[];
 
   @override
-  Future<List<OverseerConnection>> readAll() =>
-      Future<List<OverseerConnection>>.error(StateError('read failed'));
+  Future<List<OverseerConnection>> readAll() async {
+    if (fail) throw StateError('read failed');
+    return <OverseerConnection>[];
+  }
 
   @override
   Future<List<OverseerConnection>> remove(

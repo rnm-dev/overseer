@@ -20,6 +20,9 @@ test("AI statistics request and render user and project analytics", () => {
   assert.match(source, /from=\$\{stats.rangeStart\}&to=\$\{stats.rangeEnd\}/);
   assert.match(source, /peon\.stats\.prompts/);
   assert.match(source, /peon\.stats\.attributionNote/);
+  assert.match(source, /STATS_REFRESH_INTERVAL_MS = 15_000/);
+  assert.match(source, /document\.visibilityState === "visible"/);
+  assert.match(source, /stats\?period=\$\{period\}`,[^\n]+cache: "no-store"/);
 });
 
 test("provider cards expose quota diagnostics even when limits are unavailable", () => {

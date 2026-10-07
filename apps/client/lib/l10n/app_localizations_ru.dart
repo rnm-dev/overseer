@@ -15,6 +15,17 @@ class AppLocalizationsRu extends AppLocalizations {
   String get loadingOverseerConnections => 'Загрузка подключений Overseer';
 
   @override
+  String get overseerConnectionsLoadFailed =>
+      'Не удалось загрузить подключения Overseer';
+
+  @override
+  String get overseerConnectionsLoadFailedMessage =>
+      'Сохранённые подключения не удалены. Попробуйте загрузить их ещё раз.';
+
+  @override
+  String get retry => 'Повторить';
+
+  @override
   String get overseerConnections => 'Подключения Overseer';
 
   @override

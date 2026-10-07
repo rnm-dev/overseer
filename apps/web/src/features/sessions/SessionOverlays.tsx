@@ -1,4 +1,4 @@
-import type { Dispatch, SetStateAction } from "react";
+import { useState, type Dispatch, type SetStateAction } from "react";
 import { createPortal } from "react-dom";
 import { useT } from "../../shared/i18n";
 import { ProjectFilePreviewModal, ProjectFileTree } from "../projects/ProjectFiles";
@@ -19,6 +19,7 @@ interface Props {
   // Absent and not-yet-known are different states and must not read alike.
   projectKeyKnown: boolean;
   filesOpen: boolean;
+  fileRefreshRevision: number;
   projectFilePreview: FilePreview | null;
   setProjectFilePreview: Dispatch<SetStateAction<FilePreview | null>>;
   attachmentPreview: string | null;
@@ -32,12 +33,13 @@ interface Props {
 }
 
 export function SessionOverlays({
-  base, sid, projectKey, projectKeyKnown, filesOpen, projectFilePreview, setProjectFilePreview,
+  base, sid, projectKey, projectKeyKnown, filesOpen, fileRefreshRevision, projectFilePreview, setProjectFilePreview,
   attachmentPreview, setAttachmentPreview, sentAttachmentPreview,
   setSentAttachmentPreview, artifactPreview, setArtifactPreview,
   previewPinned, setPreviewPinned,
 }: Props) {
   const t = useT();
+  const [localFileRefreshRevision, setLocalFileRefreshRevision] = useState(0);
   return (
     <>
       {filesOpen && createPortal(
@@ -50,6 +52,7 @@ export function SessionOverlays({
               onOpenFile={(path, size) => setProjectFilePreview({ path, size })}
               onFileMoved={(source, destination) => setProjectFilePreview((current) => current?.path === source ? { ...current, path: destination } : current)}
               onFileDeleted={(path) => setProjectFilePreview((current) => current?.path === path ? null : current)}
+              refreshRevision={fileRefreshRevision + localFileRefreshRevision}
               allowUpload
               className="flex-1"
             />
@@ -88,6 +91,7 @@ export function SessionOverlays({
           path={projectFilePreview.path}
           size={projectFilePreview.size}
           viewerUrl={projectFilePreview.viewerUrl}
+          onSaved={() => setLocalFileRefreshRevision((value) => value + 1)}
           onClose={() => setProjectFilePreview(null)}
         />
       )}

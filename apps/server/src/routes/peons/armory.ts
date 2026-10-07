@@ -14,6 +14,8 @@ const MAX_PROFILES = 100;
 const MAX_ASSIGNMENTS = 100;
 const MAX_PROFILE_FIELDS = 64;
 const MAX_PROFILE_VALUE_LENGTH = 1024 * 1024;
+const MAX_IDENTITY_LABEL_LENGTH = 120;
+const MAX_IDENTITY_VALUE_LENGTH = 320;
 const PROFILE_STATUSES = new Set(["missing", "unverified", "verified", "invalid"]);
 const PROFILE_OPERATION_KINDS = new Set(["profile_configure", "profile_verify"]);
 const PROFILE_OPERATION_STATUSES = new Set(["queued", "running", "succeeded", "failed"]);
@@ -87,6 +89,18 @@ function unsafeProjectPackagesResult(): RelayResult {
   };
 }
 
+// A Peon older than the identity contract sends no `identity` at all, which is
+// simply "no identity". A present but malformed one is a Peon that is not
+// speaking this contract, and the whole response is refused rather than shown.
+function safeIdentity(value: unknown): { ok: true; identity: Record<string, string> | null } | { ok: false } {
+  if (value === undefined || value === null) return { ok: true, identity: null };
+  const identity = record(value);
+  if (!identity || typeof identity.label !== "string" || typeof identity.value !== "string"
+    || identity.label.length < 1 || identity.label.length > MAX_IDENTITY_LABEL_LENGTH
+    || identity.value.length < 1 || identity.value.length > MAX_IDENTITY_VALUE_LENGTH) return { ok: false };
+  return { ok: true, identity: { label: identity.label, value: identity.value } };
+}
+
 function safeProfile(value: unknown): Record<string, unknown> | null {
   const profile = record(value);
   if (!profile || !UUID.test(String(profile.profileId)) || !PROFILE_TYPE.test(String(profile.type))
@@ -95,12 +109,15 @@ function safeProfile(value: unknown): Record<string, unknown> | null {
   const configured = record(profile.configuredFields);
   if (!configured || Object.keys(configured).length > MAX_PROFILE_FIELDS
     || Object.entries(configured).some(([field, present]) => !FIELD_ID.test(field) || present !== true)) return null;
+  const identity = safeIdentity(profile.identity);
+  if (!identity.ok) return null;
   return {
     profileId: profile.profileId,
     type: profile.type,
     name: profile.name,
     status: profile.status,
     configuredFields: { ...configured },
+    identity: identity.identity,
   };
 }
 

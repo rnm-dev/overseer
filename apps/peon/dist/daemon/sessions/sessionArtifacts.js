@@ -41,7 +41,9 @@ async function withTranscriptReadPermit(operation) {
         transcriptReadWaiters.shift()?.();
     }
 }
-const TRANSCRIPT_INDEX_VERSION = 1;
+// Bump whenever normalization starts hiding rows that older indexes gave an
+// event id (v2: Claude thinking_tokens), so every index rebuilds once.
+const TRANSCRIPT_INDEX_VERSION = 2;
 const TRANSCRIPT_INDEX_READ_CHUNK = 64 * 1024;
 const TRANSCRIPT_INDEX_CACHE_LIMIT = 256;
 let transcriptReadObserver = null;

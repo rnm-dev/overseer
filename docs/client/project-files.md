@@ -34,6 +34,8 @@ directories before files, then sorts each group by case-insensitive name.
 - Child directories load only when first expanded.
 - Expanded directories remain open during manual refresh.
 - A refresh reloads the expanded portion of the tree.
+- In the web session sidebar, each completed agent turn and each inline save
+  revalidates the expanded portion of the tree without collapsing it.
 - Root and nested failures have retry actions.
 - Sessions without a project show a truthful no-project state.
 - File rows show type-aware icons and sizes and open a full-screen viewer.

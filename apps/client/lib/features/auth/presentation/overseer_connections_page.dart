@@ -55,6 +55,49 @@ class OverseerConnectionsLoadingPage extends StatelessWidget {
   }
 }
 
+class OverseerConnectionsRestoreErrorPage extends StatelessWidget {
+  const OverseerConnectionsRestoreErrorPage({super.key, required this.onRetry});
+
+  final Future<void> Function() onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    return Scaffold(
+      key: const Key('overseer-connections-restore-error'),
+      body: SafeArea(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 520),
+            child: Padding(
+              padding: context.appSpacing.screenInsets(top: 20, bottom: 20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  AppPageHeader(
+                    title: l10n.overseerConnectionsLoadFailed,
+                    subtitle: l10n.overseerConnectionsLoadFailedMessage,
+                  ),
+                  const SizedBox(height: 24),
+                  AppButton(
+                    key: const Key('retry-overseer-connections'),
+                    onPressed: onRetry,
+                    fullWidth: true,
+                    size: AppButtonSize.lg,
+                    leading: const Icon(LucideIcons.refreshCw, size: 18),
+                    child: Text(l10n.retry),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class OverseerConnectionsPage extends StatelessWidget {
   const OverseerConnectionsPage({
     super.key,

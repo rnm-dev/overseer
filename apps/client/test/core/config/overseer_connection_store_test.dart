@@ -51,6 +51,18 @@ void main() {
     );
   });
 
+  test('restores saved connections through a new cold-start store', () async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    final writer = SharedPreferencesOverseerConnectionStore();
+    await writer.add(Uri.parse('https://overseer.example'));
+
+    final coldStartStore = SharedPreferencesOverseerConnectionStore();
+    final connections = await coldStartStore.readAll();
+
+    expect(connections, hasLength(1));
+    expect(connections.single.serverUrl, Uri.parse('https://overseer.example'));
+  });
+
   test('migrates the previous single URL without duplicating it', () async {
     SharedPreferences.setMockInitialValues(<String, Object>{
       SharedPreferencesOverseerConnectionStore.legacyPreferenceKey:

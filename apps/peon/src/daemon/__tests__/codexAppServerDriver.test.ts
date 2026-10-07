@@ -7,7 +7,7 @@ import { describe, it } from "node:test";
 import type { AgentEvent, AgentRun, AgentRunOptions, AgentSteerInput } from "../agents/index.js";
 import { getAgentDriver, listAgentDrivers } from "../agents/index.js";
 import { CodexAppServerRuntime } from "../agents/runtimes/codexAppServerRuntime.js";
-import { createCodexAppServerRun, forkCodexAppServerThread, reconcileCodexAppServerTurn } from "../agents/codexAppServer.js";
+import { CODEX_LONG_THREAD_REQUEST_TIMEOUT_MS, createCodexAppServerRun, forkCodexAppServerThread, reconcileCodexAppServerTurn } from "../agents/codexAppServer.js";
 import { modelCatalog, narrowNewSessionAgent } from "../providers/modelCatalog.js";
 
 const fixture = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures", "fakeCodexAppServer.mjs");
@@ -21,6 +21,14 @@ function runtime() {
     requestTimeoutMs: 3_000,
     restartInitialDelayMs: 10,
   });
+}
+
+class RecordingRuntime extends CodexAppServerRuntime {
+  readonly timeouts = new Map<string, number | undefined>();
+  override request<T = unknown>(method: string, params?: unknown, timeoutMs?: number): Promise<T> {
+    this.timeouts.set(method, timeoutMs);
+    return super.request<T>(method, params, timeoutMs);
+  }
 }
 
 function runtimeWithEnv(env: NodeJS.ProcessEnv) {
@@ -98,6 +106,27 @@ async function steer(run: AgentRun, input: AgentSteerInput): Promise<void> {
 }
 
 describe("Codex app-server driver", () => {
+  it("allows history-dependent thread RPCs five minutes", () => {
+    assert.equal(CODEX_LONG_THREAD_REQUEST_TIMEOUT_MS, 5 * 60_000);
+  });
+  it("passes the long timeout to thread fork", async () => {
+    const instance = new RecordingRuntime({
+      command: process.execPath,
+      args: [fixture],
+      versionArgs: [fixture, "--version"],
+      experimentalApi: true,
+      requestTimeoutMs: 3_000,
+    });
+    try {
+      const first = await collect(instance, options());
+      const backendSessionId = String(first.events.find((event) => event.type === "system" && event.subtype === "init")?.session_id);
+      const fork = await forkCodexAppServerThread({ command: process.execPath, backendSessionId, targetSessionId: "fork", cwd: process.cwd() }, instance);
+      assert.match(fork.backendSessionId, /^thread-/);
+      assert.equal(instance.timeouts.get("thread/fork"), CODEX_LONG_THREAD_REQUEST_TIMEOUT_MS);
+    } finally {
+      await instance.stop();
+    }
+  });
   it("forks a persisted thread through the native app-server method", async () => {
     const instance = runtime();
     try {
