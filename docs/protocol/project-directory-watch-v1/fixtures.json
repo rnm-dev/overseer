@@ -1,0 +1,119 @@
+{
+  "capability": "project-directory-watch-v1",
+  "valid": [
+    {
+      "type": "files:subscribe",
+      "watchId": "watch-1",
+      "peonId": "p",
+      "projectKey": "demo",
+      "path": ""
+    },
+    {
+      "type": "files:unsubscribe",
+      "watchId": "watch-1"
+    },
+    {
+      "type": "files:ready",
+      "watchId": "watch-1"
+    },
+    {
+      "type": "files:changed",
+      "watchId": "watch-1"
+    },
+    {
+      "type": "files:error",
+      "watchId": "watch-1",
+      "code": "FORBIDDEN",
+      "retryable": false
+    },
+    {
+      "type": "files:subscribe",
+      "watchId": "watch-1",
+      "peonId": "p",
+      "projectKey": "demo",
+      "path": ".github/workflows"
+    },
+    {
+      "type": "files:subscribe",
+      "watchId": "watch-1",
+      "peonId": "p",
+      "projectKey": "demo",
+      "path": "src/components"
+    }
+  ],
+  "invalid": [
+    {
+      "type": "files:subscribe",
+      "watchId": "watch-1",
+      "peonId": "p",
+      "projectKey": "demo"
+    },
+    {
+      "type": "files:changed",
+      "watchId": "watch-1",
+      "bytes": "secret"
+    },
+    {
+      "type": "files:error",
+      "watchId": "watch-1",
+      "code": "FORBIDDEN",
+      "retryable": "false"
+    },
+    {
+      "type": "files:subscribe",
+      "watchId": "watch-1",
+      "peonId": "p",
+      "projectKey": "demo",
+      "path": "../secret"
+    },
+    {
+      "type": "files:subscribe",
+      "watchId": "watch-1",
+      "peonId": "p",
+      "projectKey": "demo",
+      "path": "/tmp"
+    },
+    {
+      "type": "files:subscribe",
+      "watchId": "watch-1",
+      "peonId": "p",
+      "projectKey": "demo",
+      "path": "a/../b"
+    },
+    {
+      "type": "files:subscribe",
+      "watchId": "watch-1",
+      "peonId": "p",
+      "projectKey": "demo",
+      "path": "a//b"
+    },
+    {
+      "type": "files:subscribe",
+      "watchId": "watch-1",
+      "peonId": "p",
+      "projectKey": "demo",
+      "path": "C:/tmp"
+    },
+    {
+      "type": "files:subscribe",
+      "watchId": "watch-1",
+      "peonId": "p",
+      "projectKey": "demo",
+      "path": "a\\b"
+    },
+    {
+      "type": "files:subscribe",
+      "watchId": "watch-1",
+      "peonId": "p",
+      "projectKey": "demo",
+      "path": "a\u0000b"
+    },
+    {
+      "type": "files:subscribe",
+      "watchId": "watch-1",
+      "peonId": "p",
+      "projectKey": "demo",
+      "path": "a/"
+    }
+  ]
+}

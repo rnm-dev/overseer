@@ -36,10 +36,10 @@ directories before files, then sorts each group by case-insensitive name.
 - A refresh reloads the expanded portion of the tree.
 - In the web session sidebar, each completed agent turn and each inline save
   revalidates the expanded portion of the tree without collapsing it.
-- Both web file trees also revalidate expanded folders every two seconds while
-  the tab is visible, including during an agent turn. Focus, reconnect and
-  returning to the tab trigger an immediate refresh. Closing the tree stops
-  polling; slow requests never overlap, and directory reads bypass browser cache.
+- Both web file trees use [live directory subscriptions](../project-directory-watch.md)
+  for visible, expanded directories. Native Peon events refresh the affected
+  directory, and reconnect reconciles current state. Hiding or closing the tree
+  releases subscriptions; healthy directories are not polled.
 - Root and nested failures have retry actions.
 - Sessions without a project show a truthful no-project state.
 - File rows show type-aware icons and sizes and open a full-screen viewer.

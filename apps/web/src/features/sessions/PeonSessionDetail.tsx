@@ -1253,6 +1253,7 @@ function PeonSessionDetailPage() {
         />
       )}
       <SessionOverlays
+        peonId={peon.peonId}
         base={base}
         sid={sid}
         // The identity the header already shows: the indexed row names the

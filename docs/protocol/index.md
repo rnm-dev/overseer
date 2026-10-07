@@ -12,6 +12,8 @@ separately published package.
 
 ## Contracts
 
+- [`project-directory-watch-v1`](project-directory-watch-v1/schema.json) — on-demand directory invalidations; lifecycle and limits are in [live directory updates](../project-directory-watch.md).
+
 - [`armory-project-packages-v1`](armory-project-packages-v1/schema.json) —
   installed Armory packages, reusable typed profiles and project assignments;
   its product and migration rules are in [Armory project packages](../armory-project-packages.md).

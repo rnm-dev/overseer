@@ -222,6 +222,7 @@ export const ru: Record<string, string> = {
   "proj.files.root": "корень",
   "proj.files.empty": "Пустая папка.",
   "proj.files.tooLarge": "Файл слишком большой для просмотра ({size}).",
+  "proj.files.autoUnavailable": "Автообновление недоступно",
   "proj.files.refresh": "Обновить",
   "proj.files.resize": "Изменить ширину дерева файлов",
   "proj.files.dropRoot": "Перетащите для загрузки в корень проекта",

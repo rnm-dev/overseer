@@ -124,6 +124,7 @@ repository — that content lives here.
   create, settings, documentation, quick links, update and delete.
 - [project administration](project-administration.md) — creation by members,
   project administrators and scoped member access.
+- [live directory updates](project-directory-watch.md) — demand-driven Peon filesystem watches relayed over the workspace WebSocket.
 - [showing a file](file-viewing.md) — one `FileSource`, one renderer, and one
   authenticated byte plane over mesh.
 - [Armory over Fleet HTTP](armory-reverse.md) — inventory, settings and every

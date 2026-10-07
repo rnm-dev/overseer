@@ -222,6 +222,7 @@ export const en: Record<string, string> = {
   "proj.files.root": "root",
   "proj.files.empty": "Empty folder.",
   "proj.files.tooLarge": "File too large to preview ({size}).",
+  "proj.files.autoUnavailable": "Auto updates unavailable",
   "proj.files.refresh": "Refresh",
   "proj.files.resize": "Resize the file tree",
   "proj.files.dropRoot": "Drop to upload to the project root",

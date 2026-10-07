@@ -33,3 +33,14 @@ export function requestProjectDirectory(
   inFlight.set(url, created);
   return created;
 }
+
+// An event may land during the initial HTTP read. Wait out that pre-event
+// snapshot before asking for the authoritative post-event one.
+export async function refreshProjectDirectory(
+  filesBase: string, path: string,
+  request?: DirectoryRequest,
+): Promise<ProjectFileEntry[]> {
+  const pending = inFlight.get(projectDirectoryListingPath(filesBase, path));
+  if (pending) { try { await pending; } catch { /* retry the failed snapshot */ } }
+  return requestProjectDirectory(filesBase, path, request);
+}

@@ -37,3 +37,21 @@ test("a failed directory read is released for retry", async () => {
     entries: [{ name: "recovered" }],
   })), [{ name: "recovered" }]);
 });
+
+test("watch ready waits out an older snapshot and then reads again", async () => {
+  const { refreshProjectDirectory } = await import("./projectDirectoryListing");
+  let settle!: (value: { entries: Array<{ name: string }> }) => void;
+  let reads = 0;
+  const request = () => {
+    reads++;
+    return reads === 1 ? new Promise<{ entries: Array<{ name: string }> }>((resolve) => { settle = resolve; })
+      : Promise.resolve({ entries: [{ name: "new" }] });
+  };
+  const before = requestProjectDirectory("/watch-race", "", request);
+  const after = refreshProjectDirectory("/watch-race", "", request);
+  assert.equal(reads, 1);
+  settle({ entries: [{ name: "old" }] });
+  assert.deepEqual(await before, [{ name: "old" }]);
+  assert.deepEqual(await after, [{ name: "new" }]);
+  assert.equal(reads, 2);
+});

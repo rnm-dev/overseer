@@ -1,3 +1,4 @@
+import { ProjectFileSubscriptions } from "./projectFileSubscriptions";
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { api } from "../shared/api";
 import { useWorkspace } from "../features/workspaces/workspace";
@@ -74,6 +75,7 @@ export interface MentionAttentionLiveEvent {
 type TailMsg = { event?: string | null; id?: string | null; data?: string };
 
 interface LiveSocketValue {
+  subscribeFiles: ProjectFileSubscriptions["subscribe"];
   viewersFor: (peonId: string, sessionId: string) => PresenceUser[];
   viewersForPeon: (peonId: string) => PresenceUser[];
   viewersForWorkspace: () => PresenceUser[];
@@ -102,6 +104,7 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
   const [presence, setPresence] = useState<PresenceEntry[]>([]);
   const [acknowledgedPresenceVersion, setAcknowledgedPresenceVersion] = useState(-1);
 
+  const [fileSubscriptions] = useState(() => new ProjectFileSubscriptions());
   const sockRef = useRef<WebSocket | null>(null);
   const readyRef = useRef(false); // authenticated workspace snapshot received
   const cursorsRef = useRef<Map<string, number>>(new Map()); // per-workspace resume cursor
@@ -146,11 +149,13 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!wsId) {
       readyRef.current = false;
+      fileSubscriptions.connect(null);
       setPresence([]);
       return;
     }
     if (!userEmail) {
       readyRef.current = false;
+      fileSubscriptions.connect(null);
       setPresence([]);
       return;
     }
@@ -166,6 +171,7 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
 
     // Fresh workspace ⇒ clear the view until its snapshot lands.
     readyRef.current = false;
+    fileSubscriptions.connect(null);
     setPresence([]);
     setAcknowledgedPresenceVersion(-1);
 
@@ -209,6 +215,7 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
       ws.onopen = () => {
         if (closed || sockRef.current !== ws || generation !== connectionGeneration) return ws.close();
         readyRef.current = false;
+        fileSubscriptions.connect(null);
         lastRecvAt = Date.now();
         // clientId travels with hello so every socket of this tab shares one
         // entry in the operator's audio stack.
@@ -225,6 +232,7 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
         // second retry. This is especially important after focus/pageshow races.
         if (sockRef.current !== ws || generation !== connectionGeneration) return;
         readyRef.current = false;
+        fileSubscriptions.connect(null);
         sockRef.current = null;
         if (closed) return;
         if (retry) window.clearTimeout(retry);
@@ -260,6 +268,7 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
     const reconnectNow = () => {
       if (closed) return;
       readyRef.current = false;
+      fileSubscriptions.connect(null);
       const old = sockRef.current;
       if (old) {
         sockRef.current = null;
@@ -299,6 +308,11 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
 
     const handle = (msg: Record<string, unknown>) => {
       switch (msg.type) {
+        case "files:ready":
+        case "files:changed":
+        case "files:error":
+          fileSubscriptions.handle(msg);
+          break;
         case "snapshot": {
           readyRef.current = true;
           // TCP open is not enough to call a connection healthy: auth or the
@@ -314,6 +328,8 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
           // did not serialize hello + subscribe messages.
           const ws = sockRef.current;
           if (ws?.readyState === WebSocket.OPEN) {
+            fileSubscriptions.connect((message) => ws.send(JSON.stringify(message)),
+              Array.isArray(msg.capabilities) && msg.capabilities.includes("project-directory-watch-v1"));
             for (const [sessionId, h] of tailHandlers.current) {
               ws.send(JSON.stringify({ type: "subscribe", peonId: h.peonId, sessionId, ...(h.lastEventId ? { lastEventId: h.lastEventId } : {}) }));
             }
@@ -521,6 +537,7 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
     return () => {
       closed = true;
       readyRef.current = false;
+      fileSubscriptions.connect(null);
       setAudioClaimSender(null);
       window.clearInterval(heartbeat);
       window.removeEventListener("online", kick);
@@ -534,7 +551,7 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
       sockRef.current?.close();
       sockRef.current = null;
     };
-  }, [wsId, userEmail, updatePeon]);
+  }, [wsId, userEmail, updatePeon, fileSubscriptions]);
 
   useEffect(() => {
     const ws = sockRef.current;
@@ -631,7 +648,7 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
 
   const viewersForWorkspace = useMemo(() => () => withLocalUser(presence, true), [presence, withLocalUser]);
 
-  return <Ctx.Provider value={{ viewersFor, viewersForPeon, viewersForWorkspace, subscribe, subscribeSessions, subscribeProjects, subscribeAttention, subscribeMentionAttention }}>{children}</Ctx.Provider>;
+  return <Ctx.Provider value={{ subscribeFiles: fileSubscriptions.subscribe, viewersFor, viewersForPeon, viewersForWorkspace, subscribe, subscribeSessions, subscribeProjects, subscribeAttention, subscribeMentionAttention }}>{children}</Ctx.Provider>;
 }
 
 export function useLiveSocket(): LiveSocketValue {

@@ -1,3 +1,4 @@
+import { ProjectFileWatchHub } from "./projectFileWatchHub.js";
 import type { IncomingMessage, Server } from "node:http";
 import { randomUUID } from "node:crypto";
 import type { Duplex } from "node:stream";
@@ -76,6 +77,7 @@ interface Client {
   deliveredResourceCursors: Map<number, { kind: "session" | "project" | "peon"; committedAt: number | null }>;
   messageQueue: Promise<void>;
   tails: Map<string, AbortController>;
+  fileWatches: ProjectFileWatchHub;
   location: PresenceLocation | null;
   // Whether that location is actually in front of the operator (tab visible +
   // focused). A backgrounded tab keeps its place in the viewer list but must not
@@ -173,6 +175,7 @@ export function attachLiveSocket(server: Server): WebSocketServer {
   };
   server.on("upgrade", onUpgrade);
   const clients = new Set<Client>();
+  const fileWatches = new ProjectFileWatchHub(send);
   // Tell each of an operator's sockets whether its tab currently owns audio.
   // Ownership is per operator, not per workspace, so this deliberately ignores
   // which workspace a socket is looking at.
@@ -215,6 +218,7 @@ export function attachLiveSocket(server: Server): WebSocketServer {
       if (!client) return;
       const workspaceId = client.workspaceId;
       client.closed = true;
+      fileWatches.closeClient(client);
       for (const c of client.tails.values()) c.abort();
       client.tails.clear();
       client.location = null;
@@ -269,6 +273,7 @@ export function attachLiveSocket(server: Server): WebSocketServer {
         deliveredResourceCursors: new Map(),
         messageQueue: Promise.resolve(),
         tails: new Map(),
+        fileWatches,
         location: null,
         presenceActive: true,
         audioClientId: null,
@@ -369,6 +374,7 @@ export function attachLiveSocket(server: Server): WebSocketServer {
     }
   }, 30_000);
   wss.on("close", () => {
+    fileWatches.dispose();
     clearInterval(sync);
     clearInterval(ping);
     bus.off("event", onBusEvent);
@@ -400,7 +406,7 @@ function enqueueMessage(client: Client, raw: string, wsCursor: Map<string, numbe
 }
 
 async function onMessage(client: Client, raw: string, wsCursor: Map<string, number>): Promise<void> {
-  let msg: { type?: string; kind?: string; workspaceId?: string; cursor?: number; scope?: string; peonId?: string; sessionId?: string; lastEventId?: string; clientId?: string };
+  let msg: { watchId?: string; projectKey?: string; path?: string; type?: string; kind?: string; workspaceId?: string; cursor?: number; scope?: string; peonId?: string; sessionId?: string; lastEventId?: string; clientId?: string };
   try {
     msg = JSON.parse(raw);
   } catch {
@@ -428,6 +434,11 @@ async function onMessage(client: Client, raw: string, wsCursor: Map<string, numb
     return;
   }
   if (!client.workspaceId) return; // everything else requires a workspace
+  if (msg.type === "files:subscribe") return client.fileWatches.subscribe(client, msg);
+  if (msg.type === "files:unsubscribe") {
+    if (typeof msg.watchId === "string") client.fileWatches.unsubscribe(client, msg.watchId);
+    return;
+  }
   if (msg.type === "session:applied" || msg.type === "resource:applied") {
     const cursor = Number(msg.cursor);
     if (!Number.isSafeInteger(cursor) || cursor <= 0 || cursor > (wsCursor.get(client.workspaceId) ?? 0)) return;
@@ -471,6 +482,7 @@ async function hello(client: Client, msg: { workspaceId?: string; clientId?: str
   }
   if (client.closed) return;
   // Switching workspace resets everything for this socket.
+  client.fileWatches.closeClient(client);
   const previousWorkspaceId = client.workspaceId;
   for (const c of client.tails.values()) c.abort();
   client.tails.clear();
@@ -507,6 +519,7 @@ async function snapshotAndReplay(client: Client, workspaceId: string, wsCursor: 
   if (client.closed || client.workspaceId !== workspaceId) return;
   send(client.ws, {
     type: "snapshot",
+    capabilities: ["project-directory-watch-v1"],
     presence: collectPresence(client),
     peonPresence: records
       .filter((record) => peonVisible(client, record.peonId))

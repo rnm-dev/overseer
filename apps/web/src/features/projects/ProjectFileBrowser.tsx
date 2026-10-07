@@ -77,6 +77,8 @@ export function ProjectFileBrowser() {
               style={split.width === undefined ? undefined : { width: split.width }}
             >
               <ProjectFileTree
+                peonId={peon.peonId}
+                projectKey={key}
                 filesBase={filesBase}
                 sourceFor={(path) => ({ kind: "project", base, projectKey: key, path })}
                 activePath={selected?.path}

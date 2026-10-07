@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ovrseer:protocol:project-directory-watch-v1",
+  "title": "Project directory watch v1",
+  "$defs": {
+    "subscribe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "watchId",
+        "peonId",
+        "projectKey",
+        "path"
+      ],
+      "properties": {
+        "type": {
+          "const": "files:subscribe"
+        },
+        "watchId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,80}$"
+        },
+        "peonId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "projectKey": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "path": {
+          "type": "string",
+          "maxLength": 4096,
+          "description": "Empty root or slash-separated relative segments; no empty/dot/dotdot segments, backslashes, controls or absolute paths.",
+          "pattern": "^(?:$|(?![A-Za-z]:)(?!\\.{1,2}(?:/|$))(?!.*\\/\\.{1,2}(?:/|$))[^/\\\\\\x00-\\x1f\\x7f]+(?:/[^/\\\\\\x00-\\x1f\\x7f]+)*)$"
+        }
+      }
+    },
+    "unsubscribe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "watchId"
+      ],
+      "properties": {
+        "type": {
+          "const": "files:unsubscribe"
+        },
+        "watchId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,80}$"
+        }
+      }
+    },
+    "invalidation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "watchId"
+      ],
+      "properties": {
+        "type": {
+          "enum": [
+            "files:ready",
+            "files:changed"
+          ]
+        },
+        "watchId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,80}$"
+        }
+      }
+    },
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "watchId",
+        "code",
+        "retryable"
+      ],
+      "properties": {
+        "type": {
+          "const": "files:error"
+        },
+        "watchId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,80}$"
+        },
+        "code": {
+          "enum": [
+            "INVALID_PATH",
+            "FORBIDDEN",
+            "UNSUPPORTED",
+            "LIMIT",
+            "PROJECT_CHANGED",
+            "UNAVAILABLE"
+          ]
+        },
+        "retryable": {
+          "type": "boolean"
+        }
+      }
+    },
+    "sseData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [],
+      "properties": {}
+    }
+  },
+  "oneOf": [
+    {
+      "$ref": "#/$defs/subscribe"
+    },
+    {
+      "$ref": "#/$defs/unsubscribe"
+    },
+    {
+      "$ref": "#/$defs/invalidation"
+    },
+    {
+      "$ref": "#/$defs/error"
+    }
+  ]
+}

@@ -66,3 +66,5 @@ export function dirErrorResponse(error: unknown): FilesystemError {
 export function fileErrorResponse(error: unknown): FilesystemError {
   return sharedFileAccessService.fileErrorResponse(error);
 }
+
+export { DirectoryWatchRegistry, directoryWatchTarget } from "./directoryWatch.js";

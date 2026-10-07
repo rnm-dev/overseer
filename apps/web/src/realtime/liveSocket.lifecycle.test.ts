@@ -10,7 +10,8 @@ const providerSource = readFileSync(
 
 test("socket lifecycle depends on stable user identity", () => {
   assert.match(providerSource, /const userEmail = user\?\.email;/);
-  assert.match(providerSource, /\}, \[wsId, userEmail, updatePeon\]\);/);
+  assert.match(providerSource, /\}, \[wsId, userEmail, updatePeon, fileSubscriptions\]\);/);
+  assert.match(providerSource, /const \[fileSubscriptions\] = useState\(\(\) => new ProjectFileSubscriptions\(\)\);/);
   assert.doesNotMatch(providerSource, /\}, \[wsId, user, updatePeon\]\);/);
 });
 

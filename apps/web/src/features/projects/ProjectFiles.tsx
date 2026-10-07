@@ -11,8 +11,8 @@ import { FileDownloadButton, FileView, useFileContent } from "./FileView";
 import { fileDownloadUrl, fileName, fileWriteBase, formatFileSize, type FileSource } from "./fileLinks";
 import { UnsavedChangesDialog } from "./UnsavedChangesDialog";
 import { baseName, filesFromInput, parentPath, useFileTransfers, type DraggedEntry, type PendingUpload } from "./fileTransfers";
-import { requestProjectDirectory, type ProjectFileEntry } from "./projectDirectoryListing";
-import { startProjectFilePolling } from "./projectFilePolling";
+import { requestProjectDirectory, refreshProjectDirectory, type ProjectFileEntry } from "./projectDirectoryListing";
+import { useProjectDirectoryWatch } from "./projectDirectoryWatch";
 
 export { formatFileSize } from "./fileLinks";
 
@@ -59,8 +59,10 @@ export function fileMenuItemCount(kind: "file" | "dir", path: string, allowUploa
   return 1 + (allowUpload ? 2 : 0) + (path ? 1 : 0);
 }
 
-export function ProjectFileTree({ filesBase, sourceFor, activePath, onOpenFile, onFileMoved, onFileDeleted, refreshRevision = 0, allowUpload = false, className = "" }: {
+export function ProjectFileTree({ peonId, projectKey, filesBase, sourceFor, activePath, onOpenFile, onFileMoved, onFileDeleted, refreshRevision = 0, allowUpload = false, className = "" }: {
   filesBase: string;
+  peonId: string;
+  projectKey: string;
   // How a tree path is named for reading and saving. The tree never assembles
   // a file URL itself; fileLinks.ts owns that for every surface.
   sourceFor: (path: string) => FileSource;
@@ -75,6 +77,7 @@ export function ProjectFileTree({ filesBase, sourceFor, activePath, onOpenFile, 
   className?: string;
 }) {
   const t = useT();
+  const treeRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const [menu, setMenu] = useState<FileMenuState | null>(null);
   const [copied, setCopied] = useState(false);
@@ -116,16 +119,18 @@ export function ProjectFileTree({ filesBase, sourceFor, activePath, onOpenFile, 
   const refreshDirectory = useCallback(async (path: string) => {
     const generation = requestGenerationRef.current;
     try {
-      const entries = sortEntries(await requestProjectDirectory(filesBase, path));
+      const entries = sortEntries(await refreshProjectDirectory(filesBase, path));
       if (generation !== requestGenerationRef.current) return;
       setDirectories((current) => {
         const directory = current[path];
         if (!directory || directory.loading || (!directory.error && sameEntries(directory.entries, entries))) return current;
         return { ...current, [path]: { loading: false, entries } };
       });
-    } catch {
+      return true;
+    } catch (error) {
       // A transient refresh failure must not replace a usable tree with an
       // error. Explicit folder loads still surface errors normally.
+      return error instanceof ApiError && [400, 401, 403, 404].includes(error.status);
     }
   }, [filesBase]);
 
@@ -227,7 +232,7 @@ export function ProjectFileTree({ filesBase, sourceFor, activePath, onOpenFile, 
     }
   }, [expanded, refreshDirectory]);
 
-  useEffect(() => startProjectFilePolling(refreshExpanded), [refreshExpanded]);
+  const watchUnavailable = useProjectDirectoryWatch(peonId, projectKey, new Set([...expanded].filter((path) => !path || directories[parentPath(path)]?.entries.some((entry) => entry.name === baseName(path) && isDirectory(entry)))), refreshDirectory, treeRef);
 
   useEffect(() => {
     if (previousRefreshRevisionRef.current === refreshRevision) return;
@@ -298,9 +303,14 @@ export function ProjectFileTree({ filesBase, sourceFor, activePath, onOpenFile, 
 
   return (
     <div
+      ref={treeRef}
       className={`group/file-tree relative flex min-h-0 flex-col rounded-xl transition-[background-color,box-shadow] duration-150 ${transfers.dropTarget === "" ? "bg-accent/[0.06] shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--color-accent-deep)_75%,transparent)]" : ""} ${className}`}
       {...transfers.dropZoneProps("")}
     >
+      {watchUnavailable && <div role="status" className="flex items-center gap-2 px-3 py-1.5 text-xs text-ink-muted">
+        <span className="flex-1">{t("proj.files.autoUnavailable")}</span>
+        <button type="button" onClick={() => void refreshExpanded()}>{t("proj.files.refresh")}</button>
+      </div>}
       <div
         className="min-h-0 flex-1 overflow-y-auto p-1.5"
         // A row that opened its own menu has already claimed the event; the

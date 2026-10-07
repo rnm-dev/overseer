@@ -28,6 +28,7 @@ HTTP request. Node/HTTP stream backpressure bounds bytes in flight. Peon keeps
 its existing path normalization, realpath containment, symlink defenses, size
 limits, checksum validation, temporary-file cleanup and atomic commit.
 
+Live web directory invalidations use [project directory watches](project-directory-watch.md).
 Directory listings use the same Fleet HTTP plane. Overseer strips only its
 private `directory=1` hint and preserves every other raw query parameter. An
 upload relays no query parameter except `parents=1`.

@@ -3,6 +3,7 @@ import { createReadStream, lstatSync, realpathSync, statSync } from "node:fs";
 import { promises as fsPromises } from "node:fs";
 import path from "node:path";
 import { AtomicFileUpload, FileWriteError, PROJECT_UPLOAD_MAX_BYTES, moveProjectFile, projectFileWriteTarget, } from "../../files/index.js";
+import { attachProjectDirectoryWatch } from "./projectDirectoryWatch.js";
 import { fail } from "./error.js";
 class ProjectUploadError extends Error {
     status;
@@ -152,6 +153,7 @@ function segmentsPath(req) {
 }
 export function attachFleetProjectFileRoutes(router, options) {
     const { fileAccessService, projectReader, failWorkspaceRead: failWorkspaceReadOverride, openProjectUpload = AtomicFileUpload.open, moveProject = moveProjectFile, } = options;
+    attachProjectDirectoryWatch(router, projectReader);
     const respondProjectRead = failWorkspaceReadOverride ?? failWorkspaceRead;
     // Validate raw project URLs before Express decodes wildcard parameters. Its
     // default malformed-percent behavior is a connection-level URIError, while

@@ -217,3 +217,42 @@ test("move and delete operations remain scoped to the injected project", async (
   assert.equal(deleteBody.path, destinationName);
   assert.equal(readdirSync(projectDir).includes(destinationName), false);
 });
+
+test("project directory SSE authenticates, watches native writes and closes on replacement", async () => {
+  const { renameSync, rmSync } = await import("node:fs");
+  assert.equal((await fetch(`${base}/projects/${projectKey}/files-watch?path=`)).status, 401);
+  for (const relative of ["../", "/tmp", "missing"]) {
+    assert.equal((await authed(`/projects/${projectKey}/files-watch?path=${encodeURIComponent(relative)}`)).status, 400);
+  }
+  const watched = path.join(projectDir, "watched");
+  mkdirSync(watched);
+  const controller = new AbortController();
+  const response = await authed(`/projects/${projectKey}/files-watch?path=watched`, { signal: controller.signal });
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get("content-type") ?? "", /text\/event-stream/);
+  const reader = response.body!.getReader();
+  let received = "";
+  const readUntil = async (event: string) => {
+    const timeout = setTimeout(() => controller.abort(new Error("watch event timeout")), 3000);
+    try {
+      while (!received.includes(`event: ${event}\n`)) {
+        const chunk = await reader.read();
+        assert.equal(chunk.done, false, `stream ended before ${event}`);
+        received += new TextDecoder().decode(chunk.value);
+      }
+    } finally { clearTimeout(timeout); }
+  };
+  try {
+    await readUntil("ready");
+    writeFileSync(path.join(watched, "new.txt"), "hello");
+    await readUntil("changed");
+    renameSync(watched, path.join(projectDir, "old-watched"));
+    mkdirSync(watched);
+    await readUntil("failed");
+    assert.doesNotMatch(received, /new\.txt|hello|old-watched/);
+  } finally {
+    controller.abort(); await reader.cancel().catch(() => {});
+    rmSync(watched, { recursive: true, force: true });
+    rmSync(path.join(projectDir, "old-watched"), { recursive: true, force: true });
+  }
+});

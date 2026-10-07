@@ -485,3 +485,66 @@ test("notification sound follows the client the operator picked up last", async 
     await closeServer(appServer);
   }
 });
+
+test("directory watches use authenticated shared Fleet SSE, revoke access and abort on disconnect", async () => {
+  const mem = newDb();
+  await initDb(new (mem.adapters.createPg().Pool)() as unknown as pg.Pool);
+  await query(`INSERT INTO users (id,email,created_at) VALUES ('watch-user','watch@example.test',1)`);
+  const workspace = await createWorkspace("Watch", "watch-user");
+  const { token } = await issueDevice("watch-user", "test", { ip: null, userAgent: null });
+  const auth = await verifyDeviceToken(token); assert.ok(auth);
+  let opened = 0;
+  let ended = 0;
+  let upstream: http.ServerResponse | undefined;
+  const peon = http.createServer((req, res) => {
+    assert.equal(req.headers.authorization, "Bearer watch-token");
+    assert.equal(req.headers["peon-actor"], "watch@example.test");
+    assert.equal(req.url, "/api/v1/projects/watch-project/files-watch?path=src&projectId=project-id");
+    opened++; upstream = res;
+    res.setHeader("Content-Type", "text/event-stream");
+    res.write("event: ready\ndata: {}\n\n");
+    res.on("close", () => ended++);
+  });
+  const peonPort = await listen(peon);
+  await registry.register({ peonId: "watch-peon", credentialId: "watch-credential", workspaceId: workspace.id,
+    name: "watch", hostname: null, address: "127.0.0.1", controlPort: peonPort, protocol: 1,
+    capabilities: ["project-directory-watch-v1"], token: "watch-token", load: null });
+  await query(`INSERT INTO projects (peon_id,project_id,project_key,dir,synced_at) VALUES ('watch-peon','project-id','watch-project','/project',1)`);
+  const server = http.createServer(); const wss = attachLiveSocket(server); const port = await listen(server);
+  const sockets: WebSocket[] = [];
+  const connect = async () => {
+    const { ticket } = await issueWebSocketTicket(auth);
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/api/ws?ticket=${ticket}`); sockets.push(ws);
+    const collector = messageCollector(ws); await once(ws, "open");
+    ws.send(JSON.stringify({ type: "hello", workspaceId: workspace.id }));
+    const snapshot = await collector.waitFor((msg) => msg.type === "snapshot");
+    assert.deepEqual(snapshot.capabilities, ["project-directory-watch-v1"]);
+    return { ws, collector };
+  };
+  const subscribe = (ws: WebSocket, watchId: string, projectKey = "watch-project") => ws.send(JSON.stringify({
+    type: "files:subscribe", watchId, peonId: "watch-peon", projectKey, path: "src",
+  }));
+  try {
+    const a = await connect(); const b = await connect();
+    subscribe(a.ws, "denied", "unknown");
+    assert.equal((await a.collector.waitFor((msg) => msg.watchId === "denied")).code, "FORBIDDEN");
+    assert.equal(opened, 0);
+    subscribe(a.ws, "a"); await a.collector.waitFor((msg) => msg.type === "files:ready" && msg.watchId === "a");
+    subscribe(b.ws, "b"); await b.collector.waitFor((msg) => msg.type === "files:ready");
+    assert.equal(opened, 1);
+    a.ws.close(); await once(a.ws, "close");
+    assert.equal(ended, 0);
+    upstream!.write("event: changed\ndata: {}\n\n");
+    await b.collector.waitFor((msg) => msg.type === "files:changed");
+    await query(`DELETE FROM workspace_members WHERE workspace_id=$1 AND user_id='watch-user'`, [workspace.id]);
+    upstream!.write(": heartbeat\n\n");
+    const revoked = await b.collector.waitFor((msg) => msg.type === "files:error");
+    assert.equal(revoked.code, "FORBIDDEN"); assert.equal(revoked.retryable, false);
+    const deadline = Date.now() + 3000;
+    while (!ended && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 10));
+    assert.equal(ended, 1);
+  } finally {
+    sockets.forEach((ws) => ws.terminate()); wss.close();
+    peon.closeAllConnections(); await closeServer(server); await closeServer(peon);
+  }
+});

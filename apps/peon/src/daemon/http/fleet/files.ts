@@ -12,9 +12,11 @@ import {
   projectFileWriteTarget,
   type FileAccessContract,
 } from "../../files/index.js";
+import { attachProjectDirectoryWatch } from "./projectDirectoryWatch.js";
 import { fail, type ErrorCode } from "./error.js";
 
 export interface FleetProjectFileRecord {
+  projectId?: string;
   dir: string;
 }
 
@@ -202,6 +204,7 @@ export function attachFleetProjectFileRoutes(router: express.Router, options: Fl
     openProjectUpload = AtomicFileUpload.open,
     moveProject = moveProjectFile,
   } = options;
+  attachProjectDirectoryWatch(router, projectReader);
   const respondProjectRead = failWorkspaceReadOverride ?? failWorkspaceRead;
 
   // Validate raw project URLs before Express decodes wildcard parameters. Its

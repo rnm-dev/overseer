@@ -12,6 +12,7 @@ interface FilePreview {
   viewerUrl?: string;
 }
 interface Props {
+  peonId: string;
   base: string;
   sid: string;
   projectKey: string | null;
@@ -33,7 +34,7 @@ interface Props {
 }
 
 export function SessionOverlays({
-  base, sid, projectKey, projectKeyKnown, filesOpen, fileRefreshRevision, projectFilePreview, setProjectFilePreview,
+  peonId, base, sid, projectKey, projectKeyKnown, filesOpen, fileRefreshRevision, projectFilePreview, setProjectFilePreview,
   attachmentPreview, setAttachmentPreview, sentAttachmentPreview,
   setSentAttachmentPreview, artifactPreview, setArtifactPreview,
   previewPinned, setPreviewPinned,
@@ -46,6 +47,8 @@ export function SessionOverlays({
         <aside className="session-files-pane fixed bottom-3 right-3 z-30 hidden w-80 min-h-0 flex-col overflow-hidden rounded-xl bg-surface-raised shadow-2xl lg:flex" style={{ top: "calc(var(--fixed-pane-header-height, 49px) + 0.75rem)" }} aria-label={t("session.files.title")}>
           {projectKey ? (
             <ProjectFileTree
+              peonId={peonId}
+              projectKey={projectKey}
               filesBase={`${base}/projects/${encodeURIComponent(projectKey)}/files`}
               sourceFor={(path) => ({ kind: "project", base, projectKey, path })}
               activePath={projectFilePreview?.path}

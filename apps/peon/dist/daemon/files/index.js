@@ -24,3 +24,4 @@ export function dirErrorResponse(error) {
 export function fileErrorResponse(error) {
     return sharedFileAccessService.fileErrorResponse(error);
 }
+export { DirectoryWatchRegistry, directoryWatchTarget } from "./directoryWatch.js";
