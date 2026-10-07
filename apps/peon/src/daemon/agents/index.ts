@@ -2,7 +2,7 @@ export { runAgent, normalizeStoredAgentEvent } from "./executor.js";
 export { ClaudeLoginService, ClaudeLoginError } from "./claudeLogin.js";
 export { CodexLoginService, CodexLoginError } from "./codexLogin.js";
 export { configureManagedPluginToolHandler, getCodexAppServerRuntime } from "./codexAppServer.js";
-export type { CodexAppServerHealth, CodexAppServerRuntime } from "./runtimes/codexAppServerRuntime.js";
+export { type CodexAppServerHealth, CodexAppServerRuntime } from "./runtimes/codexAppServerRuntime.js";
 export {
   agentCliUpdateRuntime,
   classifyAgentCliInstallation,

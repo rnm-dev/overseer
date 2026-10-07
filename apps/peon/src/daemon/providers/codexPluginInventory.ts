@@ -1,6 +1,6 @@
 import os from "node:os";
 import path from "node:path";
-import { CodexAppServerRuntime } from "../agents/runtimes/codexAppServerRuntime.js";
+import { CodexAppServerRuntime } from "../agents/index.js";
 
 type PluginRuntime = Pick<CodexAppServerRuntime, "start" | "request" | "stop">;
 const object = (value: unknown): Record<string, unknown> | null => value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;

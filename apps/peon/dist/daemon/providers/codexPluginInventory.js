@@ -1,6 +1,6 @@
 import os from "node:os";
 import path from "node:path";
-import { CodexAppServerRuntime } from "../agents/runtimes/codexAppServerRuntime.js";
+import { CodexAppServerRuntime } from "../agents/index.js";
 const object = (value) => value !== null && typeof value === "object" && !Array.isArray(value) ? value : null;
 // CLI plugin list also consults remote marketplaces. A Stats refresh should use
 // Codex's cached inventory, not wait for remote marketplace synchronization.
