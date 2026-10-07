@@ -5,6 +5,7 @@ import { ownerOnly, relay, withWorkspacePeon } from "../requestContext.js";
 export function registerProviderLoginRoutes(router: express.Router) {
   const base = "/workspaces/:wsId/peons/:id/driver";
   const routes = [
+    ["post", "claude-code/logout"], ["post", "codex/logout"],
     ["get", "claude-code/login"], ["post", "claude-code/login"],
     ["get", "claude-code/login/:attemptId"], ["delete", "claude-code/login/:attemptId"],
     ["post", "claude-code/login/:attemptId/code"],

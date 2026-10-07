@@ -50,3 +50,23 @@ export const startTerminal = (options) => {
         stop,
     };
 };
+// Bounded noninteractive CLI operation. Output is deliberately discarded.
+export async function runTerminalCommand(command, args, terminal = startTerminal, timeoutMs = 10_000) {
+    let process;
+    let timer;
+    try {
+        await new Promise((resolve, reject) => {
+            timer = setTimeout(() => reject(new Error("Provider command timed out")), timeoutMs);
+            process = terminal({ command, args, onData() { }, onStderr() { }, onExit(code) {
+                    if (code === 0)
+                        resolve();
+                    else
+                        reject(new Error("Provider command failed"));
+                } });
+        });
+    }
+    finally {
+        clearTimeout(timer);
+        await process?.stop();
+    }
+}

@@ -10,6 +10,17 @@ export function createCodexLoginRouter(service, actor) {
             return res.status(404).json({ code: "LOGIN_UNSUPPORTED", error: "Codex login is unavailable" });
         next();
     });
+    router.post("/logout", async (req, res, next) => {
+        if (req.body && Object.keys(req.body).length)
+            return res.status(400).json({ code: "BAD_REQUEST", error: "Logout takes an empty body" });
+        try {
+            await service().logout();
+            res.json({ loggedOut: true });
+        }
+        catch (error) {
+            next(error);
+        }
+    });
     router.get("/login", (req, res) => res.json({ attempt: service().current(actor(req)) }));
     router.post("/login", (req, res) => {
         if (req.body && Object.keys(req.body).length)

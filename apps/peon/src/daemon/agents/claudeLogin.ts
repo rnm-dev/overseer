@@ -1,6 +1,7 @@
+import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import { stripVTControlCharacters } from "node:util";
-import { startTerminal, type TerminalFactory, type TerminalProcess } from "./terminalHarness.js";
+import { runTerminalCommand, startTerminal, type TerminalFactory, type TerminalProcess } from "./terminalHarness.js";
 
 export interface ClaudeLoginAttempt {
   id: string;
@@ -26,11 +27,13 @@ interface Attempt {
 }
 export class ClaudeLoginService {
   private attempt?: Attempt;
+  private logoutOperation?: Promise<void>;
   constructor(private readonly options: {
     command: () => string;
     terminal?: TerminalFactory;
     ttlMs?: number;
     retentionMs?: number;
+    onLogout?: () => void;
     onSuccess?: () => void;
   }) {}
   private pending(a: Attempt) { return ["starting", "awaiting_code", "verifying"].includes(a.view.status); }
@@ -46,6 +49,7 @@ export class ClaudeLoginService {
     return this.attempt;
   }
   start(owner: string): ClaudeLoginAttempt {
+    if (this.logoutOperation) throw new ClaudeLoginError(409, "LOGOUT_IN_PROGRESS", "Sign-out is in progress");
     const previous = this.attempt;
     if (previous && this.pending(previous)) {
       if (previous.owner === owner) return { ...previous.view };
@@ -63,13 +67,18 @@ export class ClaudeLoginService {
     a.ttl.unref();
     try {
       a.process = (this.options.terminal ?? startTerminal)({
-        command: this.options.command(), args: ["auth", "login", "--claudeai"],
+        command: this.options.terminal ? this.options.command() : process.execPath,
+        args: this.options.terminal ? ["auth", "login", "--claudeai"] : [
+          ...process.execArgv,
+          fileURLToPath(new URL(import.meta.url.endsWith(".ts") ? "./claudeTmuxWorker.ts" : "./claudeTmuxWorker.js", import.meta.url)),
+          this.options.command(),
+        ],
         env: { ...process.env, BROWSER: "/usr/bin/false", NO_COLOR: "1" },
         onData: (text) => this.output(a, text),
         onExit: (code) => {
           if (!this.pending(a)) return;
           if (code === 0) this.verify(a);
-          else this.finish(a, "failed", "Claude login exited unsuccessfully. Try again or run claude auth login locally.");
+          else this.finish(a, "failed", "Claude login exited unsuccessfully. Check that tmux and the configured Claude CLI are installed, then try again.");
         },
       });
     } catch { this.finish(a, "failed", "Could not start Claude login. Check the configured CLI."); }
@@ -141,7 +150,21 @@ export class ClaudeLoginService {
     a.retirement = setTimeout(() => { if (this.attempt === a) this.attempt = undefined; }, this.options.retentionMs ?? 60_000);
     a.retirement.unref();
   }
+  async logout(): Promise<void> {
+    if (this.logoutOperation || (this.attempt && (this.pending(this.attempt) || this.attempt.cleanup))) {
+      throw new ClaudeLoginError(409, "AUTH_IN_PROGRESS", "Wait for the current authentication operation to finish");
+    }
+    if (this.attempt) clearTimeout(this.attempt.retirement);
+    this.attempt = undefined;
+    this.logoutOperation = runTerminalCommand(this.options.command(), ["auth", "logout"], this.options.terminal);
+    try {
+      await this.logoutOperation;
+      this.options.onLogout?.();
+    } catch { throw new ClaudeLoginError(502, "LOGOUT_FAILED", "Could not sign out. Check the provider CLI and retry."); }
+    finally { this.logoutOperation = undefined; }
+  }
   async shutdown() {
+    await this.logoutOperation?.catch(() => {});
     const a = this.attempt;
     if (!a) return;
     if (this.pending(a)) this.finish(a, "cancelled");

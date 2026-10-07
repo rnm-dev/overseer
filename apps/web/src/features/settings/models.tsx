@@ -21,6 +21,7 @@ export interface CatalogOption {
 }
 
 export interface ModelProvider {
+  capabilities?: { login?: boolean; logout?: boolean };
   agent: string;
   label: string;
   models: CatalogOption[];

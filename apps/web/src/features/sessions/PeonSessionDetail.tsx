@@ -1,3 +1,5 @@
+import { ProviderLogin } from "../stats/ProviderLogin";
+import { signedOut } from "../stats/providerLogin";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type Dispatch, type MouseEvent, type SetStateAction } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate, useParams } from "react-router";
@@ -124,7 +126,7 @@ export function PeonSessionDetail() {
 function PeonSessionDetailPage() {
   const { locale, t } = useI18n();
   const { user } = useAuth();
-  const { peon, base, wsId, orderedSessionIds, selectedSession, sessionHref, sessionsHomeHref, onSessionDeleted, onSessionRunningChange } = usePeon();
+  const { peon, base, isOwner, wsId, orderedSessionIds, selectedSession, sessionHref, sessionsHomeHref, onSessionDeleted, onSessionRunningChange } = usePeon();
   const { sid = "" } = useParams();
   const { subscribe, subscribeMentionAttention, viewersFor } = useLiveSocket();
   const navigate = useNavigate();
@@ -1100,6 +1102,7 @@ function PeonSessionDetailPage() {
                       onOpenProjectFile={onOpenProjectFileItem}
                       projectViewer={projectViewer}
                     />
+                    {isOwner && peon.online && sessionProvider?.agent === "claude-code" && sessionProvider.capabilities?.login && ((row.item.kind === "notice" && row.item.tone === "error" && signedOut(row.item.text)) || (row.item.kind === "text" && Boolean(row.item.providerError) && signedOut(`${row.item.providerError} ${row.item.text}`))) && <ProviderLogin key={`${base}/${sid}/${row.item.key}`} base={base} provider="claude-code" />}
                     {row.item.key === lastAssistantItemKey && (
                       <BranchMessageMenu branching={branching} disabled={liveWork} error={branchError} onBranch={() => void branchSession()} t={t} />
                     )}

@@ -145,6 +145,7 @@ const codexModelCatalogService = createCodexModelCatalogService(getCodexAppServe
 const claudeLogin = new ClaudeLoginService({
     command: () => loginSettings.get().agentCommand || "claude",
     onSuccess: () => { claudeCodeAuth.clearObservedFailure(); void claudeCodeAuth.refresh(); },
+    onLogout: () => { void claudeCodeAuth.refresh(); },
 });
 const codexLogin = new CodexLoginService({ command: () => loginSettings.get().codexCommand || "codex" });
 const fromCatalog = (models, value) => typeof value === "string" ? models.find((model) => model.id === value || model.alias === value)?.id : undefined;
@@ -180,7 +181,7 @@ registerAgentDriver({
         observeFailure: (message) => { if (claudeCodeAuth.isLikelyAuthFailure(message))
             claudeCodeAuth.recordPossibleAuthFailure(message, Date.now()); },
     },
-    capabilities: { steering: false, cancellation: true, recovery: true, quota: true, status: true, cliUpdate: true, branching: true, branchAtTurn: false, login: true },
+    capabilities: { steering: false, cancellation: true, recovery: true, quota: true, status: true, cliUpdate: true, branching: true, branchAtTurn: false, login: true, logout: true },
     services: {
         claudeLogin,
         status: () => claudeCodeAuth.getState(), quota: getClaudeQuota,
@@ -216,7 +217,7 @@ registerAgentDriver({
     interrupt: (run) => run.kill(), shutdown: (run) => run.kill(),
     shutdownRuntime: async () => { await Promise.all([shutdownCodexAppServerRuntime(), codexLogin.shutdown()]); },
     auth: { observeSuccess() { }, observeFailure() { } },
-    capabilities: { steering: true, cancellation: true, recovery: true, quota: true, status: true, cliUpdate: true, branching: true, branchAtTurn: true, login: true },
+    capabilities: { steering: true, cancellation: true, recovery: true, quota: true, status: true, cliUpdate: true, branching: true, branchAtTurn: true, login: true, logout: true },
     services: {
         codexLogin,
         status: () => codexAppServerHealth(), quota: getCodexQuota,

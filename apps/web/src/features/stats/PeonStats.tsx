@@ -30,11 +30,17 @@ import {
   type Stats,
 } from "./statsModel";
 
+import { ProviderLogout } from "./ProviderLogout";
+import { ProviderLogin } from "./ProviderLogin";
+import { signedOut } from "./providerLogin";
+import { useModels } from "../settings/models";
+
 // author: Viktor
 
 export function PeonStats() {
   const t = useT();
   const { peon, base, isOwner } = usePeon();
+  const { catalog } = useModels(base);
   const [period, setPeriod] = useState<Period>("day");
   const [stats, setStats] = useState<Stats | null>(null);
   const [analytics, setAnalytics] = useState<{ users: Analytics | null; projects: Analytics | null }>({ users: null, projects: null });
@@ -232,6 +238,9 @@ export function PeonStats() {
           <ProviderUsage
             key={provider}
             provider={provider}
+            base={base}
+            canLogin={isOwner && catalog?.providers.some((p) => p.agent === (provider === "codex" ? "codex-app-server" : provider) && p.capabilities?.login === true) === true}
+            canLogout={isOwner && catalog?.providers.some((p) => p.agent === (provider === "codex" ? "codex-app-server" : provider) && p.capabilities?.logout === true) === true}
             quota={quotas[provider]}
             capabilities={capabilities[provider]}
             models={byModel.filter((model) => model.agent === provider)}
@@ -346,6 +355,7 @@ export function ModelUsageDetails({ model, providerTokens }: { model: ByModel; p
 }
 
 function ProviderUsage({
+  base, canLogin, canLogout,
   provider,
   quota,
   capabilities,
@@ -353,6 +363,7 @@ function ProviderUsage({
   now,
   onRefresh,
 }: {
+  base: string; canLogin: boolean; canLogout: boolean;
   provider: Provider;
   quota: QuotaState;
   capabilities: CapabilitiesState;
@@ -386,7 +397,10 @@ function ProviderUsage({
     models.length === 0;
   const absentReason = quotaError ?? capabilities.error ?? capabilities.data?.error ?? null;
 
-  if (absent) {
+  const needsLogin = signedOut(quotaError);
+  const login = canLogin && needsLogin ? <ProviderLogin key={`${base}/${provider}`} base={base} provider={provider} onSuccess={onRefresh} /> : null;
+
+  if (absent && !needsLogin) {
     return (
       <Card className="flex min-h-80 flex-col px-5 py-4">
         <div className="flex items-start justify-between gap-3">
@@ -421,7 +435,9 @@ function ProviderUsage({
         </Button>
       </div>
 
-      {quotaError && <p className="mt-3 border-l-2 border-danger pl-3 font-mono text-xs text-danger">{quotaError}</p>}
+      {canLogout && !needsLogin && (quota.data?.status === "ok" || Boolean(quota.data?.accountEmail)) && <ProviderLogout key={`${base}/${provider}`} base={base} provider={provider} onSuccess={onRefresh} />}
+      {login}
+      {quotaError && !needsLogin && <p className="mt-3 border-l-2 border-danger pl-3 font-mono text-xs text-danger">{quotaError}</p>}
 
       <section className="mt-5">
         <div className="mb-2 font-display text-[0.6rem] uppercase tracking-[0.16em] text-ink-muted">{t("peon.quota.recorded")}</div>

@@ -1,3 +1,4 @@
+import { codexInstalledPlugins } from "./codexPluginInventory.js";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -151,8 +152,7 @@ export async function fetchCodexCapabilities(): Promise<ProviderCapabilitiesSnap
   let mcps: CapabilityItem[] = [];
 
   try {
-    const payload = object(await commandJson(command, ["plugin", "list", "--json"]));
-    const installed = Array.isArray(payload?.installed) ? payload.installed : [];
+    const installed = await codexInstalledPlugins(command);
     plugins = installed.flatMap((raw): CapabilityItem[] => {
       const plugin = object(raw);
       if (!plugin) return [];

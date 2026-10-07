@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { startTerminal, type TerminalFactory, type TerminalProcess } from "./terminalHarness.js";
+import { runTerminalCommand, startTerminal, type TerminalFactory, type TerminalProcess } from "./terminalHarness.js";
 
 export interface CodexLoginAttempt {
   id: string;
@@ -30,11 +30,13 @@ interface Attempt {
 // dedicated app-server delivers account/login/completed for the exact loginId.
 export class CodexLoginService {
   private attempt?: Attempt;
+  private logoutOperation?: Promise<void>;
   constructor(private readonly options: {
     command: () => string;
     terminal?: TerminalFactory;
     ttlMs?: number;
     retentionMs?: number;
+    onLogout?: () => void;
   }) {}
   private pending(a: Attempt) { return ["starting", "waiting_for_authorization"].includes(a.view.status); }
   current(owner: string): CodexLoginAttempt | null {
@@ -47,6 +49,7 @@ export class CodexLoginService {
   }
   get(owner: string, id: string) { return { ...this.require(owner, id).view }; }
   start(owner: string): CodexLoginAttempt {
+    if (this.logoutOperation) throw new CodexLoginError(409, "LOGOUT_IN_PROGRESS", "Sign-out is in progress");
     const previous = this.attempt;
     if (previous && this.pending(previous)) {
       if (previous.owner === owner) return { ...previous.view };
@@ -132,7 +135,21 @@ export class CodexLoginService {
     a.retirement = setTimeout(() => { if (this.attempt === a) this.attempt = undefined; }, this.options.retentionMs ?? 60_000);
     a.retirement.unref();
   }
+  async logout(): Promise<void> {
+    if (this.logoutOperation || (this.attempt && (this.pending(this.attempt) || this.attempt.cleanup))) {
+      throw new CodexLoginError(409, "AUTH_IN_PROGRESS", "Wait for the current authentication operation to finish");
+    }
+    if (this.attempt) clearTimeout(this.attempt.retirement);
+    this.attempt = undefined;
+    this.logoutOperation = runTerminalCommand(this.options.command(), ["logout"], this.options.terminal);
+    try {
+      await this.logoutOperation;
+      this.options.onLogout?.();
+    } catch { throw new CodexLoginError(502, "LOGOUT_FAILED", "Could not sign out. Check the provider CLI and retry."); }
+    finally { this.logoutOperation = undefined; }
+  }
   async shutdown() {
+    await this.logoutOperation?.catch(() => {});
     const a = this.attempt;
     if (!a) return;
     this.finish(a, "cancelled"); clearTimeout(a.retirement);

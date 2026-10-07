@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { startTerminal } from "./terminalHarness.js";
+import { runTerminalCommand, startTerminal } from "./terminalHarness.js";
 export class CodexLoginError extends Error {
     status;
     code;
@@ -14,6 +14,7 @@ export class CodexLoginError extends Error {
 export class CodexLoginService {
     options;
     attempt;
+    logoutOperation;
     constructor(options) {
         this.options = options;
     }
@@ -29,6 +30,8 @@ export class CodexLoginService {
     }
     get(owner, id) { return { ...this.require(owner, id).view }; }
     start(owner) {
+        if (this.logoutOperation)
+            throw new CodexLoginError(409, "LOGOUT_IN_PROGRESS", "Sign-out is in progress");
         const previous = this.attempt;
         if (previous && this.pending(previous)) {
             if (previous.owner === owner)
@@ -155,7 +158,27 @@ export class CodexLoginService {
             this.attempt = undefined; }, this.options.retentionMs ?? 60_000);
         a.retirement.unref();
     }
+    async logout() {
+        if (this.logoutOperation || (this.attempt && (this.pending(this.attempt) || this.attempt.cleanup))) {
+            throw new CodexLoginError(409, "AUTH_IN_PROGRESS", "Wait for the current authentication operation to finish");
+        }
+        if (this.attempt)
+            clearTimeout(this.attempt.retirement);
+        this.attempt = undefined;
+        this.logoutOperation = runTerminalCommand(this.options.command(), ["logout"], this.options.terminal);
+        try {
+            await this.logoutOperation;
+            this.options.onLogout?.();
+        }
+        catch {
+            throw new CodexLoginError(502, "LOGOUT_FAILED", "Could not sign out. Check the provider CLI and retry.");
+        }
+        finally {
+            this.logoutOperation = undefined;
+        }
+    }
     async shutdown() {
+        await this.logoutOperation?.catch(() => { });
         const a = this.attempt;
         if (!a)
             return;

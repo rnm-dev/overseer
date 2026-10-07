@@ -62,3 +62,16 @@ test("local CLI can start and cancel an attempt and arbitrary commands cannot be
   assert.equal((await fetch(`${url}/${a.id}`, { headers: fleet })).status, 404);
   assert.equal((await fetch(`${url}/${a.id}`, { method: "DELETE" })).status, 200);
 });
+
+
+test("logout requires a Fleet actor and refuses body fields without launching commands", async () => {
+  for (const provider of ["claude-code", "codex"]) {
+    const url = `${base}/${provider}/logout`;
+    assert.equal((await fetch(url, { method: "POST", headers: { Authorization: "Bearer wrong" } })).status, 401);
+    assert.equal((await fetch(url, { method: "POST", headers: { Authorization: fleet.Authorization } })).status, 403);
+    assert.equal((await fetch(url, { method: "POST", headers: { Origin: "https://evil.test" } })).status, 403);
+    const bad = await fetch(url, { method: "POST", headers: { ...fleet, "Content-Type": "application/json" }, body: '{"command":"arbitrary"}' });
+    assert.equal(bad.status, 400);
+    assert.equal(bad.headers.get("cache-control"), "no-store");
+  }
+});

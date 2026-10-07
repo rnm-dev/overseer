@@ -34,13 +34,19 @@ origins are refused on the local CLI login surface. Responses use
 | GET | `/login/:id` | Poll the attempt |
 | POST | `/login/:id/code` | Submit `{code: "..."}` once Claude is waiting |
 | DELETE | `/login/:id` | Cancel the attempt |
+| POST | `/logout` | Sign out with the configured provider CLI; empty body |
 
 Attempt fields are `id`, `status`, `authorizationUrl`, `expiresAt`, `pollAfterMs`,
 and `error`. States are `starting`, `awaiting_code`, `verifying`, `succeeded`,
 `failed`, `cancelled`, and `expired`.
 
-The service runs the configured CLI with `auth login --claudeai`, suppressing local
-browser launch. It parses the CLI's URL and code prompt, including split chunks
+The service runs the configured CLI with `auth login --claudeai` in a private
+tmux session, suppressing local browser launch. `tmux` must be installed on the
+Peon host and available on its PATH. Each attempt owns an isolated foreground
+tmux server and socket; it never attaches to an operator’s existing sessions.
+The terminal supervisor owns that server, and completion, cancellation, timeout
+and daemon death tear it down. No terminal logs or credential copies are written.
+It parses the CLI's URL and code prompt, including split chunks
 and terminal escapes. The API accepts only a single bounded code without terminal
 control characters or line breaks. After the login command succeeds, a separate
 `auth status --json` check must confirm `loggedIn: true` before success is reported.
@@ -55,6 +61,7 @@ not exposed by this initial API.
 | GET | `/login` | Recover the caller's current attempt as `{attempt: ...}` or `{attempt: null}` |
 | GET | `/login/:id` | Poll the attempt |
 | DELETE | `/login/:id` | Cancel the attempt |
+| POST | `/logout` | Sign out with the configured provider CLI; empty body |
 
 Attempt fields are `id`, `status`, `verificationUrl`, `userCode`, `expiresAt`,
 `pollAfterMs`, and `error`. States are `starting`, `waiting_for_authorization`,
@@ -75,8 +82,17 @@ Start returns HTTP 202 immediately. Poll the returned ID every `pollAfterMs`
 After page refresh, GET `/login` recovers the caller's current attempt. A missing
 attempt ID returns 404 `LOGIN_NOT_FOUND`; after a Peon restart the client must
 start again. After successful login, refresh account status and quota with their
-existing refresh mechanisms. These endpoints are ready for provider-specific UI
-integration; this change does not add client screens.
+existing refresh mechanisms. The web Stats provider cards expose login for
+workspace owners when an authentication error is present and the model
+catalog advertises `capabilities.login`. The compact sign-in panel is the only
+authentication callout; authenticated accounts do not show it. Claude authentication errors in the web
+transcript also expose the same login control, including SDK assistant messages
+marked `authentication_failed`. Ordinary assistant/user text does not trigger it.
+The UI recovers the current attempt on mount, polls while pending, and offers
+retry after transport errors. Claude uses a link plus a password-masked code
+field; Codex uses a link and device code. Successful Stats login refreshes quota
+and capabilities; a failed session message can then be retried by the operator.
+The Flutter client integration remains tracked in OVSR-542.
 
 Each provider permits one pending attempt. Repeated starts by its owner return
 the same attempt; another actor receives 409 `LOGIN_IN_PROGRESS`. Deadlines are
@@ -91,13 +107,40 @@ refused with `LOGIN_CLEANING_UP` while its predecessor is still closing.
 
 Only a sanitized terminal result is retained in memory for 60 seconds, or until a
 new attempt replaces it. Peon creates no auth directories, logs, worktrees, or
-credential copies. The official CLI owns its normal credential storage. Raw
+credential copies. The private tmux server uses its normal temporary Unix socket.
+The official CLI owns its normal credential storage. Raw
 provider errors are not exposed or logged because they can contain credentials.
+
+## Logout
+
+The model catalog advertises `capabilities.logout` separately, so older Peons
+never show an unsupported action. Signed-in web Stats cards show a compact
+Log out button for workspace owners. Successful logout refreshes quota and
+capabilities; authentication errors then expose the existing login panel.
+
+Both provider namespaces accept owner-authorized POST `/logout` with an empty
+body and return `{loggedOut: true}` only after their configured CLI exits
+successfully: `claude auth logout` or `codex logout`. The command has a ten-second
+deadline, discards stdout/stderr, and stops its supervised process on every exit.
+Login and logout are mutually exclusive, including login cleanup. Errors are
+sanitized; pending login or logout returns 409. Claude auth status is refreshed
+after logout. No credential files are manually deleted and no agent sessions
+are cancelled by this action.
+
+## Stats inventory
+
+Codex installed plugins are read through app-server `plugin/list` with
+`forceRefetch: false`, retaining installed versions and excluding uninstalled
+marketplace suggestions. The temporary runtime is stopped after success or
+failure. This avoids the CLI `plugin list --json` marketplace lookup, which can
+exceed the Stats probe deadline. MCP inventory still uses `mcp list --json`.
 
 ## Validation
 
-Lifecycle and API tests use fake provider processes; a real-process test kills
-the parent and verifies that its CLI and descendants disappear. Optional smoke
+Lifecycle and API tests use fake provider processes. `claudeTmux.test.ts` uses
+a real tmux server and a fake TTY-only CLI to verify code entry, cancellation,
+expiration and process cleanup, including abrupt parent death; it skips when
+tmux is unavailable. Another real-process test kills the supervisor’s parent and verifies that its CLI and descendants disappear. Optional smoke
 tests start and cancel real sign-ins without authorizing an account:
 
 ```sh

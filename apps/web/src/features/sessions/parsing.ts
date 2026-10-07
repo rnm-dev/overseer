@@ -19,6 +19,10 @@ export interface Block {
   tool_use_id?: string;
 }
 export interface Ev {
+  error?: string;
+  errors?: unknown[];
+  result?: unknown;
+  subtype?: string;
   type?: string;
   text?: string;
   author?: string | MentionPrincipal;
@@ -206,13 +210,26 @@ export function latestRunSignal(events: Ev[]): RunSignal {
 export type Item =
   | { kind: "user"; key: string; text: string; mentions?: ComposerMention[]; sourceEventId?: string; replyTo?: SelectedTextReply; author?: string; authorEmail?: string; authorGithubLogin?: string; authorAvatarUrl?: string; attachments?: MessageAttachment[]; createdAt?: number }
   | { kind: "participant"; key: string; text: string; sourceEventId?: string; author: MentionPrincipal; mentions?: ComposerMention[]; attachments?: MessageAttachment[]; createdAt?: number }
-  | { kind: "text"; key: string; text: string; sourceEventId?: string; createdAt?: number; resultMeta?: { tone?: "neutral" | "error"; text: string } }
+  | { kind: "text"; key: string; text: string; providerError?: string; sourceEventId?: string; createdAt?: number; resultMeta?: { tone?: "neutral" | "error"; text: string } }
   | { kind: "thinking"; key: string; text: string }
   | { kind: "tool"; key: string; name?: string; input?: unknown; result?: { text: string; error?: boolean } }
   | { kind: "loose"; key: string; text: string }
   | { kind: "notice"; key: string; tone?: "neutral" | "error"; text: string }
   | { kind: "preview"; key: string; path: string; author?: string; createdAt?: number }
   | { kind: "raw"; key: string; text: string };
+
+const FAILURE_REASON_MAX = 300;
+export function resultFailureReason(ev: Ev): string {
+  const raw = Array.isArray(ev.errors) && ev.errors.length > 0
+    ? ev.errors.map(String).join("; ")
+    : typeof ev.result === "string" && ev.result.trim()
+      ? ev.result
+      : ev.subtype && ev.subtype !== "success"
+        ? ev.subtype
+        : "";
+  const text = raw.replace(/\s+/g, " ").trim();
+  return text.length > FAILURE_REASON_MAX ? `${text.slice(0, FAILURE_REASON_MAX - 1)}…` : text;
+}
 
 function renderEventKey(event: Ev, index: number): string {
   const durableId = event.eventId ?? event._tailEventId ?? event._tailId;
@@ -238,7 +255,7 @@ export function flattenEvents(events: Ev[], t: T): Item[] {
         const blocks = Array.isArray(ev.message?.content) ? (ev.message!.content as Block[]) : [];
         blocks.forEach((b, bi) => {
           const key = `${eventKey}:${bi}`;
-          if (b.type === "text" && b.text?.trim()) items.push({ kind: "text", key, sourceEventId: ev.eventId, text: b.text, createdAt: ev.createdAt });
+          if (b.type === "text" && b.text?.trim()) items.push({ kind: "text", key, sourceEventId: ev.eventId, text: b.text, createdAt: ev.createdAt, ...(ev.error ? { providerError: ev.error } : {}) });
           else if (b.type === "thinking" && b.thinking?.trim()) items.push({ kind: "thinking", key, text: b.thinking });
           else if (b.type === "tool_use") {
             items.push({ kind: "tool", key, name: b.name, input: b.input });
@@ -272,6 +289,10 @@ export function flattenEvents(events: Ev[], t: T): Item[] {
         if (typeof ev.num_turns === "number") parts.push(t("session.chat.turns", { n: ev.num_turns }));
         const out = ev.usage?.output_tokens ?? 0;
         if (out > 0) parts.push(`${compactNum.format(out)} ${t("peon.stats.outputTokens").toLowerCase()}`);
+        if (ev.is_error) {
+          items.push({ kind: "notice", key: eventKey, tone: "error", text: [resultFailureReason(ev), ...parts].filter(Boolean).join(" · ") || t("session.chat.failed") });
+          return;
+        }
         if (parts.length) {
           const resultMeta = { tone: ev.is_error ? "error" as const : "neutral" as const, text: parts.join(" · ") };
           let lastText: Extract<Item, { kind: "text" }> | undefined;
