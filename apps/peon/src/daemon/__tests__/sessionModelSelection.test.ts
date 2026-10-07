@@ -10,6 +10,8 @@ process.env.XDG_STATE_HOME = mkdtempSync(path.join(os.tmpdir(), "peon-model-sele
 const { summaryPath } = await import("../sessions/sessionArtifacts.js");
 const { sessions } = await import("../sessions/index.js");
 const { settings } = await import("../settings/index.js");
+const { discoverBuiltinFixtureModels } = await import("./helpers/cliModelCatalog.js");
+await discoverBuiltinFixtureModels();
 
 settings.update({ agentCommand: "/usr/bin/true", taskTimeoutMs: 1_000 });
 

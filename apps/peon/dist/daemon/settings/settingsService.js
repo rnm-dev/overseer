@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { canonicalModel, isModelForAgent, listConfiguredAgents, narrowNewSessionAgent, narrowReasoningEffort, providerDefaultModel, reasoningEffortsForModel, } from "../providers/modelCatalog.js";
+import { canonicalModel, isModelForAgent, listConfiguredAgents, narrowNewSessionAgent, narrowReasoningEffort, reasoningEffortsForModel, } from "../providers/modelCatalog.js";
 import { MAX_MAX_BUDGET_USD, MAX_MAX_TURNS, MAX_TASK_TIMEOUT_MS, MIN_MAX_TURNS, MIN_TASK_TIMEOUT_MS, SettingsStore, } from "./settingsStore.js";
 import { parseListenAddress } from "../../shared/listenAddress.js";
 function parseModelValue(value) {
@@ -9,7 +9,7 @@ function parseEffortValue(value) {
     return typeof value === "string" || value === null || value === undefined ? value : undefined;
 }
 function modelDefaultEffort(agent, model) {
-    return reasoningEffortsForModel(agent, model ?? providerDefaultModel(agent)).find((item) => item.default)?.id ?? null;
+    return reasoningEffortsForModel(agent, model).find((item) => item.default)?.id ?? null;
 }
 export class SettingsService extends EventEmitter {
     store;
@@ -231,7 +231,7 @@ export class SettingsService extends EventEmitter {
                 this.throwBadRequest("aiDefaultReasoningEffort must be a string or null");
             const normalized = effort === null ? null : narrowReasoningEffort(effort, candidateAgent, effectiveModel);
             if (effort !== null && !normalized) {
-                this.throwBadRequest(`aiDefaultReasoningEffort is not valid for model ${effectiveModel ?? providerDefaultModel(candidateAgent)}`);
+                this.throwBadRequest(`aiDefaultReasoningEffort is not valid for model ${effectiveModel ?? "the current CLI default"}`);
             }
             patch.ai = { ...current.ai, ...patch.ai, defaultReasoningEffort: normalized ?? null };
         }
@@ -334,7 +334,7 @@ export class SettingsService extends EventEmitter {
                 return null;
             const canonical = narrowReasoningEffort(requestedEffort, requestedAgent, normalizedModel);
             if (!canonical) {
-                this.throwBadRequest(`aiDefaultReasoningEffort is not valid for model ${normalizedModel ?? providerDefaultModel(requestedAgent)}`);
+                this.throwBadRequest(`aiDefaultReasoningEffort is not valid for model ${normalizedModel ?? "the current CLI default"}`);
             }
             return canonical;
         })();

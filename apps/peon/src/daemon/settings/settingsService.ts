@@ -6,7 +6,6 @@ import {
   listConfiguredAgents,
   narrowNewSessionAgent,
   narrowReasoningEffort,
-  providerDefaultModel,
   reasoningEffortsForModel,
 } from "../providers/modelCatalog.js";
 import type { DaemonSettings } from "./settingsTypes.js";
@@ -33,7 +32,7 @@ function parseEffortValue(value: unknown): EffortValue {
 }
 
 function modelDefaultEffort(agent: CodingAgent, model: string | null): ReasoningEffort | null {
-  return reasoningEffortsForModel(agent, model ?? providerDefaultModel(agent)).find((item) => item.default)?.id ?? null;
+  return reasoningEffortsForModel(agent, model).find((item) => item.default)?.id ?? null;
 }
 
 export interface SettingsReader {
@@ -341,7 +340,7 @@ export class SettingsService extends EventEmitter implements SettingsServiceCont
       if (effort === undefined) this.throwBadRequest("aiDefaultReasoningEffort must be a string or null");
       const normalized = effort === null ? null : narrowReasoningEffort(effort, candidateAgent, effectiveModel);
       if (effort !== null && !normalized) {
-        this.throwBadRequest(`aiDefaultReasoningEffort is not valid for model ${effectiveModel ?? providerDefaultModel(candidateAgent)}`);
+        this.throwBadRequest(`aiDefaultReasoningEffort is not valid for model ${effectiveModel ?? "the current CLI default"}`);
       }
       patch.ai = { ...current.ai, ...patch.ai, defaultReasoningEffort: normalized ?? null };
     } else if (
@@ -448,7 +447,7 @@ export class SettingsService extends EventEmitter implements SettingsServiceCont
       if (requestedEffort === null || requestedEffort === undefined) return null;
       const canonical = narrowReasoningEffort(requestedEffort, requestedAgent, normalizedModel);
       if (!canonical) {
-        this.throwBadRequest(`aiDefaultReasoningEffort is not valid for model ${normalizedModel ?? providerDefaultModel(requestedAgent)}`);
+        this.throwBadRequest(`aiDefaultReasoningEffort is not valid for model ${normalizedModel ?? "the current CLI default"}`);
       }
       return canonical;
     })();

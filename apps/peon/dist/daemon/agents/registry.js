@@ -121,44 +121,16 @@ function normalizeOutcome(value, includePreview) {
     return { result: output.result, summary: output.summary,
         ...(includePreview ? { previewPath: typeof output.previewPath === "string" && output.previewPath.trim() ? output.previewPath.trim() : null } : {}) };
 }
-const effort = (ids, defaultId) => ids.map((id) => ({ id, label: id === "xhigh" ? "Extra high" : id[0].toUpperCase() + id.slice(1), ...(id === defaultId ? { default: true } : {}) }));
-const claudeFrontierEfforts = () => effort(["low", "medium", "high", "xhigh", "max"], "high");
-const codexEfforts = (ids, defaultId) => effort(ids, defaultId);
-const claudeModels = [
-    { id: "claude-fable-5-1", label: "Fable 5.1", reasoningEfforts: claudeFrontierEfforts() },
-    { id: "claude-opus-5", label: "Opus 5", alias: "opus", reasoningEfforts: claudeFrontierEfforts() },
-    { id: "claude-sonnet-5", label: "Sonnet 5", alias: "sonnet", default: true, reasoningEfforts: claudeFrontierEfforts() },
-    { id: "claude-haiku-4-5-20251001", label: "Haiku 4.5", alias: "haiku" },
-    { id: "claude-fable-5", label: "Fable 5", reasoningEfforts: claudeFrontierEfforts() },
-];
-const codexModels = [
-    { id: "gpt-6-astra", label: "6 Astra", reasoningEfforts: codexEfforts(["low", "medium", "high", "xhigh", "max"], "medium") },
-    { id: "gpt-5.6-sol", label: "5.6 Sol", default: true, reasoningEfforts: codexEfforts(["low", "medium", "high", "xhigh", "max", "ultra"], "low") },
-    { id: "gpt-5.6-terra", label: "5.6 Terra", reasoningEfforts: codexEfforts(["low", "medium", "high", "xhigh", "max", "ultra"], "medium") },
-    { id: "gpt-5.6-luna", label: "5.6 Luna", reasoningEfforts: codexEfforts(["low", "medium", "high", "xhigh", "max"], "medium") },
-    { id: "gpt-5.5", label: "5.5", reasoningEfforts: codexEfforts(["low", "medium", "high", "xhigh"], "medium") },
-    { id: "gpt-5.3-codex-spark", label: "5.3 Codex Spark", reasoningEfforts: codexEfforts(["low", "medium", "high", "xhigh"], "high") },
-    { id: "gpt-5.4", label: "5.4", reasoningEfforts: codexEfforts(["low", "medium", "high", "xhigh"], "medium") },
-    { id: "gpt-5.4-mini", label: "5.4 Mini", reasoningEfforts: codexEfforts(["low", "medium", "high", "xhigh"], "medium") },
-];
 const codexModelCatalogService = createCodexModelCatalogService(getCodexAppServerRuntime);
 const claudeLogin = new ClaudeLoginService({
     command: () => loginSettings.get().agentCommand || "claude",
     onSuccess: () => { claudeCodeAuth.clearObservedFailure(); void claudeCodeAuth.refresh(); },
 });
 const codexLogin = new CodexLoginService({ command: () => loginSettings.get().codexCommand || "codex" });
-const fromCatalog = (models, value) => typeof value === "string" ? models.find((model) => model.id === value || model.alias === value)?.id : undefined;
-const modelEffort = (models, value, model) => {
-    const selected = models.find((candidate) => candidate.id === fromCatalog(models, model))
-        ?? models.find((candidate) => candidate.default)
-        ?? models[0];
-    return selected?.reasoningEfforts?.some((item) => item.id === value) ? value : undefined;
-};
 registerAgentDriver({
-    id: "claude-code", label: "Claude Code", available: () => true, visible: true, models: claudeModels,
-    reasoningEfforts: effort(["low", "medium", "high", "xhigh", "max"], "high"),
-    canonicalModel: (value) => fromCatalog(claudeModels, value) ?? (typeof value === "string" && /^claude-[a-z0-9.-]+$/i.test(value) ? value : undefined),
-    reasoningEffort: (value, model) => modelEffort(claudeModels, value, model),
+    id: "claude-code", label: "Claude Code", available: () => true, visible: true, models: [],
+    canonicalModel: () => undefined,
+    reasoningEffort: () => undefined,
     command: (current) => current.agentCommand,
     conversation: { initialBackendId: (id) => id, recoverBackendId: (id, persisted) => persisted ?? id },
     outcomeSchema: (expects) => expects ? OUTCOME_SCHEMA : undefined, normalizeOutcome: (value) => normalizeOutcome(value, false),
@@ -194,10 +166,9 @@ registerAgentDriver({
     },
 });
 registerAgentDriver({
-    id: "codex-app-server", serviceProvider: "codex", label: "Codex", available: () => true, visible: true, models: codexModels,
-    reasoningEfforts: effort(["low", "medium", "high", "xhigh", "max", "ultra"], "medium"),
-    canonicalModel: (value) => fromCatalog(codexModels, value),
-    reasoningEffort: (value, model) => modelEffort(codexModels, value, model),
+    id: "codex-app-server", serviceProvider: "codex", label: "Codex", available: () => true, visible: true, models: [],
+    canonicalModel: () => undefined,
+    reasoningEffort: () => undefined,
     command: (current) => current.codexCommand,
     conversation: { initialBackendId: () => null, recoverBackendId: (_id, persisted) => persisted },
     outcomeSchema: (expects) => expects ? CODEX_OUTCOME_SCHEMA : undefined,

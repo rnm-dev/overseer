@@ -11,6 +11,8 @@ process.env.XDG_STATE_HOME = mkdtempSync(path.join(os.tmpdir(), "peon-management
 
 const { settings } = await import("../settings/index.js");
 const { createAgentRouter } = await import("../agentApi.js");
+const { discoverBuiltinFixtureModels } = await import("./helpers/cliModelCatalog.js");
+await discoverBuiltinFixtureModels();
 
 const token = "pn_management_test";
 settings.update({ overseerToken: token, paused: false });

@@ -428,6 +428,7 @@ export const en: Record<string, string> = {
   "model.default": "Default",
   "model.peonDefault": "Peon default ({name})",
   "model.optionDefault": "{name} (Default)",
+  "model.catalogUnavailable": "CLI model catalog unavailable",
   "newSession.model": "Model",
   "newSession.agent": "Agent",
   "newSession.reasoningEffort": "Effort",

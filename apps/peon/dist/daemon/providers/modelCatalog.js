@@ -1,7 +1,6 @@
 import { EventEmitter } from "node:events";
 import { getAgentDriver, listAgentDrivers, REASONING_EFFORTS, } from "../agents/index.js";
 export { REASONING_EFFORTS };
-export const DEFAULT_MODEL = "claude-sonnet-5";
 function allDrivers() {
     return listAgentDrivers();
 }
@@ -21,8 +20,7 @@ function runtimeModels(agent) {
     return cachedCatalogs.get(agent)?.models ?? null;
 }
 function modelsFor(agent) {
-    const driver = getAgentDriver(agent);
-    return runtimeModels(agent) ?? driver?.models ?? [];
+    return runtimeModels(agent) ?? [];
 }
 function fromModels(models, value) {
     return typeof value === "string"
@@ -37,9 +35,8 @@ function effortForModels(models, value, model) {
 }
 function providerEfforts(agent) {
     const live = runtimeModels(agent);
-    const driver = getAgentDriver(agent);
     if (!live)
-        return driver?.reasoningEfforts;
+        return undefined;
     const defaultEffort = (live.find((model) => model.default) ?? live[0])
         ?.reasoningEfforts?.find((item) => item.default)?.id;
     const seen = new Set();
@@ -54,9 +51,9 @@ function providerEfforts(agent) {
 function catalogMetadata(agent) {
     const cached = cachedCatalogs.get(agent);
     return {
-        catalogSource: cached?.models ? (cached.error ? "stale-cli" : "cli") : "fallback",
+        catalogSource: cached?.models ? (cached.error ? "stale-cli" : "cli") : "unavailable",
         catalogUpdatedAt: cached?.updatedAt ?? null,
-        catalogError: cached?.error ?? null,
+        catalogError: cached?.error ?? (cached?.models ? null : "CLI model catalog has not been discovered"),
     };
 }
 export function invalidateAgentModelCatalog(agent) {
@@ -121,7 +118,7 @@ export function aiProviders() {
         reasoningEfforts: providerEfforts(driver.id), available: driver.available(),
         visible: driver.visible, legacy: driver.legacy, capabilities: publicCapabilities(driver),
         status: driver.services.status?.() ?? null,
-        defaultModel: providerDefaultModel(driver.id),
+        defaultModel: modelsFor(driver.id).find((model) => model.default)?.id ?? modelsFor(driver.id)[0]?.id,
         ...catalogMetadata(driver.id),
     }));
 }
@@ -137,12 +134,11 @@ export function providerDefaultModel(agent) {
     const models = modelsFor(agent);
     const model = models.find((candidate) => candidate.default) ?? models[0];
     if (!model)
-        throw new Error(`no model catalog for agent ${agent}`);
+        throw new Error(`Model catalog for ${agent} is unavailable: CLI discovery has not succeeded`);
     return model.id;
 }
 export function canonicalModel(agent, value) {
-    const live = runtimeModels(agent);
-    return live ? fromModels(live, value) : getAgentDriver(agent)?.canonicalModel(value);
+    return fromModels(modelsFor(agent), value);
 }
 export function isModelForAgent(agent, value) {
     return canonicalModel(agent, value) !== undefined;
@@ -151,7 +147,7 @@ export function modelCatalog(defaultAgent, defaultModel, defaultReasoningEffort 
     return listAgentDrivers({ visible: true, available: true }).map((driver) => {
         const driverModels = modelsFor(driver.id);
         const selected = driver.id === defaultAgent
-            ? (defaultModel && canonicalModel(driver.id, defaultModel)) || providerDefaultModel(defaultAgent)
+            ? (defaultModel && canonicalModel(driver.id, defaultModel)) || driverModels.find((model) => model.default)?.id || driverModels[0]?.id
             : null;
         const known = selected ? driverModels.some((model) => model.id === selected) : true;
         const configuredEffort = driver.id === defaultAgent
@@ -179,7 +175,7 @@ export function modelCatalog(defaultAgent, defaultModel, defaultReasoningEffort 
             available: driver.available(), visible: driver.visible, legacy: driver.legacy,
             capabilities: publicCapabilities(driver),
             status: driver.services.status?.() ?? null,
-            defaultModel: providerDefaultModel(driver.id),
+            defaultModel: driverModels.find((model) => model.default)?.id ?? driverModels[0]?.id,
             ...catalogMetadata(driver.id),
         };
     });
@@ -198,7 +194,8 @@ export function resolveModel(agent, turnModel, sessionModel, savedAgent, savedMo
     if (!driver)
         throw new Error(`Agent driver "${agent}" is not registered`);
     return canonicalModel(agent, turnModel) ?? canonicalModel(agent, sessionModel)
-        ?? (savedAgent === agent ? canonicalModel(agent, savedModel) : undefined) ?? providerDefaultModel(agent);
+        ?? (savedAgent === agent ? canonicalModel(agent, savedModel) : undefined)
+        ?? modelsFor(agent).find((model) => model.default)?.id ?? modelsFor(agent)[0]?.id;
 }
 export function resolveReasoningEffort(agent, turnEffort, sessionEffort, savedAgent, savedEffort, model) {
     const driver = getAgentDriver(agent);
@@ -215,6 +212,5 @@ export function reasoningEffortsForModel(agent, model) {
     return driver ? models.find((candidate) => candidate.id === canonical)?.reasoningEfforts?.map((item) => ({ ...item })) ?? [] : [];
 }
 export function narrowReasoningEffort(value, agent = "claude-code", model) {
-    const live = runtimeModels(agent);
-    return live ? effortForModels(live, value, model) : getAgentDriver(agent)?.reasoningEffort(value, model);
+    return effortForModels(modelsFor(agent), value, model);
 }

@@ -14,16 +14,16 @@ test("new Peon selects Codex when it is the only installed coding agent", () => 
   const settings = freshStore(["codex"]).get();
 
   assert.equal(settings.defaultAgent, "codex-app-server");
-  assert.equal(settings.ai.defaultModel, "gpt-5.6-sol");
-  assert.equal(settings.ai.defaultReasoningEffort, "low");
+  assert.equal(settings.ai.defaultModel, null);
+  assert.equal(settings.ai.defaultReasoningEffort, null);
 });
 
 test("new Peon keeps Claude preference unless Codex is the only installed agent", () => {
   for (const installed of [[], ["claude"], ["claude", "codex"]]) {
     const settings = freshStore(installed).get();
     assert.equal(settings.defaultAgent, "claude-code");
-    assert.equal(settings.ai.defaultModel, "claude-sonnet-5");
-    assert.equal(settings.ai.defaultReasoningEffort, "high");
+    assert.equal(settings.ai.defaultModel, null);
+    assert.equal(settings.ai.defaultReasoningEffort, null);
   }
 });
 
@@ -63,5 +63,5 @@ test("an existing settings file is never reselected from installed commands", ()
 
   const settings = new SettingsStore(settingsPath, (command) => command === "codex").get();
   assert.equal(settings.defaultAgent, "claude-code");
-  assert.equal(settings.ai.defaultModel, "claude-sonnet-5");
+  assert.equal(settings.ai.defaultModel, null);
 });

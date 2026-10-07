@@ -10,6 +10,8 @@ process.env.XDG_STATE_HOME = mkdtempSync(path.join(os.tmpdir(), "peon-unified-ap
 const { settings } = await import("../settings/index.js");
 const { createControlServer } = await import("../controlServer.js");
 const { sessions } = await import("../sessions/index.js");
+const { discoverBuiltinFixtureModels } = await import("./helpers/cliModelCatalog.js");
+await discoverBuiltinFixtureModels();
 
 const token = "pn_unified_api_test";
 settings.update({ overseerToken: token });

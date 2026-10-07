@@ -428,6 +428,7 @@ export const ru: Record<string, string> = {
   "model.default": "По умолчанию",
   "model.peonDefault": "Дефолт пеона ({name})",
   "model.optionDefault": "{name} (по умолчанию)",
+  "model.catalogUnavailable": "Список моделей CLI недоступен",
   "newSession.model": "Модель",
   "newSession.agent": "Агент",
   "newSession.reasoningEffort": "Эффорт",

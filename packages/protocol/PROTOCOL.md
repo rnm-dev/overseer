@@ -202,11 +202,13 @@ must branch on these stable codes and must not attempt their own package-manager
 fallback.
 
 Each provider in the model catalog includes model-specific
-`reasoningEfforts`, its effective `defaultModel`, and discovery diagnostics:
-`catalogSource` (`cli`, `stale-cli`, or `fallback`), `catalogUpdatedAt`, and
+`reasoningEfforts`, its effective `defaultModel` when discovery has succeeded,
+and discovery diagnostics:
+`catalogSource` (`cli`, `stale-cli`, or `unavailable`), `catalogUpdatedAt`, and
 `catalogError`. Model and effort validation uses this same effective catalog.
 An absent effort default means the provider CLI chooses it; clients must not
-invent one.
+invent one. Before the first successful discovery, `models` is empty and
+`catalogSource` is `unavailable`; Peon does not advertise built-in models.
 
 The authenticated Fleet HTTP routes above are the sole remote Armory
 authority. Armory reads and mutations are not `reverse-command-v1` operations;

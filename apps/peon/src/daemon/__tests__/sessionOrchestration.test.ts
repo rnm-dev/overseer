@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import test from "node:test";
+import { discoverBuiltinFixtureModels } from "./helpers/cliModelCatalog.js";
 import type { CodingAgent, ReasoningEffort } from "../providers/modelCatalog.js";
 import {
   SessionOrchestrationService,
@@ -10,6 +11,8 @@ import {
 } from "../sessions/orchestration.js";
 import type { SessionRecord } from "../sessions/sessionTypes.js";
 import { TranscriptPaginationError, type TranscriptPage } from "../sessions/transcriptPagination.js";
+
+await discoverBuiltinFixtureModels();
 
 function record(overrides: Partial<SessionRecord> = {}): SessionRecord {
   return {
