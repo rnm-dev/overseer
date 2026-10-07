@@ -20,7 +20,7 @@ const inFlight = new Map<string, Promise<ProjectFileEntry[]>>();
 export function requestProjectDirectory(
   filesBase: string,
   path: string,
-  request: DirectoryRequest = api,
+  request: DirectoryRequest = (url) => api(url, { cache: "no-store" }),
 ): Promise<ProjectFileEntry[]> {
   const url = projectDirectoryListingPath(filesBase, path);
   const pending = inFlight.get(url);

@@ -12,6 +12,7 @@ import { fileDownloadUrl, fileName, fileWriteBase, formatFileSize, type FileSour
 import { UnsavedChangesDialog } from "./UnsavedChangesDialog";
 import { baseName, filesFromInput, parentPath, useFileTransfers, type DraggedEntry, type PendingUpload } from "./fileTransfers";
 import { requestProjectDirectory, type ProjectFileEntry } from "./projectDirectoryListing";
+import { startProjectFilePolling } from "./projectFilePolling";
 
 export { formatFileSize } from "./fileLinks";
 
@@ -81,6 +82,7 @@ export function ProjectFileTree({ filesBase, sourceFor, activePath, onOpenFile, 
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set([""]));
   const refreshingRef = useRef(false);
   const previousRefreshRevisionRef = useRef(refreshRevision);
+  const requestGenerationRef = useRef(0);
   const filePicker = useRef<HTMLInputElement>(null);
   const folderPicker = useRef<HTMLInputElement>(null);
   const pickTarget = useRef("");
@@ -88,9 +90,11 @@ export function ProjectFileTree({ filesBase, sourceFor, activePath, onOpenFile, 
   const [deleting, setDeleting] = useState(false);
 
   const load = useCallback(async (path: string) => {
+    const generation = requestGenerationRef.current;
     setDirectories((current) => ({ ...current, [path]: { loading: true, entries: [] } }));
     try {
       const entries = await requestProjectDirectory(filesBase, path);
+      if (generation !== requestGenerationRef.current) return;
       setDirectories((current) => ({
         ...current,
         [path]: {
@@ -99,6 +103,7 @@ export function ProjectFileTree({ filesBase, sourceFor, activePath, onOpenFile, 
         },
       }));
     } catch (error) {
+      if (generation !== requestGenerationRef.current) return;
       setDirectories((current) => ({
         ...current,
         [path]: { loading: false, entries: [], error: error instanceof ApiError ? error.message : t("error.loadFailed") },
@@ -106,14 +111,16 @@ export function ProjectFileTree({ filesBase, sourceFor, activePath, onOpenFile, 
     }
   }, [filesBase, t]);
 
-  // A manual refresh updates only directories the operator has expanded and
+  // A refresh updates only directories the operator has expanded and
   // does so silently, without collapsing the tree or flashing its loader.
   const refreshDirectory = useCallback(async (path: string) => {
+    const generation = requestGenerationRef.current;
     try {
       const entries = sortEntries(await requestProjectDirectory(filesBase, path));
+      if (generation !== requestGenerationRef.current) return;
       setDirectories((current) => {
         const directory = current[path];
-        if (!directory || directory.loading || sameEntries(directory.entries, entries)) return current;
+        if (!directory || directory.loading || (!directory.error && sameEntries(directory.entries, entries))) return current;
         return { ...current, [path]: { loading: false, entries } };
       });
     } catch {
@@ -207,6 +214,7 @@ export function ProjectFileTree({ filesBase, sourceFor, activePath, onOpenFile, 
     setDirectories({});
     setExpanded(new Set([""]));
     load("");
+    return () => { requestGenerationRef.current += 1; };
   }, [filesBase, load]);
 
   const refreshExpanded = useCallback(async () => {
@@ -218,6 +226,8 @@ export function ProjectFileTree({ filesBase, sourceFor, activePath, onOpenFile, 
       refreshingRef.current = false;
     }
   }, [expanded, refreshDirectory]);
+
+  useEffect(() => startProjectFilePolling(refreshExpanded), [refreshExpanded]);
 
   useEffect(() => {
     if (previousRefreshRevisionRef.current === refreshRevision) return;
@@ -235,6 +245,7 @@ export function ProjectFileTree({ filesBase, sourceFor, activePath, onOpenFile, 
       return;
     }
     if (!directories[path]) await load(path);
+    else void refreshDirectory(path);
     setExpanded((current) => new Set(current).add(path));
   };
 
