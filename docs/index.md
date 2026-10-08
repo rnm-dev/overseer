@@ -85,6 +85,8 @@ repository — that content lives here.
   optionally a project, for machine callers that start sessions, follow up,
   attach files and poll status without a browser session.
 
+- [Message pins](message-pins.md) — shared session pins, persistence and access.
+
 ## Peons and the fleet
 
 - [Peon Desktop for Windows](peon-desktop.md) — the lean tray/controller,

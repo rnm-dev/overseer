@@ -1,3 +1,4 @@
+import { deleteSessionPins, listMessagePins, pinMessage, unpinMessage, validPinEventId } from "../../modules/sessions/index.js";
 import express from "express";
 import type { PeonRecord } from "../../modules/fleet/index.js";
 import { callPeon, connOfRecord, proxyGet, proxyStream } from "../../infrastructure/peonHttp/index.js";
@@ -121,6 +122,33 @@ export function registerSessionRoutes(router: express.Router): void {
       mentions: await resolveMentions(c.workspaceId, c.record.peonId, sid, text, source.mentions, nullable),
     };
   };
+  // Pins are session annotations. The snapshot comes from Peon, never the client.
+  router.get(`${wp}/sessions/:sid/pins`, withWorkspaceSession(async (req, res, c) => {
+    const sid = String(req.params.sid);
+    if (!c.participant && !(await canAccessIndexedSessionNow(c.workspaceId, c.userId, c.record.peonId, sid))) return res.status(404).json({ error: "unknown session" });
+    res.json({ pins: await listMessagePins(c.workspaceId, c.record.peonId, sid) });
+  }));
+  router.put(`${wp}/sessions/:sid/pins/:eventId`, withWorkspaceSession(async (req, res, c) => {
+    const sid = String(req.params.sid), eventId = String(req.params.eventId);
+    if (!c.participant && !(await canAccessIndexedSessionNow(c.workspaceId, c.userId, c.record.peonId, sid))) return res.status(404).json({ error: "unknown session" });
+    if (!validPinEventId(eventId)) return res.status(400).json({ error: "invalid event id" });
+    const result = await callPeon(connOfRecord(c.record), "GET", `/sessions/${encodeURIComponent(sid)}/transcript`, { actor: c.operator.email });
+    if (!result.ok) return relay(result, res);
+    const events = (result.json as { events?: Array<Record<string, unknown>> })?.events;
+    const event = events?.find((item) => item.eventId === eventId);
+    if (!event) return res.status(404).json({ error: "message not found" });
+    if (!["user_message", "participant_message", "assistant", "result"].includes(String(event.type))) return res.status(400).json({ error: "this event cannot be pinned" });
+    const [snapshot] = await enrichTranscriptMetadata(c.record.peonId, sid, [event]);
+    if (Buffer.byteLength(JSON.stringify(snapshot)) > 131072) return res.status(413).json({ error: "message is too large to pin" });
+    if (!(await pinMessage(c.workspaceId, c.record.peonId, sid, eventId, snapshot, c.operator.githubLogin || c.operator.email))) return res.status(409).json({ error: "maximum 50 pins per session" });
+    res.json({ pins: await listMessagePins(c.workspaceId, c.record.peonId, sid) });
+  }));
+  router.delete(`${wp}/sessions/:sid/pins/:eventId`, withWorkspaceSession(async (req, res, c) => {
+    const sid = String(req.params.sid);
+    if (!c.participant && !(await canAccessIndexedSessionNow(c.workspaceId, c.userId, c.record.peonId, sid))) return res.status(404).json({ error: "unknown session" });
+    await unpinMessage(c.workspaceId, c.record.peonId, sid, String(req.params.eventId));
+    res.json({ pins: await listMessagePins(c.workspaceId, c.record.peonId, sid) });
+  }));
   router.get(`${wp}/status`, withWorkspacePeon(async (_req, res, c) => {
     relay(await callPeon(connOfRecord(c.record), "GET", "/status", { actor: c.operator.email }), res);
   }));
@@ -459,6 +487,7 @@ export function registerSessionRoutes(router: express.Router): void {
     const result = await callPeon(connOfRecord(c.record), "DELETE", `/sessions/${encodeURIComponent(sid)}`, { actor: c.operator.email });
     if (result.ok) {
       await deleteMentionAttention(c.record.peonId, sid);
+      await deleteSessionPins(c.workspaceId, c.record.peonId, sid);
       await deleteIndexedSession(c.workspaceId, c.record.peonId, sid);
     }
     relay(result, res);

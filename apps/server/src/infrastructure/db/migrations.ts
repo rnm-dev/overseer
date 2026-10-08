@@ -1192,4 +1192,13 @@ export const MIGRATIONS: { id: string; statements: string[] }[] = [
          ON automation_tokens (user_id, revoked_at)`,
     ],
   },
+  {
+    id: "045_session_message_pins",
+    statements: [`CREATE TABLE IF NOT EXISTS session_message_pins (
+      workspace_id TEXT NOT NULL, peon_id TEXT NOT NULL, session_id TEXT NOT NULL,
+      event_id TEXT NOT NULL, event JSONB NOT NULL, pinned_by TEXT NOT NULL,
+      created_at BIGINT NOT NULL,
+      PRIMARY KEY (workspace_id, peon_id, session_id, event_id)
+    )`],
+  },
 ];
