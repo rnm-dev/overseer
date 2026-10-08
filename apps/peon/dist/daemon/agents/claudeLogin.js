@@ -116,9 +116,16 @@ export class ClaudeLoginService {
     verify(a) {
         a.view.status = "verifying";
         a.output = "";
-        let output = "";
-        a.probeTimer = setTimeout(() => this.finish(a, "failed", "Claude authentication verification timed out"), 10_000);
+        a.probeAttempts = 0;
+        a.probeTimer = setTimeout(() => this.finish(a, "failed", "Claude authentication verification timed out"), this.options.verificationTimeoutMs ?? 10_000);
         a.probeTimer.unref();
+        this.probeAuthentication(a);
+    }
+    probeAuthentication(a) {
+        if (!this.pending(a))
+            return;
+        let output = "";
+        a.probeAttempts = (a.probeAttempts ?? 0) + 1;
         try {
             a.probe = (this.options.terminal ?? startTerminal)({
                 command: this.options.command(), args: ["auth", "status", "--json"],
@@ -132,9 +139,24 @@ export class ClaudeLoginService {
                     }
                     catch { /* Invalid status. */ }
                     output = "";
-                    this.finish(a, loggedIn ? "succeeded" : "failed", loggedIn ? null : "Claude did not confirm authentication");
-                    if (loggedIn)
+                    if (loggedIn) {
+                        this.finish(a, "succeeded");
                         this.options.onSuccess?.();
+                        return;
+                    }
+                    const completedProbe = a.probe;
+                    a.probe = undefined;
+                    void completedProbe?.stop().then(() => {
+                        if (!this.pending(a))
+                            return;
+                        if ((a.probeAttempts ?? 0) >= 4) {
+                            this.finish(a, "failed", "Claude did not confirm authentication");
+                            return;
+                        }
+                        const delayMs = (this.options.verificationRetryMs ?? 250) * (a.probeAttempts ?? 1);
+                        a.probeRetry = setTimeout(() => this.probeAuthentication(a), delayMs);
+                        a.probeRetry.unref();
+                    });
                 },
             });
         }
@@ -153,6 +175,7 @@ export class ClaudeLoginService {
             return;
         clearTimeout(a.ttl);
         clearTimeout(a.probeTimer);
+        clearTimeout(a.probeRetry);
         a.view = { ...a.view, status, error, authorizationUrl: null, pollAfterMs: 0 };
         a.output = "";
         a.cleanup = Promise.all([a.process?.stop(), a.probe?.stop()]).then(() => {

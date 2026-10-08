@@ -115,7 +115,8 @@ flattens them into the same semantic rows as the web client:
   transcript has caught up to its opening snapshot. Tail events replayed while
   opening a session, including unread results, remain silent.
 - A terminal result whose structured errors report a Codex `thread/fork`
-  timeout or missing paginated source rollout renders a recovery card instead
+  timeout, missing paginated source rollout, or a durable rollout that shrank
+  before projection renders a recovery card instead
   of leaving the transport detail unexplained. The operator can explicitly
   start an independent session with the same project, directory, agent, model
   and reasoning effort. Its opening prompt references the source Peon session

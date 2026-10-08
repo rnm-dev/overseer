@@ -22,6 +22,8 @@ interface Attempt {
   output: string;
   ttl?: ReturnType<typeof setTimeout>;
   probeTimer?: ReturnType<typeof setTimeout>;
+  probeRetry?: ReturnType<typeof setTimeout>;
+  probeAttempts?: number;
   retirement?: ReturnType<typeof setTimeout>;
   cleanup?: Promise<void>;
 }
@@ -33,6 +35,8 @@ export class ClaudeLoginService {
     terminal?: TerminalFactory;
     ttlMs?: number;
     retentionMs?: number;
+    verificationRetryMs?: number;
+    verificationTimeoutMs?: number;
     onLogout?: () => void;
     onSuccess?: () => void;
   }) {}
@@ -116,9 +120,18 @@ export class ClaudeLoginService {
   private verify(a: Attempt) {
     a.view.status = "verifying";
     a.output = "";
-    let output = "";
-    a.probeTimer = setTimeout(() => this.finish(a, "failed", "Claude authentication verification timed out"), 10_000);
+    a.probeAttempts = 0;
+    a.probeTimer = setTimeout(
+      () => this.finish(a, "failed", "Claude authentication verification timed out"),
+      this.options.verificationTimeoutMs ?? 10_000,
+    );
     a.probeTimer.unref();
+    this.probeAuthentication(a);
+  }
+  private probeAuthentication(a: Attempt) {
+    if (!this.pending(a)) return;
+    let output = "";
+    a.probeAttempts = (a.probeAttempts ?? 0) + 1;
     try {
       a.probe = (this.options.terminal ?? startTerminal)({
         command: this.options.command(), args: ["auth", "status", "--json"],
@@ -128,8 +141,23 @@ export class ClaudeLoginService {
           let loggedIn = false;
           try { loggedIn = JSON.parse(output).loggedIn === true; } catch { /* Invalid status. */ }
           output = "";
-          this.finish(a, loggedIn ? "succeeded" : "failed", loggedIn ? null : "Claude did not confirm authentication");
-          if (loggedIn) this.options.onSuccess?.();
+          if (loggedIn) {
+            this.finish(a, "succeeded");
+            this.options.onSuccess?.();
+            return;
+          }
+          const completedProbe = a.probe;
+          a.probe = undefined;
+          void completedProbe?.stop().then(() => {
+            if (!this.pending(a)) return;
+            if ((a.probeAttempts ?? 0) >= 4) {
+              this.finish(a, "failed", "Claude did not confirm authentication");
+              return;
+            }
+            const delayMs = (this.options.verificationRetryMs ?? 250) * (a.probeAttempts ?? 1);
+            a.probeRetry = setTimeout(() => this.probeAuthentication(a), delayMs);
+            a.probeRetry.unref();
+          });
         },
       });
     } catch { this.finish(a, "failed", "Could not verify Claude authentication"); }
@@ -141,7 +169,7 @@ export class ClaudeLoginService {
   }
   private finish(a: Attempt, status: ClaudeLoginAttempt["status"], error: string | null = null) {
     if (!this.pending(a)) return;
-    clearTimeout(a.ttl); clearTimeout(a.probeTimer);
+    clearTimeout(a.ttl); clearTimeout(a.probeTimer); clearTimeout(a.probeRetry);
     a.view = { ...a.view, status, error, authorizationUrl: null, pollAfterMs: 0 };
     a.output = "";
     a.cleanup = Promise.all([a.process?.stop(), a.probe?.stop()]).then(() => {

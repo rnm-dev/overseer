@@ -5,6 +5,7 @@ import { buildContinuationSessionRequest, continuationRecoveryPrompt, lastUnexec
 test("classifies Codex thread preparation failures", () => {
   assert.equal(sessionContinuationFailure({ type: "result", is_error: true, errors: ["Codex app-server request thread/fork timed out after 30000ms"] }), "fork_timeout");
   assert.equal(sessionContinuationFailure({ type: "result", is_error: true, errors: ["invalid paginated history lineage for abc: missing source rollout"] }), "missing_history");
+  assert.equal(sessionContinuationFailure({ type: "result", is_error: true, errors: ["Codex app-server thread/fork failed: failed to prepare paginated fork: thread-store internal error: durable rollout shrank before projection"] }), "missing_history");
   assert.equal(sessionContinuationFailure({ type: "result", is_error: true, errors: ["turn/start failed"] }), null);
 });
 

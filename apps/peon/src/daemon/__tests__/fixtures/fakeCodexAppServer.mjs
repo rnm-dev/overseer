@@ -57,6 +57,10 @@ input.on("line", (line) => {
     return;
   }
   if (message.method === "thread/fork") {
+    if (process.env.FAKE_FORK_PROJECTION_RACE === "1") {
+      send({ id: message.id, error: { code: -32000, message: "failed to prepare paginated fork: thread-store internal error: durable rollout shrank before projection" } });
+      return;
+    }
     if (process.env.FAKE_FORK_UNSUPPORTED === "1") {
       send({ id: message.id, error: { code: -32000, message: "paginated_threads is not supported yet" } });
       return;

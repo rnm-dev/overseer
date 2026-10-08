@@ -20,6 +20,15 @@ void main() {
       ),
       SessionContinuationFailure.missingHistory,
     );
+    expect(
+      sessionContinuationFailure(
+        _event([
+          'Codex app-server thread/fork failed: failed to prepare paginated fork: '
+              'thread-store internal error: durable rollout shrank before projection',
+        ]),
+      ),
+      SessionContinuationFailure.missingHistory,
+    );
     expect(sessionContinuationFailure(_event(['turn/start failed'])), isNull);
   });
 

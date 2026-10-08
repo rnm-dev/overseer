@@ -50,6 +50,8 @@ It parses the CLI's URL and code prompt, including split chunks
 and terminal escapes. The API accepts only a single bounded code without terminal
 control characters or line breaks. After the login command succeeds, a separate
 `auth status --json` check must confirm `loggedIn: true` before success is reported.
+That status check retries briefly within the existing verification deadline because
+the provider's credential store can lag behind a successful interactive login process.
 The normal Claude auth status cache is then refreshed. Console and SSO login are
 not exposed by this initial API.
 

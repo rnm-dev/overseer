@@ -45,8 +45,9 @@ sub-sessions through `parentSessionId`.
 
 ### Recovering when Codex cannot prepare a continuation
 
-An error result containing either `thread/fork timed out after <n>ms` or
-`invalid paginated history lineage ... missing source rollout` is not presented
+An error result containing `thread/fork timed out after <n>ms`,
+`invalid paginated history lineage ... missing source rollout`, or the newer
+thread-store failure `durable rollout shrank before projection` is not presented
 as an ordinary failed agent turn. The web transcript explains that the request
 never ran and offers **Continue in a new session**. That action starts an
 independent session through the ordinary new-session endpoint, preserving the
@@ -123,6 +124,12 @@ On the Codex app-server path a resumed thread answers with the model it was
 created with, and that answer **must never rename a turn whose `turn/start`
 carried an override** — otherwise the turn is reported, and billed in
 `usageByModel`, against the old model.
+
+When Peon forks solely to refresh immutable MCP bindings and Codex reports that
+the durable rollout shrank while preparing its paginated projection, Peon falls
+back to `thread/resume`. The conversation continues with its existing MCP
+bindings instead of failing before `turn/start`; an explicit user-requested
+branch still requires a real provider fork.
 
 Thread preparation grows with stored history. `thread/resume`, `thread/fork`,
 and history-bearing `thread/read` calls therefore have a five-minute RPC

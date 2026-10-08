@@ -93,10 +93,10 @@ function warnForOutboundPayload(sessionId, method, params, emit) {
         message: `The ${method} request is approaching the ${Math.round(limitBytes / 1024 / 1024)} MiB app-server transport limit.`,
     });
 }
-function unsupportedThreadFork(error) {
+function resumableThreadForkFailure(error) {
     return error instanceof CodexAppServerError
         && error.code === "server_error"
-        && /(?:paginated_threads.*not supported|thread\/fork.*not supported|unknown method thread\/fork)/i.test(error.message);
+        && /(?:paginated_threads.*not supported|thread\/fork.*not supported|unknown method thread\/fork|failed to prepare paginated fork:[\s\S]*durable rollout shrank before projection)/i.test(error.message);
 }
 export function getCodexAppServerRuntime(command) {
     if (runtimeSlot && runtimeSlot.command === command)
@@ -427,7 +427,11 @@ export function createCodexAppServerRun(opts, runtime) {
                         emit({ type: "system", subtype: "init", session_id: threadId, model: typeof thread.model === "string" ? thread.model : opts.model });
                     }
                     catch (error) {
-                        if (!unsupportedThreadFork(error))
+                        // Forking here only refreshes the thread's immutable MCP bindings.
+                        // If Codex cannot project a paginated fork because its durable
+                        // rollout changed underneath the projection, preserve the native
+                        // conversation by resuming it with its existing bindings.
+                        if (!resumableThreadForkFailure(error))
                             throw error;
                         const resumeParams = { threadId, ...threadOverrides };
                         warnForOutboundPayload(opts.sessionId, "thread/resume", resumeParams, emit);

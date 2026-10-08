@@ -7,7 +7,7 @@ export function sessionContinuationFailure(event: Ev | undefined): SessionContin
   if (event?.type !== "result" || event.is_error !== true) return null;
   const details = Array.isArray(event.errors) ? event.errors.filter((item): item is string => typeof item === "string").join("\n") : "";
   if (/thread\/fork timed out after \d+ms/i.test(details)) return "fork_timeout";
-  if (/invalid paginated history lineage[\s\S]*missing source rollout/i.test(details)) return "missing_history";
+  if (/(?:invalid paginated history lineage[\s\S]*missing source rollout|thread-store internal error:\s*durable rollout shrank before projection)/i.test(details)) return "missing_history";
   return null;
 }
 

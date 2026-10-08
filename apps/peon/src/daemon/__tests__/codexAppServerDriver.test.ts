@@ -196,6 +196,28 @@ describe("Codex app-server driver", () => {
     }
   });
 
+  it("resumes the native thread when paginated fork projection races its durable rollout", async () => {
+    const instance = runtimeWithEnv({ FAKE_FORK_PROJECTION_RACE: "1" });
+    const temp = mkdtempSync(path.join(os.tmpdir(), "peon-app-server-fork-projection-race-"));
+    const mcpConfigPath = path.join(temp, "mcp.json");
+    writeFileSync(mcpConfigPath, JSON.stringify({
+      mcpServers: { peon: { url: "http://127.0.0.1:4570/mcp/core", headers: {} } },
+    }));
+    try {
+      const first = await collect(instance, options({ mcpConfigPath }));
+      const backendSessionId = String(first.events.find((event) => event.type === "system" && event.subtype === "init")?.session_id);
+      const resumed = await collect(instance, options({ resume: true, backendSessionId, mcpConfigPath }));
+      assert.equal(resumed.code, 0);
+      assert.ok(resumed.events.some((event) => event.type === "assistant"));
+      const requests = await instance.request<Array<{ method: string }>>("test/requests");
+      assert.ok(requests.some((request) => request.method === "thread/fork"));
+      assert.ok(requests.some((request) => request.method === "thread/resume"));
+    } finally {
+      await instance.stop();
+      rmSync(temp, { recursive: true, force: true });
+    }
+  });
+
   it("maps turn inputs, sandbox policy, MCP and attachments to native parameters", async () => {
     const instance = runtime();
     const temp = mkdtempSync(path.join(os.tmpdir(), "peon-app-server-driver-"));

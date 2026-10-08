@@ -80,14 +80,38 @@ test("Claude rejects unexpected URLs and cleans up cancellation, expiry and late
 
 test("Claude does not mistake a successful command exit for confirmed sign-in", async () => {
   const { terminal, runs } = fakeTerminal();
-  const service = new ClaudeLoginService({ command: () => "claude", terminal });
+  const service = new ClaudeLoginService({ command: () => "claude", terminal, verificationRetryMs: 1 });
   const a = service.start("owner");
   runs[0].options.onExit(0);
-  runs[1].options.onData('{"loggedIn":false}');
-  runs[1].options.onExit(0);
+  for (let i = 1; i <= 4; i++) {
+    runs[i].options.onData('{"loggedIn":false}');
+    runs[i].options.onExit(0);
+    if (i < 4) for (let wait = 0; runs.length === i + 1 && wait < 200; wait++) await delay(1);
+  }
+  for (let wait = 0; service.get("owner", a.id).status === "verifying" && wait < 200; wait++) await delay(1);
   assert.equal(service.get("owner", a.id).status, "failed");
   await service.shutdown();
   assert.equal(service.current("owner"), null);
+});
+
+test("Claude retries a briefly stale authentication status after accepting the code", async () => {
+  const { terminal, runs } = fakeTerminal();
+  let success = 0;
+  const service = new ClaudeLoginService({
+    command: () => "claude", terminal, verificationRetryMs: 1, onSuccess: () => success++,
+  });
+  try {
+    const a = service.start("owner");
+    runs[0].options.onExit(0);
+    runs[1].options.onData('{"loggedIn":false}');
+    runs[1].options.onExit(0);
+    for (let wait = 0; runs.length < 3 && wait < 200; wait++) await delay(1);
+    runs[2].options.onData('{"loggedIn":true}');
+    runs[2].options.onExit(0);
+    assert.equal(service.get("owner", a.id).status, "succeeded");
+    assert.equal(success, 1);
+    assert.equal(runs[1].stopped, 1);
+  } finally { await service.shutdown(); }
 });
 
 function rpc(options: TerminalOptions, message: unknown) { options.onData(`${JSON.stringify(message)}\n`); }

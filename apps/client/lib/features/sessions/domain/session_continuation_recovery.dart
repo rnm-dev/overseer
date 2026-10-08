@@ -15,7 +15,7 @@ SessionContinuationFailure? sessionContinuationFailure(TranscriptEvent? event) {
     return SessionContinuationFailure.forkTimeout;
   }
   if (RegExp(
-    r'invalid paginated history lineage[\s\S]*missing source rollout',
+    r'(?:invalid paginated history lineage[\s\S]*missing source rollout|thread-store internal error:\s*durable rollout shrank before projection)',
     caseSensitive: false,
   ).hasMatch(details)) {
     return SessionContinuationFailure.missingHistory;

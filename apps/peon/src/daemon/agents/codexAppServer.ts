@@ -132,10 +132,10 @@ function warnForOutboundPayload(
   });
 }
 
-function unsupportedThreadFork(error: unknown): boolean {
+function resumableThreadForkFailure(error: unknown): boolean {
   return error instanceof CodexAppServerError
     && error.code === "server_error"
-    && /(?:paginated_threads.*not supported|thread\/fork.*not supported|unknown method thread\/fork)/i.test(error.message);
+    && /(?:paginated_threads.*not supported|thread\/fork.*not supported|unknown method thread\/fork|failed to prepare paginated fork:[\s\S]*durable rollout shrank before projection)/i.test(error.message);
 }
 
 export function getCodexAppServerRuntime(command: string): CodexAppServerRuntime {
@@ -457,7 +457,11 @@ export function createCodexAppServerRun(opts: AgentRunOptions, runtime: CodexApp
             threadId = reboundThreadId;
             emit({ type: "system", subtype: "init", session_id: threadId, model: typeof thread.model === "string" ? thread.model : opts.model });
           } catch (error) {
-            if (!unsupportedThreadFork(error)) throw error;
+            // Forking here only refreshes the thread's immutable MCP bindings.
+            // If Codex cannot project a paginated fork because its durable
+            // rollout changed underneath the projection, preserve the native
+            // conversation by resuming it with its existing bindings.
+            if (!resumableThreadForkFailure(error)) throw error;
             const resumeParams = { threadId, ...threadOverrides };
             warnForOutboundPayload(opts.sessionId, "thread/resume", resumeParams, emit);
             thread = await runtime.request<ThreadResponse>("thread/resume", resumeParams, CODEX_LONG_THREAD_REQUEST_TIMEOUT_MS);
