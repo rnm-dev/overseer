@@ -77,7 +77,7 @@ is the one thing they must read before pulling.
    context:
 
    ```sh
-   docker build --pull --platform linux/amd64 \
+   docker build --pull --platform linux/amd64 --label service=overseer \
      -f apps/server/Dockerfile \
      -t rnmdev/overseer:X.Y.Z \
      -t "rnmdev/overseer:$(git rev-parse HEAD)" .
