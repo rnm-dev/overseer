@@ -470,7 +470,6 @@ export const en: Record<string, string> = {
   "session.working.web": "Searching the web…",
   "session.working.subagent": "Running a sub-agent…",
   "session.working.tool": "Working: {name}…",
-  "model.unset": "Not set",
   "model.default": "Default",
   "model.peonDefault": "Peon default ({name})",
   "model.optionDefault": "{name} (Default)",

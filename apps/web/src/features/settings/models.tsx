@@ -380,7 +380,7 @@ export function Picker({ options, value, onChange, defaultLabel, defaultId, labe
     <div ref={ref} className={`model-picker ${className}`}>
       <button type="button" className="model-picker-trigger" onClick={() => setOpen((o) => !o)} aria-label={label} aria-haspopup="listbox" aria-expanded={open}>
         <span className="truncate">
-          {label && inlineLabel && <span className="model-picker-label">{label}: </span>}
+          {label && inlineLabel && <span className="model-picker-label">{label}{current ? ": " : ""}</span>}
           {current}
         </span>
         <svg className={`model-picker-chevron ${open ? "rotate-180" : ""}`} width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
