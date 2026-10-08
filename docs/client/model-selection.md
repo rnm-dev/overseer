@@ -13,11 +13,13 @@ create request. Existing sessions inherit their own pinned values first and
 then the defaults for their provider.
 
 Selecting a named model or effort is always an explicit choice, including when
-that option currently supplies the inherited value. The reset entry clears
-the draft override: it follows the existing session, or the Peon for a new
-session. It does not clear a pin on the remote session. This distinction keeps
-an A → B → A sequence meaningful even when session metadata is still catching
-up after the first change.
+that option currently supplies the inherited value. Web composers offer only
+concrete choices: the inherited option is selected directly, with no separate
+reset row. When no concrete default is advertised, the closed control says
+“CLI setting” and no menu option is marked selected. Peon settings retain their
+nullable default choice. Flutter still offers a draft reset entry; it does not
+clear a pin on the remote session. An A → B → A sequence remains explicit even
+when session metadata is still catching up after the first change.
 
 Model IDs and aliases name the same catalog option. A known session provider
 must never fall back to another provider's options. An unknown model keeps its

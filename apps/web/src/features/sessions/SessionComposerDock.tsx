@@ -190,19 +190,21 @@ export function SessionComposerDock(props: Props) {
         modelsSupported && catalog && catalog.providers.length > 0 ? (
           <>
             <ModelSelect
+              allowClear={false}
               key={`model:${sessionKey}`}
               provider={sessionProvider}
               value={overrideModel}
               onChange={selectModel}
               label={t("session.compose.model")}
               className="model-select-compact"
-              defaultLabel={t("model.default")}
+              defaultLabel={t("model.cliDefault")}
               // No override means the session's own model, or — when it pinned
               // nothing — whatever the peon would pick for it.
               defaultId={sessionModel ?? inheritedModel ?? undefined}
             />
             {composerEfforts.length > 0 && (
             <ReasoningEffortSelect
+              allowClear={false}
               key={`effort:${sessionKey}`}
               provider={sessionProvider}
               model={effectiveModel}
@@ -210,7 +212,7 @@ export function SessionComposerDock(props: Props) {
               onChange={setOverrideReasoningEffort}
               label={t("session.compose.reasoningEffort")}
               className="model-select-compact"
-              defaultLabel={t("model.default")}
+              defaultLabel={t("model.cliDefault")}
               defaultId={inheritedEffortId}
             />
             )}

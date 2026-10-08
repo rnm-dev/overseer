@@ -219,9 +219,10 @@ export function PeonNewSession() {
                     }}
                     label={t("newSession.agent")}
                     className="model-select-compact"
-                    allowClear
+                    allowClear={false}
                   />
                   <ModelSelect
+                    allowClear={false}
                     provider={selectedProvider}
                     value={model}
                     onChange={(next) => {
@@ -236,17 +237,19 @@ export function PeonNewSession() {
                     }}
                     label={t("newSession.model")}
                     className="model-select-compact"
-                    defaultLabel={t("model.default")}
+                    defaultLabel={t("model.cliDefault")}
                     defaultId={defaultModelId(selectedProvider)}
                   />
                   {effortOptions.length > 0 && (
                   <ReasoningEffortSelect
+                    allowClear={false}
                     provider={selectedProvider}
                     model={effectiveModel}
                     value={reasoningEffort}
                     onChange={(next) => setSelection((current) => ({ ...current, reasoningEffort: next }))}
                     label={t("newSession.reasoningEffort")}
                     className="model-select-compact"
+                    defaultLabel={t("model.cliDefault")}
                     defaultId={defaultEffortIdFor(effortOptions)}
                   />
                   )}
