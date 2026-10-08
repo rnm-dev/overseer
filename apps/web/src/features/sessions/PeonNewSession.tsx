@@ -11,7 +11,7 @@ import { Label } from "../../shared/ui";
 import { usePeon } from "../fleet/context";
 import { Composer, supportsDesktopComposerFocus } from "./Composer";
 import { clearComposerDraftContent, clearComposerSelectionIfUnchanged, composerDraftKey, selectionAfterAcceptance, useComposerDraft, useComposerDraftFiles, useComposerSelectionDraft } from "./drafts";
-import { AgentSelect, defaultEffortIdFor, defaultModelId, defaultProviderForCatalog, effectiveModelId, isReasoningEffortValid, ModelSelect, optionMatches, Picker, ReasoningEffortSelect, reasoningEffortsForEffectiveModel, providerForAgent, useModels } from "../settings/models";
+import { AgentSelect, composerDefaultEffortId, defaultModelId, defaultProviderForCatalog, effectiveModelId, isReasoningEffortValid, ModelSelect, optionMatches, Picker, ReasoningEffortSelect, reasoningEffortsForEffectiveModel, providerForAgent, useModels } from "../settings/models";
 import { buildNewSessionRequest } from "./newSessionRequest";
 import { PathInput } from "../projects/PathInput";
 import { dedupeProjectsByKey } from "../projects/projectList";
@@ -57,6 +57,12 @@ export function PeonNewSession() {
   const selectedProvider = agent ? providerForAgent(catalog, agent) : defaultProviderForCatalog(catalog);
   const effectiveModel = effectiveModelId(catalog, selectedProvider, model, null);
   const effortOptions = reasoningEffortsForEffectiveModel(selectedProvider, effectiveModel);
+  const initialEffort = composerDefaultEffortId(effortOptions);
+  useEffect(() => {
+    if (!reasoningEffort && initialEffort) {
+      setSelection((current) => current.reasoningEffort ? current : { ...current, reasoningEffort: initialEffort });
+    }
+  }, [reasoningEffort, initialEffort, setSelection]);
   const selectedProject = projects.find((project) => project.key === projectKey);
   const selectedProjectRoot = selectedProject?.path ?? selectedProject?.dir;
   const projectBrowseLocations = useMemo(
@@ -248,7 +254,7 @@ export function PeonNewSession() {
                     onChange={(next) => setSelection((current) => ({ ...current, reasoningEffort: next }))}
                     label={t("newSession.reasoningEffort")}
                     className="model-select-compact"
-                    defaultId={defaultEffortIdFor(effortOptions)}
+                    defaultId={composerDefaultEffortId(effortOptions)}
                   />
                   )}
                 </>

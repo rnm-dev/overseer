@@ -2,7 +2,7 @@ import { useEffect, useState, type Dispatch, type KeyboardEvent, type SetStateAc
 import { createPortal } from "react-dom";
 import { useT } from "../../shared/i18n";
 import { Composer, supportsDesktopComposerFocus } from "./Composer";
-import { ModelSelect, ReasoningEffortSelect, defaultEffortIdFor, effectiveModelId, inheritedModelId, isReasoningEffortValid, reasoningEffortsForEffectiveModel, type ModelProvider, type ModelsCatalog } from "../settings/models";
+import { ModelSelect, ReasoningEffortSelect, composerDefaultEffortId, effectiveModelId, inheritedModelId, isReasoningEffortValid, reasoningEffortsForEffectiveModel, type ModelProvider, type ModelsCatalog } from "../settings/models";
 import { QueueList } from "./QueueList";
 import type { QueueItem } from "./queue";
 import type { MessageAttachment } from "./parsing";
@@ -132,7 +132,12 @@ export function SessionComposerDock(props: Props) {
   const composerEfforts = reasoningEffortsForEffectiveModel(sessionProvider, effectiveModel);
   const inheritedEffortId = sessionReasoningEffort && isReasoningEffortValid(sessionProvider, effectiveModel, sessionReasoningEffort)
     ? sessionReasoningEffort
-    : defaultEffortIdFor(composerEfforts);
+    : composerDefaultEffortId(composerEfforts);
+  useEffect(() => {
+    if (!overrideReasoningEffort && inheritedEffortId) {
+      setOverrideReasoningEffort((current) => current || inheritedEffortId);
+    }
+  }, [overrideReasoningEffort, inheritedEffortId, setOverrideReasoningEffort]);
   const selectModel = (next: string) => {
     const nextEffectiveModel = effectiveModelId(catalog, sessionProvider, next, sessionModel);
     setOverrideModel(next);

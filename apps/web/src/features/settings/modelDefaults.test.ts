@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  composerDefaultEffortId,
   defaultProviderForCatalog,
   effectiveModelId,
   inheritedModelId,
@@ -138,4 +139,14 @@ test("a known model with an authoritative empty effort list rejects a restored e
     reasoningEfforts: [{ id: "high", label: "High" }],
   };
   assert.equal(isReasoningEffortValid(provider, "model-a", "high"), false);
+});
+
+test("composer selects a concrete supported effort without inventing a CLI default", () => {
+  const options = [{ id: "low", label: "Low" }, { id: "medium", label: "Medium" }, { id: "high", label: "High", default: true }];
+  assert.equal(composerDefaultEffortId(options), "high");
+  assert.equal(composerDefaultEffortId(options.slice(0, 2)), "medium");
+  assert.equal(composerDefaultEffortId(options.slice(0, 1)), "low");
+  assert.equal(composerDefaultEffortId([]), undefined);
+  const chosen = composerDefaultEffortId(options.slice(0, 2))!;
+  assert.equal(pickerEntries(options, chosen, { allowClear: false, markDefault: (n) => n }).find((row) => row.active)?.value, "medium");
 });

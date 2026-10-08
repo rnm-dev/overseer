@@ -7,16 +7,19 @@ for another message.
 
 ## Choosing and inheriting
 
-A new session starts with no explicit model or effort. The controls show the
-Peon's advertised defaults, but displaying a default does not pin it into the
-create request. Existing sessions inherit their own pinned values first and
+A new session starts with no explicit model. Web composers initialize an explicit
+effort from the inherited session value or advertised Peon default. If neither
+is available, they select supported `medium`, or the first supported effort
+when medium is absent. This is an Overseer choice and is sent in the request,
+not a guess about the CLI default. Models without effort options omit effort.
+Flutter keeps its existing nullable effort behavior. Existing sessions inherit their own pinned values first and
 then the defaults for their provider.
 
 Selecting a named model or effort is always an explicit choice, including when
 that option currently supplies the inherited value. Web composers offer only
 concrete choices: the inherited option is selected directly, with no separate
-reset row. When no concrete default is advertised, the closed control shows only its field label
-and no menu option is marked selected. Peon settings retain their
+reset row. A model picker with no advertised default shows only its field label;
+effort pickers initialize the concrete choice described above. Peon settings retain their
 nullable default choice. Flutter still offers a draft reset entry; it does not
 clear a pin on the remote session. An A → B → A sequence remains explicit even
 when session metadata is still catching up after the first change.

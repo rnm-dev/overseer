@@ -190,6 +190,12 @@ export function effortsForModel(provider: ModelProvider | null, model: string | 
   return provider.models.some((m) => m.reasoningEfforts !== undefined) ? [] : provider.reasoningEfforts ?? [];
 }
 
+// Composer policy: choose a supported concrete value when the CLI publishes no default.
+// Callers persist this choice in the draft so requests send exactly what is shown.
+export function composerDefaultEffortId(options: CatalogOption[]): string | undefined {
+  return defaultEffortIdFor(options) ?? options.find((option) => option.id === "medium")?.id ?? options[0]?.id;
+}
+
 export function defaultEffortIdFor(options: CatalogOption[]): string | undefined {
   return options.find((option) => option.default)?.id;
 }
