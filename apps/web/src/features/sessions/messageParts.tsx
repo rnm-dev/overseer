@@ -131,14 +131,14 @@ export function userMessageAvatar(
   return user?.avatarUrl || undefined;
 }
 
-export function UserBubble({ text, mentions, replyTo, author, authorEmail, authorGithubLogin, authorAvatarUrl, attachments, createdAt, onOpenAttachment, onOpenReplySource }: { text: string; mentions?: ComposerMention[]; replyTo?: SelectedTextReply; author?: string; authorEmail?: string; authorGithubLogin?: string; authorAvatarUrl?: string; attachments?: MessageAttachment[]; createdAt?: number; onOpenAttachment?: (attachment: MessageAttachment) => void; onOpenReplySource?: (replyTo: SelectedTextReply) => void }) {
+export function UserBubble({ own, text, mentions, replyTo, author, authorEmail, authorGithubLogin, authorAvatarUrl, attachments, createdAt, onOpenAttachment, onOpenReplySource }: { own?: boolean; text: string; mentions?: ComposerMention[]; replyTo?: SelectedTextReply; author?: string; authorEmail?: string; authorGithubLogin?: string; authorAvatarUrl?: string; attachments?: MessageAttachment[]; createdAt?: number; onOpenAttachment?: (attachment: MessageAttachment) => void; onOpenReplySource?: (replyTo: SelectedTextReply) => void }) {
   const { user } = useAuth();
   const { locale, t } = useI18n();
-  const mine = isOwnMessageAuthor(user, authorEmail, authorGithubLogin, author);
+  const mine = own ?? isOwnMessageAuthor(user, authorEmail, authorGithubLogin, author);
   const compact = isCompactUserMessage(text, attachments);
   const displayAuthor = authorGithubLogin || authorEmail || author;
   const avatarLabel = displayAuthor || "Unknown message author";
-  const avatarUrl = userMessageAvatar(user, authorAvatarUrl, authorEmail, authorGithubLogin, author);
+  const avatarUrl = userMessageAvatar(mine ? user : null, authorAvatarUrl, authorEmail, authorGithubLogin, author);
   return (
     <div className="flex items-end justify-end gap-2 py-3">
       <div className={mine ? OWN_USER_BUBBLE_CLASS : OTHER_USER_BUBBLE_CLASS}>
@@ -164,23 +164,16 @@ export function UserBubble({ text, mentions, replyTo, author, authorEmail, autho
 
 export function ParticipantBubble({ item, onOpenAttachment }: { item: Extract<Item, { kind: "participant" }>; onOpenAttachment?: (attachment: MessageAttachment) => void }) {
   const { user } = useAuth();
-  const { locale, t } = useI18n();
-  const mine = isOwnParticipantAuthor(user, item.author);
-  const avatar = <Avatar src={mine ? user?.avatarUrl || undefined : undefined} label={item.author.label} className="border-warning/35 bg-warning/10 text-warning-strong" />;
-  const bubble = (
-    <div className={mine ? OWN_USER_BUBBLE_CLASS : OTHER_USER_BUBBLE_CLASS}>
-      {!mine && <div className={OTHER_USER_BUBBLE_AUTHOR_CLASS}>{item.author.label}</div>}
-      {item.text && <div><MentionedText text={item.text} mentions={item.mentions} user={user} /></div>}
-      {!!item.attachments?.length && <div className={item.text ? "mt-2 grid gap-1" : "grid gap-1"}>{item.attachments.map((attachment, index) => <AttachmentPill key={`${attachment.path || index}`} attachment={attachment} mine={mine} onOpen={attachment.path ? () => onOpenAttachment?.(attachment) : undefined} />)}</div>}
-      {item.createdAt && <div className={`${mine ? OWN_USER_BUBBLE_TIME_CLASS : OTHER_USER_BUBBLE_TIME_CLASS} mt-1 text-right`}><LocalMessageTime createdAt={item.createdAt} locale={locale} yesterdayLabel={t("peon.stats.period.yesterday")} /></div>}
-    </div>
-  );
   return (
-    <div className={`flex items-end gap-2 py-3 ${mine ? "justify-end" : "justify-start"}`}>
-      {!mine && avatar}
-      {bubble}
-      {mine && avatar}
-    </div>
+    <UserBubble
+      own={isOwnParticipantAuthor(user, item.author)}
+      text={item.text}
+      mentions={item.mentions}
+      author={item.author.label}
+      attachments={item.attachments}
+      createdAt={item.createdAt}
+      onOpenAttachment={onOpenAttachment}
+    />
   );
 }
 
