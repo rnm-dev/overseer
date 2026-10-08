@@ -140,7 +140,7 @@ export function UserBubble({ text, mentions, replyTo, author, authorEmail, autho
   const avatarLabel = displayAuthor || "Unknown message author";
   const avatarUrl = userMessageAvatar(user, authorAvatarUrl, authorEmail, authorGithubLogin, author);
   return (
-    <div className="flex items-end justify-end gap-2">
+    <div className="flex items-end justify-end gap-2 py-3">
       <div className={mine ? OWN_USER_BUBBLE_CLASS : OTHER_USER_BUBBLE_CLASS}>
         {!mine && displayAuthor && <div className={OTHER_USER_BUBBLE_AUTHOR_CLASS} title={displayAuthor}>{displayAuthor}</div>}
         {replyTo && <div className="mb-2"><SelectedTextReplyCard replyTo={replyTo} compact onOpenSource={() => onOpenReplySource?.(replyTo)} /></div>}
@@ -176,7 +176,7 @@ export function ParticipantBubble({ item, onOpenAttachment }: { item: Extract<It
     </div>
   );
   return (
-    <div className={`flex items-end gap-2 ${mine ? "justify-end" : "justify-start"}`}>
+    <div className={`flex items-end gap-2 py-3 ${mine ? "justify-end" : "justify-start"}`}>
       {!mine && avatar}
       {bubble}
       {mine && avatar}
