@@ -1,5 +1,5 @@
 import { refreshSessionPins } from "./useSessionPins";
-import { ProviderLogin } from "../stats/ProviderLogin";
+import { ProviderLogin } from "../stats/ProviderLoginPanel";
 import { signedOut } from "../stats/providerLogin";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type Dispatch, type MouseEvent, type SetStateAction } from "react";
 import { createPortal } from "react-dom";

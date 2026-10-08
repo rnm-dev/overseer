@@ -31,7 +31,7 @@ import {
 } from "./statsModel";
 
 import { ProviderLogout } from "./ProviderLogout";
-import { ProviderLogin } from "./ProviderLogin";
+import { ProviderLogin } from "./ProviderLoginPanel";
 import { signedOut } from "./providerLogin";
 import { useModels } from "../settings/models";
 

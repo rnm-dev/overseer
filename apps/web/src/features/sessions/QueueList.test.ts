@@ -59,7 +59,7 @@ test("every queued item exposes an accessible steer action", () => {
   assert.match(QUEUE_HOURGLASS_CLASS, /\btheme-queued-message-icon\b/);
   assert.doesNotMatch(QUEUE_HOURGLASS_CLASS, /\btext-accent-strong\b/);
   assert.match(html, /width="13"[^>]*lucide-send/);
-  assert.match(html, /width="15"[^>]*lucide-trash2/);
+  assert.match(html, /width="15"[^>]*lucide-trash[^>]*lucide-trash-2/);
   assert.match(html, /plan\.md/);
   assert.doesNotMatch(html, /gpt-5|high|full-access/);
 });
