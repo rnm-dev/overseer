@@ -28,6 +28,7 @@ repository — that content lives here.
   deployment, persistent-volume rules, cutover state and rollback.
 - [releasing the server image](releasing.md) — what a version number promises,
   why the tags are immutable, and the steps from a bump to a published image.
+- [0.6.0 image preparation](server-0.6.0-preparation.md) — upgrade notes, schema compatibility and verification scope.
 - [configuration](configuration.md) — every environment variable with its
   default, what is deliberately not a variable, and the two values whose
   absence stops the boot. The install template is `deploy/docker-compose.yml`.

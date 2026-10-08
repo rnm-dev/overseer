@@ -43,7 +43,7 @@ services:
     # `latest` is the current release, which is what most installations want.
     # Know what it costs: schema migrations run on boot and are one-way, so a
     # `docker compose pull` picks up an upgrade you did not separately decide
-    # to take. Replace it with an exact version — rnmdev/overseer:0.5.0 — to
+    # to take. Replace it with an exact version — rnmdev/overseer:0.6.0 — to
     # make upgrading deliberate. What a version number promises is in
     # docs/releasing.md, and the releases are at ovrseer.org/changelog/.
     image: rnmdev/overseer:latest
