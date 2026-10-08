@@ -237,7 +237,7 @@ export function PeonNewSession() {
                     }}
                     label={t("newSession.model")}
                     className="model-select-compact"
-                    defaultLabel={t("model.cliDefault")}
+                    defaultLabel={t("model.unset")}
                     defaultId={defaultModelId(selectedProvider)}
                   />
                   {effortOptions.length > 0 && (
@@ -249,7 +249,7 @@ export function PeonNewSession() {
                     onChange={(next) => setSelection((current) => ({ ...current, reasoningEffort: next }))}
                     label={t("newSession.reasoningEffort")}
                     className="model-select-compact"
-                    defaultLabel={t("model.cliDefault")}
+                    defaultLabel={t("model.unset")}
                     defaultId={defaultEffortIdFor(effortOptions)}
                   />
                   )}

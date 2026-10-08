@@ -470,7 +470,7 @@ export const ru: Record<string, string> = {
   "session.working.web": "Ищет в вебе…",
   "session.working.subagent": "Запускает под-агента…",
   "session.working.tool": "Работает: {name}…",
-  "model.cliDefault": "Настройка CLI",
+  "model.unset": "Не задано",
   "model.default": "По умолчанию",
   "model.peonDefault": "Дефолт пеона ({name})",
   "model.optionDefault": "{name} (по умолчанию)",
