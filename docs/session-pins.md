@@ -1,7 +1,7 @@
 # Session pins
 
 Operators can pin sessions using the session row's context menu. Pinned rows show only a
-tiny muted pin beside the title; there is no separate row button.
+tiny filled pin at the right edge of the title row; there is no separate row button.
 Pins belong to the signed-in operator within a workspace, not to the whole
 workspace. They persist across browsers and reloads in Overseer's database.
 

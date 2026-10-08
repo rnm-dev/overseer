@@ -126,7 +126,8 @@ test("pinned sessions have a subtle marker without an inline action button", () 
         onPin: async () => {}, isPinned: () => true,
       })))));
   assert.match(markup, /width="10"/);
-  assert.match(markup, /text-ink-faint\/50/);
+  assert.match(markup, /fill="currentColor"/);
+  assert.ok(markup.indexOf("Pinned work") < markup.indexOf('aria-label="Pinned"'));
   assert.doesNotMatch(markup, /<button/);
   assert.doesNotMatch(markup, /pr-9/);
 });

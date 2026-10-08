@@ -267,10 +267,10 @@ export function SessionSidebarList({
               {/* min-h-5 matches the sm avatar so viewers appearing/leaving never resize the row. */}
               <div className="flex min-h-5 items-center gap-2">
                 <span className="flex min-w-0 flex-1 items-center gap-1 whitespace-nowrap font-body typo-chat-message text-ink">
-                  {isPinned?.(session) && <Pin size={10} className="shrink-0 text-ink-faint/50" aria-label={t("sessions.pinned")} />}
                   <span className="min-w-0 flex-1"><FadingTitle>{sessionDisplayTitle(session, t("session.untitled"))}</FadingTitle></span>
                 </span>
                 <SessionPresence viewers={viewersFor(peonId, session.id)} size="sm" />
+                {isPinned?.(session) && <Pin size={10} fill="currentColor" className="shrink-0 text-ink-muted" aria-label={t("sessions.pinned")} />}
               </div>
               <div className="mt-0.5 flex items-center gap-2 font-body text-[0.6875rem] text-ink-faint">
                 {peonName && <span className="max-w-[35%] flex-none truncate text-ink-muted">{peonName}</span>}
