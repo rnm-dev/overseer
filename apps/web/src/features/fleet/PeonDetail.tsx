@@ -1,3 +1,4 @@
+import { useSessionPins, orderPinnedSessions } from "../sessions/useSessionPins";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BarChart3, Menu, Pickaxe, Settings, type LucideIcon } from "lucide-react";
 import { Link, NavLink, Outlet, useLocation, useNavigate, useParams } from "react-router";
@@ -81,6 +82,7 @@ export function PeonDetail() {
   const { current, workspaces, setCurrent, workspaceIdOfPeon } = useWorkspace();
   const wsOfPeon = workspaceIdOfPeon(peonId);
   const wsId = wsOfPeon ?? current?.id;
+  const sessionPins = useSessionPins(wsId, peonId);
   const base = `/workspaces/${wsId}/peons/${peonId}`;
   const isOwner = workspaces.find((workspace) => workspace.id === wsId)?.role === "owner";
 
@@ -303,7 +305,7 @@ export function PeonDetail() {
   const projectPageActive = isProjectPath(location.pathname);
 
   // Same ordering as the session list page: newest activity first.
-  const ordered = [...sessions].sort((a, b) => (b.lastActivityAt ?? b.startedAt ?? 0) - (a.lastActivityAt ?? a.startedAt ?? 0));
+  const ordered = useMemo(() => orderPinnedSessions(sessions, sessionPins.pins, peonId), [sessions, sessionPins.pins, peonId]);
   // Project rollups refresh independently and can lag a live session event.
   // Once the sidebar session projection is hydrated, use that same projection
   // as the immediate source for project activity lights.
@@ -448,6 +450,8 @@ export function PeonDetail() {
                 <p className="px-3 py-3 font-body text-xs text-ink-faint">{t("error.loadFailed")}</p>
               ) : (
                 <ProjectGroupedSessionList
+                  onPin={sessionPins.toggle}
+                  isPinned={sessionPins.isPinned}
                   projects={sidebarProjects ?? []}
                   sessions={ordered}
                   projectLimit={sessionsPerProject}
@@ -495,6 +499,8 @@ export function PeonDetail() {
                   ) : (
                     <>
                       <SessionSidebarList
+                        onPin={sessionPins.toggle}
+                        isPinned={sessionPins.isPinned}
                         sessions={ordered}
                         to={(session) => `sessions/${session.id}`}
                         peonIdFor={() => peonId}

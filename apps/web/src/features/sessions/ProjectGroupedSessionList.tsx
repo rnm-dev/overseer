@@ -171,7 +171,11 @@ export function ProjectGroupedSessionList({
   onRename,
   onDelete,
   onNavigateIntent,
+  onPin,
+  isPinned,
 }: {
+  onPin?: (session: SessionLite) => Promise<void>;
+  isPinned?: (session: SessionLite) => boolean;
   projects: ProjectLite[];
   sessions: SessionLite[];
   projectLimit: number;
@@ -186,7 +190,7 @@ export function ProjectGroupedSessionList({
   onNavigateIntent?: (session: SessionLite) => void;
 }) {
   const t = useT();
-  const groups = useMemo(() => groupSessionsByProject(projects, sessions), [projects, sessions]);
+  const groups = useMemo(() => groupSessionsByProject(projects, sessions.filter((session) => !isPinned?.(session))), [projects, sessions, isPinned]);
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set(loadExpandedProjectGroups() ?? groups.map((group) => group.id)));
 
   useEffect(() => {
@@ -206,6 +210,10 @@ export function ProjectGroupedSessionList({
 
   return (
     <div>
+      {sessions.some((session) => isPinned?.(session)) && <section className="border-b border-edge/70">
+        <h3 className="px-3 py-2 text-xs text-accent-strong">{t("sessions.pinned")}</h3>
+        <SessionSidebarList sessions={sessions.filter((session) => isPinned?.(session))} to={sessionTo} peonIdFor={() => peonId} viewersFor={viewersFor} onRename={onRename} onDelete={onDelete} onNavigateIntent={onNavigateIntent} onPin={onPin} isPinned={isPinned} />
+      </section>}
       {groups.map((group) => {
         const project = group.project;
         const isExpanded = expanded.has(group.id);
@@ -259,6 +267,8 @@ export function ProjectGroupedSessionList({
                   <p className="px-3 py-3 font-body text-xs text-ink-faint">{t("peon.dash.noSessions")}</p>
                 ) : (
                   <SessionSidebarList
+                    onPin={onPin}
+                    isPinned={isPinned}
                     sessions={group.sessions.slice(0, projectLimit)}
                     to={sessionTo}
                     peonIdFor={() => peonId}

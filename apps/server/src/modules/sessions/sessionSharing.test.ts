@@ -149,12 +149,6 @@ test("read/participate matrix and turn admission are conservative and idempotent
   const readAcceptance = await acceptSessionInvitation(readLink.token, null, "Reader", "");
   const reader = await getSessionParticipantByCredential(readAcceptance.participantCredential!.token);
   assert.equal(sessionParticipantRequestAction(request("GET", "/workspaces/ws/peons/peon/sessions/session/transcript", { sid: "session" })), "read");
-  assert.equal(sessionParticipantRequestAction(request("GET", "/workspaces/ws/peons/peon/sessions/session/pins", { sid: "session" })), "read");
-  await authorizeSessionParticipantRequest(reader!, request("GET", "/workspaces/ws/peons/peon/sessions/session/pins", { sid: "session" }));
-  for (const method of ["PUT", "DELETE"]) {
-    await assert.rejects(authorizeSessionParticipantRequest(reader!, request(method, "/workspaces/ws/peons/peon/sessions/session/pins/e1", { sid: "session" })), /read-only/);
-  }
-
   assert.equal(sessionParticipantRequestAction(request("GET", "/workspaces/ws/peons/peon/sessions/session", { sid: "session" })), "participate");
   assert.equal(sessionParticipantRequestAction(request("POST", "/workspaces/ws/peons/peon/sessions/session/followup", { sid: "session" })), "turn");
   assert.equal(participantScopedPath("/workspaces/ws/peons/peon/files/uploads/session/report.txt"), true);

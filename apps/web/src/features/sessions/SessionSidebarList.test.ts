@@ -93,7 +93,7 @@ test("session rows do not render a kebab menu trigger", () => {
 
 test("session context menu stays inside the viewport near every edge", () => {
   assert.deepEqual(sessionContextMenuPosition(300, 200, 800, 600), { x: 300, y: 200 });
-  assert.deepEqual(sessionContextMenuPosition(799, 599, 800, 600), { x: 632, y: 510 });
+  assert.deepEqual(sessionContextMenuPosition(799, 599, 800, 600), { x: 632, y: 474 });
   assert.deepEqual(sessionContextMenuPosition(-20, -10, 800, 600), { x: 8, y: 8 });
 });
 
@@ -115,4 +115,18 @@ test("transcript prefetch requires an activation key instead of ordinary focus",
   assert.equal(isNavigatePrefetchKey("Enter"), true);
   assert.equal(isNavigatePrefetchKey(" "), false);
   assert.equal(isNavigatePrefetchKey("Tab"), false);
+});
+
+test("pinned sessions have a subtle marker without an inline action button", () => {
+  const markup = renderToStaticMarkup(React.createElement(I18nProvider, null,
+    React.createElement(NotificationsProvider, null,
+      React.createElement(MemoryRouter, null, React.createElement(SessionSidebarList, {
+        sessions: [{ id: "pinned", title: "Pinned work" }], to: () => "/sessions/pinned",
+        peonIdFor: () => "p", viewersFor: () => [], onRename: async () => {}, onDelete: async () => {},
+        onPin: async () => {}, isPinned: () => true,
+      })))));
+  assert.match(markup, /width="10"/);
+  assert.match(markup, /text-ink-faint\/50/);
+  assert.doesNotMatch(markup, /<button/);
+  assert.doesNotMatch(markup, /pr-9/);
 });

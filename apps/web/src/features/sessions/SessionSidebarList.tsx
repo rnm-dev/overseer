@@ -1,6 +1,7 @@
+import { refreshSessionPins } from "./useSessionPins";
 import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Pencil, Trash2 } from "lucide-react";
+import { Pin, PinOff, Pencil, Trash2 } from "lucide-react";
 import { NavLink } from "react-router";
 import { ApiError, isPeonNeedsUpdate } from "../../shared/api";
 import { useI18n, useT } from "../../shared/i18n";
@@ -40,7 +41,7 @@ export function FadingTitle({ children }: { children: ReactNode }) {
 }
 
 const CONTEXT_MENU_WIDTH = 160;
-const CONTEXT_MENU_HEIGHT = 82;
+const CONTEXT_MENU_HEIGHT = 118;
 const CONTEXT_MENU_MARGIN = 8;
 
 export function sessionContextMenuPosition(clientX: number, clientY: number, viewportWidth: number, viewportHeight: number) {
@@ -80,6 +81,8 @@ export function SessionSidebarList({
   onRename,
   onDelete,
   onNavigateIntent,
+  onPin,
+  isPinned,
   appearance = "sidebar",
 }: {
   sessions: SessionLite[];
@@ -90,11 +93,22 @@ export function SessionSidebarList({
   onRename: (session: SessionLite, title: string | null) => Promise<void>;
   onDelete: (session: SessionLite) => Promise<void>;
   onNavigateIntent?: (session: SessionLite) => void;
+  onPin?: (session: SessionLite) => Promise<void>;
+  isPinned?: (session: SessionLite) => boolean;
   appearance?: "sidebar" | "panel";
 }) {
   const t = useT();
   const { locale } = useI18n();
   const { notifyError } = useNotifications();
+  const [pinning, setPinning] = useState(false);
+  const togglePin = async (session: SessionLite) => {
+    if (!onPin || pinning) return;
+    setPinning(true);
+    setContextMenu(null);
+    try { await onPin(session); }
+    catch (error) { notifyError(error, { title: t("session.pin.failed"), fallback: t("error.generic") }); }
+    finally { setPinning(false); }
+  };
   const sessionNodes = useRef(new Map<string, HTMLLIElement>());
   const previousSessionTops = useRef(new Map<string, number>());
   const sessionMoveAnimations = useRef(new Map<string, Animation>());
@@ -160,6 +174,7 @@ export function SessionSidebarList({
     setDeleting(true);
     try {
       await onDelete(deleteSession);
+      refreshSessionPins();
       setDeleteSession(null);
     } catch (error) {
       notifyError(error, {
@@ -251,8 +266,9 @@ export function SessionSidebarList({
               />
               {/* min-h-5 matches the sm avatar so viewers appearing/leaving never resize the row. */}
               <div className="flex min-h-5 items-center gap-2">
-                <span className="min-w-0 flex-1 whitespace-nowrap font-body typo-chat-message text-ink">
-                  <FadingTitle>{sessionDisplayTitle(session, t("session.untitled"))}</FadingTitle>
+                <span className="flex min-w-0 flex-1 items-center gap-1 whitespace-nowrap font-body typo-chat-message text-ink">
+                  {isPinned?.(session) && <Pin size={10} className="shrink-0 text-ink-faint/50" aria-label={t("sessions.pinned")} />}
+                  <span className="min-w-0 flex-1"><FadingTitle>{sessionDisplayTitle(session, t("session.untitled"))}</FadingTitle></span>
                 </span>
                 <SessionPresence viewers={viewersFor(peonId, session.id)} size="sm" />
               </div>
@@ -284,6 +300,9 @@ export function SessionSidebarList({
           className="fixed z-[110] w-40 overflow-hidden rounded-lg border border-edge bg-surface py-1 shadow-xl"
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
+          {onPin && <button type="button" role="menuitem" disabled={pinning} className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-ink-muted hover:bg-surface-hover" onClick={() => void togglePin(contextMenu.session)}>
+            {isPinned?.(contextMenu.session) ? <PinOff size={13} /> : <Pin size={13} />}{t(isPinned?.(contextMenu.session) ? "session.unpin" : "session.pin")}
+          </button>}
           <button
             type="button"
             role="menuitem"

@@ -18,4 +18,4 @@ export * from "./sessionSharingBus.js";
 export * from "./sessionSharing.js";
 export * from "./contextMessages.js";
 
-export { deleteSessionPins, listMessagePins, pinMessage, unpinMessage, validPinEventId } from "./messagePins.js";
+export { listSessionPins, setSessionPinned, deleteSessionPins } from "./sessionPins.js";

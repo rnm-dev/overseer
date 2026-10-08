@@ -1,3 +1,4 @@
+import { useSessionPins, orderPinnedSessions } from "../sessions/useSessionPins";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Menu } from "lucide-react";
 import { NavLink, Outlet, useLocation, useNavigate, useParams } from "react-router";
@@ -40,6 +41,7 @@ export function WorkspaceSessions() {
   const peonNames = useMemo(() => new Map(peons.map((peon) => [peon.peonId, peon.name || t("peons.unnamed")])), [peons, t]);
   const isOwner = group?.workspace.role === "owner";
 
+  const sessionPins = useSessionPins(workspaceId);
   const [sessions, setSessions] = useState<SessionLite[]>([]);
   const [sessionTotal, setSessionTotal] = useState<number | null>(null);
   const [sessionsLoading, setSessionsLoading] = useState(true);
@@ -146,8 +148,8 @@ export function WorkspaceSessions() {
   }, [sidebarWidth]);
 
   const ordered = useMemo(
-    () => [...sessions].sort((a, b) => (b.lastActivityAt ?? b.startedAt ?? 0) - (a.lastActivityAt ?? a.startedAt ?? 0)),
-    [sessions],
+    () => orderPinnedSessions(sessions, sessionPins.pins),
+    [sessions, sessionPins.pins],
   );
   const activePeonSessionIds = ordered.filter((session) => session.peonId === peonId).map((session) => session.id);
   const onSessionRunningChange = useCallback((changedPeonId: string, sessionId: string, running: boolean, changedAt: number) => {
@@ -204,6 +206,8 @@ export function WorkspaceSessions() {
             <p className="px-3 py-2 font-body text-xs text-ink-faint">{t("sessions.empty")}</p>
           ) : (
             <SessionSidebarList
+              onPin={sessionPins.toggle}
+              isPinned={sessionPins.isPinned}
               sessions={ordered}
               to={(session) => `${encodeURIComponent(session.peonId ?? "")}/${encodeURIComponent(session.id)}`}
               peonIdFor={(session) => session.peonId ?? ""}

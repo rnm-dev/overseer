@@ -378,7 +378,7 @@ export function sessionParticipantRequestAction(req: Request): SessionParticipan
   if (attachments) return method === "GET" ? "participate" : "invalid";
   if (path.includes("/branch") || (method === "DELETE" && /\/sessions\/[^/]+$/u.test(path))) return "manage";
   if (method === "GET") {
-    return path.endsWith("/transcript") || path.endsWith("/stream") || path.endsWith("/pins") ? "read" : "participate";
+    return path.endsWith("/transcript") || path.endsWith("/stream") ? "read" : "participate";
   }
   if (method === "POST" && (path.endsWith("/followup") || path.endsWith("/queue"))) return "turn";
   if (method === "POST" && path.endsWith("/attention/read")) return "participate";

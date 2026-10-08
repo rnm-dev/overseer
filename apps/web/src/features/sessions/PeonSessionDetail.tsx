@@ -1,4 +1,4 @@
-import { useMessagePins, MessagePinAction, PinnedMessages } from "./messagePins";
+import { refreshSessionPins } from "./useSessionPins";
 import { ProviderLogin } from "../stats/ProviderLogin";
 import { signedOut } from "../stats/providerLogin";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type Dispatch, type MouseEvent, type SetStateAction } from "react";
@@ -133,7 +133,6 @@ function PeonSessionDetailPage() {
   const navigate = useNavigate();
   const { catalog, supported: modelsSupported } = useModels(base);
   const sessionKey = `${peon.peonId}:${sid}`;
-  const messagePins = useMessagePins(base, sid);
   const transcriptPaginationSupported = peon.capabilities.includes("transcript-pagination-v1");
   const selectedTextRepliesSupported = peon.capabilities.includes(SELECTED_TEXT_REPLY_CAPABILITY);
   const pluginInquiriesSupported = peon.capabilities.includes(PLUGIN_INQUIRY_CAPABILITY);
@@ -779,6 +778,7 @@ function PeonSessionDetailPage() {
     const nextSessionId = nextSessionAfterDeletion(orderedSessionIds, sid);
     try {
       await api(`${base}/sessions/${encodeURIComponent(sid)}`, { method: "DELETE" });
+      refreshSessionPins();
       onSessionDeleted?.(peon.peonId, sid);
       setConfirmDelete(false);
       setDeleting(false);
@@ -1013,7 +1013,6 @@ function PeonSessionDetailPage() {
 
   return (
     <div className="session-transcript-pane fixed bottom-0 left-0 right-0 top-12 z-10 min-w-0 overflow-hidden md:left-[var(--peon-sidebar-width)] md:top-[var(--fixed-pane-header-height,3.25rem)]">
-      <PinnedMessages key={sessionKey} state={messagePins} />
       <div className="pointer-events-none absolute inset-x-0 top-0 z-20">
         <SessionHeader
           peonId={peon.peonId}
@@ -1110,7 +1109,6 @@ function PeonSessionDetailPage() {
                       onOpenProjectFile={onOpenProjectFileItem}
                       projectViewer={projectViewer}
                     />
-                    <MessagePinAction item={row.item} state={messagePins} />
                     {isOwner && peon.online && sessionProvider?.agent === "claude-code" && sessionProvider.capabilities?.login && ((row.item.kind === "notice" && row.item.tone === "error" && signedOut(row.item.text)) || (row.item.kind === "text" && Boolean(row.item.providerError) && signedOut(`${row.item.providerError} ${row.item.text}`))) && <ProviderLogin key={`${base}/${sid}/${row.item.key}`} base={base} provider="claude-code" />}
                     {row.item.key === lastAssistantItemKey && (
                       <BranchMessageMenu branching={branching} disabled={liveWork} error={branchError} onBranch={() => void branchSession()} t={t} />

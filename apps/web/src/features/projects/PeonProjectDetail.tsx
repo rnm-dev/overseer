@@ -1,3 +1,4 @@
+import { useSessionPins, orderPinnedSessions } from "../sessions/useSessionPins";
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router";
 import { api } from "../../shared/api";
@@ -81,7 +82,8 @@ export function ProjectRecentSessions({
     };
   }, [peonId, projectKey, wsId]);
 
-  const recent = recentProjectSessions(sessions, projectKey, RECENT_PROJECT_SESSION_LIMIT, projectPage ?? []);
+  const sessionPins = useSessionPins(wsId, peonId);
+  const recent = orderPinnedSessions(recentProjectSessions(sessions, projectKey, RECENT_PROJECT_SESSION_LIMIT, projectPage ?? []), sessionPins.pins.filter((session) => session.projectKey === projectKey), peonId);
   const pending = loading || (wsId ? projectPage === null && !projectPageError : false);
   const failed = error && (wsId ? projectPageError : true);
 
@@ -97,6 +99,8 @@ export function ProjectRecentSessions({
       <div>
         {recent.length > 0 ? (
           <SessionSidebarList
+            onPin={sessionPins.toggle}
+            isPinned={sessionPins.isPinned}
             sessions={recent}
             appearance="panel"
             to={(session) => `/peons/${encodeURIComponent(peonId)}/sessions/${encodeURIComponent(session.id)}`}

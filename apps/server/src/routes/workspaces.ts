@@ -1,3 +1,5 @@
+import { listSessionPins, setSessionPinned } from "../modules/sessions/index.js";
+import { canAccessIndexedSessionNow } from "../modules/access/index.js";
 import express from "express";
 import {
   acceptInvite,
@@ -23,6 +25,24 @@ import { heartbeatPresence, listVisiblePresence, removePresence } from "../modul
 export function workspacesRouter(): express.Router {
   const router = express.Router();
 
+  router.get("/workspaces/:wsId/session-pins", withWorkspace(async (_req, res, c) => {
+    const pins = await listSessionPins(c.workspaceId, c.userId);
+    const sessions = [];
+    for (const pin of pins) {
+      if (!(await canAccessIndexedSessionNow(c.workspaceId, c.userId, pin.peon_id, pin.session_id))) continue;
+      const session = await getIndexedSession(pin.peon_id, pin.session_id);
+      if (session) sessions.push(session);
+    }
+    res.json({ sessions });
+  }));
+  for (const method of ["put", "delete"] as const) {
+    router[method]("/workspaces/:wsId/session-pins/:peonId/:sid", withWorkspace(async (req, res, c) => {
+      const peon = String(req.params.peonId), session = String(req.params.sid);
+      if (!(await canAccessIndexedSessionNow(c.workspaceId, c.userId, peon, session))) return res.status(404).json({ error: "unknown session" });
+      if (!(await setSessionPinned(c.workspaceId, c.userId, peon, session, method === "put"))) return res.status(409).json({ error: "maximum 50 pinned sessions" });
+      res.json({ ok: true });
+    }));
+  }
   router.get("/workspaces", async (req, res) => {
     res.json({ workspaces: await listWorkspacesForUser(userOf(req).userId) });
   });

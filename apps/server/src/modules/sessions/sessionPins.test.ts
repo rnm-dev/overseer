@@ -1,0 +1,24 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import type pg from "pg";
+import { newDb } from "pg-mem";
+import { initDb } from "../../infrastructure/db/index.js";
+import { listSessionPins, setSessionPinned, deleteSessionPins } from "./sessionPins.js";
+test("session pins are personal, persistent, idempotent and bounded", async () => {
+  const adapter = newDb().adapters.createPg();
+  await initDb(new adapter.Pool() as unknown as pg.Pool);
+  await setSessionPinned("w", "alice", "p", "s", true);
+  await setSessionPinned("w", "alice", "p", "s", true);
+  assert.equal((await listSessionPins("w", "alice")).length, 1);
+  assert.deepEqual(await listSessionPins("w", "bob"), []);
+  assert.deepEqual(await listSessionPins("other", "alice"), []);
+  for (let i=1; i<50; i++) await setSessionPinned("w", "alice", "p", `s${i}`, true);
+  assert.equal(await setSessionPinned("w", "alice", "p", "overflow", true), false);
+  await setSessionPinned("w", "alice", "p", "s", false);
+  await setSessionPinned("w", "alice", "p", "s", false);
+  assert.equal(await setSessionPinned("w", "alice", "p", "overflow", true), true);
+  await setSessionPinned("w", "bob", "p", "overflow", true);
+  await deleteSessionPins("w", "p", "overflow");
+  assert.deepEqual(await listSessionPins("w", "bob"), []);
+  assert.equal((await listSessionPins("w", "alice")).length, 49);
+});

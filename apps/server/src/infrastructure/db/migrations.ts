@@ -1201,4 +1201,15 @@ export const MIGRATIONS: { id: string; statements: string[] }[] = [
       PRIMARY KEY (workspace_id, peon_id, session_id, event_id)
     )`],
   },
+  {
+    id: "046_session_pins",
+    statements: [
+      `DROP TABLE IF EXISTS session_message_pins`,
+      `CREATE TABLE IF NOT EXISTS session_pins (
+        workspace_id TEXT NOT NULL, user_id TEXT NOT NULL, peon_id TEXT NOT NULL,
+        session_id TEXT NOT NULL, created_at BIGINT NOT NULL,
+        PRIMARY KEY (workspace_id, user_id, peon_id, session_id)
+      )`,
+    ],
+  },
 ];

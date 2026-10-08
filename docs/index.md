@@ -85,7 +85,7 @@ repository — that content lives here.
   optionally a project, for machine callers that start sessions, follow up,
   attach files and poll status without a browser session.
 
-- [Message pins](message-pins.md) — shared session pins, persistence and access.
+- [Session pins](session-pins.md) — personal session pinning and web list ordering.
 
 ## Peons and the fleet
 
