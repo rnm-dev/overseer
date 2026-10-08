@@ -98,8 +98,8 @@ repository — that content lives here.
   revision-fenced patches over Fleet HTTP.
 - [Peon update channel](peon-update-channel.md) — owner-authorized check,
   apply and status over Fleet HTTP; package metadata and bytes come from npm.
-- [Peon 1.1.1 preparation](peon-1.1.1-release.md) — Claude transcript cleanup,
-  transcript-index rebuild and remaining publication gates.
+- [Peon 1.2.1 preparation](peon-1.2.1-release.md) — Claude login stability,
+  Codex continuation recovery and publication gates.
 - [agent CLI updates](agent-cli-updates.md) — the driver-owned updater contract,
   supported installation ownership and safe refusal rules for Codex and Claude.
 - [agent provider login](agent-provider-login.md) — separate Claude and Codex
