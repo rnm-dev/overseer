@@ -9,11 +9,6 @@ const bytes = (value: number) => { const units = ["B", "KB", "MB", "GB", "TB"]; 
 const pct = (value: number) => `${Math.max(0, Math.min(100, value)).toFixed(1)}%`;
 const memoryPercent = (sample: ResourceUsageSample) => (sample.host.memoryTotalBytes - sample.host.memoryFreeBytes) / sample.host.memoryTotalBytes * 100;
 const peonCpuPercent = (sample: ResourceUsageSample) => Math.min(100, sample.process.cpuPercent / Math.max(1, sample.host.logicalCpuCount));
-function chartRange(values: number[], floor = 0): [number, number] {
-  const low = Math.max(floor, Math.min(...values) - 3);
-  const high = Math.min(100, Math.max(low + 10, Math.max(...values) + 3));
-  return [low, high];
-}
 function points(values: number[], range: [number, number], width = 600, height = 76): string {
   const step = width / (MAX_SAMPLES - 1);
   const start = width - step * Math.max(0, values.length - 1);
@@ -21,18 +16,18 @@ function points(values: number[], range: [number, number], width = 600, height =
   return values.map((value, index) => `${start + index * step},${height - (Math.max(range[0], Math.min(range[1], value)) - range[0]) / span * height}`).join(" ");
 }
 
-function LiveChart({ title, icon: Icon, primary, primaryValue, secondary, secondaryValue, detail, adaptive = false }: { title: string; icon: typeof Activity; primary: number[]; primaryValue: number; secondary?: number[]; secondaryValue?: number; detail: string; adaptive?: boolean }) {
-  const range = adaptive ? chartRange(primary) : [0, Math.max(25, Math.ceil(Math.max(...primary, ...(secondary ?? [])) / 10) * 10)] as [number, number];
+function LiveChart({ title, icon: Icon, primary, primaryValue, secondary, secondaryValue, detail }: { title: string; icon: typeof Activity; primary: number[]; primaryValue: number; secondary?: number[]; secondaryValue?: number; detail: string }) {
+  const range: [number, number] = [0, 100];
   const area = points(primary, range);
   const areaStart = 600 - 600 / (MAX_SAMPLES - 1) * Math.max(0, primary.length - 1);
   return <Card className="overflow-hidden p-0">
     <div className="flex items-start justify-between gap-4 px-5 pt-5"><div><div className="flex items-center gap-2 text-ink-muted"><Icon size={15} aria-hidden /><h3 className="font-display text-sm font-bold text-ink">{title}</h3></div><p className="mt-1.5 font-mono text-[11px] text-ink-faint">{detail}</p></div><strong className="font-mono text-xl font-semibold tabular-nums text-ink">{pct(primaryValue)}</strong></div>
     <div className="relative mx-5 mb-4 mt-4 h-20 overflow-hidden rounded-lg bg-ink/[0.025]">
       <svg className="absolute inset-0 h-full w-full" viewBox="0 0 600 76" preserveAspectRatio="none" role="img" aria-label={`${title} recent history`}>
-        {area && <><polygon points={`${areaStart},76 ${area} 600,76`} className="fill-accent/8" /><polyline points={area} className="fill-none stroke-accent/80" strokeWidth="2" vectorEffect="non-scaling-stroke" /></>}
-        {secondary && <polyline points={points(secondary, range)} className="fill-none stroke-ink-faint/70" strokeWidth="1.25" strokeDasharray="4 5" vectorEffect="non-scaling-stroke" />}
+        {area && <><polygon points={`${areaStart},76 ${area} 600,76`} className="fill-accent/8" /><polyline points={area} className="fill-none stroke-accent/80" strokeWidth="1.25" vectorEffect="non-scaling-stroke" /></>}
+        {secondary && <polyline points={points(secondary, range)} className="fill-none stroke-ink-faint/70" strokeWidth="1" strokeDasharray="4 5" vectorEffect="non-scaling-stroke" />}
       </svg>
-      <div className="absolute bottom-2 left-3 flex gap-4 rounded-md bg-canvas/70 px-2 py-1 font-mono text-[9px] text-ink-faint backdrop-blur"><span><i className="mr-1 inline-block h-1.5 w-2.5 rounded bg-accent/80" />Host</span>{secondary && <span><i className="mr-1 inline-block h-0 w-2.5 border-t border-dashed border-ink-faint" />Peon {pct(secondaryValue ?? 0)}</span>}</div>
+      {secondary && <span className="absolute bottom-2 left-3 rounded-md bg-canvas/70 px-2 py-1 font-mono text-[9px] text-ink-faint backdrop-blur">Peon {pct(secondaryValue ?? 0)}</span>}
     </div>
   </Card>;
 }
@@ -58,7 +53,7 @@ export function PeonResourceMonitor({ peonId }: { peonId: string }) {
     <div className="mb-3 flex flex-wrap items-end justify-between gap-3"><div><h3 id="resource-monitor-title" className="font-display text-sm font-bold text-ink">Resource monitor</h3><p className="mt-1 font-mono text-xs text-ink-faint">Live history starts when this page opens and stays only in this tab.</p></div>{latest && <span className="flex items-center gap-1.5 font-mono text-[11px] text-accent-strong"><span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" />Live · {new Date(latest.sampledAt).toLocaleTimeString()}</span>}</div>
     {!latest ? <Card className="grid min-h-36 place-items-center px-5 py-8 text-center"><div><Activity className="mx-auto mb-3 animate-pulse text-ink-faint" size={22} /><p className="font-mono text-xs text-ink-muted">Waiting for resource samples…</p></div></Card> : <div className="grid gap-4 xl:grid-cols-2">
       <LiveChart title="CPU load" icon={Cpu} primary={hostCpu} primaryValue={latest.host.cpuPercent} secondary={peonCpu} secondaryValue={peonCpuPercent(latest)} detail={`${latest.host.logicalCpuCount} logical CPUs · load ${latest.host.loadAverage.map((v) => v.toFixed(2)).join(" / ")}`} />
-      <LiveChart title="Memory allocated" icon={MemoryStick} primary={hostMemory} primaryValue={memoryPercent(latest)} detail={`${bytes(latest.host.memoryTotalBytes - latest.host.memoryFreeBytes)} of ${bytes(latest.host.memoryTotalBytes)} · includes system cache · Peon RSS ${bytes(latest.process.rssBytes)}`} adaptive />
+      <LiveChart title="Memory allocated" icon={MemoryStick} primary={hostMemory} primaryValue={memoryPercent(latest)} detail={`${bytes(latest.host.memoryTotalBytes - latest.host.memoryFreeBytes)} of ${bytes(latest.host.memoryTotalBytes)} · includes system cache · Peon RSS ${bytes(latest.process.rssBytes)}`} />
       <Card className="px-5 py-4 xl:col-span-2"><div className="flex items-center justify-between gap-5"><div className="min-w-0"><div className="flex items-center gap-2"><Database size={15} className="text-ink-muted" aria-hidden /><h3 className="font-display text-sm font-bold text-ink">Disk</h3></div><p className="mt-1.5 font-mono text-[11px] text-ink-faint">{bytes(latest.disk.availableBytes)} available of {bytes(latest.disk.totalBytes)}</p></div><strong className="font-mono text-xl tabular-nums text-ink">{pct(latest.disk.usedPercent)}</strong></div><div className="mt-3 h-1.5 overflow-hidden rounded-full bg-surface-hover"><div className="h-full rounded-full bg-accent/75 transition-[width] duration-500" style={{ width: pct(latest.disk.usedPercent) }} /></div></Card>
     </div>}
   </section>;
