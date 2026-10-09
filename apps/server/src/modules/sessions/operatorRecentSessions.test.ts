@@ -3,7 +3,7 @@ import test from "node:test";
 import type pg from "pg";
 import { newDb } from "pg-mem";
 import { initDb, query, setPool } from "../../infrastructure/db/index.js";
-import { replaceMemberAccess } from "../access/index.js";
+import { grantProjectAdministrator, replaceMemberAccess } from "../access/index.js";
 import { clampRecentSessionsLimit, listOperatorRecentSessions } from "./index.js";
 import { completeNextSessionAttention, markSessionAttentionRead, recordSessionRequest } from "./index.js";
 
@@ -236,6 +236,20 @@ test("a member never receives sessions from a project they cannot open", async (
   const unscoped = await listFor("member", ["p1", "p2"]);
   assert.deepEqual(unscoped.get("p1")?.map((session) => session.sessionId), ["secret-session", "shared-session"]);
   assert.deepEqual(unscoped.get("p2")?.map((session) => session.sessionId), ["ungranted-peon-session"]);
+});
+
+test("project administrator receives their own project's recent sessions only", async () => {
+  await setup();
+  await grantProjectAdministrator({ workspaceId: "ws", userId: "creator", peonId: "p1", projectKey: "grunge", projectId: "grunge-id", grantedBy: "creator" });
+  await indexSession({ peonId: "p1", sessionId: "visible", projectKey: "grunge", projectId: "grunge-id", lastActivityAt: 20 });
+  await indexSession({ peonId: "p1", sessionId: "private", projectKey: "other", projectId: "other-id", lastActivityAt: 30 });
+  for (const sessionId of ["visible", "private"]) {
+    await recordSessionRequest({ workspaceId: "ws", userId: "creator", peonId: "p1", sessionId, occurrenceKey: `create:${sessionId}`, requestedAt: 1 });
+  }
+  const scoped = await listOperatorRecentSessions({
+    workspaceId: "ws", userId: "creator", peonIds: ["p1"], limit: 10, access: { userId: "creator" },
+  });
+  assert.deepEqual(scoped.get("p1")?.map((session) => session.sessionId), ["visible"]);
 });
 
 test("the whole fleet's recent sessions cost one query, not one per Peon", async () => {

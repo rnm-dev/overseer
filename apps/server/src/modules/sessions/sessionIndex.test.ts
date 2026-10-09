@@ -5,6 +5,7 @@ import test from "node:test";
 import type pg from "pg";
 import { newDb } from "pg-mem";
 import { initDb, query } from "../../infrastructure/db/index.js";
+import { grantProjectAdministrator } from "../access/index.js";
 import { indexAcceptedSession } from "./index.js";
 import {
   applySocketSessionEvent,
@@ -207,6 +208,23 @@ test("a project-scoped query reaches sessions older than any sidebar page", asyn
   const result = await listSessions({ peonId: "peon", projectKey: "project-a", limit: 8, offset: 0 });
   assert.equal(result.total, 2);
   assert.deepEqual(result.sessions.map((session) => session.sessionId), ["a-old", "a-older"]);
+});
+
+test("project creator sees their project's sessions through the administrator grant", async () => {
+  const mem = newDb();
+  const adapter = mem.adapters.createPg();
+  await initDb(new adapter.Pool() as unknown as pg.Pool);
+  await query(`INSERT INTO users (id,email,created_at) VALUES ('creator','creator@test',1)`);
+  await query(`INSERT INTO workspaces (id,name,slug,created_at) VALUES ('ws','Workspace','workspace',1)`);
+  await query(`INSERT INTO workspace_members (workspace_id,user_id,role,added_at) VALUES ('ws','creator','member',1)`);
+  await query(`INSERT INTO peons (peon_id,credential_id,workspace_id,name,address,control_port,capabilities,token,registered_at,last_seen)
+    VALUES ('neo','credential','ws','Neo','127.0.0.1',1,'[]','token',1,1)`);
+  await grantProjectAdministrator({ workspaceId: "ws", userId: "creator", peonId: "neo", projectKey: "grunge", projectId: "grunge-id", grantedBy: "creator" });
+  await upsertSession("ws", "neo", { id: "visible", projectKey: "grunge", projectId: "grunge-id", lastActivityAt: 2 });
+  await upsertSession("ws", "neo", { id: "private", projectKey: "other", projectId: "other-id", lastActivityAt: 3 });
+  const result = await listSessions({ workspaceId: "ws", peonId: "neo", access: { userId: "creator" }, limit: 10, offset: 0 });
+  assert.deepEqual(result.sessions.map((session) => session.sessionId), ["visible"]);
+  assert.equal(result.total, 1);
 });
 
 test("Peon collection reconciliation indexes summaries without exposing cached raw data", async () => {
