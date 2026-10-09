@@ -56,6 +56,10 @@ missing, because there is no persistent service to install without them.
 typically `sudo -u`, `su`, a cron job, or any context without `XDG_RUNTIME_DIR`
 and a session bus. Get a real login session instead of a switched shell:
 `ssh <user>@<host>`, or `sudo machinectl shell <user>@`.
+If you must stay in `su`, enable linger first (so `/run/user/<uid>` exists), then
+`export XDG_RUNTIME_DIR=/run/user/$(id -u)` before `peon start`; add
+`DBUS_SESSION_BUS_ADDRESS=unix:path=$XDG_RUNTIME_DIR/bus` only if it still fails.
+The public docs carry this under Common issues (`ovrseer.org/docs/#troubleshooting`).
 
 **An encrypted or network home directory defeats linger.** If the home is
 mounted at login (ecryptfs, an automounted NFS home), it is not there at boot,
