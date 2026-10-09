@@ -220,8 +220,8 @@ export async function canAccessIndexedSessionNow(
     `SELECT member.role,
             session.project_key,
             session.project_id,
-            (peon_access.peon_id IS NOT NULL) AS peon_allowed,
-            (project_access.peon_id IS NOT NULL) AS project_allowed
+            (peon_access.peon_id IS NOT NULL OR project_admin.peon_id IS NOT NULL) AS peon_allowed,
+            (project_access.peon_id IS NOT NULL OR project_admin.peon_id IS NOT NULL) AS project_allowed
        FROM workspace_members member
        JOIN sessions session
          ON session.peon_id=$3 AND session.session_id=$4
@@ -239,6 +239,18 @@ export async function canAccessIndexedSessionNow(
             session.project_id IS NULL
             AND project_access.project_id IS NULL
             AND project_access.project_key=session.project_key
+          )
+        )
+       LEFT JOIN workspace_project_administrators project_admin
+         ON project_admin.workspace_id=$1
+        AND project_admin.user_id=$2
+        AND project_admin.peon_id=$3
+        AND (
+          (session.project_id IS NOT NULL AND project_admin.project_id=session.project_id)
+          OR (
+            session.project_id IS NULL
+            AND project_admin.project_id IS NULL
+            AND project_admin.project_key=session.project_key
           )
         )
       WHERE member.workspace_id=$1 AND member.user_id=$2`,

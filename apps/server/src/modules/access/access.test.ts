@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import type pg from "pg";
 import { newDb } from "pg-mem";
 import { initDb, query } from "../../infrastructure/db/index.js";
-import { allowedProjectKeys, canAccessPeon, canAccessProject, canManageProject, grantProjectAdministrator, listMemberAccess, listProjectMemberAccess, projectAccessQuery, projectMemberCounts, replaceMemberAccess, setProjectMemberAccess } from "./index.js";
+import { allowedProjectKeys, canAccessIndexedSessionNow, canAccessPeon, canAccessProject, canManageProject, grantProjectAdministrator, listMemberAccess, listProjectMemberAccess, projectAccessQuery, projectMemberCounts, replaceMemberAccess, setProjectMemberAccess } from "./index.js";
 import { eventVisible, projectVisible, type AccessClient } from "./index.js";
 import { backfillStoredSessionProjectIds, listSessions, resolveSessionProjectIds } from "../sessions/index.js";
 
@@ -99,6 +99,23 @@ test("project administrators receive only their project's access and manage its 
 
   await setProjectMemberAccess({ workspaceId: "ws", userId: "participant", peonId: "p1", projectKey: "mine", projectId: "project-mine", enabled: false, grantedBy: "admin" });
   assert.equal(await canAccessProject("ws", "participant", "member", "p1", "mine", "project-mine"), false);
+});
+
+test("project administrator can read their transcript but not another project's", async () => {
+  const mem = newDb();
+  const adapter = mem.adapters.createPg();
+  await initDb(new adapter.Pool() as unknown as pg.Pool);
+  await query(`INSERT INTO users (id,email,created_at) VALUES ('creator','creator@test',1)`);
+  await query(`INSERT INTO workspaces (id,name,slug,created_at) VALUES ('ws','Workspace','workspace',1)`);
+  await query(`INSERT INTO workspace_members (workspace_id,user_id,role,added_at) VALUES ('ws','creator','member',1)`);
+  await grantProjectAdministrator({ workspaceId: "ws", userId: "creator", peonId: "neo", projectKey: "grunge", projectId: "grunge-id", grantedBy: "creator" });
+  await query(`INSERT INTO sessions (peon_id,session_id,project_key,project_id,raw,synced_at) VALUES
+    ('neo','visible','grunge','grunge-id','{}',1),
+    ('neo','private','other','other-id','{}',1),
+    ('neo','reused-key','grunge','different-id','{}',1)`);
+  assert.equal(await canAccessIndexedSessionNow("ws", "creator", "neo", "visible"), true);
+  assert.equal(await canAccessIndexedSessionNow("ws", "creator", "neo", "private"), false);
+  assert.equal(await canAccessIndexedSessionNow("ws", "creator", "neo", "reused-key"), false);
 });
 
 test("project access queries bind contiguous parameters for stable IDs and legacy keys", () => {
