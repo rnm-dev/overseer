@@ -125,6 +125,7 @@ repository — that content lives here.
 
 - [project Fleet HTTP control plane](project-reverse-commands.md) — catalog,
   create, settings, documentation, quick links, update and delete.
+- [Peon resource usage](peon-resource-usage.md) — bounded CPU, memory and disk snapshots plus demand-scoped live monitoring.
 - [project administration](project-administration.md) — creation by members,
   project administrators and scoped member access.
 - [live directory updates](project-directory-watch.md) — demand-driven Peon filesystem watches relayed over the workspace WebSocket.

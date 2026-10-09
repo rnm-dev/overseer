@@ -26,6 +26,7 @@ import { attachFleetProjectFileRoutes } from "./http/fleet/files.js";
 import { attachFleetSessionFileRoutes } from "./http/fleet/sessionFiles.js";
 import { PROTOCOL_VERSION } from "./protocol.js";
 import { UnauthorizedRateLimiter } from "./runtime/unauthorizedRateLimit.js";
+import { attachResourceUsageRoutes } from "./http/fleet/resources.js";
 // The machine-facing control surface a "overseer" (fleet control plane) uses
 // to drive this peon — see PROTOCOL.md. It is deliberately a *separate* router
 // from the human `/api/v1/*` surface in controlServer.ts: its own auth (a shared
@@ -333,6 +334,7 @@ export function createAgentRouter(options = {}) {
     router.get("/status", (_req, res) => {
         res.json(agentStatusView());
     });
+    attachResourceUsageRoutes(router);
     // Convenient state mutation for control planes that model a peon as one
     // resource. /control/pause and /control/resume remain compatibility aliases.
     router.patch("/status", (req, res) => {

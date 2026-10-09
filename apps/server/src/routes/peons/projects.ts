@@ -377,6 +377,9 @@ export function registerProjectRoutes(router: express.Router): void {
       { actor: c.operator.email },
     ), res);
   }));
+  router.get(`${wp}/resources`, withWorkspacePeon(async (_req, res, c) => {
+    relay(await callPeon(connOfRecord(c.record), "GET", "/resources", { actor: c.operator.email }), res);
+  }));
   router.get(`${wp}/analytics`, withWorkspacePeon(async (req, res, c) => {
     const suffix = new URLSearchParams(req.query as Record<string, string>).toString();
     relay(await callPeon(

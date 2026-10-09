@@ -1,4 +1,5 @@
 import { ProjectFileWatchHub } from "./projectFileWatchHub.js";
+import { ResourceUsageHub } from "./resourceUsageHub.js";
 import type { IncomingMessage, Server } from "node:http";
 import { randomUUID } from "node:crypto";
 import type { Duplex } from "node:stream";
@@ -78,6 +79,7 @@ interface Client {
   messageQueue: Promise<void>;
   tails: Map<string, AbortController>;
   fileWatches: ProjectFileWatchHub;
+  resourceUsage: ResourceUsageHub;
   location: PresenceLocation | null;
   // Whether that location is actually in front of the operator (tab visible +
   // focused). A backgrounded tab keeps its place in the viewer list but must not
@@ -176,6 +178,7 @@ export function attachLiveSocket(server: Server): WebSocketServer {
   server.on("upgrade", onUpgrade);
   const clients = new Set<Client>();
   const fileWatches = new ProjectFileWatchHub(send);
+  const resourceUsage = new ResourceUsageHub(send);
   // Tell each of an operator's sockets whether its tab currently owns audio.
   // Ownership is per operator, not per workspace, so this deliberately ignores
   // which workspace a socket is looking at.
@@ -219,6 +222,7 @@ export function attachLiveSocket(server: Server): WebSocketServer {
       const workspaceId = client.workspaceId;
       client.closed = true;
       fileWatches.closeClient(client);
+      resourceUsage.closeClient(client);
       for (const c of client.tails.values()) c.abort();
       client.tails.clear();
       client.location = null;
@@ -274,6 +278,7 @@ export function attachLiveSocket(server: Server): WebSocketServer {
         messageQueue: Promise.resolve(),
         tails: new Map(),
         fileWatches,
+        resourceUsage,
         location: null,
         presenceActive: true,
         audioClientId: null,
@@ -439,6 +444,11 @@ async function onMessage(client: Client, raw: string, wsCursor: Map<string, numb
     if (typeof msg.watchId === "string") client.fileWatches.unsubscribe(client, msg.watchId);
     return;
   }
+  if (msg.type === "resources:subscribe") return client.resourceUsage.subscribe(client, msg);
+  if (msg.type === "resources:unsubscribe") {
+    if (typeof (msg as Record<string, unknown>).subscriptionId === "string") client.resourceUsage.unsubscribe(client, (msg as Record<string, unknown>).subscriptionId as string);
+    return;
+  }
   if (msg.type === "session:applied" || msg.type === "resource:applied") {
     const cursor = Number(msg.cursor);
     if (!Number.isSafeInteger(cursor) || cursor <= 0 || cursor > (wsCursor.get(client.workspaceId) ?? 0)) return;
@@ -483,6 +493,7 @@ async function hello(client: Client, msg: { workspaceId?: string; clientId?: str
   if (client.closed) return;
   // Switching workspace resets everything for this socket.
   client.fileWatches.closeClient(client);
+  client.resourceUsage.closeClient(client);
   const previousWorkspaceId = client.workspaceId;
   for (const c of client.tails.values()) c.abort();
   client.tails.clear();
@@ -519,7 +530,7 @@ async function snapshotAndReplay(client: Client, workspaceId: string, wsCursor: 
   if (client.closed || client.workspaceId !== workspaceId) return;
   send(client.ws, {
     type: "snapshot",
-    capabilities: ["project-directory-watch-v1"],
+    capabilities: ["project-directory-watch-v1", "resource-usage-v1"],
     presence: collectPresence(client),
     peonPresence: records
       .filter((record) => peonVisible(client, record.peonId))

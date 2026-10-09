@@ -329,6 +329,7 @@ export const en: Record<string, string> = {
   "peon.settings.kickConfirm": "Kick this peon? Its access will be revoked and active work will not be stopped. This can’t be undone.",
   "peon.settings.kicking": "kicking…",
   "peon.tab.stats": "Stats",
+  "peon.tab.resources": "Resources",
   "peon.auth.label": "Agent CLI",
   "peon.auth.ok": "Ready",
   "peon.auth.unauthenticated": "Not signed in",

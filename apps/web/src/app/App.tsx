@@ -21,6 +21,7 @@ const PeonNewSession = lazy(() => import("../features/sessions/PeonNewSession").
 const PeonSessionDetail = lazy(() => import("../features/sessions/PeonSessionDetail").then((m) => ({ default: m.PeonSessionDetail })));
 const PeonProjectDetail = lazy(() => import("../features/projects/PeonProjectDetail").then((m) => ({ default: m.PeonProjectDetail })));
 const PeonStats = lazy(() => import("../features/stats/PeonStats").then((m) => ({ default: m.PeonStats })));
+const PeonResources = lazy(() => import("../features/resources/PeonResources").then((m) => ({ default: m.PeonResources })));
 const PeonSettings = lazy(() => import("../features/settings/PeonSettings").then((m) => ({ default: m.PeonSettings })));
 const Members = lazy(() => import("../features/workspaces/Members").then((m) => ({ default: m.Members })));
 const WorkspaceDashboard = lazy(() => import("../features/workspaces/WorkspaceDashboard").then((m) => ({ default: m.WorkspaceDashboard })));
@@ -163,6 +164,7 @@ export function App() {
           <Route path="projects/:key/members" element={<ProjectMembers />} />
           <Route path="projects/:key/settings" element={<ProjectSettings />} />
           <Route path="stats" element={<PeonStats />} />
+          <Route path="resources" element={<PeonResources />} />
           <Route path="armory" element={<LegacyPeonArmoryRedirect />} />
           <Route path="armory/:packageId" element={<LegacyPeonArmoryRedirect />} />
           <Route path="settings" element={<PeonSettings />} />

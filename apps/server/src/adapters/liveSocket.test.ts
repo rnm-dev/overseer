@@ -518,7 +518,7 @@ test("directory watches use authenticated shared Fleet SSE, revoke access and ab
     const collector = messageCollector(ws); await once(ws, "open");
     ws.send(JSON.stringify({ type: "hello", workspaceId: workspace.id }));
     const snapshot = await collector.waitFor((msg) => msg.type === "snapshot");
-    assert.deepEqual(snapshot.capabilities, ["project-directory-watch-v1"]);
+    assert.deepEqual(snapshot.capabilities, ["project-directory-watch-v1", "resource-usage-v1"]);
     return { ws, collector };
   };
   const subscribe = (ws: WebSocket, watchId: string, projectKey = "watch-project") => ws.send(JSON.stringify({
