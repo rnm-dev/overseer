@@ -15,6 +15,7 @@ function cpuTimes() {
 }
 export class ResourceSampler {
     sequence = 0;
+    first = true;
     previousCpu = cpuTimes();
     previousProcess = process.cpuUsage();
     previousAt = process.hrtime.bigint();
@@ -26,6 +27,8 @@ export class ResourceSampler {
         const cpuTotal = nowCpu.total - this.previousCpu.total;
         const cpuIdle = nowCpu.idle - this.previousCpu.idle;
         const processMicros = nowProcess.user - this.previousProcess.user + nowProcess.system - this.previousProcess.system;
+        const first = this.first;
+        this.first = false;
         this.previousCpu = nowCpu;
         this.previousProcess = nowProcess;
         this.previousAt = nowAt;
@@ -36,9 +39,9 @@ export class ResourceSampler {
         const usedBytes = totalBytes - availableBytes;
         return {
             version: RESOURCE_USAGE_CAPABILITY, sampledAt: Date.now(), sequence: ++this.sequence,
-            process: { cpuPercent: elapsedMicros > 0 ? Math.max(0, processMicros / elapsedMicros * 100) : 0,
+            process: { cpuPercent: !first && elapsedMicros > 0 ? Math.max(0, processMicros / elapsedMicros * 100) : 0,
                 rssBytes: memory.rss, heapUsedBytes: memory.heapUsed, heapTotalBytes: memory.heapTotal, uptimeSeconds: process.uptime() },
-            host: { cpuPercent: cpuTotal > 0 ? Math.max(0, Math.min(100, (cpuTotal - cpuIdle) / cpuTotal * 100)) : 0,
+            host: { cpuPercent: !first && cpuTotal > 0 ? Math.max(0, Math.min(100, (cpuTotal - cpuIdle) / cpuTotal * 100)) : 0,
                 logicalCpuCount: cpus().length, loadAverage: loadavg(), memoryTotalBytes: totalmem(), memoryFreeBytes: freemem() },
             disk: { totalBytes: Number(totalBytes), usedBytes: Number(usedBytes), availableBytes: Number(availableBytes),
                 usedPercent: totalBytes > 0n ? Number(usedBytes * 10000n / totalBytes) / 100 : 0 },

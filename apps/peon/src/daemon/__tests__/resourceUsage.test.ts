@@ -8,6 +8,8 @@ test("resource sampler returns bounded, path-free host, process and disk metrics
   assert.ok(sample.sampledAt > 0);
   assert.ok(sample.sequence > 0);
   assert.ok(sample.host.cpuPercent >= 0 && sample.host.cpuPercent <= 100);
+  assert.equal(sample.host.cpuPercent, 0);
+  assert.equal(sample.process.cpuPercent, 0);
   assert.ok(sample.host.logicalCpuCount >= 1);
   assert.ok(sample.host.memoryTotalBytes > 0);
   assert.ok(sample.process.rssBytes > 0);
