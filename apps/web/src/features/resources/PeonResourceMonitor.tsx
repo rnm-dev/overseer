@@ -24,10 +24,14 @@ function LiveChart({ title, icon: Icon, primary, primaryValue, secondary, second
     <div className="flex items-start justify-between gap-4 px-5 pt-5"><div><div className="flex items-center gap-2 text-ink-muted"><Icon size={15} aria-hidden /><h3 className="font-display text-sm font-bold text-ink">{title}</h3></div><p className="mt-1.5 font-mono text-[11px] text-ink-faint">{detail}</p></div><strong className="font-mono text-xl font-semibold tabular-nums text-ink">{pct(primaryValue)}</strong></div>
     <div className="relative mx-5 mb-4 mt-4 h-20 overflow-hidden rounded-lg bg-ink/[0.025]">
       <svg className="absolute inset-0 h-full w-full" viewBox="0 0 600 76" preserveAspectRatio="none" role="img" aria-label={`${title} recent history`}>
+        <g className="text-ink-faint" opacity="0.12" stroke="currentColor" strokeWidth="0.6" vectorEffect="non-scaling-stroke">
+          <path d="M150 0V76 M300 0V76 M450 0V76" />
+          <path d="M0 19H600 M0 38H600 M0 57H600" />
+        </g>
         {area && <><polygon points={`${areaStart},76 ${area} 600,76`} className="fill-accent/8" /><polyline points={area} className="fill-none stroke-accent/80" strokeWidth="1.25" vectorEffect="non-scaling-stroke" /></>}
         {secondary && <polyline points={points(secondary, range)} className="fill-none stroke-ink-faint/70" strokeWidth="1" strokeDasharray="4 5" vectorEffect="non-scaling-stroke" />}
       </svg>
-      {secondary && <span className="absolute bottom-2 left-3 rounded-md bg-canvas/70 px-2 py-1 font-mono text-[9px] text-ink-faint backdrop-blur">Peon {pct(secondaryValue ?? 0)}</span>}
+      {secondary && <span className="absolute bottom-2 left-3 rounded-md bg-canvas/70 px-2 py-1 font-mono text-[9px] text-ink-faint backdrop-blur">Daemon {pct(secondaryValue ?? 0)}</span>}
     </div>
   </Card>;
 }
