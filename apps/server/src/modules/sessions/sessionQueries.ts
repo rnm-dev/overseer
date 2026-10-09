@@ -88,6 +88,24 @@ const sessionProjection = `
   sessions.last_activity_at,
   sessions.synced_at`;
 
+function sessionAccessJoin(user: string, workspace: string): string {
+  const projectMatch = (alias: string) => `
+    AND ((sessions.project_id IS NOT NULL AND ${alias}.project_id=sessions.project_id)
+      OR (sessions.project_id IS NULL AND ${alias}.project_id IS NULL AND ${alias}.project_key=sessions.project_key))`;
+  return `
+    LEFT JOIN workspace_member_peon_access pa
+      ON pa.peon_id=sessions.peon_id AND pa.user_id=${user} AND pa.workspace_id=${workspace}
+    LEFT JOIN workspace_member_project_access ppa
+      ON ppa.peon_id=sessions.peon_id AND ppa.user_id=${user} AND ppa.workspace_id=${workspace}${projectMatch("ppa")}
+    LEFT JOIN workspace_project_administrators admin
+      ON admin.peon_id=sessions.peon_id AND admin.user_id=${user} AND admin.workspace_id=${workspace}${projectMatch("admin")}`;
+}
+
+function sessionAccessPredicate(): string {
+  return `(pa.peon_id IS NOT NULL OR admin.peon_id IS NOT NULL)
+    AND (sessions.project_key IS NULL OR sessions.project_key = '' OR ppa.peon_id IS NOT NULL OR admin.peon_id IS NOT NULL)`;
+}
+
 // Query the index — filter by peon and/or status, newest activity first,
 // paginated. Returns the page plus the total matching count.
 export async function listSessions(opts: ListOptions): Promise<{ sessions: SessionIndexRow[]; total: number }> {
@@ -137,14 +155,8 @@ export async function listSessions(opts: ListOptions): Promise<{ sessions: Sessi
     const user = `$${params.length}`;
     params.push(opts.workspaceId);
     const workspace = `$${params.length}`;
-    fromSql += `
-      INNER JOIN workspace_member_peon_access pa
-        ON pa.peon_id=sessions.peon_id AND pa.user_id=${user} AND pa.workspace_id=${workspace}
-      LEFT JOIN workspace_member_project_access ppa
-        ON ppa.peon_id=sessions.peon_id AND ppa.user_id=${user} AND ppa.workspace_id=${workspace}
-       AND ((sessions.project_id IS NOT NULL AND ppa.project_id=sessions.project_id)
-         OR (sessions.project_id IS NULL AND ppa.project_id IS NULL AND ppa.project_key=sessions.project_key))`;
-    where.push(`(sessions.project_key IS NULL OR sessions.project_key = '' OR ppa.peon_id IS NOT NULL)`);
+    fromSql += sessionAccessJoin(user, workspace);
+    where.push(sessionAccessPredicate());
   }
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
 
@@ -235,14 +247,8 @@ export async function listOperatorRecentSessions(opts: {
     const user = `$${params.length}`;
     params.push(opts.workspaceId);
     const workspace = `$${params.length}`;
-    joinSql = `
-      INNER JOIN workspace_member_peon_access pa
-        ON pa.peon_id=sessions.peon_id AND pa.user_id=${user} AND pa.workspace_id=${workspace}
-      LEFT JOIN workspace_member_project_access ppa
-        ON ppa.peon_id=sessions.peon_id AND ppa.user_id=${user} AND ppa.workspace_id=${workspace}
-       AND ((sessions.project_id IS NOT NULL AND ppa.project_id=sessions.project_id)
-         OR (sessions.project_id IS NULL AND ppa.project_id IS NULL AND ppa.project_key=sessions.project_key))`;
-    accessPredicate = ` AND (sessions.project_key IS NULL OR sessions.project_key = '' OR ppa.peon_id IS NOT NULL)`;
+    joinSql = sessionAccessJoin(user, workspace);
+    accessPredicate = ` AND ${sessionAccessPredicate()}`;
   }
 
   // One query for the whole fleet — never one per Peon. The per-Peon cut is
