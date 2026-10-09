@@ -329,7 +329,6 @@ export const ru: Record<string, string> = {
   "peon.settings.kickConfirm": "Кикнуть этого пеона? Доступ будет отозван, активные задачи не остановятся. Отменить действие нельзя.",
   "peon.settings.kicking": "кикаем…",
   "peon.tab.stats": "Статистика",
-  "peon.tab.resources": "Ресурсы",
   "peon.auth.label": "Агент CLI",
   "peon.auth.ok": "Готов",
   "peon.auth.unauthenticated": "Не авторизован",

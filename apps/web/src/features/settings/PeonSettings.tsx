@@ -12,6 +12,7 @@ import { peonSettingsPath, peonSettingsTabFromPath, SOUL_EDITOR_ROWS } from "./s
 import { savePeonSoul, soulExcerpt } from "../fleet/peonApi";
 import { normalizeUpdateStatus, type PeonUpdateStatus } from "./updateStatus";
 import { RouteTabs } from "../../shared/RouteTabs";
+import { PeonResourceMonitor } from "../resources/PeonResourceMonitor";
 
 // author: Viktor
 
@@ -230,6 +231,8 @@ export function PeonSettings() {
           </div>
         </Card>
       )}
+
+      {peon.online && <PeonResourceMonitor peonId={peon.peonId} />}
 
       {(peon.online || updating) && status && (
         <Card className="space-y-4 px-5 py-5">

@@ -10,7 +10,8 @@ session statistic nor a durable fleet projection.
 - `GET /api/v1/resources/stream?intervalMs=1000` emits SSE `sample` frames.
   Peon clamps the interval to 1–10 seconds and allows at most 256 concurrent
   streams.
-- The web client sends `resources:subscribe` and `resources:unsubscribe` over
+- The Peon Settings screen sends `resources:subscribe` and
+  `resources:unsubscribe` over
   the existing workspace WebSocket. Overseer authorizes the caller, shares one
   Fleet SSE upstream per workspace/Peon pair, and relays `resources:sample`.
 - The first subscriber opens the upstream and the final unsubscribe or socket
@@ -28,6 +29,11 @@ Samples include timestamp and sequence plus host CPU/load/memory, Peon's CPU,
 RSS/heap/uptime, and total/used/available bytes for the filesystem containing
 Peon's working directory. They deliberately omit mount paths, process lists,
 usernames, environment variables and device identifiers.
+
+Settings retains at most five minutes of one-second CPU and memory samples in
+the current browser tab and draws the recent history locally. Leaving the
+screen or reloading discards it. Disk capacity is shown as the current value;
+no sample history is written to browser storage or the server.
 
 Overseer allows eight subscriptions per browser connection and 256 shared
 upstreams per process. It caps SSE buffering, closes silent or malformed

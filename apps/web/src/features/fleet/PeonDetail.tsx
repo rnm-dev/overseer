@@ -1,6 +1,6 @@
 import { useSessionPins, orderPinnedSessions } from "../sessions/useSessionPins";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Activity, BarChart3, Menu, Pickaxe, Settings, type LucideIcon } from "lucide-react";
+import { BarChart3, Menu, Pickaxe, Settings, type LucideIcon } from "lucide-react";
 import { Link, NavLink, Outlet, useLocation, useNavigate, useParams } from "react-router";
 import { api, ApiError } from "../../shared/api";
 import { useWorkspace } from "../workspaces/workspace";
@@ -34,7 +34,7 @@ import { prefetchTranscriptSnapshot } from "../sessions/transcriptSnapshotCache"
 
 type PeonNavItem = {
   to: string;
-  key: "peon.tab.work" | "peon.tab.stats" | "peon.tab.resources";
+  key: "peon.tab.work" | "peon.tab.stats";
   icon: LucideIcon;
 };
 
@@ -43,7 +43,6 @@ type PeonNavItem = {
 export const PEON_NAV_ITEMS: readonly PeonNavItem[] = [
   { to: "sessions", key: "peon.tab.work", icon: Pickaxe },
   { to: "stats", key: "peon.tab.stats", icon: BarChart3 },
-  { to: "resources", key: "peon.tab.resources", icon: Activity },
 ];
 
 const iconNavClass = (active: boolean) =>
