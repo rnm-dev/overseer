@@ -9,6 +9,7 @@ import { ArmoryOperationError } from "./operationCoordinator.js";
 import { ArmoryProjectPackagesError, ArmoryProjectPackagesService } from "./projectPackages.js";
 import { createArmoryStores, type ArmoryOperationStore, type ArmorySettingsStore } from "./stores.js";
 import type { ArmoryPackageUninstallApi } from "./uninstaller.js";
+import type { ArmoryRuntimeOperationsService } from "./runtimeOperations.js";
 
 interface ConfigurationApi {
   schema(packageId: string): Promise<{ fields: unknown[]; configured: Record<string, boolean>; hostWrites: string[] }>;
@@ -28,6 +29,8 @@ export interface ArmoryApiServices {
   mcp?: { describe(packageId: string): Promise<unknown> };
   projectPackages?: ArmoryProjectPackagesService;
   projectPackagesCapability?: boolean;
+  runtimeOperations?: ArmoryRuntimeOperationsService;
+  runtimeOperationsCapability?: boolean;
   allowMutations?: boolean;
 }
 
@@ -119,6 +122,12 @@ export function createArmoryReadRouter(
     }
     return options.projectPackages;
   };
+  const runtimeOperations = () => {
+    if (!options.runtimeOperationsCapability || !options.runtimeOperations) {
+      throw new ArmoryOperationError("UNSUPPORTED_CAPABILITY", "Peon does not advertise armory-package-operations-v1");
+    }
+    return options.runtimeOperations;
+  };
 
   const list = async (req: express.Request, res: express.Response) => {
     try {
@@ -174,6 +183,18 @@ export function createArmoryReadRouter(
         res.json(safe);
       } else res.json(detail);
     } catch (error) { sendError(res, error); }
+  });
+  router.get("/packages/:id/preflight", async (req, res) => {
+    try { res.json(await runtimeOperations().preflight(req.params.id, singleQuery(req.query.version))); }
+    catch (error) { sendError(res, error); }
+  });
+  router.get("/packages/:id/usage", async (req, res) => {
+    try { res.json(runtimeOperations().usage(req.params.id)); }
+    catch (error) { sendError(res, error); }
+  });
+  router.get("/packages/:id/drain", async (req, res) => {
+    try { res.json(runtimeOperations().drainStatus(req.params.id)); }
+    catch (error) { sendError(res, error); }
   });
   router.get("/operations/:id", async (req, res) => {
     try {
@@ -247,6 +268,24 @@ export function createArmoryReadRouter(
       } catch (error) {
         sendError(res, error);
       }
+    });
+    router.post("/packages/:id/restart", async (req, res) => {
+      try { res.status(202).json({ operation: await runtimeOperations().restart(req.params.id) }); }
+      catch (error) { sendError(res, error); }
+    });
+    router.post("/packages/:id/drain", async (req, res) => {
+      try { res.status(202).json({ operation: await runtimeOperations().drain(req.params.id) }); }
+      catch (error) { sendError(res, error); }
+    });
+    router.post("/packages/:id/diagnose", async (req, res) => {
+      try {
+        const projectId = z.object({ projectId: z.string().uuid().optional() }).strict().parse(req.body ?? {}).projectId;
+        res.json(await runtimeOperations().diagnose(req.params.id, projectId));
+      } catch (error) { sendError(res, error); }
+    });
+    router.post("/projects/:projectId/assignments/:packageId/reload", async (req, res) => {
+      try { res.status(202).json({ operation: await runtimeOperations().reload(req.params.projectId, req.params.packageId) }); }
+      catch (error) { sendError(res, error); }
     });
     router.post("/packages/:id/enable", async (req, res) => {
       try {

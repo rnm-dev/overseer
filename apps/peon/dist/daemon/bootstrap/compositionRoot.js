@@ -1,6 +1,6 @@
 import { modelCatalog } from "../providers/modelCatalog.js";
 import { cliUpdates } from "../updates/cliUpdates.js";
-import { createArmoryStores, ArmoryConfigurationService, ArmoryMcpLifecycleService, ArmoryMcpRuntime, ArmoryPackageInstallService, ArmoryProjectPackagesService, ArmoryUninstallService, armoryInventory } from "../armory/index.js";
+import { createArmoryStores, ArmoryConfigurationService, ArmoryMcpLifecycleService, ArmoryMcpRuntime, ArmoryPackageInstallService, ArmoryProjectPackagesService, ArmoryRuntimeOperationsService, ArmoryUninstallService, armoryInventory } from "../armory/index.js";
 import { createProjectService, projectStore } from "../projects/index.js";
 import { settings } from "../settings/index.js";
 import { SessionOrchestrationService, sessions } from "../sessions/index.js";
@@ -29,6 +29,7 @@ export function createDaemonCompositionRoot(options = {}) {
     const projectService = createProjectService(projectStore, createSessionProjectContract());
     const sessionOrchestration = buildSessionOrchestration(projectService);
     const projectPackages = new ArmoryProjectPackagesService({ stores: armoryStores, projects: projectService });
+    const runtimeOperations = new ArmoryRuntimeOperationsService({ stores: armoryStores, inventory: options.armoryInventory ?? armoryInventory, runtime: armoryRuntime, projectPackages });
     const armoryApi = {
         settings: armoryStores.settings,
         operations: armoryStores.operations,
@@ -40,6 +41,8 @@ export function createDaemonCompositionRoot(options = {}) {
         configuration: new ArmoryConfigurationService({ stores: armoryRuntime.stores, runtime: armoryRuntime }),
         projectPackages,
         projectPackagesCapability: true,
+        runtimeOperations,
+        runtimeOperationsCapability: true,
     };
     const cliUpdateService = options.cliUpdates ?? cliUpdates;
     const fileAccessService = new FileAccessService();

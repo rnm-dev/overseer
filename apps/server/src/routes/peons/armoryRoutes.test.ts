@@ -8,6 +8,7 @@ import {
   safeConfigurationResult,
   safeProfileOperationResult,
   safeProfileResult,
+  safeRuntimeOperationsResult,
 } from "./armory.js";
 
 test("Armory exposes discovery, configuration, and lifecycle mutation routes", () => {
@@ -26,6 +27,13 @@ test("Armory exposes discovery, configuration, and lifecycle mutation routes", (
   assert.equal(has(`${root}/packages/:packageId/configuration`, "delete"), true);
   assert.equal(has(`${root}/packages/:packageId/configuration/verify`, "post"), true);
   assert.equal(has(`${root}/packages/:packageId/mcp`, "get"), true);
+  assert.equal(has(`${root}/packages/:packageId/preflight`, "get"), true);
+  assert.equal(has(`${root}/packages/:packageId/usage`, "get"), true);
+  assert.equal(has(`${root}/packages/:packageId/drain`, "get"), true);
+  assert.equal(has(`${root}/packages/:packageId/drain`, "post"), true);
+  assert.equal(has(`${root}/packages/:packageId/restart`, "post"), true);
+  assert.equal(has(`${root}/packages/:packageId/diagnose`, "post"), true);
+  assert.equal(has(`${root}/projects/:projectId/assignments/:packageId/reload`, "post"), true);
   assert.equal(has(`${root}/profiles`, "get"), true);
   assert.equal(has(`${root}/profiles`, "post"), true);
   assert.equal(has(`${root}/profiles/:profileId`, "patch"), true);
@@ -50,7 +58,7 @@ test("Armory production routes have one direct Fleet HTTP authority", () => {
   const source = readFileSync(new URL("./armory.ts", import.meta.url), "utf8");
   assert.doesNotMatch(source, /reverseCommand|runReverseCommandTransport|armoryCall/);
   assert.match(source, /import \{ callPeon, connOfRecord \}/);
-  assert.equal((source.match(/\bcallPeon\(/g) ?? []).length, 23);
+  assert.equal((source.match(/\bcallPeon\(/g) ?? []).length, 29);
   for (const operation of [
     "inventory", "settings", "package", "configuration", "mcp", "operation",
     "refresh", "install", "update", "enable", "disable", "configure", "verify",
@@ -58,6 +66,24 @@ test("Armory production routes have one direct Fleet HTTP authority", () => {
   ]) {
     assert.doesNotMatch(source, new RegExp(`["'\`]armory\\\\.${operation.replace(".", "\\\\.")}["'\`]`));
   }
+});
+
+test("Armory runtime operation responses are bounded and reconstructed", () => {
+  const secret = "runtime_secret_must_not_escape";
+  const preflight = safeRuntimeOperationsResult({ status: 200, json: {
+    packageId: "fixture", version: "1.0.0", compatible: true,
+    checks: [{ id: "platform", status: "pass", code: null, detail: secret }], detail: secret,
+  } }, "preflight");
+  assert.doesNotMatch(JSON.stringify(preflight), new RegExp(secret));
+  assert.deepEqual(preflight.json, {
+    packageId: "fixture", version: "1.0.0", compatible: true,
+    checks: [{ id: "platform", status: "pass", code: null }],
+  });
+  const unsafe = safeRuntimeOperationsResult({ status: 200, json: {
+    packageId: "fixture", calls: 1, failures: 0, timeouts: 0, totalDurationMs: 1,
+    activeCalls: 0, activeTurnLeases: 0, runningRuntimes: 0, lastUsedAt: null, resetAt: -1,
+  } }, "usage");
+  assert.equal(unsafe.status, 502);
 });
 
 test("Armory configuration relays suppress submitted values in errors and operation diagnostics", () => {

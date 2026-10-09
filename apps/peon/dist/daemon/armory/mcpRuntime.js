@@ -26,6 +26,9 @@ export class ArmoryMcpRuntime {
     leaseCounts = new Map();
     draining = new Map();
     drainResolvers = new Map();
+    drainingPackages = new Set();
+    usageByPackage = new Map();
+    usageResetAt = Date.now();
     hookRunner = new ArmoryHookRunner();
     drainTimeoutMs;
     closed = false;
@@ -43,16 +46,22 @@ export class ArmoryMcpRuntime {
             console.warn(`Armory package unavailable for session ${context.sessionId}: ${issue.packageId ?? "assignment store"} (${issue.code})`);
         }
         const bindingIds = [];
+        const publicBindings = [];
         for (const selection of selections) {
+            if (this.drainingPackages.has(selection.packageId)) {
+                unavailable.push({ packageId: selection.packageId, code: "MCP_DRAINING", message: `Armory package is draining: ${selection.packageId}` });
+                continue;
+            }
             const bindingId = randomUUID();
             this.selectionsByKey.set(selection.runtimeKey, selection);
             this.bindingsById.set(bindingId, { sessionId: context.sessionId, turnId: context.turnId, selection });
             this.leaseCounts.set(selection.runtimeKey, (this.leaseCounts.get(selection.runtimeKey) ?? 0) + 1);
             bindingIds.push(bindingId);
+            publicBindings.push({ packageId: selection.packageId, bindingId });
         }
         let released = false;
         return {
-            bindings: selections.map((selection, index) => ({ packageId: selection.packageId, bindingId: bindingIds[index] })),
+            bindings: publicBindings,
             ...(unavailable.length > 0 ? { unavailable } : {}),
             release: () => {
                 if (released)
@@ -84,6 +93,7 @@ export class ArmoryMcpRuntime {
         // exact artifact/profile selection lazily on its first MCP request.
     }
     async stop(packageId) {
+        this.drainingPackages.add(packageId);
         const keys = new Set();
         for (const [key, selection] of this.selectionsByKey)
             if (selection.packageId === packageId)
@@ -96,8 +106,10 @@ export class ArmoryMcpRuntime {
             if (runtimeKeyPackageId(key) === packageId)
                 keys.add(key);
         }
-        if (keys.size === 0)
+        if (keys.size === 0) {
+            this.drainingPackages.delete(packageId);
             return;
+        }
         const activeLeases = [...keys].reduce((count, key) => count + (this.leaseCounts.get(key) ?? 0), 0);
         let timer;
         try {
@@ -111,6 +123,62 @@ export class ArmoryMcpRuntime {
         finally {
             if (timer)
                 clearTimeout(timer);
+            this.drainingPackages.delete(packageId);
+        }
+    }
+    usage(packageId) {
+        const aggregate = this.usageByPackage.get(packageId) ?? { calls: 0, failures: 0, timeouts: 0, totalDurationMs: 0, lastUsedAt: null };
+        const keys = new Set([...this.selectionsByKey.entries()].filter(([, value]) => value.packageId === packageId).map(([key]) => key));
+        for (const [key, value] of this.running)
+            if (value.selection.packageId === packageId)
+                keys.add(key);
+        return {
+            packageId,
+            ...aggregate,
+            activeCalls: [...keys].reduce((count, key) => count + (this.activeCalls.get(key)?.size ?? 0), 0),
+            activeTurnLeases: [...keys].reduce((count, key) => count + (this.leaseCounts.get(key) ?? 0), 0),
+            runningRuntimes: [...this.running.values()].filter((value) => value.selection.packageId === packageId).length,
+            resetAt: this.usageResetAt,
+        };
+    }
+    drainStatus(packageId) {
+        const usage = this.usage(packageId);
+        return { packageId, state: this.drainingPackages.has(packageId) ? "draining" : "accepting", activeCalls: usage.activeCalls, activeTurnLeases: usage.activeTurnLeases };
+    }
+    async restart(packageId) {
+        await this.stop(packageId);
+        const loaded = await this.loadInstalledPackage(packageId);
+        if (!loaded.manifest.profile)
+            await this.healthCheck(packageId);
+    }
+    async diagnose(packageId, projectId) {
+        const checks = [];
+        try {
+            const loaded = await this.loadInstalledPackage(packageId);
+            checks.push({ id: "installed-manifest", status: "pass", code: null });
+            if (!loaded.manifest.mcp)
+                return [...checks, { id: "mcp", status: "fail", code: "MCP_NOT_SUPPORTED" }];
+            let selection;
+            if (projectId) {
+                const resolved = this.resolveTurnSelections(projectId);
+                const issue = resolved.unavailable.find((entry) => entry.packageId === packageId);
+                selection = resolved.selections.find((entry) => entry.packageId === packageId);
+                if (!selection)
+                    return [...checks, { id: "assignment", status: "fail", code: issue?.code ?? "ASSIGNMENT_NOT_FOUND" }];
+                checks.push({ id: "assignment", status: "pass", code: null });
+            }
+            else {
+                if (loaded.manifest.profile)
+                    return [...checks, { id: "profile", status: "fail", code: "PROFILE_REQUIRED" }];
+                selection = this.selection(loaded.manifest, loaded.packageDir, loaded.artifactDigest, null);
+            }
+            const temporary = await this.connectPackage(selection);
+            await temporary.client.close().catch(() => temporary.transport.close().catch(() => undefined));
+            checks.push({ id: "mcp-handshake", status: "pass", code: null });
+            return checks;
+        }
+        catch (error) {
+            return [...checks, { id: "mcp-handshake", status: "fail", code: error instanceof ArmoryOperationError ? error.code : "DIAGNOSE_FAILED" }];
         }
     }
     async close() {
@@ -138,6 +206,9 @@ export class ArmoryMcpRuntime {
         const current = await this.ensureRunning(binding.selection);
         if (!current.tools.some((tool) => tool.name === name))
             return toolError(`Armory package ${binding.selection.packageId} does not expose tool: ${name}`);
+        const startedAt = Date.now();
+        let failed = false;
+        let timedOut = false;
         try {
             const call = current.client.callTool({ name, arguments: args }, undefined, {
                 signal,
@@ -157,12 +228,26 @@ export class ArmoryMcpRuntime {
                     this.activeCalls.delete(current.selection.runtimeKey);
             }
             if (Buffer.byteLength(JSON.stringify(result)) > MAX_MCP_RESULT_BYTES) {
+                failed = true;
                 return toolError(`Armory package ${binding.selection.packageId} returned a result larger than ${MAX_MCP_RESULT_BYTES} bytes`);
             }
+            failed = result.isError === true;
             return result;
         }
         catch (error) {
+            failed = true;
+            timedOut = /timeout|timed out/i.test(safeMessage(error));
             return toolError(`Armory package ${binding.selection.packageId} tool call failed: ${safeMessage(error)}`);
+        }
+        finally {
+            const previous = this.usageByPackage.get(binding.selection.packageId) ?? { calls: 0, failures: 0, timeouts: 0, totalDurationMs: 0, lastUsedAt: null };
+            this.usageByPackage.set(binding.selection.packageId, {
+                calls: previous.calls + 1,
+                failures: previous.failures + (failed ? 1 : 0),
+                timeouts: previous.timeouts + (timedOut ? 1 : 0),
+                totalDurationMs: previous.totalDurationMs + Math.max(0, Date.now() - startedAt),
+                lastUsedAt: Date.now(),
+            });
         }
     }
     requireBinding(bindingId, sessionId) {

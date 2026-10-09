@@ -286,11 +286,19 @@ test("artifact reconciliation drains only after in-flight turn leases release an
   let stopped = false;
   const stopping = runtime.stop("fixture-echo").then(() => { stopped = true; });
   await new Promise<void>((resolve) => setImmediate(resolve));
-  assert.equal(stopped, false);
-  assert.equal(closes(), 0);
-  lease.release();
+  try {
+    assert.equal(stopped, false);
+    assert.equal(closes(), 0);
+    assert.equal(runtime.drainStatus("fixture-echo").state, "draining");
+    const refused = runtime.snapshotTurn({ projectId: PROJECT_A, sessionId: "during-drain", turnId: "turn" });
+    assert.equal(refused.bindings.length, 0);
+    assert.equal(refused.unavailable?.at(-1)?.code, "MCP_DRAINING");
+  } finally {
+    lease.release();
+  }
   await stopping;
   assert.equal(closes(), 1);
+  assert.equal(runtime.drainStatus("fixture-echo").state, "accepting");
   await runtime.close();
 
   const restarted = new ArmoryMcpRuntime(stores, new McpBindingRegistry());
@@ -325,6 +333,22 @@ test("package drain times out with actionable lease diagnostics instead of stall
     return true;
   });
 
+  lease.release();
+  await runtime.close();
+});
+
+test("package usage exposes only bounded aggregate MCP counters", async () => {
+  const { runtime } = await fixture();
+  const lease = runtime.snapshotTurn({ projectId: PROJECT_A, sessionId: "usage-session", turnId: "turn" });
+  await runtime.callTool(binding(lease), "usage-session", "identity", {});
+  const usage = runtime.usage("fixture-echo");
+  assert.equal(usage.calls, 1);
+  assert.equal(usage.failures, 0);
+  assert.equal(usage.timeouts, 0);
+  assert.equal(usage.activeTurnLeases, 1);
+  assert.equal(usage.runningRuntimes, 1);
+  assert.ok(usage.totalDurationMs >= 0);
+  assert.ok((usage.lastUsedAt ?? 0) > 0);
   lease.release();
   await runtime.close();
 });

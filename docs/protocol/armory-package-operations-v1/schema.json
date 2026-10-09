@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ovrseer:protocol:armory-package-operations-v1",
+  "title": "Armory package operations v1",
+  "$defs": {
+    "packageId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{0,127}$" },
+    "check": {
+      "type": "object", "additionalProperties": false, "required": ["id", "status", "code"],
+      "properties": {
+        "id": { "enum": ["catalog", "version", "platform", "peon-version", "archive-size", "installed-manifest", "assignment", "profile", "mcp", "mcp-handshake"] },
+        "status": { "enum": ["pass", "fail"] },
+        "code": { "type": ["string", "null"], "pattern": "^[A-Z][A-Z0-9_]{0,127}$" }
+      }
+    },
+    "preflight": {
+      "type": "object", "additionalProperties": false, "required": ["packageId", "version", "compatible", "checks"],
+      "properties": {
+        "packageId": { "$ref": "#/$defs/packageId" }, "version": { "type": ["string", "null"], "maxLength": 128 },
+        "compatible": { "type": "boolean" }, "checks": { "type": "array", "maxItems": 16, "items": { "$ref": "#/$defs/check" } }
+      }
+    },
+    "diagnose": {
+      "type": "object", "additionalProperties": false, "required": ["packageId", "projectId", "healthy", "checks", "checkedAt"],
+      "properties": {
+        "packageId": { "$ref": "#/$defs/packageId" }, "projectId": { "type": ["string", "null"], "format": "uuid" },
+        "healthy": { "type": "boolean" }, "checks": { "type": "array", "maxItems": 16, "items": { "$ref": "#/$defs/check" } },
+        "checkedAt": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "usage": {
+      "type": "object", "additionalProperties": false,
+      "required": ["packageId", "calls", "failures", "timeouts", "totalDurationMs", "activeCalls", "activeTurnLeases", "runningRuntimes", "lastUsedAt", "resetAt"],
+      "properties": {
+        "packageId": { "$ref": "#/$defs/packageId" },
+        "calls": { "type": "integer", "minimum": 0 }, "failures": { "type": "integer", "minimum": 0 },
+        "timeouts": { "type": "integer", "minimum": 0 }, "totalDurationMs": { "type": "integer", "minimum": 0 },
+        "activeCalls": { "type": "integer", "minimum": 0 }, "activeTurnLeases": { "type": "integer", "minimum": 0 },
+        "runningRuntimes": { "type": "integer", "minimum": 0 }, "lastUsedAt": { "type": ["integer", "null"], "minimum": 0 },
+        "resetAt": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "drainStatus": {
+      "type": "object", "additionalProperties": false, "required": ["packageId", "state", "activeCalls", "activeTurnLeases"],
+      "properties": {
+        "packageId": { "$ref": "#/$defs/packageId" }, "state": { "enum": ["accepting", "draining"] },
+        "activeCalls": { "type": "integer", "minimum": 0 }, "activeTurnLeases": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

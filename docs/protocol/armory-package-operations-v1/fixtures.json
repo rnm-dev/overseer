@@ -1,0 +1,10 @@
+{
+  "contractVersion": 1,
+  "capability": "armory-package-operations-v1",
+  "examples": [
+    { "schema": "preflight", "value": { "packageId": "github", "version": "2.0.0", "compatible": true, "checks": [{ "id": "platform", "status": "pass", "code": null }] } },
+    { "schema": "diagnose", "value": { "packageId": "github", "projectId": null, "healthy": true, "checks": [{ "id": "mcp-handshake", "status": "pass", "code": null }], "checkedAt": 1 } },
+    { "schema": "usage", "value": { "packageId": "github", "calls": 4, "failures": 1, "timeouts": 0, "totalDurationMs": 25, "activeCalls": 0, "activeTurnLeases": 0, "runningRuntimes": 1, "lastUsedAt": 2, "resetAt": 1 } },
+    { "schema": "drainStatus", "value": { "packageId": "github", "state": "draining", "activeCalls": 1, "activeTurnLeases": 1 } }
+  ]
+}

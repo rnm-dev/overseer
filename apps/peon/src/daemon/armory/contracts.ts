@@ -200,7 +200,7 @@ export const installedArmoryPackageSchema = z.object({
 export const armoryOperationSchema = z.object({
   id: z.string().uuid(),
   packageId,
-  kind: z.enum(["install", "update", "configure", "verify", "delete_configuration", "enable", "disable", "uninstall", "profile_configure", "profile_verify"]),
+  kind: z.enum(["install", "update", "configure", "verify", "delete_configuration", "enable", "disable", "uninstall", "profile_configure", "profile_verify", "restart", "reload", "diagnose", "drain"]),
   status: z.enum(["queued", "running", "success", "failure", "needs_human"]),
   phase: z.string().min(1).max(120),
   progress: z.number().int().min(0).max(100).nullable(),

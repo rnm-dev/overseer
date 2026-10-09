@@ -5,6 +5,7 @@ import { relay, withWorkspacePeon } from "../requestContext.js";
 
 const root = "/workspaces/:wsId/peons/:id/armory";
 const ARMORY_PROJECT_PACKAGES_CAPABILITY = "armory-project-packages-v1";
+const ARMORY_PACKAGE_OPERATIONS_CAPABILITY = "armory-package-operations-v1";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const PACKAGE_ID = /^[a-z0-9][a-z0-9._-]{0,127}$/;
 const PROFILE_TYPE = /^[a-z][a-z0-9.-]{0,63}$/;
@@ -69,6 +70,47 @@ function requireCapability(res: express.Response, capabilities: readonly string[
     code: "UNSUPPORTED_CAPABILITY",
   });
   return false;
+}
+
+function requireRuntimeOperations(res: express.Response, capabilities: readonly string[]): boolean {
+  if (capabilities.includes(ARMORY_PACKAGE_OPERATIONS_CAPABILITY)) return true;
+  res.status(409).json({ error: "This Peon does not support Armory package operations.", code: "UNSUPPORTED_CAPABILITY" });
+  return false;
+}
+
+const CHECK_IDS = new Set(["catalog", "version", "platform", "peon-version", "archive-size", "installed-manifest", "assignment", "profile", "mcp", "mcp-handshake"]);
+function safeChecks(value: unknown): Array<Record<string, unknown>> | null {
+  if (!Array.isArray(value) || value.length > 16) return null;
+  const checks = value.map(record);
+  if (checks.some((check) => !check || !CHECK_IDS.has(String(check.id)) || !["pass", "fail"].includes(String(check.status))
+    || (check.code !== null && (typeof check.code !== "string" || !ERROR_CODE.test(check.code))))) return null;
+  return checks.map((check) => ({ id: check!.id, status: check!.status, code: check!.code }));
+}
+
+export function safeRuntimeOperationsResult(result: RelayResult, kind: "preflight" | "diagnose" | "usage" | "drain"): RelayResult {
+  if (result.status < 200 || result.status >= 300) return safeProjectPackagesError(result);
+  const value = record(result.json);
+  if (!value || !PACKAGE_ID.test(String(value.packageId))) return unsafeProjectPackagesResult();
+  if (kind === "usage") {
+    const numberKeys = ["calls", "failures", "timeouts", "totalDurationMs", "activeCalls", "activeTurnLeases", "runningRuntimes", "resetAt"];
+    if (numberKeys.some((key) => !Number.isSafeInteger(value[key]) || Number(value[key]) < 0)
+      || (value.lastUsedAt !== null && (!Number.isSafeInteger(value.lastUsedAt) || Number(value.lastUsedAt) < 0))) return unsafeProjectPackagesResult();
+    return { ...result, json: Object.fromEntries(["packageId", ...numberKeys, "lastUsedAt"].map((key) => [key, value[key]])) };
+  }
+  if (kind === "drain") {
+    if (!["accepting", "draining"].includes(String(value.state)) || !Number.isSafeInteger(value.activeCalls)
+      || !Number.isSafeInteger(value.activeTurnLeases)) return unsafeProjectPackagesResult();
+    return { ...result, json: { packageId: value.packageId, state: value.state, activeCalls: value.activeCalls, activeTurnLeases: value.activeTurnLeases } };
+  }
+  const checks = safeChecks(value.checks);
+  if (!checks) return unsafeProjectPackagesResult();
+  if (kind === "preflight") {
+    if (typeof value.compatible !== "boolean" || (value.version !== null && typeof value.version !== "string")) return unsafeProjectPackagesResult();
+    return { ...result, json: { packageId: value.packageId, version: value.version, compatible: value.compatible, checks } };
+  }
+  if (typeof value.healthy !== "boolean" || (value.projectId !== null && !UUID.test(String(value.projectId)))
+    || !Number.isSafeInteger(value.checkedAt)) return unsafeProjectPackagesResult();
+  return { ...result, json: { packageId: value.packageId, projectId: value.projectId, healthy: value.healthy, checks, checkedAt: value.checkedAt } };
 }
 
 function safeProjectPackagesError(result: RelayResult, sensitive = false): RelayResult {
@@ -426,6 +468,63 @@ export function registerArmoryRoutes(router: express.Router): void {
     res.setHeader("Cache-Control", "no-store");
     const packageId = encodeURIComponent(String(req.params.packageId));
     relay(await callPeon(connOfRecord(ctx.record), "GET", `/armory/packages/${packageId}/mcp`, { actor: ctx.operator.email }), res);
+  }));
+  router.get(`${root}/packages/:packageId/preflight`, withWorkspacePeon(async (req, res, ctx) => {
+    res.setHeader("Cache-Control", "no-store");
+    if (!requireRuntimeOperations(res, ctx.record.capabilities)) return;
+    const raw = String(req.params.packageId);
+    if (!PACKAGE_ID.test(raw)) return invalidRequest(res, "packageId is invalid.");
+    const version = typeof req.query.version === "string" && req.query.version ? `?version=${encodeURIComponent(req.query.version)}` : "";
+    relay(safeRuntimeOperationsResult(await callPeon(connOfRecord(ctx.record), "GET", `/armory/packages/${encodeURIComponent(raw)}/preflight${version}`, { actor: ctx.operator.email }), "preflight"), res);
+  }));
+  router.get(`${root}/packages/:packageId/usage`, withWorkspacePeon(async (req, res, ctx) => {
+    res.setHeader("Cache-Control", "no-store");
+    if (!requireRuntimeOperations(res, ctx.record.capabilities)) return;
+    const raw = String(req.params.packageId);
+    if (!PACKAGE_ID.test(raw)) return invalidRequest(res, "packageId is invalid.");
+    relay(safeRuntimeOperationsResult(await callPeon(connOfRecord(ctx.record), "GET", `/armory/packages/${encodeURIComponent(raw)}/usage`, { actor: ctx.operator.email }), "usage"), res);
+  }));
+  router.get(`${root}/packages/:packageId/drain`, withWorkspacePeon(async (req, res, ctx) => {
+    res.setHeader("Cache-Control", "no-store");
+    if (!requireRuntimeOperations(res, ctx.record.capabilities)) return;
+    const raw = String(req.params.packageId);
+    if (!PACKAGE_ID.test(raw)) return invalidRequest(res, "packageId is invalid.");
+    relay(safeRuntimeOperationsResult(await callPeon(connOfRecord(ctx.record), "GET", `/armory/packages/${encodeURIComponent(raw)}/drain`, { actor: ctx.operator.email }), "drain"), res);
+  }));
+  for (const action of ["restart", "drain"] as const) {
+    router.post(`${root}/packages/:packageId/${action}`, withWorkspacePeon(async (req, res, ctx) => {
+      res.setHeader("Cache-Control", "no-store");
+      if (!requireRuntimeOperations(res, ctx.record.capabilities)) return;
+      const raw = String(req.params.packageId);
+      if (!PACKAGE_ID.test(raw)) return invalidRequest(res, "packageId is invalid.");
+      relay(await callPeon(connOfRecord(ctx.record), "POST", `/armory/packages/${encodeURIComponent(raw)}/${action}`, { actor: ctx.operator.email, requestId: requestId(req) }), res);
+    }));
+  }
+  router.post(`${root}/packages/:packageId/diagnose`, withWorkspacePeon(async (req, res, ctx) => {
+    res.setHeader("Cache-Control", "no-store");
+    if (!requireRuntimeOperations(res, ctx.record.capabilities)) return;
+    const raw = String(req.params.packageId);
+    if (!PACKAGE_ID.test(raw)) return invalidRequest(res, "packageId is invalid.");
+    const projectId = req.body?.projectId;
+    if (projectId !== undefined && (typeof projectId !== "string" || !UUID.test(projectId))) return invalidRequest(res, "projectId is invalid.");
+    if (projectId && !(await canAccessProject(ctx.workspaceId, ctx.userId, ctx.role, ctx.record.peonId, "", projectId))) {
+      return res.status(404).json({ error: "unknown project", code: "UNKNOWN_PROJECT" });
+    }
+    relay(safeRuntimeOperationsResult(await callPeon(connOfRecord(ctx.record), "POST", `/armory/packages/${encodeURIComponent(raw)}/diagnose`, {
+      actor: ctx.operator.email, body: projectId ? { projectId } : {}, requestId: requestId(req),
+    }), "diagnose"), res);
+  }));
+  router.post(`${root}/projects/:projectId/assignments/:packageId/reload`, withWorkspacePeon(async (req, res, ctx) => {
+    res.setHeader("Cache-Control", "no-store");
+    if (!requireRuntimeOperations(res, ctx.record.capabilities)) return;
+    const ids = assignmentIds(req, res);
+    if (!ids?.packageId) return;
+    if (!(await canAccessProject(ctx.workspaceId, ctx.userId, ctx.role, ctx.record.peonId, "", ids.projectId))) {
+      return res.status(404).json({ error: "unknown project", code: "UNKNOWN_PROJECT" });
+    }
+    relay(await callPeon(connOfRecord(ctx.record), "POST", `/armory/projects/${ids.projectId}/assignments/${ids.packageId}/reload`, {
+      actor: ctx.operator.email, requestId: requestId(req),
+    }), res);
   }));
   for (const action of ["enable", "disable"] as const) {
     router.post(`${root}/packages/:packageId/${action}`, withWorkspacePeon(async (req, res, ctx) => {

@@ -12,6 +12,7 @@ export * from "./api.js";
 export * from "./hookRunner.js";
 export * from "./operationCoordinator.js";
 export * from "./redaction.js";
+export * from "./runtimeOperations.js";
 export * from "./paths.js";
 export * from "./profileIdentity.js";
 export * from "./projectPackages.js";

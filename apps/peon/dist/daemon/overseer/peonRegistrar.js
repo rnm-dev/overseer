@@ -5,7 +5,7 @@ import { PROTOCOL_VERSION } from "../protocol.js";
 import { ensurePeonId } from "../identity/peonIdentity.js";
 import { peonPublicUrl } from "../identity/peonAddress.js";
 import { parseListenAddress } from "../../shared/listenAddress.js";
-import { ARMORY_PROJECT_PACKAGES_CAPABILITY } from "../armory/index.js";
+import { ARMORY_PACKAGE_OPERATIONS_CAPABILITY, ARMORY_PROJECT_PACKAGES_CAPABILITY } from "../armory/index.js";
 // The outbound half of the overseer protocol: this peon announcing *itself* to
 // a central overseer (fleet control plane), so the registry self-populates and
 // a NAT'd box (no inbound reachability) is still discoverable. It is the mirror
@@ -40,7 +40,7 @@ const defaultSubscribe = (listener) => {
     return () => settings.off("change", listener);
 };
 function capabilities(fileTransferRoot) {
-    const caps = ["project-directory-watch-v1", "resource-usage-v1", "sessions", "session-pagination-v1", "transcript-pagination-v1", "selected-text-replies-v1", CONTEXT_ONLY_MESSAGES_CAPABILITY, "managed-plugin-inquiry-v1", ARMORY_PROJECT_PACKAGES_CAPABILITY, "control", "sse"];
+    const caps = ["project-directory-watch-v1", "resource-usage-v1", "sessions", "session-pagination-v1", "transcript-pagination-v1", "selected-text-replies-v1", CONTEXT_ONLY_MESSAGES_CAPABILITY, "managed-plugin-inquiry-v1", ARMORY_PROJECT_PACKAGES_CAPABILITY, ARMORY_PACKAGE_OPERATIONS_CAPABILITY, "control", "sse"];
     if (fileTransferRoot.trim())
         caps.push("files");
     return caps;

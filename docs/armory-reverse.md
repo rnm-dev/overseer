@@ -9,6 +9,10 @@ exact `armory-project-packages-v1` capability; absence means upgrade required,
 not a fallback onto global activation. Its canonical model is [Armory project
 packages](armory-project-packages.md).
 
+Runtime administration uses the separate `armory-package-operations-v1`
+capability. Its preflight, diagnose, aggregate usage, restart/reload and drain
+contracts live in [Armory package runtime operations](armory-package-operations.md).
+
 ## Routes
 
 Overseer preserves `/api/workspaces/:wsId/peons/:peonId/armory/*` and maps it

@@ -135,6 +135,7 @@ repository — that content lives here.
   lifecycle mutation, with Peon's locks and installer still authoritative.
 - [Armory profiles and project packages](armory-project-packages.md) — the next
   contract: typed profiles and immutable-project assignments.
+- [Armory package runtime operations](armory-package-operations.md) — compatibility preflight, self-test, safe usage counters, restart/reload and graceful drain.
 - [source-triggered workflows](armory-workflows.md) — source systems create and monitor Peon sessions through Overseer; no package polling.
 - [managed plugin inquiries](managed-plugin-inquiries.md) — the
   `managed-plugin-inquiry-v1` operator confirmation flow.

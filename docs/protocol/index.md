@@ -17,6 +17,9 @@ separately published package.
 - [`armory-project-packages-v1`](armory-project-packages-v1/schema.json) —
   installed Armory packages, reusable typed profiles and project assignments;
   its product and migration rules are in [Armory project packages](../armory-project-packages.md).
+- [`armory-package-operations-v1`](armory-package-operations-v1/schema.json) —
+  compatibility and diagnosis checks, aggregate usage and drain state; lifecycle
+  rules are in [Armory package runtime operations](../armory-package-operations.md).
 - [`selected-text-replies-v1`](selected-text-replies-v1/schema.json) —
   the durable `replyTo` shape, source-event rules, lifecycle behavior and
   mixed-version contract for selected transcript text; product details are in
