@@ -100,6 +100,8 @@ repository — that content lives here.
   apply and status over Fleet HTTP; package metadata and bytes come from npm.
 - [Peon 1.2.1 preparation](peon-1.2.1-release.md) — Claude login stability,
   Codex continuation recovery and publication gates.
+- [Peon 1.3.0 preparation](peon-1.3.0-release.md) — Armory runtime operations,
+  compatibility/diagnostic APIs and publication gates.
 - [agent CLI updates](agent-cli-updates.md) — the driver-owned updater contract,
   supported installation ownership and safe refusal rules for Codex and Claude.
 - [agent provider login](agent-provider-login.md) — separate Claude and Codex
