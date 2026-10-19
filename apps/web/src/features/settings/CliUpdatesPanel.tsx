@@ -46,7 +46,7 @@ export function CliUpdatesPanel({ base, online }: Props) {
 
   useEffect(() => {
     if (!busy) return;
-    const timer = window.setInterval(() => void load(), 2000);
+    const timer = window.setInterval(() => { if (!document.hidden) void load(); }, 2000);
     return () => window.clearInterval(timer);
   }, [busy, load]);
 

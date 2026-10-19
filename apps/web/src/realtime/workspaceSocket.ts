@@ -77,7 +77,7 @@ export function createWorkspaceSocket(options: WorkspaceSocketOptions): Workspac
       ({ ticket } = await api<{ ticket: string }>("/auth/ws-ticket", { method: "POST" }));
     } catch {
       ticketPending = false;
-      if (!closed && !retry) scheduleRetry(false);
+      if (!closed && !retry) scheduleRetry(true);
       else backoff = Math.min(backoff * 2, MAX_BACKOFF_MS);
       return;
     }

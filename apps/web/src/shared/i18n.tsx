@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { en, type MessageKey } from "./locales/en";
 import { ru } from "./locales/ru";
 
@@ -70,7 +70,8 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     [locale],
   );
 
-  return <I18nContext.Provider value={{ locale, setLocale, t }}>{children}</I18nContext.Provider>;
+  const value = useMemo(() => ({ locale, setLocale, t }), [locale, setLocale, t]);
+  return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
 }
 
 export function useI18n(): I18nValue {

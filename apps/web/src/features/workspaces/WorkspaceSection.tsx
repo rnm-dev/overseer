@@ -8,7 +8,7 @@ import { useT } from "../../shared/i18n";
 import type { Workspace } from "./workspace";
 import { AddPeonDialog } from "./AddPeonDialog";
 import { SessionPresence } from "../sessions/SessionPresence";
-import { useLiveSocket, type PresenceUser } from "../../realtime/liveSocket";
+import { usePresence, type PresenceUser } from "../../realtime/liveSocket";
 import { useWorkspace } from "./workspace";
 import { useWorkspaceLivePresence } from "../../realtime/workspaceLive";
 import { useWorkspacePeonPresence } from "../fleet/usePeonPresence";
@@ -25,7 +25,7 @@ interface StatusPeon {
 }
 export function WorkspaceSection({ workspace }: { workspace: Workspace }) {
   const t = useT();
-  const { viewersForPeon } = useLiveSocket();
+  const { viewersForPeon } = usePresence();
   const { current } = useWorkspace();
   const wsId = workspace.id;
   const isOwner = workspace.role === "owner";

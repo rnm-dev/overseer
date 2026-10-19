@@ -90,7 +90,11 @@ export function useProjectDirectoryWatch(
 
   useEffect(() => {
     const active = subscriptions.current;
-    const desired = new Set<string>(visible ? JSON.parse(directories) as string[] : []);
+    let parsed: string[] = [];
+    try {
+      if (visible) parsed = JSON.parse(directories) as string[];
+    } catch { /* malformed list: watch nothing */ }
+    const desired = new Set<string>(parsed);
     for (const [path, sub] of active) {
       if (!desired.has(path)) { sub.stop(); active.delete(path); }
     }

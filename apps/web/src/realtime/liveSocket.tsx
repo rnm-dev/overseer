@@ -82,9 +82,6 @@ const ACKED_CHANNELS = new Set<keyof ChannelEvents>(["session", "project"]);
 interface LiveSocketValue {
   subscribeFiles: ProjectFileSubscriptions["subscribe"];
   subscribeResources: ResourceSubscriptions["subscribe"];
-  viewersFor: (peonId: string, sessionId: string) => PresenceUser[];
-  viewersForPeon: (peonId: string) => PresenceUser[];
-  viewersForWorkspace: () => PresenceUser[];
   subscribe: (peonId: string, sessionId: string, onFrame: (f: TailFrame) => void, lastEventId?: string | null) => () => void;
   subscribeSessions: (onSession: (session: SessionLiveEvent) => void) => () => void;
   subscribeProjects: (onProject: (project: ProjectLiveEvent) => void) => () => void;
@@ -92,7 +89,15 @@ interface LiveSocketValue {
   subscribeMentionAttention: (onAttention: (attention: MentionAttentionLiveEvent) => void) => () => void;
 }
 
+interface PresenceValue {
+  viewersFor: (peonId: string, sessionId: string) => PresenceUser[];
+  viewersForPeon: (peonId: string) => PresenceUser[];
+  viewersForWorkspace: () => PresenceUser[];
+}
+
 const Ctx = createContext<LiveSocketValue | null>(null);
+// Separate so presence churn does not re-render every useLiveSocket consumer.
+const PresenceCtx = createContext<PresenceValue | null>(null);
 
 export function LiveSocketProvider({ children }: { children: ReactNode }) {
   const { current, workspaces, peonInventoryReady, workspaceIdOfPeon, updatePeon } = useWorkspace();
@@ -448,18 +453,25 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
   const value = useMemo<LiveSocketValue>(() => ({
     subscribeFiles: fileSubscriptions.subscribe,
     subscribeResources: resourceSubscriptions.subscribe,
-    viewersFor,
-    viewersForPeon,
-    viewersForWorkspace,
     subscribe,
     ...channelSubscribers,
-  }), [fileSubscriptions, resourceSubscriptions, viewersFor, viewersForPeon, viewersForWorkspace, subscribe, channelSubscribers]);
+  }), [fileSubscriptions, resourceSubscriptions, subscribe, channelSubscribers]);
+  const presenceValue = useMemo<PresenceValue>(
+    () => ({ viewersFor, viewersForPeon, viewersForWorkspace }),
+    [viewersFor, viewersForPeon, viewersForWorkspace],
+  );
 
-  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+  return <Ctx.Provider value={value}><PresenceCtx.Provider value={presenceValue}>{children}</PresenceCtx.Provider></Ctx.Provider>;
 }
 
 export function useLiveSocket(): LiveSocketValue {
   const ctx = useContext(Ctx);
   if (!ctx) throw new Error("useLiveSocket outside LiveSocketProvider");
+  return ctx;
+}
+
+export function usePresence(): PresenceValue {
+  const ctx = useContext(PresenceCtx);
+  if (!ctx) throw new Error("usePresence outside LiveSocketProvider");
   return ctx;
 }

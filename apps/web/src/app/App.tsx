@@ -3,6 +3,7 @@ import { Navigate, Outlet, Route, Routes } from "react-router";
 import { PeonSessionsEmpty } from "../features/sessions/PeonSessionsEmpty";
 import { useAuth } from "../features/auth/auth";
 import { useT } from "../shared/i18n";
+import { ErrorBoundary } from "../shared/ErrorBoundary";
 import { loginRouteTarget } from "../features/auth/nativeLoginMode";
 import { WorkspaceProvider } from "../features/workspaces/workspace";
 import { LiveSocketProvider } from "../realtime/liveSocket";
@@ -41,6 +42,18 @@ function Loading() {
   );
 }
 
+function Crashed() {
+  const t = useT();
+  return (
+    <main className="grid min-h-screen place-items-center px-6 text-center">
+      <div>
+        <p className="font-mono text-sm text-ink-muted">{t("app.crashed.message")}</p>
+        <button className="btn btn-accent mt-6" type="button" onClick={() => location.reload()}>{t("app.crashed.reload")}</button>
+      </div>
+    </main>
+  );
+}
+
 function BackendUnavailable({ onRetry }: { onRetry: () => Promise<void> }) {
   const t = useT();
   return (
@@ -68,7 +81,7 @@ export function App() {
   }
 
   return (
-    <Suspense fallback={<Loading />}><Routes>
+    <ErrorBoundary fallback={<Crashed />}><Suspense fallback={<Loading />}><Routes>
       <Route
         path="/login"
         element={loginRouteTarget(Boolean(user), sessionStorage) === "dashboard" ? <Navigate to="/" replace /> : <Login />}
@@ -126,6 +139,6 @@ export function App() {
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes></Suspense>
+    </Routes></Suspense></ErrorBoundary>
   );
 }

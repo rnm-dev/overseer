@@ -1,3 +1,4 @@
+import { writeStoredValue } from "../../shared/storedValue";
 import { useCallback, useEffect, useState } from "react";
 
 const SIDEBAR_WIDTH_KEY = "overseer.peon-sidebar-width";
@@ -38,7 +39,7 @@ export function useResizableSidebar() {
   }, [resizing]);
 
   useEffect(() => {
-    if (!resizing) window.localStorage.setItem(SIDEBAR_WIDTH_KEY, String(sidebarWidth));
+    if (!resizing) writeStoredValue(SIDEBAR_WIDTH_KEY, String(sidebarWidth));
   }, [resizing, sidebarWidth]);
 
   // Headers and the session composer live outside the sidebar's flex layout.

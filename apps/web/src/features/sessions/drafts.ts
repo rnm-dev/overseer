@@ -252,10 +252,30 @@ export function useComposerDraft(key: string, initialValue?: string, persist = t
     if (draft.key !== key) setDraft({ key, value: readDraft(key) });
   }, [draft.key, key]);
 
+  // Storage writes are debounced; a pending write lands on pagehide, key change or unmount.
+  const pendingWriteRef = useRef<{ key: string; value: string; timer: number } | null>(null);
+  const flushWrite = useCallback(() => {
+    const pending = pendingWriteRef.current;
+    if (!pending) return;
+    pendingWriteRef.current = null;
+    window.clearTimeout(pending.timer);
+    writeDraft(pending.key, pending.value);
+  }, []);
+  useEffect(() => {
+    window.addEventListener("pagehide", flushWrite);
+    return () => {
+      window.removeEventListener("pagehide", flushWrite);
+      flushWrite();
+    };
+  }, [flushWrite, key]);
+
   const setValue = useCallback((value: string) => {
-    if (persist) writeDraft(key, value);
+    if (persist) {
+      if (pendingWriteRef.current) window.clearTimeout(pendingWriteRef.current.timer);
+      pendingWriteRef.current = { key, value, timer: window.setTimeout(flushWrite, 300) };
+    }
     setDraft({ key, value });
-  }, [key, persist]);
+  }, [flushWrite, key, persist]);
 
   // Avoid rendering the previous session's text during the route-change render.
   return [draft.key === key ? draft.value : readDraft(key), setValue];

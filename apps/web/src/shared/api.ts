@@ -16,7 +16,10 @@ export async function api<T = unknown>(path: string, opts: RequestInit = {}): Pr
   const headers = new Headers(opts.headers);
   if (opts.body && !headers.has("content-type")) headers.set("content-type", "application/json");
 
-  const res = await fetch(`/api${path}`, { ...opts, headers, credentials: "same-origin" });
+  // Default 15s timeout; file bodies (uploads) may legitimately take longer.
+  const timeout = opts.body instanceof Blob ? undefined : AbortSignal.timeout(15000);
+  const signal = timeout && opts.signal ? AbortSignal.any([opts.signal, timeout]) : (opts.signal ?? timeout);
+  const res = await fetch(`/api${path}`, { ...opts, headers, signal, credentials: "same-origin" });
   if (!res.ok) {
     let body: { code?: string; error?: string; message?: string; requestId?: string } | null = null;
     try {

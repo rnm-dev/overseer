@@ -9,7 +9,7 @@ import { PeonConnectionStatusDot } from "../fleet/PeonConnectionStatusDot";
 import { useT } from "../../shared/i18n";
 import { useAuth, type User } from "../auth/auth";
 import { SessionPresence } from "../sessions/SessionPresence";
-import { useLiveSocket, type PresenceEntry, type PresenceUser } from "../../realtime/liveSocket";
+import { usePresence, type PresenceEntry, type PresenceUser } from "../../realtime/liveSocket";
 import { useWorkspaceLivePresence } from "../../realtime/workspaceLive";
 import { UserBox } from "../../shared/UserBox";
 import { NewWorkspaceDialog } from "./NewWorkspaceDialog";
@@ -112,7 +112,7 @@ interface HomePeonStatus {
 function WorkspaceCard({ workspace }: { workspace: Workspace }) {
   const t = useT();
   const { current } = useWorkspace();
-  const { viewersForPeon } = useLiveSocket();
+  const { viewersForPeon } = usePresence();
   const statusResource = useApiResource<{ peons: HomePeonStatus[] }>(`/workspaces/${encodeURIComponent(workspace.id)}/status`);
   const status = useMemo<Record<string, HomePeonStatus>>(() => Object.fromEntries((statusResource.data?.peons ?? []).map((peon) => [peon.peonId, peon])), [statusResource.data]);
   const peons = useWorkspacePeonPresence(workspace.id);

@@ -7,7 +7,7 @@ import { useWorkspace } from "../workspaces/workspace";
 import { usePeonPresence } from "./usePeonPresence";
 import { useMobileDrawer } from "../../shared/useMobileDrawer";
 import { useT } from "../../shared/i18n";
-import { useLiveSocket, type SessionLiveEvent } from "../../realtime/liveSocket";
+import { usePresence, useLiveSocket, type SessionLiveEvent } from "../../realtime/liveSocket";
 import { PeonScopeSwitcher } from "../workspaces/PeonScopeSwitcher";
 import { ProjectGroupedSessionList } from "../sessions/ProjectGroupedSessionList";
 import { FadingTitle, SessionSidebarList } from "../sessions/SessionSidebarList";
@@ -54,7 +54,8 @@ const iconNavClass = (active: boolean) =>
 export function PeonDetail() {
   const t = useT();
   const { peonId = "", sid = "", key: projectKey = "" } = useParams();
-  const { viewersFor, subscribeAttention, subscribeProjects, subscribeSessions } = useLiveSocket();
+  const { subscribeAttention, subscribeProjects, subscribeSessions } = useLiveSocket();
+  const { viewersFor } = usePresence();
   const location = useLocation();
   const navigate = useNavigate();
   const { current, workspaces, setCurrent, workspaceIdOfPeon } = useWorkspace();

@@ -27,6 +27,8 @@ export const en = {
   "backend.unavailable.title": "Overseer is unavailable",
   "backend.unavailable.message": "The server could not be reached. You are still signed in; try again when the connection returns.",
   "backend.unavailable.retry": "Try again",
+  "app.crashed.message": "Something went wrong.",
+  "app.crashed.reload": "Reload",
   "ownerOnly": "Only workspace owners can access these settings.",
 
   "action.signOut": "Sign out",
@@ -450,6 +452,7 @@ export const en = {
   "session.chat.changes": "Changes",
   "session.chat.output": "Output",
   "session.chat.noOutput": "(no output)",
+  "session.chat.renderFailed": "Couldn't render this message.",
   "session.chat.activity.read": "Opened a file",
   "session.chat.activity.search": "Searched the materials",
   "session.chat.activity.web": "Checked external sources",

@@ -9,7 +9,7 @@ import { ArrowRight, GitFork, LoaderCircle, MoreHorizontal } from "lucide-react"
 import { api, ApiError, isPeonNeedsUpdate } from "../../shared/api";
 import { shouldAcknowledgeAttention } from "./sessionAttentionRead";
 import { useI18n } from "../../shared/i18n";
-import { useLiveSocket } from "../../realtime/liveSocket";
+import { usePresence, useLiveSocket } from "../../realtime/liveSocket";
 import { useAuth } from "../auth/auth";
 import { usePeon } from "../fleet/context";
 import { defaultModelId, modelLabel, providerForSession, reasoningEffortLabel, useModels } from "../fleet/modelsCatalog";
@@ -22,7 +22,8 @@ import {
   type Item,
   type MessageAttachment,
 } from "./parsing";
-import { ItemView, UserBubble, Working } from "./messageParts";
+import { ErrorBoundary } from "../../shared/ErrorBoundary";
+import { MemoItemView, UserBubble, Working } from "./messageParts";
 import { createQueueActivityTracker, createQueueReconciler } from "./queue";
 import { combineVisibleTranscriptEvents } from "./transcriptMerge";
 import { transcriptFollowOutput, transcriptFollowsOutput, transcriptShowsJumpToNewest } from "./transcriptFollow";
@@ -125,7 +126,8 @@ function PeonSessionDetailPage() {
   const { user } = useAuth();
   const { peon, base, isOwner, wsId, orderedSessionIds, selectedSession, sessionHref, sessionsHomeHref, onSessionDeleted, onSessionRunningChange } = usePeon();
   const { sid = "" } = useParams();
-  const { subscribe, subscribeMentionAttention, viewersFor } = useLiveSocket();
+  const { subscribe, subscribeMentionAttention } = useLiveSocket();
+  const { viewersFor } = usePresence();
   const navigate = useNavigate();
   const { catalog, supported: modelsSupported } = useModels(base);
   const sessionKey = `${peon.peonId}:${sid}`;
@@ -590,7 +592,21 @@ function PeonSessionDetailPage() {
     : `${sessionKey}:starting`;
   // Flattened render list — pairs each tool_use with its later tool_result so it
   // renders as a single row (see flattenEvents).
-  const items = useMemo(() => flattenEvents(visibleEvents, t), [t, visibleEvents]);
+  // Reuse unchanged item objects across renders so the memoized ItemView skips them.
+  const stableItemsRef = useRef(new Map<string, { json: string; item: Item }>());
+  const items = useMemo(() => {
+    const previous = stableItemsRef.current;
+    const next = new Map<string, { json: string; item: Item }>();
+    const flattened = flattenEvents(visibleEvents, t).map((item) => {
+      const json = JSON.stringify(item);
+      const kept = previous.get(item.key);
+      const entry = kept && kept.json === json ? kept : { json, item };
+      next.set(item.key, entry);
+      return entry.item;
+    });
+    stableItemsRef.current = next;
+    return flattened;
+  }, [t, visibleEvents]);
   const yesterdayLabelText = t("peon.stats.period.yesterday");
   // Keep callbacks stable so virtual transcript rows do not receive needless
   // prop changes on unrelated page state updates.
@@ -838,7 +854,8 @@ function PeonSessionDetailPage() {
                 const replyableEventId = row.item.kind === "user" || row.item.kind === "text" ? row.item.sourceEventId : undefined;
                 return (
                   <div data-transcript-row data-replyable-event-id={replyableEventId} onContextMenu={replyableEventId ? handleReplyContextMenu : undefined} className={`mx-auto w-full max-w-6xl px-3 sm:px-6 ${row.paddingClass}`}>
-                    <ItemView
+                    <ErrorBoundary fallback={<p className="typo-chat-system-message text-danger">{t("session.chat.renderFailed")}</p>}>
+                    <MemoItemView
                       item={row.item}
                       t={t}
                       locale={locale}
@@ -850,6 +867,7 @@ function PeonSessionDetailPage() {
                       onOpenProjectFile={onOpenProjectFileItem}
                       projectViewer={projectViewer}
                     />
+                    </ErrorBoundary>
                     {isOwner && peon.online && sessionProvider?.agent === "claude-code" && sessionProvider.capabilities?.login && ((row.item.kind === "notice" && row.item.tone === "error" && signedOut(row.item.text)) || (row.item.kind === "text" && Boolean(row.item.providerError) && signedOut(`${row.item.providerError} ${row.item.text}`))) && <ProviderLogin key={`${base}/${sid}/${row.item.key}`} base={base} provider="claude-code" />}
                     {row.item.key === lastAssistantItemKey && (
                       <BranchMessageMenu branching={branching} disabled={liveWork} error={branchError} onBranch={() => void branchSession()} t={t} />

@@ -101,7 +101,7 @@ export function SessionSharingPanel({ base, sessionId, open, onClose }: Props) {
   useEffect(() => {
     if (!open) return;
     void refresh();
-    const timer = window.setInterval(() => void refresh(), 10_000);
+    const timer = window.setInterval(() => { if (!document.hidden) void refresh(); }, 10_000);
     return () => window.clearInterval(timer);
   }, [open, refresh]);
 

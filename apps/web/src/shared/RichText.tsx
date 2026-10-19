@@ -1,48 +1,68 @@
-import { isValidElement, useMemo, type ComponentPropsWithoutRef, type ReactNode } from "react";
+import { isValidElement, useEffect, useMemo, useState, type ComponentPropsWithoutRef, type ReactNode } from "react";
 import { gutterWidthCh, lineNumberText } from "./lineNumbers";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { MermaidDiagram } from "./MermaidDiagram";
 import hljs from "highlight.js/lib/core";
-import bash from "highlight.js/lib/languages/bash";
-import c from "highlight.js/lib/languages/c";
-import cmake from "highlight.js/lib/languages/cmake";
-import cpp from "highlight.js/lib/languages/cpp";
-import csharp from "highlight.js/lib/languages/csharp";
-import css from "highlight.js/lib/languages/css";
-import dart from "highlight.js/lib/languages/dart";
-import dockerfile from "highlight.js/lib/languages/dockerfile";
-import go from "highlight.js/lib/languages/go";
-import graphql from "highlight.js/lib/languages/graphql";
-import ini from "highlight.js/lib/languages/ini";
-import java from "highlight.js/lib/languages/java";
-import javascript from "highlight.js/lib/languages/javascript";
-import json from "highlight.js/lib/languages/json";
-import kotlin from "highlight.js/lib/languages/kotlin";
-import less from "highlight.js/lib/languages/less";
-import lua from "highlight.js/lib/languages/lua";
-import makefile from "highlight.js/lib/languages/makefile";
-import markdown from "highlight.js/lib/languages/markdown";
-import php from "highlight.js/lib/languages/php";
-import powershell from "highlight.js/lib/languages/powershell";
-import python from "highlight.js/lib/languages/python";
-import r from "highlight.js/lib/languages/r";
-import ruby from "highlight.js/lib/languages/ruby";
-import rust from "highlight.js/lib/languages/rust";
-import scala from "highlight.js/lib/languages/scala";
-import scss from "highlight.js/lib/languages/scss";
-import sql from "highlight.js/lib/languages/sql";
-import swift from "highlight.js/lib/languages/swift";
-import typescript from "highlight.js/lib/languages/typescript";
-import xml from "highlight.js/lib/languages/xml";
-import yaml from "highlight.js/lib/languages/yaml";
-
-const languages = {
-  bash, c, cmake, cpp, csharp, css, dart, dockerfile, go, graphql, ini, java,
-  javascript, json, kotlin, less, lua, makefile, markdown, php, powershell,
-  python, r, ruby, rust, scala, scss, sql, swift, typescript, xml, yaml,
+import type { LanguageFn } from "highlight.js";
+// Grammars load on first use, so the core bundle carries none of them.
+const grammars: Record<string, () => Promise<{ default: LanguageFn }>> = {
+  bash: () => import("highlight.js/lib/languages/bash"),
+  c: () => import("highlight.js/lib/languages/c"),
+  cmake: () => import("highlight.js/lib/languages/cmake"),
+  cpp: () => import("highlight.js/lib/languages/cpp"),
+  csharp: () => import("highlight.js/lib/languages/csharp"),
+  css: () => import("highlight.js/lib/languages/css"),
+  dart: () => import("highlight.js/lib/languages/dart"),
+  dockerfile: () => import("highlight.js/lib/languages/dockerfile"),
+  go: () => import("highlight.js/lib/languages/go"),
+  graphql: () => import("highlight.js/lib/languages/graphql"),
+  ini: () => import("highlight.js/lib/languages/ini"),
+  java: () => import("highlight.js/lib/languages/java"),
+  javascript: () => import("highlight.js/lib/languages/javascript"),
+  json: () => import("highlight.js/lib/languages/json"),
+  kotlin: () => import("highlight.js/lib/languages/kotlin"),
+  less: () => import("highlight.js/lib/languages/less"),
+  lua: () => import("highlight.js/lib/languages/lua"),
+  makefile: () => import("highlight.js/lib/languages/makefile"),
+  markdown: () => import("highlight.js/lib/languages/markdown"),
+  php: () => import("highlight.js/lib/languages/php"),
+  powershell: () => import("highlight.js/lib/languages/powershell"),
+  python: () => import("highlight.js/lib/languages/python"),
+  r: () => import("highlight.js/lib/languages/r"),
+  ruby: () => import("highlight.js/lib/languages/ruby"),
+  rust: () => import("highlight.js/lib/languages/rust"),
+  scala: () => import("highlight.js/lib/languages/scala"),
+  scss: () => import("highlight.js/lib/languages/scss"),
+  sql: () => import("highlight.js/lib/languages/sql"),
+  swift: () => import("highlight.js/lib/languages/swift"),
+  typescript: () => import("highlight.js/lib/languages/typescript"),
+  xml: () => import("highlight.js/lib/languages/xml"),
+  yaml: () => import("highlight.js/lib/languages/yaml"),
 };
-for (const [name, grammar] of Object.entries(languages)) hljs.registerLanguage(name, grammar);
+const aliases: Record<string, string> = {
+  sh: "bash", shell: "bash", zsh: "bash", h: "c", "c++": "cpp", cs: "csharp", docker: "dockerfile",
+  golang: "go", toml: "ini", js: "javascript", jsx: "javascript", kt: "kotlin", md: "markdown",
+  py: "python", rb: "ruby", rs: "rust", ts: "typescript", tsx: "typescript", html: "xml", yml: "yaml",
+};
+
+// Returns a counter that bumps once the grammar for `language` is registered.
+function useGrammar(language: string | null): number {
+  const [loaded, setLoaded] = useState(0);
+  useEffect(() => {
+    const name = language && (aliases[language] ?? language);
+    const load = name ? grammars[name] : undefined;
+    if (!name || !load || hljs.getLanguage(name)) return;
+    let live = true;
+    void load().then((m) => {
+      if (!hljs.getLanguage(name)) hljs.registerLanguage(name, m.default);
+      if (!hljs.getLanguage(language!)) hljs.registerAliases(language!, { languageName: name });
+      if (live) setLoaded((n) => n + 1);
+    });
+    return () => { live = false; };
+  }, [language]);
+  return loaded;
+}
 
 function highlightedMarkup(source: string, language: string | null): string | null {
   if (!language || language === "plaintext" || !hljs.getLanguage(language)) return null;
@@ -53,6 +73,7 @@ function highlightedMarkup(source: string, language: string | null): string | nu
 function MarkdownCode({ className, children, node: _node, ...props }: ComponentPropsWithoutRef<"code"> & { node?: unknown }) {
   const source = String(children).replace(/\n$/, "");
   const language = /(?:^|\s)language-([^\s]+)/.exec(className ?? "")?.[1] ?? null;
+  useGrammar(language);
   const highlighted = highlightedMarkup(source, language);
   if (highlighted !== null) {
     return <code className={`hljs language-${language}`} dangerouslySetInnerHTML={{ __html: highlighted }} />;
@@ -182,9 +203,10 @@ export function HighlightedCode({ source, language, className = "", lineNumbers 
   // whole file shown as a pane's content is something people cite by line.
   lineNumbers?: boolean;
 }) {
+  const loaded = useGrammar(language ?? null);
   const highlighted = useMemo(() => {
     return highlightedMarkup(source, language ?? null);
-  }, [source, language]);
+  }, [source, language, loaded]);
   const code = highlighted === null
     ? <code>{source}</code>
     : <code className={`hljs language-${language}`} dangerouslySetInnerHTML={{ __html: highlighted }} />;

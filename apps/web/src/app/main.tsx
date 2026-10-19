@@ -17,6 +17,16 @@ rememberNativeCallback(window.location.search, sessionStorage);
 // Publishes --ov-scrollbar-width so fixed overlays can keep off the scrollbar.
 trackScrollbarWidth(window);
 
+// A stale deploy's lazy chunk 404s: reload once to pick up the new build.
+window.addEventListener("vite:preloadError", (event) => {
+  if (sessionStorage.getItem("ov-preload-reload")) return;
+  event.preventDefault();
+  sessionStorage.setItem("ov-preload-reload", "1");
+  location.reload();
+});
+// Cleared after the page has stayed up a while, so a persistently missing chunk cannot loop.
+window.addEventListener("load", () => window.setTimeout(() => sessionStorage.removeItem("ov-preload-reload"), 10000));
+
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <ThemeProvider>

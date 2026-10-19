@@ -29,6 +29,8 @@ export const ru: Record<MessageKey, string> = {
   "backend.unavailable.title": "Overseer недоступен",
   "backend.unavailable.message": "Не удалось связаться с сервером. Вы по-прежнему авторизованы — повторите попытку, когда соединение восстановится.",
   "backend.unavailable.retry": "Повторить",
+  "app.crashed.message": "Что-то пошло не так.",
+  "app.crashed.reload": "Перезагрузить",
   "ownerOnly": "Эти настройки доступны только владельцам пространства.",
 
   "action.signOut": "Выйти",
@@ -452,6 +454,7 @@ export const ru: Record<MessageKey, string> = {
   "session.chat.changes": "Изменения",
   "session.chat.output": "Вывод",
   "session.chat.noOutput": "(нет вывода)",
+  "session.chat.renderFailed": "Не удалось отобразить это сообщение.",
   "session.chat.activity.read": "Открыт файл",
   "session.chat.activity.search": "Выполнен поиск по материалам",
   "session.chat.activity.web": "Проверены внешние источники",

@@ -1,3 +1,4 @@
+import { writeStoredValue } from "../../shared/storedValue";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { api, json } from "../../shared/api";
 import { applyPeonProjection, mergePeonInventory, type PeonProjection } from "./workspacePeons";
@@ -89,7 +90,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   }, [wsIds]);
 
   const setCurrent = useCallback((id: string) => {
-    localStorage.setItem(CURRENT_KEY, id);
+    writeStoredValue(CURRENT_KEY, id);
     setCurrentId(id);
   }, []);
 

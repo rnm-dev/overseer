@@ -1,3 +1,4 @@
+import { writeStoredValue } from "./storedValue";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 // A movable separator between two panes of one surface. The Peon sidebar owns
@@ -73,7 +74,7 @@ export function useSplitPane({ storageKey, defaultWidth, bounds, minViewportWidt
   }, [bounds, resizing]);
 
   useEffect(() => {
-    if (!resizing) window.localStorage.setItem(storageKey, String(width));
+    if (!resizing) writeStoredValue(storageKey, String(width));
   }, [resizing, storageKey, width]);
 
   // A width stored on a wide monitor would starve the trailing pane in a

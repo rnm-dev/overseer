@@ -161,19 +161,38 @@ export function useSessionTranscript({
   }, []);
 
   const markDelivered = useCallback((event: Ev, tailId: number | null, tailEventId: string | null): void => {
-    if (tailEventId !== null) seenTailEventIdsRef.current.add(tailEventId);
-    else if (tailId !== null) seenTailIdsRef.current.add(tailId);
-    else seenRef.current.add(sig(event));
+    if (tailEventId !== null) addCapped(seenTailEventIdsRef.current, tailEventId);
+    else if (tailId !== null) addCapped(seenTailIdsRef.current, tailId);
+    else addCapped(seenRef.current, sig(event));
   }, []);
 
+  // Live frames are batched into one state update per animation frame.
+  const liveBatchRef = useRef<Ev[]>([]);
+  const liveFrameRef = useRef(0);
+  const flushLive = useCallback(() => {
+    if (liveFrameRef.current) window.cancelAnimationFrame(liveFrameRef.current);
+    liveFrameRef.current = 0;
+    const pending = liveBatchRef.current;
+    if (pending.length === 0) return;
+    liveBatchRef.current = [];
+    setLive((previous) => [...previous, ...pending]);
+  }, []);
+  const dropPendingLive = useCallback(() => {
+    if (liveFrameRef.current) window.cancelAnimationFrame(liveFrameRef.current);
+    liveFrameRef.current = 0;
+    liveBatchRef.current = [];
+  }, []);
+  useEffect(() => dropPendingLive, [dropPendingLive]);
+
   const appendLive = useCallback((event: Ev, tailId: number | null, tailEventId: string | null): void => {
-    setLive((previous) => [...previous, {
+    liveBatchRef.current.push({
       ...event,
       ...(tailEventId !== null ? { _tailEventId: tailEventId } : {}),
       ...(tailId !== null ? { _tailId: tailId } : {}),
       createdAt: event.type === "user_message" && typeof event.createdAt !== "number" ? Date.now() : event.createdAt,
-    }]);
-  }, []);
+    });
+    if (!liveFrameRef.current) liveFrameRef.current = window.requestAnimationFrame(flushLive);
+  }, [flushLive]);
 
   const pushFreshEvent = useCallback((event: Ev, tailId: number | null = null, tailEventId: string | null = null): boolean => {
     if (alreadyDelivered(event, tailId, tailEventId)) return false;
@@ -202,6 +221,7 @@ export function useSessionTranscript({
 
   const applyAuthoritativeSnapshot = useCallback((page: TranscriptPage) => {
     if (!page.paginated && page.events.length < historyLengthRef.current) return;
+    flushLive();
     setLive((current) => (page.paginated
       ? reconcileDurableSnapshot(page.events, current)
       : reconcileAuthoritativeSnapshot(page.events, current)));
@@ -210,11 +230,11 @@ export function useSessionTranscript({
     loadedTranscriptRef.current = merged;
     historyLengthRef.current = merged.paginated ? 0 : merged.events.length;
     historyEventIdsRef.current = new Set(merged.events.flatMap((event) => eventId(event) ?? []));
-    for (const event of page.events) seenRef.current.add(sig(event));
+    for (const event of page.events) addCapped(seenRef.current, sig(event));
     setHasOlder(merged.paginated && merged.hasMore && merged.nextCursor !== null);
     setHistory(merged.events);
     if (snapshotEndsRun(runningRef.current, page.events)) onRunFinished();
-  }, [base, onRunFinished, paginationSupported, sid]);
+  }, [base, flushLive, onRunFinished, paginationSupported, sid]);
 
   const fetchLatestTranscript = useCallback(async (signal?: AbortSignal): Promise<TranscriptPage> => {
     let page = parseTranscriptPage(await api<TranscriptResponse>(
@@ -270,6 +290,7 @@ export function useSessionTranscript({
     }
     setTailStart(null);
     historyReadyRef.current = false;
+    dropPendingLive();
     setLive([]);
     setHistoryLoadError(false);
     setLoadingOlder(false);
@@ -454,4 +475,16 @@ export function useSessionTranscript({
     olderLoadError,
     loadOlder,
   };
+}
+
+// Dedup sets only need recent ids; drop the oldest half once one grows large.
+const SEEN_CAP = 5000;
+function addCapped<V>(set: Set<V>, value: V): void {
+  set.add(value);
+  if (set.size <= SEEN_CAP) return;
+  let drop = set.size - SEEN_CAP / 2;
+  for (const old of set) {
+    if (drop-- <= 0) break;
+    set.delete(old);
+  }
 }

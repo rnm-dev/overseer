@@ -7,7 +7,7 @@ import { PeonScopeSwitcher } from "./PeonScopeSwitcher";
 import { SessionSidebarList } from "../sessions/SessionSidebarList";
 import { SidebarSectionHeader } from "../../shared/SidebarSectionHeader";
 import { useT } from "../../shared/i18n";
-import { useLiveSocket, type SessionLiveEvent } from "../../realtime/liveSocket";
+import { usePresence, useLiveSocket, type SessionLiveEvent } from "../../realtime/liveSocket";
 import { useWorkspace } from "./workspace";
 import { useMobileDrawer } from "../../shared/useMobileDrawer";
 import type { PeonContext, PeonView } from "../fleet/context";
@@ -35,7 +35,8 @@ export function WorkspaceSessions() {
   const { workspaceId = "", peonId = "", sid = "" } = useParams();
   const navigate = useNavigate();
   const { current, groups, setCurrent } = useWorkspace();
-  const { subscribeAttention, subscribeSessions, viewersFor } = useLiveSocket();
+  const { subscribeAttention, subscribeSessions } = useLiveSocket();
+  const { viewersFor } = usePresence();
   const group = groups.find((item) => item.workspace.id === workspaceId);
   const peons = useMemo(() => group?.peons ?? [], [group]);
   const peonNames = useMemo(() => new Map(peons.map((peon) => [peon.peonId, peon.name || t("peons.unnamed")])), [peons, t]);

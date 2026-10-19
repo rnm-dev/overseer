@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { memo, useRef, useState, type ReactNode } from "react";
+import { useNow } from "../../shared/useNow";
 import { Dialog } from "../../shared/ui";
 import { HighlightedCode, Markdown } from "../../shared/RichText";
 import { orcishThinkingLabel, prettyJsonOutput, toolHasOutputSection, toolSummary, type Item, type MessageAttachment, type T } from "./parsing";
@@ -446,6 +447,8 @@ export function ItemView({ item, t, locale = "en", yesterdayLabel = "Yesterday",
   }
 }
 
+export const MemoItemView = memo(ItemView);
+
 export function Working({
   label,
   startedAt,
@@ -468,11 +471,7 @@ export function Working({
   stoppingLabel: string;
 }) {
   const fallbackStartedAt = useRef(Date.now());
-  const [now, setNow] = useState(Date.now);
-  useEffect(() => {
-    const id = window.setInterval(() => setNow(Date.now()), 1_000);
-    return () => window.clearInterval(id);
-  }, []);
+  const now = useNow(1_000);
   const effectiveStartedAt = typeof startedAt === "number" && Number.isFinite(startedAt) && startedAt > 0 && startedAt <= now
     ? startedAt
     : fallbackStartedAt.current;
