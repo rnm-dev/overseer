@@ -1,17 +1,20 @@
 import type { AgentEvent, AgentRun, AgentRunOptions } from "./executor.js";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { sourceTimestampMetadata } from "../sessions/index.js";
 import { guardToolOutput, type GuardedToolOutput } from "../sessions/index.js";
 import { spawnJsonAgent } from "./spawnJsonAgent.js";
 import { normalizeFileToolInput } from "./toolPaths.js";
 import { claudeUsage, claudeResultUsage, ClaudeInputAccumulator } from "./claudeUsage.js";
 
-export function buildClaudeCodeArgs(opts: AgentRunOptions): string[] {
+export function buildClaudeCodeArgs(opts: AgentRunOptions, systemPromptPath: string): string[] {
   const args = [
     "-p", opts.prompt,
     "--output-format", "stream-json",
     "--verbose",
     "--permission-mode", opts.permissionMode ?? "bypassPermissions",
-    "--append-system-prompt", opts.systemPromptAppend,
+    "--append-system-prompt-file", systemPromptPath,
     ...(opts.resume ? ["--resume", opts.backendSessionId ?? opts.sessionId] : ["--session-id", opts.sessionId]),
     "--setting-sources", "project",
     "--strict-mcp-config",
@@ -25,6 +28,32 @@ export function buildClaudeCodeArgs(opts: AgentRunOptions): string[] {
   if (opts.model) args.push("--model", opts.model);
   if (opts.reasoningEffort) args.push("--effort", opts.reasoningEffort);
   return args;
+}
+
+export function prepareClaudeCodeInvocation(opts: AgentRunOptions): {
+  args: string[];
+  systemPromptPath: string;
+  dispose: () => void;
+} {
+  const promptDir = mkdtempSync(path.join(tmpdir(), "peon-claude-prompt-"));
+  const systemPromptPath = path.join(promptDir, "append-system-prompt.md");
+  try {
+    writeFileSync(systemPromptPath, opts.systemPromptAppend, { encoding: "utf8", mode: 0o600 });
+  } catch (error) {
+    rmSync(promptDir, { recursive: true, force: true });
+    throw error;
+  }
+  return {
+    args: buildClaudeCodeArgs(opts, systemPromptPath),
+    systemPromptPath,
+    dispose: () => {
+      try {
+        rmSync(promptDir, { recursive: true, force: true });
+      } catch {
+        // Cleanup must never turn a completed provider process into a daemon crash.
+      }
+    },
+  };
 }
 
 // Claude's stream-json shape inspired the original transcript renderer, but it
@@ -139,7 +168,15 @@ export function createClaudeCodeEventNormalizer(
 }
 
 export function runClaudeCode(opts: AgentRunOptions): AgentRun {
-  return spawnJsonAgent(opts.command, buildClaudeCodeArgs(opts), opts.cwd, createClaudeCodeEventNormalizer(opts));
+  const invocation = prepareClaudeCodeInvocation(opts);
+  try {
+    const run = spawnJsonAgent(opts.command, invocation.args, opts.cwd, createClaudeCodeEventNormalizer(opts));
+    run.emitter.once("exit", invocation.dispose);
+    return run;
+  } catch (error) {
+    invocation.dispose();
+    throw error;
+  }
 }
 
 export function forkClaudeCodeSession(input: {

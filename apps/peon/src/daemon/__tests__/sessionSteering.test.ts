@@ -334,3 +334,62 @@ test("a pending native steer fences retries, other steers, remove and edit", () 
   assert.equal(sessions.removeQueued(record.id, other.id), "removed");
   assert.equal(sessions.cancel(record.id), true);
 });
+
+test("a queued follow-up with a model override survives catalog reads during dispatch", async () => {
+  const { refreshAgentModelCatalog } = await import("../providers/modelCatalog.js");
+  const pinningDriverId = `test-model-pinning-${Date.now()}`;
+  const runs: AgentRun[] = [];
+  registerAgentDriver({
+    id: pinningDriverId,
+    label: "Test model pinning",
+    available: () => true,
+    visible: false,
+    models: [{ id: "base-model", label: "Base", default: true }],
+    canonicalModel: () => undefined,
+    reasoningEffort: () => undefined,
+    command: () => "test-model-pinning",
+    conversation: { initialBackendId: (id) => id, recoverBackendId: (_id, persisted) => persisted },
+    outcomeSchema: () => undefined,
+    normalizeOutcome: () => null,
+    normalizeStoredEvent: (raw) => raw as never,
+    run: () => {
+      const run = { emitter: new EventEmitter(), kill() {} };
+      runs.push(run);
+      return run;
+    },
+    interrupt: (run) => setImmediate(() => run.emitter.emit("exit", { code: null, signal: "SIGTERM", spawnError: null })),
+    shutdown: (run) => setImmediate(() => run.emitter.emit("exit", { code: null, signal: "SIGTERM", spawnError: null })),
+    auth: { observeSuccess() {}, observeFailure() {} },
+    capabilities: { steering: false, cancellation: true, recovery: true, quota: false, status: false, cliUpdate: false },
+    services: {
+      modelCatalog: {
+        discover: async () => [
+          { id: "base-model", label: "Base", default: true },
+          { id: "other-model", label: "Other" },
+        ],
+      },
+    },
+  });
+  await refreshAgentModelCatalog(pinningDriverId, "test-model-pinning", true);
+
+  const record = sessions.start({ id: "queued-model-override-orphan", prompt: "first", dir: os.tmpdir(), agent: pinningDriverId });
+  sessions.enqueue(record.id, "switch model", [], undefined, "alice@example.com", "other-model");
+  // The runtime-state channel answers every change by counting active runs,
+  // which reconciles orphaned `running` records as a side effect.
+  const readCatalog = () => { sessions.activeCount(); };
+  sessions.on("change", readCatalog);
+  try {
+    runs[0].emitter.emit("exit", { code: 0, signal: null, spawnError: null });
+    for (let attempt = 0; attempt < 100 && runs.length < 2; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 2));
+    }
+  } finally {
+    sessions.off("change", readCatalog);
+  }
+  assert.equal(runs.length, 2);
+  assert.equal(record.model, "other-model");
+  assert.equal(record.status, "running");
+  assert.equal(record.outcome, null);
+  assert.equal(sessionState.activeRuns.get(record.id), runs[1]);
+  assert.equal(sessions.cancel(record.id), true);
+});

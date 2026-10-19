@@ -6,7 +6,7 @@ import { eventLoopDelayStats } from "./runtime/eventLoopMonitor.js";
 import path from "node:path";
 import express from "express";
 import { DaemonConfigurationState, settings } from "./settings/index.js";
-import { sessionArtifactInventory, flushTranscript, readCommittedTranscriptEntries, subscribeTranscriptCommits, CONTEXT_ONLY_MESSAGES_CAPABILITY, sessions, toPublicSessionRecord, } from "./sessions/index.js";
+import { sessionArtifactInventory, flushTranscript, readCommittedTranscriptEntries, subscribeTranscriptCommits, CONTEXT_ONLY_MESSAGES_CAPABILITY, MESSAGE_THREADS_CAPABILITY, sessions, toPublicSessionRecord, } from "./sessions/index.js";
 import { createProjectService, projectStore } from "./projects/index.js";
 import { pairing } from "./identity/pairing.js";
 import { ensurePeonId } from "./identity/peonIdentity.js";
@@ -173,7 +173,7 @@ function agentStatusView() {
         activeSessionCount: sessions.activeCount(),
         sessionCount: sessions.list().length,
         filesEnabled: Boolean(settings.get().fileTransferRoot),
-        capabilities: [MANAGED_PLUGIN_INQUIRY_CAPABILITY, ARMORY_PROJECT_PACKAGES_CAPABILITY, CONTEXT_ONLY_MESSAGES_CAPABILITY],
+        capabilities: [MANAGED_PLUGIN_INQUIRY_CAPABILITY, ARMORY_PROJECT_PACKAGES_CAPABILITY, CONTEXT_ONLY_MESSAGES_CAPABILITY, MESSAGE_THREADS_CAPABILITY],
         agentAuth: (() => {
             const s = getAgentDriver("claude-code")?.services.status?.();
             return { authState: s?.authState, available: s?.available, checkedAt: s?.checkedAt };
@@ -216,14 +216,19 @@ export function createAgentRouter(options = {}) {
         get: (id) => sessions.get(id),
         replayContextMessage: (commandId, id, request) => sessions.replayContextMessage(commandId, id, request),
         appendContextMessage: (commandId, id, input, request) => sessions.appendContextMessage(commandId, id, input, request),
+        listMessageThreads: (id) => sessions.listMessageThreads(id),
+        createMessageThread: (id, anchorEventId, commandId) => sessions.createMessageThread(id, anchorEventId, commandId),
+        appendMessageThreadMessage: (id, threadId, commandId, text, author) => sessions.appendMessageThreadMessage(id, threadId, commandId, text, author),
+        invokeMessageThread: (id, threadId, commandId, prompt, author) => sessions.invokeMessageThread(id, threadId, commandId, prompt, author),
         rename: (id, title) => sessions.rename(id, title),
         start: (sessionOptions) => sessions.start(sessionOptions),
         branch: (id, branchOptions) => sessions.branch(id, branchOptions),
         validateReplyTo: (id, replyTo) => sessions.validateReplyTo(id, replyTo),
-        resume: (id, prompt, attachments, permissionMode, author, model, reasoningEffort, commandId, notifyParentOnComplete, replyTo) => sessions.resume(id, prompt, attachments, permissionMode, author, model, reasoningEffort, commandId, notifyParentOnComplete, replyTo),
-        enqueue: (id, prompt, attachments, permissionMode, author, model, reasoningEffort, commandId, startNow, replyTo) => sessions.enqueue(id, prompt, attachments, permissionMode, author, model, reasoningEffort, commandId, startNow, replyTo),
+        // Forward every argument: a hand-copied list silently dropped attribution.
+        resume: (...args) => sessions.resume(...args),
+        enqueue: (...args) => sessions.enqueue(...args),
         queued: (id) => sessions.queued(id),
-        editQueued: (id, itemId, prompt, replyTo) => sessions.editQueued(id, itemId, prompt, replyTo),
+        editQueued: (...args) => sessions.editQueued(...args),
         steerQueued: (id, itemId) => sessions.steerQueued(id, itemId),
         sendQueuedNow: (id, itemId) => sessions.sendQueuedNow(id, itemId),
         removeQueued: (id, itemId) => sessions.removeQueued(id, itemId),

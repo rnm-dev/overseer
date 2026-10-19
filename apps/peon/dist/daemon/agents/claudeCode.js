@@ -1,15 +1,18 @@
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { sourceTimestampMetadata } from "../sessions/index.js";
 import { guardToolOutput } from "../sessions/index.js";
 import { spawnJsonAgent } from "./spawnJsonAgent.js";
 import { normalizeFileToolInput } from "./toolPaths.js";
 import { claudeUsage, claudeResultUsage, ClaudeInputAccumulator } from "./claudeUsage.js";
-export function buildClaudeCodeArgs(opts) {
+export function buildClaudeCodeArgs(opts, systemPromptPath) {
     const args = [
         "-p", opts.prompt,
         "--output-format", "stream-json",
         "--verbose",
         "--permission-mode", opts.permissionMode ?? "bypassPermissions",
-        "--append-system-prompt", opts.systemPromptAppend,
+        "--append-system-prompt-file", systemPromptPath,
         ...(opts.resume ? ["--resume", opts.backendSessionId ?? opts.sessionId] : ["--session-id", opts.sessionId]),
         "--setting-sources", "project",
         "--strict-mcp-config",
@@ -28,6 +31,29 @@ export function buildClaudeCodeArgs(opts) {
     if (opts.reasoningEffort)
         args.push("--effort", opts.reasoningEffort);
     return args;
+}
+export function prepareClaudeCodeInvocation(opts) {
+    const promptDir = mkdtempSync(path.join(tmpdir(), "peon-claude-prompt-"));
+    const systemPromptPath = path.join(promptDir, "append-system-prompt.md");
+    try {
+        writeFileSync(systemPromptPath, opts.systemPromptAppend, { encoding: "utf8", mode: 0o600 });
+    }
+    catch (error) {
+        rmSync(promptDir, { recursive: true, force: true });
+        throw error;
+    }
+    return {
+        args: buildClaudeCodeArgs(opts, systemPromptPath),
+        systemPromptPath,
+        dispose: () => {
+            try {
+                rmSync(promptDir, { recursive: true, force: true });
+            }
+            catch {
+                // Cleanup must never turn a completed provider process into a daemon crash.
+            }
+        },
+    };
 }
 // Claude's stream-json shape inspired the original transcript renderer, but it
 // is still treated as provider input here—not as the storage contract. Copy
@@ -135,7 +161,16 @@ export function createClaudeCodeEventNormalizer(opts, guard = guardToolOutput) {
     };
 }
 export function runClaudeCode(opts) {
-    return spawnJsonAgent(opts.command, buildClaudeCodeArgs(opts), opts.cwd, createClaudeCodeEventNormalizer(opts));
+    const invocation = prepareClaudeCodeInvocation(opts);
+    try {
+        const run = spawnJsonAgent(opts.command, invocation.args, opts.cwd, createClaudeCodeEventNormalizer(opts));
+        run.emitter.once("exit", invocation.dispose);
+        return run;
+    }
+    catch (error) {
+        invocation.dispose();
+        throw error;
+    }
 }
 export function forkClaudeCodeSession(input) {
     return new Promise((resolve, reject) => {

@@ -10,6 +10,17 @@ export {
 export { toPublicSessionRecord, type PublicSessionRecord } from "./publicView.js";
 export { parseReplyTo, ReplyToError } from "./replyTo.js";
 export {
+  MESSAGE_THREADS_CAPABILITY,
+  MAX_THREAD_MESSAGES,
+  MAX_THREAD_TEXT_BYTES,
+  MessageThreadError,
+  type ContextCapsule,
+  type MessageThread,
+  type MessageThreadAnchorSummary,
+  type MessageThreadMessage,
+  type MessageThreadPrincipal,
+} from "./messageThreads.js";
+export {
   flushTranscript,
   previewText,
   readTranscript,

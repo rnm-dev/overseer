@@ -5,6 +5,9 @@ export function toSessionSummary(record) {
     const promptPreview = title ? null : bounded(record.prompt);
     return {
         id: record.id,
+        kind: record.kind ?? "agent",
+        threadState: record.threadState ?? null,
+        threadSource: record.threadSource ?? null,
         status: record.status,
         projectKey: record.projectKey,
         projectId: record.projectId,
